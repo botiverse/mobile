@@ -227,7 +227,7 @@ function credentials() {
 }
 
 // ---------- device state the run changes, and puts back ----------
-const restore = { stubInstalledByRun: false, browserHolders: null };
+const restore = { stubInstalledByRun: false, browserHolders: null, disabledBrowsers: [] };
 
 function browserRoleHolders() {
   return shell("cmd role get-role-holders --user 0 android.app.role.BROWSER", { allowFailure: true })
@@ -236,6 +236,10 @@ function browserRoleHolders() {
 function resolvedBrowser() {
   const out = shell("cmd package resolve-activity --brief --user 0 -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d https://example.com/", { allowFailure: true });
   return out.trim().split("\n").pop()?.split("/")[0] ?? "";
+}
+function browserCandidates() {
+  const out = shell("cmd package query-activities --brief --user 0 -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d https://example.com/", { allowFailure: true });
+  return [...new Set(out.split("\n").map((l) => l.trim()).filter((l) => /^[\w.]+\/[\w.$]+$/.test(l)).map((l) => l.split("/")[0]))];
 }
 function readCapture() {
   return shell(`run-as ${STUB_PKG} cat ${CAPTURE_FILE} 2>/dev/null`, { allowFailure: true }).trim();
@@ -249,6 +253,10 @@ async function cleanup() {
   try {
     removeCapture();
     done.capture_file_removed = !readCapture();
+  } catch {}
+  try {
+    for (const other of restore.disabledBrowsers) shell(`pm enable --user 0 ${other}`, { allowFailure: true });
+    if (restore.disabledBrowsers.length) done.browsers_reenabled = restore.disabledBrowsers;
   } catch {}
   try {
     if (restore.browserHolders) {
@@ -288,8 +296,22 @@ async function main() {
       restore.browserHolders = browserRoleHolders();
       const added = shell(`cmd role add-role-holder --user 0 android.app.role.BROWSER ${STUB_PKG} 2>&1`, { allowFailure: true }).trim();
       await sleep(1000);
-      const browser = resolvedBrowser();
-      if (browser !== STUB_PKG) stop(`the capture browser is not the default browser (resolves to ${browser || "nothing"}; role: ${added || "ok"})`);
+      let browser = resolvedBrowser();
+      let via = "browser-role";
+      if (browser !== STUB_PKG) {
+        // The role refused the stub (some images only grant it to qualifying system browsers): disable
+        // the other browsers for the run instead, so the stub is the only one. Re-enabled in cleanup.
+        const roleError = shell("logcat -d -t 200 2>/dev/null | grep -i -m 5 'role' || true", { allowFailure: true }).trim();
+        log(`browser role not taken (${added || "no output"}); ${roleError ? `role log: ${roleError.split("\n")[0].slice(0, 200)}` : "no role log"}`);
+        for (const other of browserCandidates().filter((p) => p !== STUB_PKG)) {
+          shell(`pm disable-user --user 0 ${other}`, { allowFailure: true });
+          restore.disabledBrowsers.push(other);
+        }
+        await sleep(1000);
+        browser = resolvedBrowser();
+        via = "other-browsers-disabled";
+      }
+      if (browser !== STUB_PKG) stop(`the capture browser is not the default browser (resolves to ${browser || "nothing"})`);
       if (APK) {
         shell(`pm uninstall ${PKG}`, { allowFailure: true });
         adb(["install", "-r", APK], { timeoutMs: 240_000 });
@@ -305,6 +327,8 @@ async function main() {
         app_version_code: Number(/versionCode=(\d+)/.exec(dump)?.[1] ?? 0),
         app_debuggable: /\bDEBUGGABLE\b/.test(flags),
         previous_browser: restore.browserHolders.join(",") || "(none)",
+        capture_browser_via: via,
+        disabled_browsers: restore.disabledBrowsers,
       };
     });
 
