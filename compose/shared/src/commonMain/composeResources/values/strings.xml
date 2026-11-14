@@ -3983,6 +3983,7 @@
     <string name="agent_migration_target_agents_none">No agents</string>
     <string name="agent_migration_target_agents_one">%1$s agent</string>
     <string name="agent_migration_target_agents_other">%1$s agents</string>
+    <string name="agent_migration_target_agents_show_all">Show all %1$d agents</string>
     <string name="agent_migration_target_offline">Offline</string>
     <string name="agent_migration_target_details">Details for %1$s</string>
     <string name="agent_migration_target_memory">Memory</string>

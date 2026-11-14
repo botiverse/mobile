@@ -3825,6 +3825,7 @@
     <string name="agent_migration_target_agents_none">Sin agentes</string>
     <string name="agent_migration_target_agents_one">%1$s agente</string>
     <string name="agent_migration_target_agents_other">%1$s agentes</string>
+    <string name="agent_migration_target_agents_show_all">Ver los %1$d agentes</string>
     <string name="agent_migration_target_offline">Sin conexión</string>
     <string name="agent_migration_target_details">Detalles de %1$s</string>
     <string name="agent_migration_target_memory">Memoria</string>

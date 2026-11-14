@@ -3983,6 +3983,7 @@
     <string name="agent_migration_target_agents_none">エージェントなし</string>
     <string name="agent_migration_target_agents_one">エージェント %1$s 件</string>
     <string name="agent_migration_target_agents_other">エージェント %1$s 件</string>
+    <string name="agent_migration_target_agents_show_all">エージェント %1$d 個をすべて表示</string>
     <string name="agent_migration_target_offline">オフライン</string>
     <string name="agent_migration_target_details">%1$s の詳細</string>
     <string name="agent_migration_target_memory">メモリ</string>

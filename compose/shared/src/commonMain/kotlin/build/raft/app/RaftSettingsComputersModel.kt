@@ -649,6 +649,12 @@ internal data class RaftComputerCardAgent(
 
 private const val RAFT_COMPUTER_ID_BADGE_PREFIX = "computer-id:"
 
+/** The computer a member's `computer-id:` badge names (the Members page's grouping); null for none. */
+internal fun MemberProfile.raftComputerMachineId(): String? =
+    permissionBadges.firstNotNullOfOrNull { badge ->
+        badge.removePrefix(RAFT_COMPUTER_ID_BADGE_PREFIX).trim().takeIf { badge.startsWith(RAFT_COMPUTER_ID_BADGE_PREFIX) && it.isNotBlank() }
+    }
+
 /**
  * Web ComputersRack `useAgentsByMachine`: the live (not deleted) agents of the members store per
  * computer, in the store's order. The computer is the agent's `computer-id:` badge, as the Members
@@ -660,10 +666,7 @@ internal fun raftComputerAgentsByMachine(members: List<MemberProfile>): Map<Stri
     members.forEach { member ->
         if (member.kind != MemberKind.Agent) return@forEach
         if (!member.agentDeletedAt.isNullOrBlank() || member.membershipStatus == "deleted") return@forEach
-        val machineId =
-            member.permissionBadges.firstNotNullOfOrNull { badge ->
-                badge.removePrefix(RAFT_COMPUTER_ID_BADGE_PREFIX).trim().takeIf { badge.startsWith(RAFT_COMPUTER_ID_BADGE_PREFIX) && it.isNotBlank() }
-            } ?: return@forEach
+        val machineId = member.raftComputerMachineId() ?: return@forEach
         if (!seen.add(member.id.value)) return@forEach
         byMachine.getOrPut(machineId) { mutableListOf() } +=
             RaftComputerCardAgent(
