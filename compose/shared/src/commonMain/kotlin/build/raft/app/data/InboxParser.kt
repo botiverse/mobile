@@ -327,10 +327,15 @@ fun parseSharedInboxSnapshot(
     )
 }.getOrNull()
 
+private val InboxIgnoredWebLocalKinds = setOf("mention_action")
+
 private fun WireInboxItem.toDomain(diagnostics: (String) -> Unit): InboxItem? = when (kind) {
     "channel", "dm" -> toChannelOrDmDomain(diagnostics)
     "thread" -> toThreadDomain(diagnostics)
     "task" -> toTaskConversationDomain(diagnostics)
+    // Web-local rows (a pending mention action is the composer's, not an Activity conversation):
+    // deliberately not shown, as on web.
+    in InboxIgnoredWebLocalKinds -> null
     // An inbox kind a newer server added (the task-row incident's class): show it as a generic
     // channel row that opens its channel, rather than dropping it while the totals still count it.
     else ->
