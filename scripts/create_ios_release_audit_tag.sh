@@ -3,8 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="${SLOCK_RELEASE_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REMOTE="${SLOCK_RELEASE_REMOTE:-origin}"
-RAFT_CLI="${RAFT_CLI:-raft}"
-HANDS_SERVICE="${HANDS_SERVICE:-hands-4cc7a2}"
+HANDS_CLI="${HANDS_CLI:-hands}"
+TAG_PUBLISH_ATTEMPTS="${IOS_AUDIT_TAG_PUBLISH_ATTEMPTS:-30}"
+TAG_PUBLISH_INTERVAL="${IOS_AUDIT_TAG_PUBLISH_INTERVAL:-10}"
 HANDS_APP_SLUG="${HANDS_APP_SLUG:-raft-ios}"
 VERSION=""
 BUILD_NUMBER=""
@@ -48,10 +49,17 @@ Options:
   -h, --help                  Show this help.
 
 Authentication:
-  The helper uses Raft Agent Login and the registered Hands read-only actions:
-  list-apps, get-release, get-testflight-upload-status, and
-  get-testflight-publish-status. Configure the selected Raft profile before
-  running it. No Hands or App Store Connect credential is exported.
+  The helper reads Hands through your logged-in Hands CLI (`hands whoami`;
+  override the binary with HANDS_CLI). It only uses read-only calls:
+    hands --json api GET /api/apps
+    hands --json api GET /api/apps/<app>/releases/<release>
+    hands --json api GET /api/apps/<app>/testflight-uploads/<upload>
+    hands --json builds testflight-status <app> <build>
+  No Hands or App Store Connect credential is exported.
+
+  Pushes through an asynchronous gateway (Stamp) may publish the tag a little
+  later; the remote peel is polled IOS_AUDIT_TAG_PUBLISH_ATTEMPTS times
+  (default 30) every IOS_AUDIT_TAG_PUBLISH_INTERVAL seconds (default 10).
 
 The command never builds, archives, uploads, distributes, or publishes an app.
 USAGE
@@ -64,14 +72,12 @@ require_uuid() {
     die "${flag} must be a UUID"
 }
 
-run_hands_action() {
-  local action="$1"
-  shift
-  "${RAFT_CLI}" integration invoke \
-    --json \
-    --service "${HANDS_SERVICE}" \
-    --action "${action}" \
-    "$@"
+hands_read() {
+  local label="$1"
+  local output="$2"
+  shift 2
+  "${HANDS_CLI}" --json "$@" >"${output}" ||
+    die "Hands ${label} read failed: $(head -c 2000 "${output}")"
 }
 
 while [ "$#" -gt 0 ]; do
@@ -144,7 +150,11 @@ require_uuid "--asc-build-upload" "${ASC_BUILD_UPLOAD}"
 
 command -v git >/dev/null 2>&1 || die "git is required"
 command -v python3 >/dev/null 2>&1 || die "python3 is required"
-command -v "${RAFT_CLI}" >/dev/null 2>&1 || die "Raft CLI is required: ${RAFT_CLI}"
+command -v "${HANDS_CLI}" >/dev/null 2>&1 || die "Hands CLI is required: ${HANDS_CLI}"
+[[ "${TAG_PUBLISH_ATTEMPTS}" =~ ^[1-9][0-9]*$ ]] ||
+  die "IOS_AUDIT_TAG_PUBLISH_ATTEMPTS must be a positive integer"
+[[ "${TAG_PUBLISH_INTERVAL}" =~ ^[0-9]+$ ]] ||
+  die "IOS_AUDIT_TAG_PUBLISH_INTERVAL must be a non-negative integer"
 cd "${ROOT_DIR}"
 
 REMOTE_RELEASE_REF="refs/remotes/${REMOTE}/${RELEASE_BRANCH}"
@@ -172,8 +182,7 @@ TESTFLIGHT_JSON="$(mktemp)"
 TAG_MESSAGE="$(mktemp)"
 trap 'rm -f "${APPS_JSON}" "${RELEASE_JSON}" "${UPLOAD_JSON}" "${TESTFLIGHT_JSON}" "${TAG_MESSAGE}"' EXIT
 
-"${RAFT_CLI}" integration login --service "${HANDS_SERVICE}" >/dev/null
-run_hands_action list-apps >"${APPS_JSON}"
+hands_read "list apps" "${APPS_JSON}" api GET /api/apps
 
 HANDS_APP_ID="$({
   python3 - "${APPS_JSON}" "${HANDS_APP_SLUG}" <<'PY'
@@ -183,29 +192,23 @@ import sys
 path, expected_slug = sys.argv[1:]
 
 
-def load_action_result(source_path, label):
+def load_hands_result(source_path, label):
     with open(source_path, encoding="utf-8") as source:
-        payload = json.load(source)
-    if not isinstance(payload, dict) or payload.get("ok") is not True:
-        raise SystemExit(f"{label} action failed")
-    data = payload.get("data")
-    if not isinstance(data, dict) or data.get("status") != 200:
-        raise SystemExit(f"{label} action did not return HTTP 200")
-    result = data.get("result")
-    if isinstance(result, str):
         try:
-            result = json.loads(result)
+            result = json.load(source)
         except json.JSONDecodeError as error:
             raise SystemExit(f"{label} result is not valid JSON: {error}") from error
     if not isinstance(result, dict):
         raise SystemExit(f"{label} result is missing or not an object")
+    if "error" in result:
+        raise SystemExit(f"{label} returned an error: {result.get('code') or result.get('error')}")
     return result
 
 
-result = load_action_result(path, "Hands list-apps")
+result = load_hands_result(path, "Hands list apps")
 apps = result.get("apps")
 if not isinstance(apps, list):
-    raise SystemExit("Hands list-apps result is missing apps")
+    raise SystemExit("Hands list apps result is missing apps")
 matches = [app for app in apps if isinstance(app, dict) and app.get("slug") == expected_slug]
 if len(matches) != 1:
     raise SystemExit(f"expected one Hands app with slug {expected_slug!r}, saw {len(matches)}")
@@ -216,15 +219,12 @@ print(app_id)
 PY
 } 2>&1)" || die "authoritative Hands app resolution failed: ${HANDS_APP_ID}"
 
-run_hands_action get-release \
-  --param "app_id=${HANDS_APP_ID}" \
-  --param "release_id=${HANDS_RELEASE}" >"${RELEASE_JSON}"
-run_hands_action get-testflight-upload-status \
-  --param "app_id=${HANDS_APP_ID}" \
-  --param "build_upload_id=${ASC_BUILD_UPLOAD}" >"${UPLOAD_JSON}"
-run_hands_action get-testflight-publish-status \
-  --param "app_id=${HANDS_APP_ID}" \
-  --param "build_id=${HANDS_BUILD}" >"${TESTFLIGHT_JSON}"
+hands_read "release" "${RELEASE_JSON}" \
+  api GET "/api/apps/${HANDS_APP_ID}/releases/${HANDS_RELEASE}"
+hands_read "TestFlight upload status" "${UPLOAD_JSON}" \
+  api GET "/api/apps/${HANDS_APP_ID}/testflight-uploads/${ASC_BUILD_UPLOAD}"
+hands_read "TestFlight publish status" "${TESTFLIGHT_JSON}" \
+  builds testflight-status "${HANDS_APP_ID}" "${HANDS_BUILD}"
 
 VERIFIED="$({
   python3 - \
@@ -258,22 +258,16 @@ import uuid
 ) = sys.argv[1:]
 
 
-def load_action_result(path, label):
+def load_hands_result(path, label):
     with open(path, encoding="utf-8") as source:
-        payload = json.load(source)
-    if not isinstance(payload, dict) or payload.get("ok") is not True:
-        raise SystemExit(f"{label} action failed")
-    data = payload.get("data")
-    if not isinstance(data, dict) or data.get("status") != 200:
-        raise SystemExit(f"{label} action did not return HTTP 200")
-    result = data.get("result")
-    if isinstance(result, str):
         try:
-            result = json.loads(result)
+            result = json.load(source)
         except json.JSONDecodeError as error:
             raise SystemExit(f"{label} result is not valid JSON: {error}") from error
     if not isinstance(result, dict):
         raise SystemExit(f"{label} result is missing or not an object")
+    if "error" in result:
+        raise SystemExit(f"{label} returned an error: {result.get('code') or result.get('error')}")
     return result
 
 
@@ -295,7 +289,7 @@ def require(actual, expected, label):
         raise SystemExit(f"{label} mismatch: expected {expected!r}, got {actual!r}")
 
 
-release_receipt = load_action_result(release_path, "Hands get-release")
+release_receipt = load_hands_result(release_path, "Hands release")
 release = release_receipt.get("release")
 build = release_receipt.get("build")
 assets = release_receipt.get("assets")
@@ -351,7 +345,7 @@ if not isinstance(metadata_ipa, dict):
     raise SystemExit("Hands build metadata is missing ipa identity")
 require(str(metadata_ipa.get("sha256") or "").lower(), ipa_sha256, "Hands IPA SHA-256")
 
-upload = load_action_result(upload_path, "Hands get-testflight-upload-status")
+upload = load_hands_result(upload_path, "Hands TestFlight upload status")
 require(upload.get("build_upload_id"), expected_upload_id, "ASC Build Upload id")
 require(upload.get("version"), expected_version, "ASC upload version")
 require(upload.get("build_number"), expected_build_number, "ASC upload build number")
@@ -366,7 +360,7 @@ for field in ("errors", "warnings", "infos"):
     if messages:
         raise SystemExit(f"ASC Build Upload contains {len(messages)} {field}")
 
-status = load_action_result(status_path, "Hands get-testflight-publish-status")
+status = load_hands_result(status_path, "Hands TestFlight publish status")
 require(status.get("hands_build_id"), expected_build_id, "TestFlight Hands build id")
 require(status.get("bundle_id"), "build.raft.app", "TestFlight bundle id")
 require(status.get("version"), expected_version, "TestFlight version")
@@ -442,7 +436,12 @@ LOCAL_TARGET="$(git rev-parse "${TAG_NAME}^{}")"
   die "local tag target mismatch: expected ${SOURCE_COMMIT}, got ${LOCAL_TARGET}"
 
 git push "${REMOTE}" "refs/tags/${TAG_NAME}"
-REMOTE_TARGET="$(git ls-remote --tags "${REMOTE}" "refs/tags/${TAG_NAME}^{}" | awk '{print $1}')"
+REMOTE_TARGET=""
+for ((attempt = 1; attempt <= TAG_PUBLISH_ATTEMPTS; attempt++)); do
+  REMOTE_TARGET="$(git ls-remote --tags "${REMOTE}" "refs/tags/${TAG_NAME}^{}" | awk '{print $1}')"
+  [ -z "${REMOTE_TARGET}" ] || break
+  [ "${attempt}" -eq "${TAG_PUBLISH_ATTEMPTS}" ] || sleep "${TAG_PUBLISH_INTERVAL}"
+done
 [ "${REMOTE_TARGET}" = "${SOURCE_COMMIT}" ] ||
   die "remote peeled tag mismatch: expected ${SOURCE_COMMIT}, got ${REMOTE_TARGET:-none}"
 
