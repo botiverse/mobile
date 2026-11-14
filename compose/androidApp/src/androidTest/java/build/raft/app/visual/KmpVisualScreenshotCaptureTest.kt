@@ -1328,7 +1328,7 @@ class KmpVisualScreenshotCaptureTest {
                                 // 43617492658). They sit in the avatar gutter, never
                                 // move, and the "added" count below already ignores any
                                 // pixel saturated before the press, so the premise is
-                                // measured right of the gutter, where the menu's
+                                // measured right of the 64dp gutter, where the menu's
                                 // reaction row lands. The whole-frame figure and the
                                 // colour's bounds are logged so a new colour source
                                 // elsewhere is visible.
@@ -7371,10 +7371,10 @@ class KmpVisualScreenshotCaptureTest {
         private const val THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX =
             THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
 
-        // Message text starts ~71dp in (x=213px at 3x on the compact-scroll capture
-        // of run 43617492658); the avatar sits left of it. 56dp keeps a margin on
-        // both sides. The logged bounds show whether colour ever appears right of it.
-        private const val THREAD_NEW_MESSAGE_MENU_AVATAR_GUTTER_DP = 56f
+        // Measured on run 43620274393 (3x): the standing colour is the avatar at
+        // x=72..180px (24..60dp); message text starts ~71dp in. 64dp sits between
+        // them. The logged bounds show whether colour ever appears right of it.
+        private const val THREAD_NEW_MESSAGE_MENU_AVATAR_GUTTER_DP = 64f
 
         private const val LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO = 0.002f
 
