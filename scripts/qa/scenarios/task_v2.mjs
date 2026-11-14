@@ -68,11 +68,20 @@ export async function run(ctx) {
   // ---------- UI helpers ----------
   const visible = (list = nodes()) => list.map(label).filter(Boolean).slice(0, 40).join(" | ");
   const mine = (list) => list.filter((n) => n.pkg === PKG);
+  // Android 13+ asks for notifications on first launch; the run grants it, but a prompt already up stays.
+  const answerPermissionPrompt = async (list) => {
+    const allow = find(list, (n) => /permissioncontroller/.test(n.pkg) && n.text === "Allow");
+    if (!allow) return false;
+    tapNode(allow);
+    await sleep(1000);
+    return true;
+  };
   async function waitUntil(description, test, { timeoutMs = 45_000, intervalMs = 1500 } = {}) {
     const deadline = Date.now() + timeoutMs;
     let list = [];
     while (Date.now() < deadline) {
       list = nodes();
+      if (await answerPermissionPrompt(list)) continue;
       const hit = test(list);
       if (hit) return hit;
       await ctx.dismissSystemDialog(list);
@@ -173,6 +182,9 @@ export async function run(ctx) {
 
       // ---------- choose the server in the app ----------
       await step("choose-server", async () => {
+        shell(`pm grant ${PKG} android.permission.POST_NOTIFICATIONS`, { allowFailure: true });
+        await sleep(500);
+        await answerPermissionPrompt(nodes());
         const list = nodes();
         const row = find(list, (n) => n.pkg === PKG && n.text.trim() === serverName);
         if (find(list, (n) => n.text.startsWith("Signed in as ")) && row) {
@@ -181,7 +193,7 @@ export async function run(ctx) {
           return { via: "choose_server" };
         }
         return { via: "already_home" };
-      });
+      }).catch((error) => log(`choose-server: ${error.message}; continuing (the channel link switches server)`));
 
       // ---------- s1 ----------
       await scenario("s1", async () => {
@@ -414,6 +426,10 @@ export async function run(ctx) {
   } finally {
     // Back to Home, where the runner's own Sign out starts.
     for (let i = 0; i < 4; i += 1) await back();
+    ctx.launchApp();
+    await sleep(2500);
+    await answerPermissionPrompt(nodes());
+    await step("scenario-end", async () => ({ on_screen: visible() })).catch(() => {});
     // ---------- cleanup: delete the test tasks this run created ----------
     const cleanup = [];
     for (const t of created.tasks) {
