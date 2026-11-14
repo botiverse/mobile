@@ -3269,8 +3269,6 @@
     <string name="settings_developer_nav3_stack_detail">已遷移的頁面會在 App 視窗內開啟（Android）。下次啟動 App 時生效。</string>
     <string name="settings_developer_multi_server_realtime">每個視窗都即時更新</string>
     <string name="settings_developer_multi_server_realtime_detail">開啟「多個應用程式視窗」後，每個視窗的工作空間各自保持即時連線（最多 3 個），在後面的視窗也能收到新訊息。關閉時只有最前面的工作空間保持連線。</string>
-    <string name="settings_developer_kmp_realtime">新的即時連線（Beta）</string>
-    <string name="settings_developer_kmp_realtime_detail">在這台裝置上使用應用程式內建的即時客戶端，取代 Socket.IO 程式庫。下次建立連線時生效。關閉時依照伺服器設定。</string>
     <string name="settings_mobile_ios_native_nav">iOS 原生導覽</string>
     <string name="settings_mobile_ios_native_nav_detail">頁面的標題和按鈕會顯示在系統導覽列中，並使用系統的滑動返回。下次啟動 App 時生效。</string>
     <string name="settings_developer_presets">預設組合</string>

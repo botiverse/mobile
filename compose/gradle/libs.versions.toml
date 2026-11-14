@@ -33,13 +33,14 @@ fragment = "1.9.1"
 composeBom = "2026.09.00"
 recyclerview = "1.4.0"
 # The app's only OkHttp version: under the Ktor HTTP transport (ktor-client-okhttp 3.6.0 is built against
-# 5.5.0), and it wins resolution over the transitive OkHttp 3.12 (socket.io-client) and 4.12 (Hands SDK).
+# 5.5.0), and it wins resolution over the transitive OkHttp 4.12 (Hands SDK).
 okhttpTransport = "5.5.1"
 # Ktor client for app HTTP (OkHttp on Android, Darwin on iOS). 3.6.0 is built against kotlinx-coroutines
 # 1.11.0, the app's version: Ktor 2.3.7 called coroutines internals 1.11 removed (Hands ae47bba1).
 ktor = "3.6.1"
 gson = "2.15.0"
-socketIoClient = "2.1.2"
+# org.json for androidApp JVM unit tests (android.jar has stubs only); the version socket.io-client brought.
+orgJson = "20090211"
 sqldelight = "2.4.1"
 # Desktop-only embedded WebView: the OS engine through Wry (macOS WKWebView, Windows WebView2,
 # Linux WebKitGTK). The last Wry release of ComposeNativeWebView (Apache-2.0); see :shared desktopMain.
@@ -126,7 +127,7 @@ ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.r
 ktor-client-darwin = { group = "io.ktor", name = "ktor-client-darwin", version.ref = "ktor" }
 ktor-client-mock = { group = "io.ktor", name = "ktor-client-mock", version.ref = "ktor" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
-socket-io-client = { group = "io.socket", name = "socket.io-client", version.ref = "socketIoClient" }
+org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 sqldelight-runtime = { group = "app.cash.sqldelight", name = "runtime", version.ref = "sqldelight" }
 sqldelight-android-driver = { group = "app.cash.sqldelight", name = "android-driver", version.ref = "sqldelight" }
 sqldelight-coroutines-extensions = { group = "app.cash.sqldelight", name = "coroutines-extensions-jvm", version.ref = "sqldelight" }

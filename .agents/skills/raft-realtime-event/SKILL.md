@@ -59,9 +59,9 @@ never received.
 
 - `compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt`:
   `performanceMarkerName()` and `performanceMarkerPhase()`.
-- `compose/androidApp/src/main/java/build/raft/app/core/data/realtime/SocketIoRealtimeClient.kt`:
-  `realtimeDiagnosticName()`. Only the androidApp compile checks it; the
-  shared compile passes without it.
+- `compose/shared/src/jvmCommonMain/kotlin/build/raft/app/data/realtime/SocketIoRealtimeClient.kt`
+  (Android and desktop): `realtimeDiagnosticName()`. Only the Android /
+  desktop compile of `:shared` checks it; the iOS compile does not.
 - Home while hidden: decide explicitly in
   `RealtimeEvent.updatesHomeSnapshot()` (`.../data/HomeDataSource.kt`) and
   `homeRealtimeDirtyReason()` (`.../data/SharedHomeStore.kt`). Both have

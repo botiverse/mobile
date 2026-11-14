@@ -1,9 +1,11 @@
 package build.raft.app.core.data.realtime
 
-import build.raft.app.data.realtime.RaftRealtimeKmpClientFlag
+import build.raft.app.data.realtime.SocketIoRealtimeClient
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.data.realtime.RealtimeSyncHorizon
+import build.raft.app.data.realtime.raftRealtimeSocketTransport
+import build.raft.app.data.realtime.realtimeRawPayloadJson
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.RealtimeEvent
@@ -22,23 +24,15 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.junit.runners.Parameterized
 
 /**
- * The reconnect / resume and sync-horizon behaviour of SocketIoRealtimeClient on both socket implementations
- * the app ships, through the production wiring (createAndroidRealtimeSocketTransport with
- * realtime_kmp_client_v1 off = socket.io-client-java, on = the common Kotlin client), against a real
- * socket.io 4.8.3 server that behaves like Raft's realtime server (scripts/socketio-interop/server.mjs,
- * PORT_C, started by the Android CI job; skipped when RAFT_SOCKETIO_INTEROP_RAFT_URL is not set).
+ * The reconnect / resume and sync-horizon behaviour of SocketIoRealtimeClient through the production wiring
+ * (raftRealtimeSocketTransport: the common Kotlin Socket.IO client), against a real socket.io 4.8.3 server
+ * that behaves like Raft's realtime server (scripts/socketio-interop/server.mjs, PORT_C, started by the
+ * Android CI job; skipped when RAFT_SOCKETIO_INTEROP_RAFT_URL is not set).
  */
-@RunWith(Parameterized::class)
-class SocketIoRealtimeClientTransportParityTest(private val implementation: String) {
+class SocketIoRealtimeClientInteropTest {
     companion object {
-        @JvmStatic
-        @Parameterized.Parameters(name = "{0}")
-        fun implementations(): List<Array<Any>> = listOf(arrayOf("legacy"), arrayOf("kmp"))
-
         private const val TIMEOUT_MS = 30_000L
     }
 
@@ -57,11 +51,7 @@ class SocketIoRealtimeClientTransportParityTest(private val implementation: Stri
     private fun start(): SocketIoRealtimeClient {
         val url = baseUrl
         assumeTrue("RAFT_SOCKETIO_INTEROP_RAFT_URL not set (the Android CI job starts the server)", url != null)
-        val enabled = implementation == "kmp"
-        val transport =
-            createAndroidRealtimeSocketTransport(requireNotNull(url)) {
-                RaftRealtimeKmpClientFlag.Decision(enabled, RaftRealtimeKmpClientFlag.Source.Local)
-            }
+        val transport = raftRealtimeSocketTransport(requireNotNull(url), clientKind = "mobile") { _, _ -> }
         val created =
             SocketIoRealtimeClient(
                 transport,
@@ -70,25 +60,24 @@ class SocketIoRealtimeClientTransportParityTest(private val implementation: Stri
                 authRefreshRunner = { task -> task() },
             )
         created.observeEvents { events += it }
-        created.observeRawEvents { _, eventName, payload -> rawJson += eventName to build.raft.app.shared.realtimeRawPayloadJson(payload) }
+        created.observeRawEvents { _, eventName, payload -> rawJson += eventName to realtimeRawPayloadJson(payload) }
         created.observeChannelJoinAck { _, channelId, joined -> if (joined) channelAcks += channelId }
         client = created
         created.connect(RealtimeConnectRequest(auth = RealtimeAuth(token = token, serverId = ServerId("server-1"))))
         awaitLog("the first socket connected and asked for the starting horizon") { log ->
             log.events("connect").size == 1 && log.events("sync:horizon").isNotEmpty()
         }
-        assertEquals(implementation, transport.activeImplementation)
         return created
     }
 
     @Test
-    fun handshakeCarriesTheMobileAuthOnEitherSocket() {
+    fun handshakeCarriesTheMobileAuth() {
         start()
         val auth = log().events("connect").single().getJSONObject("auth")
         assertEquals("mobile", auth.getString("clientKind"))
         assertEquals("server-1", auth.getString("serverId"))
         assertTrue(auth.getJSONArray("capabilities").length() > 0)
-        assertEquals("only the common client marks itself", implementation == "kmp", auth.optString("clientImpl") == "kmp")
+        assertEquals("kmp", auth.optString("clientImpl"))
     }
 
     @Test
@@ -172,6 +161,6 @@ class SocketIoRealtimeClientTransportParityTest(private val implementation: Stri
             if (condition()) return
             Thread.sleep(50)
         }
-        throw AssertionError("[$implementation] timed out waiting for: $what; ${detail()}")
+        throw AssertionError("timed out waiting for: $what; ${detail()}")
     }
 }

@@ -1,9 +1,10 @@
 # Realtime unification: one KMP Socket.IO client
 
-Owner: artin · Status: approved with corrections (CTO Tenny, artin scope change 2026-11-14); phase 0 in progress · Base: mobile-https `origin/main` 6af3676b6d, slock `origin/staging` 409605bdd · 2026-11-14
+Owner: artin · Status: done — every platform runs the common client and the platform Socket.IO libraries are deleted (artin 2026-11-14: switch directly, no flag); desktop `clientKind: "desktop"` still open · Base: mobile-https `origin/main` 6af3676b6d, slock `origin/staging` 409605bdd · 2026-11-14
 
 ## 中文摘要
 
+- **当前状态（2026-11-14）**：已完成。Android、iOS、桌面端的实时连接都直接走公共 Kotlin 客户端 `:realtime-socket`，没有开关。socket.io-client-java（Android、桌面）和 Socket.IO-Client-Swift / Starscream（iOS）已删除，`realtime_kmp_client_v1` 开关、开发者覆盖项和 QA 构建默认值也一并删除。Android 和桌面端共用一份 `SocketIoRealtimeClient`（`shared/src/jvmCommonMain`）。还没做的：桌面端握手的 `clientKind` 仍是 `"mobile"`（改成 `"desktop"` 另行决定）；iOS 的连接逻辑仍在 Swift（`RaftIosRealtimeHost.swift`）里，只是传输层换成了公共客户端。以下是最初的设计说明。
 - **现状**：实时连接在三处各写了一遍。Android 和桌面端各有一份几乎一样的 `SocketIoRealtimeClient` 加 `SocketIoSocketTransport`（约 1,260 行 ×2，都用 socket.io-client-java 2.1.2 over OkHttp）。iOS 是 1,150 行 Swift（`RaftIosRealtimeHost.swift`，用 Socket.IO-Client-Swift 16.1），而且自己手写了一份事件列表。光标、sync horizon 和事件映射这些策略已经在 `shared/commonMain` 里，传输层和连接生命周期还没有。
 - **已确认的问题**：
   - iOS 列表比共享的 `ServerWireEvents` 少了 `agent:seen` 和 `joint-invites:changed`，iOS 永远收不到这两个事件。
@@ -12,7 +13,7 @@ Owner: artin · Status: approved with corrections (CTO Tenny, artin scope change
   - Android 判断鉴权失败靠字符串关键字匹配；`sync:horizon` 的 ack 没有超时。
 - **服务端**：socket.io 4.8.3（Engine.IO v4、Socket.IO 协议 v5），只有 `/` 命名空间，用 Redis adapter。鉴权只看 `handshake.auth {token, serverId, clientKind, capabilities}`。ping 参数是默认值（25 s / 20 s），另有应用层 `heartbeat`，每 15 s 一次。三端都只用 websocket，没有二进制帧。ack 有两个方向：客户端发 `sync:horizon` 要服务端回 ack；服务端发 `notification:desktop`（`emitDesktopNotificationWithAck`）要每个桌面端 socket 回 ack，内容是它的 socket id。
 - **方案**：新建 KMP 模块 `:realtime-socket`。commonMain 里实现 EIO4/SIO5 的最小子集，传输层用 Ktor WebSockets（Android 和桌面用 OkHttp 引擎，iOS 用 Darwin 引擎）。每个服务器一条连接，跑在一个串行协程状态机里。每次连接前通过 suspend 函数取 token。重连用带抖动的指数退避。现有的 `SocketIoRealtimeClient` 移到 commonMain。事件列表只从 `realtime_contract.json` 生成 Kotlin。任何被丢弃的帧都要计数并记日志，不允许静默丢弃。平台只保留很薄的生命周期适配层（前后台、网络、Android 保活服务）。
-- **迁移**：先 iOS，然后桌面，最后 Android。每端用开关 `realtime_kmp_client_v1` 加开发者覆盖项控制，新建 socket 时生效，关掉开关即回滚。确认稳定两个版本后，再删除旧客户端、pod 和 iOS 列表。
+- **迁移**：先 iOS，然后桌面，最后 Android。每端用开关 `realtime_kmp_client_v1` 加开发者覆盖项控制，新建 socket 时生效，关掉开关即回滚。确认稳定两个版本后，再删除旧客户端、pod 和 iOS 列表。（已被取代：最终没有开关，直接切换并删除旧代码，见上方“当前状态”。）
 - **工作量**：约 9–11 人周；分阶段灰度，日历时间约 3–4 个月。
 
 ## 0. Decisions and corrections (2026-11-14)
@@ -72,55 +73,43 @@ These override anything below that disagrees.
   binary, namespaces, token refresh, terminal errors, backoff, kick, force reconnect, recovery) and
   `RaftSocketIoInteropTest` against a real socket.io 4.8.3 (`scripts/socketio-interop/server.mjs`, started by
   the Android CI job). The iOS simulator runs the common suite on the full tier.
-- Not yet: the shared adapter and the iOS host behind `realtime_kmp_client_v1` (phase 1 PR), moving
-  `SocketIoRealtimeClient` to common.
+- Followed by: the iOS host on the common client (#4778), Android (#4782), then the direct switch below.
 
-### Flag resolution, build default, and the Android switch (artin 2026-11-14: replace directly, smoke QA builds)
+### Current state: the common client everywhere (artin 2026-11-14: switch directly, delete the old code)
 
-`realtime_kmp_client_v1` is read by `RaftRealtimeKmpClientFlag.decision()` each time a host creates a socket,
-never mid-connection. First match wins:
+The `realtime_kmp_client_v1` rollout (flag, developer switch, QA build default, `RealtimeSocketTransportSelector`)
+was skipped: every host uses the common client unconditionally, and the platform libraries are gone.
 
-1. **Host support**: only hosts with an adapter (`hostSupported`: Android `RaftApplication`, iOS
-   `RaftIosRealtimeHost`) can be on. Desktop reads off.
-2. **Developer switch** (Settings › Developer › "New realtime connection"): on or off wins.
-3. **Explicit server decision**: the last evaluation of the key on any server, if it was a decision: any
-   `true`, or `false` from a rule (`server_rule`, `client_rule`, `platform_rule`) or the `kill_switch`.
-   A "no rule" evaluation (`default`, `missing_flag`, `missing_server_unit` evaluating `false`) clears the
-   stored value instead, so it never overrides the build default.
-4. **Build default** (`buildDefaultOn`), set by the host at launch from its build configuration:
+| Host | Realtime connection | Transport |
+|---|---|---|
+| Android | `SocketIoRealtimeClient` (`compose/shared/src/jvmCommonMain/.../data/realtime`), built by `AndroidAppScopeRealtimeHostContext` | `raftRealtimeSocketTransport` → `RaftKmpRealtimeSocketTransport` on `:realtime-socket` (Ktor OkHttp engine) |
+| Desktop | The same `SocketIoRealtimeClient` and `SessionRealtimeRepository`, built by `RaftDesktopRealtimeHostContext` | Same; the handshake keeps `clientKind: "mobile"` (the switch to `"desktop"` is a separate decision) |
+| iOS | `RaftIosRealtimeHost.swift` (lifecycle, cursor and resume logic in Swift) | `RaftKmpRealtimeSocket` on `:realtime-socket` (Ktor Darwin engine) |
 
-| Platform | Build setting | QA builds (on) | Release builds (off) |
-|---|---|---|---|
-| Android | `BuildConfig.REALTIME_KMP_CLIENT_DEFAULT_ON` (`compose/androidApp/build.gradle.kts`) | `debug`, `alpha` (and `connectedTest`, which inherits debug) | `release`, `play` |
-| iOS | `RAFT_REALTIME_KMP_CLIENT_DEFAULT_ON` build setting, read from Info.plist `RaftRealtimeKmpClientDefaultOn` | `Debug` (simulator / QA builds, `ios-simulator-app.yml`) | `Release` (TestFlight / App Store, `ios-release.yml`) |
+Removed: socket.io-client-java (`io.socket:socket.io-client`, with its OkHttp 3.12 transitive) from Android and
+desktop, `SocketIoSocketTransport` and its generation fence and OkHttp client (both copies), the desktop copy of the
+client, Socket.IO-Client-Swift and Starscream (Podfile, Podfile.lock), the Swift Socket.IO path, the
+`realtime_kmp_client_v1` key and `RaftRealtimeKmpClientFlag`, Settings › Developer › "New realtime connection",
+and the Android / iOS build-default settings. Rollback is a revert, not a flag.
 
-So a QA build runs the common client until the server explicitly turns it off (a rule or the kill switch for
-the key); a release build stays on the platform library until the server turns it on. Rollback in either
-case: an explicit `false` on the server (or the developer switch) and the next connection uses the platform
-library.
+Diagnostics: the common client's connection lifecycle lines are always kept (`realtime_kmp transport_connect_start
+serverId=… | transport_connected | transport_disconnected | transport_reconnect_scheduled | transport_connect_error`,
+Android tag `SlockRealtime`); its other `realtime_kmp …` lines need verbose diagnostics.
 
-**Android** (`createAndroidRealtimeSocketTransport`): `SocketIoRealtimeClient` keeps all of its logic
-(cursor, sync horizon, resume, rejoin, presence, heartbeat watchdog) and talks to a
-`RealtimeSocketTransportSelector`, which picks `RaftKmpRealtimeSocketTransport` (common client, OkHttp engine)
-or `SocketIoSocketTransport` (socket.io-client-java) at every `connect` and disconnects the other one when the
-choice changes. Both run under the generation fence's lock (`RealtimeTransportLinearizer`); callbacks are
-checked against the current connection under that lock and delivered outside it, as before. `clientKind`
-stays `mobile`; the common client adds `clientImpl: "kmp"` to the handshake.
+Tests: `SocketIoRealtimeClientInteropTest` (androidApp unit tests) runs the client through the production wiring
+against a real socket.io 4.8.3 server with Raft's realtime behaviour (`scripts/socketio-interop/server.mjs`
+PORT_C): handshake auth, `rooms:joined`, the `sync:horizon` ack, `join:channel` / `channel:joined`, a server-side
+transport drop, reconnect + rejoin + `sync:resume {lastSeq, sinceHorizon}`, and `horizonReset` catch-up. The
+fake-transport suites (`SocketIoRealtimeClientReconnectResumeTest`, `…SyncHorizonTest`, `RealtimeRepositoryTest`),
+the scripted-frame port (`SocketIoRealtimeClientOverKmpTransportTest`), `:realtime-socket`'s common suite and
+`RaftSocketIoInteropTest` stay. End to end: `android-realtime-e2e.yml` on an Alpha APK.
 
-Diagnostics (always kept): `realtime_kmp_transport selected=kmp|legacy source=local|server|build_default
-serverId=… switched=…` once per connection, and `realtime_kmp transport_connect_start|transport_connected|
-transport_disconnected|transport_reconnect_scheduled|transport_connect_error …` from the common client. Its
-other lines (`realtime_kmp …`, e.g. drops) need verbose diagnostics.
-
-Tests for both implementations: `SocketIoRealtimeClientTransportParityTest` (androidApp unit tests) runs the
-client through the production wiring with the flag off and on against a real socket.io 4.8.3 server with
-Raft's realtime behaviour (`scripts/socketio-interop/server.mjs` PORT_C): handshake auth, `rooms:joined`,
-the `sync:horizon` ack, `join:channel` / `channel:joined`, a server-side transport drop, reconnect + rejoin +
-`sync:resume {lastSeq, sinceHorizon}`, and `horizonReset` catch-up. The fake-transport suites
-(`SocketIoRealtimeClientReconnectResumeTest`, `…SyncHorizonTest`) and the scripted-frame port
-(`SocketIoRealtimeClientOverKmpTransportTest`) stay.
+Still open: desktop `clientKind: "desktop"` (with presence and network kick); moving `SocketIoRealtimeClient`
+from jvmCommonMain to commonMain so iOS can drop its Swift connection logic.
 
 ## 1. Inventory of current implementations
+
+As of the start of this work (before the switch); kept for the record.
 
 | Aspect | Android (`androidApp/.../core/data/realtime`, `shared/Android*Realtime*`) | Desktop (`desktopApp/.../realtime`, `RaftDesktopRealtimeHost`) | iOS (`RaftIosRealtimeHost.swift`, `RaftIosRealtimeLifecyclePolicy.swift`) |
 |---|---|---|---|
@@ -231,7 +220,11 @@ RealtimeProcessHost         reconcile/connect/cursorAdvance/disconnect commands 
 
 ## 4. Migration plan
 
-The flag is `realtime_kmp_client_v1`, read per platform from `ServerFeatureFlagLastKnownStore` at socket creation, with a Settings › Developer override that wins. Switching takes effect at the next connection or process start; there is no hot swap mid-socket. **Rollback**: turn the flag off and the next connect uses the legacy stack. Legacy code stays for 2 releases after 100 %.
+**Superseded (artin 2026-11-14)**: no flag rollout. Phase 0 (#4776) shipped, iOS (#4778) and Android (#4782)
+briefly ran behind `realtime_kmp_client_v1`, then every host switched directly and the cleanup (phase 4) was done at
+once: see "Current state" above. The original plan is kept below for the record.
+
+~~The flag is `realtime_kmp_client_v1`, read per platform from `ServerFeatureFlagLastKnownStore` at socket creation, with a Settings › Developer override that wins. Switching takes effect at the next connection or process start; there is no hot swap mid-socket. **Rollback**: turn the flag off and the next connect uses the legacy stack. Legacy code stays for 2 releases after 100 %.~~
 
 | Phase | Scope | Exit criteria |
 |---|---|---|

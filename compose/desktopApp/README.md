@@ -33,8 +33,9 @@ wide layout (navigation rail, split panes) and a narrower one the phone layout.
 
 ## Realtime
 
-`reportRealTime` drives a Socket.IO client (`realtime/`, copied from androidApp's
-SocketIoRealtimeClient) through the shared realtime runtime: one socket for the current server.
+`reportRealTime` drives the shared `SocketIoRealtimeClient` (`:shared` jvmCommonMain, the same one as
+Android) over the common Kotlin Socket.IO client (`:realtime-socket`, OkHttp engine) through the shared
+realtime runtime: one socket for the current server. The handshake still declares `clientKind: "mobile"`.
 
 ## Local development server (raftdev)
 

@@ -3426,8 +3426,6 @@
     <string name="settings_developer_nav3_stack_detail">Open the pages moved so far inside the app window (Android). Takes effect on the next app start.</string>
     <string name="settings_developer_multi_server_realtime">Live updates in every window</string>
     <string name="settings_developer_multi_server_realtime_detail">With Multiple app windows on, each window's workspace keeps its own realtime connection (up to 3), so a window in the back still gets new messages. Off: only the workspace in front stays connected.</string>
-    <string name="settings_developer_kmp_realtime">New realtime connection (Beta)</string>
-    <string name="settings_developer_kmp_realtime_detail">Use the app's own realtime client instead of the Socket.IO library on this device. Takes effect the next time the connection opens. Off follows the server setting.</string>
     <string name="settings_mobile_ios_native_nav">iOS native navigation</string>
     <string name="settings_mobile_ios_native_nav_detail">Show page titles and buttons in the system navigation bar, with the system swipe back. Takes effect on the next app start.</string>
     <string name="settings_developer_presets">Presets</string>

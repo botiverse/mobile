@@ -9,6 +9,7 @@ import build.raft.app.data.raftDesktopAppScopeKeyValueStore
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SharedAuthTokenProvider
 import build.raft.app.data.SharedRaftAuthTransport
+import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.realtime.RaftRealtimeHostContext
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import build.raft.app.data.realtime.RealtimeAuth
@@ -16,6 +17,10 @@ import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.data.realtime.RealtimeConnectionState
 import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 import build.raft.app.data.realtime.RealtimeSocketConnectionContext
+import build.raft.app.data.realtime.SessionRealtimeRepository
+import build.raft.app.data.realtime.SocketIoRealtimeClient
+import build.raft.app.data.realtime.raftRealtimeSocketTransport
+import build.raft.app.data.realtime.realtimeRawPayloadJson
 import build.raft.app.desktop.RaftDesktopLog
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.RealtimeEvent
@@ -23,13 +28,12 @@ import build.raft.app.model.ServerId
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
 
 /**
  * The desktop [RaftRealtimeHostContext] (port of the Android host's
- * AndroidAppScopeRealtimeHostContext): one Socket.IO client per server, whose frames and
- * lifecycle signals go to the shared app-scope event bus that the app shell's stores consume.
+ * AndroidAppScopeRealtimeHostContext): one realtime client per server (the shared SocketIoRealtimeClient over
+ * the common Socket.IO client, as on Android), whose frames and lifecycle signals go to the shared app-scope
+ * event bus that the app shell's stores consume.
  * TODO(desktop): no push / background unread notifications.
  */
 internal class RaftDesktopRealtimeHostContext private constructor(
@@ -125,7 +129,7 @@ internal class RaftDesktopRealtimeHostContext private constructor(
     ): RealtimeSubscription =
         client.observeRawEvents { context, eventName, rawPayload ->
             // Bound on the socket thread, where this socket's connected listener has already run.
-            listener(context, eventName, rawPayload.toRawPayloadString(), currentPresenceTransportEpoch.takeIf { it > 0L })
+            listener(context, eventName, realtimeRawPayloadJson(rawPayload), currentPresenceTransportEpoch.takeIf { it > 0L })
         }
 
     override fun log(message: String) = RaftDesktopLog.d(LOG_TAG, message)
@@ -186,7 +190,11 @@ internal class RaftDesktopRealtimeHostContext private constructor(
                 )
             val client =
                 SocketIoRealtimeClient(
-                    transport = SocketIoSocketTransport(socketUrl, RealtimeSocketGenerationFence()),
+                    // The handshake keeps clientKind "mobile" (desktop's "desktop" kind is a separate change).
+                    transport =
+                        raftRealtimeSocketTransport(socketUrl, clientKind = "mobile") { message, verbose ->
+                            if (verbose) RaftDesktopLog.d(LOG_TAG, message) else RaftDesktopLog.w(LOG_TAG, message)
+                        },
                     logger = { message -> RaftDesktopLog.d(LOG_TAG, message) },
                 )
             val repository =
@@ -194,6 +202,7 @@ internal class RaftDesktopRealtimeHostContext private constructor(
                     store = sessionStore,
                     client = client,
                     pinnedServerId = pinnedServerId,
+                    refreshCaller = "desktop_socket",
                     tokenProvider =
                         SharedAuthTokenProvider(
                             sessionStore = sessionStore,
@@ -216,13 +225,5 @@ internal class RaftDesktopRealtimeHostContext private constructor(
         /** Posts on the UI thread, as the Android host posts on the main looper. */
         private fun postAppScopeEvent(eventName: String, payload: JSONObject) =
             postDesktopAppScopeEvent(eventName, payload.toString())
-
-        private fun Any?.toRawPayloadString(): String =
-            when (this) {
-                is String -> this
-                is JSONObject -> toString()
-                is JSONArray -> toString()
-                else -> this?.toString() ?: "{}"
-            }
     }
 }
