@@ -1548,6 +1548,7 @@
     <string name="member_label_reasoning">추론 강도</string>
     <string name="member_label_mode">모드</string>
     <string name="member_label_provider">제공업체</string>
+    <string name="member_label_saved_provider">저장된 제공업체</string>
     <string name="member_label_command">명령어</string>
     <string name="member_label_default">기본값</string>
     <string name="member_label_fast">빠름</string>

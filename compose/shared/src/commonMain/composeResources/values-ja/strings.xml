@@ -1576,6 +1576,7 @@
     <string name="member_label_reasoning">推論の強度</string>
     <string name="member_label_mode">モード</string>
     <string name="member_label_provider">プロバイダー</string>
+    <string name="member_label_saved_provider">保存済みのプロバイダー</string>
     <string name="member_label_command">コマンド</string>
     <string name="member_label_default">デフォルト</string>
     <string name="member_label_fast">高速</string>

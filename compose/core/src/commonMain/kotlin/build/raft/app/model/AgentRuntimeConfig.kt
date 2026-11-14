@@ -56,6 +56,14 @@ sealed class RuntimeProviderConfig {
     @Serializable
     @SerialName("pi-builtin")
     data class PiBuiltin(val providerId: String, val apiKey: String) : RuntimeProviderConfig()
+
+    /**
+     * Built-in runtime bound to a saved provider connection (slock `BuiltInRuntimeProviderConfig`
+     * `{kind:"connection", connectionId}`). The server resolves the credential; no secret here.
+     */
+    @Serializable
+    @SerialName("connection")
+    data class Connection(val connectionId: String) : RuntimeProviderConfig()
 }
 
 @Serializable

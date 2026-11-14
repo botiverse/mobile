@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.reportUnknownProjectionValueDropped
 import build.raft.app.model.isExternalAgent
 import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentToolStuck
@@ -1298,6 +1299,7 @@ private data class AgentRuntimeProviderWireDto(
     val apiUrl: String? = null,
     val apiKey: String? = null,
     val baseUrl: String? = null,
+    val connectionId: String? = null,
     val supportsImageInput: Boolean = false
 ) {
     /**
@@ -1333,7 +1335,15 @@ private data class AgentRuntimeProviderWireDto(
                 val cleanProviderId = providerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
                 RuntimeProviderConfig.PiBuiltin(cleanProviderId, apiKey.orEmpty())
             }
-            else -> null
+            "connection" -> {
+                if (runtime != "builtin") return null
+                val cleanConnectionId = connectionId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+                RuntimeProviderConfig.Connection(cleanConnectionId)
+            }
+            else -> {
+                reportUnknownProjectionValueDropped("agent_runtime_provider", "provider_kind", kind)
+                null
+            }
         }
     }
 }

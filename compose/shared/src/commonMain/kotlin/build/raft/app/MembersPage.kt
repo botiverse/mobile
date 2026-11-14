@@ -12464,12 +12464,20 @@ internal fun MembersAgentRuntimeConfigRows(
         }
         if (runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
             val providerId = runtimeConfig.provider.membersBuiltInProviderId()
+            // A saved provider connection (`kind:"connection"`) is a real choice, not "Default". The
+            // agent read carries only its id, so the row names the kind with the web's
+            // "Saved providers" wording (`agent.runtimeConfig.savedProviders`).
+            val savedConnection = runtimeConfig.provider is RuntimeProviderConfig.Connection
             MembersAgentInfoField(stringResource(Res.string.member_label_provider), copyText = providerId.ifBlank { null }) {
                 // Web: `font-mono` value, else "Default" in `text-foreground-hint`, on the callout.
                 RaftText(
-                    text = providerId.ifBlank { stringResource(Res.string.member_label_default) },
+                    text = when {
+                        providerId.isNotBlank() -> providerId
+                        savedConnection -> stringResource(Res.string.member_label_saved_provider)
+                        else -> stringResource(Res.string.member_label_default)
+                    },
                     style = membersInfoValueStyle(mono = providerId.isNotBlank()),
-                    color = if (providerId.isBlank()) RaftTheme.colors.foregroundHint else RaftTheme.colors.foreground,
+                    color = if (providerId.isBlank() && !savedConnection) RaftTheme.colors.foregroundHint else RaftTheme.colors.foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

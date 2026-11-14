@@ -1576,6 +1576,7 @@
     <string name="member_label_reasoning">Reasoning</string>
     <string name="member_label_mode">Mode</string>
     <string name="member_label_provider">Provider</string>
+    <string name="member_label_saved_provider">Saved provider</string>
     <string name="member_label_command">Command</string>
     <string name="member_label_default">Default</string>
     <string name="member_label_fast">Fast</string>
