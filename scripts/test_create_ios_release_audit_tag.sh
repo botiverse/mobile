@@ -8,7 +8,8 @@ trap 'rm -rf "${WORK_DIR}"' EXIT
 
 REMOTE="${WORK_DIR}/remote.git"
 REPO="${WORK_DIR}/repo"
-FAKE_RAFT="${WORK_DIR}/raft"
+FAKE_HANDS="${WORK_DIR}/hands"
+ERROR_JSON="${WORK_DIR}/error.json"
 APPS_JSON="${WORK_DIR}/apps.json"
 RELEASE_JSON="${WORK_DIR}/release.json"
 UPLOAD_JSON="${WORK_DIR}/upload.json"
@@ -64,111 +65,79 @@ git -C "${REPO}" switch "${RELEASE_BRANCH}" >/dev/null
 
 cat >"${APPS_JSON}" <<JSON
 {
-  "ok": true,
-  "data": {
-    "service": "hands-test",
-    "action": "list-apps",
-    "status": 200,
-    "result": {
-      "apps": [
-        {"id": "${APP_ID}", "slug": "raft-ios", "name": "Raft iOS"}
-      ]
-    }
-  }
+  "apps": [
+    {"id": "${APP_ID}", "slug": "raft-ios", "name": "Raft iOS"}
+  ]
 }
 JSON
 
 cat >"${RELEASE_JSON}" <<JSON
 {
-  "ok": true,
-  "data": {
-    "service": "hands-test",
-    "action": "get-release",
-    "status": 200,
-    "result": {
-      "release": {
-        "id": "${HANDS_RELEASE}",
-        "app_id": "${APP_ID}",
-        "build_id": "${HANDS_BUILD}",
-        "product_type": "ios-ipa",
-        "status": "draft"
-      },
-      "build": {
-        "id": "${HANDS_BUILD}",
-        "app_id": "${APP_ID}",
-        "product_type": "ios-ipa",
-        "status": "succeeded",
-        "version_name": "${VERSION}",
-        "version_code": ${BUILD_NUMBER},
-        "provenance_json": {
-          "source_commit": "${SOURCE_COMMIT}",
-          "source_branch": "${RELEASE_BRANCH}"
-        },
-        "build_metadata_json": {
-          "bundle_id": "build.raft.app",
-          "version_name": "${VERSION}",
-          "version_code": "${BUILD_NUMBER}",
-          "source_commit": "${SOURCE_COMMIT}",
-          "source_branch": "${RELEASE_BRANCH}",
-          "ipa": {"sha256": "${IPA_SHA256}"},
-          "ios": {"signed": true}
-        }
-      },
-      "assets": [
-        {
-          "build_id": "${HANDS_BUILD}",
-          "artifact_kind": "installable",
-          "platform": "ios",
-          "filetype": "ipa",
-          "file_hash": "${IPA_SHA256}",
-          "metadata_json": {"signed": true}
-        }
-      ]
+  "release": {
+    "id": "${HANDS_RELEASE}",
+    "app_id": "${APP_ID}",
+    "build_id": "${HANDS_BUILD}",
+    "product_type": "ios-ipa",
+    "status": "draft"
+  },
+  "build": {
+    "id": "${HANDS_BUILD}",
+    "app_id": "${APP_ID}",
+    "product_type": "ios-ipa",
+    "status": "succeeded",
+    "version_name": "${VERSION}",
+    "version_code": ${BUILD_NUMBER},
+    "provenance_json": {
+      "source_commit": "${SOURCE_COMMIT}",
+      "source_branch": "${RELEASE_BRANCH}"
+    },
+    "build_metadata_json": {
+      "bundle_id": "build.raft.app",
+      "version_name": "${VERSION}",
+      "version_code": "${BUILD_NUMBER}",
+      "source_commit": "${SOURCE_COMMIT}",
+      "source_branch": "${RELEASE_BRANCH}",
+      "ipa": {"sha256": "${IPA_SHA256}"},
+      "ios": {"signed": true}
     }
-  }
+  },
+  "assets": [
+    {
+      "build_id": "${HANDS_BUILD}",
+      "artifact_kind": "installable",
+      "platform": "ios",
+      "filetype": "ipa",
+      "file_hash": "${IPA_SHA256}",
+      "metadata_json": {"signed": true}
+    }
+  ]
 }
 JSON
 
 cat >"${UPLOAD_JSON}" <<JSON
 {
-  "ok": true,
-  "data": {
-    "service": "hands-test",
-    "action": "get-testflight-upload-status",
-    "status": 200,
-    "result": {
-      "build_upload_id": "${ASC_BUILD_UPLOAD}",
-      "state": {
-        "state": "COMPLETE",
-        "errors": [],
-        "warnings": [],
-        "infos": []
-      },
-      "version": "${VERSION}",
-      "build_number": "${BUILD_NUMBER}"
-    }
-  }
+  "build_upload_id": "${ASC_BUILD_UPLOAD}",
+  "state": {
+    "state": "COMPLETE",
+    "errors": [],
+    "warnings": [],
+    "infos": []
+  },
+  "version": "${VERSION}",
+  "build_number": "${BUILD_NUMBER}"
 }
 JSON
 
 cat >"${STATUS_JSON}" <<JSON
 {
-  "ok": true,
-  "data": {
-    "service": "hands-test",
-    "action": "get-testflight-publish-status",
-    "status": 200,
-    "result": {
-      "hands_build_id": "${HANDS_BUILD}",
-      "bundle_id": "build.raft.app",
-      "asc_build_id": "${ASC_BUILD_ID}",
-      "version": "${VERSION}",
-      "build_number": "${BUILD_NUMBER}",
-      "processing_state": "VALID",
-      "expired": false,
-      "state": "ready"
-    }
-  }
+  "hands_build_id": "${HANDS_BUILD}",
+  "bundle_id": "build.raft.app",
+  "asc_build_id": "${ASC_BUILD_ID}",
+  "version": "${VERSION}",
+  "build_number": "${BUILD_NUMBER}",
+  "processing_state": "VALID",
+  "expired": false,
+  "state": "ready"
 }
 JSON
 
@@ -179,7 +148,7 @@ import sys
 source, target = sys.argv[1:]
 with open(source, encoding="utf-8") as handle:
     payload = json.load(handle)
-payload["data"]["result"]["build"]["build_metadata_json"]["ipa"]["sha256"] = "b" * 64
+payload["build"]["build_metadata_json"]["ipa"]["sha256"] = "b" * 64
 with open(target, "w", encoding="utf-8") as handle:
     json.dump(payload, handle)
 PY
@@ -191,7 +160,7 @@ import sys
 source, target = sys.argv[1:]
 with open(source, encoding="utf-8") as handle:
     payload = json.load(handle)
-payload["data"]["result"]["state"]["state"] = "PROCESSING"
+payload["state"]["state"] = "PROCESSING"
 with open(target, "w", encoding="utf-8") as handle:
     json.dump(payload, handle)
 PY
@@ -203,7 +172,7 @@ import sys
 source, target = sys.argv[1:]
 with open(source, encoding="utf-8") as handle:
     payload = json.load(handle)
-payload["data"]["result"]["state"]["warnings"] = [{"code": "TEST_WARNING"}]
+payload["state"]["warnings"] = [{"code": "TEST_WARNING"}]
 with open(target, "w", encoding="utf-8") as handle:
     json.dump(payload, handle)
 PY
@@ -215,56 +184,43 @@ import sys
 source, target = sys.argv[1:]
 with open(source, encoding="utf-8") as handle:
     payload = json.load(handle)
-payload["data"]["result"]["processing_state"] = "PROCESSING"
+payload["processing_state"] = "PROCESSING"
 with open(target, "w", encoding="utf-8") as handle:
     json.dump(payload, handle)
 PY
 
-cat >"${FAKE_RAFT}" <<'SH'
+cat >"${ERROR_JSON}" <<'JSON'
+{"error": "insufficient_app_role", "code": "INSUFFICIENT_APP_ROLE"}
+JSON
+
+cat >"${FAKE_HANDS}" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "${1:-}" = "integration" ] && [ "${2:-}" = "login" ]; then
-  exit 0
-fi
-if [ "${1:-}" != "integration" ] || [ "${2:-}" != "invoke" ]; then
-  echo "unexpected fake Raft command: $*" >&2
-  exit 2
-fi
-
-action=""
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --action)
-      action="$2"
-      shift 2
-      ;;
-    *)
-      shift
-      ;;
-  esac
-done
-
-case "${action}" in
-  list-apps)
-    cat "${FAKE_RAFT_APPS_JSON}"
+[ "${1:-}" = "--json" ] || { echo "fake hands: expected --json first: $*" >&2; exit 2; }
+shift
+app="${FAKE_HANDS_APP_ID}"
+case "$*" in
+  "api GET /api/apps")
+    cat "${FAKE_HANDS_APPS_JSON}"
     ;;
-  get-release)
-    cat "${FAKE_RAFT_RELEASE_JSON}"
+  "api GET /api/apps/${app}/releases/"*)
+    cat "${FAKE_HANDS_RELEASE_JSON}"
+    [ "${FAKE_HANDS_RELEASE_JSON}" != "${FAKE_HANDS_ERROR_JSON}" ]
     ;;
-  get-testflight-upload-status)
-    cat "${FAKE_RAFT_UPLOAD_JSON}"
+  "api GET /api/apps/${app}/testflight-uploads/"*)
+    cat "${FAKE_HANDS_UPLOAD_JSON}"
     ;;
-  get-testflight-publish-status)
-    cat "${FAKE_RAFT_STATUS_JSON}"
+  "builds testflight-status ${app} "*)
+    cat "${FAKE_HANDS_STATUS_JSON}"
     ;;
   *)
-    echo "unexpected fake Raft action: ${action}" >&2
+    echo "unexpected fake Hands command: $*" >&2
     exit 2
     ;;
 esac
 SH
-chmod +x "${FAKE_RAFT}"
+chmod +x "${FAKE_HANDS}"
 
 COMMON_ARGS=(
   --version "${VERSION}"
@@ -279,12 +235,13 @@ COMMON_ARGS=(
 run_helper() {
   env \
     SLOCK_RELEASE_REPO="${REPO}" \
-    RAFT_CLI="${FAKE_RAFT}" \
-    HANDS_SERVICE="hands-test" \
-    FAKE_RAFT_APPS_JSON="${APPS_JSON}" \
-    FAKE_RAFT_RELEASE_JSON="${FAKE_RAFT_RELEASE_JSON:-${RELEASE_JSON}}" \
-    FAKE_RAFT_UPLOAD_JSON="${FAKE_RAFT_UPLOAD_JSON:-${UPLOAD_JSON}}" \
-    FAKE_RAFT_STATUS_JSON="${FAKE_RAFT_STATUS_JSON:-${STATUS_JSON}}" \
+    HANDS_CLI="${FAKE_HANDS}" \
+    FAKE_HANDS_APP_ID="${APP_ID}" \
+    FAKE_HANDS_ERROR_JSON="${ERROR_JSON}" \
+    FAKE_HANDS_APPS_JSON="${APPS_JSON}" \
+    FAKE_HANDS_RELEASE_JSON="${FAKE_HANDS_RELEASE_JSON:-${RELEASE_JSON}}" \
+    FAKE_HANDS_UPLOAD_JSON="${FAKE_HANDS_UPLOAD_JSON:-${UPLOAD_JSON}}" \
+    FAKE_HANDS_STATUS_JSON="${FAKE_HANDS_STATUS_JSON:-${STATUS_JSON}}" \
     "${HELPER}" "${COMMON_ARGS[@]}" "$@"
 }
 
@@ -296,19 +253,22 @@ fi
 [ "$(git -C "${REPO}" rev-parse "v${VERSION}")" = "${ANDROID_TAG_OBJECT}" ] ||
   fail "check-only mode changed the existing Android tag"
 
-FAKE_RAFT_RELEASE_JSON="${BAD_RELEASE_JSON}" expect_fail run_helper
-FAKE_RAFT_UPLOAD_JSON="${BAD_UPLOAD_JSON}" expect_fail run_helper
-FAKE_RAFT_UPLOAD_JSON="${NOISY_UPLOAD_JSON}" expect_fail run_helper
-FAKE_RAFT_STATUS_JSON="${BAD_STATUS_JSON}" expect_fail run_helper
+FAKE_HANDS_RELEASE_JSON="${BAD_RELEASE_JSON}" expect_fail run_helper
+FAKE_HANDS_UPLOAD_JSON="${BAD_UPLOAD_JSON}" expect_fail run_helper
+FAKE_HANDS_UPLOAD_JSON="${NOISY_UPLOAD_JSON}" expect_fail run_helper
+FAKE_HANDS_STATUS_JSON="${BAD_STATUS_JSON}" expect_fail run_helper
+FAKE_HANDS_RELEASE_JSON="${ERROR_JSON}" expect_fail run_helper
+FAKE_HANDS_UPLOAD_JSON="${ERROR_JSON}" expect_fail run_helper
 
 expect_fail env \
   SLOCK_RELEASE_REPO="${REPO}" \
-  RAFT_CLI="${FAKE_RAFT}" \
-  HANDS_SERVICE="hands-test" \
-  FAKE_RAFT_APPS_JSON="${APPS_JSON}" \
-  FAKE_RAFT_RELEASE_JSON="${RELEASE_JSON}" \
-  FAKE_RAFT_UPLOAD_JSON="${UPLOAD_JSON}" \
-  FAKE_RAFT_STATUS_JSON="${STATUS_JSON}" \
+  HANDS_CLI="${FAKE_HANDS}" \
+  FAKE_HANDS_APP_ID="${APP_ID}" \
+  FAKE_HANDS_ERROR_JSON="${ERROR_JSON}" \
+  FAKE_HANDS_APPS_JSON="${APPS_JSON}" \
+  FAKE_HANDS_RELEASE_JSON="${RELEASE_JSON}" \
+  FAKE_HANDS_UPLOAD_JSON="${UPLOAD_JSON}" \
+  FAKE_HANDS_STATUS_JSON="${STATUS_JSON}" \
   "${HELPER}" \
   --version "${VERSION}" \
   --build "${BUILD_NUMBER}" \
@@ -320,7 +280,7 @@ expect_fail env \
 
 expect_fail env \
   SLOCK_RELEASE_REPO="${REPO}" \
-  RAFT_CLI="${FAKE_RAFT}" \
+  HANDS_CLI="${FAKE_HANDS}" \
   "${HELPER}" \
   --version "${VERSION}" \
   --build "${BUILD_NUMBER}" \
@@ -333,7 +293,7 @@ expect_fail env \
 for bad_branch in "release/1.6" "release_1.6.0" "feature/release/1.6.0" "release/1.6.0/x"; do
   expect_fail env \
     SLOCK_RELEASE_REPO="${REPO}" \
-    RAFT_CLI="${FAKE_RAFT}" \
+    HANDS_CLI="${FAKE_HANDS}" \
     "${HELPER}" \
     --version "${VERSION}" \
     --build "${BUILD_NUMBER}" \
@@ -346,7 +306,7 @@ done
 
 expect_fail env \
   SLOCK_RELEASE_REPO="${REPO}" \
-  RAFT_CLI="${FAKE_RAFT}" \
+  HANDS_CLI="${FAKE_HANDS}" \
   "${HELPER}" \
   --version "${VERSION}" \
   --build "${BUILD_NUMBER}" \
@@ -358,7 +318,7 @@ expect_fail env \
 
 expect_fail env \
   SLOCK_RELEASE_REPO="${REPO}" \
-  RAFT_CLI="${FAKE_RAFT}" \
+  HANDS_CLI="${FAKE_HANDS}" \
   "${HELPER}" \
   --version "${VERSION}" \
   --build "${BUILD_NUMBER}" \

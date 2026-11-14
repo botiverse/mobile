@@ -578,6 +578,11 @@ scripts/create_ios_release_audit_tag.sh --version X.Y.Z --build <CFBundleVersion
 # review, then the same with --confirm-push
 ```
 
+The helper reads Hands only through your logged-in `hands` CLI (`hands whoami`
+must show a role on `raft-ios`; read-only `hands --json api GET` and
+`hands builds testflight-status`), not Raft integration actions. After a push
+through Stamp it polls until the tag is published before checking the peel.
+
 Format `ios-v<marketing>-b<CFBundleVersion>`; never an unqualified `vX.Y.Z`
 for iOS; never move, delete or reuse a tag. Verify the `^{}` peel equals the
 IPA source commit.
