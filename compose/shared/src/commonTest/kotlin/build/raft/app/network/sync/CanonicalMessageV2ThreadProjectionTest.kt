@@ -157,6 +157,30 @@ class CanonicalMessageV2ThreadProjectionTest {
     }
 
     @Test
+    fun slackBridgeSenderIsKeptWithTheStoredSenderName() {
+        val diagnostics = mutableListOf<String>()
+        val item = assertNotNull(
+            envelope(
+                fact = fact().copy(senderType = "external_projection", senderId = "ext-1", senderName = "Sam (Slack)"),
+            ).toThreadMessageItem(currentUserId = "human-a", diagnostics = diagnostics::add),
+        )
+        assertTrue(diagnostics.isEmpty(), diagnostics.toString())
+        assertEquals("external", item.authorKind)
+        assertEquals("ext-1", item.authorId)
+        assertEquals("Sam (Slack)", item.authorName)
+        assertEquals("Sam (Slack)", assertNotNull(item.externalAuthor).displayName)
+        assertFalse(item.isOwn)
+
+        // A blank sender id still gets a stable key, and a blank name the external fallback.
+        val blank = assertNotNull(
+            envelope(fact = fact().copy(senderType = "external_projection", senderId = "", senderName = ""))
+                .toThreadMessageItem(currentUserId = null),
+        )
+        assertEquals("external:message:message-a", blank.authorId)
+        assertTrue(assertNotNull(blank.externalAuthor).displayNameIsFallback)
+    }
+
+    @Test
     fun unknownKindsFailClosedInsteadOfGuessingAnAuthor() {
         val diagnostics = mutableListOf<String>()
         // "system" is only the agent-facing projection's vocabulary; the producer never sends it.

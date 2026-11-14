@@ -8,6 +8,10 @@ import build.raft.app.RaftThreadReactionItem
 import build.raft.app.MemberKindWireContract
 import build.raft.app.ThreadMessageDeliverySent
 import build.raft.app.data.WireActionCardMetadata
+import build.raft.app.data.WireExternalAuthor
+import build.raft.app.data.externalSenderIdOrSyntheticKey
+import build.raft.app.model.providerLabel
+import build.raft.app.data.toExternalMessageAuthor
 import build.raft.app.data.WireActionCardPresentation
 import build.raft.app.data.WireActionCardResult
 import build.raft.app.data.WireForwardedBundleAttachment
@@ -47,7 +51,10 @@ private val canonicalV2PresentationJson = Json {
  * - task projection, thread follow/unread state, comment refs and attachment comment counts are
  *   viewer-scoped and absent from the fact, so they stay at their "not loaded" defaults;
  * - sender/message kinds are parsed strictly (same contract as the wire parsers): an unknown kind
- *   drops the message with a diagnostic rather than rendering a guessed author.
+ *   drops the message with a diagnostic rather than rendering a guessed author;
+ * - a Slack-bridge (`external_projection`) sender is kept, as in the wire parsers. The fact has no
+ *   `externalAuthor`, so the row shows the stored sender name until the network refresh brings the
+ *   provider and avatar.
  */
 internal fun CanonicalMessageEnvelopeV2.toThreadMessageItem(
     currentUserId: String?,
@@ -59,20 +66,39 @@ internal fun CanonicalMessageEnvelopeV2.toThreadMessageItem(
         fact.senderType.strictMemberKindOrNull(
             source = "canonical_v2_message_sender",
             diagnostics = diagnostics,
-            contract = MemberKindWireContract.InternalActor,
+            contract = MemberKindWireContract.MessageSender,
         ) ?: return null
+    // The V2 fact carries no externalAuthor by design: build the same fallback author the wire
+    // parsers use from the stored sender name (no "missing" diagnostic, the absence is expected).
+    val externalAuthor =
+        if (senderKind == MemberKind.External) {
+            WireExternalAuthor().toExternalMessageAuthor(fact.senderName)
+        } else {
+            null
+        }
     val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
-    val resolvedName = fact.senderName.takeIf { it.isNotBlank() } ?: "Unknown"
+    val resolvedName = externalAuthor?.displayName ?: fact.senderName.takeIf { it.isNotBlank() } ?: "Unknown"
     val wireAction = fact.actionMetadata?.toWireActionCardMetadata()
     return RaftThreadMessageItem(
         id = fact.id,
-        authorId = fact.senderId.ifBlank { "unknown" },
+        authorId =
+            if (externalAuthor != null) {
+                externalSenderIdOrSyntheticKey(fact.senderId, externalAuthor, fact.id)
+            } else {
+                fact.senderId.ifBlank { "unknown" }
+            },
         authorName = resolvedName,
-        authorDescription = fact.senderDescription?.takeIf { it.isNotBlank() },
+        authorDescription =
+            if (externalAuthor != null) {
+                externalAuthor.providerLabel()
+            } else {
+                fact.senderDescription?.takeIf { it.isNotBlank() }
+            },
         authorKind = authorKind.memberKindWireValue(),
         isOwn = currentUserId != null && fact.senderId == currentUserId,
         avatarLabel = resolvedName.toRaftAvatarLabel(),
         avatarWireValue = null,
+        externalAuthor = externalAuthor,
         senderMembershipStatus = fact.senderMembershipStatus?.takeIf { it.isNotBlank() },
         timestampLabel = fact.createdAt,
         createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(fact.createdAt),
