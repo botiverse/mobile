@@ -71,12 +71,12 @@ const val RAFT_PRODUCT_EVENTS_GATED_FEATURES_SLOCK_SHA: String = "a5a145f9fe3ce4
 const val RAFT_PRODUCT_EVENTS_APP_RATING_SLOCK_SHA: String = "9da0de7879d8c8290363e6ab3719d73f2d7bb483"
 
 /**
- * botiverse/slock #14904 head (native app settings, approved by Nova 2026-11-14):
+ * botiverse/slock #14904 merged on staging as this commit (native app settings, approved by Nova 2026-11-14):
  * `app_settings_snapshot` and `app_setting_changed` (`APP_SETTINGS`, `APP_SETTING_VALUES`,
  * `APP_SETTING_SURFACES`), sources `NATIVE_CLIENTS`. The server validates names and values strictly;
  * a build that sends them must not ship before a server with #14904 is in production.
  */
-const val RAFT_PRODUCT_EVENTS_APP_SETTINGS_SLOCK_SHA: String = "0147fb5a08c5c5b2b289258566ca0e2a034e1309"
+const val RAFT_PRODUCT_EVENTS_APP_SETTINGS_SLOCK_SHA: String = "409605bdd39c2ee8d9bc4ce2fe36b91c61d62703"
 
 /**
  * botiverse/slock #10790 head, where `clientEventBatchSchema` gained the optional batch-level

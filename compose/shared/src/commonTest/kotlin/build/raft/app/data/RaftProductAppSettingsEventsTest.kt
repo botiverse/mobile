@@ -9,12 +9,12 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * `app_settings_snapshot` and `app_setting_changed`, vendored from botiverse/slock
- * `packages/shared/src/productEvents.ts` at [PinnedSlockSha] (#14904): enums and booleans only, a
+ * `packages/shared/src/productEvents.ts` at [PinnedSlockSha] (#14904 merge commit): enums and booleans only, a
  * setting the platform does not show left out, and one value list shared by every setting.
  */
 class RaftProductAppSettingsEventsTest {
     private companion object {
-        const val PinnedSlockSha = "0147fb5a08c5c5b2b289258566ca0e2a034e1309"
+        const val PinnedSlockSha = "409605bdd39c2ee8d9bc4ce2fe36b91c61d62703"
     }
 
     @Test
