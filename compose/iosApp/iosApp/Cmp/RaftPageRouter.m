@@ -71,9 +71,9 @@ static BOOL RaftRouterBool(id value) {
             return;
         }
     }
-    UIViewController *renderViewController = [RaftPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
     if (navigationController) {
         if (replaceCurrent && navigationController.viewControllers.count > 0) {
+            UIViewController *renderViewController = [RaftPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
             NSMutableArray<UIViewController *> *viewControllers = [navigationController.viewControllers mutableCopy];
             if ([pageName isEqualToString:@"compose_login"]) {
                 objc_setAssociatedObject(viewControllers.lastObject, &RaftRouterRetiredByLoginKey,
@@ -83,11 +83,27 @@ static BOOL RaftRouterBool(id value) {
             [viewControllers addObject:renderViewController];
             [navigationController setViewControllers:viewControllers animated:YES];
         } else {
+            // task #151: not the page on top again, and not over a transition still running (a
+            // different page waits for it, latest wins): RaftIosPageOpenGate.
             BOOL animated = !RaftRouterBool(sanitizedPageData[RaftRouterOpenWithoutAnimationKey]);
-            [navigationController pushViewController:renderViewController animated:animated];
+            __weak UINavigationController *weakNavigationController = navigationController;
+            [RaftIosPageOpenGate openPageWithName:pageName
+                                         pageData:sanitizedPageData
+                             navigationController:navigationController
+                                             push:^UIViewController *{
+                UINavigationController *strongNavigationController = weakNavigationController;
+                if (!strongNavigationController) {
+                    return nil;
+                }
+                UIViewController *renderViewController =
+                    [RaftPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
+                [strongNavigationController pushViewController:renderViewController animated:animated];
+                return renderViewController;
+            }];
         }
         return;
     }
+    UIViewController *renderViewController = [RaftPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
     UINavigationController *presentedNavigationController =
         [[UINavigationController alloc] initWithRootViewController:renderViewController];
     [controller presentViewController:presentedNavigationController animated:YES completion:nil];

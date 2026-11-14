@@ -147,8 +147,10 @@ private class RaftPageCoverNavigator(
     private val guard: RaftPageOpenGuard?,
 ) : RaftCmpNavigator {
     override fun openPage(pageName: String, pageData: JsonObject) {
-        if (guard == null) push(pageName, pageData) else guard.open(pageName, pageData, ::push)
+        if (guard == null) push(pageName, pageData) else guard.open(pageName, pageData, openTransition(pageName, pageData), ::push)
     }
+
+    override fun openTransition(pageName: String, pageData: JsonObject) = platform.openTransition(pageName, pageData)
 
     private fun push(pageName: String, pageData: JsonObject) {
         signal.fire()

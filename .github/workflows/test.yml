@@ -1367,6 +1367,7 @@ jobs:
             RaftIosOpenAttachmentTests \
             RaftIosComposerPasteTests \
             RaftIosNotificationRetractionTests \
+            RaftIosPageOpenGateTests \
             RaftIosWeakSideActionListenerTests \
             RaftShareControllerFailureReasonTests
 

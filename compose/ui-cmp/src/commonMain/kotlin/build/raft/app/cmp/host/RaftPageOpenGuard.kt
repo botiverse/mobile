@@ -62,6 +62,11 @@ object RaftPageRouteIdentities {
  * notification for the thread just left, opens normally. [cancelPending] (the page closing)
  * forgets a queued open. Routes compare by [RaftPageRouteIdentities].
  *
+ * An open whose navigator answers [RaftPageOpenTransition.Untimed] opens no window: it runs no
+ * slide (the desktop stack), so a different page tapped next is not held 450 ms for
+ * nothing, or its host holds opens for exactly as long as its own transition runs (iOS router,
+ * Android Activity path: [RaftNativePageOpenGate]), and a fixed timer would only add a delay.
+ *
  * Plain state, main thread only. [now] is a monotonic millisecond clock; [schedule] runs a block
  * after a delay on the main thread (the page's composition scope in production).
  */
@@ -72,7 +77,13 @@ class RaftPageOpenGuard(
     private val identityOf: (String, JsonObject) -> Any = RaftPageRouteIdentities::of,
     private val log: (String) -> Unit = RaftPageRouteIdentities::log,
 ) {
-    private class Open(val identity: Any, val pageName: String, val pageData: JsonObject, val dispatch: (String, JsonObject) -> Unit)
+    private class Open(
+        val identity: Any,
+        val pageName: String,
+        val pageData: JsonObject,
+        val dispatch: (String, JsonObject) -> Unit,
+        val transition: RaftPageOpenTransition,
+    )
 
     private var last: Any? = null
     private var lastAt = 0L
@@ -83,8 +94,18 @@ class RaftPageOpenGuard(
     val inTransition: Boolean
         get() = last != null && now() - lastAt < windowMillis
 
-    fun open(pageName: String, pageData: JsonObject, dispatch: (String, JsonObject) -> Unit) {
-        val open = Open(identityOf(pageName, pageData), pageName, pageData, dispatch)
+    /**
+     * Opens [pageName] through [dispatch], or drops / queues it (see the class). [transition] is
+     * the navigator's [RaftCmpNavigator.openTransition] for it: [RaftPageOpenTransition.Untimed]
+     * opens no window.
+     */
+    fun open(
+        pageName: String,
+        pageData: JsonObject,
+        transition: RaftPageOpenTransition = RaftPageOpenTransition.Timed,
+        dispatch: (String, JsonObject) -> Unit,
+    ) {
+        val open = Open(identityOf(pageName, pageData), pageName, pageData, dispatch, transition)
         if (!inTransition) {
             pending = null
             admit(open)
@@ -120,7 +141,8 @@ class RaftPageOpenGuard(
     }
 
     private fun admit(open: Open) {
-        last = open.identity
+        // Untimed: no window (no slide, or the host gates its own transition).
+        last = open.identity.takeIf { open.transition == RaftPageOpenTransition.Timed }
         lastAt = now()
         open.dispatch(open.pageName, open.pageData)
     }

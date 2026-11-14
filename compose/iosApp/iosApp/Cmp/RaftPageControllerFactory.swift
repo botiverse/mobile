@@ -15,6 +15,7 @@ import shared
         #else
         RaftCmpIos.shared.configure(debugBuild: false)
         #endif
+        RaftIosPageOpenGate.log = { line in RaftIosDiagnosticsRecord("info", "RaftPageRouter", line) }
     }
 
     @objc(controllerForPageName:pageData:)

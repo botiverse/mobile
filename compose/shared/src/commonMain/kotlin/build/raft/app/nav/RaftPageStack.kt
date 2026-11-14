@@ -4,6 +4,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import build.raft.app.RAFT_APP_SHELL_PAGE
 import build.raft.app.cmp.host.RaftCmpNavigator
+import build.raft.app.cmp.host.RaftPageOpenTransition
 import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.cmp.host.RaftHostEvents
 import kotlinx.serialization.json.JsonObject
@@ -48,6 +49,8 @@ class RaftStackPage internal constructor(
 class RaftPageStack(
     private val hostPageData: (pageName: String, pageData: JsonObject) -> JsonObject = { _, data -> data },
     private val log: (String) -> Unit = {},
+    /** What a push does to the opener's open guard: Untimed where the stack draws no push slide (desktop). */
+    private val pushTransition: RaftPageOpenTransition = RaftPageOpenTransition.Timed,
 ) {
     private var nextId = 0L
 
@@ -62,6 +65,8 @@ class RaftPageStack(
             override fun openPage(pageName: String, pageData: JsonObject) = open(pageName, pageData, from = page)
 
             override fun closePage() = close(page)
+
+            override fun openTransition(pageName: String, pageData: JsonObject) = pushTransition
         }
 
     fun open(pageName: String, pageData: JsonObject, from: RaftStackPage?) {

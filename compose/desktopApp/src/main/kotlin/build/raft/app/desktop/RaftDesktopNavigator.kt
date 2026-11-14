@@ -4,6 +4,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import build.raft.app.RAFT_APP_SHELL_PAGE
 import build.raft.app.RaftDesktopFileLog
 import build.raft.app.cmp.host.RaftCmpNavigator
+import build.raft.app.cmp.host.RaftPageOpenTransition
 import build.raft.app.nav.RaftPageStack
 import build.raft.app.nav.RaftStackPage
 import kotlinx.serialization.json.JsonObject
@@ -19,7 +20,13 @@ typealias RaftDesktopPage = RaftStackPage
  * carry the host time context ([withRaftDesktopHostTimeContext]).
  */
 class RaftDesktopNavigator {
-    val stack = RaftPageStack(hostPageData = { _, data -> data.withRaftDesktopHostTimeContext() }, log = ::log)
+    // One scene, no push slide: a page's open guard holds no window (a different page opens at once).
+    val stack =
+        RaftPageStack(
+            hostPageData = { _, data -> data.withRaftDesktopHostTimeContext() },
+            log = ::log,
+            pushTransition = RaftPageOpenTransition.Untimed,
+        )
 
     /** The back stack, bottom first; the last entry is the page on screen. */
     val pages: SnapshotStateList<RaftDesktopPage> get() = stack.pages
