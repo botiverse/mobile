@@ -106,8 +106,9 @@ export async function run(ctx) {
     shell("input keyevent KEYCODE_BACK", { allowFailure: true });
     await sleep(1200);
   };
-  const swipeUp = () => shell("input swipe 540 1800 540 900 350", { allowFailure: true });
-  const swipeDown = () => shell("input swipe 540 900 540 1800 350", { allowFailure: true });
+  // Above where the keyboard sits (the channel focuses its composer on open).
+  const swipeUp = () => shell("input swipe 540 1250 540 500 350", { allowFailure: true });
+  const swipeDown = () => shell("input swipe 540 500 540 1250 350", { allowFailure: true });
   // The status chip: contentDescription "Task status: <Status>" (TaskConversationHead).
   const statusChip = (list) => hasText(list, (n) => /^Task status: /.test(n.desc) || /^Task status: /.test(n.text));
   const statusOf = (chip) => (chip ? `${chip.desc || chip.text}`.replace(/^Task status: /, "").trim() : null);
@@ -123,6 +124,34 @@ export async function run(ctx) {
     return { list: nodes(), chip: null };
   }
   const titleNode = (list, title) => hasText(list, (n) => n.text.trim() === title || n.text.includes(title) || n.desc.includes(title));
+  // Task v2 channel header (1.20+): "Open Tasks" toggles a Tasks card that covers the conversation
+  // (ConversationSideCardsCover; the toggle then reads "Close Tasks"). Older layouts: a Tasks tab.
+  const channelReady = (l) => hasText(l, "Open Tasks") || hasText(l, "Close Tasks") || (hasText(l, "Chat") && hasText(l, (n) => n.text === "Tasks" && n.bounds[1] < 900));
+  // The conversation under the cover stays in the UI dump: the card's row is the LAST match (drawn on top).
+  const lastTitleNode = (list, title) => {
+    const hits = list.filter((n) => n.pkg === PKG && n.bounds && (n.text.trim() === title || n.text.includes(title) || n.desc.includes(title)));
+    return hits.length ? hits[hits.length - 1] : null;
+  };
+  async function openTasksCard() {
+    const l = await waitUntil("the channel's Open Tasks toggle", channelReady, { timeoutMs: 45_000 });
+    if (hasText(l, "Close Tasks")) return { card: "already_open" };
+    const toggle = hasText(l, "Open Tasks") ?? hasText(l, (n) => n.text === "Tasks" && n.bounds[1] < 900);
+    tapNode(toggle);
+    await waitUntil("the Tasks card (Close Tasks)", (x) => hasText(x, "Close Tasks") || hasText(x, (n) => n.text === "Tasks" && n.bounds[1] < 400), { timeoutMs: 15_000 });
+    return { card: "opened" };
+  }
+  async function findInTasksCard(title, { sectionToggle = false } = {}) {
+    for (let i = 0; i < 10; i += 1) {
+      await sleep(1500);
+      const list = nodes();
+      const row = lastTitleNode(list, title);
+      if (row && row.bounds[1] > 250) return { row, list };
+      const section = sectionToggle ? hasText(list, (n) => /^Backlog\b/.test(n.text) && n.clickable) : null;
+      if (section && i % 3 === 1) tapNode(section);
+      else if (i >= 1) swipeUp();
+    }
+    return { row: null, list: nodes() };
+  }
 
   // ---------- 0. server, channel, test data ----------
   let setup = null;
@@ -203,21 +232,17 @@ export async function run(ctx) {
           const row = find(list, (n) => n.pkg === PKG && (n.text.trim() === channel.name || n.text.trim() === `#${channel.name}` || n.text.trim() === `# ${channel.name}`));
           if (row && hasText(list, "Drafts")) tapNode(row);
           else deepLink(channelUrl(channel.id));
-          await waitUntil(`#${channel.name} with its Chat / Tasks tabs`, (l) => hasText(l, "Chat") && hasText(l, (n) => n.text === "Tasks" && n.bounds[1] < 900), { timeoutMs: 60_000 });
+          await waitUntil(`#${channel.name} with its Open Tasks toggle`, channelReady, { timeoutMs: 60_000 });
           return { via: row ? "home_row" : "link" };
         });
         await sstep("s1", "channel-tasks-tab", async () => {
-          const tab = await waitUntil("the channel's Tasks tab", (l) => hasText(l, (n) => n.text === "Tasks" && n.bounds[1] < 900));
-          tapNode(tab);
-          for (let i = 0; i < 6; i += 1) {
-            await sleep(1500);
-            if (titleNode(nodes(), task.title)) return { listed: true };
-            if (i >= 2) swipeUp();
-          }
-          throw new Error(`test task #${task.number} is not in the channel's Tasks tab; on screen: ${visible()}`);
+          const opened = await openTasksCard();
+          const { row } = await findInTasksCard(task.title);
+          if (row) return { listed: true, ...opened };
+          throw new Error(`test task #${task.number} is not in the channel's Tasks card; on screen: ${visible()}`);
         });
         await sstep("s1", "open-task-conversation", async () => {
-          tapNode(titleNode(nodes(), task.title));
+          tapNode(lastTitleNode(nodes(), task.title));
           const composer = await waitUntil("the task conversation (Message this task)", (l) => hasText(l, (n) => n.text === "Message this task" || n.desc === "Message this task" || n.text === "Join Channel to Reply"), { timeoutMs: 45_000 });
           await sleep(1500);
           const { list, chip } = await findTaskHead();
@@ -262,10 +287,9 @@ export async function run(ctx) {
         if (statusChip(nodes())) return;
         deepLink(channelUrl(channel.id));
         await sleep(3000);
-        const tab = await waitUntil("the channel's Tasks tab", (l) => hasText(l, (n) => n.text === "Tasks" && n.bounds[1] < 900), { timeoutMs: 45_000 });
-        tapNode(tab);
-        await sleep(2500);
-        const row = await waitUntil(`task #${task.number}`, (l) => titleNode(l, task.title), { timeoutMs: 30_000 });
+        await openTasksCard();
+        const { row } = await findInTasksCard(task.title);
+        if (!row) throw new Error(`task #${task.number} not in the Tasks card; on screen: ${visible()}`);
         tapNode(row);
         await waitUntil("the task conversation", (l) => statusChip(l) || hasText(l, "Message this task"), { timeoutMs: 45_000 });
         const { chip } = await findTaskHead();
@@ -354,26 +378,20 @@ export async function run(ctx) {
         await sstep("s4", "backlog-in-channel-tasks", async () => {
           deepLink(channelUrl(channel.id));
           await sleep(3000);
-          const tab = await waitUntil("the channel's Tasks tab", (l) => hasText(l, (n) => n.text === "Tasks" && n.bounds[1] < 900), { timeoutMs: 45_000 });
-          tapNode(tab);
-          for (let i = 0; i < 10; i += 1) {
-            await sleep(1500);
-            const list = nodes();
-            const row = titleNode(list, backlog.title);
-            if (row) {
-              const backlogLabel = hasText(list, (n) => /^Backlog\b/.test(n.text) || /Backlog/.test(n.desc) || n.text === "暂缓");
-              if (!backlogLabel) throw new Error(`the backlog task is listed but nothing on screen reads Backlog; on screen: ${visible(list)}`);
-              return { listed: true, label: backlogLabel.text || backlogLabel.desc };
-            }
-            // Backlog may be its own (collapsed) section further down.
-            const section = hasText(list, (n) => /^Backlog\b/.test(n.text) && n.clickable);
-            if (section && i % 3 === 1) tapNode(section);
-            else swipeUp();
+          // While the conversation is still uncovered: its inline task card for the backlog task.
+          await waitUntil("the channel", channelReady, { timeoutMs: 45_000 });
+          const inline = hasText(nodes(), (n) => n.desc.startsWith(`Open task #${backlog.number}:`));
+          const opened = await openTasksCard();
+          const { row, list } = await findInTasksCard(backlog.title, { sectionToggle: true });
+          if (row) {
+            const backlogLabel = hasText(list, (n) => (/^Backlog\b/.test(n.text) || /Backlog/.test(n.desc) || n.text === "暂缓") && n.bounds[1] > 250);
+            if (!backlogLabel) throw new Error(`the backlog task is listed but nothing on screen reads Backlog; on screen: ${visible(list)}`);
+            return { listed: true, label: backlogLabel.text || backlogLabel.desc, inline_card_in_chat: Boolean(inline), ...opened };
           }
-          throw new Error(`backlog test task #${backlog.number} not found in the channel's Tasks tab; on screen: ${visible()}`);
+          throw new Error(`backlog test task #${backlog.number} not found in the channel's Tasks card (inline card in chat: ${Boolean(inline)}); on screen: ${visible()}`);
         });
         await sstep("s4", "backlog-task-opens-as-backlog", async () => {
-          tapNode(titleNode(nodes(), backlog.title));
+          tapNode(lastTitleNode(nodes(), backlog.title));
           await waitUntil("the backlog task's conversation", (l) => statusChip(l) || hasText(l, "Message this task"), { timeoutMs: 45_000 });
           const { chip, list } = await findTaskHead();
           if (statusOf(chip) !== "Backlog") throw new Error(`the head reads ${statusOf(chip) ?? "no status"}, expected Backlog; on screen: ${visible(list)}`);
@@ -425,7 +443,12 @@ export async function run(ctx) {
     });
   } finally {
     // Back to Home, where the runner's own Sign out starts.
-    for (let i = 0; i < 4; i += 1) await back();
+    for (let i = 0; i < 8; i += 1) {
+      const list = nodes();
+      if (hasText(list, "Drafts") && hasText(list, "More")) break;
+      if (!list.some((n) => n.pkg === PKG)) break;
+      await back();
+    }
     ctx.launchApp();
     await sleep(2500);
     await answerPermissionPrompt(nodes());
