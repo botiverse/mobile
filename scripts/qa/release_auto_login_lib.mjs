@@ -91,14 +91,21 @@ export function callbackSchemeFor(packageId) {
  *   browser         – default browser role restored / browsers disabled for the run re-enabled
  *   capture_browser – the QA capture browser package
  *   web_session     – the web session the script opened to approve the login
- *   app_session     – the app's own session (only touched with --revoke-app-session)
+ *   app_session     – the app's own session: app_reported_server_logout_2xx only when the app
+ *                     signed out through its own UI and, from its own process after that tap,
+ *                     logged POST auth/logout answered 2xx and result=success (assessAppLogout).
+ *                     That is the app's report, not proof the server revoked that session.
+ *                     not_requested (no --revoke-app-session), local_cleared_server_unconfirmed
+ *                     (pm clear, or no / conflicting evidence) leave a session possibly live on
+ *                     the server: a cleanup failure, so --strict-cleanup fails the run.
+ *                     not_signed_in: the app never got a session (the run fails on sign-in anyway).
  */
 export const CLEANUP_OK = {
   capture_file: ["deleted", "not_applicable"],
   browser: ["restored", "not_changed"],
   capture_browser: ["uninstalled", "kept", "not_installed_by_run"],
   web_session: ["signed_out", "not_opened"],
-  app_session: ["not_requested", "not_signed_in", "signed_out_via_app"],
+  app_session: ["app_reported_server_logout_2xx", "not_signed_in"],
 };
 
 /** Which cleanup steps failed, and whether the run may still exit 0. */
@@ -135,4 +142,67 @@ export function parseAppLoginComplete(logText) {
   const last = lines[lines.length - 1];
   if (!last) return { status: "absent", result: null, reason: null };
   return { status: last.result === "retry" ? "pending" : "refused", result: last.result, reason: last.reason };
+}
+
+/**
+ * The app's own report of its Sign out's POST /auth/logout, from `logcat -d -v epoch --pid=<pid>`
+ * (lines "<epoch> <pid> <tid> <level> <tag>: <message>"). Fails closed: counted only when
+ *   - the line is the app's process (pid) and written after the sign-out tap (sinceEpoch);
+ *   - AuthDataSource.logout's `auth_logout_api_result result=success` is there, and no other result;
+ *   - the HTTP layer's line for exactly `POST` to exactly the route `auth/logout` (the relative
+ *     route, `/api/auth/logout`, or a URL whose path is `/api/auth/logout`) answered 2xx, and no
+ *     line for that request answered otherwise;
+ *   - `auth_logout_cleared serverRevocation=` (when present) says success.
+ * What it proves: the app reports the server answered its logout with a 2xx. Not that the server
+ * revoked that session (the server answers 200 to an unknown token too): no per-session receipt.
+ */
+export function assessAppLogout(raw, { pid, sinceEpoch } = {}) {
+  const out = { verified: false, reason: "", lines: [], api_results: [], http_statuses: [] };
+  if (!pid || !Number.isFinite(sinceEpoch)) return { ...out, reason: "no_app_process_or_tap_time" };
+  if (typeof raw !== "string" || !raw.trim()) return { ...out, reason: "no_app_lines" };
+  const isLogoutRoute = (p) => {
+    const bare = String(p).split(/[?#]/)[0];
+    if (bare === "auth/logout" || bare === "/api/auth/logout") return true;
+    try { return /^https?:$/.test(new URL(bare).protocol) && new URL(bare).pathname === "/api/auth/logout"; } catch { return false; }
+  };
+  const revocations = [];
+  for (const line of raw.split("\n")) {
+    const m = /^\s*(\d+\.\d+)\s+(\d+)\s+(\d+)\s+[VDIWEF]\s+[^:]+:\s?(.*)$/.exec(line);
+    if (!m || Number(m[2]) !== Number(pid) || Number(m[1]) < sinceEpoch) continue;
+    const msg = m[4];
+    const api = /\bauth_logout_api_result result=(\S+)(?:\s+code=(\S+))?/.exec(msg);
+    if (api) { out.api_results.push(api[1]); out.lines.push(`auth_logout_api_result result=${api[1]}${api[2] ? ` code=${api[2]}` : ""}`); continue; }
+    const cleared = /\bauth_logout_cleared serverRevocation=(\S+)/.exec(msg);
+    if (cleared) { revocations.push(cleared[1]); out.lines.push(`auth_logout_cleared serverRevocation=${cleared[1]}`); continue; }
+    const field = (k) => new RegExp(`(?:^|\\s)${k}=(\\S+)`).exec(msg)?.[1] ?? null;
+    const method = field("method");
+    const route = field("path");
+    const status = Number(field("status") ?? field("statusCode") ?? NaN);
+    if (method === "POST" && route && isLogoutRoute(route) && Number.isFinite(status)) {
+      out.http_statuses.push(status);
+      const trace = field("traceId");
+      out.lines.push(`http method=POST route=auth/logout status=${status}${trace ? ` traceId=${trace}` : ""}`);
+    }
+  }
+  if (!out.api_results.length) return { ...out, reason: "no_logout_result_line" };
+  if (out.api_results.some((r) => r !== "success")) return { ...out, reason: "logout_result_not_success" };
+  if (!out.http_statuses.length) return { ...out, reason: "no_post_auth_logout_line" };
+  if (out.http_statuses.some((s) => s < 200 || s >= 300)) return { ...out, reason: "conflicting_http_status" };
+  if (revocations.some((r) => r !== "success")) return { ...out, reason: "conflicting_server_revocation" };
+  return { ...out, verified: true, reason: "app_reported_2xx" };
+}
+
+/**
+ * Why the sign-out's logout evidence can't be bound to the app (null when it can): logcat could not
+ * be cleared before; not exactly one logout tap; or the app's process ("<pid>:<start time>") was
+ * unknown or changed between the start of the sign-out, the tap and the sign-in page (a restart,
+ * or a reused pid). Any of these: not verified.
+ */
+export function logoutProbeProblem({ logcatCleared, taps, before, atTap, after } = {}) {
+  if (!logcatCleared) return "logcat_clear_failed";
+  if (taps !== 1) return `logout_taps_${taps ?? 0}`;
+  const valid = (p) => typeof p === "string" && /^\d+:\d+$/.test(p);
+  if (!valid(before) || !valid(atTap) || !valid(after)) return "app_process_unknown";
+  if (before !== atTap || atTap !== after) return "app_process_changed";
+  return null;
 }

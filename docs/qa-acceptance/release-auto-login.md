@@ -82,7 +82,7 @@ one status in `summary.json` → `cleanup`. `cleanup_ok` is true only when every
 | Step (`cleanup.<key>`) | OK statuses | Failure statuses | What is checked |
 |---|---|---|---|
 | `web_session`: the web session the script opened to approve | `signed_out`, `not_opened` | `failed` | `POST /api/auth/logout` with its refresh token, then `POST /api/auth/refresh` with the same token must answer 401 (`web_session_refresh_check`, e.g. `401 session_revoked`). Logout alone answers 200 even for an unknown token, so it is not proof. |
-| `app_session`: the app's own session (`--revoke-app-session`) | `signed_out_via_app`, `not_requested`, `not_signed_in` | `local_cleared_server_unconfirmed`, `failed` | The app's own Sign out (Choose server → **Sign Out**, or More → Settings → Account → **Sign out** → confirm **Sign out**), then the app must be back on "Sign in to Raft" / "Sign in through …". The app sends `POST /api/auth/logout` with its refresh token itself; `app_reported_server_logout` records the app's own report of that call when it reaches logcat (`success`, or `not_logged`). If the UI route fails, `pm clear build.raft.app` wipes the app's tokens: `local_cleared_server_unconfirmed` (the server session lives on until it expires). `app_sign_out_route` / `app_sign_out_error` say what happened. |
+| `app_session`: the app's own session (`--revoke-app-session`) | `app_reported_server_logout_2xx`, `not_signed_in` | `local_cleared_server_unconfirmed`, `not_requested`, `failed` | The app's own Sign out (Choose server → **Sign Out**; with a server selected: the server tab → server panel → **Settings** (scrolled into view) → **Account** → scroll → **Sign out** → confirm **Sign out**), then the app must be back on "Sign in to Raft" / "Sign in through …". The app sends `POST /api/auth/logout` with its refresh token itself. `app_reported_server_logout_2xx` needs ALL of: logcat cleared before the sign-out; one logout tap; the same app process (`pidof` + its `/proc` start time) at the start of the sign-out, at that tap and on the sign-in page; and, from that process only (`logcat --pid`) and after the tap, the HTTP layer's line for exactly `POST` to exactly the route `auth/logout` with a 2xx, `auth_logout_api_result result=success`, and nothing conflicting (`assessAppLogout`, `logoutProbeProblem` in `release_auto_login_lib.mjs`). Otherwise, or if the UI route fails (`pm clear build.raft.app` wipes the app's tokens), it is `local_cleared_server_unconfirmed`. `app_logout_log` keeps only rebuilt non-secret fields (result, method, route, status, trace id); `app_logout_evidence` says why it counted or not. |
 | `capture_file`: the captured login URL | `deleted`, `not_applicable` | `failed` | Removed, then checked absent with `run-as`. |
 | `browser`: the default browser | `restored`, `not_changed` | `failed` | Browser role back with the previous holder(s) and not with the stub; every browser disabled for the run is enabled again (`browser_role_holders`, `browsers_reenabled`). |
 | `capture_browser`: the stub package | `uninstalled`, `not_installed_by_run`, `kept` (`--keep-capture-browser`) | `failed` | `pm path` finds nothing after `pm uninstall`. |
@@ -92,15 +92,16 @@ one status in `summary.json` → `cleanup`. `cleanup_ok` is true only when every
 and exit 1, and a signed-in screen without the app's own exchange line fails the run (see step 6).
 Without it the run still records the statuses but exits 0 on a sign-in pass.
 
-**Server-side revocation is not independently verified for the app's session.** The server (slock
-staging) has no API to list a user's sessions or revoke one by id: only `POST /auth/logout` with the
-session's own refresh token, which stays inside the non-debuggable release app. So the strongest
-statuses are `signed_out_via_app` (the app ran its own sign-out, which revokes on the server, and is
-back on its sign-in page) and, for the script's own web session, `signed_out` (revocation proven by
-the refused refresh). There is no `server_revoked` status for the app session until such an API
-exists.
+**What `app_reported_server_logout_2xx` means — and does not.** It is the app's own report that
+the server answered its `POST /auth/logout` with a 2xx. It is **not** proof that the server revoked
+that session: the server answers 200 to an unknown token too, and it has no API to list a user's
+sessions or read one back (an app-login session is its own session family; its refresh token stays
+inside the non-debuggable release app, so the script's own web logout does not end it and nothing
+outside the app can check it). Anything short of that bound evidence stays
+`local_cleared_server_unconfirmed` (the session may live until it expires, 30 days). The script's own
+web session is different: `signed_out` is shown by its refresh token being refused afterwards.
 
-Example (from a strict staging run, credentials masked):
+Example (shape of a strict production run's cleanup, credentials masked; the lines match those run 43644771420 logged under the earlier parser):
 
 ```json
 { "step": 7, "name": "verify-signed-in", "result": "pass",
@@ -110,10 +111,11 @@ Example (from a strict staging run, credentials masked):
   "browser": "restored",
   "capture_browser": "uninstalled",
   "web_session": "signed_out",
-  "app_session": "signed_out_via_app",
+  "app_session": "app_reported_server_logout_2xx",
   "web_session_refresh_check": "401 session_revoked",
-  "app_sign_out_route": "choose_server:Sign Out",
-  "app_reported_server_logout": "not_logged",
+  "app_sign_out_route": "Current server > server_panel:Settings > settings:Account > account:scroll > account:Sign out > confirm:Sign out",
+  "app_logout_log": ["http method=POST route=auth/logout status=200 traceId=168cc934ee55307d8419237104ba46f4", "auth_logout_api_result result=success", "auth_logout_cleared serverRevocation=success"],
+  "app_logout_evidence": "app_reported_2xx",
   "browser_role_holders": ["com.android.chrome"],
   "browsers_reenabled": []
 },
@@ -141,13 +143,107 @@ else `QA_TEST_EMAIL` / `QA_TEST_PASSWORD`. The account must not have two-step ve
 Evidence (`release-auto-login-evidence`): `summary.json`, a screenshot + UI dump per step,
 `logcat-app-login.txt` (only the `SlockAppLogin` tag, masked).
 
+## Scenarios
+
+`--scenario scripts/qa/scenarios/<name>.mjs` (workflow inputs `scenario` + `scenario_args`) runs a
+module after "verify-signed-in" and before cleanup. Its `run(ctx)` gets the device helpers
+(`nodes`, `find`, `tapNode`, `shell`, `step` — each step saves a screenshot + UI dump), `option()`
+for its own flags, and `ctx.web(method, path, { body, serverId })`: the QA account's web session
+(refreshed on a 401, signed out in cleanup as before). It writes its result to `summary.scenario`.
+Only `result: "pass"` (every requested step covered and passed, test data cleaned up) lets the run
+exit 0; `partial` (something not covered / unconfirmed, listed in `not_pass_reasons`), `unknown` (a
+write with no clear answer: stopped, reported, never retried), `fail` or a throw exit non-zero.
+The scenario is bound to ONE test server and channel: workflow inputs `test_server` +
+`test_channel` (required with a scenario; passed as `--server-name` / `--channel`, matched exactly —
+exactly one server and one channel by that name, else nothing is written; never another channel;
+not accepted inside `scenario_args`).
+
+- `task_v2.mjs` — task v2 conversations on a release build: channel Tasks
+  tab → task conversation (head + messages) → reply; assignee; status Todo → In Progress → Done
+  with no "In Review" offered; a Backlog task; s5: a task an old CLI created without a source (made
+  once with `mode=old_cli_task`), reached from Home → its channel → its title message → its task
+  entry, with a diagnostic (never failing s5) of whether the message's link opens it over a task
+  page and from Home. s5 only looks in the bound channel: if that channel was not resolved, or it
+  holds no such task, s5 is not covered (it never reads, opens or screenshots another channel). It creates two `[QA test data, please ignore]` tasks with the QA account
+  and deletes them at the end; the source messages the server posts for them stay.
+
+```sh
+gh workflow run release-auto-login.yml -f environment=production -f apk_run_id=<Android Release run> \
+  -f scenario=scripts/qa/scenarios/task_v2.mjs -f test_server=OranixSlockTest -f test_channel=qa-test-create-7842
+```
+
+- `artifact_reuse.mjs [--artifact-a pt_… --artifact-b pt_…] [--session-wait-min 18]` — the Artifact viewer reuse check (Hands dd109a01, #4547) on the two test
+  Artifacts made once with `mode=agent_artifacts`: their cards opened A, B in turn (4 pairs), with
+  a 10 s background, and once after the app logs a token refresh while the viewer page is kept
+  (else NOT COVERED); each open screenshotted 5 s after the tap with whether the viewer stayed and
+  which Artifact it shows. Viewer lines in `artifact-viewer-logcat.txt`. Creates and deletes nothing.
+  `pass` only when every open showed the expected Artifact, the background step came back to A
+  (identified on screen after the return; the earlier open's log line alone is unconfirmed), and
+  the session step saw the refresh AND the viewer dropping its kept page for it; content not
+  confirmed, no session evidence or the session step not covered make it `partial`.
+
+## Test-data modes (no emulator)
+
+`mode` (workflow_dispatch only) makes the fixtures the scenarios above need, once, with the QA
+account's secrets inside the runner (nothing downloaded, the password never printed, every token
+`::add-mask::`ed), through `scripts/qa/old_cli_task.mjs`:
+
+Both need `test_server` + `test_channel` (one exact server and channel; nothing else is written).
+
+- `mode=old_cli_task` — the external agent `qa-old-cli-task` (reused when it
+  exists, created with `POST /api/agents {external: true}` otherwise), added to the channel, a key
+  minted in the runner (`POST /api/agents/:id/credentials`) into a
+  temp `RAFT_PROFILE`, ONE task by `@botiverse/raft@0.0.26 task create` with no source (the server
+  posts the agent's title message as its source), checked with the current CLI's `task view`.
+  Not repeated when the agent already made a task with that title. `task_source_required` stops it.
+- `mode=agent_artifacts` — the same agent pushes two single-file HTML Artifacts ("QA artifact A
+  (可删)" / "B") with the current CLI into that channel and sends each link (the card shows once
+  the link is sent; it reads the channel first, a send with unread messages is held as a draft).
+  An Artifact already there is not pushed again.
+
+A write with no clear answer (5xx / timeout, or a CLI write that fails) stops the run as `unknown`
+(never retried, never sent elsewhere; a key mint with a lost answer is found by its per-run name and
+revoked, never minted again). Cleanup must be proven or the run fails (non-zero, never `pass`): the
+run's key revoked and read back as revoked (`key_revoked`), the web session's refresh token refused
+after logout (`web_session_signed_out`; a logout 200 alone does not count), the temp key file
+deleted (`local_key_file_removed`). Once the mint request was sent the key is a mandatory cleanup
+item: a 2xx without the key's `credentialId` (or a lost answer) is `unknown`, and only exactly one
+key of this run's name is revoked and read back; otherwise `key: unknown`, non-zero. Before the
+mint call the run writes `old-cli-key-intent.json` (the per-run key name, agent, time; uploaded with
+the result) so even a hard kill leaves what to reconcile. On SIGTERM / SIGINT no further step starts
+a side effect (no write, profile, npm or CLI); cleanup waits (bounded, `--mint-settle-ms`) for an
+in-flight mint and revokes that exact key, or records it as unknown; it never mints again.
+The web session is handled the same way: before `POST auth/login` the run writes
+`old-cli-session-intent.json` (time, run id; uploaded with the result); a login answer is usable only
+with both an access and a refresh token; a login still in flight at SIGTERM / SIGINT is waited for
+(same bound) and, if it answers, that exact session is signed out and its refresh proven refused;
+a login that was sent but answered nothing usable (lost, incomplete, refused, or still pending) is
+`web: unknown`. `cleanup_complete` is true only when every item (key, web, local key file) is a
+confirmed outcome or provably not applicable (its request was never sent); any `unknown` makes it
+false and the run non-zero.
+
+**Limit:** a hard kill or a lost runner (no chance to clean up) can leave an upstream web session or
+agent key that nothing local can prove absent: the intent records and the uploaded result may be
+missing too. The run never retries a login or a mint and never signs the shared QA account out
+everywhere; such a leftover is reconciled by hand (the key by its per-run name on the agent's key
+list; the web session expires on its own). The summary keeps non-secret
+correlation for reconciling that exact key / session by hand (`credential_id_prefix`,
+`credential_name`, `web_session_family_prefix`). The agent, the task and the Artifacts stay (the
+device scenarios use them). Result in the `old-cli-task-result` artifact.
+
+```sh
+gh workflow run release-auto-login.yml -f environment=production -f mode=old_cli_task -f test_server=OranixSlockTest -f test_channel=qa-test-create-7842
+gh workflow run release-auto-login.yml -f environment=production -f mode=agent_artifacts -f test_server=OranixSlockTest -f test_channel=qa-test-create-7842
+```
+
 ## Caveats
 
 - See [What a pass means](#what-a-pass-means): authorize → callback only, not the browser UX; QA
   accounts only; throwaway emulators only (the capture browser takes the browser role for the run,
   so on a shared device another test's links would be swallowed).
 - Without `--revoke-app-session` the app stays signed in when the script ends (on purpose, for
-  workflows that go on to test the signed-in app); its server session then lives until it expires.
+  workflows that go on to test the signed-in app); its server session then lives until it expires,
+  and `app_session` is `not_requested`, which `--strict-cleanup` counts as a cleanup failure.
 - UI steps match English labels ("Sign in to Raft", "Sign in to a self-hosted server", "Save",
   "Drafts", "Signed in as", "Sign Out", "More", "Settings", "Account", "Sign out"); the emulator
   image is English.

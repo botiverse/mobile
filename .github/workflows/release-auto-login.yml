@@ -34,6 +34,32 @@ on:
         required: false
         type: boolean
         default: true
+      scenario:
+        description: "Optional: a scenario module run while signed in, e.g. scripts/qa/scenarios/task_v2.mjs"
+        required: false
+        type: string
+        default: ""
+      scenario_args:
+        description: "Its other options (server and channel come from test_server / test_channel), e.g. --session-wait-min 18"
+        required: false
+        type: string
+        default: ""
+      test_server:
+        description: "The ONE test server the scenario / mode writes to (exact name), e.g. OranixSlockTest"
+        required: false
+        type: string
+        default: ""
+      test_channel:
+        description: "The ONE test channel there (exact name, no #), e.g. qa-test-create-7842"
+        required: false
+        type: string
+        default: ""
+      mode:
+        description: "sign_in (default): the emulator run. old_cli_task: no emulator; make the s5 test task with the old Raft CLI 0.0.26. agent_artifacts: no emulator; the same agent pushes the two artifact-reuse test Artifacts (scripts/qa/old_cli_task.mjs)"
+        required: false
+        type: choice
+        options: [sign_in, old_cli_task, agent_artifacts]
+        default: sign_in
   workflow_call:
     inputs:
       environment:
@@ -56,6 +82,22 @@ on:
         required: false
         type: boolean
         default: true
+      scenario:
+        required: false
+        type: string
+        default: ""
+      scenario_args:
+        required: false
+        type: string
+        default: ""
+      test_server:
+        required: false
+        type: string
+        default: ""
+      test_channel:
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -63,7 +105,44 @@ permissions:
   packages: read
 
 jobs:
+  # mode=old_cli_task: test data for task v2 scenario s5 only (one external agent, one title
+  # message, one task); the QA password and the agent key stay in this job.
+  old-cli-task:
+    if: ${{ inputs.mode == 'old_cli_task' || inputs.mode == 'agent_artifacts' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Old CLI task
+        env:
+          QA_LOGIN_EMAIL: ${{ (inputs.environment == 'staging' && secrets.QA_STAGING_TEST_EMAIL) || secrets.QA_TEST_EMAIL }}
+          QA_LOGIN_PASSWORD: ${{ (inputs.environment == 'staging' && secrets.QA_STAGING_TEST_PASSWORD) || secrets.QA_TEST_PASSWORD }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          ACTION: ${{ inputs.mode == 'agent_artifacts' && 'artifacts' || 'task' }}
+          TEST_SERVER: ${{ inputs.test_server }}
+          TEST_CHANNEL: ${{ inputs.test_channel }}
+        run: |
+          set -euo pipefail
+          [[ "${TEST_SERVER}" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "::error::test_server (one exact server name) is required"; exit 1; }
+          [[ "${TEST_CHANNEL}" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "::error::test_channel (one exact channel name, no #) is required"; exit 1; }
+          node scripts/qa/old_cli_task.mjs --env "${ENVIRONMENT}" --action "${ACTION}" --server-name "${TEST_SERVER}" --channel "${TEST_CHANNEL}" --out old-cli-task.json
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: old-cli-task-result
+          path: |
+            old-cli-task.json
+            old-cli-key-intent.json
+            old-cli-session-intent.json
+          if-no-files-found: warn
+          retention-days: 14
+
   plan:
+    if: ${{ inputs.mode != 'old_cli_task' && inputs.mode != 'agent_artifacts' }}
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.p.outputs.build }}
@@ -72,6 +151,7 @@ jobs:
       apk_artifact: ${{ steps.p.outputs.apk_artifact }}
       environment: ${{ steps.p.outputs.environment }}
       cleanup_flags: ${{ steps.p.outputs.cleanup_flags }}
+      scenario_flags: ${{ steps.p.outputs.scenario_flags }}
     steps:
       - id: p
         env:
@@ -81,6 +161,10 @@ jobs:
           # Both default on; only an explicit false turns them off.
           STRICT_CLEANUP: ${{ inputs.strict_cleanup != false }}
           REVOKE_APP_SESSION: ${{ inputs.revoke_app_session != false }}
+          SCENARIO: ${{ inputs.scenario }}
+          SCENARIO_ARGS: ${{ inputs.scenario_args }}
+          TEST_SERVER: ${{ inputs.test_server }}
+          TEST_CHANNEL: ${{ inputs.test_channel }}
         run: |
           set -euo pipefail
           case "${ENVIRONMENT}" in staging|production) ;; *) echo "::error::environment must be staging or production"; exit 1;; esac
@@ -89,6 +173,15 @@ jobs:
           [ "${STRICT_CLEANUP}" = true ] && FLAGS="${FLAGS} --strict-cleanup"
           [ "${REVOKE_APP_SESSION}" = true ] && FLAGS="${FLAGS} --revoke-app-session"
           echo "cleanup_flags=${FLAGS# }" >> "$GITHUB_OUTPUT"
+          if [ -n "${SCENARIO}" ]; then
+            [[ "${SCENARIO}" =~ ^scripts/qa/scenarios/[a-z0-9_]+\.mjs$ ]] || { echo "::error::scenario must be scripts/qa/scenarios/<name>.mjs"; exit 1; }
+            [[ "${SCENARIO_ARGS}" =~ ^[A-Za-z0-9\ ._=/-]*$ ]] || { echo "::error::scenario_args may hold letters, digits, spaces and . _ = / - only"; exit 1; }
+            # One exact test server + channel, only from these inputs.
+            [[ "${TEST_SERVER}" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "::error::a scenario needs test_server (one exact server name)"; exit 1; }
+            [[ "${TEST_CHANNEL}" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "::error::a scenario needs test_channel (one exact channel name, no #)"; exit 1; }
+            [[ " ${SCENARIO_ARGS} " =~ \ --(server-name|channel)[\ =] ]] && { echo "::error::set the server and channel with test_server / test_channel, not in scenario_args"; exit 1; }
+            echo "scenario_flags=--scenario ${SCENARIO} --server-name ${TEST_SERVER} --channel ${TEST_CHANNEL} ${SCENARIO_ARGS}" >> "$GITHUB_OUTPUT"
+          fi
           if [ -n "${APK_RUN_ID}" ]; then
             [[ "${APK_RUN_ID}" =~ ^[0-9]+$ ]] || { echo "::error::apk_run_id must be a run id"; exit 1; }
             { echo "build=false"; echo "apk_run_id=${APK_RUN_ID}"; echo "apk_artifact=${APK_ARTIFACT}"; } >> "$GITHUB_OUTPUT"
@@ -119,7 +212,7 @@ jobs:
     needs: [plan, build]
     if: ${{ always() && needs.plan.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       EVIDENCE: release-auto-login-evidence
     steps:
@@ -183,7 +276,7 @@ jobs:
           emulator-boot-timeout: 1200
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: node scripts/qa/release_auto_login.mjs --apk "${{ steps.apk.outputs.apk }}" --capture-browser-apk "${{ runner.temp }}/capture-browser.apk" --env "${{ needs.plan.outputs.environment }}" --out "${{ env.EVIDENCE }}" ${{ needs.plan.outputs.cleanup_flags }}
+          script: node scripts/qa/release_auto_login.mjs --apk "${{ steps.apk.outputs.apk }}" --capture-browser-apk "${{ runner.temp }}/capture-browser.apk" --env "${{ needs.plan.outputs.environment }}" --out "${{ env.EVIDENCE }}" ${{ needs.plan.outputs.cleanup_flags }} ${{ needs.plan.outputs.scenario_flags }}
 
       - name: Summary
         if: always()
@@ -194,6 +287,11 @@ jobs:
             echo "| APK | \`${{ steps.apk.outputs.version }}\` from run \`${{ needs.plan.outputs.apk_run_id }}\` |"
             echo "| Server | ${{ needs.plan.outputs.environment }} |"
             echo "| Cleanup flags | \`${{ needs.plan.outputs.cleanup_flags || 'none' }}\` |"
+            echo "| Scenario | \`${{ needs.plan.outputs.scenario_flags || 'none' }}\` |"
+            if [ -f "${EVIDENCE}/summary.json" ] && [ -n "${{ needs.plan.outputs.scenario_flags }}" ]; then
+              echo; echo "| Scenario | Result | Note |"; echo "|---|---|---|"
+              jq -r '.scenario.results // {} | to_entries[] | "| \(.key) | \(.value.result) | \((.value.note // "") | gsub("\\|"; "/") | .[0:300]) |"' "${EVIDENCE}/summary.json" || true
+            fi
             if [ -f "${EVIDENCE}/summary.json" ]; then echo; echo '```json'; cat "${EVIDENCE}/summary.json"; echo '```'; fi
           } >> "$GITHUB_STEP_SUMMARY"
 

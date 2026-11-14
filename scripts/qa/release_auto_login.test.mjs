@@ -52,15 +52,20 @@ const cleanAll = {
   browser: "restored",
   capture_browser: "uninstalled",
   web_session: "signed_out",
-  app_session: "signed_out_via_app",
+  app_session: "app_reported_server_logout_2xx",
 };
 
 test("cleanup aggregation: every step must report an ok status", () => {
   assert.deepEqual(summarizeCleanup(cleanAll), { ok: true, failures: [] });
   assert.deepEqual(
-    summarizeCleanup({ capture_file: "not_applicable", browser: "not_changed", capture_browser: "kept", web_session: "not_opened", app_session: "not_requested" }),
+    summarizeCleanup({ capture_file: "not_applicable", browser: "not_changed", capture_browser: "kept", web_session: "not_opened", app_session: "not_signed_in" }),
     { ok: true, failures: [] },
   );
+  // Only a server-verified logout cleans up the app's session.
+  for (const status of ["not_requested", "signed_out_via_app", "server_logout_verified", "local_cleared_server_unconfirmed"]) {
+    assert.deepEqual(summarizeCleanup({ ...cleanAll, app_session: status }).failures, [{ step: "app_session", status }]);
+    assert.deepEqual(runOutcome({ signedIn: true, cleanup: { ...cleanAll, app_session: status }, strict: true }).exitCode, 1);
+  }
   assert.deepEqual(summarizeCleanup({ ...cleanAll, browser: "failed", app_session: "local_cleared_server_unconfirmed" }), {
     ok: false,
     failures: [
