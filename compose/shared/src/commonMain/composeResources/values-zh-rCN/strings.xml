@@ -4771,6 +4771,7 @@
     <string name="channel_announcement_details_set">设置公告</string>
     <string name="channel_announcement_details_replace">替换</string>
     <string name="channel_announcement_details_remove">移除</string>
+    <string name="channel_announcement_details_actions">公告操作</string>
     <string name="channel_announcement_details_meta">v%1$s · %2$s 更新于 %3$s</string>
     <string name="channel_announcement_picker_set_title">设置公告</string>
     <string name="channel_announcement_picker_replace_title">替换公告</string>

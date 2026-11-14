@@ -4579,6 +4579,7 @@
     <string name="channel_announcement_details_set">Задать объявление</string>
     <string name="channel_announcement_details_replace">Заменить</string>
     <string name="channel_announcement_details_remove">Убрать</string>
+    <string name="channel_announcement_details_actions">Действия с объявлением</string>
     <string name="channel_announcement_details_meta">v%1$s · Обновил(а) %2$s · %3$s</string>
     <string name="channel_announcement_picker_set_title">Задать объявление</string>
     <string name="channel_announcement_picker_replace_title">Заменить объявление</string>

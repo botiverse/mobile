@@ -1934,6 +1934,19 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M21 13v1a4 4 0 0 1-4 4H3"),
                     ),
                 )
+            RaftLucideIconName.Replace ->
+                RaftLucideIconSpec(
+                    "replace",
+                    listOf(
+                        RaftLucidePathSpec("M14 4a1 1 0 0 1 1-1"),
+                        RaftLucidePathSpec("M15 10a1 1 0 0 1-1-1"),
+                        RaftLucidePathSpec("M21 4a1 1 0 0 0-1-1"),
+                        RaftLucidePathSpec("M21 9a1 1 0 0 1-1 1"),
+                        RaftLucidePathSpec("m3 7 3 3 3-3"),
+                        RaftLucidePathSpec("M6 10V5a2 2 0 0 1 2-2h2"),
+                        RaftLucidePathSpec("M 4.0 14.0 H 9.0 A 1.0 1.0 0 0 1 10.0 15.0 V 20.0 A 1.0 1.0 0 0 1 9.0 21.0 H 4.0 A 1.0 1.0 0 0 1 3.0 20.0 V 15.0 A 1.0 1.0 0 0 1 4.0 14.0 Z"),
+                    ),
+                )
             RaftLucideIconName.RotateCcw ->
                 RaftLucideIconSpec(
                     "rotate-ccw",
