@@ -141,17 +141,39 @@ export async function run(ctx) {
     await waitUntil("the Tasks card (Close Tasks)", (x) => hasText(x, "Close Tasks") || hasText(x, (n) => n.text === "Tasks" && n.bounds[1] < 400), { timeoutMs: 15_000 });
     return { card: "opened" };
   }
-  async function findInTasksCard(title, { sectionToggle = false, tries = 10 } = {}) {
-    const tapped = new Set();
+  // The channel focuses its composer on open; with the keyboard up the card's lower rows (and the
+  // folded Backlog group) sit under it. Back with the IME shown only hides the IME.
+  const hideKeyboard = async () => {
+    const ime = shell("dumpsys input_method | grep -m1 mInputShown", { allowFailure: true }) ?? "";
+    if (/mInputShown=true/.test(String(ime))) {
+      shell("input keyevent KEYCODE_BACK", { allowFailure: true });
+      await sleep(1000);
+      return true;
+    }
+    return false;
+  };
+  // A Tasks card row: "#<channel>" and "#<number>" on one line (only the card draws that pair), the title under it.
+  const cardRow = (list, channelName, number) => {
+    const ref = list.find((n) => n.pkg === PKG && n.bounds && n.text.trim() === `#${number}` &&
+      list.some((m) => m.text.trim() === `#${channelName}` && m.bounds && Math.abs(m.bounds[1] - n.bounds[1]) < 10));
+    if (!ref) return null;
+    const title = list.find((n) => n.pkg === PKG && n.bounds && n.text.trim() && n.bounds[1] >= ref.bounds[3] - 5 && n.bounds[1] < ref.bounds[3] + 120 && n.bounds[0] < 200);
+    return { ref, title: title ?? null, tapTarget: title ?? ref };
+  };
+  async function findInTasksCard(channelName, number, { sectionToggle = false, tries = 10 } = {}) {
+    await hideKeyboard();
+    let tapped = 0;
+    let lastTap = -5;
     for (let i = 0; i < tries; i += 1) {
       await sleep(1500);
       const list = nodes();
-      const row = lastTitleNode(list, title);
-      if (row && row.bounds[1] > 250) return { row, list };
-      // Backlog is its own group after the active ones (SharedTasksPage listColumns); expand it once if folded.
-      const section = sectionToggle ? hasText(list, (n) => /^Backlog\b/.test(n.text) && n.bounds[1] > 450 && n.bounds[1] < 1300) : null;
-      if (section && !tapped.has(i - 1) && tapped.size < 2) {
-        tapped.add(i);
+      const row = cardRow(list, channelName, number);
+      if (row && row.tapTarget.bounds[3] < 2250) return { row: row.tapTarget, ref: row.ref, title: row.title, list };
+      // Backlog is its own group after the active ones (SharedTasksPage listColumns), folded by default: open it.
+      const section = sectionToggle ? list.find((n) => n.pkg === PKG && n.bounds && n.text.trim() === "Backlog" && n.bounds[1] > 450 && n.bounds[3] < 2250 && n.bounds[0] < 300) : null;
+      if (section && tapped < 2 && i - lastTap > 2) {
+        tapped += 1;
+        lastTap = i;
         tapNode(section);
       } else if (i >= 1) swipeUp();
     }
@@ -230,6 +252,7 @@ export async function run(ctx) {
       }).catch((error) => log(`choose-server: ${error.message}; continuing (the channel link switches server)`));
 
       // ---------- s1 ----------
+      let cardTap = null;
       await scenario("s1", async () => {
         await sstep("s1", "open-channel", async () => {
           // The channel by its row on Home when it is there, else its link (which also switches server).
@@ -242,12 +265,16 @@ export async function run(ctx) {
         });
         await sstep("s1", "channel-tasks-tab", async () => {
           const opened = await openTasksCard();
-          const { row } = await findInTasksCard(task.title);
-          if (row) return { listed: true, ...opened };
+          const { row, title } = await findInTasksCard(channel.name, task.number);
+          if (row) {
+            if (!title || !title.text.includes(task.title.slice(0, 30))) throw new Error(`card row #${task.number} does not read the task's title (${title?.text ?? "none"})`);
+            cardTap = row;
+            return { listed: true, ...opened };
+          }
           throw new Error(`test task #${task.number} is not in the channel's Tasks card; on screen: ${visible()}`);
         });
         await sstep("s1", "open-task-conversation", async () => {
-          tapNode(lastTitleNode(nodes(), task.title));
+          tapNode(cardTap);
           const composer = await waitUntil("the task conversation (Message this task)", (l) => hasText(l, (n) => n.text === "Message this task" || n.desc === "Message this task" || n.text === "Join Channel to Reply"), { timeoutMs: 45_000 });
           await sleep(1500);
           const { list, chip } = await findTaskHead();
@@ -297,7 +324,7 @@ export async function run(ctx) {
         deepLink(channelUrl(channel.id));
         await sleep(3000);
         await openTasksCard();
-        const { row } = await findInTasksCard(task.title);
+        const { row } = await findInTasksCard(channel.name, task.number);
         if (!row) throw new Error(`task #${task.number} not in the Tasks card; on screen: ${visible()}`);
         tapNode(row);
         await waitUntil("the task conversation", (l) => statusChip(l) || hasText(l, "Message this task"), { timeoutMs: 45_000 });
@@ -392,16 +419,20 @@ export async function run(ctx) {
           await waitUntil("the channel", channelReady, { timeoutMs: 45_000 });
           const inline = hasText(nodes(), (n) => n.desc.startsWith(`Open task #${backlog.number}:`));
           const opened = await openTasksCard();
-          const { row, list } = await findInTasksCard(backlog.title, { sectionToggle: true, tries: 30 });
+          const { row, title, list } = await findInTasksCard(channel.name, backlog.number, { sectionToggle: true, tries: 30 });
           if (row) {
-            const backlogLabel = hasText(list, (n) => (/^Backlog\b/.test(n.text) || /Backlog/.test(n.desc) || n.text === "暂缓") && n.bounds[1] > 250);
-            if (!backlogLabel) throw new Error(`the backlog task is listed but nothing on screen reads Backlog; on screen: ${visible(list)}`);
-            return { listed: true, label: backlogLabel.text || backlogLabel.desc, inline_card_in_chat: Boolean(inline), ...opened };
+            if (!title || !title.text.includes(backlog.title.slice(0, 30))) throw new Error(`card row #${backlog.number} does not read the backlog task's title (${title?.text ?? "none"})`);
+            // Its status chip, on the row under the title, reads Backlog; and it sits in the Backlog group.
+            const chip = list.find((n) => n.pkg === PKG && n.bounds && n.text.trim() === "Backlog" && n.bounds[1] > title.bounds[3] - 5 && n.bounds[1] < title.bounds[3] + 300);
+            const group = list.filter((n) => n.pkg === PKG && n.bounds && n.bounds[0] < 300 && /^(Backlog|Todo|In Progress|Done|Closed|In Review)$/.test(n.text.trim()) && n.bounds[3] <= row.bounds[1]).pop();
+            if (!chip) throw new Error(`the backlog task is listed but its row does not read Backlog; on screen: ${visible(list)}`);
+            cardTap = row;
+            return { listed: true, row_status: chip.text, group: group?.text ?? null, inline_card_in_chat: Boolean(inline), ...opened };
           }
           throw new Error(`backlog test task #${backlog.number} not found in the channel's Tasks card (inline card in chat: ${Boolean(inline)}); on screen: ${visible()}`);
         });
         await sstep("s4", "backlog-task-opens-as-backlog", async () => {
-          tapNode(lastTitleNode(nodes(), backlog.title));
+          tapNode(cardTap);
           await waitUntil("the backlog task's conversation", (l) => statusChip(l) || hasText(l, "Message this task"), { timeoutMs: 45_000 });
           const { chip, list } = await findTaskHead();
           if (statusOf(chip) !== "Backlog") throw new Error(`the head reads ${statusOf(chip) ?? "no status"}, expected Backlog; on screen: ${visible(list)}`);
