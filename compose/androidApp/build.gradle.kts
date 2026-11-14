@@ -901,6 +901,9 @@ dependencies {
     implementation(libs.android.installreferrer)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    // SocketIoRealtimeClient over the common Socket.IO client (RaftKmpRealtimeSocketTransport) with a
+    // scripted WebSocket (SocketIoRealtimeClientOverKmpTransportTest).
+    testImplementation(project(":realtime-socket"))
     // Builds real notifications in JVM unit tests.
     testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.junit)
