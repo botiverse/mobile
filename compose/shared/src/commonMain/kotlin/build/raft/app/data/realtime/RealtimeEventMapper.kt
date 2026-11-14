@@ -1,5 +1,7 @@
 package build.raft.app.data.realtime
 
+import build.raft.app.reportRealtimeEventDropped
+import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.model.AgentActivitySubagentLineage
 import build.raft.app.model.AvatarReference
 import build.raft.app.toRaftAvatarLabel
@@ -184,14 +186,47 @@ class RealtimeEventMapper(
     fun map(eventName: String, payload: Any?): RealtimeEvent? {
         val startedAt = TimeSource.Monotonic.markNow()
         val element = payload.toJsonObjectOrNull()
-        val event = element?.let { mapElement(eventName, it) }
+        val decodeFailuresBefore = decodeFailureCount
+        var reason: String? = null
+        val event =
+            if (element == null) {
+                reason = "payload_not_object"
+                null
+            } else {
+                try {
+                    mapElement(eventName, element)
+                } catch (_: SerializationException) {
+                    reason = "decode"
+                    null
+                }
+            }
         diagnosticsLogger(
             "realtime_payload_parse eventName=$eventName payloadType=${payload.realtimePayloadType()} " +
                 "mapped=${if (event != null) "typed" else ""} result=${if (event != null) "success" else "ignored"} " +
                 "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} dispatcher=caller"
         )
+        if (event == null) {
+            // Never silent: every dropped live event leaves one line in the diagnostics ring.
+            // `decode` = a DTO failed to decode (a required field missing / wrong type);
+            // `unmapped` = decoded but rejected (an unknown value or a missing id) or not an event
+            // this mapper produces. Keys only, never values.
+            val resolvedReason =
+                reason ?: if (decodeFailureCount != decodeFailuresBefore) "decode" else "unmapped"
+            reportRealtimeEventDropped(
+                eventName = eventName,
+                reason = resolvedReason,
+                keys = element?.keys.orEmpty(),
+                diagnostics = diagnosticsLogger,
+            )
+        }
         return event
     }
+
+    /**
+     * DTO decode failures seen by this mapper, so [map] can tell `decode` from `unmapped` in its
+     * drop line. Diagnostics only: a race between two frames can only mislabel a reason.
+     */
+    private var decodeFailureCount: Int = 0
 
     private fun Any?.realtimePayloadType(): String =
         when (this) {
@@ -317,7 +352,7 @@ class RealtimeEventMapper(
             RealtimeSocketEvents.AgentActivity ->
                 decodeOrNull(AgentActivityDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.AgentActivityState ->
-                decodeOrNull(AgentActivityStateDto.serializer(), element)?.toDomain()
+                decodeOrNull(AgentActivityStateDto.serializer(), element)?.toDomain(diagnosticsLogger)
             RealtimeSocketEvents.AgentActivitySubscribed ->
                 decodeOrNull(AgentActivitySubscribedDto.serializer(), element)?.let { dto ->
                     AgentActivitySubscribed(dto.agentIds.map(String::trim).filter(String::isNotEmpty).distinct())
@@ -432,15 +467,18 @@ class RealtimeEventMapper(
                     )
                 }
             RealtimeSocketEvents.PinnedUpdated ->
-                decodeOrNull(PinnedUpdatedDto.serializer(), element)?.toDomain()
+                decodeOrNull(PinnedUpdatedDto.serializer(), element)?.toDomain(diagnosticsLogger)
             RealtimeSocketEvents.NotificationPush ->
                 decodeOrNull(NotificationPushDto.serializer(), element)?.let { dto ->
-                    dto.toDomainOrNull(diagnosticsLogger) ?: dto.toNoticeOrNull()
+                    dto.toDomainOrNull(diagnosticsLogger)
+                        ?: dto.toNoticeOrNull()
+                        ?: dto.toUnknownKindNoticeOrNull(diagnosticsLogger)
                 }
             else -> null
         }
-    } catch (_: SerializationException) {
-        null
+    } catch (failure: SerializationException) {
+        decodeFailureCount++
+        throw failure
     }
 
     private fun decodeDirectMessageNew(element: JsonObject): RealtimeEvent? {
@@ -505,6 +543,7 @@ class RealtimeEventMapper(
     ): T? = try {
         json.decodeFromJsonElement(serializer, element)
     } catch (_: SerializationException) {
+        decodeFailureCount++
         null
     }
 
@@ -1568,7 +1607,7 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
  * The coarse state as a presence fact: the detailed activity it came from when that is a status the app
  * knows (working / thinking keep their own dot), else the coarse state itself (busy = working).
  */
-private fun AgentActivityStateDto.toDomain(): MemberPresenceUpdated? {
+private fun AgentActivityStateDto.toDomain(diagnostics: (String) -> Unit): MemberPresenceUpdated? {
     val id = agentId.trim().takeIf(String::isNotEmpty) ?: return null
     val coarse =
         when (state) {
@@ -1576,7 +1615,10 @@ private fun AgentActivityStateDto.toDomain(): MemberPresenceUpdated? {
             "online" -> AgentStatus.Online
             "busy" -> AgentStatus.Working
             "error" -> AgentStatus.Error
-            else -> return null
+            else -> {
+                reportUnknownTypeDropped("realtime_agent_activity", "state", state, diagnostics = diagnostics)
+                return null
+            }
         }
     val status = AgentStatus.fromAgentActivityWireValue(activity)?.takeIf { it.presence == coarse.presence } ?: coarse
     return MemberPresenceUpdated(
@@ -2104,10 +2146,11 @@ private fun NotificationPrefsUpdatedDto.toDomain(
     )
 }
 
-private fun PinnedUpdatedDto.toDomain(): PerReceiverPinnedChanged? {
+private fun PinnedUpdatedDto.toDomain(diagnostics: (String) -> Unit): PerReceiverPinnedChanged? {
     val cleanPinned =
         pinned.mapNotNull { item ->
             val kind = item.kind.trim().lowercase().takeIf { it == "channel" || it == "agent" || it == "human" }
+            if (kind == null) reportUnknownTypeDropped("realtime_pinned", "pinned_kind", item.kind, diagnostics = diagnostics)
             val id = item.id.trim().takeIf { it.isNotBlank() }
             if (kind != null && id != null) SettingsServerSidebarPinnedItem(kind = kind, id = id) else null
         }
@@ -2182,6 +2225,48 @@ private fun NotificationPushDto.toDomainOrNull(
         seq = seq,
         groupKey = groupKey?.takeIf { it.isNotBlank() },
         conversationId = conversationId?.takeIf { it.isNotBlank() },
+        routeJson = route?.takeIf { parseRaftNotificationRouteObject(it) != null }?.toString(),
+        silent = silent,
+        subtitle = subtitle?.takeIf { it.isNotBlank() },
+        localization = parseRaftNotificationLocalizationObject(localization as? JsonObject)
+    )
+}
+
+/**
+ * The fallback for a message push [toDomainOrNull] refused. A `kind` this client does not route
+ * (task, system, a kind a newer server added, unparseable) becomes a generic notice — it posts
+ * under its group and a tap opens the app (Activity) — instead of vanishing. A known kind missing
+ * its open target stays dropped (fail-closed, #434/#441). Either way the drop/fallback is logged.
+ */
+private fun NotificationPushDto.toUnknownKindNoticeOrNull(diagnostics: (String) -> Unit): NotificationNoticeReceived? {
+    val cleanServerId = serverId.takeIf { it.isNotBlank() } ?: return null
+    val cleanMessageId = messageId?.takeIf { it.isNotBlank() }
+    if (cleanMessageId == null) {
+        // No message and no category/groupKey: not a notice either (contract §4.1).
+        diagnostics("projection_value_rejected source=notification_push field=notice value=incomplete")
+        return null
+    }
+    when (kind?.let(::parseConversationKindOrNull)) {
+        ConversationKind.Thread,
+        ConversationKind.Channel,
+        ConversationKind.Joint,
+        ConversationKind.DirectMessage -> {
+            diagnostics("projection_value_rejected source=notification_push field=target value=incomplete")
+            return null
+        }
+        else -> Unit
+    }
+    reportUnknownTypeDropped("notification_push", "kind", kind, fallback = "notice", diagnostics = diagnostics)
+    return NotificationNoticeReceived(
+        serverId = ServerId(cleanServerId),
+        category = category?.takeIf { it.isNotBlank() } ?: "message",
+        groupKey =
+            groupKey?.takeIf { it.isNotBlank() }
+                ?: conversationId?.takeIf { it.isNotBlank() }
+                ?: "message:$cleanServerId:$cleanMessageId",
+        notificationId = id?.takeIf { it.isNotBlank() },
+        title = title,
+        body = body,
         routeJson = route?.takeIf { parseRaftNotificationRouteObject(it) != null }?.toString(),
         silent = silent,
         subtitle = subtitle?.takeIf { it.isNotBlank() },

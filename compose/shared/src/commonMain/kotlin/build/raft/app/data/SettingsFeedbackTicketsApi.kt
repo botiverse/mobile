@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.reportUnknownTypeDropped
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -609,7 +610,9 @@ internal fun mergeFeedbackTicketPages(current: List<FeedbackTicket>, incoming: L
 
 private fun FeedbackTicketDto.toModel(): FeedbackTicket? {
     val id = id?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    val status = FeedbackTicketStatus.fromWire(status) ?: return null
+    val status =
+        FeedbackTicketStatus.fromWire(status)
+            ?: run { reportUnknownTypeDropped("feedback_ticket", "status", status); return null }
     val createdAt = createdAt ?: return null
     val unreadCount = (unreadCount ?: 0).coerceAtLeast(0)
     return FeedbackTicket(
@@ -632,13 +635,17 @@ private fun FeedbackTicketDto.toModel(): FeedbackTicket? {
 }
 
 private fun FeedbackLatestCommentDto.toModel(): FeedbackLatestComment? {
-    val author = FeedbackAuthorType.fromWire(authorType) ?: return null
+    val author =
+        FeedbackAuthorType.fromWire(authorType)
+            ?: run { reportUnknownTypeDropped("feedback_latest_comment", "author_type", authorType); return null }
     return FeedbackLatestComment(author, bodyPreview.orEmpty(), createdAt ?: return null)
 }
 
 private fun FeedbackCommentDto.toModel(): FeedbackComment? {
     val id = id?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    val author = FeedbackAuthorType.fromWire(authorType) ?: return null
+    val author =
+        FeedbackAuthorType.fromWire(authorType)
+            ?: run { reportUnknownTypeDropped("feedback_comment", "author_type", authorType); return null }
     return FeedbackComment(id, author, body.orEmpty(), createdAt ?: return null)
 }
 

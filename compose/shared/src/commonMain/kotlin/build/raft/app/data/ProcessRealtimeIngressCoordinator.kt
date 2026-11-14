@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.reportRealtimeEventDropped
+import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.data.realtime.GeneratedRealtimeContract
 import build.raft.app.data.realtime.RealtimeCursorPolicy
 import build.raft.app.data.realtime.RealtimeEventMapper
@@ -64,6 +66,8 @@ internal class ProcessRealtimeIngressCoordinator(
     private val sessionDemand: RaftRealtimeSessionDemand = raftProcessRealtimeSessionDemand,
     private val multiSessionEnabled: () -> Boolean = { false },
     private val nowMillis: () -> Long = ::defaultNowMillis,
+    /** Where a dropped event is reported (`realtime_event_dropped …`); the mapper reports its own drops. */
+    private val diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ) {
     /** Whether the last reconcile was a multi-session one, so turning the setting off reverts the set once. */
     @Volatile
@@ -187,9 +191,14 @@ internal class ProcessRealtimeIngressCoordinator(
             // A user-room event about another of the member's servers, on this server's socket.
             event !is ServerAppearanceUpdated
         ) {
+            reportRealtimeEventDropped(eventData.processEventName(), "server_mismatch", diagnostics = diagnostics)
             return
         }
-        val serverId = envelopeServerId ?: payloadServerId ?: return
+        val serverId =
+            envelopeServerId ?: payloadServerId ?: run {
+                reportRealtimeEventDropped(eventData.processEventName(), "no_server_id", diagnostics = diagnostics)
+                return
+            }
         val witness = eventData.processRealtimeWitnessOrNull() ?: return
         val grant = authorityProvider.resolve(witness, serverId) ?: return
         val accepted =
@@ -240,11 +249,22 @@ internal class ProcessRealtimeIngressCoordinator(
     }
 
     private fun decode(eventData: JsonObject): RealtimeEvent? {
-        val eventName = eventData.optString(RaftRealtimeNotifyContract.KeyEventName).trim()
+        val eventName = eventData.processEventName()
         val rawPayload = eventData.optString(RaftRealtimeNotifyContract.KeyRawPayload).trim()
-        if (eventName.isEmpty() || rawPayload.isEmpty()) return null
+        if (eventName.isEmpty() || rawPayload.isEmpty()) {
+            reportRealtimeEventDropped(
+                eventName = eventName,
+                reason = if (eventName.isEmpty()) "envelope_no_event_name" else "envelope_no_payload",
+                diagnostics = diagnostics,
+            )
+            return null
+        }
+        // A null here was already reported by the mapper (`realtime_event_dropped … reason=decode|unmapped`).
         return mapper.map(eventName, rawPayload)
     }
+
+    private fun JsonObject.processEventName(): String =
+        optString(RaftRealtimeNotifyContract.KeyEventName).trim()
 }
 
 internal interface ProcessRealtimeNativeHost {

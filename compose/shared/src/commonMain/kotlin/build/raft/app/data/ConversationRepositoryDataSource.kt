@@ -414,7 +414,7 @@ class RealConversationRepository private constructor(
                         bodyText = bodyText,
                         fallbackThreadId = ThreadId(channelId.value),
                         diagnostics = warningLogger,
-                    )
+                    ).requireReadable("messages_channel_latest")
                 }
             )
         return when (result) {
@@ -854,7 +854,7 @@ class RealConversationRepository private constructor(
             source = "messages_context",
             mapper = { bodyText ->
                 val fallbackThreadId = ThreadId(messageId.value)
-                val payload = parseSharedMessageContext(bodyText, fallbackThreadId, warningLogger)
+                val payload = parseSharedMessageContext(bodyText, fallbackThreadId, warningLogger).requireReadable("messages_context")
                 canonicalTargetKind = payload.canonicalTarget?.kind
                 val resolvedThreadId = payload.channelId?.let { ThreadId(it.value) } ?: fallbackThreadId
                 buildSharedThreadSnapshot(
@@ -1165,11 +1165,12 @@ class RealConversationRepository private constructor(
             emptyWhen = { it.messages.isEmpty() },
             source = "messages_channel_newer",
             mapper = { bodyText ->
-                val payload = parseSharedChannelMessages(bodyText, threadId, warningLogger)
+                val payload = parseSharedChannelMessages(bodyText, threadId, warningLogger).requireReadable("messages_channel_newer")
                 buildSharedThreadSnapshot(
                     payload = payload,
                     threadId = threadId,
-                    canLoadMoreAfter = payload.messages.size >= messageLimit,
+                    // Server rows, not rows kept: a skipped row must not stop "load newer" early.
+                    canLoadMoreAfter = payload.rawMessageCount >= messageLimit,
                     diagnostics = warningLogger,
                 ).copy(rawMessagePage = rawMessagePageWitness(bodyText, messageLimit))
             }
@@ -1197,11 +1198,12 @@ class RealConversationRepository private constructor(
             emptyWhen = { it.messages.isEmpty() },
             source = "messages_sync",
             mapper = { bodyText ->
-                val payload = parseSharedSyncMessages(bodyText, threadId, warningLogger)
+                val payload = parseSharedSyncMessages(bodyText, threadId, warningLogger).requireReadable("messages_sync")
                 buildSharedThreadSnapshot(
                     payload = payload,
                     threadId = threadId,
-                    canLoadMoreAfter = payload.messages.size >= messageLimit,
+                    // Server rows, not rows kept: a skipped row must not stop "load newer" early.
+                    canLoadMoreAfter = payload.rawMessageCount >= messageLimit,
                     diagnostics = warningLogger,
                 )
             }
@@ -1613,13 +1615,14 @@ class RealConversationRepository private constructor(
                         bodyText,
                         ThreadId(resolvedThreadChannelId.value),
                         warningLogger,
-                    ).also { page ->
+                    ).requireReadable(source).also { page ->
                         RaftHiddenHistoryStore.record(resolvedThreadChannelId.value, page.historyLimited, page.hiddenHistory)
                     }
                 }
             )
         val rawMessages: List<Message> =
             (messagesResult as? DataResult.Content)?.data?.messages.orEmpty()
+        val serverRowCount = (messagesResult as? DataResult.Content)?.data?.rawMessageCount ?: rawMessages.size
         val snapshot =
             buildSharedThreadSnapshot(
                 payload = SharedMessagesPayload(
@@ -1628,7 +1631,7 @@ class RealConversationRepository private constructor(
                     hasNewer = (messagesResult as? DataResult.Content)?.data?.hasNewer ?: false
                 ),
                 threadId = ThreadId(resolvedThreadChannelId.value),
-                canLoadMoreBefore = rawMessages.size >= messageLimit,
+                canLoadMoreBefore = serverRowCount >= messageLimit,
                 diagnostics = warningLogger,
             ).withReplyThreadConversation(
                 parentChannelId = parentChannelId,
@@ -1680,13 +1683,14 @@ class RealConversationRepository private constructor(
                     emptyWhen = { it.messages.isEmpty() },
                     source = source,
                     mapper = { bodyText ->
-                        val payload = parseSharedChannelMessages(bodyText, threadId, warningLogger)
+                        val payload = parseSharedChannelMessages(bodyText, threadId, warningLogger).requireReadable(source)
                         // Latest and older pages only (no `after` cursor): what the Free window hides.
                         RaftHiddenHistoryStore.record(threadId.value, payload.historyLimited, payload.hiddenHistory)
                         buildSharedThreadSnapshot(
                             payload = payload,
                             threadId = threadId,
-                            canLoadMoreBefore = payload.messages.size >= messageLimit,
+                            // Server rows, not rows kept: a skipped row must not stop "load older" early.
+                            canLoadMoreBefore = payload.rawMessageCount >= messageLimit,
                             diagnostics = warningLogger,
                         ).let { snapshot ->
                             if (captureRawMessagePage) {

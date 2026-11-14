@@ -160,10 +160,87 @@ internal val strictProjectionDiagnosticsLogger: (String) -> Unit = { message ->
 }
 
 internal val projectionRejectingDiagnosticsLogger: (String) -> Unit = { message ->
-    if (message.startsWith("projection_value_rejected") || message.startsWith("projection_value_unknown")) {
+    if (
+        message.startsWith("projection_value_rejected") ||
+        message.startsWith("projection_value_unknown") ||
+        message.startsWith(RealtimeEventDroppedToken)
+    ) {
         strictProjectionDiagnosticsLogger(message)
     }
 }
+
+/** Prefix of the line a realtime ingress path writes when it drops an event (see [reportRealtimeEventDropped]). */
+internal const val RealtimeEventDroppedToken = "realtime_event_dropped"
+
+/**
+ * The one diagnostic for a server value the app does not know (a new enum value, kind, type...).
+ *
+ * Writes `projection_value_unknown source=… field=… value=… action=…` so the line passes
+ * [projectionRejectingDiagnosticsLogger] and lands in the local diagnostics ring on Android and
+ * iOS (both go through [raftLogWarn]). [fallback] names what the app showed instead (for example
+ * `channel_row`, `notice`); null means the row/event was dropped.
+ *
+ * Use it at every `else -> null` / `?: return null` that drops server data because of an unknown
+ * type: the drop may stay, but it must never be silent.
+ */
+internal fun reportUnknownTypeDropped(
+    source: String,
+    field: String,
+    value: String?,
+    fallback: String? = null,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+) {
+    val action = if (fallback == null) "dropped" else "fallback_${fallback.strictProjectionDiagnosticToken()}"
+    diagnostics(
+        "projection_value_unknown source=${source.strictProjectionDiagnosticToken()} " +
+            "field=${field.strictProjectionDiagnosticToken()} value=${value.strictProjectionDiagnosticToken()} " +
+            "action=$action",
+    )
+}
+
+/**
+ * A list row the app could not read and skipped (the rest of the list still shows). Same token and
+ * filter as [reportUnknownTypeDropped]; [reason] is a short code such as `decode_failed`.
+ */
+internal fun reportProjectionRowDropped(
+    source: String,
+    reason: String,
+    index: Int? = null,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+) {
+    diagnostics(
+        "projection_value_rejected source=${source.strictProjectionDiagnosticToken()} " +
+            "field=row value=${reason.strictProjectionDiagnosticToken()}" +
+            (index?.let { " index=$it" } ?: ""),
+    )
+}
+
+/**
+ * A realtime event the mapper/ingress dropped: `realtime_event_dropped eventName=… reason=…`.
+ * [keys] are the payload's top-level key names (never values) so a missing field can be spotted.
+ */
+internal fun reportRealtimeEventDropped(
+    eventName: String,
+    reason: String,
+    keys: Collection<String> = emptyList(),
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+) {
+    val keyList = keys.take(24).joinToString(separator = ",") { it.strictProjectionDiagnosticToken() }
+    diagnostics(
+        "$RealtimeEventDroppedToken eventName=${eventName.realtimeEventNameToken()} " +
+            "reason=${reason.strictProjectionDiagnosticToken()}" +
+            (if (keyList.isEmpty()) "" else " keys=$keyList"),
+    )
+}
+
+private fun String.realtimeEventNameToken(): String =
+    trim()
+        .take(64)
+        .map { character ->
+            if (character.isLetterOrDigit() || character in "_-:.") character else '_'
+        }
+        .joinToString(separator = "")
+        .ifBlank { "blank" }
 
 private fun String?.strictProjectionDiagnosticToken(): String {
     val clean =

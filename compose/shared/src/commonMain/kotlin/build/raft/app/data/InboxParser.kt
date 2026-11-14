@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.MemberKindWireContract
 import build.raft.app.parseConversationKindOrNull
 import build.raft.app.strictMemberKindOrNull
@@ -330,7 +331,16 @@ private fun WireInboxItem.toDomain(diagnostics: (String) -> Unit): InboxItem? = 
     "channel", "dm" -> toChannelOrDmDomain(diagnostics)
     "thread" -> toThreadDomain(diagnostics)
     "task" -> toTaskConversationDomain(diagnostics)
-    else -> null
+    // An inbox kind a newer server added (the task-row incident's class): show it as a generic
+    // channel row that opens its channel, rather than dropping it while the totals still count it.
+    else ->
+        if (channelId.isNullOrBlank()) {
+            reportUnknownTypeDropped("inbox", "inbox_kind", kind, diagnostics = diagnostics)
+            null
+        } else {
+            reportUnknownTypeDropped("inbox", "inbox_kind", kind, fallback = "channel_row", diagnostics = diagnostics)
+            copy(kind = "channel").toChannelOrDmDomain(diagnostics)
+        }
 }
 
 /**
@@ -591,7 +601,7 @@ fun parseSharedSavedMessageStatus(bodyText: String): SavedMessageStatusSnapshot?
 
 private fun WireSavedEntry.toInboxItem(diagnostics: (String) -> Unit): InboxItem? {
     val conversationKind = parseConversationKindOrNull(channelType)
-    val itemKind = conversationKind.toInboxItemKind() ?: return null
+    val itemKind = conversationKind.toInboxItemKind(source = "saved", rawChannelType = channelType, diagnostics = diagnostics)
     val key = "saved:$messageId"
     val item = InboxItem(
         key = key,
@@ -722,7 +732,7 @@ private const val SearchTooBroadWireValue = "too_broad"
 
 private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxItem? {
     val conversationKind = parseConversationKindOrNull(channelType)
-    val itemKind = conversationKind.toInboxItemKind() ?: return null
+    val itemKind = conversationKind.toInboxItemKind(source = "search", rawChannelType = channelType, diagnostics = diagnostics)
     val key = when (itemKind) {
         InboxItemKind.DirectMessage -> "dm:$channelId:$id"
         InboxItemKind.Thread -> "thread:$channelId:$id"
@@ -789,7 +799,16 @@ private fun InboxItem.asTaskConversationHit(taskId: String?, taskNumber: Int?, t
     )
 }
 
-private fun ConversationKind?.toInboxItemKind(): InboxItemKind? =
+/**
+ * Total on purpose: a saved message / search hit whose `channelType` the app does not know (a type
+ * a newer server added, as `task` once was) renders as a generic channel row that opens its
+ * `channelId` with the raw `channelType` kept, instead of vanishing. The fallback is logged.
+ */
+internal fun ConversationKind?.toInboxItemKind(
+    source: String,
+    rawChannelType: String?,
+    diagnostics: (String) -> Unit,
+): InboxItemKind =
     when (this) {
         ConversationKind.DirectMessage -> InboxItemKind.DirectMessage
         // Task v2: a task conversation is a sub-conversation like a thread (see asTaskConversationHit).
@@ -799,5 +818,8 @@ private fun ConversationKind?.toInboxItemKind(): InboxItemKind? =
         ConversationKind.Joint -> InboxItemKind.Channel
         ConversationKind.System,
         ConversationKind.Inbox,
-        null -> null
+        null -> {
+            reportUnknownTypeDropped(source, "channel_type", rawChannelType, fallback = "channel_row", diagnostics = diagnostics)
+            InboxItemKind.Channel
+        }
     }

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.reportUnknownTypeDropped
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -318,7 +319,11 @@ private fun parseSyncChange(element: JsonObject): ParsedSyncChange {
                 }
             )
         "scope" -> ParsedSyncChange.Known(parseScopeChange(element, seq, id, op))
-        else -> ParsedSyncChange.UnknownEntity
+        else -> {
+            // Skipped on purpose (the log moves on), but never silently.
+            reportUnknownTypeDropped("sync_changes", "entity", entity)
+            ParsedSyncChange.UnknownEntity
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import kotlinx.serialization.Serializable
@@ -137,7 +138,9 @@ private val channelAnnouncementJson = Json {
 data class ChannelAnnouncementRead(val announcement: RaftChannelAnnouncement?)
 
 private fun ChannelAnnouncementForPersonWireDto.toDomainOrNull(): RaftChannelAnnouncement? {
-    val actorType = RaftChannelAnnouncementActorType.fromWire(updatedBy.type) ?: return null
+    val actorType =
+        RaftChannelAnnouncementActorType.fromWire(updatedBy.type)
+            ?: run { reportUnknownTypeDropped("channel_announcement", "updated_by_type", updatedBy.type); return null }
     if (artifactId.isBlank() || version < 1) return null
     return RaftChannelAnnouncement(
         artifactId = artifactId,
@@ -293,10 +296,14 @@ private fun JsonElement?.stringOrNull(): String? = (this as? JsonPrimitive)?.tak
 fun readChannelAnnouncementNotice(actionMetadata: JsonElement?): ChannelAnnouncementNotice? {
     val metadata = actionMetadata as? JsonObject ?: return null
     if (metadata["kind"].stringOrNull() != CHANNEL_ANNOUNCEMENT_NOTICE_KIND) return null
-    val change = ChannelAnnouncementChangeKind.fromWire(metadata["change"].stringOrNull()) ?: return null
+    val change =
+        ChannelAnnouncementChangeKind.fromWire(metadata["change"].stringOrNull())
+            ?: run { reportUnknownTypeDropped("channel_announcement_notice", "change", metadata["change"].stringOrNull()); return null }
     val artifactId = metadata["artifactId"].stringOrNull()?.takeIf { it.isNotEmpty() } ?: return null
     val actor = metadata["actor"] as? JsonObject ?: return null
-    val actorType = RaftChannelAnnouncementActorType.fromWire(actor["type"].stringOrNull()) ?: return null
+    val actorType =
+        RaftChannelAnnouncementActorType.fromWire(actor["type"].stringOrNull())
+            ?: run { reportUnknownTypeDropped("channel_announcement_notice", "actor_type", actor["type"].stringOrNull()); return null }
     val actorId = actor["id"].stringOrNull() ?: return null
     return ChannelAnnouncementNotice(
         change = change,

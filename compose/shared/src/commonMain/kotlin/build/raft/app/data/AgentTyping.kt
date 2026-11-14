@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.model.AgentTypingPhase
 import build.raft.app.model.AgentTypingUpdated
 import build.raft.app.model.ChannelId
@@ -67,7 +68,10 @@ internal fun AgentTypingWire.toAgentTypingUpdated(): AgentTypingUpdated? {
         when (state) {
             "start" -> AgentTypingPhase.Start
             "end" -> AgentTypingPhase.End
-            else -> return null
+            else -> {
+                reportUnknownTypeDropped("realtime_agent_typing", "state", state)
+                return null
+            }
         }
     return AgentTypingUpdated(
         agentId = MemberId(agent),

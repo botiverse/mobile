@@ -1693,14 +1693,54 @@ class RealtimeEventMapperTest {
     }
 
     @Test
-    fun notificationPushUnknownKindIsDropped() {
+    fun notificationPushUnknownKindBecomesAGenericNotice() {
+        val logs = mutableListOf<String>()
         val event =
-            RealtimeEventMapper().map(
+            RealtimeEventMapper(diagnosticsLogger = logs::add).map(
                 RealtimeSocketEvents.NotificationPush,
-                """{ "serverId": "server-1", "kind": "carrier-pigeon", "channelId": "c-1", "messageId": "m-1" }"""
+                """{ "serverId": "server-1", "kind": "carrier-pigeon", "channelId": "c-1", "messageId": "m-1", "title": "T", "body": "B" }"""
+            )
+
+        // Not dropped: a generic notice (opens Activity), and the unknown kind is logged.
+        val notice = assertIs<build.raft.app.model.NotificationNoticeReceived>(event)
+        assertEquals("server-1", notice.serverId.value)
+        assertEquals("message", notice.category)
+        assertEquals("message:server-1:m-1", notice.groupKey)
+        assertEquals("T", notice.title)
+        assertTrue(
+            logs.contains(
+                "projection_value_unknown source=notification_push field=kind value=carrier-pigeon action=fallback_notice",
+            ),
+            "logs=$logs",
+        )
+    }
+
+    @Test
+    fun notificationPushKnownKindWithoutTargetIsDroppedAndLogged() {
+        val logs = mutableListOf<String>()
+        val event =
+            RealtimeEventMapper(diagnosticsLogger = logs::add).map(
+                RealtimeSocketEvents.NotificationPush,
+                """{ "serverId": "server-1", "kind": "channel", "messageId": "m-1" }"""
             )
 
         assertNull(event)
+        assertTrue(logs.any { it.startsWith("realtime_event_dropped eventName=notification:push reason=unmapped") }, "logs=$logs")
+    }
+
+    @Test
+    fun realtimeDecodeFailureIsLoggedWithEventNameAndKeysOnly() {
+        val logs = mutableListOf<String>()
+        // `serverId` is required by the push DTO: the frame fails to decode.
+        val event =
+            RealtimeEventMapper(diagnosticsLogger = logs::add).map(
+                RealtimeSocketEvents.NotificationPush,
+                """{ "kind": "channel", "messageId": "secret-message-id" }"""
+            )
+
+        assertNull(event)
+        val line = logs.single { it.startsWith("realtime_event_dropped") }
+        assertEquals("realtime_event_dropped eventName=notification:push reason=decode keys=kind,messageid", line)
     }
 
     @Test

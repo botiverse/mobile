@@ -139,6 +139,26 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
   app consumes `:shared` as a direct project dependency, so no MavenLocal publish step
   is needed for normal app validation.
 
+## No silent drops of server data
+
+- A server value the app does not know (a new enum value, kind or type) never disappears
+  without a trace. User content (rows, messages, notices) falls back to a generic
+  presentation where one exists, such as a generic channel row or a generic notice. Where
+  nothing can be shown, the drop is explicit. Either way, call
+  `reportUnknownTypeDropped(source, field, value, fallback = …)` from
+  `StrictProjectionParsers.kt`. It writes a `projection_value_unknown` line that reaches the
+  local diagnostics ring on Android and iOS.
+- Lists decode row by row: an unreadable row is skipped and logged
+  (`reportProjectionRowDropped`). If the server sent rows and none of them decode, the
+  result is an error state, not "no messages" or an empty list. Paging compares the raw
+  server row count with the limit, never the number of rows kept.
+- When the realtime mapper or the process ingress drops an event, it logs
+  `realtime_event_dropped eventName=… reason=… keys=…`. Keys only, never values.
+- `ServerEnumContractTest` checks every value slock can send for each mapped domain. The
+  values come from a pinned fixture,
+  `compose/shared/src/commonTest/resources/contract-cases/server-enums/`. Refresh it with
+  `scripts/refresh_server_enum_fixture.py`; the README next to the fixture explains how.
+
 ## Errors carry the trace ID
 
 Owner rule (artin, 2026-11-03: "有报错的地方必定要有 traceid"): every

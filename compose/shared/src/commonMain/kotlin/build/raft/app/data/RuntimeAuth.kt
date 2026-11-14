@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.model.RuntimeAuthAccountLabel
 import build.raft.app.model.RuntimeAuthLoginOutcome
 import build.raft.app.model.RuntimeAuthLoginStep
@@ -231,7 +232,12 @@ internal fun JsonElement.toRuntimeAuthView(): RuntimeAuthView? {
     val reported = ((envelope["status"] as? JsonObject)?.get("runtimes") as? JsonObject).orEmpty()
     val status =
         reported.mapNotNull { (key, value) ->
-            val runtime = RuntimeAuthRuntime.fromWire(key) ?: return@mapNotNull null
+            val runtime =
+                RuntimeAuthRuntime.fromWire(key)
+                    ?: run {
+                        reportUnknownTypeDropped("runtime_auth_status", "runtime", key)
+                        return@mapNotNull null
+                    }
             value.toRuntimeAuthStatus()?.let { runtime to it }
         }.toMap()
     return RuntimeAuthView(
@@ -261,7 +267,10 @@ internal fun JsonElement.toRuntimeAuthStatus(): RuntimeAuthStatus? {
         "logged_out" -> RuntimeAuthStatus.LoggedOut
         "unknown" -> RuntimeAuthStatus.Unknown
         "unavailable" -> RuntimeAuthUnavailableReason.fromWire(obj.plainString("reason"))?.let(RuntimeAuthStatus::Unavailable)
-        else -> null
+        else -> {
+            reportUnknownTypeDropped("runtime_auth_status", "status_kind", obj.plainString("kind"))
+            null
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.reportProjectionRowDropped
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.MemberKindWireContract
 import build.raft.app.strictMemberKindOrNull
@@ -19,6 +20,7 @@ import build.raft.app.model.ThreadId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 
 /**
  * Canonical Slock home parser.
@@ -375,9 +377,19 @@ fun parseSharedDirectMessageSnapshot(
     server: ServerSummary,
     warningLogger: (String) -> Unit = {},
 ): DirectMessageSnapshot? = runCatching {
+    // Per row: one DM row the client can't read is skipped and logged, not the whole list. Only
+    // when rows came and none decoded is the list an error (null).
+    val rows = homeJson.parseToJsonElement(bodyText) as? JsonArray ?: return@runCatching null
+    val decoded =
+        rows.mapIndexedNotNull { index, row ->
+            runCatching { homeJson.decodeFromJsonElement(HomeDirectMessageWireDto.serializer(), row) }
+                .getOrNull()
+                .also { if (it == null) reportProjectionRowDropped("home_direct_messages", "decode_failed", index) }
+        }
+    if (rows.isNotEmpty() && decoded.isEmpty()) return@runCatching null
     DirectMessageSnapshot(
         server = server,
-        directMessages = homeJson.decodeFromString(ListSerializer(HomeDirectMessageWireDto.serializer()), bodyText)
+        directMessages = decoded
             .map { it.toDirectMessageRow(warningLogger) }
             .dedupeHomeDirectMessages(),
     )

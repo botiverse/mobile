@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.reportUnknownTypeDropped
+import build.raft.app.reportProjectionRowDropped
 import build.raft.app.model.ServerId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -332,8 +334,15 @@ internal fun artifactDeletedShownOrNull(answer: JsonElement?): ArtifactDeletedSh
     return ArtifactDeletedShown(title = title, deletedBy = deletedBy, deletedAt = deletedAt)
 }
 
-private fun JsonElement.toArtifactSummaryOrNull(): ArtifactSummary? =
-    runCatching { artifactSummariesJson.decodeFromJsonElement(ArtifactCardWireDto.serializer(), this) }.getOrNull()?.toArtifactSummaryOrNull()
+private fun JsonElement.toArtifactSummaryOrNull(): ArtifactSummary? {
+    val card =
+        runCatching { artifactSummariesJson.decodeFromJsonElement(ArtifactCardWireDto.serializer(), this) }.getOrNull()
+            ?: run {
+                reportProjectionRowDropped("artifact_summary", "decode_failed")
+                return null
+            }
+    return card.toArtifactSummaryOrNull()
+}
 
 /** The card as this client shows it; null for a home it can't read. */
 internal fun ArtifactCardWireDto.toArtifactSummaryOrNull(): ArtifactSummary? {
@@ -348,10 +357,16 @@ internal fun ArtifactCardWireDto.toArtifactSummaryOrNull(): ArtifactSummary? {
                         private = it.type == "private",
                         peerDisplayName = it.peerDisplayName?.takeIf { peer -> peer.isNotBlank() },
                     )
-                } ?: return null
+                } ?: run {
+                    reportProjectionRowDropped("artifact_summary", "conversation_home_missing")
+                    return null
+                }
             "server" -> ArtifactHome.Server
             "public" -> ArtifactHome.Public
-            else -> return null
+            else -> {
+                reportUnknownTypeDropped("artifact_summary", "home_kind", card.home.kind)
+                return null
+            }
         }
     val excerpt = card.preview?.takeIf { it.kind == "excerpt" }?.text?.takeIf { it.isNotBlank() }
     val description = card.description?.takeIf { it.isNotBlank() }
