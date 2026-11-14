@@ -5403,6 +5403,8 @@ private fun RaftAppShellReadyContent(
 
                 override fun topPageRoute(): ThreadRouteIdentity? = latestNavigationTopPageRoute()
 
+                override suspend fun closeIncomingNavigationCover(): Boolean = foregroundBannerStore.incomingNavigation.closeAll()
+
                 override suspend fun perform(action: WindowNavigationAction) = latestNavigationPerform(action)
 
                 override fun log(message: String) = bridge.log(message)
@@ -8300,6 +8302,7 @@ private fun RaftAppShellReadyContent(
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         // Task v2: a task opened without a page of its own (its empty conversation, a legacy panel).
                         val tasksOpenSurfaceFlow = remember { TaskOpenSurfaceFlow() }
+                        TaskOpenSurfaceIncomingNavigationEffect(tasksOpenSurfaceFlow, foregroundBannerStore.incomingNavigation)
                         val tasksOpenGate = remember { TaskOpenGate() }
                         val latestTasksOpenServerId by rememberUpdatedState(readyServerId)
                         val tasksSendFailedLabel = stringResource(Res.string.task_conversation_send_failed)
