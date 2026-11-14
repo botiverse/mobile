@@ -199,6 +199,39 @@ internal fun processPresenceBindingTransition(
     registry: ProcessMemberPresenceRegistry,
     onBindingRetired: (ProcessPresenceAuthContext) -> Unit = {},
     onBindingBound: (ProcessPresenceAuthContext) -> Unit = {},
+    onBindingAuthRevisionRotated: (retired: ProcessPresenceAuthContext, bound: ProcessPresenceAuthContext) -> Unit =
+        { retired, _ -> onBindingRetired(retired) },
+    currentEnvironmentId: () -> String,
+): (RealtimeAuthRevision) -> Unit {
+    val transition =
+        processAccountBindingTransition(
+            presenceAuthContext = presenceAuthContext,
+            accountBinding = MutableStateFlow<RaftAccountBinding<ProcessPresenceAuthContext>>(RaftAccountBinding.Unknown),
+            registry = registry,
+            onBindingRetired = onBindingRetired,
+            onBindingBound = onBindingBound,
+            onBindingAuthRevisionRotated = onBindingAuthRevisionRotated,
+            currentEnvironmentId = currentEnvironmentId,
+        )
+    // The session read only matters for a revision without a session; without one, that revision
+    // is taken as signed out (the behaviour before the typed binding).
+    return { revision -> transition(revision, RaftAuthSessionState.SignedOut) }
+}
+
+/**
+ * [processPresenceBindingTransition] with the session read the revision was advanced from
+ * ([RaftAuthSessionState]), which also publishes the typed [accountBinding]
+ * (Unknown -> SignedIn / SignedOut / Corrupt). Only a read that found no session retires the bound
+ * account ([onBindingRetired]: pending sends cleared); a [RaftAuthSessionState.Corrupt] read keeps
+ * whatever is bound (the authority provider holds the revision in that case, so this is
+ * defence in depth) and, with nothing bound, publishes Corrupt instead of SignedOut.
+ */
+internal fun processAccountBindingTransition(
+    presenceAuthContext: MutableStateFlow<ProcessPresenceAuthContext?>,
+    accountBinding: MutableStateFlow<RaftAccountBinding<ProcessPresenceAuthContext>>,
+    registry: ProcessMemberPresenceRegistry,
+    onBindingRetired: (ProcessPresenceAuthContext) -> Unit = {},
+    onBindingBound: (ProcessPresenceAuthContext) -> Unit = {},
     /**
      * Same-binding auth revision rotation (transparent token refresh): the binding identity
      * (environment + principal) is unchanged, only the authority generation advanced. Defaults
@@ -210,14 +243,18 @@ internal fun processPresenceBindingTransition(
     onBindingAuthRevisionRotated: (retired: ProcessPresenceAuthContext, bound: ProcessPresenceAuthContext) -> Unit =
         { retired, _ -> onBindingRetired(retired) },
     currentEnvironmentId: () -> String,
-): (RealtimeAuthRevision) -> Unit = { revision ->
+): (RealtimeAuthRevision, RaftAuthSessionState) -> Unit = { revision, sessionState ->
     val principal = revision.session?.principalId?.trim()?.takeIf { it.isNotBlank() }
     val environmentId = currentEnvironmentId()
     val previous = presenceAuthContext.value
-    if (principal == null || environmentId.isBlank()) {
+    if (principal == null && sessionState is RaftAuthSessionState.Corrupt) {
+        // Unreadable, not signed out: never retire (pending sends, drafts and caches stay).
+        if (previous == null) accountBinding.value = RaftAccountBinding.Corrupt(sessionState.errorType)
+    } else if (principal == null || environmentId.isBlank()) {
         previous?.let(onBindingRetired)
         presenceAuthContext.value = null
         registry.clearAll(reason = "authority_session_cleared")
+        accountBinding.value = RaftAccountBinding.SignedOut
     } else if (
         previous != null &&
         previous.accountId == principal &&
@@ -232,6 +269,7 @@ internal fun processPresenceBindingTransition(
             onBindingAuthRevisionRotated(previous, bound)
         }
         presenceAuthContext.value = bound
+        accountBinding.value = RaftAccountBinding.SignedIn(bound)
         onBindingBound(bound)
     } else {
         previous?.let(onBindingRetired)
@@ -244,6 +282,7 @@ internal fun processPresenceBindingTransition(
                 writeGeneration = writeGeneration
             )
         presenceAuthContext.value = bound
+        accountBinding.value = RaftAccountBinding.SignedIn(bound)
         onBindingBound(bound)
     }
 }

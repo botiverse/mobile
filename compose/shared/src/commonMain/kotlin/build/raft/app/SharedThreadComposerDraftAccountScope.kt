@@ -1,8 +1,12 @@
 package build.raft.app
 
+import build.raft.app.data.RaftAccountBinding
+import build.raft.app.data.RaftAuthSessionState
+import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedPreferenceStore
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
 
 /**
  * The signed-in account a composer draft belongs to: the server environment (API base URL)
@@ -248,7 +252,27 @@ internal class SharedThreadComposerDraftAccounts(
     private var lastBound: SharedThreadComposerDraftAccount? = null
 
     /**
-     * The auth binding is now [account] (null = signed out).  Called in order by the binding
+     * The production binding follower's entry.  [RaftAccountBinding.Unknown] (cold start, before
+     * the stored session is read) and [RaftAccountBinding.Corrupt] (the stored session cannot be
+     * decoded) are not sign-outs: nothing is deleted and nothing is rebound; reads and writes fail
+     * closed through the live account until an account is bound.  (Treating the initial binding as
+     * a sign-out wiped every draft on each cold start, #4762.)
+     */
+    fun onAccountBinding(
+        binding: RaftAccountBinding<SharedThreadComposerDraftAccount>,
+        slice: SharedThreadComposerDraftPersistSlice
+    ) {
+        when (binding) {
+            RaftAccountBinding.Unknown -> Unit
+            is RaftAccountBinding.Corrupt ->
+                safeDiagnostics("thread_composer_draft_account_binding_unknown reason=corrupt drafts=kept")
+            RaftAccountBinding.SignedOut -> onAccountBinding(account = null, slice = slice)
+            is RaftAccountBinding.SignedIn -> onAccountBinding(account = binding.account, slice = slice)
+        }
+    }
+
+    /**
+     * The auth binding is now [account] (null = explicitly signed out).  Called in order by the binding
      * follower.  A change drops the previous account's in-memory drafts through [slice] and
      * deletes its stored ones; any other account's leftover rows go too.
      */
@@ -260,11 +284,10 @@ internal class SharedThreadComposerDraftAccounts(
         // Drafts' GET /channels/:id answers are this account's too: another account (or none) starts empty.
         SharedRaftDraftPlaceLookups.bindAccount(account?.storageToken)
         if (previous == null && account == null) {
-            // Nobody has been bound in this process yet.  This is the binding's initial value at
-            // cold start, before the stored session is restored: it is "not known yet", not a
-            // sign-out, so the stored drafts stay.  (Deleting here wiped every draft on each cold
-            // start.)  Rows left by a session that really ended are deleted by
-            // [onNoStoredSessionAtStart], or when another account is bound.
+            // Signed out with nobody bound in this process: nothing of this process to retire.
+            // ("Not known yet" never gets here: it is RaftAccountBinding.Unknown.)  Rows left by a
+            // session that really ended are deleted by [onNoStoredSessionAtStart], or when another
+            // account is bound.
             store.rebind(null)
             return
         }
@@ -281,6 +304,35 @@ internal class SharedThreadComposerDraftAccounts(
         (store.owners() + listOfNotNull(previous?.storageToken))
             .filter { token -> token != keep }
             .forEach(::deleteOwner)
+    }
+
+    /**
+     * Process start: reads the stored session once.  Only a read that found no session runs
+     * [onNoStoredSessionAtStart].  A record this build cannot decode, or a read that failed, is not
+     * a sign-out: every draft stays (the user is asked to sign in again and finds them).
+     */
+    suspend fun onStoredSessionReadAtStart(authStore: RaftAuthSessionStore) {
+        val state =
+            try {
+                authStore.readSessionState()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                safeDiagnostics(
+                    "thread_composer_draft_start_session_unknown reason=read_failed " +
+                        "error=${error::class.simpleName.orEmpty()} drafts=kept"
+                )
+                return
+            }
+        when (state) {
+            RaftAuthSessionState.SignedOut -> onNoStoredSessionAtStart()
+            is RaftAuthSessionState.Corrupt ->
+                safeDiagnostics(
+                    "thread_composer_draft_start_session_unknown reason=corrupt " +
+                        "error=${state.errorType} drafts=kept"
+                )
+            is RaftAuthSessionState.SignedIn -> Unit
+        }
     }
 
     /**

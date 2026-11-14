@@ -406,6 +406,16 @@ class SharedServerFeatureFlags(
         return synchronized(stateLock) { serverId.value !in settledWithoutSnapshot }
     }
 
+    /**
+     * The (environment, account) the last-known values are read for changed, e.g. the binding became
+     * known after the first frames of a cold start.
+     */
+    fun onLastKnownBindingChanged() {
+        // Readers keyed on snapshotRevision (the server setup gate) re-read isEnabled, which now
+        // finds the stored value for the bound account.
+        if (lastKnown != null) snapshotRevisionState.value += 1
+    }
+
     private fun markAttemptSettledWithoutSnapshot(serverId: ServerId) {
         val changed =
             synchronized(stateLock) {
