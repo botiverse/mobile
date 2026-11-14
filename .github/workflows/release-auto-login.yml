@@ -6,9 +6,6 @@ name: Android Release Auto Login
 # Other emulator workflows can copy the two steps "Build the QA capture browser" and "Sign in".
 
 on:
-  # TEMP(dev): workflow_dispatch needs the file on main; iterate via push. Remove before merge.
-  push:
-    branches: [agent/lagoon/release-auto-login]
   workflow_dispatch:
     inputs:
       environment:
@@ -60,9 +57,8 @@ jobs:
       - id: p
         env:
           ENVIRONMENT: ${{ inputs.environment || 'staging' }}
-          # TEMP-DEV-FIXTURE: release APK pair from android-update-qa run 43586035527 (expires 2026-11-28).
-          APK_RUN_ID: ${{ inputs.apk_run_id || (github.event_name == 'push' && '43586035527' || '') }}
-          APK_ARTIFACT: ${{ inputs.apk_artifact || (github.event_name == 'push' && 'android-update-qa-a-apk' || 'android-release-apk') }}
+          APK_RUN_ID: ${{ inputs.apk_run_id }}
+          APK_ARTIFACT: ${{ inputs.apk_artifact || 'android-release-apk' }}
         run: |
           set -euo pipefail
           case "${ENVIRONMENT}" in staging|production) ;; *) echo "::error::environment must be staging or production"; exit 1;; esac

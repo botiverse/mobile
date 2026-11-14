@@ -457,7 +457,10 @@ async function main() {
         const home = find(list, (n) => n.pkg === PKG && n.text === "Drafts");
         const chooser = find(list, (n) => n.pkg === PKG && n.text.startsWith("Signed in as "));
         if (inApp && !signInVisible && (home || chooser || complete)) {
-          return { exchange: complete ? "app_shell" : "not logged", screen: home ? "home" : chooser ? "choose_server" : "other" };
+          if (!complete) await sleep(3000); // logcat reaches the file a moment after the screen
+          const logged = /app_login_complete result=(\S+)/.exec(fs.existsSync(logcatFile) ? fs.readFileSync(logcatFile, "utf8") : "")?.[1];
+          if (logged && logged !== "app_shell") stop(`the app refused the callback: result=${logged}`);
+          return { exchange: logged ?? "not logged", screen: home ? "home" : chooser ? "choose_server" : "other" };
         }
         if (!inApp) launchApp();
         lastLabels = list.map(label).filter(Boolean).slice(0, 30).join(" | ");

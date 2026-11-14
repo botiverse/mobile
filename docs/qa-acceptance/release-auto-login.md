@@ -23,7 +23,8 @@ to reuse a release APK instead of building one. Other emulator workflows can cop
    `androidExternalBrowserIntent`, so App Links cannot route it back to Raft).
 3. **Capture.** The default browser on the emulator is the **QA capture browser**
    (`scripts/qa/capture-browser`, package `build.qa.capturebrowser`): a ~50-line activity that holds
-   the browser role, writes the URL it is asked to open to its private `files/captured_url` and closes.
+   the browser role (`cmd role add-role-holder`; if the image refuses, the other browsers are disabled
+   for the run and re-enabled in cleanup), writes the URL it is asked to open to its private `files/captured_url` and closes.
    The script reads it with `adb shell run-as build.qa.capturebrowser cat …` (the stub is debuggable;
    the app is not) and deletes it at once. The stub is built in CI by `build.sh` from the SDK's own
    `aapt2`/`javac`/`d8`/`apksigner` with a throwaway key; it is not a Gradle module and never ships.
@@ -36,7 +37,7 @@ to reuse a release APK instead of building one. Other emulator workflows can cop
    (explicit package), as a browser redirect would. The app checks the request id against its pending
    request and exchanges code + its own verifier (`POST /api/auth/app-login/complete`).
 6. **Verify.** Signed in = the app's `SlockAppLogin` line `app_login_complete result=app_shell` and/or
-   Home ("Drafts") on screen, with no "Sign in to Raft". Any other `app_login_complete` result fails
+   Home ("Drafts") or "Choose server … Signed in as …" on screen, with no "Sign in to Raft". Any other `app_login_complete` result fails
    the run.
 7. **Clean up (always).** The script signs its own web session out (`POST /api/auth/logout`, what the
    web's Sign out sends; the app's session is separate), deletes the capture file, gives the browser
@@ -50,7 +51,7 @@ to reuse a release APK instead of building one. Other emulator workflows can cop
 | No server check is bypassed | Only the endpoints the web page calls, with the same bodies and a bearer token; there is no CSRF token or captcha on these routes (the web client uses bearer tokens, not cookies). Two-step verification (`secondFactorRequired`, or `second_factor_step_up_required` on approve) and HTTP 429 from the auth rate limiter **stop the run**; nothing is retried in a loop. |
 | PKCE and state stay bound to this app session | The script never builds an authorize URL: it only reads the one the app opened. The verifier never leaves the app. The captured URL must be `https://<expected web host>/login/app` with exactly one `request`; the approval's redirect must be `<app scheme>://login/callback` with exactly `requestId` + `code` and the **same** `requestId` (the flow's state), else the run stops before anything reaches the app. |
 | Code / callback only to this app, never logged | Explicit-package `am start`, sent on adb's stdin (not the host command line) with its output discarded. Email, password, tokens, request id, code and callback URL are masked in every log line, the summary and the logcat excerpt; no screenshot is taken while the code exists outside the app. |
-| Cleanup on exit | `finally`: web session signed out, capture file removed, browser role restored, capture browser uninstalled (unless `--keep-capture-browser`). Recorded under `cleanup` in `summary.json`. |
+| Cleanup on exit | `finally`: web session signed out, capture file removed, browser role restored / disabled browsers re-enabled, capture browser uninstalled (unless `--keep-capture-browser`). Recorded under `cleanup` in `summary.json`. |
 
 ## Running it
 
@@ -79,7 +80,9 @@ Evidence (`release-auto-login-evidence`): `summary.json`, a screenshot + UI dump
 - The capture browser takes the browser role for the run; on a shared device another test that opens
   links in that window sees them swallowed.
 - UI steps match English labels ("Sign in to Raft", "Sign in to a self-hosted server", "Save",
-  "Drafts"); the emulator image is English.
+  "Drafts", "Signed in as"); the emulator image is English.
+- An account on several servers stops at "Choose server" (signed in, no server picked); the script does
+  not pick one.
 - Staging is reached through the self-hosted sheet (environment `custom` with the staging addresses),
   the path a release build offers; the internal API environment editor is not used.
 
