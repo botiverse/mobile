@@ -422,6 +422,13 @@ class SharedAppLinkPreviewStore internal constructor(
         return parseAppLinkExecuteAnswer(response.code, response.bodyText ?: response.errorBodyText)
     }
 
+    /** Reads an operation's receipt (a `link_card.operation_changed` hint named it). */
+    suspend fun operationStatus(serverId: String, operationId: String): AppLinkOperationStatus {
+        val response = callOrNull("app_link_card_status_error") { api.readLinkCardStatus(serverId, AppLinkStatusRequestBody(operationId)) }
+            ?: return AppLinkOperationStatus.Open
+        return parseAppLinkStatusAnswer(response.code, response.bodyText ?: response.errorBodyText)
+    }
+
     /**
      * Reads one link of a message again (after a button was pressed, or its card went stale): the
      * batched read of [batch]'s view for [url] alone, which sends back the view's ticket. Its answer

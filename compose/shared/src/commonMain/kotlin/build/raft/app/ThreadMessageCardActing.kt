@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import build.raft.app.data.RaftLinkCardOperationHints
 import build.raft.app.data.SharedAppLinkPreviewStore
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftSheet
@@ -183,6 +184,8 @@ internal fun rememberThreadMessageCardActingHost(messageId: String?, card: RaftM
                 reread = { _ -> host.store.readMessageCard(host.viewerKey, host.serverId, messageId, view, locale, force = true) },
                 toast = host.toast,
                 toastWithIntent = host.toastWithIntent,
+                status = { operationId -> host.store.operationStatus(host.serverId, operationId) },
+                operationHints = RaftLinkCardOperationHints.forServer(host.serverId),
             )
         }
     return ThreadMessageCardActingHost(host, live, actions, status)

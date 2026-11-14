@@ -143,6 +143,7 @@ def generate_kotlin(contract):
         "notificationPush": "NotificationPush",
         "notificationRetract": "NotificationRetract",
         "jointInvitesChanged": "JointInvitesChanged",
+        "linkCardOperationChanged": "LinkCardOperationChanged",
     }
     require_exact_socket_names(contract, socket_names, "Kotlin")
     require_server_wire_events(contract)
@@ -290,6 +291,7 @@ def generate_swift(contract):
         "notificationPush": "notificationPush",
         "notificationRetract": "notificationRetract",
         "jointInvitesChanged": "jointInvitesChanged",
+        "linkCardOperationChanged": "linkCardOperationChanged",
     }
     require_exact_socket_names(contract, socket_names, "Swift")
     require_server_wire_events(contract)

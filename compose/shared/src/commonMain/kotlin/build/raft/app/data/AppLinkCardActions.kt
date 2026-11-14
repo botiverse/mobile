@@ -16,6 +16,9 @@ import kotlinx.serialization.json.JsonObject
  *    Raft's confirmation shows the description.
  *  - `POST /api/link-cards/execute` `{ client_request_id, handle, prepared_action_id?, prepared_digest? }`
  *    answers `{ operation_id, state, toast? }`; the card is read again afterwards.
+ *  - `POST /api/link-cards/status` `{ operation_id }` answers the receipt
+ *    `{ operation_id, state, receipt_revision, hint?, app_result? }` (or `state: "not_visible"`); read
+ *    when a `link_card.operation_changed` hint names an operation a card follows (RFC 076 §6.4, §6.8).
  * The handle is the one the read gave for the button's action id ([AppLinkResult.Card.handles]).
  */
 
@@ -36,6 +39,11 @@ internal data class AppLinkExecuteRequestBody(
     @SerialName("prepared_action_id") val preparedActionId: String? = null,
     @SerialName("prepared_digest") val preparedDigest: String? = null,
 ) {
+    fun toJson(): String = appLinkActionJson.encodeToString(serializer(), this)
+}
+
+@Serializable
+internal data class AppLinkStatusRequestBody(@SerialName("operation_id") val operationId: String) {
     fun toJson(): String = appLinkActionJson.encodeToString(serializer(), this)
 }
 
@@ -77,6 +85,43 @@ data class AppLinkExecuted(
 ) {
     /** The App has not finished: read the card again soon. */
     val isOpen: Boolean get() = state !in AppLinkTerminalStates
+}
+
+/**
+ * What `POST /link-cards/status` came to (web `readStatus`): a [Receipt]; [Closed] when the operation
+ * is no longer this viewer's to follow (404, or `not_visible`: the card is read again under the
+ * viewer's current access); [Open] when the read failed and the next hint may try again.
+ */
+sealed interface AppLinkOperationStatus {
+    /** The receipt at [receiptRevision]: Raft's [hint] for [state] in its [tone], and the App's own words [appToast] when Raft's gates passed. */
+    data class Receipt(
+        val operationId: String,
+        val state: String,
+        val receiptRevision: Long,
+        val hint: String?,
+        val tone: String?,
+        val appToast: String?,
+    ) : AppLinkOperationStatus {
+        val isTerminal: Boolean get() = state in AppLinkTerminalStates
+    }
+
+    data class Closed(val reread: Boolean) : AppLinkOperationStatus
+
+    data object Open : AppLinkOperationStatus
+}
+
+internal fun parseAppLinkStatusAnswer(status: Int, bodyText: String?): AppLinkOperationStatus {
+    if (status == 404) return AppLinkOperationStatus.Closed(reread = false)
+    if (status !in 200..299) return AppLinkOperationStatus.Open
+    val obj = answerObject(bodyText) ?: return AppLinkOperationStatus.Open
+    val operation = obj.string("operation_id") ?: return AppLinkOperationStatus.Open
+    val state = obj.string("state") ?: return AppLinkOperationStatus.Open
+    if (state == "not_visible") return AppLinkOperationStatus.Closed(reread = true)
+    val revision = (obj["receipt_revision"] as? kotlinx.serialization.json.JsonPrimitive)
+        ?.takeIf { !it.isString }?.content?.toLongOrNull()?.takeIf { it >= 0 } ?: return AppLinkOperationStatus.Open
+    val hint = obj["hint"] as? JsonObject
+    val appToast = ((obj["app_result"] as? JsonObject)?.get("toast") as? JsonObject)?.string("text")?.trim()?.takeIf(String::isNotEmpty)
+    return AppLinkOperationStatus.Receipt(operation, state, revision, hint?.string("text"), hint?.string("tone"), appToast)
 }
 
 private val AppLinkTerminalStates = setOf("done", "refused", "failed_not_sent", "resolved_manually")

@@ -6578,6 +6578,8 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         // Never dirties Home (updatesHomeSnapshot is false); named for the diagnostics only.
         is build.raft.app.model.ProductFeedbackUnreadUpdated -> "product_feedback_unread"
         // Never dirties Home (updatesHomeSnapshot is false); named for the diagnostics only.
+        is build.raft.app.model.LinkCardOperationChanged -> "link_card_operation_changed"
+        // Never dirties Home (updatesHomeSnapshot is false); named for the diagnostics only.
         is build.raft.app.model.AgentActivitySubscribed -> "agent_activity_subscribed"
         is build.raft.app.model.ThreadReplyUpdated -> "thread_reply_updated"
         // Never dirty Home (updatesHomeSnapshot is false); named for the diagnostics only.

@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.components.RaftToastIntent
+import build.raft.app.data.RaftLinkCardOperationHints
 import build.raft.app.data.AppLinkConsentAnswer
 import build.raft.app.data.AppLinkConsentStatus
 import build.raft.app.data.AppLinkPromptApp
@@ -252,6 +253,8 @@ internal fun ThreadAppLinkPreviewScope(
                     reread = { url -> host.store.rereadLink(host.viewerKey, host.serverId, messageId, body, batchRead, url) },
                     toast = host.toast,
                     toastWithIntent = host.toastWithIntent,
+                    status = { operationId -> host.store.operationStatus(host.serverId, operationId) },
+                    operationHints = RaftLinkCardOperationHints.forServer(host.serverId),
                 )
             }
         }

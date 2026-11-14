@@ -127,6 +127,7 @@ object GeneratedRealtimeContract {
         const val NotificationPush = "notification:push"
         const val NotificationRetract = "notification:retract"
         const val JointInvitesChanged = "joint-invites:changed"
+        const val LinkCardOperationChanged = "link_card.operation_changed"
 
         val ServerWireEvents: List<String> = listOf(
             MessageNew,
@@ -187,6 +188,7 @@ object GeneratedRealtimeContract {
             NotificationPush,
             NotificationRetract,
             JointInvitesChanged,
+            LinkCardOperationChanged,
         )
     }
 }

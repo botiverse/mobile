@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AppLinkActionResult
 import build.raft.app.data.AppLinkExecuted
+import build.raft.app.data.AppLinkOperationStatus
+import build.raft.app.data.RaftLinkCardOperationHint
 import build.raft.app.data.AppLinkPrepared
 import build.raft.app.data.AppLinkResult
 import build.raft.app.data.RaftLinkCardButtonAction
@@ -32,6 +34,9 @@ import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -49,6 +54,10 @@ internal class ThreadAppLinkCardActionHost(
     val toast: (String) -> Unit,
     /** [toast] with the tone Raft gives an operation's state (web `showToast`); plain where none is wired. */
     val toastWithIntent: (String, RaftToastIntent?) -> Unit = { text, _ -> toast(text) },
+    /** `POST /link-cards/status` for an operation; null where it is not wired (no following). */
+    val status: (suspend (operationId: String) -> AppLinkOperationStatus)? = null,
+    /** This server's `link_card.operation_changed` hints (RFC 076 §6.8); null: none followed. */
+    val operationHints: Flow<RaftLinkCardOperationHint>? = null,
 )
 
 @Composable
@@ -263,11 +272,54 @@ internal class ThreadAppLinkCardPress(
         val text = appToast?.let { appSaysText(card.app.name.trim(), it) } ?: executed.hint
         text?.let { host.toastWithIntent(it, appLinkToastIntent(executed.tone)) }
         host.reread(card.url)
-        // The App may not have finished: the card is read again as the operation would be polled.
+        // The App may not have finished: follow the operation's receipt hints while the card is shown
+        // (a long-running operation), and read the card again as the operation would be polled.
         if (executed.isOpen) {
+            follow(host, executed)
             for (wait in RereadWaitsMs) {
                 delay(wait)
                 host.reread(card.url)
+            }
+        }
+    }
+
+    /**
+     * Follows an open operation as the web does on a receipt hint (`onOperationChanged` →
+     * `readStatus` → `applyReceipt`): a hint newer than the receipt shown reads the status; a new
+     * receipt toasts the App's words (a finished operation's, when Raft's gates passed) or else Raft's
+     * hint for a changed state; a finished operation, or one no longer the viewer's, reads the card
+     * again and ends the following. Lives as long as the card's press (the card on screen).
+     */
+    private fun follow(host: ThreadAppLinkCardActionHost, executed: AppLinkExecuted) {
+        val status = host.status ?: return
+        val hints = host.operationHints ?: return
+        val operationId = executed.operationId
+        var shownRevision = 0L
+        var shownState = executed.state
+        scope.launch {
+            // `first` ends the collection once the operation is finished or no longer followed.
+            hints.filter { it.operationId == operationId }.first { hint ->
+                if (hint.receiptRevision <= shownRevision) return@first false
+                when (val answer = status(operationId)) {
+                    is AppLinkOperationStatus.Receipt -> {
+                        if (answer.receiptRevision > shownRevision) {
+                            val appToast = answer.appToast?.takeIf { answer.isTerminal }
+                            val text =
+                                appToast?.let { appSaysText(card.app.name.trim(), it) }
+                                    ?: answer.hint?.takeIf { answer.state != shownState }
+                            text?.let { host.toastWithIntent(it, appLinkToastIntent(answer.tone)) }
+                            shownRevision = answer.receiptRevision
+                            shownState = answer.state
+                        }
+                        if (answer.isTerminal) host.reread(card.url)
+                        answer.isTerminal
+                    }
+                    is AppLinkOperationStatus.Closed -> {
+                        if (answer.reread) host.reread(card.url)
+                        true
+                    }
+                    AppLinkOperationStatus.Open -> false
+                }
             }
         }
     }

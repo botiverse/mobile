@@ -365,6 +365,8 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is build.raft.app.model.UserProfileUpdated -> false
         // The feedback unread total lights the Settings / Feedback dots (RaftFeedbackUnreadStore); no Home row.
         is build.raft.app.model.ProductFeedbackUnreadUpdated -> false
+        // A link card receipt hint: the card following that operation reads its status; no Home row.
+        is build.raft.app.model.LinkCardOperationChanged -> false
         // Notification levels, account settings and retractions change no Home row; the notification
         // level store and the platform tray handle them.
         is build.raft.app.model.NotificationLevelChanged,

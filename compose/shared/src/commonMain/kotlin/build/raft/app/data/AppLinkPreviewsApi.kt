@@ -324,6 +324,10 @@ internal interface RaftAppLinkPreviewApi {
     suspend fun executeLinkCardAction(serverId: String, body: AppLinkExecuteRequestBody): HomeNetworkResponse =
         throw UnsupportedOperationException("executeLinkCardAction")
 
+    /** `POST link-cards/status` (RFC 076 section 6.4): an operation's receipt. */
+    suspend fun readLinkCardStatus(serverId: String, body: AppLinkStatusRequestBody): HomeNetworkResponse =
+        throw UnsupportedOperationException("readLinkCardStatus")
+
     /** `POST integrations/clients/:clientId/link-preview-consent`. */
     suspend fun allow(appId: String, serverId: String): HomeNetworkResponse
 
@@ -366,6 +370,16 @@ internal class NetworkRaftAppLinkPreviewApi(
         networkClient.request(
             priority = DataRequestPriority.Foreground,
             path = "link-cards/execute",
+            method = "POST",
+            serverIdOverride = ServerId(serverId),
+            bodyText = body.toJson(),
+        )
+
+    override suspend fun readLinkCardStatus(serverId: String, body: AppLinkStatusRequestBody): HomeNetworkResponse =
+        networkClient.request(
+            // A card on screen following its own operation.
+            priority = DataRequestPriority.Visible,
+            path = "link-cards/status",
             method = "POST",
             serverIdOverride = ServerId(serverId),
             bodyText = body.toJson(),
