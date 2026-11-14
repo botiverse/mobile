@@ -37,6 +37,7 @@ const B_CODE = Number(args["b-code"]);
 const B_NAME = args["b-name"] ?? "";
 const SERVER = args.server ?? "OranixSlockTest";
 const HANDS_GROUP = args["hands-group"] ?? "";
+const HANDS_RELEASE = args["hands-release"] ?? "";
 const DEVICE_ID_FILE = args["device-id-file"] ?? "";
 const RAFT_API = (process.env.QA_API_BASE || "https://api.raft.build/api/").replace(/\/?$/, "/");
 const HANDS_BASE = process.env.HANDS_PUBLIC_BASE || "https://hands.build";
@@ -307,6 +308,7 @@ async function main() {
   if (!process.env.QA_TEST_EMAIL || !process.env.QA_TEST_PASSWORD) fail("QA_TEST_EMAIL / QA_TEST_PASSWORD are not set");
   let logcatChild = null;
   try {
+    let deviceAbi = "";
     await step("prepare-device", async () => {
       adb(["root"], { allowFailure: true });
       adb(["wait-for-device"]);
@@ -318,7 +320,9 @@ async function main() {
       shell("am set-debug-app --persistent com.android.chrome", { allowFailure: true });
       shell("input keyevent 82", { allowFailure: true });
       const chrome = shell("pm path com.android.chrome", { allowFailure: true }).trim();
-      return { sdk: shell("getprop ro.build.version.sdk").trim(), abi: shell("getprop ro.product.cpu.abi").trim(), chrome: Boolean(chrome) };
+      deviceAbi = shell("getprop ro.product.cpu.abi").trim();
+      if (!deviceAbi) fail("could not read the emulator ABI (ro.product.cpu.abi)");
+      return { sdk: shell("getprop ro.build.version.sdk").trim(), abi: deviceAbi, chrome: Boolean(chrome) };
     });
 
     await step("install-A", async () => {
@@ -386,16 +390,28 @@ async function main() {
         const add = spawnSync("bash", ["scripts/qa/android_update_hands_fixture.sh", "add-member", HANDS_GROUP, id, `gha-run-${process.env.GITHUB_RUN_ID ?? "local"}`], { encoding: "utf8" });
         if (add.status !== 0) fail(`adding the emulator to the Hands device group failed: ${String(add.stderr).slice(0, 300)}`);
       }
+      // B's Hands release must carry an installable APK for this emulator's ABI;
+      // otherwise Hands answers "matched release has no compatible asset".
+      if (HANDS_RELEASE) {
+        const check = spawnSync("bash", ["scripts/qa/android_update_hands_fixture.sh", "assert-asset", HANDS_RELEASE, deviceAbi], { encoding: "utf8" });
+        if (check.status !== 0) fail(`B's Hands release does not match the emulator ABI ${deviceAbi}: ${String(check.stderr).trim().slice(-500)}`);
+      }
       // Server-side check, exactly as the app asks: B must be offered to this installation.
-      const url = `${HANDS_BASE}/public/v2/apps/raft-android/updates/check?channel=debug&product_type=android-apk&current_version_code=${A_CODE}&platform=android&filetype=apk&arch=x86_64`;
+      const url = `${HANDS_BASE}/public/v2/apps/raft-android/updates/check?channel=debug&product_type=android-apk&current_version_code=${A_CODE}&platform=android&filetype=apk&arch=${encodeURIComponent(deviceAbi)}`;
       let offered = 0;
+      let reason = "";
       for (let i = 0; i < 10 && offered !== B_CODE; i += 1) {
         const response = await fetch(url, { headers: { accept: "application/json", "X-Hands-Device-Id": id } });
         const body = await response.json().catch(() => ({}));
         offered = body?.latest?.version_code ?? 0;
-        if (offered !== B_CODE) await sleep(3000);
+        if (offered !== B_CODE) {
+          // Hands' own words: an error (e.g. "matched release has no compatible asset"
+          // with the matched build and the requested arch) or the release it did match.
+          reason = `HTTP ${response.status}: ${JSON.stringify({ error: body?.error, update_available: body?.update_available, latest_version_code: body?.latest_version_code ?? body?.build?.version_code, scoped: body?.scoped, requested: body?.requested }).slice(0, 600)}`;
+          await sleep(3000);
+        }
       }
-      if (offered !== B_CODE) fail(`Hands offers versionCode ${offered || "nothing"} to this installation, expected B=${B_CODE}`);
+      if (offered !== B_CODE) fail(`Hands offers versionCode ${offered || "nothing"} to this installation (arch ${deviceAbi}), expected B=${B_CODE}; Hands said ${reason}`);
       return { hands_offers: offered };
     });
     void deviceId;

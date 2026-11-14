@@ -253,7 +253,14 @@ jobs:
           set -euo pipefail
           VERSION_NAME="${{ inputs.version_major }}.${{ inputs.version_minor }}.${{ inputs.version_patch }}"
           [ -n "${{ inputs.version_suffix }}" ] && VERSION_NAME="${VERSION_NAME}-${{ inputs.version_suffix }}"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          # Inside a reusable call, github.event_name is the CALLER's event, so a
+          # dispatched android-update-e2e.yml / release-auto-login.yml looks like a
+          # direct dispatch here. Only workflow_call defines create_hands_draft:
+          # empty means this workflow itself was dispatched; otherwise the caller's
+          # value is binding (build-only callers pass false and must never get a
+          # Hands draft - that draft was an arm64 release carrying the fixture's
+          # versionCode, which the update e2e then reused).
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -z "${INPUT_CREATE_HANDS_DRAFT}" ]; then
             if [ "${INPUT_ANDROID_VARIANT}" = "play" ]; then
               CREATE_HANDS_DRAFT=false
             else
