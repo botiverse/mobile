@@ -4,7 +4,7 @@ area: realtime
 platforms:
   - android
   - ios
-pull_request: PRNUM
+pull_request: 4789
 rollout: full
 ---
 
