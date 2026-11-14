@@ -23,6 +23,24 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// the registry keyed by session.persistentIdentifier.
     let shellContext = RaftIosShellContext()
 
+    private func installRootViewController(in window: UIWindow) {
+        #if RAFT_QA_SESSION_BOOTSTRAP
+        // Debug Simulator QA harness only (docs/qa-acceptance/session-bootstrap.md): hold the shell
+        // back until the launch's QA session envelope is consumed and persisted, so the shell's
+        // first session read sees it (Android starts its shell after the bootstrap activity, too).
+        if let request = RaftIosQaSessionBootstrapHost.takeLaunchRequest() {
+            let placeholder = UIViewController()
+            placeholder.view.backgroundColor = UIColor(raftArgb: RaftAppAppearanceRuntime.shared.canvasArgb)
+            window.rootViewController = placeholder
+            RaftIosQaSessionBootstrapHost.run(request) { [weak window] in
+                window?.rootViewController = UIHostingController(rootView: ContentView())
+            }
+            return
+        }
+        #endif
+        window.rootViewController = UIHostingController(rootView: ContentView())
+    }
+
     func scene(
         _ scene: UIScene,
         willConnectTo session: UISceneSession,
@@ -45,7 +63,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         // delegate owns window creation.
         if let windowScene = scene as? UIWindowScene {
             let window = UIWindow(windowScene: windowScene)
-            window.rootViewController = UIHostingController(rootView: ContentView())
+            installRootViewController(in: window)
             // Settings > Appearance > Theme: an explicit Light/Dark choice overrides the OS
             // style for the whole window (keyboards, system menus, the native tab bar);
             // System leaves it unspecified. The dark canvas behind the first frame avoids a

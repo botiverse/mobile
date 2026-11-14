@@ -39,7 +39,7 @@ on:
       # drive (ios_deterministic_repro.mjs) for precise crash-repro where agent
       # navigation keeps getting lost.
       mode:
-        description: "Execution mode: agent (M3) | deterministic (#1096) | tabpager-probe (#232/#233)"
+        description: "Execution mode: agent (M3) | deterministic (#1096) | tabpager-probe (#232/#233) | bootstrap-smoke (QA session bootstrap delivery check, no account)"
         required: false
         default: "agent"
       fixture_page:
@@ -677,6 +677,24 @@ jobs:
             --ios-io-dir "$QA_LOOP_IO_DIR" --ios-udid "$UDID" --package "$BUNDLE_ID" --out qa-evidence
           echo "$?" > qa-evidence/agent-rc.txt
           echo "deterministic repro exit code $(cat qa-evidence/agent-rc.txt)"
+
+      # QA session bootstrap smoke (docs/qa-acceptance/session-bootstrap.md): the iOS twin of
+      # Android's QaSessionBootstrapActivity path, driven through the real delivery channel
+      # (private inbox in the app data container + `simctl launch` arguments) with fake-token
+      # envelopes. Needs no QA account and no Stamp claim: it proves delivery, one-shot
+      # consumption, digest/binding validation and the replay refusal on this exact build.
+      - name: Run QA session bootstrap smoke
+        if: ${{ inputs.mode == 'bootstrap-smoke' }}
+        run: |
+          mkdir -p qa-evidence/bootstrap-smoke
+          cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
+          echo $(( $(date +%s) * 1000 )) > qa-evidence/perf-started.txt
+          date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
+          set +e
+          node scripts/qa/ios_qa_bootstrap.mjs smoke --udid "$UDID" --bundle-id "$BUNDLE_ID" --out qa-evidence/bootstrap-smoke
+          echo "$?" > qa-evidence/agent-rc.txt
+          echo "bootstrap smoke exit code $(cat qa-evidence/agent-rc.txt)"
+          cat qa-evidence/bootstrap-smoke/smoke-report.json 2>/dev/null || true
 
       - name: Collect harness log + system log + crashes + xcresult
         if: always()

@@ -102,6 +102,10 @@ jobs:
       - name: Validate Hands Android SDK Raft consumer contract
         run: python3 scripts/ci/test_hands_raft_consumer_contract.py
 
+      # The iOS QA session bootstrap is Debug-configuration only (docs/qa-acceptance/session-bootstrap.md).
+      - name: Validate iOS QA session bootstrap stays out of Release
+        run: python3 scripts/ci/check_ios_qa_bootstrap_exclusion.py source
+
       - name: Validate no-local-Ktor dependency contract
         run: python3 scripts/ci/test_no_local_ktor_ci_contract.py
 
@@ -1224,6 +1228,9 @@ jobs:
 
       - name: Test iOS conversation forward gesture admission
         run: bash compose/iosApp/scripts/test_conversation_forward_gesture_admission.sh
+
+      - name: Test iOS QA session bootstrap contract
+        run: bash compose/iosApp/scripts/test_qa_session_bootstrap_contract.sh
 
       # shared.podspec guards against a missing framework dir; the IDE's
       # Gradle sync normally creates the placeholder — CI must do it manually.

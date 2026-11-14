@@ -558,6 +558,9 @@ jobs:
           done
           [ -f "${APP_RES}/files/reactions/reaction_atlas_v1.png" ] || { echo "reaction atlas missing (expected files/reactions/reaction_atlas_v1.png in compose-resources)" >&2; exit 1; }
           find "${APP_PATH}" -name 'SDWebImageSVGCoder.framework' -type d | grep -q . || { echo "SDWebImageSVGCoder.framework missing" >&2; exit 1; }
+          # The QA session bootstrap is compiled only into the Debug configuration; refuse an IPA
+          # that carries any of it (docs/qa-acceptance/session-bootstrap.md).
+          python3 -I scripts/ci/check_ios_qa_bootstrap_exclusion.py binary "${APP_PATH}"
 
           dwarfdump --uuid "${APP_PATH}/${EXECUTABLE}" | awk '{print $2}' | sort -u > "${TMP_DIR}/app-uuids.txt"
           unzip -q "${DSYM_PATH}" -d "${DSYM_TMP}"
