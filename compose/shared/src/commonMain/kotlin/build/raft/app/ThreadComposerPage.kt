@@ -15,6 +15,8 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftSheet
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
@@ -72,7 +74,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Arrangement
@@ -427,6 +428,8 @@ internal fun ThreadComposerSuggestionPortalHost(
                     .width(panelWidth)
                     .height(panelHeight)
                     .retainInputFocusForInteractions()
+                    // Raw clickable on purpose: a tap sink, so a tap between suggestions stays in
+                    // the panel instead of reaching the composer under it.
                     .clickable(onClick = {})
         ) {
             ComposerSuggestionPanelContent(
@@ -4053,6 +4056,8 @@ private fun ComposerSuggestionStatusRow(message: String) {
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = ComposerSuggestionStatusRowMinHeight)
+                // Raw clickable on purpose: a tap sink, so a tap on the status line stays in the
+                // suggestion panel instead of reaching what is under it.
                 .clickable(onClick = {})
                 .padding(horizontal = ComposerSuggestionPanelInset + ComposerSuggestionItemPaddingHorizontal),
         contentAlignment = Alignment.CenterStart
@@ -4078,6 +4083,8 @@ private fun ComposerSuggestionHeader(
             Modifier
                 .fillMaxWidth()
                 .background(Color.Transparent)
+                // Raw clickable on purpose: a tap sink, so a tap on a group label stays in the
+                // suggestion panel instead of reaching what is under it.
                 .clickable(onClick = {})
     ) {
         if (topDivider) {
@@ -5215,15 +5222,10 @@ private fun ComposerSuggestionInteractiveRow(
     onClick: () -> Unit,
     content: @Composable RowScope.() -> Unit
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    // raft-ui item: `hover:bg-brand-soft data-[highlighted=true]:bg-brand-soft`; on touch the
-    // press takes the hover wash instead of a platform ripple.
-    val background =
-        when {
-            selected || pressed -> selectedColor
-            else -> Color.Transparent
-        }
+    // raft-ui item: `hover:bg-brand-soft data-[highlighted=true]:bg-brand-soft`. The highlighted
+    // item keeps the fill; hover and press take the same wash through raftClickable's Highlight
+    // tier (no platform ripple).
+    val background = if (selected) selectedColor else Color.Transparent
     // raft-ui `ComposerSuggestionList` item: inset 4dp (p-1) inside the
     // popover, rounded-chip highlight, px-2.5.
     Column(
@@ -5238,7 +5240,12 @@ private fun ComposerSuggestionInteractiveRow(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = minHeight)
-                    .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+                    .raftClickable(
+                        onClick = onClick,
+                        shape = RoundedCornerShape(RaftAppRadius.Chip),
+                        tier = RaftHoverTier.Highlight,
+                        selected = selected,
+                    )
                     .padding(
                         horizontal = ComposerSuggestionItemPaddingHorizontal,
                         vertical = ComposerSuggestionItemPaddingVertical

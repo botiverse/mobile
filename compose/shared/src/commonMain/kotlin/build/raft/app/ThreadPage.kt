@@ -20256,6 +20256,8 @@ private fun ThreadDmPeerAvatarTile(
     cacheServerId: String? = null,
     onClick: (() -> Unit)? = null
 ) {
+    // Raw clickable on purpose, as on the lounge agent's face above: the app's press wash draws
+    // over the face, where raftClickable's would sit behind the opaque avatar.
     Box(
         modifier =
             Modifier
@@ -29472,7 +29474,7 @@ internal fun ThreadSystemMessageRow(
         modifier =
             Modifier.fillMaxWidth()
                 .background(RaftColor.SurfaceWhite)
-                .clickable { expanded = !expanded }
+                .raftClickable(onClick = { expanded = !expanded }, tier = RaftHoverTier.Subtle)
                 // raft-ui SystemMessage `pt-timeline-lead pb-timeline-row`: an event line starts a
                 // turn, 16 from the text on either side (spacing.md#timeline-rhythm).
                 .padding(
@@ -30757,6 +30759,9 @@ private fun ThreadMessageCardContent(
                         previewCardPinOnClick = message.externalAuthor != null && !shareSelectionActive,
                     )
                 }
+                // Raw clickable on purpose: while selecting, the message body is a tap target
+                // of the message row, which shows selection through its checkbox and row fill,
+                // not a press wash (message rows keep their own tap, long press and selection).
                 val contentModifier =
                     if (shareSelectionActive) {
                         Modifier
@@ -30829,9 +30834,13 @@ private fun ThreadMessageCardContent(
                                                 modifier =
                                                     nameModifier
                                                         .threadSenderNameBaseline()
-                                                        .clickable {
-                                                            if (nameMentionHandle != null) onMentionAuthor(message) else openAuthorProfile("author_name")
-                                                        }
+                                                        .raftClickable(
+                                                            onClick = {
+                                                                if (nameMentionHandle != null) onMentionAuthor(message) else openAuthorProfile("author_name")
+                                                            },
+                                                            shape = RoundedCornerShape(RaftAppRadius.Sm),
+                                                            tier = RaftHoverTier.Subtle,
+                                                        )
                                             )
                                         }
                                         // raft-ui 0.17 MessageItemHeader `items-baseline`: name, meta,
@@ -36784,7 +36793,7 @@ private fun ThreadMessageAuthorSubtitle(
 ) {
     val clickableModifier =
         if (onClick != null) {
-            modifier.clickable(onClick = onClick)
+            modifier.raftClickable(onClick = onClick, shape = RoundedCornerShape(RaftAppRadius.Sm), tier = RaftHoverTier.Subtle)
         } else {
             modifier
         }
@@ -37291,14 +37300,15 @@ private fun ThreadMessageCommentRefChip(
     Row(
         modifier =
             modifier
-                .then(if (enabled) Modifier.clickable(onClick = onOpen) else Modifier)
-                // raft reference chip: fill-muted on the chip radius with a hairline.
+                // raft reference chip: fill-muted on the chip radius with a hairline. The fill
+                // comes before the tap so the press shows over it.
                 .raftControlSurface(
                     fill = RaftColor.FillMuted.copy(alpha = if (enabled) 1f else 0.7f),
                     border = RaftColor.BorderHairline,
                     radius = RaftAppRadius.Chip,
                     borderWidth = RaftAppStroke.Thin
                 )
+                .then(if (enabled) Modifier.raftClickable(onClick = onOpen, shape = RoundedCornerShape(RaftAppRadius.Chip)) else Modifier)
                 .padding(horizontal = RaftAppSpacing.Xs, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp)
