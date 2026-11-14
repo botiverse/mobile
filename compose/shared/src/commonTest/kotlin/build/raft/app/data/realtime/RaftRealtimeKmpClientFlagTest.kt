@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** The common Socket.IO client switch: off by default, server value or developer override, host-gated. */
+/** The common Socket.IO client switch: build default (QA on), explicit server value or developer override, host-gated. */
 class RaftRealtimeKmpClientFlagTest {
     private val store = InMemoryRaftKeyValueStore()
 
@@ -39,5 +39,36 @@ class RaftRealtimeKmpClientFlagTest {
         RaftRealtimeKmpClientFlag.recordServerEvaluation(store, REALTIME_KMP_CLIENT_V1_FEATURE_FLAG_KEY, false)
         RaftRealtimeKmpClientFlag.setLocalOverride(store, true)
         assertTrue(RaftRealtimeKmpClientFlag.enabled(store), "local on wins over a server off")
+    }
+
+    @Test fun `a QA build default applies until the server explicitly decides`() {
+        RaftRealtimeKmpClientFlag.hostSupported = true
+        RaftRealtimeKmpClientFlag.buildDefaultOn = true
+        assertEquals(RaftRealtimeKmpClientFlag.Decision(true, RaftRealtimeKmpClientFlag.Source.BuildDefault), RaftRealtimeKmpClientFlag.decision(store))
+        for (reason in listOf("default", "missing_flag", "missing_server_unit")) {
+            RaftRealtimeKmpClientFlag.recordServerEvaluation(store, REALTIME_KMP_CLIENT_V1_FEATURE_FLAG_KEY, false, reason)
+            assertTrue(RaftRealtimeKmpClientFlag.enabled(store), "a no-rule evaluation ($reason) keeps the build default")
+        }
+        RaftRealtimeKmpClientFlag.recordServerEvaluation(store, REALTIME_KMP_CLIENT_V1_FEATURE_FLAG_KEY, false, "kill_switch")
+        assertEquals(RaftRealtimeKmpClientFlag.Decision(false, RaftRealtimeKmpClientFlag.Source.Server), RaftRealtimeKmpClientFlag.decision(store))
+        RaftRealtimeKmpClientFlag.recordServerEvaluation(store, REALTIME_KMP_CLIENT_V1_FEATURE_FLAG_KEY, false, "default")
+        assertTrue(RaftRealtimeKmpClientFlag.enabled(store), "the rule went away: back to the build default")
+        RaftRealtimeKmpClientFlag.setLocalOverride(store, false)
+        assertEquals(RaftRealtimeKmpClientFlag.Decision(false, RaftRealtimeKmpClientFlag.Source.Local), RaftRealtimeKmpClientFlag.decision(store))
+    }
+
+    @Test fun `a release build stays off on a no-rule evaluation and follows an explicit server on`() {
+        RaftRealtimeKmpClientFlag.hostSupported = true
+        RaftRealtimeKmpClientFlag.recordServerEvaluation(store, REALTIME_KMP_CLIENT_V1_FEATURE_FLAG_KEY, false, "default")
+        assertFalse(RaftRealtimeKmpClientFlag.enabled(store))
+        RaftRealtimeKmpClientFlag.recordServerEvaluation(store, REALTIME_KMP_CLIENT_V1_FEATURE_FLAG_KEY, true, "client_rule")
+        assertTrue(RaftRealtimeKmpClientFlag.enabled(store))
+        RaftRealtimeKmpClientFlag.recordServerEvaluation(store, REALTIME_KMP_CLIENT_V1_FEATURE_FLAG_KEY, false, "server_rule")
+        assertFalse(RaftRealtimeKmpClientFlag.enabled(store))
+    }
+
+    @Test fun `the build default never turns on a host without an adapter`() {
+        RaftRealtimeKmpClientFlag.buildDefaultOn = true
+        assertEquals(RaftRealtimeKmpClientFlag.Decision(false, RaftRealtimeKmpClientFlag.Source.Unsupported), RaftRealtimeKmpClientFlag.decision(store))
     }
 }

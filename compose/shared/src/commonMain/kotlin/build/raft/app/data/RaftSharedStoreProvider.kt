@@ -3429,10 +3429,10 @@ internal class RaftSharedStoreProvider private constructor(
                     lastKnown = serverFeatureFlagLastKnown,
                     // The Navigation 3 stack and iOS native navigation switches are read once at app
                     // launch: keep their last values.
-                    onEvaluation = { _, key, enabled, _, _, _, _ ->
+                    onEvaluation = { _, key, enabled, reason, _, _, _ ->
                         build.raft.app.nav.RaftNav3StackFlag.recordServerEvaluation(sharedPreferenceStore, key, enabled)
                         build.raft.app.nav.RaftIosNativeNavFlag.recordServerEvaluation(sharedPreferenceStore, key, enabled)
-                        build.raft.app.data.realtime.RaftRealtimeKmpClientFlag.recordServerEvaluation(sharedPreferenceStore, key, enabled)
+                        build.raft.app.data.realtime.RaftRealtimeKmpClientFlag.recordServerEvaluation(sharedPreferenceStore, key, enabled, reason)
                         if (key == MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY) RaftAppSettingsSnapshotReport.onIosNativeNavFlagRead()
                     },
                 )

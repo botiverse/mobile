@@ -6,10 +6,9 @@ import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidAppScopeMMKV
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.RaftAppLog
-import build.raft.app.core.data.realtime.RealtimeSocketGenerationFence
+import build.raft.app.core.data.realtime.createAndroidRealtimeSocketTransport
 import build.raft.app.core.data.realtime.SessionRealtimeRepository
 import build.raft.app.core.data.realtime.SocketIoRealtimeClient
-import build.raft.app.core.data.realtime.SocketIoSocketTransport
 import build.raft.app.data.DataResult
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
@@ -373,9 +372,11 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 )
             val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(appContext)
             val socketUrl = AndroidAuthApiFactory.currentSocketBaseUrl(appContext)
-            // Realtime runs on socket.io-client-java over OkHttp (curl Socket.IO was removed with the
-            // Ktor 3 switch, artin 2026-10-23).
-            val transport = SocketIoSocketTransport(socketUrl, RealtimeSocketGenerationFence())
+            // Realtime runs on the common Kotlin Socket.IO client (:realtime-socket) when
+            // realtime_kmp_client_v1 is on (QA builds by default, docs/realtime-kmp-socket-client.md), else
+            // on socket.io-client-java over OkHttp, the rollback. Chosen per connection; both share the
+            // generation fence's lock.
+            val transport = createAndroidRealtimeSocketTransport(socketUrl)
             val client =
                 SocketIoRealtimeClient(
                     transport = transport,
@@ -444,13 +445,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 .put(RaftRealtimeNotifyContract.KeyEventName, eventName)
                 .put(RaftRealtimeNotifyContract.KeyRawPayload, rawPayload.toRealtimeRawPayloadString())
 
-        private fun Any?.toRealtimeRawPayloadString(): String =
-            when (this) {
-                is String -> this
-                is JSONObject -> toString()
-                is JSONArray -> toString()
-                else -> this?.toString() ?: "{}"
-            }
+        private fun Any?.toRealtimeRawPayloadString(): String = realtimeRawPayloadJson(this)
 
         private suspend fun maybePostBackgroundUnreadNotification(
             appContext: Context,
@@ -544,3 +539,19 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             RaftNotificationAlertsPreference.isEnabled(context)
     }
 }
+
+/**
+ * A socket payload as the JSON text the raw consumers parse (the payload server gate reads its top-level
+ * `serverId`). socket.io-client-java hands org.json values; the common client (RaftKmpRealtimeSocketTransport)
+ * hands plain Kotlin maps and lists, whose toString() is not JSON and made every raw event fail the gate.
+ */
+internal fun realtimeRawPayloadJson(payload: Any?): String =
+    when (payload) {
+        null -> "{}"
+        is String -> payload
+        is JSONObject -> payload.toString()
+        is JSONArray -> payload.toString()
+        is Map<*, *> -> JSONObject(payload).toString()
+        is Collection<*> -> JSONArray(payload).toString()
+        else -> payload.toString()
+    }

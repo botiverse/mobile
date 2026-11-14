@@ -581,7 +581,7 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     // Phase 3 multi-session realtime: only where separate app windows exist (Android).
     multiServerRealtimeSupported: Boolean = false,
     multiServerRealtimeEnabled: Boolean = false,
-    // Realtime unification phase 1: only hosts with a common-client adapter (iOS).
+    // Realtime unification phase 1: only hosts with a common-client adapter (Android, iOS).
     kmpRealtimeSupported: Boolean = false,
     kmpRealtimeEnabled: Boolean = false,
 ): RaftSharedSettingsPayload {

@@ -161,11 +161,12 @@ const val MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY: String = "mobile_ios_native_na
 
 /**
  * The common-Kotlin Socket.IO client (`:realtime-socket`, docs/realtime-kmp-socket-client.md) instead of
- * the platform Socket.IO library. Mobile-only key, default OFF (server-unresolved evaluates false). Read
+ * the platform Socket.IO library. Mobile-only key, default OFF in release builds. Read
  * like the navigation switches: the last evaluation is kept on the device
  * ([build.raft.app.data.realtime.RaftRealtimeKmpClientFlag]) and read each time a socket is created, so
- * turning it off rolls back on the next connection. iOS only for now (phase 1); local test switch:
- * Settings > Developer > "New realtime connection".
+ * turning it off rolls back on the next connection. Android and iOS; QA builds (Android debug / alpha, iOS
+ * Debug) default it on until the server explicitly evaluates it off. Local test switch: Settings > Developer >
+ * "New realtime connection".
  */
 const val REALTIME_KMP_CLIENT_V1_FEATURE_FLAG_KEY: String = "realtime_kmp_client_v1"
 

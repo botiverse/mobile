@@ -1,0 +1,137 @@
+name: Android Realtime E2E
+
+# Deterministic realtime smoke on a GitHub emulator (scripts/qa/android_realtime_e2e.mjs): an Alpha APK
+# (realtime_kmp_client_v1 defaults on in Alpha: the common Kotlin Socket.IO client) signs in with the QA
+# account, receives a message posted through the API, survives airplane mode with catch-up of the messages
+# posted meanwhile, and switches server and back; logcat must show the expected socket implementation
+# (`realtime_kmp_transport selected=kmp`).
+#
+# APK: an Android Alpha Validation (android-alpha.yml) artifact. Dispatch with alpha_run_id (that run's
+# android-alpha-* artifact), or label a pull request `realtime-e2e`: the newest successful
+# android-alpha.yml run for the PR head is used (dispatch android-alpha.yml with ref=<head> first).
+on:
+  workflow_dispatch:
+    inputs:
+      alpha_run_id:
+        description: "android-alpha.yml run id whose android-alpha-* APK artifact to test"
+        required: true
+        type: string
+      expect_transport:
+        description: "Socket implementation logcat must show: kmp (Alpha default) | legacy"
+        required: false
+        type: string
+        default: "kmp"
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: android-realtime-e2e-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'realtime-e2e'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EVIDENCE: realtime-e2e-evidence
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Find and download the Alpha APK
+        id: apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID_INPUT: ${{ inputs.alpha_run_id }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          RUN_ID="${RUN_ID_INPUT:-}"
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/android-alpha.yml/runs?head_sha=${HEAD_SHA}&status=success&per_page=1" --jq '.workflow_runs[0].id // empty')"
+            if [ -z "$RUN_ID" ]; then
+              # An earlier head of this branch (e.g. only tests or CI changed since): use its newest Alpha, named
+              # in the summary so the tested commit is explicit.
+              RUN_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/android-alpha.yml/runs?branch=${HEAD_REF}&status=success&per_page=1" --jq '.workflow_runs[0].id // empty')"
+              [ -n "$RUN_ID" ] && echo "::warning::no Alpha for ${HEAD_SHA}; testing run ${RUN_ID} of ${HEAD_REF}"
+            fi
+            [ -n "$RUN_ID" ] || { echo "::error::no successful android-alpha.yml run for ${HEAD_SHA}; dispatch it with ref=${HEAD_SHA} first"; exit 1; }
+          fi
+          NAME="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts" --jq '[.artifacts[] | select(.name | test("^android-alpha-[0-9]+-[0-9a-f]{40}$"))][0].name // empty')"
+          [ -n "$NAME" ] || { echo "::error::run ${RUN_ID} has no android-alpha-<n>-<sha> artifact"; exit 1; }
+          mkdir -p apk
+          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n "$NAME" -D apk
+          APK="$(find apk -name '*.apk' | head -1)"
+          [ -s "$APK" ] || { echo "::error::no APK in ${NAME}"; exit 1; }
+          BT="$(ls -d "${ANDROID_HOME}"/build-tools/* | sort -V | tail -1)"
+          PKG="$("$BT/aapt" dump badging "$APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+          {
+            echo "run_id=$RUN_ID"; echo "artifact=$NAME"; echo "apk=$APK"; echo "package=$PKG"
+            echo "sha256=$(sha256sum "$APK" | cut -d' ' -f1)"
+          } | tee -a "$GITHUB_OUTPUT"
+
+      - name: Expose QA credentials
+        env:
+          QA_TEST_EMAIL_SECRET: ${{ secrets.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD_SECRET: ${{ secrets.QA_TEST_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import os, uuid
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as out:
+              for name in ("QA_TEST_EMAIL", "QA_TEST_PASSWORD"):
+                  value = os.environ[f"{name}_SECRET"]
+                  delimiter = f"SLOCK_{uuid.uuid4().hex}"
+                  out.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
+          PY
+
+      - name: Preflight — QA account must not see the production server
+        run: node scripts/qa/visible_servers_probe.mjs
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run realtime e2e on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          ram-size: 4096M
+          cores: 2
+          disk-size: 6000M
+          emulator-boot-timeout: 1200
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: node scripts/qa/android_realtime_e2e.mjs --apk "${{ steps.apk.outputs.apk }}" --package "${{ steps.apk.outputs.package }}" --expect-transport "${{ inputs.expect_transport || 'kmp' }}" --out "${{ env.EVIDENCE }}"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Android realtime e2e"
+            echo "| | |"; echo "|---|---|"
+            echo "| APK | \`${{ steps.apk.outputs.artifact }}\` (run ${{ steps.apk.outputs.run_id }}) |"
+            echo "| SHA-256 | \`${{ steps.apk.outputs.sha256 }}\` |"
+            echo "| Emulator | API 34 google_apis x86_64, pixel_6 |"
+            if [ -f "${EVIDENCE}/summary.json" ]; then
+              echo; echo '```json'; cat "${EVIDENCE}/summary.json"; echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-realtime-e2e-evidence
+          path: ${{ env.EVIDENCE }}
+          if-no-files-found: warn
+          retention-days: 30

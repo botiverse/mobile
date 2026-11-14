@@ -643,6 +643,10 @@ android {
         // RaftNav3StackFlag's build default: the Navigation 3 page stack, on for everyone from 1.19.1
         // (artin 11-03). The developer switch can still turn it off on a device.
         buildConfigField("Boolean", "NAV3_STACK_DEFAULT_ON", "true")
+        // RaftRealtimeKmpClientFlag's build default (realtime_kmp_client_v1): release / play keep the
+        // remote flag's default (off); debug and alpha (QA) default the common Socket.IO client on. The
+        // server can still turn it off with an explicit rule or kill switch, the developer switch either way.
+        buildConfigField("Boolean", "REALTIME_KMP_CLIENT_DEFAULT_ON", "false")
         buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"\"")
         buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"\"")
         buildConfigField("String", "OAUTH_CALLBACK_SCHEME", "\"raft\"")
@@ -659,6 +663,7 @@ android {
         getByName("debug") {
             buildConfigField("String", "HANDS_CHANNEL", "\"${raftBuildConfigString("SLOCK_HANDS_CHANNEL", "debug")}\"")
             buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "true")
+            buildConfigField("Boolean", "REALTIME_KMP_CLIENT_DEFAULT_ON", "true")
         }
         create("alpha") {
             initWith(getByName("debug"))
@@ -671,6 +676,7 @@ android {
             buildConfigField("String", "HANDS_CHANNEL", "\"debug\"")
             buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "true")
             buildConfigField("Boolean", "NAV3_STACK_DEFAULT_ON", "true")
+            buildConfigField("Boolean", "REALTIME_KMP_CLIENT_DEFAULT_ON", "true")
             buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"$handsAlphaDeltaAppSlug\"")
             buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"$handsAlphaDeltaChannelSlug\"")
             if (raftAlphaOptimized) {
@@ -901,9 +907,9 @@ dependencies {
     implementation(libs.android.installreferrer)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
-    // SocketIoRealtimeClient over the common Socket.IO client (RaftKmpRealtimeSocketTransport) with a
-    // scripted WebSocket (SocketIoRealtimeClientOverKmpTransportTest).
-    testImplementation(project(":realtime-socket"))
+    // The common Socket.IO client: the realtime socket behind realtime_kmp_client_v1
+    // (createAndroidRealtimeSocketTransport) and its scripted-WebSocket tests.
+    implementation(project(":realtime-socket"))
     // Builds real notifications in JVM unit tests.
     testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.junit)
