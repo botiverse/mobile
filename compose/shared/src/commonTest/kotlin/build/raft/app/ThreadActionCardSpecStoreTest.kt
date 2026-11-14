@@ -157,6 +157,13 @@ class ThreadActionCardSpecStoreTest {
             val (card, spec, id) = input
             assertEquals(expected, threadActionCardSpecPress(card, spec, id, viewerServerId = "s-1"), "${card.state} $id")
         }
+        // A feedback card's form (server open_form) opens the App's own feedback form on its draft, which
+        // sends the version, device and diagnostics archive (Hands 7597670a had none); the server-filed
+        // form sheet only while the viewing server is unknown.
+        val feedbackCard = card(type = "feedback:submit")
+        assertEquals(ThreadActionCardSpecPress.Typed, threadActionCardSpecPress(feedbackCard, spec("fill" to form), "fill", viewerServerId = "s-1"))
+        assertEquals(ThreadActionCardSpecPress.Store, threadActionCardSpecPress(feedbackCard, spec("fill" to form), "fill", viewerServerId = null))
+        assertEquals(ThreadActionCardSpecPress.Ignore, threadActionCardSpecPress(card(type = "feedback:submit", state = "executed"), spec("fill" to form), "fill", viewerServerId = "s-1"))
         // web isOnViewerServer: no viewer server, or a target on another server, opens nothing (its Button is disabled).
         val elsewhere = """{"kind":"navigate","target":{"kind":"agent","id":"7b2e8f3a-0c5d-4e4f-9a3b-2c3d4e5f6071","serverId":"c07d3e8f-5bac-4d9e-8f8a-718293a4b5c6"}}"""
         assertEquals(ThreadActionCardSpecPress.Ignore, threadActionCardSpecPress(card(), spec("nav" to navigate), "nav", viewerServerId = null))
