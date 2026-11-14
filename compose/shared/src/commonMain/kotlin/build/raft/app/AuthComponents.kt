@@ -4,6 +4,7 @@ import build.raft.designsystem.components.RaftSpinner
 import build.raft.app.resources.*
 import build.raft.app.components.rememberRaftDesignSystemEditor
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.LocalRaftFieldState
 import build.raft.designsystem.components.RaftTextFieldAction
 import build.raft.app.components.raftButtonChrome
 import build.raft.app.components.raftCardSurface
@@ -416,7 +417,7 @@ internal fun AuthTextField(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
-        AuthFieldLabel(label = label, required = required, optional = optional)
+        AuthFieldLabel(label = label, optional = optional && !required)
         val editor =
             rememberRaftDesignSystemEditor(
                 keyboardOptions = keyboardOptions,
@@ -427,36 +428,40 @@ internal fun AuthTextField(
                 onFocus = { authFocusChanged(true) },
                 onBlur = { authFocusChanged(false) }
             )
-        RaftTextField(
-            value = value,
-            onValueChange = { nextValue ->
-                authTextFieldForwardValueChange(nextValue, onValueChange)
-            },
-            modifier = Modifier.fillMaxWidth().then(editor.modifier),
-            placeholder = placeholder.ifEmpty { null },
-            enabled = enabled,
-            invalid = isError,
-            keyboardOptions = editor.keyboardOptions,
-            keyboardActions = keyboardActions,
-            visualTransformation = if (password && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
-            trailingAction =
-                if (password) {
-                    {
-                        RaftTextFieldAction(
-                            onClick = { passwordVisible = !passwordVisible },
-                            label =
-                                stringResource(
-                                    if (passwordVisible) Res.string.common_hide_password else Res.string.common_show_password
-                                ),
-                            enabled = enabled
-                        ) {
-                            RaftSlotIcon(if (passwordVisible) RaftLucideIconName.EyeOff else RaftLucideIconName.Eye)
+        // Required shows no mark (raft-design forms): the field says it to screen readers ("Email, Required").
+        val field = LocalRaftFieldState.current
+        CompositionLocalProvider(LocalRaftFieldState provides if (required) field.copy(label = label, required = true) else field) {
+            RaftTextField(
+                value = value,
+                onValueChange = { nextValue ->
+                    authTextFieldForwardValueChange(nextValue, onValueChange)
+                },
+                modifier = Modifier.fillMaxWidth().then(editor.modifier),
+                placeholder = placeholder.ifEmpty { null },
+                enabled = enabled,
+                invalid = isError,
+                keyboardOptions = editor.keyboardOptions,
+                keyboardActions = keyboardActions,
+                visualTransformation = if (password && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
+                trailingAction =
+                    if (password) {
+                        {
+                            RaftTextFieldAction(
+                                onClick = { passwordVisible = !passwordVisible },
+                                label =
+                                    stringResource(
+                                        if (passwordVisible) Res.string.common_hide_password else Res.string.common_show_password
+                                    ),
+                                enabled = enabled
+                            ) {
+                                RaftSlotIcon(if (passwordVisible) RaftLucideIconName.EyeOff else RaftLucideIconName.Eye)
+                            }
                         }
+                    } else {
+                        null
                     }
-                } else {
-                    null
-                }
-        )
+            )
+        }
         if (isError && !errorText.isNullOrBlank()) {
             Text(
                 text = errorText,
@@ -486,7 +491,7 @@ internal fun authTextFieldForwardValueChange(
 internal fun authFieldLabelTextStyle(): TextStyle = RaftType.SectionLabel.withRaftFontWeight(FontWeight.SemiBold)
 
 @Composable
-internal fun AuthFieldLabel(label: String, required: Boolean = false, optional: Boolean = false) {
+internal fun AuthFieldLabel(label: String, optional: Boolean = false) {
     Row(
         modifier = Modifier.authStaticTextFocus(),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
@@ -498,13 +503,7 @@ internal fun AuthFieldLabel(label: String, required: Boolean = false, optional: 
             style = authFieldLabelTextStyle().copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
-        if (required) {
-            Text(
-                text = "*",
-                style = authFieldLabelTextStyle().copy(color = RaftColor.AccentPink),
-                color = RaftColor.AccentPink
-            )
-        } else if (optional) {
+        if (optional) {
             val marker = stringResource(Res.string.common_optional_suffix)
             Text(
                 // A full-width （可选） carries its own space (raft-ui FieldLabel): no gap before it.

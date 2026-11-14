@@ -494,7 +494,7 @@ private fun ActionCardFormField(
 }
 
 /**
- * A Choice (web `ChoiceFieldControl`): the label with its asterisk or "(optional)", the question's
+ * A Choice (web `ChoiceFieldControl`): the label (with "(optional)" when optional), the question's
  * description, every option as a radio row (single) or checkbox row (multiple) with its description,
  * "Other" last, the one-line input under the list while Other is chosen, then the issue (by [RaftField])
  * or, for a required Choice, what it still lacks. The value is [ActionCardFormValue.Choice]: `other` is
@@ -504,7 +504,7 @@ private fun ActionCardFormField(
  * On a question card answered inline ([ActionCardQuestionInlineForm]): [number] goes before the
  * question's text when the card asks several ("2. …", web `ChoiceFieldControl` `number`), and
  * [onPicked] hears a single option tapped (not Other…), which moves the form on (spec §5.10).
- * [showLabel] false draws no label (nor its asterisk): a slim card whose title is its one question.
+ * [showLabel] false draws no label: a slim card whose title is its one question.
  * Other reads the app's "Other" when the server sent its known key ([questionOtherLabel]).
  *
  * A confirm ([isConfirm]: one option, no Other; slock #14497) is not a list of one row but one

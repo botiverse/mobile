@@ -4,7 +4,9 @@ import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftFieldLabel
+import build.raft.designsystem.components.LocalRaftFieldState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import build.raft.app.data.BundledRuntimeCatalog
 import build.raft.app.data.ServerRuntimeCatalog
@@ -460,7 +462,6 @@ private fun RuntimeFormV2FieldRow(
                         if (refreshableSource != null && sourceRefresh != null) {
                             CreateAgentSectionLabelWithAction(
                                 label = field.label,
-                                required = required,
                                 actionIcon = RaftLucideIconName.RefreshCw,
                                 actionEnabled = fieldEnabled && refreshableSource !in sourceRefresh.refreshing,
                                 loading = refreshableSource in sourceRefresh.refreshing,
@@ -470,75 +471,78 @@ private fun RuntimeFormV2FieldRow(
                                 }
                             )
                         } else {
-                            RaftFieldLabel(text = field.label, required = required)
+                            RaftFieldLabel(text = field.label)
                         }
-                        if (choices.allowCustom) {
-                            // `select.custom_value` is raft-ui's ComboboxSelect with `create`: the list
-                            // with search, and typed text that is not a choice offered as "Use “…”".
-                            // A stored value the list does not offer shows as itself.
-                            // A value not in the list of a field that takes a typed one is the person's own
-                            // value (e.g. a model id): listed first, selected, and marked "Custom" (slock web
-                            // RuntimeFormV2FieldControl `customValue` / isTypedCustomValue).
-                            val typedCustom = unlisted && unavailableSelected == null
-                            RaftCombobox(
-                                value = runtimeFormV2ComboboxValue(current, options),
-                                options =
-                                    if (typedCustom) {
-                                        val defaults = if (choices.allowEmpty) 1 else 0
-                                        options.take(defaults) +
-                                            RaftComboboxOption(current, current, description = customValueLabel) +
-                                            options.drop(defaults)
-                                    } else {
-                                        options
+                        // Required shows no mark: the picker says it to screen readers ("Model, Required").
+                        CompositionLocalProvider(LocalRaftFieldState provides LocalRaftFieldState.current.copy(required = required)) {
+                            if (choices.allowCustom) {
+                                // `select.custom_value` is raft-ui's ComboboxSelect with `create`: the list
+                                // with search, and typed text that is not a choice offered as "Use “…”".
+                                // A stored value the list does not offer shows as itself.
+                                // A value not in the list of a field that takes a typed one is the person's own
+                                // value (e.g. a model id): listed first, selected, and marked "Custom" (slock web
+                                // RuntimeFormV2FieldControl `customValue` / isTypedCustomValue).
+                                val typedCustom = unlisted && unavailableSelected == null
+                                RaftCombobox(
+                                    value = runtimeFormV2ComboboxValue(current, options),
+                                    options =
+                                        if (typedCustom) {
+                                            val defaults = if (choices.allowEmpty) 1 else 0
+                                            options.take(defaults) +
+                                                RaftComboboxOption(current, current, description = customValueLabel) +
+                                                options.drop(defaults)
+                                        } else {
+                                            options
+                                        },
+                                    onValueChange = { next ->
+                                        clearFocus()
+                                        onChange(field.key, JsonPrimitive(next))
                                     },
-                                onValueChange = { next ->
-                                    clearFocus()
-                                    onChange(field.key, JsonPrimitive(next))
-                                },
-                                emptyText = { noMatches },
-                                placeholder = field.placeholder ?: field.label,
-                                title = field.label,
-                                searchPlaceholder = searchLabel,
-                                create = { typed ->
-                                    clearFocus()
-                                    onChange(field.key, JsonPrimitive(typed))
-                                },
-                                createLabel = { typed -> useCustomLabel.replace("%1\$s", typed) },
-                                enabled = fieldEnabled,
-                                label = field.label
-                            )
-                        } else {
-                            // raft-ui ComboboxSelect without `create`: the list under the trigger up to
-                            // ten options, a searchable sheet above (the picker-count rule). A stored value
-                            // the server no longer offers stays visible, but cannot be re-picked.
-                            RaftCombobox(
-                                value = runtimeFormV2ComboboxValue(current, options),
-                                options =
-                                    if (unavailableSelected != null) {
-                                        listOf(
-                                            RaftComboboxOption(
-                                                value = current,
-                                                label = unavailableSelected.label,
-                                                description = unavailableSelected.reason,
-                                                enabled = false
-                                            )
-                                        ) + options
-                                    } else if (unlisted) {
-                                        options + RaftComboboxOption(current, current, enabled = false)
-                                    } else {
-                                        options
+                                    emptyText = { noMatches },
+                                    placeholder = field.placeholder ?: field.label,
+                                    title = field.label,
+                                    searchPlaceholder = searchLabel,
+                                    create = { typed ->
+                                        clearFocus()
+                                        onChange(field.key, JsonPrimitive(typed))
                                     },
-                                onValueChange = { next ->
-                                    clearFocus()
-                                    onChange(field.key, JsonPrimitive(next))
-                                },
-                                emptyText = { noMatches },
-                                placeholder = field.placeholder ?: field.label,
-                                title = field.label,
-                                searchPlaceholder = searchLabel,
-                                enabled = fieldEnabled,
-                                label = field.label
-                            )
+                                    createLabel = { typed -> useCustomLabel.replace("%1\$s", typed) },
+                                    enabled = fieldEnabled,
+                                    label = field.label
+                                )
+                            } else {
+                                // raft-ui ComboboxSelect without `create`: the list under the trigger up to
+                                // ten options, a searchable sheet above (the picker-count rule). A stored value
+                                // the server no longer offers stays visible, but cannot be re-picked.
+                                RaftCombobox(
+                                    value = runtimeFormV2ComboboxValue(current, options),
+                                    options =
+                                        if (unavailableSelected != null) {
+                                            listOf(
+                                                RaftComboboxOption(
+                                                    value = current,
+                                                    label = unavailableSelected.label,
+                                                    description = unavailableSelected.reason,
+                                                    enabled = false
+                                                )
+                                            ) + options
+                                        } else if (unlisted) {
+                                            options + RaftComboboxOption(current, current, enabled = false)
+                                        } else {
+                                            options
+                                        },
+                                    onValueChange = { next ->
+                                        clearFocus()
+                                        onChange(field.key, JsonPrimitive(next))
+                                    },
+                                    emptyText = { noMatches },
+                                    placeholder = field.placeholder ?: field.label,
+                                    title = field.label,
+                                    searchPlaceholder = searchLabel,
+                                    enabled = fieldEnabled,
+                                    label = field.label
+                                )
+                            }
                         }
                         // `choice.labels`: the selected choice's description (e.g. what a reasoning level does).
                         choices.options.firstOrNull { it.value == current }?.description?.let {
@@ -573,7 +577,7 @@ private fun RuntimeFormV2FieldRow(
             }
         RuntimeFormV2FieldKind.Unsupported ->
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                RaftFieldLabel(text = field.label, required = field.required)
+                RaftFieldLabel(text = field.label)
                 Text(
                     text = stringResource(Res.string.runtime_form_v2_update_required),
                     style = RaftType.Caption,
