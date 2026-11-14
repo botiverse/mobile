@@ -968,7 +968,7 @@ private fun mergeAgentActivityLogs(activity: List<AgentActivityEntry>): List<Age
 private fun String?.nonBlankOrNull(): String? = this?.takeIf { it.isNotBlank() }
 
 private const val RealtimeAgentActivityIdPrefix = "realtime:"
-private const val MaxAgentActivityEntries = 50
+private const val MaxAgentActivityEntries = AgentActivityLogMaxEntries
 
 private fun String.memberComputerLabelOrNull(): String? =
     removePrefix(MemberComputerBadgePrefix).takeIf { startsWith(MemberComputerBadgePrefix) && it.isNotBlank() }

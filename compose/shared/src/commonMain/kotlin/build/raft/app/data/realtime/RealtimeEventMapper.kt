@@ -1745,6 +1745,8 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
                 type = "compaction_finished",
                 title = "Context Compaction Finished"
             )
+        // Web RawActivityLog renders nothing for a finished turn's summary (the Overview reads it).
+        "turn_summary" -> null
         "status", "agent_status" -> {
             val activity = stringValue("activityKind") ?: stringValue("activity")
             val detail = stringValue("detail").orEmpty()
