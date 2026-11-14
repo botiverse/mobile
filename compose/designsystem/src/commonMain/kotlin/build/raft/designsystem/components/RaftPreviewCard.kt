@@ -709,8 +709,11 @@ enum class RaftPreviewCardDetailTone {
 /** One part of an item card's details row ([RaftPreviewCardMeta]). */
 @Immutable
 sealed interface RaftPreviewCardDetail {
-    /** The item's state in the app's words (Merged): a neutral soft Badge, never a status colour. */
-    data class State(val text: String) : RaftPreviewCardDetail
+    /**
+     * The item's state in the app's words (Merged): a neutral soft Badge, never Raft's status colours; [fill] is the
+     * app's own colour for it, `#RRGGBB` ([RaftAppLinkCardBadge], raft-ui 0.95.4), else neutral.
+     */
+    data class State(val text: String, val fill: String? = null) : RaftPreviewCardDetail
 
     /** A detail ("Martin", "+803 −498"). */
     data class Text(
@@ -742,6 +745,8 @@ fun RaftPreviewCardMeta(
     details: List<RaftPreviewCardDetail>,
     modifier: Modifier = Modifier,
     wrap: Boolean = true,
+    /** What the card lies on, for an app-coloured state's ring: the hover card's popover by default (raft-ui 0.99.0). */
+    surface: RaftAppLinkCardBadgeSurface = RaftAppLinkCardBadgeSurface.Popover,
 ) {
     if (details.isEmpty()) return
     val separators = raftPreviewCardDetailSeparators(details)
@@ -749,7 +754,7 @@ fun RaftPreviewCardMeta(
         details.forEachIndexed { index, detail ->
             if (separators[index]) RaftPreviewCardMetaText("·", RaftPreviewCardDetailTone.Muted, oneLine = true)
             when (detail) {
-                is RaftPreviewCardDetail.State -> RaftBadge(text = detail.text, appearance = RaftBadgeAppearance.Soft)
+                is RaftPreviewCardDetail.State -> RaftAppLinkCardBadge(text = detail.text, fill = detail.fill, surface = surface)
                 is RaftPreviewCardDetail.Text -> RaftPreviewCardMetaText(detail.text, detail.tone, oneLine, cell)
             }
         }

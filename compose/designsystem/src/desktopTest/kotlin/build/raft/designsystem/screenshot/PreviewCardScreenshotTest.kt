@@ -144,7 +144,7 @@ class PreviewCardScreenshotTest {
                 RaftPreviewCardSurface(width = RaftPreviewCardDefaults.ItemWidth) {
                     RaftPreviewCardBody {
                         RaftPreviewCardItemTitle("Fix the composer tray (#3654)")
-                        RaftPreviewCardMeta(listOf(RaftPreviewCardDetail.State("Merged"), RaftPreviewCardDetail.Text("Lagoon")))
+                        RaftPreviewCardMeta(listOf(RaftPreviewCardDetail.State("Merged", fill = "#8250DF"), RaftPreviewCardDetail.Text("Lagoon")))
                     }
                     RaftPreviewCardItemActions(
                         listOf(
@@ -156,7 +156,7 @@ class PreviewCardScreenshotTest {
                 RaftPreviewCardSurface(width = RaftPreviewCardDefaults.ItemWidth) {
                     RaftPreviewCardBody {
                         RaftPreviewCardItemTitle("Close stale review threads")
-                        RaftPreviewCardMeta(listOf(RaftPreviewCardDetail.State("Open"), RaftPreviewCardDetail.Text("Niko")))
+                        RaftPreviewCardMeta(listOf(RaftPreviewCardDetail.State("Open", fill = "#1F883D"), RaftPreviewCardDetail.Text("Niko")))
                     }
                     RaftPreviewCardItemActions(
                         listOf(
