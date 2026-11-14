@@ -12,6 +12,7 @@ import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.components.raftScrollEdgeFade
 import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import build.raft.app.markdown.markdownToPreviewText
@@ -14398,7 +14399,8 @@ internal fun SharedHomeSearchFilters(
     // list) is ONE line, 8dp gaps, 16dp in from the edges: the filter strip (From, Scope,
     // Channel, the time range) fills it and scrolls sideways with its labels kept, Clear all
     // pinned at the strip's end, the sort pinned at the line's end. A chip naming a person or
-    // a channel is capped (web `max-w-60`): a long name ends in an ellipsis.
+    // a channel is capped (web `max-w-60`): a long name ends in an ellipsis. The strip fades
+    // over 24dp at an edge with chips hidden past it (raft-design spacing.md › Edges fade).
     SharedHomeSearchControlsBlock {
         Row(
             modifier = Modifier
@@ -14409,11 +14411,13 @@ internal fun SharedHomeSearchFilters(
             verticalAlignment = Alignment.CenterVertically
         ) {
             val chipModifier = Modifier.widthIn(max = SearchFilterNameChipMaxWidth)
+            val stripScroll = rememberScrollState()
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .testTag("search-filter-strip")
-                    .horizontalScroll(rememberScrollState()),
+                    .raftScrollEdgeFade(stripScroll)
+                    .horizontalScroll(stripScroll),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
