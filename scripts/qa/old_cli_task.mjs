@@ -39,6 +39,8 @@ const SERVER_NAME = option("server-name", "OranixSlockTest");
 const AGENT_NAME = option("agent-name", "qa-old-cli-task");
 const CHANNEL = option("channel", "qa-test-create-7842").replace(/^#/, "");
 const TITLE = option("title", "QA: 老版本 CLI 建的任务（task v2 放量前验证，可删）");
+const ACTION = option("action", "task");
+if (!["task", "artifacts"].includes(ACTION)) throw new Error(`unknown --action ${ACTION}`);
 const OLD_CLI = "@botiverse/raft@0.0.26";
 const NEW_CLI = "@botiverse/raft@latest";
 
@@ -98,9 +100,9 @@ function findMessage(json, id) {
 }
 const listOf = (json, key) => (Array.isArray(json) ? json : Array.isArray(json?.[key]) ? json[key] : []);
 
-function runCli(dir, cliArgs, env) {
+function runCli(dir, cliArgs, env, input) {
   const result = spawnSync(process.execPath, [path.join(dir, "node_modules/@botiverse/raft/dist/raft.js"), ...cliArgs], {
-    env, encoding: "utf8", timeout: 120_000,
+    env, encoding: "utf8", timeout: 120_000, ...(input !== undefined ? { input } : {}),
   });
   return { status: result.status, stdout: redact(result.stdout), stderr: redact(result.stderr) };
 }
@@ -114,7 +116,54 @@ function installCli(spec) {
   return dir;
 }
 
-const summary = { env: ENV_NAME, server: SERVER_NAME, agent: AGENT_NAME, channel: `#${CHANNEL}`, title: TITLE };
+// --action artifacts: two small single-file HTML Artifacts pushed by the agent with the CURRENT CLI
+// into the channel, each followed by its link sent as the agent (a push posts nothing; the card
+// appears once the link is sent), for the Android artifact viewer reuse check (Hands dd109a01,
+// fix #4547). An Artifact already there with the same title is not pushed again.
+const ARTIFACTS = [
+  { key: "A", title: "QA artifact A (可删)", marker: "QA-ARTIFACT-A-PAGE", color: "#1d4ed8" },
+  { key: "B", title: "QA artifact B (可删)", marker: "QA-ARTIFACT-B-PAGE", color: "#b91c1c" },
+];
+async function pushArtifacts(cliEnv) {
+  const cliDir = installCli(NEW_CLI);
+  const listed = runCli(cliDir, ["artifact", "list", "--target", `#${CHANNEL}`, "--limit", "50"], cliEnv);
+  console.log(`----- artifact list --target #${CHANNEL} (exit ${listed.status}) -----\n${listed.stdout.split("\n").slice(0, 30).join("\n")}${listed.stderr}\n-----`);
+  if (listed.status !== 0) stop("raft artifact list failed");
+  summary.artifacts = {};
+  for (const a of ARTIFACTS) {
+    const line = listed.stdout.split("\n").find((l) => l.includes(a.title));
+    if (line) {
+      summary.artifacts[a.key] = { title: a.title, id: line.match(/\bpt_[A-Za-z0-9]+/)?.[0] ?? null, pushed_now: false, line: line.trim().slice(0, 200) };
+      log(`${a.title} is already in #${CHANNEL}; not pushing it again`);
+      continue;
+    }
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `qa-artifact-${a.key}-`));
+    fs.writeFileSync(path.join(dir, "index.html"), `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${a.title}</title>
+<style>body{font-family:sans-serif;margin:0;padding:32px;background:${a.color};color:#fff}h1{font-size:40px}p{font-size:22px}</style>
+</head><body>
+<h1>QA artifact ${a.key}</h1>
+<p>${a.marker}</p>
+<p>Test page for the Android Artifact viewer reuse check (Hands dd109a01). Safe to delete.</p>
+</body></html>
+`);
+    const pushed = runCli(cliDir, ["artifact", "push", dir, "--target", `#${CHANNEL}`, "--title", a.title], cliEnv);
+    console.log(`----- artifact push ${a.key} (exit ${pushed.status}) -----\n${pushed.stdout}${pushed.stderr}\n-----`);
+    if (pushed.status !== 0) stop(`raft artifact push ${a.key} failed`);
+    const url = pushed.stdout.match(/^Open: (\S+)/m)?.[1] ?? null;
+    const id = pushed.stdout.match(/\((pt_[A-Za-z0-9]+)\)/)?.[1] ?? null;
+    if (!url) stop(`the push of ${a.key} printed no Open: link`);
+    summary.artifacts[a.key] = { title: a.title, id, url, pushed_now: true };
+    const sent = runCli(cliDir, ["message", "send", "--target", `#${CHANNEL}`], cliEnv, `${url}\n`);
+    console.log(`----- message send (link of ${a.key}) (exit ${sent.status}) -----\n${sent.stdout}${sent.stderr}\n-----`);
+    if (sent.status !== 0) stop(`sending the link of ${a.key} failed`);
+    summary.artifacts[a.key].link_sent = true;
+  }
+  summary.result = "pass";
+}
+
+const summary = { env: ENV_NAME, action: ACTION, server: SERVER_NAME, agent: AGENT_NAME, channel: `#${CHANNEL}`, ...(ACTION === "task" ? { title: TITLE } : {}) };
 let credential = null;
 let agentId = null;
 let exitCode = 0;
@@ -147,6 +196,7 @@ try {
     summary.agent_reused = true;
     log(`reusing external agent ${AGENT_NAME} (${agent.id})`);
   } else {
+    if (ACTION !== "task") stop(`${AGENT_NAME} does not exist; --action ${ACTION} only uses an existing agent`);
     agent = ok(await api("POST", "agents", {
       body: { name: AGENT_NAME, external: true, description: "QA: makes one task with the old Raft CLI 0.0.26 for the task v2 mobile check (s5). Safe to delete after the release." },
     }), "create the external agent");
@@ -170,11 +220,11 @@ try {
     return tasks.filter((t) => t.createdById === agentId && String(t.title ?? "").trim() === TITLE.trim())
       .sort((a, b) => Date.parse(b.createdAt ?? 0) - Date.parse(a.createdAt ?? 0))[0] ?? null;
   };
-  const existing = await ownTask();
+  const existing = ACTION === "task" ? await ownTask() : null;
 
   // ---- the agent's key, in a profile the old CLI reads ----
   const minted = ok(await api("POST", `agents/${agentId}/credentials`, {
-    body: { name: `mobile QA old CLI task (run ${process.env.GITHUB_RUN_ID ?? "local"})` },
+    body: { name: `mobile QA ${ACTION === "task" ? "old CLI task" : "artifacts"} (run ${process.env.GITHUB_RUN_ID ?? "local"})` },
   }), "mint the agent key");
   if (typeof minted?.apiKey !== "string") stop("the credential mint answered without a key");
   mask(minted.apiKey);
@@ -187,6 +237,8 @@ try {
   const cliEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(SLOCK_|RAFT_|QA_LOGIN_)/.test(k)));
   Object.assign(cliEnv, { RAFT_HOME: raftHome, RAFT_PROFILE: "qa-old-cli", NO_COLOR: "1" });
 
+  if (ACTION === "artifacts") await pushArtifacts(cliEnv);
+  else {
   // ---- old CLI create ----
   let task = existing;
   if (existing) {
@@ -233,6 +285,7 @@ try {
   summary.view_source = viewText.split("\n").find((l) => /^\s*Source\b/i.test(l))?.trim() ?? null;
   const sourceOk = summary.source_message ? summary.source_message.sender_is_agent : /@?qa-old-cli-task:/.test(summary.view_source ?? "");
   summary.result = task.sourceMessageId && sourceOk ? "pass" : "check";
+  }
 } catch (error) {
   exitCode = 1;
   summary.result = "fail";
