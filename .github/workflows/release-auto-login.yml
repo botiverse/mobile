@@ -218,7 +218,8 @@ jobs:
     env:
       EVIDENCE: release-auto-login-evidence
       HANDS_API: https://hands.build
-      HANDS_AUTH_TOKEN: ${{ needs.plan.outputs.serve_extra == 'true' && secrets.QUIVER_BEARER_TOKEN || '' }}
+    # The Hands publisher token is never job-level: only the "Serve" and "Hands cleanup" steps get
+    # it (step env), so the emulator step (the app, the scenario scripts) runs without it.
     steps:
       - uses: actions/checkout@v7
 
@@ -268,7 +269,7 @@ jobs:
 
       - name: Install Hands CLI
         if: needs.plan.outputs.serve_extra == 'true'
-        run: npm install -g --ignore-scripts @botiverse/hands-cli@0.5.47
+        run: npm install -g --ignore-scripts @botiverse/hands-cli@0.5.50
 
       - name: Serve the extra APK on Hands (debug channel, e2e device group only)
         id: hands
@@ -276,6 +277,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ needs.plan.outputs.apk_run_id }}
+          HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
         run: |
           set -euo pipefail
           # Provenance for the Hands release: the APK's source commit from the fixture manifest
@@ -291,13 +293,34 @@ jobs:
             "${{ steps.extra.outputs.name }}" "${{ steps.extra.outputs.code }}" "${GROUP}" "${SOURCE}")"
           echo "release_id=${RID}" >> "$GITHUB_OUTPUT"
           echo "${{ steps.extra.outputs.code }} is Hands release ${RID} (raft-android/debug, device group only)"
+          # The emulator below is x86_64: B's release must carry that APK.
+          bash scripts/qa/android_update_hands_fixture.sh assert-asset "${RID}" x86_64
+          # The emulator's Hands installation id exists only once the app has run on it (inside the
+          # emulator step, which has no Hands token). A short-lived joiner started here waits for the
+          # scenario to write that id, adds it to the group, writes ok/failed/timeout (no secret) to
+          # the result file and exits; at most 40 min. "Hands cleanup" stops it if still waiting.
+          DEVICE_FILE="${RUNNER_TEMP}/hands-device-id"
+          RESULT_FILE="${RUNNER_TEMP}/hands-join-result"
+          rm -f "${DEVICE_FILE}" "${RESULT_FILE}"
+          LABEL="gha-run-${GITHUB_RUN_ID}-min-build-gate"
+          nohup bash -c '
+            for _ in $(seq 1 800); do
+              if [ -s "$1" ]; then
+                if bash scripts/qa/android_update_hands_fixture.sh add-member "$3" "$(cat "$1")" "$4"; then echo ok > "$2"; else echo failed > "$2"; fi
+                exit 0
+              fi
+              sleep 3
+            done
+            echo timeout > "$2"
+          ' hands-joiner "${DEVICE_FILE}" "${RESULT_FILE}" "${GROUP}" "${LABEL}" > "${RUNNER_TEMP}/hands-joiner.log" 2>&1 &
+          echo "$!" > "${RUNNER_TEMP}/hands-joiner.pid"
 
       - name: Scenario extras
         id: xflags
         run: |
           F=""
           [ -n "${{ steps.extra.outputs.apk }}" ] && F="${F} --extra-apk ${{ steps.extra.outputs.apk }} --extra-code ${{ steps.extra.outputs.code }}"
-          [ -n "${{ steps.hands.outputs.group }}" ] && F="${F} --hands-group ${{ steps.hands.outputs.group }} --hands-release ${{ steps.hands.outputs.release_id }} --device-id-file ${RUNNER_TEMP}/hands-device-id"
+          [ -n "${{ steps.hands.outputs.group }}" ] && F="${F} --hands-group ${{ steps.hands.outputs.group }} --hands-release ${{ steps.hands.outputs.release_id }} --device-id-file ${RUNNER_TEMP}/hands-device-id --hands-join-result ${RUNNER_TEMP}/hands-join-result"
           echo "flags=${F# }" >> "$GITHUB_OUTPUT"
 
       - name: Build the QA capture browser
@@ -342,11 +365,17 @@ jobs:
           script: node scripts/qa/release_auto_login.mjs --apk "${{ steps.apk.outputs.apk }}" --capture-browser-apk "${{ runner.temp }}/capture-browser.apk" --env "${{ needs.plan.outputs.environment }}" --out "${{ env.EVIDENCE }}" ${{ needs.plan.outputs.cleanup_flags }} ${{ needs.plan.outputs.scenario_flags }} ${{ steps.xflags.outputs.flags }}
 
       - name: Hands cleanup (remove the emulator from the group, cancel the served release)
+        id: hands-cleanup
         if: always() && steps.hands.outputs.group != ''
+        env:
+          HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
         run: |
+          # The joiner, if it is still waiting (the scenario never wrote the device id).
+          kill "$(cat "${RUNNER_TEMP}/hands-joiner.pid" 2>/dev/null)" 2>/dev/null || true
+          echo "joiner: $(cat "${RUNNER_TEMP}/hands-join-result" 2>/dev/null || echo none)"
           DEVICE="$(cat "${RUNNER_TEMP}/hands-device-id" 2>/dev/null || true)"
           bash scripts/qa/android_update_hands_fixture.sh cleanup "${{ steps.hands.outputs.group }}" "${{ steps.hands.outputs.release_id }}" "${DEVICE}"
-          rm -f "${RUNNER_TEMP}/hands-device-id"
+          rm -f "${RUNNER_TEMP}/hands-device-id" "${RUNNER_TEMP}/hands-join-result" "${RUNNER_TEMP}/hands-joiner.pid"
 
       - name: Summary
         if: always()

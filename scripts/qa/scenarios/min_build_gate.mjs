@@ -31,7 +31,7 @@
 //   min_build_gate decision=<none|banner threshold=T|block threshold=T latest=B> reason=<r>
 import fs from "node:fs";
 import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 
 const FLAG_KEY = "mobile_min_build_android_v1";
 const BLOCK_TITLE = "Please update to the latest version";
@@ -49,12 +49,15 @@ export async function run(ctx) {
   const handsGroup = option("hands-group", "");
   const handsRelease = option("hands-release", "");
   const deviceIdFile = option("device-id-file", "");
+  // Written by the workflow's Hands joiner (ok / failed / timeout) once it added the id in
+  // --device-id-file to the group: this step has no Hands token itself.
+  const joinResultFile = option("hands-join-result", "");
   const waitOffMinutes = Number(option("wait-off-minutes", "40"));
   // When the flag admin turned the flag off (epoch ms), if known: the only base for
   // seconds_after_server_off. Without it that field is left out (the poll's own time is not the change).
   const flagOffAtMs = Number(option("flag-off-at-ms", "0")) || null;
   const results = {};
-  const report = { phase, threshold, flag_key: FLAG_KEY, serving_b: Boolean(handsGroup), b_code: extraCode || null, results };
+  const report = { phase, threshold, flag_key: FLAG_KEY, serving_b: Boolean(handsGroup), b_code: extraCode || null, b_hands_release: handsRelease || null, results };
   ctx.summary.scenario = report;
 
   const mark = (id, result, note) => {
@@ -188,14 +191,16 @@ export async function run(ctx) {
     }
     if (!deviceId) throw new Error("the app never created its Hands installation id (shared_prefs/quiver_update.xml)");
     redact.add(deviceId);
-    if (deviceIdFile) fs.writeFileSync(deviceIdFile, deviceId, { mode: 0o600 });
-    const add = spawnSync("bash", ["scripts/qa/android_update_hands_fixture.sh", "add-member", handsGroup, deviceId, `gha-run-${process.env.GITHUB_RUN_ID ?? "local"}-min-build-gate`], { encoding: "utf8" });
-    if (add.status !== 0) throw new Error(`adding the emulator to the Hands device group failed: ${redact(String(add.stderr)).slice(0, 300)}`);
-    const abi = shell("getprop ro.product.cpu.abi").trim();
-    if (handsRelease) {
-      const assetCheck = spawnSync("bash", ["scripts/qa/android_update_hands_fixture.sh", "assert-asset", handsRelease, abi], { encoding: "utf8" });
-      if (assetCheck.status !== 0) throw new Error(`B's Hands release has no APK for ${abi}: ${String(assetCheck.stderr).trim().slice(-400)}`);
+    if (!deviceIdFile || !joinResultFile) throw new Error("joining the Hands group needs --device-id-file and --hands-join-result (the workflow's joiner)");
+    fs.writeFileSync(deviceIdFile, deviceId, { mode: 0o600 });
+    let joined = "";
+    for (let i = 0; i < 60 && !joined; i += 1) {
+      joined = fs.existsSync(joinResultFile) ? fs.readFileSync(joinResultFile, "utf8").trim() : "";
+      if (!joined) await sleep(2000);
     }
+    if (joined !== "ok") throw new Error(`adding the emulator to the Hands device group: ${joined || "no answer from the workflow's joiner in 120 s"}`);
+    // B's release carries the x86_64 APK: checked by the workflow's Serve step (assert-asset).
+    const abi = shell("getprop ro.product.cpu.abi").trim();
     // Exactly the app's question: is B offered to this installation of A?
     const url = `${HANDS_BASE}/public/v2/apps/raft-android/updates/check?channel=debug&product_type=android-apk&current_version_code=${installedCode()}&platform=android&filetype=apk&arch=${encodeURIComponent(abi)}`;
     let offered = 0;

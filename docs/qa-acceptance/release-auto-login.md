@@ -176,9 +176,13 @@ gh workflow run release-auto-login.yml -f environment=production -f apk_run_id=<
   (`apk_run_id` + `apk_artifact`), build B the extra one (`extra_apk_artifact`, same run, same
   signer, higher versionCode). With `hands_serve_extra=true` the workflow serves B on Hands
   raft-android channel `debug` as an ACTIVE release scoped to the "GitHub Actions update e2e
-  emulators" device group (`android_update_hands_fixture.sh publish`), the scenario puts this
-  emulator's Hands installation id into that group, and the run removes it and cancels the release
-  at the end (same single-writer concurrency group as android-update-e2e.yml). Each phase first
+  emulators" device group (`android_update_hands_fixture.sh publish`, hands-cli 0.5.50), checks it
+  carries the x86_64 APK, and starts a short-lived joiner: the scenario writes this emulator's Hands
+  installation id to a file, the joiner adds it to the group and answers ok/failed/timeout. The run
+  removes it and cancels the release at the end (same single-writer concurrency group as
+  android-update-e2e.yml). The Hands token is only in the Serve and Hands cleanup steps' env (and
+  the joiner they start), never job-level: the emulator step (the app, the scenario) runs without it
+  (`scripts/test_hands_identifier_migration.sh` pins this). Each phase first
   reads the flag through `POST feature-flags/evaluate` and stops unless it is ON with default
   variant N. `banner` (N above B): banner only, Dismiss closes it. `block` (N = B): A blocked;
   offline + background + return → banner; online again → block; A updated to B → no gate.
