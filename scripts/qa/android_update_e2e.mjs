@@ -436,12 +436,24 @@ async function main() {
         // 1. Unknown-sources settings page the app opens when it may not install yet.
         const allow = find(list, (n) => n.text === "Allow from this source");
         if (allow && pkgs.has("com.android.settings")) {
-          const toggle = find(list, (n) => n.cls.includes("Switch") && n.pkg === "com.android.settings");
-          if (toggle && !toggle.checked) {
+          const allowed = () => /:\s*allow/.test(shell(`appops get ${PKG} REQUEST_INSTALL_PACKAGES`, { allowFailure: true }));
+          if (!allowed()) {
+            // API 34 Settings is Compose (SpaActivity): the switch is not a Switch view, so tap
+            // the row's switch area at the right edge, on the label's line.
+            const toggle = find(list, (n) => n.cls.includes("Switch") && n.pkg === "com.android.settings");
             log("granting 'Install unknown apps' in Settings");
-            tapNode(toggle);
-            installer.permission_toggle = true;
+            if (toggle) tapNode(toggle);
+            else {
+              const width = Number(/(\d+)x\d+/.exec(shell("wm size"))?.[1] ?? 1080);
+              shell(`input tap ${width - 90} ${Math.round((allow.bounds[1] + allow.bounds[3]) / 2)}`);
+            }
             await sleep(1500);
+            if (!allowed()) {
+              tapNode(allow);
+              await sleep(1500);
+            }
+            if (!allowed()) fail('could not switch on "Allow from this source" in Settings');
+            installer.permission_toggle = true;
             evidence("unknown-sources-allowed");
           }
           shell("input keyevent 4");
