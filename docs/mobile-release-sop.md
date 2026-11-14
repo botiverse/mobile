@@ -13,11 +13,42 @@ Skills that point here: `raft-release-versioning` (§2), `raft-release-changeset
 
 ## Roles
 
-- **Release owner** (artin): date, scope, exceptions, and every external go.
+- **Release owner** (artin): date, scope, exceptions, and the calls kept
+  below (rollback, data-changing, risky).
+- **Mobile DRI** (Lagoon): release decisions, by delegation (below).
 - **Release operator**: keeps the issue, cuts the branch, builds drafts,
   verifies bytes, runs only authorized mutations, writes receipts.
 - **Feature owner**: scoped PR, changeset, tests, evidence.
 - **Independent reviewer**: not the author of the exact source being reviewed.
+
+### Release decisions (delegated, artin 2026-11-14)
+
+artin delegated release decisions to the mobile DRI (Lagoon) on 2026-11-14
+(Raft `#proj-mobile`, message `c5535c79`). In this SOP, a **release go** is the
+mobile DRI's go. It covers:
+
+- Hands `main` activation;
+- TestFlight external (Beta App Review, tester notification);
+- App Store submission and release;
+- Google Play promotion beyond internal, including production;
+- release notes approval (§4) and announcements (§7.6).
+
+The DRI gives a go only when all three hold, and writes them in the release
+issue with the go:
+
+1. **No new crashes** on the exact build (smoke, §6.2; Hands/Play/TestFlight
+   crash reports for internal and preview).
+2. **Related feedback fixed**: feedback this release claims to fix is fixed on
+   the exact build, and no open feedback blocks it.
+3. **Server dependencies live**: every server change the release relies on is
+   deployed to production.
+
+These still go to **artin**: rollback, freezing the update pointer, share
+revocation, release deletion or removal (§7.7); anything that changes or
+deletes user or store data (for example withdrawing an in-review Play change,
+§7.3); scope exceptions; and any call the DRI judges risky or unclear. Record
+the delegation in each release issue so operators and sub-agents don't stop to
+wait for artin.
 
 ## Hard rules
 
@@ -27,13 +58,14 @@ never implies another.
 1. **CI may build, sign, upload and create Hands drafts. Nothing else is
    implied.** Hands activation, Play track promotion beyond internal,
    TestFlight external, Beta App Review, tester notification, App Store
-   submission and announcements are separate mutations, each needing artin's
-   explicit go for that exact build.
+   submission and announcements are separate mutations, each needing an
+   explicit release go (§Release decisions) for that exact build.
 2. **No approval needed** for internal/preview channels: Hands `preview`, Play
    internal testing (release rule 2026-10-29), TestFlight internal (Botiverse
    group). Every external release (Hands `main`, Play closed/open/production,
-   TestFlight external, App Store) needs artin's OK for that version and a smoke
-   of the exact build first (artin, 2026-11-02).
+   TestFlight external, App Store) needs a release go for that version and a
+   smoke of the exact build first (artin, 2026-11-02; go delegated to the mobile
+   DRI, 2026-11-14).
 3. **One branch per semantic version**, never reused, force-pushed or rewound.
 4. **One carrier source exact** (full 40-char SHA) for both platforms of a
    train. Marketing versions/build numbers may differ; embedded source may not.
@@ -240,8 +272,8 @@ change-logs/X.Y.Z/ios/{zh-CN,en,ja}.md
 - Google Play: ≤500 characters per language.
 - No PR numbers, implementation detail, CI history or unshipped work.
 
-The workflows fail closed on an incomplete reviewed set. artin approves the
-files before any notes are applied to a draft.
+The workflows fail closed on an incomplete reviewed set. The mobile DRI
+approves the files before any notes are applied to a draft.
 
 ## 5. Build drafts
 
@@ -350,6 +382,13 @@ stamp workflow run ios-release.yml --repo botiverse/mobile --ref release/X.Y.Z \
   Botiverse internal group only. That job is not idempotent: if it fails after
   the ASC upload, re-dispatch with a higher `version_build`.
 - `testflight_what_to_test`: zh-Hans text; empty = build number + commit.
+- **Hands upload**: `ios-release.yml` must install `@botiverse/hands-cli`
+  >= 0.5.51, which uploads every asset directly to storage. Older CLIs send the
+  IPA through Cloudflare, which rejects one request over 100 MiB (1.25.0's IPA
+  was 106 MB). 0.5.49 added direct upload for iOS only. The workflows pin
+  0.5.50 until 0.5.51 is on npm; bump the pins in `ios-release.yml` and
+  `android-release.yml` then. Until that bump, keep the IPA under 100 MiB
+  (§6.3).
 
 The workflow validates: one `.app`; bundle id; versions equal the inputs and
 `CFBundleVersion != 1`; `embedded.mobileprovision`; Compose resources;
@@ -436,9 +475,33 @@ not replace smoke on the release carrier.
 cases, compensating checks on the affected path, risk). Skipped cases read
 `NOT RUN · hotfix waiver`. An affected core path is never skipped.
 
+### 6.3 Trend check (before any external step)
+
+Platform limits show up a release early (1.24.0: IPA 100.98 MB, iOS link
+~36 min at 12g; 1.25.0 then OOMed at 12g and the IPA hit 106 MB). Compare the
+candidate with the previous release and record a table in the release issue:
+
+| Measure | Where | Previous | Candidate | Change |
+|---|---|---|---|---|
+| IPA size | `ios-release.yml` artifact / Hands asset | | | |
+| APK size (`main`) | `android-release.yml` artifact | | | |
+| AAB size (Play) | `android-release.yml` artifact | | | |
+| iOS K/N release link time | step `Build shared framework (Release, iosArm64)` | | | |
+| iOS K/N heap | step `Raise Gradle/Kotlin heap…` (setting) and any GC/OOM warning | | | |
+
+- The IPA must stay under **100 MiB** unless the upload runs on Hands direct
+  upload (hands-cli >= 0.5.49 for iOS, >= 0.5.51 for all assets; §5.2). Name
+  the CLI version in the table.
+- A size jump over ~5%, a link time over ~30 min, or any heap warning is a
+  known risk: name it in the issue with an owner before the release go, and
+  fix it in the next train rather than at the next limit.
+- APK size has its own hard cap (45 MiB, §5.1).
+
 ## 7. Owner-approved steps
 
 Each line below is its own mutation with its own go unless marked otherwise.
+"Release go" means the mobile DRI's go (§Release decisions); rollback and
+data-changing calls stay with artin.
 Before each: fresh-read state and the latest directive, use exact revision /
 build / group / source preconditions. After: read back and post in the issue.
 
@@ -449,7 +512,7 @@ Fresh-read app, build, release, source, status, revision, scope, assets; write
 (`hands releases update <app> <id> --changelog-file zh-CN=… …`); fresh-read
 again and require byte equality, unchanged source/scope, `status=draft`.
 
-### 7.2 Android Hands activation (`preview`: no go needed; `main`: artin's go)
+### 7.2 Android Hands activation (`preview`: no go needed; `main`: release go)
 
 Authenticate: `hands whoami` must show `publisher` on `raft-android`
 (`HANDS_BEARER_TOKEN` app deploy token, or `HANDS_SESSION_COOKIE` from
@@ -487,6 +550,10 @@ Right after Hands `preview` is published and **before** `main` is published,
 test the in-app update path on a real device or emulator. That device must
 have the **previous** `preview` build installed and be signed in.
 
+Before that, the automated `Android Update E2E` run (below) must be green on
+the carrier source exact; it is a required step before `main`. Record its run
+id in the release issue.
+
 1. Open the app. The update prompt must appear and show the new version.
 2. Tap update. The APK downloads and the system installer opens.
 3. After install, the app opens on the new versionCode (Settings › About).
@@ -511,8 +578,9 @@ GitHub-hosted emulator (API 34, no Testbed). It builds A and B from one commit
 with `android-update-qa.yml`, publishes only B to Hands `raft-android/debug`,
 scoped to a device group that holds only that run's emulator, and drives the
 real prompt, download and system installer. Afterwards it removes the emulator
-from the group and cancels B. Run it before each release, and whenever you
-need it:
+from the group and cancels B. It is **required before `main`** on every train
+(run it on the carrier source exact; a red run blocks `main` like a failed
+manual test), and you can run it whenever you need it:
 
 ```bash
 stamp workflow run android-update-e2e.yml -R botiverse/mobile --ref main \
@@ -528,17 +596,49 @@ names the step that broke. This run tests the update mechanics on fixture
 builds. It does not replace the `preview` → `preview` test above: that one
 uses the real previous train build and the real channel.
 
+**Local state must survive restart and update.** Key local state (composer
+drafts, settings, session/login, current server) needs tests that kill the
+process or update the app and then assert the state is still there. In-process
+unit and screenshot tests are not enough: a cold-start bug deleted every draft
+from 1.18 to 1.25 and only this e2e's "draft still there" check caught it
+(#4762). A change that adds or moves key local state adds such an assertion
+(the e2e, or an instrumented restart test), and the new assertion must fail
+without the fix.
+
 ### 7.3 Google Play beyond internal
 
-Closed, open and production tracks each need artin's go:
+Closed, open and production tracks each need a release go:
 `hands releases play-promote <app> <release> --track closed --note …`
 (`closed` = the binding's configured track, `alpha`). Read back
 `/distributions/play` and `/receipts`: receipt/edit id, package, versionCode,
 track, AAB SHA-256, source, run, review state.
 
-### 7.4 TestFlight: internal first, external only after artin tested
+**Review status.** Hands now reports Play review status (what is in review,
+for which track and versionCode) and alerts when it cannot read it. Read it
+before every promotion. Hands' status read failed (403) for five days during
+1.25 with no alert, and "changes in review" was blamed on the data-safety form
+when the 1.24.0 production release was in review. If the status is missing or
+stale, fix the read first; don't guess.
 
-(artin, 2026-09-27.)
+**Withdraw and replace.** When an earlier change still in review blocks the
+promotion:
+
+```bash
+hands releases play-promote <app> <release> --track production --note … \
+  --cancel-in-review <versionCode>[,<versionCode>…]
+```
+
+Google withdraws **all** changes in review for the app, not only the named
+versionCodes: other tracks, store listing, and policy forms (data safety,
+content rating) too. Withdrawn changes must be resubmitted. It needs explicit
+confirmation for that exact call: name what is in review (from Hands' review
+status), the versionCodes, and what will have to be resubmitted, and get
+artin's go (a data-changing call, §Release decisions). Record the confirmation
+and the readback in the issue.
+
+### 7.4 TestFlight: internal first, external only after the exact build was tested
+
+(artin, 2026-09-27; external go delegated to the mobile DRI, 2026-11-14.)
 
 **Internal** (default after every iOS draft; no per-build go). With
 `testflight_internal=true`, or by hand:
@@ -554,10 +654,11 @@ hands builds testflight-publish raft-ios <buildId> --distribution internal \
 Never pass `--notify-testers` on internal (`NOTIFY_EXTERNAL_ONLY`). Done =
 `processing_state=VALID`, Botiverse assigned,
 `internal_build_state=IN_BETA_TESTING`. A bare "publish iOS" / "publish to
-TestFlight" means exactly this. Report to artin and **stop**.
+TestFlight" means exactly this. Report to the mobile DRI and **stop**.
 
 **External** (Insiders, Beta App Review, notification): only after a separate
-go from artin given after he tested that exact build; an earlier publish
+release go from the mobile DRI, given after that exact build was tested (smoke,
+§6.2) and the criteria in §Release decisions hold; an earlier publish
 instruction never carries over. **Cadence** (artin, 2026-10-23): Android ships
 every release; iOS internal gets every release; iOS external is submitted only
 after the previous external submission was approved; releases in between stay
@@ -610,14 +711,14 @@ Format `ios-v<marketing>-b<CFBundleVersion>`; never an unqualified `vX.Y.Z`
 for iOS; never move, delete or reuse a tag. Verify the `^{}` peel equals the
 IPA source commit.
 
-### 7.5 App Store (artin's go)
+### 7.5 App Store (release go)
 
-Submit only after artin's OK for that version. Upload App Store screenshots
+Submit, and release after approval, only with a release go for that version. Upload App Store screenshots
 (including iPad 13") through Hands, not by hand in App Store Connect:
 `hands app-store screenshots push raft-ios --version-name X.Y.Z --dir <dir>` (dry run first).
 App Store production is never implied by TestFlight.
 
-### 7.6 Announce (artin's go)
+### 7.6 Announce (release go)
 
 Announce only what is reachable on each platform, in `#raft-mobile`: four
 separate top-level messages (Android zh/en, iOS zh/en). Japanese posts only if
@@ -724,8 +825,8 @@ Raft interval reminder** on the release thread. Each firing fresh-reads every
 in-flight Android/iOS run, Hands draft/readback and TestFlight processing
 state, posts a short status (and updates the issue when state changed). Cancel
 it only when every dispatched platform is terminal and receipts are in the
-issue, or artin stops the train. In-flight carriers without a reminder is a
-process defect. The reminder authorizes nothing.
+issue, or artin or the mobile DRI stops the train. In-flight carriers without
+a reminder is a process defect. The reminder authorizes nothing.
 
 ## 9. Closeout, merge-back, branch lock
 
