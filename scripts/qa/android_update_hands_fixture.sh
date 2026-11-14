@@ -17,8 +17,9 @@
 #   cleanup GROUP RELEASE_ID DEVICE_ID   (best effort, every step attempted)
 set -euo pipefail
 
-APP_SLUG="${HANDS_APP_SLUG:-raft-android}"
-CHANNEL="${HANDS_CHANNEL:-debug}"
+APP_SLUG=raft-android
+# Hard-wired: this helper must never write to preview, main or any user-facing channel.
+CHANNEL=debug
 GROUP_NAME="${HANDS_E2E_GROUP_NAME:-GitHub Actions update e2e emulators}"
 # Reserved QA versionCode window: majors 200..209 with minor = patch = 0.
 RANGE_LO=2000000000

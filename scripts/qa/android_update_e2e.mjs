@@ -121,6 +121,22 @@ function tapNode(node) {
   shell(`input tap ${Math.round((x1 + x2) / 2)} ${Math.round((y1 + y2) / 2)}`);
 }
 
+// Emulator boot noise: "<app> isn't responding" (often Pixel Launcher) covers the screen.
+// It is not the app under test unless it names Raft, which is a real failure.
+async function dismissSystemDialog(list) {
+  const anr = find(list, (n) => /isn.t responding/.test(n.text));
+  if (!anr) return false;
+  if (/^Raft\b/.test(anr.text)) fail(`the app is not responding: ${anr.text}`);
+  const button = find(list, "Close app") ?? find(list, "Wait");
+  if (!button) return false;
+  log(`dismissing system dialog "${anr.text}"`);
+  tapNode(button);
+  await sleep(1500);
+  launchApp();
+  await sleep(2000);
+  return true;
+}
+
 async function waitFor(description, matcher, { timeoutMs = 60_000, intervalMs = 1500, onTick } = {}) {
   const deadline = Date.now() + timeoutMs;
   let list = [];
@@ -128,6 +144,7 @@ async function waitFor(description, matcher, { timeoutMs = 60_000, intervalMs = 
     list = nodes();
     const hit = find(list, matcher);
     if (hit) return hit;
+    if (await dismissSystemDialog(list)) continue;
     if (onTick) await onTick(list);
     await sleep(intervalMs);
   }
