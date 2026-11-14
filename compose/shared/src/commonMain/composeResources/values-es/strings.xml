@@ -2523,8 +2523,6 @@
     <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta. Controla el gesto para avanzar en conversaciones. Después de volver de un chat a Inicio, desliza a la izquierda desde el borde derecho de la pantalla para reabrirlo.</string>
     <string name="settings_mobile_home_server_avatar">Avatar del espacio de trabajo en el encabezado de Inicio</string>
     <string name="settings_mobile_home_server_avatar_detail">Muestra el avatar del espacio de trabajo actual junto a su nombre en el encabezado de Inicio. Desactívalo para mantener la insignia de título compacta actual.</string>
-    <string name="settings_mobile_thread_reverse_layout">Abrir chats en el mensaje más reciente</string>
-    <string name="settings_mobile_thread_reverse_layout_detail">Los chats se abren en el mensaje más reciente, ordenados desde abajo, sin desplazarse primero. Se aplica la próxima vez que abras un chat. Hasta que lo cambies, sigue el valor predeterminado del servidor.</string>
     <string name="settings_badge_beta">Beta</string>
     <string name="settings_mobile_compact_detail">Oculta los avatares repetidos en mensajes consecutivos del mismo remitente. Mantén presionada una fila para ver la hora del mensaje.</string>
     <string name="settings_mobile_status_enabled">Activado</string>

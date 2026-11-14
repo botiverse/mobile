@@ -557,8 +557,6 @@ sealed interface SharedSettingsIntent {
     data class SetServerDrawerEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetNewDesignSettingsEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetHomeServerAvatarEnabled(val enabled: Boolean) : SharedSettingsIntent
-    /** Task #154: stores the user's explicit realtime curl Socket.IO choice (no longer follows the server). */
-    data class SetThreadReverseLayoutEnabled(val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
@@ -694,9 +692,6 @@ class SharedSettingsDataSource(
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     private val linkOpenPreferenceRepository: LinkOpenPreferenceRepository? = null,
     private val authRuntimeCapabilityStore: SharedAuthRuntimeCapabilityStore? = null,
-    private val threadReverseLayoutPreferenceStore: ThreadReverseLayoutPreferenceStore? = null,
-    /** What the switch follows until the user picks: the flag for the selected server (alpha builds: on). */
-    private val threadReverseLayoutDefault: (suspend () -> Boolean)? = null,
     /**
      * The device's copy of the account-wide preview choice (slock docs/contracts/notifications.md
      * §1.5): the settings row, the Android notification poster and the in-app banners read it;
@@ -1428,30 +1423,6 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
-    suspend fun setThreadReverseLayoutEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
-        val store =
-            threadReverseLayoutPreferenceStore
-                ?: return DataResult.Error(ScreenError("settings_thread_reverse_layout_unavailable", retryable = false))
-        store.saveThreadReverseLayoutUserChoice(enabled)
-        diagnosticsLogger?.invoke("thread_reverse_layout_user_choice enabled=$enabled")
-        return loadMobilePreferences()
-    }
-
-    /** The switch shows the user's choice when there is one, otherwise the default it follows. Applies to the next thread open. */
-    private suspend fun SettingsMobileSnapshot.withThreadReverseLayoutPreference(): SettingsMobileSnapshot {
-        val store = threadReverseLayoutPreferenceStore ?: return this
-        val enabled = store.readThreadReverseLayoutUserChoiceSync() ?: (threadReverseLayoutDefault?.invoke() ?: false)
-        return copy(
-            threadReverseLayout =
-                SettingsMobileToggleSnapshot(
-                    enabled = enabled,
-                    available = true,
-                    statusLabel = if (enabled) "Enabled" else "Off",
-                    detail = "Open chats at the newest message, laid out from the bottom. Until changed, follows the server default."
-                )
-        )
-    }
-
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
         platformCapabilities.loadStorage()
 
@@ -1814,8 +1785,7 @@ class SharedSettingsDataSource(
                         statusLabel = "Unsupported",
                         detail = "The Home workspace avatar preference is not available on this platform."
                     ),
-        ).withThreadReverseLayoutPreference()
-            .withPushPreviewModePreference()
+        ).withPushPreviewModePreference()
     }
 
     private fun SettingsMobileSnapshot.withSystemNotificationPermission(
@@ -2736,14 +2706,6 @@ class SharedSettingsStore(
                     )
                 dataSource.setHomeServerAvatarEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_HOME_SERVER_AVATAR)
-            }
-            is SharedSettingsIntent.SetThreadReverseLayoutEnabled -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_THREAD_REVERSE_LAYOUT, inProgress = true)
-                    )
-                dataSource.setThreadReverseLayoutEnabled(intent.enabled)
-                    .applyMobileActionResult(MOBILE_ACTION_THREAD_REVERSE_LAYOUT)
             }
             SharedSettingsIntent.RefreshStorage -> {
                 _state.value = _state.value.copy(route = SharedSettingsRoute(SharedSettingsDestination.Storage))
@@ -4200,7 +4162,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetServerDrawerEnabled,
             is SharedSettingsIntent.SetNewDesignSettingsEnabled,
             is SharedSettingsIntent.SetHomeServerAvatarEnabled,
-            is SharedSettingsIntent.SetThreadReverseLayoutEnabled,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
@@ -4513,7 +4474,6 @@ internal const val MOBILE_ACTION_SERVER_DRAWER = "serverDrawer"
 internal const val MOBILE_ACTION_DESKTOP_MODE = "desktopModeOnLargeScreen"
 internal const val MOBILE_ACTION_NEW_DESIGN_SETTINGS = "newDesignSettings"
 internal const val MOBILE_ACTION_HOME_SERVER_AVATAR = "homeServerAvatar"
-internal const val MOBILE_ACTION_THREAD_REVERSE_LAYOUT = "threadReverseLayout"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
 /** Computer owner v1: transfer owner, make Public, or Make it mine. */

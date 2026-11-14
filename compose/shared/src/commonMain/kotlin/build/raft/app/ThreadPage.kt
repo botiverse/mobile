@@ -398,7 +398,6 @@ import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.network.RaftRequestTimeoutException
 import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
-import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
 import build.raft.app.data.currentFeatureFlagClientContext
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
@@ -8503,11 +8502,6 @@ private fun SharedThreadRouteContentContent(
         remember(pager) {
             KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
         }
-    // The Settings switch for the bottom-up list; null while it follows the flag default.
-    val chatLayoutReverseLayoutStore =
-        remember(pager) {
-            build.raft.app.data.KeyValueThreadReverseLayoutPreferenceStore(raftSharedPreferenceStore())
-        }
     val actionCardSuccessLabels =
         mapOf(
             "channel:create" to stringResource(Res.string.thread_action_card_success_channel),
@@ -8794,47 +8788,15 @@ private fun SharedThreadRouteContentContent(
             }
         } ?: false
 
-    // Decided once per thread open: flipping the layout under a live list would re-map every
-    // index. Task #193 (option C, artin 2026-10-18): the first frame must not wait for the gate,
-    // whose inputs (reply-cache provenance) arrive after a warm entry has already rendered
-    // content. The open locks userChoice, else this server's last gate-resolved value, else
-    // reverse; a gate result arriving later only updates the per-server value for the NEXT open.
-    val threadReverseLayoutGateResolved: Boolean? =
-        markdownLightGateInputs?.let { gateInputs ->
-            remember(gateInputs) {
-                resolveThreadReverseLayoutEnabled(
-                    registry = ProcessDiagnosticFeatureFlagOverrides.registry,
-                    serverEffective =
-                        sharedStores.serverFeatureFlags.isEnabled(
-                            ServerId(gateInputs.serverId),
-                            MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
-                        ),
-                    environmentId = gateInputs.environmentId,
-                    accountId = gateInputs.accountId,
-                    serverId = gateInputs.serverId
-                )
-            }
-        }
-    val threadReverseLayoutEnabled =
-        remember(threadInstanceKey) {
-            threadReverseLayoutFirstFrame(
-                userChoice = chatLayoutReverseLayoutStore.readThreadReverseLayoutUserChoiceSync(),
-                gateResolved = threadReverseLayoutGateResolved,
-                lastResolvedForServer =
-                    ThreadReverseLayoutLastDecision.get(markdownLightGateInputs?.serverId ?: storeScope.initialServerId)
-            )
-        }
-    LaunchedEffect(markdownLightGateInputs?.serverId, threadReverseLayoutGateResolved) {
-        val serverId = markdownLightGateInputs?.serverId ?: return@LaunchedEffect
-        val resolved = threadReverseLayoutGateResolved ?: return@LaunchedEffect
-        ThreadReverseLayoutLastDecision.record(serverId, resolved)
-    }
+    // The thread list is always laid out bottom-up (artin 2026-11-14: the Settings switch and the
+    // mobile_thread_reverse_layout_v0 flag are gone; a stored choice from older builds is ignored).
+    val threadReverseLayoutEnabled = true
 
     // Read-only evidence of the per-open decision (QA asked for one on every platform).
     LaunchedEffect(threadInstanceKey, threadReverseLayoutEnabled) {
         bridge.log(
             "thread_reverse_layout threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
-                "enabled=$threadReverseLayoutEnabled gateReady=${markdownLightGateInputs != null} " +
+                "enabled=$threadReverseLayoutEnabled " +
                 "buildType=${currentFeatureFlagClientContext().buildType ?: "none"}"
         )
     }

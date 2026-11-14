@@ -2523,8 +2523,6 @@
     <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta。控制對話前進手勢。從聊天返回首頁後，從螢幕右側邊緣向左滑動，即可重新開啟剛才的聊天。</string>
     <string name="settings_mobile_home_server_avatar">首頁頂端顯示工作區大頭貼</string>
     <string name="settings_mobile_home_server_avatar_detail">在首頁頂端的工作區名稱旁顯示目前工作區的大頭貼。關閉後繼續使用原有的精簡標題徽章。</string>
-    <string name="settings_mobile_thread_reverse_layout">從最新訊息開啟聊天</string>
-    <string name="settings_mobile_thread_reverse_layout_detail">進入聊天時直接停在最新訊息，從底部往上排列，不必先捲動。下次開啟聊天時生效。手動變更前會依照伺服器的預設值。</string>
     <string name="settings_badge_beta">Beta</string>
     <string name="settings_mobile_compact_detail">同一位傳送者連續傳送訊息時隱藏重複的大頭貼。長按訊息列即可查看訊息時間。</string>
     <string name="settings_mobile_status_enabled">已啟用</string>

@@ -514,9 +514,6 @@ internal fun SettingsNativeDetailPageContent(
                 onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled))
                 onHomeServerAvatarSelected(enabled)
             },
-            onThreadReverseLayoutChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetThreadReverseLayoutEnabled(enabled))
-            },
             diagnosticsLogger = diagnosticsLogger,
         )
     val appPreferenceVisibility = settingsAppPreferenceVisibility()

@@ -2520,8 +2520,6 @@
     <string name="settings_mobile_conversation_forward_gesture_accessibility">Бета. Управляет жестом возврата в чат. Вернувшись из чата на «Главную», проведите влево от правого края экрана, чтобы снова открыть его.</string>
     <string name="settings_mobile_home_server_avatar">Аватар рабочего пространства на «Главной»</string>
     <string name="settings_mobile_home_server_avatar_detail">Показывать аватар текущего рабочего пространства рядом с его названием вверху «Главной». Если выключить, останется прежний компактный значок в заголовке.</string>
-    <string name="settings_mobile_thread_reverse_layout">Открывать чаты на последнем сообщении</string>
-    <string name="settings_mobile_thread_reverse_layout_detail">Чат открывается сразу на последнем сообщении: лента выстраивается снизу, прокручивать вниз не нужно. Применяется при следующем открытии чата. Пока вы не измените настройку, действует значение по умолчанию для сервера.</string>
     <string name="settings_badge_beta">Бета</string>
     <string name="settings_mobile_compact_detail">Скрывать повторяющиеся аватары в сообщениях подряд от одного отправителя. Чтобы увидеть время сообщения, нажмите на строку и удерживайте.</string>
     <string name="settings_mobile_status_enabled">Включено</string>

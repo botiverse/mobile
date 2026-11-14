@@ -2275,14 +2275,6 @@ data class SettingsMobileSnapshot(
             statusLabel = if (DEFAULT_HOME_SERVER_AVATAR_ENABLED) "Enabled" else "Off",
             detail = "Show the current workspace avatar in the Home header. When off, keep the existing compact title badge."
         ),
-    /** Bottom-up thread list: effective value (user choice, else the flag default); see ThreadReverseLayoutPreferenceStore. */
-    val threadReverseLayout: SettingsMobileToggleSnapshot =
-        SettingsMobileToggleSnapshot(
-            enabled = false,
-            available = false,
-            statusLabel = "Unsupported",
-            detail = "The bottom-up message list is not available on this build."
-        ),
     val linkOpenMode: SettingsMobileSelectionSnapshot =
         SettingsMobileSelectionSnapshot(
             selectedKey = LinkOpenMode.Default.storageKey,

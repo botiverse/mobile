@@ -2523,8 +2523,6 @@
     <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta. Controla o gesto de avançar na conversa. Depois de voltar de uma conversa para o Início, deslize para a esquerda a partir da borda direita da tela para reabri-la.</string>
     <string name="settings_mobile_home_server_avatar">Avatar do espaço de trabalho no cabeçalho do Início</string>
     <string name="settings_mobile_home_server_avatar_detail">Mostra o avatar do espaço de trabalho atual ao lado do nome no cabeçalho do Início. Desative para manter o selo de título compacto atual.</string>
-    <string name="settings_mobile_thread_reverse_layout">Abrir conversas na mensagem mais recente</string>
-    <string name="settings_mobile_thread_reverse_layout_detail">As conversas abrem na mensagem mais recente, organizadas a partir de baixo, sem precisar rolar antes. Vale a partir da próxima vez que você abrir uma conversa. Até você alterar, segue o padrão do servidor.</string>
     <string name="settings_badge_beta">Beta</string>
     <string name="settings_mobile_compact_detail">Oculta avatares repetidos em mensagens consecutivas do mesmo remetente. Toque e segure uma linha para ver o horário da mensagem.</string>
     <string name="settings_mobile_status_enabled">Ativado</string>

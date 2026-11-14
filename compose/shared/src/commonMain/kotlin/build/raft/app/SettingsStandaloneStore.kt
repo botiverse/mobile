@@ -37,10 +37,6 @@ import build.raft.app.data.raftNotificationPreferenceRepository
 import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.KeyValuePushPreviewModePreferenceStore
-import build.raft.app.data.KeyValueThreadReverseLayoutPreferenceStore
-import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
-import build.raft.app.model.ServerId
-import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.MemberRemovalImpactRepository
 import build.raft.app.data.NetworkMemberRemovalImpactRepository
@@ -171,25 +167,7 @@ internal fun rememberStandaloneSettingsEnvironment(
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
                 diagnosticsLogger = { message -> bridge.log("settings_standalone $message") },
-                threadReverseLayoutPreferenceStore = KeyValueThreadReverseLayoutPreferenceStore(sharedPreferenceStore),
-                pushPreviewModePreferenceStore = KeyValuePushPreviewModePreferenceStore(sharedPreferenceStore),
-                threadReverseLayoutDefault = {
-                    authStore.readSession()?.let { session ->
-                        session.currentServerId?.let { serverId ->
-                            resolveThreadReverseLayoutEnabled(
-                                registry = ProcessDiagnosticFeatureFlagOverrides.registry,
-                                serverEffective =
-                                    sharedStores.serverFeatureFlags.isEnabled(
-                                        ServerId(serverId),
-                                        MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
-                                    ),
-                                environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
-                                accountId = session.user.id,
-                                serverId = serverId
-                            )
-                        }
-                    } ?: false
-                }
+                pushPreviewModePreferenceStore = KeyValuePushPreviewModePreferenceStore(sharedPreferenceStore)
             ).withAvatarCacheRuntime(
                 runtime = sharedStores.avatarCacheRuntime,
                 nativeCache = avatarNativeCache

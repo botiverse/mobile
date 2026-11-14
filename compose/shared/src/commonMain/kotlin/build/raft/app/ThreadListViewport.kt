@@ -1,91 +1,16 @@
 package build.raft.app
 
 import androidx.compose.runtime.staticCompositionLocalOf
-import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
-import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
-import build.raft.app.network.sync.DiagnosticFeatureFlagScope
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.unit.IntSize
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.delay
 
-/** Whether this thread route lays its message list out bottom-up; see [ThreadListViewport]. */
+/** Whether this thread route lays its message list out bottom-up (always, on a thread page); see [ThreadListViewport]. */
 internal val LocalThreadReverseLayout = staticCompositionLocalOf { false }
-
-/**
- * Same identity rules as the markdown light path: decided on the route's reply-cache provenance.
- * The server flag reads ON unless the server explicitly turns it off (client default-on key, artin
- * 2026-10-12). Local Feature Overrides ForceOn/ForceOff still win either way.
- */
-internal fun resolveThreadReverseLayoutEnabled(
-    registry: DiagnosticFeatureFlagOverrideRegistry,
-    serverEffective: Boolean,
-    environmentId: String,
-    accountId: String,
-    serverId: String,
-): Boolean =
-    registry.decide(
-        key = MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
-        serverEffective = serverEffective,
-        scope =
-            DiagnosticFeatureFlagScope(
-                environmentId = environmentId.trim().trimEnd('/'),
-                accountId = accountId,
-                serverId = serverId,
-            ),
-    ).finalEffective
-
-/** Task #193: the direction a thread opens with before anything else has decided it. */
-internal const val THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT: Boolean = true
-
-/**
- * Task #193 (option C): the last gate-resolved reverse-layout value per server, for the process
- * lifetime (not persisted; after a restart the first open of a server falls back to
- * [THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT] until its gate resolves once). A thread open reads it
- * for its first frame and never changes direction afterwards; the gate result recorded here only
- * applies from the next open.
- */
-internal object ThreadReverseLayoutLastDecision {
-    private val lock = SynchronizedObject()
-    private val byServer = mutableMapOf<String, Boolean>()
-
-    fun get(serverId: String?): Boolean? {
-        if (serverId.isNullOrBlank()) return null
-        return synchronized(lock) { byServer[serverId] }
-    }
-
-    fun record(serverId: String, reverse: Boolean) {
-        if (serverId.isBlank()) return
-        synchronized(lock) { byServer[serverId] = reverse }
-    }
-
-    internal fun clearForTest() {
-        synchronized(lock) { byServer.clear() }
-    }
-}
-
-/**
- * Task #193 (option C): the direction locked for one thread open. Order: the user's explicit
- * Settings choice, the gate when it is already resolved at first composition, this server's last
- * resolved value, then reverse.
- */
-internal fun threadReverseLayoutFirstFrame(
-    userChoice: Boolean?,
-    gateResolved: Boolean?,
-    lastResolvedForServer: Boolean?,
-): Boolean = userChoice ?: gateResolved ?: lastResolvedForServer ?: THREAD_REVERSE_LAYOUT_UNDECIDED_DEFAULT
-
-/**
- * The layout a thread opens with: the user's Settings choice when there is one, otherwise the
- * default above (artin 2026-10-11: the switch lives in Settings, the flag only sets its default).
- */
-internal fun threadReverseLayoutEffective(userChoice: Boolean?, followedDefault: () -> Boolean): Boolean =
-    userChoice ?: followedDefault()
 
 /**
  * The thread message list seen in forward (top-to-bottom, oldest-first) terms, whichever way the

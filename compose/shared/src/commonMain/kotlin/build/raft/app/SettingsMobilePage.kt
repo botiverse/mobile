@@ -19,7 +19,6 @@ import build.raft.app.data.MOBILE_ACTION_DESKTOP_MODE
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_SERVER_DRAWER
 import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
-import build.raft.app.data.MOBILE_ACTION_THREAD_REVERSE_LAYOUT
 import build.raft.app.data.AppLocale
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.SharedSettingsActionState
@@ -77,7 +76,6 @@ internal class SettingsAppPreferenceActions(
     val onDesktopModeOnLargeScreenChange: (Boolean) -> Unit = {},
     val onServerDrawerChange: (Boolean) -> Unit = {},
     val onHomeServerAvatarChange: (Boolean) -> Unit = {},
-    val onThreadReverseLayoutChange: (Boolean) -> Unit = {},
     val diagnosticsLogger: (String) -> Unit = {},
 )
 
@@ -168,15 +166,6 @@ internal fun LazyListScope.settingsAppPreferenceItems(
                 actionState = actionState,
                 onLongMessageCollapseChange = onLongMessageCollapseChange
             )
-        }
-        if (snapshot.threadReverseLayout.available) {
-            item {
-                SettingsThreadReverseLayoutCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onThreadReverseLayoutChange = onThreadReverseLayoutChange
-                )
-            }
         }
         item {
             SettingsNewMessageMenuCard(
@@ -452,52 +441,6 @@ private fun SettingsHomeServerAvatarCard(
             RaftSwitch(checked = preference.enabled, onCheckedChange = null, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_HOME_SERVER_AVATAR && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
-    }
-}
-
-/** Task #154: realtime over NetworkKMM's curl Socket.IO client; shows the effective value. */
-@Composable
-private fun SettingsThreadReverseLayoutCard(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    onThreadReverseLayoutChange: (Boolean) -> Unit
-) {
-    val busy = actionState?.action == MOBILE_ACTION_THREAD_REVERSE_LAYOUT && actionState.inProgress
-    val preference = snapshot.threadReverseLayout
-    SettingsFormSectionCard(
-        iconName = RaftLucideIconName.MessageSquare,
-        title = stringResource(Res.string.settings_mobile_thread_reverse_layout)
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .toggleable(value = preference.enabled, enabled = preference.available && !busy, role = Role.Switch) { _ ->
-                        onThreadReverseLayoutChange(!preference.enabled)
-                    }
-                    .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    preference.localizedToggleStatus(),
-                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray
-                )
-                Text(
-                    stringResource(Res.string.settings_mobile_thread_reverse_layout_detail),
-                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            RaftSwitch(checked = preference.enabled, onCheckedChange = null, enabled = preference.available && !busy)
-        }
-        if (actionState?.action == MOBILE_ACTION_THREAD_REVERSE_LAYOUT && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }

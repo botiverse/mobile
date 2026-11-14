@@ -2,7 +2,6 @@ package build.raft.app.network.sync
 
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY
-import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
 import build.raft.app.data.defaultNowMillis
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -425,12 +424,6 @@ class DiagnosticFeatureFlagOverrideRegistry(
                 nowMillis = nowMillis,
                 expiryScheduler = expiryScheduler,
                 onChanged = { bumpRevision(THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY) },
-            ),
-            ServerExactDiagnosticFeatureFlagConsumer(
-                key = MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
-                nowMillis = nowMillis,
-                expiryScheduler = expiryScheduler,
-                onChanged = { bumpRevision(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY) },
             ),
         ).associateBy { it.key }
 
