@@ -1000,34 +1000,6 @@ class KeyValueRouterPreferenceRepository(
 }
 
 /**
- * Settings switch "Bottom-up message list" (artin 2026-10-11: the switch lives in Settings, the
- * `mobile_thread_reverse_layout_v0` flag only sets its default). Three states under
- * [THREAD_REVERSE_LAYOUT_PREFERENCE_KEY]: absent = follow the default, "true" / "false" = the user's choice.
- */
-interface ThreadReverseLayoutPreferenceStore {
-    /** The user's explicit choice, or null while the switch follows the default. */
-    fun readThreadReverseLayoutUserChoiceSync(): Boolean?
-    suspend fun saveThreadReverseLayoutUserChoice(enabled: Boolean)
-}
-
-class KeyValueThreadReverseLayoutPreferenceStore(
-    private val store: SharedPreferenceStore
-) : ThreadReverseLayoutPreferenceStore {
-    override fun readThreadReverseLayoutUserChoiceSync(): Boolean? =
-        when (store.getString(THREAD_REVERSE_LAYOUT_PREFERENCE_KEY)?.trim()) {
-            "true" -> true
-            "false" -> false
-            else -> null
-        }
-
-    override suspend fun saveThreadReverseLayoutUserChoice(enabled: Boolean) {
-        store.putBoolean(THREAD_REVERSE_LAYOUT_PREFERENCE_KEY, enabled)
-    }
-}
-
-const val THREAD_REVERSE_LAYOUT_PREFERENCE_KEY = "chatLayout:thread_reverse_layout_enabled"
-
-/**
  * Per-device choice of how much message content a push notification may show.
  *
  * This is a local preference, not a server setting: the push registration and the notification

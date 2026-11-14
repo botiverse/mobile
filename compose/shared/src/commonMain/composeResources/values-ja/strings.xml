@@ -219,8 +219,6 @@
     <string name="settings_usage_data_save_failed">この設定を保存できませんでした。もう一度お試しください。</string>
     <string name="settings_mobile_title">モバイル</string>
     <string name="settings_mobile_subtitle">自分のメッセージの配置</string>
-    <string name="settings_mobile_thread_reverse_layout">チャットを最新メッセージから開く</string>
-    <string name="settings_mobile_thread_reverse_layout_detail">チャットを最新メッセージから開き、下から上へ並べて表示します（先にスクロールする必要はありません）。次にチャットを開いたときから適用されます。変更するまではサーバーのデフォルトに従います。</string>
     <string name="settings_computers_title">コンピューター</string>
     <string name="settings_computers_subtitle">接続されたコンピューターとワークスペース</string>
     <string name="settings_server_title">サーバー</string>

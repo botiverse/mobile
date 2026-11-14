@@ -49,9 +49,9 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun defaultOnKeyReadsOnWithoutAnExplicitServerDecision() = runBlocking {
-        for (doh in listOf(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY)) {
+        for (doh in listOf(THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY)) {
         // Unresolved (no evaluation yet, no stored value) and no server at all: ON.
-        val idle = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
+        val idle = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")), clientDefaultOnKeys = setOf(doh))
         assertTrue(idle.isEnabled(server, doh))
         assertTrue(idle.isEnabled(null, doh))
         // Ordinary keys keep reading OFF without a decision.
@@ -63,15 +63,15 @@ class SharedServerFeatureFlagsTest {
 
         // No flag row on the server (`missing_flag`): ON.
         val missing =
-            SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[{"key":"$doh","enabled":false,"reason":"missing_flag"}]}""")))
+            SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[{"key":"$doh","enabled":false,"reason":"missing_flag"}]}""")), clientDefaultOnKeys = setOf(doh))
         missing.prefetch(server)
         assertTrue(missing.isEnabled(server, doh))
 
         // Evaluate failed or the body is malformed: still no decision, ON.
-        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 503, bodyText = null)))
+        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 503, bodyText = null)), clientDefaultOnKeys = setOf(doh))
         failed.prefetch(server)
         assertTrue(failed.isEnabled(server, doh))
-        val malformed = SharedServerFeatureFlags(FakeApi(ok("not json")))
+        val malformed = SharedServerFeatureFlags(FakeApi(ok("not json")), clientDefaultOnKeys = setOf(doh))
         malformed.prefetch(server)
         assertTrue(malformed.isEnabled(server, doh))
         }
@@ -79,15 +79,15 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun defaultOnKeyFollowsAnExplicitServerDecision() = runBlocking {
-        for (doh in listOf(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY)) {
+        for (doh in listOf(THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY)) {
         for (reason in listOf("kill_switch", "flag_disabled", "default", "platform_rule")) {
             val flags =
-                SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[{"key":"$doh","enabled":false,"reason":"$reason"}]}""")))
+                SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[{"key":"$doh","enabled":false,"reason":"$reason"}]}""")), clientDefaultOnKeys = setOf(doh))
             flags.prefetch(server)
             assertFalse(flags.isEnabled(server, doh), "explicit off ($reason) turns it off")
         }
         val on =
-            SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[{"key":"$doh","enabled":true,"reason":"default"}]}""")))
+            SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[{"key":"$doh","enabled":true,"reason":"default"}]}""")), clientDefaultOnKeys = setOf(doh))
         on.prefetch(server)
         assertTrue(on.isEnabled(server, doh))
         }
@@ -95,26 +95,27 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun diagnosticOverrideHookReceivesServerValueAndDecidesTheRead() = runBlocking {
-        val api = FakeApi(ok("""{"evaluations":[{"key":"mobile_thread_reverse_layout_v0","enabled":false}]}"""))
+        val api = FakeApi(ok("""{"evaluations":[{"key":"thread_markdown_single_paragraph_light_v0","enabled":false}]}"""))
         val seen = mutableListOf<Triple<ServerId?, String, Boolean>>()
         val flags =
             SharedServerFeatureFlags(
                 api,
+                clientDefaultOnKeys = setOf(THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY),
                 diagnosticOverride = { serverId, key, serverEffective ->
                     seen += Triple(serverId, key, serverEffective)
-                    if (key == MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY) true else serverEffective
+                    if (key == THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY) true else serverEffective
                 },
             )
 
         // Before any resolve there is no server decision: the default-on key reads ON (and the hook keeps it ON).
-        assertTrue(flags.isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabled(server, THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY))
         assertFalse(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
-        assertEquals(Triple<ServerId?, String, Boolean>(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, true), seen[0])
+        assertEquals(Triple<ServerId?, String, Boolean>(server, THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY, true), seen[0])
 
         // After resolve the hook still sees the true server value (explicit OFF) and the raw snapshot is untouched.
         flags.prefetch(server)
-        assertTrue(flags.isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
-        assertFalse(flags.snapshotFor(server).isEnabled(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabled(server, THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY))
+        assertFalse(flags.snapshotFor(server).isEnabled(THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY))
         assertEquals(false, seen.last().third)
     }
 

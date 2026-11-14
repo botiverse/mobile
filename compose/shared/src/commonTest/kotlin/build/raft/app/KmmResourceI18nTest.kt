@@ -881,8 +881,6 @@ class KmmResourceI18nTest {
             Res.string.thread_long_message_show_less,
             Res.string.thread_message_a11y_open_thread,
             Res.string.thread_message_a11y_add_reaction,
-            Res.string.settings_mobile_thread_reverse_layout,
-            Res.string.settings_mobile_thread_reverse_layout_detail,
             Res.string.settings_mobile_conversation_forward_gesture,
             Res.string.settings_mobile_conversation_forward_gesture_detail,
             Res.string.settings_mobile_conversation_forward_gesture_accessibility,

@@ -2523,8 +2523,6 @@
     <string name="settings_mobile_conversation_forward_gesture_accessibility">베타. 대화 앞으로 가기 제스처를 설정해요. 채팅에서 홈으로 돌아온 뒤 화면 오른쪽 가장자리에서 왼쪽으로 스와이프하면 그 채팅을 다시 열 수 있어요.</string>
     <string name="settings_mobile_home_server_avatar">홈 헤더의 워크스페이스 아바타</string>
     <string name="settings_mobile_home_server_avatar_detail">홈 헤더에서 현재 워크스페이스 이름 옆에 아바타를 보여줘요. 끄면 기존의 간단한 제목 배지를 계속 사용해요.</string>
-    <string name="settings_mobile_thread_reverse_layout">최신 메시지부터 채팅 열기</string>
-    <string name="settings_mobile_thread_reverse_layout_detail">채팅을 열면 먼저 스크롤하지 않고 아래부터 배치된 최신 메시지가 바로 보여요. 다음에 채팅을 열 때부터 적용돼요. 직접 바꾸기 전까지는 서버 기본값을 따라요.</string>
     <string name="settings_badge_beta">베타</string>
     <string name="settings_mobile_compact_detail">같은 보낸 사람이 연속으로 보낸 메시지에서 반복되는 아바타를 숨겨요. 행을 길게 누르면 메시지 시간을 볼 수 있어요.</string>
     <string name="settings_mobile_status_enabled">켜짐</string>

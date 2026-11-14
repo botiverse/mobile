@@ -59,15 +59,6 @@ const val MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY: String = "mobile_server_setup
 const val THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY: String =
     "thread_markdown_single_paragraph_light_v0"
 
-/**
- * Thread message list laid out bottom-up (`reverseLayout`): the newest row is item 0 and renders
- * at the bottom from the first frame, with no scroll-to-bottom pass. Default ON in every build
- * (see [SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS]); the server turns it off with an explicit
- * decision such as a kill switch. Local A/B goes through the diagnostics "Local Feature Overrides"
- * ForceOn/ForceOff latch. Decided once per thread open.
- */
-const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread_reverse_layout_v0"
-
 // Retired with the Ktor 3 switch (artin 2026-10-23), no longer read by the app; server flag rows can be
 // cleaned up: android_reused_h2_recovery_v0 (NetworkKMM reused-HTTP/2 watchdog), mobile_doh_fallback_v0
 // (curl DNS-over-HTTPS fallback), mobile_curl_socketio_v0 (realtime over curl Socket.IO).
@@ -80,6 +71,8 @@ const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread
 // thread_unread_badge_v0, sidebar_mark_all_read_v0. Their Feature Flag Admin rows stay until older
 // app versions that still evaluate them are gone.
 // Gogo removes the server flag row after old clients are checked.
+// mobile_thread_reverse_layout_v0 is no longer read (artin 2026-11-14): the thread list is always
+// bottom-up and its Settings > Mobile switch is gone; the flag row can go once older app versions are.
 
 /**
  * Keys that are ON unless the server explicitly decides otherwise (artin 2026-10-10: DoH defaults on,
@@ -88,13 +81,9 @@ const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread
  * server reporting `missing_flag` (no flag row exists). Every other server reason (`kill_switch`,
  * `flag_disabled`, any rule, `default`) is an explicit decision and is followed as sent.
  */
-// mobile_thread_reverse_layout_v0 joined on 2026-10-12: artin wants the bottom-up thread list on by default.
 // runtime_form_v2_web (default on from 2026-10-21) is no longer read: runtime form v2 is the only form
 // (task #8, retire runtime form v1), so the server flag row can go once no client reads it.
-val SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS: Set<String> =
-    setOf(
-        MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
-    )
+val SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS: Set<String> = emptySet()
 
 /** Server evaluation reason for a key that has no flag row at all (slock featureFlagService). */
 private const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"
@@ -223,7 +212,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
     MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
-    MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
     ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY,
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
