@@ -5,6 +5,7 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -21,6 +22,14 @@ internal const val RECONNECT_REFETCH_JITTER_MAX_MILLIS: Long = 20_000L
  * ([RaftReconnectRefetchDecision.ImmediateAfterSwitch]): the socket connects after the selection.
  */
 internal val SERVER_SWITCH_CONNECT_WINDOW: Duration = 15.seconds
+
+/**
+ * How long after the user selects a server [RaftReconnectRefetchJitter.onServerSelected] waits for
+ * that server's socket to connect before it reads the server's live status itself: a server whose
+ * socket stayed connected while another one was in front (one socket per server) has no connect to
+ * refetch on, so its agents kept whatever the last push said (Hands 46b6cebe).
+ */
+internal const val SERVER_SWITCH_CATCH_UP_DELAY_MILLIS: Long = 3_000L
 
 /** A uniformly random wait in `0..maxMillis` (both ends included). */
 internal fun reconnectRefetchJitterMillis(random: Random, maxMillis: Long = RECONNECT_REFETCH_JITTER_MAX_MILLIS): Long =
@@ -81,6 +90,7 @@ internal class RaftReconnectRefetchJitter(
     private val logger: (String) -> Unit = {},
     private val timeSource: TimeSource = TimeSource.Monotonic,
     private val switchConnectWindow: Duration = SERVER_SWITCH_CONNECT_WINDOW,
+    private val switchCatchUpDelayMillis: Long = SERVER_SWITCH_CATCH_UP_DELAY_MILLIS,
 ) {
     private class Entry(val serverId: String, val source: String, val refetch: suspend () -> Unit)
 
@@ -94,6 +104,13 @@ internal class RaftReconnectRefetchJitter(
     private var batch: Batch? = null
     /** Servers the user selected, and when; consumed by that server's next connect. */
     private val selectedAt = mutableMapOf<String, TimeMark>()
+
+    /**
+     * Per server, the selection whose catch-up still waits ([onServerSelected]); a connect of that
+     * server takes it away (the connect refetches), as does a newer selection.
+     */
+    private val pendingCatchUps = mutableMapOf<String, Any>()
+    private val catchUpJobs = mutableMapOf<String, Job>()
 
     /**
      * A socket of [session] connected. On [RaftReconnectRefetchDecision.Immediate] the caller runs
@@ -113,6 +130,7 @@ internal class RaftReconnectRefetchJitter(
         val decision =
             synchronized(lock) {
                 val selection = selectedAt.remove(serverId)
+                pendingCatchUps.remove(serverId)
                 if (connectedSessions.add(session)) return@synchronized RaftReconnectRefetchDecision.Immediate
                 if (selection != null && selection.elapsedNow() <= switchConnectWindow) {
                     // The caller fetches now: an older reconnect's refetch for this server is superseded.
@@ -148,11 +166,49 @@ internal class RaftReconnectRefetchJitter(
     /**
      * The user selected [serverId] (a server switch, or the first selection at launch): what waits
      * for it runs now, and its next connect within [switchConnectWindow] fetches at once.
+     *
+     * [catchUp] reads the server's live status (agents, Computers) when no connect follows: if this
+     * server's socket connected before (not a first selection at launch) and does not connect again
+     * within [switchCatchUpDelayMillis], it stayed connected while the user was on another server,
+     * and nothing else would read what its pushes missed (web reads agents again on every connect).
      */
-    fun onServerSelected(serverId: String, reason: String) {
+    fun onServerSelected(serverId: String, reason: String, catchUp: (suspend () -> Unit)? = null) {
         val id = serverId.trim().takeIf { it.isNotEmpty() } ?: return
-        synchronized(lock) { selectedAt[id] = timeSource.markNow() }
+        val token = Any()
+        val replaced =
+            synchronized(lock) {
+                selectedAt[id] = timeSource.markNow()
+                if (catchUp != null) pendingCatchUps[id] = token else pendingCatchUps.remove(id)
+                catchUpJobs.remove(id)
+            }
+        replaced?.cancel()
         flushServer(id, reason)
+        if (catchUp == null) return
+        val job =
+            scope.launch(start = CoroutineStart.LAZY) {
+                delay(switchCatchUpDelayMillis)
+                val run =
+                    synchronized(lock) {
+                        if (pendingCatchUps[id] !== token) return@synchronized false
+                        pendingCatchUps.remove(id)
+                        catchUpJobs.remove(id)
+                        connectedSessions.any { it.serverId.trim() == id }
+                    }
+                if (!run) return@launch
+                logger("reconnect_refetch_jitter_switch_catch_up serverId=$id reason=$reason cause=no_connect_after_switch")
+                try {
+                    catchUp()
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (error: Throwable) {
+                    logger(
+                        "reconnect_refetch_jitter_failed serverId=$id source=switch_catch_up " +
+                            "type=${error::class.simpleName ?: "unknown"}"
+                    )
+                }
+            }
+        val current = synchronized(lock) { (pendingCatchUps[id] === token).also { if (it) catchUpJobs[id] = job } }
+        if (current) job.start() else job.cancel()
     }
 
     /**
@@ -200,19 +256,26 @@ internal class RaftReconnectRefetchJitter(
         synchronized(lock) {
             connectedSessions.removeAll { it.serverId.trim() == id }
             selectedAt.remove(id)
-        }
+            pendingCatchUps.remove(id)
+            catchUpJobs.remove(id)
+        }?.cancel()
         val dropped = takeServerEntries(id) ?: return
         logger("reconnect_refetch_jitter_drop serverId=$id reason=$reason sources=${dropped.joinToString(",") { it.source }}")
     }
 
     /** Sign-out, account or environment switch: cancel what waits and start over (next connect is a first one). */
     fun reset(reason: String) {
+        var catchUps: List<Job> = emptyList()
         val cancelled =
             synchronized(lock) {
                 connectedSessions.clear()
                 selectedAt.clear()
+                pendingCatchUps.clear()
+                catchUps = catchUpJobs.values.toList()
+                catchUpJobs.clear()
                 batch.also { batch = null }
             }
+        catchUps.forEach { it.cancel() }
         cancelled?.timer?.cancel()
         if (cancelled != null) {
             val sources = synchronized(lock) { cancelled.sourcesLabelLocked() }

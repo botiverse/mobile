@@ -158,4 +158,79 @@ class RaftReconnectRefetchJitterTest {
             policy.onConnected(serverA.copy(principalId = "user-2"), "server_members") {},
         )
     }
+
+    /**
+     * Hands 46b6cebe: the user went back to a server whose socket stayed connected while another
+     * server was in front. No connect follows, so nothing re-read its agents and the lists kept an
+     * old "Online" the profile's fresh read contradicted. The switch now reads them itself.
+     */
+    @Test
+    fun switchBackToAServerWhoseSocketStayedConnectedReadsItsLiveStatus() = runTest {
+        val recorder = Recorder()
+        val policy = jitter(recorder)
+        policy.onConnected(serverA, "server_members") {}
+
+        policy.onServerSelected(serverA.serverId, reason = "server_selected") { recorder.runs += "catch_up" to currentTime }
+        advanceTimeBy(SERVER_SWITCH_CATCH_UP_DELAY_MILLIS - 1L)
+        assertEquals(emptyList(), recorder.runs, "the switch first gives the socket time to connect")
+        advanceTimeBy(2L)
+
+        assertEquals(listOf("catch_up" to SERVER_SWITCH_CATCH_UP_DELAY_MILLIS), recorder.runs)
+        assertTrue(
+            recorder.logs.any {
+                it.startsWith("reconnect_refetch_jitter_switch_catch_up serverId=server-a") && "cause=no_connect_after_switch" in it
+            },
+            "the catch-up is logged: ${recorder.logs}",
+        )
+    }
+
+    @Test
+    fun aConnectAfterTheSwitchRefetchesInsteadOfTheCatchUp() = runTest {
+        val recorder = Recorder()
+        val policy = jitter(recorder)
+        policy.onConnected(serverA, "server_members") {}
+
+        policy.onServerSelected(serverA.serverId, reason = "server_selected") { recorder.runs += "catch_up" to currentTime }
+        assertEquals(
+            RaftReconnectRefetchDecision.ImmediateAfterSwitch,
+            policy.onConnected(serverA, "server_members") {},
+        )
+        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
+
+        assertEquals(emptyList(), recorder.runs, "the connect's own refetch covers the switch: one read, not two")
+    }
+
+    @Test
+    fun theFirstSelectionAtLaunchLeavesTheReadToTheFirstConnect() = runTest {
+        val recorder = Recorder()
+        val policy = jitter(recorder)
+
+        policy.onServerSelected(serverA.serverId, reason = "server_selected") { recorder.runs += "catch_up" to currentTime }
+        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
+
+        assertEquals(emptyList(), recorder.runs, "a server never connected yet reads everything on its first connect")
+    }
+
+    @Test
+    fun switchingAgainBeforeTheCatchUpRunsReadsOnceAndAResetCancelsIt() = runTest {
+        val recorder = Recorder()
+        val policy = jitter(recorder)
+        policy.onConnected(serverA, "server_members") {}
+        policy.onConnected(serverB, "server_members") {}
+
+        policy.onServerSelected(serverA.serverId, reason = "server_selected") { recorder.runs += "a-old" to currentTime }
+        advanceTimeBy(1_000L)
+        policy.onServerSelected(serverA.serverId, reason = "server_selected") { recorder.runs += "a-new" to currentTime }
+        policy.onServerSelected(serverB.serverId, reason = "server_selected") { recorder.runs += "b" to currentTime }
+        policy.reset("sign_out")
+        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
+        assertEquals(emptyList(), recorder.runs, "a reset drops every waiting catch-up")
+
+        policy.onConnected(serverA, "server_members") {}
+        policy.onServerSelected(serverA.serverId, reason = "server_selected") { recorder.runs += "a-1" to currentTime }
+        advanceTimeBy(1_000L)
+        policy.onServerSelected(serverA.serverId, reason = "server_selected") { recorder.runs += "a-2" to currentTime }
+        advanceTimeBy(RECONNECT_REFETCH_JITTER_MAX_MILLIS + 1L)
+        assertEquals(listOf("a-2"), recorder.runs.map { it.first }, "the newest selection's catch-up runs, once")
+    }
 }
