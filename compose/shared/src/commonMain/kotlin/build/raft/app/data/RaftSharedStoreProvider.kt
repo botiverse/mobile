@@ -4290,6 +4290,11 @@ internal class SharedRealtimeDomainEventOwner(
             if (acceptedEvent is ProductFeedbackUnreadUpdated) {
                 feedbackUnreadSink?.invoke(grant.principalId, acceptedEvent)
             }
+            // `link_card.operation_changed` goes to the viewer's room on this server: a card following
+            // that operation reads its status again (RaftLinkCardOperationHints).
+            if (acceptedEvent is build.raft.app.model.LinkCardOperationChanged) {
+                RaftLinkCardOperationHints.publish(serverId, acceptedEvent)
+            }
             // Unified notification levels and account settings (slock docs/contracts/notifications.md
             // §2.3): the process stores the channel / thread menus, the badge and the settings page read.
             when (acceptedEvent) {

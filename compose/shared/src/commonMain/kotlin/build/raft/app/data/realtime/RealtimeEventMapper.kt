@@ -99,6 +99,7 @@ import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerAppearanceUpdated
 import build.raft.app.model.UserProfileUpdated
+import build.raft.app.model.LinkCardOperationChanged
 import build.raft.app.model.ProductFeedbackUnreadUpdated
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerMembershipRemoved
@@ -127,6 +128,7 @@ import build.raft.app.data.toForwardMessageBundle
 import build.raft.app.data.toScopeReadUpdated
 import build.raft.app.data.toMessageItemMetadata
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import build.raft.app.network.sync.decodeCanonicalMessageWire
 import build.raft.app.network.sync.ProductionFace
@@ -387,6 +389,8 @@ class RealtimeEventMapper(
                 decodeOrNull(ProductFeedbackUnreadDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ProductFeedbackAppUnread ->
                 decodeOrNull(ProductFeedbackAppUnreadDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.LinkCardOperationChanged ->
+                decodeOrNull(LinkCardOperationChangedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ServerFeaturesChanged ->
                 decodeOrNull(ServerFeaturesChangedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
@@ -1053,6 +1057,19 @@ private data class ProductFeedbackUnreadDto(
         val user = userId.trim().takeIf { it.isNotEmpty() } ?: return null
         if (unreadTotal < 0) return null
         return ProductFeedbackUnreadUpdated(ProductFeedbackUnreadUpdated.WebSource, user, unreadTotal)
+    }
+}
+
+/** `link_card.operation_changed` (slock shared `LinkCardOperationChangedEvent`): snake_case on the wire. */
+@Serializable
+private data class LinkCardOperationChangedDto(
+    @SerialName("operation_id") val operationId: String,
+    @SerialName("receipt_revision") val receiptRevision: Long,
+) {
+    fun toDomain(): LinkCardOperationChanged? {
+        val id = operationId.trim().takeIf { it.isNotEmpty() } ?: return null
+        if (receiptRevision < 0) return null
+        return LinkCardOperationChanged(id, receiptRevision)
     }
 }
 

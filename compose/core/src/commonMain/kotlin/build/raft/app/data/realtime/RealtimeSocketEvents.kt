@@ -140,6 +140,14 @@ object RealtimeSocketEvents {
     const val JointInvitesChanged = GeneratedRealtimeContract.SocketEvent.JointInvitesChanged
 
     /**
+     * Interactive link card receipt hint (RFC 076 §6.8; botiverse/slock
+     * `services/linkCardReceiptHints.ts`, shared `LINK_CARD_OPERATION_CHANGED_EVENT`):
+     * `{ operation_id, receipt_revision }` to the viewer's `user:<id>:server:<id>` room whenever one of
+     * their link card operations' receipt changes. No content: read `POST /link-cards/status` again.
+     */
+    const val LinkCardOperationChanged = GeneratedRealtimeContract.SocketEvent.LinkCardOperationChanged
+
+    /**
      * Sent to the member's own `user:<id>` room about one of their servers, so the socket of
      * whichever server the app has open receives it: the payload `serverId` names the server
      * that changed, not the connected one. Gates that drop a payload naming another server than

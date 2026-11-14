@@ -103,7 +103,8 @@
     "pinnedUpdated": "pinned:updated",
     "notificationPush": "notification:push",
     "notificationRetract": "notification:retract",
-    "jointInvitesChanged": "joint-invites:changed"
+    "jointInvitesChanged": "joint-invites:changed",
+    "linkCardOperationChanged": "link_card.operation_changed"
   },
   "serverWireEvents": [
     "messageNew",
@@ -163,6 +164,7 @@
     "pinnedUpdated",
     "notificationPush",
     "notificationRetract",
-    "jointInvitesChanged"
+    "jointInvitesChanged",
+    "linkCardOperationChanged"
   ]
 }

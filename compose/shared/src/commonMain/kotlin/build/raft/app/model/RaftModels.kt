@@ -1385,6 +1385,19 @@ data class UserProfileUpdated(
 ) : RealtimeEvent
 
 /**
+ * `link_card.operation_changed` `{ operation_id, receipt_revision }` (RFC 076 §6.8; botiverse/slock
+ * `services/linkCardReceiptHints.ts`): one of the viewer's link card operations on the connection's
+ * server has a new receipt. A hint only, no state: a card following [operationId] reads
+ * `POST /link-cards/status` again when [receiptRevision] is newer than what it showed (web
+ * `linkCardExecute.tsx` `onOperationChanged`).
+ */
+@Serializable
+data class LinkCardOperationChanged(
+    val operationId: String,
+    val receiptRevision: Long,
+) : RealtimeEvent
+
+/**
  * The person's product-feedback unread total (unread public replies on their own tickets) in one
  * Hands app (botiverse/slock f0f773995 `packages/shared/src/productFeedbackUnread.ts`, sent by
  * `services/productFeedbackUnreadRealtime.ts` to their own `user:<id>` room):
