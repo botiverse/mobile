@@ -9834,6 +9834,8 @@ private fun AppShellServerDrawerHost(
                                 contentDescription = dismissLabel
                                 traversalIndex = 1f
                             }
+                            // Raw clickable on purpose: the drawer's scrim, a tap outside that
+                            // closes it, with no press of its own.
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
@@ -13888,6 +13890,8 @@ private fun SharedHomeSearchHistoryTag(
             }
         }
         if (editing) {
+            // Raw clickables on purpose: while editing, the two targets are 44dp tall over the
+            // 28dp chip, so raftClickable's press would spill past the chip's edges.
             Row(modifier = Modifier.matchParentSize()) {
                 Box(
                     modifier =
@@ -13911,7 +13915,7 @@ private fun SharedHomeSearchHistoryTag(
                 modifier =
                     Modifier
                         .matchParentSize()
-                        .clickable(onClick = onSelect)
+                        .raftClickable(onClick = onSelect, shape = RoundedCornerShape(RaftAppRadius.Chip))
                         .semantics { contentDescription = query },
             )
         }
@@ -15402,6 +15406,8 @@ internal fun SharedHomeSearchMessageResultRow(
     val metaStyle = sharedHomeSearchTimestampTextStyle()
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
+    // Raw clickable below on purpose: the row draws its own press, inset in the list cell like
+    // the other search rows (raftSearchRowPressed), which raftClickable's full-width wash can't.
     // web MessageHitRow (DS `.rf-hit`): the sender's 27dp avatar in its own column, then who /
     // where / thread / when on one line and a two-line excerpt under it, 12dp after the avatar.
     Row(
