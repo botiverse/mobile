@@ -110,9 +110,9 @@ class RaftKmpRealtimeSocketTransport(
             val socket = current?.socket ?: return@linearize
             val arg: JsonElement =
                 if (eventName == RealtimeSocketEvents.JoinChannel || eventName == RealtimeSocketEvents.LeaveChannel) {
-                    (payload["channelId"] as? String)?.let(::JsonPrimitive) ?: payload.toJsonElement()
+                    (payload["channelId"] as? String)?.let(::JsonPrimitive) ?: payload.toTransportJson()
                 } else {
-                    payload.toJsonElement()
+                    payload.toTransportJson()
                 }
             socket.emit(eventName, listOf(arg))
         }
@@ -129,7 +129,7 @@ class RaftKmpRealtimeSocketTransport(
             socket.emitWithAck(eventName) { result ->
                 if (result !is RaftAckResult.Acked) return@emitWithAck // May never run, as with the Java transport.
                 linearize {
-                    if (current === connection) onAck(connection.context, result.args.firstOrNull()?.toPlain())
+                    if (current === connection) onAck(connection.context, result.args.firstOrNull()?.toTransportPlain())
                 }
             }
             true
@@ -170,7 +170,7 @@ class RaftKmpRealtimeSocketTransport(
         }
 
         override fun onEvent(connection: RaftSocketConnection, event: RaftSocketEvent, ack: RaftSocketIncomingAck?) {
-            val delivered = fire(this, event.name, event.args.firstOrNull()?.toPlain())
+            val delivered = fire(this, event.name, event.args.firstOrNull()?.toTransportPlain())
             if (!delivered && unlisted.add(event.name)) {
                 logger("projection_value_unknown source=realtime_socket_transport field=event_name value=${event.name}")
             }
@@ -191,7 +191,7 @@ class RaftKmpRealtimeSocketTransport(
 }
 
 /** Plain Kotlin values (String, Long, Double, Boolean, null, List, Map) for transport consumers. */
-internal fun JsonElement.toPlain(): Any? =
+private fun JsonElement.toTransportPlain(): Any? =
     when (this) {
         JsonNull -> null
         is JsonPrimitive ->
@@ -201,20 +201,20 @@ internal fun JsonElement.toPlain(): Any? =
                 longOrNull != null -> longOrNull
                 else -> doubleOrNull
             }
-        is JsonArray -> map { it.toPlain() }
-        is JsonObject -> mapValues { (_, value) -> value.toPlain() }
+        is JsonArray -> map { it.toTransportPlain() }
+        is JsonObject -> mapValues { (_, value) -> value.toTransportPlain() }
     }
 
-/** The inverse of [toPlain] for outgoing transport payloads. */
-internal fun Any?.toJsonElement(): JsonElement =
+/** The inverse of [toTransportPlain] for outgoing transport payloads. */
+private fun Any?.toTransportJson(): JsonElement =
     when (this) {
         null -> JsonNull
         is JsonElement -> this
         is String -> JsonPrimitive(this)
         is Boolean -> JsonPrimitive(this)
         is Number -> JsonPrimitive(this)
-        is Map<*, *> -> JsonObject(entries.associate { (key, value) -> key.toString() to value.toJsonElement() })
-        is Iterable<*> -> JsonArray(map { it.toJsonElement() })
-        is Array<*> -> JsonArray(map { it.toJsonElement() })
+        is Map<*, *> -> JsonObject(entries.associate { (key, value) -> key.toString() to value.toTransportJson() })
+        is Iterable<*> -> JsonArray(map { it.toTransportJson() })
+        is Array<*> -> JsonArray(map { it.toTransportJson() })
         else -> JsonPrimitive(toString())
     }
