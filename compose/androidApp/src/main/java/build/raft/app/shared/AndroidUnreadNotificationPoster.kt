@@ -933,7 +933,11 @@ internal object AndroidUnreadNotificationPoster {
         val pageData =
             basePageData.apply {
                 put(ANDROID_DOCUMENT_SHELL_KEY, true)
-                currentAndroidShellRouteOwner(appContext)?.let { withAndroidShellRouteOwner(it) }
+                val notificationServerId =
+                    optString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID).trim().takeIf { it.isNotEmpty() }
+                        ?: request.optString("serverId").trim().takeIf { it.isNotEmpty() }
+                notificationAndroidShellRouteOwner(currentAndroidShellRouteOwner(appContext), notificationServerId)
+                    ?.let { withAndroidShellRouteOwner(it) }
             }
         val target = resolveAndroidShellLaunchTarget(pageData, multiShellHostEnabled)
         val resolvedPageData = pageData.withAndroidShellLaunchTarget(target)

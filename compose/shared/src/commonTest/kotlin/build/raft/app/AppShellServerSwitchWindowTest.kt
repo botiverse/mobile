@@ -147,6 +147,27 @@ class AppShellServerSwitchWindowTest {
     }
 
     @Test
+    fun serversOwnWindowShowingAnotherServerSwitchesBackInPlace() {
+        // Server B's document window, switched in place to A by a tap on A's notification
+        // (Hands 3a465552): picking B must not "open B's window", which is this very window.
+        val serverBWindow = RaftShellStoreScope.create("slock://shell/env/user-1/server-b", "server-b")
+        fun pick(picked: String) =
+            appShellServerSwitchNewWindowPageDataOrNull(
+                sourceStoreScope = serverBWindow,
+                currentServerId = "server-a",
+                sourceDocumentShell = true,
+                selectedServerId = picked,
+                multiShellHostEnabled = true,
+                routeOwner = owner(picked),
+                sourceWindowServerId = "server-b",
+            )
+
+        assertNull(pick(" server-b "))
+        // Any other server still opens (or brings back) its own window.
+        assertEquals("server-c", assertNotNull(pick("server-c")).optString("slockRouteServerId"))
+    }
+
+    @Test
     fun unknownCurrentServerSwitchesInPlace() {
         assertNull(decide(sourceScope, currentServerId = null, picked = "server-b"))
         assertNull(decide(sourceScope, currentServerId = " ", picked = "server-b"))

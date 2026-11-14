@@ -7055,7 +7055,8 @@ private fun RaftAppShellReadyContent(
                         accountId = session.user.id,
                         serverId = serverId
                     ).normalizedOrNull(),
-                keepTab = keepTab
+                keepTab = keepTab,
+                sourceWindowServerId = pager.pageData.params.authenticatedRouteOwnerOrNull()?.serverId
             ) ?: return false
         pageData.put(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, build.raft.app.data.raftNowEpochMillis())
         bridge.log(
@@ -10276,6 +10277,9 @@ internal fun raftMultiServerRealtimeEnabled(): Boolean =
  * [keepTab] is the top-level tab the switch keeps (D1a, as the in-place switch does): the window
  * opens on it (`slockInitialTab`, an intent, not product state) instead of the default Home. Null
  * or "home" opens Home. Pushed pages are not carried.
+ *
+ * [sourceWindowServerId] is the server a document window is bound to (its route owner): picking
+ * that server there switches in place, since this window already is that server's window.
  */
 internal fun appShellServerSwitchNewWindowPageDataOrNull(
     sourceStoreScope: RaftShellStoreScope,
@@ -10284,10 +10288,17 @@ internal fun appShellServerSwitchNewWindowPageDataOrNull(
     selectedServerId: String,
     multiShellHostEnabled: Boolean,
     routeOwner: AuthenticatedRouteOwner?,
-    keepTab: String? = null
+    keepTab: String? = null,
+    sourceWindowServerId: String? = null
 ): JSONObject? {
     if (routeOwner == null) return null
     val current = currentServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    // This window is the picked server's own window (a document shell bound to it) that ended up
+    // showing another server (a tap on another server's notification switched it in place):
+    // switch back in place. Opening "its window" would only rebuild this same window on the
+    // server it shows, so the switch never happened (Hands 3a465552).
+    val picked = selectedServerId.trim()
+    if (sourceDocumentShell && picked.isNotEmpty() && sourceWindowServerId?.trim() == picked) return null
     // Decide against the server on screen: the source scope as it is now.
     val currentScope = RaftShellStoreScope.create(sourceStoreScope.shellInstanceId, current)
     if (!isMultiShellCrossServerSelection(currentScope, selectedServerId, multiShellHostEnabled)) return null

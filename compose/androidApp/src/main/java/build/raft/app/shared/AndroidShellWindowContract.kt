@@ -202,6 +202,21 @@ internal fun currentAndroidShellRouteOwner(context: Context): AndroidShellRouteO
         ).normalizedOrNull()
     }.getOrNull()
 
+/**
+ * The window a notification tap opens belongs to the notification's server: the signed-in
+ * [current] owner (environment and account) with [notificationServerId] as its server. The
+ * account's selected server is whichever window was used last; routing there put another
+ * server's notification into that server's window, which then switched in place and was left
+ * showing a server it is not bound to (Multiple app windows, Hands 3a465552).
+ */
+internal fun notificationAndroidShellRouteOwner(
+    current: AndroidShellRouteOwner?,
+    notificationServerId: String?,
+): AndroidShellRouteOwner? {
+    val server = notificationServerId?.trim()?.takeIf { it.isNotBlank() } ?: return current
+    return current?.copy(serverId = server)?.normalizedOrNull() ?: current
+}
+
 internal fun shouldReleaseAndroidShellWindow(
     isFinishing: Boolean,
     isChangingConfigurations: Boolean,
