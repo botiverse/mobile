@@ -414,7 +414,7 @@ class RealSavedRepository(
                     items = parsed.items,
                     totalCount = parsed.totalCount,
                     hasMore = parsed.hasMore,
-                    nextOffset = offset + parsed.items.size
+                    nextOffset = offset + parsed.rawResultCount
                 )
             }
         )

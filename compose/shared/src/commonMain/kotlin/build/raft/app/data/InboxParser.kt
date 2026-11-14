@@ -533,6 +533,10 @@ private data class WireSavedEntry(
     val parentChannelName: String? = null,
     val parentChannelType: String? = null,
     val parentMessageId: String? = null,
+    /** Task v2: set when the saved message is in a task conversation (`channelType: "task"`). */
+    val taskId: String? = null,
+    val taskNumber: Int? = null,
+    val taskTitle: String? = null,
 )
 
 @Serializable
@@ -551,6 +555,8 @@ data class SharedSavedItems(
     val items: List<InboxItem>,
     val hasMore: Boolean,
     val totalCount: Int,
+    /** Rows the server sent, before dropping unknown kinds or duplicates: what the next offset advances by. */
+    val rawResultCount: Int = items.size,
 )
 
 fun parseSharedSavedItems(
@@ -563,6 +569,7 @@ fun parseSharedSavedItems(
         items = items,
         hasMore = decoded.hasMore,
         totalCount = decoded.globalTotal ?: decoded.total ?: decoded.totalCount ?: items.size,
+        rawResultCount = decoded.saved.size,
     )
 }.getOrNull()
 
@@ -586,7 +593,7 @@ private fun WireSavedEntry.toInboxItem(diagnostics: (String) -> Unit): InboxItem
     val conversationKind = parseConversationKindOrNull(channelType)
     val itemKind = conversationKind.toInboxItemKind() ?: return null
     val key = "saved:$messageId"
-    return InboxItem(
+    val item = InboxItem(
         key = key,
         kind = itemKind,
         channelId = ChannelId(channelId),
@@ -617,6 +624,7 @@ private fun WireSavedEntry.toInboxItem(diagnostics: (String) -> Unit): InboxItem
         parentChannelType = parentChannelType?.takeIf { it.isNotBlank() },
         parentMessageId = parentMessageId?.let(::MessageId),
     )
+    return if (conversationKind == ConversationKind.Task) item.asTaskConversationHit(taskId, taskNumber, taskTitle) else item
 }
 
 // -----------------------------------------------------------------------------
@@ -650,6 +658,10 @@ private data class WireSearchResult(
     val createdAt: String,
     /** RFC 077 `searchService.ts` `MessageSearchResult.delegatedBy`. */
     val delegatedBy: WireDelegatedBy? = null,
+    /** Task v2: set on a task-conversation hit (`channelType: "task"`). */
+    val taskId: String? = null,
+    val taskNumber: Int? = null,
+    val taskTitle: String? = null,
 )
 
 /**
@@ -716,7 +728,7 @@ private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxIt
         InboxItemKind.Thread -> "thread:$channelId:$id"
         else -> "channel:$channelId:$id"
     }
-    return InboxItem(
+    val item = InboxItem(
         key = key,
         kind = itemKind,
         channelId = ChannelId(channelId),
@@ -747,16 +759,45 @@ private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxIt
         parentMessagePreview = parentMessageContent,
         latestDelegatedBy = delegatedBy.toMessageDelegatedBy(),
     )
+    return if (conversationKind == ConversationKind.Task) item.asTaskConversationHit(taskId, taskNumber, taskTitle) else item
+}
+
+/**
+ * Task v2: a saved message or search hit in a task conversation (`channelType: "task"`). The
+ * message lives in the task's own conversation — `channelId` — whose parent is the task, not a
+ * message (`parentMessageId` is null; `parentChannel*` is the channel the task is in). It folds
+ * into the same thread-shaped task row as Activity's [toTaskConversationDomain]: the conversation
+ * is the stream (`threadChannelId`), the saved/matched message stays the anchor, and
+ * [InboxItem.taskConversation] routes the open to the task conversation
+ * (`toTaskConversationOpenRequestOrNull`) instead of a reply thread that has no parent message.
+ */
+private fun InboxItem.asTaskConversationHit(taskId: String?, taskNumber: Int?, taskTitle: String?): InboxItem {
+    val title = taskTitle?.trim()?.takeIf { it.isNotBlank() }
+    return copy(
+        threadChannelId = channelId,
+        parentMessageId = null,
+        parentMessagePreview =
+            taskNumber?.let { number ->
+                formatTaskConversationTitle(formatTaskConversationRef(number, parentChannelName, parentChannelKind), title)
+            } ?: title,
+        taskNumber = taskNumber,
+        taskConversation =
+            InboxTaskConversation(
+                taskId = taskId?.trim()?.takeIf { it.isNotBlank() }?.let(::TaskId),
+                taskTitle = title,
+            ),
+    )
 }
 
 private fun ConversationKind?.toInboxItemKind(): InboxItemKind? =
     when (this) {
         ConversationKind.DirectMessage -> InboxItemKind.DirectMessage
-        ConversationKind.Thread -> InboxItemKind.Thread
+        // Task v2: a task conversation is a sub-conversation like a thread (see asTaskConversationHit).
+        ConversationKind.Thread,
+        ConversationKind.Task -> InboxItemKind.Thread
         ConversationKind.Channel,
         ConversationKind.Joint -> InboxItemKind.Channel
         ConversationKind.System,
         ConversationKind.Inbox,
-        ConversationKind.Task,
         null -> null
     }
