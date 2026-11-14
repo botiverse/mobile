@@ -137,9 +137,7 @@ class TaskPendingHandOffCoverUiTest {
             assertNull(flow.surface)
             assertFalse(flow.handingOff)
             assertEquals("", flow.draft(task.id.value), "the sent text is no draft any more")
-            // A few frames, well inside the hand-off fallback: the covered page (iOS) gets no more, so no timer may be what closes it.
-            mainClock.autoAdvance = false
-            mainClock.advanceTimeBy(64)
+            waitForIdle()
             onNode(hasText("No discussion in this task yet")).assertDoesNotExist()
         }
 
