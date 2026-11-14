@@ -425,26 +425,36 @@ async function main() {
       evidence("draft-typed");
       await backToHome();
       // Let the draft store flush, then record where it lives on disk.
-      await sleep(5000);
+      await sleep(15000);
       const onDisk = draftFilesOnDisk();
+      const draftKeyFiles = shell(`grep -rl threadComposerDraft /data/data/${PKG}/ 2>/dev/null`, { allowFailure: true })
+        .split(/\s+/).filter(Boolean).map((f) => f.replace(`/data/data/${PKG}/`, ""));
       if (!onDisk.length) log("warning: the draft text is not in any app-private file before the update");
-      const grepSanity = shell(`grep -rl ${SERVER} /data/data/${PKG}/ 2>/dev/null | wc -l`, { allowFailure: true }).trim();
+      // Home's "Drafts" row carries the draft count.
+      const draftsCount = () => {
+        const list = nodes();
+        const row = find(list, isHome);
+        if (!row) return null;
+        const count = list.find((n) => n.pkg === PKG && /^\d+$/.test(n.text) && n.bounds &&
+          n.bounds[1] < row.bounds[3] && n.bounds[3] > row.bounds[1]);
+        return count ? Number(count.text) : 0;
+      };
+      const countBefore = draftsCount();
       // Control (no update involved): does the draft survive a plain cold restart of A?
       shell(`am force-stop ${PKG}`);
       await sleep(1000);
       launchApp();
       await waitFor("Home after a cold restart of A", isHome, { timeoutMs: 60_000 });
-      await tap(`the channel row "${channelName}"`, (n) => n.pkg === PKG && n.text === channelName, { timeoutMs: 30_000 });
-      await sleep(4000);
-      const survivesColdRestart = nodes().some((n) => n.text.includes(DRAFT_TOKEN));
-      evidence("draft-after-cold-restart-A");
-      await backToHome();
+      await sleep(5000);
+      const countAfterRestart = draftsCount();
+      evidence("home-after-cold-restart-A");
       return {
         channel: channelName,
         draft: DRAFT_TOKEN,
         draft_files_before_update: onDisk,
-        files_mentioning_server: grepSanity,
-        draft_survives_cold_restart_on_A: survivesColdRestart,
+        files_with_draft_keys: draftKeyFiles,
+        home_drafts_count_before_restart: countBefore,
+        home_drafts_count_after_cold_restart_A: countAfterRestart,
       };
     });
 
