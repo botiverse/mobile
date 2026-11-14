@@ -1,5 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.reportProjectionRowDropped
+import build.raft.app.reportUnknownTypeDropped
+import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.ServerId
@@ -185,9 +188,26 @@ fun activityObjectRowKey(objectKind: String, objectId: String): String = "object
  * is dropped until this client knows how to draw it. The row's [InboxItem.channelId] is a
  * placeholder that names no conversation (`object:<id>`), so no conversation patch ever lands on it.
  */
-internal fun parseActivityObjectInboxItem(element: JsonElement): InboxItem? {
-    val wire = runCatching { activityObjectsJson.decodeFromJsonElement(WireObjectInboxItem.serializer(), element) }.getOrNull() ?: return null
-    if (wire.kind != "object" || wire.objectKind != "artifact" || wire.objectId.isBlank()) return null
+internal fun parseActivityObjectInboxItem(
+    element: JsonElement,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): InboxItem? {
+    val wire =
+        runCatching { activityObjectsJson.decodeFromJsonElement(WireObjectInboxItem.serializer(), element) }.getOrNull()
+            ?: run {
+                reportProjectionRowDropped("activity_object", "decode_failed", diagnostics = diagnostics)
+                return null
+            }
+    if (wire.kind != "object") return null
+    if (wire.objectKind != "artifact") {
+        // The server's object counts still include this row; say so in diagnostics.
+        reportUnknownTypeDropped("activity_object", "object_kind", wire.objectKind, diagnostics = diagnostics)
+        return null
+    }
+    if (wire.objectId.isBlank()) {
+        reportProjectionRowDropped("activity_object", "object_id_blank", diagnostics = diagnostics)
+        return null
+    }
     val card = wire.summary?.let { runCatching { activityObjectsJson.decodeFromJsonElement(ArtifactCardWireDto.serializer(), it) }.getOrNull() }
     val row =
         ActivityObjectRow(

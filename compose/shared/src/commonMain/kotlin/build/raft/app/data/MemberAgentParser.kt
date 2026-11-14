@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.reportProjectionRowDropped
+import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.model.isExternalAgent
 import build.raft.app.model.AgentActivitySubagentLineage
@@ -16,9 +18,11 @@ import build.raft.app.model.MemberServerRef
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -69,23 +73,6 @@ private data class WireMemberServer(
     val id: String,
     val name: String? = null,
     val slug: String? = null,
-)
-
-@Serializable
-private data class WireServerMembersResponse(
-    val members: List<WireServerMember> = emptyList(),
-    val items: List<WireServerMember> = emptyList(),
-    val results: List<WireServerMember> = emptyList(),
-)
-
-@Serializable
-private data class WireServerMembersDataListResponse(
-    val data: List<WireServerMember> = emptyList(),
-)
-
-@Serializable
-private data class WireServerMembersDataResponse(
-    val data: WireServerMembersResponse = WireServerMembersResponse(),
 )
 
 @Serializable
@@ -226,23 +213,6 @@ private data class WireManagedByApp(
 )
 
 @Serializable
-private data class WireAgentsResponse(
-    val agents: List<WireAgent> = emptyList(),
-    val items: List<WireAgent> = emptyList(),
-    val results: List<WireAgent> = emptyList(),
-)
-
-@Serializable
-private data class WireAgentsDataListResponse(
-    val data: List<WireAgent> = emptyList(),
-)
-
-@Serializable
-private data class WireAgentsDataResponse(
-    val data: WireAgentsResponse = WireAgentsResponse(),
-)
-
-@Serializable
 private data class WireAgentCreatedSummary(
     val id: String,
     val name: String,
@@ -275,18 +245,23 @@ private data class WireAgentRuntimeProfileSnapshot(
 fun parseSharedServerMemberSnapshot(
     bodyText: String,
     server: ServerSummary,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): MemberSnapshot? = runCatching {
     MemberSnapshot(
         server = server,
-        members = decodeServerMembers(bodyText)
+        // Null (an error, not an empty roster) when the server sent rows and none could be read.
+        members = (decodeServerMembers(bodyText, diagnostics) ?: return@runCatching null)
             .filter { member -> member.belongsToServerRoster(server.id) }
             .map { it.withSourceServer(server.id, server.name, server.slug) }
             .distinctBy { it.id.value },
     )
 }.getOrNull()
 
-fun parseSharedSettingsAgentsAsMembers(bodyText: String): List<MemberProfile>? = runCatching {
-    decodeAgents(bodyText)
+fun parseSharedSettingsAgentsAsMembers(
+    bodyText: String,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): List<MemberProfile>? = runCatching {
+    (decodeAgents(bodyText, diagnostics) ?: return@runCatching null)
         .distinctBy { it.id.value }
 }.getOrNull()
 
@@ -873,38 +848,76 @@ private fun WireChannelExternalMember.toModel(): ChannelExternalMemberProfile {
     )
 }
 
-private fun decodeServerMembers(bodyText: String): List<MemberProfile> =
-    decodeCandidates(
-        { memberAgentJson.decodeFromString(ListSerializer(WireServerMember.serializer()), bodyText) },
-        { memberAgentJson.decodeFromString(WireServerMembersResponse.serializer(), bodyText).allMembers },
-        { memberAgentJson.decodeFromString(WireServerMembersDataListResponse.serializer(), bodyText).data },
-        { memberAgentJson.decodeFromString(WireServerMembersDataResponse.serializer(), bodyText).data.allMembers },
-        { listOf(memberAgentJson.decodeFromString(WireServerMember.serializer(), bodyText)) }
-    ).map { it.toMemberProfile() }
+/** Server roster rows, decoded one by one; null when rows came and none could be read. */
+private fun decodeServerMembers(bodyText: String, diagnostics: (String) -> Unit): List<MemberProfile>? =
+    decodeRosterRows(
+        bodyText = bodyText,
+        listKeys = ServerMemberListKeys,
+        serializer = WireServerMember.serializer(),
+        source = "server_members",
+        diagnostics = diagnostics,
+    )?.map { it.toMemberProfile() }
 
-private fun decodeAgents(bodyText: String): List<MemberProfile> =
-    decodeCandidates(
-        { memberAgentJson.decodeFromString(ListSerializer(WireAgent.serializer()), bodyText) },
-        { memberAgentJson.decodeFromString(WireAgentsResponse.serializer(), bodyText).allAgents },
-        { memberAgentJson.decodeFromString(WireAgentsDataListResponse.serializer(), bodyText).data },
-        { memberAgentJson.decodeFromString(WireAgentsDataResponse.serializer(), bodyText).data.allAgents },
-        { listOf(memberAgentJson.decodeFromString(WireAgent.serializer(), bodyText)) }
+/** Agent rows, decoded one by one; null when rows came and none could be read. */
+private fun decodeAgents(bodyText: String, diagnostics: (String) -> Unit): List<MemberProfile>? =
+    decodeRosterRows(
+        bodyText = bodyText,
+        listKeys = AgentListKeys,
+        serializer = WireAgent.serializer(),
+        source = "settings_agents",
+        diagnostics = diagnostics,
     )
-        .filterNot { it.isDeletedAgent }
-        .map { it.toMemberProfile() }
+        ?.filterNot { it.isDeletedAgent }
+        ?.map { it.toMemberProfile() }
 
-private val WireServerMembersResponse.allMembers: List<WireServerMember>
-    get() = members + items + results
+private val ServerMemberListKeys = listOf("members", "items", "results")
+private val AgentListKeys = listOf("agents", "items", "results")
 
-private val WireAgentsResponse.allAgents: List<WireAgent>
-    get() = agents + items + results
-
-private fun <T> decodeCandidates(vararg candidates: () -> List<T>): List<T> {
-    candidates.forEach { candidate ->
-        val decoded = runCatching(candidate).getOrNull().orEmpty()
-        if (decoded.isNotEmpty()) return decoded
+/**
+ * The roster's rows in any of the shapes the parser always accepted (a bare array; `{members|agents,
+ * items, results}`; `{data: [...]}`; `{data: {...}}`; one bare row), decoded **per row**: a row that
+ * doesn't decode is skipped and logged (`projection_value_rejected … field=row`) instead of
+ * emptying the whole roster. Returns null — an error, never an empty roster — when the server sent
+ * rows and not one of them decoded.
+ */
+private fun <T> decodeRosterRows(
+    bodyText: String,
+    listKeys: List<String>,
+    serializer: KSerializer<T>,
+    source: String,
+    diagnostics: (String) -> Unit,
+): List<T>? {
+    val root = memberAgentJson.parseToJsonElement(bodyText)
+    fun JsonObject.listedRows(): List<JsonElement>? {
+        val lists = listKeys.mapNotNull { key -> this[key] as? JsonArray }
+        return if (lists.isEmpty()) null else lists.flatten()
     }
-    return emptyList()
+    val rows: List<JsonElement> =
+        when (root) {
+            is JsonArray -> root
+            is JsonObject -> {
+                val listed = root.listedRows()
+                when {
+                    listed != null && listed.isNotEmpty() -> listed
+                    root["data"] is JsonArray -> root["data"] as JsonArray
+                    root["data"] is JsonObject -> (root["data"] as JsonObject).listedRows().orEmpty()
+                    listed != null || root.isEmpty() || "data" in root -> emptyList()
+                    else -> listOf(root)
+                }
+            }
+            else -> return null
+        }
+    val decoded =
+        rows.mapIndexedNotNull { index, row ->
+            runCatching { memberAgentJson.decodeFromJsonElement(serializer, row) }
+                .getOrNull()
+                .also { if (it == null) reportProjectionRowDropped(source, "decode_failed", index, diagnostics) }
+        }
+    if (rows.isNotEmpty() && decoded.isEmpty()) {
+        diagnostics("roster_decode_failed source=$source rows=${rows.size}")
+        return null
+    }
+    return decoded
 }
 
 fun parseSharedChannelMemberActionResult(

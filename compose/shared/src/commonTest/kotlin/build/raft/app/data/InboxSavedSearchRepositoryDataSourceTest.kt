@@ -705,7 +705,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
-    fun savedDropsUnknownChannelTypeAndKeepsCanonicalDirectKind() = runBlocking {
+    fun savedShowsUnknownChannelTypeAsGenericChannelRowAndKeepsCanonicalDirectKind() = runBlocking {
         val network =
             FakeInboxNetworkClient(
                 savedJson = """
@@ -723,13 +723,21 @@ class InboxSavedSearchRepositoryDataSourceTest {
         val saved = RealSavedRepository(sampleStore(), network).loadInitial(ServerId("server-1"))
 
         assertTrue(saved is DataResult.Content)
-        assertEquals(listOf("saved:message-dm"), saved.data.items.map { it.key })
-        assertEquals(InboxItemKind.DirectMessage, saved.data.items.single().kind)
-        assertEquals(ConversationKind.DirectMessage, saved.data.items.single().channelKind)
+        assertEquals(listOf("saved:message-dm", "saved:message-weird"), saved.data.items.map { it.key })
+        val dm = saved.data.items.first()
+        assertEquals(InboxItemKind.DirectMessage, dm.kind)
+        assertEquals(ConversationKind.DirectMessage, dm.channelKind)
+        // A channel type this client doesn't know is not dropped: a generic channel row that opens
+        // its channel, keeping the raw type.
+        val weird = saved.data.items.last()
+        assertEquals(InboxItemKind.Channel, weird.kind)
+        assertEquals(null, weird.channelKind)
+        assertEquals("mystery", weird.channelType)
+        assertEquals("weird-1", weird.channelId.value)
     }
 
     @Test
-    fun searchDropsUnknownChannelTypeAndKeepsCanonicalDirectKind() = runBlocking {
+    fun searchShowsUnknownChannelTypeAsGenericChannelRowAndKeepsCanonicalDirectKind() = runBlocking {
         val network =
             FakeInboxNetworkClient(
                 savedJson = """{"saved":[],"hasMore":false}""",
@@ -747,10 +755,17 @@ class InboxSavedSearchRepositoryDataSourceTest {
         val search = RealSearchRepository(sampleStore(), network).search(ServerId("server-1"), "dm")
 
         assertTrue(search is DataResult.Content)
-        assertEquals(listOf("dm:dm-2:message-dm-search"), search.data.items.map { it.key })
-        assertEquals(InboxItemKind.DirectMessage, search.data.items.single().kind)
-        assertEquals(ConversationKind.DirectMessage, search.data.items.single().channelKind)
-        assertEquals(ConversationKind.DirectMessage, search.data.items.single().parentChannelKind)
+        assertEquals(
+            listOf("dm:dm-2:message-dm-search", "channel:weird-2:message-weird-search"),
+            search.data.items.map { it.key },
+        )
+        val dm = search.data.items.first()
+        assertEquals(InboxItemKind.DirectMessage, dm.kind)
+        assertEquals(ConversationKind.DirectMessage, dm.channelKind)
+        assertEquals(ConversationKind.DirectMessage, dm.parentChannelKind)
+        val weird = search.data.items.last()
+        assertEquals(InboxItemKind.Channel, weird.kind)
+        assertEquals("mystery", weird.channelType)
     }
 
     @Test
@@ -1008,8 +1023,8 @@ class InboxSavedSearchRepositoryDataSourceTest {
 
     @Test
     fun searchOffsetAdvancesByRowsTheServerSentNotRowsKept() = runBlocking {
-        // Two server rows, one an unknown channel type the client drops: the next offset still
-        // skips both, or the next page would start on a row already returned (web: results.length).
+        // Two server rows, one an unknown channel type (now a generic channel row): the next offset
+        // skips both server rows, or the next page would start on a row already returned (web: results.length).
         val network =
             FakeInboxNetworkClient(
                 searchJson = """
@@ -1023,7 +1038,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
         val page = RealSearchRepository(sampleStore(), network).search(ServerId("server-1"), "release", offset = 30)
 
         assertTrue(page is DataResult.Content)
-        assertEquals(1 to 32, page.data.items.size to page.data.nextOffset)
+        assertEquals(2 to 32, page.data.items.size to page.data.nextOffset)
     }
 
     @Test

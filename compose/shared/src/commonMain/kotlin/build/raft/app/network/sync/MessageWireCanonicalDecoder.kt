@@ -1,5 +1,6 @@
 package build.raft.app.network.sync
 
+import build.raft.app.reportProjectionRowDropped
 import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
 import build.raft.app.canonical.message.CanonicalCommentRefWire
@@ -127,9 +128,9 @@ fun decodeCanonicalMessageWire(
         senderName = rawJson.strictString("senderName").orEmpty(),
         senderDescription = rawJson.nullableString("senderDescription"),
         senderMembershipStatus = rawJson.nullableString("senderMembershipStatus"),
-        mentions = rawJson.objectArray("mentions").mapNotNull(JsonObject::toCanonicalMention),
-        attachments = rawJson.objectArray("attachments").mapNotNull(JsonObject::toCanonicalAttachment),
-        reactions = rawJson.objectArray("reactions").mapNotNull(JsonObject::toCanonicalReaction),
+        mentions = rawJson.objectArray("mentions").mapNotNullReported("canonical_message_mention", JsonObject::toCanonicalMention),
+        attachments = rawJson.objectArray("attachments").mapNotNullReported("canonical_message_attachment", JsonObject::toCanonicalAttachment),
+        reactions = rawJson.objectArray("reactions").mapNotNullReported("canonical_message_reaction", JsonObject::toCanonicalReaction),
         commentRef = (rawJson["commentRef"] as? JsonObject)?.toCanonicalCommentRef(),
         actionMetadata = rawJson["actionMetadata"].takeUnless { it == null || it is JsonNull },
         conversationContext = (rawJson["conversationContext"] as? JsonObject)?.toCanonicalConversationContext(),
@@ -158,6 +159,15 @@ private fun JsonObject.toTaskDomainFieldsOrNull(): TaskDomainFields? {
         taskCompletedAt = nullableString("taskCompletedAt"),
     )
 }
+
+/** Sub-rows that fail their strict checks are still skipped, but each skip leaves a diagnostic. */
+private inline fun <T : Any> List<JsonObject>.mapNotNullReported(
+    source: String,
+    transform: (JsonObject) -> T?,
+): List<T> =
+    mapIndexedNotNull { index, row ->
+        transform(row).also { if (it == null) reportProjectionRowDropped(source, "strict_check_failed", index) }
+    }
 
 private fun JsonObject.toCanonicalAttachment(): CanonicalAttachmentWire? {
     val id = strictString("id") ?: return null

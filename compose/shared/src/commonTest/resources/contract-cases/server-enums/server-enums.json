@@ -1,0 +1,216 @@
+{
+  "source": "botiverse/slock",
+  "sourceSha": "409605bdd39c2ee8d9bc4ce2fe36b91c61d62703",
+  "generatedBy": "scripts/refresh_server_enum_fixture.py",
+  "domains": {
+    "channel_types": {
+      "source": "packages/server/src/db/schema.ts:3441",
+      "values": [
+        "channel",
+        "private",
+        "joint",
+        "dm",
+        "thread",
+        "task"
+      ]
+    },
+    "inbox_kinds": {
+      "source": "packages/server/src/services/channelService.ts:13370, packages/server/src/services/channelService.ts:13401, packages/server/src/services/channelService.ts:13450, packages/shared/src/activityObjectsContract.ts:103",
+      "values": [
+        "channel",
+        "dm",
+        "thread",
+        "task",
+        "object"
+      ]
+    },
+    "inbox_channel_types": {
+      "source": "packages/server/src/services/channelService.ts:13357",
+      "values": [
+        "channel",
+        "private",
+        "joint",
+        "dm"
+      ]
+    },
+    "message_sender_types": {
+      "source": "packages/server/src/db/schema.ts:4194",
+      "values": [
+        "user",
+        "agent",
+        "external_projection"
+      ]
+    },
+    "message_types": {
+      "source": "packages/server/src/db/schema.ts:4213",
+      "values": [
+        "chat",
+        "system"
+      ]
+    },
+    "task_statuses": {
+      "source": "packages/shared/src/index.ts:5830",
+      "values": [
+        "backlog",
+        "todo",
+        "in_progress",
+        "in_review",
+        "done",
+        "closed"
+      ]
+    },
+    "notification_surface_kinds": {
+      "source": "packages/server/src/services/notifications/types.ts:25",
+      "values": [
+        "channel",
+        "dm",
+        "thread"
+      ]
+    },
+    "runtime_provider_kinds_claude": {
+      "source": "packages/shared/src/index.ts:2910",
+      "values": [
+        "default",
+        "custom"
+      ]
+    },
+    "runtime_provider_kinds_pi": {
+      "source": "packages/shared/src/index.ts:2934",
+      "values": [
+        "default",
+        "pi-builtin"
+      ]
+    },
+    "runtime_provider_kinds_builtin": {
+      "source": "packages/shared/src/index.ts:2948",
+      "values": [
+        "connection",
+        "preset",
+        "gateway"
+      ]
+    },
+    "runtime_auth_runtimes": {
+      "source": "packages/shared/src/runtimeAuth.ts:25",
+      "values": [
+        "claude",
+        "codex",
+        "kimi",
+        "qoder",
+        "qwen",
+        "antigravity",
+        "pi",
+        "grok",
+        "opencode"
+      ]
+    },
+    "sidebar_pinned_kinds": {
+      "source": "packages/server/src/services/serverService.ts:75",
+      "values": [
+        "channel",
+        "agent",
+        "human"
+      ]
+    },
+    "agent_activity_states": {
+      "source": "packages/shared/src/agentActivitySubscriptions.ts:32",
+      "values": [
+        "offline",
+        "online",
+        "busy",
+        "error"
+      ]
+    },
+    "object_kinds": {
+      "source": "packages/shared/src/webObjectsContract.ts:87",
+      "values": [
+        "artifact"
+      ]
+    },
+    "socket_events": {
+      "source": "packages/server/src `.emit(\"\u2026\")` + packages/shared/src `*_EVENT` + packages/server/src `*_EVENT` with a \":\"",
+      "values": [
+        "activity:changed",
+        "actor:updated",
+        "agent:activity",
+        "agent:activity:subscribe",
+        "agent:activity:subscribed",
+        "agent:activity:unsubscribe",
+        "agent:activity_state",
+        "agent:archive:updated",
+        "agent:created",
+        "agent:deleted",
+        "agent:lifecycle",
+        "agent:migration-updated",
+        "agent:seen",
+        "agent:session",
+        "agent:typing",
+        "agent:updated",
+        "announcement:new",
+        "appearance:updated",
+        "channel:authority-updated",
+        "channel:members-updated",
+        "channel:updated",
+        "connection",
+        "desktop:input-presence",
+        "dm:new",
+        "external-inbox-delivered",
+        "features:server-changed",
+        "feedback_report:session_record",
+        "finish",
+        "heartbeat",
+        "joint-invites:changed",
+        "link_card.operation_changed",
+        "machine:capabilities",
+        "machine:online",
+        "machine:runtime_auth:updated",
+        "machine:status",
+        "machine:updated",
+        "machine:upgrade-request",
+        "message:new",
+        "message:updated",
+        "message_display_prefs:updated",
+        "notification:desktop",
+        "notification:push",
+        "notification:retract",
+        "notification_prefs:updated",
+        "permission-updates:changed",
+        "pinned:updated",
+        "presence:activity",
+        "product_feedback:app_unread",
+        "product_feedback:unread",
+        "reaction_viewer:updated",
+        "read_progress:detail_changed",
+        "read_progress:unwatch",
+        "read_progress:updated",
+        "read_progress:watch",
+        "read_progress:watched",
+        "read_state:updated",
+        "read_state:updated_bulk",
+        "reminder:fired",
+        "rooms:join_failed",
+        "rooms:joined",
+        "runtime_auth:login:event",
+        "runtime_auth:login:result",
+        "scope_read:updated",
+        "seat-join-blocks:changed",
+        "server:deleted",
+        "server:features-changed",
+        "server:member-added",
+        "server:member-removed",
+        "server:member-updated",
+        "server:member:left",
+        "server:membership-removed",
+        "server:plan-updated",
+        "server_order:updated",
+        "sync:resume:response",
+        "task:created",
+        "task:deleted",
+        "task:updated",
+        "thread:followers-updated",
+        "thread:reply_updated",
+        "thread:updated",
+        "user:profile-updated"
+      ]
+    }
+  }
+}

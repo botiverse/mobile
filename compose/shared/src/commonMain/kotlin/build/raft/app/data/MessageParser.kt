@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.reportProjectionRowDropped
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MessageMention
 
@@ -32,6 +33,8 @@ import build.raft.app.model.ThreadId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 
@@ -268,7 +271,56 @@ data class SharedMessagesPayload(
     val channelArchived: Boolean = false,
     /** `messages/channel` only: the page's server coverage bounds ([ChannelMessageWindow]); no reader yet. */
     val messageWindow: ChannelMessageWindow? = null,
+    /**
+     * Rows the server sent on this page, before any row was skipped (unreadable or rejected).
+     * Paging (`canLoadMore*`) must compare this, not [messages]`.size`, with the requested limit:
+     * a skipped row must not end paging early.
+     */
+    val rawMessageCount: Int = messages.size,
+    /**
+     * The response itself could not be read (not the expected envelope). Callers must surface this
+     * as a failure, never as "no messages" ([requireReadable]).
+     */
+    val decodeFailed: Boolean = false,
 )
+
+/** Thrown by repository mappers for a page whose envelope did not decode, so it becomes an error state. */
+internal class MessagesPageDecodeException(source: String) : IllegalStateException("messages_page_decode_failed source=$source")
+
+/** This page, or a [MessagesPageDecodeException] when its envelope did not decode (an error, not empty). */
+internal fun SharedMessagesPayload.requireReadable(source: String): SharedMessagesPayload =
+    if (decodeFailed) throw MessagesPageDecodeException(source) else this
+
+private fun messagesPageDecodeFailed(
+    source: String,
+    reason: String,
+    diagnostics: (String) -> Unit,
+): SharedMessagesPayload {
+    diagnostics("messages_page_decode_failed source=$source reason=$reason")
+    return SharedMessagesPayload(emptyList(), decodeFailed = true)
+}
+
+/**
+ * The page's `messages` array decoded row by row: a row that doesn't decode is skipped and logged
+ * (`projection_value_rejected … field=row`) instead of failing the whole page. Null when the field
+ * is present but not an array.
+ */
+private fun decodeMessageRows(
+    rows: JsonElement?,
+    source: String,
+    diagnostics: (String) -> Unit,
+): List<MessagesWireMessage>? {
+    if (rows == null || rows is JsonNull) return emptyList()
+    val array = rows as? JsonArray ?: return null
+    return array.mapIndexedNotNull { index, row ->
+        val decoded =
+            (row as? JsonObject)?.let { rowObject ->
+                runCatching { messagesJson.decodeFromJsonElement(MessagesWireMessage.serializer(), rowObject) }.getOrNull()
+            }
+        if (decoded == null) reportProjectionRowDropped(source, "decode_failed", index, diagnostics)
+        decoded
+    }
+}
 
 data class SharedMessagesCanonicalTarget(
     val kind: String,
@@ -291,12 +343,16 @@ fun parseSharedChannelMessages(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): SharedMessagesPayload {
     if (bodyText.isBlank()) return SharedMessagesPayload(emptyList())
+    val source = "rest_messages_channel"
     val responseRoot =
         runCatching { messagesJson.parseToJsonElement(bodyText) as? JsonObject }.getOrNull()
-            ?: return SharedMessagesPayload(emptyList())
+            ?: return messagesPageDecodeFailed(source, "not_object", diagnostics)
+    val wireRows =
+        decodeMessageRows(responseRoot["messages"], source, diagnostics)
+            ?: return messagesPageDecodeFailed(source, "messages_not_array", diagnostics)
     val response = runCatching {
-        messagesJson.decodeFromJsonElement(MessagesWireChannelResponse.serializer(), responseRoot)
-    }.getOrNull() ?: return SharedMessagesPayload(emptyList())
+        messagesJson.decodeFromJsonElement(MessagesWireChannelResponse.serializer(), JsonObject(responseRoot - "messages"))
+    }.getOrNull() ?: return messagesPageDecodeFailed(source, "envelope", diagnostics)
     val embeddedFieldPresent = "threadSummariesByParentMessageId" in responseRoot
     val embeddedElement =
         response.threadSummariesByParentMessageId
@@ -313,7 +369,8 @@ fun parseSharedChannelMessages(
             else -> ThreadReplySummariesAuthority.EmbeddedInvalid
         }
     return SharedMessagesPayload(
-        messages = response.messages.mapNotNull { it.toDomain(fallbackThreadId, diagnostics) },
+        messages = wireRows.mapNotNull { it.toDomain(fallbackThreadId, diagnostics) },
+        rawMessageCount = (responseRoot["messages"] as? JsonArray)?.size ?: 0,
         threadSummaries =
             ThreadReplySummariesSnapshot(
                 threads = embeddedSummaries?.items.orEmpty(),
@@ -331,12 +388,16 @@ fun parseSharedMessageContext(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): SharedMessagesPayload {
     if (bodyText.isBlank()) return SharedMessagesPayload(emptyList())
+    val source = "rest_messages_context"
     val responseRoot =
         runCatching { messagesJson.parseToJsonElement(bodyText) as? JsonObject }.getOrNull()
-            ?: return SharedMessagesPayload(emptyList())
+            ?: return messagesPageDecodeFailed(source, "not_object", diagnostics)
+    val wireRows =
+        decodeMessageRows(responseRoot["messages"], source, diagnostics)
+            ?: return messagesPageDecodeFailed(source, "messages_not_array", diagnostics)
     val response = runCatching {
-        messagesJson.decodeFromJsonElement(MessagesWireContextResponse.serializer(), responseRoot)
-    }.getOrNull() ?: return SharedMessagesPayload(emptyList())
+        messagesJson.decodeFromJsonElement(MessagesWireContextResponse.serializer(), JsonObject(responseRoot - "messages"))
+    }.getOrNull() ?: return messagesPageDecodeFailed(source, "envelope", diagnostics)
     val resolvedThreadId = response.channelId?.let(::ThreadId) ?: fallbackThreadId
     // Task #1142: an anchored open (Activity row, notification, search) lands on this page.
     // Read the embedded summaries exactly like the page parser so reply rows render on the
@@ -357,7 +418,8 @@ fun parseSharedMessageContext(
             else -> ThreadReplySummariesAuthority.EmbeddedInvalid
         }
     return SharedMessagesPayload(
-        messages = response.messages.mapNotNull { it.toDomain(resolvedThreadId, diagnostics) },
+        messages = wireRows.mapNotNull { it.toDomain(resolvedThreadId, diagnostics) },
+        rawMessageCount = (responseRoot["messages"] as? JsonArray)?.size ?: 0,
         channelId = response.channelId?.let(::ChannelId),
         targetMessageId = response.targetMessageId?.let(::MessageId),
         canonicalTarget = response.canonicalTarget?.toDomain(),
@@ -390,11 +452,14 @@ fun parseSharedSyncMessages(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): SharedMessagesPayload {
     if (bodyText.isBlank()) return SharedMessagesPayload(emptyList())
-    val wireMessages = runCatching {
-        messagesJson.decodeFromString<List<MessagesWireMessage>>(bodyText)
-    }.getOrNull() ?: return SharedMessagesPayload(emptyList())
+    val source = "rest_messages_sync"
+    val root =
+        runCatching { messagesJson.parseToJsonElement(bodyText) }.getOrNull() as? JsonArray
+            ?: return messagesPageDecodeFailed(source, "not_array", diagnostics)
+    val wireMessages = decodeMessageRows(root, source, diagnostics).orEmpty()
     return SharedMessagesPayload(
         messages = wireMessages.mapNotNull { it.toDomain(fallbackThreadId, diagnostics) },
+        rawMessageCount = root.size,
     )
 }
 

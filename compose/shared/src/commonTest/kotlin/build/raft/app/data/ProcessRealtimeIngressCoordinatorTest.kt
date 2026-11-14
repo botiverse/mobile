@@ -237,6 +237,59 @@ class ProcessRealtimeIngressCoordinatorTest {
         scope.cancel()
     }
 
+    /** Silent-drop audit: a process-path event the app can't place leaves a `realtime_event_dropped` line. */
+    @Test
+    fun aDroppedProcessEventIsLoggedWithItsReason() = runBlocking {
+        val auth = FakeAuthStore()
+        val registry =
+            RealtimeAuthorityRegistry(
+                KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
+                processInstanceId = "process-ingress-test",
+            )
+        val provider = RealtimeAuthorityProvider(registry, auth, auth, { "env-test" })
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        provider.start(scope)
+        provider.registerScope("process-realtime-host", "process-owner")
+        auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
+        val authority = assertNotNull(provider.authorityFlow("process-realtime-host").value)
+        val bus = FakeEventBus()
+        val logs = mutableListOf<String>()
+        ProcessRealtimeIngressCoordinator(
+            events = RaftRealtimeEvents(bus),
+            authorityProvider = provider,
+            authorityFlow = provider.authorityFlow("process-realtime-host"),
+            domainOwner =
+                SharedRealtimeDomainEventOwner(
+                    cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore()),
+                    runIfCurrentGrant = provider::runIfCurrentGrant,
+                    runWithCurrentMessageGrant = provider::runWithCurrentMessageGrant,
+                ),
+            authStore = auth,
+            environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
+            mapper = RealtimeEventMapper(diagnosticsLogger = logs::add),
+            nativeHost = FakeNativeHost(),
+            scope = scope,
+            diagnostics = logs::add,
+        ).start()
+        yield()
+
+        // A message frame without its required `id`: the mapper can't decode it.
+        bus.post(RaftRealtimeNotifyContract.EventName, eventEnvelope(authority, RealtimeSocketEvents.MessageNew, """{"seq":1}"""))
+        // An envelope without a payload.
+        bus.post(RaftRealtimeNotifyContract.EventName, eventEnvelope(authority, RealtimeSocketEvents.MessageNew, ""))
+        yield()
+
+        val dropped = logs.filter { it.startsWith("realtime_event_dropped") }
+        assertEquals(
+            listOf(
+                "realtime_event_dropped eventName=message:new reason=decode keys=seq",
+                "realtime_event_dropped eventName=message:new reason=envelope_no_payload",
+            ),
+            dropped,
+        )
+        scope.cancel()
+    }
+
     /**
      * Reconnect jitter (Tenny 10-27, web #11453), wired as the provider wires it: the roster refetch of a
      * presence transport RE-connect waits the client's 0–20 s delay, while the same socket's message
