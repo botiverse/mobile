@@ -159,9 +159,8 @@ class RaftKmpRealtimeSocketTransport(
     private fun fire(connection: Connection, eventName: String, payload: Any?): Boolean {
         val handlers =
             linearize {
-                if (current !== connection) return true
-                listeners[eventName]?.toList().orEmpty()
-            }
+                if (current !== connection) null else listeners[eventName]?.toList().orEmpty()
+            } ?: return true
         handlers.forEach { handler ->
             // Re-checked per handler: a replacement during delivery wins, as in the Java transport.
             if (linearize { current === connection }) handler(connection.context, payload)
