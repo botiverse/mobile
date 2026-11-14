@@ -12,8 +12,16 @@ import UniformTypeIdentifiers
 /// (RaftIosComposerImagePasteHost's focus listener, also on keyboardWillShow while it has focus,
 /// so an iPad hardware keyboard that shows no software keyboard works too), the first responder is
 /// recorded as that editor and its class gets `canPerformAction(_:withSender:)` / `paste(_:)`
-/// hooked. The hooks act only for that one instance; every other instance of the class (and every
-/// other view: web content, other fields) runs the original implementation unchanged.
+/// hooked. The hooks act only for the composer's editor; every other instance of the class (and
+/// every other view: web content, other fields) runs the original implementation unchanged.
+///
+/// The editor view is Compose's per-session text input view: Compose makes a new one each time
+/// the field's input session restarts (its keyboard options or state change, a tap restarts a
+/// session) without the composer's focus changing, and with a hardware keyboard no keyboard
+/// notification follows. So the editor is not pinned to the instance seen at focus: while the
+/// composer has focus, the first responder of the hooked class in the composer's Compose view
+/// (the recorded editor's superview) is the composer's editor (`isComposerEditor`). Pinned to
+/// the first instance, 1.25.0 lost the menu's Paste and ⌘V for images once the session restarted.
 ///
 /// The editor is also Compose's edit menu view (CMPEditMenuView, iOS 16+: UIEditMenuInteraction).
 /// CMP 1.12 offers Paste only for text, and on iOS it never shows Compose's custom menu items
@@ -38,6 +46,8 @@ enum RaftIosImagePaste {
     private static var hooked = Set<ObjectIdentifier>()
     /// The composer's editor view while the composer has focus; the hooks act only for it.
     private static weak var composerEditor: UIResponder?
+    /// The Compose view the composer's editor lives in (where Compose adds each session's editor).
+    private static weak var composerHost: UIView?
     private static var composerFocused = false
 
     /// At launch (RaftIosAppDelegate).
@@ -55,6 +65,7 @@ enum RaftIosImagePaste {
         composerFocused = focused
         guard focused else {
             composerEditor = nil
+            composerHost = nil
             return
         }
         // The native editor becomes first responder after Compose's focus change, which may take
@@ -72,6 +83,7 @@ enum RaftIosImagePaste {
         if composerEditor !== responder {
             composerEditor = responder
         }
+        if let host = responder.superview { composerHost = host }
         hook(type(of: responder))
     }
 
@@ -98,8 +110,20 @@ enum RaftIosImagePaste {
         return nil
     }
 
-    private static func isComposerEditor(_ view: AnyObject) -> Bool {
-        composerFocused && composerEditor != nil && view === composerEditor
+    /// [view] (an instance of a hooked class) is the composer's editor: the one recorded at focus,
+    /// or, while the composer has focus, the first responder in the composer's Compose view (a
+    /// restarted input session's new editor view). A match is recorded as the editor.
+    static func isComposerEditor(_ view: AnyObject) -> Bool {
+        guard composerFocused else { return false }
+        if let editor = composerEditor, view === editor { return true }
+        guard let view = view as? UIView, view.isFirstResponder, view is UITextInput,
+              !NSStringFromClass(type(of: view)).hasPrefix("WK")
+        else { return false }
+        if let host = composerHost, view.superview !== host { return false }
+        composerEditor = view
+        if let host = view.superview { composerHost = host }
+        RaftIosDiagnosticsRecord("info", "RaftImagePaste", "editor rebound class=\(NSStringFromClass(type(of: view)))")
+        return true
     }
 
     private static func hook(_ cls: AnyClass) {

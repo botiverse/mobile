@@ -6,12 +6,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -21,6 +25,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
 import platform.UIKit.UIPasteboard
@@ -50,6 +55,10 @@ fun raftComposerPasteProbeViewController(composerClipboard: Boolean, reportsFocu
             Box(Modifier.fillMaxSize().padding(top = 160.dp, start = 16.dp, end = 16.dp)) {
                 BasicTextField(
                     state = fieldState,
+                    // A change restarts the field's input session (a new editor view, same focus).
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = if (RaftComposerPasteProbe.inputRestarts % 2 == 0) ImeAction.Default else ImeAction.Send,
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
@@ -63,6 +72,7 @@ fun raftComposerPasteProbeViewController(composerClipboard: Boolean, reportsFocu
     }
 
 private object RaftComposerPasteProbe {
+    var inputRestarts by mutableIntStateOf(0)
     var toolbar: TextToolbar? = null
     var fieldBounds: Rect? = null
     var fieldHasText: () -> Boolean = { false }
@@ -90,3 +100,12 @@ fun raftComposerPasteProbeShowEditMenu(): Boolean {
 
 /** Host image pastes delivered to a focused composer so far ([ThreadComposerImagePasteRequests.count]). */
 fun raftComposerPasteProbeImagePasteCount(): Int = ThreadComposerImagePasteRequests.count
+
+/**
+ * Restarts the focused probe field's input session without a focus change, as the composer's does
+ * when its keyboard options change: Compose replaces the editor view (a new first responder) and
+ * the composer keeps its focus, so the host's focus report does not run again.
+ */
+fun raftComposerPasteProbeRestartInputSession() {
+    RaftComposerPasteProbe.inputRestarts++
+}
