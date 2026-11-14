@@ -190,12 +190,12 @@ fun RaftAppLinkCardTitle(
     if (cut) RaftTooltip(text = text, modifier = modifier) { title(Modifier) } else title(modifier)
 }
 
-/** One state in a neutral Badge, then the muted details; wraps when it runs out of room ([RaftPreviewCardMeta]). */
+/** One state in a soft Badge (the app's colour where it gives one), then the muted details; wraps when it runs out of room ([RaftPreviewCardMeta]). */
 @Composable
 fun RaftAppLinkCardMeta(
     details: List<RaftPreviewCardDetail>,
     modifier: Modifier = Modifier,
-) = RaftPreviewCardMeta(details, modifier)
+) = RaftPreviewCardMeta(details, modifier, surface = RaftAppLinkCardBadgeSurface.Card)
 
 /**
  * The App's buttons at the card's bottom end ([raftAppLinkCardButtonLayout], web `LinkCardActions`
