@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -574,8 +575,13 @@ internal fun RaftArtifactColumnCell(
             },
             close = { currentOnChange(currentPane().close(entry.id)) },
         ) {
-            CompositionLocalProvider(LocalRaftPaneBackCloses provides true, LocalRaftArtifactViewerInColumn provides true) {
-                Box(Modifier.fillMaxSize().testTag(RAFT_ARTIFACT_COLUMN_PAGE_TEST_TAG)) {
+            // The page lays out at the column's width (its content keeps 480 and clips), which decides Desktop Mode.
+            BoxWithConstraints(Modifier.fillMaxSize().testTag(RAFT_ARTIFACT_COLUMN_PAGE_TEST_TAG)) {
+                CompositionLocalProvider(
+                    LocalRaftPaneBackCloses provides true,
+                    LocalRaftArtifactViewerInColumn provides true,
+                    LocalRaftArtifactViewerColumnWidthDp provides maxWidth.value,
+                ) {
                     page(entry, active && shown)
                 }
             }

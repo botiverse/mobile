@@ -71,6 +71,7 @@ internal const val RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP = build.raft.designsystem.co
 internal const val RAFT_PANE_GRID_CELL_MIN_HEIGHT_DP = build.raft.designsystem.components.RAFT_PANE_GRID_CELL_MIN_HEIGHT_DP
 internal const val RAFT_PANE_GRID_HEAD_HEIGHT_DP = build.raft.designsystem.components.RAFT_PANE_GRID_HEAD_HEIGHT_DP
 internal const val RAFT_PANE_GRID_MAX_SAVED_WIDTH_DP = build.raft.designsystem.components.RAFT_PANE_GRID_MAX_SAVED_WIDTH_DP
+internal const val RAFT_PANE_GRID_KEPT_MIN_WIDTH_DP = build.raft.designsystem.components.RAFT_PANE_GRID_KEPT_MIN_WIDTH_DP
 internal const val RAFT_PANE_GRID_KEYBOARD_STEP_DP = build.raft.designsystem.components.RAFT_PANE_GRID_KEYBOARD_STEP_DP
 internal const val RAFT_PANE_GRID_KEYBOARD_STEP_LARGE_DP = build.raft.designsystem.components.RAFT_PANE_GRID_KEYBOARD_STEP_LARGE_DP
 
@@ -180,12 +181,12 @@ internal class RaftPaneGridStore(private val preferences: () -> SharedPreference
         version++
     }
 
-    /** The kept width, within the saved range (the column's minimum to 4000, web `parseChannelSideLayout`); else null. */
+    /** The kept width, within the saved range (160 to 4000, web `parseChannelSideLayout`); else null. */
     override fun savedWidthDp(bounds: RaftPaneGridColumnBounds): Float? {
         version
         if (bounds.id in widths) return widths[bounds.id]
         return read("$WIDTH_KEY_PREFIX${bounds.id}")?.trim()?.toFloatOrNull()
-            ?.takeIf { it in bounds.minWidthDp..RAFT_PANE_GRID_MAX_SAVED_WIDTH_DP }
+            ?.takeIf { it in RAFT_PANE_GRID_KEPT_MIN_WIDTH_DP..RAFT_PANE_GRID_MAX_SAVED_WIDTH_DP }
             .also { widths[bounds.id] = it }
     }
 
@@ -193,7 +194,7 @@ internal class RaftPaneGridStore(private val preferences: () -> SharedPreference
     override fun widthDp(bounds: RaftPaneGridColumnBounds): Float = savedWidthDp(bounds) ?: bounds.defaultWidthDp
 
     override fun setWidth(bounds: RaftPaneGridColumnBounds, widthDp: Float) {
-        val width = widthDp.roundToInt().toFloat().coerceIn(bounds.minWidthDp, RAFT_PANE_GRID_MAX_SAVED_WIDTH_DP)
+        val width = widthDp.roundToInt().toFloat().coerceIn(RAFT_PANE_GRID_KEPT_MIN_WIDTH_DP, RAFT_PANE_GRID_MAX_SAVED_WIDTH_DP)
         if (savedWidthDp(bounds) == width) return
         widths[bounds.id] = width
         write("$WIDTH_KEY_PREFIX${bounds.id}", width.roundToInt().toString())

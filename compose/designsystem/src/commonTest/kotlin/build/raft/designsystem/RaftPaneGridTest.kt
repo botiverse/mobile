@@ -88,7 +88,7 @@ class RaftPaneGridTest {
         val sizes = RaftPaneGridMemorySizes()
         assertEquals(360f, sizes.widthDp(bounds))
         sizes.setWidth(bounds, 100f)
-        assertEquals(280f, sizes.widthDp(bounds), "never under the minimum")
+        assertEquals(160f, sizes.widthDp(bounds), "never under 160 (#189 rule 2: the content keeps its 280 and clips)")
         assertEquals(listOf(0.5f, 0.5f), sizes.shares("a+b", listOf(0.5f, 0.5f)))
         sizes.setShares("a+b", listOf(0.7f, 0.3f))
         assertEquals(listOf(0.7f, 0.3f), sizes.shares("a+b", listOf(0.5f, 0.5f)))

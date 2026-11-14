@@ -124,9 +124,16 @@ const val RAFT_PANE_GRID_KEYBOARD_STEP_LARGE_DP = 64f
 data class RaftPaneGridColumnBounds(val id: String, val defaultWidthDp: Float, val minWidthDp: Float)
 
 /**
+ * Web `COLUMN_BOUNDS[...].min` (`SEAM_COLUMN_MIN_WIDTH`, #189 rule 2): the narrowest a seam may take any column, the
+ * main pane included, and the narrowest width kept. A column's [RaftPaneGridColumnBounds.minWidthDp] is its content's
+ * minimum (web `contentMin`): narrower than that, the column clips its content.
+ */
+const val RAFT_PANE_GRID_KEPT_MIN_WIDTH_DP = RAFT_ROW_COLUMN_MIN_WIDTH_DP
+
+/**
  * The main pane's saved width (web rowLayout `slock:conversationWidth`, #189): kept like a column's under the row
  * plan's `conversation` key. Before a seam beside it is first let go it has none, and the plan gives it what the
- * columns leave, at least 400 ([RAFT_ROW_CONVERSATION_DEFAULT_WIDTH_DP]); kept, it is at least its content's 360.
+ * columns leave, at least 400 ([RAFT_ROW_CONVERSATION_DEFAULT_WIDTH_DP]); kept, it is at least 160 (a seam may take it there; its content keeps 360 and clips).
  */
 val RaftPaneGridConversationBounds =
     RaftPaneGridColumnBounds(
@@ -385,7 +392,7 @@ class RaftPaneGridMemorySizes : RaftPaneGridSizes {
     override fun savedWidthDp(bounds: RaftPaneGridColumnBounds): Float? = widths[bounds.id]
 
     override fun setWidth(bounds: RaftPaneGridColumnBounds, widthDp: Float) {
-        widths[bounds.id] = widthDp.roundToInt().toFloat().coerceIn(bounds.minWidthDp, RAFT_PANE_GRID_MAX_SAVED_WIDTH_DP)
+        widths[bounds.id] = widthDp.roundToInt().toFloat().coerceIn(RAFT_PANE_GRID_KEPT_MIN_WIDTH_DP, RAFT_PANE_GRID_MAX_SAVED_WIDTH_DP)
     }
 
     override fun shares(key: String, defaults: List<Float>): List<Float> =
@@ -1156,6 +1163,8 @@ fun RaftPaneGrid(
                             controls = controls,
                             // Expanded, the row is as the expansion has it until restored: no seam drags it.
                             resizable = plan?.expanded == null,
+                            // In the planned row the main pane gives way to 160 like any column, its content clipped.
+                            mainMinDp = if (plan != null) RAFT_PANE_GRID_KEPT_MIN_WIDTH_DP else RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP,
                         )
                     }
                     val locals = place.locals
@@ -1216,15 +1225,19 @@ fun RowScope.RaftPaneGridSideColumn(
     onCommitWidth: ((Float) -> Unit)? = null,
     controls: RaftPaneGridColumnControls? = null,
     resizable: Boolean = true,
+    /** The narrowest a drag may leave the main pane: 160 in the planned row (#189 rule 2, its content clips), else 360. */
+    mainMinDp: Float = RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP,
 ) {
     val store = LocalRaftPaneGridSizes.current
     val commit: (Float) -> Unit = { width -> if (onCommitWidth != null) onCommitWidth(width) else store.setWidth(column.bounds, width) }
     var liveWidth by remember { mutableStateOf<Float?>(null) }
+    // Its content's minimum: narrower, the content keeps it and is clipped (#189 rule 2).
     val minWidth = column.bounds.minWidthDp
-    val dragMax = raftPaneGridDragMaxDp(minWidth, widthDp, mainWidthDp)
-    // Planned under its minimum it shows clipped there; a drag may start from there and saves at least the minimum.
-    val dragFloor = minOf(minWidth, widthDp)
-    val width = liveWidth?.coerceIn(dragFloor, maxOf(minWidth, dragMax)) ?: widthDp
+    // A seam takes the column down to 160 (web `min`), whatever its content's minimum.
+    val keptMin = RAFT_PANE_GRID_KEPT_MIN_WIDTH_DP
+    val dragMax = raftPaneGridDragMaxDp(keptMin, widthDp, mainWidthDp, mainMinDp)
+    val dragFloor = minOf(keptMin, widthDp)
+    val width = liveWidth?.coerceIn(dragFloor, maxOf(keptMin, dragMax)) ?: widthDp
     val gone = hidden || tabHidden
     val fine = LocalRaftPaneGridPlatform.current.finePointer
     val hit = if (fine) 12.dp else 24.dp
@@ -1274,17 +1287,17 @@ fun RowScope.RaftPaneGridSideColumn(
                 vertical = true,
                 label = column.resizeLabel,
                 value = width,
-                range = bounds.minWidthDp..maxOf(bounds.minWidthDp, dragMax),
-                onSet = { commit(it.coerceIn(bounds.minWidthDp, dragMax)) },
+                range = keptMin..maxOf(keptMin, dragMax),
+                onSet = { commit(it.coerceIn(keptMin, maxOf(keptMin, dragMax))) },
                 onDragStart = { dragStart = currentWidth },
                 // The seam is the column's left edge: dragging left widens it.
-                onDrag = { total -> liveWidth = (dragStart - total).coerceIn(dragFloor, maxOf(bounds.minWidthDp, dragMax)) },
+                onDrag = { total -> liveWidth = (dragStart - total).coerceIn(dragFloor, maxOf(keptMin, dragMax)) },
                 onDragEnd = {
                     liveWidth?.let(commit)
                     liveWidth = null
                 },
-                onStep = { step -> commit((width - step).coerceIn(bounds.minWidthDp, dragMax)) },
-                onHome = { commit(bounds.minWidthDp) },
+                onStep = { step -> commit((width - step).coerceIn(keptMin, maxOf(keptMin, dragMax))) },
+                onHome = { commit(keptMin) },
                 onEnd = { commit(dragMax) },
                 // Web resetColumnWidth: the column back to its default, nothing else saved (the plan shares the room).
                 onReset = { store.setWidth(bounds, bounds.defaultWidthDp) },

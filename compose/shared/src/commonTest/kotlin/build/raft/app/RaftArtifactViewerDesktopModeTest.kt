@@ -104,4 +104,25 @@ class RaftArtifactViewerDesktopModeTest {
         val store = InMemoryRaftKeyValueStore(mapOf(ArtifactViewerDesktopModePreferenceRepository.Key to "true"))
         assertFalse(ArtifactViewerDesktopModePreferenceRepository(store).read())
     }
+
+    /** #189 step 6 (artin): the Artifact column keeps its own choice, off by default, apart from the page's. */
+    @Test
+    fun theColumnKeepsItsOwnChoiceOffByDefault() {
+        val store = InMemoryRaftKeyValueStore()
+        val page = ArtifactViewerDesktopModePreferenceRepository(store)
+        val column = ArtifactViewerDesktopModePreferenceRepository(store, ArtifactViewerDesktopModePreferenceRepository.ColumnKey)
+        page.write(true)
+        assertFalse(column.read(), "the page's Desktop Mode doesn't lay a 480 column out as a desktop")
+        column.write(true)
+        assertTrue(ArtifactViewerDesktopModePreferenceRepository(store, ArtifactViewerDesktopModePreferenceRepository.ColumnKey).read())
+        page.write(false)
+        assertTrue(column.read(), "turning it off on the page leaves the column's")
+    }
+
+    @Test
+    fun aColumnIsOfferedDesktopModeByItsOwnWidth() {
+        // A 480 column in a 1366 window: the window is a desktop's width, the column isn't.
+        assertTrue(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = 480f, viaViewportMeta = true))
+        assertFalse(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = 1366f, viaViewportMeta = true))
+    }
 }
