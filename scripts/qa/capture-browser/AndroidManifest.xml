@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  QA-only "capture browser" for scripts/qa/release_auto_login.mjs. Never part of the shipped app:
+  it is not a Gradle module and is built by build.sh in CI. It takes the browser role on a test
+  emulator, writes the last http(s) URL it was asked to open to its private files dir (read back
+  with `adb shell run-as`, hence debuggable) and closes. It renders nothing and loads nothing.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="build.qa.capturebrowser">
+
+    <application
+        android:label="QA capture browser"
+        android:debuggable="true"
+        android:allowBackup="false"
+        android:hasCode="true">
+        <activity
+            android:name=".CaptureActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.NoDisplay">
+            <!-- What the browser role asks of a holder: VIEW + BROWSABLE for plain http(s), any host. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
