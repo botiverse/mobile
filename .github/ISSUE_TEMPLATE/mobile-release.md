@@ -12,9 +12,9 @@ is closed (SOP §9).
 
 ## Owner and dates
 
-- Release owner: artin · Release decisions: Lagoon (mobile DRI, delegated by
-  artin 2026-11-14, SOP §Release decisions) · Operator: <name>   <!-- no @ before names -->
-- Rollback, data-changing and risky calls: artin
+- Release owner: artin · Release decisions: mobile DRI <name> (delegated by
+  product owner decision 2026-11-14, SOP §Release decisions) · Operator: <name>   <!-- no @ before names -->
+- Rollback, data-changing and risky calls: release owner
 - Timezone: Asia/Shanghai
 - Scope lock / branch cut: YYYY-MM-DD · Target release: YYYY-MM-DD
 - Bump: minor / patch / build (SOP §2)
@@ -72,7 +72,7 @@ States: building · draft · smoke · approved · distributed · superseded.
 - [ ] 7. Google Play internal (receipt)
 - [ ] 7. TestFlight internal: `VALID`, Botiverse, `IN_BETA_TESTING`
 - [ ] 7. Release go (no new crashes · related feedback fixed · server dependencies live): Android `main` finalized + `vX.Y.Z` tag + GitHub Release
-- [ ] 7. Release go: Google Play closed / open / production (review status read; any `--cancel-in-review` confirmed by artin)
+- [ ] 7. Release go: Google Play closed / open / production (review status read; any `--cancel-in-review` confirmed by the release owner)
 - [ ] 7. Release go (after testing the exact build): TestFlight external, notification receipt + `IN_BETA_TESTING`
 - [ ] 7. iOS audit tag `ios-vX.Y.Z-b<build>`
 - [ ] 7. Release go: App Store submission / release (screenshots via Hands)

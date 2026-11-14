@@ -15,17 +15,16 @@ Skills that point here: `raft-release-versioning` (§2), `raft-release-changeset
 
 - **Release owner** (artin): date, scope, exceptions, and the calls kept
   below (rollback, data-changing, risky).
-- **Mobile DRI** (Lagoon): release decisions, by delegation (below).
+- **Mobile DRI**: release decisions, by delegation (below).
 - **Release operator**: keeps the issue, cuts the branch, builds drafts,
   verifies bytes, runs only authorized mutations, writes receipts.
 - **Feature owner**: scoped PR, changeset, tests, evidence.
 - **Independent reviewer**: not the author of the exact source being reviewed.
 
-### Release decisions (delegated, artin 2026-11-14)
+### Release decisions (delegated, product owner decision 2026-11-14)
 
-artin delegated release decisions to the mobile DRI (Lagoon) on 2026-11-14
-(Raft `#proj-mobile`, message `c5535c79`). In this SOP, a **release go** is the
-mobile DRI's go. It covers:
+The release owner delegated release decisions to the mobile DRI (product owner
+decision, 2026-11-14). In this SOP, a **release go** is the mobile DRI's go. It covers:
 
 - Hands `main` activation;
 - TestFlight external (Beta App Review, tester notification);
@@ -43,12 +42,12 @@ issue with the go:
 3. **Server dependencies live**: every server change the release relies on is
    deployed to production.
 
-These still go to **artin**: rollback, freezing the update pointer, share
+These still go to the **release owner**: rollback, freezing the update pointer, share
 revocation, release deletion or removal (§7.7); anything that changes or
 deletes user or store data (for example withdrawing an in-review Play change,
 §7.3); scope exceptions; and any call the DRI judges risky or unclear. Record
 the delegation in each release issue so operators and sub-agents don't stop to
-wait for artin.
+wait for the release owner.
 
 ## Hard rules
 
@@ -65,7 +64,7 @@ never implies another.
    group). Every external release (Hands `main`, Play closed/open/production,
    TestFlight external, App Store) needs a release go for that version and a
    smoke of the exact build first (artin, 2026-11-02; go delegated to the mobile
-   DRI, 2026-11-14).
+   DRI by product owner decision, 2026-11-14).
 3. **One branch per semantic version**, never reused, force-pushed or rewound.
 4. **One carrier source exact** (full 40-char SHA) for both platforms of a
    train. Marketing versions/build numbers may differ; embedded source may not.
@@ -501,7 +500,7 @@ candidate with the previous release and record a table in the release issue:
 
 Each line below is its own mutation with its own go unless marked otherwise.
 "Release go" means the mobile DRI's go (§Release decisions); rollback and
-data-changing calls stay with artin.
+data-changing calls stay with the release owner.
 Before each: fresh-read state and the latest directive, use exact revision /
 build / group / source preconditions. After: read back and post in the issue.
 
@@ -633,12 +632,13 @@ versionCodes: other tracks, store listing, and policy forms (data safety,
 content rating) too. Withdrawn changes must be resubmitted. It needs explicit
 confirmation for that exact call: name what is in review (from Hands' review
 status), the versionCodes, and what will have to be resubmitted, and get
-artin's go (a data-changing call, §Release decisions). Record the confirmation
+the release owner's go (a data-changing call, §Release decisions). Record the confirmation
 and the readback in the issue.
 
 ### 7.4 TestFlight: internal first, external only after the exact build was tested
 
-(artin, 2026-09-27; external go delegated to the mobile DRI, 2026-11-14.)
+(artin, 2026-09-27; external go delegated to the mobile DRI by product owner
+decision, 2026-11-14.)
 
 **Internal** (default after every iOS draft; no per-build go). With
 `testflight_internal=true`, or by hand:
@@ -825,7 +825,7 @@ Raft interval reminder** on the release thread. Each firing fresh-reads every
 in-flight Android/iOS run, Hands draft/readback and TestFlight processing
 state, posts a short status (and updates the issue when state changed). Cancel
 it only when every dispatched platform is terminal and receipts are in the
-issue, or artin or the mobile DRI stops the train. In-flight carriers without
+issue, or the release owner or mobile DRI stops the train. In-flight carriers without
 a reminder is a process defect. The reminder authorizes nothing.
 
 ## 9. Closeout, merge-back, branch lock

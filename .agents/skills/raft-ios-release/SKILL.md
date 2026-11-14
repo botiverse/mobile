@@ -11,9 +11,9 @@ Follow `docs/mobile-release-sop.md`: §0 release issue, §2 build numbers, §5.2
 App Store, §8 interval reminder.
 
 - TestFlight internal (Botiverse) is the default; report to the mobile DRI
-  (Lagoon) and stop.
+  and stop.
 - External only after that exact build was tested and the mobile DRI gave a
-  separate release go (SOP §Release decisions; delegated by artin 2026-11-14);
+  separate release go (SOP §Release decisions; product owner decision 2026-11-14);
   done means `notification=sent|already_sent` and `IN_BETA_TESTING`.
 - Never export the ASC credential, activate the Hands draft, or submit to the
   App Store without its own go.
