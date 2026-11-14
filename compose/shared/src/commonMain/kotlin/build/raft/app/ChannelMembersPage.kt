@@ -215,14 +215,15 @@ internal fun ChannelMembersRow(
 
 /**
  * Web `MemberRowName`'s server names after the name of someone from another server ("Acme Corp,
- * Lumen Labs"): caption, regular, `foreground-hint`, one line, truncated; capped so the name keeps
- * its room (the web lets the names give way first).
+ * Lumen Labs"), and web `JointServerBadges`' "Also in Raft, Acme Corp" for a member of the viewed
+ * server who is also in another (#14731, it was a blue chip): caption, regular, `foreground-hint`,
+ * one line, truncated; capped so the name keeps its room (the web lets the text give way first).
  */
 @Composable
-internal fun ChannelMemberOriginServerNames(names: String) {
+internal fun ChannelMemberOriginServerNames(names: String, testTag: String = ChannelMemberOriginServersTestTag) {
     RaftText(
         names,
-        modifier = Modifier.widthIn(max = 140.dp).testTag(ChannelMemberOriginServersTestTag),
+        modifier = Modifier.widthIn(max = 140.dp).testTag(testTag),
         style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.Normal),
         color = RaftTheme.colors.foregroundHint,
         maxLines = 1,
@@ -231,6 +232,8 @@ internal fun ChannelMemberOriginServerNames(names: String) {
 }
 
 internal const val ChannelMemberOriginServersTestTag = "member-row-origin-servers"
+
+internal const val ChannelMemberAlsoInTestTag = "member-row-also-in"
 
 /** Web members-page loading line: a spinner and "Loading members…", centred. */
 @Composable

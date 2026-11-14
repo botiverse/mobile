@@ -84,7 +84,6 @@ import build.raft.designsystem.components.RaftListRowText
 import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.designsystem.components.RaftJointServerBadge
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftPressSurface
 
@@ -420,11 +419,12 @@ internal fun ThreadAgentFollowersPanel(
                                 )
                             }
                         },
-                        // Web JointPeerBadge: a peer server's agent names its server right after the name.
+                        // Web ThreadAgentFollowerRow (#14736): a peer server's agent names its server
+                        // right after the name in quiet text, as a channel's member list writes it
+                        // (it was a blue chip); the server name gives way before the agent's.
                         titleTrailing = if (agent.isCurrentServer) null else {
                             {
-                                // Web `max-w-1/2`: the name keeps at least half the line; the server truncates first.
-                                RaftJointServerBadge(server, modifier = Modifier.widthIn(max = 72.dp))
+                                ChannelMemberOriginServerNames(server, testTag = ThreadFollowerOriginServerTestTag)
                             }
                         },
                         trailing = if (canManage) {
@@ -449,6 +449,8 @@ internal fun ThreadAgentFollowersPanel(
         }
     }
 }
+
+internal const val ThreadFollowerOriginServerTestTag = "thread-follower-origin-server"
 
 /** The member detail a follower row opens: the agent on its own server (peer agents read-only). */
 internal fun threadFollowerProfileIdentity(agent: ThreadAgentFollower): MemberDetailIdentity =

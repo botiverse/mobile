@@ -87,6 +87,7 @@ import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.memberOrigin
 import build.raft.app.data.memberRemovableFromChannel
 import build.raft.app.data.memberRowServerLabel
+import build.raft.app.data.memberServerBadgeLabels
 import build.raft.app.data.homeStateForPage
 import build.raft.app.data.RaftKnownEntityResolver
 import build.raft.app.data.RaftRatingPrompt
@@ -3908,7 +3909,13 @@ internal data class RaftThreadMemberItem(
      * from, the viewed one left out. Their row carries the first one's tile on the avatar and the
      * names after the name, in place of the server chip. Empty for the viewed server's members.
      */
-    val originServers: List<MemberServerRef> = emptyList()
+    val originServers: List<MemberServerRef> = emptyList(),
+    /**
+     * A member of the viewed server who is also in another (web `memberServerBadgeLabels`): every
+     * server they take part through, in roster order. Their row reads "Also in Raft, Acme Corp"
+     * after the name in quiet text (web #14731). Empty for anyone else.
+     */
+    val alsoInServerLabels: List<String> = emptyList()
 )
 
 @Serializable
@@ -39960,13 +39967,13 @@ internal fun ThreadMembersPagerRow(
             else -> null
         }
     // Member labels (web #14535 MemberRowName): someone from another server reads their servers
-    // after the name in quiet text, with the first one's tile on the avatar, in place of the chip.
-    // A member of the viewed server who is also in another keeps the chip.
+    // after the name in quiet text, with the first one's tile on the avatar. A member of the viewed
+    // server who is also in another reads "Also in Raft, Acme Corp" in the same quiet text (web
+    // #14731 JointServerBadges, agents too; it was a blue chip).
     val originNames = raftOriginServerNames(member.originServers)
-    val serverBadge =
-        member.sourceServerLabel
-            ?.takeIf { it.isNotBlank() && originNames.isEmpty() }
-            ?.let { ChannelMemberBadge(it, ChannelMemberBadgeKind.External) }
+    val alsoInNames =
+        member.alsoInServerLabels.filter { it.isNotBlank() }.takeIf { originNames.isEmpty() && it.isNotEmpty() }?.joinToString(", ")
+    val alsoIn = alsoInNames?.let { stringResource(Res.string.channel_members_also_in, it) }
     ChannelMembersRow(
         title = member.displayName,
         subtitle = subtitle,
@@ -39976,14 +39983,15 @@ internal fun ThreadMembersPagerRow(
         cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
         cacheServerId = member.sourceServerId,
         statusColor = status?.color,
-        badges = listOfNotNull(serverBadge, roleBadge),
+        badges = listOfNotNull(roleBadge),
         titleBadge =
-            if (appBot == null && originNames.isEmpty()) {
+            if (appBot == null && originNames.isEmpty() && alsoIn == null) {
                 null
             } else {
                 {
                     appBot?.let { bot -> RaftAppBotBadge(identity = bot, botName = member.displayName) }
                     if (originNames.isNotEmpty()) ChannelMemberOriginServerNames(originNames)
+                    alsoIn?.let { ChannelMemberOriginServerNames(it, testTag = ChannelMemberAlsoInTestTag) }
                 }
             },
         avatarOriginServers = member.originServers,
@@ -40130,7 +40138,8 @@ internal fun MemberProfile.toRaftThreadMemberItem(localServerId: ServerId? = nul
         canRemove = memberRemovableFromChannel(this, viewerServerId),
         // A Guest label is a fact of the viewed server only (web `rosterRoleTag`).
         effectiveChannelRole = if (origin.external && effectiveChannelRole == "guest") "member" else effectiveChannelRole,
-        originServers = if (origin.external) origin.servers else emptyList()
+        originServers = if (origin.external) origin.servers else emptyList(),
+        alsoInServerLabels = if (origin.external) emptyList() else memberServerBadgeLabels(this, viewerServerId)
     )
 }
 

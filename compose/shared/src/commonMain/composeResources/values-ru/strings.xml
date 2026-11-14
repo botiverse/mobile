@@ -3365,6 +3365,7 @@
     <string name="channel_member_role_owner">Владелец</string>
     <string name="channel_member_role_admin">Администратор</string>
     <string name="channel_member_role_guest">Гость</string>
+    <string name="channel_members_also_in">Также в %1$s</string>
     <string name="member_row_status_online">В сети</string>
     <string name="member_row_status_likely_online">Вероятно, в сети</string>
     <string name="member_row_status_offline">Не в сети</string>
@@ -4384,7 +4385,7 @@
     <string name="artifacts_dashboard_clear_filters">Сбросить фильтры</string>
     <string name="artifacts_dashboard_relevant">Касается меня</string>
     <string name="artifacts_dashboard_see_all">Показать все</string>
-    <string name="artifacts_dashboard_empty_relevant_title">Для вас ничего нового</string>
+    <string name="artifacts_dashboard_empty_relevant_title">Пока нет Artifact, которые касаются вас</string>
     <string name="artifacts_dashboard_sort_label">Сортировка: %1$s</string>
     <string name="artifacts_dashboard_sort_opened">Недавно открытые</string>
     <string name="artifacts_dashboard_sort_updated">Недавно обновлённые</string>

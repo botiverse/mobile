@@ -3368,6 +3368,7 @@
     <string name="channel_member_role_owner">Proprietário</string>
     <string name="channel_member_role_admin">Administrador</string>
     <string name="channel_member_role_guest">Convidado</string>
+    <string name="channel_members_also_in">Também em %1$s</string>
     <string name="member_row_status_online">Online</string>
     <string name="member_row_status_likely_online">Provavelmente online</string>
     <string name="member_row_status_offline">Offline</string>
@@ -4331,7 +4332,7 @@
     <string name="artifacts_dashboard_clear_filters">Limpar tudo</string>
     <string name="artifacts_dashboard_relevant">Relacionado a mim</string>
     <string name="artifacts_dashboard_see_all">Ver tudo</string>
-    <string name="artifacts_dashboard_empty_relevant_title">Nenhuma novidade para você</string>
+    <string name="artifacts_dashboard_empty_relevant_title">Ainda não há Artifacts relacionados a você</string>
     <string name="artifacts_dashboard_sort_label">Ordenar: %1$s</string>
     <string name="artifacts_dashboard_sort_opened">Abertos recentemente</string>
     <string name="artifacts_dashboard_sort_updated">Atualizados recentemente</string>
