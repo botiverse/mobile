@@ -18,6 +18,28 @@ class AndroidShellWindowContractTest {
     }
 
     @Test
+    fun notificationTapOpensTheNotificationServersWindowNotTheSelectedServers() {
+        // The account last used server B's window; a notification from server A (Hands 3a465552).
+        val selected = AndroidShellRouteOwner("https://api.test", "user-1", "server-b")
+        val owner = notificationAndroidShellRouteOwner(selected, " server-a ")
+
+        assertEquals(AndroidShellRouteOwner("https://api.test", "user-1", "server-a"), owner)
+        val target =
+            resolveAndroidShellLaunchTarget(
+                JSONObject()
+                    .put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-a")
+                    .put(ANDROID_DOCUMENT_SHELL_KEY, true)
+                    .withAndroidShellRouteOwner(owner!!),
+                multiShellHostEnabled = true,
+            )
+        assertEquals(selected.copy(serverId = "server-a").shellCanonicalUri(), target.shellInstanceId)
+        assertEquals("server-a", target.serverId)
+        // Without a server on the notification, the selected owner as before; signed out, none.
+        assertEquals(selected, notificationAndroidShellRouteOwner(selected, " "))
+        assertNull(notificationAndroidShellRouteOwner(null, "server-a"))
+    }
+
+    @Test
     fun notificationServerUsesDefaultSingleShellIdentity() {
         val pageData = JSONObject().put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-2")
 
