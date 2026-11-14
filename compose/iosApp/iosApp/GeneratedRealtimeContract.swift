@@ -110,6 +110,7 @@ enum GeneratedRealtimeContract {
         static let notificationRetract = "notification:retract"
         static let jointInvitesChanged = "joint-invites:changed"
         static let linkCardOperationChanged = "link_card.operation_changed"
+        static let actorUpdated = "actor:updated"
 
         static let serverWireEvents: [String] = [
             SocketEvent.messageNew,
@@ -171,6 +172,7 @@ enum GeneratedRealtimeContract {
             SocketEvent.notificationRetract,
             SocketEvent.jointInvitesChanged,
             SocketEvent.linkCardOperationChanged,
+            SocketEvent.actorUpdated,
         ]
     }
 }

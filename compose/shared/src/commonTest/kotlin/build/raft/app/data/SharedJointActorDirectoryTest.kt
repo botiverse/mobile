@@ -101,6 +101,31 @@ class SharedJointActorDirectoryTest {
     }
 
     @Test
+    fun actorUpdatedReplacesTheRowForTheCurrentOwnerOnly() = runTest {
+        val h = harness { refs -> ActorResolveOutcome.Resolved(refs.map { resolvedActorOf(it, "https://cdn.test/old.webp") }) }
+        h.directory.request(server, listOf(agent(2)))
+        advanceUntilIdle()
+        assertEquals("https://cdn.test/old.webp", h.directory.current(server, uuid(2))?.avatarUrl)
+
+        // slock actor:updated: the other server's agent renamed itself and changed its avatar.
+        h.directory.applyActorUpdated(
+            server,
+            resolvedActorOf(agent(2), "https://cdn.test/new.webp").copy(name = "nova", displayName = "Nova"),
+        )
+        val row = h.directory.current(server, uuid(2), MemberKind.Agent)
+        assertEquals("https://cdn.test/new.webp", row?.avatarUrl)
+        assertEquals("Nova", row?.displayName)
+        // No re-resolve.
+        assertEquals(1, h.calls.size)
+
+        // Signed out: nothing is written.
+        h.account = null
+        h.directory.applyActorUpdated(server, resolvedActorOf(agent(3)))
+        h.account = "user-1"
+        assertNull(h.directory.current(server, uuid(3)))
+    }
+
+    @Test
     fun aRefTheRosterLearnsWhileTheBatchWaitsIsNotSent() = runTest {
         val h = harness()
         h.directory.request(server, listOf(human(1), human(2)))

@@ -236,6 +236,20 @@ class SharedJointActorDirectory internal constructor(
         _rows.value = current + (scope to next)
     }
 
+    /**
+     * Realtime `actor:updated` on [serverId]'s socket: an other-server agent of a joint channel changed
+     * its name or avatar. Its row in the current owner's scope is replaced, so faces and names follow
+     * without a re-resolve (web `applyActorUpdatedEvent` → `upsertActorsIfCurrent`).
+     */
+    fun applyActorUpdated(serverId: ServerId, actor: ResolvedActor) {
+        val scope = scopeOf(serverId) ?: return
+        synchronized(lock) {
+            if (scopeOf(ServerId(scope.serverId)) != scope) return
+            upsert(scope, listOf(actor))
+        }
+        logger("actor_updated server=${scope.serverId} kind=${actor.kind.name.lowercase()}")
+    }
+
     /** Forgets every row, asked ref, pending batch and disabled scope (sign-out, account retirement). */
     fun clear() {
         synchronized(lock) {

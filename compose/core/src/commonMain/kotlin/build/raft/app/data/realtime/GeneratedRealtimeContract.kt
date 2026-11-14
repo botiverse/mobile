@@ -128,6 +128,7 @@ object GeneratedRealtimeContract {
         const val NotificationRetract = "notification:retract"
         const val JointInvitesChanged = "joint-invites:changed"
         const val LinkCardOperationChanged = "link_card.operation_changed"
+        const val ActorUpdated = "actor:updated"
 
         val ServerWireEvents: List<String> = listOf(
             MessageNew,
@@ -189,6 +190,7 @@ object GeneratedRealtimeContract {
             NotificationRetract,
             JointInvitesChanged,
             LinkCardOperationChanged,
+            ActorUpdated,
         )
     }
 }

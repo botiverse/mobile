@@ -703,6 +703,25 @@ internal class RaftSharedStoreProvider private constructor(
         authStore.applyRealtimeUserProfileUpdated(principalId, event)
     }
 
+    /**
+     * Realtime `actor:updated` (slock `actorResolveContract.ts`): an agent of another server, seen on
+     * [serverId] through a joint channel, changed its name or avatar. Its resolved row is replaced in
+     * every members store's joint-actor directory (each applies it only to its current owner's scope).
+     */
+    internal fun applyActorUpdated(serverId: String, event: build.raft.app.model.ActorUpdated) {
+        val actor =
+            ResolvedActor(
+                kind = event.kind,
+                id = event.id,
+                homeServerId = event.homeServerId,
+                name = event.name,
+                displayName = event.displayName,
+                avatarUrl = event.avatarUrl,
+                gravatarHash = null,
+            )
+        allServerMembersStores().forEach { store -> store.jointActors?.applyActorUpdated(ServerId(serverId), actor) }
+    }
+
     /** Realtime `agent:deleted` for the current account: its cached detail page (memory and disk) goes. */
     internal suspend fun evictAgentDetail(serverId: String, agentId: String) {
         val (environmentId, accountId) = currentAccountBindingOrNull() ?: return
@@ -3807,6 +3826,9 @@ internal class RaftSharedStoreProvider private constructor(
                         owner.installFeedbackUnreadSink { principalId, event ->
                             provider.feedbackUnread.applyRealtime(principalId, event)
                         }
+                        owner.installActorUpdatedSink { serverId, event ->
+                            provider.applyActorUpdated(serverId, event)
+                        }
                         owner.installAgentActivitySubscribedSink { serverId, event ->
                             provider.agentActivitySubscriptions.onSubscribed(serverId, event.agentIds)
                         }
@@ -4172,6 +4194,14 @@ internal class SharedRealtimeDomainEventOwner(
         feedbackUnreadSink = sink
     }
 
+    // `actor:updated` comes on the grant's server socket (a joint channel room): it patches the joint-actor
+    // row of that server. Process entry only, like the profile sink.
+    private var actorUpdatedSink: ((serverId: String, event: build.raft.app.model.ActorUpdated) -> Unit)? = null
+
+    fun installActorUpdatedSink(sink: (serverId: String, event: build.raft.app.model.ActorUpdated) -> Unit) {
+        actorUpdatedSink = sink
+    }
+
     // `agent:activity:subscribed` answers this process's own subscribe on the grant's server socket.
     private var agentActivitySubscribedSink: ((serverId: String, event: AgentActivitySubscribed) -> Unit)? = null
 
@@ -4326,6 +4356,9 @@ internal class SharedRealtimeDomainEventOwner(
             // that operation reads its status again (RaftLinkCardOperationHints).
             if (acceptedEvent is build.raft.app.model.LinkCardOperationChanged) {
                 RaftLinkCardOperationHints.publish(serverId, acceptedEvent)
+            }
+            if (acceptedEvent is build.raft.app.model.ActorUpdated) {
+                actorUpdatedSink?.invoke(serverId, acceptedEvent)
             }
             // Unified notification levels and account settings (slock docs/contracts/notifications.md
             // §2.3): the process stores the channel / thread menus, the badge and the settings page read.

@@ -148,6 +148,14 @@ object RealtimeSocketEvents {
     const val LinkCardOperationChanged = GeneratedRealtimeContract.SocketEvent.LinkCardOperationChanged
 
     /**
+     * botiverse/slock `packages/shared/src/actorResolveContract.ts` `ACTOR_UPDATED_EVENT`: an agent
+     * of another server, seen here through a joint channel, changed its name or avatar.
+     * `{ kind, id, homeServerId, name, displayName, avatarUrl }` to the joint projection channel
+     * rooms; patches that actor's resolved row (web `applyActorUpdatedEvent`).
+     */
+    const val ActorUpdated = GeneratedRealtimeContract.SocketEvent.ActorUpdated
+
+    /**
      * Sent to the member's own `user:<id>` room about one of their servers, so the socket of
      * whichever server the app has open receives it: the payload `serverId` names the server
      * that changed, not the connected one. Gates that drop a payload naming another server than
