@@ -3822,6 +3822,7 @@
     <string name="agent_migration_target_agents_none">Нет агентов</string>
     <string name="agent_migration_target_agents_one">%1$s агент</string>
     <string name="agent_migration_target_agents_other">Агентов: %1$s</string>
+    <string name="agent_migration_target_agents_show_all">Показать всех агентов: %1$d</string>
     <string name="agent_migration_target_offline">Не в сети</string>
     <string name="agent_migration_target_details">Сведения о компьютере %1$s</string>
     <string name="agent_migration_target_memory">Оперативная память</string>

@@ -149,6 +149,8 @@ internal class AgentMigrationSectionInputs(
     /** The viewer's clock for a wire time (web `formatClock`); null when it cannot be read. */
     val formatClock: (String) -> String? = { null },
     val nowMillis: () -> Long = ::defaultNowMillis,
+    /** The agents on each target, for its details' Agents section; null shows only how many. */
+    val computerAgents: AgentMigrationComputerAgents? = null,
 ) {
     /** Web `hostedAvailable && !placesWithoutSource`: a move to the cloud uploads from a source. */
     val offersHosted: Boolean
@@ -1138,7 +1140,8 @@ internal fun ColumnScope.AgentMigrationStartForm(
             agentRuntime = inputs.agentRuntime,
             usage = usage,
             onSelect = onSelect,
-            initialQuery = initialQuery
+            initialQuery = initialQuery,
+            computerAgents = inputs.computerAgents
         )
         // The one choice first; what happens next follows as the dialog's body text.
         if (hostedSelected) {

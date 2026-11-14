@@ -2,15 +2,24 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -21,19 +30,30 @@ import build.raft.app.data.ComputerSizeStatus
 import build.raft.app.data.RuntimeAccountUsageLoad
 import build.raft.app.data.RuntimeAccountUsageRead
 import build.raft.app.data.RuntimeQuotaLinePart
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.designsystem.components.RaftAvatarGroupCount
+import build.raft.designsystem.components.RaftAvatarKind
+import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftChoiceList
 import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowText
+import build.raft.designsystem.components.RaftPreviewCard
+import build.raft.designsystem.components.rememberRaftPreviewCardState
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSheet
 import build.raft.designsystem.components.RaftSheetSurface
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftTheme
 
 /*
@@ -49,6 +69,36 @@ internal fun AgentMigrationComputer.liveDiskStatus(): ComputerSizeStatus? = disk
 
 /** Web `liveMemoryStatus`: the memory report on the same terms as the disk. */
 internal fun AgentMigrationComputer.liveMemoryStatus(): ComputerSizeStatus? = memoryStatus.takeIf { online }
+
+/**
+ * Who is on each computer, for the details' Agents section (artin 11-14): the server's live
+ * agents per computer ([agentMigrationAgentsByMachine], the Computers page's grouping), their live
+ * status, and how to open one's profile. Null: the section says only how many.
+ */
+internal class AgentMigrationComputerAgents(
+    val byMachine: Map<String, List<MemberProfile>>,
+    /** The server the dialog is on: where an agent's profile card reads it from. */
+    val serverId: String?,
+    val agentStatusResolver: RaftAgentStatusResolver,
+    val onOpenProfile: (MemberProfile) -> Unit
+)
+
+/**
+ * The live (not deleted) agents of [members] per computer, in the members' order, as the
+ * Computers page groups them ([raftComputerAgentsByMachine]); an agent on no computer is left out.
+ */
+internal fun agentMigrationAgentsByMachine(members: List<MemberProfile>): Map<String, List<MemberProfile>> {
+    val byMachine = LinkedHashMap<String, MutableList<MemberProfile>>()
+    val seen = HashSet<String>()
+    members.forEach { member ->
+        if (member.kind != MemberKind.Agent) return@forEach
+        if (!member.agentDeletedAt.isNullOrBlank() || member.membershipStatus == "deleted") return@forEach
+        val machineId = member.raftComputerMachineId() ?: return@forEach
+        if (!seen.add(member.id.value)) return@forEach
+        byMachine.getOrPut(machineId) { mutableListOf() } += member
+    }
+    return byMachine
+}
 
 /**
  * Web `resourceUsedPercent` (botiverse/slock #11855): how much of a disk or memory is used, in
@@ -154,7 +204,8 @@ internal fun AgentMigrationTargetList(
     agentRuntime: String?,
     usage: MembersRuntimeAccountUsageAccess?,
     onSelect: (String) -> Unit,
-    initialQuery: String = ""
+    initialQuery: String = "",
+    computerAgents: AgentMigrationComputerAgents? = null
 ) {
     val requests =
         remember(targets, agentRuntime) {
@@ -216,7 +267,7 @@ internal fun AgentMigrationTargetList(
         RaftSheet(
             onDismissRequest = { details = null },
             title = computer.name,
-            content = { AgentMigrationTargetDetailsContent(computer, agentRuntime, state, timeContext) }
+            content = { AgentMigrationTargetDetailsContent(computer, agentRuntime, state, timeContext, computerAgents) }
         )
     }
 }
@@ -236,12 +287,13 @@ internal fun AgentMigrationTargetDetailsSurface(
     agentRuntime: String?,
     usage: ComputerRuntimeUsageSheetState?,
     timeContext: RaftTimeContext?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    computerAgents: AgentMigrationComputerAgents? = null
 ) {
     RaftSheetSurface(
         title = computer.name,
         modifier = modifier,
-        content = { AgentMigrationTargetDetailsContent(computer, agentRuntime, usage, timeContext) }
+        content = { AgentMigrationTargetDetailsContent(computer, agentRuntime, usage, timeContext, computerAgents) }
     )
 }
 
@@ -256,7 +308,8 @@ private fun AgentMigrationTargetDetailsContent(
     computer: AgentMigrationComputer,
     agentRuntime: String?,
     usage: ComputerRuntimeUsageSheetState?,
-    timeContext: RaftTimeContext?
+    timeContext: RaftTimeContext?,
+    computerAgents: AgentMigrationComputerAgents?
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -294,7 +347,13 @@ private fun AgentMigrationTargetDetailsContent(
         // In the row's order: agents, memory, disk (web #11086). Opened for one row, nothing is cut off.
         val infoCopy = rememberAgentMigrationTargetInfoCopy()
         val agentsTitle = stringResource(Res.string.agent_migration_target_agents_title)
-        computer.agentCount?.let { count -> AgentMigrationSizeSection(title = agentsTitle, text = infoCopy.agents(count)) }
+        computer.agentCount?.let { count ->
+            // Which agents, not only how many (artin 11-14): their faces on one line after the count.
+            val agents = computerAgents?.byMachine?.get(computer.id).orEmpty()
+            AgentMigrationSizeSection(title = agentsTitle, text = infoCopy.agents(count)) {
+                if (computerAgents != null && agents.isNotEmpty()) AgentMigrationAgentAvatarRow(agents, computerAgents, agentsTitle)
+            }
+        }
         AgentMigrationSizeSection(
             title = stringResource(Res.string.agent_migration_target_memory),
             text =
@@ -362,9 +421,122 @@ private fun agentMigrationDurationText(unit: AgentMigrationDurationUnit, count: 
 }
 
 @Composable
-private fun AgentMigrationSizeSection(title: String, text: String) {
+private fun AgentMigrationSizeSection(title: String, text: String, extra: @Composable () -> Unit = {}) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         RaftText(title, style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold), color = RaftTheme.colors.foreground)
         RaftText(text, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
+        extra()
     }
+}
+
+private val AgentMigrationAgentAvatarSize = RaftAvatarSize.Md
+private val AgentMigrationAgentAvatarGap = 8.dp
+
+/**
+ * The computer's agents on one line: as many faces as fit, each with its live light; a tap opens
+ * the agent's profile card (the @mention card, pinned) with View Profile. When they don't all fit,
+ * the last place is a "+N" chip opening the whole list.
+ */
+@Composable
+private fun AgentMigrationAgentAvatarRow(agents: List<MemberProfile>, source: AgentMigrationComputerAgents, title: String) {
+    var showAll by remember { mutableStateOf(false) }
+    // Room for the lights, which hang past the faces' right and bottom edges.
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp, end = 4.dp, bottom = 4.dp)) {
+        val slot = AgentMigrationAgentAvatarSize.edge
+        val gap = AgentMigrationAgentAvatarGap
+        val fit = maxOf(1, ((maxWidth + gap) / (slot + gap)).toInt())
+        val shown = if (agents.size <= fit) agents else agents.take(fit - 1)
+        val more = agents.size - shown.size
+        Row(horizontalArrangement = Arrangement.spacedBy(gap), verticalAlignment = Alignment.CenterVertically) {
+            shown.forEach { agent -> key(agent.id.value) { AgentMigrationAgentAvatar(agent, source) } }
+            if (more > 0) {
+                val label = stringResource(Res.string.agent_migration_target_agents_show_all, agents.size)
+                RaftAvatarGroupCount(
+                    text = "+$more",
+                    size = AgentMigrationAgentAvatarSize,
+                    modifier =
+                        Modifier
+                            .clickable(role = Role.Button, onClickLabel = label) { showAll = true }
+                            .semantics { contentDescription = label }
+                )
+            }
+        }
+    }
+    if (showAll) {
+        RaftSheet(
+            onDismissRequest = { showAll = false },
+            title = title,
+            content = {
+                Column(Modifier.fillMaxWidth()) {
+                    agents.forEach { agent ->
+                        key(agent.id.value) {
+                            AgentMigrationAgentListRow(agent, source) {
+                                showAll = false
+                                source.onOpenProfile(agent)
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    }
+}
+
+private fun MemberProfile.agentMigrationName(): String = displayName.trim().ifBlank { handle }
+
+@Composable
+private fun AgentMigrationAgentFace(agent: MemberProfile, status: RaftAgentStatusIndicatorState?) {
+    val size = AgentMigrationAgentAvatarSize
+    RaftAvatarWithStatus(statusColor = status?.color, avatarSize = size.edge, cutoutColor = LocalRaftSurfaceColor.current) {
+        RaftAppAvatarSticker(
+            kind = RaftAvatarKind.Agent,
+            avatarWireValue = agent.avatarWireValueForAvatarSlot(),
+            label = agent.agentMigrationName(),
+            size = size,
+            cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Agent, agent.id.value)
+        )
+    }
+}
+
+/** One face of the row: a tap (any pointer) pins the agent's profile card; View Profile opens the profile. */
+@Composable
+private fun AgentMigrationAgentAvatar(agent: MemberProfile, source: AgentMigrationComputerAgents) {
+    val status = rememberRaftAgentStatusIndicatorState(source.agentStatusResolver, agent.id.value)
+    val state = rememberRaftPreviewCardState()
+    val name = agent.agentMigrationName()
+    RaftPreviewCard(
+        state = state,
+        pinOnClick = true,
+        card = {
+            RaftProfilePreviewCardContent(
+                model = remember(agent, status, source.serverId) { raftProfilePreviewCardModel(agent, status, viewerServerId = source.serverId) },
+                onViewProfile = {
+                    state.dismiss()
+                    source.onOpenProfile(agent)
+                }
+            )
+        }
+    ) {
+        // A screen reader's activation has no pointer: it pins the card the same way.
+        Row(
+            Modifier
+                .clickable(role = Role.Button, onClickLabel = name) { state.pin() }
+                .semantics { contentDescription = name }
+        ) {
+            AgentMigrationAgentFace(agent, status)
+        }
+    }
+}
+
+/** A row of the whole list: face, name and live status; a tap opens the profile. */
+@Composable
+private fun AgentMigrationAgentListRow(agent: MemberProfile, source: AgentMigrationComputerAgents, onClick: () -> Unit) {
+    val status = rememberRaftAgentStatusIndicatorState(source.agentStatusResolver, agent.id.value)
+    RaftListRow(
+        title = agent.agentMigrationName(),
+        onClick = onClick,
+        subtitle = status?.localizedMemberStatusLabel(),
+        text = RaftListRowText.Member,
+        leading = { AgentMigrationAgentFace(agent, status) }
+    )
 }

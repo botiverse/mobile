@@ -4923,6 +4923,7 @@ internal fun MemberDetailPageContent(
                             migration =
                                 agentMigrationStore?.let { store ->
                                     val flags = provider.serverFeatureFlags
+                                    val migrationServerMembers = serverMembersState.entryFor(current.server.id)?.members.orEmpty()
                                     MembersAgentMigrationBinding(
                                         store = store,
                                         hostedAvailable =
@@ -4939,7 +4940,33 @@ internal fun MemberDetailPageContent(
                                                 pager.openSettingsBillingPage(provider.storeScope)
                                             }
                                         },
-                                        onAgentPlacementChanged = { localAgentDetailRefreshKey += 1 }
+                                        onAgentPlacementChanged = { localAgentDetailRefreshKey += 1 },
+                                        computerAgents =
+                                            AgentMigrationComputerAgents(
+                                                byMachine =
+                                                    remember(migrationServerMembers) {
+                                                        agentMigrationAgentsByMachine(migrationServerMembers)
+                                                    },
+                                                serverId = current.server.id.value,
+                                                agentStatusResolver = agentStatusResolver,
+                                                onOpenProfile = { agent ->
+                                                    val pageData =
+                                                        payload.toCreatedAgentDetailPageData(
+                                                            agentId = agent.id,
+                                                            sourceServerId = agent.serverId ?: current.server.id
+                                                        )
+                                                    if (pageData == null) {
+                                                        bridge.toast(openProfileFailed)
+                                                    } else {
+                                                        pager.openRaftPage(
+                                                            pageName = MEMBER_DETAIL_PAGE,
+                                                            pageData = pageData,
+                                                            storeScopeOverride = provider.storeScope,
+                                                            onMissingScope = { bridge.toast(openProfileFailed) }
+                                                        )
+                                                    }
+                                                }
+                                            )
                                     )
                                 }
                         ),
@@ -6701,7 +6728,9 @@ internal class MembersAgentMigrationBinding(
     val hostedAvailable: Boolean,
     val computers: List<AgentMigrationComputer>,
     val onOpenBilling: () -> Unit,
-    val onAgentPlacementChanged: () -> Unit
+    val onAgentPlacementChanged: () -> Unit,
+    /** The agents on each computer, for a target's details (its avatars open their profiles). */
+    val computerAgents: AgentMigrationComputerAgents? = null
 )
 
 @Composable
@@ -7792,7 +7821,8 @@ private fun MembersDetailContent(
                                                     ),
                                                 agentName = member.displayName.ifBlank { member.handle },
                                                 viewerUserId = currentUserId,
-                                                formatClock = { value -> formatThreadTimeRevealLabel(value, timeContext).takeIf { it.isNotBlank() } }
+                                                formatClock = { value -> formatThreadTimeRevealLabel(value, timeContext).takeIf { it.isNotBlank() } },
+                                                computerAgents = migrationBinding.computerAgents
                                             ),
                                         // The list's own item spacing is the web section's `py-4` bottom.
                                         bottomPadding = 0.dp

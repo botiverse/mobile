@@ -3825,6 +3825,7 @@
     <string name="agent_migration_target_agents_none">沒有 Agent</string>
     <string name="agent_migration_target_agents_one">%1$s 個 Agent</string>
     <string name="agent_migration_target_agents_other">%1$s 個 Agent</string>
+    <string name="agent_migration_target_agents_show_all">顯示全部 %1$d 個 Agent</string>
     <string name="agent_migration_target_offline">離線</string>
     <string name="agent_migration_target_details">%1$s 的詳情</string>
     <string name="agent_migration_target_memory">記憶體</string>
