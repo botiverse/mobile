@@ -103,3 +103,36 @@ final class RaftIosWeakSideActionListener: NSObject, RaftSideActionHostListener 
         target?.onSideActionColumnCleared()
     }
 }
+
+// Lives here, not in ContentView.swift: this file is also compiled into iosAppTests, which does
+// not build ContentView.swift (release/1.25.0 full CI, iOS compile: RaftNativeNavIcon not in scope).
+/// The design-system (Lucide) glyphs of the bar, from the asset catalog (`lucide-<name>`, template
+/// SVGs generated with the Compose catalog), drawn at the Compose head's icon size; SF Symbols only
+/// when a glyph has no asset (artin, task #98: the bar's SF Symbols were not our icons).
+enum RaftNativeNavIcon {
+    /// The Compose head's / side column's icon size (RaftSideActionColumnDefaults.IconSize).
+    static let barPointSize: CGFloat = 22
+    static let menuPointSize: CGFloat = 20
+    private static var cache: [String: UIImage] = [:]
+
+    /// [asset] (template, tinted by the bar) at [pointSize], else the SF Symbol [symbol], else nil.
+    static func image(asset: String?, symbol: String?, pointSize: CGFloat = barPointSize) -> UIImage? {
+        if let asset, let image = lucide(asset, pointSize: pointSize) {
+            return image
+        }
+        return symbol.flatMap { UIImage(systemName: $0) }
+    }
+
+    static func lucide(_ name: String, pointSize: CGFloat) -> UIImage? {
+        let key = "\(name)@\(pointSize)"
+        if let cached = cache[key] { return cached }
+        guard let source = UIImage(named: name) else { return nil }
+        let size = CGSize(width: pointSize, height: pointSize)
+        // The SVG keeps its vector data, so it re-renders sharp at this size.
+        let image = UIGraphicsImageRenderer(size: size).image { _ in
+            source.draw(in: CGRect(origin: .zero, size: size))
+        }.withRenderingMode(.alwaysTemplate)
+        cache[key] = image
+        return image
+    }
+}
