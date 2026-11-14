@@ -37,8 +37,6 @@ import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
-import build.raft.designsystem.components.RaftButton
-import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftReadOnlyComposer
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.agentLoungeOpenFailureTraceId
@@ -174,24 +172,13 @@ internal fun AgentLoungeArchivedNotice(
     onUnarchive: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    RaftBanner(
-        description = stringResource(Res.string.thread_archived_notice),
-        status = RaftBannerStatus.Warning,
-        modifier = modifier.fillMaxWidth().testTag(AgentLoungeTestTags.ArchivedNotice),
-        action =
-            if (canUnarchive) {
-                {
-                    RaftButton(
-                        text = stringResource(Res.string.thread_archived_unarchive),
-                        onClick = onUnarchive,
-                        variant = RaftButtonVariant.Default,
-                        loading = unarchiving,
-                        modifier = Modifier.testTag(AgentLoungeTestTags.UnarchiveAction),
-                    )
-                }
-            } else {
-                null
-            },
+    ThreadArchivedChannelNotice(
+        canUnarchive = canUnarchive,
+        unarchiving = unarchiving,
+        onUnarchive = onUnarchive,
+        modifier = modifier,
+        noticeTag = AgentLoungeTestTags.ArchivedNotice,
+        unarchiveTag = AgentLoungeTestTags.UnarchiveAction,
     )
 }
 
@@ -292,6 +279,11 @@ internal class ThreadPageLounge(
     /** An agent DM's header: open that agent's Lounge; null hides the toggle. */
     val onOpenDmAgentLounge: (() -> Unit)?,
     val dmLoungeOpening: Boolean,
+    /**
+     * An archived (non-Lounge) channel's banner Unarchive, or its reply thread's. Built here, beside
+     * the Lounge's, because the route's page lambda is at the JVM's capture limit.
+     */
+    val archivedChannel: ThreadPageArchivedChannel? = null,
 ) {
     val agentName: String
         get() = lounge?.displayAgentName.orEmpty()
@@ -354,7 +346,51 @@ internal fun rememberThreadPageLounge(
     val errorStrings = localizedErrorPresentationStrings()
     val dmAgentId = payload.agentLoungeDmAgentId()
     val dmAgentName = payload.title.trim().removePrefix("@")
+    val roleMayArchive = build.raft.app.model.serverPermissionsForRole(serverRole).canManageSettings
+    var channelUnarchiving by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val archivedChannel =
+        if (lounge == null && threadFooterShowsArchived(payload)) {
+            ThreadPageArchivedChannel(
+                canUnarchive = threadArchivedChannelCanUnarchive(payload, roleMayArchive),
+                unarchiving = channelUnarchiving,
+                onUnarchive = { onUnarchived ->
+                    // A reply thread's Unarchive restores its parent channel.
+                    val target = payload.agentLoungeLookupChannelId()
+                    val cleanServerId = serverId?.takeIf { it.isNotBlank() }
+                    if (target != null && cleanServerId != null && !channelUnarchiving) {
+                        channelUnarchiving = true
+                        scope.launch {
+                            val stores = build.raft.app.data.RaftSharedStoreRegistry.get(bridge)
+                            // The web's channelStore.unarchiveChannel: POST channels/:id/unarchive.
+                            val result =
+                                try {
+                                    AgentLoungeApi(stores.networkClient(storeScope))
+                                        .unarchive(ServerId(cleanServerId), build.raft.app.model.ChannelId(target))
+                                } finally {
+                                    channelUnarchiving = false
+                                }
+                            when (result) {
+                                is DataResult.Content -> {
+                                    bridge.logDebug("thread_channel_unarchived channelId=$target")
+                                    // Back in the sidebar, and this page reloads with its composer.
+                                    stores.sharedHomeStore(storeScope)?.dispatch(build.raft.app.data.SharedHomeIntent.Refresh)
+                                    onUnarchived()
+                                }
+                                is DataResult.Error ->
+                                    bridge.errorToast(result.error.userFacingMessage(errorStrings), result.error.traceId)
+                                is DataResult.NoPermission ->
+                                    bridge.errorToast(result.blocker.userFacingMessage(errorStrings), result.blocker.traceId)
+                                else -> Unit
+                            }
+                        }
+                    }
+                },
+            )
+        } else {
+            null
+        }
     return ThreadPageLounge(
+        archivedChannel = archivedChannel,
         lounge = lounge,
         agentAvatarWireValue = avatar,
         cacheServerId = serverId,
