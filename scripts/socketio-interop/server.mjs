@@ -111,7 +111,14 @@ function raftServer(port) {
       }
       case "/raft/drop": {
         const count = state.sockets.size;
-        state.sockets.forEach((socket) => socket.conn.close());
+        // A network reset, not a clean close: destroy the TCP socket under the WebSocket, so both clients
+        // see the transport fail at once (a server close frame is answered differently by OkHttp's
+        // half-close handling in socket.io-client-java and would wait for the Engine.IO ping timeout).
+        state.sockets.forEach((socket) => {
+          const raw = socket.conn.transport?.socket?._socket;
+          if (raw) raw.destroy();
+          else socket.conn.close();
+        });
         return reply({ dropped: count });
       }
       case "/raft/config":

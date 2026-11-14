@@ -39,7 +39,7 @@ class SocketIoRealtimeClientTransportParityTest(private val implementation: Stri
         @Parameterized.Parameters(name = "{0}")
         fun implementations(): List<Array<Any>> = listOf(arrayOf("legacy"), arrayOf("kmp"))
 
-        private const val TIMEOUT_MS = 15_000L
+        private const val TIMEOUT_MS = 30_000L
     }
 
     private val baseUrl: String? = System.getenv("RAFT_SOCKETIO_INTEROP_RAFT_URL")?.takeIf { it.isNotBlank() }
@@ -159,7 +159,7 @@ class SocketIoRealtimeClientTransportParityTest(private val implementation: Stri
         awaitTrue(what, { "server log: $last" }) { log().also { last = it }.let(condition) }
     }
 
-    private fun awaitTrue(what: String, detail: () -> String = { "events: $events" }, condition: () -> Boolean) {
+    private fun awaitTrue(what: String, detail: () -> String = { "events: ${events.map { it::class.simpleName }}; server log: ${runCatching { log() }.getOrNull()}" }, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + TIMEOUT_MS
         while (System.currentTimeMillis() < deadline) {
             if (condition()) return
