@@ -1,7 +1,9 @@
 package build.raft.app.assistant
 
+import androidx.compose.foundation.shape.CircleShape
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.raftClickable
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,7 +22,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -292,7 +293,7 @@ internal fun ThreadAssistantContextChip(
                         .semantics { contentDescription = remove }
                         .raftTouchTarget(enabled = true, interactionSource = source, onClick = onRemove)
                         .raftPointerHover(source)
-                        .clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onRemove)
+                        .raftClickable(onClick = onRemove, shape = CircleShape, tier = RaftHoverTier.Subtle, interactionSource = source)
                         .testTag(ThreadAssistantContextChipRemoveTestTag),
                     contentAlignment = Alignment.Center,
                 ) {
