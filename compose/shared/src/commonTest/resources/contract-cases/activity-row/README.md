@@ -148,14 +148,16 @@ live patch still differs, so the entry is removed when it stops differing.
 
 | Date | Who | Where | Cases | Decision | Differs today |
 | --- | --- | --- | --- | --- | --- |
-| 2026-11-14 | Tenny | #14988 review | `predicate_channel_own_caused_system`, `predicate_dm_own_caused_system` | A system message the viewer caused does not count, on any row kind (RisingWave). | web live patch (thread rows only); canonical Postgres read |
-| 2026-11-14 | Tenny | #14988 review | `predicate_channel_uncounted_subtype`, `predicate_channel_self_unfollow_subtype` | `channel.self_unfollow_thread` and `task.deleted_summary` do not count, on any row kind (RisingWave). | web live patch (thread rows only); canonical Postgres read |
+| 2026-11-14 | Tenny | #14988 review | `predicate_channel_own_caused_system`, `predicate_dm_own_caused_system` | A system message the viewer caused does not count, on any row kind (RisingWave). | web live patch (thread rows only) |
+| 2026-11-14 | Tenny | #14988 review | `predicate_channel_uncounted_subtype`, `predicate_channel_self_unfollow_subtype` | `channel.self_unfollow_thread` and `task.deleted_summary` do not count, on any row kind (RisingWave). | web live patch (thread rows only) |
 | 2026-11-14 | Tenny | #14988 review | `predicate_muted_channel_message` | A new message in a muted conversation does not count (RisingWave muted prefix). | web live patch (no mute input) |
-| 2026-11-14 | Tenny | #14988 review | `predicate_muted_channel_mention` | A mention in a muted conversation lights the @ and does not count (RisingWave). | web live patch; canonical Postgres read |
+| 2026-11-14 | Tenny | #14988 review | `predicate_muted_channel_mention` | A mention in a muted conversation lights the @ and does not count (RisingWave). | web live patch |
 
 Web's gaps close in step 2 (web switches to the shared predicate). The
-canonical Postgres inline read in `getInboxItems` (search, guest access,
-forced reads) has no case runner yet; it is listed here, not as a gap.
+server runner checks every server-decided predicate case against both SQL
+rules: the RisingWave `unread_count` FILTER and the canonical Postgres read's
+fragments in `getInboxItems` (search, guest access, forced reads):
+`inboxRowMessageCountsUnreadSql` and `inboxPersonalMentionSql`.
 
 ## Adding a case
 

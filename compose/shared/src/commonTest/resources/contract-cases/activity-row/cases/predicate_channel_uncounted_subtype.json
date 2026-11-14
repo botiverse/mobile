@@ -3,7 +3,7 @@
   "id": "predicate_channel_uncounted_subtype",
   "rule": "predicate",
   "title": "On a channel row, task.deleted_summary does not count",
-  "why": "The noise subtypes never count, on any row kind, as RisingWave counts them. Decided (Tenny, #14988 review): follow the server (RisingWave). The canonical Postgres inline read in getInboxItems still counts them.",
+  "why": "The noise subtypes never count, on any row kind, as RisingWave counts them. Decided (Tenny, #14988 review): follow the server (RisingWave). The canonical Postgres read in getInboxItems follows it too (inboxRowMessageCountsUnreadSql).",
   "status": "agreed",
   "sources": {
     "web": [

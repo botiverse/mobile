@@ -3,7 +3,7 @@
   "id": "predicate_channel_own_caused_system",
   "rule": "predicate",
   "title": "On a channel row, a system message the viewer caused does not count",
-  "why": "Born-read on any row kind, as RisingWave counts it. Decided (Tenny, #14988 review): follow the server (RisingWave). The canonical Postgres inline read in getInboxItems (search, guest access, forced) still counts it.",
+  "why": "Born-read on any row kind, as RisingWave counts it. Decided (Tenny, #14988 review): follow the server (RisingWave). The canonical Postgres read in getInboxItems (search, guest access, forced) follows it too (inboxRowMessageCountsUnreadSql).",
   "status": "agreed",
   "sources": {
     "web": [
