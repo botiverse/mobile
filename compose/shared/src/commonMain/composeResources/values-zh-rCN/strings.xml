@@ -1059,6 +1059,7 @@
     <string name="thread_audio_file_label">音频文件</string>
     <string name="thread_audio_download_to_view">下载后查看</string>
     <string name="thread_action_back_to_bottom">回到底部</string>
+    <string name="thread_select_to_here">选择到这里</string>
     <string name="thread_agent_typing_one">{first} 正在输入…</string>
     <string name="thread_agent_typing_two">{first} 和 {second} 正在输入…</string>
     <string name="thread_agent_typing_three">{first}、{second} 和 {third} 正在输入…</string>

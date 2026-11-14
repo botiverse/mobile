@@ -17546,6 +17546,9 @@ private fun ThreadPageContentContent(
     val threadScreenPagerForForwardBundle = LocalActivity.current.getPager() as Pager
     var activeForwardSelectionMode by remember(threadInstanceKey) { mutableStateOf(ThreadForwardSelectionMode.Merged) }
     var selectedShareMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    // The anchor of Select to here (web selectionStore `anchorId`): the message last added while it
+    // stays selected; null once it is deselected or the selection is cleared.
+    var shareSelectionAnchorId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     // Select mode itself, apart from what is selected: as on the web (selectionStore `isActive`), it
     // stays on with nothing selected (the select-all checkbox clears) until × ends it.
     var shareSelectionMode by remember(threadInstanceKey) { mutableStateOf(false) }
@@ -17820,6 +17823,7 @@ private fun ThreadPageContentContent(
     val clearShareSelection = {
         shareSelectionMode = false
         selectedShareMessageIds = emptySet()
+        shareSelectionAnchorId = null
         selectedShareBounds.clear()
         sharePreviewImage = null
         sharePreviewLoading = false
@@ -18340,6 +18344,19 @@ private fun ThreadPageContentContent(
                         shareSelectionCaptureScrollOffsetPx = shareCaptureScrollOffsetPx,
                         headerScrollToTopRequest = threadHeaderScrollToTopRequest,
                         selectedShareMessageIds = selectedShareMessageIds,
+                        shareSelectToHere =
+                            remember(shareSelectionAnchorId, selectableShareMessageIds) {
+                                ThreadShareSelectToHere(
+                                    anchorId = shareSelectionAnchorId,
+                                    selectableIds = selectableShareMessageIds,
+                                    onSelectRange = { ids, edgeId ->
+                                        if (shareSelectionMode) {
+                                            selectedShareMessageIds = selectedShareMessageIds + ids
+                                            shareSelectionAnchorId = edgeId
+                                        }
+                                    },
+                                )
+                            },
                         onShareSelectionBounds = { messageId, rect ->
                             if (rect == null) {
                                 selectedShareBounds.remove(messageId)
@@ -18354,6 +18371,7 @@ private fun ThreadPageContentContent(
                         onEnterShareSelection = { messageId ->
                             if (!payload.isRetractedMessage(messageId)) {
                                 selectedShareMessageIds = setOf(messageId)
+                                shareSelectionAnchorId = messageId
                                 shareSelectionMode = true
                                 activeModal = null
                             }
@@ -18362,15 +18380,15 @@ private fun ThreadPageContentContent(
                             openForwardPickerForMessageIds(setOf(messageId))
                         },
                         onToggleShareSelection = { messageId ->
-                            selectedShareMessageIds =
-                                if (messageId in selectedShareMessageIds) {
-                                    selectedShareMessageIds - messageId
-                                } else if (payload.isRetractedMessage(messageId)) {
-                                    // RFC 077 PR 2b: nothing of a retracted message can be shared.
-                                    selectedShareMessageIds
-                                } else {
-                                    selectedShareMessageIds + messageId
-                                }
+                            if (messageId in selectedShareMessageIds) {
+                                selectedShareMessageIds = selectedShareMessageIds - messageId
+                                // Deselecting the anchor leaves none (a range from it would re-add it).
+                                if (shareSelectionAnchorId == messageId) shareSelectionAnchorId = null
+                            } else if (!payload.isRetractedMessage(messageId)) {
+                                // RFC 077 PR 2b: nothing of a retracted message can be shared.
+                                selectedShareMessageIds = selectedShareMessageIds + messageId
+                                shareSelectionAnchorId = messageId
+                            }
                         },
                         onOpenForwardBundle = { messageId ->
                             val serverId = forwardServerId?.value
@@ -18849,6 +18867,8 @@ private fun ThreadPageContentContent(
                                     onClick = {
                                         selectedShareMessageIds =
                                             threadShareSelectAllNext(selectedShareMessageIds, selectableShareMessageIds)
+                                        // Web selectAll: clearing drops the anchor; selecting all keeps it.
+                                        if (selectedShareMessageIds.isEmpty()) shareSelectionAnchorId = null
                                     },
                                 )
                             } else {
@@ -21233,6 +21253,7 @@ private data class ThreadChatTabData(
     val shareSelectionCaptureScrollOffsetPx: Int,
     val headerScrollToTopRequest: Int,
     val selectedShareMessageIds: Set<String>,
+    val shareSelectToHere: ThreadShareSelectToHere?,
     val translationStore: SharedMessageTranslationStore?,
     val visibleReadTailIndex: Int?,
     /** A4 destination contract (task #18, spec §9): non-null when hosted as a detail pane. */
@@ -21322,6 +21343,7 @@ fun ThreadChatTab(
     shareSelectionCaptureScrollOffsetPx: Int = ThreadShareCaptureTopScrollOffsetPx,
     headerScrollToTopRequest: Int = 0,
     selectedShareMessageIds: Set<String> = emptySet(),
+    shareSelectToHere: ThreadShareSelectToHere? = null,
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
     onForwardMessage: (String) -> Unit = {},
@@ -21375,6 +21397,7 @@ fun ThreadChatTab(
                 shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
                 headerScrollToTopRequest = headerScrollToTopRequest,
                 selectedShareMessageIds = selectedShareMessageIds,
+                shareSelectToHere = shareSelectToHere,
                 translationStore = translationStore,
                 visibleReadTailIndex = visibleReadTailIndex,
                 adaptiveCloseRequest = adaptiveCloseRequest,
@@ -21467,6 +21490,7 @@ private fun ThreadChatTabContent(
     val shareSelectionCaptureScrollOffsetPx = data.shareSelectionCaptureScrollOffsetPx
     val headerScrollToTopRequest = data.headerScrollToTopRequest
     val selectedShareMessageIds = data.selectedShareMessageIds
+    val shareSelectToHere = data.shareSelectToHere
     val onShareSelectionBounds = callbacks.onShareSelectionBounds
     val onEnterShareSelection = callbacks.onEnterShareSelection
     val onForwardMessage = callbacks.onForwardMessage
@@ -21644,6 +21668,7 @@ private fun ThreadChatTabContent(
                     shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
                     headerScrollToTopRequest = headerScrollToTopRequest,
                     selectedShareMessageIds = selectedShareMessageIds,
+                    shareSelectToHere = shareSelectToHere,
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
                     onForwardMessage = onForwardMessage,
@@ -21739,6 +21764,7 @@ private fun ThreadChatTabContent(
                     shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
                     headerScrollToTopRequest = headerScrollToTopRequest,
                     selectedShareMessageIds = selectedShareMessageIds,
+                    shareSelectToHere = shareSelectToHere,
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
                     onForwardMessage = onForwardMessage,
@@ -21845,6 +21871,7 @@ private fun ThreadChatTabContent(
                 shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
                 headerScrollToTopRequest = headerScrollToTopRequest,
                 selectedShareMessageIds = selectedShareMessageIds,
+                shareSelectToHere = shareSelectToHere,
                 onShareSelectionBounds = onShareSelectionBounds,
                 onEnterShareSelection = onEnterShareSelection,
                 onForwardMessage = onForwardMessage,
@@ -22135,6 +22162,7 @@ private data class ThreadMessagesListData(
     val shareSelectionCaptureScrollOffsetPx: Int,
     val headerScrollToTopRequest: Int,
     val selectedShareMessageIds: Set<String>,
+    val shareSelectToHere: ThreadShareSelectToHere?,
     val translationStore: SharedMessageTranslationStore?,
     val visibleReadTailIndex: Int?,
     /** A4 destination contract: non-null marks this list as a detail-pane child. */
@@ -22227,6 +22255,7 @@ fun ThreadMessagesList(
     shareSelectionCaptureScrollOffsetPx: Int = ThreadShareCaptureTopScrollOffsetPx,
     headerScrollToTopRequest: Int = 0,
     selectedShareMessageIds: Set<String> = emptySet(),
+    shareSelectToHere: ThreadShareSelectToHere? = null,
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
     onForwardMessage: (String) -> Unit = {},
@@ -22281,6 +22310,7 @@ fun ThreadMessagesList(
                 shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
                 headerScrollToTopRequest = headerScrollToTopRequest,
                 selectedShareMessageIds = selectedShareMessageIds,
+                shareSelectToHere = shareSelectToHere,
                 translationStore = translationStore,
                 visibleReadTailIndex = visibleReadTailIndex,
                 adaptiveCloseRequest = adaptiveCloseRequest,
@@ -22396,6 +22426,7 @@ private fun ThreadMessagesListContent(
     val shareSelectionCaptureScrollOffsetPx = data.shareSelectionCaptureScrollOffsetPx
     val headerScrollToTopRequest = data.headerScrollToTopRequest
     val selectedShareMessageIds = data.selectedShareMessageIds
+    val shareSelectToHere = data.shareSelectToHere
     val onShareSelectionBounds = callbacks.onShareSelectionBounds
     val onEnterShareSelection = callbacks.onEnterShareSelection
     val onForwardMessage = callbacks.onForwardMessage
@@ -26526,7 +26557,52 @@ private fun ThreadMessagesListContent(
                 modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadAgentTypingLineZIndex),
             )
         }
-        if (backToBottomMounted || nextUnreadThread != null) {
+        // Select to here (ThreadSelectToHere.kt, web useSelectToHere): in select mode, while the
+        // anchor is out of view. Only reads the viewport; a tap changes the selection, never the
+        // scroll position, so no viewport intent is taken here.
+        val selectToHere = shareSelectToHere?.takeIf { shareSelectionActive && !shareSelectionCaptureActive }
+        val selectToHereOrderedIds =
+            remember(renderPayload.originMessage?.id, renderPayload.messages) {
+                listOfNotNull(renderPayload.originMessage?.id) + renderPayload.messages.map { it.id }
+            }
+        val selectToHereKeyToMessageId =
+            remember(renderPayload.messages, renderPayload.originMessage?.id, duplicateMessageRandomIds) {
+                buildMap<Any, String> {
+                    renderPayload.originMessage?.id?.let { put(ThreadOriginListItemKey, it) }
+                    renderPayload.messages.forEach { put(it.messageListItemKey(duplicateMessageRandomIds), it.id) }
+                }
+            }
+        val selectToHereVisibleRowMinPx = with(LocalDensity.current) { ThreadSelectToHereVisibleRowMin.roundToPx() }
+        // What covers the list's bottom: the typing line (web `--message-list-bottom-inset`).
+        val selectToHereBottomOcclusionPx =
+            with(LocalDensity.current) { if (agentTypingLineShown) ThreadAgentTypingLineHeight.roundToPx() else 0 }
+        val selectToHereVisibleIds: () -> List<String> = {
+            val info = listState.layoutInfo
+            threadSelectToHereVisibleMessageIds(
+                rows = info.visibleItemsInfo.map { ThreadSelectToHereRow(it.key, it.offset, it.size) },
+                viewportStart = info.viewportStartOffset,
+                viewportEnd = info.viewportEndOffset - selectToHereBottomOcclusionPx,
+                minVisiblePx = selectToHereVisibleRowMinPx,
+                keyToMessageId = selectToHereKeyToMessageId,
+            )
+        }
+        val selectToHereAnchorId = selectToHere?.anchorId
+        val selectToHereDirection by remember(
+            listState,
+            selectToHereAnchorId,
+            selectToHereOrderedIds,
+            selectToHereKeyToMessageId,
+            selectToHereVisibleRowMinPx,
+            selectToHereBottomOcclusionPx,
+        ) {
+            derivedStateOf {
+                selectToHereAnchorId?.let { anchor ->
+                    threadSelectToHereDirection(selectToHereOrderedIds, anchor, selectToHereVisibleIds())
+                }
+            }
+        }
+        val selectToHerePillDirection = selectToHereDirection.takeIf { selectToHere != null }
+        if (backToBottomMounted || nextUnreadThread != null || selectToHerePillDirection != null) {
             // Kuikly-era rule kept: the native dispatch capture sits on the pills' ancestor path so
             // a tap on a pill never also starts a gesture on the message row underneath.
             RaftMessageListJumpControls(
@@ -26536,6 +26612,28 @@ private fun ThreadMessagesListContent(
                     .padding(bottom = if (agentTypingLineShown) ThreadAgentTypingLineHeight else 0.dp)
                     .zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
             ) {
+                // Web BottomJumpControls: first on the controls' line (nearest the edge when stacked).
+                if (selectToHere != null && selectToHerePillDirection != null) {
+                    RaftMessageListJumpPill(
+                        text = stringResource(Res.string.thread_select_to_here),
+                        icon =
+                            if (selectToHerePillDirection == ThreadSelectToHereDirection.Up) RaftGlyph.ArrowUp else RaftGlyph.ArrowDown,
+                        onClick = {
+                            val selectable = selectToHere.selectableIds
+                            threadIdsToViewportEdge(
+                                orderedIds = selectToHereOrderedIds,
+                                anchorId = selectToHere.anchorId,
+                                visibleIds = selectToHereVisibleIds(),
+                                isSelectable = { it in selectable },
+                            )?.let { range ->
+                                diagnosticsLogger(
+                                    "thread_select_to_here direction=${range.direction} count=${range.ids.size}"
+                                )
+                                selectToHere.onSelectRange(range.ids, range.edgeId)
+                            }
+                        },
+                    )
+                }
                 if (backToBottomMounted) {
                     RaftMessageListJumpPill(
                         text =

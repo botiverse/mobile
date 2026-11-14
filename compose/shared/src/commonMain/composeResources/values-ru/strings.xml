@@ -1055,6 +1055,7 @@
     <string name="thread_audio_file_label">Аудиофайл</string>
     <string name="thread_audio_download_to_view">Скачать для прослушивания</string>
     <string name="thread_action_back_to_bottom">Вернуться вниз</string>
+    <string name="thread_select_to_here">Выбрать до этого места</string>
     <string name="thread_agent_typing_one">{first} печатает…</string>
     <string name="thread_agent_typing_two">{first} и {second} печатают…</string>
     <string name="thread_agent_typing_three">{first}, {second} и {third} печатают…</string>
