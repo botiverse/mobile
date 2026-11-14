@@ -301,12 +301,17 @@ jobs:
           # module during archive. Override it via $GRADLE_USER_HOME/gradle.properties
           # (higher precedence than the project file), scoped to THIS macOS
           # runner only — so Android CI (ubuntu) and local dev keep their 4g.
-          # Two release archives exhausted the former 8g heap in Kotlin/Native's
-          # devirtualization analysis. The runner has ~30GB RAM, so 12g still
-          # leaves room for Xcode/clang while keeping Gradle at one worker.
-          # GitHub's standard macos-latest / xcode-27 have only 7GB RAM: 12g would swap/kill,
+          # Kotlin/Native's release LTO devirtualization analysis (in
+          # :shared:linkPodReleaseFrameworkIosArm64, run inside this Gradle JVM)
+          # outgrew 8g, then 12g: 1.24.0 linked at 12g but took ~36 min (GC
+          # thrashing), and 1.25.0 OOMed at 12g twice. The ~30GB runners
+          # (xcode-27-xlarge, macos-latest-xlarge, blacksmith-12vcpu-macos-latest)
+          # get 20g; the framework is linked in its own step before
+          # xcodebuild archive, so Xcode/clang do not compete for that RAM, and
+          # Gradle stays at one worker.
+          # GitHub's standard macos-latest / xcode-27 have only 7GB RAM: 20g would swap/kill,
           # so cap at 5g there and warn — the release devirtualization pass may OOM.
-          HEAP=12g
+          HEAP=20g
           if [ "${RAFT_MACOS_RUNNER}" = "macos-latest" ] || [ "${RAFT_MACOS_RUNNER}" = "xcode-27" ]; then
             HEAP=5g
             echo "::warning::${RAFT_MACOS_RUNNER} has ~7GB RAM; Kotlin/Native release archive runs with a 5g heap and may OOM. Prefer xcode-27-xlarge (the default; or blacksmith-12vcpu-macos-latest / macos-latest-xlarge for the Xcode 26.6 fallback)."
@@ -416,7 +421,7 @@ jobs:
       # OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES and consumes this framework.
       # platform/archs/configuration match what the archive passed to the
       # phase before (generic iOS device, Release => iphoneos / arm64).
-      # The per-runner heap (12g, or 5g on macos-latest / xcode-27) comes from the
+      # The per-runner heap (20g, or 5g on macos-latest / xcode-27) comes from the
       # $GRADLE_USER_HOME/gradle.properties written by the heap step above,
       # which this ./gradlew reads like the Xcode-nested runs did.
       - name: Build shared framework (Release, iosArm64)
