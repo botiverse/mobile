@@ -15,6 +15,7 @@ class RaftPageLayersTest {
                 listOf(
                     RaftPageLayer.DatabaseLaunchGate,
                     RaftPageLayer.EnvironmentIndicator,
+                    RaftPageLayer.MinBuildGate,
                     RaftPageLayer.SideColumnScaffold,
                     RaftPageLayer.LinkHoverStatus,
                 ),
@@ -32,6 +33,7 @@ class RaftPageLayersTest {
             listOf(
                 RaftPageLayer.DatabaseLaunchGate,
                 RaftPageLayer.EnvironmentIndicator,
+                RaftPageLayer.MinBuildGate,
                 RaftPageLayer.SideColumnScaffold,
                 RaftPageLayer.LinkHoverStatus,
             ),
@@ -52,7 +54,12 @@ class RaftPageLayersTest {
     @Test
     fun pagesAfterLaunchAndEmbeddedChildrenSkipTheGate() {
         assertEquals(
-            listOf(RaftPageLayer.EnvironmentIndicator, RaftPageLayer.SideColumnScaffold, RaftPageLayer.LinkHoverStatus),
+            listOf(
+                RaftPageLayer.EnvironmentIndicator,
+                RaftPageLayer.MinBuildGate,
+                RaftPageLayer.SideColumnScaffold,
+                RaftPageLayer.LinkHoverStatus,
+            ),
             raftPageLayers(ownsDatabaseLaunch = false, embedded = false, sharedStoreBuilt = true),
         )
         listOf(false, true).forEach { sharedStoreBuilt ->
@@ -62,5 +69,19 @@ class RaftPageLayersTest {
                 "sharedStoreBuilt=$sharedStoreBuilt",
             )
         }
+    }
+
+    @Test
+    fun minBuildGateCoversEveryWindowedPageExceptTheExemptOnes() {
+        // The feedback form the block page opens must work while the app is blocked.
+        assertEquals(
+            listOf(RaftPageLayer.EnvironmentIndicator, RaftPageLayer.SideColumnScaffold, RaftPageLayer.LinkHoverStatus),
+            raftPageLayers(ownsDatabaseLaunch = false, embedded = false, sharedStoreBuilt = true, minBuildGateExempt = true),
+        )
+        // Embedded children sit under their host's gate.
+        assertEquals(
+            listOf(RaftPageLayer.EnvironmentIndicator),
+            raftPageLayers(ownsDatabaseLaunch = false, embedded = true, sharedStoreBuilt = true, minBuildGateExempt = false),
+        )
     }
 }

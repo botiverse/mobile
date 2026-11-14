@@ -98,6 +98,10 @@ internal fun settingsFeedbackCardPageRequest(storeScope: RaftShellStoreScope, en
 @Page(SETTINGS_HANDS_FEEDBACK_PAGE, supportInLocal = true)
 internal class ComposeSettingsHandsFeedbackPage :
     AuthenticatedProductPager(AuthenticatedProductRoute.SettingsHandsFeedback) {
+    // The minimum build gate's Send feedback opens this form: it must work while the app is blocked.
+    override val raftMinBuildGateExempt: Boolean
+        get() = true
+
     override fun willInit() {
         super.willInit()
         setAuthenticatedContent { SettingsHandsFeedbackScreen() }

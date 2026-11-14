@@ -1543,6 +1543,8 @@ internal class RaftSharedStoreProvider private constructor(
         serverFeatureFlags.isEnabled(ServerId(serverId), MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY)
 
     init {
+        // Minimum supported build: back in the foreground, read the gate flag again.
+        RaftMinBuildGate.flagRefetch = { serverId -> serverFeatureFlagChangeRefresher.onForeground(serverId) }
         // Inbox refresh step 4, rule 6: with the flag on, a server whose Activity All list is loaded
         // takes its badge from that list instead of the summary read.
         activityUnreadSummaryStore.deriveBadgeFromList { owner ->
@@ -3430,6 +3432,7 @@ internal class RaftSharedStoreProvider private constructor(
                             {
                                 RaftProductEvents.setSignedOut()
                                 serverFeatureFlagLastKnown.clearAll()
+                                RaftMinBuildGate.onSignedOut()
                                 ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()
                                 processServerMembersCore.invalidateAll(reason = "cleared")
                                 activityUnreadSummaryStore.invalidateAll(reason = "cleared")
@@ -3446,7 +3449,9 @@ internal class RaftSharedStoreProvider private constructor(
                     lastKnown = serverFeatureFlagLastKnown,
                     // The Navigation 3 stack and iOS native navigation switches are read once at app
                     // launch: keep their last values.
-                    onEvaluation = { _, key, enabled, _, _, _, _ ->
+                    onEvaluation = { serverId, key, enabled, _, variant, _, _ ->
+                        // Minimum supported build: the gate follows every evaluation of its flag.
+                        RaftMinBuildGate.recordServerEvaluation(serverId, key, enabled, variant)
                         build.raft.app.nav.RaftNav3StackFlag.recordServerEvaluation(sharedPreferenceStore, key, enabled)
                         build.raft.app.nav.RaftIosNativeNavFlag.recordServerEvaluation(sharedPreferenceStore, key, enabled)
                         if (key == MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY) RaftAppSettingsSnapshotReport.onIosNativeNavFlagRead()

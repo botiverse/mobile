@@ -30,6 +30,7 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 | com.google.android.libraries.identity.googleid:googleid | 1.2.0 | **Android Software Development Kit License** (binary SDK; depend-only, do not redistribute the artifact in the repo) |
 | com.google.firebase:firebase-bom / firebase-messaging | 34.15.0 / 25.0.1 | Apache-2.0 (BOM itself declares none) |
 | com.google.android.play:review (Google Play In-App Review; `play` build type only, not in Hands APKs) | 2.0.2 | **Play Core Software Development Kit Terms of Service** (binary SDK; depend-only, do not redistribute the artifact in the repo) |
+| com.google.android.play:app-update (Google Play In-App Update; `play` build type only, not in Hands APKs) | 2.1.0 | **Play Core Software Development Kit Terms of Service** (binary SDK; depend-only, do not redistribute the artifact in the repo) |
 | com.android.installreferrer:installreferrer (Google Play Install Referrer; install source reporting) | 2.2 | **Android Software Development Kit License** (binary SDK; depend-only, do not redistribute the artifact in the repo) |
 | com.squareup.okhttp3:okhttp | 4.12.0 | Apache-2.0 |
 | com.google.code.gson:gson | 2.11.0 | Apache-2.0 |
