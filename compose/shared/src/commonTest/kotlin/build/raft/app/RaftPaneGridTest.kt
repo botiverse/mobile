@@ -31,9 +31,9 @@ class RaftPaneGridTest {
         assertEquals(360f, store.widthDp(RaftPaneGridColumns.SideCards))
         store.setWidth(RaftPaneGridColumns.SideCards, 431.6f)
         assertEquals("432", prefs.values["raftPaneGrid:width:sideCards"])
-        // Never below the minimum.
+        // Never below 160 (#189 rule 2: a seam takes any column there, its content keeps its minimum and clips).
         store.setWidth(RaftPaneGridColumns.Thread, 100f)
-        assertEquals(360f, store.widthDp(RaftPaneGridColumns.Thread))
+        assertEquals(160f, store.widthDp(RaftPaneGridColumns.Thread))
         // A restart reads them back; out-of-range or unreadable values are the default.
         val after = RaftPaneGridStore { prefs }
         assertEquals(432f, after.widthDp(RaftPaneGridColumns.SideCards))
@@ -99,15 +99,17 @@ class RaftPaneGridTest {
         store.setWidth(RaftPaneGridColumns.Conversation, 400f)
         assertEquals("400", prefs.values["raftPaneGrid:width:conversation"])
         assertEquals(400f, store.savedWidthDp(RaftPaneGridColumns.Conversation))
-        // At least its content's 360.
+        // At least 160 (its content keeps 360 and clips).
+        store.setWidth(RaftPaneGridColumns.Conversation, 120f)
+        assertEquals(160f, RaftPaneGridStore { prefs }.savedWidthDp(RaftPaneGridColumns.Conversation))
         store.setWidth(RaftPaneGridColumns.Conversation, 200f)
-        assertEquals(360f, RaftPaneGridStore { prefs }.savedWidthDp(RaftPaneGridColumns.Conversation))
+        assertEquals(200f, RaftPaneGridStore { prefs }.savedWidthDp(RaftPaneGridColumns.Conversation))
         prefs.values["raftPaneGrid:width:conversation"] = "100"
         assertEquals(null, RaftPaneGridStore { prefs }.savedWidthDp(RaftPaneGridColumns.Conversation))
         // The Tasks page's list keeps its own (PR #4661 review), so a task column's seam never sets the conversation's.
         store.setWidth(RaftPaneGridColumns.TasksList, 520f)
         assertEquals("520", prefs.values["raftPaneGrid:width:tasksList"])
-        assertEquals(360f, store.savedWidthDp(RaftPaneGridColumns.Conversation))
+        assertEquals(200f, store.savedWidthDp(RaftPaneGridColumns.Conversation))
     }
 
     @Test

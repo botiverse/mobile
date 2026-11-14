@@ -81,13 +81,15 @@ internal class RaftWideSideColumns {
 
 /**
  * The shell's [RaftWideSideColumns], cleared when [selectionKey] (the conversation picked) changes and reopened on the
- * platform stack when [navRailActive] goes off, in that order.
+ * platform stack when [navRailActive] goes off, in that order. Leaving [tab] restores an expanded row: Cmd+[ on
+ * another tab must not restore a row nobody sees (PR #4678 review).
  */
 @Composable
-internal fun rememberRaftWideSideColumns(selectionKey: Any?, navRailActive: Boolean): RaftWideSideColumns {
+internal fun rememberRaftWideSideColumns(selectionKey: Any?, navRailActive: Boolean, tab: Any? = null): RaftWideSideColumns {
     val columns = remember { RaftWideSideColumns() }
     val navigator = LocalRaftHost.current.navigator
     LaunchedEffect(selectionKey) { columns.cleared() }
+    LaunchedEffect(tab) { columns.expand.restore() }
     LaunchedEffect(navRailActive) { if (!navRailActive) columns.reopenOn(navigator) }
     return columns
 }

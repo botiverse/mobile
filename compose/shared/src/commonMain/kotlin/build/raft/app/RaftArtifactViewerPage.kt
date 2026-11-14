@@ -147,6 +147,12 @@ internal val LocalRaftArtifactOpenStoreScope = compositionLocalOf<RaftShellStore
 internal val LocalRaftArtifactViewerInColumn = compositionLocalOf { false }
 
 /**
+ * The width the Artifact column lays its page out at (#189 step 6; its content keeps 480 and clips below that), in
+ * dp; null outside a column. Desktop Mode is offered by it there, not by the window's.
+ */
+internal val LocalRaftArtifactViewerColumnWidthDp = compositionLocalOf<Float?> { null }
+
+/**
  * The viewer screen's frame as the screen decides it: whether the App's bar is left out ([pageSaysItDrawsBar]: the
  * page said `hostToolbar=1`, it shows the Artifact, [viewing], and the subject is known, [scopeKnown]) and where it
  * stands ([LocalRaftArtifactViewerInColumn]). One bar in a column too (#4635, web #14672): where the page draws it,
@@ -327,15 +333,27 @@ internal fun raftArtifactViewerSummaryLogToken(answer: ArtifactSummaryAnswer?): 
         null -> "none"
     }
 
-/** The device's Desktop Mode choice; null where no app-scope store is installed (fixtures). */
-private fun raftArtifactViewerDesktopModePreference(): ArtifactViewerDesktopModePreferenceRepository? =
-    runCatching { ArtifactViewerDesktopModePreferenceRepository(build.raft.app.data.raftSharedPreferenceStore()) }.getOrNull()
+/**
+ * The device's Desktop Mode choice, the page's or ([inColumn]) the Artifact column's own (#189 step 6); null where no
+ * app-scope store is installed (fixtures).
+ */
+private fun raftArtifactViewerDesktopModePreference(inColumn: Boolean = false): ArtifactViewerDesktopModePreferenceRepository? =
+    runCatching {
+        ArtifactViewerDesktopModePreferenceRepository(
+            build.raft.app.data.raftSharedPreferenceStore(),
+            if (inColumn) ArtifactViewerDesktopModePreferenceRepository.ColumnKey else ArtifactViewerDesktopModePreferenceRepository.Key,
+        )
+    }.getOrNull()
 
-/** [raftArtifactViewerOffersDesktopMode] for this window (touch, narrower than a desktop). */
+/**
+ * [raftArtifactViewerOffersDesktopMode] here (touch, narrower than a desktop): by the Artifact column's width in a
+ * column ([LocalRaftArtifactViewerColumnWidthDp], artin #189 step 6), else by the window's.
+ */
 @Composable
 private fun raftArtifactViewerOffersDesktopModeHere(): Boolean {
     val windowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
-    return raftArtifactViewerOffersDesktopMode(raftPlatformHasFinePointer(), windowWidthDp)
+    val widthDp = LocalRaftArtifactViewerColumnWidthDp.current ?: windowWidthDp
+    return raftArtifactViewerOffersDesktopMode(raftPlatformHasFinePointer(), widthDp)
 }
 
 private sealed interface RaftArtifactViewerBodyState {
@@ -374,9 +392,10 @@ private fun RaftArtifactViewerScreen() {
     // In the wide layout's Artifact column the column's Back closes it (only while it is on screen): this one is off.
     val inColumn = LocalRaftArtifactViewerInColumn.current
     RaftBackHandler(enabled = !inColumn, label = "artifact_viewer", blocksBackSwipe = false, onBack = ::closePage)
-    // Desktop Mode: this device's choice, offered on a touch screen narrower than a desktop.
-    val desktopModePreference = remember { raftArtifactViewerDesktopModePreference() }
-    var desktopModeChosen by remember { mutableStateOf(desktopModePreference?.read() == true) }
+    // Desktop Mode: this device's choice, offered on a touch screen narrower than a desktop. In the Artifact column
+    // (#189 step 6) the column's own choice, off until picked in its ⋯: the page lays out at the column's width.
+    val desktopModePreference = remember(inColumn) { raftArtifactViewerDesktopModePreference(inColumn) }
+    var desktopModeChosen by remember(inColumn) { mutableStateOf(desktopModePreference?.read() == true) }
     val desktopModeOffered = desktopModePreference != null && raftArtifactViewerOffersDesktopModeHere()
     val desktopMode = desktopModeOffered && desktopModeChosen
     if (target == null) {

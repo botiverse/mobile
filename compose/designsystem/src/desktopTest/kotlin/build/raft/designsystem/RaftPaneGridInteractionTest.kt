@@ -38,7 +38,8 @@ import kotlin.test.assertTrue
  * RaftPaneGrid's splitters as people use them (web DS Resizable, ColumnResizeHandle, StackSeam):
  * the keyboard (arrows step 16, Shift 64; Home / End to the ends), a double click back to the
  * default, and screen readers (an adjustable value over the column's range that they can set).
- * A 1000dp row: the main pane keeps 360, so the side column may grow to 640.
+ * A 1000dp planned row: a seam takes the side column, or the main pane, down to 160 (#189 rule 2, their content
+ * clips), so the side column may be 160 to 840.
  */
 @OptIn(ExperimentalTestApi::class)
 class RaftPaneGridInteractionTest {
@@ -90,13 +91,13 @@ class RaftPaneGridInteractionTest {
             seam.performKeyInput { pressKey(Key.DirectionRight) }
             waitForIdle()
             assertEquals(424f, sizes.widthDp(side))
-            // Home: the minimum; End: as wide as the main pane's 360 allows.
+            // Home: 160 (its content keeps 280 and clips); End: as wide as the main pane's 160 allows.
             seam.performKeyInput { pressKey(Key.MoveHome) }
             waitForIdle()
-            assertEquals(280f, sizes.widthDp(side))
+            assertEquals(160f, sizes.widthDp(side))
             seam.performKeyInput { pressKey(Key.MoveEnd) }
             waitForIdle()
-            assertEquals(640f, sizes.widthDp(side))
+            assertEquals(840f, sizes.widthDp(side))
         }
 
     @Test
@@ -118,8 +119,8 @@ class RaftPaneGridInteractionTest {
             val seam = onNodeWithContentDescription("Resize side")
             val info = seam.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo]
             assertEquals(360f, info.current)
-            assertEquals(280f, info.range.start)
-            assertEquals(640f, info.range.endInclusive)
+            assertEquals(160f, info.range.start)
+            assertEquals(840f, info.range.endInclusive)
             seam.performSemanticsAction(SemanticsActions.SetProgress) { it(500f) }
             waitForIdle()
             assertEquals(500f, sizes.widthDp(side))

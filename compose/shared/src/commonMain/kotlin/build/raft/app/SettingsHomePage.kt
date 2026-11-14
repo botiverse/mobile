@@ -46,9 +46,6 @@ import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.backFromDetail
 import build.raft.app.data.closeFromDetailPage
-import build.raft.app.data.normalizeSideThreadFocus
-import build.raft.app.data.sideThreadFocusActive
-import build.raft.app.data.sideThreadFocusAvailable
 import build.raft.app.data.backClosesSideThreadFirst
 import build.raft.app.data.foldSideThreadIntoDetail
 import build.raft.app.data.sideThreadColumnAvailable
@@ -3625,20 +3622,9 @@ private fun RaftAppShellReadyContent(
         adaptiveWorkspaceStore.update { current ->
             if (current.visibleSideThread() != null && !current.sideThreadColumnAvailable(desktopModeOnLargeScreen)) {
                 bridge.log("adaptive_side_thread_fold width=${current.detailPaneWidthDp} planFolds=${current.sideThreadFolds}")
-                // task #180: drop Focus together with the column. The fold turns the thread into the
-                // main detail, so a leftover flag would mean "maximised with no column to maximise".
-                current.foldSideThreadIntoDetail().copy(sideThreadFocused = false)
+                current.foldSideThreadIntoDetail()
             } else current
         }
-    }
-    // task #180: also normalise when Focus is somehow set without an available column (e.g. the
-    // thread was closed while focused), so the next thread does not open already-maximised.
-    val sideThreadFocusStale =
-        adaptiveWorkspaceSession.sideThreadFocusActive() &&
-            !adaptiveWorkspaceSession.sideThreadFocusAvailable(desktopModeOnLargeScreen)
-    LaunchedEffect(sideThreadFocusStale) {
-        if (!sideThreadFocusStale) return@LaunchedEffect
-        adaptiveWorkspaceStore.update { it.normalizeSideThreadFocus(desktopModeOnLargeScreen) }
     }
     val tasksDetailColumnKeepsOwnership =
         appShellTasksDetailColumnStaysActive(
@@ -6548,7 +6534,7 @@ private fun RaftAppShellReadyContent(
         )
     // The wide layout's profile and Artifact columns (RaftWideSideColumns.kt, #189 steps 3-4): they belong to the
     // conversation picked, and reopen as pages when the window leaves the wide layout.
-    val sideColumns = rememberRaftWideSideColumns(adaptiveWorkspaceState?.selection?.identity?.key, navRailActive)
+    val sideColumns = rememberRaftWideSideColumns(adaptiveWorkspaceState?.selection?.identity?.key, navRailActive, tab = selectedTab)
     // stdrc 2026-10-21: Settings is the More tab's root on the phone bar and the pinned rail entry
     // on the wide layout; a selection made for the other layout moves to this layout's root.
     LaunchedEffect(selectedTab, navRailActive) {
