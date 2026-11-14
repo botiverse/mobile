@@ -196,6 +196,7 @@ internal class RaftDesktopRealtimeHostContext private constructor(
                             if (verbose) RaftDesktopLog.d(LOG_TAG, message) else RaftDesktopLog.w(LOG_TAG, message)
                         },
                     logger = { message -> RaftDesktopLog.d(LOG_TAG, message) },
+                    warningLogger = { message -> RaftDesktopLog.w(LOG_TAG, message) },
                 )
             val repository =
                 SessionRealtimeRepository(
