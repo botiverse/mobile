@@ -7,6 +7,8 @@ import build.raft.app.data.WindowNavigationReadiness
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 /**
  * What the app shell gives [RaftShellNavigationIntake]: its latest state, read when the intake
@@ -40,6 +42,12 @@ internal interface RaftShellNavigationIntakeHost {
     /** The conversation page on top of the shell (phone layout), or null (wide layout, none). */
     fun topPageRoute(): ThreadRouteIdentity?
 
+    /**
+     * Something is about to open: closes the window's task surfaces ([RaftIncomingNavigationSignal]),
+     * waiting for a running first send, and says whether one was open over the top page.
+     */
+    suspend fun closeIncomingNavigationCover(): Boolean = false
+
     suspend fun perform(action: WindowNavigationAction)
 
     fun log(message: String)
@@ -53,7 +61,9 @@ internal interface RaftShellNavigationIntakeHost {
  * notification tick waited until Back. This intake wakes on [enqueue] / [wake] and on every new
  * pending link instead, and opens through the window [coordinator] (its exactly-once marks
  * stay the only dedup of a request). An open whose conversation is already the top page is not
- * pushed again.
+ * pushed again. Before anything opens, the window's task surfaces close
+ * ([RaftShellNavigationIntakeHost.closeIncomingNavigationCover]); one that was open covered the
+ * top page, so the open goes through even into the conversation under it (its message anchor).
  */
 internal class RaftShellNavigationIntake(
     private val coordinator: SharedWindowNavigationCoordinator,
@@ -153,8 +163,10 @@ internal class RaftShellNavigationIntake(
         while (true) {
             val readiness = host.readiness() ?: return
             val action = coordinator.advance(readiness) ?: return
+            val covered = false
             if (
                 action is WindowNavigationAction.OpenConversation &&
+                !covered &&
                 raftWindowNavigationTargetIsTopPage(action.request, host.topPageRoute())
             ) {
                 host.log(
@@ -175,4 +187,41 @@ internal fun raftWindowNavigationTargetIsTopPage(request: HomeMessageOpenRequest
     if (target.instanceKey.isNotBlank() && target.instanceKey == top.instanceKey) return true
     val timeline = target.timelineChannelId
     return timeline != null && timeline == top.timelineChannelId
+}
+
+/**
+ * "Something is about to open in this window" (a message link, a notification or banner open, an
+ * app shortcut, an Artifact / invite / join link), one per window ([SharedForegroundBannerStore]).
+ * A task opened without a page of its own ([TaskOpenSurface]: a pending task's empty conversation,
+ * a legacy panel) is a window dialog over its host page, not a page of the stack, so
+ * [RaftShellNavigationIntake] pushed under it, or skipped a link into the conversation under it
+ * as "already the top page". Open surfaces register here; [closeAll] closes them before the open.
+ */
+internal class RaftIncomingNavigationSignal {
+    fun interface Surface {
+        /** Closes this surface if it is open (it may wait for a running send first); true when it was. */
+        suspend fun closeForIncomingNavigation(): Boolean
+    }
+
+    private class Entry(val surface: Surface)
+
+    private val lock = SynchronizedObject()
+    private val entries = LinkedHashSet<Entry>()
+
+    /** Adds [surface] until the returned function is called. */
+    fun register(surface: Surface): () -> Unit {
+        val entry = Entry(surface)
+        synchronized(lock) { entries.add(entry) }
+        return { synchronized(lock) { entries.remove(entry) } }
+    }
+
+    /** Closes every registered surface; true when any was open. */
+    suspend fun closeAll(): Boolean {
+        val current = synchronized(lock) { entries.toList() }
+        var anyOpen = false
+        for (entry in current) {
+            if (entry.surface.closeForIncomingNavigation()) anyOpen = true
+        }
+        return anyOpen
+    }
 }
