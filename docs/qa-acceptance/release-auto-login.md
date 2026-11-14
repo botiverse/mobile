@@ -161,6 +161,28 @@ gh workflow run release-auto-login.yml -f environment=production -f apk_run_id=<
   -f scenario=scripts/qa/scenarios/task_v2.mjs -f scenario_args="--server-name OranixSlockTest"
 ```
 
+- `min_build_gate.mjs --phase banner|block|flag_off --threshold N [--server-name S]` — the minimum
+  build gate (#4797, flag `mobile_min_build_android_v1`) on staging. Build A is the installed APK
+  (`apk_run_id` + `apk_artifact`), build B the extra one (`extra_apk_artifact`, same run, same
+  signer, higher versionCode). With `hands_serve_extra=true` the workflow serves B on Hands
+  raft-android channel `debug` as an ACTIVE release scoped to the "GitHub Actions update e2e
+  emulators" device group (`android_update_hands_fixture.sh publish`), the scenario puts this
+  emulator's Hands installation id into that group, and the run removes it and cancels the release
+  at the end (same single-writer concurrency group as android-update-e2e.yml). Each phase first
+  reads the flag through `POST feature-flags/evaluate` and stops unless it is ON with default
+  variant N. `banner` (N above B): banner only, Dismiss closes it. `block` (N = B): A blocked;
+  offline + background + return → banner; online again → block; A updated to B → no gate.
+  `flag_off` (N = B): A blocked, then waits (up to `--wait-off-minutes`, default 40) for the flag
+  admin to turn the flag OFF and checks the block goes away (read/push, else next foreground).
+  The app's `SlockMinBuildGate` / `SlockFeatureFlags` lines are in `logcat-min-build-gate.txt`.
+
+```sh
+gh workflow run release-auto-login.yml --ref agent/lagoon/min-build-gate-acceptance -f environment=staging \
+  -f apk_run_id=<android-update-qa.yml run> -f apk_artifact=android-update-qa-a-apk \
+  -f extra_apk_artifact=android-update-qa-b-apk -f hands_serve_extra=true \
+  -f scenario=scripts/qa/scenarios/min_build_gate.mjs -f scenario_args="--phase block --threshold <B>"
+```
+
 ## Caveats
 
 - See [What a pass means](#what-a-pass-means): authorize → callback only, not the browser UX; QA
