@@ -2,7 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -17,7 +17,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -48,6 +47,7 @@ import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowText
 import build.raft.designsystem.components.RaftPreviewCard
+import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.rememberRaftPreviewCardState
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSheet
@@ -456,7 +456,7 @@ private fun AgentMigrationAgentAvatarRow(agents: List<MemberProfile>, source: Ag
                     size = AgentMigrationAgentAvatarSize,
                     modifier =
                         Modifier
-                            .clickable(role = Role.Button, onClickLabel = label) { showAll = true }
+                            .raftClickable(onClick = { showAll = true }, onClickLabel = label, shape = RoundedCornerShape(4.dp))
                             .semantics { contentDescription = label }
                 )
             }
@@ -520,7 +520,7 @@ private fun AgentMigrationAgentAvatar(agent: MemberProfile, source: AgentMigrati
         // A screen reader's activation has no pointer: it pins the card the same way.
         Row(
             Modifier
-                .clickable(role = Role.Button, onClickLabel = name) { state.pin() }
+                .raftClickable(onClick = { state.pin() }, onClickLabel = name, shape = RoundedCornerShape(4.dp))
                 .semantics { contentDescription = name }
         ) {
             AgentMigrationAgentFace(agent, status)
