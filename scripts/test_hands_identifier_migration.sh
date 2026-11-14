@@ -31,6 +31,8 @@ while IFS= read -r match; do
     .github/workflows/github-release.yml:*"HANDS_IOS_BEARER_TOKEN: \${{ secrets.${old_upper}_IOS_BEARER_TOKEN }}"*) ;;
     # Android update e2e: plans fixture versionCodes and serves B on the debug channel only.
     .github/workflows/android-update-e2e.yml:*"HANDS_AUTH_TOKEN: \${{ secrets.${old_upper}_BEARER_TOKEN }}"*) ;;
+    # Release auto login (min build gate): serves build B on the debug channel to the e2e device group only.
+    .github/workflows/release-auto-login.yml:*"HANDS_AUTH_TOKEN: \${{ needs.plan.outputs.serve_extra == 'true' && secrets.${old_upper}_BEARER_TOKEN || '' }}"*) ;;
     *)
       echo "${match}"
       unexpected=1
