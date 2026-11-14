@@ -136,6 +136,11 @@ class RaftSocketIoClient(
         }
     }
 
+    /** Runs [block] on the client's serial dispatcher, in order with its callbacks (for state they share). */
+    fun runOnDispatcher(block: () -> Unit) {
+        scope.launch { safely("run_on_dispatcher") { block() } }
+    }
+
     /** Snapshot of the counters; [onResult] runs on the client's dispatcher. */
     fun diagnostics(onResult: (RaftSocketDiagnostics) -> Unit) {
         scope.launch {

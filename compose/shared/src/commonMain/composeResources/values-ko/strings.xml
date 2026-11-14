@@ -3267,6 +3267,8 @@
     <string name="settings_developer_nav3_stack_detail">지금까지 이전된 페이지를 앱 창 안에서 열어요(Android). 다음에 앱을 시작할 때 적용돼요.</string>
     <string name="settings_developer_multi_server_realtime">모든 창에서 실시간 업데이트</string>
     <string name="settings_developer_multi_server_realtime_detail">여러 앱 창을 켜면 각 창의 워크스페이스가 자체 실시간 연결을 유지해요(최대 3개). 뒤에 있는 창에도 새 메시지가 도착해요. 끄면 맨 앞의 워크스페이스만 연결돼요.</string>
+    <string name="settings_developer_kmp_realtime">새 실시간 연결(베타)</string>
+    <string name="settings_developer_kmp_realtime_detail">이 기기에서 Socket.IO 라이브러리 대신 앱 자체 실시간 클라이언트를 사용해요. 다음에 연결할 때 적용돼요. 끄면 서버 설정을 따라요.</string>
     <string name="settings_mobile_ios_native_nav">iOS 기본 내비게이션</string>
     <string name="settings_mobile_ios_native_nav_detail">페이지의 제목과 버튼을 시스템 내비게이션 바에 표시하고, 시스템의 스와이프로 뒤로 가기를 사용해요. 다음에 앱을 시작할 때 적용돼요.</string>
     <string name="settings_developer_presets">프리셋</string>

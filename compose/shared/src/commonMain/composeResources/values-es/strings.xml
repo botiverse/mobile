@@ -3267,6 +3267,8 @@
     <string name="settings_developer_nav3_stack_detail">Abre las páginas migradas hasta ahora dentro de la ventana de la app (Android). Se aplica la próxima vez que inicies la app.</string>
     <string name="settings_developer_multi_server_realtime">Actualizaciones en vivo en cada ventana</string>
     <string name="settings_developer_multi_server_realtime_detail">Con Varias ventanas de la app activado, el espacio de trabajo de cada ventana mantiene su propia conexión en tiempo real (hasta 3), así una ventana en segundo plano sigue recibiendo mensajes nuevos. Desactivado: solo el espacio de trabajo al frente sigue conectado.</string>
+    <string name="settings_developer_kmp_realtime">Nueva conexión en tiempo real (beta)</string>
+    <string name="settings_developer_kmp_realtime_detail">Usa el cliente en tiempo real propio de la app en lugar de la biblioteca Socket.IO en este dispositivo. Se aplica la próxima vez que se abra la conexión. Desactivado: sigue la configuración del servidor.</string>
     <string name="settings_mobile_ios_native_nav">Navegación nativa de iOS</string>
     <string name="settings_mobile_ios_native_nav_detail">Muestra los títulos y botones de las páginas en la barra de navegación del sistema, con el gesto de deslizar para volver del sistema. Se aplica la próxima vez que inicies la app.</string>
     <string name="settings_developer_presets">Ajustes predefinidos</string>

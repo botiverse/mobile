@@ -95,6 +95,8 @@ kotlin {
                 // UI-free foundation (models, network base, JSON helpers, HostCapabilities, store
                 // dispatcher). Not exported to the iOS framework: Swift uses none of it yet.
                 api(project(":core"))
+                // Common-Kotlin Socket.IO client (realtime unification; RaftKmpRealtimeSocket is the host facade).
+                implementation(project(":realtime-socket"))
                 // CMP switch (Phase A): :shared's UI renders on upstream Compose Multiplatform
                 // through the :ui-cmp hosts (RaftCmpRoot). The Kuikly compose fork, Kuikly core
                 // (Pager/Module/nvi JSON) and core-render-android are gone; their remaining API
