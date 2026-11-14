@@ -180,6 +180,21 @@ internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::new
         return true
     }
 
+    /**
+     * The window's dismiss request: Back, or the host page being covered by a pushed page
+     * ([build.raft.designsystem.components.RaftDismissOnPageCover]). While the first send hands
+     * off, the push is the conversation page it opened, so the pending page goes now: a covered
+     * page composes no more (iOS), so [finishHandOff] from the host's visibility never ran and the
+     * page stayed over the conversation, a window layer with its draft. Otherwise as [dismiss].
+     */
+    fun requestClose(): Boolean {
+        if (handingOff) {
+            finishHandOff()
+            return true
+        }
+        return dismiss()
+    }
+
     /** The conversation page that the first send opened now covers the pending one: it goes. */
     fun finishHandOff() {
         if (!handingOff) return
@@ -325,10 +340,7 @@ internal fun TaskOpenSurfaceHost(
             }
             val task = surface.task
             val edits = channelTasks?.let { TaskHeadEdits(it::dispatch) }
-            TaskPendingConversationWindow(
-                onBack = { flow.dismiss() },
-                sending = flow.sending || flow.handingOff,
-            ) {
+            TaskPendingConversationWindow(onDismissRequest = { flow.requestClose() }) {
                 TaskPendingConversationPage(
                     task = task,
                     details = rememberTaskConversationDetails(task, detailsRepository, serverId),
@@ -423,13 +435,15 @@ internal fun TaskSummary.taskPendingHeaderState(): TaskConversationHeaderState =
     TaskConversationHeaderState(conversationChannelId = conversationChannelId ?: ChannelId(""))
 
 /**
- * The pending task page's window: full screen over the host page, as a page of its own. Back
- * closes it unless a send runs.
+ * The pending task page's window: full screen over the host page, as a page of its own.
+ * [onDismissRequest] gets Back and the host page being covered by a push; it reads the flow's
+ * state when called ([TaskOpenSurfaceFlow.requestClose]): a value captured at composition was
+ * stale by then (the first send's push comes before the host recomposes).
  */
 @Composable
-internal fun TaskPendingConversationWindow(onBack: () -> Unit, sending: Boolean, content: @Composable () -> Unit) {
+internal fun TaskPendingConversationWindow(onDismissRequest: () -> Unit, content: @Composable () -> Unit) {
     RaftWindowDialog(
-        onDismissRequest = { if (!sending) onBack() },
+        onDismissRequest = onDismissRequest,
         properties = RaftWindowDialogProperties(drawScrim = false),
     ) {
         // Opaque under the system bars too: without a scrim the host's tab bar showed through the
