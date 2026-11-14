@@ -1012,7 +1012,8 @@ internal fun membersAgentDetailTabsForAccess(
 /**
  * Web AgentDetailPanel `isRemoteJointAgent` / `isBoundedPublicProjection`: the profile of an
  * agent of another server (reached through a joint channel) shows identity only — no Info,
- * runtime, skills, actions or Message — and loads nothing from this server.
+ * runtime, skills, actions or Message. Its public profile (description, status) is read from the
+ * viewer's server, which answers `GET /agents/:id` for a joint channel's peer agent.
  */
 internal fun membersAgentProfileIsRemote(accessMode: MemberDetailAccessMode): Boolean =
     accessMode == MemberDetailAccessMode.RemoteProfileOnly
@@ -1041,8 +1042,8 @@ internal fun membersRemoteAgentSourceServerName(member: MemberProfile): String? 
 }
 
 /**
- * The roster facts a joint channel already holds for an agent of another server, as the remote
- * profile's detail: the open's own seed (thread roster / author row) first, then a roster
+ * The roster facts a joint channel already holds for an agent of another server, the remote
+ * profile's fallback when the viewer's server's joint profile read fails: the open's own seed (thread roster / author row) first, then a roster
  * profile, then the joint actor row. Null only when nothing knows the agent.
  */
 internal fun membersRemoteAgentProfileSnapshot(
@@ -1082,6 +1083,23 @@ internal fun membersRemoteAgentProfileSnapshot(
         directMessages = emptyList(),
         reminders = emptyList(),
         activity = emptyList()
+    )
+}
+
+/**
+ * The viewer's server's joint profile of a remote agent ([RaftAgentsApiClient.publicAgentDetail]),
+ * with the roster's name/avatar where the answer left them blank.
+ */
+internal fun AgentDetailSnapshot.withRemoteRosterFallback(roster: AgentDetailSnapshot?): AgentDetailSnapshot {
+    val remote = summary ?: return this
+    val fallback = roster?.summary?.takeIf { it.id == remote.id } ?: return this
+    return copy(
+        summary =
+            remote.copy(
+                displayName = remote.displayName?.takeIf { it.isNotBlank() } ?: fallback.displayName,
+                avatarUrl = remote.avatarUrl?.takeIf { it.isNotBlank() } ?: fallback.avatarUrl,
+                description = remote.description?.takeIf { it.isNotBlank() } ?: fallback.description
+            )
     )
 }
 
@@ -3443,9 +3461,11 @@ private class MemberDetailRouteProvider(
         profileGeneration: Long,
         isCurrentRequest: () -> Boolean
     ): MemberDetailRouteState {
-        // Web ProfilePanel: a peer agent of a joint channel is a bounded projection the viewer's
-        // server cannot fill (its `/agents/:id` answers 404 for foreign ids), so the roster facts
-        // the joint channel already holds are the profile and nothing is requested.
+        // Web AgentDetailPanel `isRemoteJointAgent` (agentStore `ensureAgentProfile`): the
+        // viewer's server answers `GET /agents/:id` for a peer agent of a joint channel the viewer
+        // shares (routes/agents.ts `canUserSeeAgentThroughJointChannel` -> `toJointAgentProfile`:
+        // description, status and activity, no runtime/control plane). The roster facts the joint
+        // channel holds (no description, no presence) are only the fallback when that read fails.
         val rosterProfile =
             serverMembersStore.memberProfile(profileServerId, selectedId.value)
                 ?: serverMembersStore.memberProfile(viewerServerId, selectedId.value)
@@ -3456,75 +3476,54 @@ private class MemberDetailRouteProvider(
                 rosterProfile = rosterProfile,
                 jointActor = serverMembersStore.jointActors?.current(viewerServerId, selectedId.value, MemberKind.Agent)
             )
-        if (known != null) {
-            if (!isCurrentRequest() || owner == null || currentAgentDetailOwner(profileServerId) != owner) {
-                return MemberDetailRouteState.Error("member_request_stale")
+        val fetched =
+            agentsApiClient?.publicAgentDetail(selectedId)
+                ?: DataResult.Error(ScreenError("agent_profile_unavailable", retryable = false))
+        val fetchedDetail =
+            (fetched as? DataResult.Content)?.data?.takeIf {
+                it.agentId == selectedId && it.summary?.id == selectedId.value
             }
-            agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
-            agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId, owner, profileGeneration))
-            agentDetailStore.dispatch(
-                SharedAgentDetailIntent.SetDetail(
-                    agentId = selectedId,
-                    detail = known,
-                    serverId = profileServerId,
-                    owner = owner,
-                    profileGeneration = profileGeneration
-                )
+        val detail =
+            fetchedDetail?.let { remote -> remote.withRemoteRosterFallback(known) }
+                ?: known
+                ?: return when (fetched) {
+                    is DataResult.Content -> MemberDetailRouteState.Error("member_identity_mismatch")
+                    is DataResult.Empty -> MemberDetailRouteState.Error("member_not_found")
+                    is DataResult.Error -> MemberDetailRouteState.Error(fetched.error)
+                    is DataResult.NoPermission -> MemberDetailRouteState.Error(fetched.blocker.code)
+                }
+        if (!isCurrentRequest() || owner == null || currentAgentDetailOwner(profileServerId) != owner) {
+            return MemberDetailRouteState.Error("member_request_stale")
+        }
+        agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
+        agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId, owner, profileGeneration))
+        agentDetailStore.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                agentId = selectedId,
+                detail = detail,
+                serverId = profileServerId,
+                owner = owner,
+                profileGeneration = profileGeneration
             )
-            val serverName =
-                profileServer.name.takeIf { it.isNotBlank() && it != profileServerId.value }
-                    ?: rosterProfile?.serverName?.takeIf { it.isNotBlank() }
-                    ?: rosterProfile?.serverSlug?.takeIf { it.isNotBlank() }
-                    ?: ""
-            return MemberDetailRouteState.Agent(
-                server = profileServer.copy(id = profileServerId, name = serverName),
-                currentUserId = currentUserId,
-                accessMode = MemberDetailAccessMode.RemoteProfileOnly
+        )
+        val serverName =
+            profileServer.name.takeIf { it.isNotBlank() && it != profileServerId.value }
+                ?: rosterProfile?.serverName?.takeIf { it.isNotBlank() }
+                ?: rosterProfile?.serverSlug?.takeIf { it.isNotBlank() }
+                ?: ""
+        if (fetchedDetail != null) {
+            // Agent detail hydration carries the canonical avatarUrl and description; seed it back
+            // so the scoped roster cache drops a stale pixel fallback in-session.
+            serverMembersStore.seedProfiles(
+                profileServerId,
+                listOf(detail.toStaticMembersProfile(profileServer.copy(id = profileServerId, name = serverName)))
             )
         }
-        val client = agentsApiClient ?: return MemberDetailRouteState.Error("agent_profile_unavailable")
-        return when (val detailResult = client.publicAgentDetail(selectedId)) {
-            is DataResult.Content -> {
-                if (
-                    !isCurrentRequest() ||
-                    owner == null ||
-                    currentAgentDetailOwner(profileServerId) != owner
-                ) {
-                    return MemberDetailRouteState.Error("member_request_stale")
-                }
-                val detail = detailResult.data
-                if (detail.agentId != selectedId || detail.summary?.id != selectedId.value) {
-                    return MemberDetailRouteState.Error("member_identity_mismatch")
-                }
-                agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
-                agentDetailStore.dispatch(
-                    SharedAgentDetailIntent.SelectMember(selectedId, owner, profileGeneration)
-                )
-                agentDetailStore.dispatch(
-                    SharedAgentDetailIntent.SetDetail(
-                        agentId = selectedId,
-                        detail = detail,
-                        serverId = profileServerId,
-                        owner = owner,
-                        profileGeneration = profileGeneration
-                    )
-                )
-                // Agent detail hydration carries the canonical avatarUrl; seed it back so
-                // the scoped roster cache drops a stale pixel fallback in-session.
-                serverMembersStore.seedProfiles(
-                    profileServerId,
-                    listOf(detail.toStaticMembersProfile(profileServer.copy(id = profileServerId)))
-                )
-                MemberDetailRouteState.Agent(
-                    server = profileServer.copy(id = profileServerId),
-                    currentUserId = currentUserId,
-                    accessMode = MemberDetailAccessMode.RemoteProfileOnly
-                )
-            }
-            is DataResult.Empty -> MemberDetailRouteState.Error("member_not_found")
-            is DataResult.Error -> MemberDetailRouteState.Error(detailResult.error)
-            is DataResult.NoPermission -> MemberDetailRouteState.Error(detailResult.blocker.code)
-        }
+        return MemberDetailRouteState.Agent(
+            server = profileServer.copy(id = profileServerId, name = serverName),
+            currentUserId = currentUserId,
+            accessMode = MemberDetailAccessMode.RemoteProfileOnly
+        )
     }
 
     private suspend fun loadAgentMember(
@@ -10654,7 +10653,9 @@ internal fun MembersAgentProfileHeader(
                     )
                 }
                 val openComputer = onOpenComputer?.takeIf { blocked == AgentBlockedState.ComputerUpdateRequired }
-                if (!appBot) {
+                // Nothing known about its presence (e.g. a joint channel's agent of another server
+                // whose profile read failed): no chip, never an empty "—" one.
+                if (!appBot && statusLabel != MembersUnknownAgentStatusLabel) {
                     if (openComputer != null) {
                         // The step is on the Computer: the chip itself opens it (web #14585
                         // AgentStatusBadge `agent-status-computer-too-old`).
