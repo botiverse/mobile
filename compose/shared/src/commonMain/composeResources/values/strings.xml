@@ -2085,6 +2085,7 @@
     <string name="auth_title_verify_email">Verify your email</string>
     <string name="auth_hint_verify_email_address">We sent a verification link to %1$s. Verify your email to unlock Raft, then refresh.</string>
     <string name="auth_hint_verify_email">Verify your email to unlock Raft. Resend the verification link, then refresh.</string>
+    <string name="auth_hint_verify_email_check_spam">Can't find it? Check your spam folder.</string>
     <string name="auth_title_email_sent">Email sent</string>
     <string name="auth_action_resend_verification">Resend verification email</string>
     <string name="auth_action_verified_refresh">I have verified - refresh</string>
@@ -3045,6 +3046,10 @@
     <string name="settings_computers_error_refresh_title">Couldn't refresh</string>
     <string name="settings_computers_error_refresh_saved">Couldn't refresh computers. Showing saved results.</string>
     <string name="settings_computers_restart">Restart</string>
+    <string name="settings_computers_restart_confirm_title">Restart Computer</string>
+    <string name="settings_computers_restart_confirm_message_none">Restarting %1$s disconnects it until it comes back online.</string>
+    <string name="settings_computers_restart_confirm_message_one">Restarting %1$s disconnects it and its %2$d agent until it comes back online.</string>
+    <string name="settings_computers_restart_confirm_message_many">Restarting %1$s disconnects it and its %2$d agents until it comes back online.</string>
     <string name="settings_computers_restarting">Restarting…</string>
     <string name="settings_computers_restarted">Restarted.</string>
     <string name="settings_computers_restart_failed">Restart failed.</string>
@@ -3053,6 +3058,10 @@
     <string name="settings_computers_restart_timed_out">Restart timed out. Check that the Computer is online and retry.</string>
     <string name="settings_computers_up_to_date">Up to date</string>
     <string name="settings_computers_upgrade_to_version">Upgrade to v%1$s</string>
+    <string name="settings_computers_upgrade_confirm">Upgrade</string>
+    <string name="settings_computers_upgrade_confirm_message_none">%1$s restarts into v%2$s, which disconnects it until it reconnects.</string>
+    <string name="settings_computers_upgrade_confirm_message_one">%1$s restarts into v%2$s, which disconnects it and its %3$d agent until it reconnects.</string>
+    <string name="settings_computers_upgrade_confirm_message_many">%1$s restarts into v%2$s, which disconnects it and its %3$d agents until it reconnects.</string>
     <string name="settings_computers_upgrading">Updating…</string>
     <string name="settings_computers_upgrade_status_reinstall">This version can't be upgraded from the web. Reinstall it with the command at the top of this page.</string>
     <string name="settings_computers_upgrade_status_reading">Reading the version; check back shortly.</string>
@@ -3770,6 +3779,9 @@
     <string name="invite_human_revoke_confirm_message">Revoke this invite link? Anyone who still has the URL will stop being able to join with it.</string>
     <string name="invite_human_revoke_confirm_label">Revoke Link</string>
     <string name="invite_human_revoking">Revoking…</string>
+    <string name="invite_human_update_confirm_title">Update Invite Link</string>
+    <string name="invite_human_update_confirm_message">Update this invite link? Anyone who still has the old URL will stop being able to join with it.</string>
+    <string name="invite_human_updating">Updating…</string>
     <string name="joint_connections_title">Connected servers</string>
     <string name="joint_connections_rule">Each Joint Channel can have up to 30 servers, with 2 free-server slots</string>
     <string name="joint_connections_this_server">This server</string>

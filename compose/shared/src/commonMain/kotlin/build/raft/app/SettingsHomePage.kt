@@ -141,6 +141,7 @@ import build.raft.app.data.SharedAuthReadyPhase
 import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.SharedAuthGateViewModel
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.SharedEmailVerificationResult
 import build.raft.app.data.isColdStartCachedReadyEligible
 import build.raft.app.data.RaftAuthSessionTerminalSource
 import build.raft.app.data.SharedComputersIntent
@@ -480,6 +481,9 @@ import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.ui.KeyboardParams
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
@@ -10830,6 +10834,41 @@ internal fun AppShellEmailVerificationGateContent(
         }
     }
 
+    // Web EmailVerificationPage (#12237): the link opened somewhere else (the mail app, a browser), so
+    // coming back to the app re-reads the account and the gate moves on by itself instead of waiting
+    // for Refresh. Only after the app was left: the gate itself was just shown from a fresh read.
+    val recheckScope = rememberCoroutineScope()
+    val currentOnRefresh by rememberUpdatedState(onRefresh)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, authDataSource) {
+        var left = false
+        var checking = false
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_PAUSE -> left = true
+                    Lifecycle.Event.ON_RESUME ->
+                        if (left && !checking) {
+                            left = false
+                            checking = true
+                            recheckScope.launch {
+                                val result =
+                                    runCatchingPreservingCancellation { authDataSource.refreshEmailVerificationStatus() }
+                                        .getOrNull()
+                                checking = false
+                                if (result is SharedEmailVerificationResult.Verified) {
+                                    authDataSource.logDiagnostics("auth_email_verification_recheck result=verified")
+                                    currentOnRefresh()
+                                }
+                            }
+                        }
+                    else -> Unit
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     LaunchedEffect(pendingSignOut) {
         if (!pendingSignOut) return@LaunchedEffect
         authDataSource.logout()
@@ -10858,6 +10897,13 @@ internal fun AppShellEmailVerificationGateContent(
                 },
             // Web EmailVerificationPage: text-callout, muted (14/20 400).
             style = RaftType.Callout.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
+            textAlign = TextAlign.Center
+        )
+        // Web `pages.emailVerification.checkSpam`: footnote, muted, under the address.
+        Text(
+            text = stringResource(Res.string.auth_hint_verify_email_check_spam),
+            style = RaftType.Footnote.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center
         )
