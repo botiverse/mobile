@@ -46,6 +46,7 @@ class SocketIoRealtimeClientTransportParityTest(private val implementation: Stri
     private val token = "parity-${UUID.randomUUID()}"
     private val events = CopyOnWriteArrayList<RealtimeEvent>()
     private val channelAcks = CopyOnWriteArrayList<String>()
+    private val rawJson = CopyOnWriteArrayList<Pair<String, String>>()
     private var client: SocketIoRealtimeClient? = null
 
     @After
@@ -69,6 +70,7 @@ class SocketIoRealtimeClientTransportParityTest(private val implementation: Stri
                 authRefreshRunner = { task -> task() },
             )
         created.observeEvents { events += it }
+        created.observeRawEvents { _, eventName, payload -> rawJson += eventName to build.raft.app.shared.realtimeRawPayloadJson(payload) }
         created.observeChannelJoinAck { _, channelId, joined -> if (joined) channelAcks += channelId }
         client = created
         created.connect(RealtimeConnectRequest(auth = RealtimeAuth(token = token, serverId = ServerId("server-1"))))
@@ -98,6 +100,11 @@ class SocketIoRealtimeClientTransportParityTest(private val implementation: Stri
 
         post("message", "seq=89")
         awaitTrue("message:new 89 delivered") { events.filterIsInstance<MessageNew>().any { it.message.seq == 89L } }
+        // The raw fan-out (the app's shared stores) parses JSON text and gates on its top-level serverId.
+        awaitTrue("message:new raw payload") { rawJson.any { it.first == "message:new" } }
+        val raw = JSONObject(rawJson.first { it.first == "message:new" }.second)
+        assertEquals("server-1", raw.getString("serverId"))
+        assertEquals(89L, raw.getLong("seq"))
 
         post("drop")
         awaitLog("reconnected, rejoined and resumed after rooms:joined") { log ->

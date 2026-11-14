@@ -445,13 +445,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 .put(RaftRealtimeNotifyContract.KeyEventName, eventName)
                 .put(RaftRealtimeNotifyContract.KeyRawPayload, rawPayload.toRealtimeRawPayloadString())
 
-        private fun Any?.toRealtimeRawPayloadString(): String =
-            when (this) {
-                is String -> this
-                is JSONObject -> toString()
-                is JSONArray -> toString()
-                else -> this?.toString() ?: "{}"
-            }
+        private fun Any?.toRealtimeRawPayloadString(): String = realtimeRawPayloadJson(this)
 
         private suspend fun maybePostBackgroundUnreadNotification(
             appContext: Context,
@@ -545,3 +539,19 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             RaftNotificationAlertsPreference.isEnabled(context)
     }
 }
+
+/**
+ * A socket payload as the JSON text the raw consumers parse (the payload server gate reads its top-level
+ * `serverId`). socket.io-client-java hands org.json values; the common client (RaftKmpRealtimeSocketTransport)
+ * hands plain Kotlin maps and lists, whose toString() is not JSON and made every raw event fail the gate.
+ */
+internal fun realtimeRawPayloadJson(payload: Any?): String =
+    when (payload) {
+        null -> "{}"
+        is String -> payload
+        is JSONObject -> payload.toString()
+        is JSONArray -> payload.toString()
+        is Map<*, *> -> JSONObject(payload).toString()
+        is Collection<*> -> JSONArray(payload).toString()
+        else -> payload.toString()
+    }
