@@ -159,12 +159,6 @@ class ChannelSettingsPageTest {
     }
 
     @Test
-    fun standalonePageRequiresNewDesignBetaPreference() {
-        assertFalse(channelSettingsUsesStandalonePage(newDesignSettingsEnabled = false))
-        assertTrue(channelSettingsUsesStandalonePage(newDesignSettingsEnabled = true))
-    }
-
-    @Test
     fun managementKeepsOriginalThreadSettingsActionOrder() {
         assertEquals(
             listOf("visibility", "archive", "delete"),

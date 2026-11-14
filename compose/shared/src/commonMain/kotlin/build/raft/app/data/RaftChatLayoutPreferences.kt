@@ -23,7 +23,6 @@ private const val KEY_ACTIVITY_SENDER_AVATARS_ENABLED = "activitySenderAvatarsEn
 private const val KEY_COMPOSER_SEND_KEY_ENABLED = "composerSendKeyEnabled"
 private const val KEY_MULTI_SHELL_HOST_ENABLED = "multiShellHostEnabled"
 private const val KEY_SERVER_DRAWER_ENABLED = "serverDrawerEnabled"
-private const val KEY_NEW_DESIGN_SETTINGS_ENABLED = "newDesignSettingsEnabled"
 private const val KEY_HOME_SERVER_AVATAR_ENABLED = "homeServerAvatarEnabled"
 private const val KEY_TRANSLATION_MODE = "translationMode"
 private const val KEY_TRANSLATION_TARGET_LANGUAGE = "translationTargetLanguage"
@@ -40,7 +39,6 @@ private val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS =
         KEY_COMPOSER_SEND_KEY_ENABLED,
         KEY_MULTI_SHELL_HOST_ENABLED,
         KEY_SERVER_DRAWER_ENABLED,
-        KEY_NEW_DESIGN_SETTINGS_ENABLED,
         KEY_HOME_SERVER_AVATAR_ENABLED,
         KEY_TRANSLATION_MODE,
         KEY_TRANSLATION_TARGET_LANGUAGE,
@@ -142,9 +140,6 @@ fun raftChatLayoutPreferenceRepository(
         override suspend fun setServerDrawerEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setServerDrawerEnabled(enabled) }
 
-        override suspend fun setNewDesignSettingsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
-            persistAndPublish { delegate.setNewDesignSettingsEnabled(enabled) }
-
         override suspend fun setHomeServerAvatarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setHomeServerAvatarEnabled(enabled) }
 
@@ -170,7 +165,6 @@ private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JsonObject =
         put(KEY_COMPOSER_SEND_KEY_ENABLED, composerSendKeyEnabled)
         put(KEY_MULTI_SHELL_HOST_ENABLED, multiShellHostEnabled)
         put(KEY_SERVER_DRAWER_ENABLED, serverDrawerEnabled)
-        put(KEY_NEW_DESIGN_SETTINGS_ENABLED, newDesignSettingsEnabled)
         put(KEY_HOME_SERVER_AVATAR_ENABLED, homeServerAvatarEnabled)
         put(KEY_TRANSLATION_MODE, translationMode.storageKey)
         put(KEY_TRANSLATION_TARGET_LANGUAGE, translationTargetLanguage)
@@ -191,7 +185,6 @@ internal fun JsonObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPrefer
         composerSendKeyEnabled = optBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, false),
         multiShellHostEnabled = optBoolean(KEY_MULTI_SHELL_HOST_ENABLED, false),
         serverDrawerEnabled = optBoolean(KEY_SERVER_DRAWER_ENABLED, false),
-        newDesignSettingsEnabled = true,
         homeServerAvatarEnabled = optBoolean(KEY_HOME_SERVER_AVATAR_ENABLED, DEFAULT_HOME_SERVER_AVATAR_ENABLED),
         translationMode = TranslationModePreference.fromStorageKey(optString(KEY_TRANSLATION_MODE)),
         translationTargetLanguage =

@@ -224,9 +224,6 @@ internal fun channelSettingsCanStopAllAgents(channel: HomeChannelRow, serverRole
         channel.kind != ConversationKind.DirectMessage &&
         serverRoleCanStopAgents(serverRole)
 
-internal fun channelSettingsUsesStandalonePage(newDesignSettingsEnabled: Boolean): Boolean =
-    newDesignSettingsEnabled
-
 /** The channel's wire type, as `channelTypeSupportsAnnouncement` reads it ("channel", "private", "joint", "dm", ...). */
 internal fun channelSettingsAnnouncementChannelType(channel: HomeChannelRow): String =
     when (channel.kind) {

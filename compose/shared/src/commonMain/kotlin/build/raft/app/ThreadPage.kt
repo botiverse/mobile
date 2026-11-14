@@ -2828,13 +2828,6 @@ internal fun threadHeaderSettingsActionVisible(
 internal fun threadHeaderInlineActivityMuteVisible(surfaceKind: String): Boolean =
     surfaceKind != RaftThreadSurfaceKind.DirectMessage
 
-internal fun threadSettingsUsesStandalonePage(
-    surfaceKind: String,
-    newDesignSettingsEnabled: Boolean
-): Boolean =
-    surfaceKind != RaftThreadSurfaceKind.DirectMessage &&
-        channelSettingsUsesStandalonePage(newDesignSettingsEnabled)
-
 internal fun RaftThreadScreenPayload.joinChannelTargetId(): ChannelId? =
     (parentChannelId?.takeIf { it.isNotBlank() }
         ?: sourceThreadId?.takeIf { it.isNotBlank() }
@@ -13770,7 +13763,6 @@ private fun SharedThreadRouteContentContent(
             markdownReferencePendingActionId = markdownReferencePending.busyActionId,
             attachmentOpenStates = attachmentOpenStates,
             composerSendKeyEnabled = composerSendKeyEnabled,
-            newDesignSettingsEnabled = chatLayoutPreferenceStore::readNewDesignSettingsEnabledSync,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
             longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
             channelSettingsPanel = channelSettingsPanel,
@@ -17022,7 +17014,6 @@ private class ThreadPageContentCallbacks(
     val onLayoutGeneration: (width: Int, height: Int) -> Unit,
     val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
     val onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject?,
-    val newDesignSettingsEnabled: () -> Boolean,
     val mentionHandleResolver: (RaftThreadMessageItem) -> String?,
     val onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     val onSaveShareImage: suspend (String) -> JSONObject?,
@@ -17122,7 +17113,6 @@ fun ThreadPageContent(
     markdownReferencePendingActionId: String? = null,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     composerSendKeyEnabled: Boolean = false,
-    newDesignSettingsEnabled: () -> Boolean = { false },
     longMessageCollapseEnabled: Boolean = false,
     longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting? = null,
     /** The settings drawer's members strip and preferences (null: the drawer shows the name form and actions). */
@@ -17253,7 +17243,6 @@ fun ThreadPageContent(
                 onLayoutGeneration = onLayoutGeneration,
                 onComposerLayoutProbe = onComposerLayoutProbe,
                 onComposerPixelProbe = onComposerPixelProbe,
-                newDesignSettingsEnabled = newDesignSettingsEnabled,
                 mentionHandleResolver = mentionHandleResolver,
                 onExportShareImage = onExportShareImage,
                 onSaveShareImage = onSaveShareImage,
@@ -17379,7 +17368,6 @@ private fun ThreadPageContentContent(
     val markdownReferencePendingActionId = data.markdownReferencePendingActionId
     val attachmentOpenStates = data.attachmentOpenStates
     val composerSendKeyEnabled = data.composerSendKeyEnabled
-    val newDesignSettingsEnabled = callbacks.newDesignSettingsEnabled
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
     val longMessageCollapseConversationSetting = data.longMessageCollapseConversationSetting
     val channelSettingsPanel = data.channelSettingsPanel

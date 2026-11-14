@@ -150,18 +150,6 @@ class SettingsHomeSearchEntityPinTest {
                 surfaceKind = RaftThreadSurfaceKind.Channel
             )
         )
-        assertFalse(
-            threadSettingsUsesStandalonePage(
-                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
-                newDesignSettingsEnabled = true
-            )
-        )
-        assertTrue(
-            threadSettingsUsesStandalonePage(
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                newDesignSettingsEnabled = true
-            )
-        )
     }
 
     @Test

@@ -52,12 +52,11 @@ class RaftChatLayoutPreferencesTest {
             repository.setComposerSendKeyEnabled(true)
             repository.setMultiShellHostEnabled(true)
             repository.setServerDrawerEnabled(true)
-            repository.setNewDesignSettingsEnabled(true)
             repository.setHomeServerAvatarEnabled(true)
             repository.setTranslationMode(TranslationModePreference.Automatic)
             repository.setTranslationTargetLanguage("ja")
 
-            assertEquals(16, firstSnapshots.size)
+            assertEquals(15, firstSnapshots.size)
             assertEquals(firstSnapshots, secondSnapshots)
             firstSnapshots.last().let { snapshot ->
                 assertEquals(MyMessageAlignmentPreference.Right, snapshot.myMessageAlignment)
@@ -72,7 +71,6 @@ class RaftChatLayoutPreferencesTest {
                 assertTrue(snapshot.composerSendKeyEnabled)
                 assertTrue(snapshot.multiShellHostEnabled)
                 assertTrue(snapshot.serverDrawerEnabled)
-                assertTrue(snapshot.newDesignSettingsEnabled)
                 assertTrue(snapshot.homeServerAvatarEnabled)
                 assertEquals(TranslationModePreference.Automatic, snapshot.translationMode)
                 assertEquals("ja", snapshot.translationTargetLanguage)

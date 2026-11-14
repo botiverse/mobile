@@ -3341,8 +3341,6 @@
     <string name="push_preview_hidden_mention">Вас упомянули</string>
     <string name="push_preview_sender_only_message">%1$s: новое сообщение</string>
     <string name="push_preview_sender_only_mention">%1$s упоминает вас</string>
-    <string name="settings_mobile_new_design_settings">Новый дизайн настроек</string>
-    <string name="settings_mobile_new_design_settings_detail">Открывать новую отдельную страницу настроек канала. Если выключено, используется текущее окно настроек ветки.</string>
     <string name="home_adaptive_select_conversation">Выберите чат</string>
     <string name="composer_add_image">Добавить изображение</string>
     <string name="composer_take_photo">Сделать фото</string>

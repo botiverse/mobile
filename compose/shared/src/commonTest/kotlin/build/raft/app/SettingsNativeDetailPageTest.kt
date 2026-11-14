@@ -97,7 +97,7 @@ class SettingsNativeDetailPageTest {
                 assertNotNull(
                     settingsNativeDetailPageData(
                         page = SettingsNativeDetailPage.LocalFeatureOverride,
-                        itemId = "mobile_new_design_settings",
+                        itemId = "thread_markdown_single_paragraph_light_v0",
                         storeScope = storeScope,
                     )
                 )
@@ -105,7 +105,7 @@ class SettingsNativeDetailPageTest {
 
         assertNotNull(route)
         assertEquals(SettingsNativeDetailPage.LocalFeatureOverride, route.page)
-        assertEquals("mobile_new_design_settings", route.itemId)
+        assertEquals("thread_markdown_single_paragraph_light_v0", route.itemId)
         assertEquals(SharedSettingsDestination.Diagnostics, route.page.storeDestination)
     }
 
