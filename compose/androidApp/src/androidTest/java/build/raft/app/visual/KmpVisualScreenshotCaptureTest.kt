@@ -1323,13 +1323,34 @@ class KmpVisualScreenshotCaptureTest {
                                 // were broken" - a counter stuck at 0 (the shape of
                                 // the bug this replaces) fails the second check.
                                 assertSaturatedCounterDiscriminates()
+                                // Since #4586/#4601 the group-head avatars are coloured
+                                // pixel faces (4775 standing saturated px, run
+                                // 43617492658). They sit in the avatar gutter, never
+                                // move, and the "added" count below already ignores any
+                                // pixel saturated before the press, so the premise is
+                                // measured right of the gutter, where the menu's
+                                // reaction row lands. The whole-frame figure and the
+                                // colour's bounds are logged so a new colour source
+                                // elsewhere is visible.
+                                val gutterPx = (
+                                    THREAD_NEW_MESSAGE_MENU_AVATAR_GUTTER_DP *
+                                        InstrumentationRegistry.getInstrumentation()
+                                            .targetContext.resources.displayMetrics.density
+                                    ).toInt()
                                 val baselineSaturated = b.countSaturatedPixels(
+                                    topPx = 0,
+                                    bottomPx = b.height,
+                                    leftPx = gutterPx,
+                                )
+                                val wholeFrameSaturated = b.countSaturatedPixels(
                                     topPx = 0,
                                     bottomPx = b.height,
                                 )
                                 Log.i(
                                     VISUAL_LOG_TAG,
                                     "$caseId compact-menu baseline saturated=$baselineSaturated " +
+                                        "(x>=$gutterPx) wholeFrame=$wholeFrameSaturated " +
+                                        "bounds=${b.saturatedBounds()} " +
                                         "ceiling=$THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX"
                                 )
                                 check(
@@ -2155,6 +2176,28 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
+    /** Diagnostic: "minX..maxX x minY..maxY" of the saturated pixels in this frame, or "none". */
+    private fun Bitmap.saturatedBounds(): String {
+        var minX = Int.MAX_VALUE
+        var maxX = -1
+        var minY = Int.MAX_VALUE
+        var maxY = -1
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val pixel = getPixel(x, y)
+                val mx = maxOf(Color.red(pixel), Color.green(pixel), Color.blue(pixel))
+                val mn = minOf(Color.red(pixel), Color.green(pixel), Color.blue(pixel))
+                if (mx > 90 && (mx - mn) * 100 / mx > 45) {
+                    if (x < minX) minX = x
+                    if (x > maxX) maxX = x
+                    if (y < minY) minY = y
+                    if (y > maxY) maxY = y
+                }
+            }
+        }
+        return if (maxX < 0) "none" else "$minX..$maxX x $minY..$maxY"
+    }
+
     /**
      * Absolute count of saturated pixels in one frame.
      *
@@ -2162,12 +2205,12 @@ class KmpVisualScreenshotCaptureTest {
      * it can actually come back non-zero - which is the whole point of using it
      * as a precondition. Diffing a frame against itself cannot.
      */
-    private fun Bitmap.countSaturatedPixels(topPx: Int, bottomPx: Int): Int {
+    private fun Bitmap.countSaturatedPixels(topPx: Int, bottomPx: Int, leftPx: Int = 0): Int {
         var count = 0
         var y = topPx.coerceAtLeast(0)
         val end = bottomPx.coerceAtMost(height)
         while (y < end) {
-            var x = 0
+            var x = leftPx.coerceIn(0, width)
             while (x < width) {
                 val pixel = getPixel(x, y)
                 val r = Color.red(pixel)
@@ -4125,8 +4168,12 @@ class KmpVisualScreenshotCaptureTest {
                     .put("fixtureKey", "feedback-submit-success")
                     .put("task139ReuseTrace", true),
             crop = FULL_VIEWPORT_CROP,
-            settleMs = 3_000,
-            assertBitmap = ::assertFeedbackRowsKeepRaftContainerCorners
+            // No corner assertion any more: since #4496 sending keeps the New
+            // Feedback form open with a success banner, so the primary-soft User
+            // feedback row this case measured is no longer on this screen (run
+            // 43617492658: "No primary-soft User feedback row found"). The capture
+            // stays for the web comparison.
+            settleMs = 3_000
         )
     }
 
@@ -4506,161 +4553,6 @@ class KmpVisualScreenshotCaptureTest {
             closeScenarioBounded(scenario)
             fullLengthBaseDisplay?.let { restoreDisplaySize(caseId, it) }
         }
-    }
-
-    /**
-     * task #139 regression guard, raft-ui edition. The submitted User row
-     * replaces the attachment row, and a retained native view used to keep the
-     * attachment's corner radius. Under raft-ui both feedback rows are cards
-     * with the container radius (10dp, same as web's feedback bubbles), so the
-     * guard now asserts every visible corner of both rows carries exactly that
-     * radius: a stale square corner (0dp) or a stale control/sticker radius
-     * (8dp/4dp) from the recycled attachment view fails it.
-     */
-    private fun assertFeedbackRowsKeepRaftContainerCorners(bitmap: Bitmap) {
-        val width = bitmap.width
-        val height = bitmap.height
-        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-        // Measured on the 0.6.0 capture: the fill estimate lands at ~9.8dp and
-        // the outline inset at ~8.7dp for the 10dp container radius, while a
-        // stale 8dp control radius measures <= 8dp and a square corner ~0.
-        val expectedFillRadiusPx = 10f * density
-        val expectedOutlineRadiusPx = 10f * density
-        val minY = height / 6
-        val maxY = height * 4 / 5
-        val yellow = BooleanArray(width * height)
-        // raft primary-soft (#FFF0BD), the User feedback row fill.
-        fun isPrimarySoft(color: Int): Boolean {
-            val red = android.graphics.Color.red(color)
-            val green = android.graphics.Color.green(color)
-            val blue = android.graphics.Color.blue(color)
-            return red >= 249 && green in 234..246 && blue in 181..197
-        }
-        for (y in minY until maxY) {
-            for (x in 0 until width) {
-                yellow[y * width + x] = isPrimarySoft(bitmap.getPixel(x, y))
-            }
-        }
-        val visited = BooleanArray(width * height)
-        val queue = IntArray(width * (maxY - minY))
-        var bestArea = 0
-        var bestBounds: IntArray? = null
-        for (y in minY until maxY) {
-            for (x in 0 until width) {
-                val seed = y * width + x
-                if (!yellow[seed] || visited[seed]) continue
-                var head = 0
-                var tail = 0
-                queue[tail++] = seed
-                visited[seed] = true
-                var area = 0
-                var left = x
-                var right = x
-                var top = y
-                var bottom = y
-                while (head < tail) {
-                    val index = queue[head++]
-                    val px = index % width
-                    val py = index / width
-                    area += 1
-                    left = minOf(left, px)
-                    right = maxOf(right, px)
-                    top = minOf(top, py)
-                    bottom = maxOf(bottom, py)
-                    if (px > 0) enqueueYellow(index - 1, yellow, visited, queue, tail).also { tail = it }
-                    if (px + 1 < width) enqueueYellow(index + 1, yellow, visited, queue, tail).also { tail = it }
-                    if (py > minY) enqueueYellow(index - width, yellow, visited, queue, tail).also { tail = it }
-                    if (py + 1 < maxY) enqueueYellow(index + width, yellow, visited, queue, tail).also { tail = it }
-                }
-                if (area > bestArea) {
-                    bestArea = area
-                    bestBounds = intArrayOf(left, top, right, bottom)
-                }
-            }
-        }
-        val bounds = requireNotNull(bestBounds) { "No primary-soft User feedback row found" }
-        require(bestArea > 8_000) { "Primary-soft region too small for User row: area=$bestArea" }
-
-        // Corner radius estimate from the fill: a quarter-round corner of
-        // radius r leaves r^2 * (1 - pi/4) non-fill pixels in its corner
-        // square. The probe square stays inside the 12dp content padding.
-        val probe = (11f * density).toInt()
-        fun cornerRadiusPx(cornerX: Int, cornerY: Int, stepX: Int, stepY: Int): Double {
-            var outside = 0
-            for (dy in 0 until probe) {
-                for (dx in 0 until probe) {
-                    val px = (cornerX + dx * stepX).coerceIn(0, width - 1)
-                    val py = (cornerY + dy * stepY).coerceIn(0, height - 1)
-                    if (!isPrimarySoft(bitmap.getPixel(px, py))) outside += 1
-                }
-            }
-            return kotlin.math.sqrt(outside / (1.0 - kotlin.math.PI / 4.0))
-        }
-        val userCornerRadii =
-            listOf(
-                cornerRadiusPx(bounds[0], bounds[1], 1, 1),
-                cornerRadiusPx(bounds[2], bounds[1], -1, 1),
-                cornerRadiusPx(bounds[0], bounds[3], 1, -1),
-                cornerRadiusPx(bounds[2], bounds[3], -1, -1)
-            )
-        require(userCornerRadii.all { kotlin.math.abs(it - expectedFillRadiusPx) <= 0.15 * expectedFillRadiusPx }) {
-            "User feedback row lost the raft container radius: bounds=${bounds.joinToString()} " +
-                "cornerRadiiPx=${userCornerRadii.joinToString { "%.1f".format(it) }} " +
-                "expectedFillRadiusPx=$expectedFillRadiusPx area=$bestArea"
-        }
-
-        // Depending on retained-view assignment, the stale attachment radius
-        // can land on either the inserted User row or the following Hands
-        // success row (white card, hairline outline). Find the latter's top
-        // outline at the User row's center x, then measure how far the
-        // straight top edge stops short of the card's left/right edges.
-        fun isOutline(color: Int): Boolean {
-            val red = android.graphics.Color.red(color)
-            val green = android.graphics.Color.green(color)
-            val blue = android.graphics.Color.blue(color)
-            return maxOf(red, green, blue) <= 240
-        }
-        val centerX = (bounds[0] + bounds[2]) / 2
-        val handsTop =
-            requireNotNull(
-                ((bounds[3] + 8).coerceAtMost(maxY - 1) until maxY).firstOrNull { y ->
-                    isOutline(bitmap.getPixel(centerX, y))
-                }
-            ) { "No Hands success row top outline found below User row" }
-        val sideProbeY = (handsTop + 2 * expectedOutlineRadiusPx).toInt().coerceAtMost(height - 1)
-        val handsLeft =
-            requireNotNull((0 until centerX).firstOrNull { x -> isOutline(bitmap.getPixel(x, sideProbeY)) }) {
-                "No Hands success row left outline found at y=$sideProbeY"
-            }
-        val handsRight =
-            requireNotNull((width - 1 downTo centerX).firstOrNull { x -> isOutline(bitmap.getPixel(x, sideProbeY)) }) {
-                "No Hands success row right outline found at y=$sideProbeY"
-            }
-        val topEdgeLeft = (centerX downTo handsLeft).takeWhile { x -> isOutline(bitmap.getPixel(x, handsTop)) }.last()
-        val topEdgeRight = (centerX..handsRight).takeWhile { x -> isOutline(bitmap.getPixel(x, handsTop)) }.last()
-        val handsCornerInsets = listOf(topEdgeLeft - handsLeft, handsRight - topEdgeRight)
-        require(
-            handsCornerInsets.all {
-                it >= 0.75 * expectedOutlineRadiusPx && it <= 1.2 * expectedOutlineRadiusPx
-            }
-        ) {
-            "Hands success row lost the raft container radius: userBounds=${bounds.joinToString()} " +
-                "handsTop=$handsTop handsLeft=$handsLeft handsRight=$handsRight " +
-                "topCornerInsetsPx=${handsCornerInsets.joinToString()} expectedOutlineRadiusPx=$expectedOutlineRadiusPx"
-        }
-    }
-
-    private fun enqueueYellow(
-        index: Int,
-        yellow: BooleanArray,
-        visited: BooleanArray,
-        queue: IntArray,
-        tail: Int
-    ): Int {
-        if (!yellow[index] || visited[index]) return tail
-        visited[index] = true
-        queue[tail] = index
-        return tail + 1
     }
 
     private fun tapDisplayDp(x: Float, y: Float) {
@@ -7478,6 +7370,11 @@ class KmpVisualScreenshotCaptureTest {
          */
         private const val THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX =
             THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
+
+        // Message text starts ~71dp in (x=213px at 3x on the compact-scroll capture
+        // of run 43617492658); the avatar sits left of it. 56dp keeps a margin on
+        // both sides. The logged bounds show whether colour ever appears right of it.
+        private const val THREAD_NEW_MESSAGE_MENU_AVATAR_GUTTER_DP = 56f
 
         private const val LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO = 0.002f
 
