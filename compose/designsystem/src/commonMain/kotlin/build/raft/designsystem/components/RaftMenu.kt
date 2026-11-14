@@ -315,8 +315,10 @@ fun RaftMenuSeparator(modifier: Modifier = Modifier) {
  * 12dp in, a 16dp `foreground-hint` search glyph, the field type (16/24, so iOS doesn't
  * zoom into it) with a
  * `foreground-hint` [placeholder], and a `line-hairline` under it. It touches the
- * popup's edges, so focus (any focus: it is an input) draws the inset 2dp ink outline,
- * not the outer ring, which the popup would clip.
+ * popup's edges, so keyboard focus draws the inset 2dp ink outline, not the outer ring,
+ * which the popup would clip. A tap that focuses it (the keyboard comes up) draws nothing:
+ * raft-ui `has-focus-visible:keyboard:inset-ring-2` (artin 2026-11-14: in a phone's picker
+ * sheet the tapped search row wore a square black frame edge to edge).
  */
 @Composable
 fun RaftMenuSearchField(
@@ -362,7 +364,7 @@ internal fun RaftSearchRow(
                         // 40 with a finger; the shared 34dp row height under a fine pointer
                         // (sizing v12, raft-ui 0.65 desktop density).
                         .heightIn(min = RaftTheme.controls.rowHeight ?: 40.dp)
-                        .raftInsetFocusOutline(raftIsFocused(source), colors.foreground)
+                        .raftInsetFocusOutline(raftIsFocusVisible(source), colors.foreground)
                         .padding(horizontal = inset),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
