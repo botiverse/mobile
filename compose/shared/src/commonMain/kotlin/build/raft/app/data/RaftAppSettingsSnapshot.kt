@@ -42,6 +42,20 @@ internal fun LinkOpenMode.toRaftAppSetting(): RaftAppSettingLinkOpenMode =
         LinkOpenMode.InAppBrowser -> RaftAppSettingLinkOpenMode.InAppBrowser
     }
 
+/**
+ * Whether every value the snapshot carries is known. On an iPhone whose person never set the iOS
+ * native navigation switch, its value is the server flag, written only once the app has read the
+ * flags after sign-in ([RaftIosNativeNavFlag.recordServerEvaluation]); before that it would read
+ * off, and that day would not be reported again.
+ */
+internal fun raftAppSettingsSnapshotReady(
+    store: SharedPreferenceStore,
+    platform: RaftAppSettingsPlatform = currentRaftAppSettingsPlatform(),
+): Boolean =
+    !platform.iosNativeNav ||
+        RaftIosNativeNavFlag.localOverrideSetting(store) != null ||
+        store.getString(RaftIosNativeNavFlag.KEY_SERVER_LAST) != null
+
 /** `app_settings_snapshot` from the stored preferences (the same keys the Settings > Mobile cards write). */
 internal fun raftAppSettingsSnapshotProperties(
     store: SharedPreferenceStore,
@@ -74,6 +88,10 @@ internal fun raftAppSettingsSnapshotProperties(
  * The day is marked only when the server took it (or the account does not share usage data), so an
  * offline start tries again later the same day. Per install, not per account: another account the
  * same day sends nothing new; the row goes to the server signed in when it is sent.
+ *
+ * Ordering on an iPhone: sign-in, then the feature flags are read and the iOS native navigation
+ * flag is stored, then [onIosNativeNavFlagRead] tries again. Until that flag is known (and the
+ * person never set the switch) nothing is sent and no day is marked ([raftAppSettingsSnapshotReady]).
  */
 object RaftAppSettingsSnapshotReport {
     private const val SentDayKey = "productEvents:appSettingsSnapshot:utcDay"
@@ -102,6 +120,11 @@ object RaftAppSettingsSnapshotReport {
         maybeSend()
     }
 
+    /** The feature flags just stored the iOS native navigation flag: the snapshot may be complete now. */
+    fun onIosNativeNavFlagRead() {
+        maybeSend()
+    }
+
     private fun preferenceStore(): SharedPreferenceStore? = runCatching { raftSharedPreferenceStore() }.getOrNull()
 
     private fun now(): Long = ProcessRaftDatetimeFoundationOwner.nowEpochMillis()
@@ -116,6 +139,8 @@ object RaftAppSettingsSnapshotReport {
             if (last != null && now - last < RunGapMillis) return
             val store = preferenceStore() ?: return
             if (store.getString(SentDayKey) == utcDay(now)) return
+            // Not a run: wait for the flag (onIosNativeNavFlagRead) without starting the gap.
+            if (!raftAppSettingsSnapshotReady(store)) return
             lastRunStartedAtMillis = now
             sendJob = scope.launch { attempt(store) }
         }

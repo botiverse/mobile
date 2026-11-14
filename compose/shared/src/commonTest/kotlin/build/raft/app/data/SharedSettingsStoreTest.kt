@@ -866,6 +866,57 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun aSavedSettingChangeRecordsAppSettingChangedOnceAndNothingElse() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val recorded = mutableListOf<RaftAppSettingChangedProperties>()
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot())),
+                        chatLayoutPreferenceRepository =
+                            FakeChatLayoutPreferenceRepository(alignment = MyMessageAlignmentPreference.Left),
+                        linkOpenPreferenceRepository = FakeLinkOpenPreferenceRepository(),
+                        platformCapabilities = ConversationForwardCapableSettingsPlatformCapabilities
+                    ),
+                scope = scope,
+                onAppSettingChanged = { setting, previous, value, surface ->
+                    recorded += RaftAppSettingChangedProperties(setting, value, previous, surface)
+                }
+            )
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Mobile))
+
+        // Saved with a new value: one event, from the page that showed the card.
+        store.accept(SharedSettingsIntent.SetMessageAlignment("right", RaftAppSettingSurface.SettingsAppearance))
+        // The value it already has: no change, no event.
+        store.accept(SharedSettingsIntent.SetMessageAlignment("right"))
+        // A save that fails (an unknown value) keeps the previous value: no event.
+        store.accept(SharedSettingsIntent.SetLinkOpenMode("unsupported"))
+        // An on/off setting reports on / off.
+        store.accept(SharedSettingsIntent.SetNewMessageMenuEnabled(true))
+
+        assertEquals(
+            listOf(
+                RaftAppSettingChangedProperties(
+                    setting = RaftAppSettingKey.MessageAlignment,
+                    value = RaftAppSettingValue.Right,
+                    previousValue = RaftAppSettingValue.Left,
+                    surface = RaftAppSettingSurface.SettingsAppearance
+                ),
+                RaftAppSettingChangedProperties(
+                    setting = RaftAppSettingKey.NewMessageMenu,
+                    value = RaftAppSettingValue.On,
+                    previousValue = RaftAppSettingValue.Off,
+                    surface = RaftAppSettingSurface.SettingsMobile
+                ),
+            ),
+            recorded
+        )
+        scope.cancel()
+    }
+
+    @Test
     fun mobilePreferenceIntentsPersistAndEchoThroughSharedState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val notificationRepository = FakeNotificationPreferenceRepository(enabled = false)

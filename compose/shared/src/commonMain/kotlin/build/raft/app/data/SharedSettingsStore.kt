@@ -2026,6 +2026,10 @@ class SharedSettingsStore(
      * this mode never switches its own route to another page, it only emits the navigation effect.
      */
     private val standaloneNavigation: Boolean = false,
+    /** `app_setting_changed` (setting, previous, value, surface); tests record it instead. */
+    private val onAppSettingChanged:
+        (RaftAppSettingKey, RaftAppSettingValue, RaftAppSettingValue, RaftAppSettingSurface) -> Unit =
+        RaftProductEvents::appSettingChanged,
 ) {
     private val _state = MutableStateFlow(initialState)
     val state: StateFlow<SharedSettingsState> = _state.asStateFlow()
@@ -2109,7 +2113,7 @@ class SharedSettingsStore(
         val after = (_state.value.mobile as? ScreenLoadState.Content)?.data?.appSettingValue(change.first)
         // Only a saved write moves the snapshot: a failed one keeps the previous content.
         if (before != null && after != null && before != after) {
-            RaftProductEvents.appSettingChanged(change.first, previous = before, value = after, surface = change.second)
+            onAppSettingChanged(change.first, before, after, change.second)
         }
     }
 

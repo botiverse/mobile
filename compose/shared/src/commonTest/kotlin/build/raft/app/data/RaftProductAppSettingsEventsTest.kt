@@ -48,6 +48,20 @@ class RaftProductAppSettingsEventsTest {
     }
 
     @Test
+    fun anIphoneSnapshotWaitsUntilTheNativeNavFlagIsKnown() {
+        val iphone = RaftAppSettingsPlatform(linkOpenMode = true, conversationForwardGesture = true, iosNativeNav = true, multiShellHost = false)
+        val android = iphone.copy(conversationForwardGesture = false, iosNativeNav = false, multiShellHost = true)
+        val store = InMemoryRaftKeyValueStore()
+        assertEquals(true, raftAppSettingsSnapshotReady(store, android))
+        assertEquals(false, raftAppSettingsSnapshotReady(store, iphone))
+        build.raft.app.nav.RaftIosNativeNavFlag.recordServerEvaluation(store, MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY, true)
+        assertEquals(true, raftAppSettingsSnapshotReady(store, iphone))
+        val properties = raftAppSettingsSnapshotProperties(store, iphone)
+        assertEquals(true, properties.iosNativeNav)
+        assertEquals(false, properties.iosNativeNavChosen)
+    }
+
+    @Test
     fun aChangeIsOneEventWithItsSettingValuesAndSurface() = runTest {
         val transport = RecordingProductEventsTransport()
         val client = productEventsClient(transport).also { it.setSignedIn(ServerId("srv-a")) }
