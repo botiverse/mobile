@@ -177,8 +177,9 @@ class ChannelAnnouncementUiTest {
             onNodeWithTag(ChannelAnnouncementTestTags.StripCopyLink).assertDoesNotExist()
         }
 
+    /** slock #14461: for an editor, Replace and Remove are in a ⋯ menu at the row's end, not a row of buttons. */
     @Test
-    fun theDetailsRowOffersRemoveAndReplaceToAnEditor() =
+    fun anEditorFindsReplaceAndRemoveInTheRowsMenu() =
         runRobolectricComposeUiTest {
             var replaces = 0
             var removes = 0
@@ -193,22 +194,24 @@ class ChannelAnnouncementUiTest {
                     onRemove = { removes++ },
                 )
             }
+            onNodeWithTag(ChannelAnnouncementTestTags.DetailsReplace).assertDoesNotExist()
+            onNodeWithTag(ChannelAnnouncementTestTags.DetailsRemove).assertDoesNotExist()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsItem).performClick()
+            onNodeWithTag(ChannelAnnouncementTestTags.DetailsActions).performClick()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsReplace).performClick()
+            onNodeWithTag(ChannelAnnouncementTestTags.DetailsReplace).assertDoesNotExist()
+            onNodeWithTag(ChannelAnnouncementTestTags.DetailsActions).performClick()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsRemove).performClick()
             runOnIdle {
-                assertEquals(1, opens)
+                assertEquals(1, opens, "⋯ is a button of its own: pressing it doesn't open the announcement")
                 assertEquals(1, replaces)
                 assertEquals(1, removes)
             }
         }
 
-    /**
-     * raft-ui 0.95.1 (raft-design #1201): the item opens, so the row of Remove and Replace under it
-     * keeps its top inset (and a hairline): the item's press fill doesn't end against the buttons.
-     */
+    /** ⋯ sits on the row's end, inside its height, and the row keeps room for it (web `pe-14`). */
     @Test
-    fun removeAndReplaceSitBelowTheItemsPressAreaWithTheirTopInset() =
+    fun theMenuButtonSitsOnTheRowsEnd() =
         runRobolectricComposeUiTest {
             show {
                 ChannelAnnouncementDetailsRow(
@@ -221,9 +224,9 @@ class ChannelAnnouncementUiTest {
                 )
             }
             val item = onNodeWithTag(ChannelAnnouncementTestTags.DetailsItem).getBoundsInRoot()
-            val replace = onNodeWithTag(ChannelAnnouncementTestTags.DetailsReplace).getBoundsInRoot()
-            val gap = replace.top - item.bottom
-            assertTrue(gap >= 12.dp, "12dp inset (and the 1dp hairline) between the item and its buttons: $gap")
+            val actions = onNodeWithTag(ChannelAnnouncementTestTags.DetailsActions).getBoundsInRoot()
+            assertTrue(actions.top >= item.top && actions.bottom <= item.bottom, "⋯ inside the row's height: $actions in $item")
+            assertTrue(item.right - actions.right <= 12.dp, "⋯ at the row's end: ${item.right - actions.right}")
         }
 
     @Test

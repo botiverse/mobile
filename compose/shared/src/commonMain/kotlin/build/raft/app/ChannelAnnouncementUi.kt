@@ -6,10 +6,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,7 +51,6 @@ import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuSeparator
-import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.text.RaftText
@@ -78,6 +79,7 @@ internal object ChannelAnnouncementTestTags {
     const val DetailsSet = "channel-settings-announcement-set"
     const val DetailsReplace = "channel-settings-announcement-replace"
     const val DetailsRemove = "channel-settings-announcement-remove"
+    const val DetailsActions = "channel-settings-announcement-actions"
     const val PickerConfirm = "channel-settings-announcement-picker-confirm"
     const val ReplaceConfirm = "channel-settings-announcement-replace-confirm"
     const val RemoveConfirm = "channel-settings-announcement-remove-confirm"
@@ -274,8 +276,8 @@ internal sealed interface ChannelAnnouncementPickerView {
 
 /**
  * The Announcement row of the channel details, after the members (web `ChannelAnnouncementField`):
- * with an announcement, the Artifact itself (opens it) and, for who may change it, Remove (ghost)
- * then Replace; without, for who may set one, a line on what it is for and Set announcement;
+ * with an announcement, the Artifact itself (opens it, with a chevron); for who may change it, a ⋯
+ * in the chevron's place whose menu has Replace and Remove (slock #14461, raft-design #1212); without, for who may set one, a line on what it is for and Set announcement;
  * nothing for anyone else, nor before the first read.
  */
 @Composable
@@ -300,38 +302,24 @@ internal fun ChannelAnnouncementDetailsRow(
                     channelAnnouncementAuthorName(announcement.updatedBy.name),
                     raftRelativeTimestampLabel(announcement.updatedAt),
                 )
-            RaftListRow(
-                title = announcement.title,
-                modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsItem),
-                onClick = onOpen,
-                variant = RaftListRowVariant.Plain,
-                subtitle = meta,
-                leading = { RaftSlotIcon(RaftLucideIconName.Megaphone, size = 20.dp) },
-                trailing = { RaftListRowChevron() },
-            )
             if (canEdit) {
-                // A row that belongs to the item above (ListRow `attached`). The item is a target (it
-                // opens), so the row keeps its hairline and top inset (raft-ui 0.95.1, raft-design
-                // #1201): without them the item's press fill ended on an edge you couldn't see, right
-                // against Remove and Replace.
-                RaftSeparator(Modifier.padding(start = 16.dp))
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                ) {
-                    RaftButton(
-                        text = stringResource(Res.string.channel_announcement_details_remove),
-                        onClick = onRemove,
-                        modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsRemove),
-                        variant = RaftButtonVariant.Ghost,
-                    )
-                    RaftButton(
-                        text = stringResource(Res.string.channel_announcement_details_replace),
-                        onClick = onReplace,
-                        modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsReplace),
-                        variant = RaftButtonVariant.Default,
-                    )
-                }
+                ChannelAnnouncementDetailsItemWithActions(
+                    title = announcement.title,
+                    meta = meta,
+                    onOpen = onOpen,
+                    onReplace = onReplace,
+                    onRemove = onRemove,
+                )
+            } else {
+                RaftListRow(
+                    title = announcement.title,
+                    modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsItem),
+                    onClick = onOpen,
+                    variant = RaftListRowVariant.Plain,
+                    subtitle = meta,
+                    leading = { RaftSlotIcon(RaftLucideIconName.Megaphone, size = 20.dp) },
+                    trailing = { RaftListRowChevron() },
+                )
             }
         } else {
             RaftListRow(
@@ -343,7 +331,7 @@ internal fun ChannelAnnouncementDetailsRow(
                 leading = { RaftSlotIcon(RaftLucideIconName.Megaphone, size = 20.dp) },
             )
             // On a phone the button goes under the line (web: at its end, which leaves the text a few
-            // words a line at 390dp), in a row that belongs to it, like Remove and Replace.
+            // words a line at 390dp), in a row that belongs to it.
             Row(
                 Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.End,
@@ -358,6 +346,72 @@ internal fun ChannelAnnouncementDetailsRow(
         }
     }
 }
+
+/**
+ * The announcement row for who may change it (web `AnnouncementItem` with `actions`, slock #14461):
+ * the row opens the announcement; ⋯ takes the chevron's place, on top of the row's end as a button
+ * of its own, never inside the row's target (raft-ui InboxItem's pattern). The row keeps room for
+ * it so its text never runs under it, and keeps its hover fill while the menu is open. The menu has
+ * Replace and Remove, neither coloured: the confirmation carries the consequence (DropdownMenu's rule).
+ */
+@Composable
+private fun ChannelAnnouncementDetailsItemWithActions(
+    title: String,
+    meta: String,
+    onOpen: () -> Unit,
+    onReplace: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val colors = RaftTheme.colors
+    var open by remember { mutableStateOf(false) }
+    val actionsLabel = stringResource(Res.string.channel_announcement_details_actions)
+    Box(Modifier.fillMaxWidth()) {
+        RaftListRow(
+            title = title,
+            modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsItem),
+            onClick = onOpen,
+            variant = RaftListRowVariant.Plain,
+            subtitle = meta,
+            leading = { RaftSlotIcon(RaftLucideIconName.Megaphone, size = 20.dp) },
+            // Room for ⋯ (web `pe-14`), so the title and the line under it end before it.
+            trailing = { Spacer(Modifier.width(ChannelAnnouncementActionsRoom)) },
+            menuOpen = open,
+        )
+        Box(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) {
+            RaftIconButton(
+                onClick = { open = true },
+                tooltip = actionsLabel,
+                modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsActions),
+                variant = RaftButtonVariant.Ghost,
+            ) {
+                RaftLucideIcon(RaftLucideIconName.Ellipsis, Modifier.size(16.dp), color = raftArgbHex(colors.foregroundMuted))
+            }
+            RaftDropdownMenu(expanded = open, onDismissRequest = { open = false }, alignEnd = true) {
+                RaftMenuItem(
+                    text = stringResource(Res.string.channel_announcement_details_replace),
+                    onClick = {
+                        open = false
+                        onReplace()
+                    },
+                    modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsReplace),
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Replace) },
+                )
+                RaftMenuItem(
+                    text = stringResource(Res.string.channel_announcement_details_remove),
+                    onClick = {
+                        open = false
+                        onRemove()
+                    },
+                    modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsRemove),
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.X) },
+                )
+            }
+        }
+    }
+}
+
+/** What the row's end keeps clear for ⋯: the button (32) past the row's own end padding, plus a gap. */
+private val ChannelAnnouncementActionsRoom = 32.dp
 
 /** A refused or failed change, in the dialog: the server's sentence (else the generic one) and the trace id. */
 @Composable

@@ -4500,6 +4500,7 @@
     <string name="channel_announcement_details_set">設定公告</string>
     <string name="channel_announcement_details_replace">取代</string>
     <string name="channel_announcement_details_remove">移除</string>
+    <string name="channel_announcement_details_actions">公告操作</string>
     <string name="channel_announcement_details_meta">v%1$s · %2$s 更新於 %3$s</string>
     <string name="channel_announcement_picker_set_title">設定公告</string>
     <string name="channel_announcement_picker_replace_title">取代公告</string>

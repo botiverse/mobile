@@ -257,6 +257,7 @@ LUCIDE_ICONS = [
     "artifact",
     "redo-2",
     "repeat",
+    "replace",
     "rotate-ccw",
     "rotate-cw",
     "route",

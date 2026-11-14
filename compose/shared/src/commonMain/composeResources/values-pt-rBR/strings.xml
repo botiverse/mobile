@@ -4500,6 +4500,7 @@
     <string name="channel_announcement_details_set">Definir aviso</string>
     <string name="channel_announcement_details_replace">Substituir</string>
     <string name="channel_announcement_details_remove">Remover</string>
+    <string name="channel_announcement_details_actions">Ações do aviso</string>
     <string name="channel_announcement_details_meta">v%1$s · Atualizado por %2$s · %3$s</string>
     <string name="channel_announcement_picker_set_title">Definir aviso</string>
     <string name="channel_announcement_picker_replace_title">Substituir aviso</string>

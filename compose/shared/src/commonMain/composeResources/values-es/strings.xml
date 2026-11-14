@@ -4500,6 +4500,7 @@
     <string name="channel_announcement_details_set">Establecer anuncio</string>
     <string name="channel_announcement_details_replace">Reemplazar</string>
     <string name="channel_announcement_details_remove">Quitar</string>
+    <string name="channel_announcement_details_actions">Acciones del anuncio</string>
     <string name="channel_announcement_details_meta">v%1$s · Actualizado por %2$s · %3$s</string>
     <string name="channel_announcement_picker_set_title">Establecer anuncio</string>
     <string name="channel_announcement_picker_replace_title">Reemplazar anuncio</string>

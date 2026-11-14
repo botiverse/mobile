@@ -4769,6 +4769,7 @@
     <string name="channel_announcement_details_set">Set announcement</string>
     <string name="channel_announcement_details_replace">Replace</string>
     <string name="channel_announcement_details_remove">Remove</string>
+    <string name="channel_announcement_details_actions">Announcement actions</string>
     <string name="channel_announcement_details_meta">v%1$s · Updated by %2$s · %3$s</string>
     <string name="channel_announcement_picker_set_title">Set announcement</string>
     <string name="channel_announcement_picker_replace_title">Replace announcement</string>
