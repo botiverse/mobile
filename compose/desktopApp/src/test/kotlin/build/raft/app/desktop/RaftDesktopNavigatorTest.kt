@@ -78,11 +78,13 @@ class RaftDesktopNavigatorTest {
     }
 
     @Test fun `every entry has its own content key, even for the same page and data`() {
+        // The same route right on top is a no-op (task #151); under another page it is a new entry.
         navigator.open("thread", data("id" to "t1"), from = null)
+        navigator.open("thread", data("id" to "t2"), from = null)
         navigator.open("thread", data("id" to "t1"), from = null)
         val keys = navigator.pages.map { it.contentKey }
         assertEquals(keys.size, keys.toSet().size)
-        assertTrue(keys.takeLast(2).all { it.startsWith("thread#") })
+        assertTrue(keys.takeLast(3).all { it.startsWith("thread#") })
     }
 
     @Test fun `pages carry the host time context`() {

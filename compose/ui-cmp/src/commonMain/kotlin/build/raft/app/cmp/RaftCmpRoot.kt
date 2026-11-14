@@ -15,18 +15,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import kotlin.time.TimeSource
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.LocalRaftPageArgs
 import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftCmpPageArgs
+import build.raft.app.cmp.host.RaftPageOpenGuard
 import build.raft.designsystem.components.LocalRaftPageCoverSignal
 import build.raft.designsystem.components.LocalRaftStatusBarBackdrop
 import build.raft.designsystem.components.RaftDismissOnPageCover
@@ -100,7 +105,22 @@ fun ProvideRaftPageCover(
     coverSignal: RaftPageCoverSignal,
     content: @Composable () -> Unit,
 ) {
-    val pageHost = remember(host, coverSignal) { host.firingPageCover(coverSignal) }
+    val scope = rememberCoroutineScope()
+    val pageHost =
+        remember(host, coverSignal) {
+            val origin = TimeSource.Monotonic.markNow()
+            val guard =
+                RaftPageOpenGuard(
+                    now = { origin.elapsedNow().inWholeMilliseconds },
+                    schedule = { delayMillis, block ->
+                        scope.launch {
+                            delay(delayMillis)
+                            block()
+                        }
+                    },
+                )
+            host.firingPageCover(coverSignal, guard)
+        }
     CompositionLocalProvider(
         LocalRaftHost provides pageHost,
         LocalRaftPageCoverSignal provides coverSignal,
@@ -108,11 +128,14 @@ fun ProvideRaftPageCover(
     )
 }
 
-/** [this] host with a navigator that fires [signal] before it opens a page; the rest unchanged. */
-internal fun RaftCmpHost.firingPageCover(signal: RaftPageCoverSignal): RaftCmpHost =
+/**
+ * [this] host with a navigator that fires [signal] before it opens a page, opens through [guard]
+ * (a repeat of the push still running is dropped: task #151), the rest unchanged.
+ */
+internal fun RaftCmpHost.firingPageCover(signal: RaftPageCoverSignal, guard: RaftPageOpenGuard?): RaftCmpHost =
     RaftCmpHost(
         capabilities = capabilities,
-        navigator = RaftPageCoverNavigator(navigator, signal),
+        navigator = RaftPageCoverNavigator(navigator, signal, guard),
         bridgeTransport = bridgeTransport,
         events = events,
         childPageLoads = childPageLoads,
@@ -121,13 +144,21 @@ internal fun RaftCmpHost.firingPageCover(signal: RaftPageCoverSignal): RaftCmpHo
 private class RaftPageCoverNavigator(
     private val platform: RaftCmpNavigator,
     private val signal: RaftPageCoverSignal,
+    private val guard: RaftPageOpenGuard?,
 ) : RaftCmpNavigator {
     override fun openPage(pageName: String, pageData: JsonObject) {
+        if (guard == null) push(pageName, pageData) else guard.open(pageName, pageData, ::push)
+    }
+
+    private fun push(pageName: String, pageData: JsonObject) {
         signal.fire()
         platform.openPage(pageName, pageData)
     }
 
-    override fun closePage() = platform.closePage()
+    override fun closePage() {
+        guard?.cancelPending()
+        platform.closePage()
+    }
 }
 
 @Composable
