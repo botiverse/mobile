@@ -151,15 +151,29 @@ async function waitFor(description, matcher, { timeoutMs = 60_000, intervalMs = 
   stop(`timed out after ${Math.round(timeoutMs / 1000)}s waiting for ${description}; on screen: ${visible || "(nothing labelled)"}`);
 }
 const PLACEHOLDERS = ["https://raft.company.com", "https://api.raft.company.com"];
-async function typeInto(field, value) {
-  tapNode(field);
-  await sleep(500);
-  // A re-run finds the last addresses (an empty field reports its placeholder): clear them in one go.
-  if (field.text && !PLACEHOLDERS.includes(field.text.trim())) {
-    shell(`input keyevent KEYCODE_MOVE_END ${"KEYCODE_DEL ".repeat(field.text.length + 5)}`, { timeoutMs: 60_000 });
+const editTexts = () => nodes().filter((n) => n.cls === "android.widget.EditText" && n.bounds).sort((a, b) => a.bounds[1] - b.bounds[1]);
+// Compose text fields drop characters from a long injected `input text`: type in short chunks and
+// read the field back; clear and retype if it still came out wrong.
+async function typeInto(fieldIndex, value) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const field = editTexts()[fieldIndex];
+    if (!field) stop(`text field ${fieldIndex + 1} is gone`);
+    tapNode(field);
+    await sleep(500);
+    if (field.text && !PLACEHOLDERS.includes(field.text.trim())) {
+      shell(`input keyevent KEYCODE_MOVE_END ${"KEYCODE_DEL ".repeat(field.text.length + 5)}`, { timeoutMs: 60_000 });
+      await sleep(300);
+    }
+    for (const chunk of value.replace(/'/g, "").match(/.{1,6}/g) ?? []) {
+      shell(`input text '${chunk}'`);
+      await sleep(250);
+    }
+    await sleep(500);
+    const typed = editTexts()[fieldIndex]?.text ?? "";
+    if (typed === value) return;
+    log(`field ${fieldIndex + 1} reads ${typed.length} of ${value.length} characters after attempt ${attempt}; retyping`);
   }
-  shell(`input text '${value.replace(/'/g, "")}'`);
-  await sleep(500);
+  stop(`could not type ${value} into text field ${fieldIndex + 1}`);
 }
 
 // ---------- evidence ----------
@@ -345,12 +359,10 @@ async function main() {
         // The product's own self-hosted sheet (PrivateDeploymentSheet): web + API address, Save.
         await waitFor("the self-hosted entry", "Sign in to a self-hosted server").then(tapNode);
         await waitFor('the "Self-hosted server" dialog', "Self-hosted server");
-        let fields = nodes().filter((n) => n.cls === "android.widget.EditText" && n.bounds);
-        if (fields.length < 2) stop(`the self-hosted dialog shows ${fields.length} text fields, expected 2`);
-        fields.sort((a, b) => a.bounds[1] - b.bounds[1]);
-        await typeInto(fields[0], WEB_URL);
-        fields = nodes().filter((n) => n.cls === "android.widget.EditText" && n.bounds).sort((a, b) => a.bounds[1] - b.bounds[1]);
-        await typeInto(fields[1], new URL(API_BASE).origin);
+        const count = editTexts().length;
+        if (count < 2) stop(`the self-hosted dialog shows ${count} text fields, expected 2`);
+        await typeInto(0, WEB_URL);
+        await typeInto(1, new URL(API_BASE).origin);
         await sleep(800);
         let save = find(nodes(), (n) => n.text === "Save" && n.enabled);
         if (!save) {
