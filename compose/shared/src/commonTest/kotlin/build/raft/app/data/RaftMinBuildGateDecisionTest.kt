@@ -122,4 +122,18 @@ class RaftMinBuildGateDecisionTest {
         assertEquals(RaftInstallChannelLatest.Unknown, raftAppStoreLatest(null, currentBuild = 12_500_004L))
         assertEquals(RaftInstallChannelLatest.Unknown, raftAppStoreLatest(listing, currentBuild = 1L))
     }
+
+    @Test
+    fun theEffectiveThresholdIsTheHighestServerReadingInAnyOrder() {
+        val forward = linkedMapOf("server-a" to 12_000_000L, "server-b" to 12_200_000L, "server-c" to 12_100_000L)
+        val backward = LinkedHashMap(forward.entries.reversed().associate { it.key to it.value })
+        listOf(forward, backward).forEach { readings ->
+            assertEquals(RaftMinBuildGateEffective(12_200_000L, "server-b"), raftMinBuildGateEffectiveThreshold(readings), "$readings")
+        }
+        // A tie names the smallest server id, so the log line does not depend on order either.
+        val tie = mapOf("server-z" to 12_200_000L, "server-b" to 12_200_000L)
+        assertEquals(RaftMinBuildGateEffective(12_200_000L, "server-b"), raftMinBuildGateEffectiveThreshold(tie))
+        assertEquals(RaftMinBuildGateEffective(12_200_000L, "server-b"), raftMinBuildGateEffectiveThreshold(LinkedHashMap(tie.entries.reversed().associate { it.key to it.value })))
+        assertNull(raftMinBuildGateEffectiveThreshold(emptyMap()))
+    }
 }

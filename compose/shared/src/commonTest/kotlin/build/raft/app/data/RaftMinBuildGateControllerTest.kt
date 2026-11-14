@@ -111,11 +111,12 @@ class RaftMinBuildGateControllerTest {
         gate.onEvaluation(server, key, enabled = true, variant = "12000000")
         advanceUntilIdle()
         assertEquals(RaftMinBuildGateDecision.Block(12_000_000L, 12_600_000L, url), gate.decision.value)
-        assertEquals(server, gate.lastEvaluatedServer)
+        assertEquals(listOf(server), gate.serversToRefetch)
 
         gate.onSignedOut()
         assertEquals(RaftMinBuildGateDecision.None, gate.decision.value)
-        assertEquals(null, gate.lastEvaluatedServer)
+        assertEquals(emptyList(), gate.serversToRefetch)
+        assertEquals(null, gate.effective)
     }
 
     @Test
@@ -156,5 +157,57 @@ class RaftMinBuildGateControllerTest {
         advanceUntilIdle()
         assertEquals(4, channel.calls)
         assertEquals(RaftMinBuildGateDecision.Block(12_100_000L, 12_600_000L, url), gate.decision.value)
+    }
+
+    @Test
+    fun theHighestServerThresholdWinsWhateverOrderTheReadingsArrive() = runTest {
+        val serverA = ServerId("server-a")
+        val serverB = ServerId("server-b")
+        // A asks for 1.20.0, B for 1.22.0; the channel offers 1.26.0.
+        val readings =
+            listOf(
+                Triple(serverA, true, "12000000"),
+                Triple(serverB, true, "12200000"),
+            )
+        listOf(readings, readings.reversed()).forEachIndexed { order, sequence ->
+            val gate = controller(FakeChannel { RaftInstallChannelLatest.Available(12_600_000L, url) })
+            sequence.forEach { (serverId, enabled, variant) -> gate.onEvaluation(serverId, key, enabled, variant) }
+            advanceUntilIdle()
+            assertEquals(RaftMinBuildGateEffective(12_200_000L, "server-b"), gate.effective, "order $order")
+            assertEquals(RaftMinBuildGateDecision.Block(12_200_000L, 12_600_000L, url), gate.decision.value, "order $order")
+
+            // B turns its flag off: only B's reading goes; A's threshold is in force again.
+            gate.onEvaluation(serverB, key, enabled = false, variant = null)
+            advanceUntilIdle()
+            assertEquals(RaftMinBuildGateEffective(12_000_000L, "server-a"), gate.effective, "order $order")
+            assertEquals(RaftMinBuildGateDecision.Block(12_000_000L, 12_600_000L, url), gate.decision.value, "order $order")
+
+            // An invalid variant on A clears A as well: no gate.
+            gate.onEvaluation(serverA, key, enabled = true, variant = "1.20.0")
+            advanceUntilIdle()
+            assertEquals(null, gate.effective, "order $order")
+            assertEquals(RaftMinBuildGateDecision.None, gate.decision.value, "order $order")
+        }
+    }
+
+    @Test
+    fun leavingAServerDropsOnlyItsReading() = runTest {
+        val serverA = ServerId("server-a")
+        val serverB = ServerId("server-b")
+        val gate = controller(FakeChannel { RaftInstallChannelLatest.Available(12_600_000L, url) })
+        gate.onEvaluation(serverA, key, enabled = true, variant = "12000000")
+        gate.onEvaluation(serverB, key, enabled = true, variant = "12200000")
+        advanceUntilIdle()
+        assertEquals(RaftMinBuildGateEffective(12_200_000L, "server-b"), gate.effective)
+
+        gate.onServerLeft(serverB)
+        advanceUntilIdle()
+        assertEquals(RaftMinBuildGateEffective(12_000_000L, "server-a"), gate.effective)
+        assertEquals(RaftMinBuildGateDecision.Block(12_000_000L, 12_600_000L, url), gate.decision.value)
+        assertEquals(listOf(serverA), gate.serversToRefetch)
+
+        gate.onServerLeft(serverA)
+        assertEquals(null, gate.effective)
+        assertEquals(RaftMinBuildGateDecision.None, gate.decision.value)
     }
 }

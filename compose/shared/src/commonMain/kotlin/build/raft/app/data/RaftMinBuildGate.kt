@@ -143,8 +143,17 @@ fun decideRaftMinBuildGate(
     currentBuild: Long?,
     channel: RaftInstallChannelLatest,
     fallbackUpdateUrl: String? = null,
+): RaftMinBuildGateDecision =
+    decideRaftMinBuildGateForThreshold(raftMinBuildGateThreshold(flagEnabled, variant), currentBuild, channel, fallbackUpdateUrl)
+
+/** [decideRaftMinBuildGate] for an already resolved [threshold] (null = no gate). */
+fun decideRaftMinBuildGateForThreshold(
+    threshold: Long?,
+    currentBuild: Long?,
+    channel: RaftInstallChannelLatest,
+    fallbackUpdateUrl: String? = null,
 ): RaftMinBuildGateDecision {
-    val threshold = raftMinBuildGateThreshold(flagEnabled, variant) ?: return RaftMinBuildGateDecision.None
+    threshold ?: return RaftMinBuildGateDecision.None
     val current = currentBuild?.takeIf { it >= RAFT_MIN_BUILD_GATE_THRESHOLD_FLOOR } ?: return RaftMinBuildGateDecision.None
     if (current >= threshold) return RaftMinBuildGateDecision.None
     val fallback = fallbackUpdateUrl?.trim()?.takeIf { it.isNotEmpty() }
@@ -158,16 +167,35 @@ fun decideRaftMinBuildGate(
     return RaftMinBuildGateDecision.Banner(threshold, fallback)
 }
 
+/** The threshold in force and the server whose reading set it. */
+data class RaftMinBuildGateEffective(val threshold: Long, val serverId: String)
+
+/**
+ * The effective threshold across servers (pure): the highest valid threshold among the per-server
+ * readings ([thresholdsByServer], server id -> that server's valid threshold). A tie names the
+ * smallest server id, so the answer depends only on the readings, never on their arrival order.
+ */
+fun raftMinBuildGateEffectiveThreshold(thresholdsByServer: Map<String, Long>): RaftMinBuildGateEffective? =
+    thresholdsByServer.entries
+        .maxWithOrNull(compareBy<Map.Entry<String, Long>> { it.value }.thenByDescending { it.key })
+        ?.let { RaftMinBuildGateEffective(threshold = it.value, serverId = it.key) }
+
 /**
  * Follows this OS's gate flag through the existing flag client: every accepted evaluation of it
  * ([onEvaluation], fed by [SharedServerFeatureFlags]' observer, so app start / server select, the
  * periodic refresh, `server:features-changed` pushes and reconnects) and the app returning to the
  * foreground ([onForeground], which also asks for a flag refetch). Below the threshold it asks the
  * install channel, at most once per [channelCacheMillis] for the same threshold unless the app came
- * back to the foreground, and publishes [decideRaftMinBuildGate]'s answer to [decision].
+ * back to the foreground, and publishes [decideRaftMinBuildGateForThreshold]'s answer to [decision].
  *
- * Until the channel answers the decision stays what it was for the same threshold, else None. Flag
- * off (or turned off) publishes None at once, so an open block page goes away on the next read.
+ * Flags are evaluated per server: the controller keeps one reading per server (only valid
+ * thresholds are kept; an evaluation that is off or invalid clears that server's reading), and the
+ * effective threshold is the highest of them ([raftMinBuildGateEffectiveThreshold]), so the result
+ * depends only on the current readings, not on the order they arrived. Leaving a server
+ * ([onServerLeft]) clears its reading; sign-out clears all of them.
+ *
+ * Until the channel answers the decision stays what it was for the same threshold, else None. With
+ * no reading left it publishes None at once, so an open block page goes away on the next read.
  */
 class RaftMinBuildGateController(
     private val scope: CoroutineScope,
@@ -179,13 +207,14 @@ class RaftMinBuildGateController(
     private val channelTimeoutMillis: Long = RAFT_MIN_BUILD_GATE_CHANNEL_TIMEOUT_MILLIS,
     private val channelCacheMillis: Long = RAFT_MIN_BUILD_GATE_CHANNEL_CACHE_MILLIS,
 ) {
-    private class Reading(val enabled: Boolean, val variant: String?)
-
     private class Checked(val threshold: Long, val latest: RaftInstallChannelLatest, val fallbackUrl: String?, val atMillis: Long)
 
     private val lock = SynchronizedObject()
-    private var reading: Reading? = null
+
+    /** Server id -> that server's valid threshold. */
+    private val thresholds = mutableMapOf<String, Long>()
     private var lastServerId: ServerId? = null
+    private var lastEffective: RaftMinBuildGateEffective? = null
     private var checked: Checked? = null
     private var checking: Job? = null
     private var checkingThreshold: Long? = null
@@ -194,17 +223,36 @@ class RaftMinBuildGateController(
     private val decisionState = MutableStateFlow<RaftMinBuildGateDecision>(RaftMinBuildGateDecision.None)
     val decision: StateFlow<RaftMinBuildGateDecision> = decisionState.asStateFlow()
 
-    /** The server whose evaluation last carried the gate flag (what a foreground refetch asks). */
-    val lastEvaluatedServer: ServerId?
-        get() = synchronized(lock) { lastServerId }
+    /** The threshold in force now and the server whose reading set it, or null (no gate). */
+    val effective: RaftMinBuildGateEffective?
+        get() = synchronized(lock) { raftMinBuildGateEffectiveThreshold(thresholds) }
+
+    /** The servers a foreground refetch asks: every server holding a reading, and the last one evaluated. */
+    val serversToRefetch: List<ServerId>
+        get() =
+            synchronized(lock) {
+                (thresholds.keys.map { ServerId(it) } + listOfNotNull(lastServerId)).distinctBy { it.value }
+            }
 
     fun onEvaluation(serverId: ServerId, key: String, enabled: Boolean, variant: String?) {
         if (flagKey == null || key != flagKey) return
+        val id = serverId.value.trim().takeIf { it.isNotEmpty() } ?: return
+        val threshold = raftMinBuildGateThreshold(enabled, variant)
         synchronized(lock) {
-            reading = Reading(enabled, variant)
-            lastServerId = serverId
+            if (threshold != null) thresholds[id] = threshold else thresholds.remove(id)
+            lastServerId = ServerId(id)
         }
         refresh(force = false, reason = "evaluation")
+    }
+
+    /** This account no longer has [serverId] (left, removed, or the server is gone): drop its reading. */
+    fun onServerLeft(serverId: ServerId) {
+        val removed =
+            synchronized(lock) {
+                if (lastServerId?.value == serverId.value) lastServerId = null
+                thresholds.remove(serverId.value) != null
+            }
+        if (removed) refresh(force = false, reason = "server_left")
     }
 
     fun onForeground() {
@@ -213,8 +261,9 @@ class RaftMinBuildGateController(
 
     fun onSignedOut() {
         synchronized(lock) {
-            reading = null
+            thresholds.clear()
             lastServerId = null
+            lastEffective = null
             checked = null
             cancelCheckLocked()
         }
@@ -232,11 +281,19 @@ class RaftMinBuildGateController(
         val current = currentBuild()
         var start: Pair<Long, Long>? = null
         var immediate: RaftMinBuildGateDecision? = null
+        var effectiveChanged: RaftMinBuildGateEffective? = null
+        var effectiveCleared = false
+        var servers = 0
         synchronized(lock) {
-            val r = reading
-            val threshold = r?.let { raftMinBuildGateThreshold(it.enabled, it.variant) }
+            servers = thresholds.size
+            val effective = raftMinBuildGateEffectiveThreshold(thresholds)
+            if (effective != lastEffective) {
+                if (effective == null) effectiveCleared = true else effectiveChanged = effective
+                lastEffective = effective
+            }
+            val threshold = effective?.threshold
             val validCurrent = current?.takeIf { it >= RAFT_MIN_BUILD_GATE_THRESHOLD_FLOOR }
-            if (r == null || threshold == null || validCurrent == null || validCurrent >= threshold) {
+            if (threshold == null || validCurrent == null || validCurrent >= threshold) {
                 checked = null
                 cancelCheckLocked()
                 immediate = RaftMinBuildGateDecision.None
@@ -244,7 +301,7 @@ class RaftMinBuildGateController(
             }
             val cached = checked?.takeIf { it.threshold == threshold }
             if (!force && cached != null && now() - cached.atMillis < channelCacheMillis) {
-                immediate = decideRaftMinBuildGate(r.enabled, r.variant, validCurrent, cached.latest, cached.fallbackUrl)
+                immediate = decideRaftMinBuildGateForThreshold(threshold, validCurrent, cached.latest, cached.fallbackUrl)
                 return@synchronized
             }
             if (!force && checking?.isActive == true && checkingThreshold == threshold) return@synchronized
@@ -255,6 +312,10 @@ class RaftMinBuildGateController(
             val shown = decisionState.value
             if (shown.thresholdOrNull() != threshold) immediate = RaftMinBuildGateDecision.None
         }
+        effectiveChanged?.let {
+            logger("min_build_gate effective threshold=${it.threshold} server=${it.serverId} servers=$servers reason=$reason")
+        }
+        if (effectiveCleared) logger("min_build_gate effective threshold=none servers=$servers reason=$reason")
         immediate?.let { publish(it, reason) }
         val (threshold, expectedGeneration) = start ?: return
         val job =
@@ -268,8 +329,8 @@ class RaftMinBuildGateController(
                     checked = Checked(threshold, latest, fallback, now())
                     checking = null
                     checkingThreshold = null
-                    val r = reading ?: return@synchronized
-                    decided = decideRaftMinBuildGate(r.enabled, r.variant, currentBuild(), latest, fallback)
+                    val effective = raftMinBuildGateEffectiveThreshold(thresholds) ?: return@synchronized
+                    decided = decideRaftMinBuildGateForThreshold(effective.threshold, currentBuild(), latest, fallback)
                 }
                 logger(
                     "min_build_gate channel=${source?.name ?: "none"} threshold=$threshold current=${current ?: "unknown"} " +
@@ -353,7 +414,7 @@ object RaftMinBuildGate {
                     .filter { it }
                     .collect {
                         gate.onForeground()
-                        gate.lastEvaluatedServer?.let { serverId -> runCatching { flagRefetch?.invoke(serverId) } }
+                        gate.serversToRefetch.forEach { serverId -> runCatching { flagRefetch?.invoke(serverId) } }
                     }
             }
         }
@@ -369,6 +430,11 @@ object RaftMinBuildGate {
 
     fun onSignedOut() {
         controller.onSignedOut()
+    }
+
+    /** The account lost [serverId] (left, removed, server gone): its reading no longer counts. */
+    fun onServerLeft(serverId: ServerId) {
+        controller.onServerLeft(serverId)
     }
 
     private val dismissedBannerThreshold = MutableStateFlow<Long?>(null)

@@ -1642,6 +1642,8 @@ internal class RaftSharedStoreProvider private constructor(
             // accepted under the then-current grant (the grant itself is revoked by that mutation).
             onServerAccessLost = { grant ->
                 reconnectRefetchJitter.dropServer(grant.serverId, reason = "server_access_lost")
+                // Minimum supported build: that server's gate reading no longer counts.
+                RaftMinBuildGate.onServerLeft(ServerId(grant.serverId))
                 threadPayloadStore.dropServer(grant.serverId)
                 composerDraftUploads.dropServer(grant.serverId)
                 readReceiptPendingStore.dropServer(grant.serverId, replyCacheAuthContext.value?.accountId)
