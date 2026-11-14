@@ -32,7 +32,10 @@ import build.raft.app.data.RuntimeAccountUsageHealth
 import build.raft.app.data.RuntimeAccountUsageLoad
 import build.raft.app.data.RuntimeAccountUsageProvider
 import build.raft.app.data.RuntimeAccountUsageRead
+import build.raft.app.data.RuntimeAccountUsageWindowScope
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
+import build.raft.app.data.allModels
+import build.raft.app.data.modelScoped
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.getModelLabel
@@ -414,8 +417,64 @@ internal sealed interface RaftRackUsageCell {
         override val attention: Boolean,
         val resetsAt: String? = null,
         val plan: String? = null,
+        /** The account reports a model's (or a group of models') own window: the cell's second line (web #14605). */
+        val model: RaftRackModelLine? = null,
     ) : RaftRackUsageCell
 }
+
+/**
+ * Web `RackModelLine` (slock #14605, #14667): the cell's second line, the tightest window the
+ * account reports as one model's or a group of models' ("Fable · 40%", "Gemini · 6d"). Display
+ * only: whether an agent is blocked is the account's health, never this.
+ */
+internal data class RaftRackModelLine(
+    /** The runtime's own name for the model ("Opus", "Fable") or its group without a trailing "models" ("Gemini"). */
+    val name: String,
+    /** Whole percent used; 100 once its limit is reached. */
+    val used: Int,
+    val usedUp: Boolean,
+    val resetsAt: String?,
+)
+
+/** Web `modelLineName`: a group's name without its trailing "models" ("Claude and GPT models" → "Claude and GPT"). */
+private fun RuntimeAccountUsageWindowScope.modelLineName(): String =
+    when (this) {
+        RuntimeAccountUsageWindowScope.Account -> ""
+        is RuntimeAccountUsageWindowScope.Model -> name
+        is RuntimeAccountUsageWindowScope.Models -> name.replace(Regex("\\s+models$", RegexOption.IGNORE_CASE), "").ifEmpty { name }
+    }
+
+/**
+ * Web `modelLineOf`: the account's tightest model (or model group) window, or null when it
+ * reports none it can read, or nothing but model windows (its first line already counts them).
+ * The computer's agents' model groups are not known here, so every group counts (as web does
+ * when it cannot tell).
+ */
+internal fun RuntimeAccountUsageAccount.rackModelLine(): RaftRackModelLine? {
+    if (!allModels().modelLine) return null
+    var tightest: RaftRackModelLine? = null
+    windows.filter { it.modelScoped }.forEach { window ->
+        val scope = window.scope ?: return@forEach
+        if (window.status == RuntimeAccountUsageWindowStatus.Unavailable) return@forEach
+        val usedUp = window.status == RuntimeAccountUsageWindowStatus.LimitReached
+        val ratio = window.usedRatio
+        if (!usedUp && ratio == null) return@forEach
+        val line =
+            RaftRackModelLine(
+                name = scope.modelLineName(),
+                used = if (usedUp) 100 else runtimeUsagePercentUsed(ratio ?: 0.0),
+                usedUp = usedUp,
+                resetsAt = window.resetsAt,
+            )
+        val current = tightest
+        if (current == null || line.used > current.used || (line.used == current.used && usedUp && !current.usedUp)) tightest = line
+    }
+    return tightest
+}
+
+/** Web `rackRuntimeCell`'s `unsupported`: this Computer reads no usage for the provider, so it has no line (slock #14667). */
+internal val RuntimeAccountUsageLoad?.unsupportedRead: Boolean
+    get() = (this as? RuntimeAccountUsageLoad.Loaded)?.read == RuntimeAccountUsageRead.Unsupported
 
 /**
  * Web `rackReset` (slock #14058): how long until a used-up allowance resets, as the rack counts
@@ -463,8 +522,10 @@ private sealed interface RaftRackAccountSummary {
     data object Attention : RaftRackAccountSummary
 }
 
-/** Web `summarizeRuntimeUsage` of a single account. */
-private fun RuntimeAccountUsageAccount.rackSummary(): RaftRackAccountSummary? {
+/** Web `summarizeRuntimeUsage` of a single account, on the all-models basis (`allModelsUsageAccount`, #14717). */
+private fun RuntimeAccountUsageAccount.rackSummary(): RaftRackAccountSummary? = allModels().account.allModelsRackSummary()
+
+private fun RuntimeAccountUsageAccount.allModelsRackSummary(): RaftRackAccountSummary? {
     val limited = windows.filter { it.status == RuntimeAccountUsageWindowStatus.LimitReached }
     if (limited.isNotEmpty()) return RaftRackAccountSummary.Limit(raftRackUsableAgainAt(limited.map { it.resetsAt }))
     if (health != RuntimeAccountUsageHealth.Ok) return RaftRackAccountSummary.Attention
@@ -484,6 +545,7 @@ internal fun raftRackUsageCell(column: RaftRackUsageColumn, load: RuntimeAccount
     var tightestUsed: Int? = null
     var tightestLimit: RaftRackAccountSummary.Limit? = null
     var tightestPlan: String? = null
+    var tightestAccount: RuntimeAccountUsageAccount? = null
     var attention = false
     read.snapshot.accounts.forEach { account ->
         val summary = account.rackSummary()
@@ -500,6 +562,7 @@ internal fun raftRackUsageCell(column: RaftRackUsageColumn, load: RuntimeAccount
             tightestUsed = used
             tightestLimit = limit
             tightestPlan = account.planLabel?.takeIf { it.isNotBlank() }
+            tightestAccount = account
         }
     }
     val used = tightestUsed ?: return RaftRackUsageCell.Unavailable(column, attention)
@@ -512,6 +575,7 @@ internal fun raftRackUsageCell(column: RaftRackUsageColumn, load: RuntimeAccount
         attention = attention,
         resetsAt = tightestLimit?.resetsAt,
         plan = tightestPlan,
+        model = tightestAccount?.rackModelLine(),
     )
 }
 

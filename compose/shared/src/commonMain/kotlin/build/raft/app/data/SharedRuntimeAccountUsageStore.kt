@@ -100,6 +100,8 @@ internal class SharedRuntimeAccountUsageStore(
     private val authViews = mutableMapOf<RuntimeAuthViewKey, CachedAuthView>()
     private val authViewGenerations = mutableMapOf<String, Long>()
     private val limitResetAttempts = mutableMapOf<RuntimeAccountUsageKey, RuntimeLimitResetIdempotencyKey>()
+    /** Claude: one attempt per kind (web `limitResetAttemptKey(subject + kind)`). */
+    private val claudeLimitResetAttempts = mutableMapOf<Pair<RuntimeAccountUsageKey, RuntimeLimitResetKind>, RuntimeLimitResetIdempotencyKey>()
 
     /** One Computer's runtime-auth view per signed-in identity (web `RuntimeAuthClient` keys it by server and Computer). */
     private data class RuntimeAuthViewKey(val owner: SharedComputersOwner, val serverId: String, val machineId: String)
@@ -272,6 +274,23 @@ internal class SharedRuntimeAccountUsageStore(
         mutex.withLock { limitResetAttempts.remove(key) }
     }
 
+    /** [limitResetAttemptKey] for one kind of Claude reset. */
+    suspend fun claudeLimitResetAttemptKey(key: RuntimeAccountUsageKey, kind: RuntimeLimitResetKind): RuntimeLimitResetIdempotencyKey =
+        mutex.withLock { claudeLimitResetAttempts.getOrPut(key to kind) { RuntimeLimitResetIdempotencyKey.mint() } }
+
+    /** Any answer ends a Claude attempt (web `handleClaudeOutcome`); only no answer keeps its key. */
+    suspend fun forgetClaudeLimitResetAttempt(key: RuntimeAccountUsageKey, kind: RuntimeLimitResetKind) {
+        mutex.withLock { claudeLimitResetAttempts.remove(key to kind) }
+    }
+
+    /** Reads which Claude limit resets [key]'s account holds; never cached (it opens Claude Code each time). */
+    suspend fun readClaudeLimitResets(key: RuntimeAccountUsageKey, consent: Boolean): RuntimeLimitResetsReadLoad {
+        if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeLimitResetsReadLoad.Superseded
+        val result = client.readClaudeLimitResets(ServerId(key.serverId), key.machineId, consent)
+        if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeLimitResetsReadLoad.Superseded
+        return result
+    }
+
     /**
      * Spends one of [key]'s account limit resets with [idempotencyKey]. The usage the Computer read
      * right after it is written to the read cache, as a fresh manual refresh is, so the next [read]
@@ -279,10 +298,12 @@ internal class SharedRuntimeAccountUsageStore(
      */
     suspend fun redeemLimitReset(
         key: RuntimeAccountUsageKey,
-        idempotencyKey: RuntimeLimitResetIdempotencyKey
+        idempotencyKey: RuntimeLimitResetIdempotencyKey,
+        /** Claude: the kind the person chose. */
+        kind: RuntimeLimitResetKind? = null
     ): RuntimeLimitResetLoad {
         if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeLimitResetLoad.Superseded
-        val result = client.redeemRuntimeLimitReset(ServerId(key.serverId), key.machineId, key.provider, idempotencyKey)
+        val result = client.redeemRuntimeLimitReset(ServerId(key.serverId), key.machineId, key.provider, idempotencyKey, kind)
         if (!key.owner.sameIdentityAs(currentIdentity())) return RuntimeLimitResetLoad.Superseded
         withContext(NonCancellable) {
             mutex.withLock {
@@ -444,6 +465,7 @@ internal class SharedRuntimeAccountUsageStore(
             refreshStartedAt.clear()
             authViews.clear()
             limitResetAttempts.clear()
+            claudeLimitResetAttempts.clear()
         }
     }
 

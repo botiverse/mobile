@@ -158,6 +158,16 @@ interface RaftComputersApi {
         provider: String,
         body: String
     ): HomeNetworkResponse = error("redeemRuntimeLimitReset is not implemented")
+    /**
+     * `POST …/runtime-account-usage/claude/limit-resets/read` with body `{consent?: true}` (slock
+     * #14336, packages/server/src/routes/runtimeAuthRoutes.ts): which Claude limit resets the
+     * account holds, read in Claude Code on the Computer.
+     */
+    suspend fun readClaudeLimitResets(
+        serverId: ServerId,
+        machineId: String,
+        body: String
+    ): HomeNetworkResponse = error("readClaudeLimitResets is not implemented")
     suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse
     /**
      * `POST servers/:id/machines/:machineId/computer/:action` with `action` `restart` (body `{}`) or
@@ -328,9 +338,10 @@ internal class RaftComputersNetworkApi(
         )
 
     override suspend fun runtimeAccountUsage(serverId: ServerId, machineId: String, provider: String): HomeNetworkResponse =
-        networkClient.request(
+        networkClient.requestWithHeaders(
             priority = DataRequestPriority.Visible,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-account-usage/${provider.trim()}",
+            headers = RUNTIME_USAGE_WINDOW_SCOPE_HEADERS,
             serverIdOverride = serverId
         )
 
@@ -341,9 +352,10 @@ internal class RaftComputersNetworkApi(
         body: String,
         priority: DataRequestPriority
     ): HomeNetworkResponse =
-        networkClient.request(
+        networkClient.requestWithHeaders(
             priority = priority,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-account-usage/${provider.trim()}/refresh",
+            headers = RUNTIME_USAGE_WINDOW_SCOPE_HEADERS,
             method = "POST",
             serverIdOverride = serverId,
             bodyText = body
@@ -424,10 +436,26 @@ internal class RaftComputersNetworkApi(
         provider: String,
         body: String
     ): HomeNetworkResponse =
-        networkClient.request(
+        networkClient.requestWithHeaders(
             // The person confirmed it and waits for the outcome.
             priority = DataRequestPriority.Foreground,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-account-usage/${provider.trim()}/limit-reset",
+            // The answer carries the usage read right after it: its windows' scope too.
+            headers = RUNTIME_USAGE_WINDOW_SCOPE_HEADERS,
+            method = "POST",
+            serverIdOverride = serverId,
+            bodyText = body
+        )
+
+    override suspend fun readClaudeLimitResets(
+        serverId: ServerId,
+        machineId: String,
+        body: String
+    ): HomeNetworkResponse =
+        networkClient.request(
+            // The person asked for the list and waits for it.
+            priority = DataRequestPriority.Foreground,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-account-usage/claude/limit-resets/read",
             method = "POST",
             serverIdOverride = serverId,
             bodyText = body
@@ -694,14 +722,16 @@ internal class RaftComputersApiClient(
         serverId: ServerId,
         machineId: String,
         provider: RuntimeAccountUsageProvider,
-        idempotencyKey: RuntimeLimitResetIdempotencyKey
+        idempotencyKey: RuntimeLimitResetIdempotencyKey,
+        /** Claude: the one kind the person chose (required by the server for Claude, refused for others). */
+        kind: RuntimeLimitResetKind? = null
     ): RuntimeLimitResetLoad {
         val response =
             transport.redeemRuntimeLimitReset(
                 serverId = serverId,
                 machineId = machineId,
                 provider = provider.wire,
-                body = buildRuntimeLimitResetBody(idempotencyKey)
+                body = if (kind == null) buildRuntimeLimitResetBody(idempotencyKey) else buildClaudeLimitResetBody(idempotencyKey, kind)
             )
         if (!response.isSuccessful) {
             return RuntimeLimitResetLoad.Failed(
@@ -714,6 +744,26 @@ internal class RaftComputersApiClient(
             }
         return reply?.let(RuntimeLimitResetLoad::Done)
             ?: RuntimeLimitResetLoad.Failed(RuntimeLimitResetRefusal(status = response.code, code = "malformed_response"))
+    }
+
+    /**
+     * Reads which Claude limit resets the account holds (web `RuntimeAuthClient.readLimitResets`).
+     * [consent]: the person accepted that, at the 5-hour limit, opening the command can use the
+     * older program's 5-hour reset. No readable result is [RuntimeLimitResetsReadLoad.Failed].
+     */
+    suspend fun readClaudeLimitResets(serverId: ServerId, machineId: String, consent: Boolean): RuntimeLimitResetsReadLoad {
+        val response = transport.readClaudeLimitResets(serverId, machineId, buildClaudeLimitResetsReadBody(consent))
+        if (!response.isSuccessful) {
+            return RuntimeLimitResetsReadLoad.Failed(
+                RuntimeLimitResetRefusal(status = response.code.takeIf { it > 0 }, code = response.computersRouteErrorCodeOrNull())
+            )
+        }
+        val result =
+            response.bodyText?.takeIf { it.isNotBlank() }?.let { body ->
+                runCatching { computersApiJson.parseToJsonElement(body) }.getOrNull()?.toRuntimeLimitResetsReadReply()
+            }
+        return result?.let(RuntimeLimitResetsReadLoad::Done)
+            ?: RuntimeLimitResetsReadLoad.Failed(RuntimeLimitResetRefusal(status = response.code, code = "malformed_response"))
     }
 
     suspend fun runtimeOptions(
@@ -1465,6 +1515,16 @@ private data class RuntimeFormV2MarkerDto(val protocolVersion: Int)
 /** Request header asking the runtime-options rows to carry the `runtimeFormV2` marker. */
 internal const val RUNTIME_FORM_V2_MARKER_HEADER = "X-Raft-Runtime-Form-V2"
 
+/**
+ * slock `RAFT_CLIENT_CAPABILITIES_HEADER` / `RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY` (#14605,
+ * #14667): the server sends a usage window's `scope` (every kind, `models` too) only to a request
+ * that declares it reads it; this app's parser does.
+ */
+internal const val RAFT_CLIENT_CAPABILITIES_HEADER = "X-Raft-Client-Capabilities"
+internal const val RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY = "runtime-usage-window-scope@2"
+internal val RUNTIME_USAGE_WINDOW_SCOPE_HEADERS: Map<String, String> =
+    mapOf(RAFT_CLIENT_CAPABILITIES_HEADER to RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY)
+
 private fun ComputerRuntimeSelectionCatalogDto.toDomain(
     expectedMachineId: String
 ): SharedCreateAgentRuntimeCatalog? {
@@ -1593,6 +1653,20 @@ private data class RuntimeLimitResetBody(val idempotencyKey: String)
 /** `{idempotencyKey}`, the key passed through unchanged (slock runtimeAuthRoutes.ts). */
 internal fun buildRuntimeLimitResetBody(idempotencyKey: RuntimeLimitResetIdempotencyKey): String =
     computersApiJson.encodeToString(RuntimeLimitResetBody(idempotencyKey = idempotencyKey.value))
+
+@Serializable
+private data class ClaudeLimitResetBody(val idempotencyKey: String, val kind: String)
+
+/** `{idempotencyKey, kind}`: a Claude redeem names the kind the person chose (slock #14336). */
+internal fun buildClaudeLimitResetBody(idempotencyKey: RuntimeLimitResetIdempotencyKey, kind: RuntimeLimitResetKind): String =
+    computersApiJson.encodeToString(ClaudeLimitResetBody(idempotencyKey = idempotencyKey.value, kind = kind.wire))
+
+@Serializable
+private data class ClaudeLimitResetsReadConsentBody(val consent: Boolean)
+
+/** `{consent: true}` once the person accepted the read at the 5-hour limit, else `{}` (web `readLimitResets`). */
+internal fun buildClaudeLimitResetsReadBody(consent: Boolean): String =
+    if (consent) computersApiJson.encodeToString(ClaudeLimitResetsReadConsentBody(consent = true)) else "{}"
 
 @Serializable
 private data class RuntimeAccountUsageRefreshBody(val reason: String)

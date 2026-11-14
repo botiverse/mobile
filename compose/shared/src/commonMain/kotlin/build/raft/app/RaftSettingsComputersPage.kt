@@ -1720,7 +1720,7 @@ private fun RaftComputerRackCells(
         fleetColumns.usage.forEach { fleetColumn ->
             val column = own.usage.firstOrNull { it.provider == fleetColumn.provider }
             Box(Modifier.width(cellWidth)) {
-                if (column != null) {
+                if (column != null && !usageLoads[column.provider].unsupportedRead) {
                     val line = raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage, row.id, nowMillis)
                     val card = line.usageCard
                     if (card != null) card { RaftRackUsageCellContent(line, click = null) } else RaftRackUsageCellContent(line, click = line.onClick)
@@ -1764,6 +1764,24 @@ private fun RaftRackUsageCellContent(line: RaftRackLine, click: (() -> Unit)?) {
             if (line.attention) RaftStatusDot(variant = RaftStatusVariant.Warning, size = RaftStatusSize.Sm)
         }
         line.bar?.invoke()
+        line.model?.let { model ->
+            // Web `ModelUsageLine`: "Fable · 40%" over a thin bar, the same Meter as the first line.
+            Column(Modifier.padding(top = 2.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val ink = if (model.warn) RaftTheme.colors.warningStrong else RaftTheme.colors.foregroundMuted
+                    RaftText(
+                        model.name,
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = RaftTheme.typography.monoMeta,
+                        color = ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    RaftText(" · ${model.value}", style = RaftTheme.typography.monoMeta, color = ink, maxLines = 1, softWrap = false)
+                }
+                model.bar()
+            }
+        }
     }
 }
 
@@ -1789,10 +1807,20 @@ private class RaftRackLine(
     /** A usage line wears its usage card (hover, a click pins); its click is then the card's. */
     val usageCard: (@Composable (trigger: @Composable () -> Unit) -> Unit)? = null,
     val emphasized: Boolean = false,
+    /** A usage line's model line (web `ModelUsageLine` / `ModelCardLine`, slock #14605); null: one line. */
+    val model: RaftRackModelLineUi? = null,
 ) {
     fun emphasize(): RaftRackLine =
-        RaftRackLine(label, runtimeMark, bar, value, warn, attention, dimmed, semantics, onClick, usageCard, emphasized = true)
+        RaftRackLine(label, runtimeMark, bar, value, warn, attention, dimmed, semantics, onClick, usageCard, emphasized = true, model = model)
 }
+
+/** A model line as drawn: the model's name, its value ("40%", "6d", "Used up"), whether it warns, and its bar. */
+private class RaftRackModelLineUi(
+    val name: String,
+    val value: String,
+    val warn: Boolean,
+    val bar: @Composable () -> Unit,
+)
 
 /** Web `RackCardLine`'s value: warning first, then ink and bold on the sorted line, else hint. */
 @Composable
@@ -1824,7 +1852,7 @@ private fun RaftComputerRackMeters(
     val memory = raftRackResourceLine(memoryLabel, row.memory).let { if (sortKey == ComputersRackSortKey.Memory) it.emphasize() else it }
     val leadProvider = (sortKey as? ComputersRackSortKey.Remaining)?.provider
     val usage =
-        columns.usage.map { column ->
+        columns.usage.filter { !usageLoads[it.provider].unsupportedRead }.map { column ->
             val line = raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage, row.id, nowMillis)
             if (column.provider == leadProvider) line.emphasize() else line
         }
@@ -1838,7 +1866,9 @@ private fun RaftComputerRackMeters(
         with(density) {
             lines.maxOf { line ->
                 val text = measurer.measure(line.value, style = line.valueStyle(), maxLines = 1, softWrap = false).size.width.toDp()
-                text + if (line.attention) RaftStatusSize.Sm.edge + 4.dp else 0.dp
+                val own = text + if (line.attention) RaftStatusSize.Sm.edge + 4.dp else 0.dp
+                val model = line.model?.let { measurer.measure(it.value, style = line.valueStyle(), maxLines = 1, softWrap = false).size.width.toDp() } ?: 0.dp
+                maxOf(own, model)
             } + 1.dp
         }
     Column(Modifier.testTag("${RaftComputersRackTags.CardMeters}-${row.id}"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1866,12 +1896,50 @@ private fun RaftRackLineRow(line: RaftRackLine, valueWidth: Dp) {
 
 @Composable
 private fun RaftRackLineRowContent(line: RaftRackLine, valueWidth: Dp, click: (() -> Unit)?) {
+    val model = line.model
+    if (model == null) {
+        RaftRackLineRowFace(line, valueWidth, Modifier.raftRackLineTarget(line, click))
+        return
+    }
+    // Web `ModelCardLine`: the model's name (under the provider's), its bar and its value, a second row of the line.
+    Column(Modifier.raftRackLineTarget(line, click), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftRackLineRowFace(line, valueWidth, Modifier)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(RaftRackLineLabelWidth).padding(start = 18.dp)) {
+                RaftText(
+                    model.name,
+                    style = RaftTheme.typography.footnote,
+                    color = RaftTheme.colors.foregroundMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(RaftRackLineGap))
+            Box(Modifier.weight(1f)) { model.bar() }
+            Spacer(Modifier.width(RaftRackLineGap))
+            Box(Modifier.width(valueWidth), contentAlignment = Alignment.CenterEnd) {
+                RaftText(
+                    model.value,
+                    style = RaftTheme.typography.monoMeta,
+                    color = if (model.warn) RaftTheme.colors.warningStrong else RaftTheme.colors.foregroundHint,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+        }
+    }
+}
+
+private fun Modifier.raftRackLineTarget(line: RaftRackLine, click: (() -> Unit)?): Modifier =
+    fillMaxWidth()
+        .then(if (line.dimmed) Modifier.alpha(0.6f) else Modifier)
+        .then(if (click != null) Modifier.raftClickable(onClick = click, onClickLabel = line.semantics, tier = RaftHoverTier.Subtle) else Modifier)
+        .clearAndSetSemantics { contentDescription = line.semantics }
+
+@Composable
+private fun RaftRackLineRowFace(line: RaftRackLine, valueWidth: Dp, modifier: Modifier) {
     Row(
-        Modifier
-            .fillMaxWidth()
-            .then(if (line.dimmed) Modifier.alpha(0.6f) else Modifier)
-            .then(if (click != null) Modifier.raftClickable(onClick = click, onClickLabel = line.semantics, tier = RaftHoverTier.Subtle) else Modifier)
-            .clearAndSetSemantics { contentDescription = line.semantics },
+        modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(RaftRackLineLabelWidth)) { RaftRackLineLabel(line) }
@@ -1975,6 +2043,7 @@ private fun raftRackUsageLine(
         is RaftRackUsageCell.Value -> {
             val words = raftRackUsageWords(cell, nowMillis)
             val value = words.value
+            val model = cell.model?.let { raftRackModelLineUi(it, nowMillis) }
             RaftRackLine(
                 label = label,
                 runtimeMark = runtimeId,
@@ -1995,10 +2064,11 @@ private fun raftRackUsageLine(
                     stringResource(
                         if (cell.stale) Res.string.settings_computers_rack_usage_meter_stale else Res.string.settings_computers_rack_usage_meter,
                         name,
-                        words.spoken,
+                        listOfNotNull(words.spoken, model?.spoken).joinToString(" · "),
                     ),
                 onClick = onClick,
                 usageCard = usageCard,
+                model = model?.ui,
             )
         }
     }
@@ -2038,6 +2108,52 @@ private fun raftRackUsageWords(cell: RaftRackUsageCell.Value, nowMillis: Long): 
     val full = stringResource(Res.string.settings_computers_rack_used_up_resets, RaftRelativeTimeLabel.Relative(reset.count, reset.unit).localized())
     val plan = cell.plan ?: stringResource(Res.string.settings_computers_runtime_usage_account_fallback)
     return RaftRackUsageWords(short, "$plan · $full")
+}
+
+private class RaftRackModelWords(val ui: RaftRackModelLineUi, val spoken: String)
+
+/**
+ * Web `modelValueText` / `modelLabel` (slock #14605): the model line's value after its name, "40%",
+ * or once used up when it resets ("6d") or "Used up"; and for the cell's name "Fable: 40% used",
+ * "Fable: Used up · resets in 6 days".
+ */
+@Composable
+private fun raftRackModelLineUi(model: RaftRackModelLine, nowMillis: Long): RaftRackModelWords {
+    val reset = if (model.usedUp) raftRackReset(model.resetsAt, nowMillis) else null
+    val value =
+        when {
+            !model.usedUp -> "${model.used}%"
+            reset == null -> stringResource(Res.string.settings_computers_rack_used_up)
+            else ->
+                when (reset.unit) {
+                    RaftRelativeTimeUnit.Minute -> stringResource(Res.string.settings_computers_rack_model_resets_in_minutes, reset.count)
+                    RaftRelativeTimeUnit.Hour -> stringResource(Res.string.settings_computers_rack_model_resets_in_hours, reset.count)
+                    RaftRelativeTimeUnit.Day -> stringResource(Res.string.settings_computers_rack_model_resets_in_days, reset.count)
+                }
+        }
+    val usage =
+        when {
+            !model.usedUp -> stringResource(Res.string.settings_computers_rack_percent_used, "${model.used}%")
+            reset == null -> stringResource(Res.string.settings_computers_rack_used_up)
+            else -> stringResource(Res.string.settings_computers_rack_used_up_resets, RaftRelativeTimeLabel.Relative(reset.count, reset.unit).localized())
+        }
+    val spoken = stringResource(Res.string.settings_computers_rack_model_usage, model.name, usage)
+    val ui =
+        RaftRackModelLineUi(
+            name = model.name,
+            value = value,
+            warn = model.used >= RAFT_RACK_USAGE_WARN_PERCENT,
+            bar = {
+                RaftMeter(
+                    used = model.used.toFloat(),
+                    valueText = spoken,
+                    size = RaftMeterSize.Sm,
+                    warnAt = RAFT_RACK_USAGE_WARN_PERCENT / 100f,
+                    showValue = false,
+                )
+            },
+        )
+    return RaftRackModelWords(ui, spoken)
 }
 
 /** Web `RackOtherCardLine`: "Other runtimes", then each runtime's mark and name (with its status). */
