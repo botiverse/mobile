@@ -190,7 +190,7 @@ class AppLinkCardV2ParseTest {
                 AppLinkCardReadRequestBody("6f1c1f86-5a83-4b1e-9b1a-0d2f0e0c0a01", APP_LINK_CARD_READ_CAPABILITIES, "zh-CN").toJson(),
             ) as kotlinx.serialization.json.JsonObject
         assertEquals(setOf("view_instance_id", "capabilities", "locale"), body.keys)
-        assertEquals(listOf("card.v2", "inline.v1", "inline.tone.v2", "button.v1", "confirm.v1", "undo.v1", "block.v1", "preview.v3", "unreviewed_app.v1"), APP_LINK_CARD_READ_CAPABILITIES)
+        assertEquals(listOf("card.v2", "inline.v1", "inline.tone.v2", "button.v1", "confirm.v1", "undo.v1", "block.v1", "preview.v3", "unreviewed_app.v1", "badge.color.v1"), APP_LINK_CARD_READ_CAPABILITIES)
         assertEquals("zh-CN", appLinkCardReadLocale("zh_CN"))
         assertEquals("en", appLinkCardReadLocale(null))
         assertEquals("en", appLinkCardReadLocale("not a tag"))

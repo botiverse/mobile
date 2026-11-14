@@ -35,9 +35,20 @@ import kotlinx.serialization.json.JsonObject
  * `confirm.v1` and `undo.v1`: a block card's buttons work by touch, with Raft's confirmation and a
  * plain Undo button (the hover card and the popover stay read-only). `block.v1`, as the web declares
  * it (it changes nothing in a version 3 answer). The same list and order as the web's desktop one,
- * then `unreviewed_app.v1` (below).
+ * then `unreviewed_app.v1` and `badge.color.v1` (below), as the web's `LINK_CARD_READ_CAPABILITIES`.
  */
-internal val APP_LINK_CARD_READ_CAPABILITIES: List<String> = listOf("card.v2", "inline.v1", "inline.tone.v2", "button.v1", "confirm.v1", "undo.v1", "block.v1", "preview.v3", APP_LINK_UNREVIEWED_APP_CAPABILITY)
+internal val APP_LINK_CARD_READ_CAPABILITIES: List<String> =
+    listOf("card.v2", "inline.v1", "inline.tone.v2", "button.v1", "confirm.v1", "undo.v1", "block.v1", "preview.v3", APP_LINK_UNREVIEWED_APP_CAPABILITY, APP_LINK_BADGE_COLOR_CAPABILITY)
+
+/**
+ * `badge.color.v1` (RFC 076 section 15; botiverse/slock `LINK_CARD_CAPABILITIES`, web `CardBadge` `fill`): Raft
+ * keeps a link card Badge's `color` (`#RRGGBB`) for this client, and the block card and the hover card draw the
+ * Badge in it ([build.raft.designsystem.components.RaftAppLinkCardBadge]). Without it Raft strips the colour.
+ */
+internal const val APP_LINK_BADGE_COLOR_CAPABILITY = "badge.color.v1"
+
+/** A link card Badge's `color` (shared `LINK_CARD_BADGE_COLOR`): `#RRGGBB`, either case, no alpha. */
+private val LINK_CARD_BADGE_COLOR = Regex("^#[0-9a-fA-F]{6}$")
 
 /**
  * `unreviewed_app.v1` (RFC 076 section 17; botiverse/slock #13945 `UNREVIEWED_APP_CAPABILITY`): this
@@ -95,7 +106,8 @@ sealed interface RaftLinkCardV2Element : CardElement {
     data class Text(val text: String, val tone: RaftLinkCardTextTone = RaftLinkCardTextTone.Default, val mono: Boolean = false) : RaftLinkCardV2Element
 
     /** `Badge`: 1-60 code points. The web draws it neutral whatever [tone] (DS PreviewCard: an App's states are its own). */
-    data class Badge(val text: String, val tone: CardBadgeTone = CardBadgeTone.Neutral) : RaftLinkCardV2Element
+    /** [color]: the App's colour for this state, lowercase `#rrggbb` (link cards only, `badge.color.v1`), else null. */
+    data class Badge(val text: String, val tone: CardBadgeTone = CardBadgeTone.Neutral, val color: String? = null) : RaftLinkCardV2Element
 
     /**
      * `Button`: 1-40 code points of [label]. Read here only so a card that carries one still reads;
@@ -163,7 +175,7 @@ fun parseRaftAppLinkCardV2(element: JsonElement, origin: String): RaftAppLinkCar
     val elements = LinkedHashMap<String, CardElement>()
     for ((id, raw) in rawElements) {
         if (!CARD_ELEMENT_ID.matches(id)) return null
-        elements[id] = readLinkCardV2Element(raw) { action -> readLinkCardButtonAction(action, origin) } ?: return null
+        elements[id] = readLinkCardV2Element(raw, badgeColor = true) { action -> readLinkCardButtonAction(action, origin) } ?: return null
     }
     if (checkCardBoundedTree(root, elements, RAFT_APP_LINK_CARD_MAX_ELEMENTS, RAFT_APP_LINK_CARD_MAX_DEPTH) != null) return null
     val buttons = elements.values.filterIsInstance<RaftLinkCardV2Element.Button>()
@@ -177,11 +189,14 @@ fun parseRaftAppLinkCardV2(element: JsonElement, origin: String): RaftAppLinkCar
  * One v2 element (strict, as `linkCardV2Schema`); a Button's action through [readAction], which
  * differs per catalog (a link card's navigate stays on its origin; a message card only navigates).
  * [buttonOpen]: a Button may carry `open` (`tab` or `beside`), as `messageCardButtonElement` allows
- * and `linkCardV2Schema` does not.
+ * and `linkCardV2Schema` does not. [badgeColor]: a Badge may carry `color` (a link card's, RFC 076 section 15;
+ * not a card message's); one that is not `#RRGGBB` is ignored, as the server's `dropInvalidLinkCardBadgeColors`
+ * drops it, and the Badge stays.
  */
 internal fun readLinkCardV2Element(
     raw: JsonElement,
     buttonOpen: Boolean = false,
+    badgeColor: Boolean = false,
     readAction: (JsonElement?) -> RaftLinkCardButtonAction?,
 ): CardElement? {
     val obj = raw as? JsonObject ?: return null
@@ -207,10 +222,11 @@ internal fun readLinkCardV2Element(
             RaftLinkCardV2Element.Text(text, tone, mono)
         }
         "Badge" -> {
-            val props = obj.elementProps(setOf("text", "tone")) ?: return null
+            val props = obj.elementProps(if (badgeColor) setOf("text", "tone", "color") else setOf("text", "tone")) ?: return null
             val text = props["text"].cardString()?.takeIf { isCardText(it, 1, 60) } ?: return null
-            // Lenient: a tone this client does not know yet reads neutral (drawn neutral anyway).
-            RaftLinkCardV2Element.Badge(text, CardBadgeTone.fromWire(props["tone"].cardString()) ?: CardBadgeTone.Neutral)
+            val color = if (badgeColor) props["color"].cardString()?.takeIf(LINK_CARD_BADGE_COLOR::matches)?.lowercase() else null
+            // Lenient: a tone this client does not know yet reads neutral (drawn neutral, or in the App's colour).
+            RaftLinkCardV2Element.Badge(text, CardBadgeTone.fromWire(props["tone"].cardString()) ?: CardBadgeTone.Neutral, color)
         }
         "Button" -> {
             val allowed = setOf("label", "variant", "action", "disabledReason")
