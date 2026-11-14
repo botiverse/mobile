@@ -14,9 +14,6 @@ name: Android Update E2E
 # cleanup step removes the emulator from the group and cancels B's release.
 
 on:
-  # TEMP(dev): workflow_dispatch needs the file on main; iterate via push. Remove before merge.
-  push:
-    branches: [agent/lagoon/android-update-e2e]
   workflow_dispatch:
     inputs:
       source_sha:
