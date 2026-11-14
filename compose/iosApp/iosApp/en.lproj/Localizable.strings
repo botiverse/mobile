@@ -15,3 +15,28 @@
 "push.preview.hidden.agent" = "An agent needs your attention";
 "push.preview.hidden.reminder" = "A reminder is due";
 "push.preview.hidden.notice" = "You have a new notice";
+/* Banner phrases (preview key set 3, slock packages/shared/src/notificationCopy.ts; the web's
+   translations). The server sends them as title-loc-key / subtitle-loc-key / loc-key with
+   positional loc-args ({0}, {1} = %1$@, %2$@). Keys must match the server's NOTIFICATION_COPY. */
+"push.title.dm" = "DM";
+"push.title.thread" = "Thread";
+"push.title.thread_in_dm" = "Thread in DM";
+"push.title.thread_in_channel" = "Thread in #%1$@";
+"push.title.task" = "Task";
+"push.title.task_in_dm" = "Task in DM";
+"push.title.task_in_channel" = "Task in #%1$@";
+"push.title.task_assigned" = "Assigned to you";
+"push.title.agent_action_required" = "%1$@ needs your attention";
+"push.title.reminder" = "Reminder";
+"push.title.agent_migration_review" = "Confirm moving %1$@ to the cloud";
+"push.title.test" = "Raft test notification";
+"push.subtitle.dm" = "DM";
+"push.subtitle.dm_server" = "DM · %1$@";
+"push.body.attachment" = "Sent an attachment";
+"push.body.attachments" = "Sent %1$@ attachments";
+"push.body.no_text" = "(no text)";
+"push.body.sender_attachment" = "%1$@: Sent an attachment";
+"push.body.sender_attachments" = "%1$@: Sent %2$@ attachments";
+"push.body.sender_no_text" = "%1$@: (no text)";
+"push.body.agent_migration_review" = "%1$@ is paused until you confirm. Review which files come over before the window closes.";
+"push.body.test" = "If you can read this, notifications reach this device.";

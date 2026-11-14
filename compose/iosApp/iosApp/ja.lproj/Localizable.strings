@@ -13,3 +13,28 @@
 "push.preview.hidden.agent" = "エージェントが対応を求めています";
 "push.preview.hidden.reminder" = "リマインダーの時間です";
 "push.preview.hidden.notice" = "新しいお知らせがあります";
+/* Banner phrases (preview key set 3, slock packages/shared/src/notificationCopy.ts; the web's
+   translations). The server sends them as title-loc-key / subtitle-loc-key / loc-key with
+   positional loc-args ({0}, {1} = %1$@, %2$@). Keys must match the server's NOTIFICATION_COPY. */
+"push.title.dm" = "DM";
+"push.title.thread" = "スレッド";
+"push.title.thread_in_dm" = "DM のスレッド";
+"push.title.thread_in_channel" = "#%1$@ のスレッド";
+"push.title.task" = "タスク";
+"push.title.task_in_dm" = "DM のタスク";
+"push.title.task_in_channel" = "#%1$@ のタスク";
+"push.title.task_assigned" = "あなたに割り当てられたタスク";
+"push.title.agent_action_required" = "%1$@ が対応を求めています";
+"push.title.reminder" = "リマインダー";
+"push.title.agent_migration_review" = "%1$@ のクラウドへの移行を確定してください";
+"push.title.test" = "Raft のテスト通知";
+"push.subtitle.dm" = "DM";
+"push.subtitle.dm_server" = "DM · %1$@";
+"push.body.attachment" = "添付ファイルを送信しました";
+"push.body.attachments" = "添付ファイルを %1$@ 件送信しました";
+"push.body.no_text" = "（テキストなし）";
+"push.body.sender_attachment" = "%1$@：添付ファイルを送信しました";
+"push.body.sender_attachments" = "%1$@：添付ファイルを %2$@ 件送信しました";
+"push.body.sender_no_text" = "%1$@：（テキストなし）";
+"push.body.agent_migration_review" = "%1$@ は確定するまで一時停止しています。期限が切れる前に、移行するファイルを確認してください。";
+"push.body.test" = "この通知が表示されていれば、このデバイスに通知が届いています。";

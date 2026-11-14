@@ -62,7 +62,7 @@ class PushRegistrationTest {
         assertTrue(coordinator.retryPendingRegistration(reason = "login"))
         assertEquals(1, api.calls.size)
         assertEquals(
-            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"apns","platform":"ios","deviceToken":"a0b1c2d3","topic":"build.raft.app","env":"production","appVersion":"1.3.0","previewKeySet":2}""",
+            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"apns","platform":"ios","deviceToken":"a0b1c2d3","topic":"build.raft.app","env":"production","appVersion":"1.3.0","previewKeySet":3}""",
             api.calls.single()
         )
 

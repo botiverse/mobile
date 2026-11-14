@@ -15,3 +15,28 @@
 "push.preview.hidden.agent" = "Агенту нужно ваше внимание";
 "push.preview.hidden.reminder" = "Сработало напоминание";
 "push.preview.hidden.notice" = "У вас новое оповещение";
+/* Banner phrases (preview key set 3, slock packages/shared/src/notificationCopy.ts; the web's
+   translations). The server sends them as title-loc-key / subtitle-loc-key / loc-key with
+   positional loc-args ({0}, {1} = %1$@, %2$@). Keys must match the server's NOTIFICATION_COPY. */
+"push.title.dm" = "Личное сообщение";
+"push.title.thread" = "Ветка";
+"push.title.thread_in_dm" = "Ветка в личном чате";
+"push.title.thread_in_channel" = "Ветка в канале #%1$@";
+"push.title.task" = "Задача";
+"push.title.task_in_dm" = "Задача в личном чате";
+"push.title.task_in_channel" = "Задача в канале #%1$@";
+"push.title.task_assigned" = "Вам назначена задача";
+"push.title.agent_action_required" = "%1$@: нужно ваше внимание";
+"push.title.reminder" = "Напоминание";
+"push.title.agent_migration_review" = "Подтвердите перенос агента %1$@ в облако";
+"push.title.test" = "Тестовое уведомление Raft";
+"push.subtitle.dm" = "Личное сообщение";
+"push.subtitle.dm_server" = "Личное сообщение · %1$@";
+"push.body.attachment" = "Вложение";
+"push.body.attachments" = "Вложения (%1$@)";
+"push.body.no_text" = "(без текста)";
+"push.body.sender_attachment" = "%1$@: вложение";
+"push.body.sender_attachments" = "%1$@: вложения (%2$@)";
+"push.body.sender_no_text" = "%1$@: (без текста)";
+"push.body.agent_migration_review" = "Агент %1$@ приостановлен до вашего подтверждения. Проверьте, какие файлы будут перенесены, пока не истёк срок.";
+"push.body.test" = "Если вы это видите, уведомления доходят до этого устройства.";

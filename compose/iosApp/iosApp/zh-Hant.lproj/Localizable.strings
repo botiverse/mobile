@@ -15,3 +15,28 @@
 "push.preview.hidden.agent" = "有 Agent 需要你處理";
 "push.preview.hidden.reminder" = "有一則提醒到時間了";
 "push.preview.hidden.notice" = "你有一則新通知";
+/* Banner phrases (preview key set 3, slock packages/shared/src/notificationCopy.ts; the web's
+   translations). The server sends them as title-loc-key / subtitle-loc-key / loc-key with
+   positional loc-args ({0}, {1} = %1$@, %2$@). Keys must match the server's NOTIFICATION_COPY. */
+"push.title.dm" = "私訊";
+"push.title.thread" = "討論串";
+"push.title.thread_in_dm" = "私訊中的討論串";
+"push.title.thread_in_channel" = "#%1$@ 中的討論串";
+"push.title.task" = "任務";
+"push.title.task_in_dm" = "私訊中的任務";
+"push.title.task_in_channel" = "#%1$@ 中的任務";
+"push.title.task_assigned" = "指派給你的任務";
+"push.title.agent_action_required" = "%1$@ 需要你處理";
+"push.title.reminder" = "提醒";
+"push.title.agent_migration_review" = "確認將 %1$@ 遷移到雲端";
+"push.title.test" = "Raft 測試通知";
+"push.subtitle.dm" = "私訊";
+"push.subtitle.dm_server" = "私訊 · %1$@";
+"push.body.attachment" = "傳送了附件";
+"push.body.attachments" = "傳送了 %1$@ 個附件";
+"push.body.no_text" = "（無文字）";
+"push.body.sender_attachment" = "%1$@：傳送了附件";
+"push.body.sender_attachments" = "%1$@：傳送了 %2$@ 個附件";
+"push.body.sender_no_text" = "%1$@：（無文字）";
+"push.body.agent_migration_review" = "%1$@ 已暫停，等你確認。請在時限結束前檢查要遷移過來的檔案。";
+"push.body.test" = "如果你能看到這則通知，代表通知可以送達這台裝置。";
