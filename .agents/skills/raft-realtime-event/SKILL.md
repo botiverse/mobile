@@ -26,14 +26,14 @@ never received.
   python3 compose/realtime-contract/generate_realtime_contract.py
   ```
   (writes `compose/core/.../data/realtime/GeneratedRealtimeContract.kt` and
-  `compose/iosApp/iosApp/GeneratedRealtimeContract.swift`). If you cannot
-  regenerate, add a literal to the extra list in
-  `compose/core/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeSocketEvents.kt`
-  (`ServerWireEvents`) with a comment, as the existing literals do.
-- Android consumes `RealtimeSocketEvents.ServerWireEvents` automatically.
-- iOS keeps its OWN list: add the name to `serverWireEvents` in
-  `compose/iosApp/iosApp/RaftIosRealtimeHost.swift`. Forgetting this is the
-  classic "works on Android, never on iOS".
+  `compose/iosApp/iosApp/GeneratedRealtimeContract.swift`). Never append a
+  literal to either platform's list; CI fails when the generated files are
+  stale.
+- Android subscribes to `RealtimeSocketEvents.ServerWireEvents`, iOS to
+  `RaftIosRealtimeHost.serverWireEvents`; both come from the generated
+  `serverWireEvents`, so one JSON entry reaches both. iOS skips only
+  `excludedServerWireEvents` (the web's `product_feedback:unread`);
+  `RaftIosRealtimeEventsSyncTest` (shared androidUnitTest) checks both.
 
 ## 2. Model and map (shared)
 

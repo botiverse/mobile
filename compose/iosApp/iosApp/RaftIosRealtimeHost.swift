@@ -933,9 +933,9 @@ final class RaftIosRealtimeHost: NSObject {
      *  workspace's levels and badge stay stale until the next sign-in load. */
     private static let userScopedServerEvents: Set<String> = [
         GeneratedRealtimeContract.SocketEvent.appearanceUpdated,
-        "notification:push",
-        RaftIosNotificationRetraction.socketEventName,
-        "notification_prefs:updated",
+        GeneratedRealtimeContract.SocketEvent.notificationPush,
+        GeneratedRealtimeContract.SocketEvent.notificationRetract,
+        GeneratedRealtimeContract.SocketEvent.notificationPrefsUpdated,
     ]
 
     private func payloadServerGate(connectionServerId: String, rawPayload: String) -> (accept: Bool, reason: String, payloadServerId: String) {
@@ -1046,68 +1046,27 @@ final class RaftIosRealtimeHost: NSObject {
     private static let syncHorizonResetReason = "sync_resume_horizon_reset"
     private static let catchUpRequiredEvent = "raft:realtime:catch_up_required"
 
-    private static let serverWireEvents: [String] = [
+    /// Connection signals this host handles itself (`handleSocketEvent`); not domain events, so they
+    /// are not in the contract's `serverWireEvents` (Kotlin's Android client listens to them apart too).
+    private static let connectionSignalEvents: [String] = [
         GeneratedRealtimeContract.SocketEvent.roomsJoined,
         GeneratedRealtimeContract.SocketEvent.channelJoined,
         GeneratedRealtimeContract.SocketEvent.channelJoinDenied,
-        GeneratedRealtimeContract.SocketEvent.syncResumeResponse,
-        GeneratedRealtimeContract.SocketEvent.heartbeat,
-        GeneratedRealtimeContract.SocketEvent.messageNew,
-        GeneratedRealtimeContract.SocketEvent.messageUpdated,
-        GeneratedRealtimeContract.SocketEvent.directMessageNew,
-        GeneratedRealtimeContract.SocketEvent.threadUpdated,
-        GeneratedRealtimeContract.SocketEvent.channelUpdated,
-        GeneratedRealtimeContract.SocketEvent.channelMembersUpdated,
-        GeneratedRealtimeContract.SocketEvent.scopeReadUpdated,
-        GeneratedRealtimeContract.SocketEvent.taskCreated,
-        GeneratedRealtimeContract.SocketEvent.taskUpdated,
-        GeneratedRealtimeContract.SocketEvent.taskDeleted,
-        GeneratedRealtimeContract.SocketEvent.agentActivity,
-        GeneratedRealtimeContract.SocketEvent.agentActivityState,
-        GeneratedRealtimeContract.SocketEvent.agentActivitySubscribed,
-        GeneratedRealtimeContract.SocketEvent.agentTyping,
-        GeneratedRealtimeContract.SocketEvent.agentSession,
-        GeneratedRealtimeContract.SocketEvent.agentCreated,
-        GeneratedRealtimeContract.SocketEvent.agentUpdated,
-        GeneratedRealtimeContract.SocketEvent.agentDeleted,
-        GeneratedRealtimeContract.SocketEvent.machineStatus,
-        GeneratedRealtimeContract.SocketEvent.machineCapabilities,
-        GeneratedRealtimeContract.SocketEvent.machineUpdated,
-        GeneratedRealtimeContract.SocketEvent.computerUpgradeProgress,
-        GeneratedRealtimeContract.SocketEvent.computerUpgradeDone,
-        GeneratedRealtimeContract.SocketEvent.machineUpgradeRequest,
-        GeneratedRealtimeContract.SocketEvent.computerRestartDone,
-        // Signing a Computer's runtimes in and out (slock docs/contracts/runtime-auth.md).
-        GeneratedRealtimeContract.SocketEvent.machineRuntimeAuthUpdated,
-        GeneratedRealtimeContract.SocketEvent.runtimeAuthLoginEvent,
-        GeneratedRealtimeContract.SocketEvent.runtimeAuthLoginResult,
-        GeneratedRealtimeContract.SocketEvent.daemonStatus,
-        GeneratedRealtimeContract.SocketEvent.serverMemberAdded,
-        GeneratedRealtimeContract.SocketEvent.serverMemberUpdated,
-        GeneratedRealtimeContract.SocketEvent.serverMemberLeft,
-        GeneratedRealtimeContract.SocketEvent.serverMemberRemoved,
-        GeneratedRealtimeContract.SocketEvent.serverMembershipRemoved,
-        GeneratedRealtimeContract.SocketEvent.serverDeleted,
-        GeneratedRealtimeContract.SocketEvent.serverPlanUpdated,
-        GeneratedRealtimeContract.SocketEvent.serverFeaturesChanged,
-        GeneratedRealtimeContract.SocketEvent.appearanceUpdated,
-        GeneratedRealtimeContract.SocketEvent.userProfileUpdated,
-        // The iOS app's feedback unread total; the web's (product_feedback:unread) is never this app's.
-        GeneratedRealtimeContract.SocketEvent.productFeedbackAppUnread,
-        GeneratedRealtimeContract.SocketEvent.activityChanged,
-        GeneratedRealtimeContract.SocketEvent.announcementNew,
-        GeneratedRealtimeContract.SocketEvent.reminderFired,
-        GeneratedRealtimeContract.SocketEvent.reminderScheduled,
-        GeneratedRealtimeContract.SocketEvent.reminderCanceled,
-        "thread:followers-updated",
-        "thread:reply_updated",
-        "read_state:updated",
-        "read_state:updated_bulk",
-        "notification_prefs:updated",
-        "pinned:updated",
-        "notification:push",
-        RaftIosNotificationRetraction.socketEventName,
     ]
+
+    /// Contract events this app deliberately does not take. The web's feedback unread total
+    /// (`product_feedback:unread`) is never this app's; it takes `product_feedback:app_unread`.
+    static let excludedServerWireEvents: Set<String> = [
+        GeneratedRealtimeContract.SocketEvent.productFeedbackUnread,
+    ]
+
+    /// Generated from compose/realtime-contract/realtime_contract.json, the same list Android uses
+    /// (Kotlin `RealtimeSocketEvents.ServerWireEvents`). A new server event is added to the JSON and
+    /// regenerated, and reaches iOS without touching this file (it used to be a hand-kept copy that
+    /// missed `agent:seen` and `joint-invites:changed`).
+    static let serverWireEvents: [String] =
+        connectionSignalEvents +
+        GeneratedRealtimeContract.SocketEvent.serverWireEvents.filter { !excludedServerWireEvents.contains($0) }
 }
 
 extension RaftIosRealtimeHost: RaftIosRealtimeLifecycleTarget {

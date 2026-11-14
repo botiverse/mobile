@@ -26,7 +26,8 @@ the symptom class.
 
 1. Confirm the event is subscribed on that platform (Android
    `RealtimeSocketEvents.ServerWireEvents`; iOS `serverWireEvents` in
-   `compose/iosApp/iosApp/RaftIosRealtimeHost.swift`) and mapped in
+   `compose/iosApp/iosApp/RaftIosRealtimeHost.swift`, both generated from
+   `compose/realtime-contract/realtime_contract.json`) and mapped in
    `RealtimeEventMapper.kt`. Checklist: `raft-realtime-event`.
 2. Only the current server holds a socket; events for other servers are
    expected to be absent (`docs/kb/mobile-server-switch-realtime-scope.md`).
