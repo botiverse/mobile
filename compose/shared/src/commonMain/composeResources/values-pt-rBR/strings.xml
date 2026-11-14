@@ -4234,6 +4234,11 @@
     <string name="assistant_otter_state_working">Trabalhando</string>
     <string name="assistant_otter_state_away">Ausente</string>
     <string name="assistant_otter_collapse">Recolher na lontra</string>
+    <string name="assistant_context_attached">Anexado: %1$s</string>
+    <string name="assistant_context_thread">Thread · %1$s · %2$s</string>
+    <string name="assistant_context_thread_no_excerpt">Thread · %1$s</string>
+    <string name="assistant_context_remove">Remover %1$s</string>
+    <string name="assistant_context_unreadable">O assistente não consegue ver esta conversa</string>
     <string name="assistant_otter_meta_working">Trabalhando nisso…</string>
     <string name="assistant_otter_meta_confirm">Aguardando sua confirmação</string>
     <string name="assistant_header_meta">Pode ler o que você vê, exceto suas MDs</string>

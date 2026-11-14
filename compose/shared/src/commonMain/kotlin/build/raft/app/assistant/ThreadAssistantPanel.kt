@@ -112,10 +112,12 @@ internal fun hasWaitingAssistantActionCard(
 /**
  * Given to the conversation the panel embeds: it reports the messages it holds, so the otter
  * knows of a card waiting there (web reads the DM's messages from its message store; the app
- * holds them only while the panel shows the conversation).
+ * holds them only while the panel shows the conversation). [context] is the conversation the
+ * panel was opened from, a chip on the DM's composer (ThreadAssistantContext.kt).
  */
 internal class ThreadAssistantPanelEmbed(
     val agentId: String,
+    val context: ThreadAssistantContextAttachment? = null,
     val onWaitingActionCard: (Boolean) -> Unit,
 )
 

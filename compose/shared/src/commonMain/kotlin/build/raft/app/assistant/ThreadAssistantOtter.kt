@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
@@ -171,6 +172,9 @@ internal fun assistantOtterDmOpenRequest(
  *   over the send button's side.
  * - [pageActive]: false once another page covers this one (a page the panel's conversation
  *   opened): the panel closes, so it never sits over a page it was not opened on.
+ * - [threadParentMessageId] / [threadParentText]: in a reply thread, its parent message's id and
+ *   text (while the page has it). Each open of the panel attaches this conversation (the thread,
+ *   or [conversationChannelId]) to the DM's composer as a chip (ThreadAssistantContext.kt).
  */
 @Composable
 internal fun rememberThreadAssistantOtter(
@@ -186,6 +190,8 @@ internal fun rememberThreadAssistantOtter(
     wide: Boolean,
     replyThread: Boolean,
     pageActive: Boolean = true,
+    threadParentMessageId: String? = null,
+    threadParentText: String? = null,
 ): ThreadAssistantOtter? {
     val server = serverId?.takeIf(String::isNotBlank)
     val user = userId?.takeIf(String::isNotBlank)
@@ -245,6 +251,33 @@ internal fun rememberThreadAssistantOtter(
         // The DM's messages go with the panel: no card is known to wait once it closes.
         if (!panelOpen) waitingActionCard = false
     }
+    // The conversation the otter lies on, as this page knows it now (web useAssistantContextRef):
+    // the chip each open attaches to the DM's composer.
+    val readsDms = (state as? MyAssistantState.Ready)?.assistant?.readsDms == true
+    val contextOrigin =
+        remember(homeState.content, serverMembersStore, server, conversationChannelId, threadParentMessageId, threadParentText, readsDms) {
+            val channelId = conversationChannelId?.takeIf(String::isNotBlank)
+            if (server == null || channelId == null) {
+                null
+            } else {
+                homeState
+                    .assistantContextConversation(server, channelId) { memberId ->
+                        serverMembersStore?.currentServerMembersEntry(ServerId(server))?.membersById?.get(memberId)
+                    }
+                    ?.let { conversation ->
+                        assistantContextRef(
+                            conversation = conversation,
+                            thread =
+                                threadParentMessageId?.takeIf(String::isNotBlank)?.let {
+                                    AssistantContextThread(parentMessageId = it, parentText = threadParentText)
+                                },
+                            readsDms = readsDms,
+                        )
+                    }
+            }
+        }
+    val contextAttachment = remember(server, dmChannelId) { ThreadAssistantContextAttachment() }
+    SideEffect { contextAttachment.origin = contextOrigin }
     if (server == null || dmChannelId == null || agentId == null) return null
     val assistant = (state as? MyAssistantState.Ready)?.assistant ?: return null
     val mood =
@@ -257,8 +290,12 @@ internal fun rememberThreadAssistantOtter(
     val scale = if (wide && !replyThread) RaftAssistantOtterDefaults.WideScale else RaftAssistantOtterDefaults.PhoneScale
     val endInset = if (wide) RaftAssistantOtterDefaults.WideEndInset else RaftAssistantOtterDefaults.PhoneEndInset
     val panelEmbed =
-        remember(agentId, server, dmChannelId) {
-            ThreadAssistantPanelEmbed(agentId = agentId, onWaitingActionCard = { waitingActionCard = it })
+        remember(agentId, server, dmChannelId, contextAttachment) {
+            ThreadAssistantPanelEmbed(
+                agentId = agentId,
+                context = contextAttachment,
+                onWaitingActionCard = { waitingActionCard = it },
+            )
         }
     val rest = remember(server, dmChannelId) { ThreadAssistantOtterRest() }
     return remember(hostId, store, mood, scale, endInset, server, dmChannelId, assistant, paused, panelOpen, panelEmbed, rest) {
@@ -268,7 +305,11 @@ internal fun rememberThreadAssistantOtter(
             mood = mood,
             scale = scale,
             endInset = endInset,
-            onOpen = { panelOpen = true },
+            // The panel mounts on each open (web), so each open attaches the conversation afresh.
+            onOpen = {
+                contextAttachment.attach()
+                panelOpen = true
+            },
             assistantName = assistant.name,
             agentId = agentId,
             serverId = server,
@@ -276,7 +317,10 @@ internal fun rememberThreadAssistantOtter(
             readsDms = assistant.readsDms == true,
             paused = paused,
             panelOpen = panelOpen,
-            onPanelOpenChange = { panelOpen = it },
+            onPanelOpenChange = { open ->
+                if (open && !panelOpen) contextAttachment.attach()
+                panelOpen = open
+            },
             panelEmbed = panelEmbed,
             rest = rest,
         )

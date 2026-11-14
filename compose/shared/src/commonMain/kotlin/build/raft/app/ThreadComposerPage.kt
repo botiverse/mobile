@@ -538,7 +538,12 @@ internal data class ThreadComposerSurface(
     val memberSuggestionHeadersVisible: Boolean = kind != RaftThreadSurfaceKind.DirectMessage,
     val showTaskButton: Boolean = true,
     /** False under task v2 outside a channel or a DM: nothing this composer sends is a task ([withTaskV2]). */
-    val sendsAsTask: Boolean = true
+    val sendsAsTask: Boolean = true,
+    /**
+     * The personal assistant's DM in its panel: the conversation the panel was opened from, a chip
+     * above this composer whose token rides on the next message (ThreadAssistantContext.kt).
+     */
+    val assistantContext: build.raft.app.assistant.ThreadAssistantContextAttachment? = null
 ) {
     val sendChannelId: String?
         get() = streamChannelId?.takeIf { it.isNotBlank() } ?: channelId.takeIf { it.isNotBlank() }

@@ -4234,6 +4234,11 @@
     <string name="assistant_otter_state_working">작업 중</string>
     <string name="assistant_otter_state_away">자리 비움</string>
     <string name="assistant_otter_collapse">수달로 접기</string>
+    <string name="assistant_context_attached">첨부됨: %1$s</string>
+    <string name="assistant_context_thread">스레드 · %1$s · %2$s</string>
+    <string name="assistant_context_thread_no_excerpt">스레드 · %1$s</string>
+    <string name="assistant_context_remove">%1$s 제거</string>
+    <string name="assistant_context_unreadable">어시스턴트가 이 대화를 볼 수 없어요</string>
     <string name="assistant_otter_meta_working">작업 중…</string>
     <string name="assistant_otter_meta_confirm">확인을 기다리고 있어요</string>
     <string name="assistant_header_meta">DM을 제외하고 내가 볼 수 있는 내용을 읽을 수 있어요</string>

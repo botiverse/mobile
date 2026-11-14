@@ -9,6 +9,9 @@ import build.raft.app.links.ParsedRaftPermalink
 import build.raft.app.links.toParsedRaftPermalink
 import build.raft.app.assistant.LocalThreadAssistantOtter
 import build.raft.app.assistant.LocalThreadAssistantPanelEmbed
+import build.raft.app.assistant.ThreadAssistantContextChip
+import build.raft.app.assistant.assistantContextTokenForSend
+import build.raft.app.assistant.withAssistantContextReference
 import build.raft.app.assistant.ThreadAssistantPanelConversationMissing
 import build.raft.app.assistant.ThreadAssistantPanelMessagesReport
 import build.raft.app.assistant.ThreadAssistantPanelSheet
@@ -9989,6 +9992,10 @@ private fun SharedThreadRouteContentContent(
                 enabled = renderedPayload.canSend && resolvedAuxiliaryThreadId != null
             )
         }
+    // The assistant's DM in its panel: the conversation the panel was opened from rides on this
+    // composer (a chip, and its token on the next message; ThreadAssistantContext.kt). Carried by
+    // the surface, which the send path already reads (see the JVM-limit note further down).
+    val assistantPanelContext = LocalThreadAssistantPanelEmbed.current?.context
     val composerSurface =
         remember(
             scopedBaseComposerState,
@@ -9998,14 +10005,15 @@ private fun SharedThreadRouteContentContent(
             headerDisplayModel.subtitle,
             renderedPayload.surfaceKind,
             renderedPayload.parentSurfaceKind,
-            taskV2Enabled
+            taskV2Enabled,
+            assistantPanelContext
         ) {
             scopedBaseComposerState.toThreadComposerSurface(
                 channelId = resolvedAuxiliaryThreadId.orEmpty(),
                 parentChannelId = renderedPayload.parentChannelId,
                 mentionChannelLabel = headerDisplayModel.threadComposerMentionScopeChannelLabel(),
                 memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
-            ).withTaskV2(taskV2Enabled)
+            ).withTaskV2(taskV2Enabled).copy(assistantContext = assistantPanelContext)
         }
     fun currentComposerPayload(): RaftThreadComposerPayload =
         scopedBaseComposerState.withThreadComposerDraftState(
@@ -12082,14 +12090,19 @@ private fun SharedThreadRouteContentContent(
                 attachments = currentDraftState.uploadedAttachments,
                 attachmentIds = attachmentIds
             )
+        // The assistant's DM in its panel: a message with text carries the conversation the panel
+        // was opened from, its token on a line of its own (web MessageInput withComposerReference).
+        val assistantContextAttachment = composerSurface.assistantContext
+        val assistantContextToken = assistantContextTokenForSend(draftText, assistantContextAttachment?.context)
+        val composedBody =
+            threadComposerMessageBodyForSend(
+                draftText = draftText,
+                attachmentCount = pendingAttachments.size
+            )
         val pendingContext =
             RaftThreadPendingSendContext(
                 channelId = threadId ?: return false,
-                body =
-                    threadComposerMessageBodyForSend(
-                        draftText = draftText,
-                        attachmentCount = pendingAttachments.size
-                    ),
+                body = withAssistantContextReference(composedBody, assistantContextToken),
                 asTask = currentDraftState.seedAsTask && composerSurface.sendsAsTask,
                 attachmentIds = attachmentIds,
                 attachments = pendingAttachments,
@@ -12119,7 +12132,8 @@ private fun SharedThreadRouteContentContent(
                 expectedRoute = sendAuthority.route,
                 composerSeed =
                     ThreadLocalSendComposerSeed(
-                        sentBody = pendingContext.body,
+                        // What the composer held: the reference token was never in it.
+                        sentBody = composedBody,
                         sentAttachmentIds = pendingContext.attachmentIds.toSet()
                     )
             )
@@ -12128,6 +12142,8 @@ private fun SharedThreadRouteContentContent(
             return false
         }
         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        // The message took the reference (it is in the journaled body, retries included): the chip clears.
+        if (assistantContextToken != null) assistantContextAttachment?.detach()
         // The journal row now owns crash protection for this send (restart adoption,
         // failed row with retry), so the persisted composer draft must be cleared at
         // admission — otherwise a mid-send process kill leaves a second copy of the same
@@ -13066,6 +13082,18 @@ private fun SharedThreadRouteContentContent(
                 wide = assistantOtterInSplitPane,
                 replyThread = assistantOtterReplyThread,
                 pageActive = active,
+                // A thread's composer also names the thread: opened from here, the assistant's DM
+                // attaches it (web ThreadPanel's AssistantOtterAnchor threadParentMessageId/Text).
+                threadParentMessageId =
+                    renderedThread.parentMessageId?.takeIf { assistantOtterReplyThread && it.isNotBlank() }
+                        ?: renderedThread.originParentMessageId?.takeIf { assistantOtterReplyThread && it.isNotBlank() },
+                threadParentText =
+                    renderedThread.originMessage
+                        ?.takeIf { message ->
+                            assistantOtterReplyThread &&
+                                message.id == (renderedThread.parentMessageId ?: renderedThread.originParentMessageId)
+                        }
+                        ?.body,
             )
         // Read through the local, not captured (this lambda is at the JVM's captured-value limit).
         val bannerHandoff = LocalRaftForegroundBannerHandoff.current
@@ -20455,38 +20483,51 @@ private fun ThreadComposerRoute(
                 edge
             }
         }
-    // Web MessageInput's drop zone: files dragged over the composer light it up; a drop attaches
-    // them as the attach button does.
-    ThreadComposerFileDropZone(
-        enabled = composerUiState.enabled && composerUiState.attachmentActionsEnabled && surface.sendChannelId != null,
-        onDropFiles = onDropFiles,
-        modifier =
-            Modifier.fillMaxWidth().onSizeChangedDp { size ->
-                if (composerAtRest) ThreadComposerRestingHeight.record(restingHeightKey, size.height)
+    // The assistant's DM in its panel: the conversation it was opened from, a chip above the
+    // composer (web MessageInput's accessory row, `gap-1.5`), until × or the next message with text.
+    Column(Modifier.fillMaxWidth()) {
+        surface.assistantContext?.let { attachment ->
+            attachment.context?.let { context ->
+                ThreadAssistantContextChip(
+                    context = context,
+                    onRemove = attachment::detach,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                )
             }
-    ) {
-    ThreadComposerContentWithSuggestions(
-        surface = surface,
-        state = composerUiState,
-        threadMessages = timelineSlice.messages,
-        originMessage = renderedPayload.originMessage,
-        prioritizeThreadParticipants = renderedPayload.shouldPrioritizeThreadMentionParticipants(),
-        memberSuggestionsFlow = memberSuggestionsFlow,
-        channelSuggestionsFlow = channelSuggestionsFlow,
-        agentStatusResolver = agentStatusResolver,
-        onEvent = onEvent,
-        onSendRequest = onSendRequest,
-        insertMentionRequest = insertMentionRequest,
-        onInsertMentionConsumed = onInsertMentionConsumed,
-        onSuggestionDemandChanged = onSuggestionDemandChanged,
-        composerSendKeyEnabled = composerSendKeyEnabled,
-        onKeyboardHeightChange = onKeyboardHeightChange,
-        contentPaddingTop = 0.dp,
-        contentPaddingBottom = 0.dp,
-        adaptiveNativeEditingStateReader = adaptiveNativeEditingStateReader,
-        frameEdge = frameEdge,
-        autofocusOnOpen = autofocusOnOpen,
-    )
+        }
+        // Web MessageInput's drop zone: files dragged over the composer light it up; a drop attaches
+        // them as the attach button does.
+        ThreadComposerFileDropZone(
+            enabled = composerUiState.enabled && composerUiState.attachmentActionsEnabled && surface.sendChannelId != null,
+            onDropFiles = onDropFiles,
+            modifier =
+                Modifier.fillMaxWidth().onSizeChangedDp { size ->
+                    if (composerAtRest) ThreadComposerRestingHeight.record(restingHeightKey, size.height)
+                }
+        ) {
+        ThreadComposerContentWithSuggestions(
+            surface = surface,
+            state = composerUiState,
+            threadMessages = timelineSlice.messages,
+            originMessage = renderedPayload.originMessage,
+            prioritizeThreadParticipants = renderedPayload.shouldPrioritizeThreadMentionParticipants(),
+            memberSuggestionsFlow = memberSuggestionsFlow,
+            channelSuggestionsFlow = channelSuggestionsFlow,
+            agentStatusResolver = agentStatusResolver,
+            onEvent = onEvent,
+            onSendRequest = onSendRequest,
+            insertMentionRequest = insertMentionRequest,
+            onInsertMentionConsumed = onInsertMentionConsumed,
+            onSuggestionDemandChanged = onSuggestionDemandChanged,
+            composerSendKeyEnabled = composerSendKeyEnabled,
+            onKeyboardHeightChange = onKeyboardHeightChange,
+            contentPaddingTop = 0.dp,
+            contentPaddingBottom = 0.dp,
+            adaptiveNativeEditingStateReader = adaptiveNativeEditingStateReader,
+            frameEdge = frameEdge,
+            autofocusOnOpen = autofocusOnOpen,
+        )
+        }
     }
 }
 

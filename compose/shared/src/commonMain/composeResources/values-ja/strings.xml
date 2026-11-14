@@ -4420,6 +4420,11 @@
     <string name="assistant_otter_state_working">作業中</string>
     <string name="assistant_otter_state_away">不在</string>
     <string name="assistant_otter_collapse">カワウソにしまう</string>
+    <string name="assistant_context_attached">添付：%1$s</string>
+    <string name="assistant_context_thread">スレッド · %1$s · %2$s</string>
+    <string name="assistant_context_thread_no_excerpt">スレッド · %1$s</string>
+    <string name="assistant_context_remove">%1$s を削除</string>
+    <string name="assistant_context_unreadable">アシスタントはこの会話を閲覧できません</string>
     <string name="assistant_otter_meta_working">作業中…</string>
     <string name="assistant_otter_meta_confirm">確認を待っています</string>
     <string name="assistant_header_meta">DM を除き、自分が閲覧できる内容を読み取れます</string>

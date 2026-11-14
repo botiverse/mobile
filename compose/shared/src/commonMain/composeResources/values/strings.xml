@@ -4420,6 +4420,11 @@
     <string name="assistant_otter_state_working">Working</string>
     <string name="assistant_otter_state_away">Away</string>
     <string name="assistant_otter_collapse">Collapse to otter</string>
+    <string name="assistant_context_attached">Attached: %1$s</string>
+    <string name="assistant_context_thread">Thread · %1$s · %2$s</string>
+    <string name="assistant_context_thread_no_excerpt">Thread · %1$s</string>
+    <string name="assistant_context_remove">Remove %1$s</string>
+    <string name="assistant_context_unreadable">The assistant can't see this conversation</string>
     <string name="assistant_otter_meta_working">Working on it…</string>
     <string name="assistant_otter_meta_confirm">Waiting for you to confirm</string>
     <string name="assistant_header_meta">Can read what you can see, except your DMs</string>

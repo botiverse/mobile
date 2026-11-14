@@ -4420,6 +4420,11 @@
     <string name="assistant_otter_state_working">工作中</string>
     <string name="assistant_otter_state_away">不在</string>
     <string name="assistant_otter_collapse">收起为水獭</string>
+    <string name="assistant_context_attached">已附上：%1$s</string>
+    <string name="assistant_context_thread">消息列 · %1$s · %2$s</string>
+    <string name="assistant_context_thread_no_excerpt">消息列 · %1$s</string>
+    <string name="assistant_context_remove">移除 %1$s</string>
+    <string name="assistant_context_unreadable">助理看不到这个对话</string>
     <string name="assistant_otter_meta_working">正在处理…</string>
     <string name="assistant_otter_meta_confirm">等你确认一件事</string>
     <string name="assistant_header_meta">能读你看得到的内容，私信除外</string>
