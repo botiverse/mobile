@@ -100,5 +100,75 @@ enum GeneratedRealtimeContract {
         static let reminderFired = "reminder:fired"
         static let reminderScheduled = "reminder:scheduled"
         static let reminderCanceled = "reminder:canceled"
+        static let threadFollowersUpdated = "thread:followers-updated"
+        static let threadReplyUpdated = "thread:reply_updated"
+        static let readStateUpdated = "read_state:updated"
+        static let readStateUpdatedBulk = "read_state:updated_bulk"
+        static let notificationPrefsUpdated = "notification_prefs:updated"
+        static let pinnedUpdated = "pinned:updated"
+        static let notificationPush = "notification:push"
+        static let notificationRetract = "notification:retract"
+        static let jointInvitesChanged = "joint-invites:changed"
+
+        static let serverWireEvents: [String] = [
+            SocketEvent.messageNew,
+            SocketEvent.directMessageNew,
+            SocketEvent.messageUpdated,
+            SocketEvent.threadUpdated,
+            SocketEvent.channelUpdated,
+            SocketEvent.channelMembersUpdated,
+            SocketEvent.scopeReadUpdated,
+            SocketEvent.taskCreated,
+            SocketEvent.taskUpdated,
+            SocketEvent.taskDeleted,
+            SocketEvent.agentActivity,
+            SocketEvent.agentActivityState,
+            SocketEvent.agentActivitySubscribed,
+            SocketEvent.agentSeen,
+            SocketEvent.agentTyping,
+            SocketEvent.agentSession,
+            SocketEvent.agentCreated,
+            SocketEvent.agentUpdated,
+            SocketEvent.agentDeleted,
+            SocketEvent.machineStatus,
+            SocketEvent.machineCapabilities,
+            SocketEvent.machineUpdated,
+            SocketEvent.computerUpgradeProgress,
+            SocketEvent.computerUpgradeDone,
+            SocketEvent.machineUpgradeRequest,
+            SocketEvent.computerRestartDone,
+            SocketEvent.machineRuntimeAuthUpdated,
+            SocketEvent.runtimeAuthLoginEvent,
+            SocketEvent.runtimeAuthLoginResult,
+            SocketEvent.daemonStatus,
+            SocketEvent.serverMemberAdded,
+            SocketEvent.serverMemberUpdated,
+            SocketEvent.serverMemberLeft,
+            SocketEvent.serverMemberRemoved,
+            SocketEvent.serverMembershipRemoved,
+            SocketEvent.serverDeleted,
+            SocketEvent.serverPlanUpdated,
+            SocketEvent.serverFeaturesChanged,
+            SocketEvent.appearanceUpdated,
+            SocketEvent.userProfileUpdated,
+            SocketEvent.productFeedbackUnread,
+            SocketEvent.productFeedbackAppUnread,
+            SocketEvent.activityChanged,
+            SocketEvent.announcementNew,
+            SocketEvent.reminderFired,
+            SocketEvent.reminderScheduled,
+            SocketEvent.reminderCanceled,
+            SocketEvent.syncResumeResponse,
+            SocketEvent.heartbeat,
+            SocketEvent.threadFollowersUpdated,
+            SocketEvent.threadReplyUpdated,
+            SocketEvent.readStateUpdated,
+            SocketEvent.readStateUpdatedBulk,
+            SocketEvent.notificationPrefsUpdated,
+            SocketEvent.pinnedUpdated,
+            SocketEvent.notificationPush,
+            SocketEvent.notificationRetract,
+            SocketEvent.jointInvitesChanged,
+        ]
     }
 }

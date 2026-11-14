@@ -94,7 +94,16 @@
     "announcementNew": "announcement:new",
     "reminderFired": "reminder:fired",
     "reminderScheduled": "reminder:scheduled",
-    "reminderCanceled": "reminder:canceled"
+    "reminderCanceled": "reminder:canceled",
+    "threadFollowersUpdated": "thread:followers-updated",
+    "threadReplyUpdated": "thread:reply_updated",
+    "readStateUpdated": "read_state:updated",
+    "readStateUpdatedBulk": "read_state:updated_bulk",
+    "notificationPrefsUpdated": "notification_prefs:updated",
+    "pinnedUpdated": "pinned:updated",
+    "notificationPush": "notification:push",
+    "notificationRetract": "notification:retract",
+    "jointInvitesChanged": "joint-invites:changed"
   },
   "serverWireEvents": [
     "messageNew",
@@ -145,6 +154,15 @@
     "reminderScheduled",
     "reminderCanceled",
     "syncResumeResponse",
-    "heartbeat"
+    "heartbeat",
+    "threadFollowersUpdated",
+    "threadReplyUpdated",
+    "readStateUpdated",
+    "readStateUpdatedBulk",
+    "notificationPrefsUpdated",
+    "pinnedUpdated",
+    "notificationPush",
+    "notificationRetract",
+    "jointInvitesChanged"
   ]
 }

@@ -118,6 +118,15 @@ object GeneratedRealtimeContract {
         const val ReminderFired = "reminder:fired"
         const val ReminderScheduled = "reminder:scheduled"
         const val ReminderCanceled = "reminder:canceled"
+        const val ThreadFollowersUpdated = "thread:followers-updated"
+        const val ThreadReplyUpdated = "thread:reply_updated"
+        const val ReadStateUpdated = "read_state:updated"
+        const val ReadStateUpdatedBulk = "read_state:updated_bulk"
+        const val NotificationPrefsUpdated = "notification_prefs:updated"
+        const val PinnedUpdated = "pinned:updated"
+        const val NotificationPush = "notification:push"
+        const val NotificationRetract = "notification:retract"
+        const val JointInvitesChanged = "joint-invites:changed"
 
         val ServerWireEvents: List<String> = listOf(
             MessageNew,
@@ -169,6 +178,15 @@ object GeneratedRealtimeContract {
             ReminderCanceled,
             SyncResumeResponse,
             Heartbeat,
+            ThreadFollowersUpdated,
+            ThreadReplyUpdated,
+            ReadStateUpdated,
+            ReadStateUpdatedBulk,
+            NotificationPrefsUpdated,
+            PinnedUpdated,
+            NotificationPush,
+            NotificationRetract,
+            JointInvitesChanged,
         )
     }
 }

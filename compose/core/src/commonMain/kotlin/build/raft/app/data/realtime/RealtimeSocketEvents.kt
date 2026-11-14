@@ -36,9 +36,9 @@ object RealtimeSocketEvents {
     const val MessageNew = GeneratedRealtimeContract.SocketEvent.MessageNew
     const val MessageUpdated = GeneratedRealtimeContract.SocketEvent.MessageUpdated
     const val DirectMessageNew = GeneratedRealtimeContract.SocketEvent.DirectMessageNew
-    const val ThreadFollowersUpdated = "thread:followers-updated"
+    const val ThreadFollowersUpdated = GeneratedRealtimeContract.SocketEvent.ThreadFollowersUpdated
     /** slock `emitExternalLinkedMessageUpdateToFrontend`: an edited bridged thread reply, to the parent's room. */
-    const val ThreadReplyUpdated = "thread:reply_updated"
+    const val ThreadReplyUpdated = GeneratedRealtimeContract.SocketEvent.ThreadReplyUpdated
     const val ThreadUpdated = GeneratedRealtimeContract.SocketEvent.ThreadUpdated
     const val ChannelUpdated = GeneratedRealtimeContract.SocketEvent.ChannelUpdated
     const val ChannelMembersUpdated = GeneratedRealtimeContract.SocketEvent.ChannelMembersUpdated
@@ -115,24 +115,21 @@ object RealtimeSocketEvents {
     const val ReminderCanceled = GeneratedRealtimeContract.SocketEvent.ReminderCanceled
 
     // RFC 041 per-receiver state push, emitted to the caller's `user:<id>`
-    // room from `routes/channels.ts` (server PR #4175). Literals live here
-    // instead of GeneratedRealtimeContract because the generator last ran
-    // against a pre-#4175 server tree — swap to the generated constants on
-    // the next `generate_realtime_contract.py` regeneration.
-    const val ReadStateUpdated = "read_state:updated"
-    const val ReadStateUpdatedBulk = "read_state:updated_bulk"
-    const val NotificationPrefsUpdated = "notification_prefs:updated"
-    const val PinnedUpdated = "pinned:updated"
+    // room from `routes/channels.ts` (server PR #4175).
+    const val ReadStateUpdated = GeneratedRealtimeContract.SocketEvent.ReadStateUpdated
+    const val ReadStateUpdatedBulk = GeneratedRealtimeContract.SocketEvent.ReadStateUpdatedBulk
+    const val NotificationPrefsUpdated = GeneratedRealtimeContract.SocketEvent.NotificationPrefsUpdated
+    const val PinnedUpdated = GeneratedRealtimeContract.SocketEvent.PinnedUpdated
 
     // task #459: server-qualified notification stream, emitted to the caller's
     // `user:<id>` room at the sendPushNotifications call point (server PR
-    // #4233, staging 31042ed06). Literal until the next contract regeneration.
-    const val NotificationPush = "notification:push"
+    // #4233, staging 31042ed06).
+    const val NotificationPush = GeneratedRealtimeContract.SocketEvent.NotificationPush
 
     // Unified notification contract (slock docs/contracts/notifications.md §5): the server closes
     // notifications of a conversation that was read on any device; every client reports whether
-    // the user is actively using it. Literals until the next contract regeneration.
-    const val NotificationRetract = "notification:retract"
+    // the user is actively using it.
+    const val NotificationRetract = GeneratedRealtimeContract.SocketEvent.NotificationRetract
     const val PresenceActivity = "presence:activity"
 
     /**
@@ -140,7 +137,7 @@ object RealtimeSocketEvents {
      * `{ serverId }` to the invitee's `user:<id>:server:<id>` once a joint-channel invite to them is
      * created, resent or accepted. Payload-free: read `GET /channels/joint-invites` again.
      */
-    const val JointInvitesChanged = "joint-invites:changed"
+    const val JointInvitesChanged = GeneratedRealtimeContract.SocketEvent.JointInvitesChanged
 
     /**
      * Sent to the member's own `user:<id>` room about one of their servers, so the socket of
@@ -155,16 +152,11 @@ object RealtimeSocketEvents {
         // server levels); a channel mute names a channel id the other server's Home does not hold.
         setOf(AppearanceUpdated, NotificationPush, NotificationRetract, NotificationPrefsUpdated)
 
-    val ServerWireEvents: List<String> =
-        GeneratedRealtimeContract.SocketEvent.ServerWireEvents + listOf(
-            ThreadFollowersUpdated,
-            ThreadReplyUpdated,
-            ReadStateUpdated,
-            ReadStateUpdatedBulk,
-            NotificationPrefsUpdated,
-            PinnedUpdated,
-            NotificationPush,
-            NotificationRetract,
-            JointInvitesChanged,
-        )
+    /**
+     * Every server event the transports subscribe to: exactly the contract's `serverWireEvents`
+     * (compose/realtime-contract/realtime_contract.json). The iOS host subscribes from the same
+     * generated list (`GeneratedRealtimeContract.SocketEvent.serverWireEvents`), so add a new event
+     * to the JSON and regenerate; never append a literal here.
+     */
+    val ServerWireEvents: List<String> = GeneratedRealtimeContract.SocketEvent.ServerWireEvents
 }
