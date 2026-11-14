@@ -4098,90 +4098,16 @@ private fun RaftAppShellReadyContent(
                     sharedStores.readReceiptOwner(serverId, accountId)
                 }
             }
-    val notificationLevelsByServer by build.raft.app.data.RaftNotificationLevelStore.state.collectAsState()
-    // Every server's level (the badge leaves out `none` servers) and the account settings, once per
-    // signed-in account; realtime `notification_prefs:updated` keeps them current afterwards.
-    val notificationAccountUserId = readySession?.user?.id?.takeIf { it.isNotBlank() }
-    LaunchedEffect(notificationAccountUserId) {
-        if (notificationAccountUserId == null) return@LaunchedEffect
-        if (build.raft.app.data.RaftNotificationAccountSettingsStore.ownerUserId != notificationAccountUserId) {
-            build.raft.app.data.RaftNotificationLevelStore.clear()
-            build.raft.app.data.RaftNotificationAccountSettingsStore.clear()
-            build.raft.app.data.RaftNotificationChannelNames.clear()
-            // What another account's Free servers hid is not this account's to show.
-            build.raft.app.data.RaftHiddenHistoryStore.clear()
-            build.raft.app.data.RaftNotificationAccountSettingsStore.ownerUserId = notificationAccountUserId
-        }
-        build.raft.app.data.RaftNotificationAccountSettingsStore.load(build.raft.app.data.DataRequestPriority.Background)
-    }
-    // The selected server's explicit channel / thread levels, for the sidebar and thread menus' labels.
-    LaunchedEffect(notificationAccountUserId, readyServerId) {
-        val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        if (notificationAccountUserId == null) return@LaunchedEffect
-        build.raft.app.data.RaftNotificationLevelStore.refresh(serverId, build.raft.app.data.DataRequestPriority.Background)
-    }
-    // Forward the badge to the host: the selected server's live Activity projection plus every other
-    // server's Activity unread, without servers set to `none` (slock docs/contracts/notifications.md
-    // §1.4), the same number the push badge carries. Source is diagnostics-only; hosts display count
-    // and must not branch on provenance.
-    LaunchedEffect(
-        homeState.appBadgeCount,
-        activityUnreadSummary,
-        authoritativeHomeStartAllowed,
-        homeState.serverActivityUnread,
-        notificationLevelsByServer
-    ) {
-        val fallback = homeState.appBadgeCount
-        val useActivityProjection = authoritativeHomeStartAllowed && readySession != null
-        val currentServerCount =
-            if (useActivityProjection && activityUnreadSummary.hasValue) {
-                activityUnreadSummary.totalUnreadCount
-            } else {
-                fallback.count
-            }
-        bridge.appBadge(
-            count =
-                build.raft.app.data.raftAppBadgeAcrossServers(
-                    currentServerId = readyServerId,
-                    currentServerCount = currentServerCount,
-                    otherServerCounts = homeState.serverActivityUnread.countsForAccountOf(serverActivityExpectedOwner),
-                    serverPushMuted = homeState.serverActivityUnread.serverPushMutedForAccountOf(serverActivityExpectedOwner),
-                    levels =
-                        notificationLevelsByServer
-                            .filterValues { it.serverLevelKnown }
-                            .mapValues { it.value.server }
-                ),
-            source =
-                if (useActivityProjection && activityUnreadSummary.hasValue) {
-                    build.raft.app.data.AppBadgeSource.ACTIVITY_UNREAD_SUMMARY.wire
-                } else {
-                    fallback.source.wire
-                },
-            isStale =
-                if (useActivityProjection && activityUnreadSummary.hasValue) {
-                    activityUnreadSummary.freshness != build.raft.app.data.ActivityUnreadSummaryFreshness.Fresh
-                } else {
-                    fallback.isStale
-                }
-        )
-    }
-    // Sync top pinned channels / DMs to the host launcher icon dynamic shortcut menu.
-    LaunchedEffect(homeState.content, readySession, authoritativeHomeStartAllowed) {
-        if (!authoritativeHomeStartAllowed || readySession == null) {
-            bridge.syncDesktopShortcuts(emptyList())
-            return@LaunchedEffect
-        }
-        val content = homeState.content as? SharedHomeContentState.Content
-        if (content != null) {
-            val shortcuts = build.raft.app.data.extractTopPinnedDesktopShortcuts(content.snapshot, maxCount = 4)
-            bridge.syncDesktopShortcuts(shortcuts)
-        }
-    }
-    LaunchedEffect(sharedStores.activityUnreadSummaryStore, readyServerId, authoritativeHomeStartAllowed) {
-        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
-        val serverId = readyServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "app_shell_server_ready")
-    }
+    AppShellNotificationBadgeEffects(
+        readySession = readySession,
+        readyServerId = readyServerId,
+        homeState = homeState,
+        activityUnreadSummary = activityUnreadSummary,
+        authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
+        serverActivityExpectedOwner = serverActivityExpectedOwner,
+        bridge = bridge,
+        sharedStores = sharedStores,
+    )
     val renderedHomeServerId =
         (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
     val navigationStoreScope =
@@ -9555,6 +9481,104 @@ private fun RaftAppShellReadyContent(
             bridge = bridge,
             onOpenComposer = ::openExternalShareComposer
         )
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent, which hit the JVM 64 KB method size limit.
+@Composable
+private fun AppShellNotificationBadgeEffects(
+    readySession: StoredAuthSession?,
+    readyServerId: String?,
+    homeState: SharedHomeState,
+    activityUnreadSummary: build.raft.app.data.ActivityUnreadSummaryProjection,
+    authoritativeHomeStartAllowed: Boolean,
+    serverActivityExpectedOwner: ReadReceiptOwner?,
+    bridge: build.raft.app.base.BridgeModule,
+    sharedStores: RaftSharedStoreProvider,
+) {
+    val notificationLevelsByServer by build.raft.app.data.RaftNotificationLevelStore.state.collectAsState()
+    // Every server's level (the badge leaves out `none` servers) and the account settings, once per
+    // signed-in account; realtime `notification_prefs:updated` keeps them current afterwards.
+    val notificationAccountUserId = readySession?.user?.id?.takeIf { it.isNotBlank() }
+    LaunchedEffect(notificationAccountUserId) {
+        if (notificationAccountUserId == null) return@LaunchedEffect
+        if (build.raft.app.data.RaftNotificationAccountSettingsStore.ownerUserId != notificationAccountUserId) {
+            build.raft.app.data.RaftNotificationLevelStore.clear()
+            build.raft.app.data.RaftNotificationAccountSettingsStore.clear()
+            build.raft.app.data.RaftNotificationChannelNames.clear()
+            // What another account's Free servers hid is not this account's to show.
+            build.raft.app.data.RaftHiddenHistoryStore.clear()
+            build.raft.app.data.RaftNotificationAccountSettingsStore.ownerUserId = notificationAccountUserId
+        }
+        build.raft.app.data.RaftNotificationAccountSettingsStore.load(build.raft.app.data.DataRequestPriority.Background)
+    }
+    // The selected server's explicit channel / thread levels, for the sidebar and thread menus' labels.
+    LaunchedEffect(notificationAccountUserId, readyServerId) {
+        val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (notificationAccountUserId == null) return@LaunchedEffect
+        build.raft.app.data.RaftNotificationLevelStore.refresh(serverId, build.raft.app.data.DataRequestPriority.Background)
+    }
+    // Forward the badge to the host: the selected server's live Activity projection plus every other
+    // server's Activity unread, without servers set to `none` (slock docs/contracts/notifications.md
+    // §1.4), the same number the push badge carries. Source is diagnostics-only; hosts display count
+    // and must not branch on provenance.
+    LaunchedEffect(
+        homeState.appBadgeCount,
+        activityUnreadSummary,
+        authoritativeHomeStartAllowed,
+        homeState.serverActivityUnread,
+        notificationLevelsByServer
+    ) {
+        val fallback = homeState.appBadgeCount
+        val useActivityProjection = authoritativeHomeStartAllowed && readySession != null
+        val currentServerCount =
+            if (useActivityProjection && activityUnreadSummary.hasValue) {
+                activityUnreadSummary.totalUnreadCount
+            } else {
+                fallback.count
+            }
+        bridge.appBadge(
+            count =
+                build.raft.app.data.raftAppBadgeAcrossServers(
+                    currentServerId = readyServerId,
+                    currentServerCount = currentServerCount,
+                    otherServerCounts = homeState.serverActivityUnread.countsForAccountOf(serverActivityExpectedOwner),
+                    serverPushMuted = homeState.serverActivityUnread.serverPushMutedForAccountOf(serverActivityExpectedOwner),
+                    levels =
+                        notificationLevelsByServer
+                            .filterValues { it.serverLevelKnown }
+                            .mapValues { it.value.server }
+                ),
+            source =
+                if (useActivityProjection && activityUnreadSummary.hasValue) {
+                    build.raft.app.data.AppBadgeSource.ACTIVITY_UNREAD_SUMMARY.wire
+                } else {
+                    fallback.source.wire
+                },
+            isStale =
+                if (useActivityProjection && activityUnreadSummary.hasValue) {
+                    activityUnreadSummary.freshness != build.raft.app.data.ActivityUnreadSummaryFreshness.Fresh
+                } else {
+                    fallback.isStale
+                }
+        )
+    }
+    // Sync top pinned channels / DMs to the host launcher icon dynamic shortcut menu.
+    LaunchedEffect(homeState.content, readySession, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed || readySession == null) {
+            bridge.syncDesktopShortcuts(emptyList())
+            return@LaunchedEffect
+        }
+        val content = homeState.content as? SharedHomeContentState.Content
+        if (content != null) {
+            val shortcuts = build.raft.app.data.extractTopPinnedDesktopShortcuts(content.snapshot, maxCount = 4)
+            bridge.syncDesktopShortcuts(shortcuts)
+        }
+    }
+    LaunchedEffect(sharedStores.activityUnreadSummaryStore, readyServerId, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
+        val serverId = readyServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "app_shell_server_ready")
     }
 }
 
