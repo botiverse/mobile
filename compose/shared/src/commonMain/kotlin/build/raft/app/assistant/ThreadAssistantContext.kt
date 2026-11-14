@@ -143,9 +143,25 @@ internal fun assistantContextRef(
     )
 }
 
-/** Web `RAFT_REF_CHANNEL_NAME_PATTERN` `[\p{L}\p{N}_-]+`. */
+/**
+ * Web `RAFT_REF_CHANNEL_NAME_PATTERN` `[\p{L}\p{N}_-]+`: every letter category and every number
+ * category (Nd, Nl, No: ², Ⅷ, ①), not only [Char.isLetterOrDigit]'s decimal digits. A character
+ * outside the Basic Multilingual Plane is a surrogate pair here and is not accepted.
+ */
 private fun String.isRaftRefChannelName(): Boolean =
-    isNotEmpty() && all { it.isLetterOrDigit() || it == '_' || it == '-' }
+    isNotEmpty() && all { it == '_' || it == '-' || it.category in RaftRefChannelNameCategories }
+
+private val RaftRefChannelNameCategories =
+    setOf(
+        CharCategory.UPPERCASE_LETTER,
+        CharCategory.LOWERCASE_LETTER,
+        CharCategory.TITLECASE_LETTER,
+        CharCategory.MODIFIER_LETTER,
+        CharCategory.OTHER_LETTER,
+        CharCategory.DECIMAL_DIGIT_NUMBER,
+        CharCategory.LETTER_NUMBER,
+        CharCategory.OTHER_NUMBER,
+    )
 
 /** Web `RAFT_REF_DM_PEER_PATTERN`'s name: `[\w.-]+` (ASCII word characters, `.`, `-`). */
 private fun String.isRaftRefDmPeerName(): Boolean =

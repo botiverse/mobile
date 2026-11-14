@@ -43,6 +43,17 @@ class ThreadAssistantContextTest {
     }
 
     @Test
+    fun aChannelNameTakesEveryLetterAndNumberCategoryLikeTheWeb() {
+        // Web `[\p{L}\p{N}_-]+`: other numbers (², ①) and letter numbers (Ⅷ) count, as do CJK letters.
+        for (name in listOf("产品_2", "v²", "step①", "chapterⅧ", "a-b_c")) {
+            assertEquals("#$name", assistantContextRef(AssistantContextConversation.Channel(name), thread = null, readsDms = false)?.token, name)
+        }
+        for (name in listOf("", "a b", "a.b", "a!")) {
+            assertEquals(null, assistantContextRef(AssistantContextConversation.Channel(name), thread = null, readsDms = false), name)
+        }
+    }
+
+    @Test
     fun aThreadAddsTheParentsShortIdLowercasedAndItsFirstLine() {
         val ref = assistantContextRef(general, AssistantContextThread(parentId, "\n  Ship   the\tbuild  \nsecond line"), readsDms = false)!!
         assertEquals("#general:1a2b3c4d", ref.token)
