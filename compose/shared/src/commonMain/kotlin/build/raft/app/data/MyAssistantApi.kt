@@ -27,6 +27,9 @@ import kotlinx.serialization.json.jsonObject
  *    extra instructions; the server trims them, empty or null clears them, and longer than
  *    [ASSISTANT_OWNER_NOTES_MAX_LENGTH] after trimming is 400 `invalid_owner_notes`. It answers
  *    with the same view as the `GET`.
+ *  - `PATCH servers/:id/assistant` `{ readsDms: boolean }` or `{ sendAsOwner: boolean }` (RFC 077):
+ *    the owner's two switches, one per request (web assistantClient `updateAssistantSetting`); the
+ *    same view back.
  *
  * Web reads it in `packages/web/src/assistant/assistantClient.ts` (`useMyAssistant`): only while
  * the `personal_assistant` flag is on, never for a guest; any failure of the first read fails
@@ -156,6 +159,33 @@ fun encodeAssistantOwnerNotesPatchBody(notes: String): String {
     return buildJsonObject { put("ownerNotes", if (trimmed.isEmpty()) JsonNull else JsonPrimitive(trimmed)) }.toString()
 }
 
+/** The owner's switches (web `AssistantOwnerSetting`); [wireName] is the `PATCH` body's field. */
+enum class AssistantOwnerSetting(val wireName: String) {
+    /** Read my direct messages. */
+    ReadsDms("readsDms"),
+
+    /** Send messages as me. */
+    SendAsOwner("sendAsOwner"),
+}
+
+/** The switch's value as the server reported it; null when it does not (the row is hidden). */
+fun MyAssistantRecord.ownerSetting(setting: AssistantOwnerSetting): Boolean? =
+    when (setting) {
+        AssistantOwnerSetting.ReadsDms -> readsDms
+        AssistantOwnerSetting.SendAsOwner -> sendAsOwner
+    }
+
+/** This record with [setting] at [value] (web assistantClient `patchSetting`). */
+fun MyAssistantRecord.withOwnerSetting(setting: AssistantOwnerSetting, value: Boolean?): MyAssistantRecord =
+    when (setting) {
+        AssistantOwnerSetting.ReadsDms -> copy(readsDms = value)
+        AssistantOwnerSetting.SendAsOwner -> copy(sendAsOwner = value)
+    }
+
+/** The `PATCH` body for one switch: `{ readsDms: value }` or `{ sendAsOwner: value }` (web `{ [setting]: value }`). */
+fun encodeAssistantOwnerSettingPatchBody(setting: AssistantOwnerSetting, value: Boolean): String =
+    buildJsonObject { put(setting.wireName, JsonPrimitive(value)) }.toString()
+
 /** What one read of the route gave. */
 sealed interface MyAssistantFetchResult {
     data class Answer(val answer: MyAssistantAnswer) : MyAssistantFetchResult
@@ -185,11 +215,26 @@ sealed interface MyAssistantOwnerNotesSaveResult {
     data class Failed(val code: Int?, val traceId: String? = null) : MyAssistantOwnerNotesSaveResult
 }
 
+/** What one save of an owner's switch gave. */
+sealed interface MyAssistantSettingSaveResult {
+    /** Saved; [answer] is the server's view after the save, null when it could not be read. */
+    data class Saved(val answer: MyAssistantAnswer?) : MyAssistantSettingSaveResult
+
+    /** 403 / 404: the server no longer lets this person change it. */
+    data class NotAvailable(val code: Int, val traceId: String? = null) : MyAssistantSettingSaveResult
+
+    /** Anything else; nothing changed. [code] is the HTTP status, null for transport. */
+    data class Failed(val code: Int?, val traceId: String? = null) : MyAssistantSettingSaveResult
+}
+
 interface RaftMyAssistantApi {
     suspend fun fetch(serverId: ServerId): MyAssistantFetchResult
 
     /** `PATCH servers/:id/assistant` `{ ownerNotes }` with [notes] trimmed, empty clears them. */
     suspend fun updateOwnerNotes(serverId: ServerId, notes: String): MyAssistantOwnerNotesSaveResult
+
+    /** `PATCH servers/:id/assistant` `{ [setting]: value }`: one of the owner's switches. */
+    suspend fun updateSetting(serverId: ServerId, setting: AssistantOwnerSetting, value: Boolean): MyAssistantSettingSaveResult
 }
 
 internal class RaftMyAssistantNetworkApi(
@@ -221,7 +266,36 @@ internal class RaftMyAssistantNetworkApi(
             }.getOrElse { return MyAssistantOwnerNotesSaveResult.Failed(code = null) }
         return myAssistantOwnerNotesSaveResultOf(response.code, response.bodyText ?: response.errorBodyText, response.traceId)
     }
+
+    override suspend fun updateSetting(
+        serverId: ServerId,
+        setting: AssistantOwnerSetting,
+        value: Boolean,
+    ): MyAssistantSettingSaveResult {
+        val response =
+            runCatchingPreservingCancellation {
+                networkClient.request(
+                    priority = DataRequestPriority.Foreground,
+                    path = "servers/${serverId.value}/assistant",
+                    method = "PATCH",
+                    serverIdOverride = serverId,
+                    bodyText = encodeAssistantOwnerSettingPatchBody(setting, value),
+                )
+            }.getOrElse { return MyAssistantSettingSaveResult.Failed(code = null) }
+        return myAssistantSettingSaveResultOf(response.code, response.bodyText, response.traceId)
+    }
 }
+
+internal fun myAssistantSettingSaveResultOf(
+    code: Int,
+    bodyText: String?,
+    traceId: String? = null,
+): MyAssistantSettingSaveResult =
+    when {
+        code in 200..299 -> MyAssistantSettingSaveResult.Saved(bodyText?.let(::parseSharedMyAssistantResponse))
+        code == 403 || code == 404 -> MyAssistantSettingSaveResult.NotAvailable(code, traceId)
+        else -> MyAssistantSettingSaveResult.Failed(code, traceId)
+    }
 
 internal fun myAssistantOwnerNotesSaveResultOf(
     code: Int,

@@ -4255,6 +4255,11 @@
     <string name="assistant_paused_start">Iniciar</string>
     <string name="assistant_paused_starting">Iniciando…</string>
     <string name="assistant_paused_start_failed">Não foi possível iniciá-lo. Tente novamente.</string>
+    <string name="assistant_setting_reads_dms">Ler minhas mensagens diretas</string>
+    <string name="assistant_setting_reads_dms_description">Lê suas DMs para avisar o que espera por você. Desligue e ele para na hora.</string>
+    <string name="assistant_setting_send_as_owner">Enviar mensagens em meu nome</string>
+    <string name="assistant_setting_send_as_owner_description">Responde por você quando algo precisa de resposta. Cada mensagem indica que foi seu assistente, e você pode retirá-la.</string>
+    <string name="assistant_setting_save_failed">Não foi possível salvar esta alteração. Tente novamente.</string>
     <string name="notification_level_title">Notificações</string>
     <string name="notification_level_all">Todas as mensagens novas</string>
     <string name="notification_level_mentions">Só o que me envolve</string>

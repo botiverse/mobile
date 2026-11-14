@@ -6,6 +6,7 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -162,6 +163,60 @@ class SharedMyAssistantStore(
         }
     }
 
+    /**
+     * Turns one of the owner's switches on or off (web `updateAssistantSetting`), optimistically:
+     * the cached answer takes [value] at once and goes back to what it was when the save fails. On
+     * success it takes only this switch from the reply (the other may have a save of its own in
+     * flight). A 403 / 404 reads the assistant again, which hides the switch as the server now says.
+     * The save runs in the store's scope, so it finishes (and reverts) even if the profile closes.
+     */
+    suspend fun saveSetting(key: MyAssistantKey, setting: AssistantOwnerSetting, value: Boolean): MyAssistantSettingSaveOutcome {
+        val previous = answerFor(key)?.assistant?.ownerSetting(setting)
+        patchSetting(key, setting, value)
+        return scope.async {
+            when (val result = api.updateSetting(ServerId(key.serverId), setting, value)) {
+                is MyAssistantSettingSaveResult.Saved -> {
+                    val mine = answerFor(key)?.assistant
+                    val replied =
+                        result.answer
+                            ?.takeIf { it.enabled }
+                            ?.assistant
+                            ?.takeIf { mine == null || it.agentId == mine.agentId }
+                            ?.ownerSetting(setting)
+                    patchSetting(key, setting, replied ?: value)
+                    MyAssistantSettingSaveOutcome.Saved
+                }
+                is MyAssistantSettingSaveResult.NotAvailable -> {
+                    patchSetting(key, setting, previous)
+                    scope.launch { load(key, keepOnError = true) }
+                    MyAssistantSettingSaveOutcome.Failed(
+                        ScreenError("http_${result.code}", retryable = false, traceId = result.traceId)
+                    )
+                }
+                is MyAssistantSettingSaveResult.Failed -> {
+                    patchSetting(key, setting, previous)
+                    logger(
+                        "my_assistant setting_save_failed server=${key.serverId} setting=${setting.wireName}" +
+                            " code=${result.code ?: "transport"} traceId=${result.traceId ?: "none"}"
+                    )
+                    MyAssistantSettingSaveOutcome.Failed(
+                        ScreenError(result.code?.let { "http_$it" } ?: "network_error", traceId = result.traceId)
+                    )
+                }
+            }
+        }.await()
+    }
+
+    /** Web `patchSetting`: the cached assistant with [setting] at [value]; nothing while none is cached. */
+    private fun patchSetting(key: MyAssistantKey, setting: AssistantOwnerSetting, value: Boolean?) {
+        answersState.update { current ->
+            val cached = current[key] ?: return@update current
+            val mine = cached.assistant ?: return@update current
+            val next = cached.copy(assistant = mine.withOwnerSetting(setting, value))
+            if (next == cached) current else current + (key to next)
+        }
+    }
+
     private fun applySavedOwnerNotes(key: MyAssistantKey, reply: MyAssistantAnswer?, trimmed: String) {
         answersState.update { current ->
             val cached = current[key]?.takeIf { it.enabled } ?: return@update current
@@ -197,6 +252,17 @@ sealed interface MyAssistantOwnerNotesSaveOutcome {
 
     /** Not saved for any other reason; the draft stays. */
     data class Failed(val error: ScreenError) : MyAssistantOwnerNotesSaveOutcome
+}
+
+/**
+ * What saving one of the owner's switches means for its row (web `AssistantSettingSaveError`). A
+ * failure keeps the [ScreenError], so the row shows its trace ID.
+ */
+sealed interface MyAssistantSettingSaveOutcome {
+    data object Saved : MyAssistantSettingSaveOutcome
+
+    /** Not saved; the switch is back where it was. */
+    data class Failed(val error: ScreenError) : MyAssistantSettingSaveOutcome
 }
 
 private fun MyAssistantAnswer?.awaitsDm(): Boolean =

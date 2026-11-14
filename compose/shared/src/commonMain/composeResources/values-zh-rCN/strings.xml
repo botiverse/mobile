@@ -4441,6 +4441,11 @@
     <string name="assistant_paused_start">启动</string>
     <string name="assistant_paused_starting">启动中…</string>
     <string name="assistant_paused_start_failed">启动失败，请重试。</string>
+    <string name="assistant_setting_reads_dms">读我的私信</string>
+    <string name="assistant_setting_reads_dms_description">读你的私信，告诉你哪些在等你。关掉立即停止。</string>
+    <string name="assistant_setting_send_as_owner">以我的身份发消息</string>
+    <string name="assistant_setting_send_as_owner_description">替你回复需要回答的消息，每条都会标明是助理发的，可撤回。</string>
+    <string name="assistant_setting_save_failed">没能保存这项更改，请重试。</string>
     <string name="notification_level_title">通知</string>
     <string name="notification_level_all">所有新消息</string>
     <string name="notification_level_mentions">仅与我相关</string>

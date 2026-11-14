@@ -4441,6 +4441,11 @@
     <string name="assistant_paused_start">起動</string>
     <string name="assistant_paused_starting">起動中…</string>
     <string name="assistant_paused_start_failed">起動できませんでした。もう一度お試しください。</string>
+    <string name="assistant_setting_reads_dms">自分の DM の読み取り</string>
+    <string name="assistant_setting_reads_dms_description">DM を読んで、あなたを待っていることを伝えます。オフにするとすぐ止まります。</string>
+    <string name="assistant_setting_send_as_owner">自分の名前でメッセージを送信</string>
+    <string name="assistant_setting_send_as_owner_description">返事が必要なメッセージにあなたとして返信します。どれもアシスタントの送信と表示され、取り消せます。</string>
+    <string name="assistant_setting_save_failed">この変更を保存できませんでした。もう一度お試しください。</string>
     <string name="notification_level_title">通知</string>
     <string name="notification_level_all">すべての新着メッセージ</string>
     <string name="notification_level_mentions">自分に関係するものだけ</string>

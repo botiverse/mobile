@@ -15,6 +15,8 @@ import build.raft.app.assistant.AssistantInstructionsSaveError
 import build.raft.app.assistant.AssistantOwnerSectionContent
 import build.raft.app.assistant.AssistantPausedBanner
 import build.raft.app.data.ASSISTANT_OWNER_NOTES_MAX_LENGTH
+import build.raft.app.data.AssistantOwnerSetting
+import build.raft.app.data.ScreenError
 import build.raft.app.data.assistantOwnerNotesCanSave
 import build.raft.designsystem.components.RaftDialogSheetSurface
 import build.raft.designsystem.theme.RaftTheme
@@ -28,7 +30,10 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The owner's side of their personal assistant's profile (web AssistantOwnerSection,
  * AssistantInstructionsDialog, AssistantPaused `PausedNotice`), on fixed fixture data:
- * - `assistant.owner-section`: the 「Assistant」 eyebrow over the Extra instructions row, light and dark;
+ * - `assistant.owner-section`: the 「Assistant」 eyebrow over the permission switches (Read my direct
+ *   messages on, Send messages as me off) and the Extra instructions row, light and dark;
+ * - `assistant.owner-section.save-failed`: Read my direct messages saving (its switch disabled),
+ *   and Send messages as me after a failed save, back off, with the failure line and its trace ID;
  * - `assistant.instructions.empty`: the editor (the phone sheet) on no saved notes, Save disabled;
  * - `assistant.instructions.near-limit`: a draft at 90% of the limit, the counter shown, Save enabled;
  * - `assistant.instructions.too-long`: a draft over the limit, the error and the red counter, Save
@@ -49,6 +54,15 @@ class AssistantOwnerSectionScreenshotTest {
 
     @Test
     fun sectionDark() = capture("assistant.owner-section.dark", RaftAppAppearance.Dark) { SectionFixture() }
+
+    @Test
+    fun sectionSaveFailed() =
+        capture("assistant.owner-section.save-failed", RaftAppAppearance.Light) {
+            SectionFixture(
+                saving = setOf(AssistantOwnerSetting.ReadsDms),
+                failures = mapOf(AssistantOwnerSetting.SendAsOwner to ScreenError("http_500", traceId = FIXTURE_TRACE_ID)),
+            )
+        }
 
     @Test
     fun editorEmptyLight() = capture("assistant.instructions.empty", RaftAppAppearance.Light) { EditorFixture(draft = "") }
@@ -94,9 +108,21 @@ private fun longDraft(size: Int): String {
 }
 
 @Composable
-private fun SectionFixture() {
+private fun SectionFixture(
+    saving: Set<AssistantOwnerSetting> = emptySet(),
+    failures: Map<AssistantOwnerSetting, ScreenError> = emptyMap(),
+) {
     Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(vertical = 16.dp, horizontal = 20.dp)) {
-        AssistantOwnerSectionContent(name = "Ada", onOpenInstructions = {})
+        AssistantOwnerSectionContent(
+            name = "Ada",
+            readsDms = true,
+            sendAsOwner = false,
+            showInstructions = true,
+            onOpenInstructions = {},
+            onSettingChange = { _, _ -> },
+            saving = saving,
+            failures = failures,
+        )
     }
 }
 

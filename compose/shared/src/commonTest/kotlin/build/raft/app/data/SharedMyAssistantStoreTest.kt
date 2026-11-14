@@ -7,7 +7,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -30,14 +32,26 @@ class SharedMyAssistantStoreTest {
         runCurrent()
     }
 
-    /** Answers in order; the last one repeats. A save answers [saveResult] and records the notes. */
+    /**
+     * Answers in order; the last one repeats. A save answers [saveResult] and records the notes; a
+     * switch's save waits for [settingGate] (when given), answers [settingResult] and records it.
+     */
     private class ScriptedApi(
         vararg results: MyAssistantFetchResult,
         val saveResult: MyAssistantOwnerNotesSaveResult = MyAssistantOwnerNotesSaveResult.Failed(500),
+        val settingResult: MyAssistantSettingSaveResult = MyAssistantSettingSaveResult.Failed(500),
+        val settingGate: CompletableDeferred<Unit>? = null,
     ) : RaftMyAssistantApi {
         private val script = results.toList()
         val asked = mutableListOf<String>()
         val saved = mutableListOf<String>()
+        val settings = mutableListOf<Pair<AssistantOwnerSetting, Boolean>>()
+
+        override suspend fun updateSetting(serverId: ServerId, setting: AssistantOwnerSetting, value: Boolean): MyAssistantSettingSaveResult {
+            settings += setting to value
+            settingGate?.await()
+            return settingResult
+        }
 
         override suspend fun fetch(serverId: ServerId): MyAssistantFetchResult {
             asked += serverId.value
@@ -277,6 +291,97 @@ class SharedMyAssistantStoreTest {
             val outcome = store.saveOwnerNotes(key, "Be briefer.")
             settle()
             assertEquals(TRACE_ID, assertIs<MyAssistantOwnerNotesSaveOutcome.Failed>(outcome).error.traceId)
+            assertEquals(2, api.asked.size)
+            assertEquals(MyAssistantAnswer.NotEnabled, store.answerFor(key))
+        }
+    // ---- The owner's switches (web assistantClient.ts `updateAssistantSetting`, RFC 077) ----
+
+    @Test
+    fun aSwitchPatchesOnlyItsOwnField() {
+        // Web `api.patch(path(serverId), { [setting]: value })`.
+        assertEquals("""{"readsDms":true}""", encodeAssistantOwnerSettingPatchBody(AssistantOwnerSetting.ReadsDms, true))
+        assertEquals("""{"readsDms":false}""", encodeAssistantOwnerSettingPatchBody(AssistantOwnerSetting.ReadsDms, false))
+        assertEquals("""{"sendAsOwner":true}""", encodeAssistantOwnerSettingPatchBody(AssistantOwnerSetting.SendAsOwner, true))
+        assertEquals("""{"sendAsOwner":false}""", encodeAssistantOwnerSettingPatchBody(AssistantOwnerSetting.SendAsOwner, false))
+    }
+
+    @Test
+    fun aSwitchAnswerIsSavedGoneOrFailed() {
+        assertEquals(
+            MyAssistantSettingSaveResult.Saved(withNotes),
+            myAssistantSettingSaveResultOf(
+                200,
+                """{"enabled":true,"assistant":{"id":"a1","name":"Ada","agentId":"a1","dmChannelId":"dm1","readsDms":true,"sendAsOwner":false,"ownerNotes":"Be brief."}}""",
+            ),
+        )
+        assertEquals(MyAssistantSettingSaveResult.Saved(null), myAssistantSettingSaveResultOf(204, null))
+        assertEquals(MyAssistantSettingSaveResult.NotAvailable(403, TRACE_ID), myAssistantSettingSaveResultOf(403, null, TRACE_ID))
+        assertEquals(MyAssistantSettingSaveResult.NotAvailable(404), myAssistantSettingSaveResultOf(404, null))
+        assertEquals(MyAssistantSettingSaveResult.Failed(400, TRACE_ID), myAssistantSettingSaveResultOf(400, """{"error":"bad_request"}""", TRACE_ID))
+        assertEquals(MyAssistantSettingSaveResult.Failed(500), myAssistantSettingSaveResultOf(500, null))
+    }
+
+    @Test
+    fun aSwitchMovesAtOnceThenTakesOnlyItsOwnValueFromTheReply() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            // The reply may predate another switch's save: its sendAsOwner must not overwrite the cache.
+            val reply = MyAssistantAnswer(true, withNotes.assistant?.copy(readsDms = false, sendAsOwner = true))
+            val api =
+                ScriptedApi(
+                    MyAssistantFetchResult.Answer(withNotes),
+                    settingResult = MyAssistantSettingSaveResult.Saved(reply),
+                    settingGate = gate,
+                )
+            val store = SharedMyAssistantStore(api, scope = backgroundScope)
+            store.ensureLoaded(key)
+            settle()
+            val pending = async { store.saveSetting(key, AssistantOwnerSetting.ReadsDms, false) }
+            runCurrent()
+            assertEquals(false, store.answerFor(key)?.assistant?.readsDms, "optimistic")
+            assertEquals(listOf(AssistantOwnerSetting.ReadsDms to false), api.settings)
+            gate.complete(Unit)
+            assertEquals(MyAssistantSettingSaveOutcome.Saved, pending.await())
+            assertEquals(false, store.answerFor(key)?.assistant?.readsDms)
+            assertEquals(false, store.answerFor(key)?.assistant?.sendAsOwner, "only this switch is taken from the reply")
+            assertEquals("Be brief.", store.answerFor(key)?.assistant?.ownerNotes)
+        }
+
+    @Test
+    fun aFailedSwitchSaveMovesBack() =
+        runTest {
+            val api =
+                ScriptedApi(
+                    MyAssistantFetchResult.Answer(withNotes),
+                    settingResult = MyAssistantSettingSaveResult.Failed(500, TRACE_ID),
+                )
+            val store = SharedMyAssistantStore(api, scope = backgroundScope)
+            store.ensureLoaded(key)
+            settle()
+            val outcome = store.saveSetting(key, AssistantOwnerSetting.SendAsOwner, true)
+            val failure = assertIs<MyAssistantSettingSaveOutcome.Failed>(outcome)
+            assertEquals(TRACE_ID, failure.error.traceId)
+            assertEquals("http_500", failure.error.code)
+            assertEquals(withNotes, store.answerFor(key), "back where it was")
+            settle()
+            assertEquals(1, api.asked.size, "a transient failure reads nothing again")
+        }
+
+    @Test
+    fun aSwitchTheServerNoLongerAllowsReadsTheAssistantAgain() =
+        runTest {
+            val api =
+                ScriptedApi(
+                    MyAssistantFetchResult.Answer(withNotes),
+                    MyAssistantFetchResult.NotAvailable,
+                    settingResult = MyAssistantSettingSaveResult.NotAvailable(404, TRACE_ID),
+                )
+            val store = SharedMyAssistantStore(api, scope = backgroundScope)
+            store.ensureLoaded(key)
+            settle()
+            val outcome = store.saveSetting(key, AssistantOwnerSetting.ReadsDms, false)
+            assertEquals(TRACE_ID, assertIs<MyAssistantSettingSaveOutcome.Failed>(outcome).error.traceId)
+            settle()
             assertEquals(2, api.asked.size)
             assertEquals(MyAssistantAnswer.NotEnabled, store.answerFor(key))
         }
