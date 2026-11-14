@@ -3724,9 +3724,7 @@ internal class RaftSharedStoreProvider private constructor(
                         )
                 )
             CoroutineScope(SupervisorJob()).launch {
-                if (runCatching { authStore.readSession() }.getOrNull() == null) {
-                    composerDraftAccounts.onNoStoredSessionAtStart()
-                }
+                composerDraftAccounts.onStoredSessionReadAtStart(authStore)
                 presenceAuthContext
                     .map { context -> context?.toComposerDraftAccount() }
                     .distinctUntilChanged()

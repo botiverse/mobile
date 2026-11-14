@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedPreferenceStore
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -281,6 +282,13 @@ internal class SharedThreadComposerDraftAccounts(
         (store.owners() + listOfNotNull(previous?.storageToken))
             .filter { token -> token != keep }
             .forEach(::deleteOwner)
+    }
+
+    /** Process start: reads the stored session once and runs [onNoStoredSessionAtStart] when there is none. */
+    suspend fun onStoredSessionReadAtStart(authStore: RaftAuthSessionStore) {
+        if (runCatching { authStore.readSession() }.getOrNull() == null) {
+            onNoStoredSessionAtStart()
+        }
     }
 
     /**
