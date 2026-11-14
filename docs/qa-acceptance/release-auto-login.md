@@ -141,6 +141,26 @@ else `QA_TEST_EMAIL` / `QA_TEST_PASSWORD`. The account must not have two-step ve
 Evidence (`release-auto-login-evidence`): `summary.json`, a screenshot + UI dump per step,
 `logcat-app-login.txt` (only the `SlockAppLogin` tag, masked).
 
+## Scenarios
+
+`--scenario scripts/qa/scenarios/<name>.mjs` (workflow inputs `scenario` + `scenario_args`) runs a
+module after "verify-signed-in" and before cleanup. Its `run(ctx)` gets the device helpers
+(`nodes`, `find`, `tapNode`, `shell`, `step` — each step saves a screenshot + UI dump), `option()`
+for its own flags, and `ctx.web(method, path, { body, serverId })`: the QA account's web session
+(refreshed on a 401, signed out in cleanup as before). It writes its result to `summary.scenario`;
+a scenario that throws or returns `result: "fail"` makes the run exit non-zero after cleanup.
+
+- `task_v2.mjs --server-name <server>` — task v2 conversations on a release build: channel Tasks
+  tab → task conversation (head + messages) → reply; assignee; status Todo → In Progress → Done
+  with no "In Review" offered; a Backlog task; a task an old CLI created without a source, opened
+  from its title message. It creates two `[QA test data, please ignore]` tasks with the QA account
+  and deletes them at the end; the source messages the server posts for them stay.
+
+```sh
+gh workflow run release-auto-login.yml -f environment=production -f apk_run_id=<Android Release run> \
+  -f scenario=scripts/qa/scenarios/task_v2.mjs -f scenario_args="--server-name OranixSlockTest"
+```
+
 ## Caveats
 
 - See [What a pass means](#what-a-pass-means): authorize → callback only, not the browser UX; QA

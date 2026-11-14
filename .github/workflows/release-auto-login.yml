@@ -34,6 +34,16 @@ on:
         required: false
         type: boolean
         default: true
+      scenario:
+        description: "Optional: a scenario module run while signed in, e.g. scripts/qa/scenarios/task_v2.mjs"
+        required: false
+        type: string
+        default: ""
+      scenario_args:
+        description: "Its options, e.g. --server-name OranixSlockTest"
+        required: false
+        type: string
+        default: ""
   workflow_call:
     inputs:
       environment:
@@ -56,6 +66,14 @@ on:
         required: false
         type: boolean
         default: true
+      scenario:
+        required: false
+        type: string
+        default: ""
+      scenario_args:
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -72,6 +90,7 @@ jobs:
       apk_artifact: ${{ steps.p.outputs.apk_artifact }}
       environment: ${{ steps.p.outputs.environment }}
       cleanup_flags: ${{ steps.p.outputs.cleanup_flags }}
+      scenario_flags: ${{ steps.p.outputs.scenario_flags }}
     steps:
       - id: p
         env:
@@ -81,6 +100,8 @@ jobs:
           # Both default on; only an explicit false turns them off.
           STRICT_CLEANUP: ${{ inputs.strict_cleanup != false }}
           REVOKE_APP_SESSION: ${{ inputs.revoke_app_session != false }}
+          SCENARIO: ${{ inputs.scenario }}
+          SCENARIO_ARGS: ${{ inputs.scenario_args }}
         run: |
           set -euo pipefail
           case "${ENVIRONMENT}" in staging|production) ;; *) echo "::error::environment must be staging or production"; exit 1;; esac
@@ -89,6 +110,11 @@ jobs:
           [ "${STRICT_CLEANUP}" = true ] && FLAGS="${FLAGS} --strict-cleanup"
           [ "${REVOKE_APP_SESSION}" = true ] && FLAGS="${FLAGS} --revoke-app-session"
           echo "cleanup_flags=${FLAGS# }" >> "$GITHUB_OUTPUT"
+          if [ -n "${SCENARIO}" ]; then
+            [[ "${SCENARIO}" =~ ^scripts/qa/scenarios/[a-z0-9_]+\.mjs$ ]] || { echo "::error::scenario must be scripts/qa/scenarios/<name>.mjs"; exit 1; }
+            [[ "${SCENARIO_ARGS}" =~ ^[A-Za-z0-9\ ._=/-]*$ ]] || { echo "::error::scenario_args may hold letters, digits, spaces and . _ = / - only"; exit 1; }
+            echo "scenario_flags=--scenario ${SCENARIO} ${SCENARIO_ARGS}" >> "$GITHUB_OUTPUT"
+          fi
           if [ -n "${APK_RUN_ID}" ]; then
             [[ "${APK_RUN_ID}" =~ ^[0-9]+$ ]] || { echo "::error::apk_run_id must be a run id"; exit 1; }
             { echo "build=false"; echo "apk_run_id=${APK_RUN_ID}"; echo "apk_artifact=${APK_ARTIFACT}"; } >> "$GITHUB_OUTPUT"
@@ -183,7 +209,7 @@ jobs:
           emulator-boot-timeout: 1200
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: node scripts/qa/release_auto_login.mjs --apk "${{ steps.apk.outputs.apk }}" --capture-browser-apk "${{ runner.temp }}/capture-browser.apk" --env "${{ needs.plan.outputs.environment }}" --out "${{ env.EVIDENCE }}" ${{ needs.plan.outputs.cleanup_flags }}
+          script: node scripts/qa/release_auto_login.mjs --apk "${{ steps.apk.outputs.apk }}" --capture-browser-apk "${{ runner.temp }}/capture-browser.apk" --env "${{ needs.plan.outputs.environment }}" --out "${{ env.EVIDENCE }}" ${{ needs.plan.outputs.cleanup_flags }} ${{ needs.plan.outputs.scenario_flags }}
 
       - name: Summary
         if: always()
@@ -194,6 +220,11 @@ jobs:
             echo "| APK | \`${{ steps.apk.outputs.version }}\` from run \`${{ needs.plan.outputs.apk_run_id }}\` |"
             echo "| Server | ${{ needs.plan.outputs.environment }} |"
             echo "| Cleanup flags | \`${{ needs.plan.outputs.cleanup_flags || 'none' }}\` |"
+            echo "| Scenario | \`${{ needs.plan.outputs.scenario_flags || 'none' }}\` |"
+            if [ -f "${EVIDENCE}/summary.json" ] && [ -n "${{ needs.plan.outputs.scenario_flags }}" ]; then
+              echo; echo "| Scenario | Result | Note |"; echo "|---|---|---|"
+              jq -r '.scenario.results // {} | to_entries[] | "| \(.key) | \(.value.result) | \((.value.note // "") | gsub("\\|"; "/") | .[0:300]) |"' "${EVIDENCE}/summary.json" || true
+            fi
             if [ -f "${EVIDENCE}/summary.json" ]; then echo; echo '```json'; cat "${EVIDENCE}/summary.json"; echo '```'; fi
           } >> "$GITHUB_STEP_SUMMARY"
 
