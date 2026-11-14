@@ -1059,6 +1059,7 @@
     <string name="thread_audio_file_label">Audio file</string>
     <string name="thread_audio_download_to_view">Download to View</string>
     <string name="thread_action_back_to_bottom">Back to Bottom</string>
+    <string name="thread_select_to_here">Select to here</string>
     <string name="thread_agent_typing_one">{first} is typing…</string>
     <string name="thread_agent_typing_two">{first} and {second} are typing…</string>
     <string name="thread_agent_typing_three">{first}, {second} and {third} are typing…</string>

@@ -1055,6 +1055,7 @@
     <string name="thread_audio_file_label">Arquivo de áudio</string>
     <string name="thread_audio_download_to_view">Baixar para ver</string>
     <string name="thread_action_back_to_bottom">Voltar ao final</string>
+    <string name="thread_select_to_here">Selecionar até aqui</string>
     <string name="thread_agent_typing_one">{first} está digitando…</string>
     <string name="thread_agent_typing_two">{first} e {second} estão digitando…</string>
     <string name="thread_agent_typing_three">{first}, {second} e {third} estão digitando…</string>

@@ -1055,6 +1055,7 @@
     <string name="thread_audio_file_label">오디오 파일</string>
     <string name="thread_audio_download_to_view">다운로드해서 보기</string>
     <string name="thread_action_back_to_bottom">맨 아래로</string>
+    <string name="thread_select_to_here">여기까지 선택</string>
     <string name="thread_agent_typing_one">{first} 님이 입력 중…</string>
     <string name="thread_agent_typing_two">{first} 님과 {second} 님이 입력 중…</string>
     <string name="thread_agent_typing_three">{first}, {second}, {third} 님이 입력 중…</string>
