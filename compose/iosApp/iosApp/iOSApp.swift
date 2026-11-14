@@ -800,11 +800,16 @@ struct iOSApp: App {
             unhandledExceptions: RaftIosUnhandledExceptionRecorder()
         )
         RaftIosDiagnosticsRecord("info", "SlockIosDiagnostics", "ios_diagnostics_initialized backend=jsonl")
+        #if RAFT_QA_SESSION_BOOTSTRAP
+        // Debug Simulator QA harness only: start consuming the launch's QA session envelope before
+        // any window exists; RaftIosRootView holds the shell back until it is done.
+        RaftIosQaSessionBootstrapGate.shared.start()
+        #endif
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RaftIosRootView()
         }
     }
 }

@@ -16,6 +16,19 @@ import UIKit
 // Because the manifest names a custom scene delegate, SwiftUI no longer creates
 // the window for `WindowGroup` — willConnectTo installs the UIHostingController
 // itself.
+/// Root SwiftUI view of every window (scene delegate and the App's WindowGroup alike). In Debug QA
+/// launches it holds ContentView back until the QA session bootstrap has persisted the session
+/// (docs/qa-acceptance/session-bootstrap.md); everywhere else it is ContentView.
+struct RaftIosRootView: View {
+    var body: some View {
+        #if RAFT_QA_SESSION_BOOTSTRAP
+        RaftIosQaSessionBootstrapGateView { ContentView() }
+        #else
+        ContentView()
+        #endif
+    }
+}
+
 final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
@@ -45,7 +58,7 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
         // delegate owns window creation.
         if let windowScene = scene as? UIWindowScene {
             let window = UIWindow(windowScene: windowScene)
-            window.rootViewController = UIHostingController(rootView: ContentView())
+            window.rootViewController = UIHostingController(rootView: RaftIosRootView())
             // Settings > Appearance > Theme: an explicit Light/Dark choice overrides the OS
             // style for the whole window (keyboards, system menus, the native tab bar);
             // System leaves it unspecified. The dark canvas behind the first frame avoids a
