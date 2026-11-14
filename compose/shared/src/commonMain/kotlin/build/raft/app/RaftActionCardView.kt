@@ -15,6 +15,11 @@ import build.raft.app.data.ActionCardSpecAction
 import build.raft.app.data.ActionCardSpecButton
 import build.raft.app.data.ActionCardSpecCard
 import build.raft.app.data.ActionCardSpecEntityRef
+import build.raft.app.data.ActionCardSpecContent
+import build.raft.app.data.ActionCardSpecDisplayElement
+import build.raft.app.data.ActionCardSpecTree
+import build.raft.app.data.CardStack
+import build.raft.app.data.CardStackRole
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
@@ -192,6 +197,8 @@ internal fun RaftActionCardView(
     val cardTitle = actionCardMsgPlainMentions(card.title, context)
     val slimDescription = slim?.description?.takeIf { !executed && !ended && it.isNotBlank() }
     val title = slim?.title?.takeIf { it.isNotBlank() } ?: cardTitle
+    val foldedResult =
+        if (executed && slim == null) card.result?.let { result -> actionCardFoldedResult(result, cardTitle, context) } else null
     RaftDesignSystemTheme {
         val iconColor = raftArgbHex(RaftTheme.colors.foregroundMuted)
         RaftMessageActionCard(
@@ -206,7 +213,12 @@ internal fun RaftActionCardView(
                 when {
                     slim != null ->
                         (state.blockedReason ?: slimDescription)?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line) } }
-                    executed -> state.record?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line, check = true) } }
+                    executed ->
+                        state.record?.takeIf { it.isNotBlank() }?.let { line ->
+                            // Folded, what came of it after an arrow (web ActionCardFoldedResult): "✓ By Ada · 20:28 → Sent to Raft".
+                            val shown = foldedResult?.takeIf { !expanded }?.let { "$line $ACTION_CARD_RESULT_ARROW$it" } ?: line
+                            { RaftMessageActionCardHeaderDescription(shown, check = true) }
+                        }
                     ended -> state.endedLine?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line) } }
                     else -> state.blockedReason?.takeIf { foldsByDefault }?.let { reason -> { RaftMessageActionCardHeaderDescription(reason) } }
                 },
@@ -250,3 +262,35 @@ internal fun RaftActionCardView(
 /** The title is one plain line of the header: entities as mentions, without their styling. */
 private fun actionCardMsgPlainMentions(msg: build.raft.app.data.ActionCardSpecMsg, context: RaftCardTreeContext): String =
     actionCardMsgText(msg, context).text
+
+/** Before a folded done card's result: punctuation, not copy; the no-break space keeps the arrow on its first word's line. */
+private const val ACTION_CARD_RESULT_ARROW = "\u2192\u00a0"
+
+/**
+ * A done card's result section's first item as its folded header names it (web `resultHeadline` +
+ * `ActionCardFoldedResult`): the first Text or EntityRef in the tree's order, through its Stacks,
+ * past its buttons and its actions row; null when the section starts with anything else (a Field,
+ * a badge, a notice), or when the card's [title] already says it (it would only repeat a name).
+ */
+internal fun actionCardFoldedResult(result: ActionCardSpecTree, title: String, context: RaftCardTreeContext): String? {
+    // Some(text) found, Some(null) a first item it cannot name, null nothing here (keep looking).
+    fun visit(id: String, depth: Int): Pair<String?, Boolean>? {
+        val node = result.elements[id] ?: return null
+        if (depth > 8) return null
+        return when (node) {
+            is ActionCardSpecDisplayElement.Text ->
+                when (val text = node.text) {
+                    is ActionCardSpecContent.Plain -> text.text
+                    is ActionCardSpecContent.Message -> actionCardMsgPlain(text.msg, context)
+                } to true
+            is ActionCardSpecDisplayElement.EntityRef -> actionCardEntityName(node.ref, context) to true
+            is ActionCardSpecButton -> null
+            is CardStack ->
+                if (node.role == CardStackRole.Actions) null else node.children.orEmpty().firstNotNullOfOrNull { child -> visit(child, depth + 1) }
+            else -> null to true
+        }
+    }
+    val text = visit(result.root, 0)?.first?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    fun word(value: String) = value.trim().lowercase().removePrefix("#").removePrefix("@")
+    return text.takeIf { word(it) !in word(title) }
+}

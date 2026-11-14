@@ -254,6 +254,12 @@ internal fun threadActionCardSpecPress(
                 // An ended card (expired, by state or past `expiresAt`; withdrawn) runs nothing and opens no dialog.
                 card.isExecuted || card.isFrozen || card.hasEnded -> ThreadActionCardSpecPress.Ignore
                 card.needsReconfirmation -> ThreadActionCardSpecPress.Typed
+                // A feedback card's form (the server's `open_form`, form.v1) would be filed by the
+                // server from the execute request, without the app's version, device or diagnostics
+                // archive. The App opens its own feedback form on the card's draft instead, which
+                // sends them as Settings › Feedback does and completes the card
+                // (POST /api/product-feedback with action_card_message_id).
+                card.isFeedbackSubmitAction() && raftFeedbackCardEntryEnabled(viewerServerId) -> ThreadActionCardSpecPress.Typed
                 action is ActionCardSpecAction.Open ->
                     if (action.intent.typedActionType()?.equals(card.type, ignoreCase = true) == true) {
                         ThreadActionCardSpecPress.Typed
