@@ -15,3 +15,28 @@
 "push.preview.hidden.agent" = "Un agente necesita tu atención";
 "push.preview.hidden.reminder" = "Tienes un recordatorio";
 "push.preview.hidden.notice" = "Tienes un aviso nuevo";
+/* Banner phrases (preview key set 3, slock packages/shared/src/notificationCopy.ts; the web's
+   translations). The server sends them as title-loc-key / subtitle-loc-key / loc-key with
+   positional loc-args ({0}, {1} = %1$@, %2$@). Keys must match the server's NOTIFICATION_COPY. */
+"push.title.dm" = "MD";
+"push.title.thread" = "Hilo";
+"push.title.thread_in_dm" = "Hilo en MD";
+"push.title.thread_in_channel" = "Hilo en #%1$@";
+"push.title.task" = "Tarea";
+"push.title.task_in_dm" = "Tarea en MD";
+"push.title.task_in_channel" = "Tarea en #%1$@";
+"push.title.task_assigned" = "Tarea asignada a ti";
+"push.title.agent_action_required" = "%1$@ necesita tu atención";
+"push.title.reminder" = "Recordatorio";
+"push.title.agent_migration_review" = "Confirma el traslado de %1$@ a la nube";
+"push.title.test" = "Notificación de prueba de Raft";
+"push.subtitle.dm" = "MD";
+"push.subtitle.dm_server" = "MD · %1$@";
+"push.body.attachment" = "Envió un archivo adjunto";
+"push.body.attachments" = "Envió %1$@ archivos adjuntos";
+"push.body.no_text" = "(sin texto)";
+"push.body.sender_attachment" = "%1$@: Envió un archivo adjunto";
+"push.body.sender_attachments" = "%1$@: Envió %2$@ archivos adjuntos";
+"push.body.sender_no_text" = "%1$@: (sin texto)";
+"push.body.agent_migration_review" = "%1$@ está en pausa hasta que confirmes. Revisa qué archivos se trasladan antes de que cierre el plazo.";
+"push.body.test" = "Si puedes leer esto, las notificaciones llegan a este dispositivo.";

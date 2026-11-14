@@ -15,3 +15,28 @@
 "push.preview.hidden.agent" = "에이전트가 확인을 기다리고 있어요";
 "push.preview.hidden.reminder" = "리마인더 시간이에요";
 "push.preview.hidden.notice" = "새 알림이 있어요";
+/* Banner phrases (preview key set 3, slock packages/shared/src/notificationCopy.ts; the web's
+   translations). The server sends them as title-loc-key / subtitle-loc-key / loc-key with
+   positional loc-args ({0}, {1} = %1$@, %2$@). Keys must match the server's NOTIFICATION_COPY. */
+"push.title.dm" = "DM";
+"push.title.thread" = "스레드";
+"push.title.thread_in_dm" = "DM의 스레드";
+"push.title.thread_in_channel" = "#%1$@의 스레드";
+"push.title.task" = "작업";
+"push.title.task_in_dm" = "DM의 작업";
+"push.title.task_in_channel" = "#%1$@의 작업";
+"push.title.task_assigned" = "나에게 배정된 작업";
+"push.title.agent_action_required" = "%1$@님이 확인을 기다리고 있어요";
+"push.title.reminder" = "리마인더";
+"push.title.agent_migration_review" = "%1$@의 클라우드 이전을 확정해 주세요";
+"push.title.test" = "Raft 테스트 알림";
+"push.subtitle.dm" = "DM";
+"push.subtitle.dm_server" = "DM · %1$@";
+"push.body.attachment" = "첨부 파일을 보냈어요";
+"push.body.attachments" = "첨부 파일 %1$@개를 보냈어요";
+"push.body.no_text" = "(텍스트 없음)";
+"push.body.sender_attachment" = "%1$@: 첨부 파일을 보냈어요";
+"push.body.sender_attachments" = "%1$@: 첨부 파일 %2$@개를 보냈어요";
+"push.body.sender_no_text" = "%1$@: (텍스트 없음)";
+"push.body.agent_migration_review" = "확정하기 전까지 %1$@ 일시 중지 상태예요. 기간이 끝나기 전에 옮길 파일을 검토해 주세요.";
+"push.body.test" = "이 알림이 보인다면 이 기기로 알림이 전달되고 있어요.";

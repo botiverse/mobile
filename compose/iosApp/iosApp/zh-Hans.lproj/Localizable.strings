@@ -13,3 +13,28 @@
 "push.preview.hidden.agent" = "有 agent 需要你处理";
 "push.preview.hidden.reminder" = "有一条提醒到期";
 "push.preview.hidden.notice" = "你有一条新通知";
+/* Banner phrases (preview key set 3, slock packages/shared/src/notificationCopy.ts; the web's
+   translations). The server sends them as title-loc-key / subtitle-loc-key / loc-key with
+   positional loc-args ({0}, {1} = %1$@, %2$@). Keys must match the server's NOTIFICATION_COPY. */
+"push.title.dm" = "私信";
+"push.title.thread" = "消息列";
+"push.title.thread_in_dm" = "私信中的消息列";
+"push.title.thread_in_channel" = "#%1$@ 中的消息列";
+"push.title.task" = "任务";
+"push.title.task_in_dm" = "私信中的任务";
+"push.title.task_in_channel" = "#%1$@ 中的任务";
+"push.title.task_assigned" = "分配给你的任务";
+"push.title.agent_action_required" = "%1$@ 需要你处理";
+"push.title.reminder" = "提醒";
+"push.title.agent_migration_review" = "确认把 %1$@ 迁到云端";
+"push.title.test" = "Raft 测试通知";
+"push.subtitle.dm" = "私信";
+"push.subtitle.dm_server" = "私信 · %1$@";
+"push.body.attachment" = "发送了附件";
+"push.body.attachments" = "发送了 %1$@ 个附件";
+"push.body.no_text" = "（无文字）";
+"push.body.sender_attachment" = "%1$@：发送了附件";
+"push.body.sender_attachments" = "%1$@：发送了 %2$@ 个附件";
+"push.body.sender_no_text" = "%1$@：（无文字）";
+"push.body.agent_migration_review" = "%1$@ 已暂停，等你确认。请在时限结束前查看要迁过来的文件。";
+"push.body.test" = "如果你能看到这条通知，说明通知可以送达这台设备。";

@@ -60,6 +60,8 @@ data class RaftSideActionHostColumn(
     /**
      * One button: [RaftSideAction] without its drawing. [label] is the accessibility label (and the
      * ⋯ row's text); [attention] is the bell's "new" pixel, read as "[label], [attentionDescription]".
+     * [iconName] is [RaftSideAction.iconName], the design-system glyph the host draws in place of
+     * [systemSymbol] when it ships it (the iOS asset catalog's `lucide-<name>`).
      */
     @Immutable
     data class Item(
@@ -69,6 +71,7 @@ data class RaftSideActionHostColumn(
         val enabled: Boolean,
         val attention: Boolean,
         val attentionDescription: String?,
+        val iconName: String? = null,
     )
 }
 
@@ -88,7 +91,7 @@ internal fun raftSideActionHostColumn(
 ): RaftSideActionHostColumn? {
     fun RaftSideAction.item(): RaftSideActionHostColumn.Item? {
         val symbol = systemSymbol?.takeIf { it.isNotBlank() } ?: return null
-        return RaftSideActionHostColumn.Item(id, label, symbol, enabled, attention, attentionDescription)
+        return RaftSideActionHostColumn.Item(id, label, symbol, enabled, attention, attentionDescription, iconName?.takeIf { it.isNotBlank() })
     }
     val primaryItems = primary.map { it.item() ?: return null }
     val actionItems = actions.map { it.item() ?: return null }

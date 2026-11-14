@@ -15,3 +15,28 @@
 "push.preview.hidden.agent" = "Um agente precisa da sua atenção";
 "push.preview.hidden.reminder" = "Você tem um lembrete";
 "push.preview.hidden.notice" = "Você tem um novo aviso";
+/* Banner phrases (preview key set 3, slock packages/shared/src/notificationCopy.ts; the web's
+   translations). The server sends them as title-loc-key / subtitle-loc-key / loc-key with
+   positional loc-args ({0}, {1} = %1$@, %2$@). Keys must match the server's NOTIFICATION_COPY. */
+"push.title.dm" = "Mensagem direta";
+"push.title.thread" = "Thread";
+"push.title.thread_in_dm" = "Thread em mensagem direta";
+"push.title.thread_in_channel" = "Thread em #%1$@";
+"push.title.task" = "Tarefa";
+"push.title.task_in_dm" = "Tarefa em mensagem direta";
+"push.title.task_in_channel" = "Tarefa em #%1$@";
+"push.title.task_assigned" = "Tarefa atribuída a você";
+"push.title.agent_action_required" = "%1$@ precisa da sua atenção";
+"push.title.reminder" = "Lembrete";
+"push.title.agent_migration_review" = "Confirme a mudança de %1$@ para a nuvem";
+"push.title.test" = "Notificação de teste do Raft";
+"push.subtitle.dm" = "Mensagem direta";
+"push.subtitle.dm_server" = "Mensagem direta · %1$@";
+"push.body.attachment" = "Enviou um anexo";
+"push.body.attachments" = "Enviou %1$@ anexos";
+"push.body.no_text" = "(sem texto)";
+"push.body.sender_attachment" = "%1$@: Enviou um anexo";
+"push.body.sender_attachments" = "%1$@: Enviou %2$@ anexos";
+"push.body.sender_no_text" = "%1$@: (sem texto)";
+"push.body.agent_migration_review" = "%1$@ está pausado até você confirmar. Revise quais arquivos vão junto antes que o prazo termine.";
+"push.body.test" = "Se você consegue ler isto, as notificações chegam a este dispositivo.";

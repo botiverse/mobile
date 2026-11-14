@@ -65,7 +65,7 @@ internal data class RaftPushRegistrationPayload(
     /** The OS notification permission: `granted`, `denied`, `provisional` or `unknown`. */
     val osPermission: String? = null,
     /**
-     * The newest preview localization key set this build ships (contract §3.1): 2 = every §1.5 key.
+     * The newest preview localization key set this build ships (contract §3.1): 3 = every §1.5 key.
      * APNs then carries `loc-key`s only from that set; any other key arrives as plain English text.
      */
     val previewKeySet: Int? = null
@@ -76,11 +76,12 @@ internal data class RaftPushRegistrationPayload(
 }
 
 /**
- * The preview key set (slock docs/contracts/notifications.md §3.1) the iOS app ships: 2 = every
- * redacted-preview key (`push.preview.*`). Its Localizable.strings has no banner keys yet, and iOS
- * without a service extension shows an unknown `loc-key` verbatim, so it stays at 2.
+ * The preview key set (slock docs/contracts/notifications.md §3.1) the iOS app ships: 3 = every
+ * redacted-preview key (`push.preview.*`) and every banner key (`push.title.*`, `push.subtitle.*`,
+ * `push.body.*`), all in each Localizable.strings of the app. iOS has no service extension and
+ * shows an unknown `loc-key` verbatim, so a newer set waits until its keys are in every catalog.
  */
-internal const val RAFT_PUSH_PREVIEW_KEY_SET = 2
+internal const val RAFT_PUSH_PREVIEW_KEY_SET = 3
 
 /**
  * The preview key set the Android app ships: 3 = set 2 plus every banner key (`push.title.*`,

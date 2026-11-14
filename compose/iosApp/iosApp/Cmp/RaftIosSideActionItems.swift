@@ -2,9 +2,9 @@ import UIKit
 import shared
 
 /// A page's iPhone Duo side column, as `RaftSideActionHostBridge` publishes it (wire version 1), made
-/// into navigation bar items for the system's vertical bar (RaftIosSideActionHost): Back's group
-/// (`primary`), then the visible actions and the ⋯ (`ellipsis`, a `UIMenu` of the overflowed ones),
-/// in listed order; each action's `UIAction` carries its id as identifier and reports it to `onTap`.
+/// into navigation bar items for the system's vertical bar (RaftIosSideActionHost), each wearing the
+/// design-system (Lucide) glyph the Compose column draws: Back's group (`primary`), then the
+/// visible actions and the ⋯ (`ellipsis`, a `UIMenu` of the overflowed ones), in listed order; each action's `UIAction` carries its id as identifier and reports it to `onTap`.
 /// The host puts them in the vertical bar (`RaftIosMakeBarButtonItemsVerticalPreferred`: the
 /// 27.1-only `axisBehavior`, behind an SDK guard in RaftIosDuoRuntime.m).
 ///
@@ -13,9 +13,9 @@ import shared
 /// the indicator. Delete (`trash`) is a destructive action.
 @available(iOS 27.1, *)
 enum RaftIosSideActionItems {
-    /// Nil when [json] is not a column, or one of the buttons or rows it shows has a symbol this
-    /// system lacks: the host then hands the column back to the page rather than show an empty or
-    /// partial one.
+    /// Nil when [json] is not a column, or one of the buttons or rows it shows has neither a glyph
+    /// the app ships nor a symbol this system has: the host then hands the column back to the page
+    /// rather than show an empty or partial one.
     static func make(
         json: String,
         onTap: @escaping (String) -> Void
@@ -29,7 +29,14 @@ enum RaftIosSideActionItems {
         let overflow = listed("overflowActionIds")
 
         func symbol(_ item: [String: Any]) -> String { item["systemSymbol"] as? String ?? "" }
-        guard (primary + visible + overflow).allSatisfy({ UIImage(systemName: symbol($0)) != nil }) else { return nil }
+        // The design-system (Lucide) glyph the Compose column draws (`iconName`, template asset
+        // `lucide-<name>`, tinted by the glass like a symbol), at the bar's / menu's icon size;
+        // the SF Symbol only when the app does not ship that glyph (artin, dm #128).
+        func image(_ item: [String: Any], pointSize: CGFloat = RaftNativeNavIcon.barPointSize) -> UIImage? {
+            let asset = (item["iconName"] as? String).flatMap { $0.isEmpty ? nil : "lucide-\($0)" }
+            return RaftNativeNavIcon.image(asset: asset, symbol: symbol(item), pointSize: pointSize)
+        }
+        guard (primary + visible + overflow).allSatisfy({ image($0) != nil }) else { return nil }
         func wantsAttention(_ item: [String: Any]) -> Bool { item["attention"] as? Bool == true }
         func attentionDescription(_ item: [String: Any]) -> String? {
             wantsAttention(item) ? item["attentionDescription"] as? String : nil
@@ -43,7 +50,7 @@ enum RaftIosSideActionItems {
             if symbol(item).hasPrefix("trash") { attributes.insert(.destructive) }
             let action = UIAction(
                 title: titled ? item["label"] as? String ?? "" : "",
-                image: UIImage(systemName: symbol(item)),
+                image: image(item, pointSize: titled ? RaftNativeNavIcon.menuPointSize : RaftNativeNavIcon.barPointSize),
                 identifier: UIAction.Identifier(id),
                 attributes: attributes
             ) { _ in onTap(id) }
@@ -62,7 +69,7 @@ enum RaftIosSideActionItems {
         let leading = primary.map(button)
         var trailing = visible.map(button)
         if !overflow.isEmpty {
-            let more = UIBarButtonItem(title: nil, image: UIImage(systemName: "ellipsis"), primaryAction: nil, menu: UIMenu(children: overflow.map { action($0, titled: true) }))
+            let more = UIBarButtonItem(title: nil, image: RaftNativeNavIcon.image(asset: "lucide-ellipsis", symbol: "ellipsis"), primaryAction: nil, menu: UIMenu(children: overflow.map { action($0, titled: true) }))
             more.accessibilityLabel = column["overflowLabel"] as? String
             if column["overflowAttention"] as? Bool == true {
                 more.badge = MainActor.assumeIsolated { .indicator() }

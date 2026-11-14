@@ -181,6 +181,9 @@ internal fun rememberRaftSideActionHost(bridge: RaftSideActionHostBridge?): Raft
  *  "overflowAttention":false}
  * ```
  *
+ * An item may carry `"iconName":"search"`, its design-system (Lucide) glyph: the host draws that
+ * from its asset catalog (`lucide-<name>`) and `systemSymbol` only when it lacks the glyph.
+ *
  * `actions` are all of them in listed order; `visibleActionIds` the ones drawn as buttons and
  * `overflowActionIds` the ⋯ menu's rows, both in listed order. An item's `attentionDescription`
  * is present only when it has one. `overflowAttention`: an overflowed item wants attention (the ⋯
@@ -206,4 +209,5 @@ private fun JsonObjectBuilder.putItem(item: RaftSideActionHostColumn.Item) {
     put("enabled", item.enabled)
     put("attention", item.attention)
     item.attentionDescription?.let { put("attentionDescription", it) }
+    item.iconName?.let { put("iconName", it) }
 }
