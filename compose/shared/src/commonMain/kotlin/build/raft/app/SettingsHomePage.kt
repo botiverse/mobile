@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.encodeInviteTokenSegment
 import build.raft.app.data.artifactWebUrl
+import build.raft.app.data.isTaskConversation
+import build.raft.app.data.formatTaskConversationRef
 import build.raft.app.data.updatedAgentIdOrNull
 import build.raft.app.data.raftDedupeKey
 import build.raft.app.data.ArchivedNameCollision
@@ -14273,6 +14275,8 @@ internal fun sharedHomeSavedPermalink(
     val messageId = item.savedMessageIdOrNull()?.value?.takeIf { it.isNotBlank() } ?: return null
     val cleanServerSlug = serverSlug.trim().takeIf { it.isNotBlank() } ?: return null
     val cleanWebBaseUrl = sharedSettingsResolvedWebBaseUrl(webBaseUrl)
+    // Task v2: the message lives in the task conversation itself (web SavedPanel `toMessage(channelId, …)`).
+    if (item.isTaskConversation) return "$cleanWebBaseUrl/s/$cleanServerSlug/channel/${item.channelId.value}?msg=$messageId"
     val isThread = item.kind == InboxItemKind.Thread
     val channelForLink = if (isThread) item.parentChannelId ?: item.channelId else item.channelId
     val routeKind =
@@ -14615,6 +14619,10 @@ private fun SharedHomeSavedResultCard(
     val source =
         when {
             item.kind == InboxItemKind.DirectMessage -> item.channelName.takeIf { it.isNotBlank() }?.let { "@$it" }
+            // Task v2: a task conversation names its task by address (`#channel:#7`), as Activity does.
+            item.isTaskConversation ->
+                item.taskNumber?.let { formatTaskConversationRef(it, item.parentChannelName, item.parentChannelKind) }
+                    ?: item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
             item.kind == InboxItemKind.Thread ->
                 agentLoungeLabelOrNull(item.parentChannelId?.value)
                     ?: item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
@@ -14732,7 +14740,8 @@ private fun SharedHomeSavedResultCard(
                             softWrap = false
                         )
                     }
-                    if (item.kind == InboxItemKind.Thread) {
+                    // A task conversation is not a reply thread (web SavedItem marks only `channelType: "thread"`).
+                    if (item.kind == InboxItemKind.Thread && !item.isTaskConversation) {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically

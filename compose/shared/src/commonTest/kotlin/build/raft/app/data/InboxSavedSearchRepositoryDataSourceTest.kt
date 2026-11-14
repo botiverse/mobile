@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 import build.raft.app.resolveInboxAnchorMessageId
+import build.raft.app.sharedHomeSavedPermalink
+import build.raft.app.toTaskConversationOpenRequestOrNull
 import build.raft.app.toConversationOpenSourceMessageIdentity
 import build.raft.app.model.ChannelId
 import build.raft.app.model.TaskStatus
@@ -9,6 +11,7 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
+import build.raft.app.model.TaskId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -794,6 +797,55 @@ class InboxSavedSearchRepositoryDataSourceTest {
             ).items.single()
         assertEquals(InboxItemKind.Channel, savedChannelRow.kind)
         assertEquals(MessageId("message-3"), savedChannelRow.resolveInboxAnchorMessageId())
+    }
+
+    @Test
+    fun savedAndSearchKeepTaskConversationMessagesAndOpenTheTaskConversation() = runBlocking {
+        // artin (1.25): Saved could not show saved task messages. The server lists a message saved in
+        // a task v2 conversation as `channelType: "task"` (slock savedService.ts `SavedEntry`: the
+        // task conversation is `channelId`, its channel is `parentChannel*`, no `parentMessageId`,
+        // plus `taskId` / `taskNumber` / `taskTitle`); the app mapped `task` to no row kind and
+        // silently dropped it, so the row never reached the list (and the page offset skewed).
+        val taskSaved =
+            """{"messageId":"task-message-1","channelId":"task-conv-7","channelName":"task-7","channelType":"task","content":"Saved task note","senderType":"agent","senderId":"agent-1","senderName":"Lagoon","senderAvatarUrl":null,"createdAt":"2026-11-01T00:00:00Z","savedAt":"2026-11-02T00:00:00Z","parentChannelId":"channel-1","parentChannelName":"general","parentChannelType":"channel","parentMessageId":null,"parentMessagePreview":null,"parentMessageSenderType":null,"parentMessageSenderId":null,"replyCount":3,"taskId":"task-7","taskNumber":7,"taskTitle":"Ship saved tasks"}"""
+        val channelSaved =
+            """{"messageId":"message-1","channelId":"channel-1","channelName":"general","channelType":"channel","content":"Saved note","senderType":"user","senderId":"user-1","senderName":"Artin","senderAvatarUrl":null,"createdAt":"2026-11-01T00:00:00Z","savedAt":"2026-11-01T00:00:00Z","parentChannelId":null,"parentChannelName":null,"parentChannelType":null,"parentMessageId":null,"parentMessagePreview":null,"parentMessageSenderType":null,"parentMessageSenderId":null,"replyCount":0}"""
+        val network =
+            FakeInboxNetworkClient(
+                savedJson = """{"saved":[$taskSaved,$channelSaved],"hasMore":true,"total":5,"globalTotal":5}""",
+                searchJson = """{"results":[{"id":"task-message-2","seq":4,"channelId":"task-conv-7","threadId":null,"parentMessageId":null,"parentMessageContent":null,"parentChannelId":"channel-1","parentChannelName":"general","parentChannelType":"channel","senderId":"user-1","senderType":"user","senderName":"Artin","channelName":"task-7","channelType":"task","content":"Task hit","snippet":"Task hit","createdAt":"2026-11-01T00:00:00Z","taskId":"task-7","taskNumber":7,"taskTitle":"Ship saved tasks"}],"hasMore":false}"""
+            )
+
+        val saved = RealSavedRepository(sampleStore(), network).loadInitial(ServerId("server-1"))
+
+        assertTrue(saved is DataResult.Content, "result=$saved")
+        assertEquals(listOf("saved:task-message-1", "saved:message-1"), saved.data.items.map { it.key })
+        assertEquals(2, saved.data.nextOffset)
+        val task = saved.data.items.first()
+        assertEquals("Saved task note", task.lastMessagePreview)
+        assertEquals(InboxItemKind.Thread, task.kind)
+        assertTrue(task.isTaskConversation)
+        assertEquals(TaskId("task-7"), task.taskConversation?.taskId)
+        assertEquals("#general:#7 Ship saved tasks", task.parentMessagePreview)
+        assertEquals(ChannelId("task-conv-7"), task.threadChannelId)
+        assertNull(task.parentMessageId)
+        assertEquals(MessageId("task-message-1"), task.savedMessageIdOrNull())
+        // Opening lands on the task conversation (not a parentless reply thread), on the saved message.
+        val open = assertNotNull(task.toTaskConversationOpenRequestOrNull())
+        assertEquals(ConversationKind.Task, open.conversationIdentity.kind)
+        assertEquals(ChannelId("task-conv-7"), open.conversationIdentity.channelId)
+        assertEquals("task-message-1", open.anchorMessageId)
+        assertEquals(
+            "https://raft.build/s/team/channel/task-conv-7?msg=task-message-1",
+            sharedHomeSavedPermalink(task, "team", "https://raft.build"),
+        )
+
+        val search = RealSearchRepository(sampleStore(), network).search(ServerId("server-1"), "task")
+
+        assertTrue(search is DataResult.Content, "result=$search")
+        val hit = search.data.items.single()
+        assertTrue(hit.isTaskConversation)
+        assertEquals("task-message-2", hit.toTaskConversationOpenRequestOrNull()?.anchorMessageId)
     }
 
     @Test
