@@ -101,6 +101,14 @@ e2e_expected = {
 }
 e2e = YAML.load_file(".github/workflows/android-update-e2e.yml")
 abort "FAIL: Android update e2e secret consumer allowlist drifted" unless secret_references(e2e, token) == e2e_expected
+
+# release-auto-login.yml: only the sign-in job, and only when it serves build B (min build gate,
+# debug channel, e2e device group only); any other job, step or env fails.
+ral_expected = {
+  ["jobs", "sign-in", "env", "HANDS_AUTH_TOKEN"] => "${{ needs.plan.outputs.serve_extra == 'true' && " + token + " || '' }}",
+}
+ral = YAML.load_file(".github/workflows/release-auto-login.yml")
+abort "FAIL: release auto-login secret consumer allowlist drifted" unless secret_references(ral, token) == ral_expected
 RUBY
 
 # iOS: the same location-aware freeze. The opt-in testflight_internal job
