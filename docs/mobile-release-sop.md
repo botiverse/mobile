@@ -505,6 +505,29 @@ reinstall it if the device already took the failed one.
 Checking only the public update endpoint does not count; the finalize script
 already does that.
 
+**Automated fixture run (Android).** `Android Update E2E`
+(`.github/workflows/android-update-e2e.yml`) runs these three checks on a
+GitHub-hosted emulator (API 34, no Testbed). It builds A and B from one commit
+with `android-update-qa.yml`, publishes only B to Hands `raft-android/debug`,
+scoped to a device group that holds only that run's emulator, and drives the
+real prompt, download and system installer. Afterwards it removes the emulator
+from the group and cancels B. Run it before each release, and whenever you
+need it:
+
+```bash
+stamp workflow run android-update-e2e.yml -R botiverse/mobile --ref main \
+  -f source_sha=<40-char release candidate commit>
+# Iterate on the test without rebuilding: reuse A/B from an earlier run
+stamp workflow run android-update-e2e.yml -R botiverse/mobile --ref main \
+  -f fixture_run_id=<run id>
+```
+
+The `android-update-e2e-evidence` artifact holds the screen recording, a
+screenshot and UI dump for every step, logcat, and `summary.json`. A failure
+names the step that broke. This run tests the update mechanics on fixture
+builds. It does not replace the `preview` → `preview` test above: that one
+uses the real previous train build and the real channel.
+
 ### 7.3 Google Play beyond internal
 
 Closed, open and production tracks each need artin's go:
