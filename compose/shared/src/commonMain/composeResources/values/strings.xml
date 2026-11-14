@@ -4443,6 +4443,11 @@
     <string name="assistant_paused_start">Start</string>
     <string name="assistant_paused_starting">Starting…</string>
     <string name="assistant_paused_start_failed">Couldn't start it. Try again.</string>
+    <string name="assistant_setting_reads_dms">Read my direct messages</string>
+    <string name="assistant_setting_reads_dms_description">Reads your DMs to tell you what needs you. Turn it off and it stops at once.</string>
+    <string name="assistant_setting_send_as_owner">Send messages as me</string>
+    <string name="assistant_setting_send_as_owner_description">Replies for you when something needs an answer. Each is marked as your assistant's, and you can retract it.</string>
+    <string name="assistant_setting_save_failed">Couldn't save this change. Try again.</string>
     <string name="notification_level_title">Notifications</string>
     <string name="notification_level_all">All new messages</string>
     <string name="notification_level_mentions">Only what involves me</string>

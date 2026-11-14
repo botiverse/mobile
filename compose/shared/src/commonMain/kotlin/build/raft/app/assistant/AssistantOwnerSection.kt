@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftTraceIdNote
 import build.raft.app.data.ASSISTANT_OWNER_NOTES_MAX_LENGTH
+import build.raft.app.data.AssistantOwnerSetting
 import build.raft.app.data.AgentLifecycleActionResult
 import build.raft.app.data.ComputerAccessRevokedErrorCode
 import build.raft.app.data.DataRequestPriority
@@ -32,6 +34,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.MyAssistantKey
 import build.raft.app.data.MyAssistantOwnerNotesSaveOutcome
 import build.raft.app.data.MyAssistantRecord
+import build.raft.app.data.MyAssistantSettingSaveOutcome
 import build.raft.app.data.MyAssistantState
 import build.raft.app.data.PERSONAL_ASSISTANT_FEATURE_FLAG_KEY
 import build.raft.app.data.ScreenError
@@ -61,7 +64,9 @@ import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowChevron
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowVariant
+import build.raft.designsystem.components.RaftSaveStatusState
 import build.raft.designsystem.components.RaftSectionEyebrow
+import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.RaftTextareaCounter
 import build.raft.designsystem.text.RaftText
@@ -71,10 +76,11 @@ import kotlinx.coroutines.launch
 
 // The owner's side of their personal assistant's profile (web assistant/AssistantOwnerSection.tsx,
 // AssistantInstructionsDialog.tsx, AssistantPaused.tsx `AssistantPausedNotice`): under the
-// profile, one 「Assistant」 section with Extra Instructions; under the hero, while a server owner or
-// admin has paused it, the notice with Start. Only the owner sees either: "my assistant" is the
-// viewer's own, so another agent's profile, or anyone else's view of this one, shows nothing. The
-// owner cannot pause it (web parity: pausing is the server owner's or an admin's).
+// profile, one 「Assistant」 section with the permission switches and Extra Instructions; under
+// the hero, while a server owner or admin has paused it, the notice with Start. Only the owner
+// sees either: "my assistant" is the viewer's own, so another agent's profile, or anyone else's
+// view of this one, shows nothing. The owner cannot pause it (web parity: pausing is the server
+// owner's or an admin's).
 
 /**
  * What the profile needs to find the viewer's own assistant, provided by the member detail route
@@ -125,9 +131,11 @@ internal fun rememberOwnAssistant(agentId: String): MyAssistantRecord? {
 
 /**
  * The owner's 「Assistant」 section of their assistant's profile (web `AssistantOwnerSection`): the
- * Extra Instructions row, which opens the editor. Shown only while the server reports the notes
- * (web: the row needs `settings.ownerNotes !== null`). [frame] draws the profile's section chrome
- * (separator and padding) round the content.
+ * two permission switches (Read my direct messages, Send messages as me), then the Extra
+ * Instructions row, which opens the editor. A row shows only while the server reports what it
+ * needs (web: a switch when its setting is not null, the instructions when `ownerNotes !== null`);
+ * with none of them, no section. [frame] draws the profile's section chrome (separator and padding)
+ * round the content.
  */
 @Composable
 internal fun AssistantOwnerSection(
@@ -136,13 +144,29 @@ internal fun AssistantOwnerSection(
 ) {
     val owner = LocalAssistantOwnerScope.current ?: return
     val assistant = rememberOwnAssistant(agentId) ?: return
-    val savedNotes = assistant.ownerNotes ?: return
+    val savedNotes = assistant.ownerNotes
+    if (assistant.readsDms == null && assistant.sendAsOwner == null && savedNotes == null) return
+    val key = remember(owner.serverId, owner.userId) { MyAssistantKey(owner.serverId, owner.userId) }
     var editing by remember(agentId) { mutableStateOf(false) }
+    val switches = remember(agentId, key) { AssistantOwnerSwitchesState() }
+    val scope = rememberCoroutineScope()
     frame {
-        AssistantOwnerSectionContent(name = assistant.name, onOpenInstructions = { editing = true })
+        AssistantOwnerSectionContent(
+            name = assistant.name,
+            readsDms = assistant.readsDms,
+            sendAsOwner = assistant.sendAsOwner,
+            showInstructions = savedNotes != null,
+            onOpenInstructions = { editing = true },
+            onSettingChange = { setting, value ->
+                if (!switches.isSaving(setting)) {
+                    scope.launch { switches.flip(setting, value) { s, v -> owner.store.saveSetting(key, s, v) } }
+                }
+            },
+            saving = switches.saving,
+            failures = switches.failures,
+        )
     }
-    if (editing) {
-        val key = MyAssistantKey(owner.serverId, owner.userId)
+    if (editing && savedNotes != null) {
         AssistantInstructionsSheet(
             name = assistant.name,
             savedNotes = savedNotes,
@@ -152,12 +176,66 @@ internal fun AssistantOwnerSection(
     }
 }
 
-/** The section's eyebrow and its one row (web `assistant-owner-section`). */
+/**
+ * The owner's switches' rows (web `OwnerSwitchRow`): which are saving (their switch is disabled,
+ * web `disabled={saving}`) and which failed last (the failure line under the row, until the next
+ * flip). The switch's value itself is the store's, which moves at once and moves back on failure.
+ */
+@Stable
+internal class AssistantOwnerSwitchesState {
+    var saving: Set<AssistantOwnerSetting> by mutableStateOf(emptySet())
+        private set
+
+    var failures: Map<AssistantOwnerSetting, ScreenError> by mutableStateOf(emptyMap())
+        private set
+
+    fun isSaving(setting: AssistantOwnerSetting): Boolean = setting in saving
+
+    /**
+     * Saves [setting] at [value] through [save] unless a save of it is running: clears its last
+     * failure, keeps it saving until [save] answers, and remembers a failure.
+     */
+    suspend fun flip(
+        setting: AssistantOwnerSetting,
+        value: Boolean,
+        save: suspend (AssistantOwnerSetting, Boolean) -> MyAssistantSettingSaveOutcome,
+    ) {
+        if (setting in saving) return
+        saving = saving + setting
+        failures = failures - setting
+        try {
+            val outcome =
+                try {
+                    save(setting, value)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    // No server answer to trace.
+                    MyAssistantSettingSaveOutcome.Failed(ScreenError("assistant_setting_save_failed", traceId = null))
+                }
+            if (outcome is MyAssistantSettingSaveOutcome.Failed) failures = failures + (setting to outcome.error)
+        } finally {
+            saving = saving - setting
+        }
+    }
+}
+
+/**
+ * The section's eyebrow, the permissions group (web `assistant-owner-permissions`, in its order:
+ * Read my direct messages, then Send messages as me) and the instructions group (web
+ * `assistant-owner-section`, groups 16dp apart). A null switch value hides its row.
+ */
 @Composable
 internal fun AssistantOwnerSectionContent(
     name: String,
+    readsDms: Boolean?,
+    sendAsOwner: Boolean?,
+    showInstructions: Boolean,
     onOpenInstructions: () -> Unit,
+    onSettingChange: (AssistantOwnerSetting, Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    saving: Set<AssistantOwnerSetting> = emptySet(),
+    failures: Map<AssistantOwnerSetting, ScreenError> = emptyMap(),
 ) {
     Column(modifier.fillMaxWidth().testTag("assistant-owner-section")) {
         // Web SectionEyebrow `mb-3`.
@@ -165,17 +243,91 @@ internal fun AssistantOwnerSectionContent(
             text = stringResource(Res.string.assistant_owner_section_title),
             modifier = Modifier.padding(bottom = 12.dp),
         )
-        RaftListRowGroup(Modifier.fillMaxWidth()) {
-            RaftListRow(
-                title = stringResource(Res.string.assistant_instructions_title),
-                modifier = Modifier.testTag("assistant-settings-instructions"),
-                onClick = onOpenInstructions,
-                variant = RaftListRowVariant.Plain,
-                description = stringResource(Res.string.assistant_instructions_row_description, name),
-                wrapDescription = true,
-                trailing = { RaftListRowChevron() },
-            )
+        // Web `stack-y-4` between the groups.
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (readsDms != null || sendAsOwner != null) {
+                RaftListRowGroup(Modifier.fillMaxWidth().testTag("assistant-owner-permissions")) {
+                    if (readsDms != null) {
+                        AssistantOwnerSwitchRow(
+                            setting = AssistantOwnerSetting.ReadsDms,
+                            checked = readsDms,
+                            title = stringResource(Res.string.assistant_setting_reads_dms),
+                            description = stringResource(Res.string.assistant_setting_reads_dms_description),
+                            saving = AssistantOwnerSetting.ReadsDms in saving,
+                            failure = failures[AssistantOwnerSetting.ReadsDms],
+                            divider = false,
+                            onCheckedChange = { onSettingChange(AssistantOwnerSetting.ReadsDms, it) },
+                        )
+                    }
+                    if (sendAsOwner != null) {
+                        AssistantOwnerSwitchRow(
+                            setting = AssistantOwnerSetting.SendAsOwner,
+                            checked = sendAsOwner,
+                            title = stringResource(Res.string.assistant_setting_send_as_owner),
+                            description = stringResource(Res.string.assistant_setting_send_as_owner_description),
+                            saving = AssistantOwnerSetting.SendAsOwner in saving,
+                            failure = failures[AssistantOwnerSetting.SendAsOwner],
+                            divider = readsDms != null,
+                            onCheckedChange = { onSettingChange(AssistantOwnerSetting.SendAsOwner, it) },
+                        )
+                    }
+                }
+            }
+            if (showInstructions) {
+                RaftListRowGroup(Modifier.fillMaxWidth()) {
+                    RaftListRow(
+                        title = stringResource(Res.string.assistant_instructions_title),
+                        modifier = Modifier.testTag("assistant-settings-instructions"),
+                        onClick = onOpenInstructions,
+                        variant = RaftListRowVariant.Plain,
+                        description = stringResource(Res.string.assistant_instructions_row_description, name),
+                        wrapDescription = true,
+                        trailing = { RaftListRowChevron() },
+                    )
+                }
+            }
         }
+    }
+}
+
+/**
+ * One owner switch (web `OwnerSwitchRow`): a plain settings row with its switch at the end, which
+ * saves when flipped and is disabled while that save runs. A failed save says so under the
+ * description ([RaftListRow] `saveStatus`), with the request's trace ID under the row.
+ */
+@Composable
+private fun AssistantOwnerSwitchRow(
+    setting: AssistantOwnerSetting,
+    checked: Boolean,
+    title: String,
+    description: String,
+    saving: Boolean,
+    failure: ScreenError?,
+    divider: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val failedMessage = stringResource(Res.string.assistant_setting_save_failed)
+    RaftListRow(
+        title = title,
+        modifier = Modifier.testTag("assistant-setting-${setting.wireName}-row"),
+        variant = RaftListRowVariant.Plain,
+        titleMaxLines = 2,
+        description = description,
+        wrapDescription = true,
+        divider = divider,
+        saveStatus = if (failure != null) RaftSaveStatusState.Failed(failedMessage) else RaftSaveStatusState.Idle,
+        trailing = {
+            RaftSwitch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                modifier = Modifier.testTag("assistant-setting-${setting.wireName}"),
+                enabled = !saving,
+                label = title,
+            )
+        },
+    )
+    if (failure != null) {
+        RaftTraceIdNote(failure.traceId, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
     }
 }
 

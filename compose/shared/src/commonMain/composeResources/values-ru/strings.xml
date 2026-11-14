@@ -4220,6 +4220,11 @@
     <string name="assistant_paused_start">Запустить</string>
     <string name="assistant_paused_starting">Запуск…</string>
     <string name="assistant_paused_start_failed">Не удалось запустить ассистента. Попробуйте ещё раз.</string>
+    <string name="assistant_setting_reads_dms">Читать мои личные сообщения</string>
+    <string name="assistant_setting_reads_dms_description">Читает ваши личные сообщения, чтобы сказать, что ждёт вас. Выключите — и сразу перестанет.</string>
+    <string name="assistant_setting_send_as_owner">Отправлять сообщения от моего имени</string>
+    <string name="assistant_setting_send_as_owner_description">Отвечает за вас, когда нужен ответ. Каждое сообщение помечено как отправленное ассистентом, его можно отозвать.</string>
+    <string name="assistant_setting_save_failed">Не удалось сохранить изменение. Попробуйте ещё раз.</string>
     <string name="notification_level_title">Уведомления</string>
     <string name="notification_level_all">Все новые сообщения</string>
     <string name="notification_level_mentions">Только то, что касается меня</string>

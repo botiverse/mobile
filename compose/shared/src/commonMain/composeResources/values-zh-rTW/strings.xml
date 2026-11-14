@@ -4257,6 +4257,11 @@
     <string name="assistant_paused_start">啟動</string>
     <string name="assistant_paused_starting">啟動中…</string>
     <string name="assistant_paused_start_failed">無法啟動，請再試一次。</string>
+    <string name="assistant_setting_reads_dms">讀取我的私訊</string>
+    <string name="assistant_setting_reads_dms_description">讀你的私訊，告訴你哪些在等你。關掉立即停止。</string>
+    <string name="assistant_setting_send_as_owner">以我的身分傳送訊息</string>
+    <string name="assistant_setting_send_as_owner_description">替你回覆需要回答的訊息，每則都會標明是助理發的，可收回。</string>
+    <string name="assistant_setting_save_failed">無法儲存這項變更，請再試一次。</string>
     <string name="notification_level_title">通知</string>
     <string name="notification_level_all">所有新訊息</string>
     <string name="notification_level_mentions">僅與我相關</string>
