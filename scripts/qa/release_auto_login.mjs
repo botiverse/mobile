@@ -30,6 +30,7 @@
 //     --capture-browser-apk build/capture-browser.apk [--apk app-release.apk] \
 //     [--env staging|production] [--package build.raft.app] [--out release-auto-login-evidence]
 //     [--strict-cleanup] [--revoke-app-session] [--keep-capture-browser]
+//     [--scenario scripts/qa/scenarios/<name>.mjs [its options, e.g. --server-name X]]
 //   (or --credential-file <testbed qa-account get --out file>)
 import fs from "node:fs";
 import path from "node:path";
@@ -61,6 +62,9 @@ const OUT = option("out", "release-auto-login-evidence");
 const KEEP_STUB = flag("keep-capture-browser");
 const STRICT_CLEANUP = flag("strict-cleanup");
 const REVOKE_APP_SESSION = flag("revoke-app-session");
+// Optional: a module whose run(ctx) drives the signed-in app (and the QA account's web session)
+// before cleanup; docs/qa-acceptance/release-auto-login.md "Scenarios".
+const SCENARIO = option("scenario", "");
 const preset = ENVIRONMENTS[ENV_NAME];
 const WEB_URL = option("web-url", preset?.webUrl ?? "");
 const API_BASE = (option("api-url", preset?.apiBaseUrl ?? "")).replace(/\/?$/, "/");
@@ -225,7 +229,7 @@ async function step(name, body, { screenshot = true } = {}) {
 // ---------- the web login page's requests ----------
 // Exactly what packages/web does (store/authStore login, pages/AppLoginPage): JSON over the API
 // with the access token as a bearer header. Origin is the web app's, as a browser would send it.
-async function web(method, pathname, { token, body } = {}) {
+async function web(method, pathname, { token, body, serverId } = {}) {
   const response = await fetch(`${API_BASE}${pathname}`, {
     method,
     headers: {
@@ -234,6 +238,7 @@ async function web(method, pathname, { token, body } = {}) {
       Origin: new URL(WEB_URL).origin,
       "User-Agent": "raft-mobile-qa-release-auto-login",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(serverId ? { "X-Server-Id": serverId } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(30_000),
@@ -451,6 +456,44 @@ async function revokeAppSession(appMayBeSignedIn) {
   });
 }
 
+// ---------- scenario (optional) ----------
+// The scenario gets the device helpers and the QA account's web session (refreshed on a 401; the
+// same session is signed out in cleanup). Its result goes to summary.json `scenario`; a scenario
+// that throws or reports result "fail" makes the run exit non-zero after cleanup.
+let scenarioFailed = false;
+async function runScenario(webSession) {
+  const authed = async (method, pathname, { body, serverId } = {}) => {
+    let out = await web(method, pathname, { token: webSession.accessToken, body, serverId });
+    if (out.status === 401 && webSession.refreshToken) {
+      const refreshed = await web("POST", "auth/refresh", { body: { refreshToken: webSession.refreshToken } });
+      if (refreshed.status === 200 && refreshed.json?.accessToken) {
+        redact.add(refreshed.json.accessToken);
+        redact.add(refreshed.json.refreshToken);
+        webSession.accessToken = refreshed.json.accessToken;
+        webSession.refreshToken = refreshed.json.refreshToken ?? webSession.refreshToken;
+        out = await web(method, pathname, { token: webSession.accessToken, body, serverId });
+      }
+    }
+    return out;
+  };
+  const ctx = {
+    PKG, OUT, summary, option, flag, adb, shell, nodes, find, label, tapNode, waitFor, launchApp, dismissSystemDialog,
+    sleep, log, stop, step, evidence, redact,
+    nextStepIndex: () => stepIndex + 1,
+    web: authed,
+    account: { userId: webSession.userId, displayName: webSession.displayName },
+  };
+  try {
+    const mod = await import(path.resolve(SCENARIO));
+    const report = await mod.run(ctx);
+    if (report?.result === "fail") scenarioFailed = true;
+  } catch (error) {
+    scenarioFailed = true;
+    summary.scenario = { ...(summary.scenario ?? {}), result: "fail", error: redact(error?.message ?? String(error)).slice(0, 600) };
+    log(`scenario failed: ${error?.message ?? error}`);
+  }
+}
+
 // ---------- the flow ----------
 async function main() {
   if (!preset && !(option("web-url") && option("api-url"))) stop(`unknown --env ${ENV_NAME}; use staging|production or pass --web-url and --api-url`);
@@ -573,7 +616,12 @@ async function main() {
         stop("the QA account has two-step verification on; this script does not answer second factors — use an account without it");
       }
       if (!login.json?.accessToken) stop("POST /auth/login answered without an access token");
-      webSession = { accessToken: login.json.accessToken, refreshToken: login.json.refreshToken ?? "" };
+      webSession = {
+        accessToken: login.json.accessToken,
+        refreshToken: login.json.refreshToken ?? "",
+        userId: login.json.user?.id ?? "",
+        displayName: login.json.user?.displayName || login.json.user?.name || "",
+      };
       redact.add(webSession.accessToken);
       redact.add(webSession.refreshToken);
 
@@ -643,6 +691,8 @@ async function main() {
       }
       stop(`still not signed in after 120s; on screen: ${lastLabels || "(nothing labelled)"}`);
     });
+
+    if (SCENARIO) await runScenario(webSession);
   } finally {
     // Every cleanup step runs whatever happened above; each records its own status.
     await signOutWebSession(webSession);
@@ -676,6 +726,7 @@ main()
       const list = outcome.cleanupFailures.map((f) => `${f.step}=${f.status}`).join(", ");
       console.error(`[release-auto-login] cleanup incomplete: ${list}${STRICT_CLEANUP ? " (strict: failing the run)" : ""}`);
     }
-    process.exitCode = outcome.exitCode;
+    process.exitCode = outcome.exitCode || (scenarioFailed ? 1 : 0);
+    if (SCENARIO) summary.scenario_result = scenarioFailed ? "fail" : (summary.scenario?.result ?? "pass");
     fs.writeFileSync(path.join(OUT, "summary.json"), `${redact(JSON.stringify(summary, null, 2))}\n`);
   });
