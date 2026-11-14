@@ -1334,6 +1334,7 @@ jobs:
             RaftIosNetworkRequestLifetimeAdapterTests \
             RaftIosRealtimeLifecyclePolicyTests \
             RaftIosOpenAttachmentTests \
+            RaftIosComposerPasteTests \
             RaftIosNotificationRetractionTests \
             RaftIosWeakSideActionListenerTests \
             RaftShareControllerFailureReasonTests

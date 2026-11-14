@@ -80,6 +80,32 @@ final class RaftIosComposerPasteTests: XCTestCase {
         try assertMenuPastesImage(initialText: "hello")
     }
 
+    /// The field's input session restarted while the composer kept its focus (Compose made a new
+    /// editor view; with a hardware keyboard no keyboard notification follows): the new editor is
+    /// still the composer's, so its menu still has the one Paste. 1.25.0 pinned the hook to the
+    /// editor view seen at focus and lost it (vphone, iOS 27: only Select / Select All).
+    func testComposerMenuOffersPasteForAnImageAfterTheInputSessionRestarts() throws {
+        try assertMenuPastesImage(initialText: "hello", restartInputSession: true)
+    }
+
+    /// Same restart, ⌘V (the system's `paste:` to the first responder): the image goes to the
+    /// composer, the field's text stays as it was.
+    func testCommandVPastesAnImageAfterTheInputSessionRestarts() throws {
+        UIPasteboard.general.items = []
+        UIPasteboard.general.image = Self.redImage()
+        let first = try focusedEditor(composerClipboard: false, reportsFocus: true, initialText: "hello")
+        let editor = try restartedEditor(after: first)
+        XCTAssertTrue(editor.canPerformAction(Self.paste, withSender: nil), "Paste offered for an image (\(type(of: editor)))")
+        _ = waitFor(seconds: 1) { false }
+        let count = RaftIosComposerPasteProbeKt.raftComposerPasteProbeImagePasteCount()
+        XCTAssertTrue(UIApplication.shared.sendAction(Self.paste, to: nil, from: nil, for: nil), "paste: has a target")
+        XCTAssertTrue(
+            waitFor(seconds: 5) { RaftIosComposerPasteProbeKt.raftComposerPasteProbeImagePasteCount() > count },
+            "⌘V: the image went to the composer (image editor flow)"
+        )
+        XCTAssertEqual(editorText(editor), "hello", "the field's text unchanged")
+    }
+
     /// (b) The system's Paste in the suggested actions (as on iPad, iOS 26.1, where UIKit shows it),
     /// only an image on the clipboard: one Paste, ours in its place with its title (not a second
     /// item); choosing it, and the system's `paste:` sent through the responder chain as UIKit does
@@ -164,11 +190,17 @@ final class RaftIosComposerPasteTests: XCTestCase {
         return RaftIosComposerImagePasteKt.raftComposerPasteLabel()
     }
 
-    private func assertMenuPastesImage(initialText: String, file: StaticString = #filePath, line: UInt = #line) throws {
+    private func assertMenuPastesImage(
+        initialText: String,
+        restartInputSession: Bool = false,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
         guard #available(iOS 16.0, *) else { throw XCTSkip("UIEditMenuInteraction is iOS 16+") }
         UIPasteboard.general.items = []
         UIPasteboard.general.image = Self.redImage()
-        let editor = try focusedEditor(composerClipboard: false, reportsFocus: true, initialText: initialText)
+        var editor = try focusedEditor(composerClipboard: false, reportsFocus: true, initialText: initialText)
+        if restartInputSession { editor = try restartedEditor(after: editor, file: file, line: line) }
         let shown = try showEditMenu(file: file, line: line)
         let menu = shown.menu
         let pastes = Self.pasteItems(in: menu.children)
@@ -367,6 +399,23 @@ final class RaftIosComposerPasteTests: XCTestCase {
         }
         let found = try XCTUnwrap(editor, "the probe's text field took the focus")
         // The host's focus capture runs on the next turns and 0.3 s later (RaftIosImagePaste).
+        _ = waitFor(seconds: 0.6) { false }
+        return found
+    }
+
+    /// Restarts the probe field's input session (its keyboard options change; the focus stays) and
+    /// returns the new editor view Compose made for it.
+    private func restartedEditor(after editor: UIResponder, file: StaticString = #filePath, line: UInt = #line) throws -> UIResponder {
+        let window = try XCTUnwrap(self.window, "the probe window", file: file, line: line)
+        RaftIosComposerPasteProbeKt.raftComposerPasteProbeRestartInputSession()
+        var restarted: UIResponder?
+        _ = waitFor(seconds: 5) {
+            restarted = Self.firstResponder(in: window)
+            return restarted != nil && restarted !== editor
+        }
+        let found = try XCTUnwrap(restarted, "the restarted field took the focus", file: file, line: line)
+        XCTAssertFalse(found === editor, "a new editor view for the restarted session", file: file, line: line)
+        // No focus report runs for it: past the host's delayed captures of the first focus.
         _ = waitFor(seconds: 0.6) { false }
         return found
     }
