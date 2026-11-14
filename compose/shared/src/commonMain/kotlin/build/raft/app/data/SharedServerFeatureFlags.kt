@@ -160,17 +160,6 @@ const val MOBILE_NAV3_STACK_FEATURE_FLAG_KEY: String = "mobile_nav3_stack_v1"
 const val MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY: String = "mobile_ios_native_nav_v1"
 
 /**
- * The common-Kotlin Socket.IO client (`:realtime-socket`, docs/realtime-kmp-socket-client.md) instead of
- * the platform Socket.IO library. Mobile-only key, default OFF in release builds. Read
- * like the navigation switches: the last evaluation is kept on the device
- * ([build.raft.app.data.realtime.RaftRealtimeKmpClientFlag]) and read each time a socket is created, so
- * turning it off rolls back on the next connection. Android and iOS; QA builds (Android debug / alpha, iOS
- * Debug) default it on until the server explicitly evaluates it off. Local test switch: Settings > Developer >
- * "New realtime connection".
- */
-const val REALTIME_KMP_CLIENT_V1_FEATURE_FLAG_KEY: String = "realtime_kmp_client_v1"
-
-/**
  * Agent Lounge v0 (botiverse/slock `packages/shared/src/featureFlags.ts` `AGENT_LOUNGE_FEATURE_FLAG_KEY`, web
  * `AGENT_LOUNGE_FLAG_KEY`): per server, default off. On, and not a Guest ([agentLoungeEnabled]), an agent's
  * profile and DM header open its Lounge, and a Lounge you joined or were mentioned in has a row under the
@@ -232,7 +221,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     DRAFTS_SECTION_FEATURE_FLAG_KEY,
     MOBILE_NAV3_STACK_FEATURE_FLAG_KEY,
     MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY,
-    REALTIME_KMP_CLIENT_V1_FEATURE_FLAG_KEY,
     // Slack Bridge (slock `SLACK_BRIDGE_FEATURE_FLAG_KEYS.master`): the Settings IM Bridges row.
     SLACK_BRIDGE_FEATURE_FLAG_KEY,
     AGENT_LOUNGE_FEATURE_FLAG_KEY,

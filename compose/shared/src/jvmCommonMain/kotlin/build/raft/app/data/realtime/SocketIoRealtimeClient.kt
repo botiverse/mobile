@@ -1,30 +1,17 @@
-package build.raft.app.desktop.realtime
+package build.raft.app.data.realtime
 
 import build.raft.app.data.isSsoRequiredSocketError
-import build.raft.app.desktop.RaftDesktopLog
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.RAFT_SOCKET_BASE_URL
-import build.raft.app.data.realtime.RealtimeAuth
-import build.raft.app.data.realtime.RealtimeBaselineHistoryRequests
-import build.raft.app.data.realtime.RealtimeSyncHorizon
-import build.raft.app.data.realtime.RealtimeConnectRequest
-import build.raft.app.data.realtime.RealtimeSocketConnectionContext
-import build.raft.app.data.realtime.RealtimeConnectionState
-import build.raft.app.data.realtime.RealtimeClientDiagnostics
-import build.raft.app.data.realtime.RealtimeCursorPolicy
-import build.raft.app.data.realtime.RealtimeCursorState
-import build.raft.app.data.realtime.RealtimeCursorUpdate
-import build.raft.app.data.realtime.RealtimeHeartbeatWatchdog
-import build.raft.app.data.realtime.RealtimeHeartbeatWatchdogSnapshot
-import build.raft.app.data.realtime.RealtimeLocalEvents
-import build.raft.app.data.realtime.RealtimeResumeRequest
-import build.raft.app.data.realtime.RealtimeSocketTransport
-import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.ChannelId
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.AgentActivitySubscribed
 import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
+import build.raft.app.model.NotificationAccountSettingsChanged
+import build.raft.app.model.NotificationLevelChanged
+import build.raft.app.model.NotificationRetracted
+import build.raft.app.data.RAFT_PRESENCE_HEARTBEAT_MILLIS
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.PerReceiverPinnedChanged
@@ -52,12 +39,21 @@ import build.raft.app.model.AgentCreated
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.ServerId
-import com.google.gson.JsonObject
 import java.util.Timer
 import java.util.TimerTask
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.time.TimeSource
 
+/**
+ * The realtime connection logic of the Android and desktop hosts (cursor, sync horizon, resume, rejoin, presence,
+ * heartbeat watchdog) over a [RealtimeSocketTransport]; production hosts pass the common Socket.IO client
+ * ([raftRealtimeSocketTransport]). Callbacks are linearized by [RealtimeSocketTransport.linearize].
+ */
 class SocketIoRealtimeClient(
     private val transport: RealtimeSocketTransport,
     private val eventMapper: RealtimeEventMapper = RealtimeEventMapper(),
@@ -76,10 +72,12 @@ class SocketIoRealtimeClient(
         timer::cancel
     },
     private val beforeHeartbeatReconnect: (() -> Unit)? = null,
+    // Kept diagnostics (auth refresh failures); defaults to [logger].
+    private val warningLogger: (String) -> Unit = logger,
     // Ticket 9222ba03: socket callbacks run under the transport lock, and the auth provider may
     // do a network token refresh (4s per attempt, one retry). Running it there made onResume's
     // setReconnectAllowed wait on the lock long enough to ANR, so the provider runs here instead.
-    private val authRefreshRunner: (task: () -> Unit) -> Unit = ::runOnRealtimeAuthRefreshThread,
+    private val authRefreshRunner: (task: () -> Unit) -> Unit = realtimeAuthRefreshRunner(warningLogger),
     // Sync horizon (slock #10982): whether a baseline history read of this server was already sent, which
     // makes a starting horizon unusable (see RealtimeSyncHorizon).
     private val baselineHistorySent: (serverId: String) -> Boolean = RealtimeBaselineHistoryRequests::anySent,
@@ -271,6 +269,43 @@ class SocketIoRealtimeClient(
         }
     }
 
+    /**
+     * `presence:activity` (slock docs/contracts/notifications.md §5): the app is (not) in the
+     * foreground. Sent now when connected, again on every connect, and every
+     * [RAFT_PRESENCE_HEARTBEAT_MILLIS] while connected and active; the server alerts only the
+     * device kinds the user is actively using.
+     */
+    fun emitPresenceActivity(active: Boolean) {
+        transport.linearize {
+            presenceActive = active
+            emitPresenceLocked(reason = if (active) "foreground" else "background")
+        }
+    }
+
+    // Guarded by the transport's linearization. Null until the host reports a visibility.
+    private var presenceActive: Boolean? = null
+    private var lastPresenceSentAtMillis: Long? = null
+
+    private fun emitPresenceLocked(reason: String) {
+        val active = presenceActive ?: return
+        val connected =
+            connectionState == RealtimeConnectionState.Connected ||
+                connectionState == RealtimeConnectionState.RoomsJoined
+        if (!connected) return
+        transport.emit(
+            RealtimeSocketEvents.PresenceActivity,
+            if (active) mapOf("active" to true, "idleSeconds" to 0) else mapOf("active" to false, "idleSeconds" to JsonNull)
+        )
+        lastPresenceSentAtMillis = clockMillis()
+        logger("presence_activity_emit active=$active reason=$reason")
+    }
+
+    private fun presenceHeartbeatLocked(nowMillis: Long) {
+        if (presenceActive != true) return
+        val last = lastPresenceSentAtMillis ?: return
+        if (nowMillis - last >= RAFT_PRESENCE_HEARTBEAT_MILLIS) emitPresenceLocked(reason = "heartbeat")
+    }
+
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription {
         transport.linearize { listeners += listener }
         return RealtimeSubscription { transport.linearize { listeners -= listener } }
@@ -330,6 +365,7 @@ class SocketIoRealtimeClient(
             )
             requestStartingHorizon(capturedContext)
             rejoinChannels(reason = "connect")
+            emitPresenceLocked(reason = "connect")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.RoomsJoined) { capturedContext, _ ->
             if (!acceptConnectionCallback(capturedContext, RealtimeSocketEvents.RoomsJoined)) return@on
@@ -398,6 +434,7 @@ class SocketIoRealtimeClient(
             startHeartbeatWatchdog()
             connectionState = RealtimeConnectionState.Connected
             reconnectCursor(reason = "transport_reconnect", serverId = capturedContext.serverId)
+            emitPresenceLocked(reason = "reconnect")
             diagnostics?.onConnected(capturedContext.serverId)
             logger(
                 "client_reconnected serverId=${capturedContext.serverId.value} joinedRooms=${joinedChannels.size} " +
@@ -560,7 +597,10 @@ class SocketIoRealtimeClient(
                 serverId = serverId,
             )
         )
-        val payload = JSONObject().put("serverId", serverId.value).put("reason", reason).toString()
+        val payload = buildJsonObject {
+            put("serverId", serverId.value)
+            put("reason", reason)
+        }.toString()
         rawListeners.toList().forEach { it(capturedContext, RealtimeLocalEvents.CatchUpRequired, payload) }
     }
 
@@ -635,6 +675,7 @@ class SocketIoRealtimeClient(
                 transport.linearize {
                     if (watchdogRegistration?.epoch != epoch) return@linearize
                     checkHeartbeatSilenceLocked(clockMillis())
+                    presenceHeartbeatLocked(clockMillis())
                 }
             }
         watchdogRegistration = WatchdogRegistration(epoch, cancel)
@@ -774,49 +815,17 @@ class SocketIoRealtimeClient(
      * camelCase `serverId`. We do not scan nested objects or accept aliases —
      * a mismatch indicates a server bug and should surface, not be papered over.
      */
-    private fun Any?.serverIdOrNull(): String? = when (this) {
-        null -> null
-        is JSONObject -> optString("serverId").takeIf(String::isNotBlank)
-        is JsonObject ->
-            get("serverId")
-                ?.takeIf { it.isJsonPrimitive }
-                ?.asJsonPrimitive
-                ?.takeIf { it.isString }
-                ?.asString
-                ?.takeIf(String::isNotBlank)
-        is Map<*, *> -> (this["serverId"] as? String)?.takeIf(String::isNotBlank)
-        else -> null
-    }
+    private fun Any?.serverIdOrNull(): String? = stringFieldOrNull("serverId")
 
     /** `sync:horizon` ack `{ horizon }`: only a string horizon counts (never a number). */
-    private fun Any?.syncHorizonAckOrNull(): String? = when (this) {
-        is JSONObject -> RealtimeSyncHorizon.parse(opt(RealtimeSyncHorizon.HorizonKey) as? String)
-        is JsonObject ->
-            get(RealtimeSyncHorizon.HorizonKey)
-                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
-                ?.asString
-                ?.let(RealtimeSyncHorizon::parse)
-        is Map<*, *> -> RealtimeSyncHorizon.parse(this[RealtimeSyncHorizon.HorizonKey] as? String)
-        else -> null
-    }
+    private fun Any?.syncHorizonAckOrNull(): String? =
+        RealtimeSyncHorizon.parse(topLevelStringOrNull(RealtimeSyncHorizon.HorizonKey))
 
     /** Task #14c: a top-level non-blank string field of a socket payload (exact camelCase key, no aliases). */
-    private fun Any?.stringFieldOrNull(key: String): String? = when (this) {
-        null -> null
-        is JSONObject -> (opt(key) as? String)?.takeIf(String::isNotBlank)
-        is JsonObject ->
-            get(key)
-                ?.takeIf { it.isJsonPrimitive }
-                ?.asJsonPrimitive
-                ?.takeIf { it.isString }
-                ?.asString
-                ?.takeIf(String::isNotBlank)
-        is Map<*, *> -> (this[key] as? String)?.takeIf(String::isNotBlank)
-        else -> null
-    }
+    private fun Any?.stringFieldOrNull(key: String): String? = topLevelStringOrNull(key)?.takeIf(String::isNotBlank)
 }
 
-internal class RealtimeSuccessDiagnostics(
+class RealtimeSuccessDiagnostics(
     private val clockMillis: () -> Long,
     private val summaryEventCount: Int = 64,
     private val summaryIntervalMillis: Long = 30_000L,
@@ -936,26 +945,43 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
     is PerReceiverPinnedChanged -> "pinned_updated"
     is NotificationPushReceived -> "notification_push"
-    is build.raft.app.model.NotificationLevelChanged -> "notification_level_changed"
-    is build.raft.app.model.NotificationAccountSettingsChanged -> "notification_account_settings_changed"
-    is build.raft.app.model.NotificationRetracted -> "notification_retract"
+    is NotificationLevelChanged -> "notification_level_changed"
+    is NotificationAccountSettingsChanged -> "notification_account_settings_changed"
+    is NotificationRetracted -> "notification_retract"
     is build.raft.app.model.NotificationNoticeReceived -> "notification_notice"
 }
+
+/**
+ * A top-level string field of a socket payload. The transport hands plain Kotlin maps
+ * ([RaftKmpRealtimeSocketTransport]); any other object whose `toString()` is JSON (tests, older callers) is
+ * parsed, as [RealtimeEventMapper] does.
+ */
+private fun Any?.topLevelStringOrNull(key: String): String? =
+    when (this) {
+        null, is String, is Number, is Boolean, is Collection<*> -> null
+        is Map<*, *> -> this[key] as? String
+        else ->
+            (runCatching { realtimePayloadJson.parseToJsonElement(toString()) }.getOrNull() as? JsonObject)
+                ?.get(key)
+                ?.let { it as? JsonPrimitive }
+                ?.takeIf { it.isString }
+                ?.content
+    }
+
+private val realtimePayloadJson = Json { ignoreUnknownKeys = true }
 
 private val realtimeAuthRefreshExecutor =
     java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "slock-realtime-auth-refresh").apply { isDaemon = true }
     }
 
-private fun runOnRealtimeAuthRefreshThread(task: () -> Unit) {
+/** The default auth refresh runner: one daemon thread, failures go to [warningLogger]. */
+private fun realtimeAuthRefreshRunner(warningLogger: (String) -> Unit): (task: () -> Unit) -> Unit = { task ->
     realtimeAuthRefreshExecutor.execute {
         try {
             task()
         } catch (throwable: Throwable) {
-            RaftDesktopLog.w(
-                "SlockRealtime",
-                "auth_refresh_failed error=${throwable.javaClass.simpleName}",
-            )
+            warningLogger("auth_refresh_failed error=${throwable.javaClass.simpleName}")
         }
     }
 }

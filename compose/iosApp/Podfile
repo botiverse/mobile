@@ -14,7 +14,6 @@ target 'iosApp' do
   # registered at startup (see iOSApp.swift). Pages draw images with the Kotlin
   # Raft Coil loader (coil-svg for SVG).
   pod 'SDWebImageSVGCoder'
-  pod 'Socket.IO-Client-Swift', '~> 16.1'
   pod 'MMKV', '~> 2.4.3'
 
   # Hosted tests resolve production symbols through TEST_HOST. Inherit the

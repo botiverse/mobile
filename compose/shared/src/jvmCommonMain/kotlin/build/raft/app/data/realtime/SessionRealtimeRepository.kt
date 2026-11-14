@@ -1,4 +1,4 @@
-package build.raft.app.core.data.realtime
+package build.raft.app.data.realtime
 
 import build.raft.app.data.RaftAuthSessionStore as AuthSessionStore
 import build.raft.app.data.DataResult
@@ -6,18 +6,22 @@ import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.RealtimeRepository
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SharedAuthTokenProvider
-import build.raft.app.data.realtime.RealtimeAuth
-import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.model.ChannelId
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 
+/**
+ * The [RealtimeRepository] over [SocketIoRealtimeClient] for the Android and desktop hosts: the stored session's
+ * token and selected server, and the shared refresh coordinator after an auth `connect_error`.
+ * [refreshCaller] names the host in refresh diagnostics (`android_socket`, `desktop_socket`).
+ */
 class SessionRealtimeRepository(
     private val store: AuthSessionStore,
     private val client: SocketIoRealtimeClient,
     private val pinnedServerId: ServerId? = null,
-    private val tokenProvider: SharedAuthTokenProvider? = null
+    private val tokenProvider: SharedAuthTokenProvider? = null,
+    private val refreshCaller: String = "android_socket",
 ) : RealtimeRepository {
     init {
         if (tokenProvider != null) {
@@ -29,7 +33,7 @@ class SessionRealtimeRepository(
                                 failedAccessToken = failedAuth?.token,
                                 clearOnUnauthorized = false,
                                 reason = reason,
-                                caller = "android_socket"
+                                caller = refreshCaller
                             )
                         } else {
                             // A Socket.IO reconnect attempt is not proof that auth expired.

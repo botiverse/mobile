@@ -3426,8 +3426,6 @@
     <string name="settings_developer_nav3_stack_detail">移行済みのページをアプリのウィンドウ内で開きます（Android）。次回のアプリ起動時に反映されます。</string>
     <string name="settings_developer_multi_server_realtime">すべてのウィンドウでリアルタイム更新</string>
     <string name="settings_developer_multi_server_realtime_detail">「複数のアプリウィンドウ」がオンのとき、各ウィンドウのワークスペースがそれぞれリアルタイム接続を保ちます（最大 3 つ）。後ろのウィンドウにも新しいメッセージが届きます。オフのときは最前面のワークスペースだけが接続されます。</string>
-    <string name="settings_developer_kmp_realtime">新しいリアルタイム接続（ベータ）</string>
-    <string name="settings_developer_kmp_realtime_detail">このデバイスで Socket.IO ライブラリの代わりにアプリ独自のリアルタイムクライアントを使います。次に接続するときに反映されます。オフのときはサーバーの設定に従います。</string>
     <string name="settings_mobile_ios_native_nav">iOS ネイティブナビゲーション</string>
     <string name="settings_mobile_ios_native_nav_detail">ページのタイトルとボタンをシステムのナビゲーションバーに表示し、システムのスワイプで戻ります。次回のアプリ起動時に反映されます。</string>
     <string name="settings_developer_presets">プリセット</string>

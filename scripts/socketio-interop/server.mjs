@@ -7,8 +7,8 @@
 // Both: namespace "/" with an auth middleware like Raft's (token "good"; "expired" and "sso" are rejected
 // with the Raft messages), namespace "/admin" (auth.role must be "admin"), events, acks both ways,
 // binary events and acks, server-side disconnect and transport drops.
-//   PORT_C: a small Raft realtime server for the Android client parity suite
-//           (SocketIoRealtimeClientTransportParityTest, both socket implementations): `rooms:joined` after
+//   PORT_C: a small Raft realtime server for the realtime client's interop suite
+//           (SocketIoRealtimeClientInteropTest, on the common client): `rooms:joined` after
 //           connect, `sync:horizon` ack, `sync:resume` -> `sync:resume:response`, `join:channel` ->
 //           `channel:joined`, and an HTTP control API keyed by the handshake token (any token is accepted,
 //           one per test): GET /raft/log, POST /raft/message?seq=N, /raft/drop, /raft/config?horizonReset=1.
@@ -111,9 +111,8 @@ function raftServer(port) {
       }
       case "/raft/drop": {
         const count = state.sockets.size;
-        // A network reset, not a clean close: destroy the TCP socket under the WebSocket, so both clients
-        // see the transport fail at once (a server close frame is answered differently by OkHttp's
-        // half-close handling in socket.io-client-java and would wait for the Engine.IO ping timeout).
+        // A network reset, not a clean close: destroy the TCP socket under the WebSocket, so the client
+        // sees the transport fail at once (as a dropped network does) instead of a clean close.
         state.sockets.forEach((socket) => {
           const raw = socket.conn.transport?.socket?._socket;
           if (raw) raw.destroy();

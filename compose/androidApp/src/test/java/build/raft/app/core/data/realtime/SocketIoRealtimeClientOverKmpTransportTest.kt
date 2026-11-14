@@ -1,5 +1,6 @@
 package build.raft.app.core.data.realtime
 
+import build.raft.app.data.realtime.SocketIoRealtimeClient
 import build.raft.app.data.realtime.RaftKmpRealtimeSocketTransport
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectRequest

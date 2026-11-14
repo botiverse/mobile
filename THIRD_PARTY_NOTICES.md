@@ -33,7 +33,6 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 | com.android.installreferrer:installreferrer (Google Play Install Referrer; install source reporting) | 2.2 | **Android Software Development Kit License** (binary SDK; depend-only, do not redistribute the artifact in the repo) |
 | com.squareup.okhttp3:okhttp | 4.12.0 | Apache-2.0 |
 | com.google.code.gson:gson | 2.11.0 | Apache-2.0 |
-| io.socket:socket.io-client | 2.1.2 | MIT |
 | app.cash.sqldelight:runtime / android-driver / native-driver / sqlite-driver / coroutines-extensions | 2.4.1 | Apache-2.0 |
 | com.caverock:androidsvg-aar | 1.4 | Apache-2.0 |
 | com.tencent:mmkv | 2.4.0 | BSD-3-Clause |
@@ -46,7 +45,7 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 | org.mobilenativefoundation.store:store5 (+ core5 / cache5 / multicast5; offline-first resources) | 5.1.0-beta01 | Apache-2.0 |
 | co.touchlab:kermit (transitive, via store5) | 2.1.0 | Apache-2.0 |
 | KaTeX fonts (`compose/designsystem/src/commonMain/composeResources/font/katex_*.ttf`, from the `katex` npm package) | 0.19.0 | MIT |
-| Test-only: junit 4.13.2 (EPL-1.0), androidx.test.* (Apache-2.0), org.robolectric:robolectric 4.14.1 (MIT), androidx.benchmark / uiautomator (Apache-2.0) | — | as listed |
+| Test-only: junit 4.13.2 (EPL-1.0), org.json:json 20090211 (JSON License), androidx.test.* (Apache-2.0), org.robolectric:robolectric 4.14.1 (MIT), androidx.benchmark / uiautomator (Apache-2.0) | — | as listed |
 | Gradle plugins: AGP 8.13.2, Kotlin 2.1.21, KSP, Compose plugin 1.7.3, SQLDelight 2.4.1, google-services 4.5.0 | — | Apache-2.0 (google-services plugin: Apache-2.0) |
 
 ## iOS — CocoaPods
@@ -57,8 +56,6 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 | MMKV / MMKVCore | 2.4.0 | BSD-3-Clause |
 | SDWebImage | 5.21.7 | MIT |
 | SDWebImageSVGCoder | 1.8.0 | MIT |
-| Socket.IO-Client-Swift | 16.1.1 | MIT |
-| Starscream | 4.0.8 | Apache-2.0 |
 
 ## Tooling — npm (compose/package.json; dev/CI only, not shipped)
 MIT: console-error, console-info, console-warn, koa, koa-bodyparser, koa-router, koa-static, koa-whistle, mime-types, uuid, yargs, file-loader, gulp, gulp-zip, husky, querystring, shell · BSD-3-Clause: md5, shelljs · Unlicense: big-integer.

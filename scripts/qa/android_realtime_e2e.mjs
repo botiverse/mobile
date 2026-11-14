@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Deterministic Android realtime smoke (no model) for .github/workflows/android-realtime-e2e.yml. Runs inside
-// the emulator-runner action against one booted emulator, on an Alpha APK (debug build type, where
-// realtime_kmp_client_v1 defaults on: the common Kotlin Socket.IO client).
+// the emulator-runner action against one booted emulator, on an Alpha APK (the realtime socket is always the
+// common Kotlin Socket.IO client, :realtime-socket).
 //
 //   install -> sign in (QA account, the product's web sign-in approved through the API, as
 //   android_update_e2e.mjs) -> open a channel -> the socket is the common client (logcat
-//   `realtime_kmp_transport selected=kmp`) -> a message posted through the API from another session
+//   `realtime_kmp transport_connect_start` / `transport_connected`) -> a message posted through the API from another session
 //   appears live -> airplane mode: the socket drops; messages posted meanwhile -> network back: the
 //   socket reconnects and the missed messages appear (resume / catch-up) -> switch to another server and
 //   back through app links: each server connects on the common client, and a new message still arrives.
@@ -30,7 +30,6 @@ const PKG = args.package ?? "build.raft.app.alpha";
 const APK = args.apk;
 const SERVER = args.server ?? "OranixSlockTest";
 const CHANNEL = args.channel ?? "all";
-const EXPECT_TRANSPORT = args["expect-transport"] ?? "kmp";
 const RAFT_API = (process.env.QA_API_BASE || "https://api.raft.build/api/").replace(/\/?$/, "/");
 const APP_LINK_BASE = (process.env.QA_APP_LINK_BASE || "https://app.raft.build").replace(/\/$/, "");
 const RUN = process.env.GITHUB_RUN_ID ?? String(Date.now());
@@ -39,9 +38,11 @@ const SECRETS = [process.env.QA_TEST_EMAIL, process.env.QA_TEST_PASSWORD].filter
 fs.mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const redact = (text) => SECRETS.reduce((s, secret) => s.split(secret).join("[redacted]"), String(text));
+// The common client's per-connection line (always kept), with the server it connects to.
+const CONNECT_START = "realtime_kmp transport_connect_start serverId=";
 let stepIndex = 0;
 let currentStep = "setup";
-const summary = { package: PKG, server: SERVER, channel: CHANNEL, expect_transport: EXPECT_TRANSPORT, steps: [] };
+const summary = { package: PKG, server: SERVER, channel: CHANNEL, steps: [] };
 
 function log(message) {
   console.log(`[realtime-e2e] ${redact(message)}`);
@@ -435,14 +436,11 @@ async function main() {
     });
 
     await step("socket-is-common-client", async () => {
-      const selected = await waitForLog("realtime_kmp_transport selected=", (lines) => lines.find((l) => l.includes("realtime_kmp_transport selected=")), { timeoutMs: 60_000 });
-      const kind = /selected=(\w+)/.exec(selected)?.[1];
-      const source = /source=(\w+)/.exec(selected)?.[1];
-      if (kind !== EXPECT_TRANSPORT) fail(`the realtime socket is ${kind} (source=${source}); expected ${EXPECT_TRANSPORT}: ${selected.trim()}`);
+      await waitForLog(CONNECT_START, (lines) => lines.find((l) => l.includes(CONNECT_START)), { timeoutMs: 60_000 });
       await waitForLog("rooms_joined on the connected socket", (lines) => lines.find((l) => l.includes("rooms_joined")), { timeoutMs: 60_000 });
       const connected = realtimeLines().filter((l) => l.includes("realtime_kmp transport_connected")).length;
-      if (EXPECT_TRANSPORT === "kmp" && connected === 0) fail("no `realtime_kmp transport_connected` line: the common client never connected");
-      return { selected: kind, source, kmp_connected_lines: connected };
+      if (connected === 0) fail("no `realtime_kmp transport_connected` line: the common client never connected");
+      return { kmp_connected_lines: connected };
     });
 
     await step("receive-live-message", async () => {
@@ -491,23 +489,19 @@ async function main() {
       if (!api.home.slug) skip(`no slug for ${SERVER} in GET servers: the app link switch cannot be built`);
       let mark = logcatText().length;
       await openAppLink(api.other, api.otherChannel);
-      const otherSelected = await waitForLog(`a socket for ${api.other.name}`, (lines) =>
-        lines.find((l) => l.includes("realtime_kmp_transport selected=") && l.includes(`serverId=${api.other.id}`)), { fromLength: mark, timeoutMs: 90_000 });
+      await waitForLog(`a socket for ${api.other.name}`, (lines) =>
+        lines.find((l) => l.includes(CONNECT_START) && l.includes(`serverId=${api.other.id}`)), { fromLength: mark, timeoutMs: 90_000 });
       await waitForLog(`rooms_joined on ${api.other.name}`, (lines) => lines.find((l) => l.includes("rooms_joined") && l.includes(api.other.id)), { fromLength: mark, timeoutMs: 90_000 });
       evidence("on-other-server");
       mark = logcatText().length;
       await openAppLink(api.home, api.homeChannel);
-      const homeSelected = await waitForLog(`a socket for ${SERVER} again`, (lines) =>
-        lines.find((l) => l.includes("realtime_kmp_transport selected=") && l.includes(`serverId=${api.home.id}`)), { fromLength: mark, timeoutMs: 90_000 });
+      await waitForLog(`a socket for ${SERVER} again`, (lines) =>
+        lines.find((l) => l.includes(CONNECT_START) && l.includes(`serverId=${api.home.id}`)), { fromLength: mark, timeoutMs: 90_000 });
       await waitForLog(`rooms_joined on ${SERVER}`, (lines) => lines.find((l) => l.includes("rooms_joined") && l.includes(api.home.id)), { fromLength: mark, timeoutMs: 90_000 });
       const text = `realtime e2e after switch ${RUN}`;
       await postMessage(api, api.home, api.homeChannel, text);
       await waitForMessage(text, 45_000);
-      const kind = (line) => /selected=(\w+)/.exec(line)?.[1];
-      if (kind(otherSelected) !== EXPECT_TRANSPORT || kind(homeSelected) !== EXPECT_TRANSPORT) {
-        fail(`after the switch the sockets were ${kind(otherSelected)} / ${kind(homeSelected)}; expected ${EXPECT_TRANSPORT}`);
-      }
-      return { other_server: api.other.name, other: kind(otherSelected), back: kind(homeSelected) };
+      return { other_server: api.other.name };
     });
 
     summary.result = "pass";

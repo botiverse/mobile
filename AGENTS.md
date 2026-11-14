@@ -956,9 +956,9 @@ edited (it bit #360 and #387 on the same day):
    subscribes ONLY to that list; an unlisted event is silently never received.
 2. `SettingsHomePage.kt`: both exhaustive `when`s —
    `performanceMarkerName()` and `performanceMarkerPhase()`.
-3. `SocketIoRealtimeClient.kt` (androidApp): both exhaustive `when`s —
-   `realtimeDiagnosticName()` and `realtimeDiagnosticFields()`. The shared
-   compile does NOT check these; only the androidApp compile does.
+3. `SocketIoRealtimeClient.kt` (`compose/shared/src/jvmCommonMain`, Android and
+   desktop): the exhaustive `when` `realtimeDiagnosticName()`. Only the
+   Android / desktop compile of `:shared` checks it; iOS does not compile it.
 4. If the event should refresh Home while hidden: `updatesHomeSnapshot()` /
    `homeRealtimeDirtyReason()` (both have `else` branches — decide, don't
    default silently).
