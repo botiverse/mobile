@@ -68,6 +68,9 @@ internal class SharedHomeSearchSavedStore(
     // to this owner. The Search tab outlives a server switch, so a change of owner drops all of it.
     private var searchServerOwner: SearchServerOwner? = null
     private var searchOpened = false
+    // Saved has been asked for (opened, refreshed); a server switch then reloads it for the new server.
+    private var savedFollowed = false
+    private var savedServerScopeJob: Job? = null
     private var authEventsJob: Job? = null
     private var initialServerOwnerJob: Job? = null
     private val pendingSavedUnsaves = mutableMapOf<MessageId, PendingSavedUnsave>()
@@ -131,6 +134,13 @@ internal class SharedHomeSearchSavedStore(
         if (personalizationRepository != null) {
             prewarmSearchPersonalization()
         }
+        // Saved is per server like Search: the Saved page (the wide layout's inline list beside
+        // the server rail) stays on screen across a server switch, so it follows the selection
+        // instead of keeping the server it was opened on (artin, Android 1.25).
+        savedServerScopeJob =
+            scope.launch {
+                authStore.raftServerScopeFlow().collect { serverScope -> followSavedServerScope(serverScope) }
+            }
         // Hands afae9ebb: the From list and Search's person / agent hits are the server's member
         // directory, so they must always agree with it. A copy taken when Search opened went stale
         // in the kept-alive Search tab: an agent created afterwards was in the directory (refreshed
@@ -145,6 +155,21 @@ internal class SharedHomeSearchSavedStore(
                     .collect { followed -> followed?.first?.let(::followMemberDirectory) }
             }
         }
+    }
+
+    /**
+     * Drops the Saved rows of a server the user left and, when Saved was asked for, loads the new
+     * server's list. Content loaded for [serverScope] itself (or nothing loaded yet) is left alone.
+     */
+    private fun followSavedServerScope(serverScope: RaftServerScopeKey?) {
+        val loadedFor = savedOwner ?: return
+        val serverId = serverScope?.serverId
+        if (serverScope != null && serverId != null && loadedFor == SavedStateOwner(ServerId(serverId), serverScope.accountId)) return
+        diagnosticsLogger(
+            "saved_server_owner_changed from=${loadedFor.serverId.value} to=${serverId ?: "_"} reload=$savedFollowed"
+        )
+        clearSavedSummary()
+        if (savedFollowed && serverId != null) loadSaved(refresh = true, pullRefresh = false)
     }
 
     /** Re-derives the loaded sender filters from the member directory after it changed. */
@@ -246,11 +271,18 @@ internal class SharedHomeSearchSavedStore(
                 refreshSearchPersonalization()
             }
             SharedHomeSearchSavedIntent.OpenSaved -> {
+                savedFollowed = true
                 val saved = _state.value.saved
                 if (!saved.loading && !saved.refreshing) loadSaved(refresh = true, pullRefresh = false)
             }
-            SharedHomeSearchSavedIntent.RefreshSaved -> loadSaved(refresh = true, pullRefresh = false)
-            SharedHomeSearchSavedIntent.PullRefreshSaved -> loadSaved(refresh = true, pullRefresh = true)
+            SharedHomeSearchSavedIntent.RefreshSaved -> {
+                savedFollowed = true
+                loadSaved(refresh = true, pullRefresh = false)
+            }
+            SharedHomeSearchSavedIntent.PullRefreshSaved -> {
+                savedFollowed = true
+                loadSaved(refresh = true, pullRefresh = true)
+            }
             SharedHomeSearchSavedIntent.LoadMoreSaved -> loadSaved(refresh = false)
             is SharedHomeSearchSavedIntent.Unsave -> unsave(intent.item)
             is SharedHomeSearchSavedIntent.SearchQueryChanged -> {
@@ -395,6 +427,9 @@ internal class SharedHomeSearchSavedStore(
         personalizationWriteJob?.cancel()
         authEventsJob?.cancel()
         authEventsJob = null
+        savedServerScopeJob?.cancel()
+        savedServerScopeJob = null
+        savedFollowed = false
         initialServerOwnerJob?.cancel()
         initialServerOwnerJob = null
         savedJob = null
