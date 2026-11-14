@@ -191,6 +191,13 @@ internal data class RuntimeAuthView(
     val status: Map<RuntimeAuthRuntime, RuntimeAuthStatus> = emptyMap(),
     val runtimes: List<RuntimeAuthRuntime>? = null,
     val logoutRuntimes: List<RuntimeAuthRuntime>? = null,
+    /**
+     * Claude limit resets (slock #14336): sent only while `claude_limit_reset` is on, for a person
+     * who may act, on an online Computer; null otherwise (nothing is offered).
+     */
+    val claudeLimitResets: ClaudeLimitResetsAvailability? = null,
+    /** Who may spend them (slock #14375); null from a server that predates it (offered as usable). */
+    val claudeLimitResetAccess: ClaudeLimitResetAccess? = null,
 ) {
     /** Each reported runtime's status `kind` by its wire id. */
     val statusKinds: Map<String, String>
@@ -233,6 +240,8 @@ internal fun JsonElement.toRuntimeAuthView(): RuntimeAuthView? {
         status = status,
         runtimes = envelope.runtimeList("runtimes"),
         logoutRuntimes = envelope.runtimeList("logoutRuntimes"),
+        claudeLimitResets = ClaudeLimitResetsAvailability.fromWire(envelope.plainString("claudeLimitResets")),
+        claudeLimitResetAccess = envelope["claudeLimitResetAccess"]?.toClaudeLimitResetAccess(),
     )
 }
 

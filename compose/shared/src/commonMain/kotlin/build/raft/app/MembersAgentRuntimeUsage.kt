@@ -131,6 +131,7 @@ internal fun RuntimeAccountUsageLoad?.diagnosticsLabel(): String =
         is RuntimeAccountUsageLoad.Loaded ->
             when (val read = read) {
                 RuntimeAccountUsageRead.Missing -> "missing"
+                RuntimeAccountUsageRead.Unsupported -> "unsupported"
                 is RuntimeAccountUsageRead.Available -> if (read.stale) "stale" else "fresh"
             }
     }
@@ -157,6 +158,8 @@ internal fun RuntimeAccountUsageLoad?.runtimeAccountUsageNeedsAttention(): Boole
         is RuntimeAccountUsageLoad.Loaded ->
             when (val read = read) {
                 RuntimeAccountUsageRead.Missing -> true
+                // Web: `unsupported` is no usage, no health dot and no attention (slock #14667).
+                RuntimeAccountUsageRead.Unsupported -> false
                 is RuntimeAccountUsageRead.Available ->
                     read.stale ||
                         read.snapshot.accounts.any { account ->

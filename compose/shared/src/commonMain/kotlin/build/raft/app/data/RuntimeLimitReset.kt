@@ -39,7 +39,15 @@ internal val RUNTIME_LIMIT_RESET_UNSUPPORTED_REASONS: Set<String> =
         "endpoint_unavailable",
         "quota_unavailable",
         "not_installed",
+        // The Claude driver's (slock #14336): a Claude Code it was not tested against, a platform it
+        // cannot drive, and nothing attempted (busy or out of time; the same click may be tried again).
+        "unsupported_version",
+        "unsupported_platform",
+        "not_attempted",
     )
+
+/** slock `RUNTIME_LIMIT_RESETS_READ_UNSUPPORTED_REASONS`: a read may also need the person's consent first. */
+internal val RUNTIME_LIMIT_RESETS_READ_UNSUPPORTED_REASONS: Set<String> = RUNTIME_LIMIT_RESET_UNSUPPORTED_REASONS + "consent_required"
 
 /**
  * How a redeem ended (slock `RuntimeLimitResetResult`). None of them says what the limits are now:
@@ -57,11 +65,17 @@ internal sealed interface RuntimeLimitResetResult {
 
     /** The redeem threw: it is not known whether a reset was spent; retry with the same key. */
     data object Unknown : RuntimeLimitResetResult { override val wire = "unknown" }
+
+    /**
+     * `{kind: "unknown", fiveHourSpent: true}` (Claude only): Claude's older program spent its
+     * 5-hour reset with no confirmation while a different kind was being asked for.
+     */
+    data object UnknownFiveHourSpent : RuntimeLimitResetResult { override val wire = "unknown" }
 }
 
 /** Web `limitResetOutcomeIsSettled`: every answer but `unknown` ends the attempt; the next click mints a new key. */
 internal val RuntimeLimitResetResult?.settlesAttempt: Boolean
-    get() = this != null && this != RuntimeLimitResetResult.Unknown
+    get() = this != null && this != RuntimeLimitResetResult.Unknown && this != RuntimeLimitResetResult.UnknownFiveHourSpent
 
 /**
  * The strict result schema (`z.strictObject` per kind): an unknown kind, a missing or unknown
@@ -76,7 +90,12 @@ internal fun JsonElement.toRuntimeLimitResetResult(): RuntimeLimitResetResult? {
         "nothing_to_reset" -> RuntimeLimitResetResult.NothingToReset.takeIf { only() }
         "no_reset" -> RuntimeLimitResetResult.NoReset.takeIf { only() }
         "already_redeemed" -> RuntimeLimitResetResult.AlreadyRedeemed.takeIf { only() }
-        "unknown" -> RuntimeLimitResetResult.Unknown.takeIf { only() }
+        "unknown" ->
+            when {
+                only() -> RuntimeLimitResetResult.Unknown
+                only("fiveHourSpent") && obj.trueFlag("fiveHourSpent") -> RuntimeLimitResetResult.UnknownFiveHourSpent
+                else -> null
+            }
         "reauth_required" ->
             obj.plainString("reason")
                 ?.takeIf { only("reason") && it in RUNTIME_LIMIT_RESET_REAUTH_REASONS }
@@ -145,7 +164,12 @@ internal val RuntimeAccountUsageProvider.authRuntime: RuntimeAuthRuntime
             RuntimeAccountUsageProvider.Kimi -> RuntimeAuthRuntime.Kimi
             // Grok Build signs in from the web since slock #14343.
             RuntimeAccountUsageProvider.Grok -> RuntimeAuthRuntime.Grok
+            RuntimeAccountUsageProvider.Antigravity -> RuntimeAuthRuntime.Antigravity
         }
+
+/** `z.literal(true)`: a boolean `true`, never the string. */
+private fun JsonObject.trueFlag(key: String): Boolean =
+    (this[key] as? JsonPrimitive)?.takeUnless { it.isString }?.contentOrNull == "true"
 
 private fun JsonObject.plainString(key: String): String? {
     val element = this[key] ?: return null

@@ -65,7 +65,7 @@ internal fun runtimeQuotaWindowClass(provider: RuntimeAccountUsageProvider?, lab
                 return genericRuntimeQuotaWindowClass(duration)
             }
         }
-        RuntimeAccountUsageProvider.Kimi, RuntimeAccountUsageProvider.Grok, null -> Unit
+        RuntimeAccountUsageProvider.Kimi, RuntimeAccountUsageProvider.Grok, RuntimeAccountUsageProvider.Antigravity, null -> Unit
     }
     return genericRuntimeQuotaWindowClass(clean)
 }
@@ -170,6 +170,7 @@ internal fun RuntimeAccountUsageProvider.quotaBrand(): String =
         RuntimeAccountUsageProvider.Codex -> "Codex"
         RuntimeAccountUsageProvider.Kimi -> "Kimi"
         RuntimeAccountUsageProvider.Grok -> "Grok"
+        RuntimeAccountUsageProvider.Antigravity -> "Antigravity"
     }
 
 /** "Claude Max" from the provider and its plan ("max" reads "Max"); the brand alone with no plan. */

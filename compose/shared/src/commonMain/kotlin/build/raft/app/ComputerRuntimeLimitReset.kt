@@ -102,7 +102,7 @@ internal fun RuntimeLimitResetResult.limitResetError(): ComputerRuntimeLimitRese
         is RuntimeLimitResetResult.ReauthRequired -> ComputerRuntimeLimitResetError.Reauth
         is RuntimeLimitResetResult.Unsupported ->
             if (reason == "not_installed") ComputerRuntimeLimitResetError.NotInstalled else ComputerRuntimeLimitResetError.Unsupported
-        RuntimeLimitResetResult.Unknown -> ComputerRuntimeLimitResetError.Unknown
+        RuntimeLimitResetResult.Unknown, RuntimeLimitResetResult.UnknownFiveHourSpent -> ComputerRuntimeLimitResetError.Unknown
         else -> null
     }
 

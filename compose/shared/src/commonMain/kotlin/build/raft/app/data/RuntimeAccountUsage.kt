@@ -25,7 +25,10 @@ internal enum class RuntimeAccountUsageProvider(val wire: String) {
     Claude("claude"),
     Codex("codex"),
     Kimi("kimi"),
-    Grok("grok");
+    Grok("grok"),
+
+    /** slock #14667 (OAR 0.103): read only on a Computer whose daemon reads it; others answer `unsupported`. */
+    Antigravity("antigravity");
 
     companion object {
         /** Mirrors Web `usageProviderForRuntime`: only these runtimes report account usage. */
@@ -34,6 +37,7 @@ internal enum class RuntimeAccountUsageProvider(val wire: String) {
                 "claude" -> Claude
                 "codex" -> Codex
                 "grok" -> Grok
+                "antigravity" -> Antigravity
                 "kimi", "kimi-sdk" -> Kimi
                 else -> null
             }
@@ -79,14 +83,132 @@ internal enum class RuntimeAccountUsageWindowStatus {
     }
 }
 
+/**
+ * What the runtime ties a usage window to (slock `runtimeAccountUsageWindowScopeSchema`, OAR's
+ * `AccountUsageWindow.scope`): the whole account's, one model's ("Opus", "Fable"), or a group of
+ * models sharing one quota (Antigravity's "Gemini Models"). Display only: whether an agent is
+ * blocked is the account's health, never a window's scope.
+ */
+internal sealed interface RuntimeAccountUsageWindowScope {
+    data object Account : RuntimeAccountUsageWindowScope
+
+    data class Model(val name: String) : RuntimeAccountUsageWindowScope
+
+    data class Models(val name: String) : RuntimeAccountUsageWindowScope
+}
+
 internal data class RuntimeAccountUsageWindow(
     val id: String,
     val label: String,
     val status: RuntimeAccountUsageWindowStatus,
     /** 0..1; always null when [status] is [RuntimeAccountUsageWindowStatus.Unavailable]. */
     val usedRatio: Double?,
-    val resetsAt: String?
+    val resetsAt: String?,
+    /** Null: the runtime says neither, or the Computer predates the field. */
+    val scope: RuntimeAccountUsageWindowScope? = null,
 )
+
+/** A window tied to one model or a group of models (slock `isModelScopedUsageWindow`), not the whole account. */
+internal val RuntimeAccountUsageWindow.modelScoped: Boolean
+    get() = scope is RuntimeAccountUsageWindowScope.Model || scope is RuntimeAccountUsageWindowScope.Models
+
+/** slock `CLAUDE_OAUTH_APPS_WINDOW_LABEL`: Claude's third-party OAuth apps' weekly window. */
+internal const val CLAUDE_OAUTH_APPS_WINDOW_LABEL: String = "Current week (OAuth apps)"
+
+/** slock `isClaudeOAuthAppsWindow`: left out wherever usage windows are listed or summed. */
+internal val RuntimeAccountUsageWindow.claudeOAuthApps: Boolean
+    get() = label == CLAUDE_OAUTH_APPS_WINDOW_LABEL
+
+/** Claude's label for one model's window: "Current week (Fable)", "Current session (Opus)". */
+private val ClaudeModelWindowLabel = Regex("^Current (?:week|session) \\((.+)\\)$")
+
+private fun RuntimeAccountUsageWindow.claudeModelOfLabel(): String? {
+    if (claudeOAuthApps) return null
+    val name = ClaudeModelWindowLabel.matchEntire(label)?.groupValues?.get(1)?.trim()
+    return name?.takeIf { it.isNotEmpty() && it.lowercase() != "all models" }
+}
+
+/**
+ * slock `inferClaudeUsageWindowScopes` (#14717): a Computer before window scope (1.22.0 and
+ * earlier) sends Claude's "Current week (Fable)" without a scope; it is read as that model's, so
+ * an account with only Fable used up is not read as used up. Other providers stay as given.
+ */
+internal fun RuntimeAccountUsageSnapshot.withInferredClaudeScopes(): RuntimeAccountUsageSnapshot {
+    if (provider != RuntimeAccountUsageProvider.Claude.wire) return this
+    if (accounts.none { account -> account.windows.any { it.scope == null && it.claudeModelOfLabel() != null } }) return this
+    return copy(
+        accounts =
+            accounts.map { account ->
+                account.copy(
+                    windows =
+                        account.windows.map { window ->
+                            val name = if (window.scope == null) window.claudeModelOfLabel() else null
+                            if (name != null) window.copy(scope = RuntimeAccountUsageWindowScope.Model(name)) else window
+                        }
+                )
+            }
+    )
+}
+
+/** slock `windowTightness`: a reached limit above any share; null when unreadable. */
+private fun RuntimeAccountUsageWindow.tightness(): Double? =
+    when (status) {
+        RuntimeAccountUsageWindowStatus.LimitReached -> 2.0
+        RuntimeAccountUsageWindowStatus.Ok -> usedRatio
+        RuntimeAccountUsageWindowStatus.Unavailable -> null
+    }
+
+/**
+ * slock `roomiestModelGroup`: an account whose every window is a group of models' (Antigravity),
+ * with two groups or more, runs while any group has quota left, so it counts as its group with
+ * the most left. Null for any other account.
+ */
+private fun roomiestModelGroup(windows: List<RuntimeAccountUsageWindow>): List<RuntimeAccountUsageWindow>? {
+    val groups = LinkedHashMap<String, MutableList<RuntimeAccountUsageWindow>>()
+    windows.forEach { window ->
+        val scope = window.scope as? RuntimeAccountUsageWindowScope.Models ?: return null
+        groups.getOrPut(scope.name.lowercase()) { mutableListOf() } += window
+    }
+    if (groups.size < 2) return null
+    var roomiest: List<RuntimeAccountUsageWindow>? = null
+    var roomiestTightness = Double.MAX_VALUE
+    groups.values.forEach { group ->
+        val tightness = group.mapNotNull { it.tightness() }.maxOrNull() ?: return@forEach
+        if (roomiest == null || tightness < roomiestTightness) {
+            roomiest = group
+            roomiestTightness = tightness
+        }
+    }
+    return roomiest
+}
+
+/** slock `allModelsUsageAccount`'s answer: the account as summaries count it, and whether it has a model line. */
+internal data class RuntimeAccountUsageAllModels(val account: RuntimeAccountUsageAccount, val modelLine: Boolean)
+
+/**
+ * slock `allModelsUsageAccount` (#14605, #14667, #14717): the account as every usage summary
+ * counts it (the rack cell and its first line, the rack's sort, the usage card's badge): never
+ * Claude's OAuth apps' window, and a model's or a group of models' own window only when the
+ * account reports nothing else ([RuntimeAccountUsageAllModels.modelLine] is then false, so the
+ * same model is never shown twice). An account of model groups only counts as its group with the
+ * most left. A limit reached only on a window left out leaves the account `ok`. Display only.
+ */
+internal fun RuntimeAccountUsageAccount.allModels(): RuntimeAccountUsageAllModels {
+    val counted = windows.filter { !it.claudeOAuthApps }
+    val allModels = counted.filter { !it.modelScoped }
+    val roomiestGroup = if (allModels.isEmpty()) roomiestModelGroup(counted) else null
+    val modelLine = roomiestGroup != null || (allModels.isNotEmpty() && counted.any { it.modelScoped })
+    val kept = roomiestGroup ?: allModels.ifEmpty { counted }
+    if (kept.size == windows.size) return RuntimeAccountUsageAllModels(this, modelLine)
+    val limitOnlyLeftOut =
+        health == RuntimeAccountUsageHealth.RateLimited &&
+            kept.none { it.status == RuntimeAccountUsageWindowStatus.LimitReached } &&
+            windows.any { it !in kept && it.status == RuntimeAccountUsageWindowStatus.LimitReached }
+    return RuntimeAccountUsageAllModels(
+        account = copy(health = if (limitOnlyLeftOut) RuntimeAccountUsageHealth.Ok else health, windows = kept),
+        modelLine = modelLine,
+    )
+}
 
 internal data class RuntimeAccountUsageAccount(
     val accountKey: String,
@@ -114,6 +236,9 @@ internal data class RuntimeAccountUsageSnapshot(
 
 internal sealed interface RuntimeAccountUsageRead {
     data object Missing : RuntimeAccountUsageRead
+
+    /** slock #14667: this Computer's daemon does not read the provider's usage; shown as a runtime with none. */
+    data object Unsupported : RuntimeAccountUsageRead
     data class Available(
         val stale: Boolean,
         val snapshot: RuntimeAccountUsageSnapshot
@@ -125,6 +250,7 @@ internal fun JsonElement.toRuntimeAccountUsageRead(): RuntimeAccountUsageRead? {
     val envelope = this as? JsonObject ?: return null
     return when (envelope.stringOrNull("state")) {
         "missing" -> RuntimeAccountUsageRead.Missing
+        "unsupported" -> RuntimeAccountUsageRead.Unsupported
         "fresh", "stale" -> {
             val snapshot = (envelope["snapshot"] as? JsonObject)?.toRuntimeAccountUsageSnapshot() ?: return null
             RuntimeAccountUsageRead.Available(
@@ -155,7 +281,10 @@ internal enum class RuntimeAccountUsageRefreshState(val wire: String) {
     Fresh("fresh"),
 
     /** A manual refresh the Computer did not answer in time. */
-    Timeout("timeout");
+    Timeout("timeout"),
+
+    /** slock #14667: this Computer does not read the provider's usage (`accepted: false`). */
+    Unsupported("unsupported");
 
     companion object {
         fun fromWire(value: String?): RuntimeAccountUsageRefreshState? = entries.firstOrNull { it.wire == value }
@@ -202,7 +331,7 @@ private fun JsonObject.toRuntimeAccountUsageSnapshot(): RuntimeAccountUsageSnaps
         provider = provider,
         collectedAt = stringOrNull("collectedAt"),
         accounts = accounts
-    )
+    ).withInferredClaudeScopes()
 }
 
 private fun JsonObject.toRuntimeAccountUsageAccount(): RuntimeAccountUsageAccount? {
@@ -251,9 +380,19 @@ private fun JsonObject.toRuntimeAccountUsageWindow(): RuntimeAccountUsageWindow?
         label = label,
         status = status,
         usedRatio = if (status == RuntimeAccountUsageWindowStatus.Unavailable) null else validRatio,
-        resetsAt = if (status == RuntimeAccountUsageWindowStatus.Unavailable) null else stringOrNull("resetsAt")
+        resetsAt = if (status == RuntimeAccountUsageWindowStatus.Unavailable) null else stringOrNull("resetsAt"),
+        scope = (this["scope"] as? JsonObject)?.toRuntimeAccountUsageWindowScope(),
     )
 }
+
+/** slock `runtimeAccountUsageWindowScopeSchema`; an unknown kind or a missing name is no scope. */
+private fun JsonObject.toRuntimeAccountUsageWindowScope(): RuntimeAccountUsageWindowScope? =
+    when (stringOrNull("kind")) {
+        "account" -> RuntimeAccountUsageWindowScope.Account
+        "model" -> stringOrNull("name")?.let(RuntimeAccountUsageWindowScope::Model)
+        "models" -> stringOrNull("name")?.let(RuntimeAccountUsageWindowScope::Models)
+        else -> null
+    }
 
 private fun JsonObject.stringOrNull(key: String): String? {
     val element = this[key] ?: return null

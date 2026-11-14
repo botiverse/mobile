@@ -49,9 +49,17 @@ import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.RuntimeLimitResetLoad
 import build.raft.app.data.RuntimeLimitResetResult
+import build.raft.app.data.RuntimeLimitResetKind
+import build.raft.app.data.RuntimeLimitResetsReadLoad
+import build.raft.app.data.RuntimeLimitResetsReadResult
 import build.raft.app.data.RuntimeAccountUsageSnapshot
 import build.raft.app.data.SharedRuntimeAccountUsageStore
 import build.raft.app.data.settlesAttempt
+import build.raft.app.data.allModels
+import build.raft.app.data.claudeOAuthApps
+import build.raft.app.data.defaultNowMillis
+import build.raft.app.model.RaftRelativeTimeLabel
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.RaftTimeContext
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -285,6 +293,47 @@ internal class ComputerRuntimeUsageController(
     val limitResetOffer: ComputerRuntimeLimitResetOffer?
         get() = computerRuntimeLimitResetOffer(load, authView, key.provider)
 
+    /** What the last Claude limit reset did, said once in the status line until the next Refresh. */
+    var claudeLimitResetNote by mutableStateOf<ComputerRuntimeClaudeLimitResetText?>(null)
+        private set
+
+    /** The open "Claude limit resets" list, or null. */
+    var claudeLimitResetsDialog by mutableStateOf<ComputerRuntimeClaudeLimitResetsListState?>(null)
+        private set
+
+    /** The open "Use your … reset?" confirm, or null. */
+    var claudeLimitResetConfirm by mutableStateOf<ComputerRuntimeClaudeLimitResetConfirmState?>(null)
+        private set
+
+    /**
+     * The Claude account a read or a redeem showed on the older once-a-week 5-hour program (web
+     * `legacyAccount`): at the 5-hour limit its card offers only "Use 5-hour reset".
+     */
+    private var claudeLegacyAccountKey by mutableStateOf<String?>(null)
+
+    /** The Computer answered that Claude limit resets cannot run there (web `notSupportedSubject`). */
+    private var claudeNotSupportedHere by mutableStateOf(false)
+
+    private val claudeAccount: RuntimeAccountUsageAccount?
+        get() = ((load as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available)?.snapshot?.accounts?.firstOrNull()
+
+    private val claudeAccess: ComputerRuntimeClaudeLimitResetAccess?
+        get() = computerRuntimeClaudeLimitResetAccess(key.provider, authView, load.claudeAtFiveHourLimit(), claudeNotSupportedHere)
+
+    /** The card's Claude actions (web `surfaceClaudeLimitReset`); null when nothing is offered. */
+    val claudeLimitResetOffer: ComputerRuntimeClaudeLimitResetOffer?
+        get() {
+            val access = claudeAccess ?: return null
+            val atLimit = load.claudeAtFiveHourLimit()
+            val legacyAtLimit = atLimit && claudeLegacyAccountKey != null && claudeLegacyAccountKey == claudeAccount?.accountKey
+            val offer =
+                ComputerRuntimeClaudeLimitResetOffer(
+                    view = !legacyAtLimit,
+                    useFiveHour = atLimit && access == ComputerRuntimeClaudeLimitResetAccess.Use,
+                )
+            return offer.takeIf { it.view || it.useFiveHour }
+        }
+
     private var followUp: Job? = null
 
     /** The first read; a stale or missing snapshot asks the Computer for a new one in the background. */
@@ -307,6 +356,7 @@ internal class ComputerRuntimeUsageController(
     fun refreshNow() {
         // Web `handleRefresh`: a refresh replaces what the last limit reset said.
         limitResetNote = null
+        claudeLimitResetNote = null
         startManualRefresh()
     }
 
@@ -389,6 +439,187 @@ internal class ComputerRuntimeUsageController(
         }
     }
 
+    fun onClaudeLimitReset(entry: ComputerRuntimeClaudeLimitResetEntry) {
+        when (entry) {
+            ComputerRuntimeClaudeLimitResetEntry.View -> openClaudeLimitResets()
+            ComputerRuntimeClaudeLimitResetEntry.UseFiveHour -> openClaudeLimitResetConfirm(RuntimeLimitResetKind.FiveHour, fromList = false)
+        }
+    }
+
+    /**
+     * "View available resets" (web `ClaudeLimitResetsDialog`): reads at once below the 5-hour
+     * limit; at it, the person who connected the Computer is asked to consent first, anyone else
+     * is told who can (the card does not offer it to them there).
+     */
+    private fun openClaudeLimitResets() {
+        if (claudeLimitResetOffer?.view != true) return
+        val canUse = claudeAccess == ComputerRuntimeClaudeLimitResetAccess.Use
+        val atLimit = load.claudeAtFiveHourLimit()
+        val phase =
+            when {
+                !atLimit -> ComputerRuntimeClaudeLimitResetsPhase.Reading(consent = false)
+                canUse -> ComputerRuntimeClaudeLimitResetsPhase.Consent
+                else -> ComputerRuntimeClaudeLimitResetsPhase.Failed(ComputerRuntimeClaudeLimitResetText.OwnerOnly)
+            }
+        claudeLimitResetsDialog = ComputerRuntimeClaudeLimitResetsListState(phase = phase, canUse = canUse, atFiveHourLimit = atLimit)
+        if (phase is ComputerRuntimeClaudeLimitResetsPhase.Reading) readClaudeLimitResets(consent = false)
+    }
+
+    /** Continue on the consent step: at most one read with consent per dialog. */
+    fun continueClaudeLimitResets() {
+        val dialog = claudeLimitResetsDialog ?: return
+        if (!dialog.canUse || dialog.consented) return
+        claudeLimitResetsDialog = dialog.copy(phase = ComputerRuntimeClaudeLimitResetsPhase.Reading(consent = true), consented = true)
+        readClaudeLimitResets(consent = true)
+    }
+
+    private fun readClaudeLimitResets(consent: Boolean) {
+        scope.launch {
+            val result = store.readClaudeLimitResets(key, consent)
+            log("computer_runtime_usage_claude_limit_resets_read consent=$consent result=${result.diagnosticsLabel()}")
+            val dialog = claudeLimitResetsDialog ?: return@launch
+            val canUse = dialog.canUse
+            val phase: ComputerRuntimeClaudeLimitResetsPhase =
+                when (result) {
+                    RuntimeLimitResetsReadLoad.Superseded -> {
+                        claudeLimitResetsDialog = null
+                        load = null
+                        onIdentityChanged()
+                        return@launch
+                    }
+                    is RuntimeLimitResetsReadLoad.Failed ->
+                        ComputerRuntimeClaudeLimitResetsPhase.Failed(
+                            if (result.refusal.outcomeUnknown) {
+                                ComputerRuntimeClaudeLimitResetText.ReadTimeout(viewOnly = !canUse)
+                            } else {
+                                result.refusal.claudeRequestError()
+                            }
+                        )
+                    is RuntimeLimitResetsReadLoad.Done ->
+                        when (val read = result.result) {
+                            is RuntimeLimitResetsReadResult.Read -> {
+                                if (read.legacy) {
+                                    claudeLegacyAccountKey = claudeAccount?.accountKey
+                                    if (read.fiveHourSpent) startManualRefresh()
+                                }
+                                ComputerRuntimeClaudeLimitResetsPhase.Read(read)
+                            }
+                            is RuntimeLimitResetsReadResult.Unsupported ->
+                                when {
+                                    read.reason == "consent_required" && !consent ->
+                                        if (canUse) {
+                                            ComputerRuntimeClaudeLimitResetsPhase.Consent
+                                        } else {
+                                            ComputerRuntimeClaudeLimitResetsPhase.Failed(ComputerRuntimeClaudeLimitResetText.OwnerOnly)
+                                        }
+                                    else -> {
+                                        if (claudeLimitResetsNotSupportedHere(read.reason)) claudeNotSupportedHere = true
+                                        ComputerRuntimeClaudeLimitResetsPhase.Failed(read.claudeReadFailure(canUse))
+                                    }
+                                }
+                            is RuntimeLimitResetsReadResult.ReauthRequired ->
+                                ComputerRuntimeClaudeLimitResetsPhase.Failed(ComputerRuntimeClaudeLimitResetText.Reauth)
+                            RuntimeLimitResetsReadResult.Unknown ->
+                                ComputerRuntimeClaudeLimitResetsPhase.Failed(ComputerRuntimeClaudeLimitResetText.ReadFailed(viewOnly = !canUse))
+                        }
+                }
+            // Nothing chosen for the person: Use stays off until they pick a kind.
+            claudeLimitResetsDialog = dialog.copy(phase = phase, selected = null)
+        }
+    }
+
+    fun selectClaudeLimitResetKind(kind: RuntimeLimitResetKind) {
+        val dialog = claudeLimitResetsDialog ?: return
+        claudeLimitResetsDialog = dialog.copy(selected = kind)
+    }
+
+    fun useSelectedClaudeLimitReset() {
+        val dialog = claudeLimitResetsDialog ?: return
+        val kind = dialog.selected ?: return
+        if (dialog.usable) openClaudeLimitResetConfirm(kind, fromList = true)
+    }
+
+    fun dismissClaudeLimitResets() {
+        if (claudeLimitResetConfirm?.submitting == true) return
+        claudeLimitResetsDialog = null
+        claudeLimitResetConfirm = null
+    }
+
+    private fun openClaudeLimitResetConfirm(kind: RuntimeLimitResetKind, fromList: Boolean) {
+        val account = claudeAccount?.identityLabel
+        val atLimit = load.claudeAtFiveHourLimit()
+        scope.launch {
+            val idempotencyKey = store.claudeLimitResetAttemptKey(key, kind)
+            if (!fromList) claudeLimitResetsDialog = null
+            claudeLimitResetConfirm =
+                ComputerRuntimeClaudeLimitResetConfirmState(
+                    kind = kind,
+                    idempotencyKey = idempotencyKey,
+                    account = account,
+                    fromList = fromList,
+                    atFiveHourLimit = atLimit,
+                )
+        }
+    }
+
+    /** Back to the list it came from, if any. */
+    fun dismissClaudeLimitResetConfirm() {
+        if (claudeLimitResetConfirm?.submitting == true) return
+        claudeLimitResetConfirm = null
+    }
+
+    /**
+     * The confirmed click (web `ClaudeLimitResetConfirmDialog.handleConfirm`): uses the kind with
+     * the dialog's key. An answer the card can say closes both dialogs; otherwise the confirm stays
+     * open with why nothing was used. A request with no answer keeps the key for a retry.
+     */
+    fun confirmClaudeLimitReset() {
+        val dialog = claudeLimitResetConfirm ?: return
+        if (dialog.submitting) return
+        claudeLimitResetConfirm = dialog.copy(submitting = true, error = null)
+        scope.launch {
+            val result = store.redeemLimitReset(key, dialog.idempotencyKey, dialog.kind)
+            log("computer_runtime_usage_claude_limit_reset kind=${dialog.kind.wire} result=${result.diagnosticsLabel()}")
+            when (result) {
+                RuntimeLimitResetLoad.Superseded -> {
+                    claudeLimitResetConfirm = null
+                    claudeLimitResetsDialog = null
+                    load = null
+                    onIdentityChanged()
+                }
+                is RuntimeLimitResetLoad.Failed -> {
+                    val error =
+                        if (result.refusal.outcomeUnknown) ComputerRuntimeClaudeLimitResetText.Timeout else result.refusal.claudeRequestError()
+                    claudeLimitResetConfirm = dialog.copy(submitting = false, error = error)
+                }
+                is RuntimeLimitResetLoad.Done -> {
+                    val answer = result.reply.result
+                    store.forgetClaudeLimitResetAttempt(key, dialog.kind)
+                    if (answer == RuntimeLimitResetResult.UnknownFiveHourSpent) claudeLegacyAccountKey = claudeAccount?.accountKey
+                    if (answer is RuntimeLimitResetResult.Unsupported && claudeLimitResetsNotSupportedHere(answer.reason)) claudeNotSupportedHere = true
+                    val note = claudeLimitResetNote(dialog.kind, answer)
+                    if (note != null) {
+                        claudeLimitResetNote = note
+                        claudeLimitResetConfirm = null
+                        claudeLimitResetsDialog = null
+                    } else {
+                        claudeLimitResetConfirm =
+                            dialog.copy(submitting = false, error = claudeLimitResetRefusal(dialog.kind, answer, dialog.atFiveHourLimit))
+                    }
+                    // Never assume the limits recovered: show the usage read right after it, or read again.
+                    val snapshot = result.reply.snapshot
+                    if (snapshot != null) {
+                        followUp?.cancel()
+                        load = RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Available(stale = false, snapshot = snapshot))
+                        refresh = ComputerRuntimeUsageRefreshStatus.Idle
+                    } else {
+                        startManualRefresh()
+                    }
+                }
+            }
+        }
+    }
+
     suspend fun updateCooldown() {
         cooldownLeftMillis = store.refreshCooldownRemainingMillis(key)
     }
@@ -432,6 +663,11 @@ internal class ComputerRuntimeUsageController(
                     RuntimeAccountUsageRefreshState.Cooldown -> refresh = ComputerRuntimeUsageRefreshStatus.Cooldown
                     RuntimeAccountUsageRefreshState.ComputerOffline -> refresh = ComputerRuntimeUsageRefreshStatus.ComputerOffline
                     RuntimeAccountUsageRefreshState.Timeout -> refresh = ComputerRuntimeUsageRefreshStatus.Timeout
+                    // slock #14667: this Computer reads no usage for it; nothing to say or to wait for.
+                    RuntimeAccountUsageRefreshState.Unsupported -> {
+                        refresh = ComputerRuntimeUsageRefreshStatus.Idle
+                        return
+                    }
                 }
                 if (answer.accepted || answer.state == RuntimeAccountUsageRefreshState.Cooldown) startFollowUpReads()
             }
@@ -470,6 +706,19 @@ internal class ComputerRuntimeUsageController(
 
 internal const val COMPUTER_RUNTIME_USAGE_FOLLOW_UP_DELAY_MILLIS: Long = 1_200L
 internal const val COMPUTER_RUNTIME_USAGE_FOLLOW_UP_ATTEMPTS: Int = 8
+
+private fun RuntimeLimitResetsReadLoad.diagnosticsLabel(): String =
+    when (this) {
+        is RuntimeLimitResetsReadLoad.Done ->
+            when (val read = result) {
+                is RuntimeLimitResetsReadResult.Read -> "read" + (if (read.legacy) ":legacy" else "") + (if (read.fiveHourSpent) ":spent" else "")
+                is RuntimeLimitResetsReadResult.ReauthRequired -> "reauth_required:${read.reason}"
+                is RuntimeLimitResetsReadResult.Unsupported -> "unsupported:${read.reason}"
+                RuntimeLimitResetsReadResult.Unknown -> "unknown"
+            }
+        is RuntimeLimitResetsReadLoad.Failed -> "failed:${refusal.status ?: "none"}:${refusal.code ?: "none"}"
+        RuntimeLimitResetsReadLoad.Superseded -> "superseded"
+    }
 
 private fun RuntimeLimitResetLoad.diagnosticsLabel(): String =
     when (this) {
@@ -535,13 +784,15 @@ private fun ComputerRuntimeUsageChip(
     // An open dialog stays with its session even if the Computer drops offline meanwhile (Antigravity's
     // card is offered only while the server lists it for an online Computer).
     val authBinding = auth?.takeIf { it.offered || it.dialog != null }?.let { ComputerRuntimeAuthBinding(it, runtimeName, computerName, agents, access?.auth?.openUrl ?: {}) }
+    // A Computer that reads no usage for this runtime (`unsupported`, slock #14667): as a runtime with none.
+    val usageController = controller?.takeUnless { it.load.unsupportedRead }
     // A runtime with neither usage nor a sign-in offered here has no card (Antigravity where the server does not revive it).
-    if (controller == null && authBinding == null) {
+    if (usageController == null && authBinding == null) {
         plain()
         return
     }
-    val load = controller?.load
-    val offered = (controller != null && load !is RuntimeAccountUsageLoad.Forbidden) || authBinding != null
+    val load = usageController?.load
+    val offered = (usageController != null && load !is RuntimeAccountUsageLoad.Forbidden) || authBinding != null
     // Signed out on the Computer: an orange chip that says so in words, and no health dot (web).
     val signedOut = authBinding?.controller?.signedOut == true
     val health = if (signedOut) null else load.computerRuntimeUsageHealth()
@@ -581,7 +832,7 @@ private fun ComputerRuntimeUsageChip(
     // a click (a finger's tap too) pins it.
     ComputerRuntimeUsagePreviewCard(
         runtimeLabel = label,
-        controller = controller,
+        controller = usageController,
         runtimeVersion = runtimeVersion,
         enabled = offered,
         auth = authBinding,
@@ -656,6 +907,7 @@ internal fun ComputerRuntimeUsageSheetHost(
         onUseLimitReset = controller::openLimitReset,
         onDismiss = onDismiss,
         auth = authState,
+        onClaudeLimitReset = controller::onClaudeLimitReset,
         authRuntimeName = runtimeName,
         onSignIn = { auth?.openSignIn() },
         onSignOut = { auth?.openSignOut() },
@@ -674,6 +926,8 @@ internal fun ComputerRuntimeUsageController.sheetState(runtimeVersion: String?):
         runtimeVersion = runtimeVersion,
         limitReset = limitResetOffer,
         limitResetNote = limitResetNote,
+        claudeLimitReset = claudeLimitResetOffer,
+        claudeLimitResetNote = claudeLimitResetNote,
     )
 
 /** The controller's open "Use a limit reset?" confirm, if any. */
@@ -686,6 +940,27 @@ private fun ComputerRuntimeLimitResetDialogHost(runtimeLabel: String, controller
                 state = dialog,
                 onConfirm = controller::confirmLimitReset,
                 onDismiss = controller::dismissLimitReset,
+            )
+        }
+    }
+    // Claude: the list, and the confirm of one kind over it or on its own.
+    controller.claudeLimitResetsDialog?.let { dialog ->
+        RaftComputersTheme {
+            ComputerRuntimeClaudeLimitResetsDialog(
+                state = dialog,
+                onContinue = controller::continueClaudeLimitResets,
+                onSelect = controller::selectClaudeLimitResetKind,
+                onUse = controller::useSelectedClaudeLimitReset,
+                onDismiss = controller::dismissClaudeLimitResets,
+            )
+        }
+    }
+    controller.claudeLimitResetConfirm?.let { dialog ->
+        RaftComputersTheme {
+            ComputerRuntimeClaudeLimitResetConfirmDialog(
+                state = dialog,
+                onConfirm = controller::confirmClaudeLimitReset,
+                onDismiss = controller::dismissClaudeLimitResetConfirm,
             )
         }
     }
@@ -707,6 +982,10 @@ internal data class ComputerRuntimeUsageSheetState(
     val limitReset: ComputerRuntimeLimitResetOffer? = null,
     /** What the last limit reset did, in place of the refresh line. */
     val limitResetNote: ComputerRuntimeLimitResetNote? = null,
+    /** Claude limit resets on the card (slock #14336); null when nothing is offered. */
+    val claudeLimitReset: ComputerRuntimeClaudeLimitResetOffer? = null,
+    /** What the last Claude limit reset did, in place of the refresh line. */
+    val claudeLimitResetNote: ComputerRuntimeClaudeLimitResetText? = null,
 )
 
 /** Web phone layout: the usage surface in a bottom sheet (`BottomSheet`, below md). */
@@ -722,6 +1001,7 @@ private fun ComputerRuntimeUsageSheet(
     authRuntimeName: String = runtimeLabel,
     onSignIn: () -> Unit = {},
     onSignOut: () -> Unit = {},
+    onClaudeLimitReset: (ComputerRuntimeClaudeLimitResetEntry) -> Unit = {},
 ) {
     // Signed out: there is no usage to show, only the way to sign in (web).
     val signedOut = auth?.signedOut == true
@@ -739,7 +1019,7 @@ private fun ComputerRuntimeUsageSheet(
                     size = RaftButtonSize.Lg,
                 )
             } else {
-                ComputerRuntimeUsageActions(state, timeContext, onRefresh, onUseLimitReset, onDismiss)
+                ComputerRuntimeUsageActions(state, timeContext, onRefresh, onUseLimitReset, onDismiss, onClaudeLimitReset)
             }
         },
         content = {
@@ -772,6 +1052,7 @@ private fun ColumnScope.ComputerRuntimeUsageActions(
     onRefresh: () -> Unit,
     onUseLimitReset: () -> Unit,
     onDismiss: () -> Unit,
+    onClaudeLimitReset: (ComputerRuntimeClaudeLimitResetEntry) -> Unit = {},
 ) {
     val colors = RaftTheme.colors
     // The snapshot's footnote stays with the footer, so it never scrolls out of a short sheet.
@@ -803,6 +1084,9 @@ private fun ColumnScope.ComputerRuntimeUsageActions(
     state.limitReset?.let { offer ->
         ComputerRuntimeLimitResetButton(offer, onUseLimitReset, Modifier.fillMaxWidth(), size = RaftButtonSize.Lg)
     }
+    state.claudeLimitReset?.let { offer ->
+        ComputerRuntimeClaudeLimitResetButtons(offer, onClaudeLimitReset, Modifier.fillMaxWidth(), size = RaftButtonSize.Lg)
+    }
     RaftButton(
         text = stringResource(Res.string.common_close),
         onClick = onDismiss,
@@ -817,6 +1101,7 @@ private fun ColumnScope.ComputerRuntimeUsageActions(
 private fun computerRuntimeUsageRefreshStatusText(state: ComputerRuntimeUsageSheetState): String =
     when {
         // Web `statusText`: what the last limit reset did comes first.
+        state.claudeLimitResetNote != null -> state.claudeLimitResetNote.text()
         state.limitResetNote != null -> state.limitResetNote.text()
         state.refresh == ComputerRuntimeUsageRefreshStatus.Requested -> stringResource(Res.string.settings_computers_runtime_usage_refresh_requested)
         state.refresh == ComputerRuntimeUsageRefreshStatus.Unconfirmed -> stringResource(Res.string.settings_computers_runtime_usage_refresh_unconfirmed)
@@ -956,10 +1241,12 @@ internal fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccoun
                     }
                 }
             }
-            // Raft DS StatusChip: soft wash, a square pixel, one word.
-            val ok = account.health == RuntimeAccountUsageHealth.Ok
+            // Raft DS StatusChip: soft wash, a square pixel, one word. Used up on the all-models
+            // basis only (web #14717): a model's own window at its limit says so on its own row.
+            val health = account.allModels().account.health
+            val ok = health == RuntimeAccountUsageHealth.Ok
             RaftBadge(
-                text = account.health.label(),
+                text = health.label(),
                 appearance = RaftBadgeAppearance.Soft,
                 variant = if (ok) RaftBadgeVariant.Success else RaftBadgeVariant.Warning,
                 icon = { RaftStatusDot(variant = if (ok) RaftStatusVariant.Success else RaftStatusVariant.Warning, size = RaftStatusSize.Md) },
@@ -980,8 +1267,9 @@ internal fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccoun
                     style = typography.footnote,
                     color = colors.foregroundMuted,
                 )
+            // Claude's OAuth apps' window (third-party apps' use) is never listed (web #14605).
             else ->
-                account.windows.forEach { window -> ComputerRuntimeUsageWindowRow(window, timeContext) }
+                account.windows.filter { !it.claudeOAuthApps }.forEach { window -> ComputerRuntimeUsageWindowRow(window, timeContext) }
         }
     }
 }
@@ -1014,8 +1302,7 @@ internal fun ComputerRuntimeUsageWindowRow(window: RuntimeAccountUsageWindow, ti
     val usedUp = window.status == RuntimeAccountUsageWindowStatus.LimitReached || ratio >= 1.0
     val reset =
         window.resetsAt?.let { resetsAt ->
-            raftRelativeTimestampLabel(resetsAt, timeContext).takeIf { it.isNotEmpty() }
-                ?: stringResource(Res.string.settings_computers_runtime_usage_later)
+            computerRuntimeUsageResetText(resetsAt, timeContext) ?: stringResource(Res.string.settings_computers_runtime_usage_later)
         }
     val percentUsed = "${runtimeUsagePercentUsed(ratio)}%"
     val valueText =
@@ -1033,6 +1320,20 @@ internal fun ComputerRuntimeUsageWindowRow(window: RuntimeAccountUsageWindow, ti
         label = window.label,
         size = RaftMeterSize.Sm,
     )
+}
+
+/**
+ * Web `usageResetText` (slock #14717): a usage window's reset wherever one is said (the usage card,
+ * the profile row): to come, counted as the rack's cell counts it ([raftRackReset]: down, to the
+ * largest unit, "in 5 days"); already passed, how long ago ("3 hours ago"). Null when not a time.
+ */
+@Composable
+internal fun computerRuntimeUsageResetText(resetsAt: String, timeContext: RaftTimeContext?): String? {
+    if (parseRaftTimestampEpochMillisOrNull(resetsAt, 0) == null) return null
+    val nowMillis = currentRaftTimeContext(timeContext)?.nowEpochMillis ?: defaultNowMillis()
+    val reset = raftRackReset(resetsAt, nowMillis)
+    if (reset != null) return RaftRelativeTimeLabel.Relative(reset.count, reset.unit).localized()
+    return raftRelativeTimestampLabel(resetsAt, timeContext).takeIf { it.isNotEmpty() }
 }
 
 /** Web `runtimeUsagePercentUsed`: `round(usedRatio * 100)`. */
@@ -1114,6 +1415,10 @@ internal fun ComputerRuntimeUsagePreviewCard(
                     onUseLimitReset = {
                         state.dismiss()
                         controller.openLimitReset()
+                    },
+                    onClaudeLimitReset = { entry ->
+                        state.dismiss()
+                        controller.onClaudeLimitReset(entry)
                     },
                     auth = auth?.cardState,
                     authRuntimeName = auth?.runtimeName ?: runtimeLabel,
@@ -1238,6 +1543,7 @@ internal fun ComputerRuntimeUsageCard(
     onSignIn: () -> Unit = {},
     onSignOut: () -> Unit = {},
     onSignOutProvider: (RuntimeAuthSignedInProvider) -> Unit = {},
+    onClaudeLimitReset: (ComputerRuntimeClaudeLimitResetEntry) -> Unit = {},
 ) {
     // Signed out: there is no usage to show, only the way to sign in (web `showsUsage`).
     if (auth?.signedOut == true) {
@@ -1251,7 +1557,7 @@ internal fun ComputerRuntimeUsageCard(
     ) {
         if (auth != null) ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount = state.showsAccount, authOnly = false)
     }
-    ComputerRuntimeUsageCardBody(state, timeContext, onRefresh, onUseLimitReset, auth, onSignIn, onSignOut)
+    ComputerRuntimeUsageCardBody(state, timeContext, onRefresh, onUseLimitReset, auth, onSignIn, onSignOut, onClaudeLimitReset)
 }
 
 @Composable
@@ -1263,6 +1569,7 @@ private fun ComputerRuntimeUsageCardBody(
     auth: ComputerRuntimeAuthCardState?,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
+    onClaudeLimitReset: (ComputerRuntimeClaudeLimitResetEntry) -> Unit = {},
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -1362,6 +1669,16 @@ private fun ComputerRuntimeUsageCardBody(
             leadingIcon = { RaftComputersIcon(RaftLucideIconName.RefreshCw) },
         )
         state.limitReset?.let { offer -> ComputerRuntimeLimitResetButton(offer, onUseLimitReset) }
+    }
+    // Claude limit resets: on their own row under Refresh (a phone-wide card has no room beside it).
+    state.claudeLimitReset?.let { offer ->
+        Row(
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ComputerRuntimeClaudeLimitResetButtons(offer, onClaudeLimitReset)
+        }
     }
     // Web: the quiet sign-in action in the card's action row (here under it: a phone-wide card).
     if (auth?.action() != null) {

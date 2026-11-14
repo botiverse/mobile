@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.allModels
 import build.raft.app.data.ComputersRackGroupBy
 import build.raft.app.data.ComputersRackSort
 import build.raft.app.data.ComputersRackSortDirection
@@ -48,6 +49,7 @@ internal enum class RaftComputersRackRuntimeFilter(val provider: RuntimeAccountU
     Codex(RuntimeAccountUsageProvider.Codex),
     Kimi(RuntimeAccountUsageProvider.Kimi),
     Grok(RuntimeAccountUsageProvider.Grok),
+    Antigravity(RuntimeAccountUsageProvider.Antigravity),
     Other(null);
 
     companion object {
@@ -76,6 +78,7 @@ internal fun raftRackProviderName(provider: RuntimeAccountUsageProvider): String
         RuntimeAccountUsageProvider.Codex -> "Codex"
         RuntimeAccountUsageProvider.Kimi -> "Kimi"
         RuntimeAccountUsageProvider.Grok -> "Grok"
+        RuntimeAccountUsageProvider.Antigravity -> "Antigravity"
     }
 
 /**
@@ -281,7 +284,9 @@ internal fun raftRackSortDirectionCopy(key: ComputersRackSortKey, direction: Com
 internal fun raftRackRemaining(load: RuntimeAccountUsageLoad?): Double? {
     val read = (load as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available ?: return null
     var tightest: Double? = null
-    read.snapshot.accounts.forEach { account ->
+    read.snapshot.accounts.forEach { reported ->
+        // The cell's basis: all models, never the OAuth apps' window (web `allModelsUsageAccount`, #14717).
+        val account = reported.allModels().account
         val remaining =
             when (account.health) {
                 RuntimeAccountUsageHealth.RateLimited -> 0.0
