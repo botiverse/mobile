@@ -3,7 +3,7 @@ type: fixed
 area: composer
 platforms:
   - ios
-pull_request: 0
+pull_request: 4779
 rollout: full
 ---
 
