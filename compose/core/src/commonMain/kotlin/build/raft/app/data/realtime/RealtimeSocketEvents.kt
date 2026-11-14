@@ -156,6 +156,13 @@ object RealtimeSocketEvents {
     const val ActorUpdated = GeneratedRealtimeContract.SocketEvent.ActorUpdated
 
     /**
+     * botiverse/slock `routes/channels.ts` `emitMessageDisplayPrefsUpdated`: the person changed a
+     * conversation's message display preferences on another device or tab.
+     * `{ serverId, scopeId, prefs: { collapseLongMessages }, prefsVersion }` to their `user:<id>` room.
+     */
+    const val MessageDisplayPrefsUpdated = GeneratedRealtimeContract.SocketEvent.MessageDisplayPrefsUpdated
+
+    /**
      * Sent to the member's own `user:<id>` room about one of their servers, so the socket of
      * whichever server the app has open receives it: the payload `serverId` names the server
      * that changed, not the connected one. Gates that drop a payload naming another server than

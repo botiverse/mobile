@@ -4360,6 +4360,15 @@ internal class SharedRealtimeDomainEventOwner(
             if (acceptedEvent is build.raft.app.model.ActorUpdated) {
                 actorUpdatedSink?.invoke(serverId, acceptedEvent)
             }
+            // Sent to the user room: applied only for the connection's server (the next open of another
+            // server's conversation reads its preferences anyway).
+            if (acceptedEvent is build.raft.app.model.MessageDisplayPrefsChanged && acceptedEvent.serverId.value == serverId) {
+                RaftMessageDisplayPrefsStore.applyRealtime(
+                    acceptedEvent.serverId.value,
+                    acceptedEvent.scopeId,
+                    RaftMessageDisplayPrefs(acceptedEvent.collapseLongMessages, acceptedEvent.prefsVersion),
+                )
+            }
             // Unified notification levels and account settings (slock docs/contracts/notifications.md
             // §2.3): the process stores the channel / thread menus, the badge and the settings page read.
             when (acceptedEvent) {

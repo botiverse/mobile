@@ -1402,6 +1402,19 @@ data class LinkCardOperationChanged(
  * home is another server, seen through a joint channel, changed its display identity. Exactly the
  * external projection `POST /api/actors/resolve` gives; only agents emit it today.
  */
+/**
+ * `message_display_prefs:updated` (botiverse/slock `routes/channels.ts`): the person's display
+ * preferences of conversation [scopeId] on [serverId] changed elsewhere (today only "Collapse long
+ * messages"). Applied like web `setMessageDisplayPrefsState`, never older than the held version.
+ */
+@Serializable
+data class MessageDisplayPrefsChanged(
+    val serverId: ServerId,
+    val scopeId: String,
+    val collapseLongMessages: Boolean,
+    val prefsVersion: Long?,
+) : RealtimeEvent
+
 @Serializable
 data class ActorUpdated(
     val kind: MemberKind,

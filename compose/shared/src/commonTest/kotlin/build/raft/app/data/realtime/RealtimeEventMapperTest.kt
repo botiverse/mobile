@@ -1130,6 +1130,21 @@ class RealtimeEventMapperTest {
     }
 
     @Test
+    fun messageDisplayPrefsUpdatedMapsLikeTheWeb() {
+        // botiverse/slock routes/channels.ts emitMessageDisplayPrefsUpdated.
+        assertTrue(RealtimeSocketEvents.MessageDisplayPrefsUpdated in RealtimeSocketEvents.ServerWireEvents)
+        val mapper = RealtimeEventMapper()
+        assertEquals(
+            build.raft.app.model.MessageDisplayPrefsChanged(build.raft.app.model.ServerId("server-1"), "channel-1", collapseLongMessages = true, prefsVersion = 5),
+            mapper.map(
+                "message_display_prefs:updated",
+                """{"serverId":"server-1","scopeId":"channel-1","prefs":{"collapseLongMessages":true},"prefsVersion":5}""",
+            ),
+        )
+        assertNull(mapper.map("message_display_prefs:updated", """{"serverId":"server-1","scopeId":"","prefs":{}}"""))
+    }
+
+    @Test
     fun serverWireEventsIncludeWebRealtimeContractEvents() {
         val events = RealtimeSocketEvents.ServerWireEvents
 

@@ -145,6 +145,7 @@ def generate_kotlin(contract):
         "jointInvitesChanged": "JointInvitesChanged",
         "linkCardOperationChanged": "LinkCardOperationChanged",
         "actorUpdated": "ActorUpdated",
+        "messageDisplayPrefsUpdated": "MessageDisplayPrefsUpdated",
     }
     require_exact_socket_names(contract, socket_names, "Kotlin")
     require_server_wire_events(contract)
@@ -294,6 +295,7 @@ def generate_swift(contract):
         "jointInvitesChanged": "jointInvitesChanged",
         "linkCardOperationChanged": "linkCardOperationChanged",
         "actorUpdated": "actorUpdated",
+        "messageDisplayPrefsUpdated": "messageDisplayPrefsUpdated",
     }
     require_exact_socket_names(contract, socket_names, "Swift")
     require_server_wire_events(contract)

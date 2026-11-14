@@ -6581,6 +6581,8 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         is build.raft.app.model.LinkCardOperationChanged -> "link_card_operation_changed"
         is build.raft.app.model.ActorUpdated -> "actor_updated"
         // Never dirties Home (updatesHomeSnapshot is false); named for the diagnostics only.
+        is build.raft.app.model.MessageDisplayPrefsChanged -> "message_display_prefs_updated"
+        // Never dirties Home (updatesHomeSnapshot is false); named for the diagnostics only.
         is build.raft.app.model.AgentActivitySubscribed -> "agent_activity_subscribed"
         is build.raft.app.model.ThreadReplyUpdated -> "thread_reply_updated"
         // Never dirty Home (updatesHomeSnapshot is false); named for the diagnostics only.
