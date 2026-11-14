@@ -12,6 +12,7 @@ import build.raft.app.assistant.AssistantOwnerScope
 import build.raft.app.assistant.AssistantOwnerSection
 import build.raft.app.assistant.LocalAssistantOwnerScope
 import build.raft.app.resources.*
+import build.raft.designsystem.gesture.raftSwipesBetweenSegments
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.compat.ui.raftColorFromArgbHex
 import build.raft.app.components.RaftAnchorPlacement
@@ -14082,10 +14083,26 @@ private fun MembersAgentActivityTab(
     // Web AgentActivityLog: without the Overview flag the tab is the raw log alone, no toolbar
     // (Copy info lives in the profile's Actions and the runtime-error notice, as on the web);
     // behind it, the Overview / Raw Log toolbar heads the tab.
+    // The switch's segments in order: a sideways swipe turns them before the profile's tab pager
+    // takes it, which it does only past the first or last one (nested-pager priority, #148).
+    val activityViews =
+        listOfNotNull(
+            MembersAgentActivityView.Overview.takeIf { overview != null },
+            MembersAgentActivityView.Raw,
+            MembersAgentActivityView.Subagents.takeIf { showSubagents },
+        )
+    val activityViewIndex = activityViews.indexOf(activityView)
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(RaftTheme.colors.layerCanvas),
+            .background(RaftTheme.colors.layerCanvas)
+            .raftSwipesBetweenSegments(
+                canGoBackward = activityViewIndex > 0,
+                canGoForward = activityViewIndex in 0 until activityViews.lastIndex,
+                onSwipe = { forward ->
+                    activityViews.getOrNull(activityViewIndex + if (forward) 1 else -1)?.let(changeView)
+                },
+            ),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         if (overview != null || showSubagents) {
