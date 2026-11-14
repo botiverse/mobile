@@ -48,6 +48,8 @@ class RaftApplication : Application() {
         RaftAndroidHostHooks.install(this)
         // The Google Play rating prompt for RaftRatingPrompt (`play` builds only).
         RaftAndroidStoreReview.install(this)
+        // The install channel the minimum build gate asks: Hands (APK builds) or Google Play (`play`).
+        build.raft.app.shared.RaftAndroidInstallChannels.install(this)
         // Alpha builds default the Navigation 3 page stack on; set before any window reads it.
         build.raft.app.nav.RaftNav3StackFlag.buildDefaultOn = BuildConfig.NAV3_STACK_DEFAULT_ON
         // All notification channels up front, independent of permission (see RaftNotificationChannels).

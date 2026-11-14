@@ -59,6 +59,11 @@ class ServerFeatureFlagChangeRefresher(
         schedule(serverId, reason = "reconnect")
     }
 
+    /** The app came back to the foreground and wants a fresh read (the minimum build gate). */
+    fun onForeground(serverId: ServerId) {
+        schedule(serverId, reason = "foreground")
+    }
+
     private fun schedule(serverId: ServerId, reason: String) {
         val id = serverId.value.trim().takeIf { it.isNotEmpty() } ?: return
         val start =
