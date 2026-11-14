@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Vendor botiverse/slock's shared unread contract cases into the app's test resources.
+"""Vendor botiverse/slock's shared contract cases into the app's test resources.
 
-botiverse/slock keeps the unread/thread rules both clients must agree on as plain JSON cases under
-`packages/shared/contract-cases/unread/` (README.md, case.schema.json, cases/*.json; task
-#proj-mobile:#70). The app runs a pinned copy in its unit tests
-(UnreadContractCasesTest, :shared:testDebugUnitTest):
+botiverse/slock keeps the rules both clients must agree on as plain JSON cases under
+`packages/shared/contract-cases/<set>/` (README.md, case.schema.json, cases/*.json). Two sets are
+vendored, each run by its own unit test (:shared:testDebugUnitTest):
 
-    compose/shared/src/commonTest/resources/contract-cases/unread/
+    unread         unread/thread rules (task #proj-mobile:#70)       UnreadContractCasesTest
+    activity-row   Activity row position + unread predicate (#triage:#244)  ActivityRowContractCasesTest
+
+    compose/shared/src/commonTest/resources/contract-cases/<set>/
         SOURCE_SHA            the slock commit the copy was taken from
         README.md, case.schema.json, cases/*.json   byte-exact copies
 
@@ -15,6 +17,7 @@ Usage (SLOCK_SOURCE_REPO, or the SLOCK_REACT_REPO_DIR alias, points at a botiver
     python3 scripts/sync_slock_contract_cases.py                  # copy from the checkout's work tree
     python3 scripts/sync_slock_contract_cases.py --ref origin/staging   # copy from a commit instead
     python3 scripts/sync_slock_contract_cases.py --check [--ref ...]    # exit 1 if the copy drifted
+    python3 scripts/sync_slock_contract_cases.py --set activity-row     # one set only (default: all)
 
 `--check` compares file names and bytes only; SOURCE_SHA is reported, not compared (slock moves on
 every merge, the cases do not). The daily drift job (.github/workflows/contract-cases-drift.yml)
@@ -30,9 +33,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-SOURCE_SUBDIR = "packages/shared/contract-cases/unread"
+SOURCE_ROOT = "packages/shared/contract-cases"
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DEST = REPO_ROOT / "compose/shared/src/commonTest/resources/contract-cases/unread"
+DEST_ROOT = REPO_ROOT / "compose/shared/src/commonTest/resources/contract-cases"
+# set name -> the app test that runs it.
+CASE_SETS = {
+    "unread": "UnreadContractCasesTest",
+    "activity-row": "ActivityRowContractCasesTest",
+}
 SHA_FILE = "SOURCE_SHA"
 
 
@@ -62,14 +70,15 @@ def source_repo(arg: str | None) -> Path:
     return repo
 
 
-def read_source(repo: Path, ref: str | None) -> tuple[str, dict[str, bytes]]:
+def read_source(repo: Path, ref: str | None, case_set: str) -> tuple[str, dict[str, bytes]]:
     """(commit sha, {relative path: bytes}) of the upstream cases directory."""
+    source_subdir = f"{SOURCE_ROOT}/{case_set}"
     if ref is None:
         sha = git(repo, "rev-parse", "HEAD")
-        dirty = git(repo, "status", "--porcelain", "--", SOURCE_SUBDIR)
+        dirty = git(repo, "status", "--porcelain", "--", source_subdir)
         if dirty:
-            fail(f"{SOURCE_SUBDIR} has uncommitted changes in {repo}; commit them or pass --ref")
-        root = repo / SOURCE_SUBDIR
+            fail(f"{source_subdir} has uncommitted changes in {repo}; commit them or pass --ref")
+        root = repo / source_subdir
         if not root.is_dir():
             fail(f"{root} does not exist at {sha}")
         files = {
@@ -79,11 +88,11 @@ def read_source(repo: Path, ref: str | None) -> tuple[str, dict[str, bytes]]:
         }
         return sha, files
     sha = git(repo, "rev-parse", "--verify", f"{ref}^{{commit}}")
-    names = git(repo, "ls-tree", "-r", "--name-only", sha, "--", SOURCE_SUBDIR).splitlines()
+    names = git(repo, "ls-tree", "-r", "--name-only", sha, "--", source_subdir).splitlines()
     if not names:
-        fail(f"{SOURCE_SUBDIR} does not exist at {ref} ({sha})")
+        fail(f"{source_subdir} does not exist at {ref} ({sha})")
     files = {
-        name[len(SOURCE_SUBDIR) + 1 :]: git(repo, "show", f"{sha}:{name}", binary=True)
+        name[len(source_subdir) + 1 :]: git(repo, "show", f"{sha}:{name}", binary=True)
         for name in sorted(names)
     }
     return sha, files
@@ -99,19 +108,12 @@ def read_vendored(dest: Path) -> dict[str, bytes]:
     }
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--check", action="store_true", help="exit 1 if the vendored copy differs from the source")
-    parser.add_argument("--ref", help="read the cases at this slock commit/ref instead of the work tree")
-    parser.add_argument("--source-repo", help="botiverse/slock checkout (default: $SLOCK_SOURCE_REPO)")
-    parser.add_argument("--dest", type=Path, default=DEFAULT_DEST, help=argparse.SUPPRESS)
-    args = parser.parse_args()
-
-    repo = source_repo(args.source_repo)
-    sha, upstream = read_source(repo, args.ref)
+def sync_set(repo: Path, ref: str | None, case_set: str, dest: Path, check: bool) -> int:
+    source_subdir = f"{SOURCE_ROOT}/{case_set}"
+    test_name = CASE_SETS[case_set]
+    sha, upstream = read_source(repo, ref, case_set)
     if not upstream.get("case.schema.json") or not any(name.startswith("cases/") for name in upstream):
-        fail(f"{SOURCE_SUBDIR} at {sha} has no case.schema.json or no cases/")
-    dest: Path = args.dest
+        fail(f"{source_subdir} at {sha} has no case.schema.json or no cases/")
     vendored = read_vendored(dest)
     sha_path = dest / SHA_FILE
     vendored_sha = sha_path.read_text().strip() if sha_path.is_file() else "(none)"
@@ -120,12 +122,12 @@ def main() -> int:
     removed = sorted(set(vendored) - set(upstream))
     changed = sorted(name for name in set(upstream) & set(vendored) if upstream[name] != vendored[name])
 
-    if args.check:
+    if check:
         if not (added or removed or changed):
-            print(f"Unread contract cases match botiverse/slock@{sha} ({len(upstream)} files; vendored from {vendored_sha}).")
+            print(f"{case_set} contract cases match botiverse/slock@{sha} ({len(upstream)} files; vendored from {vendored_sha}).")
             return 0
         print(
-            f"Unread contract cases drifted: vendored from botiverse/slock@{vendored_sha}, "
+            f"{case_set} contract cases drifted: vendored from botiverse/slock@{vendored_sha}, "
             f"source is botiverse/slock@{sha}.",
             file=sys.stderr,
         )
@@ -134,7 +136,7 @@ def main() -> int:
                 print(f"  {label}: {name}", file=sys.stderr)
         print(
             "Re-vendor with: SLOCK_SOURCE_REPO=<slock checkout> python3 scripts/sync_slock_contract_cases.py "
-            "[--ref origin/staging], then run UnreadContractCasesTest.",
+            f"--set {case_set} [--ref origin/staging], then run {test_name}.",
             file=sys.stderr,
         )
         return 1
@@ -147,10 +149,36 @@ def main() -> int:
         target.write_bytes(data)
     sha_path.write_text(sha + "\n")
     print(
-        f"Vendored {len(upstream)} files from botiverse/slock@{sha} into {dest.relative_to(REPO_ROOT)} "
+        f"Vendored {len(upstream)} {case_set} files from botiverse/slock@{sha} into {dest.relative_to(REPO_ROOT)} "
         f"(+{len(added)} -{len(removed)} ~{len(changed)})."
     )
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--check", action="store_true", help="exit 1 if the vendored copy differs from the source")
+    parser.add_argument("--ref", help="read the cases at this slock commit/ref instead of the work tree")
+    parser.add_argument("--source-repo", help="botiverse/slock checkout (default: $SLOCK_SOURCE_REPO)")
+    parser.add_argument(
+        "--set",
+        dest="sets",
+        action="append",
+        choices=sorted(CASE_SETS),
+        help="case set to sync or check (repeatable; default: every set)",
+    )
+    parser.add_argument("--dest", type=Path, help=argparse.SUPPRESS)
+    args = parser.parse_args()
+
+    sets = args.sets or list(CASE_SETS)
+    if args.dest is not None and len(sets) != 1:
+        fail("--dest needs exactly one --set")
+    repo = source_repo(args.source_repo)
+    status = 0
+    for case_set in sets:
+        dest = args.dest if args.dest is not None else DEST_ROOT / case_set
+        status = max(status, sync_set(repo, args.ref, case_set, dest, args.check))
+    return status
 
 
 if __name__ == "__main__":
