@@ -6,6 +6,9 @@
 //   binding --udid <udid> --bundle-id <id> --output <binding.json>
 //   prepare --udid <udid> --bundle-id <id> --response <login.json> --binding <binding.json>
 //           --run-case-id <id> --ci-job-ref <url> --ready-output <ready.json> [--timeout-seconds 120]
+//   record-ownership --udid <udid> --simulator-name raft-qa-run-<run id>-<attempt> [--ownership-receipt <file>]
+//           (run by the job right after `simctl create`: writes the protected ownership receipt once)
+//   verify-ownership --udid <udid> --simulator-name <raft-qa-run-…> [--ownership-receipt <file>]
 //   cleanup --udid <udid> --simulator-name <raft-qa-run-…> --bundle-id <id> --response <login.json>
 //           --binding <binding.json> [--ready <ready.json>] --outcome completed|aborted
 //           --output <cleanup.json> --run-case-id <id> --ci-job-ref <url>
@@ -14,7 +17,10 @@
 //           (no server: fake-token envelopes prove delivery, one-shot consumption, digest/binding
 //           validation and the replay refusal; then a Simulator reboot must change boot_generation,
 //           and the device cleanup must end with a clean receipt)
-// cleanup and smoke uninstall the app, so they refuse any Simulator that is not this run's own.
+// cleanup and smoke uninstall the app, so they refuse any Simulator that is not this job's own: the
+// ownership receipt (default $RUNNER_TEMP/raft-qa-simulator-ownership.json) must bind the UDID to
+// this GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT, and it is re-verified immediately before every destructive
+// action (terminate, uninstall, shutdown).
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -31,7 +37,9 @@ import {
   IOS_QA_BOOTSTRAP_MARKER,
   buildSmokeLogin,
   classifyAppContainerRead,
+  classifyHostProcessRead,
   classifyLaunchctlRead,
+  combineProcessStates,
   findLaunchdSimPid,
   hasBootstrapLine,
   iosBootGeneration,
@@ -43,6 +51,8 @@ import {
   requireBundleId,
   requireRunOwnedSimulator,
   requireSimulatorUdid,
+  runOwnedSimulatorName,
+  simulatorOwnershipReceipt,
 } from "./ios_qa_bootstrap_lib.mjs";
 
 const commandTimeoutMs = 60_000;
@@ -94,15 +104,84 @@ function plistValue(plist, key) {
   return run("plutil", ["-extract", key, "raw", "-o", "-", plist]).stdout.trim();
 }
 
-/** Refuses any Simulator but the one this run created (name raft-qa-run-<run id>-<attempt>). */
+function ownershipReceiptPath() {
+  const explicit = argument("ownership-receipt", false) ?? process.env.RAFT_QA_SIMULATOR_OWNERSHIP_RECEIPT;
+  if (explicit) return path.resolve(explicit);
+  if (!process.env.RUNNER_TEMP) throw new Error("no ownership receipt location (--ownership-receipt or RUNNER_TEMP)");
+  return path.join(process.env.RUNNER_TEMP, "raft-qa-simulator-ownership.json");
+}
+
+function readOwnershipReceipt(file) {
+  let stat;
+  try {
+    stat = fs.lstatSync(file);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  const text = stat.isFile() && !stat.isSymbolicLink() ? fs.readFileSync(file, "utf8") : "";
+  return { text, stat: { isFile: stat.isFile(), isSymbolicLink: stat.isSymbolicLink(), mode: stat.mode, uid: stat.uid } };
+}
+
+/**
+ * Refuses any Simulator but the one THIS job created: the protected ownership receipt must bind the
+ * UDID and name to this GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT, and a fresh `simctl list` must show that
+ * UDID exactly once under that (unique) name. Called again immediately before each destructive action.
+ */
 function requireOwned(udid) {
   const name = argument("simulator-name");
-  requireRunOwnedSimulator(simctl(["list", "devices", "-j"]).stdout, udid, name);
+  requireRunOwnedSimulator(simctl(["list", "devices", "-j"]).stdout, udid, name, {
+    receipt: readOwnershipReceipt(ownershipReceiptPath()),
+    runId: process.env.GITHUB_RUN_ID,
+    runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+    uid: typeof process.getuid === "function" ? process.getuid() : undefined,
+  });
   return name;
 }
 
 /**
- * Start time (epoch seconds) of this Simulator's launchd_sim: new on every Simulator boot. The app
+ * Written once, by the job, right after it created the Simulator: 0400 file in RUNNER_TEMP, created
+ * exclusively (an existing receipt is never overwritten). The device must be listed under exactly
+ * this job's name, once.
+ */
+function recordOwnership() {
+  const udid = requireSimulatorUdid(argument("udid"));
+  const name = argument("simulator-name");
+  const runId = process.env.GITHUB_RUN_ID;
+  const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
+  if (name !== runOwnedSimulatorName(runId, runAttempt)) throw new Error(`simulator name ${name} is not this job's run-owned name`);
+  const devices = Object.values(JSON.parse(simctl(["list", "devices", "-j"]).stdout).devices ?? {}).flat();
+  const byUdid = devices.filter((d) => String(d?.udid ?? "").toUpperCase() === udid);
+  const byName = devices.filter((d) => d?.name === name);
+  if (byUdid.length !== 1 || byUdid[0].name !== name || byName.length !== 1) {
+    throw new Error(`simulator ${udid} is not listed exactly once under the unique name ${name}; not recording ownership`);
+  }
+  const receipt = simulatorOwnershipReceipt({ udid, name, runId, runAttempt, createdAt: new Date().toISOString() });
+  const file = ownershipReceiptPath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o400, flag: "wx" });
+  fs.chmodSync(file, 0o400);
+  console.log(`ios-qa-bootstrap: recorded ownership of ${name} (${udid}) for run ${runId} attempt ${runAttempt}`);
+}
+
+function verifyOwnership() {
+  const udid = requireSimulatorUdid(argument("udid"));
+  const name = requireOwned(udid);
+  console.log(`ios-qa-bootstrap: ownership of ${name} (${udid}) verified for this job`);
+}
+
+/** CFBundleExecutable of the installed app (for the host process query), or undefined. */
+function installedExecutableName(udid, bundleId) {
+  const app = simctl(["get_app_container", udid, bundleId, "app"], { allowFailure: true, timeoutMs: 30_000 });
+  const appPath = app.status === 0 ? app.stdout.trim() : "";
+  if (!path.isAbsolute(appPath)) return undefined;
+  const value = run("plutil", ["-extract", "CFBundleExecutable", "raw", "-o", "-", path.join(appPath, "Info.plist")], { allowFailure: true });
+  return value.status === 0 && value.stdout.trim() ? value.stdout.trim() : undefined;
+}
+
+/**
+ * Start time (epoch seconds) of this Simulator's launchd_sim: new on every Simulator boot, to
+ * one-second resolution (two boots within one UTC second collide; see iosBootGeneration). The app
  * reads the same p_starttime of its launchd_sim ancestor through sysctl(KERN_PROC_PID).
  */
 function launchdSimStartSeconds(udid) {
@@ -255,11 +334,14 @@ async function prepare() {
  * as absent (with a positive control) or attempts run out. Returns the last classification:
  * present / absent / unknown (see classifyLaunchctlRead).
  */
-function terminateAndConfirm(udid, bundleId) {
+function terminateAndConfirm(udid, bundleId, executableName) {
+  requireOwned(udid);
   simctl(["terminate", udid, bundleId], { allowFailure: true });
-  let last = { state: "unknown", reason: "not_read" };
+  let last = { state: "unknown", launchctl: { state: "unknown", reason: "not_read" }, host: { state: "unknown", reason: "not_read" } };
   for (let attempt = 0; attempt < 10; attempt += 1) {
-    last = classifyLaunchctlRead(simctl(["spawn", udid, "launchctl", "list"], { allowFailure: true, timeoutMs: 30_000 }), bundleId);
+    const launchctl = classifyLaunchctlRead(simctl(["spawn", udid, "launchctl", "list"], { allowFailure: true, timeoutMs: 30_000 }), bundleId);
+    const host = classifyHostProcessRead(run("ps", ["-axww", "-o", "pid=,args="], { allowFailure: true, timeoutMs: 30_000 }), udid, executableName);
+    last = { state: combineProcessStates(launchctl, host), launchctl, host };
     if (last.state === "absent") return last;
     spawnSync("sleep", ["1"]);
   }
@@ -272,26 +354,34 @@ function terminateAndConfirm(udid, bundleId) {
  * present / absent / unknown, and only absent+absent with a successful uninstall is "clean".
  */
 function deviceCleanup(udid, bundleId) {
-  const processCheck = terminateAndConfirm(udid, bundleId);
+  const executableName = installedExecutableName(udid, bundleId);
+  const processCheck = terminateAndConfirm(udid, bundleId, executableName);
+  requireOwned(udid);
   const uninstall = simctl(["uninstall", udid, bundleId], { allowFailure: true });
   const controlBundleId = `build.raft.qa.never-installed.${crypto.randomBytes(6).toString("hex")}`;
   const control = simctl(["get_app_container", udid, controlBundleId, "data"], { allowFailure: true, timeoutMs: 30_000 });
   const read = simctl(["get_app_container", udid, bundleId, "data"], { allowFailure: true, timeoutMs: 30_000 });
-  const container = classifyAppContainerRead(read, bundleId, control, controlBundleId);
+  const listApps = simctl(["listapps", udid], { allowFailure: true, timeoutMs: 30_000 });
+  const device = simctl(["list", "devices", "-j"], { allowFailure: true, timeoutMs: 30_000 });
+  const container = classifyAppContainerRead(read, bundleId, control, controlBundleId, { listApps, device, udid });
   const receipt = iosCleanupReceipt({ processState: processCheck.state, uninstallStatus: uninstall.timedOut ? -1 : uninstall.status, containerState: container.state });
+  const describe = (check) => ({ state: check.state, reason: check.reason, ...(check.positive_control ? { positive_control: check.positive_control } : {}) });
   return {
     cleanup_receipt: receipt,
     app_process: {
-      method: "xcrun simctl terminate, then xcrun simctl spawn <udid> launchctl list",
+      method: "xcrun simctl terminate, then xcrun simctl spawn <udid> launchctl list AND host ps -axww (both must show absence)",
       state: processCheck.state,
-      reason: processCheck.reason,
-      ...(processCheck.positive_control ? { positive_control: processCheck.positive_control } : {}),
+      launchctl: describe(processCheck.launchctl),
+      host_process: describe(processCheck.host),
     },
     app_uninstall: { method: "xcrun simctl uninstall", exit_status: uninstall.status, timed_out: uninstall.timedOut },
     app_data_container: {
-      method: "xcrun simctl get_app_container <udid> <bundle> data, against a never-installed control bundle id",
+      method: "xcrun simctl get_app_container <udid> <bundle> data vs a never-installed control bundle id, confirmed by simctl list (Booted) and a complete simctl listapps with a system positive control",
       state: container.state,
       reason: container.reason,
+      ...(container.positive_control ? { positive_control: container.positive_control } : {}),
+      // Masked error text of the app read (diagnostics; never used as a positive signal on its own).
+      error_signature: String(read.stderr ?? "").split(bundleId).join("<bundle>").replace(/\s+/g, " ").trim().slice(0, 300),
     },
   };
 }
@@ -326,7 +416,8 @@ function cleanup() {
     ...result,
   });
   if (result.cleanup_receipt !== "clean") {
-    throw new Error(`device cleanup receipt is ${result.cleanup_receipt} (process=${result.app_process.state}/${result.app_process.reason}, ` +
+    throw new Error(`device cleanup receipt is ${result.cleanup_receipt} (process=${result.app_process.state}/` +
+      `${result.app_process.launchctl.reason}+${result.app_process.host_process.reason}, ` +
       `uninstall=${result.app_uninstall.exit_status}, container=${result.app_data_container.state}/${result.app_data_container.reason}); not clean`);
   }
   console.log(`ios-qa-bootstrap: device cleanup confirmed bundle=${bundleId}`);
@@ -364,6 +455,7 @@ async function smoke() {
     const from = stream.text().length;
     const paths = iosInboxPaths(appContainer(udid, bundleId, "data"), login.request_id);
     if (login.bytes) installPrivateEnvelope(udid, bundleId, login.request_id, login.bytes, { mode });
+    requireOwned(udid); // launch --terminate-running-process and the terminate below stop the app
     launch(udid, bundleId, login.request_id, digest ?? login.envelope_digest);
     const seen = await waitFor(stream, from, (text) => expect.every(([kind, stage, code]) => hasBootstrapLine(text, kind, stage, code)), 90_000);
     const left = fs.existsSync(paths.file);
@@ -434,6 +526,7 @@ async function smoke() {
     const before = observe(device, stream.text());
     stream.stop();
     earlierLog = stream.text();
+    requireOwned(udid);
     simctl(["shutdown", udid]);
     simctl(["boot", udid]);
     simctl(["bootstatus", udid, "-b"], { timeoutMs: 300_000 });
@@ -477,8 +570,10 @@ try {
   if (command === "binding") binding();
   else if (command === "prepare") await prepare();
   else if (command === "cleanup") cleanup();
+  else if (command === "record-ownership") recordOwnership();
+  else if (command === "verify-ownership") verifyOwnership();
   else if (command === "smoke") await smoke();
-  else fail("command must be binding|prepare|cleanup|smoke");
+  else fail("command must be binding|prepare|cleanup|smoke|record-ownership|verify-ownership");
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }

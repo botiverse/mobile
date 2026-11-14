@@ -224,6 +224,9 @@ jobs:
             exit 1
           }
           echo "run-owned simulator ${sim_name} udid=${udid}"
+          # Ownership receipt (0400, created exclusively in RUNNER_TEMP): binds this UDID to this
+          # run id + attempt. cleanup/smoke and the final delete re-verify it before destroying anything.
+          node scripts/qa/ios_qa_bootstrap.mjs record-ownership --udid "$udid" --simulator-name "$sim_name"
           echo "UDID=$udid" >> "$GITHUB_ENV"
           echo "SIM_NAME=$sim_name" >> "$GITHUB_ENV"
           xcrun simctl boot "$udid"
@@ -825,7 +828,8 @@ jobs:
           if-no-files-found: warn
 
       # Delete the run-owned Simulator, after a name/UDID ownership check: never a device this run
-      # did not create.
+      # did not create. The job's ownership receipt (record-ownership) must also bind the UDID to
+      # this run id + attempt.
       - name: Delete run-owned simulator
         if: always()
         run: |
@@ -836,6 +840,10 @@ jobs:
             echo "::error::simulator $UDID is named '${name}', not the run-owned $SIM_NAME; not deleting"
             exit 1
           fi
+          node scripts/qa/ios_qa_bootstrap.mjs verify-ownership --udid "$UDID" --simulator-name "$SIM_NAME" || {
+            echo "::error::ownership receipt does not bind $UDID to this run; not deleting"
+            exit 1
+          }
           xcrun simctl shutdown "$UDID" 2>/dev/null || true
           xcrun simctl delete "$UDID"
           echo "deleted run-owned simulator $SIM_NAME ($UDID)"

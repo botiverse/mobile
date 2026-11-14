@@ -26,17 +26,35 @@ lines and the same harness output files. Only the device channel differs.
    `stamp_report.sh bootstrap-login <binding.json>` posts it to the case's
    `login_endpoint`; Stamp answers with
    `{request_id, envelope_digest, envelope, expires_at}`.
-   Issuance is called **exactly once** (no `curl --retry`, no second login, no new
-   attempt): Stamp refuses a duplicate issuance for the attempt, and a retry after a lost
-   reply could not recover the refresh token of a session that may already be live. The
-   reporter records the outcome in `stamp-bootstrap-login-outcome-<run_case_id>.json`
-   (copied to `qa-evidence/bootstrap-login-outcome.json`; no secrets):
-   `issued` (2xx with a well-formed envelope), `rejected` (the server answered 4xx),
-   `not_sent` (curl could not resolve/connect, exit 6/7) or `unknown` (timeout, reset,
-   empty reply, 5xx, unreadable 2xx — exit code 3). On `unknown` the run stops:
-   `bootstrap-failure-terminal` refuses to post the "no material issued" terminal, and the
-   attempt is left for operator reconciliation with Testbed (a durable server-side
-   recovery/revocation path for this case does not exist yet).
+   Issuance is called **at most once per run case on this runner** (no `curl --retry`, no
+   second login, no new attempt): a retry after a lost reply could not recover the refresh
+   token of a session that may already be live. The reporter first takes an exclusive
+   lock (`mkdir stamp-bootstrap-login-lock-<run_case_id>` in `RUNNER_TEMP`: atomic, so of
+   concurrent invocations exactly one proceeds; never released or broken automatically),
+   then persists an `in_flight` intent atomically (temp file + rename) in
+   `stamp-bootstrap-login-outcome-<run_case_id>.json` **before** calling the endpoint, and
+   replaces it with the outcome afterwards (copied to
+   `qa-evidence/bootstrap-login-outcome.json`; no secrets):
+   - `issued` — 2xx whose body is a well-formed envelope for this run case (request id,
+     `sha256:` digest, `envelope.run_case_id`, non-empty refresh token; `prepare` then
+     validates it exactly);
+   - `rejected` — **only** a 4xx whose body is the server's exact-attempt credential-rejection
+     receipt: exactly `{contract:"qa-bootstrap-login-rejection/v1", issued:false,
+     reason:"credential_rejected", run_case_id, attempt, ci_job_ref,
+     signing_cert_sha256, boot_generation}` with this run case, this CI job and the posted
+     binding. Testbed does not emit this receipt yet, so today every 4xx is `unknown`;
+   - `unknown` (exit 3) — everything else: generic 4xx (including `409
+     BOOTSTRAP_LOGIN_RETRY_REQUIRES_NEW_ATTEMPT`, which may mean an earlier issuance exists),
+     5xx, partial/unproven 2xx, timeout, reset, empty reply, and local connect failures
+     (a local connect result is not proof that nothing was issued).
+   A sender killed at any point leaves the lock and the `in_flight` intent: the next
+   invocation refuses to issue, and nothing falls back to "not sent". On anything but
+   `issued`/`rejected` the run stops: `bootstrap-failure-terminal` refuses to post the "no
+   material issued" terminal, and the attempt is left for operator reconciliation with
+   Testbed. Shared QA sessions are never touched.
+   **Scope:** this is a local, per-runner guarantee. It does not prove one-shot issuance
+   across runner loss (a re-run on a new runner has a fresh `RUNNER_TEMP`); that needs a
+   Testbed server-side, attempt-bound issuance fence and reconciliation path (follow-up).
 2. **Prepare.** The harness re-validates the response (`validateLoginResponse`: exact
    key set, `version`, `run_case_id`/`ci_job_ref` of this run, `attempt >= 1`,
    `target_route`, `application_id` = the installed app, both binding fields,
@@ -84,7 +102,7 @@ Exactly these 13 keys. `envelope_digest` is `sha256:` + lowercase hex of those b
 |---|---|---|
 | `application_id` | package name (`build.raft.app.alpha`) | `CFBundleIdentifier` of the installed app (`build.raft.app`) |
 | `signing_cert_sha256` | `sha256:` of the APK signing certificate for the device SDK | **code identity**: `sha256:` over the installed main executable's bytes (`<app>/<CFBundleExecutable>`, from `xcrun simctl get_app_container <udid> <bundle> app`) followed by `<app>/<CFBundleExecutable>.debug.dylib` when present (Xcode Debug builds keep the app code in that dylib behind a stub executable). Simulator builds carry no distribution certificate, so the field binds the exact binary instead |
-| `boot_generation` | `sha256:` of `/proc/sys/kernel/random/boot_id` | `sha256("ios-simulator-boot/v2|<SIMULATOR UDID, uppercase>|<launchd_sim start, epoch seconds>")`: **per Simulator boot**. CoreSimulator starts a fresh `launchd_sim` for the device on every `simctl boot`; the app reads its launchd_sim ancestor's `p_starttime` via `sysctl(KERN_PROC_PID)`, the harness finds the launchd_sim whose argv carries `/Devices/<UDID>/` (`ps -axww -o pid=,args=`) and reads `LC_ALL=C TZ=UTC ps -o lstart= -p <pid>` (the same field, seconds). The UDID comes from `SIMULATOR_UDID` (or the CoreSimulator path of the app home). Not `kern.boottime`: Simulator processes run on the host kernel, so that is the Mac's boot and does not change when the Simulator reboots (v1 used it and only distinguished host boots). It distinguishes boots of one Simulator (an erase needs a shutdown, so a new boot follows); it does not say whether the data was erased, and it is not a trusted seat or lifecycle attestation |
+| `boot_generation` | `sha256:` of `/proc/sys/kernel/random/boot_id` | `sha256("ios-simulator-boot/v2|<SIMULATOR UDID, uppercase>|<launchd_sim start, epoch seconds>")`: **per Simulator boot**. CoreSimulator starts a fresh `launchd_sim` for the device on every `simctl boot`; the app reads its launchd_sim ancestor's `p_starttime` via `sysctl(KERN_PROC_PID)`, the harness finds the launchd_sim whose argv carries `/Devices/<UDID>/` (`ps -axww -o pid=,args=`) and reads `LC_ALL=C TZ=UTC ps -o lstart= -p <pid>` (the same field, seconds). Resolution is one second on both sides, so two boots of the same UDID whose launchd_sim starts fall within the same UTC second would get the same value: a bounded collision, documented and unit-tested, not "different on every boot" (a shutdown + boot + `bootstatus` cycle takes far longer than a second). The UDID comes from `SIMULATOR_UDID` (or the CoreSimulator path of the app home). Not `kern.boottime`: Simulator processes run on the host kernel, so that is the Mac's boot and does not change when the Simulator reboots (v1 used it and only distinguished host boots). It distinguishes boots of one Simulator (an erase needs a shutdown, so a new boot follows); it does not say whether the data was erased, and it is not a trusted seat or lifecycle attestation |
 
 For iOS, Stamp issues the envelope exactly as for Android, with `application_id` set
 to the bundle id of the pinned iOS artifact (`artifact_package_id`) and the two
@@ -125,23 +143,47 @@ bash scripts/qa/stamp_report.sh bootstrap-terminal completed "$RUNNER_TEMP/stamp
 6. Wait (≤ 120 s) for the exact-bound `QA_BOOTSTRAP_READY` line; on timeout report the
    `QA_BOOTSTRAP_STAGE`/`FAILURE` stages and the app's `QA_BOOTSTRAP_DIAG` line.
 
-`cleanup` (and `smoke`) first require a **run-owned** Simulator: the UDID must be listed
-under `--simulator-name`, which must be `raft-qa-run-<run id>-<attempt>`.
-`qa-acceptance-ios.yml` creates that device fresh for every run (it never reuses a device
-found by name) and deletes it in its last step after the same name/UDID check. Then
+`cleanup` (and `smoke`) first require a Simulator **owned by this job**.
+`qa-acceptance-ios.yml` creates the device fresh for every run as
+`raft-qa-run-<run id>-<attempt>` (it never reuses a device found by name) and right after
+`simctl create` runs `ios_qa_bootstrap.mjs record-ownership`, which writes the ownership
+receipt `$RUNNER_TEMP/raft-qa-simulator-ownership.json` once (exclusive create, mode 0400):
+`{contract:"raft-qa-simulator-ownership/v1", udid, name, github_run_id,
+github_run_attempt, created_at}`. Immediately before every destructive action (terminate,
+uninstall, the smoke's launches and shutdown) the harness re-verifies: the receipt is a
+regular file of this uid with no group/other permissions and the exact shape; its run
+id/attempt are this job's `GITHUB_RUN_ID`/`GITHUB_RUN_ATTEMPT`; its UDID/name equal
+`--udid`/`--simulator-name`, which must be `raft-qa-run-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`;
+and a fresh `simctl list devices -j` shows that UDID exactly once under that name, with no
+other device of that name. A missing, mismatched or ambiguous ownership is refused before
+anything is stopped. The workflow's last step deletes the device only after
+`verify-ownership` passes as well. Then
 `cleanup` terminates the app, `simctl uninstall`s it (the data container holds the MMKV
 session and the inbox; the app stores nothing in the keychain) and classifies each read
 as **present / absent / unknown**:
 
-- app process — `xcrun simctl spawn <udid> launchctl list`: `present` if a running
-  `UIKitApplication:<bundle>[…]` job is listed; `absent` only if the command succeeded
-  and the listing also shows a running positive-control service
-  (`com.apple.SpringBoard` or `com.apple.backboardd`); anything else (non-zero exit,
-  timeout, empty or control-less output) is `unknown`.
+- app process — two independent reads, and `absent` needs both:
+  `xcrun simctl spawn <udid> launchctl list` is `present` if a running
+  `UIKitApplication:<bundle>[…]` job is listed; it says `absent` only if the command
+  succeeded, the listing is structurally whole (ends with a newline, every line is the
+  header or a `pid\tstatus\tlabel` row) and shows a running positive-control service
+  (`com.apple.SpringBoard` or `com.apple.backboardd`). The control proves the listing
+  covered that service, not that it was complete (a cut at a line boundary is invisible),
+  so the host `ps -axww -o pid=,args=` must also succeed, end with a newline, list this
+  Simulator's launchd_sim (positive control) and no `<App>.app/<CFBundleExecutable>`
+  process under this device's bundle containers. Non-zero exit, timeout, truncated or
+  control-less output of either read is `unknown`.
 - data container — `xcrun simctl get_app_container <udid> <bundle> data`: `present` on
-  exit 0 with a path; `absent` only if a control read of a never-installed bundle id
-  (same command, same moment) fails and the app's read fails with the same exit status
-  and the same error text (bundle id masked); anything else is `unknown`.
+  exit 0 with a path (or when `simctl listapps` still lists the bundle). `absent` only if
+  ALL hold: a control read of a never-installed bundle id (same command, same moment)
+  fails with the same exit status and the same non-empty error text (bundle id masked);
+  that text is not an infrastructure error (shutdown/state, timeout, connection, XPC,
+  CoreSimulatorService, invalid device, …: identical errors from a broken service prove
+  nothing); a fresh `simctl list devices -j` shows the device `Booted`; and a structurally
+  complete `simctl listapps <udid>` lists a system positive-control app
+  (`com.apple.Preferences` or `com.apple.mobilesafari`) and not the bundle. Anything else
+  (timeouts, spawn errors, generic matching errors without the positive controls) is
+  `unknown`.
 
 The record is:
 
@@ -149,9 +191,11 @@ The record is:
 {"platform":"ios-simulator","application_id":"…","simulator_udid":"…","simulator_name":"raft-qa-run-…",
  "boot_generation":"…","request_id":"…","envelope_digest":"…","process_instance_id":"…","process_generation":"…",
  "cleanup_receipt":"clean|failed|unknown",
- "app_process":{"method":"…","state":"absent","reason":"app_job_not_listed","positive_control":"com.apple.SpringBoard"},
+ "app_process":{"method":"…","state":"absent",
+   "launchctl":{"state":"absent","reason":"app_job_not_listed","positive_control":"com.apple.SpringBoard"},
+   "host_process":{"state":"absent","reason":"app_process_not_listed","positive_control":"launchd_sim"}},
  "app_uninstall":{"method":"xcrun simctl uninstall","exit_status":0,"timed_out":false},
- "app_data_container":{"method":"…","state":"absent","reason":"not_installed_matches_control"}}
+ "app_data_container":{"method":"…","state":"absent","reason":"not_installed_confirmed","positive_control":"com.apple.Preferences","error_signature":"…"}}
 ```
 
 `cleanup_receipt` is `clean` only for process `absent`, uninstall exit 0 and container
@@ -241,7 +285,7 @@ correctly bound, through the real channel. It passes when
 - a wrong digest yields `envelope_digest code=mismatch` after consumption;
 - a 0644 file yields `inbox_consume code=mode` and is left untouched;
 - an envelope bound to another boot yields `envelope_binding code=boot_generation`;
-- after `simctl shutdown` + `simctl boot` of the (run-owned) Simulator, the harness's
+- after `simctl shutdown` + `simctl boot` of the (job-owned) Simulator, the harness's
   `boot_generation` and launchd_sim start time have changed, the value the app logs in
   `QA_BOOTSTRAP_DIAG` equals the harness's before and after, an envelope bound to the
   previous boot is refused (`envelope_binding code=boot_generation`) and one bound to the

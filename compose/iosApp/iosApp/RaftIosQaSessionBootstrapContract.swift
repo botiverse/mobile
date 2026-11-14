@@ -200,7 +200,9 @@ enum RaftIosQaSessionBootstrapContract {
     /// Per-Simulator-boot generation: the UDID plus the start time of this Simulator's launchd_sim,
     /// which CoreSimulator starts afresh on every `simctl boot`. Not kern.boottime: Simulator processes
     /// run on the host kernel, so kern.boottime is the Mac's boot and survives a Simulator reboot.
-    /// Distinguishes Simulator boots of one UDID; says nothing about an erase in between.
+    /// Distinguishes Simulator boots of one UDID to one-second resolution (p_starttime.tv_sec, the field
+    /// the harness reads with `ps -o lstart`): two boots whose launchd_sim starts fall in the same UTC
+    /// second collide, a bounded and documented limit. Says nothing about an erase in between.
     static func bootGeneration(simulatorUdid: String, launchdSimStartSeconds: Int) -> String {
         sha256Digest(Data("ios-simulator-boot/v2|\(simulatorUdid.uppercased())|\(launchdSimStartSeconds)".utf8))
     }
