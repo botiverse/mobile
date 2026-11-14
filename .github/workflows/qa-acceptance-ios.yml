@@ -101,7 +101,9 @@ jobs:
     name: iOS acceptance run (M3 agent on simulator)
     # GitHub's Xcode 27 image (billed): the only one with Xcode 27.1, the default since 2026-10-28.
     runs-on: xcode-27
-    timeout-minutes: 75
+    # The Debug framework sync alone has taken 47-66 min on this image; bootstrap-smoke also reboots
+    # the run-owned Simulator. 75 min cancelled run 43613855810 mid-smoke.
+    timeout-minutes: 95
     env:
       # iPhone 14: 390x844pt @3x — same geometry as the android/react baselines.
       SIM_DEVICE: iPhone 14
@@ -190,7 +192,9 @@ jobs:
 
       # Runtime: the newest available iOS runtime not newer than the pinned Xcode's
       # iPhoneSimulator SDK (the Xcode 27 image also ships e.g. a 27.2 RC runtime that Xcode 27.1
-      # may not drive), else the newest available. SIM_DEVICE is reused on that runtime, or created.
+      # may not drive), else the newest available. The Simulator is RUN-OWNED: a fresh SIM_DEVICE is
+      # created on that runtime as raft-qa-run-<run id>-<attempt> (never a reused device found by
+      # name), the QA harness refuses to clean up any other device, and the last step deletes it.
       - name: Boot simulator
         run: |
           SIM_SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)"; export SIM_SDK
@@ -207,17 +211,24 @@ jobs:
           print((hosts or fit)[-1]['identifier'])")
           export RUNTIME="$runtime"
           echo "iPhoneSimulator SDK ${SIM_SDK}; runtime ${RUNTIME}; device ${SIM_DEVICE}"
-          udid=$(xcrun simctl list devices available -j \
-            | python3 -c "import json,sys,os; d=json.load(sys.stdin)['devices'].get(os.environ['RUNTIME'], []); print(next((dev['udid'] for dev in d if dev['name']==os.environ['SIM_DEVICE']), ''))")
-          if [ -z "$udid" ]; then
-            devtype=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys,os; print(next(d['identifier'] for d in json.load(sys.stdin)['devicetypes'] if d['name']==os.environ['SIM_DEVICE']))")
-            udid=$(xcrun simctl create "qa-${SIM_DEVICE// /-}" "$devtype" "$runtime") || {
-              echo "::error::Could not create ${SIM_DEVICE} on ${runtime}. iPhone device types it supports:"
-              xcrun simctl list runtimes -j | python3 -c "import json,sys,os; r=next(r for r in json.load(sys.stdin)['runtimes'] if r['identifier']==os.environ['RUNTIME']); print('\n'.join(t['name'] for t in r.get('supportedDeviceTypes', []) if 'iPhone' in t['name']))" || true
-              exit 1
-            }
+          sim_name="raft-qa-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          export SIM_NAME="$sim_name"
+          if xcrun simctl list devices -j | python3 -c "import json,sys,os; sys.exit(0 if any(d['name']==os.environ['SIM_NAME'] for ds in json.load(sys.stdin)['devices'].values() for d in ds) else 1)"; then
+            echo "::error::a simulator named ${sim_name} already exists; refusing to adopt a device this run did not create"
+            exit 1
           fi
+          devtype=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys,os; print(next(d['identifier'] for d in json.load(sys.stdin)['devicetypes'] if d['name']==os.environ['SIM_DEVICE']))")
+          udid=$(xcrun simctl create "$sim_name" "$devtype" "$runtime") || {
+            echo "::error::Could not create ${SIM_DEVICE} on ${runtime}. iPhone device types it supports:"
+            xcrun simctl list runtimes -j | python3 -c "import json,sys,os; r=next(r for r in json.load(sys.stdin)['runtimes'] if r['identifier']==os.environ['RUNTIME']); print('\n'.join(t['name'] for t in r.get('supportedDeviceTypes', []) if 'iPhone' in t['name']))" || true
+            exit 1
+          }
+          echo "run-owned simulator ${sim_name} udid=${udid}"
+          # Ownership receipt (0400, created exclusively in RUNNER_TEMP): binds this UDID to this
+          # run id + attempt. cleanup/smoke and the final delete re-verify it before destroying anything.
+          node scripts/qa/ios_qa_bootstrap.mjs record-ownership --udid "$udid" --simulator-name "$sim_name"
           echo "UDID=$udid" >> "$GITHUB_ENV"
+          echo "SIM_NAME=$sim_name" >> "$GITHUB_ENV"
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
           # Marker for attributed .ips capture: any crash report newer than this
@@ -682,7 +693,9 @@ jobs:
       # Android's QaSessionBootstrapActivity path, driven through the real delivery channel
       # (private inbox in the app data container + `simctl launch` arguments) with fake-token
       # envelopes. Needs no QA account and no Stamp claim: it proves delivery, one-shot
-      # consumption, digest/binding validation and the replay refusal on this exact build.
+      # consumption, digest/binding validation and the replay refusal on this exact build, then
+      # reboots the run-owned Simulator (boot_generation must change; harness and app must agree)
+      # and ends with the device cleanup, which must report a clean receipt.
       - name: Run QA session bootstrap smoke
         if: ${{ inputs.mode == 'bootstrap-smoke' }}
         run: |
@@ -691,7 +704,7 @@ jobs:
           echo $(( $(date +%s) * 1000 )) > qa-evidence/perf-started.txt
           date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
           set +e
-          node scripts/qa/ios_qa_bootstrap.mjs smoke --udid "$UDID" --bundle-id "$BUNDLE_ID" --out qa-evidence/bootstrap-smoke
+          node scripts/qa/ios_qa_bootstrap.mjs smoke --udid "$UDID" --simulator-name "$SIM_NAME" --bundle-id "$BUNDLE_ID" --out qa-evidence/bootstrap-smoke
           echo "$?" > qa-evidence/agent-rc.txt
           echo "bootstrap smoke exit code $(cat qa-evidence/agent-rc.txt)"
           cat qa-evidence/bootstrap-smoke/smoke-report.json 2>/dev/null || true
@@ -813,6 +826,27 @@ jobs:
           name: qa-acceptance-ios-evidence
           path: qa-evidence
           if-no-files-found: warn
+
+      # Delete the run-owned Simulator, after a name/UDID ownership check: never a device this run
+      # did not create. The job's ownership receipt (record-ownership) must also bind the UDID to
+      # this run id + attempt.
+      - name: Delete run-owned simulator
+        if: always()
+        run: |
+          [ -n "${UDID:-}" ] && [ -n "${SIM_NAME:-}" ] || { echo "no run-owned simulator recorded"; exit 0; }
+          case "$SIM_NAME" in raft-qa-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}) ;; *) echo "::error::SIM_NAME $SIM_NAME is not this run's"; exit 1;; esac
+          name=$(xcrun simctl list devices -j | python3 -c "import json,sys,os; print(next((d['name'] for ds in json.load(sys.stdin)['devices'].values() for d in ds if d['udid']==os.environ['UDID']), ''))")
+          if [ "$name" != "$SIM_NAME" ]; then
+            echo "::error::simulator $UDID is named '${name}', not the run-owned $SIM_NAME; not deleting"
+            exit 1
+          fi
+          node scripts/qa/ios_qa_bootstrap.mjs verify-ownership --udid "$UDID" --simulator-name "$SIM_NAME" || {
+            echo "::error::ownership receipt does not bind $UDID to this run; not deleting"
+            exit 1
+          }
+          xcrun simctl shutdown "$UDID" 2>/dev/null || true
+          xcrun simctl delete "$UDID"
+          echo "deleted run-owned simulator $SIM_NAME ($UDID)"
 
       - name: Report verdict
         if: always()
