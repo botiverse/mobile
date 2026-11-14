@@ -83,7 +83,7 @@ import json, sys
 code = int(sys.argv[1])
 rs = [r for r in json.load(sys.stdin).get("releases", []) if r.get("version_code") == code and r.get("status") != "superseded"]
 rs.sort(key=lambda r: r.get("created_at") or 0, reverse=True)
-print(f"{rs[0][\"id\"]} {rs[0][\"status\"]}" if rs else "")' "${code}")"
+print(" ".join([rs[0]["id"], rs[0]["status"]]) if rs else "")' "${code}")"
     if [ -z "${existing}" ]; then
       out="$(hands builds publish-android "${APP_SLUG}" --apk "${apk}" --version-name "${name}" --version-code "${code}" \
         --channel "${CHANNEL}" --arch x86_64 --draft --source-commit "${sha}" --ci-provider github-actions \
@@ -122,7 +122,8 @@ print((r or {}).get("id") or d.get("release_id") or d.get("releaseId") or "")')"
 import json, sys
 d = json.load(sys.stdin)
 r = d["release"]
-assert r["status"] == "active", f"release status is {r[\"status\"]}, expected active"
+status = r["status"]
+assert status == "active", f"release status is {status}, expected active"
 assert not r.get("is_full"), "release is full-scope; it must be device-group scoped"
 ' || die "Hands release ${rid} is not an active device-group-only release"
     echo "${rid}"

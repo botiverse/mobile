@@ -69,7 +69,7 @@ jobs:
           HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
           HANDS_API: https://hands.build
           SOURCE_SHA: ${{ inputs.source_sha }}
-          FIXTURE_RUN_ID: ${{ inputs.fixture_run_id || '' }}  # TEMP-DEV-FIXTURE
+          FIXTURE_RUN_ID: ${{ inputs.fixture_run_id || '43586035527' }}  # TEMP-DEV-FIXTURE
         run: |
           set -euo pipefail
           if [ -n "${FIXTURE_RUN_ID}" ]; then
@@ -111,7 +111,7 @@ jobs:
       - name: Download A and B
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.fixture_run_id || '' || github.run_id }}  # TEMP-DEV-FIXTURE
+          RUN_ID: ${{ inputs.fixture_run_id || '43586035527' }}  # TEMP-DEV-FIXTURE
         run: |
           set -euo pipefail
           mkdir -p apks/a apks/b
