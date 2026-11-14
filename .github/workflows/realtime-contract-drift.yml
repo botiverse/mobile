@@ -1,0 +1,69 @@
+name: Realtime contract drift
+
+# compose/realtime-contract/realtime_contract.json is the app's single source for Socket.IO event names
+# and handshake error strings. Its slock-derived sections (handshakeErrors, slockSharedEvents) are
+# written from botiverse/slock by compose/realtime-contract/sync_from_slock.py; this job fails when
+# slock `staging` moved: a new or changed handshake error, a new shared *_EVENT nobody decided on, or an
+# event the app subscribes to that slock no longer sends.
+#
+# Fix a red run: SLOCK_SOURCE_REPO=<slock checkout> python3 compose/realtime-contract/sync_from_slock.py
+# --write, decide every listed event (socketEvents, or unconsumedSlockEvents with a reason), then
+# python3 compose/realtime-contract/generate_realtime_contract.py, and open a PR.
+
+on:
+  schedule:
+    # Daily, 01:20 UTC.
+    - cron: "20 1 * * *"
+  workflow_dispatch:
+    inputs:
+      slock_source_ref:
+        description: "botiverse/slock ref to compare against"
+        type: string
+        default: "staging"
+  pull_request:
+    paths:
+      - "compose/realtime-contract/**"
+      - "compose/core/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeSocketEvents.kt"
+      - "compose/realtime-socket/src/commonMain/kotlin/build/raft/realtime/socket/GeneratedSocketHandshakeErrors.kt"
+      - ".github/workflows/realtime-contract-drift.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: realtime-contract-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: Realtime contract matches slock
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Checkout slock source
+        uses: actions/checkout@v7
+        with:
+          repository: botiverse/slock
+          ref: ${{ inputs.slock_source_ref || 'staging' }}
+          token: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN || secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}
+          path: slock-source
+          sparse-checkout: |
+            packages/shared/src
+            packages/server/src
+
+      - name: Record the slock commit
+        run: git -C slock-source rev-parse HEAD
+
+      - name: Compare realtime_contract.json with slock
+        env:
+          SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
+        run: python3 compose/realtime-contract/sync_from_slock.py --check
+
+      - name: Generated constants match the contract
+        run: |
+          set -euo pipefail
+          python3 compose/realtime-contract/generate_realtime_contract.py
+          git diff --exit-code -- compose/core compose/iosApp compose/realtime-socket

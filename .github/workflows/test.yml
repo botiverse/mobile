@@ -122,6 +122,7 @@ jobs:
           generated=(
             compose/core/src/commonMain/kotlin/build/raft/app/data/realtime/GeneratedRealtimeContract.kt
             compose/iosApp/iosApp/GeneratedRealtimeContract.swift
+            compose/realtime-socket/src/commonMain/kotlin/build/raft/realtime/socket/GeneratedSocketHandshakeErrors.kt
           )
           if ! git diff --exit-code -- "${generated[@]}" || test -n "$(git status --porcelain -- "${generated[@]}")"; then
             echo "::error::Generated realtime contract files are out of date with compose/realtime-contract/realtime_contract.json. Run: python3 compose/realtime-contract/generate_realtime_contract.py and commit the result."
@@ -517,6 +518,23 @@ jobs:
       # - Connected-test APKs (BUILD_CONNECTED_APKS above): built here so the emulator jobs below
       #   install the exact APKs without a second Gradle/Kotlin build. The visual fixture gives the
       #   regression a deterministic empty Thread composer.
+      # :realtime-socket's conformance suite (RaftSocketIoInteropTest) talks to a real socket.io
+      # 4.8.3 server: two instances (non-default heartbeat / maxPayload; connection state recovery with
+      # per-message deflate). Started here, used by :realtime-socket:testAndroidHostTest below.
+      - name: Start the socket.io interop server
+        working-directory: scripts/socketio-interop
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          nohup node server.mjs > "$RUNNER_TEMP/socketio-interop.log" 2>&1 &
+          for _ in $(seq 1 50); do
+            grep -q '^READY ' "$RUNNER_TEMP/socketio-interop.log" && break
+            sleep 0.2
+          done
+          grep '^READY ' "$RUNNER_TEMP/socketio-interop.log" || { cat "$RUNNER_TEMP/socketio-interop.log"; exit 1; }
+          echo "RAFT_SOCKETIO_INTEROP_URL=http://127.0.0.1:3901" >> "$GITHUB_ENV"
+          echo "RAFT_SOCKETIO_INTEROP_RECOVERY_URL=http://127.0.0.1:3902" >> "$GITHUB_ENV"
+
       - name: Compile, test and package Android
         working-directory: compose
         env:
@@ -525,6 +543,7 @@ jobs:
           set -euo pipefail
           tasks=(
             :core:compileAndroidHostTest
+            :realtime-socket:compileAndroidHostTest
             :shared:compileDebugKotlinAndroid
             :shared:compileDebugUnitTestKotlinAndroid
             :androidApp:compileDebugKotlin
@@ -567,6 +586,7 @@ jobs:
           tasks+=(
             :shared:verifySqlDelightMigration
             :core:testAndroidHostTest
+            :realtime-socket:testAndroidHostTest
             :shared:testDebugUnitTest
             :androidApp:testDebugUnitTest
             :ui-cmp:testAndroidHostTest
@@ -732,6 +752,9 @@ jobs:
           path: |
             compose/core/build/reports/tests/testDebugUnitTest/
             compose/core/build/test-results/testDebugUnitTest/
+            compose/realtime-socket/build/reports/tests/
+            compose/realtime-socket/build/test-results/
+            ${{ runner.temp }}/socketio-interop.log
             compose/ui-cmp/build/reports/tests/testDebugUnitTest/
             compose/ui-cmp/build/test-results/testDebugUnitTest/
             compose/shared/build/reports/tests/testDebugUnitTest/
@@ -1204,9 +1227,10 @@ jobs:
             :shared:compileKotlinIosSimulatorArm64
             :designsystem:compileKotlinIosSimulatorArm64
             :ui-cmp:compileKotlinIosSimulatorArm64
+            :realtime-socket:compileKotlinIosSimulatorArm64
           )
           if [ "$IOS_TESTS" = true ]; then
-            tasks+=(:shared:compileTestKotlinIosSimulatorArm64)
+            tasks+=(:shared:compileTestKotlinIosSimulatorArm64 :realtime-socket:iosSimulatorArm64Test)
           fi
           if [ "$IOS_DEVICE_COMPILE" = true ]; then
             tasks+=(:shared:compileKotlinIosArm64)

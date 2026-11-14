@@ -15,6 +15,13 @@ Read the emitter in an external `botiverse/slock` checkout
 (`$SLOCK_SOURCE_REPO/packages/server/src`, `packages/shared/`) and record its
 SHA. Use the exact event name and camelCase fields; no guessed aliases.
 
+## 0b. Contract drift against slock
+
+`compose/realtime-contract/sync_from_slock.py --check` (CI: `realtime-contract-drift.yml`) fails when a
+slock shared `*_EVENT` is neither in `socketEvents` nor in `unconsumedSlockEvents` (with a reason), when a
+subscribed event no longer appears in slock, or when a handshake error string changed. Fix with
+`--write`, decide each listed event, then regenerate (`generate_realtime_contract.py`).
+
 ## 1. Subscribe on both hosts
 
 Each transport subscribes ONLY to its list; an unlisted event is silently

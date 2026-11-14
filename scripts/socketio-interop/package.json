@@ -1,0 +1,12 @@
+{
+  "name": "raft-socketio-interop-server",
+  "private": true,
+  "description": "Real socket.io server for the :realtime-socket conformance test (RaftSocketIoInteropTest).",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "socket.io": "4.8.3"
+  }
+}
