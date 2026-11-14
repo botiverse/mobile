@@ -12,9 +12,13 @@
 //      POST /auth/login, GET /auth/app-login/requests/:id, POST .../approve (the "Confirm" button);
 //   4. the returned raft://login/callback?requestId=…&code=… goes to the app with an explicit
 //      `am start … <package>`, as a browser redirect would; the app exchanges code + its verifier;
-//   5. signed-in state is checked on screen (+ the app's app_login_complete log line), the web
-//      session the script opened is signed out, and the device is put back (capture file removed,
-//      browser role restored, capture browser uninstalled when this run installed it).
+//   5. signed-in state is checked on screen (+ the app's app_login_complete log line);
+//   6. cleanup, each step with its own status in summary.json `cleanup`: the web session the
+//      script opened is signed out (and checked: its refresh token must be refused), the capture
+//      file deleted, the browser role restored / browsers re-enabled, the capture browser
+//      uninstalled when this run installed it, and with --revoke-app-session the app is signed out
+//      through its own Sign out (fallback: `pm clear`). With --strict-cleanup any cleanup step that
+//      did not succeed makes the run exit non-zero (required for Testbed; on in the workflow).
 //
 // It stops instead of working around any server check: two-step verification, a rate limit, or
 // an unexpected response ends the run. Credentials, tokens, the request id, the code and the
@@ -24,6 +28,7 @@
 //   QA_LOGIN_EMAIL=… QA_LOGIN_PASSWORD=… node scripts/qa/release_auto_login.mjs \
 //     --capture-browser-apk build/capture-browser.apk [--apk app-release.apk] \
 //     [--env staging|production] [--package build.raft.app] [--out release-auto-login-evidence]
+//     [--strict-cleanup] [--revoke-app-session] [--keep-capture-browser]
 //   (or --credential-file <testbed qa-account get --out file>)
 import fs from "node:fs";
 import path from "node:path";
@@ -33,6 +38,7 @@ import {
   callbackSchemeFor,
   createRedactor,
   parseCredentialFile,
+  runOutcome,
   validateCallbackUrl,
   validateCapturedLoginUrl,
 } from "./release_auto_login_lib.mjs";
@@ -51,6 +57,8 @@ const STUB_PKG = "build.qa.capturebrowser";
 const ENV_NAME = option("env", "staging");
 const OUT = option("out", "release-auto-login-evidence");
 const KEEP_STUB = flag("keep-capture-browser");
+const STRICT_CLEANUP = flag("strict-cleanup");
+const REVOKE_APP_SESSION = flag("revoke-app-session");
 const preset = ENVIRONMENTS[ENV_NAME];
 const WEB_URL = option("web-url", preset?.webUrl ?? "");
 const API_BASE = (option("api-url", preset?.apiBaseUrl ?? "")).replace(/\/?$/, "/");
@@ -59,7 +67,14 @@ const CAPTURE_FILE = "files/captured_url";
 
 const redact = createRedactor();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const summary = { package: PKG, environment: ENV_NAME, web_host: WEB_URL ? new URL(WEB_URL).host : "", steps: [] };
+const summary = {
+  package: PKG,
+  environment: ENV_NAME,
+  web_host: WEB_URL ? new URL(WEB_URL).host : "",
+  strict_cleanup: STRICT_CLEANUP,
+  revoke_app_session: REVOKE_APP_SESSION,
+  steps: [],
+};
 let stepIndex = 0;
 
 class Stop extends Error {}
@@ -262,33 +277,176 @@ function removeCapture() {
   shell(`run-as ${STUB_PKG} rm -f ${CAPTURE_FILE} files/captured_url.tmp`, { allowFailure: true });
 }
 
-async function cleanup() {
-  const done = {};
+// Each step records its own status (CLEANUP_OK in the lib lists the ones that count as done);
+// a step that throws records "failed" and the next one still runs.
+const cleanupStatus = {
+  capture_file: "not_applicable",
+  browser: "not_changed",
+  capture_browser: "not_installed_by_run",
+  web_session: "not_opened",
+  app_session: REVOKE_APP_SESSION ? "not_signed_in" : "not_requested",
+};
+const cleanupDetail = {};
+async function cleanupStep(key, body) {
   try {
+    cleanupStatus[key] = await body();
+  } catch (error) {
+    cleanupStatus[key] = "failed";
+    cleanupDetail[`${key}_error`] = redact(error.message).slice(0, 300);
+  }
+  log(`cleanup ${key}: ${cleanupStatus[key]}`);
+}
+const stubInstalled = () => Boolean(shell(`pm path ${STUB_PKG}`, { allowFailure: true }).trim());
+function captureFileState() {
+  const out = shell(`run-as ${STUB_PKG} sh -c 'if [ -e ${CAPTURE_FILE} ] || [ -e files/captured_url.tmp ]; then echo present; else echo absent; fi'`, { allowFailure: true }).trim();
+  return out.endsWith("absent") ? "absent" : out.endsWith("present") ? "present" : "unknown";
+}
+
+async function cleanupDevice() {
+  await cleanupStep("capture_file", async () => {
+    if (!stubInstalled()) return "not_applicable";
     removeCapture();
-    done.capture_file_removed = !readCapture();
-  } catch {}
-  try {
+    const state = captureFileState();
+    if (state !== "absent") throw new Error(`capture file is ${state} after rm`);
+    return "deleted";
+  });
+  await cleanupStep("browser", async () => {
+    if (!restore.browserHolders && !restore.disabledBrowsers.length) return "not_changed";
     for (const other of restore.disabledBrowsers) shell(`pm enable --user 0 ${other}`, { allowFailure: true });
-    if (restore.disabledBrowsers.length) done.browsers_reenabled = restore.disabledBrowsers;
-  } catch {}
-  try {
     if (restore.browserHolders) {
       shell(`cmd role remove-role-holder --user 0 android.app.role.BROWSER ${STUB_PKG}`, { allowFailure: true });
       for (const holder of restore.browserHolders) {
         if (holder !== STUB_PKG) shell(`cmd role add-role-holder --user 0 android.app.role.BROWSER ${holder}`, { allowFailure: true });
       }
-      done.browser_role_restored_to = restore.browserHolders.filter((h) => h !== STUB_PKG);
     }
-  } catch {}
-  try {
-    if (restore.stubInstalledByRun && !KEEP_STUB) {
-      shell(`pm uninstall ${STUB_PKG}`, { allowFailure: true });
-      done.capture_browser_uninstalled = !shell(`pm path ${STUB_PKG}`, { allowFailure: true }).trim();
-    }
-  } catch {}
+    await sleep(500);
+    const expected = (restore.browserHolders ?? []).filter((h) => h !== STUB_PKG);
+    const holders = browserRoleHolders();
+    const stillDisabled = shell("pm list packages -d --user 0", { allowFailure: true })
+      .split("\n").map((l) => l.replace(/^package:/, "").trim()).filter((p) => restore.disabledBrowsers.includes(p));
+    cleanupDetail.browser_role_holders = holders;
+    cleanupDetail.browsers_reenabled = restore.disabledBrowsers.filter((p) => !stillDisabled.includes(p));
+    const problems = [
+      ...expected.filter((h) => !holders.includes(h)).map((h) => `${h} does not hold the browser role`),
+      ...(holders.includes(STUB_PKG) ? [`${STUB_PKG} still holds the browser role`] : []),
+      ...stillDisabled.map((p) => `${p} is still disabled`),
+    ];
+    if (problems.length) throw new Error(problems.join("; "));
+    return "restored";
+  });
+  await cleanupStep("capture_browser", async () => {
+    if (!restore.stubInstalledByRun) return "not_installed_by_run";
+    if (KEEP_STUB) return "kept";
+    shell(`pm uninstall ${STUB_PKG}`, { allowFailure: true });
+    if (stubInstalled()) throw new Error(`${STUB_PKG} is still installed`);
+    return "uninstalled";
+  });
   shell("rm -f /sdcard/release-auto-login.xml", { allowFailure: true });
-  summary.cleanup = done;
+}
+
+// The script's own web session: what the web's Sign out sends, then proof: the server must refuse
+// that refresh token (401). /auth/logout answers 200 even for an unknown token, so 200 alone is not.
+async function signOutWebSession(webSession) {
+  await cleanupStep("web_session", async () => {
+    if (!webSession) return "not_opened";
+    if (!webSession.refreshToken) throw new Error("the login returned no refresh token to sign out");
+    const out = await web("POST", "auth/logout", { token: webSession.accessToken, body: { refreshToken: webSession.refreshToken } });
+    if (out.status !== 200) throw new Error(`POST /auth/logout answered HTTP ${out.status}`);
+    const check = await web("POST", "auth/refresh", { body: { refreshToken: webSession.refreshToken } });
+    cleanupDetail.web_session_refresh_check = `${check.status}${check.json?.code ? ` ${check.json.code}` : ""}`;
+    if (check.status === 200) {
+      // Still live (and now rotated): sign the rotated one out too, and report the failure.
+      if (check.json?.refreshToken) {
+        redact.add(check.json.refreshToken);
+        redact.add(check.json.accessToken);
+        await web("POST", "auth/logout", { body: { refreshToken: check.json.refreshToken } }).catch(() => {});
+      }
+      throw new Error("the web session's refresh token still worked after sign out");
+    }
+    if (check.status !== 401) throw new Error(`refresh check answered HTTP ${check.status}`);
+    return "signed_out";
+  });
+}
+
+// The app's own session. The server has no session list a client can read or revoke by id (slock
+// staging: only POST /auth/logout with the session's refresh token, which stays inside the
+// non-debuggable app), so the app's own Sign out is what revokes it: the app sends POST
+// /auth/logout itself. Verified by the app being back on its sign-in page; the app's own report of
+// that call is recorded when it reaches logcat.
+const onSignInPage = (list) =>
+  list.some((n) => n.pkg === PKG && (n.text === "Sign in to Raft" || n.text.startsWith("Sign in through ")));
+async function signOutAppViaUi() {
+  const deadline = Date.now() + 120_000;
+  const route = [];
+  let swipes = 0;
+  let lastLabels = "";
+  const tap = (node, what) => {
+    tapNode(node);
+    if (route[route.length - 1] !== what) route.push(what);
+  };
+  launchApp();
+  await sleep(1500);
+  while (Date.now() < deadline) {
+    const list = nodes();
+    if (await dismissSystemDialog(list)) continue;
+    if (onSignInPage(list)) return route;
+    const mine = list.filter((n) => n.pkg === PKG);
+    const confirmMessage = find(mine, (n) => n.text.startsWith("Sign out on this device?"));
+    const chooserSignOut = find(mine, (n) => n.text === "Sign Out" && n.enabled);
+    const signOut = mine.filter((n) => n.bounds && n.enabled && n.text === "Sign out");
+    const settingsTitle = find(mine, (n) => n.text === "Settings");
+    const account = find(mine, (n) => n.text === "Account");
+    const more = find(mine, (n) => n.text === "More" || n.desc === "More");
+    if (confirmMessage) {
+      // Settings > Account > Sign out asks first; its button sits under the message.
+      const button = signOut.filter((n) => n.bounds[1] >= confirmMessage.bounds[3]).sort((a, b) => b.bounds[1] - a.bounds[1])[0];
+      if (!button) stop("the sign-out confirmation shows no Sign out button");
+      tap(button, "confirm:Sign out");
+    } else if (chooserSignOut) {
+      // "Choose server … Signed in as …" (an account on several servers): Sign Out, no confirmation.
+      tap(chooserSignOut, "choose_server:Sign Out");
+    } else if (signOut.length) {
+      tap(signOut.sort((a, b) => b.bounds[1] - a.bounds[1])[0], "account:Sign out");
+    } else if (account && settingsTitle) {
+      tap(account, "settings:Account");
+    } else if (find(mine, (n) => n.text === "Delete account")) {
+      // On Account, Sign out can be below the fold.
+      if (swipes++ > 6) stop("Sign out is not on the Account page");
+      shell("input swipe 540 1700 540 600 400", { allowFailure: true });
+      if (route[route.length - 1] !== "account:scroll") route.push("account:scroll");
+    } else if (settingsTitle) {
+      tap(settingsTitle, "Settings");
+    } else if (more) {
+      tap(more, "More");
+    } else if (!mine.length) {
+      launchApp();
+    }
+    lastLabels = mine.map(label).filter(Boolean).slice(0, 25).join(" | ");
+    await sleep(1800);
+  }
+  stop(`not back on the sign-in page after 120s (route: ${route.join(" > ") || "none"}); on screen: ${lastLabels || "(nothing labelled)"}`);
+}
+
+async function revokeAppSession(appMayBeSignedIn) {
+  await cleanupStep("app_session", async () => {
+    if (!REVOKE_APP_SESSION) return "not_requested";
+    if (!appMayBeSignedIn) return "not_signed_in";
+    shell("logcat -c", { allowFailure: true });
+    try {
+      cleanupDetail.app_sign_out_route = (await signOutAppViaUi()).join(" > ");
+      // The app's own report of its POST /auth/logout (AuthDataSource.logout), when it is logged.
+      const logged = /auth_logout_cleared serverRevocation=(\S+)/.exec(shell("logcat -d -s SlockKuikly:* 2>/dev/null | tail -300", { allowFailure: true }))?.[1];
+      cleanupDetail.app_reported_server_logout = logged ?? "not_logged";
+      if (logged && logged !== "success") throw new Error(`the app signed out locally but reported its server logout as ${logged}`);
+      return "signed_out_via_app";
+    } catch (error) {
+      cleanupDetail.app_sign_out_error = redact(error.message).slice(0, 300);
+      log(`app sign out through its UI did not complete (${cleanupDetail.app_sign_out_error}); clearing app data instead`);
+      const out = shell(`pm clear ${PKG}`, { allowFailure: true }).trim();
+      if (!/Success/.test(out)) throw new Error(`pm clear ${PKG} answered: ${out.slice(0, 120) || "nothing"}`);
+      return "local_cleared_server_unconfirmed";
+    }
+  });
 }
 
 // ---------- the flow ----------
@@ -297,6 +455,7 @@ async function main() {
   if (!STUB_APK && !shell(`pm path ${STUB_PKG}`, { allowFailure: true }).trim()) stop("--capture-browser-apk is required (build it with scripts/qa/capture-browser/build.sh)");
   const account = credentials();
   let webSession = null;
+  let callbackSent = false;
   let logcat = null;
   const logcatFile = path.join(OUT, ".logcat-raw.txt");
   try {
@@ -438,6 +597,7 @@ async function main() {
     await step("deliver-callback-to-app", async () => {
       // Explicit package: only this app can receive it. Sent on adb's stdin so the code is not on
       // the host's command line, and am's output (which echoes the intent) is discarded.
+      callbackSent = true;
       adb(["shell"], { input: `am start -W -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d '${callback}' ${PKG} >/dev/null 2>&1; exit\n`, allowFailure: true });
     }, { screenshot: false });
 
@@ -469,35 +629,38 @@ async function main() {
       stop(`still not signed in after 120s; on screen: ${lastLabels || "(nothing labelled)"}`);
     });
   } finally {
-    if (webSession?.refreshToken) {
-      // Sign the script's own web session out (what the web "Sign out" sends); the app's session is separate.
-      try {
-        const out = await web("POST", "auth/logout", { token: webSession.accessToken, body: { refreshToken: webSession.refreshToken } });
-        summary.web_session_signed_out = out.status === 200;
-      } catch {
-        summary.web_session_signed_out = false;
-      }
-    }
+    // Every cleanup step runs whatever happened above; each records its own status.
+    await signOutWebSession(webSession);
     try { logcat?.kill("SIGTERM"); } catch {}
     if (fs.existsSync(logcatFile)) {
       fs.writeFileSync(path.join(OUT, "logcat-app-login.txt"), redact(fs.readFileSync(logcatFile, "utf8")));
       fs.rmSync(logcatFile);
     }
-    await cleanup();
+    await revokeAppSession(callbackSent);
+    await cleanupDevice();
+    summary.cleanup = { ...cleanupStatus, ...cleanupDetail };
   }
 }
 
+let signedIn = false;
 main()
   .then(() => {
-    summary.result = "signed_in";
+    signedIn = true;
     log("signed in");
   })
   .catch((error) => {
-    summary.result = "failed";
     summary.error = redact(error instanceof Stop ? error.message : error.stack ?? error.message);
     console.error(`[release-auto-login] FAILED: ${summary.error}`);
-    process.exitCode = 1;
   })
   .finally(() => {
+    const outcome = runOutcome({ signedIn, cleanup: cleanupStatus, strict: STRICT_CLEANUP });
+    summary.result = outcome.result;
+    summary.cleanup_ok = outcome.cleanupOk;
+    summary.cleanup_failures = outcome.cleanupFailures;
+    if (!outcome.cleanupOk) {
+      const list = outcome.cleanupFailures.map((f) => `${f.step}=${f.status}`).join(", ");
+      console.error(`[release-auto-login] cleanup incomplete: ${list}${STRICT_CLEANUP ? " (strict: failing the run)" : ""}`);
+    }
+    process.exitCode = outcome.exitCode;
     fs.writeFileSync(path.join(OUT, "summary.json"), `${redact(JSON.stringify(summary, null, 2))}\n`);
   });

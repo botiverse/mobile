@@ -7,8 +7,27 @@ in release builds, and nothing here adds one.
 
 Workflow: **Android Release Auto Login** (`.github/workflows/release-auto-login.yml`), dispatch with
 `environment` = `staging` (default) or `production`, and optionally `apk_run_id` + `apk_artifact`
-to reuse a release APK instead of building one. Other emulator workflows can copy its two steps
-"Build the QA capture browser" and "Sign in on the emulator".
+to reuse a release APK instead of building one. `strict_cleanup` and `revoke_app_session` are on by
+default (see [Cleanup](#cleanup)). Other emulator workflows can copy its two steps "Build the QA
+capture browser" and "Sign in on the emulator".
+
+## What a pass means
+
+`result: "signed_in"` (exit 0) means: on this emulator, a release build of the app started its own
+app-login request, the login was approved for the QA account through the same API calls the web
+login + confirm page makes, the callback reached this app only, the app exchanged the code with its
+own PKCE verifier and showed a signed-in screen — **authorize → callback → session verified** — and,
+in strict mode, every cleanup step below succeeded.
+
+It does **not** mean:
+
+- **the browser UI works**: no web page is rendered; the login form, the confirm page, Chrome /
+  Custom Tab behaviour and the browser → app hand-off prompt are not exercised;
+- **anything about production accounts**: it uses a dedicated QA account (staging by default);
+  never point it at a real person's account;
+- **it is safe on a shared or personal device**: it takes over the default browser, reinstalls /
+  clears the app and (with `--revoke-app-session`) signs the app out. Run it only on a throwaway
+  emulator.
 
 ## What happens
 
@@ -39,10 +58,7 @@ to reuse a release APK instead of building one. Other emulator workflows can cop
 6. **Verify.** Signed in = the app's `SlockAppLogin` line `app_login_complete result=app_shell` and/or
    Home ("Drafts") or "Choose server … Signed in as …" on screen, with no "Sign in to Raft". Any other `app_login_complete` result fails
    the run.
-7. **Clean up (always).** The script signs its own web session out (`POST /api/auth/logout`, what the
-   web's Sign out sends; the app's session is separate), deletes the capture file, gives the browser
-   role back to the previous holder and uninstalls the capture browser if this run installed it.
-   Signing the app out is not part of it.
+7. **Clean up (always)**, each step with its own status: see [Cleanup](#cleanup).
 
 ## Guarantees
 
@@ -51,7 +67,53 @@ to reuse a release APK instead of building one. Other emulator workflows can cop
 | No server check is bypassed | Only the endpoints the web page calls, with the same bodies and a bearer token; there is no CSRF token or captcha on these routes (the web client uses bearer tokens, not cookies). Two-step verification (`secondFactorRequired`, or `second_factor_step_up_required` on approve) and HTTP 429 from the auth rate limiter **stop the run**; nothing is retried in a loop. |
 | PKCE and state stay bound to this app session | The script never builds an authorize URL: it only reads the one the app opened. The verifier never leaves the app. The captured URL must be `https://<expected web host>/login/app` with exactly one `request`; the approval's redirect must be `<app scheme>://login/callback` with exactly `requestId` + `code` and the **same** `requestId` (the flow's state), else the run stops before anything reaches the app. |
 | Code / callback only to this app, never logged | Explicit-package `am start`, sent on adb's stdin (not the host command line) with its output discarded. Email, password, tokens, request id, code and callback URL are masked in every log line, the summary and the logcat excerpt; no screenshot is taken while the code exists outside the app. |
-| Cleanup on exit | `finally`: web session signed out, capture file removed, browser role restored / disabled browsers re-enabled, capture browser uninstalled (unless `--keep-capture-browser`). Recorded under `cleanup` in `summary.json`. |
+| Cleanup on exit | `finally`, every step runs and records its own status under `cleanup` in `summary.json`; `--strict-cleanup` fails the run on any cleanup failure. See [Cleanup](#cleanup). |
+
+## Cleanup
+
+Every step runs whatever happened before it (a failing step does not skip the next) and records
+one status in `summary.json` → `cleanup`. `cleanup_ok` is true only when every step has an OK status;
+`cleanup_failures` lists the others.
+
+| Step (`cleanup.<key>`) | OK statuses | Failure statuses | What is checked |
+|---|---|---|---|
+| `web_session`: the web session the script opened to approve | `signed_out`, `not_opened` | `failed` | `POST /api/auth/logout` with its refresh token, then `POST /api/auth/refresh` with the same token must answer 401 (`web_session_refresh_check`, e.g. `401 session_revoked`). Logout alone answers 200 even for an unknown token, so it is not proof. |
+| `app_session`: the app's own session (`--revoke-app-session`) | `signed_out_via_app`, `not_requested`, `not_signed_in` | `local_cleared_server_unconfirmed`, `failed` | The app's own Sign out (Choose server → **Sign Out**, or More → Settings → Account → **Sign out** → confirm **Sign out**), then the app must be back on "Sign in to Raft" / "Sign in through …". The app sends `POST /api/auth/logout` with its refresh token itself; `app_reported_server_logout` records the app's own report of that call when it reaches logcat (`success`, or `not_logged`). If the UI route fails, `pm clear build.raft.app` wipes the app's tokens: `local_cleared_server_unconfirmed` (the server session lives on until it expires). `app_sign_out_route` / `app_sign_out_error` say what happened. |
+| `capture_file`: the captured login URL | `deleted`, `not_applicable` | `failed` | Removed, then checked absent with `run-as`. |
+| `browser`: the default browser | `restored`, `not_changed` | `failed` | Browser role back with the previous holder(s) and not with the stub; every browser disabled for the run is enabled again (`browser_role_holders`, `browsers_reenabled`). |
+| `capture_browser`: the stub package | `uninstalled`, `not_installed_by_run`, `kept` (`--keep-capture-browser`) | `failed` | `pm path` finds nothing after `pm uninstall`. |
+
+**Strict mode (`--strict-cleanup`) is required for Testbed** and on in the workflow
+(`strict_cleanup: true`): a signed-in run with any cleanup failure ends with `result: "cleanup_failed"`
+and exit 1. Without it the run still records the statuses but exits 0 on a sign-in pass.
+
+**Server-side revocation is not independently verified for the app's session.** The server (slock
+staging) has no API to list a user's sessions or revoke one by id: only `POST /auth/logout` with the
+session's own refresh token, which stays inside the non-debuggable release app. So the strongest
+statuses are `signed_out_via_app` (the app ran its own sign-out, which revokes on the server, and is
+back on its sign-in page) and, for the script's own web session, `signed_out` (revocation proven by
+the refused refresh). There is no `server_revoked` status for the app session until such an API
+exists.
+
+Example (`cleanup` from a strict staging run, credentials masked):
+
+```json
+"cleanup": {
+  "capture_file": "deleted",
+  "browser": "restored",
+  "capture_browser": "uninstalled",
+  "web_session": "signed_out",
+  "app_session": "signed_out_via_app",
+  "web_session_refresh_check": "401 session_revoked",
+  "app_sign_out_route": "choose_server:Sign Out",
+  "app_reported_server_logout": "not_logged",
+  "browser_role_holders": ["com.android.chrome"],
+  "browsers_reenabled": []
+},
+"result": "signed_in",
+"cleanup_ok": true,
+"cleanup_failures": []
+```
 
 ## Running it
 
@@ -59,7 +121,8 @@ to reuse a release APK instead of building one. Other emulator workflows can cop
 # inside an emulator job (adb on PATH), after building the stub:
 bash scripts/qa/capture-browser/build.sh "$RUNNER_TEMP/capture-browser.apk"
 QA_LOGIN_EMAIL=… QA_LOGIN_PASSWORD=… node scripts/qa/release_auto_login.mjs \
-  --apk app-release.apk --capture-browser-apk "$RUNNER_TEMP/capture-browser.apk" --env staging
+  --apk app-release.apk --capture-browser-apk "$RUNNER_TEMP/capture-browser.apk" --env staging \
+  --strict-cleanup --revoke-app-session
 # locally with a Testbed QA account instead of env vars:
 testbed qa-account get alpha-qa --env staging --out /tmp/qa.cred   # 0600; line 1 email, line 2 password
 node scripts/qa/release_auto_login.mjs --credential-file /tmp/qa.cred --capture-browser-apk … --env staging
@@ -73,14 +136,14 @@ Evidence (`release-auto-login-evidence`): `summary.json`, a screenshot + UI dump
 
 ## Caveats
 
-- It covers the real **authorize → callback** path (app-login start, approval, redirect to the app,
-  PKCE exchange, session), **not the browser UX**: no web page is rendered, so the login form, the
-  confirm page's look, Chrome Custom Tab/browser behaviour and the browser → app hand-off prompt are
-  not tested.
-- The capture browser takes the browser role for the run; on a shared device another test that opens
-  links in that window sees them swallowed.
+- See [What a pass means](#what-a-pass-means): authorize → callback only, not the browser UX; QA
+  accounts only; throwaway emulators only (the capture browser takes the browser role for the run,
+  so on a shared device another test's links would be swallowed).
+- Without `--revoke-app-session` the app stays signed in when the script ends (on purpose, for
+  workflows that go on to test the signed-in app); its server session then lives until it expires.
 - UI steps match English labels ("Sign in to Raft", "Sign in to a self-hosted server", "Save",
-  "Drafts", "Signed in as"); the emulator image is English.
+  "Drafts", "Signed in as", "Sign Out", "More", "Settings", "Account", "Sign out"); the emulator
+  image is English.
 - An account on several servers stops at "Choose server" (signed in, no server picked); the script does
   not pick one.
 - Staging is reached through the self-hosted sheet (environment `custom` with the staging addresses),
