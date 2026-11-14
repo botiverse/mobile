@@ -103,10 +103,19 @@ final class RaftIosRealtimeHost: NSObject {
         }
     }
 
+    /// Info.plist `RaftRealtimeKmpClientDefaultOn` (`$(RAFT_REALTIME_KMP_CLIENT_DEFAULT_ON)`); off when absent.
+    static func realtimeKmpClientBuildDefaultOn(bundle: Bundle = .main) -> Bool {
+        guard let raw = bundle.object(forInfoDictionaryKey: "RaftRealtimeKmpClientDefaultOn") as? String else { return false }
+        return ["yes", "true", "1"].contains(raw.trimmingCharacters(in: .whitespaces).lowercased())
+    }
+
     private override init() {
         super.init()
         // This host has the common-client adapter: Settings > Developer offers its switch.
         RaftRealtimeKmpClientFlagKt.raftRealtimeKmpClientMarkHostSupported()
+        // Build default (RAFT_REALTIME_KMP_CLIENT_DEFAULT_ON: YES in Debug, the QA / simulator builds; NO in
+        // Release): QA builds use the common client until the server explicitly turns it off.
+        RaftRealtimeKmpClientFlagKt.raftRealtimeKmpClientSetBuildDefault(on: Self.realtimeKmpClientBuildDefaultOn())
         installObserversIfNeeded()
         // The host may be created after the first didBecomeActive, so seed visibility from the current
         // application state unless a lifecycle event already set it.

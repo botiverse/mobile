@@ -50,6 +50,10 @@ class RaftApplication : Application() {
         RaftAndroidStoreReview.install(this)
         // Alpha builds default the Navigation 3 page stack on; set before any window reads it.
         build.raft.app.nav.RaftNav3StackFlag.buildDefaultOn = BuildConfig.NAV3_STACK_DEFAULT_ON
+        // realtime_kmp_client_v1: this host runs the common Socket.IO client (createAndroidRealtimeSocketTransport);
+        // debug / alpha builds default it on. Set before any realtime socket is created.
+        build.raft.app.data.realtime.RaftRealtimeKmpClientFlag.buildDefaultOn = BuildConfig.REALTIME_KMP_CLIENT_DEFAULT_ON
+        build.raft.app.data.realtime.RaftRealtimeKmpClientFlag.hostSupported = true
         // All notification channels up front, independent of permission (see RaftNotificationChannels).
         build.raft.app.shared.RaftNotificationChannels.ensureAll(this)
         // Download centre notifications attach when the centre is first used, not at startup.

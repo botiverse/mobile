@@ -15,8 +15,6 @@ import build.raft.realtime.socket.RaftSocketNamespaceOptions
 import build.raft.realtime.socket.RaftWebSocketConnector
 import build.raft.realtime.socket.createRaftRealtimeHttpClient
 import build.raft.realtime.socket.raftHandshakeAuth
-import kotlinx.atomicfu.locks.reentrantLock
-import kotlinx.atomicfu.locks.withLock
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,13 +35,15 @@ import kotlinx.serialization.json.longOrNull
  * common connection later) runs over `:realtime-socket` exactly as over socket.io-client-java.
  *
  * It reproduces the Java transport's contract: callbacks only for the current connection context, in
- * socket order, linearized with the client's own calls; `reconnect` (with `reconnect_attempt` before
+ * socket order, checked under the client's lock and delivered outside it; `reconnect` (with `reconnect_attempt` before
  * each retry) and then `connect` when a dropped socket comes back; `connect_error` carrying the server's
  * message; `join:channel` / `leave:channel` with the bare channel id; payloads as plain Kotlin maps,
- * lists and primitives (what the Java transport's consumers read). Not used by a host yet (phase 3).
+ * lists and primitives (what the Java transport's consumers read). Android runs it behind
+ * `realtime_kmp_client_v1` ([RealtimeSocketTransportSelector]).
  *
  * The primary constructor takes the connector and dispatchers (tests script a server through it); hosts
- * use the secondary one.
+ * use the secondary one. [linearizer] is the lock every call and callback runs under; a host that switches
+ * between this and another transport passes the one they share (see [RealtimeSocketTransportSelector]).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RaftKmpRealtimeSocketTransport(
@@ -53,27 +53,34 @@ class RaftKmpRealtimeSocketTransport(
     private val parentScope: CoroutineScope,
     private val dispatcherFactory: () -> CoroutineDispatcher,
     private val logger: (String) -> Unit,
+    private val linearizer: RealtimeTransportLinearizer = ReentrantRealtimeTransportLinearizer(),
 ) : RealtimeSocketTransport {
-    constructor(socketUrl: String, clientKind: String = "mobile", logger: (String) -> Unit = {}) : this(
+    constructor(
+        socketUrl: String,
+        clientKind: String = "mobile",
+        logger: (String) -> Unit = {},
+        linearizer: RealtimeTransportLinearizer = ReentrantRealtimeTransportLinearizer(),
+    ) : this(
         socketUrl = socketUrl,
         clientKind = clientKind,
         connector = KtorRaftWebSocketConnector(createRaftRealtimeHttpClient()),
         parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
         dispatcherFactory = { Dispatchers.Default.limitedParallelism(1) },
         logger = logger,
+        linearizer = linearizer,
     )
 
-    private val lock = reentrantLock()
     private val listeners = linkedMapOf<String, MutableList<(RealtimeSocketConnectionContext, Any?) -> Unit>>()
     private var current: Connection? = null
 
-    override fun <T> linearize(block: () -> T): T = lock.withLock(block)
+    override fun <T> linearize(block: () -> T): T = linearizer.linearize(block)
 
     override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
         linearize {
             current?.close()
             val token = auth["token"].orEmpty()
             val serverId = auth["serverId"]
+            logger("transport_connect_start serverId=${serverId.orEmpty()} hasToken=${token.isNotBlank()}")
             val client =
                 RaftSocketIoClient(
                     config = RaftSocketIoConfig(baseUrl = socketUrl),
@@ -128,9 +135,7 @@ class RaftKmpRealtimeSocketTransport(
             // No payload: the server reads the ack as the last argument (`emit("sync:horizon", ack)`).
             socket.emitWithAck(eventName) { result ->
                 if (result !is RaftAckResult.Acked) return@emitWithAck // May never run, as with the Java transport.
-                linearize {
-                    if (current === connection) onAck(connection.context, result.args.firstOrNull()?.toTransportPlain())
-                }
+                if (linearize { current === connection }) onAck(connection.context, result.args.firstOrNull()?.toTransportPlain())
             }
             true
         }
@@ -144,13 +149,25 @@ class RaftKmpRealtimeSocketTransport(
             RealtimeSubscription { linearize { listeners[eventName]?.remove(listener) } }
         }
 
-    private fun fire(connection: Connection, eventName: String, payload: Any?): Boolean =
-        linearize {
-            if (current !== connection) return@linearize true
-            val handlers = listeners[eventName]?.toList().orEmpty()
-            handlers.forEach { it(connection.context, payload) }
-            handlers.isNotEmpty()
+    /**
+     * Delivers to [connection]'s listeners while it is current. As in the Java transport's generation fence,
+     * the lock only owns the current-connection check: listeners run outside it (they re-enter the client,
+     * which takes [linearize] itself), so a slow listener never holds a lifecycle call (setReconnectAllowed
+     * on the main thread) behind a socket callback. Callbacks of one connection still arrive in socket order
+     * (one serial dispatcher per connection).
+     */
+    private fun fire(connection: Connection, eventName: String, payload: Any?): Boolean {
+        val handlers =
+            linearize {
+                if (current !== connection) return true
+                listeners[eventName]?.toList().orEmpty()
+            }
+        handlers.forEach { handler ->
+            // Re-checked per handler: a replacement during delivery wins, as in the Java transport.
+            if (linearize { current === connection }) handler(connection.context, payload)
         }
+        return handlers.isNotEmpty()
+    }
 
     private inner class Connection(
         val context: RealtimeSocketConnectionContext,
@@ -165,6 +182,7 @@ class RaftKmpRealtimeSocketTransport(
         }
 
         override fun onConnected(connection: RaftSocketConnection) {
+            logger("transport_connected serverId=${context.serverId.value} reconnect=${connection.reconnect}")
             if (connection.reconnect) fire(this, RealtimeSocketEvents.Reconnect, null)
             fire(this, RealtimeSocketEvents.Connect, null)
         }
@@ -177,14 +195,17 @@ class RaftKmpRealtimeSocketTransport(
         }
 
         override fun onConnectError(error: RaftSocketHandshakeError, willRetry: Boolean) {
+            logger("transport_connect_error serverId=${context.serverId.value} kind=${error.kind.name} willRetry=$willRetry")
             fire(this, RealtimeSocketEvents.ConnectError, error.message)
         }
 
         override fun onDisconnected(connection: RaftSocketConnection, reason: RaftSocketDisconnectReason, detail: String) {
+            logger("transport_disconnected serverId=${context.serverId.value} reason=${reason.token}")
             fire(this, RealtimeSocketEvents.Disconnect, reason.token)
         }
 
         override fun onReconnectScheduled(attempt: Int, delayMillis: Long, reason: RaftSocketDisconnectReason) {
+            logger("transport_reconnect_scheduled serverId=${context.serverId.value} attempt=$attempt delayMs=$delayMillis reason=${reason.token}")
             fire(this, RealtimeSocketEvents.ReconnectAttempt, attempt)
         }
     }

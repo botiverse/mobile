@@ -168,13 +168,13 @@ internal class RealtimeSocketGeneration(
 internal class RealtimeSocketGenerationFence(
     private val generationIdForOracle: (() -> Long)? = null,
     private val beforeCurrentDelivery: (() -> Unit)? = null,
-) {
+) : build.raft.app.data.realtime.RealtimeTransportLinearizer {
     private val linearizationLock = Any()
     private var nextGenerationId = 0L
     @Volatile
     private var current: RealtimeSocketGeneration? = null
 
-    fun <T> linearize(block: () -> T): T = synchronized(linearizationLock, block)
+    override fun <T> linearize(block: () -> T): T = synchronized(linearizationLock, block)
 
     private fun allocate(context: RealtimeSocketConnectionContext): RealtimeSocketGeneration {
         val next =

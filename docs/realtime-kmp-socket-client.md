@@ -75,6 +75,51 @@ These override anything below that disagrees.
 - Not yet: the shared adapter and the iOS host behind `realtime_kmp_client_v1` (phase 1 PR), moving
   `SocketIoRealtimeClient` to common.
 
+### Flag resolution, build default, and the Android switch (artin 2026-11-14: replace directly, smoke QA builds)
+
+`realtime_kmp_client_v1` is read by `RaftRealtimeKmpClientFlag.decision()` each time a host creates a socket,
+never mid-connection. First match wins:
+
+1. **Host support**: only hosts with an adapter (`hostSupported`: Android `RaftApplication`, iOS
+   `RaftIosRealtimeHost`) can be on. Desktop reads off.
+2. **Developer switch** (Settings › Developer › "New realtime connection"): on or off wins.
+3. **Explicit server decision**: the last evaluation of the key on any server, if it was a decision: any
+   `true`, or `false` from a rule (`server_rule`, `client_rule`, `platform_rule`) or the `kill_switch`.
+   A "no rule" evaluation (`default`, `missing_flag`, `missing_server_unit` evaluating `false`) clears the
+   stored value instead, so it never overrides the build default.
+4. **Build default** (`buildDefaultOn`), set by the host at launch from its build configuration:
+
+| Platform | Build setting | QA builds (on) | Release builds (off) |
+|---|---|---|---|
+| Android | `BuildConfig.REALTIME_KMP_CLIENT_DEFAULT_ON` (`compose/androidApp/build.gradle.kts`) | `debug`, `alpha` (and `connectedTest`, which inherits debug) | `release`, `play` |
+| iOS | `RAFT_REALTIME_KMP_CLIENT_DEFAULT_ON` build setting, read from Info.plist `RaftRealtimeKmpClientDefaultOn` | `Debug` (simulator / QA builds, `ios-simulator-app.yml`) | `Release` (TestFlight / App Store, `ios-release.yml`) |
+
+So a QA build runs the common client until the server explicitly turns it off (a rule or the kill switch for
+the key); a release build stays on the platform library until the server turns it on. Rollback in either
+case: an explicit `false` on the server (or the developer switch) and the next connection uses the platform
+library.
+
+**Android** (`createAndroidRealtimeSocketTransport`): `SocketIoRealtimeClient` keeps all of its logic
+(cursor, sync horizon, resume, rejoin, presence, heartbeat watchdog) and talks to a
+`RealtimeSocketTransportSelector`, which picks `RaftKmpRealtimeSocketTransport` (common client, OkHttp engine)
+or `SocketIoSocketTransport` (socket.io-client-java) at every `connect` and disconnects the other one when the
+choice changes. Both run under the generation fence's lock (`RealtimeTransportLinearizer`); callbacks are
+checked against the current connection under that lock and delivered outside it, as before. `clientKind`
+stays `mobile`; the common client adds `clientImpl: "kmp"` to the handshake.
+
+Diagnostics (always kept): `realtime_kmp_transport selected=kmp|legacy source=local|server|build_default
+serverId=… switched=…` once per connection, and `realtime_kmp transport_connect_start|transport_connected|
+transport_disconnected|transport_reconnect_scheduled|transport_connect_error …` from the common client. Its
+other lines (`realtime_kmp …`, e.g. drops) need verbose diagnostics.
+
+Tests for both implementations: `SocketIoRealtimeClientTransportParityTest` (androidApp unit tests) runs the
+client through the production wiring with the flag off and on against a real socket.io 4.8.3 server with
+Raft's realtime behaviour (`scripts/socketio-interop/server.mjs` PORT_C): handshake auth, `rooms:joined`,
+the `sync:horizon` ack, `join:channel` / `channel:joined`, a server-side transport drop, reconnect + rejoin +
+`sync:resume {lastSeq, sinceHorizon}`, and `horizonReset` catch-up. The fake-transport suites
+(`SocketIoRealtimeClientReconnectResumeTest`, `…SyncHorizonTest`) and the scripted-frame port
+(`SocketIoRealtimeClientOverKmpTransportTest`) stay.
+
 ## 1. Inventory of current implementations
 
 | Aspect | Android (`androidApp/.../core/data/realtime`, `shared/Android*Realtime*`) | Desktop (`desktopApp/.../realtime`, `RaftDesktopRealtimeHost`) | iOS (`RaftIosRealtimeHost.swift`, `RaftIosRealtimeLifecyclePolicy.swift`) |

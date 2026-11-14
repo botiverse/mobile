@@ -520,7 +520,9 @@ jobs:
       #   regression a deterministic empty Thread composer.
       # :realtime-socket's conformance suite (RaftSocketIoInteropTest) talks to a real socket.io
       # 4.8.3 server: two instances (non-default heartbeat / maxPayload; connection state recovery with
-      # per-message deflate). Started here, used by :realtime-socket:testAndroidHostTest below.
+      # per-message deflate). Started here, used by :realtime-socket:testAndroidHostTest below. A third
+      # (Raft realtime behaviour) serves the Android client parity suite over both socket implementations
+      # (SocketIoRealtimeClientTransportParityTest in :androidApp:testDebugUnitTest).
       - name: Start the socket.io interop server
         working-directory: scripts/socketio-interop
         run: |
@@ -534,6 +536,7 @@ jobs:
           grep '^READY ' "$RUNNER_TEMP/socketio-interop.log" || { cat "$RUNNER_TEMP/socketio-interop.log"; exit 1; }
           echo "RAFT_SOCKETIO_INTEROP_URL=http://127.0.0.1:3901" >> "$GITHUB_ENV"
           echo "RAFT_SOCKETIO_INTEROP_RECOVERY_URL=http://127.0.0.1:3902" >> "$GITHUB_ENV"
+          echo "RAFT_SOCKETIO_INTEROP_RAFT_URL=http://127.0.0.1:3903" >> "$GITHUB_ENV"
 
       - name: Compile, test and package Android
         working-directory: compose
