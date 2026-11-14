@@ -15,15 +15,25 @@
 //      already made a task with this title there, so a re-run does not make a second one)
 //      task_source_required -> stop, nothing else is tried
 //   6. current CLI: `raft task view "#channel:#N"`
-//   7. revoke the key (DELETE /api/agents/:id/credentials/:credentialId), sign the web session out.
+//   7. revoke the key (DELETE /api/agents/:id/credentials/:credentialId, read back revokedAt),
+//      sign the web session out (proven by its refresh token being refused), delete the temp profile.
 //   The agent and the task stay (the mobile s5 checks need them).
+//
+// Bound to ONE server and channel (--server-name, --channel: required, exact). A write with no clear
+// answer (5xx / timeout; a CLI write that fails) stops the run as "unknown": never retried, never
+// re-minted, never sent elsewhere. "pass" (exit 0) only when the action passed AND cleanup is
+// proven: the run's key revoked (read back), the web session refused, the temp key file gone. Any
+// cleanup failure or unknown -> non-zero exit; the summary keeps non-secret correlation (credential
+// id / name, web session family id prefix) to reconcile that exact key / session by hand.
 //
 // Prints only non-secret results; every token is masked with ::add-mask:: before anything else.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import { ENVIRONMENTS } from "./release_auto_login_lib.mjs";
+import { classifyWrite } from "./scenarios/scenario_outcome.mjs";
 
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
@@ -35,9 +45,10 @@ const preset = ENVIRONMENTS[ENV_NAME];
 if (!preset) throw new Error(`unknown --env ${ENV_NAME}`);
 const API_BASE = preset.apiBaseUrl;
 const SERVER_URL = new URL(API_BASE).origin;
-const SERVER_NAME = option("server-name", "OranixSlockTest");
+const SERVER_NAME = option("server-name", "");
 const AGENT_NAME = option("agent-name", "qa-old-cli-task");
-const CHANNEL = option("channel", "qa-test-create-7842").replace(/^#/, "");
+const CHANNEL = String(option("channel", "")).replace(/^#/, "");
+if (!SERVER_NAME || !CHANNEL) throw new Error("--server-name and --channel are required (one exact test server and channel)");
 const TITLE = option("title", "QA: 老版本 CLI 建的任务（task v2 放量前验证，可删）");
 const ACTION = option("action", "task");
 if (!["task", "artifacts"].includes(ACTION)) throw new Error(`unknown --action ${ACTION}`);
@@ -57,7 +68,28 @@ const redact = (text) => {
 };
 const log = (line) => console.log(redact(`[old-cli-task] ${line}`));
 class Stop extends Error {}
+class Unknown extends Stop {}
 const stop = (message) => { throw new Stop(message); };
+// A write whose outcome is not known: recorded, and the run stops (no retry, no other target).
+const unknownWrites = [];
+const stopUnknown = (what, detail) => {
+  unknownWrites.push(`${what}: ${detail}`);
+  throw new Unknown(`${what}: no clear answer (${detail}); stopping, not retrying`);
+};
+// A server write: ok -> its JSON; refused -> stop; unknown -> stopUnknown.
+async function write(method, pathname, options, what) {
+  let out;
+  try {
+    out = await api(method, pathname, options);
+  } catch (error) {
+    if (error instanceof Stop && !/HTTP 429/.test(error.message)) throw error;
+    out = error instanceof Error ? error : new Error(String(error));
+  }
+  const kind = classifyWrite(out);
+  if (kind === "ok") return out.json;
+  if (kind === "unknown") stopUnknown(what, out instanceof Error ? "request failed" : `HTTP ${out.status}`);
+  stop(`${what}: refused, HTTP ${out.status} ${redact(JSON.stringify(out.json ?? "")).slice(0, 300)}`);
+}
 
 let session = null;
 let serverId = null;
@@ -163,7 +195,7 @@ async function pushArtifacts(cliEnv) {
 `);
       const pushed = runCli(cliDir, ["artifact", "push", dir, "--target", `#${CHANNEL}`, "--title", a.title], cliEnv);
       console.log(`----- artifact push ${a.key} (exit ${pushed.status}) -----\n${pushed.stdout}${pushed.stderr}\n-----`);
-      if (pushed.status !== 0) stop(`raft artifact push ${a.key} failed`);
+      if (pushed.status !== 0) stopUnknown(`raft artifact push ${a.key}`, `exit ${pushed.status}`);
       url = pushed.stdout.match(/^Open: (\S+)/m)?.[1] ?? null;
       summary.artifacts[a.key] = { title: a.title, id: pushed.stdout.match(/\((pt_[A-Za-z0-9-]+)\)/)?.[1] ?? null, url, pushed_now: true };
     }
@@ -180,16 +212,30 @@ async function pushArtifacts(cliEnv) {
       sent = runCli(cliDir, ["message", "send", "--target", `#${CHANNEL}`], cliEnv, `${url}\n`);
     }
     console.log(`----- message send (link of ${a.key}) (exit ${sent.status}) -----\n${sent.stdout.split("\n").slice(0, 8).join("\n")}${sent.stderr.slice(0, 600)}\n-----`);
-    if (sent.status !== 0) stop(`sending the link of ${a.key} failed`);
+    if (sent.status !== 0) stopUnknown(`sending the link of ${a.key}`, `exit ${sent.status}`);
     summary.artifacts[a.key].link_sent = true;
   }
   summary.result = "pass";
 }
 
+const RUN_KEY_NAME = `mobile QA ${ACTION === "task" ? "old CLI task" : "artifacts"} (run ${process.env.GITHUB_RUN_ID ?? "local"}.${process.env.GITHUB_RUN_ATTEMPT ?? "1"} ${crypto.randomBytes(4).toString("hex")})`;
+let raftHome = null;
 const summary = { env: ENV_NAME, action: ACTION, server: SERVER_NAME, agent: AGENT_NAME, channel: `#${CHANNEL}`, ...(ACTION === "task" ? { title: TITLE } : {}) };
 let credential = null;
 let agentId = null;
-let exitCode = 0;
+let cleanupStarted = null;
+function cleanupOnce() {
+  cleanupStarted ??= cleanup();
+  return cleanupStarted;
+}
+// A cancelled / killed job still cleans up (SIGTERM / SIGINT), then exits non-zero.
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.once(signal, () => {
+    summary.result = "unknown";
+    summary.error = `stopped by ${signal}`;
+    cleanupOnce().finally(() => process.exit(1));
+  });
+}
 try {
   const email = process.env.QA_LOGIN_EMAIL ?? "";
   const password = process.env.QA_LOGIN_PASSWORD ?? "";
@@ -220,9 +266,9 @@ try {
     log(`reusing external agent ${AGENT_NAME} (${agent.id})`);
   } else {
     if (ACTION !== "task") stop(`${AGENT_NAME} does not exist; --action ${ACTION} only uses an existing agent`);
-    agent = ok(await api("POST", "agents", {
+    agent = await write("POST", "agents", {
       body: { name: AGENT_NAME, external: true, description: "QA: makes one task with the old Raft CLI 0.0.26 for the task v2 mobile check (s5). Safe to delete after the release." },
-    }), "create the external agent");
+    }, "create the external agent");
     if (agent?.external !== true) stop(`created ${AGENT_NAME} but the server did not report it external`);
     summary.agent_reused = false;
     log(`created external agent ${AGENT_NAME} (${agent.id})`);
@@ -232,10 +278,11 @@ try {
 
   // ---- the channel ----
   const channels = listOf(ok(await api("GET", "channels"), "list channels"), "channels");
-  const channel = channels.find((c) => c.name === CHANNEL && !["dm", "thread", "task"].includes(c.type));
-  if (!channel) stop(`#${CHANNEL} not found on ${SERVER_NAME}`);
+  const matches = channels.filter((c) => (c.name === CHANNEL || c.id === CHANNEL) && !["dm", "thread", "task"].includes(c.type));
+  if (matches.length !== 1) stop(`#${CHANNEL} on ${SERVER_NAME}: ${matches.length} channels match exactly; not writing anywhere`);
+  const channel = matches[0];
   summary.channel_id = channel.id;
-  ok(await api("POST", `channels/${channel.id}/members`, { body: { agentId } }), `add ${AGENT_NAME} to #${CHANNEL}`);
+  await write("POST", `channels/${channel.id}/members`, { body: { agentId } }, `add ${AGENT_NAME} to #${CHANNEL}`);
   log(`${AGENT_NAME} is a member of #${CHANNEL}`);
 
   const ownTask = async () => {
@@ -246,14 +293,26 @@ try {
   const existing = ACTION === "task" ? await ownTask() : null;
 
   // ---- the agent's key, in a profile the old CLI reads ----
-  const minted = ok(await api("POST", `agents/${agentId}/credentials`, {
-    body: { name: `mobile QA ${ACTION === "task" ? "old CLI task" : "artifacts"} (run ${process.env.GITHUB_RUN_ID ?? "local"})` },
-  }), "mint the agent key");
+  // A unique name per attempt: if the answer is lost, that exact key is found by name and revoked
+  // (never a second mint).
+  summary.credential_name = RUN_KEY_NAME;
+  let minted;
+  try {
+    minted = await write("POST", `agents/${agentId}/credentials`, { body: { name: RUN_KEY_NAME } }, "mint the agent key");
+  } catch (error) {
+    if (error instanceof Unknown) {
+      const listed = await api("GET", `agents/${agentId}/credentials`, { server: false }).catch(() => null);
+      const mine = listOf(listed?.json, "credentials").filter((c) => c.name === RUN_KEY_NAME);
+      summary.mint_reconciliation = listed?.status === 200 ? `${mine.length} key(s) named for this run` : "could not list the agent's keys";
+      if (mine.length === 1) credential = { id: mine[0].id };
+    }
+    throw error;
+  }
   if (typeof minted?.apiKey !== "string") stop("the credential mint answered without a key");
   mask(minted.apiKey);
   credential = { id: minted.credentialId };
   log(`minted a key for ${AGENT_NAME} (credential ${minted.credentialId}, scopes ${(minted.scopes ?? []).join(",")})`);
-  const raftHome = fs.mkdtempSync(path.join(os.tmpdir(), "raft-home-"));
+  raftHome = fs.mkdtempSync(path.join(os.tmpdir(), "raft-home-"));
   const profileDir = path.join(raftHome, "profiles", "qa-old-cli");
   fs.mkdirSync(profileDir, { recursive: true, mode: 0o700 });
   fs.writeFileSync(path.join(profileDir, "credential.json"), JSON.stringify({ apiKey: minted.apiKey, agentId, serverUrl: SERVER_URL, serverId }), { mode: 0o600 });
@@ -276,7 +335,7 @@ try {
       summary.old_cli_error = "task_source_required";
       stop("the old CLI got task_source_required; stopping as instructed (no other method tried)");
     }
-    if (created.status !== 0) stop(`the old CLI task create exited ${created.status}`);
+    if (created.status !== 0) stopUnknown("old CLI task create", `exit ${created.status}`);
     summary.created_now = true;
     for (let i = 0; i < 5 && !task; i += 1) {
       task = await ownTask();
@@ -310,21 +369,66 @@ try {
   summary.result = task.sourceMessageId && sourceOk ? "pass" : "check";
   }
 } catch (error) {
-  exitCode = 1;
-  summary.result = "fail";
+  summary.result = error instanceof Unknown ? "unknown" : "fail";
   summary.error = redact(error instanceof Stop ? error.message : error?.stack ?? String(error));
   console.error(`[old-cli-task] FAILED: ${summary.error}`);
 } finally {
-  // The key was only for this run.
+  await cleanupOnce();
+}
+
+// ---------- cleanup: exact key, exact web session, local key file; proven or reported ----------
+async function cleanup() {
+  const done = {};
+  // The run's key: revoked (DELETE) and read back as revoked.
   if (credential?.id && agentId) {
-    const out = await api("DELETE", `agents/${agentId}/credentials/${credential.id}`, { server: false }).catch((e) => ({ status: String(e) }));
-    summary.key_revoked = out.status === 204;
-    log(`revoke the run's key: HTTP ${out.status}`);
+    summary.credential_id_prefix = String(credential.id).slice(0, 8);
+    const del = await api("DELETE", `agents/${agentId}/credentials/${credential.id}`, { server: false }).catch((e) => e);
+    summary.key_revoke_http = del instanceof Error ? "request_failed" : del.status;
+    const listed = await api("GET", `agents/${agentId}/credentials`, { server: false }).catch(() => null);
+    const row = listOf(listed?.json, "credentials").find((c) => c.id === credential.id);
+    summary.key_revoked = listed?.status === 200 && row ? Boolean(row.revokedAt) : "unknown";
+    done.key = summary.key_revoked === true ? "ok" : summary.key_revoked === false ? "failed" : "unknown";
+    log(`revoke the run's key: HTTP ${summary.key_revoke_http}, read back ${summary.key_revoked === true ? "revoked" : summary.key_revoked}`);
+  } else if (summary.mint_reconciliation && !credential?.id) {
+    done.key = "unknown";
   }
+  // The web session: logout, proven by its refresh token being refused afterwards.
   if (session?.refreshToken) {
-    const out = await api("POST", "auth/logout", { body: { refreshToken: session.refreshToken }, server: false }).catch((e) => ({ status: String(e) }));
-    summary.web_session_signed_out = out.status === 200;
-    log(`sign the web session out: HTTP ${out.status}`);
+    summary.web_session_family_prefix = jwtFamilyPrefix(session.accessToken);
+    const out = await api("POST", "auth/logout", { body: { refreshToken: session.refreshToken }, server: false }).catch((e) => e);
+    summary.web_logout_http = out instanceof Error ? "request_failed" : out.status;
+    const check = await api("POST", "auth/refresh", { body: { refreshToken: session.refreshToken }, server: false }).catch((e) => e);
+    summary.web_refresh_check = check instanceof Error ? "request_failed" : check.status;
+    if (!(check instanceof Error) && check.status === 401) {
+      summary.web_session_signed_out = true;
+      done.web = "ok";
+    } else if (!(check instanceof Error) && check.status === 200) {
+      // Still live (now rotated): sign the rotated one out too; still reported as not signed out.
+      if (check.json?.refreshToken) {
+        mask(check.json.accessToken);
+        mask(check.json.refreshToken);
+        await api("POST", "auth/logout", { body: { refreshToken: check.json.refreshToken }, server: false }).catch(() => {});
+      }
+      summary.web_session_signed_out = false;
+      done.web = "failed";
+    } else {
+      summary.web_session_signed_out = "unknown";
+      done.web = "unknown";
+    }
+    log(`sign the web session out: HTTP ${summary.web_logout_http}, refresh after: ${summary.web_refresh_check}`);
+  }
+  // The local key file: always removed.
+  if (raftHome) {
+    try { fs.rmSync(raftHome, { recursive: true, force: true }); } catch {}
+    summary.local_key_file_removed = !fs.existsSync(raftHome);
+    done.local = summary.local_key_file_removed ? "ok" : "failed";
+  }
+  const states = Object.values(done);
+  summary.cleanup = done;
+  summary.cleanup_complete = states.every((s) => s === "ok");
+  if (unknownWrites.length) summary.unknown_writes = unknownWrites;
+  if (summary.result === "pass" && !summary.cleanup_complete) {
+    summary.result = states.includes("unknown") ? "unknown" : "cleanup_incomplete";
   }
   const text = redact(JSON.stringify(summary, null, 2));
   console.log(text);
@@ -333,5 +437,15 @@ try {
   if (process.env.GITHUB_STEP_SUMMARY) {
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Old CLI task\n\n\`\`\`json\n${text}\n\`\`\`\n`);
   }
-  process.exitCode = exitCode;
+  process.exitCode = summary.result === "pass" ? 0 : 1;
+}
+
+// The session family id from the access token's payload (an id, not a credential), 8 characters.
+function jwtFamilyPrefix(token) {
+  try {
+    const payload = JSON.parse(Buffer.from(String(token).split(".")[1], "base64url").toString("utf8"));
+    return typeof payload.familyId === "string" ? payload.familyId.slice(0, 8) : null;
+  } catch {
+    return null;
+  }
 }

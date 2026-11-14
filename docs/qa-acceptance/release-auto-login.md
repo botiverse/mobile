@@ -82,7 +82,7 @@ one status in `summary.json` → `cleanup`. `cleanup_ok` is true only when every
 | Step (`cleanup.<key>`) | OK statuses | Failure statuses | What is checked |
 |---|---|---|---|
 | `web_session`: the web session the script opened to approve | `signed_out`, `not_opened` | `failed` | `POST /api/auth/logout` with its refresh token, then `POST /api/auth/refresh` with the same token must answer 401 (`web_session_refresh_check`, e.g. `401 session_revoked`). Logout alone answers 200 even for an unknown token, so it is not proof. |
-| `app_session`: the app's own session (`--revoke-app-session`) | `server_logout_verified`, `not_signed_in` | `local_cleared_server_unconfirmed`, `not_requested`, `failed` | The app's own Sign out (Choose server → **Sign Out**; with a server selected: the server tab → server panel → **Settings** (scrolled into view) → **Account** → scroll → **Sign out** → confirm **Sign out**), then the app must be back on "Sign in to Raft" / "Sign in through …". The app sends `POST /api/auth/logout` with its refresh token itself; cleanup then reads logcat (every tag, up to 20 s) for the app's own lines and keeps only non-secret fields in `app_logout_log`: `auth_logout_api_result result=…`, `auth_logout_cleared serverRevocation=…` and the HTTP layer's `method=POST path=…/auth/logout status=… traceId=…`. `server_logout_verified` needs `serverRevocation=success` (or `result=success`, or a 2xx for that request). Without that evidence, or if the UI route fails (`pm clear build.raft.app` wipes the app's tokens), the status is `local_cleared_server_unconfirmed`: the server session may live on until it expires (30 days). `app_sign_out_route` / `app_sign_out_error` say what happened; a failed route also saves `cleanup-app-sign-out-FAILED` (screenshot + UI dump). |
+| `app_session`: the app's own session (`--revoke-app-session`) | `app_reported_server_logout_2xx`, `not_signed_in` | `local_cleared_server_unconfirmed`, `not_requested`, `failed` | The app's own Sign out (Choose server → **Sign Out**; with a server selected: the server tab → server panel → **Settings** (scrolled into view) → **Account** → scroll → **Sign out** → confirm **Sign out**), then the app must be back on "Sign in to Raft" / "Sign in through …". The app sends `POST /api/auth/logout` with its refresh token itself. `app_reported_server_logout_2xx` needs ALL of: logcat cleared before the sign-out; one logout tap; the same app process (`pidof` + its `/proc` start time) at the start of the sign-out, at that tap and on the sign-in page; and, from that process only (`logcat --pid`) and after the tap, the HTTP layer's line for exactly `POST` to exactly the route `auth/logout` with a 2xx, `auth_logout_api_result result=success`, and nothing conflicting (`assessAppLogout`, `logoutProbeProblem` in `release_auto_login_lib.mjs`). Otherwise, or if the UI route fails (`pm clear build.raft.app` wipes the app's tokens), it is `local_cleared_server_unconfirmed`. `app_logout_log` keeps only rebuilt non-secret fields (result, method, route, status, trace id); `app_logout_evidence` says why it counted or not. |
 | `capture_file`: the captured login URL | `deleted`, `not_applicable` | `failed` | Removed, then checked absent with `run-as`. |
 | `browser`: the default browser | `restored`, `not_changed` | `failed` | Browser role back with the previous holder(s) and not with the stub; every browser disabled for the run is enabled again (`browser_role_holders`, `browsers_reenabled`). |
 | `capture_browser`: the stub package | `uninstalled`, `not_installed_by_run`, `kept` (`--keep-capture-browser`) | `failed` | `pm path` finds nothing after `pm uninstall`. |
@@ -92,15 +92,16 @@ one status in `summary.json` → `cleanup`. `cleanup_ok` is true only when every
 and exit 1, and a signed-in screen without the app's own exchange line fails the run (see step 6).
 Without it the run still records the statuses but exits 0 on a sign-in pass.
 
-**Server-side revocation of the app's session is proven by the app's own logout lines.** The server
-has no API to list a user's sessions or revoke one by id (only `POST /auth/logout` with the
-session's own refresh token, which stays inside the non-debuggable release app; an app-login
-session is its own session family, so the script's web logout does not end it). So the run proves
-it from the app's side: its `POST auth/logout` answered 2xx and it reported
-`serverRevocation=success` (`server_logout_verified`). The script's own web session is `signed_out`
-with revocation proven by the refused refresh.
+**What `app_reported_server_logout_2xx` means — and does not.** It is the app's own report that
+the server answered its `POST /auth/logout` with a 2xx. It is **not** proof that the server revoked
+that session: the server answers 200 to an unknown token too, and it has no API to list a user's
+sessions or read one back (an app-login session is its own session family; its refresh token stays
+inside the non-debuggable release app, so the script's own web logout does not end it and nothing
+outside the app can check it). Anything short of that bound evidence stays
+`local_cleared_server_unconfirmed` (the session may live until it expires, 30 days). The script's own
+web session is different: `signed_out` is shown by its refresh token being refused afterwards.
 
-Example (from a strict production run, 43644771420, credentials masked):
+Example (shape of a strict production run's cleanup, credentials masked; the lines match those run 43644771420 logged under the earlier parser):
 
 ```json
 { "step": 7, "name": "verify-signed-in", "result": "pass",
@@ -110,11 +111,11 @@ Example (from a strict production run, 43644771420, credentials masked):
   "browser": "restored",
   "capture_browser": "uninstalled",
   "web_session": "signed_out",
-  "app_session": "server_logout_verified",
+  "app_session": "app_reported_server_logout_2xx",
   "web_session_refresh_check": "401 session_revoked",
   "app_sign_out_route": "Current server > server_panel:Settings > settings:Account > account:scroll > account:Sign out > confirm:Sign out",
-  "app_logout_log": ["auth_logout_enter", "http method=POST path=auth/logout status=200 code=200 kind=none", "auth_logout_api_result result=success", "auth_logout_cleared serverRevocation=success"],
-  "app_reported_server_logout": "success",
+  "app_logout_log": ["http method=POST route=auth/logout status=200 traceId=168cc934ee55307d8419237104ba46f4", "auth_logout_api_result result=success", "auth_logout_cleared serverRevocation=success"],
+  "app_logout_evidence": "app_reported_2xx",
   "browser_role_holders": ["com.android.chrome"],
   "browsers_reenabled": []
 },
@@ -148,10 +149,15 @@ Evidence (`release-auto-login-evidence`): `summary.json`, a screenshot + UI dump
 module after "verify-signed-in" and before cleanup. Its `run(ctx)` gets the device helpers
 (`nodes`, `find`, `tapNode`, `shell`, `step` — each step saves a screenshot + UI dump), `option()`
 for its own flags, and `ctx.web(method, path, { body, serverId })`: the QA account's web session
-(refreshed on a 401, signed out in cleanup as before). It writes its result to `summary.scenario`;
-a scenario that throws or returns `result: "fail"` makes the run exit non-zero after cleanup.
+(refreshed on a 401, signed out in cleanup as before). It writes its result to `summary.scenario`.
+Only `result: "pass"` (every requested step covered and passed, test data cleaned up) lets the run
+exit 0; `partial` (something not covered / unconfirmed, listed in `not_pass_reasons`), `unknown` (a
+write with no clear answer: stopped, reported, never retried), `fail` or a throw exit non-zero.
+The scenario is bound to ONE test server and channel: workflow inputs `test_server` +
+`test_channel` (required with a scenario; passed as `--server-name` / `--channel`, matched exactly,
+never another channel; not accepted inside `scenario_args`).
 
-- `task_v2.mjs --server-name <server>` — task v2 conversations on a release build: channel Tasks
+- `task_v2.mjs` — task v2 conversations on a release build: channel Tasks
   tab → task conversation (head + messages) → reply; assignee; status Todo → In Progress → Done
   with no "In Review" offered; a Backlog task; s5: a task an old CLI created without a source (made
   once with `mode=old_cli_task`), reached from Home → its channel → its title message → its task
@@ -161,44 +167,17 @@ a scenario that throws or returns `result: "fail"` makes the run exit non-zero a
 
 ```sh
 gh workflow run release-auto-login.yml -f environment=production -f apk_run_id=<Android Release run> \
-  -f scenario=scripts/qa/scenarios/task_v2.mjs -f scenario_args="--server-name OranixSlockTest"
+  -f scenario=scripts/qa/scenarios/task_v2.mjs -f test_server=OranixSlockTest -f test_channel=qa-test-create-7842
 ```
 
-- `artifact_reuse.mjs --server-name <server> --channel <channel> [--artifact-a pt_… --artifact-b pt_…]
-  [--session-wait-min 18]` — the Artifact viewer reuse check (Hands dd109a01, #4547) on the two test
+- `artifact_reuse.mjs [--artifact-a pt_… --artifact-b pt_…] [--session-wait-min 18]` — the Artifact viewer reuse check (Hands dd109a01, #4547) on the two test
   Artifacts made once with `mode=agent_artifacts`: their cards opened A, B in turn (4 pairs), with
   a 10 s background, and once after the app logs a token refresh while the viewer page is kept
   (else NOT COVERED); each open screenshotted 5 s after the tap with whether the viewer stayed and
   which Artifact it shows. Viewer lines in `artifact-viewer-logcat.txt`. Creates and deletes nothing.
-
-- `min_build_gate.mjs --phase banner|block|flag_off --threshold N [--server-name S]` — the minimum
-  build gate (#4797, flag `mobile_min_build_android_v1`) on staging. Build A is the installed APK
-  (`apk_run_id` + `apk_artifact`), build B the extra one (`extra_apk_artifact`, same run, same
-  signer, higher versionCode). With `hands_serve_extra=true` the workflow serves B on Hands
-  raft-android channel `debug` as an ACTIVE release scoped to the "GitHub Actions update e2e
-  emulators" device group (`android_update_hands_fixture.sh publish`, hands-cli 0.5.50), checks it
-  carries the x86_64 APK, and starts a short-lived joiner: the scenario writes this emulator's Hands
-  installation id to a file, the joiner adds it to the group and answers ok/failed/timeout. The run
-  removes it and cancels the release at the end (same single-writer concurrency group as
-  android-update-e2e.yml). The Hands token is only in the Serve and Hands cleanup steps' env (and
-  the joiner they start), never job-level: the emulator step (the app, the scenario) runs without it
-  (`scripts/test_hands_identifier_migration.sh` pins this). Each phase first
-  reads the flag through `POST feature-flags/evaluate` and stops unless it is ON with default
-  variant N. `banner` (N above B): banner only, Dismiss closes it. `block` (N = B): A blocked;
-  offline + background + return → banner; online again → block; A updated to B → no gate.
-  `flag_off` (N = B): A blocked, then waits (up to `--wait-off-minutes`, default 40) for the flag
-  admin to turn the flag OFF and checks the block goes away (read/push, else next foreground).
-  `seconds_after_server_off` is reported only with `--flag-off-at-ms <epoch ms>` (when the admin
-  turned it off); `seconds_after_poll_saw_off` is from the run's own poll. `features_changed` lists
-  only the app's lines written after the change (that time, else the last poll that still saw ON).
-  The app's `SlockMinBuildGate` / `SlockFeatureFlags` lines are in `logcat-min-build-gate.txt`.
-
-```sh
-gh workflow run release-auto-login.yml -f environment=staging \
-  -f apk_run_id=<android-update-qa.yml run> -f apk_artifact=android-update-qa-a-apk \
-  -f extra_apk_artifact=android-update-qa-b-apk -f hands_serve_extra=true \
-  -f scenario=scripts/qa/scenarios/min_build_gate.mjs -f scenario_args="--phase block --threshold <B>"
-```
+  `pass` only when every open showed the expected Artifact, the background step came back to A, and
+  the session step saw the refresh AND the viewer dropping its kept page for it; content not
+  confirmed, no session evidence or the session step not covered make it `partial`.
 
 ## Test-data modes (no emulator)
 
@@ -206,9 +185,11 @@ gh workflow run release-auto-login.yml -f environment=staging \
 account's secrets inside the runner (nothing downloaded, the password never printed, every token
 `::add-mask::`ed), through `scripts/qa/old_cli_task.mjs`:
 
-- `mode=old_cli_task` — on OranixSlockTest: the external agent `qa-old-cli-task` (reused when it
-  exists, created with `POST /api/agents {external: true}` otherwise), added to
-  `#qa-test-create-7842`, a key minted in the runner (`POST /api/agents/:id/credentials`) into a
+Both need `test_server` + `test_channel` (one exact server and channel; nothing else is written).
+
+- `mode=old_cli_task` — the external agent `qa-old-cli-task` (reused when it
+  exists, created with `POST /api/agents {external: true}` otherwise), added to the channel, a key
+  minted in the runner (`POST /api/agents/:id/credentials`) into a
   temp `RAFT_PROFILE`, ONE task by `@botiverse/raft@0.0.26 task create` with no source (the server
   posts the agent's title message as its source), checked with the current CLI's `task view`.
   Not repeated when the agent already made a task with that title. `task_source_required` stops it.
@@ -217,13 +198,19 @@ account's secrets inside the runner (nothing downloaded, the password never prin
   the link is sent; it reads the channel first, a send with unread messages is held as a draft).
   An Artifact already there is not pushed again.
 
-Both revoke the run's key and sign the web session out at the end, and leave the agent, the task
-and the Artifacts in place (the device scenarios use them). Result in the `old-cli-task-result`
-artifact.
+A write with no clear answer (5xx / timeout, or a CLI write that fails) stops the run as `unknown`
+(never retried, never sent elsewhere; a key mint with a lost answer is found by its per-run name and
+revoked, never minted again). Cleanup must be proven or the run fails (non-zero, never `pass`): the
+run's key revoked and read back as revoked (`key_revoked`), the web session's refresh token refused
+after logout (`web_session_signed_out`; a logout 200 alone does not count), the temp key file
+deleted (`local_key_file_removed`, also on SIGTERM / SIGINT). The summary keeps non-secret
+correlation for reconciling that exact key / session by hand (`credential_id_prefix`,
+`credential_name`, `web_session_family_prefix`). The agent, the task and the Artifacts stay (the
+device scenarios use them). Result in the `old-cli-task-result` artifact.
 
 ```sh
-gh workflow run release-auto-login.yml -f environment=production -f mode=old_cli_task
-gh workflow run release-auto-login.yml -f environment=production -f mode=agent_artifacts
+gh workflow run release-auto-login.yml -f environment=production -f mode=old_cli_task -f test_server=OranixSlockTest -f test_channel=qa-test-create-7842
+gh workflow run release-auto-login.yml -f environment=production -f mode=agent_artifacts -f test_server=OranixSlockTest -f test_channel=qa-test-create-7842
 ```
 
 ## Caveats

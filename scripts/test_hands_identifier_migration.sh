@@ -31,9 +31,6 @@ while IFS= read -r match; do
     .github/workflows/github-release.yml:*"HANDS_IOS_BEARER_TOKEN: \${{ secrets.${old_upper}_IOS_BEARER_TOKEN }}"*) ;;
     # Android update e2e: plans fixture versionCodes and serves B on the debug channel only.
     .github/workflows/android-update-e2e.yml:*"HANDS_AUTH_TOKEN: \${{ secrets.${old_upper}_BEARER_TOKEN }}"*) ;;
-    # Release auto login (min build gate): the Serve and Hands cleanup steps only (step env; the
-    # ruby freeze below pins exactly where).
-    .github/workflows/release-auto-login.yml:*"HANDS_AUTH_TOKEN: \${{ secrets.${old_upper}_BEARER_TOKEN }}"*) ;;
     *)
       echo "${match}"
       unexpected=1
@@ -102,26 +99,6 @@ e2e_expected = {
 }
 e2e = YAML.load_file(".github/workflows/android-update-e2e.yml")
 abort "FAIL: Android update e2e secret consumer allowlist drifted" unless secret_references(e2e, token) == e2e_expected
-
-# release-auto-login.yml: exactly two STEP envs of the sign-in job, the step that serves build B on
-# Hands (min build gate, debug channel, e2e device group only) and the step that cancels it. Never
-# workflow- or job-level: the emulator step runs the app and the scenario scripts without it.
-ral_expected = {
-  ["jobs", "sign-in", "steps", "hands", "env", "HANDS_AUTH_TOKEN"] => expression,
-  ["jobs", "sign-in", "steps", "hands-cleanup", "env", "HANDS_AUTH_TOKEN"] => expression,
-}
-ral = YAML.load_file(".github/workflows/release-auto-login.yml")
-ral_refs = secret_references(ral, token)
-job_level = ral_refs.keys.select { |path| path.length <= 4 && path[2] != "steps" }
-abort "FAIL: release auto-login has the Hands token outside a step env: #{job_level.map { |p| p.join(".") }.join(", ")}" unless job_level.empty?
-abort "FAIL: release auto-login secret consumer allowlist drifted" unless ral_refs == ral_expected
-job_env = Marshal.load(Marshal.dump(ral))
-job_env.fetch("jobs").fetch("sign-in")["env"]["HANDS_AUTH_TOKEN"] = expression
-emulator_step = Marshal.load(Marshal.dump(ral))
-emulator_step.fetch("jobs").fetch("sign-in").fetch("steps").find { |step| step["name"] == "Sign in on the emulator" }["env"] = { "HANDS_AUTH_TOKEN" => expression }
-[job_env, emulator_step].each do |mutation|
-  abort "FAIL: release auto-login allowlist admitted the token outside the two Hands steps" if secret_references(mutation, token) == ral_expected
-end
 RUBY
 
 # iOS: the same location-aware freeze. The opt-in testflight_internal job

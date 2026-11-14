@@ -1,5 +1,9 @@
 // Task v2 device check for a RELEASE Android build, run by release_auto_login.mjs after it has
-// signed the app in (`--scenario scripts/qa/scenarios/task_v2.mjs --server-name <name>`).
+// signed the app in (`--scenario scripts/qa/scenarios/task_v2.mjs --server-name <name> --channel <name>`).
+// Bound to that ONE server and channel (both required, matched exactly; no other channel is ever
+// written to). A write with no clear answer (5xx / timeout) stops the scenario as "unknown" and is
+// reported, never retried or sent elsewhere. Overall "pass" only when s1-s5 all passed and the
+// test tasks were deleted (scenario_outcome.mjs overallResult); else partial / fail / unknown.
 // docs/qa-acceptance/release-auto-login.md "Scenarios" explains the hook.
 //
 // On a server with task v2 conversations (`task_v2_conversations_v0`), through the app's own UI
@@ -16,17 +20,21 @@
 // and deleted at the end; the source messages the server posts for them stay (a person cannot
 // delete messages through the API) and say they are test data. Each scenario records
 // pass / fail / not_covered in summary.json `scenario.results`; one failing does not stop the next.
+import { classifyWrite, overallResult } from "./scenario_outcome.mjs";
+
 const REPLY_TEXT = "task v2 check, please ignore";
 const TEST_PREFIX = "[QA test data, please ignore]";
 
 export async function run(ctx) {
   const { step, nodes, find, tapNode, shell, sleep, log, label, option, web, account, PKG } = ctx;
-  const serverName = option("server-name", "OranixSlockTest");
-  const channelHint = option("channel", "");
+  const serverName = option("server-name", "");
+  const channelName = String(option("channel", "")).replace(/^#/, "");
+  if (!serverName || !channelName) throw new Error("task_v2 needs --server-name and --channel (one exact test server and channel)");
   const runTag = `${process.env.GITHUB_RUN_ID ?? "local"}-${Date.now().toString(36)}`;
   const results = {};
   const created = { tasks: [], messages: [] };
-  const report = { server_name: serverName, run_tag: runTag, results, test_data: created };
+  const unknownWrites = [];
+  const report = { server_name: serverName, channel: channelName, run_tag: runTag, results, test_data: created, unknown_writes: unknownWrites };
   ctx.summary.scenario = report;
 
   const mark = (id, result, note) => {
@@ -56,6 +64,22 @@ export async function run(ctx) {
   const api = async (method, path, body) => {
     const out = await web(method, path, { body, serverId: server?.id });
     return out;
+  };
+  // A write: its answer classified (classifyWrite). Unknown: recorded and the scenario stops.
+  const write = async (method, path, body, what) => {
+    let out;
+    try {
+      out = await api(method, path, body);
+    } catch (error) {
+      out = error instanceof Error ? error : new Error(String(error));
+    }
+    const kind = classifyWrite(out);
+    if (kind === "ok") return out.json;
+    if (kind === "unknown") {
+      unknownWrites.push(`${what} (${method} ${path}): ${out instanceof Error ? out.message.slice(0, 120) : `HTTP ${out.status}`}`);
+      throw Object.assign(new Error(`${what}: no clear answer (${out instanceof Error ? "request failed" : `HTTP ${out.status}`}); stopping, not retrying`), { unknownWrite: true });
+    }
+    throw new Error(`${what}: refused, HTTP ${out.status} ${JSON.stringify(out.json ?? "").slice(0, 200)}`);
   };
   const ok = (out, what) => {
     if (out.status < 200 || out.status >= 300) throw new Error(`${what}: HTTP ${out.status} ${JSON.stringify(out.json ?? "").slice(0, 300)}`);
@@ -191,36 +215,41 @@ export async function run(ctx) {
       if (!server) throw new Error(`the QA account is not a member of "${serverName}" (its servers: ${servers.map((s) => s.name).join(", ")})`);
       const channels = listOf(ok(await api("GET", "channels"), "list channels"), "channels")
         .filter((c) => !["dm", "thread", "task"].includes(c.type) && !c.archived && !c.archivedAt);
-      const joined = channels.filter((c) => c.isMember !== false && c.joined !== false && c.member !== false);
-      const order = (c) => (channelHint && (c.name === channelHint || c.id === channelHint) ? 0 : /qa|test|sandbox/i.test(c.name ?? "") ? 1 : /^(general|all|random)$/i.test(c.name ?? "") ? 2 : 3);
-      const candidates = [...joined].sort((a, b) => order(a) - order(b));
-      let channel = null;
-      let task = null;
-      for (const candidate of candidates.slice(0, 6)) {
-        const out = await api("POST", `tasks/channel/${candidate.id}`, {
-          tasks: [{ title: `${TEST_PREFIX} task v2 mobile check ${runTag}`, description: "Created by the mobile release QA run (scripts/qa/scenarios/task_v2.mjs); deleted at the end of the run." }],
+      // Exactly the requested channel, by name or id; never another one.
+      const matches = channels.filter((c) => c.name === channelName || c.id === channelName);
+      if (matches.length !== 1) throw new Error(`#${channelName} on ${serverName}: ${matches.length} channels match exactly; not writing anywhere`);
+      const channel = matches[0];
+      const taskTitle = `${TEST_PREFIX} task v2 mobile check ${runTag}`;
+      let task;
+      try {
+        task = listOf(await write("POST", `tasks/channel/${channel.id}`, {
+          tasks: [{ title: taskTitle, description: "Created by the mobile release QA run (scripts/qa/scenarios/task_v2.mjs); deleted at the end of the run." }],
           status: "todo",
-        });
-        if (out.status >= 200 && out.status < 300) {
-          channel = candidate;
-          task = listOf(out.json, "tasks")[0] ?? null;
-          break;
+        }, "create the test task"), "tasks")[0] ?? null;
+      } catch (error) {
+        if (error.unknownWrite) {
+          // Read-only reconciliation: did it land? (The title carries this run's tag.) Recorded for
+          // cleanup and the report; the result stays unknown.
+          const listed = await api("GET", `tasks/channel/${channel.id}`).catch(() => null);
+          const landed = listOf(listed?.json, "tasks").find((t) => t.title === taskTitle);
+          if (landed) created.tasks.push({ id: landed.id, channelId: channel.id, number: landed.taskNumber, title: landed.title, reconciled: true });
+          report.reconciliation = landed ? `the test task was created (#${landed.taskNumber}) despite the unclear answer` : (listed?.status === 200 ? "the test task is not listed" : "could not read the channel's tasks");
         }
-        log(`cannot create a task in #${candidate.name}: HTTP ${out.status} ${JSON.stringify(out.json ?? "").slice(0, 200)}`);
+        throw error;
       }
-      if (!channel || !task) throw new Error(`could not create a test task in any of: ${candidates.slice(0, 6).map((c) => c.name).join(", ") || "(no joined channels)"}`);
+      if (!task) throw new Error("the task create answered 2xx without the task");
       created.tasks.push({ id: task.id, channelId: channel.id, number: task.taskNumber, title: task.title });
       if (task.sourceMessageId && typeof task.sourceMessageId === "string") created.messages.push(task.sourceMessageId);
-      const backlog = ok(await api("POST", `tasks/channel/${channel.id}`, {
+      const backlog = await write("POST", `tasks/channel/${channel.id}`, {
         tasks: [{ title: `${TEST_PREFIX} backlog task ${runTag}`, description: "Backlog test task for the mobile release QA run; deleted at the end of the run." }],
         status: "backlog",
-      }), "create the backlog test task");
+      }, "create the backlog test task");
       const backlogTask = listOf(backlog, "tasks")[0];
       created.tasks.push({ id: backlogTask.id, channelId: channel.id, number: backlogTask.taskNumber, title: backlogTask.title, status: backlogTask.status });
       // A seed message in the task conversation, so the page has messages to show.
-      const conv = ok(await api("POST", `tasks/${task.id}/conversation`, {}), "open the task conversation");
+      const conv = await write("POST", `tasks/${task.id}/conversation`, {}, "open the task conversation");
       const conversationId = conv.conversationChannelId;
-      const seed = ok(await api("POST", "messages", { channelId: conversationId, content: `${TEST_PREFIX} seed message ${runTag}` }), "post the seed message");
+      const seed = await write("POST", "messages", { channelId: conversationId, content: `${TEST_PREFIX} seed message ${runTag}` }, "post the seed message");
       return {
         server: { id: server.id, slug: server.slug, name: server.name },
         channel: { id: channel.id, name: channel.name },
@@ -231,6 +260,7 @@ export async function run(ctx) {
       };
     }).catch((error) => {
       for (const id of ["s1", "s2", "s3", "s4"]) mark(id, "not_covered", `setup failed: ${error.message}`);
+      if (error.unknownWrite) mark("s5", "not_covered", "stopped: a setup write had no clear answer");
       return null;
     });
 
@@ -444,7 +474,7 @@ export async function run(ctx) {
     }
 
     // ---------- s5 ----------
-    await scenario("s5", async () => {
+    if (!unknownWrites.length) await scenario("s5", async () => {
       if (!server) throw notCovered("server not resolved");
       const candidate = await step("s5-find-old-cli-task", async () => {
         const json = ok(await api("GET", "tasks/server?detail=summary&limit=200&sort=created"), "list server tasks");
@@ -579,14 +609,21 @@ export async function run(ctx) {
     // ---------- cleanup: delete the test tasks this run created ----------
     const cleanup = [];
     for (const t of created.tasks) {
-      const out = await api("DELETE", `tasks/${t.id}`).catch((e) => ({ status: 0, json: { error: e.message } }));
-      cleanup.push({ task: t.number, status: out.status });
+      const out = await api("DELETE", `tasks/${t.id}`).catch((e) => e);
+      const kind = classifyWrite(out);
+      cleanup.push({ task: t.number, status: out instanceof Error ? 0 : out.status, outcome: kind });
     }
     report.cleanup = { deleted_tasks: cleanup, left_messages: "the source messages the server posted for the test tasks (titled [QA test data, please ignore]) and the seed/reply in the deleted tasks' conversations" };
     log(`scenario cleanup: ${JSON.stringify(cleanup)}`);
   }
-  const failed = Object.values(results).some((r) => r.result === "fail");
-  report.result = failed ? "fail" : "pass";
+  const outcome = overallResult({
+    requested: ["s1", "s2", "s3", "s4", "s5"],
+    results,
+    unknownWrites,
+    cleanup: (report.cleanup?.deleted_tasks ?? []).map((c) => ({ what: `delete task #${c.task}`, outcome: c.outcome, status: c.status })),
+  });
+  report.result = outcome.result;
+  report.not_pass_reasons = outcome.reasons;
   return report;
 }
 

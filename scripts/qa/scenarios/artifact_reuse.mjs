@@ -15,7 +15,23 @@
 //             reason=session_changed` is the evidence the reuse path saw the session change.
 //             No refresh seen in time: NOT COVERED (the background step is not this).
 // Viewer log lines (tags SlockArtifactViewer, RaftArtifactOpen) go to artifact-viewer-logcat.txt.
-// Nothing is created or deleted.
+// Nothing is created or deleted. Overall "pass" only when every open showed the expected Artifact
+// (confirmed on the page or by the viewer's own log for that open), the background step came back
+// to A, and the session step saw the refresh AND the viewer dropping its kept page for it;
+// anything less is "partial" (or "fail"), with the reasons listed (artifactOverall).
+import { overallResult } from "./scenario_outcome.mjs";
+
+/** The overall result from the run's records (exported for scripts/qa/scenario_outcome.test.mjs). */
+export function artifactOverall({ opens = [], session = null } = {}) {
+  const results = {};
+  for (const o of opens) {
+    const confirmed = o.result === "pass" && (o.shows === o.expected);
+    results[o.step] = { result: o.result === "fail" ? "fail" : confirmed ? "pass" : o.result === "pass" ? "pass_unconfirmed_content" : (o.result ?? "not_run") };
+  }
+  results["session-change"] = { result: session?.result ?? "not_covered" };
+  return overallResult({ requested: Object.keys(results), results });
+}
+
 const ARTIFACTS = {
   A: { title: "QA artifact A (可删)", marker: "QA-ARTIFACT-A-PAGE" },
   B: { title: "QA artifact B (可删)", marker: "QA-ARTIFACT-B-PAGE" },
@@ -23,8 +39,9 @@ const ARTIFACTS = {
 
 export async function run(ctx) {
   const { step, nodes, find, tapNode, shell, sleep, log, label, option, web, PKG } = ctx;
-  const serverName = option("server-name", "OranixSlockTest");
-  const channelName = option("channel", "qa-test-create-7842").replace(/^#/, "");
+  const serverName = option("server-name", "");
+  const channelName = String(option("channel", "")).replace(/^#/, "");
+  if (!serverName || !channelName) throw new Error("artifact_reuse needs --server-name and --channel (one exact test server and channel)");
   const ids = { A: option("artifact-a", ""), B: option("artifact-b", "") };
   const sessionWaitMin = Number(option("session-wait-min", "18"));
   const results = [];
@@ -215,6 +232,7 @@ export async function run(ctx) {
           shows: shown.key, shows_by: shown.by, closed_lines: lines.filter((l) => /artifact_viewer_closed/.test(l)).length, on_screen: visible(list).slice(0, 240),
         });
         if (!bg.viewer_still_open) throw new Error("after 10 s in the background the viewer is no longer open");
+        if (shown.key !== "A") throw new Error(`after the background the viewer shows ${shown.key ?? "nothing identifiable"}, expected A`);
         return { shows: shown.key };
       });
       bg.result = "pass";
@@ -269,7 +287,8 @@ export async function run(ctx) {
     await goHome().catch(() => {});
     await step("artifact-end", async () => ({ on_screen: visible() })).catch(() => {});
   }
-  const failed = results.some((r) => r.result === "fail") || report.session_change?.result === "fail";
-  report.result = failed ? "fail" : "pass";
+  const outcome = artifactOverall({ opens: results, session: report.session_change });
+  report.result = outcome.result;
+  report.not_pass_reasons = outcome.reasons;
   return report;
 }

@@ -37,7 +37,9 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import {
   ENVIRONMENTS,
+  assessAppLogout,
   callbackSchemeFor,
+  logoutProbeProblem,
   createRedactor,
   parseAppLoginComplete,
   parseCredentialFile,
@@ -382,6 +384,25 @@ async function signOutWebSession(webSession) {
 // that call is recorded when it reaches logcat.
 const onSignInPage = (list) =>
   list.some((n) => n.pkg === PKG && (n.text === "Sign in to Raft" || n.text.startsWith("Sign in through ")));
+// The app's process, as "<pid>:<start time in clock ticks>" (/proc/<pid>/stat field 22), so a
+// restart or a reused pid between the sign-out tap and reading its logs is caught. null if unknown.
+function appProcess() {
+  const pids = String(shell(`pidof ${PKG}`, { allowFailure: true }) ?? "").trim().split(/\s+/).filter(Boolean);
+  if (pids.length !== 1 || !/^\d+$/.test(pids[0])) return null;
+  const stat = String(shell(`cat /proc/${pids[0]}/stat`, { allowFailure: true }) ?? "");
+  const start = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
+  return /^\d+$/.test(start ?? "") ? `${pids[0]}:${start}` : null;
+}
+const deviceEpoch = () => Number(String(shell("date +%s.%N", { allowFailure: true }) ?? "").trim()) || NaN;
+// What the sign-out did, for appLogoutEvidence: the app's process before, at and after the tap that
+// sends POST /auth/logout, and the device time of that tap.
+const logoutProbe = { before: null, atTap: null, after: null, tapEpoch: NaN, taps: 0 };
+const markLogoutTap = () => {
+  logoutProbe.atTap = appProcess();
+  logoutProbe.tapEpoch = deviceEpoch();
+  logoutProbe.taps += 1;
+};
+
 async function signOutAppViaUi() {
   const deadline = Date.now() + 150_000;
   const route = [];
@@ -400,10 +421,14 @@ async function signOutAppViaUi() {
   };
   launchApp();
   await sleep(1500);
+  logoutProbe.before = appProcess();
   while (Date.now() < deadline) {
     const list = nodes();
     if (await dismissSystemDialog(list)) continue;
-    if (onSignInPage(list)) return route;
+    if (onSignInPage(list)) {
+      logoutProbe.after = appProcess();
+      return route;
+    }
     const mine = list.filter((n) => n.pkg === PKG);
     const is = (n, text) => n.text === text || n.desc === text;
     const confirmMessage = find(mine, (n) => n.text.startsWith("Sign out on this device?"));
@@ -424,9 +449,11 @@ async function signOutAppViaUi() {
       // Settings > Account > Sign out asks first; its button sits under the message.
       const button = signOut.filter((n) => n.bounds[1] >= confirmMessage.bounds[3]).sort((a, b) => b.bounds[1] - a.bounds[1])[0];
       if (!button) stop("the sign-out confirmation shows no Sign out button");
+      markLogoutTap();
       tap(button, "confirm:Sign out");
     } else if (chooserSignOut) {
       // "Choose server … Signed in as …" (an account on several servers): Sign Out, no confirmation.
+      markLogoutTap();
       tap(chooserSignOut, "choose_server:Sign Out");
     } else if (signOut.length) {
       tap(signOut.sort((a, b) => b.bounds[1] - a.bounds[1])[0], "account:Sign out");
@@ -463,58 +490,53 @@ async function signOutAppViaUi() {
   stop(`not back on the sign-in page after 150s (route: ${route.join(" > ") || "none"}); on screen: ${lastLabels || "(nothing labelled)"}`);
 }
 
-// Only the app's own logout lines, reduced to non-secret fields (method, path, status, result,
-// code, trace id); never headers, bodies, queries or tokens.
-async function appLogoutEvidence() {
+// The app's own report of its POST /auth/logout, read only from the app's process (logcat --pid),
+// after the sign-out tap, by assessAppLogout (release_auto_login_lib.mjs). Not counted (fail closed)
+// when logcat could not be cleared before, the app's process changed between the start of the
+// sign-out, the tap and the sign-in page (restart or pid reuse), more than one logout tap was made,
+// or the lines are missing or conflict. Release builds write these lines through the diagnostics
+// sink, which reaches logcat a little after the sign-in page shows: wait up to 20 s.
+async function appLogoutEvidence({ logcatCleared }) {
+  const probe = { ...logoutProbe };
+  const base = { verified: false, lines: [], process_stable: false };
+  const problem = logoutProbeProblem({ ...probe, logcatCleared });
+  if (problem) return { ...base, reason: problem };
+  const pid = Number(probe.atTap.split(":")[0]);
   const deadline = Date.now() + 20_000;
-  let lines = [];
-  let revocation = null;
-  let apiResult = null;
-  let http = null;
+  let result = { ...base, reason: "no_app_lines" };
   while (Date.now() < deadline) {
-    const raw = String(shell("logcat -d -v brief 2>/dev/null | grep -E 'auth_logout_|auth/logout' | tail -40", { allowFailure: true, timeoutMs: 60_000 }) ?? "");
-    lines = [];
-    for (const line of raw.split("\n")) {
-      if (/auth_logout_(enter|api_result|cleared)/.test(line)) {
-        const event = line.match(/auth_logout_\w+(?:\s+(?:result|code|errorType|serverRevocation)=\S+)*/)?.[0];
-        if (event) lines.push(event);
-        revocation = line.match(/serverRevocation=(\S+)/)?.[1] ?? revocation;
-        apiResult = line.match(/auth_logout_api_result result=(\S+)/)?.[1] ?? apiResult;
-      } else if (/auth\/logout/.test(line)) {
-        const fields = ["method", "path", "status", "statusCode", "code", "kind", "traceId", "trace", "requestId"]
-          .map((k) => line.match(new RegExp(`\\b${k}=([^\\s?&]+)`))).filter(Boolean).map((m) => m[0]);
-        const summary = fields.length ? fields.join(" ") : (line.match(/(GET|POST)\s+\S*auth\/logout\S*\s+\d{3}/)?.[0] ?? "").replace(/\?\S*/, "");
-        if (summary) {
-          lines.push(`http ${summary}`);
-          const status = Number(line.match(/\bstatus(?:Code)?=(\d{3})/)?.[1] ?? line.match(/auth\/logout\S*\s+(\d{3})/)?.[1] ?? 0);
-          if (status) http = status;
-        }
-      }
-    }
-    if (revocation) break;
+    const raw = adb(["logcat", "-d", "-v", "epoch", `--pid=${pid}`], { allowFailure: true, timeoutMs: 60_000 });
+    result = { ...assessAppLogout(String(raw ?? ""), { pid, sinceEpoch: probe.tapEpoch }), process_stable: true };
+    if (result.verified || result.api_results?.length) break;
     await sleep(2000);
   }
-  const verified = revocation === "success" || apiResult === "success" || (http !== null && http >= 200 && http < 300);
-  return { lines: lines.map((l) => redact(l)).slice(-10), revocation, api_result: apiResult, http_status: http, verified };
+  // Still the same process after reading (no restart while the lines were read).
+  if (result.verified && appProcess() !== probe.atTap) return { ...result, verified: false, reason: "app_process_changed_after_read" };
+  return { ...result, lines: result.lines.map((l) => redact(l)).slice(-10) };
 }
 
 async function revokeAppSession(appMayBeSignedIn) {
   await cleanupStep("app_session", async () => {
     if (!REVOKE_APP_SESSION) return "not_requested";
     if (!appMayBeSignedIn) return "not_signed_in";
-    shell("logcat -c", { allowFailure: true });
+    let logcatCleared = true;
+    try {
+      adb(["logcat", "-c"]);
+    } catch {
+      logcatCleared = false;
+    }
     try {
       cleanupDetail.app_sign_out_route = (await signOutAppViaUi()).join(" > ");
       // The app's own report of its POST /auth/logout (AuthDataSource.logout: auth_logout_api_result,
       // auth_logout_cleared serverRevocation=...), and the HTTP layer's finish line for that request.
       // Release builds write these through the diagnostics sink, which reaches logcat a little
       // later and under its own tags (SlockSharedAuth, ...): read every tag and wait for it.
-      const proof = await appLogoutEvidence();
+      const proof = await appLogoutEvidence({ logcatCleared });
       cleanupDetail.app_logout_log = proof.lines;
-      cleanupDetail.app_reported_server_logout = proof.revocation ?? "not_logged";
-      if (proof.revocation && proof.revocation !== "success") throw new Error(`the app signed out locally but reported its server logout as ${proof.revocation}`);
-      // Signed out on the device; the server side counts only with the app's own logout evidence.
-      return proof.verified ? "server_logout_verified" : "local_cleared_server_unconfirmed";
+      cleanupDetail.app_logout_evidence = proof.reason;
+      // Signed out on the device. The server side counts only as the app's own report of a 2xx for
+      // its POST /auth/logout (not proof the server revoked that session: no per-session receipt).
+      return proof.verified ? "app_reported_server_logout_2xx" : "local_cleared_server_unconfirmed";
     } catch (error) {
       cleanupDetail.app_sign_out_error = redact(error.message).slice(0, 300);
       log(`app sign out through its UI did not complete (${cleanupDetail.app_sign_out_error}); clearing app data instead`);
@@ -527,8 +549,10 @@ async function revokeAppSession(appMayBeSignedIn) {
 
 // ---------- scenario (optional) ----------
 // The scenario gets the device helpers and the QA account's web session (refreshed on a 401; the
-// same session is signed out in cleanup). Its result goes to summary.json `scenario`; a scenario
-// that throws or reports result "fail" makes the run exit non-zero after cleanup.
+// same session is signed out in cleanup). Its result goes to summary.json `scenario`; only
+// result "pass" (every requested step covered and passed) lets the run exit 0: "partial"
+// (something not covered / unconfirmed), "unknown" (a write with no clear answer), "fail" or a
+// throw make it exit non-zero after cleanup.
 let scenarioFailed = false;
 async function runScenario(webSession) {
   const authed = async (method, pathname, { body, serverId } = {}) => {
@@ -555,7 +579,7 @@ async function runScenario(webSession) {
   try {
     const mod = await import(path.resolve(SCENARIO));
     const report = await mod.run(ctx);
-    if (report?.result === "fail") scenarioFailed = true;
+    if (report?.result !== "pass") scenarioFailed = true;
   } catch (error) {
     scenarioFailed = true;
     summary.scenario = { ...(summary.scenario ?? {}), result: "fail", error: redact(error?.message ?? String(error)).slice(0, 600) };
@@ -796,6 +820,6 @@ main()
       console.error(`[release-auto-login] cleanup incomplete: ${list}${STRICT_CLEANUP ? " (strict: failing the run)" : ""}`);
     }
     process.exitCode = outcome.exitCode || (scenarioFailed ? 1 : 0);
-    if (SCENARIO) summary.scenario_result = scenarioFailed ? "fail" : (summary.scenario?.result ?? "pass");
+    if (SCENARIO) summary.scenario_result = summary.scenario?.result ?? (scenarioFailed ? "fail" : "pass");
     fs.writeFileSync(path.join(OUT, "summary.json"), `${redact(JSON.stringify(summary, null, 2))}\n`);
   });
