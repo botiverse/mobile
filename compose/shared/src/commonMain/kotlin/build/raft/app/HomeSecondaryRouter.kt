@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.raftSelectedServerIdFlow
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -1156,18 +1157,14 @@ private fun HomeSavedRouterContent(
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
         }
-    var savedServerId by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(environment.authStore, environment.serverMembersStore) {
-        val serverId =
-            environment.authStore
-                .readSession()
-                ?.currentServerId
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-        savedServerId = serverId
-        if (serverId != null) {
-            environment.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
-        }
+    // The shell's selected server, followed: the wide layout keeps Saved beside the server rail,
+    // so a switch there must move the page (and its store, which reloads) to the new server.
+    val savedServerId by
+        remember(environment.authStore) { environment.authStore.raftSelectedServerIdFlow() }
+            .collectAsState(null)
+    LaunchedEffect(environment.serverMembersStore, savedServerId) {
+        val serverId = savedServerId ?: return@LaunchedEffect
+        environment.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
     }
     val memberAvatarResolver =
         remember(environment.serverMembersStore, savedServerId) {

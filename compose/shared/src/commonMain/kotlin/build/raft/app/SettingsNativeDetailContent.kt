@@ -1,5 +1,8 @@
 package build.raft.app
 
+import kotlinx.coroutines.flow.emptyFlow
+import build.raft.app.data.RaftAuthSessionEventSource
+import build.raft.app.data.raftStoredSessionFlow
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.RaftAppSettingSurface
 import build.raft.app.data.toSystemNotificationActionResult
@@ -122,8 +125,11 @@ internal fun SettingsNativeDetailScreen() {
         RaftNotificationPreferenceEvents(sharedStores.eventBus)
     }
 
+    // Followed, not read once: the wide Settings pane stays beside the server rail, so a server
+    // switch must re-point the server-scoped parts (the store reloads their content itself).
     LaunchedEffect(environment.authStore) {
-        session = environment.authStore.readSession()
+        val wakes = (environment.authStore as? RaftAuthSessionEventSource)?.authSessionEvents ?: emptyFlow()
+        raftStoredSessionFlow(wakes) { environment.authStore.readSession() }.collect { session = it }
     }
     LaunchedEffect(environment.notificationPreferenceRepository) {
         notificationPreferenceSnapshot =
