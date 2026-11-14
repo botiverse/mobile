@@ -20,7 +20,7 @@ BAD_STATUS_JSON="${WORK_DIR}/status-bad.json"
 
 VERSION="9.9.9"
 BUILD_NUMBER="9999999"
-RELEASE_BRANCH="release-1.6.0"
+RELEASE_BRANCH="release/1.6.0"
 APP_ID="00000000-0000-4000-8000-000000000000"
 HANDS_BUILD="11111111-1111-4111-8111-111111111111"
 HANDS_RELEASE="22222222-2222-4222-8222-222222222222"
@@ -329,6 +329,20 @@ expect_fail env \
   --hands-build "${HANDS_BUILD}" \
   --hands-release "${HANDS_RELEASE}" \
   --asc-build-upload "${ASC_BUILD_UPLOAD}"
+
+for bad_branch in "release/1.6" "release_1.6.0" "feature/release/1.6.0" "release/1.6.0/x"; do
+  expect_fail env \
+    SLOCK_RELEASE_REPO="${REPO}" \
+    RAFT_CLI="${FAKE_RAFT}" \
+    "${HELPER}" \
+    --version "${VERSION}" \
+    --build "${BUILD_NUMBER}" \
+    --source "${SOURCE_COMMIT}" \
+    --release-branch "${bad_branch}" \
+    --hands-build "${HANDS_BUILD}" \
+    --hands-release "${HANDS_RELEASE}" \
+    --asc-build-upload "${ASC_BUILD_UPLOAD}"
+done
 
 expect_fail env \
   SLOCK_RELEASE_REPO="${REPO}" \

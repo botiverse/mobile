@@ -203,10 +203,10 @@ git push origin <reviewed-40-char-commit>:refs/heads/release/X.Y.Z
 
 Record branch and commit in the issue. Known gaps with the slash name:
 `scripts/create_android_release_branch.sh` creates the old `release-X.Y.Z`
-form; `test.yml` (`release-*` full run) and
-`scripts/create_ios_release_audit_tag.sh` accept only the dash form. Dispatch
-`test.yml -f scope=full` on the branch by hand, and ask the release owner how
-to record the iOS tag rather than renaming branches.
+form; `test.yml` (`release-*` full run) accepts only the dash form. Dispatch
+`test.yml -f scope=full` on the branch by hand rather than renaming branches.
+`scripts/create_ios_release_audit_tag.sh` accepts `release/X.Y.Z` (and the
+legacy dash form).
 
 After the cut:
 
