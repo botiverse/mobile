@@ -2,9 +2,12 @@
 
 // Independent Stamp evidence reviewer. It deliberately excludes the executor's
 // verdict, reason, annotated screenshots, session transcript, and action log.
+// Only the executor's assertion-frame references (check id + step) are read so
+// the raw frame each check was asserted on is always shown and labelled.
 // Each invocation has a fresh model context and posts exactly one panel vote.
 
 import { resolvePiModel } from "./pi_model.mjs";
+import { selectReviewScreenshots } from "./review_evidence_selection.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 
@@ -84,13 +87,6 @@ async function evidenceBytes(ev) {
     throw new Error(`evidence ${ev.id} sha256 mismatch: manifest=${ev.sha256 || "missing"} actual=${actual}`);
   }
   return bytes;
-}
-
-function evenly(items, limit) {
-  if (items.length <= limit) return items;
-  const out = [];
-  for (let i = 0; i < limit; i++) out.push(items[Math.round((i * (items.length - 1)) / (limit - 1))]);
-  return [...new Map(out.map((x) => [x.id, x])).values()];
 }
 
 function parseJson(text) {
@@ -184,16 +180,17 @@ async function main() {
       review_spec_yaml: stringifyYaml(reviewSpec),
       spec_sha256: crypto.createHash("sha256").update(current.spec_yaml || "").digest("hex"),
       assertion_ids: assertionIds,
+      // Read only for assertion-frame references; never shown to the model.
+      verdict_json: rc.verdict_json,
     });
   }
 
   const excludedEvidence = (data.evidence || [])
     .filter((e) => !["screenshot", "ui_dump", "dump_layout", "logcat", "system_log"].includes(e.kind))
     .map((e) => ({ id: e.id, kind: e.kind, reason: "not in raw-evidence allowlist" }));
-  const rawShots = evenly(
-    (data.evidence || []).filter((e) => e.kind === "screenshot").sort((a, b) => Number(a.captured_at || a.created_at || 0) - Number(b.captured_at || b.created_at || 0)),
-    12,
-  );
+  // Assertion frames are always included (outside the 12-image cap) and
+  // labelled; the cap only thins the remaining frames.
+  const { shots: rawShots, assertionFrames, missingAssertionFrames, checksByEvidence } = selectReviewScreenshots(cases, data.evidence, 12);
   if (!rawShots.length) throw new Error("no raw screenshot evidence; refusing to review annotated/self-reported evidence only");
 
   const rawDumps = (data.evidence || []).filter((e) => e.kind === "ui_dump" || e.kind === "dump_layout");
@@ -223,6 +220,7 @@ async function main() {
     source_commit: data.run.source_commit || null,
     apk_sha256: data.run.apk_sha256 || null,
     cases: cases.map((c) => ({ case_id: c.case_id, revision: c.frozen_revision, spec_sha256: c.spec_sha256, assertion_ids: c.assertion_ids })),
+    assertion_frames: assertionFrames.map((f) => ({ case_id: f.case_id, assertion_id: f.assertion_id, step: f.step, evidence_id: f.evidence_id })),
     evidence_manifest_sha256: evidenceManifestSha256,
   };
   const reviewInputSha256 = crypto.createHash("sha256").update(JSON.stringify(reviewInput)).digest("hex");
@@ -235,6 +233,8 @@ async function main() {
     included_evidence: reviewedEvidence.map((e) => ({ id: e.id, kind: e.kind })),
     excluded_evidence: excludedEvidence,
     raw_ui_dump_available: rawDumps.length > 0,
+    assertion_frames: assertionFrames,
+    missing_assertion_frames: missingAssertionFrames,
   });
   if (existingReview) {
     const existingDetail = typeof existingReview.detail_json === "string" ? JSON.parse(existingReview.detail_json) : existingReview.detail_json;
@@ -264,6 +264,55 @@ async function main() {
     return;
   }
 
+  // A check whose asserted frame never reached Stamp as a raw screenshot cannot
+  // be judged on other frames of the same flow: fail as evidence incomplete
+  // without consulting the model.
+  if (missingAssertionFrames.length) {
+    const missingText = missingAssertionFrames.map((f) => `${f.case_id}/${f.assertion_id || "(unnamed check)"}@step-${f.step ?? "unknown"}`);
+    const incompleteVote = {
+      verdict: "failed",
+      reason: `evidence incomplete: raw assertion frame missing from review input for ${missingText.join(", ")}`.slice(0, 1000),
+      detail_json: Object.fromEntries(cases.map((c) => [c.case_id, Object.fromEntries(c.assertion_ids.map((id) => {
+        const miss = missingAssertionFrames.find((f) => f.case_id === c.case_id && f.assertion_id === id);
+        return [id, {
+          ok: false,
+          note: miss
+            ? `evidence incomplete: executor asserted this check on step ${miss.step ?? "unknown"}, but no raw screenshot for that step is in the run evidence`
+            : "not judged: review input is evidence incomplete (a referenced assertion frame is missing)",
+        }];
+      }))])),
+      anomalies: missingText.map((m) => `evidence incomplete: missing raw assertion frame ${m}`),
+    };
+    validateVote(incompleteVote, cases);
+    saveRecord({ stage: "evidence_incomplete", parsed_vote: incompleteVote, validation: { ok: true } });
+    const posted = await stamp(`/api/runs/${runId}/panel-review`, {
+      method: "POST",
+      body: JSON.stringify({
+        reviewer,
+        verdict: incompleteVote.verdict,
+        reason: incompleteVote.reason,
+        detail_json: {
+          assertions: incompleteVote.detail_json,
+          anomalies: incompleteVote.anomalies,
+          evidence_incomplete: true,
+          missing_assertion_frames: missingAssertionFrames,
+          assertion_frames: assertionFrames,
+          evidence_manifest_sha256: evidenceManifestSha256,
+          review_input_sha256: reviewInputSha256,
+          evidence_manifest: evidenceManifest,
+          raw_evidence_ids: rawShots.map((e) => e.id),
+          log_scans: logScans,
+          provider: providerName,
+          model: modelName,
+          usage: null,
+        },
+      }),
+    });
+    saveRecord({ stage: "submitted", post_receipt: posted });
+    console.log(JSON.stringify(record, null, 2));
+    return;
+  }
+
   const prompt = [
     "You are an INDEPENDENT, REFUTE-BIASED QA reviewer.",
     "Judge only the original evidence attached below against the frozen acceptance requirements.",
@@ -271,6 +320,7 @@ async function main() {
     "Evidence insufficiency is a failure. A pass requires visible support for EVERY assertion and no contradictory/error evidence.",
     "Do not infer success from missing frames. Do not reward effort. Look for wrong server/account, stale screens, error UI, crashes, and broken layout.",
     "You are not the executor and have no shared context with it.",
+    "Screenshots labelled ASSERTION FRAME are the exact raw frames each named check was asserted on. Judge each check primarily on its assertion frame; other frames are context. If an assertion frame does not show what its check requires, that check fails.",
     "",
     `Run: ${runId}`,
     `App/platform: ${data.run.app_slug}`,
@@ -295,7 +345,11 @@ async function main() {
   for (const ev of rawShots) {
     const bytes = await bytesFor(ev);
     const rc = cases.find((c) => c.run_case_id === ev.run_case_id);
-    content.push({ type: "text", text: `RAW SCREENSHOT evidence=${ev.id} case=${rc?.case_id || ev.run_case_id} seq=${ev.seq} captured_at=${ev.captured_at || "unknown"}` });
+    const checks = checksByEvidence.get(ev.id) || [];
+    const assertionLabel = checks.length
+      ? ` ASSERTION FRAME for check(s): ${checks.map((f) => `${f.case_id}/${f.assertion_id || "(unnamed check)"}`).join(", ")}`
+      : "";
+    content.push({ type: "text", text: `RAW SCREENSHOT evidence=${ev.id} case=${rc?.case_id || ev.run_case_id} step=${ev.step_index ?? "unknown"} seq=${ev.seq} captured_at=${ev.captured_at || "unknown"}${assertionLabel}` });
     content.push({ type: "image", data: bytes.toString("base64"), mimeType: "image/png" });
   }
   for (const ev of rawDumps) {
@@ -361,6 +415,7 @@ async function main() {
     review_input_sha256: reviewInputSha256,
     evidence_manifest: evidenceManifest,
     raw_evidence_ids: rawShots.map((e) => e.id),
+    assertion_frames: assertionFrames,
     log_scans: logScans,
     provider: providerName,
     model: modelName,
