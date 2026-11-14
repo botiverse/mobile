@@ -127,6 +127,7 @@
     <string name="common_no_matches">Nenhum resultado</string>
     <string name="common_success">Sucesso</string>
     <string name="common_optional_suffix">(opcional)</string>
+    <string name="common_required">Obrigatório</string>
     <string name="common_no_actions_available">Nenhuma ação disponível</string>
     <string name="app_shell_offline_banner">Sem conexão com a internet</string>
     <string name="settings_title">Configurações</string>

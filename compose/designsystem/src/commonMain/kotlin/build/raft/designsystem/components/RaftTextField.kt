@@ -334,6 +334,7 @@ fun RaftTextField(
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
     val field = LocalRaftFieldState.current
+    val name = raftFieldSpokenName(field.label, field.required)
     BasicTextField(
         state = state,
         // Focused: cursor and selection drags (and single-line scrolling) keep the drag.
@@ -341,7 +342,7 @@ fun RaftTextField(
         modifier =
             modifier
                 .raftKeepsBackSwipe(focused)
-                .raftFieldSemantics(field.label, invalid, enabled, field.error)
+                .raftFieldSemantics(name, invalid, enabled, field.error)
                 .raftReportsFocusToAutofocusGuard(),
         enabled = enabled,
         readOnly = readOnly,
@@ -465,6 +466,7 @@ fun RaftTextarea(
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
     val field = LocalRaftFieldState.current
+    val name = raftFieldSpokenName(field.label, field.required)
     RaftTextareaGroup(modifier, count = state.text.length, limit = limit, invalid = invalid && enabled) {
         BasicTextField(
             state = state,
@@ -474,7 +476,7 @@ fun RaftTextarea(
                     .heightIn(min = minHeight, max = maxHeight)
                     // Focused: cursor and selection drags keep the drag from the host back swipe.
                     .raftKeepsBackSwipe(focused)
-                    .raftFieldSemantics(field.label, invalid, enabled, field.error)
+                    .raftFieldSemantics(name, invalid, enabled, field.error)
                     .raftReportsFocusToAutofocusGuard(),
             enabled = enabled,
             readOnly = readOnly,

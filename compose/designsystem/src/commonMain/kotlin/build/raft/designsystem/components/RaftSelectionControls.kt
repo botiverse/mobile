@@ -149,7 +149,7 @@ fun RaftCheckbox(
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val interactive = onCheckedChange != null
-    val label = LocalRaftFieldState.current.label
+    val label = raftFieldSpokenName(LocalRaftFieldState.current.label)
     RaftRegisterFieldItemTap(if (onCheckedChange != null && enabled) ({ onCheckedChange(!checked) }) else null)
     val standalone = LocalRaftFieldItemTarget.current == null
     val toggle =
@@ -266,7 +266,7 @@ fun RaftRadio(
     interactionSource: MutableInteractionSource? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val label = LocalRaftFieldState.current.label
+    val label = raftFieldSpokenName(LocalRaftFieldState.current.label)
     RaftRegisterFieldItemTap(if (onClick != null && enabled) onClick else null)
     val select =
         if (onClick != null) {
@@ -328,6 +328,7 @@ fun RaftSwitch(
     val focused = onCheckedChange != null && enabled && isFocused
     RaftRegisterFieldItemTap(if (onCheckedChange != null && enabled) ({ onCheckedChange(!checked) }) else null)
     val controls = RaftTheme.controls
+    val name = raftFieldSpokenName(label)
     // `p-[2.5px]` inside the 1.5dp edge, on both sides of the knob.
     val pad = RaftStroke.Control + 2.5.dp
     // 50 - 22 - 2 x 4 = 20 with a finger; 38 - 14 - 2 x 4 = 16 under a fine pointer.
@@ -350,7 +351,7 @@ fun RaftSwitch(
     Box(
         modifier
             .then(toggle)
-            .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)
+            .then(if (name != null) Modifier.semantics { contentDescription = name } else Modifier)
             .size(controls.switchWidth, controls.switchHeight)
             .raftFocusRing(focused, radius, colors)
             .raftDieCutEdge(look.dieCut, radius)

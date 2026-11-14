@@ -127,6 +127,7 @@
     <string name="common_no_matches">沒有相符項目</string>
     <string name="common_success">成功</string>
     <string name="common_optional_suffix">（選填）</string>
+    <string name="common_required">必填</string>
     <string name="common_no_actions_available">沒有可用的操作</string>
     <string name="app_shell_offline_banner">沒有網路連線</string>
     <string name="settings_title">設定</string>

@@ -38,8 +38,8 @@ import build.raft.designsystem.theme.RaftTheme
  * The type styles carry the UI language ([RaftUiTextLocaleState]), so Android draws Han
  * characters in the ja / ko / zh-Hant glyph forms the UI language asks for.
  *
- * The components' own words ([LocalRaftStrings]: the optional-field marker, the close, clear
- * and loading names) come from the app's `Res.string` resources, so they follow the UI language.
+ * The components' own words ([LocalRaftStrings]: the optional-field marker, the spoken
+ * required word, the close, clear and loading names) come from the app's `Res.string` resources, so they follow the UI language.
  *
  * Debug builds fail on design-system misuse ([RaftProvideDesignSystemMisuse]); release stays
  * silent.
@@ -118,6 +118,7 @@ internal fun RaftProvideDesignSystemMisuse(
 internal fun raftAppDesignSystemStrings(): RaftStrings =
     RaftStrings(
         optional = stringResource(Res.string.common_optional_suffix),
+        required = stringResource(Res.string.common_required),
         close = stringResource(Res.string.common_close),
         clear = stringResource(Res.string.common_clear),
         loading = stringResource(Res.string.common_loading),
