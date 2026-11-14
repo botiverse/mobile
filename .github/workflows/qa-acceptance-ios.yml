@@ -101,7 +101,9 @@ jobs:
     name: iOS acceptance run (M3 agent on simulator)
     # GitHub's Xcode 27 image (billed): the only one with Xcode 27.1, the default since 2026-10-28.
     runs-on: xcode-27
-    timeout-minutes: 75
+    # The Debug framework sync alone has taken 47-66 min on this image; bootstrap-smoke also reboots
+    # the run-owned Simulator. 75 min cancelled run 43613855810 mid-smoke.
+    timeout-minutes: 95
     env:
       # iPhone 14: 390x844pt @3x — same geometry as the android/react baselines.
       SIM_DEVICE: iPhone 14
