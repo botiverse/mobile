@@ -285,8 +285,14 @@ async function apiLogin() {
 const listOf = (body, key) => (Array.isArray(body) ? body : body?.[key]) ?? [];
 
 async function channelOf(token, server, preferred) {
-  const inbox = await raftJson("GET", "channels/inbox?filter=channels&limit=50&offset=0", { token, serverId: server.id });
-  const channels = listOf(inbox.json, "channels");
+  // GET channels answers a plain list; the inbox (rows under `items`) is the fallback.
+  let channels = listOf((await raftJson("GET", "channels", { token, serverId: server.id })).json, "channels");
+  if (!channels.length) {
+    const inbox = (await raftJson("GET", "channels/inbox?limit=50&offset=0", { token, serverId: server.id })).json;
+    channels = listOf(inbox, "items").map((row) => row?.channel ?? row);
+  }
+  channels = channels.filter((c) => c?.id && c?.name && c?.type !== "dm");
+  log(`channels on ${server.name}: ${channels.length}`);
   return channels.find((c) => c?.name === preferred) ?? channels.find((c) => c?.id && c?.name) ?? null;
 }
 
