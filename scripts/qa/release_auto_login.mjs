@@ -463,6 +463,41 @@ async function signOutAppViaUi() {
   stop(`not back on the sign-in page after 150s (route: ${route.join(" > ") || "none"}); on screen: ${lastLabels || "(nothing labelled)"}`);
 }
 
+// Only the app's own logout lines, reduced to non-secret fields (method, path, status, result,
+// code, trace id); never headers, bodies, queries or tokens.
+async function appLogoutEvidence() {
+  const deadline = Date.now() + 20_000;
+  let lines = [];
+  let revocation = null;
+  let apiResult = null;
+  let http = null;
+  while (Date.now() < deadline) {
+    const raw = String(shell("logcat -d -v brief 2>/dev/null | grep -E 'auth_logout_|auth/logout' | tail -40", { allowFailure: true, timeoutMs: 60_000 }) ?? "");
+    lines = [];
+    for (const line of raw.split("\n")) {
+      if (/auth_logout_(enter|api_result|cleared)/.test(line)) {
+        const event = line.match(/auth_logout_\w+(?:\s+(?:result|code|errorType|serverRevocation)=\S+)*/)?.[0];
+        if (event) lines.push(event);
+        revocation = line.match(/serverRevocation=(\S+)/)?.[1] ?? revocation;
+        apiResult = line.match(/auth_logout_api_result result=(\S+)/)?.[1] ?? apiResult;
+      } else if (/auth\/logout/.test(line)) {
+        const fields = ["method", "path", "status", "statusCode", "code", "kind", "traceId", "trace", "requestId"]
+          .map((k) => line.match(new RegExp(`\\b${k}=([^\\s?&]+)`))).filter(Boolean).map((m) => m[0]);
+        const summary = fields.length ? fields.join(" ") : (line.match(/(GET|POST)\s+\S*auth\/logout\S*\s+\d{3}/)?.[0] ?? "").replace(/\?\S*/, "");
+        if (summary) {
+          lines.push(`http ${summary}`);
+          const status = Number(line.match(/\bstatus(?:Code)?=(\d{3})/)?.[1] ?? line.match(/auth\/logout\S*\s+(\d{3})/)?.[1] ?? 0);
+          if (status) http = status;
+        }
+      }
+    }
+    if (revocation) break;
+    await sleep(2000);
+  }
+  const verified = revocation === "success" || apiResult === "success" || (http !== null && http >= 200 && http < 300);
+  return { lines: lines.map((l) => redact(l)).slice(-10), revocation, api_result: apiResult, http_status: http, verified };
+}
+
 async function revokeAppSession(appMayBeSignedIn) {
   await cleanupStep("app_session", async () => {
     if (!REVOKE_APP_SESSION) return "not_requested";
@@ -470,11 +505,16 @@ async function revokeAppSession(appMayBeSignedIn) {
     shell("logcat -c", { allowFailure: true });
     try {
       cleanupDetail.app_sign_out_route = (await signOutAppViaUi()).join(" > ");
-      // The app's own report of its POST /auth/logout (AuthDataSource.logout), when it is logged.
-      const logged = /auth_logout_cleared serverRevocation=(\S+)/.exec(shell("logcat -d -s SlockKuikly:* 2>/dev/null | tail -300", { allowFailure: true }))?.[1];
-      cleanupDetail.app_reported_server_logout = logged ?? "not_logged";
-      if (logged && logged !== "success") throw new Error(`the app signed out locally but reported its server logout as ${logged}`);
-      return "signed_out_via_app";
+      // The app's own report of its POST /auth/logout (AuthDataSource.logout: auth_logout_api_result,
+      // auth_logout_cleared serverRevocation=...), and the HTTP layer's finish line for that request.
+      // Release builds write these through the diagnostics sink, which reaches logcat a little
+      // later and under its own tags (SlockSharedAuth, ...): read every tag and wait for it.
+      const proof = await appLogoutEvidence();
+      cleanupDetail.app_logout_log = proof.lines;
+      cleanupDetail.app_reported_server_logout = proof.revocation ?? "not_logged";
+      if (proof.revocation && proof.revocation !== "success") throw new Error(`the app signed out locally but reported its server logout as ${proof.revocation}`);
+      // Signed out on the device; the server side counts only with the app's own logout evidence.
+      return proof.verified ? "server_logout_verified" : "local_cleared_server_unconfirmed";
     } catch (error) {
       cleanupDetail.app_sign_out_error = redact(error.message).slice(0, 300);
       log(`app sign out through its UI did not complete (${cleanupDetail.app_sign_out_error}); clearing app data instead`);

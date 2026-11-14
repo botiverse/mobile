@@ -98,7 +98,7 @@ export const CLEANUP_OK = {
   browser: ["restored", "not_changed"],
   capture_browser: ["uninstalled", "kept", "not_installed_by_run"],
   web_session: ["signed_out", "not_opened"],
-  app_session: ["not_requested", "not_signed_in", "signed_out_via_app"],
+  app_session: ["not_requested", "not_signed_in", "signed_out_via_app", "server_logout_verified"],
 };
 
 /** Which cleanup steps failed, and whether the run may still exit 0. */
