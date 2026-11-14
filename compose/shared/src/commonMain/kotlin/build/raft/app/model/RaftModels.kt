@@ -1398,6 +1398,34 @@ data class LinkCardOperationChanged(
 ) : RealtimeEvent
 
 /**
+ * `actor:updated` (botiverse/slock `actorResolveContract.ts` `actorUpdatedEventSchema`): an agent whose
+ * home is another server, seen through a joint channel, changed its display identity. Exactly the
+ * external projection `POST /api/actors/resolve` gives; only agents emit it today.
+ */
+/**
+ * `message_display_prefs:updated` (botiverse/slock `routes/channels.ts`): the person's display
+ * preferences of conversation [scopeId] on [serverId] changed elsewhere (today only "Collapse long
+ * messages"). Applied like web `setMessageDisplayPrefsState`, never older than the held version.
+ */
+@Serializable
+data class MessageDisplayPrefsChanged(
+    val serverId: ServerId,
+    val scopeId: String,
+    val collapseLongMessages: Boolean,
+    val prefsVersion: Long?,
+) : RealtimeEvent
+
+@Serializable
+data class ActorUpdated(
+    val kind: MemberKind,
+    val id: String,
+    val homeServerId: String,
+    val name: String,
+    val displayName: String?,
+    val avatarUrl: String?,
+) : RealtimeEvent
+
+/**
  * The person's product-feedback unread total (unread public replies on their own tickets) in one
  * Hands app (botiverse/slock f0f773995 `packages/shared/src/productFeedbackUnread.ts`, sent by
  * `services/productFeedbackUnreadRealtime.ts` to their own `user:<id>` room):

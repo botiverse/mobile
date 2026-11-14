@@ -367,6 +367,10 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is build.raft.app.model.ProductFeedbackUnreadUpdated -> false
         // A link card receipt hint: the card following that operation reads its status; no Home row.
         is build.raft.app.model.LinkCardOperationChanged -> false
+        // A joint channel's other-server agent: its resolved row (avatar fallback) changes; no Home row.
+        is build.raft.app.model.ActorUpdated -> false
+        // "Collapse long messages" of one conversation (RaftMessageDisplayPrefsStore); no Home row.
+        is build.raft.app.model.MessageDisplayPrefsChanged -> false
         // Notification levels, account settings and retractions change no Home row; the notification
         // level store and the platform tray handle them.
         is build.raft.app.model.NotificationLevelChanged,

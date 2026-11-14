@@ -102,6 +102,8 @@ import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerAppearanceUpdated
 import build.raft.app.model.UserProfileUpdated
 import build.raft.app.model.LinkCardOperationChanged
+import build.raft.app.model.ActorUpdated
+import build.raft.app.model.MessageDisplayPrefsChanged
 import build.raft.app.model.ProductFeedbackUnreadUpdated
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerMembershipRemoved
@@ -426,6 +428,10 @@ class RealtimeEventMapper(
                 decodeOrNull(ProductFeedbackAppUnreadDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.LinkCardOperationChanged ->
                 decodeOrNull(LinkCardOperationChangedDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.ActorUpdated ->
+                decodeOrNull(ActorUpdatedDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.MessageDisplayPrefsUpdated ->
+                decodeOrNull(MessageDisplayPrefsUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ServerFeaturesChanged ->
                 decodeOrNull(ServerFeaturesChangedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
@@ -1109,6 +1115,43 @@ private data class LinkCardOperationChangedDto(
         val id = operationId.trim().takeIf { it.isNotEmpty() } ?: return null
         if (receiptRevision < 0) return null
         return LinkCardOperationChanged(id, receiptRevision)
+    }
+}
+
+/** `message_display_prefs:updated` (slock `emitMessageDisplayPrefsUpdated`). */
+@Serializable
+private data class MessageDisplayPrefsUpdatedDto(
+    val serverId: String,
+    val scopeId: String,
+    val prefs: MessageDisplayPrefsWireDto,
+    val prefsVersion: Long? = null,
+) {
+    fun toDomain(): MessageDisplayPrefsChanged? {
+        val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return null
+        val scope = scopeId.trim().takeIf { it.isNotEmpty() } ?: return null
+        // Web `normalizeMessageDisplayPrefs`: anything but `true` is off; a bad version is dropped.
+        return MessageDisplayPrefsChanged(ServerId(server), scope, prefs.collapseLongMessages == true, prefsVersion?.takeIf { it >= 0 })
+    }
+}
+
+@Serializable
+private data class MessageDisplayPrefsWireDto(val collapseLongMessages: Boolean? = null)
+
+/** `actor:updated` (slock `actorUpdatedEventSchema`). Like web, only an agent is applied. */
+@Serializable
+private data class ActorUpdatedDto(
+    val kind: String,
+    val id: String,
+    val homeServerId: String,
+    val name: String,
+    val displayName: String? = null,
+    val avatarUrl: String? = null,
+) {
+    fun toDomain(): ActorUpdated? {
+        if (kind != "agent") return null
+        val cleanId = id.trim().takeIf { it.isNotEmpty() } ?: return null
+        val home = homeServerId.trim().takeIf { it.isNotEmpty() } ?: return null
+        return ActorUpdated(MemberKind.Agent, cleanId, home, name, displayName, avatarUrl?.takeIf { it.isNotBlank() })
     }
 }
 

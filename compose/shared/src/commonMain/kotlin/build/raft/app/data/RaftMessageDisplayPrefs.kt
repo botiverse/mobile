@@ -127,6 +127,15 @@ internal object RaftMessageDisplayPrefsStore {
         return result
     }
 
+    /**
+     * Realtime `message_display_prefs:updated`: the person changed it on another device or tab (web
+     * `setMessageDisplayPrefsState`). Older than the held version: dropped.
+     */
+    fun applyRealtime(serverId: String, channelId: String, prefs: RaftMessageDisplayPrefs) {
+        val key = raftMessageDisplayPrefsKey(serverId, channelId) ?: return
+        apply(key, RaftMessageDisplayPrefsResult.Loaded(prefs), rollbackTo = null)
+    }
+
     private fun apply(key: String, result: RaftMessageDisplayPrefsResult, rollbackTo: RaftMessageDisplayPrefs?) {
         when (result) {
             is RaftMessageDisplayPrefsResult.Loaded -> {

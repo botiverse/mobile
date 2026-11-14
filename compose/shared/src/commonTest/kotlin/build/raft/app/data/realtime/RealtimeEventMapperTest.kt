@@ -1105,6 +1105,46 @@ class RealtimeEventMapperTest {
     }
 
     @Test
+    fun actorUpdatedMapsAnAgentsExternalProjection() {
+        // botiverse/slock actorResolveContract.ts actorUpdatedEventSchema.
+        assertTrue(RealtimeSocketEvents.ActorUpdated in RealtimeSocketEvents.ServerWireEvents)
+        val mapper = RealtimeEventMapper()
+        assertEquals(
+            build.raft.app.model.ActorUpdated(
+                kind = build.raft.app.model.MemberKind.Agent,
+                id = "agent-1",
+                homeServerId = "server-b",
+                name = "nova",
+                displayName = "Nova",
+                avatarUrl = "https://cdn.test/a.webp",
+            ),
+            mapper.map(
+                "actor:updated",
+                """{"kind":"agent","id":"agent-1","homeServerId":"server-b","name":"nova","displayName":"Nova","avatarUrl":"https://cdn.test/a.webp"}""",
+            ),
+        )
+        // Only agents emit it; anything else is ignored, like web.
+        assertNull(
+            mapper.map("actor:updated", """{"kind":"human","id":"u-1","homeServerId":"server-b","name":"Ada","displayName":null,"avatarUrl":null}"""),
+        )
+    }
+
+    @Test
+    fun messageDisplayPrefsUpdatedMapsLikeTheWeb() {
+        // botiverse/slock routes/channels.ts emitMessageDisplayPrefsUpdated.
+        assertTrue(RealtimeSocketEvents.MessageDisplayPrefsUpdated in RealtimeSocketEvents.ServerWireEvents)
+        val mapper = RealtimeEventMapper()
+        assertEquals(
+            build.raft.app.model.MessageDisplayPrefsChanged(build.raft.app.model.ServerId("server-1"), "channel-1", collapseLongMessages = true, prefsVersion = 5),
+            mapper.map(
+                "message_display_prefs:updated",
+                """{"serverId":"server-1","scopeId":"channel-1","prefs":{"collapseLongMessages":true},"prefsVersion":5}""",
+            ),
+        )
+        assertNull(mapper.map("message_display_prefs:updated", """{"serverId":"server-1","scopeId":"","prefs":{}}"""))
+    }
+
+    @Test
     fun serverWireEventsIncludeWebRealtimeContractEvents() {
         val events = RealtimeSocketEvents.ServerWireEvents
 

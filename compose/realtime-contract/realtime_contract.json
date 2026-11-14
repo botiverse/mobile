@@ -104,7 +104,9 @@
     "notificationPush": "notification:push",
     "notificationRetract": "notification:retract",
     "jointInvitesChanged": "joint-invites:changed",
-    "linkCardOperationChanged": "link_card.operation_changed"
+    "linkCardOperationChanged": "link_card.operation_changed",
+    "actorUpdated": "actor:updated",
+    "messageDisplayPrefsUpdated": "message_display_prefs:updated"
   },
   "serverWireEvents": [
     "messageNew",
@@ -165,6 +167,8 @@
     "notificationPush",
     "notificationRetract",
     "jointInvitesChanged",
-    "linkCardOperationChanged"
+    "linkCardOperationChanged",
+    "actorUpdated",
+    "messageDisplayPrefsUpdated"
   ]
 }

@@ -17509,6 +17509,8 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is build.raft.app.model.UserProfileUpdated -> "user_profile_updated"
         is build.raft.app.model.ProductFeedbackUnreadUpdated -> "product_feedback_unread"
         is build.raft.app.model.LinkCardOperationChanged -> "link_card_operation_changed"
+        is build.raft.app.model.ActorUpdated -> "actor_updated"
+        is build.raft.app.model.MessageDisplayPrefsChanged -> "message_display_prefs_updated"
         is ComputerRestartDone -> "computer_restart_done"
         is build.raft.app.model.RuntimeAuthUpdated -> "runtime_auth_updated"
         is build.raft.app.model.RuntimeAuthLoginEventPushed -> "runtime_auth_login_event"
@@ -17556,12 +17558,14 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is ServerPlanUpdated,
         is ServerAppearanceUpdated,
         is build.raft.app.model.UserProfileUpdated,
+        is build.raft.app.model.ActorUpdated,
         is AgentCreated -> "realtime_membership_apply"
         is Heartbeat -> "realtime_heartbeat"
         is PerReceiverReadStateChanged,
         is PerReceiverNotificationPrefsChanged,
         is ServerNotificationPreferencesChanged,
         is PerReceiverPinnedChanged,
+        is build.raft.app.model.MessageDisplayPrefsChanged,
         is build.raft.app.model.NotificationLevelChanged,
         is build.raft.app.model.NotificationAccountSettingsChanged,
         is build.raft.app.model.ProductFeedbackUnreadUpdated,
