@@ -411,7 +411,9 @@ async function signOutAppViaUi() {
     const signOut = mine.filter((n) => n.bounds && n.enabled && n.text === "Sign out");
     const settings = find(mine, (n) => is(n, "Settings"));
     const account = find(mine, (n) => is(n, "Account"));
-    const accountPage = find(mine, (n) => n.text === "Delete account" || n.text.startsWith("Sign out on this device."));
+    // Settings > Account: the profile form first (Display name, Save profile, Connected accounts,
+    // Login & security), Sign out and Delete account further down.
+    const accountPage = find(mine, (n) => ["Delete account", "Save profile", "Connected accounts", "Change Password", "Login & security"].includes(n.text) || n.text.startsWith("Sign out on this device."));
     const more = find(mine, (n) => is(n, "More"));
     const currentServer = find(mine, (n) => n.desc.startsWith("Current server: "));
     // The server tab's panel (RaftAppServerMenuOverlay): server rows ("/slug" under each name), then
@@ -430,7 +432,7 @@ async function signOutAppViaUi() {
       tap(signOut.sort((a, b) => b.bounds[1] - a.bounds[1])[0], "account:Sign out");
     } else if (accountPage) {
       // On Account, Sign out can be below the fold.
-      if (scrolls++ > 8) stop("Sign out is not on the Account page");
+      if (scrolls++ > 12) stop("Sign out is not on the Account page");
       scroll("account:scroll");
     } else if (account && settings && !panelOpen) {
       tap(account, "settings:Account");
