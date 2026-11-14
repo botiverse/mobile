@@ -9,7 +9,9 @@
 //   s3 status todo -> in progress -> done; "In Review" must not be offered for a v2 task
 //   s4 a Backlog task is listed and reads Backlog
 //   s5 a task an old CLI created without a source (the server posted its title as the source
-//      message): opened from that message, its task conversation opens
+//      message): from Home, open its channel, find that message, tap its task entry (or the
+//      message): the task conversation opens. Diagnostic first (never fails s5): whether the
+//      message's link opens it over the screen s4 left (a task page) and from Home.
 // Test data (s1-s4) is created by the QA account through the web API, titled "[QA test data]",
 // and deleted at the end; the source messages the server posts for them stay (a person cannot
 // delete messages through the API) and say they are test data. Each scenario records
@@ -464,22 +466,95 @@ export async function run(ctx) {
       });
       if (!candidate?.task) throw notCovered(`no task on ${serverName} looks like an old CLI's sourceless create (agent-created, source = the agent's own message whose text is the title, posted with the task); scanned ${candidate?.tasks_scanned ?? 0} tasks`);
       const t = candidate.task;
-      await sstep("s5", "open-title-message", async () => {
+      const titleHead = String(t.title).slice(0, 20);
+      const atHome = (l) => Boolean(hasText(l, "Drafts")) && !statusChip(l) && !channelReady(l);
+      const titleMessage = (l) => l.find((n) => n.pkg === PKG && n.bounds && n.bounds[1] > 250 && n.bounds[3] < 2250 && (n.text.includes(titleHead) || n.desc.includes(titleHead))) ?? null;
+      // Back until Home; relaunch when Back leaves the app or Home never comes.
+      async function goHome() {
+        for (let i = 0; i < 8; i += 1) {
+          const list = nodes();
+          if (atHome(list)) return { via: i === 0 ? "already_home" : `back_x${i}` };
+          if (!list.some((n) => n.pkg === PKG)) break;
+          await back();
+        }
+        ctx.launchApp();
+        await sleep(2500);
+        await waitUntil("Home", atHome, { timeoutMs: 30_000 });
+        return { via: "relaunch" };
+      }
+      // Diagnostic only (never fails s5): does the source message's link open it? Records where it lands.
+      const linkDiagnostic = (name, extra) => step(name, async () => {
+        const before = { task_page_on_top: Boolean(statusChip(nodes())), home: atHome(nodes()) };
         deepLink(channelUrl(t.channelId, t.sourceMessageId));
-        await waitUntil("the source message", (l) => find(l, (n) => n.pkg === PKG && n.text.includes(String(t.title).slice(0, 40))), { timeoutMs: 60_000 });
-        return { task: `#${t.number} ${t.title}`, channel: t.channelName, created_by: t.createdByName };
+        const deadline = Date.now() + 30_000;
+        let list = [];
+        let opened = false;
+        while (Date.now() < deadline && !opened) {
+          await sleep(1500);
+          list = nodes();
+          opened = Boolean(titleMessage(list)) && !statusChip(list) && !atHome(list);
+        }
+        return { ...extra, ...before, link_opened_message: opened, after_task_page_on_top: Boolean(statusChip(list)), after_channel_open: Boolean(channelReady(list)), on_screen: visible(list).slice(0, 300) };
+      }).catch((error) => ({ error: error.message }));
+
+      report.s5_link_diagnostic = {};
+      // 1. As s4 left it (normally a task page on top).
+      report.s5_link_diagnostic.over_current_screen = await linkDiagnostic("s5-diag-link-over-current-screen", { tried_from: "the screen s4 left" });
+      // 2. From Home.
+      await step("s5-diag-go-home-1", goHome).catch((error) => log(`s5 go home: ${error.message}`));
+      report.s5_link_diagnostic.from_home = await linkDiagnostic("s5-diag-link-from-home", { tried_from: "home" });
+      const d = report.s5_link_diagnostic;
+      if (d.over_current_screen?.task_page_on_top && !d.over_current_screen?.link_opened_message && d.from_home?.link_opened_message) {
+        d.possible_app_bug = "the message link does nothing while a task page is open, but opens the message from Home";
+      }
+
+      // ---------- s5 itself: the way a person reaches it ----------
+      await sstep("s5", "home", goHome);
+      await sstep("s5", "open-channel-from-home", async () => {
+        const isRow = (n) => n.pkg === PKG && n.bounds && n.bounds[3] < 2250 && [t.channelName, `#${t.channelName}`, `# ${t.channelName}`].includes(n.text.trim());
+        let row = null;
+        for (let i = 0; i < 12 && !row; i += 1) {
+          row = find(nodes(), isRow);
+          if (!row) { if (i < 8) swipeUp(); else swipeDown(); await sleep(900); }
+        }
+        if (!row) throw new Error(`#${t.channelName} not found on Home; on screen: ${visible()}`);
+        tapNode(row);
+        await waitUntil(`#${t.channelName} with its Open Tasks toggle`, channelReady, { timeoutMs: 45_000 });
+        return { channel: t.channelName };
+      });
+      let messageNode = null;
+      await sstep("s5", "find-title-message", async () => {
+        if (hasText(nodes(), "Close Tasks")) { tapNode(hasText(nodes(), "Close Tasks")); await sleep(1200); }
+        await hideKeyboard();
+        let swipes = 0;
+        for (let i = 0; i < 40 && !messageNode; i += 1) {
+          await sleep(900);
+          messageNode = titleMessage(nodes());
+          if (messageNode) break;
+          // Older messages are above: scroll up through history first, then back down.
+          if (i < 25) swipeDown(); else swipeUp();
+          swipes += 1;
+        }
+        if (!messageNode) throw new Error(`the title message "${titleHead}…" not found in #${t.channelName} after ${swipes} swipes; on screen: ${visible()}`);
+        const list = nodes();
+        const sender = find(list, (n) => n.pkg === PKG && n.bounds && /qa-old-cli-task/.test(n.text) && n.bounds[1] <= messageNode.bounds[1] + 10 && n.bounds[1] > messageNode.bounds[1] - 400);
+        return { swipes, sender_seen: Boolean(sender) };
       });
       await sstep("s5", "open-task-from-message", async () => {
-        // ThreadMessageSourceTaskList: "Open task #N: <title>" under the source message.
-        const entry = await waitUntil(`"Open task #${t.number}" under the message`, (l) =>
-          hasText(l, (n) => n.desc.startsWith(`Open task #${t.number}`) || n.text.startsWith(`Open task #${t.number}`) || (n.clickable && n.text.includes(`#${t.number}`))) ??
-          hasText(l, (n) => n.text === `#${t.number}`), { timeoutMs: 20_000 });
-        tapNode(entry);
+        const list = nodes();
+        const below = (n) => n.bounds && n.bounds[1] >= messageNode.bounds[1] - 20 && n.bounds[1] < messageNode.bounds[3] + 500;
+        let via = "task_entry";
+        let target = find(list, (n) => n.pkg === PKG && below(n) && (n.desc.startsWith(`Open task #${t.number}`) || n.text.startsWith(`Open task #${t.number}`)))
+          ?? find(list, (n) => n.pkg === PKG && below(n) && (n.text.trim() === `#${t.number}` || n.desc.includes(`#${t.number}`)));
+        if (!target) { via = "message"; target = messageNode; }
+        tapNode(target);
         await waitUntil("the task conversation", (l) => statusChip(l) || hasText(l, "Message this task") || hasText(l, "Join Channel to Reply"), { timeoutMs: 45_000 });
-        const { chip, list } = await findTaskHead();
-        if (!chip) throw new Error(`the task conversation opened without its head; on screen: ${visible(list)}`);
-        if (!titleNode(list, String(t.title).slice(0, 40))) throw new Error(`the task conversation does not show the title; on screen: ${visible(list)}`);
-        return { head_status: statusOf(chip) };
+        const { chip, list: head } = await findTaskHead();
+        if (!chip) throw new Error(`opened something without a task head (via ${via}); on screen: ${visible(head)}`);
+        const numbered = find(head, (n) => n.pkg === PKG && (n.text.includes(`:#${t.number}`) || n.text.trim() === `Task #${t.number}`));
+        if (!numbered) throw new Error(`a task opened (via ${via}) but not #${t.number}; on screen: ${visible(head)}`);
+        if (!titleNode(head, titleHead)) throw new Error(`task #${t.number} opened (via ${via}) without its title; on screen: ${visible(head)}`);
+        return { via, head_status: statusOf(chip), header: numbered.text };
       });
     });
   } finally {
