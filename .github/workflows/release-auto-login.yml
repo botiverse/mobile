@@ -179,7 +179,7 @@ jobs:
     needs: [plan, build]
     if: ${{ always() && needs.plan.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       EVIDENCE: release-auto-login-evidence
     steps:

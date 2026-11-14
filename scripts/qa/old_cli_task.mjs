@@ -130,15 +130,28 @@ async function pushArtifacts(cliEnv) {
   console.log(`----- artifact list --target #${CHANNEL} (exit ${listed.status}) -----\n${listed.stdout.split("\n").slice(0, 30).join("\n")}${listed.stderr}\n-----`);
   if (listed.status !== 0) stop("raft artifact list failed");
   summary.artifacts = {};
+  const urlIn = (text) => text.match(/https:\/\/\S+\/artifacts\/[A-Za-z0-9_-]+/)?.[0] ?? null;
+  // A send into a channel with messages the agent has not read is held as a draft: read first.
+  const readChannel = () => {
+    const out = runCli(cliDir, ["message", "read", "--target", `#${CHANNEL}`], cliEnv);
+    if (out.status !== 0) stop(`raft message read failed: ${(out.stdout + out.stderr).slice(0, 300)}`);
+    return out.stdout;
+  };
   for (const a of ARTIFACTS) {
     const line = listed.stdout.split("\n").find((l) => l.includes(a.title));
+    let url = null;
     if (line) {
-      summary.artifacts[a.key] = { title: a.title, id: line.match(/\bpt_[A-Za-z0-9]+/)?.[0] ?? null, pushed_now: false, line: line.trim().slice(0, 200) };
-      log(`${a.title} is already in #${CHANNEL}; not pushing it again`);
-      continue;
-    }
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `qa-artifact-${a.key}-`));
-    fs.writeFileSync(path.join(dir, "index.html"), `<!doctype html>
+      const id = line.match(/\bpt_[A-Za-z0-9-]+/)?.[0] ?? null;
+      url = urlIn(line);
+      if (!url && id) {
+        const read = runCli(cliDir, ["artifact", "read", id], cliEnv);
+        url = urlIn(read.stdout);
+      }
+      summary.artifacts[a.key] = { title: a.title, id, url, pushed_now: false };
+      log(`${a.title} is already in #${CHANNEL} (${id}); not pushing it again`);
+    } else {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), `qa-artifact-${a.key}-`));
+      fs.writeFileSync(path.join(dir, "index.html"), `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${a.title}</title>
 <style>body{font-family:sans-serif;margin:0;padding:32px;background:${a.color};color:#fff}h1{font-size:40px}p{font-size:22px}</style>
@@ -148,15 +161,25 @@ async function pushArtifacts(cliEnv) {
 <p>Test page for the Android Artifact viewer reuse check (Hands dd109a01). Safe to delete.</p>
 </body></html>
 `);
-    const pushed = runCli(cliDir, ["artifact", "push", dir, "--target", `#${CHANNEL}`, "--title", a.title], cliEnv);
-    console.log(`----- artifact push ${a.key} (exit ${pushed.status}) -----\n${pushed.stdout}${pushed.stderr}\n-----`);
-    if (pushed.status !== 0) stop(`raft artifact push ${a.key} failed`);
-    const url = pushed.stdout.match(/^Open: (\S+)/m)?.[1] ?? null;
-    const id = pushed.stdout.match(/\((pt_[A-Za-z0-9]+)\)/)?.[1] ?? null;
-    if (!url) stop(`the push of ${a.key} printed no Open: link`);
-    summary.artifacts[a.key] = { title: a.title, id, url, pushed_now: true };
-    const sent = runCli(cliDir, ["message", "send", "--target", `#${CHANNEL}`], cliEnv, `${url}\n`);
-    console.log(`----- message send (link of ${a.key}) (exit ${sent.status}) -----\n${sent.stdout}${sent.stderr}\n-----`);
+      const pushed = runCli(cliDir, ["artifact", "push", dir, "--target", `#${CHANNEL}`, "--title", a.title], cliEnv);
+      console.log(`----- artifact push ${a.key} (exit ${pushed.status}) -----\n${pushed.stdout}${pushed.stderr}\n-----`);
+      if (pushed.status !== 0) stop(`raft artifact push ${a.key} failed`);
+      url = pushed.stdout.match(/^Open: (\S+)/m)?.[1] ?? null;
+      summary.artifacts[a.key] = { title: a.title, id: pushed.stdout.match(/\((pt_[A-Za-z0-9-]+)\)/)?.[1] ?? null, url, pushed_now: true };
+    }
+    if (!url) stop(`no link for ${a.key}`);
+    const seen = readChannel();
+    if (seen.includes(url)) {
+      summary.artifacts[a.key].link_sent = "already_in_channel";
+      log(`the link of ${a.key} is already in #${CHANNEL}`);
+      continue;
+    }
+    let sent = runCli(cliDir, ["message", "send", "--target", `#${CHANNEL}`], cliEnv, `${url}\n`);
+    if (/SEND_HELD_AS_DRAFT/.test(sent.stdout + sent.stderr)) {
+      readChannel();
+      sent = runCli(cliDir, ["message", "send", "--target", `#${CHANNEL}`], cliEnv, `${url}\n`);
+    }
+    console.log(`----- message send (link of ${a.key}) (exit ${sent.status}) -----\n${sent.stdout.split("\n").slice(0, 8).join("\n")}${sent.stderr.slice(0, 600)}\n-----`);
     if (sent.status !== 0) stop(`sending the link of ${a.key} failed`);
     summary.artifacts[a.key].link_sent = true;
   }
