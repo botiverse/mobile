@@ -38,7 +38,8 @@ class RaftMinBuildGateControllerTest {
         currentBuild: Long? = 11_900_000L,
     ): RaftMinBuildGateController =
         RaftMinBuildGateController(
-            scope = backgroundScope,
+            // The test scope itself: advanceUntilIdle runs its children (not backgroundScope's).
+            scope = this,
             flagKey = key,
             currentBuild = { currentBuild },
             channel = { channel },

@@ -241,9 +241,17 @@ internal fun RaftMinBuildGateBanner(
                 .padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm)
                 .widthIn(max = 560.dp)
                 .fillMaxWidth(),
+        // raft-ui: a banner with a button closes through a ghost Dismiss before it; without one,
+        // through the frameless × (RaftBanner shows that only when there is no action).
         action =
             if (onUpdate != null) {
                 {
+                    RaftButton(
+                        text = stringResource(Res.string.common_dismiss),
+                        onClick = onDismiss,
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftButtonSize.Md,
+                    )
                     RaftButton(
                         text = stringResource(Res.string.min_build_gate_action_update),
                         onClick = onUpdate,
@@ -254,7 +262,7 @@ internal fun RaftMinBuildGateBanner(
             } else {
                 null
             },
-        onDismiss = onDismiss,
+        onDismiss = if (onUpdate == null) onDismiss else null,
         dismissLabel = stringResource(Res.string.common_dismiss),
     )
 }
