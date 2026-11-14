@@ -383,13 +383,19 @@ async function signOutWebSession(webSession) {
 const onSignInPage = (list) =>
   list.some((n) => n.pkg === PKG && (n.text === "Sign in to Raft" || n.text.startsWith("Sign in through ")));
 async function signOutAppViaUi() {
-  const deadline = Date.now() + 120_000;
+  const deadline = Date.now() + 150_000;
   const route = [];
-  let swipes = 0;
+  let scrolls = 0;
+  let panelScrolls = 0;
   let serverTaps = 0;
+  let idle = 0;
   let lastLabels = "";
   const tap = (node, what) => {
     tapNode(node);
+    if (route[route.length - 1] !== what) route.push(what);
+  };
+  const scroll = (what, from = 1700, to = 700) => {
+    shell(`input swipe 540 ${from} 540 ${to} 400`, { allowFailure: true });
     if (route[route.length - 1] !== what) route.push(what);
   };
   launchApp();
@@ -399,13 +405,19 @@ async function signOutAppViaUi() {
     if (await dismissSystemDialog(list)) continue;
     if (onSignInPage(list)) return route;
     const mine = list.filter((n) => n.pkg === PKG);
+    const is = (n, text) => n.text === text || n.desc === text;
     const confirmMessage = find(mine, (n) => n.text.startsWith("Sign out on this device?"));
     const chooserSignOut = find(mine, (n) => n.text === "Sign Out" && n.enabled);
     const signOut = mine.filter((n) => n.bounds && n.enabled && n.text === "Sign out");
-    const settingsTitle = find(mine, (n) => n.text === "Settings");
-    const account = find(mine, (n) => n.text === "Account");
-    const more = find(mine, (n) => n.text === "More" || n.desc === "More");
+    const settings = find(mine, (n) => is(n, "Settings"));
+    const account = find(mine, (n) => is(n, "Account"));
+    const accountPage = find(mine, (n) => n.text === "Delete account" || n.text.startsWith("Sign out on this device."));
+    const more = find(mine, (n) => is(n, "More"));
     const currentServer = find(mine, (n) => n.desc.startsWith("Current server: "));
+    // The server tab's panel (RaftAppServerMenuOverlay): server rows ("/slug" under each name), then
+    // Switch or Create Server, then Artifacts · Members · Computers · Apps · Settings. With many
+    // servers the destinations sit below the fold of the panel.
+    const panelOpen = Boolean(find(mine, (n) => is(n, "Server panel") || /^\/[a-z0-9][a-z0-9-]*$/.test(n.text)));
     if (confirmMessage) {
       // Settings > Account > Sign out asks first; its button sits under the message.
       const button = signOut.filter((n) => n.bounds[1] >= confirmMessage.bounds[3]).sort((a, b) => b.bounds[1] - a.bounds[1])[0];
@@ -416,28 +428,37 @@ async function signOutAppViaUi() {
       tap(chooserSignOut, "choose_server:Sign Out");
     } else if (signOut.length) {
       tap(signOut.sort((a, b) => b.bounds[1] - a.bounds[1])[0], "account:Sign out");
-    } else if (account && settingsTitle) {
-      tap(account, "settings:Account");
-    } else if (find(mine, (n) => n.text === "Delete account")) {
+    } else if (accountPage) {
       // On Account, Sign out can be below the fold.
-      if (swipes++ > 6) stop("Sign out is not on the Account page");
-      shell("input swipe 540 1700 540 600 400", { allowFailure: true });
-      if (route[route.length - 1] !== "account:scroll") route.push("account:scroll");
-    } else if (settingsTitle) {
-      tap(settingsTitle, "Settings");
+      if (scrolls++ > 8) stop("Sign out is not on the Account page");
+      scroll("account:scroll");
+    } else if (account && settings && !panelOpen) {
+      tap(account, "settings:Account");
+    } else if (settings) {
+      tap(settings, panelOpen ? "server_panel:Settings" : "Settings");
+    } else if (panelOpen) {
+      if (panelScrolls++ > 8) stop("the server panel shows no Settings");
+      // Scroll the panel's list (it opens from the bottom bar).
+      scroll("server_panel:scroll", 1600, 900);
     } else if (more) {
       tap(more, "More");
-    } else if (currentServer && serverTaps < 3) {
-      // A signed-in server's Home has no More tab: its server button (bottom bar) leads to Settings / Sign Out.
+    } else if (currentServer && serverTaps < 4) {
+      // A signed-in server's Home has no More tab: its server tab opens the server panel.
       serverTaps += 1;
       tap(currentServer, "Current server");
     } else if (!mine.length) {
       launchApp();
+    } else if (idle++ < 4) {
+      // Somewhere else in the app (a channel, a viewer): Back toward Home.
+      shell("input keyevent KEYCODE_BACK", { allowFailure: true });
+      if (route[route.length - 1] !== "back") route.push("back");
     }
-    lastLabels = mine.map(label).filter(Boolean).slice(0, 25).join(" | ");
+    lastLabels = mine.map(label).filter(Boolean).slice(0, 40).join(" | ");
     await sleep(1800);
   }
-  stop(`not back on the sign-in page after 120s (route: ${route.join(" > ") || "none"}); on screen: ${lastLabels || "(nothing labelled)"}`);
+  // Keep what the screen showed (no credential is on it: the app is signed in to its own UI).
+  evidence("cleanup-app-sign-out-FAILED");
+  stop(`not back on the sign-in page after 150s (route: ${route.join(" > ") || "none"}); on screen: ${lastLabels || "(nothing labelled)"}`);
 }
 
 async function revokeAppSession(appMayBeSignedIn) {
