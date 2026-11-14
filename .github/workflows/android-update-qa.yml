@@ -1,6 +1,40 @@
 name: Android App Update QA Fixture
 
 on:
+  # Reused by android-update-e2e.yml, which builds A/B here and then drives the
+  # real in-app update on a GitHub-hosted emulator.
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+      fixture_generation:
+        required: true
+        type: string
+      version_major:
+        required: true
+        type: string
+      baseline_build:
+        required: true
+        type: string
+      target_build:
+        required: true
+        type: string
+    outputs:
+      baseline_artifact_name:
+        value: ${{ jobs.baseline.outputs.artifact_name }}
+      baseline_version_code:
+        value: ${{ jobs.baseline.outputs.version_code }}
+      baseline_version_name:
+        value: ${{ jobs.baseline.outputs.version_name }}
+      target_artifact_name:
+        value: ${{ jobs.target.outputs.artifact_name }}
+      target_version_code:
+        value: ${{ jobs.target.outputs.version_code }}
+      target_version_name:
+        value: ${{ jobs.target.outputs.version_name }}
+      target_apk_sha256:
+        value: ${{ jobs.target.outputs.apk_sha256 }}
   workflow_dispatch:
     inputs:
       source_sha:
@@ -12,10 +46,11 @@ on:
         required: true
         type: string
       version_major:
-        description: "Reserved QA major version; keep final versionCode below 2147483647"
+        description: "Reserved QA major version (200-209); keep final versionCode below 2147483647"
         required: true
         type: string
-        default: "2000"
+        # 2000 would give versionCode 20_000_000_000+, which the validate step rejects.
+        default: "200"
       baseline_build:
         description: "A build component"
         required: true

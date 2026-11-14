@@ -29,6 +29,8 @@ while IFS= read -r match; do
     # Read-only Hands lookups for the GitHub Release (scripts/github_release_from_hands.py).
     .github/workflows/github-release.yml:*"HANDS_ANDROID_BEARER_TOKEN: \${{ secrets.${old_upper}_BEARER_TOKEN }}"*) ;;
     .github/workflows/github-release.yml:*"HANDS_IOS_BEARER_TOKEN: \${{ secrets.${old_upper}_IOS_BEARER_TOKEN }}"*) ;;
+    # Android update e2e: plans fixture versionCodes and serves B on the debug channel only.
+    .github/workflows/android-update-e2e.yml:*"HANDS_AUTH_TOKEN: \${{ secrets.${old_upper}_BEARER_TOKEN }}"*) ;;
     *)
       echo "${match}"
       unexpected=1
@@ -89,6 +91,14 @@ misplaced["env"]["HANDS_BEARER_TOKEN"] = expression
 [extra, missing, misplaced].each do |mutation|
   abort "FAIL: Android secret allowlist admitted an invalid consumer" if secret_references(mutation, token) == expected
 end
+
+# android-update-e2e.yml: exactly the planner step and the e2e job (debug-channel fixture B).
+e2e_expected = {
+  ["jobs", "plan", "steps", "p", "env", "HANDS_AUTH_TOKEN"] => expression,
+  ["jobs", "e2e", "env", "HANDS_AUTH_TOKEN"] => expression,
+}
+e2e = YAML.load_file(".github/workflows/android-update-e2e.yml")
+abort "FAIL: Android update e2e secret consumer allowlist drifted" unless secret_references(e2e, token) == e2e_expected
 RUBY
 
 # iOS: the same location-aware freeze. The opt-in testflight_internal job
