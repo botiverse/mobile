@@ -142,6 +142,8 @@ private const val SHARED_AUTH_LOG_TAG = "SlockSharedAuth"
 private const val PixelAvatarRefreshDelayMinMs = 10_000L
 private const val PixelAvatarRefreshDelayMaxMs = 60_000L
 private const val SharedCanonicalFinalSinkCapacity = 64
+/** Diagnostics reason of the agents/Computers read after a switch no socket connect followed. */
+private const val ServerSwitchCatchUpReason = "server_switch_catch_up"
 
 private fun logSharedAuthDiagnostic(
     prefix: String,
@@ -1208,7 +1210,45 @@ internal class RaftSharedStoreProvider private constructor(
      * refetches at once ([RaftReconnectRefetchDecision.ImmediateAfterSwitch]).
      */
     internal fun noteServerSwitchedToWindow(serverId: String) {
-        reconnectRefetchJitter.onServerSelected(serverId, reason = "server_switch_window")
+        noteServerSelected(serverId, reason = "server_switch_window")
+    }
+
+    /**
+     * The user switched to [serverId]. Its socket's connect normally follows and refetches at once
+     * ([RaftReconnectRefetchDecision.ImmediateAfterSwitch]); when none follows (the server kept its own
+     * socket connected while another server was in front), the jitter's catch-up reads the agents and
+     * Computers again, so every list shows the status the agent's profile reads (Hands 46b6cebe).
+     */
+    private fun noteServerSelected(serverId: String, reason: String) {
+        reconnectRefetchJitter.onServerSelected(serverId, reason = reason) {
+            refreshServerLiveStatusAfterSwitch(serverId)
+        }
+    }
+
+    /**
+     * `/agents` + the machine list of [serverId] in every store showing it, as a sync-on reconnect
+     * does ([PresenceTransportRosterRefetch]): agent presence and machine status are not in the
+     * change log. A read this store started repairs a status a missed push left stale.
+     */
+    private suspend fun refreshServerLiveStatusAfterSwitch(serverId: String) {
+        val reason = ServerSwitchCatchUpReason
+        coroutineScope {
+            launch { refreshMachinesForSync(serverId, reason = reason) }
+            serverMembersStoresShowing(serverId).forEach { store ->
+                launch { store.refreshAgents(serverId = ServerId(serverId), reason = reason) }
+            }
+        }
+    }
+
+    /** The process store and every shell store whose shell selects [serverId]. */
+    private fun serverMembersStoresShowing(serverId: String): List<SharedServerMembersStore> {
+        val activeScopes = scopesForServer(serverId).toSet()
+        return buildList {
+            add(serverMembersStore)
+            shellServerMembersStores.entries().forEach { (scope, store) ->
+                if (scope in activeScopes) add(store)
+            }
+        }.distinct()
     }
 
     private val presenceTransportRosterRefetch: PresenceTransportRosterRefetch by lazy {
@@ -1217,15 +1257,7 @@ internal class RaftSharedStoreProvider private constructor(
             // A force caller otherwise joins any already-active pre-connect roster flight. Retire
             // that flight/cache once, before every shell joins the new current-transport request.
             invalidate = { owner, reason -> processServerMembersCore.invalidate(owner = owner, reason = reason) },
-            storesForServer = { serverId ->
-                val activeScopes = scopesForServer(serverId).toSet()
-                buildList {
-                    add(serverMembersStore)
-                    shellServerMembersStores.entries().forEach { (scope, store) ->
-                        if (scope in activeScopes) add(store)
-                    }
-                }.distinct()
-            },
+            storesForServer = ::serverMembersStoresShowing,
             isCurrentOwner = { owner -> replyCacheAuthContext.value?.ownerFor(owner.serverId) == owner },
             refreshMachines = { serverId -> refreshMachinesForSync(serverId, reason = PresenceTransportRosterRefetch.REASON) },
             logger = sharedInfoLogger("SlockPresence", "presence_transport_rebaseline"),
@@ -1855,7 +1887,7 @@ internal class RaftSharedStoreProvider private constructor(
                                 // A server switch fetches at once: a roster refetch still waiting for
                                 // the reconnect jitter of this server runs now, and the socket connect
                                 // that follows the switch is not jittered (Hands 81ad5dae).
-                                reconnectRefetchJitter.onServerSelected(serverId, reason = "server_selected")
+                                noteServerSelected(serverId, reason = "server_selected")
                                 cancelUnselectedSyncPulls()
                                 var syncPullRequested = false
                                 refreshSelectedServerFeatureFlags {
