@@ -21,6 +21,7 @@ import build.raft.app.resources.*
 import build.raft.app.data.RaftAppLinkCard
 import build.raft.app.data.appLinkDomain
 import build.raft.app.markdown.raftAppLinkKeepEnd
+import build.raft.designsystem.components.RaftAppLinkCardBadgeSurface
 import build.raft.designsystem.components.RaftMessageEmbedDefaults
 import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.components.RaftPreviewCardBody
@@ -85,7 +86,7 @@ internal fun RaftAppLinkCardView(
                     RaftPreviewCardItemTitle(card.title)
                     RaftPreviewCardMeta(details)
                     card.card?.let { RaftAppLinkCardBody(it, onAction) }
-                    card.cardV2?.let { RaftAppLinkCardV2Body(it) }
+                    card.cardV2?.let { RaftAppLinkCardV2Body(it, surface = RaftAppLinkCardBadgeSurface.Popover) }
                 }
             }
             RaftPreviewCardItemActions(buttons)

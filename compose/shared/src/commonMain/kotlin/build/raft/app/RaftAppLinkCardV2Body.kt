@@ -17,8 +17,8 @@ import build.raft.app.data.RaftLinkCardTextTone
 import build.raft.app.data.RaftLinkCardV2Element
 import build.raft.app.data.RaftMessageCardElement
 import build.raft.designsystem.components.RaftSeparator
-import build.raft.designsystem.components.RaftBadge
-import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftAppLinkCardBadge
+import build.raft.designsystem.components.RaftAppLinkCardBadgeSurface
 import build.raft.designsystem.components.RaftPreviewCardDetail
 import build.raft.designsystem.components.RaftPreviewCardDetailTone
 import build.raft.designsystem.components.RaftPreviewCardMeta
@@ -34,7 +34,9 @@ import build.raft.designsystem.theme.RaftTheme
  *   ([RaftPreviewCardMeta]: the state chip, then the details on one line apart by "·", none next
  *   to the chip), wrapping only when the App asks.
  * - Text is callout (mono: `text-mono-meta`) in its tone (`warning`: warning-strong); a Badge is a
- *   neutral soft badge whatever its tone (DS PreviewCard: an App's states are its own);
+ *   neutral soft badge whatever its tone (DS PreviewCard: an App's states are its own), filled with
+ *   the App's `color` when a link card gives one (`badge.color.v1`, [RaftAppLinkCardBadge] decides
+ *   the type and the ring against [surface]: the block card or the hover card);
  *   RelativeTime and Duration are muted.
  * - Buttons are not drawn here (step 1 declares no `button.v1`, so Raft strips them anyway); a
  *   Stack that draws only buttons draws nothing and takes no place, nor a "·".
@@ -44,12 +46,12 @@ import build.raft.designsystem.theme.RaftTheme
  *   Separator. In a row each is a block of its own.
  */
 @Composable
-internal fun RaftAppLinkCardV2Body(card: RaftAppLinkCardV2) {
-    RaftAppLinkCardV2Node(card, card.root, depth = 0)
+internal fun RaftAppLinkCardV2Body(card: RaftAppLinkCardV2, surface: RaftAppLinkCardBadgeSurface = RaftAppLinkCardBadgeSurface.Card) {
+    RaftAppLinkCardV2Node(card, card.root, depth = 0, surface)
 }
 
 @Composable
-private fun RaftAppLinkCardV2Node(card: RaftAppLinkCardV2, id: String, depth: Int) {
+private fun RaftAppLinkCardV2Node(card: RaftAppLinkCardV2, id: String, depth: Int, surface: RaftAppLinkCardBadgeSurface) {
     if (depth > RAFT_APP_LINK_CARD_MAX_DEPTH) return
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -59,7 +61,7 @@ private fun RaftAppLinkCardV2Node(card: RaftAppLinkCardV2, id: String, depth: In
                 val segments = remember(card, id) { appLinkCardV2RowSegments(card, node, depth) }
                 if (segments.isEmpty()) return
                 if (segments.size == 1 && segments[0] is AppLinkCardV2RowSegment.Line) {
-                    RaftPreviewCardMeta(details = (segments[0] as AppLinkCardV2RowSegment.Line).parts.map { it.detail() }, wrap = node.wrap)
+                    RaftPreviewCardMeta(details = (segments[0] as AppLinkCardV2RowSegment.Line).parts.map { it.detail() }, wrap = node.wrap, surface = surface)
                     return
                 }
                 // A message card's Markdown, Fields or Divider in a row is a block of its own (RFC 082 §4.8): the
@@ -67,8 +69,8 @@ private fun RaftAppLinkCardV2Node(card: RaftAppLinkCardV2, id: String, depth: In
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     segments.forEach { segment ->
                         when (segment) {
-                            is AppLinkCardV2RowSegment.Line -> RaftPreviewCardMeta(details = segment.parts.map { it.detail() }, wrap = node.wrap)
-                            is AppLinkCardV2RowSegment.Block -> RaftAppLinkCardV2Node(card, segment.id, depth + 1)
+                            is AppLinkCardV2RowSegment.Line -> RaftPreviewCardMeta(details = segment.parts.map { it.detail() }, wrap = node.wrap, surface = surface)
+                            is AppLinkCardV2RowSegment.Block -> RaftAppLinkCardV2Node(card, segment.id, depth + 1, surface)
                         }
                     }
                 }
@@ -76,7 +78,7 @@ private fun RaftAppLinkCardV2Node(card: RaftAppLinkCardV2, id: String, depth: In
                 val children = node.childIds.filter { appLinkCardV2Draws(card, it, depth + 1) }
                 if (children.isEmpty()) return
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    children.forEach { RaftAppLinkCardV2Node(card, it, depth + 1) }
+                    children.forEach { RaftAppLinkCardV2Node(card, it, depth + 1, surface) }
                 }
             }
         }
@@ -92,7 +94,7 @@ private fun RaftAppLinkCardV2Node(card: RaftAppLinkCardV2, id: String, depth: In
                     },
                 overflow = TextOverflow.Ellipsis,
             )
-        is RaftLinkCardV2Element.Badge -> RaftBadge(text = node.text, appearance = RaftBadgeAppearance.Soft)
+        is RaftLinkCardV2Element.Badge -> RaftAppLinkCardBadge(text = node.text, fill = node.color, surface = surface)
         is CardRelativeTime ->
             RaftText(
                 text = raftRelativeTimestampLabel(node.at, clampFuture = true),
@@ -112,7 +114,7 @@ private fun RaftAppLinkCardV2Node(card: RaftAppLinkCardV2, id: String, depth: In
 
 /** One part of a row Stack's details row ([appLinkCardV2RowParts]). */
 internal sealed interface AppLinkCardV2RowPart {
-    data class State(val text: String) : AppLinkCardV2RowPart
+    data class State(val text: String, val fill: String? = null) : AppLinkCardV2RowPart
 
     data class Text(val text: String, val tone: RaftLinkCardTextTone) : AppLinkCardV2RowPart
 
@@ -124,7 +126,7 @@ internal sealed interface AppLinkCardV2RowPart {
 @Composable
 private fun AppLinkCardV2RowPart.detail(): RaftPreviewCardDetail =
     when (this) {
-        is AppLinkCardV2RowPart.State -> RaftPreviewCardDetail.State(text)
+        is AppLinkCardV2RowPart.State -> RaftPreviewCardDetail.State(text, fill)
         is AppLinkCardV2RowPart.Text ->
             RaftPreviewCardDetail.Text(
                 text,
@@ -147,7 +149,7 @@ internal fun appLinkCardV2RowParts(card: RaftAppLinkCardV2, stack: CardStack, de
     stack.childIds.flatMap { id ->
         if (depth + 1 > RAFT_APP_LINK_CARD_MAX_DEPTH) return@flatMap emptyList()
         when (val node = card.elements[id]) {
-            is RaftLinkCardV2Element.Badge -> listOf(AppLinkCardV2RowPart.State(node.text))
+            is RaftLinkCardV2Element.Badge -> listOf(AppLinkCardV2RowPart.State(node.text, node.color))
             is RaftLinkCardV2Element.Text -> listOf(AppLinkCardV2RowPart.Text(node.text, node.tone))
             is CardRelativeTime -> listOf(AppLinkCardV2RowPart.Time(node.at))
             is CardDuration -> listOf(AppLinkCardV2RowPart.Duration(node))
