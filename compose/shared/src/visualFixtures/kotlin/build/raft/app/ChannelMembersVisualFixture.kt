@@ -44,7 +44,7 @@ private fun ChannelMembersParityContent(variant: String) {
         RaftThreadMemberItem("human-maya", "Maya", handle = "maya", description = "Product Designer"),
         RaftThreadMemberItem("1", "Grace", handle = "grace", kind = "agent", effectiveChannelRole = "admin"),
         RaftThreadMemberItem("2", "Josh", handle = "josh", kind = "agent"),
-        RaftThreadMemberItem("3", "Agent", handle = "agent", kind = "agent", sourceServerId = "peer", sourceServerLabel = "Peer Server", canRemove = false),
+        RaftThreadMemberItem("3", "Agent", handle = "agent", kind = "agent", sourceServerId = "peer", sourceServerLabel = "Peer Server", canRemove = false, alsoInServerLabels = listOf("Peer Server")),
     )) }
     val candidates = remember { listOf(RaftThreadMemberItem("candidate", "Quill", handle = "quill", kind = "agent")) +
         if (variant == "interaction") listOf(RaftThreadMemberItem("human-taylor", "Taylor", handle = "taylor")) else emptyList() }

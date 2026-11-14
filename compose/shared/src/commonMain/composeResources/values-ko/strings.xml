@@ -3368,6 +3368,7 @@
     <string name="channel_member_role_owner">소유자</string>
     <string name="channel_member_role_admin">관리자</string>
     <string name="channel_member_role_guest">게스트</string>
+    <string name="channel_members_also_in">%1$s에도 소속</string>
     <string name="member_row_status_online">온라인</string>
     <string name="member_row_status_likely_online">온라인일 수 있음</string>
     <string name="member_row_status_offline">오프라인</string>
@@ -4331,7 +4332,7 @@
     <string name="artifacts_dashboard_clear_filters">모두 지우기</string>
     <string name="artifacts_dashboard_relevant">나와 관련됨</string>
     <string name="artifacts_dashboard_see_all">전체 보기</string>
-    <string name="artifacts_dashboard_empty_relevant_title">나와 관련된 새 소식이 없어요</string>
+    <string name="artifacts_dashboard_empty_relevant_title">아직 나와 관련된 Artifact가 없어요</string>
     <string name="artifacts_dashboard_sort_label">정렬: %1$s</string>
     <string name="artifacts_dashboard_sort_opened">최근 열람순</string>
     <string name="artifacts_dashboard_sort_updated">최근 업데이트순</string>

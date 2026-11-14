@@ -221,7 +221,7 @@ class ArtifactsHomeUiTest {
         onAllNodesWithTag(ArtifactsHomeTags.EmptyAction).assertCountEquals(0)
 
         state = state.copy(query = ArtifactsHomeQuery(relevant = true))
-        onNodeWithText("Nothing new for you").assertExists()
+        onNodeWithText("Nothing here involves you yet").assertExists()
         onNodeWithText("See all").performClick()
         assertEquals(ArtifactsHomeIntent.SetRelevant(false), intents.last())
 

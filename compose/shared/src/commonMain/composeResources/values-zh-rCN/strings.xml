@@ -3526,6 +3526,7 @@
     <string name="channel_member_role_owner">所有者</string>
     <string name="channel_member_role_admin">管理员</string>
     <string name="channel_member_role_guest">访客</string>
+    <string name="channel_members_also_in">也在 %1$s</string>
     <string name="member_row_status_online">在线</string>
     <string name="member_row_status_likely_online">可能在线</string>
     <string name="member_row_status_offline">离线</string>
@@ -4600,7 +4601,7 @@
     <string name="artifacts_dashboard_clear_filters">清除筛选</string>
     <string name="artifacts_dashboard_relevant">和我有关</string>
     <string name="artifacts_dashboard_see_all">看全部</string>
-    <string name="artifacts_dashboard_empty_relevant_title">没有和你有关的新动态</string>
+    <string name="artifacts_dashboard_empty_relevant_title">还没有和你有关的 Artifact</string>
     <string name="artifacts_dashboard_sort_label">排序：%1$s</string>
     <string name="artifacts_dashboard_sort_opened">最近打开</string>
     <string name="artifacts_dashboard_sort_updated">最近更新</string>
