@@ -2228,9 +2228,9 @@ data class SettingsMobileSnapshot(
         ),
     val activityTaskStatusBadges: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
-            enabled = false,
+            enabled = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
             available = true,
-            statusLabel = "Off",
+            statusLabel = if (DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED) "Enabled" else "Off",
             detail = "Show task status badges at the bottom of Activity rows. Keep this off for a quieter Activity list."
         ),
     val composerSendKey: SettingsMobileToggleSnapshot =
@@ -2260,13 +2260,6 @@ data class SettingsMobileSnapshot(
             available = true,
             statusLabel = "Enabled",
             detail = "On large screens, show the left rail with the list and detail side by side. Turn off to keep the single-pane mobile layout with the bottom tab bar."
-        ),
-    val newDesignSettings: SettingsMobileToggleSnapshot =
-        SettingsMobileToggleSnapshot(
-            enabled = false,
-            available = true,
-            statusLabel = "Off",
-            detail = "Open the new standalone channel settings page. When off, keep the current Thread settings dialog."
         ),
     val homeServerAvatar: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(

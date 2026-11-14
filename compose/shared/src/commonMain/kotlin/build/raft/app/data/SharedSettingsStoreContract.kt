@@ -142,7 +142,6 @@ class SharedSettingsStoreContract(
                 is SharedSettingsIntent.SetActivityTaskStatusBadges -> MviActionKey(MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES)
                 is SharedSettingsIntent.SetComposerSendKey -> MviActionKey(MOBILE_ACTION_COMPOSER_SEND_KEY)
                 is SharedSettingsIntent.SetServerDrawerEnabled -> MviActionKey(MOBILE_ACTION_SERVER_DRAWER)
-                is SharedSettingsIntent.SetNewDesignSettingsEnabled -> MviActionKey(MOBILE_ACTION_NEW_DESIGN_SETTINGS)
                 is SharedSettingsIntent.SetHomeServerAvatarEnabled -> MviActionKey(MOBILE_ACTION_HOME_SERVER_AVATAR)
                 is SharedSettingsIntent.UpdateAppearance -> MviActionKey(APPEARANCE_ACTION_MESSAGE_FONT_SIZE)
                 is SharedSettingsIntent.SetApiEnvironment -> MviActionKey("${DEVELOPER_ACTION_API_ENVIRONMENT}:$environmentKey")

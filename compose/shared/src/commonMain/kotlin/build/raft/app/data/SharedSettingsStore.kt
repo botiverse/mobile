@@ -555,7 +555,6 @@ sealed interface SharedSettingsIntent {
     data class SetMultiShellHostEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetDesktopModeOnLargeScreen(val enabled: Boolean) : SharedSettingsIntent
     data class SetServerDrawerEnabled(val enabled: Boolean) : SharedSettingsIntent
-    data class SetNewDesignSettingsEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetHomeServerAvatarEnabled(val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
@@ -1407,14 +1406,6 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
-    suspend fun setNewDesignSettingsEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
-        val repository =
-            chatLayoutPreferenceRepository
-                ?: return DataResult.Error(ScreenError("settings_new_design_settings_unavailable", retryable = false))
-        repository.setNewDesignSettingsEnabled(enabled)
-        return loadMobilePreferences()
-    }
-
     suspend fun setHomeServerAvatarEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1770,13 +1761,6 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "The large-screen desktop mode preference is not available on this platform."
-                    ),
-            newDesignSettings =
-                chatLayout?.toSettingsMobileNewDesignSettingsSnapshot()
-                    ?: newDesignSettings.copy(
-                        available = false,
-                        statusLabel = "Unsupported",
-                        detail = "The new channel settings design is not available on this platform."
                     ),
             homeServerAvatar =
                 chatLayout?.toSettingsMobileHomeServerAvatarSnapshot()
@@ -2690,14 +2674,6 @@ class SharedSettingsStore(
                     )
                 dataSource.setServerDrawerEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_SERVER_DRAWER)
-            }
-            is SharedSettingsIntent.SetNewDesignSettingsEnabled -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_NEW_DESIGN_SETTINGS, inProgress = true)
-                    )
-                dataSource.setNewDesignSettingsEnabled(intent.enabled)
-                    .applyMobileActionResult(MOBILE_ACTION_NEW_DESIGN_SETTINGS)
             }
             is SharedSettingsIntent.SetHomeServerAvatarEnabled -> {
                 _state.value =
@@ -4160,7 +4136,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetMultiShellHostEnabled,
             is SharedSettingsIntent.SetDesktopModeOnLargeScreen,
             is SharedSettingsIntent.SetServerDrawerEnabled,
-            is SharedSettingsIntent.SetNewDesignSettingsEnabled,
             is SharedSettingsIntent.SetHomeServerAvatarEnabled,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
@@ -4472,7 +4447,6 @@ internal const val MOBILE_ACTION_COMPOSER_SEND_KEY = "composerSendKey"
 internal const val MOBILE_ACTION_MULTI_SHELL_HOST = "multiShellHost"
 internal const val MOBILE_ACTION_SERVER_DRAWER = "serverDrawer"
 internal const val MOBILE_ACTION_DESKTOP_MODE = "desktopModeOnLargeScreen"
-internal const val MOBILE_ACTION_NEW_DESIGN_SETTINGS = "newDesignSettings"
 internal const val MOBILE_ACTION_HOME_SERVER_AVATAR = "homeServerAvatar"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
@@ -4760,14 +4734,6 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileServerDrawerSnapshot():
         available = true,
         statusLabel = if (serverDrawerEnabled) "Enabled" else "Off",
         detail = "Use the new multi-server left drawer on Home. When off, keep the current server switcher popover."
-    )
-
-private fun ChatLayoutPreferenceSnapshot.toSettingsMobileNewDesignSettingsSnapshot(): SettingsMobileToggleSnapshot =
-    SettingsMobileToggleSnapshot(
-        enabled = newDesignSettingsEnabled,
-        available = true,
-        statusLabel = if (newDesignSettingsEnabled) "Enabled" else "Off",
-        detail = "Open the new standalone channel settings page. When off, keep the current Thread settings dialog."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileHomeServerAvatarSnapshot(): SettingsMobileToggleSnapshot =

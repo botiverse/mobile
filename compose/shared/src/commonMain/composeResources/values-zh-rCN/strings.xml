@@ -3502,8 +3502,6 @@
     <string name="push_preview_hidden_mention">有人提到了你</string>
     <string name="push_preview_sender_only_message">%1$s 发来一条消息</string>
     <string name="push_preview_sender_only_mention">%1$s 提到了你</string>
-    <string name="settings_mobile_new_design_settings">新版设置设计</string>
-    <string name="settings_mobile_new_design_settings_detail">打开新版独立频道设置页。关闭时继续使用现有的消息列设置弹窗。</string>
     <string name="home_adaptive_select_conversation">选择一个会话</string>
     <string name="composer_add_image">添加图片</string>
     <string name="composer_take_photo">拍照</string>

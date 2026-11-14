@@ -3345,8 +3345,6 @@
     <string name="push_preview_hidden_mention">Te mencionaron</string>
     <string name="push_preview_sender_only_message">%1$s envió un mensaje</string>
     <string name="push_preview_sender_only_mention">%1$s te mencionó</string>
-    <string name="settings_mobile_new_design_settings">Nuevo diseño de ajustes</string>
-    <string name="settings_mobile_new_design_settings_detail">Abre la nueva página independiente de ajustes del canal. Si está desactivado, se mantiene el diálogo actual de ajustes del hilo.</string>
     <string name="home_adaptive_select_conversation">Selecciona una conversación</string>
     <string name="composer_add_image">Añadir imagen</string>
     <string name="composer_take_photo">Tomar foto</string>
