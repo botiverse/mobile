@@ -12,6 +12,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
  * CompositionLocalProvider(
  *     LocalRaftStrings provides RaftStrings(
  *         optional = stringResource(Res.string.common_optional_suffix),
+ *         required = stringResource(Res.string.common_required),
  *         close = stringResource(Res.string.common_close),
  *         clear = stringResource(Res.string.common_clear),
  *         loading = stringResource(Res.string.common_loading),
@@ -30,6 +31,11 @@ data class RaftStrings(
      * or straight after the label when it opens with a full-width bracket, as （可选） does.
      */
     val optional: String = "(optional)",
+    /**
+     * Said after a required field's name to screen readers ("Name, Required"); nothing is drawn,
+     * as required fields carry no visible mark ([build.raft.designsystem.components.RaftField] `required`).
+     */
+    val required: String = "Required",
     /** The dialog's and popover's × button (raft-ui `DialogClose` `aria-label`). */
     val close: String = "Close",
     /** A text field's clear action ([build.raft.designsystem.components.RaftTextFieldClearAction]). */

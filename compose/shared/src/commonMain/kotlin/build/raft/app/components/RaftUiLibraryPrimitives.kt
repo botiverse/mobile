@@ -162,18 +162,17 @@ internal fun RaftUiBadge(
 internal fun RaftUiLabel(
     text: String,
     modifier: Modifier = Modifier,
-    required: Boolean = false,
     optional: Boolean = false,
     small: Boolean = false,
     disabled: Boolean = false
 ) {
+    // Required fields carry no mark (raft-design forms): only optional ones say so.
     RaftFieldLabel(
         text = text,
         modifier = modifier,
         size = if (small) RaftFieldLabelSize.Sm else RaftFieldLabelSize.Md,
         enabled = !disabled,
-        optional = optional && !required,
-        required = required
+        optional = optional
     )
 }
 

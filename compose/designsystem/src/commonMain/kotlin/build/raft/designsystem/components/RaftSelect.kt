@@ -135,6 +135,7 @@ fun RaftSelectTrigger(
     val focused = enabled && isFocused
     val shape = RoundedCornerShape(RaftRadius.Control)
     val field = LocalRaftFieldState.current
+    val name = raftFieldSpokenName(label, field.required)
     val base = if (field.inField) RaftTheme.typography.field else RaftTheme.typography.subhead
     val shown = value ?: placeholder
     // `h-control`: 44dp, 34dp on a desktop (sizing v12). The 6dp above and below the 24dp line
@@ -156,7 +157,7 @@ fun RaftSelectTrigger(
             .clickable(source, indication = null, enabled = enabled, role = Role.DropdownList, onClick = onClick)
             .semantics {
                 val spoken = if (badge != null && value != null) "$shown $badge" else shown
-                if (label != null) contentDescription = if (spoken.isEmpty()) label else "$label, $spoken"
+                if (name != null) contentDescription = if (spoken.isEmpty()) name else "$name, $spoken"
                 when (expanded) {
                     true -> collapse { onCollapse?.invoke(); onCollapse != null }
                     false -> expand { onClick(); true }

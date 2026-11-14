@@ -18,6 +18,7 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftFieldState
 import build.raft.designsystem.components.LocalRaftFieldState
+import build.raft.designsystem.components.raftFieldSpokenName
 import androidx.compose.runtime.CompositionLocalProvider
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftIconButton
@@ -91,6 +92,8 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -1283,7 +1286,7 @@ internal fun MachinePicker(
     onSelect: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftFieldLabel(text = stringResource(Res.string.agent_create_label_computer), required = true)
+        RaftFieldLabel(text = stringResource(Res.string.agent_create_label_computer))
         when {
             machinesLoading -> Text(
                 text = stringResource(Res.string.agent_create_state_computers_loading),
@@ -1323,7 +1326,7 @@ internal fun MachinePicker(
                 val quotaLines = rememberCreateAgentMachineQuotaLines(usageAccess, machines, runtimeId)
                 val computerLabel = stringResource(Res.string.agent_create_label_computer)
                 val noMatches = stringResource(Res.string.runtime_picker_no_matches, "\u0001")
-                CompositionLocalProvider(LocalRaftFieldState provides RaftFieldState(enabled = enabled, label = computerLabel, inField = true)) {
+                CompositionLocalProvider(LocalRaftFieldState provides RaftFieldState(enabled = enabled, label = computerLabel, required = true, inField = true)) {
                     RaftCombobox(
                         value = if (hostedSelected) CREATE_AGENT_HOSTED_CHOICE else selectedMachineId,
                         options =
@@ -1431,7 +1434,6 @@ internal fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
 @Composable
 internal fun CreateAgentSectionLabelWithAction(
     label: String,
-    required: Boolean = false,
     actionIcon: RaftLucideIconName,
     actionEnabled: Boolean,
     loading: Boolean = false,
@@ -1441,7 +1443,7 @@ internal fun CreateAgentSectionLabelWithAction(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RaftFieldLabel(text = label, required = required, modifier = Modifier.weight(1f))
+        RaftFieldLabel(text = label, modifier = Modifier.weight(1f))
         Box(
             modifier =
                 Modifier
@@ -1510,9 +1512,12 @@ internal fun EnvVarsEditor(
     required: Boolean = false
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        val groupLabel = label ?: stringResource(Res.string.agent_create_label_environment_variables)
+        // A group of key/value fields: no one control to say "required", so the group's label says it.
+        val spokenLabel = raftFieldSpokenName(groupLabel, required)
         RaftFieldLabel(
-            text = label ?: stringResource(Res.string.agent_create_label_environment_variables),
-            required = required,
+            text = groupLabel,
+            modifier = if (required && spokenLabel != null) Modifier.semantics { contentDescription = spokenLabel } else Modifier,
             optional = !required
         )
         entries.forEachIndexed { idx, (key, value) ->

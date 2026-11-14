@@ -127,6 +127,7 @@
     <string name="common_no_matches">일치하는 항목 없음</string>
     <string name="common_success">성공</string>
     <string name="common_optional_suffix">(선택)</string>
+    <string name="common_required">필수</string>
     <string name="common_no_actions_available">사용할 수 있는 작업이 없어요</string>
     <string name="app_shell_offline_banner">인터넷에 연결되어 있지 않아요</string>
     <string name="settings_title">설정</string>

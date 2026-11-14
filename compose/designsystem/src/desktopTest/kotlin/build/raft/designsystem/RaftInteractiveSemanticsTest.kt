@@ -30,6 +30,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.click
@@ -275,6 +277,34 @@ class RaftInteractiveSemanticsTest {
                 },
             )
             onNodeWithText("描述（可选）").assertIsDisplayed()
+        }
+
+    /**
+     * A required field draws no mark (raft-design forms: no asterisk, only optional fields are
+     * marked); its control tells screen readers instead, in the app's words ([RaftStrings.required]).
+     */
+    @Test
+    fun aRequiredFieldShowsNoAsteriskAndItsControlSaysRequired() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Column {
+                        RaftField(label = "Agent name", required = true) {
+                            RaftTextField("", {}, placeholder = "Wug")
+                        }
+                        CompositionLocalProvider(LocalRaftStrings provides RaftStrings(required = "Obligatoire")) {
+                            RaftField(label = "Nom", required = true) {
+                                RaftTextField("", {}, placeholder = "Wug")
+                            }
+                        }
+                    }
+                },
+            )
+            onNodeWithText("Agent name").assertIsDisplayed()
+            onNodeWithText("Nom").assertIsDisplayed()
+            onAllNodes(hasText("*", substring = true), useUnmergedTree = true).assertCountEquals(0)
+            onNodeWithContentDescription("Agent name, Required").assertExists()
+            onNodeWithContentDescription("Nom, Obligatoire").assertExists()
         }
 
     /** On a TextFieldValue the textarea types at the caller's caret, counts the text and focuses its editor. */

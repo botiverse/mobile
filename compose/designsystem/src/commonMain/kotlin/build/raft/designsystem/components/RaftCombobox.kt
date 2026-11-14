@@ -788,6 +788,7 @@ fun RaftComboboxChipsTrigger(
     val focused = enabled && isFocused
     val shape = RoundedCornerShape(RaftRadius.Control)
     val field = LocalRaftFieldState.current
+    val name = raftFieldSpokenName(label, field.required)
     val shown = if (chips.isEmpty()) placeholder else chips.joinToString(", ")
     Row(
         modifier
@@ -801,7 +802,7 @@ fun RaftComboboxChipsTrigger(
             .border(RaftStroke.Field, look.border, shape)
             .clickable(source, indication = null, enabled = enabled, role = Role.DropdownList, onClick = onClick)
             .semantics {
-                if (label != null) contentDescription = if (shown.isEmpty()) label else "$label, $shown"
+                if (name != null) contentDescription = if (shown.isEmpty()) name else "$name, $shown"
                 when (expanded) {
                     true -> collapse { onCollapse?.invoke(); onCollapse != null }
                     false -> expand { onClick(); true }

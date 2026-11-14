@@ -127,6 +127,7 @@
     <string name="common_no_matches">一致する項目がありません</string>
     <string name="common_success">成功</string>
     <string name="common_optional_suffix">（任意）</string>
+    <string name="common_required">必須</string>
     <string name="common_no_actions_available">利用できるアクションはありません</string>
     <string name="app_shell_offline_banner">インターネットに接続されていません</string>
     <string name="settings_title">設定</string>

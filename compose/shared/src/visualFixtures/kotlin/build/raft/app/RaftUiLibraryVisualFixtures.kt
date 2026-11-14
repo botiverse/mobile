@@ -377,7 +377,7 @@ internal fun RaftUiLabelRadioVisualContent() {
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                RaftUiLabel(text = "Notification level", required = true)
+                RaftUiLabel(text = "Notification level")
                 RaftUiLabel(text = "Archive notes", optional = true, small = true)
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

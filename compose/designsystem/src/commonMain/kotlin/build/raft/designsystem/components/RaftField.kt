@@ -53,7 +53,9 @@ enum class RaftFieldLabelSize {
  * `enabled` to it. The text fields, the select trigger and the switch are also named by
  * [label] for screen readers and carry [error] as their error (Base UI wires the label
  * and the error to the control with `aria-labelledby` / `aria-describedby`); an
- * interactive checkbox or radio is named by [label] too ([RaftFieldItem] sets it).
+ * interactive checkbox or radio is named by [label] too ([RaftFieldItem] sets it). A
+ * [required] field draws no mark; its control adds [RaftStrings.required] to the name it
+ * gives screen readers ("Name, Required", [raftFieldSpokenName]), as `aria-required` does.
  */
 @Immutable
 data class RaftFieldState(
@@ -61,6 +63,8 @@ data class RaftFieldState(
     val enabled: Boolean = true,
     val label: String? = null,
     val error: String? = null,
+    /** The field must be filled in: said to screen readers after the control's name, never drawn. */
+    val required: Boolean = false,
     /** Inside a [RaftField]: a select trigger takes the field type to line up with inputs. */
     val inField: Boolean = false,
 )
@@ -69,20 +73,37 @@ data class RaftFieldState(
 val LocalRaftFieldState = compositionLocalOf { RaftFieldState() }
 
 /**
+ * The name screen readers read a field control by: [label], followed by [RaftStrings.required]
+ * (from [LocalRaftStrings]) when the enclosing field is required ([RaftFieldState.required]),
+ * as in "Name, Required". Required fields carry no visible mark, so this is how a screen
+ * reader learns of it. Null without a label. Every field control in this module names
+ * itself with it; a custom control (or a group label standing in for one) can too.
+ */
+@Composable
+fun raftFieldSpokenName(label: String?, required: Boolean = LocalRaftFieldState.current.required): String? =
+    raftFieldSpokenName(label, required, LocalRaftStrings.current.required)
+
+/** [raftFieldSpokenName] with the required word given: "[label], [requiredWord]" when [required]. */
+fun raftFieldSpokenName(label: String?, required: Boolean, requiredWord: String): String? =
+    if (label != null && required) "$label, $requiredWord" else label
+
+/**
  * raft-ui 0.8.0 Field (the dialog form field of the page hand-off): a column (6dp gaps) of
  * a label, the control and one line of help text or the error.
  *
  * - [label] (`FieldLabel`): sentence case, `foreground-muted` semibold, `text-footnote`
  *   ([RaftFieldLabelSize.Md]) or `text-caption` ([RaftFieldLabelSize.Sm]). [optional]
- *   appends "(optional)" in `foreground-hint`; [required] an asterisk. Mark only the
- *   optional fields.
+ *   appends "(optional)" in `foreground-hint`. Mark only the optional fields: a
+ *   [required] field draws no mark (raft-design forms: no asterisk); screen readers hear
+ *   its control as "Name, Required" ([RaftStrings.required], [raftFieldSpokenName]).
  * - [description] (`FieldDescription`): `text-caption` (12/16 medium), `foreground-hint`.
  * - [error] (`FieldError`): shown in place of the description, `text-caption` semibold
  *   `danger-strong`, announced politely when it appears. A non-null [error] makes the
  *   field invalid, so the control inside gets the `danger-strong` border and the error in
  *   its semantics through [LocalRaftFieldState]. Say how to fix it ("Enter a name"), not
  *   what went wrong.
- * - Screen readers read the control by [label] (its content description).
+ * - Screen readers read the control by [label] (its content description), followed by
+ *   [RaftStrings.required] when [required].
  * - [enabled] = false turns label, description and error `foreground-disabled` and
  *   disables the control. Disabled wins over invalid.
  * - [labelTrailing]: a small control at the end of the label's row, centred on it, 8dp
@@ -123,16 +144,16 @@ fun RaftField(
             ) {
                 Box(Modifier.weight(1f)) {
                     if (label != null) {
-                        RaftFieldLabel(label, size = labelSize, enabled = enabled, optional = optional, required = required, maxLines = 1)
+                        RaftFieldLabel(label, size = labelSize, enabled = enabled, optional = optional && !required, maxLines = 1)
                     }
                 }
                 labelTrailing()
             }
         } else if (label != null) {
-            RaftFieldLabel(label, size = labelSize, enabled = enabled, optional = optional, required = required)
+            RaftFieldLabel(label, size = labelSize, enabled = enabled, optional = optional && !required)
         }
         CompositionLocalProvider(
-            LocalRaftFieldState provides RaftFieldState(invalid = invalid, enabled = enabled, label = label, error = error, inField = true),
+            LocalRaftFieldState provides RaftFieldState(invalid = invalid, enabled = enabled, label = label, error = error, required = required, inField = true),
         ) {
             if (saveStatus == null) {
                 content()
@@ -154,12 +175,17 @@ fun RaftField(
 
 /**
  * raft-ui `FieldLabel` on its own (for custom field layouts). See [RaftField]. The
- * required asterisk and the "(optional)" suffix ([RaftStrings.optional], from
- * [LocalRaftStrings]) follow the text after a space (`ml-1`); a marker that opens with a
- * full-width bracket, such as （可选）, follows it straight away ([raftOpensFullWidth]).
+ * "(optional)" suffix ([RaftStrings.optional], from [LocalRaftStrings]) follows the text
+ * after a space (`ml-1`); a marker that opens with a full-width bracket, such as （可选）,
+ * follows it straight away ([raftOpensFullWidth]).
  * It takes the full line height of its style (raft-ui 0.8.0 dropped `leading-none`), so
  * a control beside it can centre on that line ([RaftFieldItem]). [maxLines] cuts a long
  * label with an ellipsis (a label beside a [RaftField] `labelTrailing` slot takes one line).
+ *
+ * Deprecated: [required] draws nothing (it only keeps [optional] from showing). Required
+ * fields carry no visible mark, and the required state belongs to the field, not its
+ * label: pass `required` to the [RaftField] (or provide [RaftFieldState.required] round
+ * the control) so the control says it to screen readers.
  */
 @Composable
 fun RaftFieldLabel(
@@ -168,6 +194,7 @@ fun RaftFieldLabel(
     size: RaftFieldLabelSize = RaftFieldLabelSize.Md,
     enabled: Boolean = true,
     optional: Boolean = false,
+    /** Deprecated: draws nothing (only hides [optional]). Mark the field required ([RaftField] `required`) instead. */
     required: Boolean = false,
     maxLines: Int = Int.MAX_VALUE,
 ) {
@@ -178,9 +205,8 @@ fun RaftFieldLabel(
     val annotated =
         buildAnnotatedString {
             append(text)
-            if (required) {
-                withStyle(SpanStyle(color = markInk)) { append(" *") }
-            } else if (optional) {
+            // A required label never says "(optional)" (it used to draw an asterisk in its place).
+            if (optional && !required) {
                 val gap = if (raftOpensFullWidth(optionalText)) "" else " "
                 withStyle(SpanStyle(color = markInk, fontWeight = FontWeight.Normal)) { append(gap + optionalText) }
             }

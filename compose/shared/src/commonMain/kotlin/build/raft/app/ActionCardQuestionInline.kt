@@ -375,7 +375,7 @@ internal fun ActionCardQuestionInlineForm(
                 number = if (inline.fields.size > 1) index + 1 else null,
                 onPicked = if (canSubmit) ({ picked(field.name) }) else null,
                 showPending = pendingShown,
-                // One question: the slim card's title is the question, so no label (and no asterisk) repeats it.
+                // One question: the slim card's title is the question, so no label repeats it.
                 showLabel = inline.fields.size > 1,
                 confirmInActions = loneConfirm,
                 confirmLoading = loneConfirm && submitting,
