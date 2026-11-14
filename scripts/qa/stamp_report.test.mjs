@@ -320,6 +320,7 @@ test("report reads a relative verdict path and freezes scope before writes", () 
   fs.mkdirSync(runnerTemp);
   fs.writeFileSync(path.join(evidence, "logcat.txt"), "app log\n");
   fs.writeFileSync(path.join(evidence, "step-00.annotated.png"), "step zero");
+  fs.writeFileSync(path.join(evidence, "step-00.png"), "step zero raw");
   fs.writeFileSync(path.join(evidence, "step-19.png"), "step nineteen");
   fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({
     verdict: "pass",
@@ -349,7 +350,10 @@ test("report reads a relative verdict path and freezes scope before writes", () 
   const annotated = calls.find((call) => call.includes("kind=screenshot_annotated"));
   const raw = calls.find((call) => call.includes("kind=screenshot&"));
   assert.match(annotated, /[?&]step=0(?:&|\s)/);
-  assert.match(raw, /[?&]step=19(?:&|\s)/);
+  assert.match(raw, /[?&]step=(?:0|19)(?:&|\s)/);
+  // The raw twin of an annotated (assertion) step is uploaded too.
+  assert(calls.some((call) => call.includes("kind=screenshot&") && /[?&]step=0(?:&|\s)/.test(call)));
+  assert(calls.some((call) => call.includes("kind=screenshot&") && /[?&]step=19(?:&|\s)/.test(call)));
   assert.notEqual(new URL(annotated.match(/https:\/\/\S+/)[0]).searchParams.get("seq"), new URL(raw.match(/https:\/\/\S+/)[0]).searchParams.get("seq"));
   assert.match(calls.at(-1), /\/verdict/);
 });

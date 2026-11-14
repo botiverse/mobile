@@ -414,10 +414,11 @@ upload() { # file kind
 }
 if [ "$REPORT_EVIDENCE" = "true" ]; then
   for f in "$EV"/step-*.annotated.png; do [ -f "$f" ] && upload "$f" screenshot_annotated; done
-  # raw screenshots only when no annotated twin exists (annotated covers review)
+  # Every raw screenshot, including steps with an annotated twin: the panel
+  # reviewer reads raw frames only, and an annotated (assertion) step is the
+  # frame it must judge on (run 43569038982 dropped raw step-19).
   for f in "$EV"/step-*.png; do
     case "$f" in *.annotated.png) continue;; esac
-    [ -f "${f%.png}.annotated.png" ] && continue
     [ -f "$f" ] && upload "$f" screenshot
   done
   [ -f "$EV/build-info.json" ] && upload "$EV/build-info.json" build_info
