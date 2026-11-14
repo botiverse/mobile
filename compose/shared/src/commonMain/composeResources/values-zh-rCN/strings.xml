@@ -1147,6 +1147,7 @@
     <string name="thread_forward_destination">目标位置</string>
     <string name="thread_forward_messages_selected">已选择 %1$d 条消息</string>
     <string name="thread_forward_destinations_selected">已选择 %1$d 个目标</string>
+    <string name="thread_forward_remove_destination">移除 %1$s</string>
     <string name="thread_forward_add_note">添加备注</string>
     <string name="thread_forward_search_results">搜索结果</string>
     <string name="thread_forward_loading_targets">正在加载目标</string>

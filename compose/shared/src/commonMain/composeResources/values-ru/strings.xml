@@ -1140,6 +1140,7 @@
     <string name="thread_forward_destination">Получатель</string>
     <string name="thread_forward_messages_selected">Выбрано сообщений: %1$d</string>
     <string name="thread_forward_destinations_selected">Выбрано получателей: %1$d</string>
+    <string name="thread_forward_remove_destination">Удалить %1$s</string>
     <string name="thread_forward_add_note">Добавить комментарий</string>
     <string name="thread_forward_search_results">Результаты поиска</string>
     <string name="thread_forward_loading_targets">ЗАГРУЗКА ПОЛУЧАТЕЛЕЙ</string>
