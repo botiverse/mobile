@@ -45,10 +45,10 @@ on:
         type: string
         default: ""
       mode:
-        description: "sign_in (default): the emulator run. old_cli_task: no emulator; make the s5 test task with the old Raft CLI 0.0.26 (scripts/qa/old_cli_task.mjs)"
+        description: "sign_in (default): the emulator run. old_cli_task: no emulator; make the s5 test task with the old Raft CLI 0.0.26. agent_artifacts: no emulator; the same agent pushes the two artifact-reuse test Artifacts (scripts/qa/old_cli_task.mjs)"
         required: false
         type: choice
-        options: [sign_in, old_cli_task]
+        options: [sign_in, old_cli_task, agent_artifacts]
         default: sign_in
   workflow_call:
     inputs:
@@ -90,7 +90,7 @@ jobs:
   # mode=old_cli_task: test data for task v2 scenario s5 only (one external agent, one title
   # message, one task); the QA password and the agent key stay in this job.
   old-cli-task:
-    if: ${{ inputs.mode == 'old_cli_task' }}
+    if: ${{ inputs.mode == 'old_cli_task' || inputs.mode == 'agent_artifacts' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -103,7 +103,8 @@ jobs:
           QA_LOGIN_EMAIL: ${{ (inputs.environment == 'staging' && secrets.QA_STAGING_TEST_EMAIL) || secrets.QA_TEST_EMAIL }}
           QA_LOGIN_PASSWORD: ${{ (inputs.environment == 'staging' && secrets.QA_STAGING_TEST_PASSWORD) || secrets.QA_TEST_PASSWORD }}
           ENVIRONMENT: ${{ inputs.environment }}
-        run: node scripts/qa/old_cli_task.mjs --env "${ENVIRONMENT}" --out old-cli-task.json
+          ACTION: ${{ inputs.mode == 'agent_artifacts' && 'artifacts' || 'task' }}
+        run: node scripts/qa/old_cli_task.mjs --env "${ENVIRONMENT}" --action "${ACTION}" --out old-cli-task.json
       - name: Upload result
         if: always()
         uses: actions/upload-artifact@v7
@@ -114,7 +115,7 @@ jobs:
           retention-days: 14
 
   plan:
-    if: ${{ inputs.mode != 'old_cli_task' }}
+    if: ${{ inputs.mode != 'old_cli_task' && inputs.mode != 'agent_artifacts' }}
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.p.outputs.build }}
