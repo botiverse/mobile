@@ -470,6 +470,13 @@ private const val SharedThreadStaleConversationLimit = 256
 /** artin #110: past this many live messages since the last other change, a generation is treated as moved by other causes. */
 private const val SharedThreadRealtimeFoldMessageIdLimit = 64
 private const val SharedThreadPrewarmJoinTimeoutMillis = 5_000L
+
+/**
+ * artin #111 (prewarm age limit): an open takes a ready prewarm as its final answer only while it is
+ * younger than this. An older one still paints the first frame from the cache, but the open fetches
+ * its own answer to reconcile, because the freshness generation alone cannot prove a quiet socket.
+ */
+private const val SharedThreadPrewarmReadyMaxAgeMillis = 120_000L
 private const val ReplyCacheProvenanceStaleCode = "thread_reply_cache_provenance_stale"
 
 private fun <T> staleReplyCacheProvenanceResult(): DataResult<T> =
@@ -1162,6 +1169,9 @@ internal class SharedThreadPayloadStore(
     // test hands in the scheduler's time source to keep the elapsed check and the wait on one clock;
     // production keeps the monotonic wall clock.
     private val prewarmStartTimeSource: TimeSource = TimeSource.Monotonic,
+    /** artin #111: the age limit of a ready prewarm, see [SharedThreadPrewarmReadyMaxAgeMillis]. */
+    private val prewarmReadyMaxAgeMillis: Long = SharedThreadPrewarmReadyMaxAgeMillis,
+    private val prewarmReadyTimeSource: TimeSource = TimeSource.Monotonic,
 ) {
     private val payloads = MutableStateFlow<Map<SharedThreadOwnedPayloadCacheKey, SharedThreadPayloadEntry>>(emptyMap())
     // Least recently used first. Guarded by [recencyLock]; lock order is ledger -> recency, never
@@ -1178,6 +1188,8 @@ internal class SharedThreadPayloadStore(
         mutableMapOf<SharedThreadOwnedPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private val prewarmReadyGenerations =
         mutableMapOf<SharedThreadOwnedPayloadCacheKey, SharedThreadFreshnessGeneration>()
+    /** When each ready prewarm landed (guarded by [prewarmMutex]); read only by the age limit. */
+    private val prewarmReadyAt = mutableMapOf<SharedThreadOwnedPayloadCacheKey, TimeMark>()
     private val prewarmFailureGenerations =
         mutableMapOf<SharedThreadOwnedPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private val prewarmFailures = mutableMapOf<SharedThreadOwnedPayloadCacheKey, DataResult<RaftThreadScreenPayload>>()
@@ -1691,6 +1703,7 @@ internal class SharedThreadPayloadStore(
                                         if (result is DataResult.Content) {
                                             commitEntry(key, SharedThreadPayloadEntry(result.data, generation))
                                             prewarmReadyGenerations[key] = generation
+                                            prewarmReadyAt[key] = prewarmReadyTimeSource.markNow()
                                             prewarmFailures.remove(key)
                                             prewarmFailureGenerations.remove(key)
                                             failedPrewarmTakeoverResults.remove(key)
@@ -1779,12 +1792,17 @@ internal class SharedThreadPayloadStore(
         val lookup =
             prewarmMutex.withLock {
                 val generation = freshnessLedger.capture(serverId, threadId, ownerScopeId)
+                val readyAt = prewarmReadyAt.remove(key)
                 val cached =
                     if (prewarmReadyGenerations[key] === generation) {
                         prewarmReadyGenerations.remove(key)
                         payloads.value[key]
                             ?.takeIf { entry -> entry.generation === generation }
                             ?.payload
+                            // Too old to be the final answer: the open fetches its own (the cache entry stays).
+                            ?.takeUnless {
+                                readyAt != null && readyAt.elapsedNow().inWholeMilliseconds > prewarmReadyMaxAgeMillis
+                            }
                     } else {
                         null
                     }
@@ -4889,7 +4907,7 @@ internal class SharedThreadDataSource(
                 failedPrewarm = true
             } else {
                 val joined = payloadCache.joinOrConsumePrewarmWithOutcome(serverId, threadId, payloadOwnerScopeId)
-                when (val warmed = joined.result) {
+                when (val warmed = joined.result?.takeUnlessWarmedConversationMisses(resolvedBasePayload)) {
                     is DataResult.Content -> {
                         if (!cacheReplyThreadResolution(resolutionScope.provenance, warmed.data)) {
                             return staleReplyCacheProvenanceResult()
@@ -4906,7 +4924,13 @@ internal class SharedThreadDataSource(
                     }
                     // JoinTimedOut leaves failedPrewarm false on purpose: the timed-out prewarm was detached
                     // (it can no longer commit), so there is nothing to take over; the open fetches itself.
-                    null -> logReuse("own_fetch", joined.outcome.diagnosticsName)
+                    // A warmed channel / DM page that does not answer this route (see
+                    // takeUnlessWarmedConversationMisses) lands here too: it stays a first-frame candidate only.
+                    null ->
+                        logReuse(
+                            "own_fetch",
+                            if (joined.result is DataResult.Content) "prewarm_route_mismatch" else joined.outcome.diagnosticsName
+                        )
                 }
             }
         }
@@ -5153,6 +5177,7 @@ internal class SharedThreadDataSource(
         marker: ActivityReplyThreadPrewarmMarker
     ): DataResult<Unit> {
         val key = marker.key
+        if (key.isConversation) return prewarmActivityConversation(key)
         if (
             key.serverId.isBlank() ||
             key.parentChannelId.isBlank() ||
@@ -5244,6 +5269,100 @@ internal class SharedThreadDataSource(
                     revAtRequest = durableRevAtRequest,
                 )
             }
+        }
+        return when (result) {
+            is DataResult.Content -> DataResult.Content(Unit)
+            is DataResult.Empty -> result
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
+    /**
+     * artin #111: warm a channel / DM row of the Activity viewport. Fetches, at Background priority, the
+     * exact focused `messages/context` (+ `channels/:id`) the Activity open of that row makes, into the
+     * same app-scope payload cache and single-flight prewarm slot the open reads
+     * ([SharedThreadPayloadStore.prewarm] / [SharedThreadPayloadStore.joinOrConsumePrewarmWithOutcome]).
+     * Skips the request when the cache already holds this conversation's current content including the
+     * anchor. The open still validates the warmed payload against its own route before using it.
+     */
+    private suspend fun prewarmActivityConversation(key: ActivityReplyThreadPrewarmKey): DataResult<Unit> {
+        fun identityMissing() =
+            DataResult.Error(ScreenError(code = "thread_prewarm_identity_missing", retryable = false))
+        val surfaceKind =
+            key.conversationSurfaceKind
+                ?.takeIf { it == RaftThreadSurfaceKind.Channel || it == RaftThreadSurfaceKind.DirectMessage }
+                ?: return identityMissing()
+        val anchorMessageId = key.anchorMessageId?.takeIf { it.isNotBlank() } ?: return identityMissing()
+        if (key.serverId.isBlank() || key.threadChannelId.isBlank()) return identityMissing()
+        val resolutionScope = readReplyResolutionScope() ?: return authSessionRequiredResult()
+        val session = resolutionScope.session
+        val payloadOwnerScopeId =
+            resolutionScope.provenance.threadPayloadOwnerScopeId
+                ?: return staleReplyCacheProvenanceResult()
+        val selection = selectedServerStore
+            ?: return DataResult.Error(ScreenError(code = "thread_prewarm_selection_unavailable", retryable = false))
+        if (!selection.isSelected(key.serverId) || resolutionScope.provenance.serverId != key.serverId) {
+            return DataResult.Error(ScreenError(code = "thread_prewarm_server_changed", retryable = false))
+        }
+        val cached = cachedPayloadIfCurrent(key.threadChannelId, resolutionScope.provenance)
+        if (cached != null && cached.messages.any { message -> message.id == anchorMessageId }) {
+            diagnosticsLogger(
+                "thread_conversation_prewarm_skip reason=cached_current threadId=${key.threadChannelId} " +
+                    "surface=$surfaceKind anchor=$anchorMessageId"
+            )
+            return DataResult.Content(Unit)
+        }
+        val isDirectMessage = surfaceKind == RaftThreadSurfaceKind.DirectMessage
+        // Mirrors the route payload of a non-task channel / DM open (ThreadRoutePayload), so the warmed
+        // payload carries the same route-derived header flags as the open's own answer would.
+        val basePayload =
+            RaftThreadScreenPayload(
+                status = "loading",
+                surfaceKind = surfaceKind,
+                channelKind = surfaceKind,
+                sourceThreadId = key.threadChannelId,
+                streamChannelId = key.threadChannelId,
+                memberScopedMentions = isDirectMessage,
+                focusedMessageId = anchorMessageId,
+                selectedTab = "chat",
+                navigationLabel = "Back",
+                showModeTabs = true,
+                showMembersAction = !isDirectMessage,
+                showSettingsAction = !isDirectMessage,
+                showTaskOpenActions = true,
+                showTaskStatusActions = true,
+            )
+        diagnosticsLogger(
+            "thread_conversation_prewarm_start threadId=${key.threadChannelId} surface=$surfaceKind " +
+                "anchor=$anchorMessageId priority=background"
+        )
+        val result =
+            payloadCache.prewarm(
+                serverId = key.serverId,
+                threadId = key.threadChannelId,
+                ownerScopeId = payloadOwnerScopeId
+            ) {
+                if (!isCurrentReplyCacheProvenance(resolutionScope.provenance)) {
+                    return@prewarm staleReplyCacheProvenanceResult()
+                }
+                fetchFocusedInitialThreadPayloadFromRepository(
+                    session = session,
+                    basePayload = basePayload,
+                    routeThreadId = ThreadId(key.threadChannelId),
+                    accessFallback = null,
+                    replyResolutionScope = resolutionScope,
+                    requestPriority = DataRequestPriority.Background,
+                )
+                    // The context answered for another conversation (or not at all): nothing to warm.
+                    ?: DataResult.Error(ScreenError(code = "thread_prewarm_context_mismatch", retryable = false))
+            }
+        diagnosticsLogger(
+            "thread_conversation_prewarm_result threadId=${key.threadChannelId} surface=$surfaceKind " +
+                "result=${result.threadDiagnosticsResult()}"
+        )
+        (result as? DataResult.Content)?.data?.let { payload ->
+            seedThreadAuthorProfiles(session.currentServerId, payload, source = "conversation_prewarm")
         }
         return when (result) {
             is DataResult.Content -> DataResult.Content(Unit)
@@ -7148,7 +7267,9 @@ internal class SharedThreadDataSource(
         routeThreadId: ThreadId,
         accessFallback: ConversationAccessCandidate?,
         replyResolutionScope: ReplyResolutionScope,
-        onFocusedContextPage: ((SharedThreadDurableContextPage) -> Unit)? = null
+        onFocusedContextPage: ((SharedThreadDurableContextPage) -> Unit)? = null,
+        /** artin #111: the Activity conversation prewarm asks at Background; every open stays Foreground. */
+        requestPriority: DataRequestPriority = DataRequestPriority.Foreground,
     ): DataResult<RaftThreadScreenPayload>? {
         val focusedMessageId = basePayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return null
         val focusedContextChannelId = basePayload.focusedMessageContextChannelIdOrNull()
@@ -7165,6 +7286,7 @@ internal class SharedThreadDataSource(
                     messageId = MessageId(focusedMessageId),
                     channelId = focusedContextChannelId,
                     expectedConversationId = ChannelId(routeThreadId.value),
+                    priority = requestPriority,
                 )
             }
         val context = (contextResult as? DataResult.Content)?.data ?: return null
@@ -14709,6 +14831,10 @@ internal fun RaftThreadScreenPayload.withRouteContext(base: RaftThreadScreenPayl
             knownMarkdownDirectMessagePeerNames =
                 base.knownMarkdownDirectMessagePeerNames.ifEmpty { knownMarkdownDirectMessagePeerNames },
             composer = base.composer.takeUnless { it.isDefaultThreadComposer() } ?: composer,
+            // artin #111: a payload warmed without a route (Activity prewarm) takes the route's DM peer.
+            dmPeerIdentity =
+                dmPeerIdentity
+                    ?: base.dmPeerIdentity.takeIf { surfaceKind == RaftThreadSurfaceKind.DirectMessage },
             emptyTitle = mergedEmptyTitleWith(base),
             emptyDetail = mergedEmptyDetailWith(base)
         )
@@ -16081,6 +16207,29 @@ private fun build.raft.app.data.ChannelFileItem.filesSourceLabel(): String =
             ?.takeIf { it.isNotBlank() }
             ?.replaceFirstChar { char -> char.uppercaseChar() }
             .orEmpty()
+
+/**
+ * artin #111 (candidate-snapshot rule): a warmed channel / DM page is the answer to this route only when
+ * it holds what the route asks for: the focused message for an anchored open, the newest messages
+ * (nothing after the page) otherwise. A miss returns null, so the open fetches its own answer. Reply
+ * threads keep their existing reuse unchanged.
+ */
+private fun DataResult<RaftThreadScreenPayload>.takeUnlessWarmedConversationMisses(
+    route: RaftThreadScreenPayload,
+): DataResult<RaftThreadScreenPayload>? {
+    val warmed = (this as? DataResult.Content)?.data ?: return this
+    if (warmed.surfaceKind == RaftThreadSurfaceKind.ReplyThread || route.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
+        return this
+    }
+    val anchor = route.focusedMessageId?.takeIf { it.isNotBlank() }
+    val answersRoute =
+        if (anchor != null) {
+            warmed.messages.any { message -> message.id == anchor }
+        } else {
+            !warmed.canLoadMoreAfter
+        }
+    return this.takeIf { answersRoute }
+}
 
 private fun RaftThreadScreenPayload.hasRenderableThreadContent(): Boolean =
     messages.isNotEmpty() || originMessage != null || tasks.isNotEmpty()

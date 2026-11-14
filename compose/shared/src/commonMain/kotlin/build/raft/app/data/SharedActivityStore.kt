@@ -75,6 +75,11 @@ private const val SharedActivityRefreshContinuationSlack = 2
 private const val SharedActivityRefreshMaxNoProgressPages = 2
 private const val SharedActivityReplyPrewarmConcurrency = 2
 private const val SharedActivityTailPrewarmDepthCap = 20
+/**
+ * artin #111: a channel / DM row prewarm waits this long after it enters the viewport before it may
+ * queue, so a fling through the list cancels it (the row scrolled away) before any request goes out.
+ */
+private const val SharedActivityConversationPrewarmSettleMillis = 400L
 
 private data class ActivityRealtimeHighWater(
     val marker: MessageId?,
@@ -275,8 +280,19 @@ data class ActivityReplyThreadPrewarmKey(
     val serverId: String,
     val parentChannelId: String,
     val parentMessageId: String,
-    val threadChannelId: String
-)
+    val threadChannelId: String,
+    /**
+     * artin #111: set for a channel / DM row ([build.raft.app.RaftThreadSurfaceKind.Channel] or
+     * [build.raft.app.RaftThreadSurfaceKind.DirectMessage]); then [threadChannelId] is the conversation's
+     * own channel id, the parent pair is blank, and [anchorMessageId] is the message the row opens at.
+     * Null for a reply thread (the original marker).
+     */
+    val conversationSurfaceKind: String? = null,
+    val anchorMessageId: String? = null,
+) {
+    val isConversation: Boolean
+        get() = conversationSurfaceKind != null
+}
 
 data class ActivityReplyThreadPrewarmMarker(
     val key: ActivityReplyThreadPrewarmKey,
@@ -925,6 +941,7 @@ class SharedActivityStore internal constructor(
             scope.launch(start = CoroutineStart.LAZY) {
                 val enqueuedAtMillis = foregroundLoadGate.nowMillis()
                 try {
+                    if (key.isConversation) delay(SharedActivityConversationPrewarmSettleMillis)
                     val result =
                         replyPrewarmSemaphore.withPermit {
                             awaitForegroundLoadIdle(key)

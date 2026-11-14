@@ -13,6 +13,7 @@ import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
+import build.raft.app.data.RaftStaleReadRecoverySignals
 import build.raft.app.data.ActivityUnreadSummaryProjection
 import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
@@ -1760,25 +1761,29 @@ internal fun SharedActivityList(
             listState.animateScrollToTopExpressive()
         }
     }
-    LaunchedEffect(listState, selectedFilter, snapshot.server.id, presentedItems, active) {
+    // artin #111: a backgrounded app warms nothing; going to the background drops what is still queued.
+    val appForeground by RaftStaleReadRecoverySignals.foreground.collectAsState()
+    LaunchedEffect(listState, selectedFilter, snapshot.server.id, presentedItems, active, appForeground) {
         if (!active) return@LaunchedEffect
+        if (!appForeground) {
+            onIntent(SharedActivityIntent.DetachPrewarmViewport)
+            return@LaunchedEffect
+        }
         val activityItemsByKey = presentedItems.associateBy(InboxItem::key)
         snapshotFlow {
+            // In display order (top first), so the conversation cap keeps the topmost visible rows.
             listState.layoutInfo.visibleItemsInfo
                 .mapNotNull { itemInfo ->
                     itemInfo.key as? String
                 }
-                .toSet()
         }
             .distinctUntilChanged()
             .collect { visibleItemKeys ->
+                val serverId = snapshot.server.id.value
+                val visibleItems = visibleItemKeys.mapNotNull { key -> activityItemsByKey[key] }
                 val markers =
-                    visibleItemKeys
-                        .mapNotNull { key ->
-                            activityItemsByKey[key]
-                                ?.toReplyThreadPrewarmMarker(snapshot.server.id.value)
-                        }
-                        .toSet()
+                    visibleItems.mapNotNull { item -> item.toReplyThreadPrewarmMarker(serverId) }.toSet() +
+                        activityVisibleConversationPrewarmMarkers(visibleItems, serverId)
                 onIntent(SharedActivityIntent.PrewarmVisibleReplyThreads(markers))
             }
     }
@@ -2498,6 +2503,54 @@ internal fun activityRowActionIcon(item: InboxItem, actionId: String): RaftLucid
         "unfollow-thread", "mute-activity", "unfollow-object" -> RaftLucideIconName.BellOff
         else -> error("unknown Activity row action: $actionId")
     }
+
+/**
+ * artin #111: at most this many channel / DM rows of the viewport are warmed at once (the topmost
+ * ones). Each costs one `messages/context` and one `channels/:id` request at Background priority.
+ */
+internal const val ActivityVisibleConversationPrewarmCap = 4
+
+/** The first [cap] visible channel / DM rows (in display order) as prewarm markers. */
+internal fun activityVisibleConversationPrewarmMarkers(
+    visibleItems: List<InboxItem>,
+    serverId: String,
+    cap: Int = ActivityVisibleConversationPrewarmCap,
+): List<ActivityReplyThreadPrewarmMarker> =
+    visibleItems
+        .asSequence()
+        .mapNotNull { item -> item.toConversationPrewarmMarker(serverId) }
+        .distinctBy { marker -> marker.key }
+        .take(cap.coerceAtLeast(0))
+        .toList()
+
+/**
+ * artin #111: a channel / DM row's prewarm marker: the conversation's own channel id and the exact
+ * message the row opens at ([resolveInboxAnchorMessageId]), so the warmed `messages/context` is the
+ * request the open itself would make. Task conversations, threads and other kinds are not warmed here.
+ */
+internal fun InboxItem.toConversationPrewarmMarker(serverId: String): ActivityReplyThreadPrewarmMarker? {
+    val surfaceKind =
+        when (kind) {
+            InboxItemKind.Channel -> RaftThreadSurfaceKind.Channel
+            InboxItemKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
+            else -> return null
+        }
+    if (isTaskConversation) return null
+    val normalizedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return null
+    val normalizedChannelId = channelId.value.trim().takeIf { it.isNotBlank() } ?: return null
+    val anchor = resolveInboxAnchorMessageId()?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return ActivityReplyThreadPrewarmMarker(
+        key =
+            ActivityReplyThreadPrewarmKey(
+                serverId = normalizedServerId,
+                parentChannelId = "",
+                parentMessageId = "",
+                threadChannelId = normalizedChannelId,
+                conversationSurfaceKind = surfaceKind,
+                anchorMessageId = anchor,
+            )
+    )
+}
 
 internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityReplyThreadPrewarmMarker? {
     if (kind != InboxItemKind.Thread || unreadCount <= 0) return null
