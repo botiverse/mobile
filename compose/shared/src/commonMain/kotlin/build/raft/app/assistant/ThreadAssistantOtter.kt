@@ -254,8 +254,11 @@ internal fun rememberThreadAssistantOtter(
     // The conversation the otter lies on, as this page knows it now (web useAssistantContextRef):
     // the chip each open attaches to the DM's composer.
     val readsDms = (state as? MyAssistantState.Ready)?.assistant?.readsDms == true
+    // The member directory is a key too: a DM's reference needs the peer's handle, and a cold
+    // start (a notification straight into a DM) can open the panel before the directory loads.
+    val serverMembersState = serverMembersStore?.state?.collectAsState()?.value
     val contextOrigin =
-        remember(homeState.content, serverMembersStore, server, conversationChannelId, threadParentMessageId, threadParentText, readsDms) {
+        remember(homeState.content, serverMembersStore, serverMembersState, server, conversationChannelId, threadParentMessageId, threadParentText, readsDms) {
             val channelId = conversationChannelId?.takeIf(String::isNotBlank)
             if (server == null || channelId == null) {
                 null
