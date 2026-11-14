@@ -1432,6 +1432,15 @@ data class ActivityChanged(
     val source: String,
 ) : RealtimeEvent
 
+/**
+ * `joint-invites:changed` (botiverse/slock #12939 `listChangedEvents.ts`): the pending joint-channel
+ * invites to this person on [serverId] changed (web `usePendingJointInvites` reads them again).
+ */
+@Serializable
+data class JointInvitesChanged(
+    val serverId: ServerId,
+) : RealtimeEvent
+
 @Serializable
 data class AgentCreated(
     val agent: AgentProfile

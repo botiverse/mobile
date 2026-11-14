@@ -356,6 +356,8 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is build.raft.app.model.ServerFeaturesChanged -> false
         // Object rows live in Activity only; the Activity store and the unread summary refetch on it.
         is build.raft.app.model.ActivityChanged -> false
+        // Pending joint invites live in the Home notification center's own store, which reads them again.
+        is build.raft.app.model.JointInvitesChanged -> false
         // The member's theme lives on the stored server (process realtime owner); Home's rows do not change.
         is build.raft.app.model.ServerAppearanceUpdated -> false
         // A person's new name / avatar is patched into the member directory (and the signed-in user's

@@ -395,6 +395,10 @@ class RealtimeEventMapper(
                 decodeOrNull(ActivityChangedDto.serializer(), element)
                     ?.takeIf { it.serverId.isNotBlank() }
                     ?.let { ActivityChanged(ServerId(it.serverId), it.source) }
+            RealtimeSocketEvents.JointInvitesChanged ->
+                decodeOrNull(ServerListChangedDto.serializer(), element)
+                    ?.takeIf { it.serverId.isNotBlank() }
+                    ?.let { build.raft.app.model.JointInvitesChanged(ServerId(it.serverId)) }
             RealtimeSocketEvents.AnnouncementNew ->
                 RealtimeRefreshRequired(
                     scope = RealtimeRefreshScope.Announcements,
@@ -988,6 +992,12 @@ private fun JsonObject.runtimeAuthLoginHeader(): RuntimeAuthLoginHeader? {
 private data class ActivityChangedDto(
     val serverId: String,
     val source: String = "object",
+)
+
+/** slock `packages/shared/src/listChangedEvents.ts` `ListChangedEvent`: `{ serverId }` only. */
+@Serializable
+private data class ServerListChangedDto(
+    val serverId: String,
 )
 
 /** slock `packages/shared/src/featuresChanged.ts` `ServerFeaturesChangedEvent`: `{ serverId, keys }`. */

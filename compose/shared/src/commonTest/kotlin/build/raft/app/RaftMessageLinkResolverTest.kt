@@ -66,13 +66,14 @@ class RaftMessageLinkResolverTest {
             // No access to the conversation (or an id naming none) …
             val channelDenied = FakeMessageLinkNetwork(channel = HomeNetworkResponse(code, """{"error":"Channel not found"}"""))
             assertIs<RaftMessageLinkResolution.NotFound>(RaftMessageLinkResolver(channelDenied).resolve(link(msg = mid), servers))
-            requestShapes += channelDenied.requests.map { it.path to it.query }
+            // (slock #12371: the reader's other servers are then asked too; the link's server saw the same two.)
+            requestShapes += channelDenied.requests.filter { it.serverIdOverride == ServerId(serverId) }.map { it.path to it.query }
 
             // … or a deleted / unknown message in a readable one.
             val messageDenied =
                 FakeMessageLinkNetwork(context = HomeNetworkResponse(code, """{"error":"Message not found"}"""))
             assertIs<RaftMessageLinkResolution.NotFound>(RaftMessageLinkResolver(messageDenied).resolve(link(msg = mid), servers))
-            requestShapes += messageDenied.requests.map { it.path to it.query }
+            requestShapes += messageDenied.requests.filter { it.serverIdOverride == ServerId(serverId) }.map { it.path to it.query }
         }
         // Every not-found case sent exactly the same two requests.
         assertEquals(1, requestShapes.size, "requests differ between not-found cases: $requestShapes")

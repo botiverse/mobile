@@ -136,6 +136,13 @@ object RealtimeSocketEvents {
     const val PresenceActivity = "presence:activity"
 
     /**
+     * botiverse/slock #12939 `packages/shared/src/listChangedEvents.ts` `JOINT_INVITES_CHANGED_EVENT`:
+     * `{ serverId }` to the invitee's `user:<id>:server:<id>` once a joint-channel invite to them is
+     * created, resent or accepted. Payload-free: read `GET /channels/joint-invites` again.
+     */
+    const val JointInvitesChanged = "joint-invites:changed"
+
+    /**
      * Sent to the member's own `user:<id>` room about one of their servers, so the socket of
      * whichever server the app has open receives it: the payload `serverId` names the server
      * that changed, not the connected one. Gates that drop a payload naming another server than
@@ -158,5 +165,6 @@ object RealtimeSocketEvents {
             PinnedUpdated,
             NotificationPush,
             NotificationRetract,
+            JointInvitesChanged,
         )
 }

@@ -2856,6 +2856,17 @@ private fun RaftAppShellReadyContent(
                 scope = jointInviteScope,
             )
         }
+    // web #12939: `joint-invites:changed` reads the pending invites again right away.
+    DisposableEffect(appShellRealtimeDomainEventOwner, jointInviteStore) {
+        val sink =
+            build.raft.app.data.RealtimeGuardedActiveThreadSink { eventServerId, event ->
+                if (event is build.raft.app.model.JointInvitesChanged && event.serverId.value == eventServerId) {
+                    jointInviteStore.dispatch(build.raft.app.data.SharedJointInviteIntent.Changed(eventServerId))
+                }
+            }
+        appShellRealtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
+        onDispose { appShellRealtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
+    }
     // A pending two-step verification reset, first in the Home notification center (web #12295).
     val secondFactorRecoveryStore =
         remember(appShellNetworkClient, jointInviteScope) {
@@ -17441,6 +17452,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is ServerPlanUpdated -> "server_plan_updated"
         is ServerFeaturesChanged -> "server_features_changed"
         is ActivityChanged -> "activity_changed"
+        is build.raft.app.model.JointInvitesChanged -> "joint_invites_changed"
         is ServerAppearanceUpdated -> "appearance_updated"
         is build.raft.app.model.UserProfileUpdated -> "user_profile_updated"
         is build.raft.app.model.ProductFeedbackUnreadUpdated -> "product_feedback_unread"
@@ -17481,6 +17493,7 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is RealtimeRefreshRequired,
         is ServerFeaturesChanged,
         is ActivityChanged,
+        is build.raft.app.model.JointInvitesChanged,
         is ComputerRestartDone -> "realtime_refresh_apply"
         is build.raft.app.model.RuntimeAuthUpdated,
         is build.raft.app.model.RuntimeAuthLoginEventPushed,
@@ -17640,6 +17653,7 @@ private fun RealtimeEvent.serverIdHint(): ServerId? =
         is ServerPlanUpdated -> serverId
         is ServerFeaturesChanged -> serverId
         is ActivityChanged -> serverId
+        is build.raft.app.model.JointInvitesChanged -> serverId
         is ServerAppearanceUpdated -> serverId
         is build.raft.app.model.UserProfileUpdated -> serverId
         else -> null

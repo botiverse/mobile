@@ -355,9 +355,16 @@ internal fun channelSettingsPermissions(channel: HomeChannelRow, canManage: Bool
     )
 }
 
-/** Web `showInfoSection`: the inline name / description form (`canEditChannel && !isArchived`). */
-internal fun channelSettingsShowsInfo(channel: HomeChannelRow, permissions: ChannelSettingsPermissions): Boolean =
-    permissions.canEditChannel && !channel.archived
+/**
+ * Web `showInfoSection`: the inline name / description form (`showManageActions && canEditInfo`).
+ * A joint channel's name and description are the host's to edit: there it needs
+ * editChannelMetadata, so another server's admin who may only disconnect it (deleteChannels)
+ * gets no Edit (botiverse/slock #12766 `canEditInfo`).
+ */
+internal fun channelSettingsShowsInfo(channel: HomeChannelRow, permissions: ChannelSettingsPermissions): Boolean {
+    val canEditInfo = if (channelSettingsIsJoint(channel)) permissions.editMetadata else permissions.canEditChannel
+    return permissions.canEditChannel && canEditInfo && !channel.archived
+}
 
 /**
  * Web `visibilityActionRow` (`showManageActions && changeChannelVisibility && !isJointChannel`);
