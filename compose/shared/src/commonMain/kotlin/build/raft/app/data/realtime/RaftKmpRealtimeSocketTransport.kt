@@ -30,20 +30,17 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
 
 /**
- * [RealtimeSocketTransport] on the common Socket.IO client, so the transport-agnostic realtime client
- * logic (cursor, sync horizon, resume, rejoin, presence: Android's SocketIoRealtimeClient today, the
- * common connection later) runs over `:realtime-socket` exactly as over socket.io-client-java.
+ * [RealtimeSocketTransport] on the common Socket.IO client (`:realtime-socket`): the realtime socket of the
+ * Android and desktop hosts, under the transport-agnostic SocketIoRealtimeClient (cursor, sync horizon,
+ * resume, rejoin, presence).
  *
- * It reproduces the Java transport's contract: callbacks only for the current connection context, in
- * socket order, checked under the client's lock and delivered outside it; `reconnect` (with `reconnect_attempt` before
- * each retry) and then `connect` when a dropped socket comes back; `connect_error` carrying the server's
- * message; `join:channel` / `leave:channel` with the bare channel id; payloads as plain Kotlin maps,
- * lists and primitives (what the Java transport's consumers read). Android runs it behind
- * `realtime_kmp_client_v1` ([RealtimeSocketTransportSelector]).
+ * Contract: callbacks only for the current connection context, in socket order, checked under the client's
+ * lock and delivered outside it; `reconnect` (with `reconnect_attempt` before each retry) and then `connect`
+ * when a dropped socket comes back; `connect_error` carrying the server's message; `join:channel` /
+ * `leave:channel` with the bare channel id; payloads as plain Kotlin maps, lists and primitives.
  *
  * The primary constructor takes the connector and dispatchers (tests script a server through it); hosts
- * use the secondary one. [linearizer] is the lock every call and callback runs under; a host that switches
- * between this and another transport passes the one they share (see [RealtimeSocketTransportSelector]).
+ * use [raftRealtimeSocketTransport]. [linearizer] is the lock every call and callback runs under.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RaftKmpRealtimeSocketTransport(
@@ -134,7 +131,7 @@ class RaftKmpRealtimeSocketTransport(
             val socket = connection.socket ?: return@linearize false
             // No payload: the server reads the ack as the last argument (`emit("sync:horizon", ack)`).
             socket.emitWithAck(eventName) { result ->
-                if (result !is RaftAckResult.Acked) return@emitWithAck // May never run, as with the Java transport.
+                if (result !is RaftAckResult.Acked) return@emitWithAck // May never run (an older server does not answer).
                 if (linearize { current === connection }) onAck(connection.context, result.args.firstOrNull()?.toTransportPlain())
             }
             true
@@ -150,8 +147,7 @@ class RaftKmpRealtimeSocketTransport(
         }
 
     /**
-     * Delivers to [connection]'s listeners while it is current. As in the Java transport's generation fence,
-     * the lock only owns the current-connection check: listeners run outside it (they re-enter the client,
+     * Delivers to [connection]'s listeners while it is current. The lock only owns the current-connection check: listeners run outside it (they re-enter the client,
      * which takes [linearize] itself), so a slow listener never holds a lifecycle call (setReconnectAllowed
      * on the main thread) behind a socket callback. Callbacks of one connection still arrive in socket order
      * (one serial dispatcher per connection).
@@ -162,7 +158,7 @@ class RaftKmpRealtimeSocketTransport(
                 if (current !== connection) null else listeners[eventName]?.toList().orEmpty()
             } ?: return true
         handlers.forEach { handler ->
-            // Re-checked per handler: a replacement during delivery wins, as in the Java transport.
+            // Re-checked per handler: a replacement during delivery wins.
             if (linearize { current === connection }) handler(connection.context, payload)
         }
         return handlers.isNotEmpty()
@@ -209,6 +205,34 @@ class RaftKmpRealtimeSocketTransport(
         }
     }
 }
+
+/**
+ * A host's realtime socket: the common client with Raft's handshake ([clientKind]; the client adds
+ * `clientImpl: "kmp"`). [log] gets every client line prefixed `realtime_kmp `; `verbose` is false for the
+ * connection lifecycle lines (`transport_*`, a few per connection, always kept) and true for the rest.
+ */
+fun raftRealtimeSocketTransport(
+    socketUrl: String,
+    clientKind: String = "mobile",
+    log: (message: String, verbose: Boolean) -> Unit,
+): RealtimeSocketTransport =
+    RaftKmpRealtimeSocketTransport(
+        socketUrl = socketUrl,
+        clientKind = clientKind,
+        logger = { message -> log("realtime_kmp $message", !message.startsWith("transport_")) },
+    )
+
+/**
+ * A raw socket payload (what [RaftKmpRealtimeSocketTransport] delivers: plain maps, lists, primitives, or a
+ * JSON string) as JSON text for the app-scope raw event bus; `{}` when there is none.
+ */
+fun realtimeRawPayloadJson(payload: Any?): String =
+    when (payload) {
+        null -> "{}"
+        is String -> payload
+        is Map<*, *>, is Iterable<*>, is Array<*>, is JsonElement -> payload.toTransportJson().toString()
+        else -> payload.toString()
+    }
 
 /** Plain Kotlin values (String, Long, Double, Boolean, null, List, Map) for transport consumers. */
 private fun JsonElement.toTransportPlain(): Any? =

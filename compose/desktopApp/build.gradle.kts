@@ -6,7 +6,7 @@ import org.jetbrains.compose.desktop.application.dsl.TargetFormat
  *
  * The UI is :shared's Compose Multiplatform pages rendered through :ui-cmp's RaftCmpRoot, as on
  * Android and iOS; this module is the host: window, page stack, bridge methods, storage paths and
- * the Socket.IO realtime client. See README.md (signing / notarization hooks for DevOps).
+ * the realtime host (the shared client over :realtime-socket). See README.md (signing / notarization hooks for DevOps).
  */
 plugins {
     kotlin("jvm")
@@ -33,9 +33,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.socket.io.client)
-    implementation(libs.gson)
-    implementation(libs.okhttp.transport)
     // System open / save panels (RaftDesktopFileDialogs).
     implementation(libs.filekit.dialogs)
     // The JetBrains Runtime's API: its macOS custom title bar (RaftDesktopTitleBar). The packaged

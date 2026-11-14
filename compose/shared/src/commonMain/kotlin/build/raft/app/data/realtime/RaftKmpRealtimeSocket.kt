@@ -55,7 +55,7 @@ interface RaftKmpRealtimeAckCallback {
 
 /**
  * One server's realtime socket on the common client (`:realtime-socket`), shaped for a platform host
- * (realtime unification phase 1: the iOS host behind [RaftRealtimeKmpClientFlag]).
+ * (the iOS host, RaftIosRealtimeHost.swift).
  *
  * - Handshake `auth`: Raft's `{ token, serverId, clientKind, capabilities, clientImpl }`, rebuilt from the
  *   latest [updateToken] before every attempt. After a token rejection the attempt waits up to

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.raftSelectedServerIdFlow
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -936,7 +937,7 @@ private fun HomeSearchRouterContent(
         }
     val ownListState = rememberLazyListState()
     val searchListState = listState ?: ownListState
-    val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
     val draftProjection =
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
@@ -1151,23 +1152,19 @@ private fun HomeSavedRouterContent(
     val listState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     val copyScope = rememberCoroutineScope()
-    val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
     val draftProjection =
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
         }
-    var savedServerId by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(environment.authStore, environment.serverMembersStore) {
-        val serverId =
-            environment.authStore
-                .readSession()
-                ?.currentServerId
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-        savedServerId = serverId
-        if (serverId != null) {
-            environment.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
-        }
+    // The shell's selected server, followed: the wide layout keeps Saved beside the server rail,
+    // so a switch there must move the page (and its store, which reloads) to the new server.
+    val savedServerId by
+        remember(environment.authStore) { environment.authStore.raftSelectedServerIdFlow() }
+            .collectAsState(null)
+    LaunchedEffect(environment.serverMembersStore, savedServerId) {
+        val serverId = savedServerId ?: return@LaunchedEffect
+        environment.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
     }
     val memberAvatarResolver =
         remember(environment.serverMembersStore, savedServerId) {
@@ -1330,7 +1327,7 @@ private fun HomeDraftsRouterContent(
         }
     // drafts_page_viewed (web DraftsPanel): once per opening of the page, with how many drafts it
     // lists once Home has loaded and every draft is placed. No ids, text or lengths go out.
-    val draftsPageViewSettled = directory != null && listing.settled
+    val draftsPageViewSettled = directory != null && listing.settled && listing.recordsKnown
     var draftsPageViewRecorded by remember { mutableStateOf(false) }
     LaunchedEffect(draftsPageViewSettled) {
         if (!draftsPageViewSettled || draftsPageViewRecorded) return@LaunchedEffect
@@ -1342,6 +1339,7 @@ private fun HomeDraftsRouterContent(
     CompositionLocalProvider(LocalActivityAvatarSource provides avatarSource) {
         RaftDraftsPanel(
             rows = rows,
+            recordsKnown = listing.recordsKnown,
             onClose = { environment.inlineOnClose?.invoke() ?: environment.pager.closeHomeSecondaryPage() },
             onOpen = { key ->
                 val entry = listing.entries.firstOrNull { it.key == key } ?: return@RaftDraftsPanel

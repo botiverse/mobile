@@ -16948,6 +16948,8 @@ private fun List<String>.cleanActionCardIds(): List<String> =
         .filter { it.isNotBlank() }
         .distinct()
 
+private fun RaftThreadScreenPayload.isLoadedContentFrame(): Boolean = status == "content" || status == "empty"
+
 internal fun RaftThreadScreenPayload.withContentSliceFrom(patch: RaftThreadScreenPayload): RaftThreadScreenPayload {
     val acceptsPatchHeader =
         resolveThreadRouteIdentity().canRetainThreadPageFor(patch.resolveThreadRouteIdentity())
@@ -16982,6 +16984,11 @@ internal fun RaftThreadScreenPayload.withContentSliceFrom(patch: RaftThreadScree
             },
         status = patch.status,
         backgroundRefreshing = patch.backgroundRefreshing,
+        // A loaded page says whether the channel is archived (archive / unarchive flip it); a
+        // loading or failed patch keeps what the page knew.
+        channelArchived = if (acceptsPatchHeader && patch.isLoadedContentFrame()) patch.channelArchived else channelArchived,
+        channelCanUnarchive =
+            if (acceptsPatchHeader && patch.isLoadedContentFrame()) patch.channelCanUnarchive else channelCanUnarchive,
         // The content slice carries its own provenance: a network patch is never last-known.
         durableLastKnown = patch.durableLastKnown,
         mainLoadFailed = patch.mainLoadFailed,
@@ -17865,6 +17872,9 @@ private fun ThreadSnapshot.toRaftThreadPayload(
         // Lounge has no Join step; the first post joins, and its permissions say whether you may post.
         joined = conversation.joined || (surfaceKind == RaftThreadSurfaceKind.Channel && !conversation.loungeAgentId.isNullOrBlank()),
         canSend = conversation.permissions.canSend,
+        channelArchived = conversation.archived,
+        // A reply thread's capabilities are its parent channel's (the canonical detail).
+        channelCanUnarchive = (canonicalConversationDetail ?: conversation).channelCapabilities?.archiveChannels,
         membersCount = conversation.memberCount ?: base.membersCount,
         errorCode = null,
         dmPeerName = safeDirectMessagePeerName,

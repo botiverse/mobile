@@ -2485,6 +2485,18 @@ internal data class RaftThreadScreenPayload(
     val showComposer: Boolean = true,
     val joined: Boolean = true,
     val canSend: Boolean = true,
+    /**
+     * The channel this page shows (a reply thread: its parent) is archived: read-only, its
+     * composer replaced by the archived banner (web ChatPanel `isArchived`). From the canonical
+     * load (`GET /messages/...` `channelArchived`, `GET /channels/:id` `archivedAt`), never from
+     * the Home directory: `GET /channels` leaves archived channels out.
+     */
+    val channelArchived: Boolean = false,
+    /**
+     * Web `effectiveChannelCapabilities.archiveChannels` from `GET /channels/:id`; null when the
+     * load carried no capabilities (the banner then falls back to the server role).
+     */
+    val channelCanUnarchive: Boolean? = null,
     val membersCount: Int = 0,
     val members: List<RaftThreadMemberItem> = emptyList(),
     val memberCandidates: List<RaftThreadMemberItem> = emptyList(),
@@ -8355,6 +8367,7 @@ private fun SharedThreadRouteContentContent(
     val createTaskFromMessage = remember(threadInstanceKey) { TaskCreateFromMessageFlow() }
     // Task v2: a task opened without a page of its own (its empty conversation, or a legacy panel).
     val taskOpenSurfaceFlow = remember(threadInstanceKey) { TaskOpenSurfaceFlow() }
+    TaskOpenSurfaceIncomingNavigationEffect(taskOpenSurfaceFlow, foregroundBannerStore.incomingNavigation)
     val taskOpenGate = remember(threadInstanceKey) { TaskOpenGate() }
     var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     // Reference-chip opens are single-flight in their store (ignored repeat taps). The busy chip is
@@ -13077,7 +13090,7 @@ private fun SharedThreadRouteContentContent(
                             banner = banner,
                             topSafeArea = handoff.topSafeArea,
                             serverMembersStore = handoff.serverMembersStore,
-                            currentServerId = handoff.currentServerId,
+                            currentServerId = foregroundBannerMemberServerId(banner, handoff.currentServerId),
                             onClick = { handoff.onClick(banner) },
                             onDismiss = { handoff.onDismiss(banner) },
                         )
@@ -18044,7 +18057,7 @@ private fun ThreadPageContentContent(
             taskChannelId
                 ?: ChannelId(threadInstanceKey)
         }
-    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
     val draftProjection =
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
@@ -18819,6 +18832,18 @@ private fun ThreadPageContentContent(
                 AgentLoungeFooter(
                     kind = agentLoungeFooterKind(conversationLounge, pageLounge),
                     inputs = data.lounge,
+                    modifier = Modifier.padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
+                )
+            } else if (pageLounge == null && threadFooterShowsArchived(payload)) {
+                // Web ChatPanel `isArchived`: the archived banner in place of the composer or the
+                // Join button, for members and non-members alike (the server refuses every write).
+                val archived = data.lounge?.archivedChannel
+                ThreadArchivedChannelNotice(
+                    canUnarchive = archived?.canUnarchive == true,
+                    unarchiving = archived?.unarchiving == true,
+                    onUnarchive = {
+                        archived?.onUnarchive?.invoke { onThreadEvent("retryThreadLoad", null, null, null) }
+                    },
                     modifier = Modifier.padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
                 )
             } else if (!writeActionsEnabled) {
@@ -19778,6 +19803,12 @@ internal fun ThreadPageHeader(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (
+                        loungeHeader == null &&
+                            threadHeaderShowsArchivedBadge(payload, directoryArchived = headerDisplay.channelArchived)
+                    ) {
+                        ThreadArchivedChannelBadge()
+                    }
                     if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel && loungeHeader == null) {
                         RaftExternalBridgeBadge(headerDisplay.bridgeProvider)
                     }
@@ -20243,6 +20274,8 @@ private fun ThreadDmPeerAvatarTile(
     cacheServerId: String? = null,
     onClick: (() -> Unit)? = null
 ) {
+    // Raw clickable on purpose, as on the lounge agent's face above: the app's press wash draws
+    // over the face, where raftClickable's would sit behind the opaque avatar.
     Box(
         modifier =
             Modifier
@@ -21586,7 +21619,7 @@ private fun ThreadChatTabContent(
         )
     }
     val userFacingErrorLabels = threadUserFacingErrorLabels()
-    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
     val activeReplyDraftParentMessageIds =
         remember(activeDraftRecords) {
             activeDraftRecords.toReplyComposerDraftParentMessageIds()
@@ -29472,7 +29505,7 @@ internal fun ThreadSystemMessageRow(
         modifier =
             Modifier.fillMaxWidth()
                 .background(RaftColor.SurfaceWhite)
-                .clickable { expanded = !expanded }
+                .raftClickable(onClick = { expanded = !expanded }, tier = RaftHoverTier.Subtle)
                 // raft-ui SystemMessage `pt-timeline-lead pb-timeline-row`: an event line starts a
                 // turn, 16 from the text on either side (spacing.md#timeline-rhythm).
                 .padding(
@@ -30757,6 +30790,9 @@ private fun ThreadMessageCardContent(
                         previewCardPinOnClick = message.externalAuthor != null && !shareSelectionActive,
                     )
                 }
+                // Raw clickable on purpose: while selecting, the message body is a tap target
+                // of the message row, which shows selection through its checkbox and row fill,
+                // not a press wash (message rows keep their own tap, long press and selection).
                 val contentModifier =
                     if (shareSelectionActive) {
                         Modifier
@@ -30829,9 +30865,13 @@ private fun ThreadMessageCardContent(
                                                 modifier =
                                                     nameModifier
                                                         .threadSenderNameBaseline()
-                                                        .clickable {
-                                                            if (nameMentionHandle != null) onMentionAuthor(message) else openAuthorProfile("author_name")
-                                                        }
+                                                        .raftClickable(
+                                                            onClick = {
+                                                                if (nameMentionHandle != null) onMentionAuthor(message) else openAuthorProfile("author_name")
+                                                            },
+                                                            shape = RoundedCornerShape(RaftAppRadius.Sm),
+                                                            tier = RaftHoverTier.Subtle,
+                                                        )
                                             )
                                         }
                                         // raft-ui 0.17 MessageItemHeader `items-baseline`: name, meta,
@@ -36825,7 +36865,7 @@ private fun ThreadMessageAuthorSubtitle(
 ) {
     val clickableModifier =
         if (onClick != null) {
-            modifier.clickable(onClick = onClick)
+            modifier.raftClickable(onClick = onClick, shape = RoundedCornerShape(RaftAppRadius.Sm), tier = RaftHoverTier.Subtle)
         } else {
             modifier
         }
@@ -37332,14 +37372,15 @@ private fun ThreadMessageCommentRefChip(
     Row(
         modifier =
             modifier
-                .then(if (enabled) Modifier.clickable(onClick = onOpen) else Modifier)
-                // raft reference chip: fill-muted on the chip radius with a hairline.
+                // raft reference chip: fill-muted on the chip radius with a hairline. The fill
+                // comes before the tap so the press shows over it.
                 .raftControlSurface(
                     fill = RaftColor.FillMuted.copy(alpha = if (enabled) 1f else 0.7f),
                     border = RaftColor.BorderHairline,
                     radius = RaftAppRadius.Chip,
                     borderWidth = RaftAppStroke.Thin
                 )
+                .then(if (enabled) Modifier.raftClickable(onClick = onOpen, shape = RoundedCornerShape(RaftAppRadius.Chip)) else Modifier)
                 .padding(horizontal = RaftAppSpacing.Xs, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -39614,8 +39655,11 @@ internal fun <T> RaftForwardTargetPicker(
                     LazyRow(state = backSwipeRowState, userScrollEnabled = backSwipeRow.userScrollEnabled, modifier = backSwipeRow.modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(state.selectedItems.size, key = { state.selectedItems[it].rowKey }) { index ->
                             val selected = state.selectedItems[index]
+                            val removeLabel = stringResource(Res.string.thread_forward_remove_destination, selected.title)
                             RaftModalActionButton(
-                                label = "${selected.title} ×",
+                                label = selected.title,
+                                trailingIcon = RaftLucideIconName.X,
+                                modifier = Modifier.semantics { contentDescription = removeLabel },
                                 onClick = {
                                     onIntent(RaftForwardTargetPickerIntent.RemoveSelection(selected.stableKey))
                                 },

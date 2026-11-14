@@ -1,6 +1,8 @@
 package build.raft.app.data.realtime
 
 import build.raft.app.data.RealtimeSubscription
+import kotlinx.atomicfu.locks.reentrantLock
+import kotlinx.atomicfu.locks.withLock
 
 interface RealtimeSocketTransport {
     fun <T> linearize(block: () -> T): T
@@ -22,4 +24,15 @@ interface RealtimeSocketTransport {
         eventName: String,
         listener: (context: RealtimeSocketConnectionContext, payload: Any?) -> Unit,
     ): RealtimeSubscription
+}
+
+/** The re-entrant lock a [RealtimeSocketTransport] runs its calls under ([RealtimeSocketTransport.linearize]). */
+interface RealtimeTransportLinearizer {
+    fun <T> linearize(block: () -> T): T
+}
+
+class ReentrantRealtimeTransportLinearizer : RealtimeTransportLinearizer {
+    private val lock = reentrantLock()
+
+    override fun <T> linearize(block: () -> T): T = lock.withLock(block)
 }

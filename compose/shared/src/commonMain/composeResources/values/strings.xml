@@ -6,6 +6,12 @@
     <string name="database_recovery_title">Update Raft to open this local data</string>
     <string name="database_recovery_detail">This app supports database version %2$d, but your local data uses version %1$d. Install the Raft version that created this data, or a newer version, then retry. This app has not changed your local database.</string>
     <string name="database_recovery_action_retry">Retry after updating</string>
+    <string name="min_build_gate_title">Please update to the latest version</string>
+    <string name="min_build_gate_body">This version of Raft is no longer supported. Install the latest version to keep using Raft.</string>
+    <string name="min_build_gate_action_update">Update</string>
+    <string name="min_build_gate_action_feedback">Send feedback</string>
+    <string name="min_build_gate_action_sign_out">Sign out</string>
+    <string name="min_build_gate_banner">This version of Raft is no longer supported. Please update to the latest version.</string>
     <string name="error_session_expired">Your session expired. Sign in again to continue.</string>
     <string name="error_server_unreachable">The server could not be reached. Check your connection and try again.</string>
     <string name="error_request_timed_out">The server did not respond in time. Please try again.</string>
@@ -1147,6 +1153,7 @@
     <string name="thread_forward_destination">Destination</string>
     <string name="thread_forward_messages_selected">%1$d messages selected</string>
     <string name="thread_forward_destinations_selected">%1$d destinations selected</string>
+    <string name="thread_forward_remove_destination">Remove %1$s</string>
     <string name="thread_forward_add_note">Add a note</string>
     <string name="thread_forward_search_results">Search results</string>
     <string name="thread_forward_loading_targets">LOADING TARGETS</string>
@@ -3425,8 +3432,6 @@
     <string name="settings_developer_nav3_stack_detail">Open the pages moved so far inside the app window (Android). Takes effect on the next app start.</string>
     <string name="settings_developer_multi_server_realtime">Live updates in every window</string>
     <string name="settings_developer_multi_server_realtime_detail">With Multiple app windows on, each window's workspace keeps its own realtime connection (up to 3), so a window in the back still gets new messages. Off: only the workspace in front stays connected.</string>
-    <string name="settings_developer_kmp_realtime">New realtime connection (Beta)</string>
-    <string name="settings_developer_kmp_realtime_detail">Use the app's own realtime client instead of the Socket.IO library on this device. Takes effect the next time the connection opens. Off follows the server setting.</string>
     <string name="settings_mobile_ios_native_nav">iOS native navigation</string>
     <string name="settings_mobile_ios_native_nav_detail">Show page titles and buttons in the system navigation bar, with the system swipe back. Takes effect on the next app start.</string>
     <string name="settings_developer_presets">Presets</string>

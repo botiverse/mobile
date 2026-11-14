@@ -1,10 +1,10 @@
 name: Android Realtime E2E
 
 # Deterministic realtime smoke on a GitHub emulator (scripts/qa/android_realtime_e2e.mjs): an Alpha APK
-# (realtime_kmp_client_v1 defaults on in Alpha: the common Kotlin Socket.IO client) signs in with the QA
-# account, receives a message posted through the API, survives airplane mode with catch-up of the messages
-# posted meanwhile, and switches server and back; logcat must show the expected socket implementation
-# (`realtime_kmp_transport selected=kmp`).
+# (the realtime socket is the common Kotlin Socket.IO client) signs in with the QA account, receives a
+# message posted through the API, survives airplane mode with catch-up of the messages posted meanwhile,
+# and switches server and back; logcat must show the common client connecting
+# (`realtime_kmp transport_connect_start` / `transport_connected`).
 #
 # APK: an Android Alpha Validation (android-alpha.yml) artifact. Dispatch with alpha_run_id (that run's
 # android-alpha-* artifact), or label a pull request `realtime-e2e`: the newest successful
@@ -16,11 +16,6 @@ on:
         description: "android-alpha.yml run id whose android-alpha-* APK artifact to test"
         required: true
         type: string
-      expect_transport:
-        description: "Socket implementation logcat must show: kmp (Alpha default) | legacy"
-        required: false
-        type: string
-        default: "kmp"
   pull_request:
     types: [labeled]
 
@@ -111,7 +106,7 @@ jobs:
           emulator-boot-timeout: 1200
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: node scripts/qa/android_realtime_e2e.mjs --apk "${{ steps.apk.outputs.apk }}" --package "${{ steps.apk.outputs.package }}" --expect-transport "${{ inputs.expect_transport || 'kmp' }}" --out "${{ env.EVIDENCE }}"
+          script: node scripts/qa/android_realtime_e2e.mjs --apk "${{ steps.apk.outputs.apk }}" --package "${{ steps.apk.outputs.package }}" --out "${{ env.EVIDENCE }}"
 
       - name: Summary
         if: always()

@@ -176,10 +176,11 @@ class SharedHomeSearchSavedStoreTest {
                 nowMillis = { now },
             )
 
-        // The constructor returned with both session reads (server owner + personalization
-        // prewarm) still waiting for the lock, and neither ran inside a blocking event loop.
+        // The constructor returned with all three session reads (server owner, personalization
+        // prewarm, Saved's server-scope follow) still waiting for the lock, and none ran inside a
+        // blocking event loop.
         assertEquals(0, auth.readsOnForeignDispatcher)
-        assertEquals(2, auth.waitingReads)
+        assertEquals(3, auth.waitingReads)
         assertEquals(false, store.state.value.search.personalizationLoaded)
 
         auth.releaseLock()

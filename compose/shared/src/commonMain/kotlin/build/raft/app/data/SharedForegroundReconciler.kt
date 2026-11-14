@@ -58,7 +58,7 @@ class SharedForegroundReconciler internal constructor(
                 val returned = foreground && previous == false
                 previous = foreground
                 if (!returned) return@collect
-                val serverId = currentServerId() ?: return@collect
+                val serverId = currentServerId(FOREGROUND_RECONCILE_APP_LIFECYCLE_REASON) ?: return@collect
                 if (!coversServer(serverId)) {
                     diagnosticsLogger(
                         "foreground_reconcile_skip reason=$FOREGROUND_RECONCILE_APP_LIFECYCLE_REASON " +
@@ -70,18 +70,31 @@ class SharedForegroundReconciler internal constructor(
             }
         }
 
-    private suspend fun currentServerId(): String? =
-        try {
-            authStore.readSession()?.currentServerId?.takeIf { it.isNotBlank() }
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Throwable) {
-            null
-        }
+    /**
+     * The signed-in current server, or null with the reason logged (architecture review B, site 10):
+     * a session that cannot be read is skipped visibly, never taken for "no server".
+     */
+    private suspend fun currentServerId(reason: String): String? {
+        val cause =
+            try {
+                when (val state = authStore.readSessionState()) {
+                    is RaftAuthSessionState.SignedIn ->
+                        state.session.currentServerId?.takeIf { it.isNotBlank() }?.let { return it } ?: "no_server"
+                    RaftAuthSessionState.SignedOut -> "signed_out"
+                    is RaftAuthSessionState.Corrupt -> "session_corrupt"
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                "session_read_failed"
+            }
+        diagnosticsLogger("foreground_reconcile_skip reason=$reason cause=$cause")
+        return null
+    }
 
     fun onForeground(reason: String) {
         scope.launch {
-            val serverId = currentServerId() ?: return@launch
+            val serverId = currentServerId(reason) ?: return@launch
             val shouldRefresh =
                 mutex.withLock {
                     val mark = lastRefreshMark

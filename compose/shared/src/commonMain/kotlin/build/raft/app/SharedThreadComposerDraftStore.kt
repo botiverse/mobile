@@ -1512,7 +1512,13 @@ internal class SharedThreadComposerDraftPersistSlice(
     private val persistence: SharedThreadComposerDraftPersistence,
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     private val scheduler: SharedThreadComposerDraftPersistenceScheduler = ImmediateThreadComposerDraftPersistenceScheduler,
-    private val changeDebounceMillis: Long = DefaultChangeDebounceMillis
+    private val changeDebounceMillis: Long = DefaultChangeDebounceMillis,
+    /**
+     * Whether [activeDraftRecordsState] is already this device's answer when the slice is built.
+     * Production passes false: the drafts are account-scoped and read nothing until the account
+     * binding is known (architecture review B, site 7).
+     */
+    recordsKnownAtStart: Boolean = true
 ) : MviPersistSlice<SharedThreadComposerDraftState, SharedThreadComposerDraftIntent> {
     /** Runtimes using this slice serialize their transitions on it; see [SharedThreadComposerDraftStore]. */
     internal val transitionAdmissionLock: ReentrantLock
@@ -1520,6 +1526,13 @@ internal class SharedThreadComposerDraftPersistSlice(
 
     val activeDraftRecordsState: StateFlow<Set<SharedThreadComposerDraftRecord>> =
         SharedActiveDraftRecordsState.asStateFlow()
+
+    /**
+     * False while [activeDraftRecordsState] is not this account's answer yet (the account binding is
+     * not known): an empty set then means "not read", not "no drafts".
+     */
+    private val recordsKnown = MutableStateFlow(recordsKnownAtStart)
+    val activeDraftRecordsKnown: StateFlow<Boolean> = recordsKnown.asStateFlow()
 
     /** The durable drafts with their text and last edit (the Drafts list); see [SharedThreadComposerDraftPersistence.draftListings]. */
     fun draftListings(): List<SharedThreadComposerDraftListing> = persistence.draftListings()
@@ -2142,12 +2155,17 @@ internal class SharedThreadComposerDraftPersistSlice(
         }
         cancelled.forEach { pending -> pending.cancellation?.cancel() }
         refreshActiveDraftRecords(reason = "account_changed")
+        recordsKnown.value = true
         safeDiagnostics("thread_composer_draft_account_retired droppedPending=${cancelled.size}")
     }
 
-    /** The first account of this process is bound: re-read the Drafts projection for it. */
+    /**
+     * The account binding is known (the first account of this process is bound, or nobody is signed
+     * in): re-read the Drafts projection for it; from now on it is this device's answer.
+     */
     fun refreshForAccountBinding() {
         refreshActiveDraftRecords(reason = "account_bound")
+        recordsKnown.value = true
     }
 
     private fun consumeStagedUploadedAttachments(draftKey: String?): List<SharedThreadComposerAttachment> {

@@ -279,12 +279,7 @@ RUN_BLOCKING_ALLOWLIST = (
         "queued on the auth-session lock yet (see the comment at the call site)",
     ),
     (
-        "compose/androidApp/src/main/java/build/raft/app/core/data/realtime/SessionRealtimeRepository.kt",
-        "runBlocking {",
-        "Socket.IO auth-refresh provider; runs only on the dedicated slock-realtime-auth-refresh thread",
-    ),
-    (
-        "compose/desktopApp/src/main/kotlin/build/raft/app/desktop/realtime/SessionRealtimeRepository.kt",
+        "compose/shared/src/jvmCommonMain/kotlin/build/raft/app/data/realtime/SessionRealtimeRepository.kt",
         "runBlocking {",
         "Socket.IO auth-refresh provider; runs only on the dedicated slock-realtime-auth-refresh thread",
     ),

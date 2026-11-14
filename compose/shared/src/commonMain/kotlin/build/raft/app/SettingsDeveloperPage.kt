@@ -67,9 +67,6 @@ internal fun SharedSettingsDeveloperContent(
     var multiServerRealtimeEnabled by remember {
         mutableStateOf(chatLayoutPreferences.readMultiServerRealtimeEnabledSync())
     }
-    var kmpRealtimeEnabled by remember {
-        mutableStateOf(build.raft.app.data.realtime.RaftRealtimeKmpClientFlag.enabled(preferences))
-    }
     val payload =
         snapshot.toDeveloperPayload(
             state = state,
@@ -81,8 +78,6 @@ internal fun SharedSettingsDeveloperContent(
             nav3StackLocalEnabled = nav3StackLocalEnabled,
             multiServerRealtimeSupported = raftPlatformSupportsMultiShellHost(),
             multiServerRealtimeEnabled = multiServerRealtimeEnabled,
-            kmpRealtimeSupported = build.raft.app.data.realtime.RaftRealtimeKmpClientFlag.hostSupported,
-            kmpRealtimeEnabled = kmpRealtimeEnabled,
         )
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
@@ -104,11 +99,6 @@ internal fun SharedSettingsDeveloperContent(
                 multiServerRealtimeEnabled = chatLayoutPreferences.readMultiServerRealtimeEnabledSync()
                 // Open windows re-reconcile now: every window's server joins (or all but one leaves).
                 raftProcessRealtimeSessionDemand.notifySettingChanged()
-            }
-            DEVELOPER_ACTION_KMP_REALTIME -> {
-                // Read when a socket is created: the next connection uses the chosen client.
-                build.raft.app.data.realtime.RaftRealtimeKmpClientFlag.setLocalOverride(preferences, value == "true")
-                kmpRealtimeEnabled = build.raft.app.data.realtime.RaftRealtimeKmpClientFlag.enabled(preferences)
             }
         }
     }
@@ -368,7 +358,6 @@ internal const val DEVELOPER_ACTION_TEXT_INPUT_TRACE = "textInputTrace"
 internal const val DEVELOPER_ACTION_VERBOSE_DIAGNOSTICS = "verboseDiagnostics"
 internal const val DEVELOPER_ACTION_NAV3_STACK = "nav3Stack"
 internal const val DEVELOPER_ACTION_MULTI_SERVER_REALTIME = "multiServerRealtime"
-internal const val DEVELOPER_ACTION_KMP_REALTIME = "kmpRealtime"
 private const val LOCAL_FEATURE_OVERRIDES_OPEN_ACTION = "openLocalFeatureOverrides"
 private const val LOCAL_FEATURE_OVERRIDE_OPEN_ACTION_PREFIX = "openLocalFeatureOverride|"
 private const val LOCAL_FEATURE_OVERRIDE_EXPORT_ACTION = "exportLocalFeatureOverrideEvidence"
@@ -441,8 +430,6 @@ internal data class SettingsDeveloperPayloadCopy(
     val nav3StackDetail: String = "Open the pages moved so far inside the app window (Android). Takes effect on the next app start.",
     val multiServerRealtime: String = "Live updates in every window",
     val multiServerRealtimeDetail: String = "With Multiple app windows on, each window's workspace keeps its own realtime connection (up to 3), so a window in the back still gets new messages. Off: only the workspace in front stays connected.",
-    val kmpRealtime: String = "New realtime connection (Beta)",
-    val kmpRealtimeDetail: String = "Use the app's own realtime client instead of the Socket.IO library on this device. Takes effect the next time the connection opens. Off follows the server setting.",
     val on: String = "On",
     val off: String = "Off"
 )
@@ -476,8 +463,6 @@ private fun settingsDeveloperPayloadCopy(): SettingsDeveloperPayloadCopy =
         nav3StackDetail = stringResource(Res.string.settings_developer_nav3_stack_detail),
         multiServerRealtime = stringResource(Res.string.settings_developer_multi_server_realtime),
         multiServerRealtimeDetail = stringResource(Res.string.settings_developer_multi_server_realtime_detail),
-        kmpRealtime = stringResource(Res.string.settings_developer_kmp_realtime),
-        kmpRealtimeDetail = stringResource(Res.string.settings_developer_kmp_realtime_detail),
         on = stringResource(Res.string.settings_state_on),
         off = stringResource(Res.string.settings_state_off)
     )
@@ -581,9 +566,6 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     // Phase 3 multi-session realtime: only where separate app windows exist (Android).
     multiServerRealtimeSupported: Boolean = false,
     multiServerRealtimeEnabled: Boolean = false,
-    // Realtime unification phase 1: only hosts with a common-client adapter (Android, iOS).
-    kmpRealtimeSupported: Boolean = false,
-    kmpRealtimeEnabled: Boolean = false,
 ): RaftSharedSettingsPayload {
     val environmentDetail =
         when (state) {
@@ -685,17 +667,7 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                     status = if (multiServerRealtimeEnabled) copy.on else copy.off,
                                     enabled = true,
                                     toggleValue = multiServerRealtimeEnabled
-                                ).takeIf { multiServerRealtimeSupported },
-                                RaftSharedSettingsRow(
-                                    key = DEVELOPER_ACTION_KMP_REALTIME,
-                                    iconName = RaftLucideIconName.Activity,
-                                    title = copy.kmpRealtime,
-                                    detail = copy.kmpRealtimeDetail,
-                                    value = (!kmpRealtimeEnabled).toString(),
-                                    status = if (kmpRealtimeEnabled) copy.on else copy.off,
-                                    enabled = true,
-                                    toggleValue = kmpRealtimeEnabled
-                                ).takeIf { kmpRealtimeSupported }
+                                ).takeIf { multiServerRealtimeSupported }
                             )
                 )
             )

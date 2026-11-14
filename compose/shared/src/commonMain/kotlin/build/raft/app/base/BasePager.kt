@@ -4,6 +4,7 @@ import build.raft.app.ProvideRaftLinkOpening
 import build.raft.app.ProvideRaftPageBaseTimeContext
 import build.raft.app.RaftDatabaseLaunchGate
 import build.raft.app.RaftEnvironmentIndicatorHost
+import build.raft.app.RaftMinBuildGateLayer
 import build.raft.app.RAFT_EMBEDDED_CHILD_PAGE_PARAM
 import build.raft.app.RaftSearchTabHandoff
 import build.raft.app.RaftSearchTabHandoffAction
@@ -77,6 +78,7 @@ internal abstract class BasePager : ComposeContainer() {
                         ownsDatabaseLaunch = raftOwnsDatabaseLaunch,
                         embedded = embedded,
                         sharedStoreBuilt = RaftSharedStoreRegistry.currentOrNull() != null,
+                        minBuildGateExempt = raftMinBuildGateExempt,
                     )
                 }
             ProvideRaftPageBaseTimeContext(pageVisibleTick = raftPageVisibleResumeTick) {
@@ -104,6 +106,7 @@ internal abstract class BasePager : ComposeContainer() {
                     enabled = raftEnvironmentIndicatorEnabledForPage(pageData.params),
                     content = inner,
                 )
+            RaftPageLayer.MinBuildGate -> RaftMinBuildGateLayer(content = inner)
             RaftPageLayer.SideColumnScaffold ->
                 RaftSideColumnScaffold(posture = raftSideColumnPosture, content = inner)
             RaftPageLayer.LinkHoverStatus -> RaftLinkHoverStatusHost(content = inner)
@@ -116,6 +119,14 @@ internal abstract class BasePager : ComposeContainer() {
      * first to need the store ([raftPageLayers]).
      */
     protected open val raftOwnsDatabaseLaunch: Boolean
+        get() = false
+
+    /**
+     * Whether the minimum build gate leaves this page alone: the pages its block page sends the
+     * person to (Send feedback, and the ticket list a filed ticket opens), which must work while the
+     * app is blocked.
+     */
+    protected open val raftMinBuildGateExempt: Boolean
         get() = false
 
     private fun registerRaftExternalModuleCreators() {

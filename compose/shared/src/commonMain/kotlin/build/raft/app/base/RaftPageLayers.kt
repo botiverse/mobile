@@ -5,6 +5,9 @@ internal enum class RaftPageLayer {
     /** Creates the shared store; shows the database recovery page for a DB newer than the app. */
     DatabaseLaunchGate,
     EnvironmentIndicator,
+
+    /** The minimum supported build's block page / notice (RaftMinBuildGateLayer); not on exempt pages. */
+    MinBuildGate,
     SideColumnScaffold,
 
     /** The hovered link's destination at the page's bottom-left (RaftLinkHoverStatusHost). */
@@ -19,15 +22,20 @@ internal enum class RaftPageLayer {
  * need the shared store (an Android process-death restore straight to a child page, an iOS login
  * callback opening the choose-server page). Once the store is built, later pages skip it. Embedded
  * child pages sit inside a host page that already passed it, and show their links in its status.
+ *
+ * The minimum build gate covers every page that has its own window except the exempt ones (the
+ * feedback form the block page opens); embedded children are covered by their host's.
  */
 internal fun raftPageLayers(
     ownsDatabaseLaunch: Boolean,
     embedded: Boolean,
     sharedStoreBuilt: Boolean,
+    minBuildGateExempt: Boolean = false,
 ): List<RaftPageLayer> =
     buildList {
         if (ownsDatabaseLaunch || (!embedded && !sharedStoreBuilt)) add(RaftPageLayer.DatabaseLaunchGate)
         add(RaftPageLayer.EnvironmentIndicator)
+        if (!embedded && !minBuildGateExempt) add(RaftPageLayer.MinBuildGate)
         if (!embedded) add(RaftPageLayer.SideColumnScaffold)
         if (!embedded) add(RaftPageLayer.LinkHoverStatus)
     }

@@ -341,6 +341,38 @@ class SharedComputersStoreTest {
     }
 
     @Test
+    fun unknownOrUnreadableSessionKeepsTheComputerListAndOnlyASignOutClearsIt() = runBlocking {
+        // Architecture review B, site 9: the owner came from readSession(), whose null is also "cannot
+        // be read" (a corrupt record, a failed read); every such read wiped the in-memory list.
+        val api = RecordingComputersApi()
+        val owner = SharedComputersOwner("environment", "account-a", "session-a")
+        var binding: RaftAccountBinding<SharedComputersOwner> = RaftAccountBinding.SignedIn(owner)
+        val store =
+            SharedComputersStore(
+                computersApiClient = RaftComputersApiClient(api),
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+                ownerProvider = { binding.accountOrNull },
+                ownerBinding = { binding },
+            )
+        store.ensureComputerPickerForServer("server-1")
+        assertTrue(store.state.value.selectComputerPickerSlice("server-1").hasSnapshot)
+
+        for (unknown in listOf(RaftAccountBinding.Corrupt("SerializationException"), RaftAccountBinding.Unknown)) {
+            binding = unknown
+            store.reconcileOwner()
+            store.ensureComputerPickerForServer("server-1")
+            assertEquals(owner, store.state.value.owner, "$unknown is not a sign-out")
+            assertEquals(listOf("machine-1"), store.state.value.selectComputerPickerSlice("server-1").machines.map { it.id })
+        }
+        assertEquals(1, api.callCount, "nothing is fetched without a known owner")
+
+        binding = RaftAccountBinding.SignedOut
+        store.reconcileOwner()
+        assertNull(store.state.value.owner)
+        assertFalse(store.state.value.selectComputerPickerSlice("server-1").hasSnapshot)
+    }
+
+    @Test
     fun accountSwitchClearsSnapshotsAndRejectsOldCompletion() = runBlocking {
         val ownerA = SharedComputersOwner("environment", "account-a", "session-a")
         val ownerB = SharedComputersOwner("environment", "account-b", "session-b")

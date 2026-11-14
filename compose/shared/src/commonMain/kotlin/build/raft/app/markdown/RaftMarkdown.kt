@@ -3160,13 +3160,24 @@ private val RaftMarkdownDividerVerticalPadding = RaftAppSpacing.Sm
 // native Android app had this (May task #9: transparent tap area + lucide copy
 // icon, no plate) and the KMP rewrite dropped it, leaving no way to copy code
 // on phones. Shared implementation = Android/iOS behave identically.
+/**
+ * A code fence's info string as its language tag: trimmed, null when blank. The parser hands
+ * the info string over verbatim to the end of the line, so a trailing space or the `\r` of CRLF
+ * content would otherwise hide `mermaid` (#2539).
+ */
+internal fun raftMarkdownFenceLanguage(info: String?): String? = info?.trim()?.takeIf { it.isNotEmpty() }
+
+internal fun raftMarkdownIsMermaidFence(language: String?): Boolean =
+    raftMarkdownFenceLanguage(language).equals("mermaid", ignoreCase = true)
+
 @Composable
 private fun RaftMarkdownCodeBlockWithCopy(
     code: String,
-    language: String?,
+    fenceInfo: String?,
     style: TextStyle
 ) {
-    if (language.equals("mermaid", ignoreCase = true)) {
+    val language = raftMarkdownFenceLanguage(fenceInfo)
+    if (raftMarkdownIsMermaidFence(language)) {
         // Diagram labels follow the message body font (not the code font), in the multi-weight
         // family so the scene's bold labels pick the bundled Bold face.
         val paragraph = LocalMarkdownTypography.current.paragraph

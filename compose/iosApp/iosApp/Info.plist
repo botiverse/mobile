@@ -35,8 +35,6 @@
         </array>
         <key>SlockOAuthCallbackScheme</key>
         <string>$(SLOCK_OAUTH_CALLBACK_SCHEME)</string>
-        <key>RaftRealtimeKmpClientDefaultOn</key>
-        <string>$(RAFT_REALTIME_KMP_CLIENT_DEFAULT_ON)</string>
         <key>HandsBuildCommit</key>
         <string></string>
         <key>SlockAPNSEnvironment</key>

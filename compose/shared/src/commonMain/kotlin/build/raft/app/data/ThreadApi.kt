@@ -146,6 +146,7 @@ internal class RaftThreadApiClient(
                     messages = wire.messages,
                     canLoadMoreBefore = wire.historyLimited,
                     canLoadMoreAfter = null,
+                    channelArchived = wire.channelArchived,
                 )
             }
 
@@ -572,7 +573,9 @@ internal data class ThreadMessagesPage(
      * A send's `unresolvedMentionHandles` (`POST v2/messages`): the `@handle` tokens, `@` included,
      * that reached nobody, in the server's order. Sender-only and never on a replayed `randomId`.
      */
-    val unresolvedMentionHandles: List<String> = emptyList()
+    val unresolvedMentionHandles: List<String> = emptyList(),
+    /** The channel page's `channelArchived`; null where the response does not say (sync, send). */
+    val channelArchived: Boolean? = null,
 ) {
     val messageCount: Int
         get() = messages.size
@@ -807,6 +810,8 @@ private data class ChannelMessagesResponseDto(
     val historyLimited: Boolean? = null,
     /** Free plan: what the 30-day window hides, on a page that reached its start ([parseHiddenHistory]). */
     val hiddenHistory: JsonElement? = null,
+    /** `GET /messages/channel/:id` `channelArchived`: the channel (a thread: its root) is archived. */
+    val channelArchived: Boolean? = null,
 )
 
 @Serializable

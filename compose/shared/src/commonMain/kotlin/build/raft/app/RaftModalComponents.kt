@@ -1120,7 +1120,8 @@ internal fun RaftModalActionButton(
     modifier: Modifier = Modifier,
     color: Color = RaftColor.SurfaceWhite,
     enabled: Boolean = true,
-    loading: Boolean = false
+    loading: Boolean = false,
+    trailingIcon: RaftLucideIconName? = null
 ) {
     // raft: an `lg` Button (44dp); in a dialog footer the paper secondary is the ghost Cancel.
     RaftButton(
@@ -1131,7 +1132,8 @@ internal fun RaftModalActionButton(
         size = RaftButtonSize.Lg,
         enabled = enabled,
         loading = loading,
-        leadingIcon = icon?.let { name -> { RaftSlotIcon(name) } }
+        leadingIcon = icon?.let { name -> { RaftSlotIcon(name) } },
+        trailingIcon = trailingIcon?.let { name -> { RaftSlotIcon(name) } }
     )
 }
 

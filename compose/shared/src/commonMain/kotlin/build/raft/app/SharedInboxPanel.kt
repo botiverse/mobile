@@ -459,7 +459,7 @@ internal fun SharedHomeActivityScreen(
     val openConversationDirectory = remember(activityConversationDirectory, conversationDirectory) {
         listOf(activityConversationDirectory, conversationDirectory).mergedSharedConversationDirectoryState()
     }
-    val activeDraftRecords by sharedStores.composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val activeDraftRecords by sharedStores.composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
     val draftProjection =
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()

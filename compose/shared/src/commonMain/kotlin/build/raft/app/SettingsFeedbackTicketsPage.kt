@@ -127,6 +127,10 @@ internal const val SETTINGS_FEEDBACK_TICKETS_TICKET_ID = "settingsFeedbackTicket
 @Page(SETTINGS_FEEDBACK_TICKETS_PAGE, supportInLocal = true)
 internal class ComposeSettingsFeedbackTicketsPage :
     AuthenticatedProductPager(AuthenticatedProductRoute.SettingsFeedbackTickets) {
+    // A ticket filed from the minimum build gate's Send feedback opens here: it stays reachable.
+    override val raftMinBuildGateExempt: Boolean
+        get() = true
+
     override fun willInit() {
         super.willInit()
         setAuthenticatedContent { SettingsFeedbackTicketsRoute(raftPageVisibleResumeTick) }

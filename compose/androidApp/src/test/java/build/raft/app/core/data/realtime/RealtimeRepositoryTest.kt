@@ -1,5 +1,8 @@
 package build.raft.app.core.data.realtime
 
+import build.raft.app.data.realtime.RealtimeSuccessDiagnostics
+import build.raft.app.data.realtime.SessionRealtimeRepository
+import build.raft.app.data.realtime.SocketIoRealtimeClient
 import build.raft.app.data.StoredAuthServer as AuthServer
 import build.raft.app.data.StoredAuthSession as AuthSession
 import build.raft.app.data.RaftAuthSessionStore as AuthSessionStore
@@ -146,117 +149,6 @@ class RealtimeRepositoryTest {
         assertEquals(1, intervalLogs.count { it.startsWith("event_success_summary ") })
         assertTrue(intervalLogs.single { it.startsWith("event_success_summary ") }.contains("count=2"))
     }
-
-    @Test
-    fun queuedOldListenerWritesNothingAfterSuccessorReplacementReturns() {
-        val fence = RealtimeSocketGenerationFence()
-        val context = realtimeSocketContext()
-        lateinit var firstGeneration: RealtimeSocketGeneration
-        var oldDeliveries = 0
-        var newDeliveries = 0
-
-        fence.replace(context) { firstGeneration = it }
-        fence.replace(context) { successorGeneration ->
-            assertTrue(fence.runIfCurrent(successorGeneration) { newDeliveries += 1 })
-        }
-        assertFalse(fence.runIfCurrent(firstGeneration) { oldDeliveries += 1 })
-
-        assertEquals(0, oldDeliveries)
-        assertEquals(1, newDeliveries)
-    }
-
-    @Test
-    fun identicalGenerationFieldsStillRequireExactCurrentTokenIdentity() {
-        val fence = RealtimeSocketGenerationFence(generationIdForOracle = { 1L })
-        val context = realtimeSocketContext()
-        val generations = mutableListOf<RealtimeSocketGeneration>()
-        fence.replace(context) { generations += it }
-        fence.replace(context) { generations += it }
-        assertEquals(2, generations.size)
-        assertEquals(generations[0].generationId, generations[1].generationId)
-        assertEquals(generations[0].context, generations[1].context)
-        assertFalse(generations[0] === generations[1])
-        var downstreamDeliveries = 0
-
-        val retainedListeners =
-            generations.map { generation ->
-                {
-                    fence.runIfCurrent(generation) {
-                        downstreamDeliveries += 1
-                    }
-                }
-            }
-        retainedListeners.forEach { it() }
-
-        assertEquals(1, downstreamDeliveries)
-    }
-
-    @Test
-    fun reconnectDoesNotWaitForBlockingOldListenerAfterGenerationCheck() {
-        val oldListenerPassedCurrentCheck = CountDownLatch(1)
-        val releaseOldListener = CountDownLatch(1)
-        val fence =
-            RealtimeSocketGenerationFence(
-                beforeCurrentDelivery = {
-                    oldListenerPassedCurrentCheck.countDown()
-                    assertTrue(releaseOldListener.await(5, TimeUnit.SECONDS))
-                }
-            )
-        val context = realtimeSocketContext()
-        lateinit var oldGeneration: RealtimeSocketGeneration
-        fence.replace(context) { oldGeneration = it }
-        val successorAttempted = CountDownLatch(1)
-        val successorReturned = CountDownLatch(1)
-        var downstreamDeliveries = 0
-        val eventOrder = Collections.synchronizedList(mutableListOf<String>())
-        val executor = Executors.newFixedThreadPool(2)
-        try {
-            val oldDelivery =
-                executor.submit(Callable {
-                    fence.runIfCurrent(oldGeneration) {
-                        downstreamDeliveries += 1
-                        eventOrder += "old-write"
-                    }
-                })
-            assertTrue(oldListenerPassedCurrentCheck.await(5, TimeUnit.SECONDS))
-            val successorConnect =
-                executor.submit {
-                    successorAttempted.countDown()
-                    fence.replace(context) {}
-                    eventOrder += "successor-return"
-                    successorReturned.countDown()
-                }
-
-            assertTrue(successorAttempted.await(5, TimeUnit.SECONDS))
-            assertTrue(
-                "successor replacement must not wait for a socket callback after the generation check",
-                successorReturned.await(2, TimeUnit.SECONDS),
-            )
-            releaseOldListener.countDown()
-            assertFalse(oldDelivery.get(5, TimeUnit.SECONDS))
-            successorConnect.get(5, TimeUnit.SECONDS)
-
-            assertEquals(listOf("successor-return"), eventOrder.toList())
-            assertEquals(0, downstreamDeliveries)
-            assertFalse(fence.runIfCurrent(oldGeneration) { downstreamDeliveries += 1 })
-            assertEquals(0, downstreamDeliveries)
-        } finally {
-            releaseOldListener.countDown()
-            executor.shutdownNow()
-        }
-    }
-
-    private fun realtimeSocketContext(): RealtimeSocketConnectionContext =
-        RealtimeSocketConnectionContext(
-            serverId = ServerId("server-1"),
-            witness =
-                RealtimeConnectionWitnessToken(
-                    scopeLeaseId = "lease-1",
-                    principalId = "user-1",
-                    authGeneration = 1,
-                    connectionFamilyId = "family-1",
-                ),
-        )
 
     @Test
     fun repositoryInjectsSessionTokenAndSelectedServerIntoRealtimeClient() {
@@ -893,34 +785,6 @@ class RealtimeRepositoryTest {
                 .filter { it.first == RealtimeSocketEvents.JoinChannel }
                 .map { it.second["channelId"] }
         )
-    }
-
-    @Test
-    fun androidTransportUsesRawChannelIdForRoomCommands() {
-        val joinPayload =
-            realtimeSocketIoWirePayload(
-                RealtimeSocketEvents.JoinChannel,
-                mapOf("channelId" to "channel-1")
-            )
-        val leavePayload =
-            realtimeSocketIoWirePayload(
-                RealtimeSocketEvents.LeaveChannel,
-                mapOf("channelId" to "channel-1")
-            )
-
-        assertEquals("channel-1", joinPayload)
-        assertEquals("channel-1", leavePayload)
-    }
-
-    @Test
-    fun androidTransportKeepsObjectPayloadForSyncResume() {
-        val payload =
-            realtimeSocketIoWirePayload(
-                RealtimeSocketEvents.SyncResume,
-                mapOf("lastSeq" to 88L)
-            ) as JSONObject
-
-        assertEquals(88L, payload.getLong("lastSeq"))
     }
 
     @Test

@@ -1628,7 +1628,10 @@ class RealConversationRepository private constructor(
                 payload = SharedMessagesPayload(
                     messages = rawMessages,
                     hasOlder = (messagesResult as? DataResult.Content)?.data?.hasOlder ?: false,
-                    hasNewer = (messagesResult as? DataResult.Content)?.data?.hasNewer ?: false
+                    hasNewer = (messagesResult as? DataResult.Content)?.data?.hasNewer ?: false,
+                    // The server answers for the thread's root channel: a thread in an archived
+                    // channel is archived too (channelService.getChannelArchiveState).
+                    channelArchived = (messagesResult as? DataResult.Content)?.data?.channelArchived ?: false
                 ),
                 threadId = ThreadId(resolvedThreadChannelId.value),
                 canLoadMoreBefore = serverRowCount >= messageLimit,
@@ -2257,7 +2260,9 @@ private fun ThreadSnapshot.withConversationDetail(
             conversation =
                 conversation.copy(
                     name = detail.name,
-                    subtitle = conversation.subtitle ?: detail.subtitle
+                    subtitle = conversation.subtitle ?: detail.subtitle,
+                    // The parent channel's archive is the thread's (its replies are refused too).
+                    archived = conversation.archived || detail.archived
                 )
         )
     }

@@ -156,6 +156,13 @@ class SharedComputersStore internal constructor(
     private val ownerProvider: suspend () -> SharedComputersOwner? = {
         SharedComputersOwner("test-environment", "test-account", "test-session")
     },
+    /**
+     * The owner as a typed account binding (architecture review B, site 9). Defaults to
+     * [ownerProvider]: an owner is signed in, none is signed out.
+     */
+    private val ownerBinding: suspend () -> RaftAccountBinding<SharedComputersOwner> = {
+        ownerProvider()?.let { RaftAccountBinding.SignedIn(it) } ?: RaftAccountBinding.SignedOut
+    },
     /** Durable last-known machine lists (data-layer plan step 5); null keeps the store memory-only. */
     private val durableStore: RaftKeyedDurableSnapshotStore<RaftComputersDurableRecord>? = null,
     /** Per-store memory cap: least recently used servers leave first and re-seed from disk. */
@@ -238,10 +245,20 @@ class SharedComputersStore internal constructor(
         ensureComputersForServer(serverId = serverId, force = force, priority = priority)
     }
 
+    /** Typed owner read: a throwing read is [RaftAccountBinding.Unknown], never a sign-out. */
+    private suspend fun readOwnerBinding(): RaftAccountBinding<SharedComputersOwner> =
+        runCatchingPreservingCancellation { ownerBinding() }.getOrElse { RaftAccountBinding.Unknown }
+
+    /**
+     * Follows the signed-in owner. Only a sign-out clears the lists; a session that is not known
+     * yet or cannot be read keeps what is shown (architecture review B, site 9).
+     */
     internal suspend fun reconcileOwner() {
-        val owner = ownerProvider()
-        mutex.withLock {
-            if (owner == null) clearOwnerLocked() else installOwnerLocked(owner)
+        when (val binding = readOwnerBinding()) {
+            is RaftAccountBinding.SignedIn -> mutex.withLock { installOwnerLocked(binding.account) }
+            RaftAccountBinding.SignedOut -> mutex.withLock { clearOwnerLocked() }
+            RaftAccountBinding.Unknown, is RaftAccountBinding.Corrupt ->
+                logger("shared_computers_owner_kept reason=${binding.unknownReason()}")
         }
     }
 
@@ -290,12 +307,22 @@ class SharedComputersStore internal constructor(
             logger("store_load domain=computers serverId= result=skip reason=server_id_missing durationMs=${startedAt.elapsedNow().inWholeMilliseconds}")
             return
         }
-        val owner = ownerProvider()
-        if (owner == null) {
-            clearForMissingOwner()
-            logger("store_load domain=computers serverId=$normalizedServerId result=skip reason=owner_missing")
-            return
-        }
+        val owner =
+            when (val binding = readOwnerBinding()) {
+                is RaftAccountBinding.SignedIn -> binding.account
+                RaftAccountBinding.SignedOut -> {
+                    clearForMissingOwner()
+                    logger("store_load domain=computers serverId=$normalizedServerId result=skip reason=owner_missing")
+                    return
+                }
+                RaftAccountBinding.Unknown, is RaftAccountBinding.Corrupt -> {
+                    logger(
+                        "store_load domain=computers serverId=$normalizedServerId result=skip " +
+                            "reason=owner_unknown cause=${binding.unknownReason()}"
+                    )
+                    return
+                }
+            }
         hydrateFromDurable(owner, normalizedServerId)
         val durableEpoch = durableStore?.epoch ?: 0L
         val deferred = mutex.withLock {
@@ -376,18 +403,19 @@ class SharedComputersStore internal constructor(
         result: DataResult<ComputerListSummary>,
         durableEpoch: Long
     ) {
-        val publicationOwner =
-            runCatchingPreservingCancellation { ownerProvider() }.getOrNull()
+        val publicationBinding = readOwnerBinding()
+        val publicationOwner = publicationBinding.accountOrNull
         val durableWrite = mutex.withLock {
             if (currentOwner != owner || generations[serverId] != generation) {
                 logger("shared_computers_drop serverId=$serverId reason=stale_generation generation=$generation")
                 return@withLock null
             }
             if (publicationOwner != owner) {
-                if (publicationOwner == null) {
-                    clearOwnerLocked()
-                } else {
-                    installOwnerLocked(publicationOwner)
+                when (publicationBinding) {
+                    is RaftAccountBinding.SignedIn -> installOwnerLocked(publicationBinding.account)
+                    RaftAccountBinding.SignedOut -> clearOwnerLocked()
+                    // Not known / unreadable: the answer is not published, nothing is cleared.
+                    RaftAccountBinding.Unknown, is RaftAccountBinding.Corrupt -> Unit
                 }
                 logger("shared_computers_drop serverId=$serverId reason=owner_changed generation=$generation")
                 return@withLock null

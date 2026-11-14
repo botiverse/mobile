@@ -42,6 +42,35 @@ class SharedCreateAgentFormStoreTest {
     }
 
     @Test
+    fun unknownOrUnreadableSessionKeepsTheFormSessionAndOnlyASignOutClearsIt() = runPortableCoroutineTest {
+        // Architecture review B, site 9: readSession() == null (also a corrupt or failed read) cleared
+        // the form's runtime list mid-dialog.
+        val api = SequencedFormComputersApi()
+        val owner = SharedCreateAgentFormOwner("https://api.example.test", "account-1", "1")
+        var binding: RaftAccountBinding<SharedCreateAgentFormOwner> = RaftAccountBinding.SignedIn(owner)
+        val store = SharedCreateAgentFormStore(
+            RaftComputersApiClient(api),
+            this,
+            ownerProvider = { binding.accountOrNull },
+            ownerBinding = { binding },
+        )
+        val machineKey = SharedCreateAgentMachineFormKey("server-1", "machine-1")
+        assertIs<DataResult.Content<SharedCreateAgentRuntimeCatalog>>(store.loadRuntimeCatalog("server-1", "machine-1"))
+
+        for (unknown in listOf(RaftAccountBinding.Corrupt("SerializationException"), RaftAccountBinding.Unknown)) {
+            binding = unknown
+            store.reconcileOwner()
+            assertEquals(owner, store.state.value.owner, "$unknown is not a sign-out")
+            assertTrue(machineKey in store.state.value.runtimeCatalogs)
+        }
+
+        binding = RaftAccountBinding.SignedOut
+        store.reconcileOwner()
+        assertEquals(null, store.state.value.owner)
+        assertTrue(store.state.value.runtimeCatalogs.isEmpty())
+    }
+
+    @Test
     fun cloudAgentOfferFollowsTheFlagThenTheProbe() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
         val off = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)

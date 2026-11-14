@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +26,35 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
+
+/** Destinations whose content belongs to the shell's selected server; they reload on a switch. */
+internal val ServerScopedSettingsDestinations: Set<SharedSettingsDestination> =
+    setOf(
+        SharedSettingsDestination.Home,
+        SharedSettingsDestination.Computers,
+        SharedSettingsDestination.ComputerDetail,
+        SharedSettingsDestination.Server,
+        SharedSettingsDestination.Administration,
+        SharedSettingsDestination.ConnectedApps,
+        SharedSettingsDestination.Billing,
+        // Notifications is not here: its server part (mute, push mode) is retired on an owner
+        // change by the server-notification mutation guard and reloads when the page is reopened.
+    )
+
+/** Drops every server-owned projection, so nothing of the server the user left stays on screen. */
+internal fun SharedSettingsState.withServerScopedContentCleared(): SharedSettingsState =
+    copy(
+        computers = ScreenLoadState.Loading,
+        computerDetail = ScreenLoadState.Loading,
+        server = ScreenLoadState.Loading,
+        connectedApps = ScreenLoadState.Loading,
+        billing = ScreenLoadState.Loading,
+        refreshingDestinations = emptySet(),
+        routeErrorCode = null,
+        actionState = null,
+        computerControl = SettingsComputerControlState(),
+        addComputerDialog = null,
+    )
 
 enum class SharedSettingsDestination {
     Home,
@@ -767,6 +797,9 @@ class SharedSettingsDataSource(
 
     val authSessionEvents: SharedFlow<AuthSessionEvent>?
         get() = (sessionStore as? RaftAuthSessionEventSource)?.authSessionEvents
+
+    /** The shell's (account, server), followed across server switches ([raftServerScopeFlow]). */
+    internal fun serverScopeFlow(): Flow<RaftServerScopeKey?> = sessionStore.raftServerScopeFlow()
 
     suspend fun currentMobileSettingsOwnerKey(): String? =
         sessionStore.readSession()?.let { session ->
@@ -2049,6 +2082,8 @@ class SharedSettingsStore(
     private var diagnosticsRefreshJob: Job? = null
     private var diagnosticsRefreshToken: Long = 0L
     private var authOwnerObservationJob: Job? = null
+    private var serverScopeObservationJob: Job? = null
+    private var observedServerScope: RaftServerScopeKey? = null
     private var serverNotificationModeMutationGeneration: Long = 0L
     private var serverNotificationModeMutation: ServerNotificationModeMutation? = null
     private var shareUsageDataMutation: ShareUsageDataMutation? = null
@@ -2060,6 +2095,34 @@ class SharedSettingsStore(
                     events.collect(::onAuthSessionEvent)
                 }
             }
+        serverScopeObservationJob =
+            dataSource.authSessionEvents?.let {
+                scope.launch {
+                    dataSource.serverScopeFlow().collect { next -> onServerScope(next) }
+                }
+            }
+    }
+
+    /**
+     * A settings page showing one server's data (Computers, the server's profile, its
+     * notifications, …) can stay on screen across a server switch: the wide layout keeps it beside
+     * the server rail. When the shell moves to another server, the rows of the server the user left
+     * are dropped and the page loads again for the new one, like web's server-keyed stores.
+     */
+    private fun onServerScope(next: RaftServerScopeKey?) {
+        val previous = observedServerScope
+        observedServerScope = next
+        if (previous == null || next == null || previous == next) return
+        val destination = _state.value.route.destination
+        if (destination !in ServerScopedSettingsDestinations) return
+        diagnosticsLogger(
+            "settings_server_scope_changed destination=${destination.name} " +
+                "from=${previous.serverId ?: "_"} to=${next.serverId ?: "_"}"
+        )
+        pendingMachineRealtimeIds.clear()
+        _state.value = _state.value.withServerScopedContentCleared()
+        loadJob?.cancel()
+        loadJob = scope.launch { loadCurrentRoute(forceComputers = true) }
     }
 
     fun dispatch(intent: SharedSettingsIntent) {
@@ -2103,6 +2166,8 @@ class SharedSettingsStore(
         cancelDiagnosticsExpiryRefresh()
         authOwnerObservationJob?.cancel()
         authOwnerObservationJob = null
+        serverScopeObservationJob?.cancel()
+        serverScopeObservationJob = null
         retireServerNotificationModeMutation()
     }
 

@@ -12,7 +12,7 @@ import build.raft.app.data.realtime.RaftRealtimeAppScopeConnection
 import build.raft.app.data.realtime.RaftRealtimeAppScopeRuntime
 import build.raft.app.data.realtime.RaftRealtimeAppScopeSink
 import build.raft.app.data.realtime.bootstrapRealtime
-import build.raft.app.core.data.realtime.SocketIoRealtimeClient
+import build.raft.app.data.realtime.SocketIoRealtimeClient
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

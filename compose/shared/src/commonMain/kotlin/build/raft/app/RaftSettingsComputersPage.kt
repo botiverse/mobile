@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.raftSelectedServerIdFlow
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -95,7 +96,6 @@ import build.raft.app.data.SettingsComputerOwnerRequest
 import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftToastIntent
 import build.raft.app.data.COMPUTER_ACTION_SCAN_WORKSPACES
-import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.BundledRuntimeCatalog
@@ -292,16 +292,8 @@ private fun rememberRaftComputersSession(
         firstFrameServerId?.let { RaftComputersSessionRead.Read(it) } ?: RaftComputersSessionRead.Pending,
         authStore,
     ) {
-        suspend fun read() =
-            RaftComputersSessionRead.Read(
-                runCatchingPreservingCancellation { authStore.readSession()?.currentServerId }.getOrNull()
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-            )
-        value = read()
-        val events = (authStore as? RaftAuthSessionEventSource)?.authSessionEvents ?: return@produceState
-        events.collect {
-            val next = read()
+        authStore.raftSelectedServerIdFlow().collect { serverId ->
+            val next = RaftComputersSessionRead.Read(serverId)
             if (next != value) value = next
         }
     }

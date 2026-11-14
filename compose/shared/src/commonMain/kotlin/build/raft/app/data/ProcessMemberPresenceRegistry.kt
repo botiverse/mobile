@@ -242,6 +242,14 @@ internal fun processAccountBindingTransition(
      */
     onBindingAuthRevisionRotated: (retired: ProcessPresenceAuthContext, bound: ProcessPresenceAuthContext) -> Unit =
         { retired, _ -> onBindingRetired(retired) },
+    /**
+     * The first account bound after this process found the stored session unreadable
+     * ([RaftAccountBinding.Corrupt], nobody bound): runs INSTEAD of [onBindingBound]. The
+     * unreadable session's account is not known, so the cold-start cleanup (which retires the
+     * account's older generations) must not run: the same account signing back in keeps its data.
+     * Defaults to [onBindingBound].
+     */
+    onBindingBoundAfterUnreadableSession: (ProcessPresenceAuthContext) -> Unit = onBindingBound,
     currentEnvironmentId: () -> String,
 ): (RealtimeAuthRevision, RaftAuthSessionState) -> Unit = { revision, sessionState ->
     val principal = revision.session?.principalId?.trim()?.takeIf { it.isNotBlank() }
@@ -272,6 +280,8 @@ internal fun processAccountBindingTransition(
         accountBinding.value = RaftAccountBinding.SignedIn(bound)
         onBindingBound(bound)
     } else {
+        // Corrupt is only ever published with nobody bound; a sign-out in between publishes SignedOut.
+        val afterUnreadableSession = previous == null && accountBinding.value is RaftAccountBinding.Corrupt
         previous?.let(onBindingRetired)
         val writeGeneration = registry.clearAll(reason = "authority_binding_changed")
         val bound =
@@ -283,7 +293,7 @@ internal fun processAccountBindingTransition(
             )
         presenceAuthContext.value = bound
         accountBinding.value = RaftAccountBinding.SignedIn(bound)
-        onBindingBound(bound)
+        if (afterUnreadableSession) onBindingBoundAfterUnreadableSession(bound) else onBindingBound(bound)
     }
 }
 

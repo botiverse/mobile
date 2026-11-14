@@ -435,6 +435,63 @@ internal class ThreadPendingSendJournal(
         }.isSuccess
     }
 
+    /**
+     * The first sign-in after a cold start whose stored session could not be decoded (architecture
+     * review B): nobody was bound, so nothing was retired, and the account that left rows is not
+     * known. The account signing in keeps its rows: those from older generations move into
+     * [authGeneration] (as on a token rotation, [rehomeAuthRevision]) instead of being retired by
+     * [clearForPrincipalBeforeAuthRevision]. Rows of any other account or environment are deleted,
+     * as an account switch would. One transaction; on failure nothing changes and -1 is returned,
+     * otherwise the number of rehomed rows.
+     */
+    fun recoverAfterUnreadableSession(
+        environmentId: String,
+        principalId: String,
+        authGeneration: Long,
+    ): Int = synchronized(lock) {
+        if (environmentId.isBlank() || principalId.isBlank() || authGeneration <= 0L) {
+            return@synchronized -1
+        }
+        var rehomed = 0
+        val succeeded =
+            runCatching {
+                database.transactionBlocking {
+                    database.queries.selectThreadPendingSendsForPrincipalBeforeAuthRevision(
+                        environmentId = environmentId,
+                        principalId = principalId,
+                        authGeneration = authGeneration,
+                    ).executeAsList().forEach { row ->
+                        val newOwnerScopeId =
+                            listOf(
+                                row.environmentId,
+                                row.principalId,
+                                row.serverId,
+                                authGeneration.toString(),
+                                row.selectionGeneration.toString()
+                            ).joinToString("\u001f")
+                        database.queries.rehomeThreadPendingSendAuthRevision(
+                            newAuthGeneration = authGeneration,
+                            newOwnerScopeId = newOwnerScopeId,
+                            environmentId = row.environmentId,
+                            principalId = row.principalId,
+                            serverId = row.serverId,
+                            oldOwnerScopeId = row.ownerScopeId,
+                            oldAuthGeneration = row.authGeneration,
+                            selectionGeneration = row.selectionGeneration,
+                            routeInstanceKey = row.routeInstanceKey,
+                            localId = row.localId,
+                        )
+                        rehomed += 1
+                    }
+                    database.queries.deleteThreadPendingSendsForOtherPrincipals(
+                        environmentId = environmentId,
+                        principalId = principalId,
+                    )
+                }
+            }.isSuccess
+        if (succeeded) rehomed else -1
+    }
+
     private fun candidateRows(
         provenance: ReplyCacheProvenance,
         ownerScopeId: String,

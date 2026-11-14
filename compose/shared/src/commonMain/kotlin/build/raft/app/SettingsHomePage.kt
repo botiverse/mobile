@@ -2940,7 +2940,7 @@ private fun RaftAppShellReadyContent(
             )
         }
     val composerDraftPersistSlice = sharedStores.composerDraftPersistSlice
-    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
     val draftProjection =
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
@@ -5402,6 +5402,8 @@ private fun RaftAppShellReadyContent(
                 override fun readiness(): WindowNavigationReadiness? = latestNavigationReadiness()
 
                 override fun topPageRoute(): ThreadRouteIdentity? = latestNavigationTopPageRoute()
+
+                override suspend fun closeIncomingNavigationCover(): Boolean = foregroundBannerStore.incomingNavigation.closeAll()
 
                 override suspend fun perform(action: WindowNavigationAction) = latestNavigationPerform(action)
 
@@ -8300,6 +8302,7 @@ private fun RaftAppShellReadyContent(
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         // Task v2: a task opened without a page of its own (its empty conversation, a legacy panel).
                         val tasksOpenSurfaceFlow = remember { TaskOpenSurfaceFlow() }
+                        TaskOpenSurfaceIncomingNavigationEffect(tasksOpenSurfaceFlow, foregroundBannerStore.incomingNavigation)
                         val tasksOpenGate = remember { TaskOpenGate() }
                         val latestTasksOpenServerId by rememberUpdatedState(readyServerId)
                         val tasksSendFailedLabel = stringResource(Res.string.task_conversation_send_failed)
@@ -9834,6 +9837,8 @@ private fun AppShellServerDrawerHost(
                                 contentDescription = dismissLabel
                                 traversalIndex = 1f
                             }
+                            // Raw clickable on purpose: the drawer's scrim, a tap outside that
+                            // closes it, with no press of its own.
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
@@ -11694,7 +11699,7 @@ private fun rememberProjectedDirectMessageItems(
     val snapshot = (state.content as? SharedHomeContentState.Content)?.snapshot
     val restoredRowHints = (state.content as? SharedHomeContentState.Content)?.displayRowHints().orEmpty()
     val activeDraftRecords by (draftPersistSlice?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
-        .collectAsState(emptySet())
+        .collectAsState()
     val draftProjection =
         remember(activeDraftRecords, draftPersistSlice) {
             if (draftPersistSlice != null) {
@@ -12075,7 +12080,7 @@ private fun SharedHomeScreen(
                 }
             }
             val activeDraftRecords by (draftPersistSlice?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
-                .collectAsState(emptySet())
+                .collectAsState()
             val draftProjection =
                 remember(activeDraftRecords, draftPersistSlice) {
                     if (draftPersistSlice != null) {
@@ -12255,7 +12260,7 @@ private fun SharedHomeScreen(
                     activityTotalCount = activityTotalCount
                 ),
                 savedCount = savedCount,
-                draftsCount = draftListing.count.takeIf { draftDirectory != null },
+                draftsCount = draftListing.count.takeIf { draftDirectory != null && draftListing.recordsKnown },
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 serverDrawerEnabled = serverDrawerEnabled,
                 homeServerAvatarEnabled = homeServerAvatarEnabled,
@@ -13888,6 +13893,8 @@ private fun SharedHomeSearchHistoryTag(
             }
         }
         if (editing) {
+            // Raw clickables on purpose: while editing, the two targets are 44dp tall over the
+            // 28dp chip, so raftClickable's press would spill past the chip's edges.
             Row(modifier = Modifier.matchParentSize()) {
                 Box(
                     modifier =
@@ -13911,7 +13918,7 @@ private fun SharedHomeSearchHistoryTag(
                 modifier =
                     Modifier
                         .matchParentSize()
-                        .clickable(onClick = onSelect)
+                        .raftClickable(onClick = onSelect, shape = RoundedCornerShape(RaftAppRadius.Chip))
                         .semantics { contentDescription = query },
             )
         }
@@ -15402,6 +15409,8 @@ internal fun SharedHomeSearchMessageResultRow(
     val metaStyle = sharedHomeSearchTimestampTextStyle()
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
+    // Raw clickable below on purpose: the row draws its own press, inset in the list cell like
+    // the other search rows (raftSearchRowPressed), which raftClickable's full-width wash can't.
     // web MessageHitRow (DS `.rf-hit`): the sender's 27dp avatar in its own column, then who /
     // where / thread / when on one line and a two-line excerpt under it, 12dp after the avatar.
     Row(

@@ -15,10 +15,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableIntState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
@@ -76,6 +79,13 @@ fun RaftTaskCompactList(
  * draws the hairline above it (every row but the first). Texts share the row's first baseline;
  * marks (the avatar) are centred.
  *
+ * The row never reads the alignment lines of its title group or right group while it is
+ * measured: under a message (a `LazyColumn` that reuses rows) that made Compose 1.12 lay out the
+ * avatar and badge of a reused row before the row itself was placed, and RectManager threw
+ * "LayoutNode not found in RectList" (crash c41fd092, fixed upstream in Compose 1.13, androidx
+ * fd550bed79). The number is one text (no children, so reading its baseline is safe); the two
+ * groups' first baselines are read once they are placed ([RaftTaskCompactRowLines]).
+ *
  * [replyCount] > 0 shows the size of the task's own conversation (a 12dp `message-square` and
  * the number in `mono-meta` hint); [replyCountDescription] is its spoken form. [status] null
  * hides the badge.
@@ -101,6 +111,7 @@ fun RaftTaskCompactRow(
     // A readable row (task-card.recipe.ts): `hover:overlay-subtle active:overlay-medium`.
     val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Subtle)
     val focused = raftIsFocused(source)
+    val lines = remember { RaftTaskCompactRowLines() }
     Layout(
         modifier =
             modifier
@@ -195,23 +206,32 @@ fun RaftTaskCompactRow(
             }
         val titleGroup = titleM.measure(Constraints(maxWidth = titleWidth))
 
-        // One line box per line: texts on its first baseline, a part without one centred.
-        fun lineOf(parts: List<Placeable>): Pair<Int, List<Int>> {
-            val baselines = parts.map { it[FirstBaseline] }
-            val baseline = baselines.filter { it != androidx.compose.ui.layout.AlignmentLine.Unspecified }.maxOrNull() ?: 0
+        // One line box per line: texts on its first baseline, a part without one centred. A group's
+        // baseline is the one read when it was last placed; before that, it is centred.
+        fun lineOf(parts: List<Placeable>, baselines: List<Int>): Pair<Int, List<Int>> {
+            val baseline = baselines.filter { it != AlignmentLine.Unspecified }.maxOrNull() ?: 0
             val tops = parts.mapIndexed { index, part ->
                 val b = baselines[index]
-                if (b == androidx.compose.ui.layout.AlignmentLine.Unspecified) 0 else baseline - b
+                if (b == AlignmentLine.Unspecified) 0 else baseline - b
             }
             val height = parts.indices.maxOf { tops[it] + parts[it].height }
             val centred = parts.mapIndexed { index, part ->
-                if (baselines[index] == androidx.compose.ui.layout.AlignmentLine.Unspecified) (height - part.height) / 2 else tops[index]
+                if (baselines[index] == AlignmentLine.Unspecified) (height - part.height) / 2 else tops[index]
             }
             return height to centred
         }
 
-        val firstParts = if (oneLine && hasTrailing) listOf(number, titleGroup, trailing) else listOf(number, titleGroup)
-        val (firstHeight, firstTops) = lineOf(firstParts)
+        val trailingOnFirstLine = oneLine && hasTrailing
+        val firstParts = if (trailingOnFirstLine) listOf(number, titleGroup, trailing) else listOf(number, titleGroup)
+        // The number is a single text node: reading its own baseline lays out no children.
+        val numberBaseline = number[FirstBaseline]
+        val firstBaselines =
+            if (trailingOnFirstLine) {
+                listOf(numberBaseline, lines.titleBaseline.intValue, lines.trailingBaseline.intValue)
+            } else {
+                listOf(numberBaseline, lines.titleBaseline.intValue)
+            }
+        val (firstHeight, firstTops) = lineOf(firstParts, firstBaselines)
         val secondHeight = if (!oneLine) trailing.height else 0
         val contentHeight = firstHeight + if (!oneLine) gapY + secondHeight else 0
         val height = max(minHeight, contentHeight + padY * 2).coerceIn(constraints.minHeight, constraints.maxHeight)
@@ -219,11 +239,15 @@ fun RaftTaskCompactRow(
         layout(width, height) {
             number.placeRelative(0, top + firstTops[0])
             titleGroup.placeRelative(number.width + gapX, top + firstTops[1])
-            if (oneLine && hasTrailing) {
+            if (trailingOnFirstLine) {
                 trailing.placeRelative(width - trailing.width, top + firstTops[2])
             } else if (hasTrailing) {
                 trailing.placeRelative(width - trailing.width, top + firstHeight + gapY)
             }
+            // Placed, the groups' baselines can be read safely (unlike while measuring). One that
+            // differs from what the row was measured with lays the row out again.
+            lines.titleBaseline.intValue = titleGroup[FirstBaseline]
+            if (trailingOnFirstLine) lines.trailingBaseline.intValue = trailing[FirstBaseline]
         }
     }
 }
@@ -257,6 +281,16 @@ fun RaftTaskCompactAssignee(
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/**
+ * The first baselines of a [RaftTaskCompactRow]'s title group and right group, within each group,
+ * as read when the row last placed them; unspecified before (or without one). States, so a
+ * baseline that moves without a size change lays the row out again.
+ */
+private class RaftTaskCompactRowLines {
+    val titleBaseline: MutableIntState = mutableIntStateOf(AlignmentLine.Unspecified)
+    val trailingBaseline: MutableIntState = mutableIntStateOf(AlignmentLine.Unspecified)
 }
 
 /** `min-w-[min(320px,100%)]`: the narrowest the box under a message gets. */

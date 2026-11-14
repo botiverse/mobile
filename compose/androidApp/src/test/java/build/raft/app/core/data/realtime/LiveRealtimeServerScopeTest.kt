@@ -1,5 +1,6 @@
 package build.raft.app.core.data.realtime
 
+import build.raft.app.data.realtime.SocketIoRealtimeClient
 import build.raft.app.data.StoredAuthSession as AuthSession
 import build.raft.app.data.RaftAuthSessionStore as AuthSessionStore
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
@@ -14,6 +15,8 @@ import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeSocketEvents
+import build.raft.app.data.realtime.raftRealtimeSocketTransport
+import build.raft.app.data.realtime.realtimeRawPayloadJson
 import build.raft.app.model.MessageNew
 import build.raft.app.model.ServerId
 import java.io.File
@@ -31,7 +34,7 @@ class LiveRealtimeServerScopeTest {
     @Test
     fun liveSyncResumeRespondsAfterRoomsJoined() = runBlocking {
         val fixture = LiveFixture.login()
-        val transport = SocketIoSocketTransport()
+        val transport = liveTransport()
         val connected = CountDownLatch(1)
         val roomsJoined = CountDownLatch(1)
         val heartbeat = CountDownLatch(1)
@@ -42,13 +45,11 @@ class LiveRealtimeServerScopeTest {
         transport.on(RealtimeSocketEvents.Connect) { _, _ -> connected.countDown() }
         transport.on(RealtimeSocketEvents.RoomsJoined) { _, _ -> roomsJoined.countDown() }
         transport.on(RealtimeSocketEvents.Heartbeat) { _, payload ->
-            val json = payload as? JSONObject
-            heartbeatSeq = json?.optLong("seq")
+            heartbeatSeq = ((payload as? Map<*, *>)?.get("seq") as? Number)?.toLong()
             heartbeat.countDown()
         }
         transport.on(RealtimeSocketEvents.SyncResumeResponse) { _, payload ->
-            val json = payload as? JSONObject
-            responseCurrentSeq = json?.optLong("currentSeq")
+            responseCurrentSeq = ((payload as? Map<*, *>)?.get("currentSeq") as? Number)?.toLong()
             syncResumeResponse.countDown()
         }
 
@@ -125,7 +126,7 @@ class LiveRealtimeServerScopeTest {
         ).contentOrThrow("create channel").channel.channelId
             ?: error("Create channel response did not include channelId.")
 
-        val transport = SocketIoSocketTransport()
+        val transport = liveTransport()
         val connected = CountDownLatch(1)
         val realtimePayload = CountDownLatch(1)
         SocketIoRealtimeClient.RealtimeWireEventNames.forEach { eventName ->
@@ -135,8 +136,8 @@ class LiveRealtimeServerScopeTest {
                     mapOf(
                         "eventName" to eventName,
                         "payloadType" to payload?.javaClass?.simpleName.orEmpty(),
-                        "containsServerScopeKey" to payload.toString().containsAnyServerScopeKey(),
-                        "payload" to payload.toString().take(MAX_PAYLOAD_CHARS)
+                        "containsServerScopeKey" to realtimeRawPayloadJson(payload).containsAnyServerScopeKey(),
+                        "payload" to realtimeRawPayloadJson(payload).take(MAX_PAYLOAD_CHARS)
                     )
                 )
                 realtimePayload.countDown()
@@ -148,7 +149,7 @@ class LiveRealtimeServerScopeTest {
                 "socket_rooms_joined",
                 mapOf(
                     "payloadType" to payload?.javaClass?.simpleName.orEmpty(),
-                    "payload" to payload.toString().take(MAX_PAYLOAD_CHARS)
+                    "payload" to realtimeRawPayloadJson(payload).take(MAX_PAYLOAD_CHARS)
                 )
             )
         }
@@ -201,7 +202,7 @@ class LiveRealtimeServerScopeTest {
         ).contentOrThrow("create channel").channel.channelId
             ?: error("Create channel response did not include channelId.")
 
-        val transport = SocketIoSocketTransport()
+        val transport = liveTransport()
         val client = SocketIoRealtimeClient(
             transport = transport,
             logger = { artifact.record("client_log", mapOf("message" to it)) }
@@ -346,6 +347,8 @@ class LiveRealtimeServerScopeTest {
         runCatching {
             JSONObject(this).keys().asSequence().joinToString("|")
         }.getOrDefault("")
+
+    private fun liveTransport() = raftRealtimeSocketTransport(SocketIoRealtimeClient.DEFAULT_SOCKET_URL) { _, _ -> }
 
     private fun liveConnectionContext(serverId: String): RealtimeSocketConnectionContext =
         RealtimeSocketConnectionContext(

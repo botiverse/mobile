@@ -289,6 +289,8 @@ internal class SharedThreadComposerDraftAccounts(
             // session that really ended are deleted by [onNoStoredSessionAtStart], or when another
             // account is bound.
             store.rebind(null)
+            // Signed out is a known answer: the Drafts projection is empty, not unread.
+            slice.refreshForAccountBinding()
             return
         }
         if (previous != null && previous != account) {

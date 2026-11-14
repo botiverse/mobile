@@ -15,7 +15,7 @@ import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.core.data.diagnostics.RaftResumeFrameProbe
 import build.raft.app.core.data.network.AndroidNetworkPrewarmController
-import build.raft.app.core.data.realtime.SocketIoRealtimeClient
+import build.raft.app.data.realtime.SocketIoRealtimeClient
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedAuthTokenProvider
 import build.raft.app.data.SharedRaftAuthTransport

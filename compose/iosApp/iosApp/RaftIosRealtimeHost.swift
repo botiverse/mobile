@@ -1,6 +1,4 @@
 import Foundation
-import SocketIO
-import Starscream
 import UIKit
 import shared
 
@@ -49,10 +47,7 @@ final class RaftIosRealtimeHost: NSObject {
     private final class Runtime {
         let serverId: String
         let roomEngine = RaftRealtimeAppScopeEngine()
-        var manager: SocketManager?
-        var socket: SocketIOClient?
-        /// The common-Kotlin client (`:realtime-socket`) when `realtime_kmp_client_v1` was on as this socket
-        /// was created (RaftRealtimeKmpClientFlag); nil on the Socket.IO-Client-Swift path.
+        /// The common-Kotlin client (`:realtime-socket`) of the current connection attempt; nil while closed.
         var kmpSocket: RaftKmpRealtimeSocket?
         var kmpBridge: RaftIosKmpSocketBridge?
         var connectParams: ConnectParams?
@@ -103,19 +98,8 @@ final class RaftIosRealtimeHost: NSObject {
         }
     }
 
-    /// Info.plist `RaftRealtimeKmpClientDefaultOn` (`$(RAFT_REALTIME_KMP_CLIENT_DEFAULT_ON)`); off when absent.
-    static func realtimeKmpClientBuildDefaultOn(bundle: Bundle = .main) -> Bool {
-        guard let raw = bundle.object(forInfoDictionaryKey: "RaftRealtimeKmpClientDefaultOn") as? String else { return false }
-        return ["yes", "true", "1"].contains(raw.trimmingCharacters(in: .whitespaces).lowercased())
-    }
-
     private override init() {
         super.init()
-        // This host has the common-client adapter: Settings > Developer offers its switch.
-        RaftRealtimeKmpClientFlagKt.raftRealtimeKmpClientMarkHostSupported()
-        // Build default (RAFT_REALTIME_KMP_CLIENT_DEFAULT_ON: YES in Debug, the QA / simulator builds; NO in
-        // Release): QA builds use the common client until the server explicitly turns it off.
-        RaftRealtimeKmpClientFlagKt.raftRealtimeKmpClientSetBuildDefault(on: Self.realtimeKmpClientBuildDefaultOn())
         installObserversIfNeeded()
         // The host may be created after the first didBecomeActive, so seed visibility from the current
         // application state unless a lifecycle event already set it.
@@ -335,7 +319,7 @@ final class RaftIosRealtimeHost: NSObject {
     }
 
     private func openSocketLocked(runtime: Runtime, params: ConnectParams) {
-        guard let url = URL(string: params.socketUrl) else {
+        guard URL(string: params.socketUrl) != nil else {
             log("connect_skip reason=invalid_url serverId=\(params.serverId)")
             return
         }
@@ -343,47 +327,7 @@ final class RaftIosRealtimeHost: NSObject {
         runtime.state = .connecting
         nextGeneration += 1
         runtime.generation = nextGeneration
-        let generation = runtime.generation
-        // Read at socket creation only (never mid-connection): turning the flag off rolls the next socket
-        // back to Socket.IO-Client-Swift.
-        if RaftRealtimeKmpClientFlagKt.raftRealtimeKmpClientEnabled() {
-            openKmpSocketLocked(runtime: runtime, params: params, generation: generation)
-            return
-        }
-        let manager = SocketManager(
-            socketURL: url,
-            config: [
-                .log(false),
-                .compress,
-                .forceWebsockets(true),
-                // Without a pinner Starscream's TCPTransport (Socket.IO's default custom engine)
-                // completes the TLS verify block with `true` for any certificate. FoundationSecurity
-                // evaluates the chain with SecPolicyCreateSSL(true, host) + SecTrustEvaluateWithError.
-                .security(FoundationSecurity()),
-                .reconnects(true),
-                .reconnectAttempts(-1),
-                .reconnectWait(1),
-                .reconnectWaitMax(30),
-                .path("/socket.io"),
-                .extraHeaders([
-                    "Authorization": "Bearer \(params.accessToken)",
-                    "X-Server-Id": params.serverId,
-                ]),
-            ]
-        )
-        let socket = manager.defaultSocket
-        runtime.manager = manager
-        runtime.socket = socket
-        installSocketHandlers(socket, serverId: params.serverId, generation: generation)
-        record("info", "connect_start transport=swift_socketio serverId=\(params.serverId) generation=\(generation)")
-        socket.connect(withPayload: [
-            "token": params.accessToken,
-            "serverId": params.serverId,
-            "clientKind": "mobile",
-            // botiverse/slock 968d102d: detailed agent:activity only for subscribed agents, plus
-            // agent:activity_state for all (shared AgentActivitySubscriptions drives the subscriptions).
-            "capabilities": ["agent_activity_subscriptions_v1"],
-        ])
+        openKmpSocketLocked(runtime: runtime, params: params, generation: runtime.generation)
     }
 
     private func markConnectedLocked(runtime: Runtime, transport: String, generation: UInt64) {
@@ -408,7 +352,7 @@ final class RaftIosRealtimeHost: NSObject {
     // MARK: presence:activity (contract §5)
 
     private func emitPresenceActivity(runtime: Runtime, active: Bool) {
-        guard runtime.state == .connected, runtime.socket != nil else { return }
+        guard runtime.state == .connected, runtime.kmpSocket != nil else { return }
         // A heartbeat repeats `true`; `false` is sent once per connection (hide, then background).
         if !active && runtime.presenceActiveSent == false { return }
         emit(runtime: runtime, eventName: RaftIosPresenceActivity.eventName, payload: RaftIosPresenceActivity.payload(active: active))
@@ -462,36 +406,25 @@ final class RaftIosRealtimeHost: NSObject {
     /// first resume runs as before and its response provides the next one.
     private func requestStartingHorizon(runtime: Runtime, generation: UInt64) {
         guard runtime.horizon == nil else { return }
-        if let kmpSocket = runtime.kmpSocket {
-            let serverId = runtime.serverId
-            let callback = RaftIosKmpAckCallback { [weak self] payload, status in
-                self?.queue.async {
-                    guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
-                    let ack = payload.flatMap { $0.data(using: .utf8) }.flatMap { try? JSONSerialization.jsonObject(with: $0) }
-                    self.log("sync_horizon_ack_status serverId=\(serverId) status=\(status)")
-                    self.acceptStartingHorizonLocked(runtime: runtime, ack: ack)
-                }
-            }
-            kmpSocket.emitWithAck(
-                eventName: GeneratedRealtimeContract.SocketEvent.syncHorizon,
-                timeoutMillis: 10_000,
-                callback: callback
-            )
-            record("info", "sync_horizon_request serverId=\(serverId) result=sent transport=kmp")
-            return
-        }
-        guard let socket = runtime.socket else {
-            log("sync_horizon_request serverId=\(runtime.serverId) result=unsupported_transport")
+        guard let kmpSocket = runtime.kmpSocket else {
+            log("sync_horizon_request serverId=\(runtime.serverId) result=no_socket")
             return
         }
         let serverId = runtime.serverId
-        socket.emitWithAck(GeneratedRealtimeContract.SocketEvent.syncHorizon).timingOut(after: 10) { [weak self] data in
+        let callback = RaftIosKmpAckCallback { [weak self] payload, status in
             self?.queue.async {
                 guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
-                self.acceptStartingHorizonLocked(runtime: runtime, ack: data.first)
+                let ack = payload.flatMap { $0.data(using: .utf8) }.flatMap { try? JSONSerialization.jsonObject(with: $0) }
+                self.log("sync_horizon_ack_status serverId=\(serverId) status=\(status)")
+                self.acceptStartingHorizonLocked(runtime: runtime, ack: ack)
             }
         }
-        record("info", "sync_horizon_request serverId=\(serverId) result=sent")
+        kmpSocket.emitWithAck(
+            eventName: GeneratedRealtimeContract.SocketEvent.syncHorizon,
+            timeoutMillis: 10_000,
+            callback: callback
+        )
+        record("info", "sync_horizon_request serverId=\(serverId) result=sent transport=kmp")
     }
 
     private func acceptStartingHorizonLocked(runtime: Runtime, ack: Any?) {
@@ -511,12 +444,12 @@ final class RaftIosRealtimeHost: NSObject {
         record("info", "sync_horizon_ack serverId=\(runtime.serverId) accepted=\(reason == "accepted") reason=\(reason)")
     }
 
-    // MARK: common-Kotlin client (realtime_kmp_client_v1)
+    // MARK: common-Kotlin client (`:realtime-socket`)
 
-    /// The same socket as openSocketLocked's Socket.IO-Client-Swift one, on `:realtime-socket`: same handshake
-    /// auth, same events (`serverWireEvents`; anything else is logged by the client, never silently dropped),
-    /// same callbacks into this host. The client reconnects itself with backoff and asks for the current
-    /// token before every attempt.
+    /// The socket of one server, on `:realtime-socket` (docs/realtime-kmp-socket-client.md): handshake auth
+    /// (token, serverId, clientKind, capabilities), the events in `serverWireEvents` (anything else is logged by
+    /// the client, never silently dropped), callbacks into this host. The client reconnects itself with backoff
+    /// and asks for the current token before every attempt.
     private func openKmpSocketLocked(runtime: Runtime, params: ConnectParams, generation: UInt64) {
         let bridge = RaftIosKmpSocketBridge(host: self, serverId: params.serverId, generation: generation)
         let kmpSocket = RaftKmpRealtimeSocket(
@@ -581,55 +514,6 @@ final class RaftIosRealtimeHost: NSObject {
 
     fileprivate func kmpSocketLog(_ message: String) {
         record("info", message)
-    }
-
-    private func installSocketHandlers(_ socket: SocketIOClient, serverId: String, generation: UInt64) {
-        socket.on(clientEvent: .connect) { [weak self] _, _ in
-            self?.queue.async {
-                guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
-                self.markConnectedLocked(runtime: runtime, transport: "socket_io", generation: generation)
-            }
-        }
-        socket.on(clientEvent: .disconnect) { [weak self] data, _ in
-            self?.queue.async {
-                guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
-                runtime.state = .disconnected
-                self.record("warn", "socket_io_disconnected serverId=\(serverId) generation=\(generation) reason=\(data.first.map { "\($0)" } ?? "")")
-            }
-        }
-        // task #191: observation only — Socket.IO's own reconnect policy is unchanged.
-        socket.on(clientEvent: .reconnect) { [weak self] data, _ in
-            self?.queue.async {
-                guard let self, self.currentRuntime(serverId: serverId, generation: generation) != nil else { return }
-                self.record("info", "socket_io_reconnect serverId=\(serverId) generation=\(generation) reason=\(data.first.map { "\($0)" } ?? "")")
-            }
-        }
-        socket.on(clientEvent: .reconnectAttempt) { [weak self] data, _ in
-            self?.queue.async {
-                guard let self, self.currentRuntime(serverId: serverId, generation: generation) != nil else { return }
-                self.record("info", "socket_io_reconnect_attempt serverId=\(serverId) generation=\(generation) remaining=\(data.first.map { "\($0)" } ?? "")")
-            }
-        }
-        socket.on(clientEvent: .error) { [weak self] data, _ in
-            self?.queue.async {
-                guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
-                runtime.state = .disconnected
-                self.record("warn", "socket_io_error serverId=\(serverId) generation=\(generation) data=\(data)")
-                // SSO required (rfcs/083 in botiverse/slock): the token is valid, so refreshing it and
-                // reconnecting would loop. The next API call answers 403 SSO_REQUIRED and the app asks
-                // the person to sign in again (RaftSsoRequiredSignal).
-                if "\(data)".contains("SSO_REQUIRED") { return }
-                self.requestAuthRefresh(runtime: runtime, reason: "connect_error")
-            }
-        }
-        for eventName in Self.serverWireEvents {
-            socket.on(eventName) { [weak self] data, _ in
-                self?.queue.async {
-                    guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
-                    self.handleSocketEvent(runtime: runtime, eventName: eventName, rawPayload: self.jsonString(data.first ?? [:]))
-                }
-            }
-        }
     }
 
     private func handleSocketEvent(runtime: Runtime, eventName: String, rawPayload: String) {
@@ -869,31 +753,19 @@ final class RaftIosRealtimeHost: NSObject {
         // The server's join:channel / leave:channel handlers take the channel id itself, as Android
         // sends it. The previous {"channelId": …} object made both a silent no-op on iOS. Which
         // rooms get a leave at all is decided in shared (member channels never do).
-        guard runtime.state == .connected else {
+        guard runtime.state == .connected, let kmpSocket = runtime.kmpSocket else {
             log("emit_deferred serverId=\(runtime.serverId) eventName=\(eventName)")
             return
         }
-        if let kmpSocket = runtime.kmpSocket {
-            kmpSocket.emitString(eventName: eventName, value: channelId)
-        } else if let socket = runtime.socket {
-            socket.emit(eventName, channelId)
-        } else {
-            log("emit_deferred serverId=\(runtime.serverId) eventName=\(eventName)")
-        }
+        kmpSocket.emitString(eventName: eventName, value: channelId)
     }
 
     private func emit(runtime: Runtime, eventName: String, payload: [String: Any]) {
-        guard runtime.state == .connected else {
+        guard runtime.state == .connected, let kmpSocket = runtime.kmpSocket else {
             log("emit_deferred serverId=\(runtime.serverId) eventName=\(eventName)")
             return
         }
-        if let kmpSocket = runtime.kmpSocket {
-            kmpSocket.emitJson(eventName: eventName, payloadJson: jsonString(payload))
-        } else if let socket = runtime.socket {
-            socket.emit(eventName, payload)
-        } else {
-            log("emit_deferred serverId=\(runtime.serverId) eventName=\(eventName)")
-        }
+        kmpSocket.emitJson(eventName: eventName, payloadJson: jsonString(payload))
     }
 
     private func rejoinChannels(runtime: Runtime, reason: String) {
@@ -930,10 +802,6 @@ final class RaftIosRealtimeHost: NSObject {
     private func disconnectRuntimeLocked(_ runtime: Runtime, reason: String, keepSession: Bool) {
         nextGeneration += 1
         runtime.generation = nextGeneration
-        runtime.socket?.removeAllHandlers()
-        runtime.socket?.disconnect()
-        runtime.socket = nil
-        runtime.manager = nil
         runtime.kmpBridge?.detach()
         runtime.kmpSocket?.close()
         runtime.kmpSocket = nil
@@ -1187,7 +1055,7 @@ final class RaftIosRealtimeHost: NSObject {
     private static let catchUpRequiredEvent = "raft:realtime:catch_up_required"
 
     /// Connection signals this host handles itself (`handleSocketEvent`); not domain events, so they
-    /// are not in the contract's `serverWireEvents` (Kotlin's Android client listens to them apart too).
+    /// are not in the contract's `serverWireEvents`, but the client must still deliver them.
     private static let connectionSignalEvents: [String] = [
         GeneratedRealtimeContract.SocketEvent.roomsJoined,
         GeneratedRealtimeContract.SocketEvent.channelJoined,
@@ -1248,7 +1116,7 @@ extension RaftIosRealtimeHost: RaftIosRealtimeLifecycleTarget {
 }
 
 /// The Kotlin listener of one `RaftKmpRealtimeSocket` (its callbacks run on the client's own thread); hops
-/// into RaftIosRealtimeHost, which re-checks the runtime generation on its queue like the Swift path does.
+/// into RaftIosRealtimeHost, which re-checks the runtime generation on its queue.
 final class RaftIosKmpSocketBridge: NSObject, RaftKmpRealtimeSocketListener {
     private weak var host: RaftIosRealtimeHost?
     private let serverId: String
@@ -1301,7 +1169,7 @@ final class RaftIosKmpSocketBridge: NSObject, RaftKmpRealtimeSocketListener {
     }
 }
 
-/// One `emitWithAck` result from the common client (10 s timeout, like the Swift path's `timingOut(after: 10)`).
+/// One `emitWithAck` result from the common client (`sync:horizon` uses a 10 s timeout).
 final class RaftIosKmpAckCallback: NSObject, RaftKmpRealtimeAckCallback {
     private let handler: (String?, String) -> Void
 

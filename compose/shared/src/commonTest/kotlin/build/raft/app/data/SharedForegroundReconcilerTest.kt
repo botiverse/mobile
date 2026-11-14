@@ -105,6 +105,46 @@ class SharedForegroundReconcilerTest {
     }
 
     @Test
+    fun unreadableOrFailedSessionReadSkipsVisiblyNotAsSignedOut() = runBlocking {
+        // Architecture review B, site 10: a corrupt record or a throwing read returned null and the
+        // foreground reconcile was dropped without a trace.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val refreshed = mutableListOf<String>()
+        var state: () -> RaftAuthSessionState = { RaftAuthSessionState.Corrupt("SerializationException") }
+        val authStore =
+            object : RaftAuthSessionStore by ReconcilerFakeAuthStore(null) {
+                override suspend fun readSessionState(): RaftAuthSessionState = state()
+                override suspend fun readSession(): StoredAuthSession? = readSessionState().sessionOrNull
+            }
+        val reconciler =
+            SharedForegroundReconciler(
+                authStore = authStore,
+                refreshMembers = { serverId -> refreshed += serverId.value },
+                scope = scope,
+                timeSource = TestTimeSource(),
+                diagnosticsLogger = { logs += it },
+            )
+
+        reconciler.onForeground("app_shell_resume")
+        state = { error("keystore unavailable") }
+        reconciler.onForeground("thread_resume")
+        state = { RaftAuthSessionState.SignedOut }
+        reconciler.onForeground("thread_show")
+
+        assertEquals(emptyList(), refreshed)
+        assertEquals(
+            listOf(
+                "foreground_reconcile_skip reason=app_shell_resume cause=session_corrupt",
+                "foreground_reconcile_skip reason=thread_resume cause=session_read_failed",
+                "foreground_reconcile_skip reason=thread_show cause=signed_out",
+            ),
+            logs,
+        )
+        scope.cancel()
+    }
+
+    @Test
     fun refreshFailureDoesNotBlockNextWindow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val timeSource = TestTimeSource()
