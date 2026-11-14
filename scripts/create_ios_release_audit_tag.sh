@@ -34,8 +34,9 @@ Required:
   --version <x.y.z>           CFBundleShortVersionString / marketing version.
   --build <n>                 CFBundleVersion / TestFlight build number.
   --source <40-char-sha>      Exact Hands/IPA provenance source commit.
-  --release-branch <name>     Canonical remote release-X.Y.Z branch containing
-                              the source commit.
+  --release-branch <name>     Canonical remote release/X.Y.Z branch (or the
+                              legacy release-X.Y.Z form) containing the
+                              source commit.
   --hands-build <uuid>        Exact Hands iOS build id.
   --hands-release <uuid>      Exact Hands draft/release id.
   --asc-build-upload <uuid>   Exact App Store Connect Build Upload id.
@@ -135,8 +136,8 @@ done
   die "--build must be a non-negative integer"
 [[ "${SOURCE_COMMIT}" =~ ^[0-9a-fA-F]{40}$ ]] ||
   die "--source must be a full 40-character Git commit id"
-[[ "${RELEASE_BRANCH}" =~ ^release-[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
-  die "--release-branch must be a canonical release-X.Y.Z branch name"
+[[ "${RELEASE_BRANCH}" =~ ^release[/-][0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+  die "--release-branch must be a canonical release/X.Y.Z (or legacy release-X.Y.Z) branch name"
 require_uuid "--hands-build" "${HANDS_BUILD}"
 require_uuid "--hands-release" "${HANDS_RELEASE}"
 require_uuid "--asc-build-upload" "${ASC_BUILD_UPLOAD}"
