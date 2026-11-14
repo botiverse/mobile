@@ -386,6 +386,7 @@ async function signOutAppViaUi() {
   const deadline = Date.now() + 120_000;
   const route = [];
   let swipes = 0;
+  let serverTaps = 0;
   let lastLabels = "";
   const tap = (node, what) => {
     tapNode(node);
@@ -404,6 +405,7 @@ async function signOutAppViaUi() {
     const settingsTitle = find(mine, (n) => n.text === "Settings");
     const account = find(mine, (n) => n.text === "Account");
     const more = find(mine, (n) => n.text === "More" || n.desc === "More");
+    const currentServer = find(mine, (n) => n.desc.startsWith("Current server: "));
     if (confirmMessage) {
       // Settings > Account > Sign out asks first; its button sits under the message.
       const button = signOut.filter((n) => n.bounds[1] >= confirmMessage.bounds[3]).sort((a, b) => b.bounds[1] - a.bounds[1])[0];
@@ -425,6 +427,10 @@ async function signOutAppViaUi() {
       tap(settingsTitle, "Settings");
     } else if (more) {
       tap(more, "More");
+    } else if (currentServer && serverTaps < 3) {
+      // A signed-in server's Home has no More tab: its server button (bottom bar) leads to Settings / Sign Out.
+      serverTaps += 1;
+      tap(currentServer, "Current server");
     } else if (!mine.length) {
       launchApp();
     }

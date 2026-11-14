@@ -133,7 +133,8 @@ export async function run(ctx) {
     return hits.length ? hits[hits.length - 1] : null;
   };
   async function openTasksCard() {
-    const l = await waitUntil("the channel's Open Tasks toggle", channelReady, { timeoutMs: 45_000 });
+    await waitUntil("the channel's Open Tasks toggle", channelReady, { timeoutMs: 45_000 });
+    const l = nodes();
     if (hasText(l, "Close Tasks")) return { card: "already_open" };
     const toggle = hasText(l, "Open Tasks") ?? hasText(l, (n) => n.text === "Tasks" && n.bounds[1] < 900);
     tapNode(toggle);
