@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.app.data.RaftAppSettingSurface
 import build.raft.app.data.toSystemNotificationActionResult
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
@@ -466,52 +467,61 @@ internal fun SettingsNativeDetailPageContent(
         }
     }
 
+    // `app_setting_changed.surface`: the cards sit under Appearance on a fine pointer, on Mobile otherwise.
+    val appSettingSurface =
+        if (route.page == SettingsNativeDetailPage.Appearance) {
+            RaftAppSettingSurface.SettingsAppearance
+        } else {
+            RaftAppSettingSurface.SettingsMobile
+        }
     val appPreferenceActions =
         SettingsAppPreferenceActions(
+            surface = appSettingSurface,
             onAlignmentChange = { itemId ->
-                onSettingsIntent(SharedSettingsIntent.SetMessageAlignment(itemId ?: "left"))
+                onSettingsIntent(SharedSettingsIntent.SetMessageAlignment(itemId ?: "left", appSettingSurface))
                 onMessageAlignmentSelected(MyMessageAlignmentPreference.fromStorageKey(itemId))
             },
             onLinkOpenModeChange = { itemId ->
                 onSettingsIntent(
                     SharedSettingsIntent.SetLinkOpenMode(
-                        itemId ?: LinkOpenMode.Default.storageKey
+                        itemId ?: LinkOpenMode.Default.storageKey,
+                        appSettingSurface
                     )
                 )
             },
             onCompactConsecutiveMessagesChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetCompactConsecutiveMessages(enabled))
+                onSettingsIntent(SharedSettingsIntent.SetCompactConsecutiveMessages(enabled, appSettingSurface))
                 onCompactConsecutiveMessagesSelected(enabled)
             },
             onLongMessageCollapseChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetLongMessageCollapseEnabled(enabled))
+                onSettingsIntent(SharedSettingsIntent.SetLongMessageCollapseEnabled(enabled, appSettingSurface))
             },
             onNewMessageMenuChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetNewMessageMenuEnabled(enabled))
+                onSettingsIntent(SharedSettingsIntent.SetNewMessageMenuEnabled(enabled, appSettingSurface))
             },
             onConversationForwardGestureChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetConversationForwardGestureEnabled(enabled))
+                onSettingsIntent(SharedSettingsIntent.SetConversationForwardGestureEnabled(enabled, appSettingSurface))
                 onConversationForwardGestureSelected(enabled)
             },
             onActivityTaskStatusBadgesChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetActivityTaskStatusBadges(enabled))
+                onSettingsIntent(SharedSettingsIntent.SetActivityTaskStatusBadges(enabled, appSettingSurface))
                 onActivityTaskStatusBadgesSelected(enabled)
             },
             onComposerSendKeyChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetComposerSendKey(enabled))
+                onSettingsIntent(SharedSettingsIntent.SetComposerSendKey(enabled, appSettingSurface))
             },
             onMultiShellHostChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetMultiShellHostEnabled(enabled))
+                onSettingsIntent(SharedSettingsIntent.SetMultiShellHostEnabled(enabled, appSettingSurface))
             },
             onDesktopModeOnLargeScreenChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetDesktopModeOnLargeScreen(enabled))
+                onSettingsIntent(SharedSettingsIntent.SetDesktopModeOnLargeScreen(enabled, appSettingSurface))
             },
             onServerDrawerChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetServerDrawerEnabled(enabled))
+                onSettingsIntent(SharedSettingsIntent.SetServerDrawerEnabled(enabled, appSettingSurface))
                 onServerDrawerSelected(enabled)
             },
             onHomeServerAvatarChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled))
+                onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled, appSettingSurface))
                 onHomeServerAvatarSelected(enabled)
             },
             diagnosticsLogger = diagnosticsLogger,

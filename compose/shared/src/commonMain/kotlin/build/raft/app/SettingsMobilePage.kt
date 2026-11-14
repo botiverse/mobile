@@ -20,6 +20,10 @@ import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_SERVER_DRAWER
 import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
 import build.raft.app.data.AppLocale
+import build.raft.app.data.RaftAppSettingKey
+import build.raft.app.data.RaftAppSettingSurface
+import build.raft.app.data.RaftProductEvents
+import build.raft.app.data.raftAppSettingToggleValue
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.ScreenLoadState
@@ -64,6 +68,8 @@ import androidx.compose.ui.unit.dp
  * phone, Settings > Appearance on a fine pointer ([raftPlatformHasFinePointer]).
  */
 internal class SettingsAppPreferenceActions(
+    /** Which settings page shows the cards (`app_setting_changed.surface`). */
+    val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
     val onAlignmentChange: (String?) -> Unit = {},
     val onLinkOpenModeChange: (String?) -> Unit = {},
     val onCompactConsecutiveMessagesChange: (Boolean) -> Unit = {},
@@ -184,7 +190,7 @@ internal fun LazyListScope.settingsAppPreferenceItems(
             }
         }
         if (visibility.iosNativeNav) {
-            item { SettingsIosNativeNavCard() }
+            item { SettingsIosNativeNavCard(surface) }
         }
         item {
             SettingsActivityTaskStatusBadgesCard(
@@ -782,7 +788,7 @@ private fun SettingsConversationForwardGestureCard(
  * Read once per process, so it takes effect on the next app start (the detail says so).
  */
 @Composable
-private fun SettingsIosNativeNavCard() {
+private fun SettingsIosNativeNavCard(surface: RaftAppSettingSurface) {
     val preferences = remember { raftSharedPreferenceStore() }
     var enabled by remember { mutableStateOf(RaftIosNativeNavFlag.stored(preferences)) }
     val status = stringResource(if (enabled) Res.string.settings_mobile_status_enabled else Res.string.settings_state_off)
@@ -795,8 +801,15 @@ private fun SettingsIosNativeNavCard() {
                 Modifier
                     .fillMaxWidth()
                     .toggleable(value = enabled, role = Role.Switch) { checked ->
+                        val previous = enabled
                         RaftIosNativeNavFlag.setLocalOverride(preferences, checked)
                         enabled = RaftIosNativeNavFlag.stored(preferences)
+                        RaftProductEvents.appSettingChanged(
+                            RaftAppSettingKey.IosNativeNav,
+                            previous = raftAppSettingToggleValue(previous),
+                            value = raftAppSettingToggleValue(enabled),
+                            surface = surface,
+                        )
                     }
                     .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
