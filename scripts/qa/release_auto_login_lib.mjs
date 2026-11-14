@@ -91,14 +91,19 @@ export function callbackSchemeFor(packageId) {
  *   browser         – default browser role restored / browsers disabled for the run re-enabled
  *   capture_browser – the QA capture browser package
  *   web_session     – the web session the script opened to approve the login
- *   app_session     – the app's own session (only touched with --revoke-app-session)
+ *   app_session     – the app's own session: server_logout_verified only when the app signed out
+ *                     through its own UI AND logged its POST /auth/logout as a success (or a 2xx).
+ *                     not_requested (no --revoke-app-session), local_cleared_server_unconfirmed
+ *                     (pm clear, or no logout evidence) leave a session possibly live on the
+ *                     server: a cleanup failure, so --strict-cleanup fails the run.
+ *                     not_signed_in: the app never got a session (the run fails on sign-in anyway).
  */
 export const CLEANUP_OK = {
   capture_file: ["deleted", "not_applicable"],
   browser: ["restored", "not_changed"],
   capture_browser: ["uninstalled", "kept", "not_installed_by_run"],
   web_session: ["signed_out", "not_opened"],
-  app_session: ["not_requested", "not_signed_in", "signed_out_via_app", "server_logout_verified"],
+  app_session: ["server_logout_verified", "not_signed_in"],
 };
 
 /** Which cleanup steps failed, and whether the run may still exit 0. */

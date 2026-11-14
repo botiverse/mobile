@@ -2,7 +2,7 @@
 // release_auto_login.mjs after it signed the app in:
 //
 //   --scenario scripts/qa/scenarios/min_build_gate.mjs --phase banner|block|flag_off --threshold N
-//     [--server-name NAME] [--wait-off-minutes 40]
+//     [--server-name NAME] [--wait-off-minutes 40] [--flag-off-at-ms <epoch ms the flag was turned off>]
 //
 // The installed app is build A (the runner's --apk). The workflow passes, with
 // hands_serve_extra=true, build B as --extra-apk / --extra-code and B's Hands release
@@ -50,6 +50,9 @@ export async function run(ctx) {
   const handsRelease = option("hands-release", "");
   const deviceIdFile = option("device-id-file", "");
   const waitOffMinutes = Number(option("wait-off-minutes", "40"));
+  // When the flag admin turned the flag off (epoch ms), if known: the only base for
+  // seconds_after_server_off. Without it that field is left out (the poll's own time is not the change).
+  const flagOffAtMs = Number(option("flag-off-at-ms", "0")) || null;
   const results = {};
   const report = { phase, threshold, flag_key: FLAG_KEY, serving_b: Boolean(handsGroup), b_code: extraCode || null, results };
   ctx.summary.scenario = report;
@@ -126,7 +129,8 @@ export async function run(ctx) {
   let logcat = null;
   const startLogcat = () => {
     try { logcat?.kill("SIGTERM"); } catch {}
-    logcat = spawn("adb", ["logcat", "-v", "threadtime", "-s", "SlockMinBuildGate:*", "SlockFeatureFlags:*"], {
+    // UTC with the year, so a line's time can be compared with the flag change.
+    logcat = spawn("adb", ["logcat", "-v", "threadtime", "-v", "year", "-v", "UTC", "-s", "SlockMinBuildGate:*", "SlockFeatureFlags:*"], {
       stdio: ["ignore", fs.openSync(logFile, "a"), "ignore"],
     });
   };
@@ -134,7 +138,7 @@ export async function run(ctx) {
   // file and a dump of the buffer, deduplicated; matching uses the part from "min_build_gate ".
   const rawGateLines = () => {
     const streamed = fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : "";
-    const dumped = adb(["logcat", "-d", "-v", "threadtime", "-s", "SlockMinBuildGate:*"], { allowFailure: true });
+    const dumped = adb(["logcat", "-d", "-v", "threadtime", "-v", "year", "-v", "UTC", "-s", "SlockMinBuildGate:*"], { allowFailure: true });
     return [...new Set(`${streamed}\n${dumped}`.split("\n").map((l) => l.trimEnd()).filter((l) => l.includes("min_build_gate ")))];
   };
   const message = (l) => l.slice(l.indexOf("min_build_gate "));
@@ -360,9 +364,13 @@ export async function run(ctx) {
         // app's lines from here on.
         markLog();
         let flag = await readFlag();
+        // The last time the server still answered ON: the flag changed after this.
+        let lastOnAt = Date.now();
         while (flag.enabled && Date.now() < deadline) {
           await sleep(10_000);
+          const askedAt = Date.now();
           flag = await readFlag();
+          if (flag.enabled) lastOnAt = askedAt;
           // Keep the block on screen meanwhile; it must not drop by itself while the flag is on.
           const s = screen(nodes());
           if (flag.enabled && !s.block && (await readFlag()).enabled) {
@@ -370,7 +378,7 @@ export async function run(ctx) {
           }
         }
         if (flag.enabled) throw new Error(`${FLAG_KEY} still ON after ${waitOffMinutes} min`);
-        const offAt = Date.now();
+        const offSeenAt = Date.now();
         let via = "read_or_push";
         try {
           await waitScreen("Home without the block, no app action", (s) => !s.block, { timeoutMs: 150_000, intervalMs: 3000 });
@@ -380,13 +388,23 @@ export async function run(ctx) {
           await foreground();
           await waitScreen("Home without the block after a foreground", (s) => !s.block, { timeoutMs: 45_000 });
         }
-        const seconds = Math.round((Date.now() - offAt) / 1000);
+        const clearedAt = Date.now();
         await waitScreen("Home, no banner either", ungated, { timeoutMs: 20_000 });
         const cleared = await waitLog("effective threshold=none", /^min_build_gate effective threshold=none /, { timeoutMs: 15_000 });
         const decision = await waitLog("decision=none", /decision=none/, { timeoutMs: 10_000 });
-        const flagLines = (fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : "").split("\n").filter((l) => /feature_flags (change_scheduled|change_coalesced)/.test(l)).slice(-3);
-        report.flag_off = { via, seconds_after_server_off: seconds };
-        return { via, seconds_after_server_off: seconds, cleared, decision, features_changed: flagLines.map((l) => l.slice(l.indexOf("feature_flags"))) };
+        // Only the app's features-changed lines written after the flag change (the passed change
+        // time, else the last poll that still saw the flag ON).
+        const changeAt = flagOffAtMs ?? lastOnAt;
+        const lineTime = (l) => { const m = /^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d\.\d{3})/.exec(l); return m ? Date.parse(`${m[1]}T${m[2]}Z`) : NaN; };
+        const flagLines = (fs.existsSync(logFile) ? fs.readFileSync(logFile, "utf8") : "").split("\n")
+          .filter((l) => /feature_flags (change_scheduled|change_coalesced)/.test(l) && lineTime(l) >= changeAt);
+        const timing = {
+          ...(flagOffAtMs ? { seconds_after_server_off: Math.round((clearedAt - flagOffAtMs) / 1000) } : {}),
+          seconds_after_poll_saw_off: Math.round((clearedAt - offSeenAt) / 1000),
+          change_bound: flagOffAtMs ? "flag_off_at_ms" : "last_poll_on",
+        };
+        report.flag_off = { via, ...timing };
+        return { via, ...timing, cleared, decision, features_changed: flagLines.slice(-5).map((l) => l.slice(l.indexOf("feature_flags"))) };
       });
     }
   } catch (error) {
