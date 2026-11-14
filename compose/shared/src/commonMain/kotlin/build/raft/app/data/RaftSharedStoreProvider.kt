@@ -2305,6 +2305,11 @@ internal class RaftSharedStoreProvider private constructor(
             sharedComputersOwner(session, apiEnvironmentStore.current().apiBaseUrl, authLoginGeneration(scope).current())
         }
 
+    private suspend fun computersOwnerBinding(scope: RaftShellStoreScope): RaftAccountBinding<SharedComputersOwner> =
+        authStore(scope).readAccountBinding { session ->
+            sharedComputersOwner(session, apiEnvironmentStore.current().apiBaseUrl, authLoginGeneration(scope).current())
+        }
+
     /**
      * Runtime account usage reads and refreshes for this shell (the computer detail's runtime
      * chips): one cache and one refresh window per shell, whichever page asks.
@@ -2348,6 +2353,8 @@ internal class RaftSharedStoreProvider private constructor(
                 scope = threadSendScope,
                 logger = sharedInfoLogger("SlockComputers", "shell_computers"),
                 ownerProvider = { computersOwner(scope) },
+                // Typed (architecture review B, site 9): an unreadable session is not a sign-out.
+                ownerBinding = { computersOwnerBinding(scope) },
                 durableStore = computersDurableStore
             )
         }
@@ -2388,6 +2395,16 @@ internal class RaftSharedStoreProvider private constructor(
                 },
                 ownerProvider = {
                     shellAuthStore.readSession()?.let { session ->
+                        sharedCreateAgentFormOwner(
+                            session = session,
+                            environmentId = apiEnvironmentStore.current().apiBaseUrl,
+                            loginGeneration = loginGeneration.current()
+                        )
+                    }
+                },
+                // Typed (architecture review B, site 9): an unreadable session is not a sign-out.
+                ownerBinding = {
+                    shellAuthStore.readAccountBinding { session ->
                         sharedCreateAgentFormOwner(
                             session = session,
                             environmentId = apiEnvironmentStore.current().apiBaseUrl,
@@ -3715,7 +3732,10 @@ internal class RaftSharedStoreProvider private constructor(
                     scheduler =
                         CoroutineThreadComposerDraftPersistenceScheduler(
                             CoroutineScope(SupervisorJob())
-                        )
+                        ),
+                    // Account-scoped: nothing is read until the binding follower below binds an
+                    // account (or finds nobody signed in), so "no drafts" is not known before.
+                    recordsKnownAtStart = false
                 )
             CoroutineScope(SupervisorJob()).launch {
                 composerDraftAccounts.onStoredSessionReadAtStart(authStore)

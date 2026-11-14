@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import kotlinx.coroutines.CancellationException
+
 /**
  * What one read of the stored auth session found. Unlike [RaftAuthSessionStore.readSession], which
  * answers null for both, an empty record ([SignedOut]) and a record this build cannot decode
@@ -58,4 +60,35 @@ internal inline fun <A : Any, B : Any> RaftAccountBinding<A>.map(transform: (A) 
         RaftAccountBinding.Unknown -> RaftAccountBinding.Unknown
         RaftAccountBinding.SignedOut -> RaftAccountBinding.SignedOut
         is RaftAccountBinding.Corrupt -> this
+    }
+
+/**
+ * One typed read of the stored session as a binding of [A] (architecture review B): a decodable
+ * session maps through [owner] (null, e.g. blank ids, reads as signed out); an undecodable one is
+ * [RaftAccountBinding.Corrupt]; a read that throws is [RaftAccountBinding.Unknown]. Only
+ * [RaftAccountBinding.SignedOut] may clear anything.
+ */
+internal suspend fun <A : Any> RaftAuthSessionStore.readAccountBinding(owner: (StoredAuthSession) -> A?): RaftAccountBinding<A> {
+    val state =
+        try {
+            readSessionState()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            return RaftAccountBinding.Unknown
+        }
+    return when (state) {
+        is RaftAuthSessionState.SignedIn -> owner(state.session)?.let { RaftAccountBinding.SignedIn(it) } ?: RaftAccountBinding.SignedOut
+        RaftAuthSessionState.SignedOut -> RaftAccountBinding.SignedOut
+        is RaftAuthSessionState.Corrupt -> RaftAccountBinding.Corrupt(state.errorType)
+    }
+}
+
+/** Diagnostics token for a binding that is not an account: `unknown` or `corrupt`. */
+internal fun RaftAccountBinding<*>.unknownReason(): String =
+    when (this) {
+        RaftAccountBinding.Unknown -> "unknown"
+        is RaftAccountBinding.Corrupt -> "corrupt"
+        RaftAccountBinding.SignedOut -> "signed_out"
+        is RaftAccountBinding.SignedIn -> "signed_in"
     }

@@ -56,6 +56,24 @@ internal fun processAccountBindingTransitionWithPendingSends(
                 )
             }
         },
+        // Signing in after a cold start that could not read the stored session (architecture
+        // review B): the unreadable session's account is unknown, so the cleanup above must not
+        // run. The same account keeps its sends (moved into this generation); another account's
+        // rows go, as on an account switch.
+        onBindingBoundAfterUnreadableSession = { bound ->
+            val rehomed = journal.recoverAfterUnreadableSession(
+                environmentId = bound.environmentId,
+                principalId = bound.accountId,
+                authGeneration = bound.authorityGeneration,
+            )
+            diagnosticsLogger(
+                "thread_pending_send_unreadable_session_recovered " +
+                    "environmentId=${bound.environmentId} " +
+                    "principalId=${bound.accountId} " +
+                    "authGeneration=${bound.authorityGeneration} " +
+                    "rehomed=$rehomed"
+            )
+        },
         // Same-binding token rotation (401 -> silent refresh): rehome the
         // principal's journaled pending sends into the successor auth
         // revision instead of retiring them, so an offline send admitted

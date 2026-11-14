@@ -1531,7 +1531,8 @@ internal class SharedThreadComposerDraftPersistSlice(
      * False while [activeDraftRecordsState] is not this account's answer yet (the account binding is
      * not known): an empty set then means "not read", not "no drafts".
      */
-    val activeDraftRecordsKnown: StateFlow<Boolean> = MutableStateFlow(true)
+    private val recordsKnown = MutableStateFlow(recordsKnownAtStart)
+    val activeDraftRecordsKnown: StateFlow<Boolean> = recordsKnown.asStateFlow()
 
     /** The durable drafts with their text and last edit (the Drafts list); see [SharedThreadComposerDraftPersistence.draftListings]. */
     fun draftListings(): List<SharedThreadComposerDraftListing> = persistence.draftListings()
@@ -2154,12 +2155,17 @@ internal class SharedThreadComposerDraftPersistSlice(
         }
         cancelled.forEach { pending -> pending.cancellation?.cancel() }
         refreshActiveDraftRecords(reason = "account_changed")
+        recordsKnown.value = true
         safeDiagnostics("thread_composer_draft_account_retired droppedPending=${cancelled.size}")
     }
 
-    /** The first account of this process is bound: re-read the Drafts projection for it. */
+    /**
+     * The account binding is known (the first account of this process is bound, or nobody is signed
+     * in): re-read the Drafts projection for it; from now on it is this device's answer.
+     */
     fun refreshForAccountBinding() {
         refreshActiveDraftRecords(reason = "account_bound")
+        recordsKnown.value = true
     }
 
     private fun consumeStagedUploadedAttachments(draftKey: String?): List<SharedThreadComposerAttachment> {

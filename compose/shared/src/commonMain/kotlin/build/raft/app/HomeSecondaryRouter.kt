@@ -936,7 +936,7 @@ private fun HomeSearchRouterContent(
         }
     val ownListState = rememberLazyListState()
     val searchListState = listState ?: ownListState
-    val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
     val draftProjection =
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
@@ -1151,7 +1151,7 @@ private fun HomeSavedRouterContent(
     val listState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     val copyScope = rememberCoroutineScope()
-    val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
+    val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
     val draftProjection =
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
@@ -1330,7 +1330,7 @@ private fun HomeDraftsRouterContent(
         }
     // drafts_page_viewed (web DraftsPanel): once per opening of the page, with how many drafts it
     // lists once Home has loaded and every draft is placed. No ids, text or lengths go out.
-    val draftsPageViewSettled = directory != null && listing.settled
+    val draftsPageViewSettled = directory != null && listing.settled && listing.recordsKnown
     var draftsPageViewRecorded by remember { mutableStateOf(false) }
     LaunchedEffect(draftsPageViewSettled) {
         if (!draftsPageViewSettled || draftsPageViewRecorded) return@LaunchedEffect
@@ -1342,6 +1342,7 @@ private fun HomeDraftsRouterContent(
     CompositionLocalProvider(LocalActivityAvatarSource provides avatarSource) {
         RaftDraftsPanel(
             rows = rows,
+            recordsKnown = listing.recordsKnown,
             onClose = { environment.inlineOnClose?.invoke() ?: environment.pager.closeHomeSecondaryPage() },
             onOpen = { key ->
                 val entry = listing.entries.firstOrNull { it.key == key } ?: return@RaftDraftsPanel

@@ -214,10 +214,13 @@ internal class RaftForegroundBannerHandoff(
 internal val LocalRaftForegroundBannerHandoff = compositionLocalOf<RaftForegroundBannerHandoff?> { null }
 
 /**
- * The server whose roster resolves the banner sender's profile (avatar, name).
+ * The server whose roster resolves the banner sender's profile (avatar, name): the banner's own
+ * server (its message's), which is known with the banner. The host's current server is only a
+ * fallback: it is null until the session is read (architecture review B, site 8) and another
+ * server for a cross-server banner.
  */
 internal fun foregroundBannerMemberServerId(banner: RaftForegroundMessageBanner?, hostServerId: ServerId?): ServerId? =
-    hostServerId
+    banner?.serverId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId) ?: hostServerId
 
 @Composable
 internal fun RaftForegroundBannerHost(

@@ -254,6 +254,12 @@ internal data class RaftDraftEntry(
 internal data class RaftDraftListing(
     val entries: List<RaftDraftEntry> = emptyList(),
     val lookupChannelIds: Set<String> = emptySet(),
+    /**
+     * False while the drafts have not been read for the signed-in account yet (cold start before the
+     * account binding is known): [entries] is then empty because nothing was read, not because
+     * there are no drafts (architecture review B, site 7).
+     */
+    val recordsKnown: Boolean = true,
 ) {
     val count: Int
         get() = entries.size
@@ -463,10 +469,14 @@ internal fun rememberRaftDraftListing(
 ): RaftDraftListing {
     if (directory == null || draftPersistSlice == null) return RaftDraftListing.Empty
     val records by draftPersistSlice.activeDraftRecordsState.collectAsState()
+    val recordsKnown by draftPersistSlice.activeDraftRecordsKnown.collectAsState()
     val drafts = remember(draftPersistSlice, records, refreshTick) { draftPersistSlice.draftListings() }
     val allAnswers by lookups.state.collectAsState()
     val serverAnswers = lookups.scope(directory.serverId)?.let { allAnswers[it] }.orEmpty()
-    val listing = remember(drafts, directory, serverAnswers) { raftDraftListing(drafts, directory, serverAnswers) }
+    val listing =
+        remember(drafts, directory, serverAnswers, recordsKnown) {
+            raftDraftListing(drafts, directory, serverAnswers).copy(recordsKnown = recordsKnown)
+        }
     if (networkClient != null) {
         LaunchedEffect(directory.serverId, listing.lookupChannelIds, networkClient) {
             val ids = listing.lookupChannelIds
@@ -885,6 +895,8 @@ internal fun RaftDraftsPanel(
     listState: LazyListState = rememberLazyListState(),
     onTitleClick: (() -> Unit)? = null,
     inlineListSelection: RaftInlineListSelection? = null,
+    /** False while the drafts are not read yet: no empty state ([RaftDraftListing.recordsKnown]). */
+    recordsKnown: Boolean = true,
 ) {
     var selectedKey by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
@@ -901,7 +913,7 @@ internal fun RaftDraftsPanel(
             modifier = Modifier.fillMaxWidth().weight(1f),
             contentPadding = PaddingValues(top = 4.dp),
         ) {
-            if (rows.isEmpty()) {
+            if (rows.isEmpty() && recordsKnown) {
                 item(key = "drafts-empty") {
                     RaftEmptyState(
                         title = stringResource(Res.string.drafts_empty_title),

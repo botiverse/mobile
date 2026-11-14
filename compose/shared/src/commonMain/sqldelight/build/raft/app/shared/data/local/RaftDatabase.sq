@@ -1628,6 +1628,19 @@ WHERE environmentId = ?
   AND principalId = ?
   AND authGeneration < ?;
 
+-- Sign-in after an unreadable stored session (architecture review B): the same account's rows
+-- from older auth generations move into the new one; any other account's rows are retired.
+selectThreadPendingSendsForPrincipalBeforeAuthRevision:
+SELECT *
+FROM threadPendingSendEntity
+WHERE environmentId = ?
+  AND principalId = ?
+  AND authGeneration < ?;
+
+deleteThreadPendingSendsForOtherPrincipals:
+DELETE FROM threadPendingSendEntity
+WHERE NOT (environmentId = :environmentId AND principalId = :principalId);
+
 selectSnapshot:
 SELECT value
 FROM localSnapshotEntity
