@@ -4231,6 +4231,11 @@
     <string name="assistant_otter_state_working">工作中</string>
     <string name="assistant_otter_state_away">不在</string>
     <string name="assistant_otter_collapse">收合為水獺</string>
+    <string name="assistant_context_attached">已附加：%1$s</string>
+    <string name="assistant_context_thread">討論串 · %1$s · %2$s</string>
+    <string name="assistant_context_thread_no_excerpt">討論串 · %1$s</string>
+    <string name="assistant_context_remove">移除 %1$s</string>
+    <string name="assistant_context_unreadable">助理看不到這個對話</string>
     <string name="assistant_otter_meta_working">正在處理…</string>
     <string name="assistant_otter_meta_confirm">等你確認一件事</string>
     <string name="assistant_header_meta">可讀取你看得到的內容，私訊除外</string>

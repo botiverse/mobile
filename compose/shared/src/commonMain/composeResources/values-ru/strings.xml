@@ -4194,6 +4194,11 @@
     <string name="assistant_otter_state_working">Работает</string>
     <string name="assistant_otter_state_away">Неактивен</string>
     <string name="assistant_otter_collapse">Свернуть в выдру</string>
+    <string name="assistant_context_attached">Прикреплено: %1$s</string>
+    <string name="assistant_context_thread">Ветка · %1$s · %2$s</string>
+    <string name="assistant_context_thread_no_excerpt">Ветка · %1$s</string>
+    <string name="assistant_context_remove">Убрать: %1$s</string>
+    <string name="assistant_context_unreadable">Ассистент не видит этот чат</string>
     <string name="assistant_otter_meta_working">Работает над этим…</string>
     <string name="assistant_otter_meta_confirm">Ждёт вашего подтверждения</string>
     <string name="assistant_header_meta">Может читать всё, что видите вы, кроме ваших личных сообщений</string>
