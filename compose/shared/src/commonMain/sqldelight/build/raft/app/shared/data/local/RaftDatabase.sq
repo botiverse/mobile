@@ -1639,7 +1639,7 @@ WHERE environmentId = ?
 
 deleteThreadPendingSendsForOtherPrincipals:
 DELETE FROM threadPendingSendEntity
-WHERE NOT (environmentId = :environmentId AND principalId = :principalId);
+WHERE environmentId != :environmentId OR principalId != :principalId;
 
 selectSnapshot:
 SELECT value
