@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.reportUnknownProjectionValueDropped
+import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.model.isExternalAgent
 import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentToolStuck
@@ -1341,7 +1341,7 @@ private data class AgentRuntimeProviderWireDto(
                 RuntimeProviderConfig.Connection(cleanConnectionId)
             }
             else -> {
-                reportUnknownProjectionValueDropped("agent_runtime_provider", "provider_kind", kind)
+                reportUnknownTypeDropped("agent_runtime_provider", "provider_kind", kind)
                 null
             }
         }

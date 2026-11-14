@@ -190,7 +190,7 @@ class ServerEnumContractTest {
         for ((domain, runtime) in ProviderDomains) {
             for (kind in values(domain)) {
                 val provider = runBlocking { agentDetailProvider(runtime, kind) }
-                if (provider == null && kind !in ProviderKindsPendingFix) failures += "$runtime/$kind: no provider"
+                if (provider == null) failures += "$runtime/$kind: no provider"
             }
         }
         assertEquals(emptyList(), failures)
@@ -350,12 +350,6 @@ class ServerEnumContractTest {
                 "runtime_provider_kinds_builtin" to "builtin",
             )
 
-        /**
-         * Known gaps being fixed on their own branch; allowed to map to null until then (the check
-         * keeps passing once they map). Remove an entry once its fix is on main.
-         * - `connection`: agent/lagoon/silent-drop-runtime-connection (adds RuntimeProviderConfig.Connection).
-         */
-        val ProviderKindsPendingFix = setOf("connection")
 
         /** One row of each Activity kind the app maps by its own arm (anything else: generic channel row). */
         val InboxSampleRows =

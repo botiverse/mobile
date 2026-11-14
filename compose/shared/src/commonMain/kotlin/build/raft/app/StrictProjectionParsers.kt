@@ -126,22 +126,6 @@ internal fun String?.strictTaskStatusOrNull(
     return TaskStatus.Unknown
 }
 
-/**
- * Logs a server value this build does not know and is about to drop, as a
- * `projection_value_unknown … action=dropped` line (passes [projectionRejectingDiagnosticsLogger]).
- */
-internal fun reportUnknownProjectionValueDropped(
-    source: String,
-    field: String,
-    value: String?,
-    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
-) {
-    diagnostics(
-        "projection_value_unknown source=${source.strictProjectionDiagnosticToken()} " +
-            "field=$field value=${value.strictProjectionDiagnosticToken()} action=dropped",
-    )
-}
-
 private fun <T> rejectProjectionWireValue(
     source: String,
     field: String,
