@@ -507,7 +507,7 @@ class RaftComputersRackFiltersTest {
         )
         // No usage runtime: the section goes.
         assertEquals(2, raftRackSortMenuSections(RaftRackRuntimeColumns(emptyList(), listOf("cursor"))).size)
-        assertEquals(listOf("Claude Code", "Codex", "Kimi", "Grok"), RuntimeAccountUsageProvider.entries.map(::raftRackProviderName))
+        assertEquals(listOf("Claude Code", "Codex", "Kimi", "Grok", "Antigravity"), RuntimeAccountUsageProvider.entries.map(::raftRackProviderName))
 
         val cases =
             listOf(

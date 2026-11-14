@@ -88,8 +88,8 @@ class ComputerRuntimeUsageTimeContextUiTest {
     fun pageScopeResolvesResetAndUpdatedTimesInEnglish() = runRobolectricComposeUiTest {
         StringDesc.localeType = AppLocale.English.stringDescLocaleType
         showSheet(runtimeVersion = "2.1.304 (Claude Code)")
-        // 2026-10-23T04:10Z is tomorrow at 12:10 in UTC+8 (now: 2026-10-22 10:10 local).
-        assertShown("Used up · back tomorrow")
+        // 2026-10-23T04:10Z: 26 hours from now, counted as the rack counts it (web `usageResetText`, #14717).
+        assertShown("Used up · resets in 26 hours")
         // 2026-10-22T05:10Z: three hours from now.
         assertShown("62% used · resets in 3 hours")
         // collectedAt 02:04Z, six minutes before now.
@@ -102,7 +102,7 @@ class ComputerRuntimeUsageTimeContextUiTest {
     fun pageScopeResolvesResetAndUpdatedTimesInChinese() = runRobolectricComposeUiTest {
         StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
         showSheet(runtimeVersion = null)
-        assertShown("已用完 · 明天恢复")
+        assertShown("已用完 · 26 小时后重置")
         assertShown("整个账户 · 6 分钟前更新")
         assertShown("版本暂不可用")
         assertShown("拥有 Computer 编辑权限或挂载这台 Computer 的人可见")
@@ -113,7 +113,7 @@ class ComputerRuntimeUsageTimeContextUiTest {
     fun pageBaseScopeAloneResolvesTimes() = runRobolectricComposeUiTest {
         StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
         showSheet(runtimeVersion = null, pageBaseOnly = true)
-        assertShown("已用完 · 明天恢复")
+        assertShown("已用完 · 26 小时后重置")
         assertShown("整个账户 · 6 分钟前更新")
         onAllNodesWithText("未知时间", substring = true, useUnmergedTree = true).assertCountEquals(0)
     }
