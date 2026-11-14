@@ -10,7 +10,7 @@
   },
   "captureViewport": {
     "width": 390,
-    "height": 844,
+    "height": 877,
     "density": 3
   },
   "selector": "[data-visual-case='components.settings.appearance.page']",
@@ -21,26 +21,26 @@
       "x": 0,
       "y": 0,
       "width": 390,
-      "height": 844
+      "height": 877
     },
     "targetRect": {
       "x": 0,
       "y": 0,
       "width": 390,
-      "height": 844
+      "height": 877
     },
     "outset": null
   },
   "fullLength": {
     "requested": true,
     "baseViewportHeight": 844,
-    "expandedViewportHeight": 844,
-    "initialOverflowPx": 0,
+    "expandedViewportHeight": 877,
+    "initialOverflowPx": 33,
     "residualOverflowPx": 0,
-    "iterations": 0,
+    "iterations": 1,
     "capped": false,
     "maxHeight": 2700,
-    "scroller": null
+    "scroller": "div"
   },
-  "capturedAt": "2026-11-09T21:41:38.740Z"
+  "capturedAt": "2026-11-14T17:45:16.157Z"
 }

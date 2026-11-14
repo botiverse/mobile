@@ -1,33 +1,33 @@
 {
-  "generatedAt": "2026-11-09T22:51:50.582Z",
-  "runId": "41a40027-20261109220201",
+  "generatedAt": "2026-11-14T18:08:39.061Z",
+  "runId": "a489a2e6-20261114180622",
   "baseline": "react",
   "current": "android",
   "summary": {
-    "total": 151,
-    "active": 131,
+    "total": 162,
+    "active": 142,
     "pending": 17,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 118,
-        "active": 113,
+        "total": 123,
+        "active": 118,
         "pending": 3,
         "skipped": 2
       },
       "real-screen": {
-        "total": 33,
-        "active": 18,
+        "total": 39,
+        "active": 24,
         "pending": 14,
         "skipped": 1
       }
     },
     "providers": {
       "react": {
-        "active": 121,
+        "active": 132,
         "pending": 13,
         "unsupported": 0,
-        "total": 134
+        "total": 145
       },
       "android": {
         "active": 79,
@@ -243,6 +243,146 @@
       }
     },
     {
+      "id": "screens.computers.rack.needs-attention",
+      "title": "Computers page: needs attention (admin)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/computers",
+      "surface": "computers",
+      "group": "app/computers",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/layout/MainLayout",
+            "features/computer/ComputersRackOverview",
+            "features/computer/ComputersAttentionSummary",
+            "features/sidebar/computers/ComputerRowBody"
+          ],
+          "path": "packages/web/visual-testing/ComputersRackCases.tsx",
+          "fixture": "packages/web/visual-testing/ComputersRackCases.tsx#ATTENTION_FLEET",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate (#proj-raft-computer:#68). The real MainLayout at /s/visual/computers: the desktop Computers rail (sidebar Computer rows) and the Computers page, over the fixture's own fleet whose machine-list `attention` and `readiness` are composed by the shared composeReadinessAttention / composeReadiness from readiness facts and trimmed for the viewer, as the server does. Viewer is a server admin. Four Computers: oak-linux fine (Claude 60% used); elm-studio (Olive's) with its Claude account needing verification, holding 2 agents, and its Codex week used up (2 agents waiting, 6 days); pine-mini restarting into an update (Updating…); birch-mbp offline for two days. Above the list: '3 Computers need attention' and '2 agents waiting · back in 6d'.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.computers.rack.needs-attention.dark",
+      "title": "Computers page: needs attention (admin, dark)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/computers",
+      "surface": "computers",
+      "group": "app/computers",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/layout/MainLayout",
+            "features/computer/ComputersRackOverview",
+            "features/computer/ComputersAttentionSummary",
+            "features/sidebar/computers/ComputerRowBody"
+          ],
+          "path": "packages/web/visual-testing/ComputersRackCases.tsx",
+          "fixture": "packages/web/visual-testing/ComputersRackCases.tsx#ATTENTION_FLEET",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate (#proj-raft-computer:#68). The real MainLayout at /s/visual/computers: the desktop Computers rail (sidebar Computer rows) and the Computers page, over the fixture's own fleet whose machine-list `attention` and `readiness` are composed by the shared composeReadinessAttention / composeReadiness from readiness facts and trimmed for the viewer, as the server does. screens.computers.rack.needs-attention in the dark theme.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.computers.rack.needs-attention.member",
+      "title": "Computers page: one Computer needs attention (member)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/computers",
+      "surface": "computers",
+      "group": "app/computers",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/layout/MainLayout",
+            "features/computer/ComputersRackOverview",
+            "features/computer/ComputersAttentionSummary",
+            "features/sidebar/computers/ComputerRowBody"
+          ],
+          "path": "packages/web/visual-testing/ComputersRackCases.tsx",
+          "fixture": "packages/web/visual-testing/ComputersRackCases.tsx#SINGLE_ATTENTION_FLEET",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate (#proj-raft-computer:#68). The real MainLayout at /s/visual/computers: the desktop Computers rail (sidebar Computer rows) and the Computers page, over the fixture's own fleet whose machine-list `attention` and `readiness` are composed by the shared composeReadinessAttention / composeReadiness from readiness facts and trimmed for the viewer, as the server does. The fleet of needs-attention.single seen by an ordinary member, who may not see the reason on Olive's Computers: 'Needs attention on elm-studio · 2 agents · Olive can verify the account', no action link.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.computers.rack.needs-attention.single",
+      "title": "Computers page: one Computer needs attention (admin)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/computers",
+      "surface": "computers",
+      "group": "app/computers",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/layout/MainLayout",
+            "features/computer/ComputersRackOverview",
+            "features/computer/ComputersAttentionSummary",
+            "features/sidebar/computers/ComputerRowBody"
+          ],
+          "path": "packages/web/visual-testing/ComputersRackCases.tsx",
+          "fixture": "packages/web/visual-testing/ComputersRackCases.tsx#SINGLE_ATTENTION_FLEET",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate (#proj-raft-computer:#68). The real MainLayout at /s/visual/computers: the desktop Computers rail (sidebar Computer rows) and the Computers page, over the fixture's own fleet whose machine-list `attention` and `readiness` are composed by the shared composeReadinessAttention / composeReadiness from readiness facts and trimmed for the viewer, as the server does. Viewer is a server admin. oak-linux, elm-studio (as in needs-attention) and maple-cloud: only elm-studio needs attention, so the line names it: 'Claude Code: Account needs verification on elm-studio · 2 agents · Verify account', and '2 agents waiting · back in 6d'.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
       "id": "screens.home.choose-server",
       "title": "Home Choose Server Screen",
       "captureType": "real-screen",
@@ -269,6 +409,72 @@
       "comparison": null
     },
     {
+      "id": "screens.shell.open-in-app.desktop-download",
+      "title": "Open in Raft Desktop: no sign of the app, so the download",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/shell",
+      "surface": "shell",
+      "group": "app/shell",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/layout/MainLayout",
+            "components/deeplinks/OpenInAppOffers"
+          ],
+          "path": "packages/web/visual-testing/OpenInAppOfferCases.tsx",
+          "fixture": "packages/web/visual-testing/OpenInAppOfferCases.tsx#prime",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate. The real MainLayout, opened fresh so the app's own boot capture records a landing from outside, with deep_links_v1 seeded on: the open-in-app offer in the strip across the window, under the top bar (ShellFrame topStrip). A computer on the Computers page with no sign of Raft Desktop: \"Don't have it yet?\" and this computer's download as a text link.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.shell.open-in-app.desktop-used",
+      "title": "Open in Raft Desktop: the account used the app lately",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/shell",
+      "surface": "shell",
+      "group": "app/shell",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/layout/MainLayout",
+            "components/deeplinks/OpenInAppOffers"
+          ],
+          "path": "packages/web/visual-testing/OpenInAppOfferCases.tsx",
+          "fixture": "packages/web/visual-testing/OpenInAppOfferCases.tsx#prime",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate. The real MainLayout, opened fresh so the app's own boot capture records a landing from outside, with deep_links_v1 seeded on: the open-in-app offer in the strip across the window, under the top bar (ShellFrame topStrip). A computer on the Computers page; the account used Raft Desktop in the last 30 days, so the banner says so.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
       "id": "components.action-card.agent-create",
       "title": "Action card, create agent (prepared)",
       "captureType": "component-fixture",
@@ -290,6 +496,39 @@
         }
       },
       "notes": "#proj-apps:#41 (Kirby 1265e067): an agent:create card waiting for a person. The title names the agent to be without an @: it has no record yet, and the name is what it will be called. React-only: the mobile App draws the same spec.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.action-card.agent-migrate",
+      "title": "Action card, move agent to another computer (prepared)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/actions/ActionCard",
+            "components/actions/ActionCardSpecCard"
+          ],
+          "path": "packages/web/visual-testing/ActionCardCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "agent:migrate (xxchan's approved v3 design, artifact pt_216ae970): an agent asks to be moved to another computer. The title names the agent, the suggested computer is a plain field, then the Reason and one Move agent button in the ink border (no pink). React-only: the mobile App draws the same spec.",
       "comparison": {
         "baseline": "react",
         "current": "android",
@@ -516,8 +755,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9690255855158285,
-        "pixelPerfectSimilarity": 0.9139428984215714,
+        "rgbSimilarity": 0.9690255731607067,
+        "pixelPerfectSimilarity": 0.9139425608619921,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.comment-anchor.side-by-side.png"
       }
     },
@@ -538,8 +777,8 @@
         "status": "basic-pass",
         "rawStatus": "different",
         "acceptance": "basic pass: pixel perfect 96.68% > 96%",
-        "rgbSimilarity": 0.9833121278140899,
-        "pixelPerfectSimilarity": 0.9667617260787993,
+        "rgbSimilarity": 0.9833223346290793,
+        "pixelPerfectSimilarity": 0.9668317698561602,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.forward-modal.side-by-side.png"
       }
     },
@@ -1152,8 +1391,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8257695306406059,
-        "pixelPerfectSimilarity": 0.6987092576865964,
+        "rgbSimilarity": 0.89593133789832,
+        "pixelPerfectSimilarity": 0.7669805370560745,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png"
       }
     },
@@ -1268,8 +1507,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.974824743037742,
-        "pixelPerfectSimilarity": 0.8082138372422732,
+        "rgbSimilarity": 0.9745184361804442,
+        "pixelPerfectSimilarity": 0.8179348780059681,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.default.side-by-side.png"
       }
     },
@@ -1327,8 +1566,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9678496638479999,
-        "pixelPerfectSimilarity": 0.7746698667314781,
+        "rgbSimilarity": 0.9688340030250671,
+        "pixelPerfectSimilarity": 0.8031241139061044,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.task.side-by-side.png"
       }
     },
@@ -1382,8 +1621,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9882165769260468,
-        "pixelPerfectSimilarity": 0.9520087755381873,
+        "rgbSimilarity": 0.9897653141661867,
+        "pixelPerfectSimilarity": 0.954233130703719,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.deleted-human.side-by-side.png"
       }
     },
@@ -1437,8 +1676,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9714663089505644,
-        "pixelPerfectSimilarity": 0.9192084902985377,
+        "rgbSimilarity": 0.9714662886528642,
+        "pixelPerfectSimilarity": 0.919208827858117,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.long-inline-code.side-by-side.png"
       }
     },
@@ -1492,8 +1731,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9083281609272688,
-        "pixelPerfectSimilarity": 0.8285388982469274,
+        "rgbSimilarity": 0.9083289628506889,
+        "pixelPerfectSimilarity": 0.8285378584648657,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-latest-release.side-by-side.png"
       }
     },
@@ -1877,8 +2116,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9792561097342816,
-        "pixelPerfectSimilarity": 0.9358666995287281,
+        "rgbSimilarity": 0.9792560648247501,
+        "pixelPerfectSimilarity": 0.9358674463937622,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.rich-content.side-by-side.png"
       }
     },
@@ -1980,8 +2219,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9699718881264845,
-        "pixelPerfectSimilarity": 0.8837262526835986,
+        "rgbSimilarity": 0.9639702389824779,
+        "pixelPerfectSimilarity": 0.8570772741388855,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-share.selection.side-by-side.png"
       }
     },
@@ -2275,9 +2514,9 @@
         "current": "android",
         "status": "basic-pass",
         "rawStatus": "different",
-        "acceptance": "basic pass: pixel perfect 97.01% > 96%",
-        "rgbSimilarity": 0.9872141390903566,
-        "pixelPerfectSimilarity": 0.9700676553746729,
+        "acceptance": "basic pass: pixel perfect 97.03% > 96%",
+        "rgbSimilarity": 0.9872867019065842,
+        "pixelPerfectSimilarity": 0.9703146128584725,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.form-field.states.side-by-side.png"
       }
     },
@@ -2856,6 +3095,142 @@
       }
     },
     {
+      "id": "components.members.agent-detail.status.runtime-error-code-manager",
+      "title": "Agent Profile Status: Runtime error by code, manager view",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "members",
+      "surface": "members",
+      "group": "members",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/agent/AgentDetailPanel",
+            "features/agent/AgentRuntimeErrorNotice",
+            "features/agent/AgentStatusBadge"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "#wg-rbac:#57. An agent in a usage_limit runtime error, seen by its manager (owner): the notice's headline is the code's sentence with the server-scrubbed detail under it, copy-info kept; the status chip reads the code's title. react-only: Android does not read the code yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.members.agent-detail.status.runtime-error-code-manager.dark",
+      "title": "Agent Profile Status: Runtime error by code, manager view (Dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "members",
+      "surface": "members",
+      "group": "members",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/agent/AgentDetailPanel",
+            "features/agent/AgentRuntimeErrorNotice",
+            "features/agent/AgentStatusBadge"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "#wg-rbac:#57. An agent in a usage_limit runtime error, seen by its manager (owner): the notice's headline is the code's sentence with the server-scrubbed detail under it, copy-info kept; the status chip reads the code's title. react-only: Android does not read the code yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.members.agent-detail.status.runtime-error-code-member",
+      "title": "Agent Profile Status: Runtime error by code, member view",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "members",
+      "surface": "members",
+      "group": "members",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/agent/AgentDetailPanel",
+            "features/agent/AgentRuntimeErrorNotice",
+            "features/agent/AgentStatusBadge"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "#wg-rbac:#57. An agent in a usage_limit runtime error, seen by a member who did not create it: the server sends no error text, so the notice reads the code's sentence and the status chip its title; no copy-info, no View logs. react-only: Android does not read the code yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.members.agent-detail.status.runtime-error-code-member.dark",
+      "title": "Agent Profile Status: Runtime error by code, member view (Dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "members",
+      "surface": "members",
+      "group": "members",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/agent/AgentDetailPanel",
+            "features/agent/AgentRuntimeErrorNotice",
+            "features/agent/AgentStatusBadge"
+          ],
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "#wg-rbac:#57. An agent in a usage_limit runtime error, seen by a member who did not create it: the server sends no error text, so the notice reads the code's sentence and the status chip its title; no copy-info, no View logs. react-only: Android does not read the code yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
       "id": "components.members.create-agent.builtin-provider-dialog",
       "title": "Members Create Agent Dialog - built-in provider",
       "captureType": "component-fixture",
@@ -2904,8 +3279,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9240257655477417,
-        "pixelPerfectSimilarity": 0.7850440852810521,
+        "rgbSimilarity": 0.9237362938677519,
+        "pixelPerfectSimilarity": 0.7836948596427269,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.claude-custom-provider-dialog.side-by-side.png"
       }
     },
@@ -2926,8 +3301,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9447538462597513,
-        "pixelPerfectSimilarity": 0.8700486760913301,
+        "rgbSimilarity": 0.9446716794043586,
+        "pixelPerfectSimilarity": 0.8698154224220574,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.claude-dialog.side-by-side.png"
       }
     },
@@ -2948,8 +3323,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9504320436085912,
-        "pixelPerfectSimilarity": 0.8746286844628077,
+        "rgbSimilarity": 0.9503498767531995,
+        "pixelPerfectSimilarity": 0.8743954307935351,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog-empty.side-by-side.png"
       }
     },
@@ -2970,8 +3345,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9424520548465524,
-        "pixelPerfectSimilarity": 0.8616073236926317,
+        "rgbSimilarity": 0.9423334394991756,
+        "pixelPerfectSimilarity": 0.8613366009100606,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog-error.side-by-side.png"
       }
     },
@@ -2992,8 +3367,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9581413395935166,
-        "pixelPerfectSimilarity": 0.874578388085497,
+        "rgbSimilarity": 0.9581413625387428,
+        "pixelPerfectSimilarity": 0.8745767002876008,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog-no-computer.side-by-side.png"
       }
     },
@@ -3046,8 +3421,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8433671841009733,
-        "pixelPerfectSimilarity": 0.761791448821333,
+        "rgbSimilarity": 0.9135862265837464,
+        "pixelPerfectSimilarity": 0.8190466758061797,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.computer-missing.side-by-side.png"
       }
     },
@@ -3068,8 +3443,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9172716722631675,
-        "pixelPerfectSimilarity": 0.8232632167591517,
+        "rgbSimilarity": 0.8543650741676736,
+        "pixelPerfectSimilarity": 0.7691557874012126,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.computer-offline.side-by-side.png"
       }
     },
@@ -3090,8 +3465,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.830538510448892,
-        "pixelPerfectSimilarity": 0.7511008998659774,
+        "rgbSimilarity": 0.8991990309668094,
+        "pixelPerfectSimilarity": 0.8119005189079859,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.daemon-only.side-by-side.png"
       }
     },
@@ -3112,8 +3487,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8539904181617295,
-        "pixelPerfectSimilarity": 0.7710306456295204,
+        "rgbSimilarity": 0.9357227404983481,
+        "pixelPerfectSimilarity": 0.8423503472055254,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.loading-state.side-by-side.png"
       }
     },
@@ -3134,8 +3509,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.820747764459365,
-        "pixelPerfectSimilarity": 0.7385146033641207,
+        "rgbSimilarity": 0.8894728650539669,
+        "pixelPerfectSimilarity": 0.797892449737992,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.long-machine-name.side-by-side.png"
       }
     },
@@ -3156,8 +3531,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.907503387690339,
-        "pixelPerfectSimilarity": 0.818986813078328,
+        "rgbSimilarity": 0.8864437480258817,
+        "pixelPerfectSimilarity": 0.7963832393845004,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.no-computer.side-by-side.png"
       }
     },
@@ -3178,8 +3553,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8434425553337161,
-        "pixelPerfectSimilarity": 0.7626462783348315,
+        "rgbSimilarity": 0.91299006112764,
+        "pixelPerfectSimilarity": 0.8256901920469614,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.no-membership.side-by-side.png"
       }
     },
@@ -3277,8 +3652,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9213085414658296,
-        "pixelPerfectSimilarity": 0.8903287258550416,
+        "rgbSimilarity": 0.9213095967510648,
+        "pixelPerfectSimilarity": 0.8903336483745841,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.as-task-selected.side-by-side.png"
       }
     },
@@ -3333,8 +3708,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9735914334598915,
-        "pixelPerfectSimilarity": 0.8019137833008447,
+        "rgbSimilarity": 0.9736094017420712,
+        "pixelPerfectSimilarity": 0.8020193713450292,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.channel-suggestions.side-by-side.png"
       }
     },
@@ -3553,8 +3928,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9624960541387487,
-        "pixelPerfectSimilarity": 0.7622503911340528,
+        "rgbSimilarity": 0.9588451173209833,
+        "pixelPerfectSimilarity": 0.7443026923816888,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.member-suggestions.side-by-side.png"
       }
     },
@@ -3665,8 +4040,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9225373728622646,
-        "pixelPerfectSimilarity": 0.8918276330557032,
+        "rgbSimilarity": 0.9225384281474998,
+        "pixelPerfectSimilarity": 0.8918325555752457,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.states.side-by-side.png"
       }
     },
@@ -3867,8 +4242,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9362867700561361,
-        "pixelPerfectSimilarity": 0.8831834568801393,
+        "rgbSimilarity": 0.9665586202435321,
+        "pixelPerfectSimilarity": 0.9214130919107223,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.channel.settings.panel.side-by-side.png"
       }
     },
@@ -3987,8 +4362,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9442083517447237,
-        "pixelPerfectSimilarity": 0.8904244474149687,
+        "rgbSimilarity": 0.9441905277164288,
+        "pixelPerfectSimilarity": 0.8905233523716936,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.create-channel.dialog.side-by-side.png"
       }
     },
@@ -4161,8 +4536,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9672037491087918,
-        "pixelPerfectSimilarity": 0.8560369155155885,
+        "rgbSimilarity": 0.9547669484252125,
+        "pixelPerfectSimilarity": 0.8235268899960843,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.channel-dropdown.side-by-side.png"
       }
     },
@@ -4222,8 +4597,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9263889328652288,
-        "pixelPerfectSimilarity": 0.7761472022341588,
+        "rgbSimilarity": 0.8085800338400538,
+        "pixelPerfectSimilarity": 0.5823001475175388,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.results.side-by-side.png"
       }
     },
@@ -4341,8 +4716,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8293275669244189,
-        "pixelPerfectSimilarity": 0.7493427097145865,
+        "rgbSimilarity": 0.8993767031430102,
+        "pixelPerfectSimilarity": 0.8121447644399417,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-detail.profile.side-by-side.png"
       }
     },
@@ -4402,8 +4777,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9449480264149016,
-        "pixelPerfectSimilarity": 0.8703403275678158,
+        "rgbSimilarity": 0.9448658595595089,
+        "pixelPerfectSimilarity": 0.8701070738985431,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog.side-by-side.png"
       }
     },
@@ -4510,12 +4885,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "different",
-        "rawStatus": "different",
+        "status": "missing",
+        "rawStatus": "missing",
         "acceptance": "",
-        "rgbSimilarity": 0.8218233872222827,
-        "pixelPerfectSimilarity": 0.7438739660785656,
-        "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.error-state.side-by-side.png"
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
       }
     },
     {
@@ -4568,12 +4943,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "different",
-        "rawStatus": "different",
+        "status": "missing",
+        "rawStatus": "missing",
         "acceptance": "",
-        "rgbSimilarity": 0.8176962997564832,
-        "pixelPerfectSimilarity": 0.7458919633692923,
-        "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.page.side-by-side.png"
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
       }
     },
     {
@@ -4973,8 +5348,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.7356399512707181,
-        "pixelPerfectSimilarity": 0.6385064180677341,
+        "rgbSimilarity": 0.771877282537516,
+        "pixelPerfectSimilarity": 0.6704094761394859,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.appearance.page.side-by-side.png"
       }
     },
@@ -5031,8 +5406,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8910211621539116,
-        "pixelPerfectSimilarity": 0.690374342537804,
+        "rgbSimilarity": 0.8633334831363619,
+        "pixelPerfectSimilarity": 0.6787733307765359,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.notifications.page.side-by-side.png"
       }
     },
@@ -5216,8 +5591,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9334358187569234,
-        "pixelPerfectSimilarity": 0.8763197752328187,
+        "rgbSimilarity": 0.8984973893489817,
+        "pixelPerfectSimilarity": 0.8272174148985744,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.tasks.panel.states.side-by-side.png"
       }
     },
@@ -5271,8 +5646,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9876806679753596,
-        "pixelPerfectSimilarity": 0.8673764182536112,
+        "rgbSimilarity": 0.9816225056524341,
+        "pixelPerfectSimilarity": 0.8180399360223921,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.tasks.status-menu.side-by-side.png"
       }
     },
@@ -5566,8 +5941,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9601259898368824,
-        "pixelPerfectSimilarity": 0.9331712780468271,
+        "rgbSimilarity": 0.9603290155395795,
+        "pixelPerfectSimilarity": 0.9338908285467583,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.channel-list.side-by-side.png"
       }
     },
@@ -5625,8 +6000,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9652862297868355,
-        "pixelPerfectSimilarity": 0.9258509466781795,
+        "rgbSimilarity": 0.9655841183774346,
+        "pixelPerfectSimilarity": 0.9265823854037617,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.channel-list.dark.side-by-side.png"
       }
     },
@@ -5720,8 +6095,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9840084604344498,
-        "pixelPerfectSimilarity": 0.9409625173843184,
+        "rgbSimilarity": 0.9793728103304364,
+        "pixelPerfectSimilarity": 0.8640634071913693,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.loading.side-by-side.png"
       }
     },
@@ -5818,8 +6193,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9190685279133092,
-        "pixelPerfectSimilarity": 0.8560384702658358,
+        "rgbSimilarity": 0.46240737584651637,
+        "pixelPerfectSimilarity": 0.29049447100294556,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.activity.side-by-side.png"
       }
     },
@@ -5934,8 +6309,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8291884755829109,
-        "pixelPerfectSimilarity": 0.7491528313724711,
+        "rgbSimilarity": 0.8991006759872632,
+        "pixelPerfectSimilarity": 0.811141736650162,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.side-by-side.png"
       }
     },
@@ -6108,8 +6483,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9668672881338882,
-        "pixelPerfectSimilarity": 0.9393881208397338,
+        "rgbSimilarity": 0.9668639402273145,
+        "pixelPerfectSimilarity": 0.9393812280909055,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.human.profile.side-by-side.png"
       }
     },

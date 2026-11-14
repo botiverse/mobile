@@ -1,0 +1,46 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.members.agent-detail.status.runtime-error-code-manager.dark",
+  "image": "visual-testing-results/react/components.members.agent-detail.status.runtime-error-code-manager.dark.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 1815,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.members.agent-detail.status.runtime-error-code-manager.dark']",
+  "crop": {
+    "mode": "element",
+    "contract": "page-viewport",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 1815
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 1815
+    },
+    "outset": null
+  },
+  "fullLength": {
+    "requested": true,
+    "baseViewportHeight": 844,
+    "expandedViewportHeight": 1815,
+    "initialOverflowPx": 971,
+    "residualOverflowPx": 0,
+    "iterations": 1,
+    "capped": false,
+    "maxHeight": 2700,
+    "scroller": "div"
+  },
+  "capturedAt": "2026-11-14T17:44:39.981Z"
+}

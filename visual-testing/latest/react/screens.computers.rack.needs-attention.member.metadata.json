@@ -1,0 +1,36 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "screens.computers.rack.needs-attention.member",
+  "image": "visual-testing-results/react/screens.computers.rack.needs-attention.member.png",
+  "viewport": {
+    "width": 1280,
+    "height": 800,
+    "density": 1
+  },
+  "captureViewport": {
+    "width": 1280,
+    "height": 800,
+    "density": 1
+  },
+  "selector": "[data-visual-case='screens.computers.rack.needs-attention.member']",
+  "crop": {
+    "mode": "element",
+    "contract": "viewport-with-portal",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 800
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 800
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "capturedAt": "2026-11-14T17:47:43.823Z"
+}

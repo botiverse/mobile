@@ -1,0 +1,36 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.action-card.agent-create",
+  "image": "visual-testing-results/react/components.action-card.agent-create.png",
+  "viewport": {
+    "width": 640,
+    "height": 360,
+    "density": 2
+  },
+  "captureViewport": {
+    "width": 640,
+    "height": 360,
+    "density": 2
+  },
+  "selector": "[data-visual-case='components.action-card.agent-create']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 245
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 245
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "capturedAt": "2026-11-14T17:47:20.304Z"
+}
