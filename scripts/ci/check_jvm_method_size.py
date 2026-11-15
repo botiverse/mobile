@@ -35,9 +35,12 @@ DEFAULT_MAX_BYTES = 50 * 1024
 
 # Ratchet: methods that were already over the budget when this gate was added. Each may not grow
 # past its size on that day (its ceiling); every other method must stay within the budget. Lower a
-# ceiling, or drop the entry, once its method is split. Keyed by "class.method" (no descriptor).
+# ceiling, or drop the entry, once its method is split. Keyed by the full "class.method(descriptor)"
+# that scan() reports, so a new overload with the same name keeps the normal budget.
 CEILINGS: dict[str, tuple[int, str]] = {
-    "build.raft.app.ThreadPageKt.SharedThreadRouteContentContent": (56360, "tracked by #proj-mobile:#123"),
+    "build.raft.app.ThreadPageKt.SharedThreadRouteContentContent"
+    "(Lbuild/raft/app/SharedThreadRouteContentData;Lbuild/raft/app/SharedThreadRouteContentCallbacks;"
+    "Landroidx/compose/runtime/Composer;I)V": (56360, "tracked by #proj-mobile:#123"),
 }
 
 
@@ -233,11 +236,11 @@ def check(
         print(f"Line profile of {largest[1]} written to {profile_out}")
     over = []
     for length, method, profile in sizes:
-        ceiling, note = ceilings.get(method.split("(")[0], (max_bytes, ""))
+        ceiling, note = ceilings.get(method, (max_bytes, ""))
         if length > max(ceiling, max_bytes):
             over.append((length, method, profile, ceiling, note))
         elif ceiling > max_bytes:
-            print(f"  ratchet: {method.split('(')[0]} {length}/{ceiling} bytes ({note})")
+            print(f"  ratchet: {method} {length}/{ceiling} bytes ({note})")
     if not over:
         return 0
     for length, method, profile, _, _ in over:
@@ -256,8 +259,8 @@ def check(
     return 1
 
 
-def _class_file(methods: list[tuple[str, int]]) -> bytes:
-    """A minimal class `T` whose methods have the given code lengths (self-test only)."""
+def _class_file(methods: list[tuple]) -> bytes:
+    """A minimal class `T` whose methods have the given code lengths and optional descriptors (self-test only)."""
     pool: list[bytes] = []
 
     def add(entry: bytes) -> int:
@@ -270,11 +273,12 @@ def _class_file(methods: list[tuple[str, int]]) -> bytes:
 
     this_class = add(b"\x07" + struct.pack(">H", utf8("T")))
     code = utf8("Code")
-    descriptor = utf8("()V")
     add(b"\x05" + struct.pack(">q", 1))  # a Long takes two slots
     pool.append(b"")
     method_bytes = b""
-    for name, length in methods:
+    for entry in methods:
+        name, length = entry[0], entry[1]
+        descriptor = utf8(entry[2] if len(entry) > 2 else "()V")
         code_attribute = struct.pack(">HHI", 1, 1, length) + b"\x00" * length + struct.pack(">HH", 0, 0)
         method_bytes += struct.pack(">HHHH", 0x9, utf8(name), descriptor, 1)
         method_bytes += struct.pack(">HI", code, len(code_attribute)) + code_attribute
@@ -305,9 +309,14 @@ def self_test() -> int:
         (root / "a" / "T.class").write_bytes(_class_file([("small", 10), ("big", 600)]))
         assert check([root], 1000, 5) == 0, "within budget"
         assert check([root], 500, 5) == 1, "over budget"
-        assert check([root], 500, 5, ceilings={"T.big": (600, "test")}) == 0, "at its ceiling"
-        assert check([root], 500, 5, ceilings={"T.big": (599, "test")}) == 1, "grew past its ceiling"
-        assert check([root], 5, 5, ceilings={"T.big": (600, "test")}) == 1, "others keep the budget"
+        assert check([root], 500, 5, ceilings={"T.big()V": (600, "test")}) == 0, "at its ceiling"
+        assert check([root], 500, 5, ceilings={"T.big()V": (599, "test")}) == 1, "grew past its ceiling"
+        assert check([root], 5, 5, ceilings={"T.big()V": (600, "test")}) == 1, "others keep the budget"
+        assert check([root], 500, 5, ceilings={"T.big": (600, "test")}) == 1, "a name without descriptor ratchets nothing"
+        # A new overload with the same name must not inherit the ratcheted method's ceiling.
+        (root / "a" / "T.class").write_bytes(_class_file([("big", 100), ("big", 520, "(I)V")]))
+        assert check([root], 500, 5, ceilings={"T.big()V": (600, "test")}) == 1, "same-name overload keeps the budget"
+        assert check([root], 500, 5, ceilings={"T.big(I)V": (600, "test")}) == 0, "ceiling binds its own descriptor"
     print("check_jvm_method_size self-test passed")
     return 0
 
