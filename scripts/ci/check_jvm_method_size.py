@@ -8,6 +8,8 @@ release day. Nothing showed how close the method was, so the next addition
 would have failed the same way. This gate reads the class files the Android
 compile has just written and fails while there is still room to split the
 method calmly: at --max-bytes (default 50 KiB), well below the hard limit.
+Methods that were already over the budget when the gate was added are held at
+their size that day (CEILINGS, a ratchet) until they are split.
 
 It reads each method's `Code` attribute `code_length` straight from the class
 file (JVMS 4.7.3), so it needs no JDK. It prints the largest methods on every
@@ -30,6 +32,13 @@ from pathlib import Path
 
 JVM_METHOD_LIMIT = 65535
 DEFAULT_MAX_BYTES = 50 * 1024
+
+# Ratchet: methods that were already over the budget when this gate was added. Each may not grow
+# past its size on that day (its ceiling); every other method must stay within the budget. Lower a
+# ceiling, or drop the entry, once its method is split. Keyed by "class.method" (no descriptor).
+CEILINGS: dict[str, tuple[int, str]] = {
+    "build.raft.app.ThreadPageKt.SharedThreadRouteContentContent": (56360, "tracked by #proj-mobile:#123"),
+}
 
 
 class ClassFormatError(Exception):
@@ -196,7 +205,13 @@ def scan(roots: list[Path]) -> list[tuple[int, str, list[tuple[int, int]]]]:
     return sizes
 
 
-def check(roots: list[Path], max_bytes: int, top: int, profile_out: Path | None = None) -> int:
+def check(
+    roots: list[Path],
+    max_bytes: int,
+    top: int,
+    profile_out: Path | None = None,
+    ceilings: dict[str, tuple[int, str]] = CEILINGS,
+) -> int:
     missing = [str(root) for root in roots if not root.is_dir()]
     if missing:
         print(f"check_jvm_method_size: class directory not found: {', '.join(missing)}", file=sys.stderr)
@@ -216,17 +231,24 @@ def check(roots: list[Path], max_bytes: int, top: int, profile_out: Path | None 
         largest = sizes[0]
         profile_out.write_text("".join(f"{line}\t{size}\n" for line, size in largest[2]))
         print(f"Line profile of {largest[1]} written to {profile_out}")
-    over = [(length, method, profile) for length, method, profile in sizes if length > max_bytes]
+    over = []
+    for length, method, profile in sizes:
+        ceiling, note = ceilings.get(method.split("(")[0], (max_bytes, ""))
+        if length > max(ceiling, max_bytes):
+            over.append((length, method, profile, ceiling, note))
+        elif ceiling > max_bytes:
+            print(f"  ratchet: {method.split('(')[0]} {length}/{ceiling} bytes ({note})")
     if not over:
         return 0
-    for length, method, profile in over:
+    for length, method, profile, _, _ in over:
         print(f"\n{method}: source lines with the most bytecode (inlined code counted where it is inlined):")
         for line, size in sorted(profile, key=lambda item: -item[1])[:15]:
             print(f"  line {line:6d}  {size:5d} bytes")
     print(file=sys.stderr)
-    for length, method, _ in over:
+    for length, method, _, ceiling, note in over:
+        limit = f"its ceiling of {ceiling} bytes ({note})" if ceiling > max_bytes else f"the {max_bytes}-byte budget"
         print(
-            f"::error::{method} is {length} bytes of bytecode, over the {max_bytes}-byte budget "
+            f"::error::{method} is {length} bytes of bytecode, over {limit} "
             f"(the JVM refuses methods over {JVM_METHOD_LIMIT}: 'Method too large'). Move cohesive "
             "blocks of it into separate functions before it stops compiling.",
             file=sys.stderr,
@@ -283,6 +305,9 @@ def self_test() -> int:
         (root / "a" / "T.class").write_bytes(_class_file([("small", 10), ("big", 600)]))
         assert check([root], 1000, 5) == 0, "within budget"
         assert check([root], 500, 5) == 1, "over budget"
+        assert check([root], 500, 5, ceilings={"T.big": (600, "test")}) == 0, "at its ceiling"
+        assert check([root], 500, 5, ceilings={"T.big": (599, "test")}) == 1, "grew past its ceiling"
+        assert check([root], 5, 5, ceilings={"T.big": (600, "test")}) == 1, "others keep the budget"
     print("check_jvm_method_size self-test passed")
     return 0
 
