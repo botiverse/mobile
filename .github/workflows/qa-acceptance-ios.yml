@@ -89,8 +89,7 @@ permissions:
 env:
   # login smoke (iOS first-run PoC): mirrors the Android case-01 path.
   DEFAULT_GOAL: >-
-    Log into the app with the provided test account: if a login/welcome screen shows,
-    enter the email and password and submit. If a server picker appears choose 'OranixSlockTest'.
+    The app starts signed in. If a server picker appears choose 'OranixSlockTest'.
     If 'OranixSlockTest' is not present, fail and report it; never
     substitute the closest-looking name.
     Declare pass once the home channel list is visible with at least one channel row,
@@ -605,8 +604,8 @@ jobs:
         env:
           PI_API_KEY: ${{ secrets.PI_API_KEY }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
-          QA_TEST_EMAIL: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_EMAIL || '' }}
-          QA_TEST_PASSWORD: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_PASSWORD || '' }}
+          # No QA credentials (#222): iOS has no safe way to type a secret, so a password-login run ends UNKNOWN.
+          QA_PASSWORD_LOGIN: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && 'true' || 'false' }}
           QA_GOAL: ${{ inputs.goal || '' }}
           QA_MAX_TURNS: ${{ inputs.max_turns || '40' }}
           QA_MAX_MINUTES: ${{ inputs.max_minutes || '20' }}
@@ -622,6 +621,7 @@ jobs:
           date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
           export MINIMAX_API_KEY="$PI_API_KEY"
           set +e
+          node scripts/qa/login_phase.mjs login --platform ios --password-login "$QA_PASSWORD_LOGIN" --out qa-evidence || { echo 2 > qa-evidence/agent-rc.txt; exit 0; }
           node scripts/qa/acceptance_agent.mjs \
             --platform ios --ios-udid "$UDID" --package "$BUNDLE_ID" \
             --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --max-minutes "$QA_MAX_MINUTES" --no-progress-turns "$QA_NO_PROGRESS_TURNS" --out qa-evidence
@@ -644,6 +644,7 @@ jobs:
         if: ${{ inputs.mode == 'tabpager-probe' }}
         run: |
           mkdir -p qa-evidence
+          node scripts/qa/login_phase.mjs login --platform ios --password-login false --out qa-evidence
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
           date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
           node --check scripts/qa/ios_tabpager_probe.mjs
@@ -668,11 +669,10 @@ jobs:
 
       - name: Run deterministic repro
         if: ${{ inputs.mode == 'deterministic' }}
-        env:
-          QA_TEST_EMAIL: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_EMAIL || '' }}
-          QA_TEST_PASSWORD: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_PASSWORD || '' }}
+        # Never signs in, so no QA credentials (#222).
         run: |
           mkdir -p qa-evidence
+          node scripts/qa/login_phase.mjs login --platform ios --password-login false --out qa-evidence
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
           echo $(( $(date +%s) * 1000 )) > qa-evidence/perf-started.txt
           date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
@@ -694,6 +694,7 @@ jobs:
         if: ${{ inputs.mode == 'bootstrap-smoke' }}
         run: |
           mkdir -p qa-evidence/bootstrap-smoke
+          node scripts/qa/login_phase.mjs login --platform ios --password-login false --out qa-evidence
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
           echo $(( $(date +%s) * 1000 )) > qa-evidence/perf-started.txt
           date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
@@ -706,6 +707,8 @@ jobs:
       - name: Collect harness log + system log + crashes + xcresult
         if: always()
         run: |
+          # No logs from a run whose login record is not OK (#222): they could cover a login window.
+          node scripts/qa/login_phase.mjs check --out qa-evidence || exit 0
           cp xcodebuild-loop.log qa-evidence/xcodebuild-loop.log 2>/dev/null || true
           tail -50 xcodebuild-loop.log 2>/dev/null || true
           # iOS evidence parity with Android (logcat + activity-top) — collected
@@ -828,6 +831,12 @@ jobs:
       # delete step succeeded (steps.delete_simulator.outcome) AND qa-evidence/simulator-cleanup.json
       # says simulator_deleted for this run id/attempt and this job's ownership receipt UDID/name;
       # otherwise it uploads evidence but sends only a harness workflow error, never pass/fail.
+      # Both exits of qa-evidence (Stamp report, artifact) go through secure_evidence.mjs.
+      - name: Secure evidence gate
+        id: evidence-gate
+        if: always()
+        run: node scripts/qa/secure_evidence.mjs --dir qa-evidence
+
       - name: Report to Stamp
         if: always()
         env:
@@ -841,7 +850,7 @@ jobs:
         run: bash scripts/qa/stamp_report.sh report qa-evidence
 
       - name: Upload evidence
-        if: always()
+        if: ${{ always() && steps.evidence-gate.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: qa-acceptance-ios-evidence

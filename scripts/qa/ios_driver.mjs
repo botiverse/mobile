@@ -7,10 +7,17 @@
 //
 // `--driver qa-loop` / IOS_QA_DRIVER=qa-loop keeps the QaAcceptanceLoopTests
 // file protocol. Product-log verdicts stay outside this module.
+//
+// Login window (#222, login_phase.mjs): iOS has no safe way to type a secret, so text()
+// refuses one, and no iOS run signs in. Every screenshot and every UI tree for the model
+// is preceded by a probe of the accessibility tree (no capture): a login-like or unreadable
+// screen latches the run's login record UNKNOWN and nothing more is captured. Screen
+// geometry is read only after that first probe.
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { LoginWindowError, loginLike, markUnknown, refuseSecret } from "./login_phase.mjs";
 
 export const DRIVER_AGENT_DEVICE = "agent-device";
 export const DRIVER_QA_LOOP = "qa-loop";
@@ -86,6 +93,7 @@ export function snapshotToDescribeNodes(rawNodes) {
       value: node.value || "",
       frame,
       focused: node.focused === true,
+      role: node.role || node.type || "",
       editable: isEditableNode(node),
       clickable: isClickableNode(node),
       ref: node.ref,
@@ -204,6 +212,7 @@ export function createIosDriver({
   binary,
   fixturePage = process.env.QA_LOOP_FIXTURE_PAGE || "",
   fixturePageData = process.env.QA_LOOP_FIXTURE_PAGE_DATA || "",
+  recordDir = "",
 } = {}) {
   if (!ioDir) throw new Error("createIosDriver requires ioDir");
   fs.mkdirSync(ioDir, { recursive: true });
@@ -211,18 +220,33 @@ export function createIosDriver({
   const simctl = (args, extra = {}) =>
     execFileSync("xcrun", ["simctl", ...args], { maxBuffer: 64 * 1024 * 1024, timeout: 60000, ...extra });
 
-  if (resolved === DRIVER_QA_LOOP) {
-    return createQaLoopDriver({ ioDir, udid, bundle, simctl });
+  const inner = resolved === DRIVER_QA_LOOP
+    ? createQaLoopDriver({ ioDir, udid, bundle, simctl })
+    : createAgentDeviceDriver({ ioDir, udid, bundle, binary: resolveAgentDeviceBinary(binary), fixturePage, fixturePageData, simctl });
+  return guardLoginWindow(inner, recordDir);
+}
+
+export function guardLoginWindow(inner, recordDir, { attempts = 3, retryMs = 1000 } = {}) {
+  let latched = null;
+  async function probe() {
+    if (latched) throw latched;
+    let nodes = [];
+    for (let i = 0; i < attempts && !nodes.length; i++) {
+      try { nodes = (await inner.probeNodes()) || []; } catch { nodes = []; }
+      if (!nodes.length && i + 1 < attempts) await new Promise((r) => setTimeout(r, retryMs));
+    }
+    const reason = !nodes.length ? "login probe could not read the screen" : loginLike(nodes) ? "login-like surface on screen" : null;
+    if (!reason) return;
+    if (recordDir) markUnknown(recordDir, reason);
+    throw (latched = new LoginWindowError(reason));
   }
-  return createAgentDeviceDriver({
-    ioDir,
-    udid,
-    bundle,
-    binary: resolveAgentDeviceBinary(binary),
-    fixturePage,
-    fixturePageData,
-    simctl,
-  });
+  return {
+    ...inner,
+    async waitReady(...args) { await inner.waitReady(...args); await probe(); inner.readGeometry(); },
+    async screenshotPng() { await probe(); return inner.screenshotPng(); },
+    async dumpUi() { await probe(); return inner.dumpUi(); },
+    async text(value) { refuseSecret(value); return inner.text(value); },
+  };
 }
 
 function createQaLoopDriver({ ioDir, udid, bundle, simctl }) {
@@ -257,7 +281,7 @@ function createQaLoopDriver({ ioDir, udid, bundle, simctl }) {
   }
 
   function screenSizePx() {
-    if (!sizePx) screenshotPng();
+    if (!sizePx) throw new Error("iOS screen geometry is read only after the login probe (waitReady)");
     return sizePx;
   }
 
@@ -282,6 +306,8 @@ function createQaLoopDriver({ ioDir, udid, bundle, simctl }) {
       }
       throw new Error("ios harness never became ready (no ready.json)");
     },
+    probeNodes: () => send({ type: "describe" }),
+    readGeometry: () => screenshotPng(),
     screenSize: () => screenSizePx(),
     screenSizePt: () => (pointScale ? { w: screenSizePx().w / pointScale, h: screenSizePx().h / pointScale, scale: pointScale } : null),
     screenshotPng,
@@ -390,14 +416,16 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
   }
 
   function screenSizePx() {
-    if (!sizePx) screenshotPng();
+    if (!sizePx) throw new Error("iOS screen geometry is read only after the login probe (waitReady)");
     return sizePx;
   }
 
+  function rawNodes() {
+    return snapshotToDescribeNodes(unwrapSnapshotPayload(parseJsonStdout(runAd(["snapshot", "-i", "--json"]))).nodes);
+  }
+
   function describeNodes() {
-    const stdout = runAd(["snapshot", "-i", "--json"]);
-    const payload = unwrapSnapshotPayload(parseJsonStdout(stdout));
-    const nodes = snapshotToDescribeNodes(payload.nodes);
+    const nodes = rawNodes();
     const rootW = Math.max(1, ...nodes.map((n) => n.frame?.[2] || 0));
     pointScale = screenSizePx().w / rootW;
     return nodes;
@@ -433,8 +461,9 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
         runAd(["open", bundle], { timeout: 180000 });
       }
       opened = true;
-      describeNodes();
     },
+    probeNodes: rawNodes,
+    readGeometry() { screenshotPng(); describeNodes(); },
     screenSize: () => screenSizePx(),
     screenSizePt: () => (pointScale ? { w: screenSizePx().w / pointScale, h: screenSizePx().h / pointScale, scale: pointScale } : null),
     screenshotPng,
