@@ -1724,6 +1724,13 @@ data class SettingsComputerSnapshot(
     val creatorUserId: String? = null,
     /** The current user attached the Computer backing this machine (web counts this as manage authority). */
     val attachedByCurrentUser: Boolean = false,
+    /**
+     * Server `controlledByCurrentUser` (slock #15002): the current user is the machine's controller as
+     * the server's routes decide it, which still holds after its Computer's key is revoked. Null from
+     * older servers, which [settingsComputerPermissions] then judges by [creatorUserId] and
+     * [attachedByCurrentUser] as before.
+     */
+    val controlledByCurrentUser: Boolean? = null,
     /** Active agents assigned to this machine (server `agentCount`). */
     val agentCount: Int = 0,
     /**

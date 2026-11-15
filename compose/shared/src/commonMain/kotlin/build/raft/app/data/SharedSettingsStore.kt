@@ -4415,6 +4415,13 @@ internal fun settingsComputerOwnerPermissions(
  * the machine creator (`machines.userId`) or a role holding `editMachines` (PATCH) /
  * `removeMachines` (DELETE). Per packages/shared/src/serverPermissions.ts only owner and admin hold
  * those capabilities. Like the web detail panel, attaching the backing Computer also counts.
+ *
+ * Since slock #15002 the server's gate is the machine's controller (`computerControllerUserId`), and
+ * the machine list says whether that is the viewer (`controlledByCurrentUser`): it stays with the
+ * person who attached the Computer after its key is revoked. When the server sends it, the viewer
+ * owns the machine as web `isMachineController` decides (that flag, the Computer's attacher, or its
+ * `creator`), never by `machines.userId`, which an adoption leaves pointing at the previous owner.
+ * Older servers leave it out and keep the rule above.
  */
 internal fun settingsComputerPermissions(
     serverRole: String?,
@@ -4424,8 +4431,14 @@ internal fun settingsComputerPermissions(
     val role = serverRole?.trim()
     val roleGrantsMachineCapabilities = role == "owner" || role == "admin"
     val userId = currentUserId?.trim()?.takeIf { it.isNotBlank() }
-    val isCreator = userId != null && computer.creatorUserId?.trim() == userId
-    val ownsMachine = isCreator || computer.attachedByCurrentUser
+    val ownsMachine =
+        when (computer.controlledByCurrentUser) {
+            null -> (userId != null && computer.creatorUserId?.trim() == userId) || computer.attachedByCurrentUser
+            else ->
+                computer.controlledByCurrentUser ||
+                    computer.attachedByCurrentUser ||
+                    (userId != null && computer.creator?.id?.trim() == userId)
+        }
     return SettingsComputerPermissions(
         canEdit = roleGrantsMachineCapabilities || ownsMachine,
         canRemove = roleGrantsMachineCapabilities || ownsMachine
