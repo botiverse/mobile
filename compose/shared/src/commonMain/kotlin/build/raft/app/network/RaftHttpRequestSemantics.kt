@@ -83,9 +83,28 @@ internal fun withRaftClientPlatform(
     return headers + (RAFT_CLIENT_PLATFORM_HEADER to value)
 }
 
+internal const val RAFT_CLIENT_VERSION_HEADER = "X-Raft-Client-Version"
+
+/**
+ * Raft API requests name the app version they come from: the version name alone (`1.26.0`, the
+ * Android `versionName` / iOS `CFBundleShortVersionString`, no build number). botiverse/slock reads it
+ * for the signed-in devices list (`GET /api/me/sessions`, `services/sessionClient.ts`): the sign-in and
+ * every refresh stamp it on the session, and the server's own fallback (the `Raft/<version>+<build>`
+ * User-Agent) keeps the version name only, so this sends the same value. No version installed, no
+ * header. A caller's own value wins.
+ */
+internal fun withRaftClientVersion(
+    headers: Map<String, String>,
+    version: () -> String? = { RaftAppIdentityRegistry.current()?.version },
+): Map<String, String> {
+    if (headers.keys.any { it.equals(RAFT_CLIENT_VERSION_HEADER, ignoreCase = true) }) return headers
+    val value = runCatching(version).getOrNull()?.trim()?.takeIf { it.isNotEmpty() } ?: return headers
+    return headers + (RAFT_CLIENT_VERSION_HEADER to value)
+}
+
 /** The app-identity headers every Raft API request ([execute] and multipart) carries. */
 internal fun withRaftApiClientHeaders(headers: Map<String, String>): Map<String, String> =
-    withRaftClientPlatform(withRaftNetworkUserAgent(headers))
+    withRaftClientVersion(withRaftClientPlatform(withRaftNetworkUserAgent(headers)))
 private const val RAFT_TRACEPARENT_HEADER = "traceparent"
 
 internal fun raftTraceHeaders(

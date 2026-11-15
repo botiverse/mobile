@@ -57,4 +57,15 @@ class RaftNetworkUserAgentTest {
         val own = mapOf("x-raft-client-platform" to "custom")
         assertSame(own, withRaftClientPlatform(own) { "android" })
     }
+
+    @Test
+    fun apiRequestsCarryTheVersionNameUnlessTheCallerSetOne() {
+        val headers = mapOf("X-Server-Id" to "srv")
+        assertEquals(headers + ("X-Raft-Client-Version" to "1.26.0"), withRaftClientVersion(headers) { " 1.26.0 " })
+        val own = mapOf("x-raft-client-version" to "9.9.9")
+        assertSame(own, withRaftClientVersion(own) { "1.26.0" })
+        assertSame(headers, withRaftClientVersion(headers) { null }, "no identity installed: no header")
+        assertSame(headers, withRaftClientVersion(headers) { "" })
+        assertSame(headers, withRaftClientVersion(headers) { error("no identity") })
+    }
 }

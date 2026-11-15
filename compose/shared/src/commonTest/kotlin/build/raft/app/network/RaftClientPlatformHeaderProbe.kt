@@ -7,15 +7,32 @@ import io.ktor.client.request.HttpRequestData
 import io.ktor.http.HttpStatusCode
 
 /**
- * Sends one plain and one multipart API request through the production [KtorRaftHttpExecutor]
- * (engine stubbed with MockEngine) and reports the `X-Raft-Client-Platform` value each carried. The
- * platform tests assert `android` / `ios`.
+ * Sends sign-in, refresh, plain and multipart API requests through the production [KtorRaftHttpExecutor]
+ * (engine stubbed with MockEngine) with an app identity installed, and reports the
+ * `X-Raft-Client-Platform` / `X-Raft-Client-Version` values each carried. The platform tests assert
+ * `android` / `ios` and the version name.
  */
 internal object RaftClientPlatformHeaderProbe {
     private const val BASE_URL = "https://api.test/api"
 
-    /** Request path (relative to the API base) → the header value it carried, or null. */
-    suspend fun clientPlatformByPath(): Map<String, String?> {
+    /** The version name of the identity the probe installs; the header carries it without the build number. */
+    const val VERSION_NAME: String = "1.26.0"
+
+    data class ClientHeaders(val platform: String?, val version: String?)
+
+    /** Request path (relative to the API base) → the client headers it carried (null where absent). */
+    suspend fun clientHeadersByPath(): Map<String, ClientHeaders> {
+        RaftAppIdentityRegistry.install(
+            RaftAppIdentity(name = "Raft", version = VERSION_NAME, buildNumber = "12600001", buildType = "release")
+        )
+        try {
+            return sendRequests()
+        } finally {
+            RaftAppIdentityRegistry.resetForTest()
+        }
+    }
+
+    private suspend fun sendRequests(): Map<String, ClientHeaders> {
         val sent = mutableListOf<HttpRequestData>()
         val client =
             HttpClient(
@@ -32,14 +49,16 @@ internal object RaftClientPlatformHeaderProbe {
                 engineLabel = "ktor_probe",
                 uploadProgress = BodyWriterUploadProgressTracker,
             )
-        executor.execute(
-            priority = RaftRequestPriority.Foreground,
-            url = "$BASE_URL/auth/register",
-            method = "POST",
-            headers = emptyMap(),
-            bodyText = "{}",
-            jsonBody = true,
-        )
+        for (path in listOf("auth/register", "auth/login", "auth/refresh")) {
+            executor.execute(
+                priority = RaftRequestPriority.Foreground,
+                url = "$BASE_URL/$path",
+                method = "POST",
+                headers = emptyMap(),
+                bodyText = "{}",
+                jsonBody = true,
+            )
+        }
         executor.executeMultipart(
             priority = RaftRequestPriority.Foreground,
             url = "$BASE_URL/attachments/upload",
@@ -48,9 +67,13 @@ internal object RaftClientPlatformHeaderProbe {
             headers = emptyMap(),
         )
         return sent.associate { request ->
-            request.url.toString().removePrefix("$BASE_URL/") to request.headers[RAFT_CLIENT_PLATFORM_HEADER]
+            request.url.toString().removePrefix("$BASE_URL/") to
+                ClientHeaders(
+                    platform = request.headers[RAFT_CLIENT_PLATFORM_HEADER],
+                    version = request.headers[RAFT_CLIENT_VERSION_HEADER],
+                )
         }
     }
 
-    val expectedPaths: Set<String> = setOf("auth/register", "attachments/upload")
+    val expectedPaths: Set<String> = setOf("auth/register", "auth/login", "auth/refresh", "attachments/upload")
 }
