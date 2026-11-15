@@ -3,7 +3,6 @@ package build.raft.app.core.data.diagnostics
 import android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_CACHED
 import android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
 import android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE
-import android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_PERCEPTIBLE
 import android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_SERVICE
 import android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
 import android.app.ApplicationExitInfo
@@ -26,14 +25,10 @@ class AndroidSystemKillReportSampleAgeTest {
     @Test
     fun aStaleForegroundSnapshotAtImportanceServiceIsUploadedAsBackground() {
         // Hands 4a5504d3: foreground set 600 s, last sample 570 s, trim ui_hidden 1241 s before an
-        // exit the system recorded at importance 300.
+        // exit the system recorded at importance 300 (built before interactions were recorded).
         val telemetry = stale4a5504d3()
         val exit = exit(importance = IMPORTANCE_SERVICE)
 
-        assertEquals(
-            SystemKillDecision.ReportBackground,
-            classifySystemKill(exit.reasonCode, exit.importance, telemetry, exitAt),
-        )
         val item = plan(exit, telemetry)
         assertEquals(SystemKillDecision.ReportBackground, item.decision)
         assertEquals(SystemKillAction.Submit, item.action)
@@ -46,26 +41,109 @@ class AndroidSystemKillReportSampleAgeTest {
                 "last trim ui_hidden (1241s before exit, before the move to foreground)",
             systemKillMessage(exit, telemetry),
         )
-        // Existing metadata keeps its names and meanings; the evidence fields are new.
+        // The raw fields are sent unchanged.
         val extras = systemKillExtras(exit, telemetry)
-        assertEquals(false, extras["crash_foreground"])
-        assertEquals(true, extras["crash_telemetry_foreground"])
         assertEquals(300, extras["crash_exit_importance"])
+        assertEquals(false, extras["crash_foreground"])
+        assertEquals("ui_hidden", extras["crash_trim"])
+        assertEquals(true, extras["crash_telemetry_foreground"])
         assertEquals(570_000L, extras["crash_memory_sample_age_ms"])
         assertEquals(1_241_000L, extras["crash_trim_age_ms"])
-        assertEquals("none", extras["recent_foreground_evidence"])
-        assertFalse(extras.containsKey("recent_foreground_age_s"))
+        // A stale sample and no interaction recorded: unknown, not "no".
+        assertRecentForeground(extras, expected = null, source = "unknown", ageSeconds = null)
     }
 
     @Test
-    fun aBackgroundKillIsUploadedWithCrashForegroundFalse() {
-        for (importance in listOf(IMPORTANCE_FOREGROUND_SERVICE, IMPORTANCE_PERCEPTIBLE, IMPORTANCE_SERVICE, IMPORTANCE_CACHED)) {
+    fun everySystemKillIsUploadedWithItsRawImportanceAndTheEvidenceFields() {
+        val importances =
+            listOf(IMPORTANCE_FOREGROUND, IMPORTANCE_VISIBLE, IMPORTANCE_FOREGROUND_SERVICE, IMPORTANCE_SERVICE, IMPORTANCE_CACHED)
+        for (importance in importances) {
+            val visible = importance == IMPORTANCE_FOREGROUND || importance == IMPORTANCE_VISIBLE
             val exit = exit(importance = importance)
-            val item = plan(exit, stale4a5504d3())
-            assertEquals("importance $importance", SystemKillAction.Submit, item.action)
-            assertEquals("importance $importance", SystemKillDecision.ReportBackground, item.decision)
-            assertEquals("importance $importance", false, systemKillExtras(exit, item.telemetry)["crash_foreground"])
+
+            // With recent foreground: an interaction 1 s before, the sample 570 s.
+            val recent = snapshot(sampleAgeMillis = 570_000L, interactionAgeMillis = 1_000L)
+            val recentItem = plan(exit, recent)
+            assertEquals("$importance recent", SystemKillAction.Submit, recentItem.action)
+            assertEquals("$importance recent", SystemKillDecision.Report, recentItem.decision)
+            val recentExtras = systemKillExtras(exit, recent)
+            assertEquals(importance, recentExtras["crash_exit_importance"])
+            assertEquals(visible, recentExtras["crash_foreground"])
+            assertRecentForeground(recentExtras, expected = true, source = "interaction", ageSeconds = 1L)
+
+            // Without: both known and old.
+            val old = snapshot(sampleAgeMillis = 570_000L, interactionAgeMillis = 600_000L)
+            val oldItem = plan(exit, old)
+            assertEquals("$importance old", SystemKillAction.Submit, oldItem.action)
+            assertEquals(
+                "$importance old",
+                if (visible) SystemKillDecision.Report else SystemKillDecision.ReportBackground,
+                oldItem.decision,
+            )
+            val oldExtras = systemKillExtras(exit, old)
+            assertEquals(importance, oldExtras["crash_exit_importance"])
+            assertEquals(visible, oldExtras["crash_foreground"])
+            assertRecentForeground(oldExtras, expected = false, source = "none", ageSeconds = null)
+
+            // No snapshot at all.
+            val noneItem = plan(exit, null)
+            assertEquals("$importance none", SystemKillAction.Submit, noneItem.action)
+            val noneExtras = systemKillExtras(exit, null)
+            assertEquals(importance, noneExtras["crash_exit_importance"])
+            assertEquals(visible, noneExtras["crash_foreground"])
+            assertRecentForeground(noneExtras, expected = null, source = "unknown", ageSeconds = null)
         }
+    }
+
+    @Test
+    fun recentForegroundIsTrueWhenEitherSourceIsFreshEvenIfTheOtherIsMissing() {
+        val exit = exit(importance = IMPORTANCE_CACHED)
+        assertRecentForeground(
+            systemKillExtras(exit, snapshot(sampleAgeMillis = 5_000L, interactionAgeMillis = null)),
+            expected = true, source = "sample", ageSeconds = 5L,
+        )
+        assertRecentForeground(
+            systemKillExtras(exit, snapshot(sampleAgeMillis = null, interactionAgeMillis = 2_000L)),
+            expected = true, source = "interaction", ageSeconds = 2L,
+        )
+        // Both fresh: the interaction.
+        assertRecentForeground(
+            systemKillExtras(exit, snapshot(sampleAgeMillis = 1_000L, interactionAgeMillis = 30_000L)),
+            expected = true, source = "interaction", ageSeconds = 30L,
+        )
+        // Fresh sample, interaction after the exit (invalid): still true from the sample.
+        assertRecentForeground(
+            systemKillExtras(exit, snapshot(sampleAgeMillis = 5_000L, interactionAgeMillis = -1_000L)),
+            expected = true, source = "sample", ageSeconds = 5L,
+        )
+    }
+
+    @Test
+    fun recentForegroundIsFalseOnlyWhenBothSourcesAreKnownAndOld() {
+        val exit = exit(importance = IMPORTANCE_CACHED)
+        assertRecentForeground(
+            systemKillExtras(exit, snapshot(sampleAgeMillis = 61_000L, interactionAgeMillis = 600_000L)),
+            expected = false, source = "none", ageSeconds = null,
+        )
+        // One stale, one missing.
+        assertRecentForeground(
+            systemKillExtras(exit, snapshot(sampleAgeMillis = 570_000L, interactionAgeMillis = null)),
+            expected = null, source = "unknown", ageSeconds = null,
+        )
+        assertRecentForeground(
+            systemKillExtras(exit, snapshot(sampleAgeMillis = null, interactionAgeMillis = 600_000L)),
+            expected = null, source = "unknown", ageSeconds = null,
+        )
+        // One stale, one after the exit (a clock change: invalid).
+        assertRecentForeground(
+            systemKillExtras(exit, snapshot(sampleAgeMillis = 570_000L, interactionAgeMillis = -1_000L)),
+            expected = null, source = "unknown", ageSeconds = null,
+        )
+        // Both missing.
+        assertRecentForeground(
+            systemKillExtras(exit, snapshot(sampleAgeMillis = null, interactionAgeMillis = null)),
+            expected = null, source = "unknown", ageSeconds = null,
+        )
     }
 
     @Test
@@ -78,7 +156,6 @@ class AndroidSystemKillReportSampleAgeTest {
         val item = plan(exit, telemetry)
         assertEquals(SystemKillDecision.Report, item.decision)
         assertEquals(SystemKillAction.Submit, item.action)
-        assertEquals(ForegroundEvidence(ForegroundEvidence.Kind.Interaction, 1_000L), recentForegroundEvidence(telemetry, exitAt))
 
         val message = systemKillMessage(exit, telemetry)
         assertTrue(
@@ -90,11 +167,10 @@ class AndroidSystemKillReportSampleAgeTest {
         )
         assertFalse(message, message.contains("not trusted"))
         val extras = systemKillExtras(exit, telemetry)
-        assertEquals("interaction", extras["recent_foreground_evidence"])
-        assertEquals(1L, extras["recent_foreground_age_s"])
+        assertRecentForeground(extras, expected = true, source = "interaction", ageSeconds = 1L)
         assertEquals(1_000L, extras["crash_last_interaction_age_ms"])
-        assertEquals(false, extras["crash_foreground"])
         assertEquals(400, extras["crash_exit_importance"])
+        assertEquals(false, extras["crash_foreground"])
     }
 
     @Test
@@ -108,7 +184,7 @@ class AndroidSystemKillReportSampleAgeTest {
         val message = systemKillMessage(exit, telemetry)
         assertTrue(message, message.contains("last interaction 600s before exit"))
         assertTrue(message, message.contains("not trusted"))
-        assertEquals("none", systemKillExtras(exit, telemetry)["recent_foreground_evidence"])
+        assertRecentForeground(systemKillExtras(exit, telemetry), expected = false, source = "none", ageSeconds = null)
     }
 
     @Test
@@ -130,41 +206,30 @@ class AndroidSystemKillReportSampleAgeTest {
     }
 
     @Test
-    fun anInteractionAfterTheMoveToBackgroundIsNotEvidence() {
-        // Not written in the background, so a background snapshot moved there after its last one.
+    fun aBackgroundSnapshotIsNotForegroundEvidence() {
+        // Interactions are not written in the background, so it moved there after its last one.
         val telemetry = staleBackground().copy(lastInteractionAtMillis = exitAt - 1_000L)
         assertNull(recentForegroundEvidence(telemetry, exitAt))
-        assertEquals(SystemKillAction.Skip, plan(exit(importance = IMPORTANCE_CACHED), telemetry).action)
+        val item = plan(exit(importance = IMPORTANCE_CACHED), telemetry)
+        assertEquals(SystemKillDecision.ReportBackground, item.decision)
+        assertEquals(SystemKillAction.Submit, item.action)
+        assertRecentForeground(systemKillExtras(item.exit, telemetry), expected = false, source = "none", ageSeconds = null)
     }
 
     @Test
-    fun theMoreRecentOfSampleAndInteractionIsTheEvidence() {
-        val sampleNewer = foregroundSnapshot(sampleAgeMillis = 2_000L).copy(lastInteractionAtMillis = exitAt - 30_000L)
-        assertEquals(ForegroundEvidence(ForegroundEvidence.Kind.Sample, 2_000L), recentForegroundEvidence(sampleNewer, exitAt))
-        val interactionNewer = foregroundSnapshot(sampleAgeMillis = 20_000L).copy(lastInteractionAtMillis = exitAt - 3_000L)
-        assertEquals(
-            ForegroundEvidence(ForegroundEvidence.Kind.Interaction, 3_000L),
-            recentForegroundEvidence(interactionNewer, exitAt),
-        )
+    fun importanceForegroundIsAForegroundKillWhateverTheSnapshot() {
+        assertAlwaysForeground(IMPORTANCE_FOREGROUND)
     }
 
     @Test
-    fun importanceForegroundAlwaysReportsWhateverTheSnapshot() {
-        assertAlwaysReported(IMPORTANCE_FOREGROUND)
-    }
-
-    @Test
-    fun importanceVisibleAlwaysReportsWhateverTheSnapshot() {
-        assertAlwaysReported(IMPORTANCE_VISIBLE)
+    fun importanceVisibleIsAForegroundKillWhateverTheSnapshot() {
+        assertAlwaysForeground(IMPORTANCE_VISIBLE)
     }
 
     @Test
     fun aStaleBackgroundSnapshotDoesNotHideAVisibleExit() {
-        // The app may have come back to the foreground after its last snapshot was written.
         for (importance in listOf(IMPORTANCE_FOREGROUND, IMPORTANCE_VISIBLE)) {
-            val item = plan(exit(importance = importance), staleBackground())
-            assertEquals("importance $importance", SystemKillDecision.Report, item.decision)
-            assertEquals("importance $importance", SystemKillAction.Submit, item.action)
+            assertEquals("importance $importance", SystemKillDecision.Report, plan(exit(importance = importance), staleBackground()).decision)
         }
         assertTrue(
             systemKillMessage(exit(importance = IMPORTANCE_VISIBLE), staleBackground()).endsWith(
@@ -176,17 +241,15 @@ class AndroidSystemKillReportSampleAgeTest {
     }
 
     @Test
-    fun importanceForegroundServiceIsForegroundOnlyWithFreshEvidence() {
+    fun importanceForegroundServiceIsForegroundOnlyWithRecentEvidence() {
         val service = exit(importance = IMPORTANCE_FOREGROUND_SERVICE)
-        assertEquals(SystemKillDecision.Report, plan(service, foregroundSnapshot(sampleAgeMillis = 5_000L)).decision)
-        assertEquals(
-            SystemKillDecision.Report,
-            plan(service, stale4a5504d3().copy(lastInteractionAtMillis = exitAt - 5_000L)).decision,
-        )
-        assertEquals(SystemKillDecision.ReportBackground, plan(service, stale4a5504d3()).decision)
-        // The service-held background process: not sent, as before.
-        assertEquals(SystemKillAction.Skip, plan(service, staleBackground()).action)
-        assertEquals(SystemKillAction.Skip, plan(service, null).action)
+        assertEquals(SystemKillDecision.Report, plan(service, snapshot(5_000L, null)).decision)
+        assertEquals(SystemKillDecision.Report, plan(service, snapshot(570_000L, 5_000L)).decision)
+        for (telemetry in listOf(stale4a5504d3(), staleBackground(), null)) {
+            val item = plan(service, telemetry)
+            assertEquals("$telemetry", SystemKillDecision.ReportBackground, item.decision)
+            assertEquals("$telemetry", SystemKillAction.Submit, item.action)
+        }
     }
 
     @Test
@@ -194,10 +257,7 @@ class AndroidSystemKillReportSampleAgeTest {
         val telemetry = foregroundSnapshot(sampleAgeMillis = 1_000L).copy(lastTrimLevel = 0, lastTrimAtMillis = -1L)
         val exit = exit(importance = IMPORTANCE_CACHED)
 
-        val item = plan(exit, telemetry)
-        assertEquals(SystemKillDecision.Report, item.decision)
-        assertEquals(SystemKillAction.Submit, item.action)
-        assertEquals("sample", systemKillExtras(exit, telemetry)["recent_foreground_evidence"])
+        assertEquals(SystemKillDecision.Report, plan(exit, telemetry).decision)
         assertEquals(
             "System kill: low_memory (reasonCode=3 status=0 importance=400)\n" +
                 "last seen in foreground 1s before exit (in foreground since 600s before exit; " +
@@ -208,23 +268,13 @@ class AndroidSystemKillReportSampleAgeTest {
     }
 
     @Test
-    fun aBackgroundSnapshotWithABackgroundImportanceIsNotSentAsBefore() {
-        for (importance in listOf(IMPORTANCE_FOREGROUND_SERVICE, IMPORTANCE_PERCEPTIBLE, IMPORTANCE_SERVICE, IMPORTANCE_CACHED)) {
-            val item = plan(exit(importance = importance), staleBackground())
-            assertEquals("importance $importance", SystemKillDecision.SkipNotImportant, item.decision)
-            assertEquals("importance $importance", SystemKillAction.Skip, item.action)
-        }
-    }
-
-    @Test
-    fun withoutASnapshotTheImportanceDecidesAndTheMessageIsTheExitRecordOnly() {
-        assertEquals(SystemKillAction.Skip, plan(exit(importance = IMPORTANCE_SERVICE), null).action)
-        assertEquals(SystemKillAction.Submit, plan(exit(importance = IMPORTANCE_VISIBLE), null).action)
+    fun withoutASnapshotTheMessageIsTheExitRecordOnly() {
+        assertEquals(SystemKillDecision.ReportBackground, plan(exit(importance = IMPORTANCE_SERVICE), null).decision)
+        assertEquals(SystemKillDecision.Report, plan(exit(importance = IMPORTANCE_VISIBLE), null).decision)
         assertEquals(
             "System kill: low_memory (reasonCode=3 status=0 importance=300)",
             systemKillMessage(exit(importance = IMPORTANCE_SERVICE), null),
         )
-        assertEquals("none", systemKillExtras(exit(importance = IMPORTANCE_VISIBLE), null)["recent_foreground_evidence"])
     }
 
     @Test
@@ -255,7 +305,7 @@ class AndroidSystemKillReportSampleAgeTest {
     }
 
     @Test
-    fun aForegroundSnapshotThatWasNeverSampledIsUploadedByItsImportance() {
+    fun aForegroundSnapshotThatWasNeverSampledSaysSo() {
         val telemetry = foregroundSnapshot(sampleAgeMillis = 0L).copy(sampledAtMillis = -1L, rssKb = -1L)
 
         assertFalse(isTelemetrySampleFresh(telemetry, exitAt))
@@ -272,7 +322,21 @@ class AndroidSystemKillReportSampleAgeTest {
         assertFalse(message, message.contains("last RSS"))
     }
 
-    private fun assertAlwaysReported(importance: Int) {
+    private fun assertRecentForeground(extras: Map<String, Any?>, expected: Boolean?, source: String, ageSeconds: Long?) {
+        if (expected == null) {
+            assertFalse("crash_recent_foreground omitted", extras.containsKey("crash_recent_foreground"))
+        } else {
+            assertEquals(expected, extras["crash_recent_foreground"])
+        }
+        assertEquals(source, extras["crash_recent_foreground_source"])
+        if (ageSeconds == null) {
+            assertFalse("crash_recent_foreground_age_s omitted", extras.containsKey("crash_recent_foreground_age_s"))
+        } else {
+            assertEquals(ageSeconds, extras["crash_recent_foreground_age_s"])
+        }
+    }
+
+    private fun assertAlwaysForeground(importance: Int) {
         val snapshots =
             listOf(
                 null,
@@ -287,6 +351,13 @@ class AndroidSystemKillReportSampleAgeTest {
             assertEquals("$telemetry", SystemKillAction.Submit, item.action)
         }
     }
+
+    /** A foreground snapshot; a null age is a time never recorded (-1), a negative one after the exit. */
+    private fun snapshot(sampleAgeMillis: Long?, interactionAgeMillis: Long?) =
+        foregroundSnapshot(sampleAgeMillis = sampleAgeMillis ?: 0L).copy(
+            sampledAtMillis = sampleAgeMillis?.let { exitAt - it } ?: -1L,
+            lastInteractionAtMillis = interactionAgeMillis?.let { exitAt - it } ?: -1L,
+        )
 
     /** Hands 4a5504d3's snapshot, against an exit at [exitAt]. */
     private fun stale4a5504d3() = foregroundSnapshot(sampleAgeMillis = 570_000L)

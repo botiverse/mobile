@@ -5,6 +5,7 @@ import android.app.ApplicationExitInfo
 import build.raft.app.shared.RaftBuildStamp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,20 +19,20 @@ class AndroidSystemKillReportTest {
     private val stamp = RaftBuildStamp.StampedBuild("1.22.0", 12200001L)
 
     @Test
-    fun huaweiOtherKillWithCachedImportanceIsReportedOnlyWhenTelemetrySaysForeground() {
+    fun huaweiOtherKillWithCachedImportanceIsForegroundOnlyWhenTelemetrySaysForeground() {
         // fb-52cc0499: reason=other reasonCode=13 importance=400, user scrolling one second earlier.
         assertEquals(SystemKillDecision.Report, classify(ApplicationExitInfo.REASON_OTHER, cached, true))
-        assertEquals(SystemKillDecision.SkipNotImportant, classify(ApplicationExitInfo.REASON_OTHER, cached, false))
-        assertEquals(SystemKillDecision.SkipNotImportant, classify(ApplicationExitInfo.REASON_OTHER, cached, null))
+        assertEquals(SystemKillDecision.ReportBackground, classify(ApplicationExitInfo.REASON_OTHER, cached, false))
+        assertEquals(SystemKillDecision.ReportBackground, classify(ApplicationExitInfo.REASON_OTHER, cached, null))
     }
 
     @Test
-    fun foregroundServiceKillOfABackgroundedProcessIsNotReported() {
+    fun foregroundServiceKillOfABackgroundedProcessIsABackgroundKill() {
         // RaftBackgroundConnectionService keeps the backgrounded process at 125.
         for (reason in listOf(ApplicationExitInfo.REASON_OTHER, ApplicationExitInfo.REASON_SIGNALED)) {
-            assertEquals(SystemKillDecision.SkipNotImportant, classify(reason, foregroundService, false))
-            assertEquals(SystemKillDecision.SkipNotImportant, classify(reason, foregroundService, null))
-            assertEquals(SystemKillDecision.SkipNotImportant, classify(reason, perceptible, null))
+            assertEquals(SystemKillDecision.ReportBackground, classify(reason, foregroundService, false))
+            assertEquals(SystemKillDecision.ReportBackground, classify(reason, foregroundService, null))
+            assertEquals(SystemKillDecision.ReportBackground, classify(reason, perceptible, null))
         }
     }
 
@@ -49,7 +50,7 @@ class AndroidSystemKillReportTest {
     }
 
     @Test
-    fun withoutTelemetryOnlyForegroundAndVisibleImportanceCount() {
+    fun withoutTelemetryOnlyForegroundAndVisibleImportanceAreForeground() {
         val reasons =
             listOf(
                 ApplicationExitInfo.REASON_UNKNOWN,
@@ -69,7 +70,7 @@ class AndroidSystemKillReportTest {
             for (importance in listOf(foregroundService, perceptible, service, cached, 1000)) {
                 assertEquals(
                     "$reason/$importance",
-                    SystemKillDecision.SkipNotImportant,
+                    SystemKillDecision.ReportBackground,
                     classify(reason, importance, null)
                 )
             }
@@ -125,9 +126,11 @@ class AndroidSystemKillReportTest {
 
     @Test
     fun everyExitIsClassifiedAndOnlySubmissionsAreCapped() {
-        // Five visible kills interleaved with background ones: no exit is dropped unclassified.
+        // Five system kills interleaved with user swipe-aways: no exit is dropped unclassified.
         val exits =
-            (1..10).map { i -> exit(pid = i, at = i * 100L, importance = if (i % 2 == 0) foreground else cached) }
+            (1..10).map { i ->
+                exit(pid = i, at = i * 100L, reason = if (i % 2 == 0) ApplicationExitInfo.REASON_OTHER else ApplicationExitInfo.REASON_USER_REQUESTED)
+            }
 
         val plan = plan(exits, perLaunchCap = 2)
 
@@ -192,7 +195,9 @@ class AndroidSystemKillReportTest {
 
         val plan = plan(exits, snapshots = ring)
 
-        assertEquals(listOf(SystemKillAction.Submit, SystemKillAction.Skip), plan.map { it.action })
+        // Both are sent; the sticky process's kill is a background one.
+        assertEquals(listOf(SystemKillAction.Submit, SystemKillAction.Submit), plan.map { it.action })
+        assertEquals(listOf(SystemKillDecision.Report, SystemKillDecision.ReportBackground), plan.map { it.decision })
         assertEquals(listOf(killed, sticky), plan.map { it.telemetry })
     }
 
@@ -204,7 +209,8 @@ class AndroidSystemKillReportTest {
         assertEquals(older, MemoryTelemetryRing.match(listOf(newer, older), pid = 4321, exitTimestampMillis = 40_000L))
         assertEquals(null, MemoryTelemetryRing.match(listOf(newer), pid = 4321, exitTimestampMillis = 40_000L))
         val plan = plan(listOf(exit(pid = 4321, at = 40_000L, importance = cached)), snapshots = listOf(newer))
-        assertEquals(SystemKillAction.Skip, plan.single().action)
+        assertNull(plan.single().telemetry)
+        assertEquals(SystemKillDecision.ReportBackground, plan.single().decision)
     }
 
     @Test
@@ -255,8 +261,9 @@ class AndroidSystemKillReportTest {
         assertEquals(false, extras["crash_foreground"])
         assertEquals(true, extras["crash_telemetry_foreground"])
         assertFalse(extras.containsKey("crash_background_duration_ms"))
-        assertEquals("sample", extras["recent_foreground_evidence"])
-        assertEquals(10L, extras["recent_foreground_age_s"])
+        assertEquals(true, extras["crash_recent_foreground"])
+        assertEquals("sample", extras["crash_recent_foreground_source"])
+        assertEquals(10L, extras["crash_recent_foreground_age_s"])
         assertEquals(-1L, extras["crash_last_interaction_age_ms"])
         assertEquals("process_state_summary", extras["crash_version_source"])
         assertFalse(extras.containsKey("fallback_version_code"))

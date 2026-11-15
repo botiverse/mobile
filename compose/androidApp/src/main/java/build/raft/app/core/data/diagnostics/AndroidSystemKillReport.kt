@@ -16,12 +16,12 @@ import kotlinx.coroutines.launch
 
 /** Why a previous exit is, or is not, sent to Hands as a `system_kill` crash ticket. */
 internal enum class SystemKillDecision(val label: String, val report: Boolean) {
-    /** A foreground kill: the system recorded it visible, or the app has fresh foreground evidence. */
+    /** A foreground kill: the system recorded it visible, or the app has recent foreground evidence. */
     Report("report", true),
     /**
-     * Sent, but a background kill: the app's snapshot still said "in foreground" (so this was sent
-     * before #4842 too) with no sample or interaction in the last [SystemKillFreshSampleMillis], and
-     * the system recorded a background importance (Hands 4a5504d3). Hands keeps counting these.
+     * A background kill, sent too: Hands archives and counts these by `crash_exit_importance`.
+     * Includes a snapshot that still said "in foreground" with no sample or interaction in the last
+     * [SystemKillFreshSampleMillis] (Hands 4a5504d3).
      */
     ReportBackground("report_background", true),
     /** The user (swipe away, force stop, revoked permission) or the app itself ended it. */
@@ -30,8 +30,6 @@ internal enum class SystemKillDecision(val label: String, val report: Boolean) {
     SkipPackageChange("package_change", false),
     /** Java/native crashes go through HandsCrash, ANRs through HandsCrash's ANR pass. */
     SkipReportedElsewhere("reported_elsewhere", false),
-    /** Killed while no activity was visible: routine memory/power management. */
-    SkipNotImportant("not_important", false),
     /**
      * Not the main app process (a `:name` service process, or an isolated/sandboxed one such as a
      * WebView renderer). It carries no build stamp or telemetry, the user does not see the app
@@ -99,28 +97,29 @@ internal data class ForegroundEvidence(val kind: Kind, val ageMillis: Long) {
 }
 
 /**
- * Fresh foreground evidence from the app: it still saw itself in the foreground, and its last
- * sample or the user's last interaction was at most [SystemKillFreshSampleMillis] before the exit
- * (the more recent of the two); null when neither. Interactions are only written in the
- * foreground, so a snapshot that says "in background" moved there after the last one and is not
- * evidence.
+ * Fresh foreground evidence from the app: it still saw itself in the foreground, and the user's
+ * last interaction or its last sample was at most [SystemKillFreshSampleMillis] before the exit;
+ * the interaction when both are (it is the user, not a timer); null when neither, even if the
+ * other source is missing. Interactions are only written in the foreground, so a snapshot that
+ * says "in background" moved there after the last one and is not evidence.
  */
 internal fun recentForegroundEvidence(telemetry: MemoryTelemetrySnapshot?, exitTimestampMillis: Long): ForegroundEvidence? {
     if (telemetry == null || !telemetry.foreground) return null
-    val candidates =
-        buildList {
-            if (isTelemetrySampleFresh(telemetry, exitTimestampMillis)) {
-                add(ForegroundEvidence(ForegroundEvidence.Kind.Sample, exitTimestampMillis - telemetry.sampledAtMillis))
-            }
-            if (isTelemetryInteractionFresh(telemetry, exitTimestampMillis)) {
-                add(ForegroundEvidence(ForegroundEvidence.Kind.Interaction, exitTimestampMillis - telemetry.lastInteractionAtMillis))
-            }
-        }
-    return candidates.minByOrNull { it.ageMillis }
+    return when {
+        isTelemetryInteractionFresh(telemetry, exitTimestampMillis) ->
+            ForegroundEvidence(ForegroundEvidence.Kind.Interaction, exitTimestampMillis - telemetry.lastInteractionAtMillis)
+        isTelemetrySampleFresh(telemetry, exitTimestampMillis) ->
+            ForegroundEvidence(ForegroundEvidence.Kind.Sample, exitTimestampMillis - telemetry.sampledAtMillis)
+        else -> null
+    }
 }
 
 internal fun hasFreshForegroundEvidence(telemetry: MemoryTelemetrySnapshot, exitTimestampMillis: Long): Boolean =
     recentForegroundEvidence(telemetry, exitTimestampMillis) != null
+
+/** A recorded time (not -1) at or before the exit. */
+private fun isKnownBeforeExit(atMillis: Long, exitTimestampMillis: Long): Boolean =
+    atMillis >= 0L && atMillis <= exitTimestampMillis
 
 private fun isWithinFreshWindow(atMillis: Long, exitTimestampMillis: Long): Boolean =
     atMillis >= 0L && exitTimestampMillis - atMillis in 0L..SystemKillFreshSampleMillis
@@ -131,23 +130,20 @@ private fun isWithinFreshWindow(atMillis: Long, exitTimestampMillis: Long): Bool
  * added after API 35. On a device that does not explain its kills (the Huawei in Hands
  * fb-52cc0499 recorded `reason=other`) any of them can be the "app vanished" users describe.
  *
- * Which system kills are sent, and whether as foreground or background:
+ * Every system kill is sent; this only says whether it was a foreground or a background one (the
+ * decision label in the local log; the ticket carries the raw fields and the evidence separately,
+ * see [systemKillExtras]):
  * - foreground ([SystemKillDecision.Report]) when the exit record says importance foreground
  *   (100) or visible (200), whatever the app's telemetry says or how old it is (the app may have
  *   come back to the foreground after its last snapshot was written); or when the app's telemetry
- *   for the exited process ([telemetry], matched by the caller) has fresh foreground evidence, a
+ *   for the exited process ([telemetry], matched by the caller) has recent foreground evidence, a
  *   sample or a user interaction at most [SystemKillFreshSampleMillis] before the exit
  *   ([recentForegroundEvidence]), whatever the importance. The Huawei kill (fb-52cc0499)
  *   recorded `importance=400` one second after the user scrolled.
- * - background but still sent ([SystemKillDecision.ReportBackground]) when the snapshot says "in
- *   foreground" without such evidence: the process stopped sampling long before the kill (Hands
- *   4a5504d3: foreground 600 s, sample 570 s before an exit at importance 300). These were sent
- *   before too; Hands archives and counts background kills, so they keep coming.
- * - not sent ([SystemKillDecision.SkipNotImportant]) when the snapshot says "in background", or
- *   there is none, and the importance is not visible: as before. Foreground service (125) and
- *   perceptible (230) are background here: that is the process RaftBackgroundConnectionService
- *   keeps alive, and sending its swipe-away or power-manager kills would flood Hands and use up
- *   the daily cap.
+ * - background ([SystemKillDecision.ReportBackground]) otherwise: foreground service (125),
+ *   perceptible (230), service (300), cached (400) without such evidence, including a snapshot
+ *   that says "in foreground" from long before the kill (Hands 4a5504d3: foreground 600 s, sample
+ *   570 s before an exit at importance 300).
  */
 internal fun classifySystemKill(
     reasonCode: Int,
@@ -163,8 +159,7 @@ internal fun classifySystemKill(
         reasonCode == ApplicationExitInfo.REASON_SIGNALED && status in CrashSignals -> SystemKillDecision.SkipReportedElsewhere
         importance in VisibleImportances -> SystemKillDecision.Report
         recentForegroundEvidence(telemetry, exitTimestampMillis) != null -> SystemKillDecision.Report
-        telemetry != null && telemetry.foreground -> SystemKillDecision.ReportBackground
-        else -> SystemKillDecision.SkipNotImportant
+        else -> SystemKillDecision.ReportBackground
     }
 
 /** The fields of one [ApplicationExitInfo] the report uses; a plain value so planning is testable. */
@@ -326,11 +321,28 @@ internal fun systemKillExtras(
             put("crash_exit_description", it.take(MaxExitDescriptionChars))
         }
         put("crash_memory_sample", if (telemetry == null) "none" else "matched")
-        // The app's fresh foreground evidence (see classifySystemKill); crash_foreground stays the
-        // exit importance and crash_telemetry_foreground the raw flag.
+        // The app's recent foreground evidence (see classifySystemKill), next to the raw fields:
+        // crash_exit_importance, crash_foreground (the exit importance) and crash_trim are never
+        // replaced by an inference. Names proposed in botiverse/hands#955.
         val evidence = recentForegroundEvidence(telemetry, exit.timestampMillis)
-        put("recent_foreground_evidence", evidence?.kind?.label ?: "none")
-        if (evidence != null) put("recent_foreground_age_s", evidence.ageMillis / 1000L)
+        when {
+            evidence != null -> {
+                put("crash_recent_foreground", true)
+                put("crash_recent_foreground_source", evidence.kind.label)
+                put("crash_recent_foreground_age_s", evidence.ageMillis / 1000L)
+            }
+            // "No" only when both the sample and the interaction time are known and old (or the
+            // snapshot says "in background", which it moved to after both).
+            telemetry != null &&
+                isKnownBeforeExit(telemetry.sampledAtMillis, exit.timestampMillis) &&
+                isKnownBeforeExit(telemetry.lastInteractionAtMillis, exit.timestampMillis) -> {
+                put("crash_recent_foreground", false)
+                put("crash_recent_foreground_source", "none")
+            }
+            // No snapshot, never sampled, no interaction recorded (or an older build's snapshot),
+            // or a time after the exit: unknown, so crash_recent_foreground is omitted.
+            else -> put("crash_recent_foreground_source", "unknown")
+        }
         if (telemetry != null) {
             val at = exit.timestampMillis
             put("crash_process_uptime_ms", at - telemetry.processStartMillis)
@@ -432,7 +444,7 @@ internal fun decodeRecentReports(encoded: String?, nowMillis: Long): List<Long> 
     encoded.orEmpty().split(',').mapNotNull(String::toLongOrNull).filter { nowMillis - it < DayMillis }
 
 /**
- * Sends foreground system kills of earlier processes to Hands as `kind=crash` tickets, the way
+ * Sends system kills of earlier processes (foreground and background) to Hands as `kind=crash` tickets, the way
  * ANRs are sent, so a kill like Hands fb-52cc0499 shows up without anyone filing feedback.
  *
  * Exactly-once: a watermark (newest handled exit timestamp) moves only after the ticket was
