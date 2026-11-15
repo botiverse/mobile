@@ -472,21 +472,29 @@ test("review panel reads mutable provider/model vars once, in a validating freez
 });
 
 test("Android and iOS freeze legacy email before execution and expose none for bootstrap", () => {
+  const legacy = String.raw`\(inputs\.stamp_run_case_id == '' \|\| steps\.stamp-claim\.outputs\.bootstrap_required != 'true'\)`;
   for (const workflow of ["qa-acceptance.yml", "qa-acceptance-ios.yml"]) {
     const source = fs.readFileSync(new URL(`../../.github/workflows/${workflow}`, import.meta.url), "utf8");
     const claim = source.indexOf("name: Claim Stamp run case and resolve auth mode");
-    const expose = source.indexOf("name: Expose legacy UI-login credentials");
+    const preflight = source.indexOf("name: Preflight — QA account must not see the production server");
     const receipt = source.indexOf("name: Freeze legacy credential identity receipt");
     const execute = source.indexOf("name: Run acceptance agent");
-    assert.ok(claim >= 0 && expose > claim && receipt > expose && execute > receipt, workflow);
-    assert.equal(source.slice(claim, expose).includes("QA_TEST_EMAIL"), false, `${workflow} claim has no credential identity`);
-    assert.match(source.slice(expose, receipt), /bootstrap_required != 'true'/);
+    assert.ok(claim >= 0 && preflight > claim && receipt > preflight && execute > receipt, workflow);
+    assert.equal(source.slice(claim, preflight).includes("QA_TEST_EMAIL"), false, `${workflow} claim has no credential identity`);
+    // The QA account reaches steps only through their own env: from secrets.*, never through
+    // $GITHUB_ENV (job-wide) and never on the bootstrap path.
+    assert.equal(/env\.QA_TEST_|QA_TEST_\w*_SECRET/.test(source), false, `${workflow} reads QA credentials from the job env`);
+    const preflightBlock = source.slice(preflight, receipt);
+    assert.match(preflightBlock, /bootstrap_required != 'true'/);
+    assert.match(preflightBlock, /QA_TEST_PASSWORD: \$\{\{ secrets\.QA_TEST_PASSWORD \}\}/);
     const receiptBlock = source.slice(receipt, execute);
     assert.match(receiptBlock, /bootstrap_required != 'true'/);
     assert.equal((receiptBlock.match(/stamp_report\.sh credential-receipt/g) ?? []).length, 1);
     const executeBlock = source.slice(execute, source.indexOf("\n      - name:", execute + 1));
     assert.match(executeBlock, /STAMP_URL:.*stamp_run_case_id != ''/);
     assert.match(executeBlock, /STAMP_TOKEN:.*stamp_run_case_id != ''/);
+    assert.match(executeBlock, new RegExp(`QA_TEST_EMAIL: \\$\\{\\{ ${legacy} && secrets\\.QA_TEST_EMAIL \\|\\| '' \\}\\}`));
+    assert.match(executeBlock, new RegExp(`QA_TEST_PASSWORD: \\$\\{\\{ ${legacy} && secrets\\.QA_TEST_PASSWORD \\|\\| '' \\}\\}`));
   }
 });
 

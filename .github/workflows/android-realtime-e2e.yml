@@ -70,21 +70,13 @@ jobs:
             echo "sha256=$(sha256sum "$APK" | cut -d' ' -f1)"
           } | tee -a "$GITHUB_OUTPUT"
 
-      - name: Expose QA credentials
-        env:
-          QA_TEST_EMAIL_SECRET: ${{ secrets.QA_TEST_EMAIL }}
-          QA_TEST_PASSWORD_SECRET: ${{ secrets.QA_TEST_PASSWORD }}
-        run: |
-          python3 - <<'PY'
-          import os, uuid
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as out:
-              for name in ("QA_TEST_EMAIL", "QA_TEST_PASSWORD"):
-                  value = os.environ[f"{name}_SECRET"]
-                  delimiter = f"SLOCK_{uuid.uuid4().hex}"
-                  out.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
-          PY
-
+      # The QA account goes only to the steps that use it (the preflight probe and the emulator
+      # script), through their own env: from secrets.*, never through $GITHUB_ENV (that would hand
+      # it to every later step and process of the job). scripts/ci/check_workflow_secret_env.py.
       - name: Preflight — QA account must not see the production server
+        env:
+          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
         run: node scripts/qa/visible_servers_probe.mjs
 
       - name: Enable KVM
@@ -95,6 +87,9 @@ jobs:
 
       - name: Run realtime e2e on the emulator
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
         with:
           api-level: 34
           arch: x86_64
