@@ -8,11 +8,18 @@ import android.os.Build
 import build.hands.update.HandsFeedback
 import build.hands.update.HandsFeedbackException
 import build.raft.app.shared.RaftBuildStamp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** Why a previous exit is, or is not, sent to Hands as a `system_kill` crash ticket. */
 internal enum class SystemKillDecision(val label: String, val report: Boolean) {
@@ -76,20 +83,30 @@ private val VisibleImportances =
 internal const val SystemKillFreshSampleMillis = 60_000L
 
 /**
- * Whether [telemetry]'s last sample is recent enough at [exitTimestampMillis] to trust its
- * foreground flag: taken 0..[SystemKillFreshSampleMillis] before the exit. No sample (-1) or one
- * after the exit (a clock change) is not.
+ * How long before the exit the last interaction may be to count: [SystemKillFreshSampleMillis]
+ * plus the interaction write interval, since the stored time can be up to
+ * [RaftMemoryTelemetry.InteractionWriteIntervalMillis] older than the user's real last action. A
+ * false positive only means a ticket instead of an archive.
  */
-internal fun isTelemetrySampleFresh(telemetry: MemoryTelemetrySnapshot, exitTimestampMillis: Long): Boolean =
-    isWithinFreshWindow(telemetry.sampledAtMillis, exitTimestampMillis)
+internal const val SystemKillFreshInteractionMillis =
+    SystemKillFreshSampleMillis + RaftMemoryTelemetry.InteractionWriteIntervalMillis
 
 /**
- * Whether the user touched the app or pressed a key 0..[SystemKillFreshSampleMillis] before the
- * exit ([MemoryTelemetrySnapshot.lastInteractionAtMillis]). The Huawei kill fb-52cc0499 was
+ * Whether [telemetry]'s last sample was taken 0..[SystemKillFreshSampleMillis] before the exit. No
+ * sample (-1) or one after the exit (a clock change) is not. Samples are only taken in the
+ * foreground and a move to background does not reset the time, so this is the last foreground
+ * sample even when the snapshot now says "in background".
+ */
+internal fun isTelemetrySampleFresh(telemetry: MemoryTelemetrySnapshot, exitTimestampMillis: Long): Boolean =
+    isWithin(telemetry.sampledAtMillis, exitTimestampMillis, SystemKillFreshSampleMillis)
+
+/**
+ * Whether the user touched the app or pressed a key 0..[SystemKillFreshInteractionMillis] before
+ * the exit ([MemoryTelemetrySnapshot.lastInteractionAtMillis]). The Huawei kill fb-52cc0499 was
  * recorded at importance 400 one second after the user scrolled.
  */
 internal fun isTelemetryInteractionFresh(telemetry: MemoryTelemetrySnapshot, exitTimestampMillis: Long): Boolean =
-    isWithinFreshWindow(telemetry.lastInteractionAtMillis, exitTimestampMillis)
+    isWithin(telemetry.lastInteractionAtMillis, exitTimestampMillis, SystemKillFreshInteractionMillis)
 
 /** What says the app was in the foreground shortly before the exit, and how long before. */
 internal data class ForegroundEvidence(val kind: Kind, val ageMillis: Long) {
@@ -97,20 +114,18 @@ internal data class ForegroundEvidence(val kind: Kind, val ageMillis: Long) {
 }
 
 /**
- * Fresh foreground evidence from the app, either source at most [SystemKillFreshSampleMillis]
- * before the exit (the interaction when both are: it is the user, not a timer); null when neither,
- * even if the other source is missing:
- * - the user's last interaction, whatever the snapshot's flag says now: the user may have acted,
- *   switched away, and the app was killed.
- * - the last sample, only while the snapshot still says "in foreground" (a background snapshot's
- *   sample is from before its move to background).
+ * Fresh foreground evidence from the app: the user's last interaction
+ * ([isTelemetryInteractionFresh]) or the last foreground sample ([isTelemetrySampleFresh]), the
+ * interaction when both are (it is the user, not a timer); null when neither, even if the other
+ * source is missing. Either counts whatever the snapshot's flag says now: the user may have acted,
+ * switched away, and the app was killed.
  */
 internal fun recentForegroundEvidence(telemetry: MemoryTelemetrySnapshot?, exitTimestampMillis: Long): ForegroundEvidence? {
     if (telemetry == null) return null
     return when {
         isTelemetryInteractionFresh(telemetry, exitTimestampMillis) ->
             ForegroundEvidence(ForegroundEvidence.Kind.Interaction, exitTimestampMillis - telemetry.lastInteractionAtMillis)
-        telemetry.foreground && isTelemetrySampleFresh(telemetry, exitTimestampMillis) ->
+        isTelemetrySampleFresh(telemetry, exitTimestampMillis) ->
             ForegroundEvidence(ForegroundEvidence.Kind.Sample, exitTimestampMillis - telemetry.sampledAtMillis)
         else -> null
     }
@@ -119,12 +134,70 @@ internal fun recentForegroundEvidence(telemetry: MemoryTelemetrySnapshot?, exitT
 internal fun hasFreshForegroundEvidence(telemetry: MemoryTelemetrySnapshot, exitTimestampMillis: Long): Boolean =
     recentForegroundEvidence(telemetry, exitTimestampMillis) != null
 
+/**
+ * `crash_recent_foreground` and its source (botiverse/hands#955): [value] true with the fresh
+ * evidence; false (source `none`) only when the sample and the interaction are both recorded,
+ * valid (at or before the exit) and older than their windows; null (omitted, source `unknown`)
+ * when neither is fresh and either is missing or invalid.
+ */
+internal data class RecentForeground(val value: Boolean?, val source: String, val ageSeconds: Long?)
+
+internal fun recentForeground(telemetry: MemoryTelemetrySnapshot?, exitTimestampMillis: Long): RecentForeground {
+    val evidence = recentForegroundEvidence(telemetry, exitTimestampMillis)
+    return when {
+        evidence != null -> RecentForeground(true, evidence.kind.label, evidence.ageMillis / 1000L)
+        telemetry != null &&
+            isKnownBeforeExit(telemetry.sampledAtMillis, exitTimestampMillis) &&
+            isKnownBeforeExit(telemetry.lastInteractionAtMillis, exitTimestampMillis) -> RecentForeground(false, "none", null)
+        else -> RecentForeground(null, "unknown", null)
+    }
+}
+
 /** A recorded time (not -1) at or before the exit. */
 private fun isKnownBeforeExit(atMillis: Long, exitTimestampMillis: Long): Boolean =
     atMillis >= 0L && atMillis <= exitTimestampMillis
 
-private fun isWithinFreshWindow(atMillis: Long, exitTimestampMillis: Long): Boolean =
-    atMillis >= 0L && exitTimestampMillis - atMillis in 0L..SystemKillFreshSampleMillis
+private fun isWithin(atMillis: Long, exitTimestampMillis: Long, windowMillis: Long): Boolean =
+    atMillis >= 0L && exitTimestampMillis - atMillis in 0L..windowMillis
+
+/**
+ * Exit reasons Hands treats as actionable and never auto-archives (botiverse/hands main
+ * `worker/src/routes/feedback.ts`, `ACTIONABLE_SYSTEM_KILL_REASON_CODES` / `_REASONS`, 40cb90df):
+ * crash (4), crash_native (5), anr (6), excessive_resource_usage (9). Keep in sync.
+ */
+internal val HandsActionableSystemKillReasonCodes =
+    setOf(
+        ApplicationExitInfo.REASON_CRASH,
+        ApplicationExitInfo.REASON_CRASH_NATIVE,
+        ApplicationExitInfo.REASON_ANR,
+        ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE,
+    )
+
+/** Which report budget a system kill uses ([planSystemKillReports]). */
+internal enum class SystemKillBudget(val label: String) {
+    /** Everything Hands would not auto-archive under botiverse/hands#955, and anything unknown. */
+    Protected("protected"),
+    /** Confirmed background only: Hands archives it, and it may never use up [Protected]. */
+    Background("background"),
+}
+
+/**
+ * [SystemKillBudget.Background] only for a confirmed background kill: `crash_recent_foreground`
+ * false, importance foreground service (125) or above but not visible (200), and a reason Hands
+ * does not treat as actionable ([HandsActionableSystemKillReasonCodes]). Everything else,
+ * including unknown recent foreground, is [SystemKillBudget.Protected].
+ */
+internal fun systemKillBudget(exit: SystemKillExit, telemetry: MemoryTelemetrySnapshot?): SystemKillBudget =
+    if (
+        recentForeground(telemetry, exit.timestampMillis).value == false &&
+        exit.importance >= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE &&
+        exit.importance !in VisibleImportances &&
+        exit.reasonCode !in HandsActionableSystemKillReasonCodes
+    ) {
+        SystemKillBudget.Background
+    } else {
+        SystemKillBudget.Protected
+    }
 
 /**
  * Every reason not listed above is a system kill: unknown, signaled, low_memory,
@@ -212,21 +285,41 @@ internal data class SystemKillPlanItem(
     val decision: SystemKillDecision,
     val action: SystemKillAction,
     val telemetry: MemoryTelemetrySnapshot?,
-)
+    val budget: SystemKillBudget = SystemKillBudget.Protected,
+) {
+    val key: SystemKillExitKey get() = SystemKillExitKey(exit.pid, exit.timestampMillis)
+}
+
+/** One exit: pid and timestamp (an exit list can repeat an entry). */
+internal data class SystemKillExitKey(val pid: Int, val timestampMillis: Long) {
+    fun encode(): String = "$pid@$timestampMillis"
+
+    companion object {
+        fun decodeAll(encoded: String?): Set<SystemKillExitKey> =
+            encoded.orEmpty().split(',').mapNotNull { part ->
+                val pid = part.substringBefore('@', "").toIntOrNull() ?: return@mapNotNull null
+                val at = part.substringAfter('@', "").toLongOrNull() ?: return@mapNotNull null
+                SystemKillExitKey(pid, at)
+            }.toSet()
+
+        fun encodeAll(keys: Set<SystemKillExitKey>): String = keys.joinToString(",") { it.encode() }
+    }
+}
 
 /**
  * What to do with each exit since the watermark, oldest first.
  *
  * Every exit newer than the install of the first build with this reporter and the watermark (the
- * newest exit already handled) is classified; only submissions are capped, in two separate
- * budgets so background kills never use up the one for kills the user saw:
- * - foreground ([SystemKillDecision.Report]: importance 100/200 or recent foreground evidence): at
- *   most [perLaunchCap] now (the rest are [SystemKillAction.Deferred], watermark not passed) and
- *   at most [dailyCap] in any 24 hours counting [recentReportMillis] (the rest are
- *   [SystemKillAction.RateLimited]).
- * - background ([SystemKillDecision.ReportBackground]): at most [backgroundPerLaunchCap] now and
- *   [backgroundDailyCap] in any 24 hours counting [recentBackgroundReportMillis]; the rest are
- *   [SystemKillAction.RateLimited] (never deferred, so they cannot hold up a later foreground kill).
+ * newest exit handled with everything before it), and not in [handledAboveWatermark], is
+ * classified; only submissions are capped, in two separate budgets ([systemKillBudget]) so
+ * background kills never use up the one for kills Hands keeps:
+ * - [SystemKillBudget.Protected]: at most [perLaunchCap] now (the rest are
+ *   [SystemKillAction.Deferred], watermark not passed) and at most [dailyCap] in any 24 hours
+ *   counting [recentReportMillis] (the rest are [SystemKillAction.RateLimited]).
+ * - [SystemKillBudget.Background]: at most [backgroundPerLaunchCap] now and [backgroundDailyCap]
+ *   in any 24 hours counting [recentBackgroundReportMillis]; the rest are
+ *   [SystemKillAction.RateLimited] (never deferred, so they cannot hold up a later kill) and
+ *   counted in the [BackgroundDropLedger].
  * Telemetry is matched per exit ([MemoryTelemetryRing.match]).
  */
 internal fun planSystemKillReports(
@@ -243,6 +336,7 @@ internal fun planSystemKillReports(
     recentBackgroundReportMillis: List<Long> = emptyList(),
     backgroundPerLaunchCap: Int = perLaunchCap,
     backgroundDailyCap: Int = dailyCap,
+    handledAboveWatermark: Set<SystemKillExitKey> = emptySet(),
 ): List<SystemKillPlanItem> {
     val floor = maxOf(cutoffMillis, watermarkMillis)
     val reportedToday = recentReportMillis.filter { nowMillis - it < DayMillis }.toMutableList()
@@ -251,7 +345,7 @@ internal fun planSystemKillReports(
     var backgroundSubmitted = 0
     var deferring = false
     return exits
-        .filter { it.timestampMillis > floor }
+        .filter { it.timestampMillis > floor && SystemKillExitKey(it.pid, it.timestampMillis) !in handledAboveWatermark }
         .distinctBy { it.pid to it.timestampMillis }
         .sortedBy { it.timestampMillis }
         .map { exit ->
@@ -263,12 +357,13 @@ internal fun planSystemKillReports(
                 } else {
                     classifySystemKill(exit.reasonCode, exit.importance, telemetry, exit.timestampMillis, exit.status)
                 }
+            val budget = systemKillBudget(exit, telemetry)
             val action =
                 when {
-                    // Once deferred, everything after waits too: the watermark cannot skip over it.
+                    // Once deferred, everything after waits too, as the per-launch cap always did.
                     deferring -> SystemKillAction.Deferred
                     !decision.report -> SystemKillAction.Skip
-                    decision == SystemKillDecision.ReportBackground ->
+                    budget == SystemKillBudget.Background ->
                         if (backgroundReportedToday.size >= backgroundDailyCap || backgroundSubmitted >= backgroundPerLaunchCap) {
                             SystemKillAction.RateLimited
                         } else {
@@ -287,9 +382,121 @@ internal fun planSystemKillReports(
                         SystemKillAction.Submit
                     }
                 }
-            SystemKillPlanItem(exit, decision, action, telemetry)
+            SystemKillPlanItem(exit, decision, action, telemetry, budget)
         }
 }
+
+/**
+ * The order one launch handles [plan] in: every protected item (and every skip, rate limit and
+ * deferral) in time order first, then the background submissions. A retryable upload error stops
+ * the pass, so this way one on a background report can never delay a protected one.
+ */
+internal fun systemKillProcessingOrder(plan: List<SystemKillPlanItem>): List<SystemKillPlanItem> =
+    plan.sortedBy { if (it.action == SystemKillAction.Submit && it.budget == SystemKillBudget.Background) 1 else 0 }
+
+/**
+ * The single watermark after handling [handled] (items of [plan], handled out of time order, plus
+ * those kept from earlier launches): it passes the longest time-ordered prefix of [plan] that is
+ * all handled; handled exits above it are kept so the next plan does not send them again.
+ */
+internal fun advanceSystemKillWatermark(
+    watermarkMillis: Long,
+    plan: List<SystemKillPlanItem>,
+    handled: Set<SystemKillExitKey>,
+): Pair<Long, Set<SystemKillExitKey>> {
+    var watermark = watermarkMillis
+    for (item in plan.sortedBy { it.exit.timestampMillis }) {
+        if (item.key !in handled) break
+        watermark = maxOf(watermark, item.exit.timestampMillis)
+    }
+    return watermark to handled.filterTo(mutableSetOf()) { it.timestampMillis > watermark }
+}
+
+/** Dropped background reports of one exit build and UTC exit day. */
+internal data class BackgroundDropEntry(val versionCode: Long, val exitDayUtc: String, val count: Int)
+
+/** Entries sent together under one random [id], so Hands can dedupe a resent batch. */
+internal data class BackgroundDropBatch(val id: String, val entries: List<BackgroundDropEntry>) {
+    /** `crash_background_dropped`: `[{version_code, exit_day_utc, count}]`. */
+    fun toJson(): JSONArray =
+        JSONArray().apply {
+            entries.forEach {
+                put(JSONObject().put("version_code", it.versionCode).put("exit_day_utc", it.exitDayUtc).put("count", it.count))
+            }
+        }
+}
+
+/**
+ * Background reports dropped over their budget, kept on the device until a later system-kill
+ * report carries them (best effort; they stay here if no later report is ever sent).
+ *
+ * New drops go to [accumulating]. The next upload freezes them into [pending] under a fresh id
+ * ([attach]); a failed upload leaves [pending] as it was, so the retry sends the same id and
+ * entries, and only a successful one clears it ([uploaded]). At most [MaxEntries] per list; the
+ * oldest days go first.
+ */
+internal data class BackgroundDropLedger(
+    val pending: BackgroundDropBatch? = null,
+    val accumulating: List<BackgroundDropEntry> = emptyList(),
+) {
+    fun record(versionCode: Long, exitTimestampMillis: Long): BackgroundDropLedger {
+        val day = utcDay(exitTimestampMillis)
+        val existing = accumulating.firstOrNull { it.versionCode == versionCode && it.exitDayUtc == day }
+        val next =
+            if (existing != null) {
+                accumulating.map { if (it === existing) it.copy(count = it.count + 1) else it }
+            } else {
+                accumulating + BackgroundDropEntry(versionCode, day, 1)
+            }
+        return copy(accumulating = next.sortedWith(compareBy({ it.exitDayUtc }, { it.versionCode })).takeLast(MaxEntries))
+    }
+
+    /** The batch the next upload carries (null when nothing was dropped), and the ledger after. */
+    fun attach(newId: () -> String): Pair<BackgroundDropLedger, BackgroundDropBatch?> =
+        when {
+            pending != null -> this to pending
+            accumulating.isEmpty() -> this to null
+            else -> BackgroundDropBatch(newId(), accumulating).let { BackgroundDropLedger(it, emptyList()) to it }
+        }
+
+    fun uploaded(batchId: String?): BackgroundDropLedger =
+        if (batchId != null && pending?.id == batchId) copy(pending = null) else this
+
+    fun encode(): String =
+        JSONObject().apply {
+            pending?.let { put("pending_id", it.id).put("pending", it.toJson()) }
+            put("accumulating", BackgroundDropBatch("", accumulating).toJson())
+        }.toString()
+
+    companion object {
+        const val MaxEntries = 32
+
+        fun decode(encoded: String?): BackgroundDropLedger {
+            if (encoded.isNullOrBlank()) return BackgroundDropLedger()
+            return runCatching {
+                val json = JSONObject(encoded)
+                val pendingId = json.optString("pending_id", "")
+                BackgroundDropLedger(
+                    pending = if (pendingId.isNotEmpty()) BackgroundDropBatch(pendingId, entries(json.optJSONArray("pending"))) else null,
+                    accumulating = entries(json.optJSONArray("accumulating")),
+                )
+            }.getOrDefault(BackgroundDropLedger())
+        }
+
+        private fun entries(array: JSONArray?): List<BackgroundDropEntry> =
+            (0 until (array?.length() ?: 0)).mapNotNull { index ->
+                val entry = array?.optJSONObject(index) ?: return@mapNotNull null
+                BackgroundDropEntry(entry.optLong("version_code", -1L), entry.optString("exit_day_utc"), entry.optInt("count"))
+            }
+
+        fun utcDay(timestampMillis: Long): String =
+            SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date(timestampMillis))
+    }
+}
+
+/** The build an exit ran: its stamp, else the version its telemetry recorded, else -1. */
+internal fun systemKillExitVersionCode(exit: SystemKillExit, telemetry: MemoryTelemetrySnapshot?): Long =
+    exit.build?.versionCode ?: telemetry?.versionCode?.takeIf { it > 0L } ?: -1L
 
 private const val DayMillis = 24L * 60 * 60 * 1000
 
@@ -308,6 +515,7 @@ internal fun exitImportanceForeground(importance: Int): Boolean = importance in 
 internal fun systemKillExtras(
     exit: SystemKillExit,
     telemetry: MemoryTelemetrySnapshot?,
+    droppedBatch: BackgroundDropBatch? = null,
 ): Map<String, Any?> =
     buildMap {
         val reason = historicalProcessExitReasonLabel(exit.reasonCode)
@@ -348,23 +556,14 @@ internal fun systemKillExtras(
         // The app's recent foreground evidence (see classifySystemKill), next to the raw fields:
         // crash_exit_importance, crash_foreground (the exit importance) and crash_trim are never
         // replaced by an inference. Names proposed in botiverse/hands#955.
-        val evidence = recentForegroundEvidence(telemetry, exit.timestampMillis)
-        when {
-            evidence != null -> {
-                put("crash_recent_foreground", true)
-                put("crash_recent_foreground_source", evidence.kind.label)
-                put("crash_recent_foreground_age_s", evidence.ageMillis / 1000L)
-            }
-            // "No" only when both the sample and the interaction time are known and not evidence.
-            telemetry != null &&
-                isKnownBeforeExit(telemetry.sampledAtMillis, exit.timestampMillis) &&
-                isKnownBeforeExit(telemetry.lastInteractionAtMillis, exit.timestampMillis) -> {
-                put("crash_recent_foreground", false)
-                put("crash_recent_foreground_source", "none")
-            }
-            // No snapshot, never sampled, no interaction recorded (or an older build's snapshot),
-            // or a time after the exit: unknown, so crash_recent_foreground is omitted.
-            else -> put("crash_recent_foreground_source", "unknown")
+        val recent = recentForeground(telemetry, exit.timestampMillis)
+        recent.value?.let { put("crash_recent_foreground", it) }
+        put("crash_recent_foreground_source", recent.source)
+        recent.ageSeconds?.let { put("crash_recent_foreground_age_s", it) }
+        // Dropped background reports this one carries (best effort; see BackgroundDropLedger).
+        if (droppedBatch != null && droppedBatch.entries.isNotEmpty()) {
+            put("crash_background_dropped_id", droppedBatch.id)
+            put("crash_background_dropped", droppedBatch.toJson())
         }
         if (telemetry != null) {
             val at = exit.timestampMillis
@@ -377,6 +576,8 @@ internal fun systemKillExtras(
                 put("crash_background_duration_ms", (at - telemetry.foregroundChangedAtMillis).coerceAtLeast(0L))
             }
             put("crash_memory_sample_age_ms", MemoryTelemetrySnapshot.ageAt(at, telemetry.sampledAtMillis))
+            // Raw, with the 5 s write granularity (RaftMemoryTelemetry.InteractionWriteIntervalMillis):
+            // the real last action can be up to 5 s more recent.
             put("crash_last_interaction_age_ms", MemoryTelemetrySnapshot.ageAt(at, telemetry.lastInteractionAtMillis))
             put("crash_memory_rss_kb", telemetry.rssKb)
             put("crash_memory_pss_kb", telemetry.pssKb)
@@ -470,8 +671,10 @@ internal fun decodeRecentReports(encoded: String?, nowMillis: Long): List<Long> 
  * Sends system kills of earlier processes (foreground and background) to Hands as `kind=crash` tickets, the way
  * ANRs are sent, so a kill like Hands fb-52cc0499 shows up without anyone filing feedback.
  *
- * Exactly-once: a watermark (newest handled exit timestamp) moves only after the ticket was
- * accepted, the exit was not reportable or rate limited, or Hands rejected it for good. A failed
+ * Exactly-once: an exit is handled once its ticket was accepted, it was not reportable or rate
+ * limited, or Hands rejected it for good. Protected reports go before background ones
+ * ([systemKillProcessingOrder]), so the single watermark passes only the time-ordered prefix that
+ * is all handled, and handled exits above it are kept ([advanceSystemKillWatermark]). A failed
  * upload stops the pass and is retried next launch; its telemetry is still in the ring
  * ([MemoryTelemetryRing]), so the retry classifies it the same way.
  */
@@ -482,6 +685,8 @@ internal object AndroidSystemKillReporter {
     /** Foreground reports (and every report before the background budget existed). */
     private const val RecentReportsKey = "system-kill-recent-reports"
     private const val RecentBackgroundReportsKey = "system-kill-recent-background-reports"
+    private const val HandledAboveWatermarkKey = "system-kill-handled-above-watermark"
+    private const val DroppedLedgerKey = "system-kill-background-dropped"
     private const val MaxExitsQueried = 16
     internal const val MaxReportsPerLaunch = 3
     internal const val MaxReportsPerDay = 5
@@ -526,6 +731,8 @@ internal object AndroidSystemKillReporter {
         val snapshots = RaftMemoryTelemetry.previousSnapshots.await()
         val preferences = context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
+        var watermark = preferences.getLong(WatermarkKey, 0L)
+        val handled = SystemKillExitKey.decodeAll(preferences.getString(HandledAboveWatermarkKey, null)).toMutableSet()
         val plan =
             planSystemKillReports(
                 exits =
@@ -534,7 +741,7 @@ internal object AndroidSystemKillReporter {
                 snapshots = snapshots,
                 // Before the first launch with this reporter nothing was decided; do not look back.
                 cutoffMillis = firstSeenMillis(preferences, now),
-                watermarkMillis = preferences.getLong(WatermarkKey, 0L),
+                watermarkMillis = watermark,
                 recentReportMillis = decodeRecentReports(preferences.getString(RecentReportsKey, null), now),
                 nowMillis = now,
                 perLaunchCap = MaxReportsPerLaunch,
@@ -544,8 +751,9 @@ internal object AndroidSystemKillReporter {
                 backgroundPerLaunchCap = MaxBackgroundReportsPerLaunch,
                 backgroundDailyCap = MaxBackgroundReportsPerDay,
                 mainProcessName = context.applicationInfo.processName ?: context.packageName,
+                handledAboveWatermark = handled,
             )
-        for (item in plan) {
+        for (item in systemKillProcessingOrder(plan)) {
             val exit = item.exit
             var ticket = "none"
             when (item.action) {
@@ -554,8 +762,12 @@ internal object AndroidSystemKillReporter {
                     continue
                 }
                 SystemKillAction.Submit -> {
+                    val (ledger, dropped) = readDropLedger(preferences).attach { UUID.randomUUID().toString() }
+                    writeDropLedger(preferences, ledger)
                     val result =
-                        runCatching { submit(systemKillMessage(exit, item.telemetry), systemKillExtras(exit, item.telemetry)) }
+                        runCatching {
+                            submit(systemKillMessage(exit, item.telemetry), systemKillExtras(exit, item.telemetry, dropped))
+                        }
                     val error = result.exceptionOrNull()
                     if (error != null && !isPermanentHandsRejection(error)) {
                         RaftAndroidLocalDiagnostics.recordLog(
@@ -567,15 +779,31 @@ internal object AndroidSystemKillReporter {
                         return
                     }
                     ticket = result.getOrNull()?.take(8) ?: "rejected"
+                    // Only an accepted upload clears the dropped entries it carried.
+                    if (result.isSuccess) writeDropLedger(preferences, readDropLedger(preferences).uploaded(dropped?.id))
                     recordReport(
                         preferences,
-                        if (item.decision == SystemKillDecision.ReportBackground) RecentBackgroundReportsKey else RecentReportsKey,
+                        if (item.budget == SystemKillBudget.Background) RecentBackgroundReportsKey else RecentReportsKey,
                         now,
                     )
                 }
-                SystemKillAction.Skip, SystemKillAction.RateLimited -> Unit
+                SystemKillAction.RateLimited ->
+                    if (item.budget == SystemKillBudget.Background) {
+                        writeDropLedger(
+                            preferences,
+                            readDropLedger(preferences).record(systemKillExitVersionCode(exit, item.telemetry), exit.timestampMillis),
+                        )
+                    }
+                SystemKillAction.Skip -> Unit
             }
-            preferences.edit().putLong(WatermarkKey, exit.timestampMillis).commit()
+            handled += item.key
+            val (nextWatermark, above) = advanceSystemKillWatermark(watermark, plan, handled)
+            watermark = nextWatermark
+            handled.retainAll(above)
+            preferences.edit()
+                .putLong(WatermarkKey, watermark)
+                .putString(HandledAboveWatermarkKey, SystemKillExitKey.encodeAll(above))
+                .commit()
             log(item, ticket)
         }
     }
@@ -586,7 +814,7 @@ internal object AndroidSystemKillReporter {
             Tag,
             "system_kill_report action=${item.action.label} decision=${item.decision.label} " +
                 "timestampMillis=${item.exit.timestampMillis} reason=${historicalProcessExitReasonLabel(item.exit.reasonCode)} " +
-                "importance=${item.exit.importance} telemetry=${if (item.telemetry != null) "matched" else "none"} " +
+                "importance=${item.exit.importance} budget=${item.budget.label} telemetry=${if (item.telemetry != null) "matched" else "none"} " +
                 "stamped=${item.exit.build != null} process=${item.exit.processName} ticket=$ticket",
         )
     }
@@ -595,6 +823,13 @@ internal object AndroidSystemKillReporter {
         val key = "system-kill-first-seen-millis"
         if (!preferences.contains(key)) preferences.edit().putLong(key, now).commit()
         return preferences.getLong(key, now)
+    }
+
+    private fun readDropLedger(preferences: SharedPreferences): BackgroundDropLedger =
+        BackgroundDropLedger.decode(preferences.getString(DroppedLedgerKey, null))
+
+    private fun writeDropLedger(preferences: SharedPreferences, ledger: BackgroundDropLedger) {
+        preferences.edit().putString(DroppedLedgerKey, ledger.encode()).commit()
     }
 
     private fun recordReport(preferences: SharedPreferences, key: String, now: Long) {

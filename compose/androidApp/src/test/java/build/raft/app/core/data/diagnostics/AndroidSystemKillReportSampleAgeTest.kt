@@ -125,6 +125,14 @@ class AndroidSystemKillReportSampleAgeTest {
             systemKillExtras(exit, snapshot(sampleAgeMillis = 61_000L, interactionAgeMillis = 600_000L)),
             expected = false, source = "none", ageSeconds = null,
         )
+        assertRecentForeground(
+            systemKillExtras(exit, snapshot(sampleAgeMillis = 62_000L, interactionAgeMillis = 70_000L)),
+            expected = false, source = "none", ageSeconds = null,
+        )
+        assertRecentForeground(
+            systemKillExtras(exit, snapshot(sampleAgeMillis = 62_000L, interactionAgeMillis = null)),
+            expected = null, source = "unknown", ageSeconds = null,
+        )
         // One stale, one missing.
         assertRecentForeground(
             systemKillExtras(exit, snapshot(sampleAgeMillis = 570_000L, interactionAgeMillis = null)),
@@ -188,11 +196,15 @@ class AndroidSystemKillReportSampleAgeTest {
     }
 
     @Test
-    fun anInteractionIsFreshUpToSixtySecondsBeforeTheExit() {
+    fun anInteractionIsFreshUpToSixtyFiveSecondsBeforeTheExit() {
+        // The stored time can be up to 5 s older than the real last action: 60 s + 5 s.
+        assertEquals(65_000L, SystemKillFreshInteractionMillis)
         mapOf(
             0L to true,
             SystemKillFreshSampleMillis to true,
-            SystemKillFreshSampleMillis + 1L to false,
+            62_000L to true,
+            SystemKillFreshInteractionMillis to true,
+            SystemKillFreshInteractionMillis + 1L to false,
             -1L to false,
         ).forEach { (age, fresh) ->
             val telemetry = stale4a5504d3().copy(lastInteractionAtMillis = exitAt - age)
@@ -220,15 +232,25 @@ class AndroidSystemKillReportSampleAgeTest {
     }
 
     @Test
-    fun aBackgroundSnapshotsSampleIsNotForegroundEvidence() {
-        // Sampled 5 s before the exit but already in background since: the sample source is not fresh.
+    fun afterSwitchingToBackgroundOnlyARecentSampleCounts() {
+        // Samples are only taken in the foreground; the move to background keeps their time.
         val telemetry =
             staleBackground().copy(sampledAtMillis = exitAt - 5_000L, lastInteractionAtMillis = exitAt - 600_000L)
         val exit = exit(importance = IMPORTANCE_CACHED)
 
-        assertNull(recentForegroundEvidence(telemetry, exitAt))
-        assertEquals(SystemKillDecision.ReportBackground, plan(exit, telemetry).decision)
-        assertRecentForeground(systemKillExtras(exit, telemetry), expected = false, source = "none", ageSeconds = null)
+        assertEquals(ForegroundEvidence(ForegroundEvidence.Kind.Sample, 5_000L), recentForegroundEvidence(telemetry, exitAt))
+        assertEquals(SystemKillDecision.Report, plan(exit, telemetry).decision)
+        assertRecentForeground(systemKillExtras(exit, telemetry), expected = true, source = "sample", ageSeconds = 5L)
+    }
+
+    @Test
+    fun afterSwitchingToBackgroundOnlyARecentInteractionCounts() {
+        val telemetry =
+            staleBackground().copy(sampledAtMillis = exitAt - 900_000L, lastInteractionAtMillis = exitAt - 3_000L)
+        val exit = exit(importance = IMPORTANCE_CACHED)
+
+        assertEquals(SystemKillDecision.Report, plan(exit, telemetry).decision)
+        assertRecentForeground(systemKillExtras(exit, telemetry), expected = true, source = "interaction", ageSeconds = 3L)
     }
 
     @Test
