@@ -1,7 +1,20 @@
 package build.raft.designsystem.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -54,3 +67,33 @@ fun Modifier.raftScrollEdgeFade(scroll: ScrollState, width: Dp = RaftFade.Edge):
                 )
             }
         }
+
+/**
+ * An item of a [raftScrollEdgeFade] strip that scrolls itself into view when it turns [active]
+ * (web FitToolbar: an applied filter, `data-active`), stopping [padding]
+ * (`scroll-padding-inline`, the fade's 24dp) clear of the edge so the fade never covers it.
+ * It also reveals when its size changes while active (a filter's label becoming its new
+ * value). Not on first show: a strip that opens with several filters applied stays at its
+ * start rather than scrolling to whichever item composed last.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun Modifier.raftScrollIntoViewWhen(active: Boolean, padding: Dp = RaftFade.Edge): Modifier {
+    val requester = remember { BringIntoViewRequester() }
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val seen = remember { RaftRevealSeen(active) }
+    val pad = with(LocalDensity.current) { padding.toPx() }
+    LaunchedEffect(active, size) {
+        val becameActive = active && !seen.active
+        val resized = active && seen.size != IntSize.Zero && size != seen.size
+        seen.active = active
+        if (size != IntSize.Zero) seen.size = size
+        if (size != IntSize.Zero && (becameActive || resized)) {
+            requester.bringIntoView(Rect(-pad, 0f, size.width + pad, size.height.toFloat()))
+        }
+    }
+    return this.onSizeChanged { size = it }.bringIntoViewRequester(requester)
+}
+
+/** What [raftScrollIntoViewWhen] last saw: whether the item was active, and its measured size. */
+private class RaftRevealSeen(var active: Boolean, var size: IntSize = IntSize.Zero)

@@ -732,7 +732,12 @@ private fun RaftFitToolbarFilterRow(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Keyed, not placed: a reordered filter keeps its own open menu (review of #4627).
-                filters.forEach { choice -> key(choice.key) { RaftFitToolbarPicker(choice, iconsOnly, controlHeight) } }
+                // An applied filter scrolls itself into view, clear of the edge fade (web `data-active`).
+                filters.forEach { choice ->
+                    key(choice.key) {
+                        Box(Modifier.raftScrollIntoViewWhen(choice.applied)) { RaftFitToolbarPicker(choice, iconsOnly, controlHeight) }
+                    }
+                }
             }
         }
         if (end != null) RaftFitToolbarFiltersEnd(end, endIconOnly)

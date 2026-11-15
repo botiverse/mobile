@@ -13,6 +13,7 @@ import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.raftScrollEdgeFade
+import build.raft.designsystem.components.raftScrollIntoViewWhen
 import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import build.raft.app.markdown.markdownToPreviewText
@@ -14400,7 +14401,8 @@ internal fun SharedHomeSearchFilters(
     // Channel, the time range) fills it and scrolls sideways with its labels kept, Clear all
     // pinned at the strip's end, the sort pinned at the line's end. A chip naming a person or
     // a channel is capped (web `max-w-60`): a long name ends in an ellipsis. The strip fades
-    // over 24dp at an edge with chips hidden past it (raft-design spacing.md › Edges fade).
+    // over 24dp at an edge with chips hidden past it (raft-design spacing.md › Edges fade); an
+    // applied filter scrolls itself into view, 24dp clear of that edge (web `data-active`).
     SharedHomeSearchControlsBlock {
         Row(
             modifier = Modifier
@@ -14425,7 +14427,7 @@ internal fun SharedHomeSearchFilters(
                     key("search-filter-${filter.id}") {
                         when (filter) {
                             HomeSearchFilter.Sender ->
-                                Box(chipModifier) {
+                                Box(chipModifier.raftScrollIntoViewWhen(senderActive)) {
                                     RaftAnchoredPickerTrigger(
                                         label = state.localizedSenderFilterLabel(),
                                         anchorIdentity = "search_filter:sender",
@@ -14440,7 +14442,7 @@ internal fun SharedHomeSearchFilters(
                                 }
                             HomeSearchFilter.Scope ->
                                 RaftAnchoredPickerTrigger(
-                                    modifier = chipModifier,
+                                    modifier = chipModifier.raftScrollIntoViewWhen(scopeActive),
                                     label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
                                     anchorIdentity = "search_filter:scope",
                                     hasValue = scopeActive,
@@ -14451,7 +14453,7 @@ internal fun SharedHomeSearchFilters(
                                     }
                                 )
                             HomeSearchFilter.Channel ->
-                                Box(chipModifier) {
+                                Box(chipModifier.raftScrollIntoViewWhen(channelActive)) {
                                     RaftAnchoredPickerTrigger(
                                         label = selectedChannel?.label ?: channelLabel,
                                         anchorIdentity = "search_filter:channel",
@@ -14466,7 +14468,7 @@ internal fun SharedHomeSearchFilters(
                                 }
                             HomeSearchFilter.Time ->
                                 RaftAnchoredPickerTrigger(
-                                    modifier = chipModifier,
+                                    modifier = chipModifier.raftScrollIntoViewWhen(timeActive),
                                     label = state.timeRange.localizedSearchLabel(),
                                     anchorIdentity = "search_filter:time",
                                     hasValue = timeActive,
