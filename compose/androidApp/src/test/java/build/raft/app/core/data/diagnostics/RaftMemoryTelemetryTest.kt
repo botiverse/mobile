@@ -56,6 +56,35 @@ class RaftMemoryTelemetryTest {
     }
 
     @Test
+    fun theLastInteractionRoundTripsAndARingWrittenByEncoding3DecodesWithoutIt() {
+        val touched = sample.copy(versionCode = 12600001L, versionName = "1.26.0", lastInteractionAtMillis = 29_500L)
+        assertEquals(touched, MemoryTelemetrySnapshot.decode(touched.encode()))
+
+        // Encoding 3: the 19 numeric fields, the version code and name, no last interaction.
+        val v3 = "3," + touched.encode().substringAfter(',').split(',').take(20).joinToString(",")
+        val decoded = MemoryTelemetrySnapshot.decode(v3)
+        assertEquals(touched.copy(lastInteractionAtMillis = -1L), decoded)
+    }
+
+    @Test
+    fun interactionWritesAreThrottledToOneEveryFiveSecondsAndNoneInTheBackground() {
+        val throttle = InteractionWriteThrottle(RaftMemoryTelemetry.InteractionWriteIntervalMillis)
+
+        // Backgrounded: nothing written, and it does not count as a write.
+        assertFalse(throttle.shouldRecord(nowMillis = 1_000L, foreground = false))
+        assertTrue(throttle.shouldRecord(nowMillis = 1_000L, foreground = true))
+        // A stream of touches inside the interval writes nothing more.
+        for (now in listOf(1_001L, 2_000L, 5_999L)) assertFalse("$now", throttle.shouldRecord(now, foreground = true))
+        // Once the stored value is 5 s old, the next touch writes.
+        assertTrue(throttle.shouldRecord(nowMillis = 6_000L, foreground = true))
+        assertFalse(throttle.shouldRecord(nowMillis = 11_999L, foreground = true))
+        assertFalse(throttle.shouldRecord(nowMillis = 20_000L, foreground = false))
+        assertTrue(throttle.shouldRecord(nowMillis = 20_000L, foreground = true))
+        // The wall clock set back: the stored value is not "recent", so write again.
+        assertTrue(throttle.shouldRecord(nowMillis = 10_000L, foreground = true))
+    }
+
+    @Test
     fun corruptOrOlderFormatValuesDecodeToNothing() {
         assertNull(MemoryTelemetrySnapshot.decode(null))
         assertNull(MemoryTelemetrySnapshot.decode(""))

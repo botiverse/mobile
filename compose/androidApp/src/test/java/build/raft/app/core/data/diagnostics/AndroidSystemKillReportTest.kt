@@ -255,6 +255,9 @@ class AndroidSystemKillReportTest {
         assertEquals(false, extras["crash_foreground"])
         assertEquals(true, extras["crash_telemetry_foreground"])
         assertFalse(extras.containsKey("crash_background_duration_ms"))
+        assertEquals("sample", extras["recent_foreground_evidence"])
+        assertEquals(10L, extras["recent_foreground_age_s"])
+        assertEquals(-1L, extras["crash_last_interaction_age_ms"])
         assertEquals("process_state_summary", extras["crash_version_source"])
         assertFalse(extras.containsKey("fallback_version_code"))
 

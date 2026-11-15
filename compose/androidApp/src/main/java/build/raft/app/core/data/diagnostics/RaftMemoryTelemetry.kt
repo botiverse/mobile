@@ -59,6 +59,12 @@ internal data class MemoryTelemetrySnapshot(
      */
     val versionCode: Long = -1L,
     val versionName: String = "",
+    /**
+     * The last touch down or key event in this process's activities ([RaftMemoryTelemetry.onUserInteraction]),
+     * written at most every [RaftMemoryTelemetry.InteractionWriteIntervalMillis] and only in the
+     * foreground; -1 when none (or written by a build before encoding 4).
+     */
+    val lastInteractionAtMillis: Long = -1L,
 ) {
     fun encode(): String =
         listOf(
@@ -84,6 +90,7 @@ internal data class MemoryTelemetrySnapshot(
             versionCode,
             // URL-encoded: the name may hold the ',' and ';' this and the ring are split on.
             URLEncoder.encode(versionName, "UTF-8"),
+            lastInteractionAtMillis,
         ).joinToString(",")
 
     /** `key=value` fields appended to `previous_process_exit`, relative to the exit time. */
@@ -107,8 +114,10 @@ internal data class MemoryTelemetrySnapshot(
             "trimAgeMs=${ageAt(exitTimestampMillis, lastTrimAtMillis)}"
 
     companion object {
-        private const val EncodingVersion = 3
-        private const val FieldCount = 21
+        private const val EncodingVersion = 4
+        private const val FieldCount = 22
+        /** Encoding 3 (no last interaction), still read: the ring written by the previous build. */
+        private const val V3FieldCount = 21
         /** Encoding 2 (no version), still read: the ring written by the previous build. */
         private const val V2FieldCount = 19
 
@@ -117,15 +126,20 @@ internal data class MemoryTelemetrySnapshot(
         fun decode(encoded: String?): MemoryTelemetrySnapshot? {
             val parts = encoded?.split(',') ?: return null
             val version = parts[0].toIntOrNull()
-            val versioned =
-                when {
-                    version == EncodingVersion && parts.size == FieldCount -> true
-                    version == 2 && parts.size == V2FieldCount -> false
-                    else -> return null
-                }
-            val n = parts.take(if (versioned) FieldCount - 1 else V2FieldCount).map { it.toLongOrNull() ?: return null }
+            when {
+                version == EncodingVersion && parts.size == FieldCount -> Unit
+                version == 3 && parts.size == V3FieldCount -> Unit
+                version == 2 && parts.size == V2FieldCount -> Unit
+                else -> return null
+            }
+            // Encoding 3 added the build (code, then the URL-encoded name at index 20); encoding 4
+            // the last interaction after it.
+            val versioned = version != 2
+            val n = parts.take(if (versioned) V3FieldCount - 1 else V2FieldCount).map { it.toLongOrNull() ?: return null }
             val versionName =
-                if (versioned) runCatching { URLDecoder.decode(parts[FieldCount - 1], "UTF-8") }.getOrNull() ?: return null else ""
+                if (versioned) runCatching { URLDecoder.decode(parts[V3FieldCount - 1], "UTF-8") }.getOrNull() ?: return null else ""
+            val lastInteractionAtMillis =
+                if (version == EncodingVersion) parts[FieldCount - 1].toLongOrNull() ?: return null else -1L
             return MemoryTelemetrySnapshot(
                 pid = n[1].toInt(),
                 processStartMillis = n[2],
@@ -147,6 +161,7 @@ internal data class MemoryTelemetrySnapshot(
                 lastTrimAtMillis = n[18],
                 versionCode = if (versioned) n[19] else -1L,
                 versionName = versionName,
+                lastInteractionAtMillis = lastInteractionAtMillis,
             )
         }
     }
@@ -211,13 +226,14 @@ internal class MemoryTelemetryWriteGate(
     private var lastWriteMillis = Long.MIN_VALUE
     private var lastWrittenTrimLevel = 0
 
-    enum class Cause { Periodic, ForegroundChange, Trim }
+    enum class Cause { Periodic, ForegroundChange, Trim, Interaction }
 
     @Synchronized
     fun shouldWrite(cause: Cause, nowMillis: Long, trimLevel: Int = 0): Boolean {
         val due =
             when (cause) {
-                Cause.ForegroundChange -> true
+                // Already throttled by InteractionWriteThrottle.
+                Cause.ForegroundChange, Cause.Interaction -> true
                 Cause.Trim -> trimLevel > lastWrittenTrimLevel ||
                     lastWriteMillis == Long.MIN_VALUE ||
                     nowMillis - lastWriteMillis >= minPeriodicIntervalMillis
@@ -229,6 +245,24 @@ internal class MemoryTelemetryWriteGate(
             if (cause == Cause.Trim) lastWrittenTrimLevel = maxOf(lastWrittenTrimLevel, trimLevel)
         }
         return due
+    }
+}
+
+/**
+ * Whether a user interaction should be written: only in the foreground, and only when the stored
+ * interaction is at least [intervalMillis] old, so a stream of touches costs one write per interval.
+ */
+internal class InteractionWriteThrottle(
+    private val intervalMillis: Long,
+) {
+    private var lastRecordedMillis = Long.MIN_VALUE
+
+    @Synchronized
+    fun shouldRecord(nowMillis: Long, foreground: Boolean): Boolean {
+        if (!foreground) return false
+        if (lastRecordedMillis != Long.MIN_VALUE && nowMillis - lastRecordedMillis in 0 until intervalMillis) return false
+        lastRecordedMillis = nowMillis
+        return true
     }
 }
 
@@ -256,6 +290,7 @@ internal object RaftMemoryTelemetry {
     internal const val SampleIntervalMillis = 30_000L
     internal const val PssIntervalMillis = 5 * 60_000L
     internal const val BackgroundDebounceMillis = 2_000L
+    internal const val InteractionWriteIntervalMillis = 5_000L
 
     private val installed = AtomicBoolean(false)
     val previousSnapshots = CompletableDeferred<List<MemoryTelemetrySnapshot>>()
@@ -271,6 +306,24 @@ internal object RaftMemoryTelemetry {
     // Main-thread state.
     private var startedActivities = 0
     private lateinit var handler: Handler
+    private val interactionThrottle = InteractionWriteThrottle(InteractionWriteIntervalMillis)
+
+    /**
+     * A touch down or key event in an activity (`Activity.onUserInteraction`, main thread). Kept as
+     * [MemoryTelemetrySnapshot.lastInteractionAtMillis] so a later kill report knows the user was
+     * using the app; nothing is written while no activity is started.
+     */
+    fun onUserInteraction() {
+        if (!installed.get() || !::handler.isInitialized) return
+        val now = System.currentTimeMillis()
+        if (!interactionThrottle.shouldRecord(now, foreground = startedActivities > 0)) return
+        handler.post {
+            val snapshot = current ?: return@post
+            if (!snapshot.foreground) return@post
+            current = snapshot.copy(lastInteractionAtMillis = now)
+            persist(MemoryTelemetryWriteGate.Cause.Interaction)
+        }
+    }
 
     /**
      * Starts telemetry. [onPreviousLoaded] runs on the telemetry thread with the earlier

@@ -16,7 +16,14 @@ import kotlinx.coroutines.launch
 
 /** Why a previous exit is, or is not, sent to Hands as a `system_kill` crash ticket. */
 internal enum class SystemKillDecision(val label: String, val report: Boolean) {
+    /** A foreground kill: the system recorded it visible, or the app has fresh foreground evidence. */
     Report("report", true),
+    /**
+     * Sent, but a background kill: the app's snapshot still said "in foreground" (so this was sent
+     * before #4842 too) with no sample or interaction in the last [SystemKillFreshSampleMillis], and
+     * the system recorded a background importance (Hands 4a5504d3). Hands keeps counting these.
+     */
+    ReportBackground("report_background", true),
     /** The user (swipe away, force stop, revoked permission) or the app itself ended it. */
     SkipUserInitiated("user_initiated", false),
     /** An install or package change; not a failure. */
@@ -75,11 +82,48 @@ internal const val SystemKillFreshSampleMillis = 60_000L
  * foreground flag: taken 0..[SystemKillFreshSampleMillis] before the exit. No sample (-1) or one
  * after the exit (a clock change) is not.
  */
-internal fun isTelemetrySampleFresh(telemetry: MemoryTelemetrySnapshot, exitTimestampMillis: Long): Boolean {
-    if (telemetry.sampledAtMillis < 0L) return false
-    val age = exitTimestampMillis - telemetry.sampledAtMillis
-    return age in 0L..SystemKillFreshSampleMillis
+internal fun isTelemetrySampleFresh(telemetry: MemoryTelemetrySnapshot, exitTimestampMillis: Long): Boolean =
+    isWithinFreshWindow(telemetry.sampledAtMillis, exitTimestampMillis)
+
+/**
+ * Whether the user touched the app or pressed a key 0..[SystemKillFreshSampleMillis] before the
+ * exit ([MemoryTelemetrySnapshot.lastInteractionAtMillis]). The Huawei kill fb-52cc0499 was
+ * recorded at importance 400 one second after the user scrolled.
+ */
+internal fun isTelemetryInteractionFresh(telemetry: MemoryTelemetrySnapshot, exitTimestampMillis: Long): Boolean =
+    isWithinFreshWindow(telemetry.lastInteractionAtMillis, exitTimestampMillis)
+
+/** What says the app was in the foreground shortly before the exit, and how long before. */
+internal data class ForegroundEvidence(val kind: Kind, val ageMillis: Long) {
+    enum class Kind(val label: String) { Sample("sample"), Interaction("interaction") }
 }
+
+/**
+ * Fresh foreground evidence from the app: it still saw itself in the foreground, and its last
+ * sample or the user's last interaction was at most [SystemKillFreshSampleMillis] before the exit
+ * (the more recent of the two); null when neither. Interactions are only written in the
+ * foreground, so a snapshot that says "in background" moved there after the last one and is not
+ * evidence.
+ */
+internal fun recentForegroundEvidence(telemetry: MemoryTelemetrySnapshot?, exitTimestampMillis: Long): ForegroundEvidence? {
+    if (telemetry == null || !telemetry.foreground) return null
+    val candidates =
+        buildList {
+            if (isTelemetrySampleFresh(telemetry, exitTimestampMillis)) {
+                add(ForegroundEvidence(ForegroundEvidence.Kind.Sample, exitTimestampMillis - telemetry.sampledAtMillis))
+            }
+            if (isTelemetryInteractionFresh(telemetry, exitTimestampMillis)) {
+                add(ForegroundEvidence(ForegroundEvidence.Kind.Interaction, exitTimestampMillis - telemetry.lastInteractionAtMillis))
+            }
+        }
+    return candidates.minByOrNull { it.ageMillis }
+}
+
+internal fun hasFreshForegroundEvidence(telemetry: MemoryTelemetrySnapshot, exitTimestampMillis: Long): Boolean =
+    recentForegroundEvidence(telemetry, exitTimestampMillis) != null
+
+private fun isWithinFreshWindow(atMillis: Long, exitTimestampMillis: Long): Boolean =
+    atMillis >= 0L && exitTimestampMillis - atMillis in 0L..SystemKillFreshSampleMillis
 
 /**
  * Every reason not listed above is a system kill: unknown, signaled, low_memory,
@@ -87,22 +131,23 @@ internal fun isTelemetrySampleFresh(telemetry: MemoryTelemetrySnapshot, exitTime
  * added after API 35. On a device that does not explain its kills (the Huawei in Hands
  * fb-52cc0499 recorded `reason=other`) any of them can be the "app vanished" users describe.
  *
- * A system kill is reported only when an activity was on screen:
- * - the exit record is authoritative when it says so: importance foreground (100) or visible
- *   (200) always reports, whatever the app's telemetry says or how old it is. The app may have
- *   come back to the foreground after its last snapshot was written.
- * - otherwise (the system recorded a background importance) only the app's telemetry for the
- *   exited process ([telemetry], matched by the caller) can make it a foreground kill: "in
- *   foreground" with a sample at most [SystemKillFreshSampleMillis] before the exit
- *   ([isTelemetrySampleFresh]). The Huawei kill (fb-52cc0499) recorded `importance=400` one
- *   second after the user scrolled; that stays reported.
- * - an older foreground sample (or none) is not trusted: the process stopped sampling long
- *   before the kill, and about 31 such tickets (Hands 4a5504d3: foreground 600 s, sample 570 s
- *   before an exit at importance 300) were background kills. A background snapshot or none skips
- *   too. Each such skip leaves a local audit line ([systemKillSkipAuditLine]).
- * - foreground service (125) and perceptible (230) are background here: that is the process
- *   RaftBackgroundConnectionService keeps alive, and reporting its swipe-away or power-manager
- *   kills would flood Hands.
+ * Which system kills are sent, and whether as foreground or background:
+ * - foreground ([SystemKillDecision.Report]) when the exit record says importance foreground
+ *   (100) or visible (200), whatever the app's telemetry says or how old it is (the app may have
+ *   come back to the foreground after its last snapshot was written); or when the app's telemetry
+ *   for the exited process ([telemetry], matched by the caller) has fresh foreground evidence, a
+ *   sample or a user interaction at most [SystemKillFreshSampleMillis] before the exit
+ *   ([recentForegroundEvidence]), whatever the importance. The Huawei kill (fb-52cc0499)
+ *   recorded `importance=400` one second after the user scrolled.
+ * - background but still sent ([SystemKillDecision.ReportBackground]) when the snapshot says "in
+ *   foreground" without such evidence: the process stopped sampling long before the kill (Hands
+ *   4a5504d3: foreground 600 s, sample 570 s before an exit at importance 300). These were sent
+ *   before too; Hands archives and counts background kills, so they keep coming.
+ * - not sent ([SystemKillDecision.SkipNotImportant]) when the snapshot says "in background", or
+ *   there is none, and the importance is not visible: as before. Foreground service (125) and
+ *   perceptible (230) are background here: that is the process RaftBackgroundConnectionService
+ *   keeps alive, and sending its swipe-away or power-manager kills would flood Hands and use up
+ *   the daily cap.
  */
 internal fun classifySystemKill(
     reasonCode: Int,
@@ -117,8 +162,8 @@ internal fun classifySystemKill(
         reasonCode in ReportedElsewhereReasons -> SystemKillDecision.SkipReportedElsewhere
         reasonCode == ApplicationExitInfo.REASON_SIGNALED && status in CrashSignals -> SystemKillDecision.SkipReportedElsewhere
         importance in VisibleImportances -> SystemKillDecision.Report
-        telemetry != null && telemetry.foreground && isTelemetrySampleFresh(telemetry, exitTimestampMillis) ->
-            SystemKillDecision.Report
+        recentForegroundEvidence(telemetry, exitTimestampMillis) != null -> SystemKillDecision.Report
+        telemetry != null && telemetry.foreground -> SystemKillDecision.ReportBackground
         else -> SystemKillDecision.SkipNotImportant
     }
 
@@ -281,6 +326,11 @@ internal fun systemKillExtras(
             put("crash_exit_description", it.take(MaxExitDescriptionChars))
         }
         put("crash_memory_sample", if (telemetry == null) "none" else "matched")
+        // The app's fresh foreground evidence (see classifySystemKill); crash_foreground stays the
+        // exit importance and crash_telemetry_foreground the raw flag.
+        val evidence = recentForegroundEvidence(telemetry, exit.timestampMillis)
+        put("recent_foreground_evidence", evidence?.kind?.label ?: "none")
+        if (evidence != null) put("recent_foreground_age_s", evidence.ageMillis / 1000L)
         if (telemetry != null) {
             val at = exit.timestampMillis
             put("crash_process_uptime_ms", at - telemetry.processStartMillis)
@@ -292,6 +342,7 @@ internal fun systemKillExtras(
                 put("crash_background_duration_ms", (at - telemetry.foregroundChangedAtMillis).coerceAtLeast(0L))
             }
             put("crash_memory_sample_age_ms", MemoryTelemetrySnapshot.ageAt(at, telemetry.sampledAtMillis))
+            put("crash_last_interaction_age_ms", MemoryTelemetrySnapshot.ageAt(at, telemetry.lastInteractionAtMillis))
             put("crash_memory_rss_kb", telemetry.rssKb)
             put("crash_memory_pss_kb", telemetry.pssKb)
             put("crash_memory_pss_age_ms", MemoryTelemetrySnapshot.ageAt(at, telemetry.pssSampledAtMillis))
@@ -335,8 +386,9 @@ internal fun systemKillMessage(exit: SystemKillExit, telemetry: MemoryTelemetryS
                 append(", never sampled (")
             }
             append(system)
-            if (!isTelemetrySampleFresh(telemetry, at)) {
-                append("; sample over ").append(SystemKillFreshSampleMillis / 1000L).append("s old, not trusted")
+            if (!hasFreshForegroundEvidence(telemetry, at)) {
+                append("; no sample or interaction in the last ").append(SystemKillFreshSampleMillis / 1000L)
+                    .append("s, not trusted")
             }
             append(')')
         } else {
@@ -344,6 +396,9 @@ internal fun systemKillMessage(exit: SystemKillExit, telemetry: MemoryTelemetryS
             append(" (").append(system).append(')')
         }
         append("\n").append((at - telemetry.processStartMillis) / 1000L).append("s after launch")
+        if (telemetry.lastInteractionAtMillis >= 0L) {
+            append(", last interaction ").append(beforeExit(at, telemetry.lastInteractionAtMillis))
+        }
         if (telemetry.rssKb >= 0L) {
             append(", last RSS ").append(telemetry.rssKb / 1024L).append(" MB (")
                 .append(beforeExit(at, telemetry.sampledAtMillis)).append(')')
@@ -370,35 +425,6 @@ private fun beforeExit(exitMillis: Long, atMillis: Long): String {
     if (atMillis < 0L) return "unknown time"
     val age = exitMillis - atMillis
     return if (age >= 0L) "${age / 1000L}s before exit" else "${-age / 1000L}s after exit"
-}
-
-/**
- * The local diagnostics line for an exit skipped as [SystemKillDecision.SkipNotImportant] (the
- * system recorded a background importance and no fresh foreground sample says otherwise), so a
- * skipped kill still shows up in the next feedback ZIP, e.g.
- * `system_kill_skipped reason=low_memory importance=300 snapshot_age_s=570 fg_age_s=600
- * telemetry_foreground=true`. Ages are seconds before the exit: the last sample and the last
- * foreground change; `none` without a snapshot or sample. Null for every other plan item.
- */
-internal fun systemKillSkipAuditLine(item: SystemKillPlanItem): String? {
-    if (item.decision != SystemKillDecision.SkipNotImportant) return null
-    val exit = item.exit
-    val telemetry = item.telemetry
-    fun ageSeconds(atMillis: Long?): String =
-        if (atMillis == null || atMillis < 0L) "none" else ((exit.timestampMillis - atMillis) / 1000L).toString()
-    return "system_kill_skipped reason=${historicalProcessExitReasonLabel(exit.reasonCode)} " +
-        "importance=${exit.importance} " +
-        "snapshot_age_s=${ageSeconds(telemetry?.sampledAtMillis)} " +
-        "fg_age_s=${ageSeconds(telemetry?.foregroundChangedAtMillis)} " +
-        "telemetry_foreground=${telemetry?.foreground ?: "none"} " +
-        "timestampMillis=${exit.timestampMillis}"
-}
-
-/** Writes [systemKillSkipAuditLine] through [record] when [item] has one; whether it wrote. */
-internal fun recordSystemKillSkipAudit(item: SystemKillPlanItem, record: (message: String) -> Unit): Boolean {
-    val line = systemKillSkipAuditLine(item) ?: return false
-    record(line)
-    return true
 }
 
 /** Report timestamps in the last 24 hours, as persisted (comma separated). */
@@ -500,9 +526,7 @@ internal object AndroidSystemKillReporter {
                     ticket = result.getOrNull()?.take(8) ?: "rejected"
                     recordReport(preferences, now)
                 }
-                SystemKillAction.Skip ->
-                    recordSystemKillSkipAudit(item) { line -> RaftAndroidLocalDiagnostics.recordLog("info", Tag, line) }
-                SystemKillAction.RateLimited -> Unit
+                SystemKillAction.Skip, SystemKillAction.RateLimited -> Unit
             }
             preferences.edit().putLong(WatermarkKey, exit.timestampMillis).commit()
             log(item, ticket)

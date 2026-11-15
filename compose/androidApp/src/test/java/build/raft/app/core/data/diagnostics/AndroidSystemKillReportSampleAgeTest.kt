@@ -16,52 +16,136 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * How the exit record's importance and the age of the app's last telemetry sample decide a system
- * kill, and how the ticket and the skip audit line show those ages.
+ * How the exit record's importance and the age of the app's last sample and user interaction decide
+ * whether a system kill is sent and as foreground or background, and how the ticket shows those ages.
  */
 class AndroidSystemKillReportSampleAgeTest {
     private val exitAt = 2_000_000L
     private val mainProcess = "build.raft.app"
 
     @Test
-    fun aStaleForegroundSnapshotAtImportanceServiceIsSkippedWithAnAuditLine() {
+    fun aStaleForegroundSnapshotAtImportanceServiceIsUploadedAsBackground() {
         // Hands 4a5504d3: foreground set 600 s, last sample 570 s, trim ui_hidden 1241 s before an
         // exit the system recorded at importance 300.
         val telemetry = stale4a5504d3()
         val exit = exit(importance = IMPORTANCE_SERVICE)
 
         assertEquals(
-            SystemKillDecision.SkipNotImportant,
+            SystemKillDecision.ReportBackground,
             classifySystemKill(exit.reasonCode, exit.importance, telemetry, exitAt),
         )
         val item = plan(exit, telemetry)
-        assertEquals(SystemKillDecision.SkipNotImportant, item.decision)
-        assertEquals(SystemKillAction.Skip, item.action)
-
-        val written = mutableListOf<String>()
-        assertTrue(recordSystemKillSkipAudit(item) { written += it })
-        assertEquals(
-            listOf(
-                "system_kill_skipped reason=low_memory importance=300 snapshot_age_s=570 fg_age_s=600 " +
-                    "telemetry_foreground=true timestampMillis=$exitAt"
-            ),
-            written,
-        )
+        assertEquals(SystemKillDecision.ReportBackground, item.decision)
+        assertEquals(SystemKillAction.Submit, item.action)
 
         assertEquals(
             "System kill: low_memory (reasonCode=3 status=0 importance=300)\n" +
                 "last seen in foreground 570s before exit (in foreground since 600s before exit; " +
-                "system: background, importance 300; sample over 60s old, not trusted)\n" +
+                "system: background, importance 300; no sample or interaction in the last 60s, not trusted)\n" +
                 "1900s after launch, last RSS 373 MB (570s before exit), last PSS 360 MB (580s before exit), " +
                 "last trim ui_hidden (1241s before exit, before the move to foreground)",
             systemKillMessage(exit, telemetry),
         )
-        // The metadata Hands and triage read keeps its names and values.
+        // Existing metadata keeps its names and meanings; the evidence fields are new.
         val extras = systemKillExtras(exit, telemetry)
         assertEquals(false, extras["crash_foreground"])
         assertEquals(true, extras["crash_telemetry_foreground"])
+        assertEquals(300, extras["crash_exit_importance"])
         assertEquals(570_000L, extras["crash_memory_sample_age_ms"])
         assertEquals(1_241_000L, extras["crash_trim_age_ms"])
+        assertEquals("none", extras["recent_foreground_evidence"])
+        assertFalse(extras.containsKey("recent_foreground_age_s"))
+    }
+
+    @Test
+    fun aBackgroundKillIsUploadedWithCrashForegroundFalse() {
+        for (importance in listOf(IMPORTANCE_FOREGROUND_SERVICE, IMPORTANCE_PERCEPTIBLE, IMPORTANCE_SERVICE, IMPORTANCE_CACHED)) {
+            val exit = exit(importance = importance)
+            val item = plan(exit, stale4a5504d3())
+            assertEquals("importance $importance", SystemKillAction.Submit, item.action)
+            assertEquals("importance $importance", SystemKillDecision.ReportBackground, item.decision)
+            assertEquals("importance $importance", false, systemKillExtras(exit, item.telemetry)["crash_foreground"])
+        }
+    }
+
+    @Test
+    fun anInteractionOneSecondBeforeAnExitRecordedAsCachedIsUploadedAsForeground() {
+        // fb-52cc0499: the user scrolled a second before a kill recorded at importance 400; the
+        // memory sample itself is older than 60 s.
+        val telemetry = stale4a5504d3().copy(lastInteractionAtMillis = exitAt - 1_000L)
+        val exit = exit(importance = IMPORTANCE_CACHED)
+
+        val item = plan(exit, telemetry)
+        assertEquals(SystemKillDecision.Report, item.decision)
+        assertEquals(SystemKillAction.Submit, item.action)
+        assertEquals(ForegroundEvidence(ForegroundEvidence.Kind.Interaction, 1_000L), recentForegroundEvidence(telemetry, exitAt))
+
+        val message = systemKillMessage(exit, telemetry)
+        assertTrue(
+            message,
+            message.contains(
+                "last seen in foreground 570s before exit (in foreground since 600s before exit; " +
+                    "system: background, importance 400)\n1900s after launch, last interaction 1s before exit, "
+            ),
+        )
+        assertFalse(message, message.contains("not trusted"))
+        val extras = systemKillExtras(exit, telemetry)
+        assertEquals("interaction", extras["recent_foreground_evidence"])
+        assertEquals(1L, extras["recent_foreground_age_s"])
+        assertEquals(1_000L, extras["crash_last_interaction_age_ms"])
+        assertEquals(false, extras["crash_foreground"])
+        assertEquals(400, extras["crash_exit_importance"])
+    }
+
+    @Test
+    fun anInteraction600SecondsBeforeWithoutAFreshSampleIsUploadedAsBackground() {
+        val telemetry = stale4a5504d3().copy(lastInteractionAtMillis = exitAt - 600_000L)
+        val exit = exit(importance = IMPORTANCE_CACHED)
+
+        val item = plan(exit, telemetry)
+        assertEquals(SystemKillDecision.ReportBackground, item.decision)
+        assertEquals(SystemKillAction.Submit, item.action)
+        val message = systemKillMessage(exit, telemetry)
+        assertTrue(message, message.contains("last interaction 600s before exit"))
+        assertTrue(message, message.contains("not trusted"))
+        assertEquals("none", systemKillExtras(exit, telemetry)["recent_foreground_evidence"])
+    }
+
+    @Test
+    fun anInteractionIsFreshUpToSixtySecondsBeforeTheExit() {
+        mapOf(
+            0L to true,
+            SystemKillFreshSampleMillis to true,
+            SystemKillFreshSampleMillis + 1L to false,
+            -1L to false,
+        ).forEach { (age, fresh) ->
+            val telemetry = stale4a5504d3().copy(lastInteractionAtMillis = exitAt - age)
+            assertEquals("age $age", fresh, isTelemetryInteractionFresh(telemetry, exitAt))
+            assertEquals(
+                "age $age",
+                if (fresh) SystemKillDecision.Report else SystemKillDecision.ReportBackground,
+                classifySystemKill(ApplicationExitInfo.REASON_LOW_MEMORY, IMPORTANCE_CACHED, telemetry, exitAt),
+            )
+        }
+    }
+
+    @Test
+    fun anInteractionAfterTheMoveToBackgroundIsNotEvidence() {
+        // Not written in the background, so a background snapshot moved there after its last one.
+        val telemetry = staleBackground().copy(lastInteractionAtMillis = exitAt - 1_000L)
+        assertNull(recentForegroundEvidence(telemetry, exitAt))
+        assertEquals(SystemKillAction.Skip, plan(exit(importance = IMPORTANCE_CACHED), telemetry).action)
+    }
+
+    @Test
+    fun theMoreRecentOfSampleAndInteractionIsTheEvidence() {
+        val sampleNewer = foregroundSnapshot(sampleAgeMillis = 2_000L).copy(lastInteractionAtMillis = exitAt - 30_000L)
+        assertEquals(ForegroundEvidence(ForegroundEvidence.Kind.Sample, 2_000L), recentForegroundEvidence(sampleNewer, exitAt))
+        val interactionNewer = foregroundSnapshot(sampleAgeMillis = 20_000L).copy(lastInteractionAtMillis = exitAt - 3_000L)
+        assertEquals(
+            ForegroundEvidence(ForegroundEvidence.Kind.Interaction, 3_000L),
+            recentForegroundEvidence(interactionNewer, exitAt),
+        )
     }
 
     @Test
@@ -81,7 +165,6 @@ class AndroidSystemKillReportSampleAgeTest {
             val item = plan(exit(importance = importance), staleBackground())
             assertEquals("importance $importance", SystemKillDecision.Report, item.decision)
             assertEquals("importance $importance", SystemKillAction.Submit, item.action)
-            assertNull(systemKillSkipAuditLine(item))
         }
         assertTrue(
             systemKillMessage(exit(importance = IMPORTANCE_VISIBLE), staleBackground()).endsWith(
@@ -93,85 +176,55 @@ class AndroidSystemKillReportSampleAgeTest {
     }
 
     @Test
-    fun importanceForegroundServiceReportsOnlyWithAFreshForegroundSample() {
-        val fresh = foregroundSnapshot(sampleAgeMillis = 5_000L)
-        assertEquals(SystemKillAction.Submit, plan(exit(importance = IMPORTANCE_FOREGROUND_SERVICE), fresh).action)
-
-        for (telemetry in listOf(stale4a5504d3(), staleBackground(), null)) {
-            val item = plan(exit(importance = IMPORTANCE_FOREGROUND_SERVICE), telemetry)
-            assertEquals("$telemetry", SystemKillAction.Skip, item.action)
-            val written = mutableListOf<String>()
-            assertTrue(recordSystemKillSkipAudit(item) { written += it })
-            assertTrue(written.single(), written.single().startsWith("system_kill_skipped reason=low_memory importance=125 "))
-        }
+    fun importanceForegroundServiceIsForegroundOnlyWithFreshEvidence() {
+        val service = exit(importance = IMPORTANCE_FOREGROUND_SERVICE)
+        assertEquals(SystemKillDecision.Report, plan(service, foregroundSnapshot(sampleAgeMillis = 5_000L)).decision)
+        assertEquals(
+            SystemKillDecision.Report,
+            plan(service, stale4a5504d3().copy(lastInteractionAtMillis = exitAt - 5_000L)).decision,
+        )
+        assertEquals(SystemKillDecision.ReportBackground, plan(service, stale4a5504d3()).decision)
+        // The service-held background process: not sent, as before.
+        assertEquals(SystemKillAction.Skip, plan(service, staleBackground()).action)
+        assertEquals(SystemKillAction.Skip, plan(service, null).action)
     }
 
     @Test
     fun aFreshForegroundSampleWinsOverAnExitRecordedAsCached() {
-        // fb-52cc0499: the user scrolled a second before a kill recorded at importance 400.
         val telemetry = foregroundSnapshot(sampleAgeMillis = 1_000L).copy(lastTrimLevel = 0, lastTrimAtMillis = -1L)
         val exit = exit(importance = IMPORTANCE_CACHED)
 
         val item = plan(exit, telemetry)
         assertEquals(SystemKillDecision.Report, item.decision)
         assertEquals(SystemKillAction.Submit, item.action)
-        assertNull(systemKillSkipAuditLine(item))
-
-        val message = systemKillMessage(exit, telemetry)
+        assertEquals("sample", systemKillExtras(exit, telemetry)["recent_foreground_evidence"])
         assertEquals(
             "System kill: low_memory (reasonCode=3 status=0 importance=400)\n" +
                 "last seen in foreground 1s before exit (in foreground since 600s before exit; " +
                 "system: background, importance 400)\n" +
                 "1900s after launch, last RSS 373 MB (1s before exit), last PSS 360 MB (580s before exit), no trim",
-            message,
+            systemKillMessage(exit, telemetry),
         )
     }
 
     @Test
-    fun aFreshForegroundSampleReportsAtEveryBackgroundImportance() {
-        val fresh = foregroundSnapshot(sampleAgeMillis = 1_000L)
-        for (importance in listOf(IMPORTANCE_FOREGROUND_SERVICE, IMPORTANCE_PERCEPTIBLE, IMPORTANCE_SERVICE, IMPORTANCE_CACHED)) {
-            assertEquals("importance $importance", SystemKillAction.Submit, plan(exit(importance = importance), fresh).action)
-        }
-    }
-
-    @Test
-    fun aBackgroundSnapshotWithABackgroundImportanceIsSkipped() {
+    fun aBackgroundSnapshotWithABackgroundImportanceIsNotSentAsBefore() {
         for (importance in listOf(IMPORTANCE_FOREGROUND_SERVICE, IMPORTANCE_PERCEPTIBLE, IMPORTANCE_SERVICE, IMPORTANCE_CACHED)) {
             val item = plan(exit(importance = importance), staleBackground())
+            assertEquals("importance $importance", SystemKillDecision.SkipNotImportant, item.decision)
             assertEquals("importance $importance", SystemKillAction.Skip, item.action)
-            assertEquals(
-                "system_kill_skipped reason=low_memory importance=$importance snapshot_age_s=900 fg_age_s=800 " +
-                    "telemetry_foreground=false timestampMillis=$exitAt",
-                systemKillSkipAuditLine(item),
-            )
         }
     }
 
     @Test
     fun withoutASnapshotTheImportanceDecidesAndTheMessageIsTheExitRecordOnly() {
-        val skipped = plan(exit(importance = IMPORTANCE_SERVICE), null)
-        assertEquals(SystemKillAction.Skip, skipped.action)
-        assertEquals(
-            "system_kill_skipped reason=low_memory importance=300 snapshot_age_s=none fg_age_s=none " +
-                "telemetry_foreground=none timestampMillis=$exitAt",
-            systemKillSkipAuditLine(skipped),
-        )
+        assertEquals(SystemKillAction.Skip, plan(exit(importance = IMPORTANCE_SERVICE), null).action)
         assertEquals(SystemKillAction.Submit, plan(exit(importance = IMPORTANCE_VISIBLE), null).action)
         assertEquals(
             "System kill: low_memory (reasonCode=3 status=0 importance=300)",
             systemKillMessage(exit(importance = IMPORTANCE_SERVICE), null),
         )
-    }
-
-    @Test
-    fun onlyNotImportantSkipsGetAnAuditLine() {
-        val userStopped =
-            plan(exit(importance = IMPORTANCE_SERVICE).copy(reasonCode = ApplicationExitInfo.REASON_USER_STOPPED), null)
-        assertEquals(SystemKillDecision.SkipUserInitiated, userStopped.decision)
-        val written = mutableListOf<String>()
-        assertFalse(recordSystemKillSkipAudit(userStopped) { written += it })
-        assertTrue(written.isEmpty())
+        assertEquals("none", systemKillExtras(exit(importance = IMPORTANCE_VISIBLE), null)["recent_foreground_evidence"])
     }
 
     @Test
@@ -190,7 +243,7 @@ class AndroidSystemKillReportSampleAgeTest {
             assertEquals("age $age", fresh, isTelemetrySampleFresh(telemetry, exitAt))
             assertEquals(
                 "age $age",
-                if (fresh) SystemKillDecision.Report else SystemKillDecision.SkipNotImportant,
+                if (fresh) SystemKillDecision.Report else SystemKillDecision.ReportBackground,
                 classifySystemKill(ApplicationExitInfo.REASON_LOW_MEMORY, IMPORTANCE_SERVICE, telemetry, exitAt),
             )
             assertEquals(
@@ -202,18 +255,18 @@ class AndroidSystemKillReportSampleAgeTest {
     }
 
     @Test
-    fun aForegroundSnapshotThatWasNeverSampledFallsBackToTheImportance() {
+    fun aForegroundSnapshotThatWasNeverSampledIsUploadedByItsImportance() {
         val telemetry = foregroundSnapshot(sampleAgeMillis = 0L).copy(sampledAtMillis = -1L, rssKb = -1L)
 
         assertFalse(isTelemetrySampleFresh(telemetry, exitAt))
-        assertEquals(SystemKillAction.Skip, plan(exit(importance = IMPORTANCE_SERVICE), telemetry).action)
-        assertEquals(SystemKillAction.Submit, plan(exit(importance = IMPORTANCE_FOREGROUND), telemetry).action)
+        assertEquals(SystemKillDecision.ReportBackground, plan(exit(importance = IMPORTANCE_SERVICE), telemetry).decision)
+        assertEquals(SystemKillDecision.Report, plan(exit(importance = IMPORTANCE_FOREGROUND), telemetry).decision)
         val message = systemKillMessage(exit(importance = IMPORTANCE_SERVICE), telemetry)
         assertTrue(
             message,
             message.contains(
                 "in foreground since 600s before exit, never sampled " +
-                    "(system: background, importance 300; sample over 60s old, not trusted)"
+                    "(system: background, importance 300; no sample or interaction in the last 60s, not trusted)"
             ),
         )
         assertFalse(message, message.contains("last RSS"))
