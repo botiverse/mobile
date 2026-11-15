@@ -238,6 +238,22 @@ internal fun RaftArtifactLoadingSplash(
         }
         return
     }
+    RaftArtifactLoadingSplashFrameContent(icon, frame, label, modifier, scale)
+}
+
+/**
+ * One [frame] of the cover, drawn as it is: the live splash ([RaftArtifactLoadingSplash]) draws each
+ * frame through it, and screenshots draw a chosen one.
+ */
+@Composable
+internal fun RaftArtifactLoadingSplashFrameContent(
+    icon: RaftArtifactSplashIcon,
+    frame: RaftArtifactSplashFrame,
+    label: String,
+    modifier: Modifier = Modifier,
+    scale: Float = 1f,
+) {
+    if (frame == RaftArtifactSplashFrame.Gone) return
     val shown = frame as? RaftArtifactSplashFrame.Icon
     Box(
         modifier =
@@ -248,7 +264,7 @@ internal fun RaftArtifactLoadingSplash(
                 .semantics { if (shown != null) contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        // Opaque canvas behind (web `bg-layer-canvas`), drawn by the caller's Box when it is the cover.
+        // The opaque canvas (web `bg-layer-canvas`).
         Canvas(Modifier.fillMaxSize()) { drawRect(RaftColor.Canvas) }
         if (shown != null) {
             Column(
