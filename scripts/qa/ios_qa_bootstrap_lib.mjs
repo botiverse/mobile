@@ -20,18 +20,56 @@ export function requireBundleId(bundleId) {
   return bundleId;
 }
 
-/** `sysctl -n kern.boottime` → seconds, e.g. "{ sec = 1731500000, usec = 12345 } Wed Nov 13 …". */
-export function parseKernBootTime(text) {
-  const match = String(text).match(/\bsec\s*=\s*([0-9]+)/);
-  const seconds = match ? Number(match[1]) : NaN;
-  if (!Number.isSafeInteger(seconds) || seconds <= 0) throw new Error("host kern.boottime is unavailable");
+const MONTHS = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
+
+/**
+ * The host PID of the Simulator's launchd_sim for exactly this device, from
+ * `ps -axww -o pid=,args=`. launchd_sim is started fresh on every `simctl boot` and its argv carries
+ * the device directory (…/CoreSimulator/Devices/<UDID>/data/…), so exactly one line must match.
+ */
+export function findLaunchdSimPid(psText, udid) {
+  const device = `/Devices/${requireSimulatorUdid(udid)}/`;
+  const pids = String(psText).split(/\r?\n/).flatMap((line) => {
+    const match = line.trim().match(/^([0-9]+)\s+(\S+)(.*)$/);
+    if (!match || path.basename(match[2]) !== "launchd_sim" || !line.toUpperCase().includes(device.toUpperCase())) return [];
+    return [Number(match[1])];
+  });
+  if (pids.length !== 1) {
+    const seen = String(psText).split(/\r?\n/).filter((line) => line.includes("launchd_sim")).slice(0, 3).map((line) => line.trim().slice(0, 300));
+    throw new Error(`expected exactly one launchd_sim for ${udid}, found ${pids.length} (is the Simulator booted?); launchd_sim lines: ${JSON.stringify(seen)}`);
+  }
+  return pids[0];
+}
+
+/**
+ * `LC_ALL=C TZ=UTC ps -o lstart= -p <pid>` ("Sat Nov 14 10:00:00 2026") → epoch seconds. ps prints
+ * p_starttime.tv_sec, the same field the app reads through sysctl(KERN_PROC_PID).
+ */
+export function parsePsLstartUtc(text) {
+  const match = String(text).trim().match(/^[A-Z][a-z]{2}\s+([A-Z][a-z]{2})\s+([0-9]{1,2})\s+([0-9]{2}):([0-9]{2}):([0-9]{2})\s+([0-9]{4})$/);
+  if (!match || !(match[1] in MONTHS)) throw new Error("launchd_sim start time is unavailable");
+  const seconds = Date.UTC(Number(match[6]), MONTHS[match[1]], Number(match[2]), Number(match[3]), Number(match[4]), Number(match[5])) / 1000;
+  if (!Number.isSafeInteger(seconds) || seconds <= 0) throw new Error("launchd_sim start time is unavailable");
   return seconds;
 }
 
-/** Same formula as RaftIosQaSessionBootstrapContract.bootGeneration (the app reads kern.boottime too). */
-export function iosBootGeneration(udid, bootTimeSeconds) {
-  if (!Number.isSafeInteger(bootTimeSeconds) || bootTimeSeconds <= 0) throw new Error("boot time is invalid");
-  return sha256Digest(Buffer.from(`ios-simulator-boot/v1|${requireSimulatorUdid(udid)}|${bootTimeSeconds}`, "utf8"));
+/**
+ * Same formula as RaftIosQaSessionBootstrapContract.bootGeneration. The input is the start time
+ * (epoch SECONDS) of THIS Simulator's launchd_sim. CoreSimulator starts a fresh launchd_sim on
+ * every Simulator boot (so also after an erase, which needs a shutdown), so the value changes
+ * between boots UNLESS two boots of the same UDID start launchd_sim within the same UTC second:
+ * that collision is bounded by construction (resolution is one second; both sides read
+ * p_starttime.tv_sec, and `ps -o lstart` cannot print sub-second time). A shutdown + boot +
+ * bootstatus cycle takes far longer than a second, so a collision needs two boots inside one
+ * second; it is a documented limit, not a guarantee of "different on every boot".
+ * It is not the kernel boot time: Simulator processes run on the host kernel, so kern.boottime
+ * read inside the Simulator is the Mac's boot and does not change when the Simulator reboots. It
+ * distinguishes Simulator boots of one UDID (to one-second resolution); it says nothing about
+ * whether the data was erased in between.
+ */
+export function iosBootGeneration(udid, launchdSimStartSeconds) {
+  if (!Number.isSafeInteger(launchdSimStartSeconds) || launchdSimStartSeconds <= 0) throw new Error("launchd_sim start time is invalid");
+  return sha256Digest(Buffer.from(`ios-simulator-boot/v2|${requireSimulatorUdid(udid)}|${launchdSimStartSeconds}`, "utf8"));
 }
 
 export function iosInboxPaths(dataContainer, requestId) {
@@ -71,10 +109,298 @@ export function hasBootstrapLine(text, kind, stage, code) {
 /** `launchctl list` inside the Simulator: is a UIKitApplication:<bundle>[…] job still running (numeric PID)? */
 export function launchctlAppAlive(text, bundleId) {
   requireBundleId(bundleId);
-  return String(text).split(/\r?\n/).some((line) => {
+  return launchctlRows(text).some((row) => /^[0-9]+$/.test(row.pid) && row.label.startsWith(`UIKitApplication:${bundleId}[`));
+}
+
+function launchctlRows(text) {
+  return String(text).split(/\r?\n/).flatMap((line) => {
     const columns = line.trim().split(/\s+/);
-    return columns.length >= 3 && /^[0-9]+$/.test(columns[0]) && columns[2].startsWith(`UIKitApplication:${bundleId}[`);
+    return columns.length >= 3 && /^([0-9]+|-)$/.test(columns[0]) ? [{ pid: columns[0], label: columns[2] }] : [];
   });
+}
+
+const LAUNCHCTL_HEADER = /^PID\s+Status\s+Label$/;
+const LAUNCHCTL_ROW = /^([0-9]+|-)\t(-?[0-9]+|-)\t\S.*$/;
+
+/**
+ * A `launchctl list` listing is only used when it is structurally whole: it ends with a newline
+ * (a read cut mid-line is incomplete) and every non-empty line is the header or a
+ * `<pid|->\t<status>\t<label>` row. A cut exactly at a line boundary cannot be detected from the
+ * text, which is why absence also needs the independent host process query (classifyHostProcessRead).
+ */
+function launchctlListingWhole(text) {
+  const value = String(text);
+  if (!value.endsWith("\n")) return false;
+  const lines = value.split("\n").slice(0, -1).filter((line) => line.length > 0);
+  return lines.length > 0 && lines.every((line, index) => (index === 0 && LAUNCHCTL_HEADER.test(line.trim())) || LAUNCHCTL_ROW.test(line));
+}
+
+/**
+ * Services that run in every booted Simulator. A `launchctl list` read only counts as evidence of
+ * absence when it also shows one of these running (positive control): an empty or truncated listing
+ * from a failed spawn must never read as "the app is gone". The control proves the listing covered
+ * at least that service, not that it was complete; see launchctlListingWhole and
+ * classifyHostProcessRead for the rest of the evidence.
+ */
+export const IOS_LAUNCHCTL_POSITIVE_CONTROLS = ["com.apple.SpringBoard", "com.apple.backboardd"];
+
+/**
+ * Classifies one `xcrun simctl spawn <udid> launchctl list` result for the app process:
+ *   present — a running UIKitApplication:<bundle>[…] job is listed;
+ *   absent  — the command succeeded, the listing is structurally whole, a positive-control service
+ *             is listed running, and the app is not;
+ *   unknown — command failure, timeout, spawn error, a truncated/malformed listing, or a listing
+ *             without the positive control.
+ */
+export function classifyLaunchctlRead(result, bundleId) {
+  requireBundleId(bundleId);
+  if (result?.error || result?.timedOut) return { state: "unknown", reason: result.timedOut ? "timeout" : "spawn_error" };
+  if (result?.status !== 0) return { state: "unknown", reason: `exit_${result?.status ?? "none"}` };
+  if (launchctlAppAlive(result.stdout, bundleId)) return { state: "present", reason: "app_job_running" };
+  if (!launchctlListingWhole(result.stdout)) return { state: "unknown", reason: "incomplete_listing" };
+  const control = launchctlRows(result.stdout).find((row) => /^[0-9]+$/.test(row.pid) && IOS_LAUNCHCTL_POSITIVE_CONTROLS.includes(row.label));
+  if (!control) return { state: "unknown", reason: "no_positive_control" };
+  return { state: "absent", reason: "app_job_not_listed", positive_control: control.label };
+}
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Independent host view of the app process: Simulator apps are host processes whose executable
+ * lives under …/CoreSimulator/Devices/<UDID>/data/Containers/Bundle/Application/<id>/<App>.app/.
+ * Classifies one `ps -axww -o pid=,args=` result:
+ *   present — a process runs <App>.app/<executable> from this Simulator's bundle containers;
+ *   absent  — ps succeeded, its listing ends with a newline, this Simulator's launchd_sim is listed
+ *             exactly once (positive control: the listing covers this device's processes), and no
+ *             app process is listed;
+ *   unknown — ps failure/timeout, a cut listing, no (or an ambiguous) launchd_sim, or no executable
+ *             name to look for.
+ * EVIDENCE CEILING: completeness of a process listing cannot be proven. A listing cut exactly at a
+ * newline right after the launchd_sim line is indistinguishable from a whole one and reads absent.
+ * So this is a diagnostic observation only: the cleanup record's app_process fact is always
+ * "unknown" (see simulatorCleanupFacts), whatever these reads say.
+ */
+export function classifyHostProcessRead(result, udid, executableName) {
+  const device = requireSimulatorUdid(udid);
+  if (result?.error || result?.timedOut) return { state: "unknown", reason: result.timedOut ? "timeout" : "spawn_error" };
+  if (result?.status !== 0) return { state: "unknown", reason: `exit_${result?.status ?? "none"}` };
+  if (typeof executableName !== "string" || !/^[^/\0]+$/.test(executableName)) return { state: "unknown", reason: "executable_unknown" };
+  const text = String(result.stdout);
+  const app = new RegExp(`/Devices/${device}/data/Containers/Bundle/Application/[^/]+/[^/]+\\.app/${escapeRegExp(executableName)}(?:\\s|$)`, "i");
+  if (text.split(/\r?\n/).some((line) => /^\s*[0-9]+\s/.test(line) && app.test(line))) return { state: "present", reason: "app_process_running" };
+  if (!text.endsWith("\n")) return { state: "unknown", reason: "incomplete_listing" };
+  try {
+    findLaunchdSimPid(text, device);
+  } catch {
+    return { state: "unknown", reason: "no_positive_control" };
+  }
+  return { state: "absent", reason: "app_process_not_listed", positive_control: "launchd_sim", evidence_ceiling: "listing_completeness_unprovable" };
+}
+
+/** Both independent process reads must agree on absence; any present wins; otherwise unknown. */
+export function combineProcessStates(launchctl, host) {
+  if (launchctl?.state === "present" || host?.state === "present") return "present";
+  if (launchctl?.state === "absent" && host?.state === "absent") return "absent";
+  return "unknown";
+}
+
+/**
+ * Strict parser for `xcrun simctl list devices -j`: an object whose `devices` is an object of
+ * runtime → array of objects, each with string `udid`, `name` and `state`. Any schema violation
+ * throws (a malformed or partial list never reads as "no matching device").
+ */
+export function parseSimctlDeviceList(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(text));
+  } catch {
+    throw new Error("simctl device list is unparseable");
+  }
+  const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  if (!isObject(parsed) || !isObject(parsed.devices)) throw new Error("simctl device list has an unexpected shape");
+  const devices = [];
+  for (const runtime of Object.values(parsed.devices)) {
+    if (!Array.isArray(runtime) || !runtime.every((d) => isObject(d) && typeof d.udid === "string" && typeof d.name === "string" && typeof d.state === "string")) {
+      throw new Error("simctl device list has an unexpected shape");
+    }
+    devices.push(...runtime);
+  }
+  return devices;
+}
+
+/**
+ * Classifies a fresh `xcrun simctl list devices -j` read taken AFTER `simctl delete <udid>`:
+ *   absent  — the read succeeded, parsed strictly (parseSimctlDeviceList) and no entry carries this UDID;
+ *   present — the UDID is still listed;
+ *   unknown — failure, timeout, unparseable or structurally unexpected JSON.
+ */
+export function classifyDeviceListedAfterDelete(result, udid) {
+  const wanted = requireSimulatorUdid(udid);
+  if (result?.error || result?.timedOut) return { state: "unknown", reason: result.timedOut ? "list_timeout" : "list_spawn_error" };
+  if (result?.status !== 0) return { state: "unknown", reason: `list_exit_${result?.status ?? "none"}` };
+  let devices;
+  try {
+    devices = parseSimctlDeviceList(result.stdout);
+  } catch (error) {
+    return { state: "unknown", reason: /unparseable/.test(error.message) ? "list_unparseable" : "list_unexpected_shape" };
+  }
+  return devices.some((d) => d.udid.toUpperCase() === wanted) ? { state: "present", reason: "udid_still_listed" } : { state: "absent", reason: "udid_not_listed" };
+}
+
+/**
+ * The cleanup record states separate facts and never more than they prove:
+ *   simulator      — "deleted_and_absent" only when `simctl delete` exited 0 (no timeout) AND a fresh,
+ *                    structurally valid `simctl list devices -j` no longer lists the UDID (it cannot be
+ *                    selected again); otherwise "unknown";
+ *   app_process    — always "unknown": deleting the device does not prove that a process of the app
+ *                    exited, and process listings cannot be proven complete (observations are
+ *                    attached as diagnostics only);
+ *   server_session — always "not_proven_by_device_cleanup": revocation is the server's terminal/logout
+ *                    receipt, not a device fact.
+ * cleanup_receipt (the overall verdict) is "simulator_deleted" exactly when simulator is
+ * deleted_and_absent, else "unknown". There is no "clean".
+ */
+export function simulatorCleanupFacts({ deleteResult, listAfter, udid }) {
+  const after = classifyDeviceListedAfterDelete(listAfter, udid);
+  const deleted = deleteResult?.status === 0 && !deleteResult?.timedOut && !deleteResult?.error;
+  const simulator = deleted && after.state === "absent" ? "deleted_and_absent" : "unknown";
+  return {
+    cleanup_receipt: simulator === "deleted_and_absent" ? "simulator_deleted" : "unknown",
+    simulator,
+    simulator_reason: !deleted ? `delete_${deleteResult?.timedOut ? "timeout" : `exit_${deleteResult?.status ?? "none"}`}` : after.reason,
+    listed_after_delete: after.state,
+    app_process: "unknown",
+    server_session: "not_proven_by_device_cleanup",
+  };
+}
+
+/** Run-owned Simulators are created per workflow run as `raft-qa-run-<run id>-<attempt>`. */
+export const RUN_OWNED_SIMULATOR = /^raft-qa-run-[0-9]+-[0-9]+$/;
+export const SIMULATOR_OWNERSHIP_CONTRACT = "raft-qa-simulator-ownership/v1";
+
+/** The name this job's run/attempt must use; refuses a missing or non-numeric run id/attempt. */
+export function runOwnedSimulatorName(runId, runAttempt) {
+  if (!/^[0-9]+$/.test(runId ?? "") || !/^[0-9]+$/.test(runAttempt ?? "")) {
+    throw new Error("GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT are required to establish simulator ownership");
+  }
+  return `raft-qa-run-${runId}-${runAttempt}`;
+}
+
+/** The ownership receipt the job writes right after `simctl create` (see recordSimulatorOwnership). */
+export function simulatorOwnershipReceipt({ udid, name, runId, runAttempt, createdAt }) {
+  const expectedName = runOwnedSimulatorName(runId, runAttempt);
+  if (name !== expectedName) throw new Error(`simulator name ${name} is not this job's ${expectedName}`);
+  return {
+    contract: SIMULATOR_OWNERSHIP_CONTRACT,
+    udid: requireSimulatorUdid(udid),
+    name,
+    github_run_id: runId,
+    github_run_attempt: runAttempt,
+    created_at: createdAt,
+  };
+}
+
+/**
+ * Ownership check, run immediately before every destructive Simulator action (terminate, uninstall,
+ * shutdown). All of these must hold, otherwise it throws:
+ *   - the job's ownership receipt (written when this job created the device) is a protected file —
+ *     a regular file (not a symlink), owned by this uid, no group/other permissions — with the
+ *     exact contract and key set;
+ *   - the receipt's run id/attempt are THIS job's GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT and its name is
+ *     raft-qa-run-<run id>-<attempt>;
+ *   - the receipt's UDID and name equal the caller's --udid/--simulator-name;
+ *   - `simctl list devices -j` lists that UDID exactly once, under that name, and no other device
+ *     carries that name (ambiguous ownership is refused).
+ * `receipt` is { text, stat: { isFile, isSymbolicLink, mode, uid } } or null when the file is missing.
+ * With allowUnlisted, a UDID no longer listed at all returns null (already deleted) instead of throwing.
+ */
+export function requireRunOwnedSimulator(listJson, udid, expectedName, { receipt, runId, runAttempt, uid, allowUnlisted = false } = {}) {
+  const wanted = requireSimulatorUdid(udid);
+  if (!RUN_OWNED_SIMULATOR.test(expectedName ?? "")) throw new Error(`simulator name ${expectedName} is not a run-owned name`);
+  const jobName = runOwnedSimulatorName(runId, runAttempt);
+  if (expectedName !== jobName) throw new Error(`simulator name ${expectedName} is not this job's run-owned ${jobName}`);
+  if (!receipt) throw new Error("simulator ownership receipt is missing; this job did not record creating the simulator");
+  const { stat } = receipt;
+  if (!stat?.isFile || stat.isSymbolicLink) throw new Error("simulator ownership receipt is not a regular file");
+  if ((stat.mode & 0o077) !== 0) throw new Error(`simulator ownership receipt is not protected (mode ${(stat.mode & 0o777).toString(8)})`);
+  if (uid !== undefined && stat.uid !== uid) throw new Error("simulator ownership receipt is owned by another user");
+  let record;
+  try {
+    record = JSON.parse(String(receipt.text));
+  } catch {
+    throw new Error("simulator ownership receipt is unreadable");
+  }
+  const keys = ["contract", "created_at", "github_run_attempt", "github_run_id", "name", "udid"];
+  if (!record || typeof record !== "object" || Object.keys(record).sort().join(",") !== keys.join(",") || record.contract !== SIMULATOR_OWNERSHIP_CONTRACT) {
+    throw new Error("simulator ownership receipt has an unexpected shape");
+  }
+  if (record.github_run_id !== runId || record.github_run_attempt !== runAttempt || record.name !== jobName) {
+    throw new Error(`simulator ownership receipt belongs to run ${record.github_run_id}/${record.github_run_attempt}, not this job's ${runId}/${runAttempt}`);
+  }
+  if (String(record.udid).toUpperCase() !== wanted || record.name !== expectedName) {
+    throw new Error(`simulator ownership receipt records ${record.name} ${record.udid}, not ${expectedName} ${wanted}`);
+  }
+  const devices = parseSimctlDeviceList(listJson);
+  const byUdid = devices.filter((d) => d.udid.toUpperCase() === wanted);
+  if (byUdid.length === 0) {
+    // Only for the final delete: the receipt is valid and a STRICTLY parsed list does not contain the
+    // UDID. That is observed absence, not proof of deletion: the caller needs this job's own deletion
+    // receipt (verifySimulatorDeletionReceipt) before it may call the device deleted.
+    if (allowUnlisted) return null;
+    throw new Error(`simulator ${wanted} is not listed`);
+  }
+  if (byUdid.length > 1) throw new Error(`simulator ${wanted} is listed ${byUdid.length} times; ownership is ambiguous`);
+  const device = byUdid[0];
+  if (device.name !== expectedName) throw new Error(`simulator ${wanted} is named ${device.name}, not the run-owned ${expectedName}`);
+  const byName = devices.filter((d) => d.name === expectedName);
+  if (byName.length !== 1) throw new Error(`${byName.length} simulators are named ${expectedName}; ownership is ambiguous`);
+  return device;
+}
+
+export const SIMULATOR_DELETION_CONTRACT = "raft-qa-simulator-deletion/v1";
+
+/**
+ * Written (0400, exclusive) by deleteOwnedSimulator ONLY after `simctl delete` exited 0 and a fresh,
+ * strictly parsed list no longer contained the UDID. It is the one thing that lets a later
+ * `delete-simulator` in the same job call an unlisted device "already deleted".
+ */
+export function simulatorDeletionReceipt({ udid, name, runId, runAttempt, deletedAt }) {
+  const expectedName = runOwnedSimulatorName(runId, runAttempt);
+  if (name !== expectedName) throw new Error(`simulator name ${name} is not this job's ${expectedName}`);
+  return {
+    contract: SIMULATOR_DELETION_CONTRACT,
+    udid: requireSimulatorUdid(udid),
+    name,
+    github_run_id: runId,
+    github_run_attempt: runAttempt,
+    deleted_at: deletedAt,
+    simulator: "deleted_and_absent",
+  };
+}
+
+/**
+ * Verifies this job's deletion receipt: protected regular file of this uid, exact shape and contract,
+ * bound to this run id/attempt, this UDID and this name. Returns true, or a string reason when it does
+ * not hold (missing, stale, unrelated or tampered).
+ */
+export function verifySimulatorDeletionReceipt(receipt, { udid, name, runId, runAttempt, uid }) {
+  if (!receipt) return "deletion_receipt_missing";
+  const { stat } = receipt;
+  if (!stat?.isFile || stat.isSymbolicLink) return "deletion_receipt_not_regular";
+  if ((stat.mode & 0o077) !== 0) return "deletion_receipt_unprotected";
+  if (uid !== undefined && stat.uid !== uid) return "deletion_receipt_foreign_owner";
+  let record;
+  try {
+    record = JSON.parse(String(receipt.text));
+  } catch {
+    return "deletion_receipt_unreadable";
+  }
+  const keys = ["contract", "deleted_at", "github_run_attempt", "github_run_id", "name", "simulator", "udid"];
+  if (!record || typeof record !== "object" || Array.isArray(record) || Object.keys(record).sort().join(",") !== keys.join(",") ||
+      record.contract !== SIMULATOR_DELETION_CONTRACT || record.simulator !== "deleted_and_absent") return "deletion_receipt_shape";
+  if (record.github_run_id !== runId || record.github_run_attempt !== runAttempt) return "deletion_receipt_other_run";
+  if (String(record.udid).toUpperCase() !== requireSimulatorUdid(udid) || record.name !== name) return "deletion_receipt_other_device";
+  return true;
 }
 
 /**

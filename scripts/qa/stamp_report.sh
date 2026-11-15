@@ -15,6 +15,10 @@ JOB_HEADER="X-Stamp-CI-Job-Ref: $JOB_REF"
 CLAIM_TOKEN_FILE="${RUNNER_TEMP:-$EV}/stamp-claim-$STAMP_RUN_CASE_ID"
 BOOTSTRAP_SPEC_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-spec-$STAMP_RUN_CASE_ID.json"
 BOOTSTRAP_LOGIN_RESPONSE_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-login-$STAMP_RUN_CASE_ID.json"
+# Non-secret record of the one issuance call: in_flight (written BEFORE the call) | issued | unknown (no client-side "rejected": every 4xx is unknown).
+BOOTSTRAP_LOGIN_OUTCOME_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-login-outcome-$STAMP_RUN_CASE_ID.json"
+# Exclusive per-run-case issuance lock (mkdir is atomic); never released or broken automatically.
+BOOTSTRAP_LOGIN_LOCK_DIR="${RUNNER_TEMP:-$EV}/stamp-bootstrap-login-lock-$STAMP_RUN_CASE_ID"
 BOOTSTRAP_READY_RESPONSE_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-ready-$STAMP_RUN_CASE_ID.json"
 BOOTSTRAP_CAPTURE_CONTEXT_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-capture-context-$STAMP_RUN_CASE_ID.json"
 BOOTSTRAP_CAPTURE_ENV_FILE="${RUNNER_TEMP:-$EV}/stamp-bootstrap-capture-env-$STAMP_RUN_CASE_ID.sh"
@@ -84,6 +88,36 @@ fi
 CLAIM_TOKEN=""; [ -f "$CLAIM_TOKEN_FILE" ] && CLAIM_TOKEN=$(cat "$CLAIM_TOKEN_FILE")
 CLAIM_HEADER="X-Stamp-Claim-Token: $CLAIM_TOKEN"
 BOOTSTRAP_CURL_TIMEOUTS=(--connect-timeout 10 --max-time 30)
+# The issuance response is received into this temp file and only renamed to
+# BOOTSTRAP_LOGIN_RESPONSE_FILE once it validated completely: a partial/unvalidated body never sits
+# under the name the rest of the pipeline consumes. It is kept (mode 0600) as reconciliation evidence.
+BOOTSTRAP_LOGIN_PARTIAL_FILE="${BOOTSTRAP_LOGIN_RESPONSE_FILE}.partial"
+
+# Full validation of an issuance response (exit 0 only if complete): request id, expires_at, the
+# exact envelope key set and types, version/target route, this run case and CI job, the posted device
+# binding (signing_cert_sha256 + boot_generation), principal == user.id, non-empty tokens, and
+# envelope_digest == sha256(canonical envelope) — validateLoginResponse, the same check prepare runs.
+# The application id is checked against the installed app later by prepare. The envelope's attempt is
+# only checked to be a positive integer: no trusted Testbed attempt exists client-side, and the GitHub
+# run attempt is a different counter that is never substituted for it.
+validate_login_response() {
+  [ -s "$1" ] && [ -s "$2" ] || return 1
+  RUN_CASE="$STAMP_RUN_CASE_ID" CI_JOB_REF="$JOB_REF" LIB="$SCRIPT_DIR/mobile_login_bootstrap_lib.mjs" node --input-type=module -e '
+    import fs from "node:fs";
+    import { pathToFileURL } from "node:url";
+    const { validateLoginResponse } = await import(pathToFileURL(process.env.LIB).href);
+    const response = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const binding = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+    if (!response || typeof response !== "object" || Array.isArray(response) || typeof response.expires_at !== "string" || !response.expires_at) process.exit(2);
+    const applicationId = response.envelope?.application_id;
+    if (typeof applicationId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(applicationId)) process.exit(2);
+    const login = validateLoginResponse(response, {
+      runCaseId: process.env.RUN_CASE, ciJobRef: process.env.CI_JOB_REF, applicationId,
+      signingCertSha256: binding.signing_cert_sha256, bootGeneration: binding.boot_generation,
+    });
+    login.bytes.fill(0);
+  ' "$1" "$2" >/dev/null 2>&1
+}
 
 if [ "$PHASE" = "credential-receipt" ]; then
   [ -s "$BOOTSTRAP_SPEC_FILE" ] || { echo "stamp: bootstrap spec missing" >&2; exit 1; }
@@ -109,23 +143,85 @@ if [ "$PHASE" = "credential-receipt" ]; then
 fi
 
 if [ "$PHASE" = "bootstrap-login" ]; then
+  # Issuance is called at most once per run case on this runner: no curl --retry, no second login,
+  # no new attempt. A retry after a lost reply cannot recover the refresh token of a session that may
+  # already be live. Mechanism (local only):
+  #   1. an exclusive lock: `mkdir` of the lock directory is atomic, so of any number of concurrent
+  #      invocations exactly one proceeds; the lock is never released or broken automatically;
+  #   2. BEFORE calling the endpoint, an `in_flight` intent is persisted atomically (temp + rename);
+  #   3. after the call the intent is atomically replaced by the outcome.
+  # A sender killed at any point leaves the lock and the in_flight intent: the next invocation refuses
+  # to issue again, and bootstrap-failure-terminal refuses the "no material" terminal. Nothing ever
+  # falls back to "not sent". Outcomes:
+  #   issued   — 2xx whose body is a well-formed envelope for THIS run case (kept privately for
+  #              prepare, which re-validates it exactly, and for the terminal);
+  #   unknown  — anything else (exit 3): EVERY 4xx (including 409 BOOTSTRAP_LOGIN_RETRY_REQUIRES_NEW_ATTEMPT
+  #              and any rejection-receipt-shaped body: no such receipt is accepted until Testbed
+  #              carries an authoritative run-case attempt with server-side terminal verification),
+  #              5xx, partial/unproven 2xx, timeout, reset, empty reply, local connect failure. A
+  #              session may exist; operator reconciliation with Testbed is required.
+  # Scope: this proves one call per run case per runner (RUNNER_TEMP). It does NOT prove one-shot across
+  # runner loss (a re-run on a new runner starts without the lock); that needs a Testbed server-side,
+  # attempt-bound issuance fence/reconciliation (follow-up). Shared QA sessions are never touched here.
   BINDING_FILE="${2:-${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-device-binding.json}"
   [ -s "$BOOTSTRAP_SPEC_FILE" ] && [ -s "$BINDING_FILE" ] || { echo "stamp: bootstrap spec/device binding missing" >&2; exit 1; }
   ENDPOINT=$(node -e 'const v=require(process.argv[1]);if(v.required!==true||v.contract_version!=="qa-bootstrap-login/v1"||typeof v.login_endpoint!=="string")process.exit(2);process.stdout.write(v.login_endpoint)' "$BOOTSTRAP_SPEC_FILE") \
     || { echo "stamp: bootstrap login contract unavailable" >&2; exit 1; }
-  install -m 600 /dev/null "$BOOTSTRAP_LOGIN_RESPONSE_FILE"
-  if curl -sfS "${BOOTSTRAP_CURL_TIMEOUTS[@]}" --retry 2 --retry-all-errors -X POST "${STAMP_URL%/}$ENDPOINT" \
-    -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
-    --data-binary @"$BINDING_FILE" -o "$BOOTSTRAP_LOGIN_RESPONSE_FILE"; then
-    chmod 600 "$BOOTSTRAP_LOGIN_RESPONSE_FILE"
-    node -e 'const fs=require("fs"),v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(typeof v.request_id!=="string"||!v.envelope||typeof v.envelope_digest!=="string"||typeof v.expires_at!=="string")process.exit(2)' "$BOOTSTRAP_LOGIN_RESPONSE_FILE" \
-      || { rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE"; echo "stamp: bootstrap login response invalid" >&2; exit 1; }
-    echo "stamp: bootstrap login envelope received"
-    exit 0
+  if ! mkdir "$BOOTSTRAP_LOGIN_LOCK_DIR" 2>/dev/null; then
+    state=$(node -e 'try{process.stdout.write(String(require(process.argv[1]).outcome))}catch{process.stdout.write("none")}' "$BOOTSTRAP_LOGIN_OUTCOME_FILE" 2>/dev/null || echo none)
+    echo "stamp: bootstrap login already attempted or in flight for this run case (recorded outcome=$state); refusing a second issuance" >&2
+    exit 1
   fi
-  rm -f "$BOOTSTRAP_LOGIN_RESPONSE_FILE"
-  echo "stamp: bootstrap login failed" >&2
-  exit 1
+  if [ -e "$BOOTSTRAP_LOGIN_OUTCOME_FILE" ]; then
+    echo "stamp: bootstrap login outcome already recorded for this run case; refusing a second issuance" >&2
+    exit 1
+  fi
+  write_login_outcome() {
+    OUTCOME="$1" HTTP_CODE="$2" CURL_RC="$3" DETAIL="$4" RUN_CASE="$STAMP_RUN_CASE_ID" RUN_ID="${GITHUB_RUN_ID:-}" RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" \
+      node -e 'const fs=require("fs"),e=process.env,file=process.argv[1],tmp=`${file}.tmp-${process.pid}`;
+        const v={contract:"qa-bootstrap-login-outcome/v1",outcome:e.OUTCOME,run_case_id:e.RUN_CASE,github_run_id:e.RUN_ID,github_run_attempt:e.RUN_ATTEMPT,retried:false};
+        if(e.OUTCOME!=="in_flight"){v.http_status=Number(e.HTTP_CODE);v.curl_exit=Number(e.CURL_RC);v.detail=e.DETAIL}
+        const fd=fs.openSync(tmp,"wx",0o600);fs.writeSync(fd,JSON.stringify(v,null,2)+"\n");fs.fsyncSync(fd);fs.closeSync(fd);fs.renameSync(tmp,file)' "$BOOTSTRAP_LOGIN_OUTCOME_FILE"
+  }
+  write_login_outcome in_flight 0 0 "" || { echo "stamp: could not persist the bootstrap login intent; not calling issuance" >&2; exit 1; }
+  install -m 600 /dev/null "$BOOTSTRAP_LOGIN_PARTIAL_FILE"
+  curl_rc=0
+  http_code=$(curl -sS "${BOOTSTRAP_CURL_TIMEOUTS[@]}" -X POST "${STAMP_URL%/}$ENDPOINT" \
+    -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
+    --data-binary @"$BINDING_FILE" -o "$BOOTSTRAP_LOGIN_PARTIAL_FILE" -w '%{http_code}') || curl_rc=$?
+  chmod 600 "$BOOTSTRAP_LOGIN_PARTIAL_FILE" 2>/dev/null || true
+  case "$http_code" in [0-9][0-9][0-9]) ;; *) http_code=000;; esac
+  outcome=unknown
+  detail="unproven"
+  if [ "$curl_rc" = "0" ] && [[ "$http_code" =~ ^2 ]]; then
+    detail="unproven_2xx"
+    # Complete, digest-verified and bound to this run case / CI job / device, then atomically renamed
+    # into place BEFORE "issued" is recorded: a recorded "issued" implies the validated file exists.
+    if validate_login_response "$BOOTSTRAP_LOGIN_PARTIAL_FILE" "$BINDING_FILE" \
+      && mv -f "$BOOTSTRAP_LOGIN_PARTIAL_FILE" "$BOOTSTRAP_LOGIN_RESPONSE_FILE"; then
+      outcome=issued; detail="envelope"
+    fi
+  elif [ "$curl_rc" = "0" ] && [[ "$http_code" =~ ^4 ]]; then
+    # EVERY 4xx is unknown, whatever its body. No "nothing was issued" receipt is accepted until
+    # Testbed carries an authoritative run-case attempt in the claim/spec, emits a rejection receipt
+    # bound to that attempt, and verifies the same attempt/binding server-side at the no-material
+    # terminal. GITHUB_RUN_ATTEMPT is a different counter and must never stand in for it.
+    detail="unproven_4xx"
+  elif [ "$curl_rc" != "0" ]; then
+    detail="curl_exit_$curl_rc"
+  fi
+  write_login_outcome "$outcome" "$http_code" "$curl_rc" "$detail" \
+    || { echo "stamp: could not record the bootstrap login outcome; it stays in_flight (operator reconciliation required)" >&2; exit 3; }
+  [ ! -d qa-evidence ] || cp "$BOOTSTRAP_LOGIN_OUTCOME_FILE" qa-evidence/bootstrap-login-outcome.json 2>/dev/null || true
+  case "$outcome" in
+    issued)
+      echo "stamp: bootstrap login envelope received"
+      exit 0;;
+    *)
+      # Any received body stays in the 0600 .partial file as reconciliation evidence (never consumed).
+      echo "stamp: bootstrap login outcome unknown ($detail, http=$http_code curl=$curl_rc); a session may exist. No retry, no second login; operator reconciliation required" >&2
+      exit 3;;
+  esac
 fi
 
 if [ "$PHASE" = "bootstrap-ready" ]; then
@@ -204,6 +300,19 @@ if [ "$PHASE" = "bootstrap-failure-terminal" ]; then
   STATUS_FILE="${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-failure-status-$STAMP_RUN_CASE_ID.json"
   CLEANUP_FILE="${RUNNER_TEMP:-qa-evidence}/stamp-bootstrap-failure-cleanup-$STAMP_RUN_CASE_ID.json"
   [ -s "$BINDING_FILE" ] || { echo "stamp: bootstrap failure lacks device binding" >&2; exit 1; }
+  login_attempted=false
+  { [ -e "$BOOTSTRAP_LOGIN_OUTCOME_FILE" ] || [ -e "$BOOTSTRAP_LOGIN_LOCK_DIR" ] || [ -e "$BOOTSTRAP_LOGIN_PARTIAL_FILE" ]; } && login_attempted=true
+  if { [ "$login_attempted" = true ] && ! node -e 'process.exit(require(process.argv[1]).outcome==="issued"?0:1)' "$BOOTSTRAP_LOGIN_OUTCOME_FILE" 2>/dev/null; } \
+    || { { [ "$login_attempted" = true ] || [ -e "$BOOTSTRAP_LOGIN_RESPONSE_FILE" ]; } && ! validate_login_response "$BOOTSTRAP_LOGIN_RESPONSE_FILE" "$BINDING_FILE"; }; then
+    # An issuance was attempted (or is in flight / its sender died) and we do not hold a recorded
+    # "issued" outcome with a completely validated response. Either we hold no material — it may have
+    # committed server-side, so claiming "no material" would be a guess (no 4xx or receipt proves it
+    # until Testbed carries an authoritative attempt with server-side terminal verification) — or we
+    # hold a partial/unvalidated body, which must not drive status/cleanup as if it were issued. Touch
+    # nothing, delete nothing (files are reconciliation evidence), leave the attempt for an operator.
+    echo "stamp: bootstrap login outcome is not a confirmed no-issuance; refusing the no-material failure terminal (operator reconciliation required)" >&2
+    exit 1
+  fi
   if [ ! -s "$BOOTSTRAP_LOGIN_RESPONSE_FILE" ]; then
     FAILURE_ENDPOINT=$(node -e 'const v=require(process.argv[1]),expected=`/api/agent/run-cases/${process.argv[2]}/auth-bootstrap/login-failure-terminal`;if(v.required!==true||v.failure_terminal_endpoint!==expected)process.exit(2);process.stdout.write(v.failure_terminal_endpoint)' "$BOOTSTRAP_SPEC_FILE" "$STAMP_RUN_CASE_ID") \
       || { echo "stamp: no-material failure terminal contract unavailable" >&2; exit 1; }
@@ -432,6 +541,34 @@ if [ "$REPORT_EVIDENCE" = "true" ]; then
 fi
 
 if [ "$REPORT_VERDICT" = "true" ]; then
+  # Device-cleanup gate (iOS: the job-owned Simulator is deleted before reporting). When the workflow
+  # requires it (STAMP_REQUIRE_DEVICE_CLEANUP=1) or a cleanup record exists, a product verdict (pass or
+  # fail) may only be sent if that record says the simulator was deleted and confirmed absent, and it is
+  # bound to this run (run id/attempt) and this job's simulator (ownership receipt UDID/name).
+  # Otherwise only a harness workflow error is sent: Testbed accepts one verdict while running, so a
+  # product verdict sent first could never be corrected by a later workflow-error.
+  DEVICE_CLEANUP_RECORD="${STAMP_DEVICE_CLEANUP_RECORD:-$EV/simulator-cleanup.json}"
+  if [ "${STAMP_REQUIRE_DEVICE_CLEANUP:-}" = "1" ] || [ -e "$DEVICE_CLEANUP_RECORD" ]; then
+    # The record must also be THIS run's: same GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT, and the UDID/name of
+    # this job's simulator ownership receipt (a leftover record from another run never counts).
+    OWNERSHIP_RECEIPT="${RAFT_QA_SIMULATOR_OWNERSHIP_RECEIPT:-${RUNNER_TEMP:-}/raft-qa-simulator-ownership.json}"
+    # AND the delete step itself must have succeeded (the workflow passes steps.<id>.outcome).
+    if [ "${STAMP_DEVICE_CLEANUP_OUTCOME:-}" != "success" ] || ! RUN_ID="${GITHUB_RUN_ID:-}" RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" node -e '
+        const fs=require("fs"),e=process.env;
+        const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8")),o=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+        const ok=v&&v.cleanup_receipt==="simulator_deleted"&&v.simulator==="deleted_and_absent"&&
+          /^[0-9]+$/.test(e.RUN_ID)&&/^[0-9]+$/.test(e.RUN_ATTEMPT)&&
+          v.github_run_id===e.RUN_ID&&v.github_run_attempt===e.RUN_ATTEMPT&&
+          o&&o.github_run_id===e.RUN_ID&&o.github_run_attempt===e.RUN_ATTEMPT&&
+          typeof o.udid==="string"&&String(v.simulator_udid).toUpperCase()===o.udid.toUpperCase()&&v.simulator_name===o.name;
+        process.exit(ok?0:1)' "$DEVICE_CLEANUP_RECORD" "$OWNERSHIP_RECEIPT" 2>/dev/null; then
+      echo "stamp: device cleanup is not proven (delete step outcome=${STAMP_DEVICE_CLEANUP_OUTCOME:-missing}, record ${DEVICE_CLEANUP_RECORD}); product verdict suppressed, reporting a harness workflow error" >&2
+      STAMP_POSTCLAIM_ERROR_PHASE=device_cleanup \
+        STAMP_POSTCLAIM_ERROR_REASON="job-owned simulator deletion not proven (cleanup record missing or not simulator_deleted); product verdict suppressed" \
+        "$0" workflow-error "$EV" || true
+      exit 1
+    fi
+  fi
   prerequisite_rc="${3:-$evidence_rc}"
   VERDICT_FILE="$EV/verdict.json"
   OVERRIDE_FILE="${RUNNER_TEMP:-$EV}/stamp-harness-verdict-$STAMP_RUN_CASE_ID.json"

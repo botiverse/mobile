@@ -193,12 +193,18 @@ enum RaftIosQaSessionBootstrapContract {
         let applicationId: String
         /// `codeIdentityDigest(executableURL:)` of the installed main executable (+ its debug dylib).
         let codeIdentitySha256: String
-        /// `bootGeneration(simulatorUdid:hostBootTimeSeconds:)`.
+        /// `bootGeneration(simulatorUdid:launchdSimStartSeconds:)`.
         let bootGeneration: String
     }
 
-    static func bootGeneration(simulatorUdid: String, hostBootTimeSeconds: Int) -> String {
-        sha256Digest(Data("ios-simulator-boot/v1|\(simulatorUdid.uppercased())|\(hostBootTimeSeconds)".utf8))
+    /// Per-Simulator-boot generation: the UDID plus the start time of this Simulator's launchd_sim,
+    /// which CoreSimulator starts afresh on every `simctl boot`. Not kern.boottime: Simulator processes
+    /// run on the host kernel, so kern.boottime is the Mac's boot and survives a Simulator reboot.
+    /// Distinguishes Simulator boots of one UDID to one-second resolution (p_starttime.tv_sec, the field
+    /// the harness reads with `ps -o lstart`): two boots whose launchd_sim starts fall in the same UTC
+    /// second collide, a bounded and documented limit. Says nothing about an erase in between.
+    static func bootGeneration(simulatorUdid: String, launchdSimStartSeconds: Int) -> String {
+        sha256Digest(Data("ios-simulator-boot/v2|\(simulatorUdid.uppercased())|\(launchdSimStartSeconds)".utf8))
     }
 
     /// SIMULATOR_UDID from the Simulator launch environment, else the CoreSimulator device directory
@@ -215,13 +221,42 @@ enum RaftIosQaSessionBootstrapContract {
         return components[devices + 1].uppercased()
     }
 
-    /// kern.boottime seconds. The Simulator shares the host kernel, so the harness reads the same
-    /// value with `sysctl -n kern.boottime` on the Mac.
-    static func hostBootTimeSeconds() -> Int? {
-        var bootTime = timeval()
-        var size = MemoryLayout<timeval>.stride
-        guard sysctlbyname("kern.boottime", &bootTime, &size, nil, 0) == 0, bootTime.tv_sec > 0 else { return nil }
-        return Int(bootTime.tv_sec)
+    struct ProcessRecord: Equatable {
+        let pid: pid_t
+        let parentPid: pid_t
+        let name: String
+        let startSeconds: Int
+    }
+
+    /// sysctl(KERN_PROC_PID): command name (p_comm), parent and start time (p_starttime.tv_sec, the
+    /// field `ps -o lstart` prints on the host).
+    static func processRecord(pid: pid_t) -> ProcessRecord? {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, u_int(mib.count), &info, &size, nil, 0) == 0, size == MemoryLayout<kinfo_proc>.stride,
+              info.kp_proc.p_pid == pid
+        else { return nil }
+        let name = withUnsafeBytes(of: info.kp_proc.p_comm) { raw in
+            String(decoding: raw.prefix(while: { $0 != 0 }), as: UTF8.self)
+        }
+        let start = Int(info.kp_proc.p_un.__p_starttime.tv_sec)
+        guard start > 0 else { return nil }
+        return ProcessRecord(pid: pid, parentPid: info.kp_eproc.e_ppid, name: name, startSeconds: start)
+    }
+
+    /// Start time of the nearest `launchd_sim` ancestor of [pid] (the app's parent in the Simulator),
+    /// walking at most [maxDepth] parents. nil outside a Simulator or when any read fails.
+    static func launchdSimStartSeconds(from pid: pid_t = getpid(), maxDepth: Int = 4) -> Int? {
+        var current = pid
+        for _ in 0..<maxDepth {
+            guard let record = processRecord(pid: current), record.parentPid > 1,
+                  let parent = processRecord(pid: record.parentPid)
+            else { return nil }
+            if parent.name == "launchd_sim" { return parent.startSeconds }
+            current = parent.pid
+        }
+        return nil
     }
 
     /// Code identity of the installed app: sha256 over the main executable's bytes followed by the
