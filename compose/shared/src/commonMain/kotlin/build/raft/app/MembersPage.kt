@@ -10812,10 +10812,11 @@ private class MembersAgentProfileEditInputs(
  * edit state machine (task #1130 part 2).
  */
 /**
- * Keyboard options of the agent "Edit display name" dialog field: a name, so autocorrect is off.
- * This also keeps the iOS dialog clear of CMP-10674 (see
- * [RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions]): with autocorrect on, a tap in the dialog
- * while UIKit holds an autocorrect candidate crashed the app.
+ * Keyboard options of the agent "Edit display name" dialog field: a name, so autocorrect is off,
+ * like the other name fields (see [RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions], CMP-10674).
+ * iOS 1.24.0 crashed on a tap in this field right after the dialog opened; the symbolicated trap is
+ * in Skia's caret hit test (`ParagraphImpl::countSurroundingGraphemes`), so turning autocorrect
+ * off (no autocorrect / inline-prediction text in the field) is a mitigation, not a proven fix.
  */
 internal val MembersAgentDisplayNameKeyboardOptions: KeyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions
 

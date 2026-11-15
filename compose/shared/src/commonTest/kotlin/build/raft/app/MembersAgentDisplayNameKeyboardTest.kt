@@ -5,9 +5,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The agent "Edit display name" dialog field keeps autocorrect off all the way to the text field.
- * With autocorrect on, a tap in that iOS dialog while UIKit held an autocorrect candidate crashed
- * the app (CMP-10674, iOS 1.24.0 SIGTRAP reports right after BeginEditDisplayName).
+ * The agent "Edit display name" dialog field keeps autocorrect off all the way to the text field,
+ * like the other name fields (CMP-10674 mitigation; iOS 1.24.0 SIGTRAP reports on a tap in this
+ * field right after BeginEditDisplayName).
  */
 class MembersAgentDisplayNameKeyboardTest {
     @Test
