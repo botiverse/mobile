@@ -22,8 +22,7 @@
 1 build/raft/app/SettingsFormParts.kt
 4 build/raft/app/SettingsHomePage.kt
 1 build/raft/app/SettingsHubPage.kt
-3 build/raft/app/SharedCreateAgentDialog.kt
-4 build/raft/app/TaskConversationHead.kt
+2 build/raft/app/TaskConversationHead.kt
 2 build/raft/app/ThreadAgentFollowers.kt
 1 build/raft/app/ThreadAgentReadStatus.kt
 4 build/raft/app/ThreadComposerPage.kt
