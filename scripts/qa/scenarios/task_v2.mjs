@@ -625,6 +625,13 @@ export async function run(ctx) {
         for (let i = 0; i < 8; i += 1) {
           const list = nodes();
           if (atHomeR(list)) return;
+          // "Choose server … Signed in as …" (no server picked yet): pick the bound one.
+          const row = find(list, (n) => n.pkg === PKG && n.text.trim() === serverName);
+          if (find(list, (n) => n.text.startsWith("Signed in as ")) && row) {
+            tapNode(row);
+            await waitUntil("the server's Home", atHomeR, { timeoutMs: 60_000 });
+            return;
+          }
           if (!list.some((n) => n.pkg === PKG)) break;
           await back();
         }
@@ -796,8 +803,10 @@ export async function run(ctx) {
           await sleep(1500);
           const started = Date.now();
           ctx.launchApp();
-          await waitUntil("Home after a cold start", (l) => atHomeR(l) && currentServer(l), { timeoutMs: 60_000 });
-          return { seconds_to_home: Math.round((Date.now() - started) / 1000), current: currentServer(nodes())?.desc ?? null };
+          await waitUntil("Home after a cold start", (l) => (atHomeR(l) && currentServer(l)) || find(l, (n) => n.text.startsWith("Signed in as ")), { timeoutMs: 60_000 });
+          const chooser = Boolean(find(nodes(), (n) => n.text.startsWith("Signed in as ")));
+          if (chooser) await homeAgain();
+          return { seconds_to_home: Math.round((Date.now() - started) / 1000), via_server_chooser: chooser, current: currentServer(nodes())?.desc ?? null };
         });
         const servers = listOf(ok(await web("GET", "servers"), "list servers"), "servers");
         const otherServer = servers.find((sv) => sv.name !== serverName && sv.name);
