@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when a workflow puts credentials into $GITHUB_ENV or $GITHUB_OUTPUT.
+"""Fail when a workflow can put credentials into $GITHUB_ENV or $GITHUB_OUTPUT.
 
 A value written to $GITHUB_ENV is in the environment of every later step of the
 job, and every process those steps start (actions, background harnesses, tools),
@@ -8,20 +8,38 @@ later step or job. Credentials go only to the one step that needs them, through
 that step's own `env:` from `secrets.*` (Argus, after #4806).
 
 Static and deliberately cheap: it reads the text of every workflow and composite
-action (no YAML library), splits it into steps, and in every step that writes
-$GITHUB_ENV / $GITHUB_OUTPUT flags
+action (no YAML library) and splits it into steps (`- ` items under `steps:`).
+"Credential-looking" = an identifier containing PASSWORD, EMAIL, TOKEN or SECRET
+(any case). "Secret" = secrets.X / secrets['X'] / secrets["X"] in any case and
+spacing, or toJSON(secrets).
 
-  1. a write line naming a variable or value that looks like a credential
-     (PASSWORD, EMAIL, TOKEN or SECRET, any case), or reading `secrets.*`;
-  2. any credential-looking name written through a program (python/node opening
-     the file, a heredoc or `cat` redirected into it), where names are not on
-     the write line itself;
-  3. a step of kind 2 whose own `env:` takes a value from `secrets.*`.
+  1. Write lines. A line that redirects / tees / opens $GITHUB_ENV or
+     $GITHUB_OUTPUT and names a credential-looking identifier or a secret fails
+     (workflows, composite actions and scripts).
+  2. Steps (fail-closed). A step whose text mentions GITHUB_ENV or GITHUB_OUTPUT
+     in any form (redirection, `f=$GITHUB_ENV`, os.environ['GITHUB_ENV'],
+     process.env.GITHUB_OUTPUT, ...), or that names a repo script (scripts/**,
+     .github/actions/**) whose text mentions them, AND reads any secret or names a
+     credential-looking identifier, fails unless listed in STEP_ALLOWLIST with a
+     reason. A listed entry that matches no step any more fails too.
+  3. QA scope (pinned). QA secrets may appear only in the step-level env: of the
+     steps in QA_SECRET_STEPS, with exactly the pinned keys and expressions and
+     the pinned step `if:`. So an extra alias, another spelling, a changed
+     staging/production pair, a removed/changed bootstrap gate, a renamed step, a
+     job/workflow-level env:, a with:, a run: body or an unlisted workflow all
+     fail; every listed workflow must exist and every listed step must match.
+  4. Scripts (fail-closed, whole file). A file under scripts/ or .github/actions/
+     that mentions GITHUB_ENV/GITHUB_OUTPUT in any form and names a
+     credential-looking identifier anywhere fails unless listed in
+     SCRIPT_ALLOWLIST. This covers a read on one line and a write on another,
+     through any alias of the file, as long as the credential's name appears.
 
-Scripts under scripts/ get rule 1 only (their write lines).
-
-It also checks scope: in workflows, secrets.QA_* may appear only in the step-level env: of the
-steps listed in QA_SECRET_STEPS (never job/workflow env:, with:, or a run: body).
+Not enforced (regex, not dataflow): a script that writes those files and gets a
+credential under a name that does not look like one (e.g. os.environ[argv[1]]),
+or builds the GITHUB_ENV name at run time; scripts reached only transitively
+(imported or called by another script); third-party actions' own code. Nor does
+any of this isolate a credential from other processes inside the step that
+legitimately receives it: it narrows exposure to those steps.
 
 Usage: check_workflow_secret_env.py [--root DIR] | --self-test
 """
@@ -36,291 +54,570 @@ from pathlib import Path
 
 SENSITIVE = re.compile(r"PASSWORD|EMAIL|TOKEN|SECRET", re.IGNORECASE)
 TARGET = r"GITHUB_(?:ENV|OUTPUT)"
+MENTIONS_TARGET = re.compile(r"\b" + TARGET + r"\b")
 # A shell redirection / tee / language-level open of the env or output file.
 WRITE_LINE = re.compile(
     r"(>>?\s*[\"']?\$\{?" + TARGET + r"|tee\s+(?:-a\s+)?[\"']?\$\{?" + TARGET
     + r"|environ\s*\[\s*[\"']" + TARGET + r"[\"']\s*\]|environ\.get\(\s*[\"']" + TARGET
-    + r"|process\.env\." + TARGET + r"|getenv\(\s*[\"']" + TARGET + r")"
+    + r"|process\.env\." + TARGET + r"|process\.env\[\s*[\"']" + TARGET + r"|getenv\(\s*[\"']" + TARGET + r")"
 )
-# Writes whose variable names are not on the write line (a program writes them).
-OPAQUE_WRITE = re.compile(
-    r"(environ\s*\[\s*[\"']" + TARGET + r"|environ\.get\(\s*[\"']" + TARGET
-    + r"|process\.env\." + TARGET + r"|getenv\(\s*[\"']" + TARGET
-    + r"|<<-?\s*[\"']?\w+[\"']?\s*(?:\|\s*\S+\s*)?>>?\s*[\"']?\$\{?" + TARGET
-    + r"|\bcat\b[^\n|]*>>?\s*[\"']?\$\{?" + TARGET + r")"
-)
+# Any secret: secrets.X, secrets . X, secrets['X'], secrets[ "X" ], toJSON(secrets); any case.
+ANY_SECRET = re.compile(
+    r"\bsecrets\s*(?:\.\s*[A-Za-z_][\w-]*|\[\s*['\"][^'\"]*['\"]\s*\])|\btojson\s*\(\s*secrets\s*\)", re.IGNORECASE)
+QA_SECRET = re.compile(
+    r"\bsecrets\s*(?:\.\s*qa_[\w-]*|\[\s*['\"]\s*qa_[^'\"]*['\"]\s*\])|\btojson\s*\(\s*secrets\s*\)", re.IGNORECASE)
 IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-STEP_START = re.compile(r"^\s*-\s+(?:name|uses|id|run|if|env|shell|working-directory|with|timeout-minutes|continue-on-error)\s*:")
-ENV_KEY = re.compile(r"^(\s*)env\s*:\s*$")
+STEP_ITEM = re.compile(r"^\s*-\s")
+NAME_LINE = re.compile(r"^\s*(?:-\s+)?name\s*:\s*(.+?)\s*$")
+ID_LINE = re.compile(r"^\s*(?:-\s+)?id\s*:\s*(.+?)\s*$")
+USES_LINE = re.compile(r"^\s*(?:-\s+)?uses\s*:\s*(.+?)\s*$")
 
-
-def sensitive_idents(text: str, include_reads: bool) -> list[str]:
-    hits = []
-    for m in IDENT.finditer(text):
-        word = m.group(0)
-        if not SENSITIVE.search(word) or word.startswith("GITHUB_"):
-            continue
-        before = text[max(0, m.start() - 2):m.start()]
-        is_read = before.endswith("$") or before.endswith("${") or before.endswith("env.") or before[-1:] == "."
-        if is_read and not include_reads:
-            continue
-        hits.append(word)
-    return hits
-
-
-def strip_comment(line: str) -> str:
-    s = line.lstrip()
-    return "" if s.startswith("#") else line
-
-
-def split_steps(lines: list[str]) -> list[tuple[int, list[str]]]:
-    starts = [i for i, line in enumerate(lines) if STEP_START.match(line)]
-    if not starts:
-        return [(0, lines)]
-    blocks = [(0, lines[:starts[0]])]
-    for a, b in zip(starts, starts[1:] + [len(lines)]):
-        blocks.append((a, lines[a:b]))
-    return blocks
-
-
-def step_env_secrets(block: list[str]) -> list[str]:
-    out = []
-    for i, line in enumerate(block):
-        m = ENV_KEY.match(line)
-        if not m:
-            continue
-        indent = len(m.group(1))
-        for sub in block[i + 1:]:
-            if sub.strip() and (len(sub) - len(sub.lstrip())) <= indent:
-                break
-            if "secrets." in sub and ":" in sub:
-                out.append(sub.split(":", 1)[0].strip())
-    return out
-
-
-def check_text(path: str, text: str, workflow: bool) -> list[str]:
-    errors = []
-    lines = text.splitlines()
-    blocks = split_steps(lines) if workflow else [(0, lines)]
-    for offset, block in blocks:
-        writes = [(offset + i, l) for i, l in enumerate(block) if WRITE_LINE.search(strip_comment(l))]
-        if not writes:
-            continue
-        for lineno, line in writes:
-            names = sensitive_idents(line, include_reads=True)
-            if names or "secrets." in line:
-                errors.append(f"{path}:{lineno + 1}: writes credential-looking {', '.join(sorted(set(names))) or 'secrets.*'} into $GITHUB_ENV/$GITHUB_OUTPUT")
-        if not workflow:
-            continue
-        body = "\n".join(strip_comment(l) for l in block)
-        if not OPAQUE_WRITE.search(body):
-            continue
-        # Only the run body counts here: env: entries, names and if: conditions are not written.
-        env_lines = set()
-        for i, l in enumerate(block):
-            m = ENV_KEY.match(l)
-            if m:
-                indent = len(m.group(1))
-                for j in range(i + 1, len(block)):
-                    sub = block[j]
-                    if sub.strip() and (len(sub) - len(sub.lstrip())) <= indent:
-                        break
-                    env_lines.add(j)
-        run_text = "\n".join(strip_comment(l) for j, l in enumerate(block) if j not in env_lines and not re.match(r"^\s*(-\s+)?(name|if|uses|id)\s*:", l))
-        names = sensitive_idents(run_text, include_reads=False)
-        first = writes[0][0] + 1
-        if names:
-            errors.append(f"{path}:{first}: a program writes $GITHUB_ENV/$GITHUB_OUTPUT in a step that names credential-looking {', '.join(sorted(set(names)))}")
-        secret_env = step_env_secrets(block)
-        if secret_env:
-            errors.append(f"{path}:{first}: a program writes $GITHUB_ENV/$GITHUB_OUTPUT in a step whose env takes secrets ({', '.join(secret_env)})")
-    return errors
-
-
-# Scope: the QA account secrets (secrets.QA_*) may be read only in the env: of these steps.
-# Anything else that reads them (another step, a job- or workflow-level env:, a with:, a run:
-# body, a new workflow) fails until it is reviewed and listed here.
-QA_SECRET_STEPS = {
-    "release-auto-login.yml": {"Old CLI task", "Check the QA credentials are configured", "Sign in on the emulator"},
-    "android-realtime-e2e.yml": {"Preflight — QA account must not see the production server", "Run realtime e2e on the emulator"},
-    "android-update-e2e.yml": {"Preflight — QA account must not see the production server", "Run update e2e on the emulator"},
-    "qa-acceptance.yml": {"Preflight — QA account must not see the production server", "Freeze legacy credential identity receipt",
-                          "Seed media fixtures (image + workspace)", "Run acceptance agent"},
-    "qa-acceptance-ios.yml": {"Preflight — QA account must not see the production server", "Freeze legacy credential identity receipt",
-                              "Run acceptance agent", "Run deterministic repro", "Report to Stamp"},
-    "ios-simulator-app.yml": {"Sign in and screenshot home"},
+# Steps that mention $GITHUB_ENV/$GITHUB_OUTPUT and also read a secret or name a
+# credential-looking variable, reviewed: none of them writes a credential. Key:
+# (workflow file name, step name, or "id:<id>" for an unnamed step).
+STEP_ALLOWLIST = {
+    ("android-realtime-e2e.yml", "Find and download the Alpha APK"):
+        "GH_TOKEN is github.token for `gh`; outputs are run id, artifact name, APK path, package, sha256",
+    ("release-auto-login.yml", "Download the release APK"):
+        "GH_TOKEN is github.token for `gh run download`; outputs are the APK path and version",
+    ("github-release.yml", "Resolve version and commit"):
+        "GH_TOKEN is github.token for `gh`; outputs are version and commit",
+    ("android-update-e2e.yml", "id:p"):
+        "HANDS_AUTH_TOKEN is used by the Hands CLI; outputs are build flags, source sha and the versionCode plan",
+    ("android-release.yml", "Sign + align APK"):
+        "signing secrets go to apksigner via files/env; outputs are paths, hashes, SDK levels and signer cert digests",
+    ("android-release.yml", "Sign and verify AAB"):
+        "signing secrets go to the signer; outputs are the AAB path and the upload cert sha256",
+    ("android-release.yml", "Upload immutable AAB + APK to Hands"):
+        "bearer tokens are used by the Hands CLI; the only output is build_id parsed from its log",
+    ("android-release.yml", "Create share page"):
+        "HANDS_BEARER_TOKEN authenticates the API call; the only output is share_url",
+    ("ios-release.yml", "Import Apple signing assets"):
+        "passwords go to `security` for a temp keychain; outputs are profile uuid/name/team and keychain path",
+    ("qa-acceptance.yml", "Claim Stamp run case and resolve auth mode"):
+        "STAMP_TOKEN is used by stamp_report.sh; writes only bootstrap_required / STAMP_BOOTSTRAP_REQUIRED (true|false)",
+    ("qa-acceptance-ios.yml", "Claim Stamp run case and resolve auth mode"):
+        "STAMP_TOKEN is used by stamp_report.sh; writes only bootstrap_required / STAMP_BOOTSTRAP_REQUIRED (true|false)",
 }
-QA_SECRET = re.compile(r"secrets\.QA_[A-Z0-9_]+")
-STEP_NAME = re.compile(r"^\s*(?:-\s+)?name\s*:\s*(.+?)\s*$")
+
+# Scope: the QA account secrets may be read only in the step-level env: of these steps, under
+# exactly these keys and values, and with exactly this step `if:` (None = no `if:`). Pinning the
+# whole expression keeps the staging/production branch pair and the bootstrap gate under review:
+# an extra alias, a dropped or changed gate, or another spelling of the same secret all fail.
+LEGACY = "(inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true')"
+LEGACY_IF = "${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}"
+RECEIPT_IF = "${{ inputs.stamp_run_case_id != '' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}"
+
+
+def _plain(*keys: str) -> dict[str, str]:
+    return {k: "${{ secrets.%s }}" % k for k in keys}
+
+
+def _legacy(*keys: str) -> dict[str, str]:
+    return {k: "${{ %s && secrets.%s || '' }}" % (LEGACY, k) for k in keys}
+
+
+def _env_pair(selector: str) -> dict[str, str]:
+    return {f"QA_LOGIN_{kind}": "${{ (%s == 'staging' && secrets.QA_STAGING_TEST_%s) || secrets.QA_TEST_%s }}" % (selector, kind, kind)
+            for kind in ("EMAIL", "PASSWORD")}
+
+
+PREFLIGHT = "Preflight — QA account must not see the production server"
+QA_SECRET_STEPS: dict[str, dict[str, dict]] = {
+    "release-auto-login.yml": {
+        "Old CLI task": {"if": None, "env": _env_pair("inputs.environment")},
+        "Check the QA credentials are configured": {"if": None, "env": _env_pair("needs.plan.outputs.environment")},
+        "Sign in on the emulator": {"if": None, "env": _env_pair("needs.plan.outputs.environment")},
+    },
+    "android-realtime-e2e.yml": {
+        PREFLIGHT: {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        "Run realtime e2e on the emulator": {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+    },
+    "android-update-e2e.yml": {
+        PREFLIGHT: {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        "Run update e2e on the emulator": {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+    },
+    "qa-acceptance.yml": {
+        PREFLIGHT: {"if": LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        "Freeze legacy credential identity receipt": {"if": RECEIPT_IF, "env": _plain("QA_TEST_EMAIL")},
+        "Seed media fixtures (image + workspace)": {"if": LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        "Run acceptance agent": {"if": None, "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+    },
+    "qa-acceptance-ios.yml": {
+        PREFLIGHT: {"if": LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        "Freeze legacy credential identity receipt": {"if": RECEIPT_IF, "env": _plain("QA_TEST_EMAIL")},
+        "Run acceptance agent": {"if": "${{ inputs.mode == 'agent' || inputs.mode == '' }}", "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        "Run deterministic repro": {"if": "${{ inputs.mode == 'deterministic' }}", "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        # Pre-existing, unchanged by #4817: the reporter reads the email on every path.
+        "Report to Stamp": {"if": "always()", "env": _plain("QA_TEST_EMAIL")},
+    },
+    "ios-simulator-app.yml": {
+        "Sign in and screenshot home": {"if": "${{ inputs.home_screenshot }}", "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+    },
+}
+
+# Script files (scripts/**, .github/actions/**) that mention GITHUB_ENV/GITHUB_OUTPUT and also name
+# a credential-looking identifier, reviewed. Any other such file fails (rule 4).
+SCRIPT_ALLOWLIST = {
+    "scripts/ci/check_workflow_secret_env.py": "this checker; names credentials only in patterns and fake self-test fixtures",
+    "scripts/ci/test_git_diff_path_state.sh": "sets a fixture git user.email; writes no credential",
+    "scripts/ci/test_gradle_cache_policy.sh": "'token' is a test-case label for epoch characters",
+    ".github/actions/gradle-cache-policy/apply.sh": "'token' is an error message about the epoch value",
+}
+SCRIPT_REF = re.compile(r"((?:scripts|\.github/actions)/[\w./-]+\.(?:sh|bash|py|mjs|cjs|js|ts))")
+SCRIPT_EXTS = {".sh", ".bash", ".py", ".mjs", ".cjs", ".js", ".ts"}
 
 
 def indent_of(line: str) -> int:
     return len(line) - len(line.lstrip())
 
 
-def check_qa_secret_scope(path: str, text: str, allowed: dict[str, set[str]] = QA_SECRET_STEPS) -> list[str]:
-    lines = text.splitlines()
-    uses = [i for i, l in enumerate(lines) if QA_SECRET.search(strip_comment(l))]
-    if not uses:
-        return []
+def is_comment(line: str) -> bool:
+    return line.lstrip().startswith("#")
+
+
+def sensitive_idents(text: str) -> list[str]:
+    return [w for w in IDENT.findall(text) if SENSITIVE.search(w) and not re.fullmatch(TARGET, w)]
+
+
+def parent_of(lines: list[str], i: int) -> int | None:
+    return next((j for j in range(i - 1, -1, -1) if lines[j].strip() and not is_comment(lines[j])
+                 and indent_of(lines[j]) < indent_of(lines[i])), None)
+
+
+def steps_of(lines: list[str]) -> list[tuple[int, int, str]]:
+    """(start, end, label) of every `- ` item directly under a `steps:` key."""
+    out = []
+    for i, line in enumerate(lines):
+        if not STEP_ITEM.match(line) or is_comment(line):
+            continue
+        p = parent_of(lines, i)
+        if p is None or lines[p].strip() != "steps:":
+            continue
+        end = next((j for j in range(i + 1, len(lines)) if lines[j].strip() and not is_comment(lines[j])
+                    and indent_of(lines[j]) <= indent_of(line)), len(lines))
+        own = [l for l in lines[i:end] if indent_of(l) <= indent_of(line) + 2 and not is_comment(l)]
+        label = None
+        for pattern, prefix in ((NAME_LINE, ""), (ID_LINE, "id:"), (USES_LINE, "uses:")):
+            m = next((m for l in own if (m := pattern.match(l))), None)
+            if m:
+                label = prefix + m.group(1).strip("'\"")
+                break
+        out.append((i, end, label or f"line {i + 1}"))
+    return out
+
+
+def check_write_lines(path: str, lines: list[str]) -> list[str]:
+    errors = []
+    for i, line in enumerate(lines):
+        if is_comment(line) or not WRITE_LINE.search(line):
+            continue
+        names = sensitive_idents(line)
+        if names or ANY_SECRET.search(line):
+            errors.append(f"{path}:{i + 1}: writes credential-looking {', '.join(sorted(set(names))) or 'secret'} into $GITHUB_ENV/$GITHUB_OUTPUT")
+    return errors
+
+
+def step_text(lines: list[str], start: int, end: int) -> str:
+    return "\n".join(l for l in lines[start:end] if not is_comment(l) and not NAME_LINE.match(l))
+
+
+def check_steps(path: str, lines: list[str], allow: dict[tuple[str, str], str],
+                root: Path | None = None, script_allow: dict[str, str] = SCRIPT_ALLOWLIST) -> tuple[list[str], set[tuple[str, str]]]:
+    """Rule 2: a step that touches $GITHUB_ENV/$GITHUB_OUTPUT (itself, or through a repo script
+    it names that is not a reviewed SCRIPT_ALLOWLIST file) and reads a secret or names a
+    credential fails unless allow-listed."""
+    errors, used = [], set()
     name = Path(path).name
+    for start, end, label in steps_of(lines):
+        text = step_text(lines, start, end)
+        touches = [] if not MENTIONS_TARGET.search(text) else ["the step itself"]
+        if root is not None:
+            for ref in sorted(set(SCRIPT_REF.findall(text))):
+                f = root / ref
+                if ref not in script_allow and f.is_file() and MENTIONS_TARGET.search(f.read_text(encoding="utf-8", errors="replace")):
+                    touches.append(ref)
+        if not touches:
+            continue
+        secrets = ANY_SECRET.findall(text)
+        names = sorted(set(sensitive_idents(text)))
+        if not secrets and not names:
+            continue
+        if (name, label) in allow:
+            used.add((name, label))
+            continue
+        why = ", ".join(([f"reads {len(secrets)} secret(s)"] if secrets else []) + ([f"names {', '.join(names)}"] if names else []))
+        errors.append(f"{path}:{start + 1}: step {label!r} touches $GITHUB_ENV/$GITHUB_OUTPUT ({', '.join(touches)}) and {why}; "
+                      "pass credentials only through the env: of the step that uses them, or list the step in STEP_ALLOWLIST with a reason")
+    return errors, used
+
+
+def check_script_file(path: str, text: str, allow: dict[str, str] = SCRIPT_ALLOWLIST) -> list[str]:
+    """Rule 4 (fail-closed, whole file): a script that mentions GITHUB_ENV/GITHUB_OUTPUT in any form
+    and names a credential-looking identifier anywhere fails unless allow-listed. Cross-line flow
+    (read a credential on one line, write it on another, through any alias of the file) is
+    therefore covered as long as the credential's name appears in the file."""
+    lines = text.splitlines()
+    body = "\n".join(l for l in lines if not l.lstrip().startswith(("#", "//")))
+    if not MENTIONS_TARGET.search(body):
+        return []
+    names = sorted(set(sensitive_idents(body)))
+    if not names or path in allow:
+        return []
+    return [f"{path}: mentions $GITHUB_ENV/$GITHUB_OUTPUT and names {', '.join(names[:6])}; "
+            "keep credentials out of scripts that write those files, or list it in SCRIPT_ALLOWLIST with a reason"]
+
+
+def own_key(lines: list[str], start: int, end: int, key: str) -> tuple[int, str] | None:
+    """A step's own `key:` line (index, inline value)."""
+    step_indent = indent_of(lines[start])
+    for j in range(start, end):
+        l = lines[j]
+        if is_comment(l):
+            continue
+        m = re.match(r"^\s*(?:-\s+)?" + key + r"\s*:\s*(.*?)\s*$", l)
+        if m and (j == start or indent_of(l) == step_indent + 2):
+            return j, m.group(1)
+    return None
+
+
+def check_qa_secret_scope(path: str, lines: list[str], allowed: dict[str, dict[str, dict]] = QA_SECRET_STEPS) -> list[str]:
+    """Rule 3."""
+    name = Path(path).name
+    uses = [i for i, l in enumerate(lines) if not is_comment(l) and QA_SECRET.search(l)]
     if name not in allowed:
-        return [f"{path}: reads secrets.QA_* but is not listed in QA_SECRET_STEPS (review its scope, then list its steps)"]
+        return [f"{path}:{uses[0] + 1}: reads QA secrets but is not listed in QA_SECRET_STEPS (review its scope, then list its steps)"] if uses else []
     errors = []
-    seen = set()
+    steps = steps_of(lines)
+    by_label = {label: (s, e) for s, e, label in steps}
     for i in uses:
-        # The parent key of this line must be `env:`, and that env: must belong to a step (`- ` item).
-        parent = next((j for j in range(i - 1, -1, -1) if lines[j].strip() and indent_of(lines[j]) < indent_of(lines[i])), None)
+        parent = parent_of(lines, i)
+        step = next(((s, e, label) for s, e, label in steps if s < i < e), None)
         if parent is None or lines[parent].strip() != "env:":
-            errors.append(f"{path}:{i + 1}: secrets.QA_* outside a step env: entry")
+            errors.append(f"{path}:{i + 1}: QA secret outside a step env: entry")
+        elif step is None or indent_of(lines[step[0]]) + 2 != indent_of(lines[parent]):
+            errors.append(f"{path}:{i + 1}: QA secret in a job- or workflow-level env: (reaches every step)")
+        elif step[2] not in allowed[name]:
+            errors.append(f"{path}:{i + 1}: QA secret in step {step[2]!r}, which is not an allowed credential step")
+    for label, pin in allowed[name].items():
+        if label not in by_label:
+            errors.append(f"{path}: allowed credential step {label!r} is missing (renamed or removed? update QA_SECRET_STEPS)")
             continue
-        step = next((j for j in range(parent - 1, -1, -1) if lines[j].strip() and indent_of(lines[j]) < indent_of(lines[parent])), None)
-        if step is None or not lines[step].lstrip().startswith("- ") or indent_of(lines[step]) + 2 != indent_of(lines[parent]):
-            errors.append(f"{path}:{i + 1}: secrets.QA_* in a job- or workflow-level env: (reaches every step)")
-            continue
-        block_end = next((j for j in range(step + 1, len(lines)) if lines[j].strip() and indent_of(lines[j]) <= indent_of(lines[step])), len(lines))
-        step_name = next((m.group(1).strip("'\"") for l in lines[step:block_end] if (m := STEP_NAME.match(l)) and indent_of(l) <= indent_of(lines[step]) + 2), None)
-        if step_name not in allowed[name]:
-            errors.append(f"{path}:{i + 1}: secrets.QA_* in step {step_name!r}, which is not an allowed credential step")
-        else:
-            seen.add(step_name)
-    for missing in sorted(allowed[name] - seen):
-        errors.append(f"{path}: allowed credential step {missing!r} no longer reads secrets.QA_* (renamed? update QA_SECRET_STEPS)")
+        s, e = by_label[label]
+        got_if = own_key(lines, s, e, "if")
+        got_if = got_if[1] if got_if else None
+        if got_if != pin["if"]:
+            errors.append(f"{path}:{s + 1}: step {label!r} if: is {got_if!r}, pinned {pin['if']!r}")
+        env = own_key(lines, s, e, "env")
+        entries = {}
+        if env:
+            j = env[0] + 1
+            while j < e and (not lines[j].strip() or is_comment(lines[j]) or indent_of(lines[j]) > indent_of(lines[env[0]])):
+                if lines[j].strip() and not is_comment(lines[j]) and ":" in lines[j]:
+                    k, v = lines[j].strip().split(":", 1)
+                    entries[k.strip()] = v.strip()
+                j += 1
+        got = {k: v for k, v in entries.items() if QA_SECRET.search(v) or k in pin["env"]}
+        if got != pin["env"]:
+            extra = sorted(set(got) - set(pin["env"]))
+            missing = sorted(set(pin["env"]) - set(got))
+            changed = sorted(k for k in set(got) & set(pin["env"]) if got[k] != pin["env"][k])
+            errors.append(f"{path}:{s + 1}: step {label!r} QA env differs from its pin (extra {extra}, missing {missing}, changed {changed})")
     return errors
 
 
-def scan(root: Path) -> list[str]:
-    errors = []
+def scan(root: Path, allow: dict[tuple[str, str], str] = STEP_ALLOWLIST,
+         qa_allowed: dict[str, dict[str, dict]] = QA_SECRET_STEPS,
+         script_allow: dict[str, str] = SCRIPT_ALLOWLIST) -> list[str]:
+    errors, used = [], set()
     gh = root / ".github"
+    seen_workflows = set()
     for p in sorted(list(gh.glob("workflows/*.y*ml")) + list(gh.glob("actions/**/*.y*ml"))):
-        errors += check_text(str(p.relative_to(root)), p.read_text(encoding="utf-8"), workflow=True)
+        rel = str(p.relative_to(root))
+        lines = p.read_text(encoding="utf-8").splitlines()
+        errors += check_write_lines(rel, lines)
+        step_errors, step_used = check_steps(rel, lines, allow, root, script_allow)
+        errors += step_errors
+        used |= step_used
         if p.parent.name == "workflows":
-            errors += check_qa_secret_scope(str(p.relative_to(root)), p.read_text(encoding="utf-8"))
-    for pattern in ("actions/**/*.sh",):
-        for p in sorted(gh.glob(pattern)):
-            errors += check_text(str(p.relative_to(root)), p.read_text(encoding="utf-8"), workflow=False)
-    for ext in ("sh", "py", "mjs", "js"):
-        for p in sorted((root / "scripts").rglob(f"*.{ext}")):
-            if p.name == Path(__file__).name or re.search(r"(^test_|\.test\.|_test\.)", p.name):
-                continue
-            errors += check_text(str(p.relative_to(root)), p.read_text(encoding="utf-8", errors="replace"), workflow=False)
+            seen_workflows.add(p.name)
+            errors += check_qa_secret_scope(rel, lines, qa_allowed)
+    for missing in sorted(set(qa_allowed) - seen_workflows):
+        errors.append(f".github/workflows/{missing}: listed in QA_SECRET_STEPS but missing")
+    for stale in sorted(set(allow) - used):
+        errors.append(f"STEP_ALLOWLIST entry {stale!r} matches no step any more; remove it")
+    scripts = [p for base in (root / "scripts", gh / "actions") if base.is_dir()
+               for p in sorted(base.rglob("*")) if p.is_file() and p.suffix in SCRIPT_EXTS]
+    for p in scripts:
+        rel = str(p.relative_to(root))
+        if rel in script_allow:
+            continue
+        text = p.read_text(encoding="utf-8", errors="replace")
+        errors += check_write_lines(rel, text.splitlines())
+        errors += check_script_file(rel, text, script_allow)
     return errors
 
 
-BAD_CASES = {
+# ---------------------------------------------------------------- self-test (fake values only)
+
+def wf(steps: str, header: str = "") -> str:
+    return header + "jobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n" + steps
+
+
+SIGN_IN = """      - name: Sign in
+        env:
+          QA_LOGIN_PASSWORD: ${{ secrets.QA_FAKE_PASSWORD }}
+        run: node login.mjs
+"""
+LATER = """      - name: Later step
+        run: node other.mjs
+"""
+FAKE_PINS = {"w.yml": {"Sign in": {"if": None, "env": {"QA_LOGIN_PASSWORD": "${{ secrets.QA_FAKE_PASSWORD }}"}}}}
+
+
+def env_on(step: str, line: str) -> str:
+    return step.replace("        run:", f"        env:\n          {line}\n        run:", 1)
+
+
+# Workflow steps that must be flagged by rule 1 or 2 (no allowlist).
+BAD = {
     "echo_env": """      - name: Leak
-        run: echo "QA_TEST_PASSWORD=${{ secrets.QA_TEST_PASSWORD }}" >> "$GITHUB_ENV"
+        run: echo "QA_TEST_PASSWORD=${{ secrets.QA_FAKE_PASSWORD }}" >> "$GITHUB_ENV"
 """,
     "heredoc_env": """      - name: Leak
         run: |
           echo "API_TOKEN<<EOF" >> $GITHUB_ENV
 """,
-    "value_from_secret_output": """      - name: Leak
-        env:
-          P: ${{ secrets.P }}
-        run: echo "value=$QA_PASSWORD" >> "$GITHUB_OUTPUT"
-""",
-    "python_loop": """      - name: Expose QA credentials
-        env:
-          QA_TEST_EMAIL_SECRET: ${{ secrets.QA_TEST_EMAIL }}
-        run: |
-          python3 - <<'PY'
-          import os
-          with open(os.environ["GITHUB_ENV"], "a") as out:
-              for name in ("QA_TEST_EMAIL",):
-                  out.write(f"{name}={os.environ[name + '_SECRET']}\\n")
-          PY
-""",
-    "python_env_secret_only": """      - name: Expose
-        env:
-          A: ${{ secrets.QA_TEST_EMAIL }}
-        run: |
-          python3 - <<'PY'
-          import os
-          with open(os.environ["GITHUB_ENV"], "a") as out:
-              out.write("X=" + os.environ["A"] + "\\n")
-          PY
-""",
+    "value_from_secret_output": env_on("""      - name: Leak
+        run: echo "value=$P" >> "$GITHUB_OUTPUT"
+""", "P: ${{ secrets.FAKE }}"),
     "lowercase_email_output": """      - id: p
         run: echo "email=$E" | tee -a "$GITHUB_OUTPUT"
 """,
+    "indirect_var": env_on("""      - name: Leak
+        run: |
+          f=$GITHUB_ENV
+          echo "X=$Y" >> "$f"
+""", "Y: ${{ secrets.FAKE }}"),
+    "printf_braced": env_on("""      - name: Leak
+        run: printf 'X=%s\\n' "$Y" >> "${GITHUB_ENV}"
+""", "Y: ${{ secrets.FAKE }}"),
+    "tee_a": env_on("""      - name: Leak
+        run: echo "X=$Y" | tee -a "$GITHUB_ENV"
+""", "Y: ${{ secrets.FAKE }}"),
+    "python_environ": env_on("""      - name: Leak
+        run: |
+          python3 - <<'PY'
+          import os
+          f = open(os.environ['GITHUB_ENV'], 'a')
+          f.write('X=' + os.environ['A'])
+          PY
+""", "A: ${{ secrets.FAKE }}"),
+    "node_process_env": env_on("""      - name: Leak
+        run: node -e 'require("fs").appendFileSync(process.env.GITHUB_OUTPUT, "x=" + process.env.A)'
+""", "A: ${{ secrets.FAKE }}"),
+    "bracket_secret_env": env_on("""      - name: Leak
+        run: echo "X=$A" >> "$GITHUB_ENV"
+""", "A: ${{ secrets['FAKE'] }}"),
+    "names_password_no_secret": """      - name: Leak
+        run: |
+          out=$GITHUB_OUTPUT
+          echo "p=$MY_PASSWORD" >> "$out"
+""",
+    "python_names_email": """      - name: Leak
+        run: |
+          python3 - <<'PY'
+          import os
+          for name in ("QA_TEST_EMAIL",):
+              open(os.environ["GITHUB_ENV"], "a").write(name + "=" + os.environ[name])
+          PY
+""",
+    "action_alias_with_input": """      - id: leak
+        uses: some/action@v1
+        with:
+          value: ${{ secrets.FAKE }}
+          target: GITHUB_ENV
+""",
 }
 
-GOOD_CASES = {
-    "step_env_only": """      - name: Sign in
-        env:
-          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
-          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
-        run: node login.mjs
-""",
-    "unrelated_env_with_token_in_step_env": """      - name: Claim
-        env:
-          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+# Must pass with no allowlist.
+GOOD = {
+    "step_env_only": SIGN_IN,
+    "env_write_without_secrets": """      - name: Pick simulator
         run: |
-          bash claim.sh
-          echo "STAMP_BOOTSTRAP_REQUIRED=$required" >> "$GITHUB_ENV"
-""",
-    "comment_mentions_password": """      - name: Pick simulator
-        run: |
-          # never write the PASSWORD here
-          python3 - <<'PY' >> "$GITHUB_ENV"
+          # never write the PASSWORD here (comment)
+          f=$GITHUB_ENV
+          python3 - <<'PY' >> "$f"
           print("SIM_UDID=1")
           PY
 """,
+    "secrets_without_env_write": env_on("""      - name: Upload
+        run: node upload.mjs
+""", "A: ${{ secrets.FAKE }}"),
+}
+
+ALLOW_CASE = env_on("""      - name: Claim
+        run: |
+          bash claim.sh
+          echo "REQUIRED=$required" >> "$GITHUB_ENV"
+""", "STAMP_TOKEN: ${{ secrets.FAKE_TOKEN }}")
+
+# QA scope (rule 3) on fake workflows against FAKE_PINS: (text, flagged?).
+SCOPE = {
+    "ok": (wf(SIGN_IN + LATER), False),
+    "other_step_dot": (wf(SIGN_IN + env_on(LATER, "X: ${{ secrets.QA_FAKE_PASSWORD }}")), True),
+    "other_step_bracket_single": (wf(SIGN_IN + env_on(LATER, "X: ${{ secrets['QA_FAKE_PASSWORD'] }}")), True),
+    "other_step_bracket_double_spaces": (wf(SIGN_IN + env_on(LATER, 'X: ${{ secrets[ "QA_FAKE_PASSWORD" ] }}')), True),
+    "other_step_lowercase": (wf(SIGN_IN + env_on(LATER, "X: ${{ secrets.qa_fake_password }}")), True),
+    "other_step_mixed_case_spaced": (wf(SIGN_IN + env_on(LATER, "X: ${{ Secrets . Qa_Fake_Password }}")), True),
+    "other_step_tojson": (wf(SIGN_IN + env_on(LATER, "X: ${{ toJSON(secrets) }}")), True),
+    "allowed_step_bracket_spelling": (wf(SIGN_IN.replace("secrets.QA_FAKE_PASSWORD", "secrets['QA_FAKE_PASSWORD']") + LATER), True),
+    "allowed_step_extra_alias": (wf(SIGN_IN.replace("        run:", "          EXTRA_ALIAS: ${{ secrets.QA_FAKE_PASSWORD }}\n        run:") + LATER), True),
+    "allowed_step_gate_added_true": (wf(SIGN_IN.replace("        env:", "        if: ${{ true }}\n        env:")), True),
+    "job_env": (wf(SIGN_IN).replace("    runs-on:", "    env:\n      QA_LOGIN_EMAIL: ${{ secrets.QA_FAKE_EMAIL }}\n    runs-on:"), True),
+    "workflow_env": (wf(SIGN_IN, header="env:\n  QA_LOGIN_EMAIL: ${{ secrets.QA_FAKE_EMAIL }}\n"), True),
+    "run_body": (wf(SIGN_IN + LATER.replace("node other.mjs", "echo ${{ secrets.QA_FAKE_EMAIL }}")), True),
+    "action_with_input": (wf(SIGN_IN + "      - uses: x/y@v1\n        with:\n          pw: ${{ secrets.QA_FAKE_PASSWORD }}\n"), True),
+    "step_renamed_to_alias": (wf(SIGN_IN.replace("name: Sign in", "name: Log in")), True),
+    "step_name_replaced_by_id": (wf(SIGN_IN.replace("- name: Sign in", "- id: sign-in")), True),
+    "all_references_deleted": (wf(SIGN_IN.replace("QA_LOGIN_PASSWORD: ${{ secrets.QA_FAKE_PASSWORD }}", "X: plain") + LATER), True),
+    "background_step_gets_secret": (wf(SIGN_IN + env_on("""      - name: Start harness (background)
+        run: node harness.mjs &
+""", "QA_LOGIN_PASSWORD: ${{ secrets.QA_FAKE_PASSWORD }}")), True),
+}
+
+# Script files (rule 1 + rule 4): (text, flagged?). From the review: a Python helper that reads a
+# fake credential on one line and writes it to $GITHUB_ENV on a later one, and shell aliases.
+SCRIPTS = {
+    "py_cross_line": ('import os\np = os.environ["QA_TEST_PASSWORD"]\nf = open(os.environ["GITHUB_ENV"], "a")\nf.write("X=" + p + "\\n")\n', True),
+    "sh_alias": ('f="$GITHUB_ENV"\nv="$QA_LOGIN_EMAIL"\necho "X=$v" >> "$f"\n', True),
+    "sh_alias_output_tee": ('out=${GITHUB_OUTPUT}\nprintf "x=%s\\n" "$DEPLOY_TOKEN" | tee -a "$out"\n', True),
+    "node_cross_line": ('const p = process.env.API_SECRET;\nconst f = process.env.GITHUB_OUTPUT;\nrequire("fs").appendFileSync(f, `x=${p}\\n`);\n', True),
+    "sh_direct": ('echo "DEPLOY_SECRET=$x" >> "${GITHUB_ENV:?}"\n', True),
+    "sh_clean": ('f="$GITHUB_ENV"\necho "SIM_UDID=$udid" >> "$f"\n', False),
+    "py_secret_without_env_write": ('import os\np = os.environ["QA_TEST_PASSWORD"]\nprint(len(p))\n', False),
 }
 
 
-def self_test() -> int:
-    failed = 0
-    for name, text in BAD_CASES.items():
-        if not check_text(f"bad/{name}.yml", text, workflow=True):
-            print(f"self-test FAIL: {name} was not flagged")
+def real_tree_mutants() -> list[tuple[str, str, str, str]]:
+    """(name, file, old, new) mutants of the real workflows; each must turn a clean scan red."""
+    qa, ios, ral = ".github/workflows/qa-acceptance.yml", ".github/workflows/qa-acceptance-ios.yml", ".github/workflows/release-auto-login.yml"
+    kvm = "      - name: Enable KVM\n"
+    gate = f"{LEGACY} && secrets.QA_TEST_PASSWORD || ''"
+    out = []
+    for spelling in ("secrets['QA_TEST_PASSWORD']", 'secrets["QA_TEST_PASSWORD"]', "secrets[ 'qa_test_password' ]", "secrets.qa_test_password", "Secrets.Qa_Test_Password"):
+        out.append((f"unlisted step reads {spelling}", qa, kvm, kvm + f"        env:\n          X: ${{{{ {spelling} }}}}\n"))
+    out += [
+        ("extra alias in an allowed step", qa, "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}",
+         "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n          EXTRA_ALIAS: ${{ secrets.QA_TEST_PASSWORD }}"),
+        ("acceptance runner no longer gated on bootstrap", qa, gate, "secrets.QA_TEST_PASSWORD"),
+        ("iOS deterministic repro no longer gated on bootstrap", ios, f"QA_TEST_PASSWORD: ${{{{ {gate} }}}}\n        run: |\n          mkdir -p qa-evidence\n          cp \"$GITHUB_WORKSPACE/build-info-ios.json\" qa-evidence/build-info.json 2>/dev/null || true\n          echo $((",
+         "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence\n          cp \"$GITHUB_WORKSPACE/build-info-ios.json\" qa-evidence/build-info.json 2>/dev/null || true\n          echo $(("),
+        ("preflight gate -> true", qa, f"        if: {LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
+         "        if: ${{ true }}\n        env:\n          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}\n          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence"),
+        ("preflight gate -> false", qa, f"        if: {LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
+         "        if: ${{ false }}\n        env:\n          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}\n          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence"),
+        ("preflight gate removed", qa, f"        if: {LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
+         "        env:\n          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}\n          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence"),
+        ("staging/production branch pair swapped", ral,
+         "QA_LOGIN_PASSWORD: ${{ (needs.plan.outputs.environment == 'staging' && secrets.QA_STAGING_TEST_PASSWORD) || secrets.QA_TEST_PASSWORD }}\n        with:",
+         "QA_LOGIN_PASSWORD: ${{ (needs.plan.outputs.environment == 'production' && secrets.QA_STAGING_TEST_PASSWORD) || secrets.QA_TEST_PASSWORD }}\n        with:"),
+        ("sign-in step renamed (step alias)", ral, "      - name: Sign in on the emulator\n", "      - name: Sign in on the emulator (v2)\n"),
+        ("credential export into $GITHUB_ENV restored", ral, "      - name: Enable KVM\n",
+         "      - name: Export\n        env:\n          E: ${{ secrets.QA_TEST_EMAIL }}\n        run: |\n          f=$GITHUB_ENV\n          echo \"QA_LOGIN_EMAIL=$E\" >> \"$f\"\n\n      - name: Enable KVM\n"),
+        ("background loop harness gets the account", ios, "      - name: Start loop harness (background)\n        if: ${{ env.IOS_QA_DRIVER == 'qa-loop' }}\n",
+         "      - name: Start loop harness (background)\n        if: ${{ env.IOS_QA_DRIVER == 'qa-loop' }}\n        env:\n          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n"),
+    ]
+    # Whole-file rewrites: old is a regex, applied to every match.
+    for wfname in ("android-update-e2e.yml", "android-realtime-e2e.yml", "qa-acceptance.yml"):
+        out.append((f"all QA references deleted from {wfname}", f".github/workflows/{wfname}",
+                    r"re:^\s*\w+: \$\{\{.*secrets\.QA_.*\}\}\n", ""))
+    out.append(("QA references only in bracket form", ".github/workflows/android-realtime-e2e.yml",
+                r"re:secrets\.(QA_[A-Z_]+)", r"secrets['\1']"))
+    return out
+
+
+def self_test(repo: Path) -> int:
+    failed, count = 0, 0
+
+    def expect(case: str, errors: list[str], flagged: bool) -> None:
+        nonlocal failed, count
+        count += 1
+        if bool(errors) != flagged:
             failed += 1
-    for name, text in GOOD_CASES.items():
-        errs = check_text(f"good/{name}.yml", text, workflow=True)
-        if errs:
-            print(f"self-test FAIL: {name} flagged: {errs}")
-            failed += 1
-    if not check_text("bad/script.sh", 'echo "DEPLOY_SECRET=$x" >> "${GITHUB_ENV:?}"\n', workflow=False):
-        print("self-test FAIL: script write not flagged")
-        failed += 1
-    scope_ok = """jobs:
-  a:
-    steps:
-      - name: Sign in
-        env:
-          QA_LOGIN_PASSWORD: ${{ secrets.QA_FAKE_PASSWORD }}
-        run: node login.mjs
-      - name: Later step
-        run: node other.mjs
-"""
-    allowed = {"w.yml": {"Sign in"}}
-    if check_qa_secret_scope("w.yml", scope_ok, allowed):
-        print(f"self-test FAIL: scope ok case flagged: {check_qa_secret_scope('w.yml', scope_ok, allowed)}")
-        failed += 1
-    scope_bad = {
-        "other_step": scope_ok.replace("        run: node other.mjs", "        env:\n          X: ${{ secrets.QA_FAKE_EMAIL }}\n        run: node other.mjs"),
-        "job_env": scope_ok.replace("    steps:", "    env:\n      QA_LOGIN_EMAIL: ${{ secrets.QA_FAKE_EMAIL }}\n    steps:"),
-        "workflow_env": "env:\n  QA_LOGIN_EMAIL: ${{ secrets.QA_FAKE_EMAIL }}\n" + scope_ok,
-        "run_body": scope_ok.replace("node other.mjs", "echo ${{ secrets.QA_FAKE_EMAIL }}"),
-        "with_input": scope_ok.replace("        run: node other.mjs", "        uses: x/y@v1\n        with:\n          pw: ${{ secrets.QA_FAKE_PASSWORD }}"),
-        "renamed": scope_ok.replace("name: Sign in", "name: Log in"),
-    }
-    for case, text in scope_bad.items():
-        if not check_qa_secret_scope("w.yml", text, allowed):
-            print(f"self-test FAIL: scope case {case} was not flagged")
-            failed += 1
-    if not check_qa_secret_scope("new.yml", scope_ok, allowed):
-        print("self-test FAIL: unlisted workflow reading secrets.QA_* was not flagged")
-        failed += 1
+            print(f"self-test FAIL: {case}: expected {'flagged' if flagged else 'clean'}, got {errors}")
+
+    def rules(text: str, allow: dict | None = None) -> list[str]:
+        lines = text.splitlines()
+        return check_write_lines("w.yml", lines) + check_steps("w.yml", lines, allow or {})[0]
+
+    for case, steps in BAD.items():
+        expect(f"bad/{case}", rules(wf(steps)), True)
+    for case, steps in GOOD.items():
+        expect(f"good/{case}", rules(wf(steps)), False)
+    expect("allowlist/unlisted", rules(wf(ALLOW_CASE)), True)
+    expect("allowlist/listed", rules(wf(ALLOW_CASE), {("w.yml", "Claim"): "fake reason"}), False)
+    for case, (text, flagged) in SCOPE.items():
+        expect(f"scope/{case}", check_qa_secret_scope("w.yml", text.splitlines(), FAKE_PINS), flagged)
+    expect("scope/unlisted_workflow", check_qa_secret_scope("new.yml", wf(SIGN_IN).splitlines(), FAKE_PINS), True)
+    expect("scope/unlisted_workflow_bracket_only", check_qa_secret_scope("new.yml", wf(SIGN_IN.replace("secrets.QA_FAKE_PASSWORD", "secrets['QA_FAKE_PASSWORD']")).splitlines(), FAKE_PINS), True)
+    expect("scope/unlisted_workflow_without_qa", check_qa_secret_scope("new.yml", wf(LATER).splitlines(), FAKE_PINS), False)
+    for case, (text, flagged) in SCRIPTS.items():
+        expect(f"script/{case}", check_write_lines("scripts/fake.x", text.splitlines()) + check_script_file("scripts/fake.x", text, {}), flagged)
+    expect("script/allow-listed", check_script_file("scripts/fake.x", SCRIPTS["py_cross_line"][0], {"scripts/fake.x": "fake"}), False)
+
+    # Scratch trees: fake-only, then the real workflows/scripts with each mutant applied.
     with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
+        root = Path(tmp) / "fake"
         (root / ".github/workflows").mkdir(parents=True)
-        (root / ".github/workflows/a.yml").write_text("jobs:\n  a:\n    steps:\n" + BAD_CASES["echo_env"], encoding="utf-8")
-        if not scan(root):
-            print("self-test FAIL: scan() missed a workflow file")
-            failed += 1
-    print("self-test " + ("FAILED" if failed else "passed") + f" ({len(BAD_CASES) + len(GOOD_CASES) + 2 + 1 + 6 + 1} cases)")
+        (root / "scripts").mkdir()
+        target = root / ".github/workflows/w.yml"
+        target.write_text(wf(SIGN_IN + LATER), encoding="utf-8")
+        expect("scan/fake_clean", scan(root, {}, FAKE_PINS, {}), False)
+        expect("scan/listed_workflow_missing", scan(root, {}, {**FAKE_PINS, "gone.yml": FAKE_PINS["w.yml"]}, {}), True)
+        expect("scan/stale_allowlist_entry", scan(root, {("w.yml", "Nope"): "fake"}, FAKE_PINS, {}), True)
+        target.write_text(wf(SIGN_IN.replace("secrets.QA_FAKE_PASSWORD", "secrets['QA_FAKE_PASSWORD']") + LATER), encoding="utf-8")
+        expect("scan/known_workflow_bracket_only", scan(root, {}, FAKE_PINS, {}), True)
+        target.write_text(wf(SIGN_IN + LATER), encoding="utf-8")
+        (root / "scripts/helper.py").write_text(SCRIPTS["py_cross_line"][0], encoding="utf-8")
+        expect("scan/script_cross_line", scan(root, {}, FAKE_PINS, {}), True)
+        (root / "scripts/helper.py").write_text('import os\nopen(os.environ["GITHUB_ENV"], "a").write("X=1\\n")\n', encoding="utf-8")
+        target.write_text(wf(SIGN_IN + env_on(LATER.replace("node other.mjs", "python3 scripts/helper.py"), "A: ${{ secrets.FAKE }}")), encoding="utf-8")
+        expect("scan/secret_step_calls_env_writing_script", scan(root, {}, FAKE_PINS, {}), True)
+        expect("scan/secret_step_calls_reviewed_script", scan(root, {}, FAKE_PINS, {"scripts/helper.py": "fake"}), False)
+
+        real = Path(tmp) / "real"
+        if (repo / ".github/workflows").is_dir():
+            import shutil
+            for sub in (".github", "scripts"):
+                if (repo / sub).is_dir():
+                    shutil.copytree(repo / sub, real / sub, ignore=shutil.ignore_patterns("node_modules", "__pycache__", "*.png", "*.jpg", "*.mp4", "*.zip"))
+            expect("real/unmutated", scan(real), False)
+            for case, rel, old, new in real_tree_mutants():
+                f = real / rel
+                original = f.read_text(encoding="utf-8")
+                if old.startswith("re:"):
+                    mutated = re.sub(old[3:], new, original, flags=re.MULTILINE)
+                    if mutated == original or QA_SECRET.search(mutated) and not new:
+                        failed += 1
+                        count += 1
+                        print(f"self-test FAIL: real/{case}: rewrite did not apply cleanly in {rel}")
+                        continue
+                else:
+                    if old not in original:
+                        failed += 1
+                        count += 1
+                        print(f"self-test FAIL: real/{case}: mutant anchor not found in {rel}; update real_tree_mutants()")
+                        continue
+                    mutated = original.replace(old, new, 1)
+                f.write_text(mutated, encoding="utf-8")
+                expect(f"real/{case}", scan(real), True)
+                f.write_text(original, encoding="utf-8")
+            helper = real / "scripts/qa/fake_helper.py"
+            helper.write_text(SCRIPTS["py_cross_line"][0], encoding="utf-8")
+            expect("real/script reads a credential and writes $GITHUB_ENV on a later line", scan(real), True)
+            helper.unlink()
+    print("self-test " + ("FAILED" if failed else "passed") + f" ({count} cases, {failed} failed)")
     return 1 if failed else 0
 
 
@@ -330,14 +627,14 @@ def main() -> int:
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
     if args.self_test:
-        return self_test()
+        return self_test(Path(args.root))
     errors = scan(Path(args.root))
     for e in errors:
         print(f"::error::{e}" if "GITHUB_ACTIONS" in os.environ else e)
     if errors:
-        print(f"{len(errors)} credential write(s) into $GITHUB_ENV/$GITHUB_OUTPUT. Pass credentials only to the step that needs them, through its own env: from secrets.*.")
+        print(f"{len(errors)} finding(s). Pass credentials only to the step that needs them, through its own env: from secrets.*.")
         return 1
-    print("no credential-looking writes into $GITHUB_ENV/$GITHUB_OUTPUT")
+    print("no credential writes into $GITHUB_ENV/$GITHUB_OUTPUT; QA secrets only in their pinned steps")
     return 0
 
 
