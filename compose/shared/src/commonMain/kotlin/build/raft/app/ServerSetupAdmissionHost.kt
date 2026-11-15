@@ -251,7 +251,7 @@ internal fun rememberServerSetupAdmissionHost(
                         }
                         val density = LocalDensity.current
                         val topInset = serverSetupWebViewTopInset(
-                            statusBarTop = raftWindowTopSafeAreaPadding(),
+                            statusBarTop = raftPageWindowTopSafeAreaPadding(),
                             hostPadsWebView = raftWebViewNeedsHostBottomInsets,
                         )
                         val bottomInsetPx = raftArtifactViewerWebBottomInsetPx(
