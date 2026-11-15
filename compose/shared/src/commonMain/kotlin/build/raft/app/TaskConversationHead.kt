@@ -17,6 +17,7 @@ import build.raft.designsystem.motion.RaftMotion
 import build.raft.designsystem.motion.rememberRaftReducedMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import build.raft.designsystem.components.raftClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -881,8 +882,7 @@ private fun TaskHeadCreatedByValue(name: String, creator: TaskHeadPerson?, serve
     Row(
         if (open != null) {
             Modifier
-                .clip(RoundedCornerShape(RaftRadius.Control))
-                .clickable(role = Role.Button, onClick = open)
+                .raftClickable(onClick = open, shape = RoundedCornerShape(RaftRadius.Control))
                 .semantics(mergeDescendants = true) {}
         } else {
             Modifier
@@ -1351,8 +1351,7 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
                 chrome.onToggleHeadFloat()
             }
             Modifier
-                .clip(RoundedCornerShape(RaftRadius.Control))
-                .clickable(role = Role.Button, onClick = onToggle)
+                .raftClickable(onClick = onToggle, shape = RoundedCornerShape(RaftRadius.Control))
                 .semantics(mergeDescendants = true) {
                     if (open) collapse { onToggle(); true } else expand { onToggle(); true }
                 }

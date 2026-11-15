@@ -73,7 +73,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1413,7 +1412,7 @@ internal fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onToggle() }
+            .raftClickable(onClick = onToggle, shape = RoundedCornerShape(RaftRadius.Control))
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1562,7 +1561,11 @@ internal fun EnvVarsEditor(
                 Box(
                     modifier =
                         Modifier
-                            .let { if (enabled) it.clickable { onChange(entries.toMutableList().also { it.removeAt(idx) }) } else it }
+                            .raftClickable(
+                                enabled = enabled,
+                                onClick = { onChange(entries.toMutableList().also { it.removeAt(idx) }) },
+                                shape = RoundedCornerShape(RaftRadius.Control),
+                            )
                             .padding(horizontal = 8.dp)
                 ) {
                     // Icon affordances are Lucide, never text glyphs (task #494).
@@ -1577,7 +1580,11 @@ internal fun EnvVarsEditor(
         Box(
             modifier =
                 Modifier
-                    .let { if (enabled) it.clickable { onChange(entries + ("" to "")) } else it }
+                    .raftClickable(
+                        enabled = enabled,
+                        onClick = { onChange(entries + ("" to "")) },
+                        shape = RoundedCornerShape(RaftRadius.Control),
+                    )
                     .padding(vertical = 4.dp)
         ) {
             Text(
