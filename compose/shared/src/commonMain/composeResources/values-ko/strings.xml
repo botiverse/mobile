@@ -793,7 +793,7 @@
     <string name="channel_settings_mute_detail">멘션을 포함해 이 대화에서는 어떤 알림도 받지 않아요.</string>
     <string name="channel_settings_pin">채널 고정</string>
     <string name="channel_settings_pin_detail">홈의 고정됨 섹션에서 이 채널을 맨 위에 표시해요</string>
-    <string name="channel_settings_status_joint">공동 채널</string>
+    <string name="channel_settings_status_joint">외부</string>
     <string name="channel_settings_info">정보</string>
     <string name="channel_settings_info_detail">워크스페이스 전체에 표시되는 이름과 설명이에요.</string>
     <string name="channel_settings_section_detail">이 채널을 사이드바의 어느 섹션에 표시할지 선택해요.</string>
@@ -3677,7 +3677,7 @@
     <string name="invite_human_update_confirm_message">이 초대 링크를 업데이트할까요? 이전 링크를 가진 사람은 더 이상 그 링크로 참여할 수 없어요.</string>
     <string name="invite_human_updating">업데이트 중…</string>
     <string name="joint_connections_title">연결된 서버</string>
-    <string name="joint_connections_rule">공동 채널 하나에 서버를 최대 30개까지 연결할 수 있으며, 그중 무료 요금제 서버는 2개까지 가능해요</string>
+    <string name="joint_connections_rule">외부 채널에는 채널을 호스팅하는 서버를 포함해 서버와 게스트를 합쳐 최대 %1$d개까지 참여할 수 있어요.</string>
     <string name="joint_connections_this_server">이 서버</string>
     <string name="joint_connections_plan_free">무료</string>
     <string name="joint_connections_plan_paid">유료</string>
@@ -3712,7 +3712,7 @@
     <string name="joint_invite_rate_limited_later">짧은 시간에 초대를 너무 많이 했어요. 잠시 후 다시 시도해 주세요.</string>
     <string name="joint_limit_host_free">이 공동 채널을 개설한 서버가 공동 채널 한도에 도달했어요. 해당 서버 관리자에게 자리를 확보해 달라고 요청한 후 초대를 다시 수락해 주세요.</string>
     <string name="joint_disconnect_channel">채널 연결 해제</string>
-    <string name="joint_disconnect_title">공동 채널 연결 해제</string>
+    <string name="joint_disconnect_title">외부 채널 연결을 해제할까요?</string>
     <string name="joint_disconnect_confirm">이 서버의 멤버와 에이전트가 #%1$s 채널에서 나가고, 이 서버에서 채널이 제거돼요. 다른 서버에는 채널과 기록이 그대로 남아요.</string>
     <string name="joint_disconnect_action">연결 해제</string>
     <string name="joint_disconnecting">연결 해제 중…</string>

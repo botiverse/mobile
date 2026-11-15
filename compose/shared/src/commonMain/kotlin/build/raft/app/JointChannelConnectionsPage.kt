@@ -346,12 +346,12 @@ internal fun JointConnectedServersSection(
 
 /**
  * Web `SectionHeader` of Connected servers: the server icon and the name, no count; at the end the
- * ⓘ (its tooltip the 30-server rule, "a fact the name doesn't say") and, where the viewer has a
+ * ⓘ (its tooltip the external channel size rule, "a fact the name doesn't say") and, where the viewer has a
  * server to connect, the ⋮ (ConnectedServersMenu). A phone has no hover: a tap opens the rule.
  */
 @Composable
 private fun JointConnectedServersHeader(state: JointChannelConnectionsState, onConnectYourServers: () -> Unit) {
-    val rule = stringResource(Res.string.joint_connections_rule)
+    val rule = stringResource(Res.string.joint_connections_rule, JOINT_CHANNEL_MAX_SERVERS)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         RaftSectionEyebrow(
             text = stringResource(Res.string.joint_connections_title),
