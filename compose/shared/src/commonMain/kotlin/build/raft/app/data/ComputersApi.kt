@@ -881,6 +881,12 @@ internal data class ComputerSummary(
     val creatorUserId: String? = null,
     /** True when the requester attached the Computer backing this machine (false for raw daemons). */
     val attachedByCurrentUser: Boolean = false,
+    /**
+     * Server `controlledByCurrentUser` (slock #15002): the requester is the machine's controller, the
+     * person the routes give rename / description / rescan / removal (it outlives a key revoke);
+     * null from older servers.
+     */
+    val controlledByCurrentUser: Boolean? = null,
     /** Active agents assigned to the machine. */
     val agentCount: Int = 0,
     /** The server's policy-aware upgrade decision; null for raw daemons / older servers. */
@@ -1116,6 +1122,12 @@ private data class ComputerDto(
     // GET /servers/:id/machines projection in routes/servers.ts.
     val userId: String? = null,
     val computerAttachedByCurrentUser: Boolean = false,
+    // routes/servers.ts buildMachineList (slock #15002): `controlledByCurrentUser:
+    // controllerUserIdFromAttachers(controllerAttachers, m) === userId`, whether the viewer is the
+    // machine's controller as the routes decide it (computerControllerUserId): the live Computer's
+    // attacher, else the most recently revoked one's, else machines.userId. Unlike
+    // computerAttachedByCurrentUser it survives a key revoke. Absent (null) from older servers.
+    val controlledByCurrentUser: Boolean? = null,
     val agentCount: Int = 0,
     val computerUpgradeAvailable: Boolean? = null,
     // GET /:id/machines in routes/servers.ts: managed Computers carry the policy projection, the latest
@@ -1400,6 +1412,7 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
             }.toMap(),
         creatorUserId = userId?.trim()?.takeIf { it.isNotBlank() },
         attachedByCurrentUser = computerAttachedByCurrentUser,
+        controlledByCurrentUser = controlledByCurrentUser,
         agentCount = agentCount.coerceAtLeast(0),
         computerUpgradeAvailable = computerUpgradeAvailable,
         computerBroadcastPolicy = computerBroadcastPolicy?.toSnapshot(),

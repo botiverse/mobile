@@ -3012,6 +3012,7 @@ internal fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnaps
         statusVersion = statusVersion,
         creatorUserId = creatorUserId,
         attachedByCurrentUser = attachedByCurrentUser,
+        controlledByCurrentUser = controlledByCurrentUser,
         agentCount = agentCount,
         upgradeAvailable = isComputer && computerUpgradeAvailable == true,
         broadcastPolicy = computerBroadcastPolicy,
