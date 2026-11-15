@@ -321,6 +321,27 @@ internal data class SystemKillBudgetLimit(
 )
 
 /**
+ * The time before which exits are not looked at (nothing was decided about them). Once stored it
+ * never moves. Until it is stored it is the time this build was installed or updated, not "now":
+ * that value is the same on every launch, so a first launch whose write fails (commit() false,
+ * then the process dies) does not let the next launch pick a later baseline and skip the exits in
+ * between. A failed write is retried on the next launch. Left: if the write keeps failing and the
+ * app is updated in between, the baseline moves to the new update time.
+ */
+internal fun resolveSystemKillBaseline(
+    storedMillis: Long?,
+    packageUpdatedMillis: Long?,
+    nowMillis: Long,
+    persist: (Long) -> Boolean,
+    onPersistFailed: () -> Unit = {},
+): Long {
+    if (storedMillis != null) return storedMillis
+    val baseline = packageUpdatedMillis?.takeIf { it in 1..nowMillis } ?: nowMillis
+    if (!persist(baseline)) onPersistFailed()
+    return baseline
+}
+
+/**
  * What to do with each exit since the watermark, oldest first.
  *
  * Every exit newer than the install of the first build with this reporter and the watermark, and
@@ -1090,7 +1111,7 @@ internal object AndroidSystemKillReporter {
                             .map { it.toSystemKillExit() },
                     snapshots = snapshots,
                     // Before the first launch with this reporter nothing was decided; do not look back.
-                    cutoffMillis = firstSeenMillis(preferences, now),
+                    cutoffMillis = firstSeenMillis(context, preferences, now),
                     watermarkMillis = progress.watermarkMillis,
                     recentReportMillis = visible.recentReportMillis,
                     nowMillis = now,
@@ -1178,10 +1199,18 @@ internal object AndroidSystemKillReporter {
         )
     }
 
-    private fun firstSeenMillis(preferences: SharedPreferences, now: Long): Long {
+    private fun firstSeenMillis(context: Context, preferences: SharedPreferences, now: Long): Long {
         val key = "system-kill-first-seen-millis"
-        if (!preferences.contains(key)) preferences.edit().putLong(key, now).commit()
-        return preferences.getLong(key, now)
+        return resolveSystemKillBaseline(
+            storedMillis = if (preferences.contains(key)) preferences.getLong(key, now) else null,
+            packageUpdatedMillis =
+                runCatching { context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime }.getOrNull(),
+            nowMillis = now,
+            persist = { preferences.edit().putLong(key, it).commit() },
+            onPersistFailed = {
+                RaftAndroidLocalDiagnostics.recordLog("warn", Tag, "system_kill_report_baseline_commit_failed retry=next_launch")
+            },
+        )
     }
 
     private fun ApplicationExitInfo.toSystemKillExit(): SystemKillExit =
