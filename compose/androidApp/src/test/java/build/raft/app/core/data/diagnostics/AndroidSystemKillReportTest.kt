@@ -19,18 +19,18 @@ class AndroidSystemKillReportTest {
     @Test
     fun huaweiOtherKillWithCachedImportanceIsReportedOnlyWhenTelemetrySaysForeground() {
         // fb-52cc0499: reason=other reasonCode=13 importance=400, user scrolling one second earlier.
-        assertEquals(SystemKillDecision.Report, classifySystemKill(ApplicationExitInfo.REASON_OTHER, cached, true))
-        assertEquals(SystemKillDecision.SkipNotImportant, classifySystemKill(ApplicationExitInfo.REASON_OTHER, cached, false))
-        assertEquals(SystemKillDecision.SkipNotImportant, classifySystemKill(ApplicationExitInfo.REASON_OTHER, cached, null))
+        assertEquals(SystemKillDecision.Report, classify(ApplicationExitInfo.REASON_OTHER, cached, true))
+        assertEquals(SystemKillDecision.SkipNotImportant, classify(ApplicationExitInfo.REASON_OTHER, cached, false))
+        assertEquals(SystemKillDecision.SkipNotImportant, classify(ApplicationExitInfo.REASON_OTHER, cached, null))
     }
 
     @Test
     fun foregroundServiceKillOfABackgroundedProcessIsNotReported() {
         // RaftBackgroundConnectionService keeps the backgrounded process at 125.
         for (reason in listOf(ApplicationExitInfo.REASON_OTHER, ApplicationExitInfo.REASON_SIGNALED)) {
-            assertEquals(SystemKillDecision.SkipNotImportant, classifySystemKill(reason, foregroundService, false))
-            assertEquals(SystemKillDecision.SkipNotImportant, classifySystemKill(reason, foregroundService, null))
-            assertEquals(SystemKillDecision.SkipNotImportant, classifySystemKill(reason, perceptible, null))
+            assertEquals(SystemKillDecision.SkipNotImportant, classify(reason, foregroundService, false))
+            assertEquals(SystemKillDecision.SkipNotImportant, classify(reason, foregroundService, null))
+            assertEquals(SystemKillDecision.SkipNotImportant, classify(reason, perceptible, null))
         }
     }
 
@@ -38,11 +38,11 @@ class AndroidSystemKillReportTest {
     fun telemetryOverridesTheRecordedImportance() {
         assertEquals(
             SystemKillDecision.SkipNotImportant,
-            classifySystemKill(ApplicationExitInfo.REASON_LOW_MEMORY, foreground, telemetryForeground = false)
+            classify(ApplicationExitInfo.REASON_LOW_MEMORY, foreground, false)
         )
         assertEquals(
             SystemKillDecision.Report,
-            classifySystemKill(ApplicationExitInfo.REASON_LOW_MEMORY, service, telemetryForeground = true)
+            classify(ApplicationExitInfo.REASON_LOW_MEMORY, service, true)
         )
     }
 
@@ -62,13 +62,13 @@ class AndroidSystemKillReportTest {
             )
         for (reason in reasons) {
             for (importance in listOf(foreground, visible)) {
-                assertEquals("$reason/$importance", SystemKillDecision.Report, classifySystemKill(reason, importance, null))
+                assertEquals("$reason/$importance", SystemKillDecision.Report, classify(reason, importance, null))
             }
             for (importance in listOf(foregroundService, perceptible, service, cached, 1000)) {
                 assertEquals(
                     "$reason/$importance",
                     SystemKillDecision.SkipNotImportant,
-                    classifySystemKill(reason, importance, null)
+                    classify(reason, importance, null)
                 )
             }
         }
@@ -82,17 +82,17 @@ class AndroidSystemKillReportTest {
             ApplicationExitInfo.REASON_USER_STOPPED,
             ApplicationExitInfo.REASON_PERMISSION_CHANGE
         )) {
-            assertEquals(SystemKillDecision.SkipUserInitiated, classifySystemKill(reason, foreground, true))
+            assertEquals(SystemKillDecision.SkipUserInitiated, classify(reason, foreground, true))
         }
         for (reason in listOf(ApplicationExitInfo.REASON_PACKAGE_UPDATED, ApplicationExitInfo.REASON_PACKAGE_STATE_CHANGE)) {
-            assertEquals(SystemKillDecision.SkipPackageChange, classifySystemKill(reason, foreground, true))
+            assertEquals(SystemKillDecision.SkipPackageChange, classify(reason, foreground, true))
         }
         for (reason in listOf(
             ApplicationExitInfo.REASON_CRASH,
             ApplicationExitInfo.REASON_CRASH_NATIVE,
             ApplicationExitInfo.REASON_ANR
         )) {
-            assertEquals(SystemKillDecision.SkipReportedElsewhere, classifySystemKill(reason, foreground, true))
+            assertEquals(SystemKillDecision.SkipReportedElsewhere, classify(reason, foreground, true))
         }
     }
 
@@ -164,7 +164,7 @@ class AndroidSystemKillReportTest {
     fun aFailedUploadRetriedNextLaunchStillMatchesItsTelemetry() {
         // Launch 1 saw the Huawei kill but the upload failed (watermark not moved). Launch 2's ring
         // still holds the killed process, next to launch 1's own entry.
-        val killed = snapshot(pid = 4321, start = 1_000L, foreground = true)
+        val killed = snapshot(pid = 4321, start = 1_000L, foreground = true).copy(sampledAtMillis = 39_000L)
         val launch1 = snapshot(pid = 5000, start = 50_000L, foreground = true)
         val ring = MemoryTelemetryRing.merge(listOf(killed), launch1)
         val huawei = exit(pid = 4321, at = 40_000L, reason = ApplicationExitInfo.REASON_OTHER, importance = cached)
@@ -179,7 +179,7 @@ class AndroidSystemKillReportTest {
     fun aStickyServiceRestartBetweenKillAndLaunchDoesNotHideTheKill() {
         // The kill, then the foreground service restarts the process (no activity), then the user
         // opens the app. Each process keeps its own ring entry.
-        val killed = snapshot(pid = 4321, start = 1_000L, foreground = true)
+        val killed = snapshot(pid = 4321, start = 1_000L, foreground = true).copy(sampledAtMillis = 39_000L)
         val sticky = snapshot(pid = 4400, start = 41_000L, foreground = false)
         val ring = listOf(killed, sticky)
         val exits =
@@ -258,7 +258,14 @@ class AndroidSystemKillReportTest {
 
         val message = systemKillMessage(huawei, telemetry)
         assertTrue(message, message.startsWith("System kill: other (reasonCode=13 status=0 importance=400)"))
-        assertTrue(message, message.contains("in foreground, 60s after launch, last RSS 585 MB, last PSS 500 MB, trim running_low"))
+        assertTrue(
+            message,
+            message.contains(
+                "last seen in foreground 10s before exit (in foreground since 50s before exit; system: background, importance 400)\n" +
+                    "60s after launch, last RSS 585 MB (10s before exit), last PSS 500 MB (20s before exit), " +
+                    "last trim running_low (5s before exit)"
+            )
+        )
     }
 
     @Test
@@ -302,6 +309,16 @@ class AndroidSystemKillReportTest {
 
     private fun snapshot(pid: Int, start: Long, foreground: Boolean) =
         MemoryTelemetrySnapshot(pid, start, start + 10L, foreground, start + 5L)
+
+    /** [classifySystemKill] with no telemetry, or telemetry sampled one second before the exit. */
+    private fun classify(reason: Int, importance: Int, telemetryForeground: Boolean?, status: Int = 0): SystemKillDecision {
+        val at = 100_000L
+        val telemetry =
+            telemetryForeground?.let {
+                snapshot(pid = 1, start = 1_000L, foreground = it).copy(sampledAtMillis = at - 1_000L)
+            }
+        return classifySystemKill(reason, importance, telemetry, at, status)
+    }
 
     private fun plan(
         exits: List<SystemKillExit>,
@@ -435,10 +452,10 @@ class AndroidSystemKillReportTest {
         listOf(4, 6, 7, 8, 11).forEach { signal ->
             assertEquals(
                 SystemKillDecision.SkipReportedElsewhere,
-                classifySystemKill(ApplicationExitInfo.REASON_SIGNALED, visible, true, status = signal),
+                classify(ApplicationExitInfo.REASON_SIGNALED, visible, true, status = signal),
             )
         }
         // SIGKILL is the system killing the process: still a system kill.
-        assertEquals(SystemKillDecision.Report, classifySystemKill(ApplicationExitInfo.REASON_SIGNALED, visible, true, status = 9))
+        assertEquals(SystemKillDecision.Report, classify(ApplicationExitInfo.REASON_SIGNALED, visible, true, status = 9))
     }
 }

@@ -62,17 +62,43 @@ private val VisibleImportances =
     )
 
 /**
+ * How long before the exit the app's last sample may be for its "in foreground" to decide. While an
+ * activity is started, telemetry samples every [RaftMemoryTelemetry.SampleIntervalMillis] (30 s)
+ * and commits at least every 15 s, so a live foreground process is never further behind than this.
+ * An older sample means the process stopped sampling long before the kill (Hands 4a5504d3: sampled
+ * 570 s before an exit the system recorded at importance 300).
+ */
+internal const val SystemKillFreshSampleMillis = 60_000L
+
+/**
+ * Whether [telemetry]'s last sample is recent enough at [exitTimestampMillis] to trust its
+ * foreground flag: taken 0..[SystemKillFreshSampleMillis] before the exit. No sample (-1) or one
+ * after the exit (a clock change) is not.
+ */
+internal fun isTelemetrySampleFresh(telemetry: MemoryTelemetrySnapshot, exitTimestampMillis: Long): Boolean {
+    if (telemetry.sampledAtMillis < 0L) return false
+    val age = exitTimestampMillis - telemetry.sampledAtMillis
+    return age in 0L..SystemKillFreshSampleMillis
+}
+
+/**
  * Every reason not listed above is a system kill: unknown, signaled, low_memory,
  * initialization_failure, excessive_resource_usage, dependency_died, other, freezer, and codes
  * added after API 35. On a device that does not explain its kills (the Huawei in Hands
  * fb-52cc0499 recorded `reason=other`) any of them can be the "app vanished" users describe.
  *
  * A system kill is reported only when an activity was on screen:
- * - when this app's telemetry for the exited process exists ([telemetryForeground] non-null),
- *   it decides. The Huawei kill recorded `importance=400` one second after the user scrolled,
- *   and a background kill of the process kept alive by the foreground service
+ * - the app's own telemetry for the exited process ([telemetry], matched by the caller) decides
+ *   when it says "in background" (the move to background is committed at once), or "in
+ *   foreground" with a sample at most [SystemKillFreshSampleMillis] before the exit
+ *   ([isTelemetrySampleFresh]). The Huawei kill recorded `importance=400` one second after the
+ *   user scrolled, and a background kill of the process kept alive by the foreground service
  *   (RaftBackgroundConnectionService, on by default without Play services) records 125;
  *   telemetry gets both right.
+ * - "in foreground" with an older sample (or none) is not trusted: the process stopped sampling
+ *   long before the kill, and about 31 such tickets (Hands 4a5504d3: foreground 600 s, sample
+ *   570 s before an exit at importance 300) were background kills. The exit record decides, as
+ *   without telemetry.
  * - without telemetry, only importance foreground (100) or visible (200) counts. Foreground
  *   service (125) and perceptible (230) do not: that is the service-held background process,
  *   and reporting its swipe-away or power-manager kills would flood Hands.
@@ -80,7 +106,8 @@ private val VisibleImportances =
 internal fun classifySystemKill(
     reasonCode: Int,
     importance: Int,
-    telemetryForeground: Boolean?,
+    telemetry: MemoryTelemetrySnapshot?,
+    exitTimestampMillis: Long,
     status: Int = 0,
 ): SystemKillDecision =
     when {
@@ -88,8 +115,8 @@ internal fun classifySystemKill(
         reasonCode in PackageChangeReasons -> SystemKillDecision.SkipPackageChange
         reasonCode in ReportedElsewhereReasons -> SystemKillDecision.SkipReportedElsewhere
         reasonCode == ApplicationExitInfo.REASON_SIGNALED && status in CrashSignals -> SystemKillDecision.SkipReportedElsewhere
-        telemetryForeground != null ->
-            if (telemetryForeground) SystemKillDecision.Report else SystemKillDecision.SkipNotImportant
+        telemetry != null && !telemetry.foreground -> SystemKillDecision.SkipNotImportant
+        telemetry != null && isTelemetrySampleFresh(telemetry, exitTimestampMillis) -> SystemKillDecision.Report
         importance in VisibleImportances -> SystemKillDecision.Report
         else -> SystemKillDecision.SkipNotImportant
     }
@@ -177,7 +204,7 @@ internal fun planSystemKillReports(
                 if (mainProcessName != null && exit.processName.isNotEmpty() && exit.processName != mainProcessName) {
                     SystemKillDecision.SkipSecondaryProcess
                 } else {
-                    classifySystemKill(exit.reasonCode, exit.importance, telemetry?.foreground, exit.status)
+                    classifySystemKill(exit.reasonCode, exit.importance, telemetry, exit.timestampMillis, exit.status)
                 }
             val action =
                 when {
@@ -280,20 +307,69 @@ internal fun systemKillExtras(
         }
     }
 
+/**
+ * The ticket text. The exit record is the system's view at the kill; every detail from the app's
+ * telemetry carries how long before the exit it was recorded, since the last snapshot can be many
+ * minutes old (Hands 4a5504d3: "in foreground ... trim ui_hidden" from 600 s and 1241 s before an
+ * exit at importance 300).
+ */
 internal fun systemKillMessage(exit: SystemKillExit, telemetry: MemoryTelemetrySnapshot?): String =
     buildString {
+        val at = exit.timestampMillis
         append("System kill: ").append(historicalProcessExitReasonLabel(exit.reasonCode))
         append(" (reasonCode=").append(exit.reasonCode)
         append(" status=").append(exit.status)
         append(" importance=").append(exit.importance).append(')')
-        if (telemetry != null) {
-            append("\n").append(if (telemetry.foreground) "in foreground" else "in background")
-            append(", ").append((exit.timestampMillis - telemetry.processStartMillis) / 1000L).append("s after launch")
-            if (telemetry.rssKb >= 0L) append(", last RSS ").append(telemetry.rssKb / 1024L).append(" MB")
-            if (telemetry.pssKb >= 0L) append(", last PSS ").append(telemetry.pssKb / 1024L).append(" MB")
-            append(", trim ").append(trimMemoryLevelLabel(telemetry.lastTrimLevel))
+        if (telemetry == null) return@buildString
+        val system =
+            "system: " + (if (exitImportanceForeground(exit.importance)) "foreground" else "background") +
+                ", importance " + exit.importance
+        append('\n')
+        if (telemetry.foreground) {
+            if (telemetry.sampledAtMillis >= 0L) {
+                append("last seen in foreground ").append(beforeExit(at, telemetry.sampledAtMillis))
+                append(" (in foreground since ").append(beforeExit(at, telemetry.foregroundChangedAtMillis)).append("; ")
+            } else {
+                append("in foreground since ").append(beforeExit(at, telemetry.foregroundChangedAtMillis))
+                append(", never sampled (")
+            }
+            append(system)
+            if (!isTelemetrySampleFresh(telemetry, at)) {
+                append("; sample over ").append(SystemKillFreshSampleMillis / 1000L).append("s old, not trusted")
+            }
+            append(')')
+        } else {
+            append("in background since ").append(beforeExit(at, telemetry.foregroundChangedAtMillis))
+            append(" (").append(system).append(')')
+        }
+        append("\n").append((at - telemetry.processStartMillis) / 1000L).append("s after launch")
+        if (telemetry.rssKb >= 0L) {
+            append(", last RSS ").append(telemetry.rssKb / 1024L).append(" MB (")
+                .append(beforeExit(at, telemetry.sampledAtMillis)).append(')')
+        }
+        if (telemetry.pssKb >= 0L) {
+            append(", last PSS ").append(telemetry.pssKb / 1024L).append(" MB (")
+                .append(beforeExit(at, telemetry.pssSampledAtMillis)).append(')')
+        }
+        if (telemetry.lastTrimLevel == 0 || telemetry.lastTrimAtMillis < 0L) {
+            append(", no trim")
+        } else {
+            append(", last trim ").append(trimMemoryLevelLabel(telemetry.lastTrimLevel))
+            append(" (").append(beforeExit(at, telemetry.lastTrimAtMillis))
+            // A trim from before the last foreground change describes the earlier state, not this one.
+            if (telemetry.lastTrimAtMillis < telemetry.foregroundChangedAtMillis) {
+                append(", before the move to ").append(if (telemetry.foreground) "foreground" else "background")
+            }
+            append(')')
         }
     }
+
+/** "570s before exit"; "unknown time" for an unset (-1) timestamp, "Ns after exit" after a clock change. */
+private fun beforeExit(exitMillis: Long, atMillis: Long): String {
+    if (atMillis < 0L) return "unknown time"
+    val age = exitMillis - atMillis
+    return if (age >= 0L) "${age / 1000L}s before exit" else "${-age / 1000L}s after exit"
+}
 
 /** Report timestamps in the last 24 hours, as persisted (comma separated). */
 internal fun decodeRecentReports(encoded: String?, nowMillis: Long): List<Long> =
