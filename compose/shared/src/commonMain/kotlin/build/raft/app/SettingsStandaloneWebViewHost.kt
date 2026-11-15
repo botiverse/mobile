@@ -458,6 +458,11 @@ private fun StandaloneSettingsWebViewBody(
         }
     val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
     val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
+    // #300: the page holds only the access token; it is refreshed ahead of its expiry while shown.
+    val accessTokenRefresher =
+        remember(sharedStores, storeScope, authStore) {
+            SettingsWebViewAccessTokenRefresher(authStore, sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope))
+        }
     LaunchedEffect(spec.surface, spec) {
         bridge.log("settings_${spec.surface.diagnosticsName}_open")
     }
@@ -467,6 +472,8 @@ private fun StandaloneSettingsWebViewBody(
         spec = spec,
         controller = controller,
         accessTokenSyncLogger = bridge::log,
+        accessTokenRefresher = accessTokenRefresher,
+        accessTokenRefreshVisible = rememberRaftPagerAppeared(pager),
         onUrlChange = { url ->
             // Never the query: a Settings URL can carry tokens.
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=${raftWebViewUrlForLog(url)}")
@@ -499,6 +506,8 @@ internal fun StandaloneSettingsWebViewContent(
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
     accessTokenSyncLogger: (String) -> Unit = {},
+    accessTokenRefresher: SettingsWebViewAccessTokenRefresher? = null,
+    accessTokenRefreshVisible: Boolean = true,
 ) {
     val session = authSnapshot.session
     val localeTag = rememberStandaloneSettingsLocaleTag(spec.includeLocaleQuery)
@@ -547,6 +556,8 @@ internal fun StandaloneSettingsWebViewContent(
         binding = hostAuthBinding,
         surface = spec.surface,
         logger = accessTokenSyncLogger,
+        refresher = accessTokenRefresher,
+        visible = accessTokenRefreshVisible,
     )
 }
 

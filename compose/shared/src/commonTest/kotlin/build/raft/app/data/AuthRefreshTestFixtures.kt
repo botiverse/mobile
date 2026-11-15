@@ -79,3 +79,14 @@ internal class FakeRefreshAuthApi(
     override suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer> =
         error("not used")
 }
+
+/** A signed-in session on one server, for refresh tests. */
+internal fun authRefreshFixtureSession(accessToken: String, refreshToken: String): StoredAuthSession =
+    StoredAuthSession(
+        user = StoredAuthUser(id = "user-1", email = "artin@slock.ai"),
+        accessToken = accessToken,
+        refreshToken = refreshToken,
+        selectedServerId = "server-1",
+        selectedServerSlug = "slock",
+        servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
+    )

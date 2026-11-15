@@ -266,7 +266,8 @@ internal class RaftIosSandboxWebView(
         previous.removeFromSuperview()
     }
 
-    private fun rebuildWebView() {
+    /** [restoreUrl]: after the web content process was gone, the page that was shown ([raftWebViewRendererGoneRestoreUrl]). */
+    private fun rebuildWebView(restoreUrl: String? = null) {
         tearDownWebView()
         // The app's spare WKWebView (created after launch, RaftIosWebViewSpare) when this page's
         // configuration is the one it was built with: persistent store, scripts on. It saves the
@@ -345,7 +346,7 @@ internal class RaftIosSandboxWebView(
                 completionHandler = null
             )
         }
-        loadCurrentSrc()
+        loadCurrentSrc(restoreUrl)
     }
 
     /**
@@ -475,7 +476,8 @@ internal class RaftIosSandboxWebView(
         return true
     }
 
-    private fun loadCurrentSrc() {
+    /** Loads [src], or [documentUrl] (the page shown before a rebuild) when given; [src] stays the source. */
+    private fun loadCurrentSrc(documentUrl: String? = null) {
         val view = webView ?: return
         if (src.isEmpty()) {
             currentURL = ""
@@ -486,7 +488,8 @@ internal class RaftIosSandboxWebView(
             view.loadHTMLString("", baseURL = null)
             return
         }
-        val url = NSURL.URLWithString(src)
+        val target = documentUrl?.takeIf { it.isNotBlank() } ?: src
+        val url = NSURL.URLWithString(target)
         if (url == null) {
             notifyNavigationState(force = false)
             if (allowedNavigationSchemes.isNotEmpty()) notifyNavigationBlocked(src) else notifyLoadFailure("invalid_preview_url")
@@ -502,7 +505,7 @@ internal class RaftIosSandboxWebView(
         requestedAt = TimeSource.Monotonic.markNow()
         diagnosticsInfo(
             "load_src spare=$usingSpare sinceAttachMs=${attachedAt.elapsedNow().inWholeMilliseconds} " +
-                "url=${raftWebViewUrlForLog(src)}"
+                "url=${raftWebViewUrlForLog(target)}"
         )
         val cachePolicy = if (cacheEnabled) NSURLRequestUseProtocolCachePolicy else NSURLRequestReloadIgnoringLocalCacheData
         view.loadRequest(NSURLRequest.requestWithURL(url, cachePolicy = cachePolicy, timeoutInterval = 60.0))
@@ -672,7 +675,17 @@ internal class RaftIosSandboxWebView(
         if (disposed) return
         lastSuccessfulURL = ""
         lastLoadFailureKey = ""
-        rebuildWebView()
+        // #300: the page that was shown (a kept Artifact viewer is routed in place from its warm src,
+        // which the viewer would read as leaving its Artifact), if it may load here.
+        val restoreUrl =
+            raftWebViewRendererGoneRestoreUrl(src, currentURL) { candidate ->
+                val url = NSURL.URLWithString(candidate) ?: return@raftWebViewRendererGoneRestoreUrl false
+                isNavigationSchemeAllowed(url) && isOnLockedOrigin(url) &&
+                    (allowNavigation || isAllowedMainDocumentURL(url)) &&
+                    raftWebOriginOf(candidate) == raftWebOriginOf(src)
+            }
+        diagnosticsInfo("content_process_gone_restore url=${raftWebViewUrlForLog(restoreUrl)} shown=${restoreUrl != src}")
+        rebuildWebView(restoreUrl)
         notifyNavigationState(force = true)
     }
 
