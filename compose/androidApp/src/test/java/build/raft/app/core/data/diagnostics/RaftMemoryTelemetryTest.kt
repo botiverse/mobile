@@ -77,7 +77,7 @@ class RaftMemoryTelemetryTest {
         for (now in listOf(1_001L, 2_000L, 5_999L)) assertFalse("$now", throttle.shouldRecord(now, foreground = true))
         // Once the stored value is 5 s old, the next touch writes.
         assertTrue(throttle.shouldRecord(nowMillis = 6_000L, foreground = true))
-        assertFalse(throttle.shouldRecord(nowMillis = 11_999L, foreground = true))
+        assertFalse(throttle.shouldRecord(nowMillis = 10_999L, foreground = true)) // 4999 ms after the last write
         assertFalse(throttle.shouldRecord(nowMillis = 20_000L, foreground = false))
         assertTrue(throttle.shouldRecord(nowMillis = 20_000L, foreground = true))
         // The wall clock set back: the stored value is not "recent", so write again.
