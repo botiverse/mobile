@@ -202,7 +202,10 @@ class MachineOperationsTest {
     fun onlyAUuidIsAnOperationId() {
         assertEquals(OP, started().machineOperationIdOrNull())
         assertNull(started("op-1").machineOperationIdOrNull())
-        assertNull(started(OP.uppercase()).machineOperationIdOrNull())
+        // The server mints `randomUUID()` (lowercase) and slock `asMachineOperationId` takes only that.
+        val minted = "3f2b8c1d-9e4a-4b7f-a2c6-d1e0f9a8b7c6"
+        assertEquals(minted, started(minted).machineOperationIdOrNull())
+        assertNull(started(minted.uppercase()).machineOperationIdOrNull())
         assertNull(HomeNetworkResponse(409, """{"operationId":"$OP"}""").machineOperationIdOrNull(), "a refusal never started one")
         assertNull(ok(READ_BODY).machineOperationIdOrNull())
     }
