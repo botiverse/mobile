@@ -33,6 +33,8 @@ export async function run(ctx) {
   // s8 (smoke: cold start, server switch and back, Settings and back).
   const releaseChecks = ctx.flag?.("release-checks") ?? false;
   const otherChannelName = String(option("other-channel", "")).replace(/^#/, "");
+  // --skip-core (with --release-checks): run only s6-s8 (s1-s5 are not requested).
+  const skipCore = releaseChecks && (ctx.flag?.("skip-core") ?? false);
   const channelName = String(option("channel", "")).replace(/^#/, "");
   if (!serverName || !channelName) throw new Error("task_v2 needs --server-name and --channel (one exact test server and channel)");
   const runTag = `${process.env.GITHUB_RUN_ID ?? "local"}-${Date.now().toString(36)}`;
@@ -289,7 +291,7 @@ export async function run(ctx) {
       return null;
     });
 
-    if (setup) {
+    if (setup && !skipCore) {
       const { channel, task, backlog } = setup;
       const seedText = `${TEST_PREFIX} seed message ${runTag}`;
 
@@ -499,7 +501,7 @@ export async function run(ctx) {
     }
 
     // ---------- s5 ----------
-    if (!unknownWrites.length) await scenario("s5", async () => {
+    if (!unknownWrites.length && !skipCore) await scenario("s5", async () => {
       if (!server) throw notCovered("server not resolved");
       // Only the bound channel: never read, open or screenshot another channel's task or message.
       if (!boundChannel) throw notCovered(`#${channelName} was not resolved, so no channel to look in`);
@@ -739,12 +741,15 @@ export async function run(ctx) {
             await sleep(1500);
             list = nodes();
             const offTask = !statusChip(list) && !hasText(list, "Message this task");
-            if (offTask && channelReady(list) && textNodeWith(list, head(msg.content))) break;
+            if (offTask && hasText(list, "Open Tasks") && !hasText(list, "Close Tasks") && textNodeWith(list, head(msg.content))) break;
           }
           const offTask = !statusChip(list) && !hasText(list, "Message this task");
-          const result = { task_page_closed: offTask, channel_open: Boolean(channelReady(list)), message_shown: Boolean(textNodeWith(list, head(msg.content))), channel_name_shown: Boolean(find(list, (n) => n.pkg === PKG && n.text.includes(channelLabel))) };
+          // The Tasks card covers the conversation while open (its rows stay in the UI dump): the
+          // message counts as shown only with the card closed.
+          const cardOpen = Boolean(hasText(list, "Close Tasks"));
+          const result = { task_page_closed: offTask, channel_open: Boolean(channelReady(list)), tasks_card_open: cardOpen, message_in_dump: Boolean(textNodeWith(list, head(msg.content))), message_shown: !cardOpen && Boolean(textNodeWith(list, head(msg.content))), channel_name_shown: Boolean(find(list, (n) => n.pkg === PKG && n.text.includes(channelLabel))) };
           if (!offTask) throw new Error(`the link did nothing: the task page is still open; on screen: ${visible(list)}`);
-          if (!result.channel_open || !result.message_shown) throw new Error(`the link closed the task page but did not land on the message (${JSON.stringify(result)}); on screen: ${visible(list)}`);
+          if (!result.channel_open || !result.message_shown) throw new Error(`the link closed the task page but the message is not shown (${JSON.stringify(result)})`);
           return result;
         };
         const draftKept = async () => {
@@ -755,19 +760,29 @@ export async function run(ctx) {
           if (!kept) throw new Error(`the draft is gone from task #${emptyB.number}'s composer (it reads "${field?.text ?? "no composer"}")`);
           return { draft_kept: true };
         };
+        const results = {};
+        // Control: does the draft survive a plain Back (no link) and reopening the task?
+        await sstep("s7", "control-draft-after-back", async () => {
+          await openEmptyTask(emptyB);
+          await typeDraft(draft);
+          await hideKeyboard();
+          await back();
+          await waitUntil("off the task page", (l) => !statusChip(l) && !hasText(l, "Message this task"), { timeoutMs: 15_000 });
+          return await draftKept();
+        }).then((r) => { results.control_after_back = r; }, (e) => { results.control_after_back = { error: e.message }; });
         await sstep("s7", "empty-task-with-draft", async () => {
           const r = await openEmptyTask(emptyB);
-          await typeDraft(draft);
+          const field = composer(nodes());
+          if (!field || !field.text.includes(draft.slice(0, 12))) await typeDraft(draft);
           return r;
         });
-        const results = {};
         await sstep("s7", "link-same-channel", async () => { results.same = await linkLands(setup.channel.id, setup.channel.name, sameMsg); return results.same; }).catch((e) => { results.same = { error: e.message }; });
         await sstep("s7", "draft-kept-after-same-channel-link", draftKept).then((r) => { results.draft_after_same = r; }, (e) => { results.draft_after_same = { error: e.message }; });
         // The empty task page with the draft is open again (draftKept reopened it).
         await sstep("s7", "link-other-channel", async () => { results.other = await linkLands(other.id, other.name, otherMsg); return results.other; }).catch((e) => { results.other = { error: e.message }; });
         await sstep("s7", "draft-kept-after-other-channel-link", draftKept).then((r) => { results.draft_after_other = r; }, (e) => { results.draft_after_other = { error: e.message }; });
         report.s7 = results;
-        const failed = Object.entries(results).filter(([, v]) => v?.error);
+        const failed = Object.entries(results).filter(([k, v]) => v?.error && k !== "control_after_back");
         if (failed.length) throw new Error(failed.map(([k, v]) => `${k}: ${v.error}`).join(" | ").slice(0, 600));
         return "both links closed the task page and landed on the message; the draft was kept";
       });
@@ -853,7 +868,7 @@ export async function run(ctx) {
     log(`scenario cleanup: ${JSON.stringify(cleanup)}`);
   }
   const outcome = overallResult({
-    requested: ["s1", "s2", "s3", "s4", "s5", ...(releaseChecks ? ["s6", "s7", "s8"] : [])],
+    requested: [...(skipCore ? [] : ["s1", "s2", "s3", "s4", "s5"]), ...(releaseChecks ? ["s6", "s7", "s8"] : [])],
     results,
     unknownWrites,
     cleanup: (report.cleanup?.deleted_tasks ?? []).map((c) => ({ what: `delete task #${c.task}`, outcome: c.outcome, status: c.status })),
