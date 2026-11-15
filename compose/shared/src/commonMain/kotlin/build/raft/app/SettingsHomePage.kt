@@ -379,6 +379,9 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochMillisUtcIso
 import build.raft.app.model.raftStartOfDayUtcIso
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -2203,34 +2206,43 @@ private fun RaftAppShellReadyContent(
     // task #45: the user-facing "Desktop mode on large screens" toggle (Settings >
     // Mobile, default ON) replaces the two QA-only adaptive params. The persisted
     // value lands via the chat-layout snapshot runtime authority below.
-    var desktopModeOnLargeScreen by remember {
+    val desktopModeOnLargeScreenState = remember {
         mutableStateOf(DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN)
     }
+    var desktopModeOnLargeScreen by desktopModeOnLargeScreenState
     val authGateInstanceId = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optString(APP_SHELL_AUTH_GATE_INSTANCE_ID)
     }
-    var selectedTab by remember { mutableStateOf(launchSelection.selectedTab) }
+    val selectedTabState = remember { mutableStateOf(launchSelection.selectedTab) }
+    var selectedTab by selectedTabState
     // Navigation 3 (Android, stack on): the host saves the tab under the stack's pages with them.
-    val stackRootTab = build.raft.app.nav.LocalRaftStackRootTab.current
-    if (stackRootTab != null) SideEffect { stackRootTab.tab = selectedTab }
+    AppShellStackRootTabEffect(
+        selectedTabState = selectedTabState,
+    )
     // Navigation 3 (Android, stack on): the window's shell tabs for the server pages pushed over
     // the shell (AppShellServerStackPage.kt); null when the shell is not a stack root.
     val stackShellTabs = LocalRaftStackShellTabs.current
-    var childTabSwitchEpoch by remember { mutableStateOf(0) }
+    val childTabSwitchEpochState = remember { mutableStateOf(0) }
+    var childTabSwitchEpoch by childTabSwitchEpochState
     // artin 2026-11-02: the tabs picked before this one; Back on a tab root walks back through them.
-    var appShellTabHistory by remember { mutableStateOf(AppShellTabHistory()) }
+    val appShellTabHistoryState = remember { mutableStateOf(AppShellTabHistory()) }
+    var appShellTabHistory by appShellTabHistoryState
     var homeFocusLossDismissEpoch by remember { mutableStateOf(0) }
-    var retainedAppShellTabs by remember {
+    val retainedAppShellTabsState = remember {
         mutableStateOf(setOf("home", launchSelection.selectedTab))
     }
-    var prewarmedAppShellTabs by remember { mutableStateOf(emptySet<String>()) }
+    var retainedAppShellTabs by retainedAppShellTabsState
+    val prewarmedAppShellTabsState = remember { mutableStateOf(emptySet<String>()) }
+    var prewarmedAppShellTabs by prewarmedAppShellTabsState
     val prewarmAdmissionGate = remember { sharedPrewarmAdmissionGate() }
     val childPagePrewarmPolicy =
         remember { appShellChildPagePrewarmPolicy(raftPlatformAppShellChildPagePrewarmMode()) }
     val settingsHeaderTaps = remember { SettingsDeveloperUnlockTaps() }
     var homeListPositions by remember { mutableStateOf(AppShellServerLazyListPositions()) }
-    var pendingHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
-    var observedHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
+    val pendingHomeServerSwitchIdState = remember { mutableStateOf<String?>(null) }
+    var pendingHomeServerSwitchId by pendingHomeServerSwitchIdState
+    val observedHomeServerSwitchIdState = remember { mutableStateOf<String?>(null) }
+    var observedHomeServerSwitchId by observedHomeServerSwitchIdState
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
     var adaptiveDefaultLandingServerId by remember { mutableStateOf<String?>(null) }
@@ -2240,32 +2252,30 @@ private fun RaftAppShellReadyContent(
     // foot entry opens; the page that showed when it opened a server page (Back returns there);
     // and focus going back to the server tab after such a page closes.
     val serverMenuState = rememberRaftMobileNavServerPopoverState()
-    var serverPageOrigin by remember { mutableStateOf<String?>(null) }
-    var serverTabFocusPending by remember { mutableStateOf(false) }
-    var serverTabFocusOnPageReturn by remember { mutableStateOf(false) }
+    val serverPageOriginState = remember { mutableStateOf<String?>(null) }
+    var serverPageOrigin by serverPageOriginState
+    val serverTabFocusPendingState = remember { mutableStateOf(false) }
+    var serverTabFocusPending by serverTabFocusPendingState
+    val serverTabFocusOnPageReturnState = remember { mutableStateOf(false) }
+    var serverTabFocusOnPageReturn by serverTabFocusOnPageReturnState
     // Server switcher "Invite Human" (web ServerSwitcherMenu): the server whose
     // invite dialog is open, or null.
     var serverSwitcherInviteServerId by remember { mutableStateOf<String?>(null) }
     // task #13 (three-pane contract): while the wide LeftRail is active, Search is a rail
     // destination rendered INLINE in the AppShell middle pane — never a pushed secondary page
     // (the rail must stay). Narrow or flag-off keeps the legacy push path unchanged.
-    var railInlineSecondaryDestination by remember { mutableStateOf<String?>(null) }
+    val railInlineSecondaryDestinationState = remember { mutableStateOf<String?>(null) }
+    var railInlineSecondaryDestination by railInlineSecondaryDestinationState
     // The inline Search's field focuses as it opens; opening it again while it is open (top bar
     // search field, the Duo rail's Search) focuses the field again, like web's search shortcut.
     var railInlineSearchFocusRequest by remember { mutableStateOf(0) }
     // "Search for" hands the panel's query to the list column's Search; each hand-over is new.
     var searchOverlayHandoffNonce by remember { mutableStateOf(-1L) }
     // page_viewed for the wide rail's inline list panes (Search, Saved): they are not pages of their own.
-    val railInlineProductPageSlot = remember(pager.pagerId) { "${pager.pagerId}#rail-inline" }
-    val railInlineProductPageView = appShellRailInlineProductPageView(railInlineSecondaryDestination)
-    DisposableEffect(railInlineProductPageSlot, railInlineProductPageView) {
-        val pageViews = RaftProductEvents.pageViews
-        if (railInlineProductPageView != null) {
-            pageViews.onPageRoute(railInlineProductPageSlot, railInlineProductPageView)
-            pageViews.onPageShown(railInlineProductPageSlot)
-        }
-        onDispose { pageViews.onPageClosed(railInlineProductPageSlot) }
-    }
+    AppShellRailInlineProductPageEffect(
+        pager = pager,
+        railInlineSecondaryDestinationState = railInlineSecondaryDestinationState,
+    )
     // The Search tab's result list position survives leaving and re-entering the tab.
     val searchTabListState = rememberLazyListState()
     val searchTabReturnHighlight = remember { HomeSearchReturnHighlight() }
@@ -2276,7 +2286,8 @@ private fun RaftAppShellReadyContent(
     // task #13: once a rail surface exposes Activity (rail active or an inline destination is
     // covering the middle pane) the live tab must survive width transitions — narrowing must
     // not clamp a user-reached Activity selection back to Home.
-    var railActivityReached by remember { mutableStateOf(false) }
+    val railActivityReachedState = remember { mutableStateOf(false) }
+    var railActivityReached by railActivityReachedState
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
@@ -2284,14 +2295,17 @@ private fun RaftAppShellReadyContent(
     }
     val adaptiveWorkspaceStore =
         remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
-    val adaptiveWorkspaceSession by adaptiveWorkspaceStore.state.collectAsState()
+    val adaptiveWorkspaceSessionState = adaptiveWorkspaceStore.state.collectAsState()
+    val adaptiveWorkspaceSession by adaptiveWorkspaceSessionState
     val adaptiveWorkspaceState = adaptiveWorkspaceSession.workspace
     val adaptiveDetailLaunchPayload = adaptiveWorkspaceSession.launchPayload
     // task #34: a task opened from the Tasks page owns the task column beside the list (web
     // TasksRoute: the task a column of the row, the list the conversation's). Expanded, it fills
     // the row (web Expand, the thread's Focus mode). The id only marks the open task's card.
-    var tasksDetailColumnActive by remember { mutableStateOf(false) }
-    var tasksDetailColumnExpanded by remember { mutableStateOf(false) }
+    val tasksDetailColumnActiveState = remember { mutableStateOf(false) }
+    var tasksDetailColumnActive by tasksDetailColumnActiveState
+    val tasksDetailColumnExpandedState = remember { mutableStateOf(false) }
+    var tasksDetailColumnExpanded by tasksDetailColumnExpandedState
     var tasksDetailColumnTaskId by remember { mutableStateOf<String?>(null) }
     // Which task each column detail showed, so a history restore marks the reopened task's card.
     var tasksDetailColumnTaskIds by remember { mutableStateOf(RaftTasksColumnTaskIds()) }
@@ -2307,25 +2321,13 @@ private fun RaftAppShellReadyContent(
         remember(sharedStores, storeScope) { sharedStores.conversationForwardHistory(storeScope) }
     var handledConversationForwardHomeVisibleTick by remember { mutableStateOf(0) }
     var handledConversationForwardRequestTick by remember { mutableStateOf(0) }
-    LaunchedEffect(pager.pagerId, visibleAppearanceGeneration) {
-        if (visibleAppearanceGeneration > 0) {
-            sharedStores.markActiveAppShellPager(pager.pagerId)
-        }
-    }
-    // The app wears this shell's selected server theme from its first composition, and again
-    // whenever it appears (another window's shell may have taken over meanwhile).
-    LaunchedEffect(sharedStores, storeScope, visibleAppearanceGeneration) {
-        sharedStores.followServerTheme(storeScope)
-    }
-    // The account is scheduled for deletion (a 403 `account_deletion_pending` on any request): open
-    // the web deletion page, which shows the pending state and its Cancel. Once per session; the
-    // signal hands each request to one shell only.
-    LaunchedEffect(bridge, storeScope) {
-        build.raft.app.data.RaftAccountDeletionPendingSignal.Process.openRequests.collect {
-            bridge.logWarn("account_deletion_pending_open_page shell=${storeScope.shellInstanceId}")
-            pager.openSettingsAccountDeletionPage(storeScope)
-        }
-    }
+    AppShellAppearanceEffects(
+        sharedStores = sharedStores,
+        pager = pager,
+        bridge = bridge,
+        storeScope = storeScope,
+        visibleAppearanceGeneration = visibleAppearanceGeneration,
+    )
     val authStore = sharedStores.authStore
     val shellAuthStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val authSessionTerminalSource =
@@ -2344,7 +2346,8 @@ private fun RaftAppShellReadyContent(
     val realtimeAuthority by realtimeAuthorityFlow.collectAsState()
     val processRealtimeAuthorityFlow =
         remember(sharedStores) { sharedStores.processRealtimeAuthority() }
-    val processRealtimeAuthority by processRealtimeAuthorityFlow.collectAsState()
+    val processRealtimeAuthorityState = processRealtimeAuthorityFlow.collectAsState()
+    val processRealtimeAuthority by processRealtimeAuthorityState
     val realtimeCallbackGate =
         remember(sharedStores, appShellRealtimeDomainEventOwner) {
             RealtimeShellCallbackGate(
@@ -2356,7 +2359,8 @@ private fun RaftAppShellReadyContent(
         remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
     val appShellPresenceTransportCursors =
         remember(sharedStores, storeScope) { mutableMapOf<String, AppShellPresenceTransportCursor>() }
-    val selectedServerId by selectedServerStore.selectedServerId.collectAsState()
+    val selectedServerIdState = selectedServerStore.selectedServerId.collectAsState()
+    val selectedServerId by selectedServerIdState
     val canonicalFinalSelectedServerId =
         selectedServerId?.takeIf { it.isNotBlank() }
             ?: storeScope.initialServerId?.takeIf { it.isNotBlank() }
@@ -2380,53 +2384,18 @@ private fun RaftAppShellReadyContent(
         remember(canonicalFinalUnreadGrants) {
             canonicalFinalUnreadGrants.map { grant -> grant.scopeLeaseId to grant.serverId }
         }
-    var activeAppShellCanonicalFinalSinks by
+    val activeAppShellCanonicalFinalSinksState =
         remember { mutableStateOf<RealtimeGuardedDomainEventSinks?>(null) }
-    DisposableEffect(
-        appShellRealtimeDomainEventOwner,
-        canonicalFinalLifecycleEffects,
-        canonicalFinalDomainSlot,
-        canonicalFinalUnreadSlots,
-        canonicalFinalSelectedServerId,
-        selectedServerId,
-    ) {
-        val canonicalFinalDomainHandle =
-            canonicalFinalDomainSlot?.let { (scopeLeaseId, serverId) ->
-                canonicalFinalLifecycleEffects?.mount(
-                    scopeLeaseId = scopeLeaseId,
-                    serverId = serverId,
-                    surfaceKey = RealtimeCanonicalFinalSinkSurfaceKey.AppShellDomain,
-                ) { event ->
-                    val sinksSnapshot = activeAppShellCanonicalFinalSinks ?: throw IllegalStateException()
-                    appShellRealtimeDomainEventOwner.deliverGuardedAppShellDomainFinal(
-                        sinks = sinksSnapshot,
-                        serverId = serverId,
-                        event = event,
-                    )
-                }
-            }
-        val canonicalFinalUnreadHandles =
-            canonicalFinalUnreadSlots.mapNotNull { (scopeLeaseId, serverId) ->
-                canonicalFinalLifecycleEffects?.mount(
-                    scopeLeaseId = scopeLeaseId,
-                    serverId = serverId,
-                    surfaceKey = RealtimeCanonicalFinalSinkSurfaceKey.AppShellHomeUnread,
-                ) { event ->
-                    val sinksSnapshot = activeAppShellCanonicalFinalSinks ?: throw IllegalStateException()
-                    appShellRealtimeDomainEventOwner.deliverGuardedAppShellHomeUnreadFinal(
-                        sinks = sinksSnapshot,
-                        serverId = serverId,
-                        event = event,
-                    )
-                }
-            }
-        onDispose {
-            canonicalFinalUnreadHandles.forEach { handle ->
-                canonicalFinalLifecycleEffects?.dispose(handle)
-            }
-            canonicalFinalLifecycleEffects?.dispose(canonicalFinalDomainHandle)
-        }
-    }
+    var activeAppShellCanonicalFinalSinks by activeAppShellCanonicalFinalSinksState
+    AppShellCanonicalFinalSinkEffect(
+        appShellRealtimeDomainEventOwner = appShellRealtimeDomainEventOwner,
+        canonicalFinalLifecycleEffects = canonicalFinalLifecycleEffects,
+        selectedServerIdState = selectedServerIdState,
+        canonicalFinalSelectedServerId = canonicalFinalSelectedServerId,
+        canonicalFinalDomainSlot = canonicalFinalDomainSlot,
+        canonicalFinalUnreadSlots = canonicalFinalUnreadSlots,
+        activeAppShellCanonicalFinalSinksState = activeAppShellCanonicalFinalSinksState,
+    )
     val appShellCoroutineScope = rememberCoroutineScope()
     // Hands (artin 2026-10-22): raw host Offline waits out a 3s grace before the banner shows.
     val networkBannerGate =
@@ -2494,280 +2463,47 @@ private fun RaftAppShellReadyContent(
         viewModel(key = appShellAuthGateViewModelKey(pager.pagerId, authGateInstanceId)) {
             SharedAuthGateViewModel(authDataSource)
         }
-    var authGateState by remember { mutableStateOf(authGateViewModel.state.value) }
+    val authGateStateState = remember { mutableStateOf(authGateViewModel.state.value) }
+    var authGateState by authGateStateState
     LaunchedEffect(authGateViewModel) {
         authGateViewModel.state.collect { nextState ->
             authGateState = nextState
         }
     }
-    var cachedRestoreSession by remember { mutableStateOf<StoredAuthSession?>(null) }
-    LaunchedEffect(shellAuthStore, authGateState) {
-        if (authGateState == SharedAuthGateState.Restoring) {
-            cachedRestoreSession =
-                runCatchingPreservingCancellation { shellAuthStore.readSession() }
-                    .getOrNull()
-                    ?.takeIf { it.isColdStartCachedReadyEligible() }
-        } else if (authGateState is SharedAuthGateState.AuthRequired) {
-            cachedRestoreSession = null
-        }
-    }
-    var consumedInitialAuthRestoreTick by remember { mutableStateOf(0) }
-    LaunchedEffect(initialAuthRestoreTick) {
-        if (
-            initialAuthRestoreTick > 0 &&
-            consumedInitialAuthRestoreTick != initialAuthRestoreTick
-        ) {
-            consumedInitialAuthRestoreTick = initialAuthRestoreTick
-            requestAppShellInitialAuthRestore(authGateViewModel::dispatch)
-        }
-    }
-    var authGateMessage by remember { mutableStateOf<AuthGateMessage?>(null) }
-    var authSessionResetGeneration by remember { mutableStateOf(0) }
+    val cachedRestoreSessionState = remember { mutableStateOf<StoredAuthSession?>(null) }
+    var cachedRestoreSession by cachedRestoreSessionState
+    AppShellAuthRestoreEffects(
+        initialAuthRestoreTick = initialAuthRestoreTick,
+        shellAuthStore = shellAuthStore,
+        authGateViewModel = authGateViewModel,
+        authGateStateState = authGateStateState,
+        cachedRestoreSessionState = cachedRestoreSessionState,
+    )
+    val authGateMessageState = remember { mutableStateOf<AuthGateMessage?>(null) }
+    var authGateMessage by authGateMessageState
+    val authSessionResetGenerationState = remember { mutableStateOf(0) }
+    var authSessionResetGeneration by authSessionResetGenerationState
     var appliedAuthSessionResetGeneration by remember { mutableStateOf(0) }
-    DisposableEffect(authSessionEvents, authStore) {
-        val callbackRef =
-            authSessionEvents.addSessionClearedListener { signal ->
-                if (authSessionEvents.isLocalSource(signal)) {
-                    return@addSessionClearedListener
-                }
-                raftLogInfo(
-                    "SlockSharedAuth",
-                    "shared_auth_session auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}",
-                    RaftPlatformLogHint.AuthCritical
-                )
-                appShellCoroutineScope.launch {
-                    runCatchingPreservingCancellation {
-                        authStore.clearSessionFromSessionClearedNotify(
-                            reason = signal.reason,
-                            previousSessionFingerprint = signal.previousSessionFingerprint
-                        )
-                    }.onSuccess { applied ->
-                        raftLogInfo(
-                            "SlockSharedAuth",
-                            "shared_auth_session auth_session_clear_notify_result result=success applied=$applied " +
-                                "source=${signal.source} reason=${signal.reason}",
-                            RaftPlatformLogHint.AuthCritical
-                        )
-                    }.onFailure { throwable ->
-                        raftLogWarn(
-                            "SlockSharedAuth",
-                            "shared_auth_session auth_session_clear_notify_result result=failure source=${signal.source} " +
-                                "reason=${signal.reason} error=${throwable.message.orEmpty()}",
-                            RaftPlatformLogHint.AuthCritical
-                        )
-                    }
-                }
-            }
-        onDispose {
-            authSessionEvents.removeSessionClearedListener(callbackRef)
-        }
-    }
-    LaunchedEffect(sharedStores.authLossFunnel, authStore, authSessionTerminalSource, pager.pagerId) {
-        var acceptedTerminalGeneration: Long? = null
-        val sessionInvalidationEffects =
-            authSessionTerminalSource
-                ?.authSessionTerminalEvents
-                ?.mapNotNull { event ->
-                    (event as? AuthSessionEvent.Cleared)?.let {
-                        AppShellOrderedAuthEffect.SessionInvalidated(it.generation)
-                    }
-                }
-                ?: authStore.sessionInvalidations.map {
-                    AppShellOrderedAuthEffect.SessionInvalidated(generation = null)
-                }
-        merge(
-            sharedStores.authLossFunnel.resolutions.map { AppShellOrderedAuthEffect.AuthLoss(it) },
-            authStore.sessionChanges.map { AppShellOrderedAuthEffect.SessionChanged(it) },
-            sessionInvalidationEffects,
-        ).collect { effect ->
-            when (effect) {
-                is AppShellOrderedAuthEffect.AuthLoss -> {
-                    val resolution = effect.resolution
-                    if (!sharedStores.isActiveAppShellPager(pager.pagerId)) {
-                        bridge.logWarn(
-                            "app_shell_auth_loss_effect_skip reason=inactive_pager " +
-                                "source=${resolution.signal.source} pagerId=${pager.pagerId}"
-                        )
-                        return@collect
-                    }
-                    when (val decision = resolution.decision) {
-                        is AuthLossDecision.SessionPreserved ->
-                            bridge.logWarn(
-                                "app_shell_auth_loss_effect decision=session_preserved " +
-                                    "reason=${decision.reason} source=${resolution.signal.source}"
-                            )
-                        is AuthLossDecision.AuthRequired -> {
-                            val terminalSnapshot =
-                                authSessionTerminalSource?.let { source ->
-                                    runCatchingPreservingCancellation {
-                                        source.readAuthSessionTerminalSnapshot()
-                                    }.getOrNull()
-                                }
-                            if (authSessionTerminalSource != null && terminalSnapshot == null) {
-                                sharedStores.authLossFunnel.discardPendingOpenRequest(resolution)
-                                bridge.logWarn(
-                                    "app_shell_auth_loss_effect_skip reason=terminal_snapshot_unavailable " +
-                                        "source=${resolution.signal.source}"
-                                )
-                                return@collect
-                            }
-                            val currentSession =
-                                terminalSnapshot?.session
-                                    ?: if (authSessionTerminalSource == null) {
-                                        runCatchingPreservingCancellation {
-                                            shellAuthStore.readSession()
-                                        }.getOrNull()
-                                    } else {
-                                        null
-                                    }
-                            if (
-                                !appShellAuthLossEffectShouldApply(
-                                    resolution.signal.capturedSession,
-                                    currentSession,
-                                )
-                            ) {
-                                sharedStores.authLossFunnel.discardPendingOpenRequest(resolution)
-                                bridge.logWarn(
-                                    "app_shell_auth_loss_effect_skip reason=auth_authority_changed " +
-                                        "source=${resolution.signal.source}"
-                                )
-                                return@collect
-                            }
-                            val authDecision =
-                                appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.AuthRequired)
-                            val applyEffect = {
-                                authGateMessage =
-                                    AuthGateMessage.Static(Res.string.auth_error_session_expired.desc())
-                                if (authDecision.resetSessionState) authSessionResetGeneration += 1
-                                authGateViewModel.dispatch(authDecision.intent)
-                            }
-                            var appliedWithoutTerminalSource = false
-                            val committedTerminalGeneration =
-                                if (authSessionTerminalSource != null && terminalSnapshot != null) {
-                                    if (acceptedTerminalGeneration == terminalSnapshot.generation) {
-                                        terminalSnapshot.generation
-                                    } else {
-                                        appShellRunIfAuthSessionTerminalOrAuthorityRevision(
-                                            authSessionTerminalSource,
-                                            terminalSnapshot.generation,
-                                            resolution.signal.capturedSession,
-                                        ) {
-                                            applyEffect()
-                                        }
-                                    }
-                                } else {
-                                    applyEffect()
-                                    appliedWithoutTerminalSource = true
-                                    null
-                                }
-                            val applied =
-                                appliedWithoutTerminalSource || committedTerminalGeneration != null
-                            if (!applied) {
-                                sharedStores.authLossFunnel.discardPendingOpenRequest(resolution)
-                                bridge.logWarn(
-                                    "app_shell_auth_loss_effect_skip reason=terminal_revision_changed " +
-                                        "source=${resolution.signal.source}"
-                                )
-                                return@collect
-                            }
-                            committedTerminalGeneration?.let { generation ->
-                                acceptedTerminalGeneration = generation
-                            }
-                            sharedStores.authLossFunnel.activatePendingOpenRequest(resolution)
-                            bridge.logWarn(
-                                "app_shell_auth_loss_effect decision=auth_required " +
-                                    "reason=${decision.reason} source=${resolution.signal.source}"
-                            )
-                        }
-                    }
-                }
-                is AppShellOrderedAuthEffect.SessionChanged -> {
-                    val cachedSession =
-                        runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()
-                    if (cachedSession == null) {
-                        ProcessAttachmentAuthScopes.retireAccount()
-                        bridge.attachmentDownloadOwnerChanged(null)
-                    }
-                    val currentSession =
-                        (authGateViewModel.state.value as? SharedAuthGateState.Ready)?.session
-                    val identityChanged = appShellSessionIdentityChanged(cachedSession, currentSession)
-                    val authDecision =
-                        appShellBootstrapAuthDecision(
-                            AppShellBootstrapAuthSignal.SessionChanged,
-                            identityChanged = identityChanged
-                        )
-                    bridge.log(
-                        "app_shell_session_change_received fingerprint=${effect.fingerprint} " +
-                            "hasSession=${cachedSession != null} identityChanged=$identityChanged"
-                    )
-                    authGateMessage = null
-                    if (identityChanged) {
-                        bridge.realtimeDisconnect("auth_changed")
-                    }
-                    if (authDecision.resetSessionState) authSessionResetGeneration += 1
-                    authGateViewModel.dispatch(authDecision.intent)
-                }
-                is AppShellOrderedAuthEffect.SessionInvalidated -> {
-                    val authDecision =
-                        appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.SessionInvalidated)
-                    val applyEffect = {
-                        bridge.realtimeDisconnect("auth_invalid")
-                        if (authDecision.resetSessionState) authSessionResetGeneration += 1
-                        authGateViewModel.dispatch(authDecision.intent)
-                    }
-                    val applied =
-                        if (effect.generation != null && authSessionTerminalSource != null) {
-                            if (acceptedTerminalGeneration == effect.generation) {
-                                true
-                            } else {
-                                appShellRunIfAuthSessionTerminalRevision(
-                                    authSessionTerminalSource,
-                                    effect.generation,
-                                ) {
-                                    applyEffect()
-                                    acceptedTerminalGeneration = effect.generation
-                                }
-                            }
-                        } else {
-                            val currentSession =
-                                runCatchingPreservingCancellation {
-                                    shellAuthStore.readSession()
-                                }.getOrNull()
-                            if (currentSession == null) {
-                                applyEffect()
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                    if (!applied) {
-                        bridge.logWarn(
-                            "app_shell_session_invalidation_skip reason=terminal_revision_changed"
-                        )
-                    }
-                }
-            }
-        }
-    }
-    LaunchedEffect(authStore) {
-        authStore.authSessionEvents.collect { event ->
-            if (appShellAuthSessionEventRestoreIntent(event) == null) return@collect
-            val authDecision =
-                appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.BindingMetadataChanged)
-            bridge.log(
-                "app_shell_auth_session_event_received type=binding_metadata_changed " +
-                    "generation=${event.generation} action=refresh_silently"
-            )
-            authGateMessage = null
-            authGateViewModel.dispatch(authDecision.intent)
-        }
-    }
+    AppShellAuthSessionEffects(
+        sharedStores = sharedStores,
+        pager = pager,
+        bridge = bridge,
+        authStore = authStore,
+        shellAuthStore = shellAuthStore,
+        authSessionTerminalSource = authSessionTerminalSource,
+        appShellCoroutineScope = appShellCoroutineScope,
+        authSessionEvents = authSessionEvents,
+        authGateViewModel = authGateViewModel,
+        authGateMessageState = authGateMessageState,
+        authSessionResetGenerationState = authSessionResetGenerationState,
+    )
     // Preserve the cheap bootstrap-only path for signed-out/unknown sessions. A valid local
     // session is discovered by the effect above; once present, the Home graph is allowed to
     // materialize so its identity-bound durable snapshot can paint before remote auth settles.
     // White-screen diagnostics: the shell's first frame of real content (not the restore splash /
     // frame) and, when it has not come within a second, what it still waits on.
-    var appShellContentStage by remember { mutableStateOf<RaftWhiteScreenStage?>(RaftWhiteScreenStage.Session) }
+    val appShellContentStageState = remember { mutableStateOf<RaftWhiteScreenStage?>(RaftWhiteScreenStage.Session) }
+    var appShellContentStage by appShellContentStageState
     RaftFirstContentWatch(
         page = "app_shell",
         stage =
@@ -2865,16 +2601,10 @@ private fun RaftAppShellReadyContent(
             )
         }
     // web #12939: `joint-invites:changed` reads the pending invites again right away.
-    DisposableEffect(appShellRealtimeDomainEventOwner, jointInviteStore) {
-        val sink =
-            build.raft.app.data.RealtimeGuardedActiveThreadSink { eventServerId, event ->
-                if (event is build.raft.app.model.JointInvitesChanged && event.serverId.value == eventServerId) {
-                    jointInviteStore.dispatch(build.raft.app.data.SharedJointInviteIntent.Changed(eventServerId))
-                }
-            }
-        appShellRealtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
-        onDispose { appShellRealtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
-    }
+    AppShellJointInviteEffect(
+        appShellRealtimeDomainEventOwner = appShellRealtimeDomainEventOwner,
+        jointInviteStore = jointInviteStore,
+    )
     // A pending two-step verification reset, first in the Home notification center (web #12295).
     val secondFactorRecoveryStore =
         remember(appShellNetworkClient, jointInviteScope) {
@@ -3014,23 +2744,11 @@ private fun RaftAppShellReadyContent(
                 pinUpdateFailureCallback = { message -> bridge.toast(message) },
             )
         }
-    val dmPreviewPrefetchCoordinator =
-        remember(conversationRepository, homeStore) {
-            SharedDirectMessagePreviewPrefetchCoordinator(
-                conversationRepository = conversationRepository,
-                dispatchHome = { intent -> homeStore.dispatch(intent) },
-                diagnostics = raftLogger("SlockDmPreviewPrefetch", "dm_preview_prefetch", RaftLogLevel.Debug),
-            )
-        }
-    // botiverse/slock #11792: the sidebar's Mark as Unread found nothing to mark; say why.
-    val markUnreadNothingMessage by rememberUpdatedState(stringResource(Res.string.home_action_mark_unread_nothing))
-    LaunchedEffect(homeStore) {
-        homeStore.readToggleNotices.collect { notice ->
-            when (notice) {
-                RaftReadToggleNotice.MarkUnreadNothing -> bridge.toast(markUnreadNothingMessage)
-            }
-        }
-    }
+    AppShellHomeStoreEffects(
+        bridge = bridge,
+        conversationRepository = conversationRepository,
+        homeStore = homeStore,
+    )
     val homeActivityReplyThreadPrewarmDataSource =
         remember(
             shellAuthStore,
@@ -3122,14 +2840,22 @@ private fun RaftAppShellReadyContent(
                 serverNotificationLastKnownStore = sharedStores.settingsServerNotificationLastKnownStore,
             )
         }
-    var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
-    var compactConsecutiveMessages by remember { mutableStateOf(false) }
-    var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
-    var activityTaskStatusBadgesEnabled by remember { mutableStateOf(DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED) }
-    var serverDrawerEnabled by remember { mutableStateOf(DEFAULT_SERVER_DRAWER_ENABLED) }
-    var homeServerAvatarEnabled by remember { mutableStateOf(DEFAULT_HOME_SERVER_AVATAR_ENABLED) }
-    var conversationForwardGestureEnabled by remember { mutableStateOf(false) }
-    var serverDrawerProgrammaticCloseFence by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    val myMessageAlignmentState = remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
+    var myMessageAlignment by myMessageAlignmentState
+    val compactConsecutiveMessagesState = remember { mutableStateOf(false) }
+    var compactConsecutiveMessages by compactConsecutiveMessagesState
+    val foregroundMessageBannersEnabledState = remember { mutableStateOf(false) }
+    var foregroundMessageBannersEnabled by foregroundMessageBannersEnabledState
+    val activityTaskStatusBadgesEnabledState = remember { mutableStateOf(DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED) }
+    var activityTaskStatusBadgesEnabled by activityTaskStatusBadgesEnabledState
+    val serverDrawerEnabledState = remember { mutableStateOf(DEFAULT_SERVER_DRAWER_ENABLED) }
+    var serverDrawerEnabled by serverDrawerEnabledState
+    val homeServerAvatarEnabledState = remember { mutableStateOf(DEFAULT_HOME_SERVER_AVATAR_ENABLED) }
+    var homeServerAvatarEnabled by homeServerAvatarEnabledState
+    val conversationForwardGestureEnabledState = remember { mutableStateOf(false) }
+    var conversationForwardGestureEnabled by conversationForwardGestureEnabledState
+    val serverDrawerProgrammaticCloseFenceState = remember { mutableStateOf<((String) -> Unit)?>(null) }
+    var serverDrawerProgrammaticCloseFence by serverDrawerProgrammaticCloseFenceState
     var createChannelDialogOpen by remember { mutableStateOf(false) }
     var createJointChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
@@ -3180,90 +2906,23 @@ private fun RaftAppShellReadyContent(
         remember(windowNavigationCoordinator) { RaftShellNavigationIntake(windowNavigationCoordinator) }
     // A notification without a conversation (reminder, notice, test, agent route; contract §4.5):
     // switch to its server and open Activity. From the launch pageData (Android) or the open event (iOS).
-    var pendingNotificationActivityServerId by remember(pager.pageData.params.toString()) {
+    val pendingNotificationActivityServerIdState = remember(pager.pageData.params.toString()) {
         mutableStateOf(pager.pageData.params.appShellNotificationActivityServerId())
     }
+    var pendingNotificationActivityServerId by pendingNotificationActivityServerIdState
     // #proj-mobile #25/#26: external message links wait in the process inbox (through sign-in)
     // and, once resolved for this account, enter the same window navigation queue as a
     // notification tap ([navigationIntake]).
     val messageLinkSwitchedServerTemplate =
         stringResource(Res.string.message_link_switched_server, MessageLinkServerNamePlaceholder)
-    DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
-        val subscription =
-            eventBus.observe(build.raft.app.data.RaftDesktopShortcutContract.OpenEventName) { eventData ->
-                // task #483: a shell-targeted event applies only to that shell;
-                // absent/blank slockShellInstanceId broadcasts to every shell.
-                val targetShellId =
-                    eventData?.optString(RAFT_SHELL_INSTANCE_ID)?.trim().orEmpty()
-                if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
-                    return@observe
-                }
-                val intent = eventData?.toKuiklyJson().appShellDesktopShortcutEventNavigationIntent()
-                if (intent == null) {
-                    bridge.logWarn("window_navigation_drop source=app_shortcut reason=invalid_identity")
-                    return@observe
-                }
-                val enqueued = navigationIntake.enqueue(intent)
-                bridge.log(
-                    "window_navigation_received source=app_shortcut enqueued=$enqueued " +
-                        "targetServerId=${intent.serverId}"
-                )
-            }
-        eventBus.post(
-            eventName = build.raft.app.data.RaftDesktopShortcutContract.OpenReadyEventName,
-            eventData = JSONObject(),
-            source = "app_shell_desktop_shortcut_navigation_ready"
-        )
-        onDispose {
-            eventBus.post(
-                eventName = build.raft.app.data.RaftDesktopShortcutContract.OpenNotReadyEventName,
-                eventData = JSONObject(),
-                source = "app_shell_desktop_shortcut_navigation_not_ready"
-            )
-            subscription.close()
-        }
-    }
-    DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
-        val subscription =
-            eventBus.observe(RaftSystemNotificationContract.OpenEventName) { eventData ->
-                // task #483: a shell-targeted event applies only to that shell;
-                // absent/blank slockShellInstanceId broadcasts to every shell.
-                val targetShellId =
-                    eventData?.optString(RAFT_SHELL_INSTANCE_ID)?.trim().orEmpty()
-                if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
-                    return@observe
-                }
-                val activityServerId = eventData?.toKuiklyJson()?.appShellNotificationActivityServerId()
-                if (activityServerId != null) {
-                    bridge.log("notification_open_activity source=system_notification targetServerId=$activityServerId")
-                    pendingNotificationActivityServerId = activityServerId
-                    return@observe
-                }
-                val intent = eventData?.toKuiklyJson().appShellSystemNotificationNavigationIntent()
-                if (intent == null) {
-                    bridge.logWarn("window_navigation_drop source=system_notification reason=invalid_identity")
-                    return@observe
-                }
-                val enqueued = navigationIntake.enqueue(intent)
-                bridge.log(
-                    "window_navigation_received source=system_notification enqueued=$enqueued " +
-                        "targetServerId=${intent.serverId}"
-                )
-            }
-        eventBus.post(
-            eventName = RaftSystemNotificationContract.OpenReadyEventName,
-            eventData = JSONObject(),
-            source = "app_shell_notification_navigation_ready"
-        )
-        onDispose {
-            eventBus.post(
-                eventName = RaftSystemNotificationContract.OpenNotReadyEventName,
-                eventData = JSONObject(),
-                source = "app_shell_notification_navigation_not_ready"
-            )
-            subscription.close()
-        }
-    }
+    AppShellWindowNavigationEventEffects(
+        bridge = bridge,
+        storeScope = storeScope,
+        windowNavigationCoordinator = windowNavigationCoordinator,
+        eventBus = eventBus,
+        navigationIntake = navigationIntake,
+        pendingNotificationActivityServerIdState = pendingNotificationActivityServerIdState,
+    )
     val homeSearchSavedViewModel: SharedHomeSearchSavedViewModel =
         viewModel(key = "shared-home-search-saved") {
             SharedHomeSearchSavedViewModel(
@@ -3312,12 +2971,10 @@ private fun RaftAppShellReadyContent(
                 selectedConversationSeen = { raftHostShowsContent(storeScope.shellInstanceId) }
             )
         }
-    DisposableEffect(homeShellStore) {
-        onDispose { homeShellStore.clear() }
-    }
-    LaunchedEffect(homeShellStore, selectedTab) {
-        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedTab(selectedTab))
-    }
+    AppShellHomeShellStoreEffects(
+        selectedTabState = selectedTabState,
+        homeShellStore = homeShellStore,
+    )
     val homeShellRenderState =
         remember(homeShellStore, serverDrawerEnabled) {
             if (serverDrawerEnabled) {
@@ -3342,7 +2999,8 @@ private fun RaftAppShellReadyContent(
     val homeSearchSavedState = homeShellState.searchSaved
     val selectedHomeDestination = homeShellState.destination
     val selectedHomeConversationId = homeShellState.selectedConversationId
-    var tasksFirstRenderLoggedKey by remember { mutableStateOf<String?>(null) }
+    val tasksFirstRenderLoggedKeyState = remember { mutableStateOf<String?>(null) }
+    var tasksFirstRenderLoggedKey by tasksFirstRenderLoggedKeyState
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readyGate = authGateState as? SharedAuthGateState.Ready
     val readySession = readyGate?.session
@@ -3380,74 +3038,18 @@ private fun RaftAppShellReadyContent(
     // the Slack keys are not child pages, and with the gate on the legacy hidden keys (tasks/
     // members) are not first-class tabs anymore. Home is the safe anchor in both cases.
     // Mirrors selectAppShellTab but avoids the local-function ordering constraint.
-    LaunchedEffect(
-        slackNavTabKeys,
-        selectedTab,
-        desktopModeOnLargeScreen,
-        shellScope.adaptivePane,
-        railInlineSecondaryDestination,
-    ) {
-        // task #13: while the wide rail is active, Activity is a first-class rail
-        // destination even under the legacy tab order — the clamp must not evict it.
-        // navRailActive is declared later in this composable, so inline the same
-        // predicate here (rail = flag && LeftRail pref && DualPane).
-        val railActive =
-            raftAdaptiveNavRailActive(
-                desktopModeEnabled = desktopModeOnLargeScreen,
-                paneState = shellScope.adaptivePane
-            )
-        if (
-            retainedAppShellSelectedTab(selectedTab) == "activity" &&
-            (railActive || railInlineSecondaryDestination != null)
-        ) {
-            railActivityReached = true
-        }
-        val allowedKeys =
-            appShellAllowedTabKeys(
-                tabKeys = slackNavTabKeys,
-                railActive = railActive,
-                railInlineSecondaryDestination = railInlineSecondaryDestination,
-                activityReachedThisSession = railActivityReached,
-            )
-        // While an inline secondary destination (Search) covers the middle pane, the
-        // underlying rail tab is the host the cover returns to — clamping it now would
-        // strand the exit path (e.g. Activity + Search -> Home after close).
-        if (railInlineSecondaryDestination != null) return@LaunchedEffect
-        if (retainedAppShellSelectedTab(selectedTab) !in allowedKeys) {
-            bridge.log(
-                "app_shell_slack_nav_tab_clamp selectedTab=$selectedTab keys=${slackNavTabKeys.joinToString(",")}"
-            )
-            childTabSwitchEpoch =
-                appShellNextChildTabSwitchEpoch(selectedTab, "home", childTabSwitchEpoch)
-            selectedTab = "home"
-            retainedAppShellTabs = retainedAppShellTabs + "home"
-        }
-        // Back never returns to a tab that is no longer available.
-        appShellTabHistory = appShellTabHistory.sanitized(allowedKeys)
-    }
-
-    // task #45: rail-only transient surfaces must not leak into the single-column
-    // mobile shell — an open inline rail destination (Search) or a visible More
-    // menu is display state, not user data. This is edge-triggered on the OFF
-    // transition only: while OFF the user may still open the More menu or push a
-    // destination, and those must not be wiped by a persistent predicate.
-    // Destinations, selections and drafts are untouched (the workspace stays
-    // parked for the OFF->ON round trip).
-    var desktopModeCleanupArmed by remember { mutableStateOf(desktopModeOnLargeScreen) }
-    LaunchedEffect(desktopModeOnLargeScreen) {
-        val (shouldCleanup, nextArmed) =
-            desktopModeOffCleanupDecision(desktopModeOnLargeScreen, desktopModeCleanupArmed)
-        desktopModeCleanupArmed = nextArmed
-        if (shouldCleanup) {
-            bridge.log(
-                "desktop_mode_off_cleanup edge inline=${railInlineSecondaryDestination.orEmpty()} " +
-                    "selectedTab=$selectedTab"
-            )
-            if (railInlineSecondaryDestination != null) {
-                railInlineSecondaryDestination = null
-            }
-        }
-    }
+    AppShellTabAndDesktopModeEffects(
+        desktopModeOnLargeScreenState = desktopModeOnLargeScreenState,
+        selectedTabState = selectedTabState,
+        childTabSwitchEpochState = childTabSwitchEpochState,
+        appShellTabHistoryState = appShellTabHistoryState,
+        retainedAppShellTabsState = retainedAppShellTabsState,
+        railInlineSecondaryDestinationState = railInlineSecondaryDestinationState,
+        railActivityReachedState = railActivityReachedState,
+        bridge = bridge,
+        shellScope = shellScope,
+        slackNavTabKeys = slackNavTabKeys,
+    )
     val homePreviewServerId =
         selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: homePreviewSession?.currentServerId
     val createChannelAgentStatusResolver =
@@ -3492,19 +3094,13 @@ private fun RaftAppShellReadyContent(
             authGateState = authGateState,
             setupAdmissionAllowsHome = setupAdmissionAllowsHome
         )
-    LaunchedEffect(homeStore, homePreviewSession?.user?.id, homePreviewServerId, readyAuthPhase) {
-        val serverId = homePreviewServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        if (
-            readyAuthPhase == SharedAuthReadyPhase.CachedRestorePending ||
-            readyAuthPhase == SharedAuthReadyPhase.CachedRestoreCompleted
-        ) {
-            val hydrated = homeStore.hydrateCachedHome(ServerId(serverId))
-            bridge.log(
-                "app_shell_cached_home_hydrate serverId=$serverId hydrated=$hydrated " +
-                    "authPhase=${readyAuthPhase.name}"
-            )
-        }
-    }
+    AppShellHomePreviewEffect(
+        bridge = bridge,
+        homeStore = homeStore,
+        homePreviewSession = homePreviewSession,
+        readyAuthPhase = readyAuthPhase,
+        homePreviewServerId = homePreviewServerId,
+    )
     val cachedHomePreview =
         appShellCanRenderCachedHomePreview(
             readySession = homePreviewSession,
@@ -3620,33 +3216,18 @@ private fun RaftAppShellReadyContent(
     val listPaneResizeDefersFold =
         adaptiveListPaneResizing && desktopModeOnLargeScreen &&
             adaptivePane.layout == RaftAdaptivePaneLayout.DualPane
-    val sideThreadNeedsFold =
-        !listPaneResizeDefersFold &&
-            adaptiveWorkspaceSession.visibleSideThread() != null &&
-            !adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen)
-    LaunchedEffect(sideThreadNeedsFold) {
-        if (!sideThreadNeedsFold) return@LaunchedEffect
-        adaptiveWorkspaceStore.update { current ->
-            if (current.visibleSideThread() != null && !current.sideThreadColumnAvailable(desktopModeOnLargeScreen)) {
-                bridge.log("adaptive_side_thread_fold width=${current.detailPaneWidthDp} planFolds=${current.sideThreadFolds}")
-                current.foldSideThreadIntoDetail()
-            } else current
-        }
-    }
-    val tasksDetailColumnKeepsOwnership =
-        appShellTasksDetailColumnStaysActive(
-            desktopModeOnLargeScreen = desktopModeOnLargeScreen,
-            dualPane = adaptivePane.layout == RaftAdaptivePaneLayout.DualPane,
-            selectedTab = selectedTab,
-            selectionPresent = adaptiveWorkspaceState?.selection != null,
-        )
-    LaunchedEffect(tasksDetailColumnKeepsOwnership) {
-        if (!tasksDetailColumnKeepsOwnership && tasksDetailColumnActive) {
-            bridge.log("tasks_detail_column_release reason=surface_or_selection_changed")
-            tasksDetailColumnActive = false
-            tasksDetailColumnExpanded = false
-        }
-    }
+    AppShellAdaptiveColumnEffects(
+        adaptivePane = adaptivePane,
+        desktopModeOnLargeScreenState = desktopModeOnLargeScreenState,
+        selectedTabState = selectedTabState,
+        bridge = bridge,
+        adaptiveWorkspaceStore = adaptiveWorkspaceStore,
+        adaptiveWorkspaceSessionState = adaptiveWorkspaceSessionState,
+        adaptiveWorkspaceState = adaptiveWorkspaceState,
+        tasksDetailColumnActiveState = tasksDetailColumnActiveState,
+        tasksDetailColumnExpandedState = tasksDetailColumnExpandedState,
+        listPaneResizeDefersFold = listPaneResizeDefersFold,
+    )
     val tasksDetailColumnOpen =
         appShellTasksDetailColumnOpen(
             desktopModeOnLargeScreen = desktopModeOnLargeScreen,
@@ -4036,44 +3617,16 @@ private fun RaftAppShellReadyContent(
         }
     )
     // QA bootstrap READY + waiting diagnostics + bounded Home retry (no-op unless session.qaBootstrap is set).
-    QaBootstrapShellEffects(
-        authGateState = authGateState,
-        homeContent = homeState.content,
+    AppShellSignInEffects(
+        pageVisible = pageVisible,
+        bridge = bridge,
+        storeScope = storeScope,
         authDataSource = authDataSource,
-        onRefreshHome = { homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh)) },
-    )
-    LaunchedEffect(storeScope.shellInstanceId, authGateState, readyServerId) {
-        when (val state = authGateState) {
-            is SharedAuthGateState.Ready -> {
-                val serverId = readyServerId
-                if (serverId.isNullOrBlank()) {
-                    ProcessAttachmentAuthScopes.retireShell(storeScope.shellInstanceId)
-                    bridge.attachmentDownloadScopeRetired(storeScope.shellInstanceId)
-                } else {
-                    val lease = ProcessAttachmentAuthScopes.bind(storeScope, state.session, serverId)
-                    bridge.attachmentDownloadOwnerChanged(lease)
-                    // Product analytics: events go to the server the signed-in shell shows.
-                    RaftProductEvents.setSignedIn(serverId, userId = state.session.user.id)
-                }
-            }
-            SharedAuthGateState.AuthRequired,
-            is SharedAuthGateState.EmailVerificationRequired,
-            is SharedAuthGateState.ProfileSetupRequired,
-            is SharedAuthGateState.ServerRequired,
-            is SharedAuthGateState.BootstrapRecoveryRequired -> {
-                ProcessAttachmentAuthScopes.retireShell(storeScope.shellInstanceId)
-                bridge.attachmentDownloadScopeRetired(storeScope.shellInstanceId)
-                // Nothing before sign-in (RFC-067 native apps): drop what was recorded so far.
-                RaftProductEvents.setSignedOut()
-            }
-            SharedAuthGateState.Restoring,
-            is SharedAuthGateState.Error -> Unit
-        }
-    }
-    // artin 10-27: ask once for the notification permission when the signed-in shell shows (Android 13+).
-    NotificationPermissionAfterSignInEffect(
-        active = pageVisible && authGateState is SharedAuthGateState.Ready && !readyServerId.isNullOrBlank(),
+        authGateStateState = authGateStateState,
         settingsCapabilities = settingsCapabilities,
+        homeShellStore = homeShellStore,
+        homeState = homeState,
+        readyServerId = readyServerId,
     )
     val activityUnreadServerId = remember(readyServerId) { ServerId(readyServerId.orEmpty()) }
     val activityUnreadSummaryFlow =
@@ -4125,29 +3678,18 @@ private fun RaftAppShellReadyContent(
     val membersDetailSelection = remember(navigationStoreScope, readySession?.user?.id, readyServerId) {
         mutableStateOf<RaftMemberDetailPayload?>(null)
     }
-    val latestReadySession by rememberUpdatedState(readySession)
-    val latestAuthoritativeHomeStartAllowed by rememberUpdatedState(authoritativeHomeStartAllowed)
+    val latestReadySessionState = rememberUpdatedState(readySession)
+    val latestReadySession by latestReadySessionState
+    val latestAuthoritativeHomeStartAllowedState = rememberUpdatedState(authoritativeHomeStartAllowed)
+    val latestAuthoritativeHomeStartAllowed by latestAuthoritativeHomeStartAllowedState
     val latestCachedRestoreUsable by rememberUpdatedState(cachedRestoreUsable)
-    LaunchedEffect(renderedHomeServerId, pendingHomeServerSwitchId) {
-        val targetServerId = pendingHomeServerSwitchId ?: return@LaunchedEffect
-        if (renderedHomeServerId != targetServerId) return@LaunchedEffect
-        bridge.performanceMarker(
-            phase = "home_server_switch_state_observed",
-            routeName = "kuikly_home",
-            event = "instant",
-            metadata =
-                mapOf(
-                    "serverId" to targetServerId,
-                    "channels" to
-                        ((homeState.content as? SharedHomeContentState.Content)
-                            ?.snapshot
-                            ?.channels
-                            ?.size
-                            ?: 0).toString()
-                )
-        )
-        observedHomeServerSwitchId = targetServerId
-    }
+    AppShellHomeServerSwitchEffect(
+        pendingHomeServerSwitchIdState = pendingHomeServerSwitchIdState,
+        observedHomeServerSwitchIdState = observedHomeServerSwitchIdState,
+        bridge = bridge,
+        homeState = homeState,
+        renderedHomeServerId = renderedHomeServerId,
+    )
     val announcementOwner = listOf(
         sharedStores.apiEnvironmentStore.current().apiBaseUrl,
         readySession?.user?.id,
@@ -4164,12 +3706,13 @@ private fun RaftAppShellReadyContent(
     }
     val activeAnnouncement by announcementStore.announcement.collectAsState()
     val latestAnnouncementStore by rememberUpdatedState(announcementStore)
-    DisposableEffect(announcementStore) {
-        onDispose { announcementStore.close() }
-    }
-    LaunchedEffect(announcementStore) { announcementStore.refresh() }
-    val latestSelectedTab by rememberUpdatedState(selectedTab)
-    val latestSelectedHomeDestination by rememberUpdatedState(selectedHomeDestination)
+    AppShellAnnouncementEffects(
+        announcementStore = announcementStore,
+    )
+    val latestSelectedTabState = rememberUpdatedState(selectedTab)
+    val latestSelectedTab by latestSelectedTabState
+    val latestSelectedHomeDestinationState = rememberUpdatedState(selectedHomeDestination)
+    val latestSelectedHomeDestination by latestSelectedHomeDestinationState
     val latestVisibleAppearanceGeneration by rememberUpdatedState(visibleAppearanceGeneration)
     val latestPageVisible by rememberUpdatedState(pageVisible)
     val homeConversationDirectoryFlow =
@@ -4192,32 +3735,27 @@ private fun RaftAppShellReadyContent(
             listOf(homeConversationDirectory, activityDirectory)
                 .mergedSharedConversationDirectoryState()
         }
-    val latestAppShellConversationDirectory by rememberUpdatedState(appShellConversationDirectory)
-    val latestSelectedHomeConversationId by rememberUpdatedState(
+    val latestAppShellConversationDirectoryState = rememberUpdatedState(appShellConversationDirectory)
+    val latestAppShellConversationDirectory by latestAppShellConversationDirectoryState
+    val latestSelectedHomeConversationIdState = rememberUpdatedState(
         appShellForegroundVisibleHomeConversationId(
             homeShellSelectedConversationId = selectedHomeConversationId,
             homeStoreSelectedConversationId = homeState.selectedConversationId
         )
     )
-    LaunchedEffect(
-        appShellServerMembersStore,
-        readyServerId,
-        foregroundMessageBannersEnabled,
-        authoritativeHomeStartAllowed
-    ) {
-        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
-        val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        if (!foregroundMessageBannersEnabled) return@LaunchedEffect
-        appShellServerMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
-    }
-    LaunchedEffect(authGateState, suppressRestoreLanding, selectedTab, readyServerId) {
-        bridge.log(
-            "app_shell_auth_gate_state state=${authGateState.authGateDiagnosticsName()} " +
-                "selectedServer=${!readyServerId.isNullOrBlank()} selectedTab=$selectedTab " +
-                "suppressRestoreLanding=$suppressRestoreLanding pagerId=${pager.pagerId} " +
-                "childShellId=$childTabShellId"
-        )
-    }
+    val latestSelectedHomeConversationId by latestSelectedHomeConversationIdState
+    AppShellForegroundBannerEffects(
+        pager = pager,
+        suppressRestoreLanding = suppressRestoreLanding,
+        selectedTabState = selectedTabState,
+        childTabShellId = childTabShellId,
+        bridge = bridge,
+        appShellServerMembersStore = appShellServerMembersStore,
+        authGateStateState = authGateStateState,
+        foregroundMessageBannersEnabledState = foregroundMessageBannersEnabledState,
+        readyServerId = readyServerId,
+        authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
+    )
     val homeSurfaceVisible =
         pageVisible &&
             selectedTab == "home" &&
@@ -4242,93 +3780,27 @@ private fun RaftAppShellReadyContent(
             )
         }
     }
-    val parentShouldStartHome =
-        authoritativeHomeStartAllowed &&
-        appShellParentShouldStartHome(
-            pageVisible = pageVisible,
-            selectedTab = selectedTab,
-            selectedHomeDestination = selectedHomeDestination,
-            readyServerId = readyServerId,
-            readyAccountId = readySession?.user?.id,
-            state = homeState,
-            // task #94: the DMs tab renders the same home store; starting the parent home
-            // store must not be gated on the literal "home" tab while Slack nav is active.
-            homeLikeTabs = if (slackNavMode) setOf("dms") else emptySet()
-        )
-    LaunchedEffect(parentShouldStartHome, readyServerId, homeState.content, homeState.homeRealtimeDirty) {
-        bridge.log(
-            "app_shell_parent_home_start_check shouldStart=$parentShouldStartHome " +
-                "selectedTab=$selectedTab homeDestination=${selectedHomeDestination.orEmpty()} " +
-                "readyServerId=${readyServerId.orEmpty()} state=${sharedHomeContentRenderSummary(homeState.content)} " +
-                "homeRealtimeDirty=${homeState.homeRealtimeDirty}"
-        )
-        if (parentShouldStartHome) {
-            bridge.log(
-                "app_shell_parent_home_start_dispatch readyServerId=${readyServerId.orEmpty()} " +
-                    "state=${sharedHomeContentRenderSummary(homeState.content)}"
-            )
-            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Start))
-        }
-    }
-    LaunchedEffect(
-        homeSurfaceVisible,
-        readyServerId,
-        authoritativeHomeStartAllowed,
-        setupAdmissionAllowsHome,
-        cachedHomePreview
-    ) {
-        val delayMs = homeSurfaceVisibilityDispatchDelayMs(homeSurfaceVisible)
-        val surfaceWaitMark = TimeSource.Monotonic.markNow()
-        if (delayMs > 0L) {
-            delay(delayMs)
-        }
-        homeShellStore.dispatch(
-            SharedHomeShellIntent.SetSurfaceVisible(
-                homeSurfaceVisible &&
-                    (readyServerId ?: homePreviewServerId) != null &&
-                    (setupAdmissionAllowsHome || cachedHomePreview)
-            )
-        )
-        raftLogInfo(
-            "SlockForegroundPerf",
-            "surface_visible_wait plannedMs=$delayMs actualMs=${surfaceWaitMark.elapsedNow().inWholeMilliseconds} visible=$homeSurfaceVisible"
-        )
-    }
-    // Home counts no realtime unread for its selected conversation. A conversation opened as a pushed page
-    // (phone, or desktop mode off) is closed once this shell page is visible again, so clear the selection
-    // then; a detail still shown inside the shell keeps its list selection.
-    var appShellPageWasHidden by remember { mutableStateOf(false) }
-    LaunchedEffect(pageVisible) {
-        if (!pageVisible) {
-            appShellPageWasHidden = true
-            return@LaunchedEffect
-        }
-        if (!appShellPageWasHidden) return@LaunchedEffect
-        appShellPageWasHidden = false
-        val selection =
-            adaptiveWorkspaceStore.snapshot().selectedConversationWhenShellReturns(desktopModeOnLargeScreen)
-        bridge.log("app_shell_return_selection selected=${selection.orEmpty()}")
-        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(selection))
-    }
-    LaunchedEffect(readyServerId, readySession?.accessToken, authoritativeHomeStartAllowed) {
-        if (readyServerId.isNullOrBlank() || !authoritativeHomeStartAllowed) return@LaunchedEffect
-        while (true) {
-            delay(AppUpdateNotificationRefreshIntervalMs)
-            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
-        }
-    }
-    DisposableEffect(appUpdateEvents, latestAuthoritativeHomeStartAllowed) {
-        val callbackRef =
-            appUpdateEvents.addStatusListener {
-                if (!latestAuthoritativeHomeStartAllowed) return@addStatusListener
-                appShellCoroutineScope.launch {
-                    homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
-                }
-            }
-        onDispose {
-            appUpdateEvents.removeStatusListener(callbackRef)
-        }
-    }
+    AppShellHomeStartEffects(
+        pageVisible = pageVisible,
+        desktopModeOnLargeScreenState = desktopModeOnLargeScreenState,
+        selectedTabState = selectedTabState,
+        bridge = bridge,
+        adaptiveWorkspaceStore = adaptiveWorkspaceStore,
+        appShellCoroutineScope = appShellCoroutineScope,
+        appUpdateEvents = appUpdateEvents,
+        homeShellStore = homeShellStore,
+        homeState = homeState,
+        selectedHomeDestination = selectedHomeDestination,
+        readySession = readySession,
+        readyServerId = readyServerId,
+        slackNavMode = slackNavMode,
+        homePreviewServerId = homePreviewServerId,
+        setupAdmissionAllowsHome = setupAdmissionAllowsHome,
+        authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
+        cachedHomePreview = cachedHomePreview,
+        latestAuthoritativeHomeStartAllowedState = latestAuthoritativeHomeStartAllowedState,
+        homeSurfaceVisible = homeSurfaceVisible,
+    )
     val sessionTimeFormat = readySession.appShellThreadTimeFormat()
     val threadTimeContext =
         remember(hostThreadTimeCapabilities, sessionTimeFormat) {
@@ -4409,42 +3881,43 @@ private fun RaftAppShellReadyContent(
                 messageShadowObserver = sharedStores.messageShadowObserver,
             )
         }
-    var realtimeConnectionFamilyId by remember { mutableStateOf<String?>(null) }
-    var pendingRealtimeAuthRefreshReason by remember { mutableStateOf<String?>(null) }
-    var pendingRealtimeAuthRefreshPreviousFamilyId by remember { mutableStateOf<String?>(null) }
-    var realtimeAuthorityConnectTick by remember { mutableStateOf(0) }
+    val realtimeConnectionFamilyIdState = remember { mutableStateOf<String?>(null) }
+    var realtimeConnectionFamilyId by realtimeConnectionFamilyIdState
+    val pendingRealtimeAuthRefreshReasonState = remember { mutableStateOf<String?>(null) }
+    var pendingRealtimeAuthRefreshReason by pendingRealtimeAuthRefreshReasonState
+    val pendingRealtimeAuthRefreshPreviousFamilyIdState = remember { mutableStateOf<String?>(null) }
+    var pendingRealtimeAuthRefreshPreviousFamilyId by pendingRealtimeAuthRefreshPreviousFamilyIdState
+    val realtimeAuthorityConnectTickState = remember { mutableStateOf(0) }
+    var realtimeAuthorityConnectTick by realtimeAuthorityConnectTickState
     // Bumped when this window comes to the foreground with workspaces in separate windows: the window
     // in front takes the process realtime connection for its server (see raftShellOwnsProcessRealtime).
-    var realtimeShellForegroundTick by remember { mutableStateOf(0) }
-    var realtimeReconciledOwnerGeneration by remember { mutableStateOf(-1L) }
+    val realtimeShellForegroundTickState = remember { mutableStateOf(0) }
+    var realtimeShellForegroundTick by realtimeShellForegroundTickState
+    val realtimeReconciledOwnerGenerationState = remember { mutableStateOf(-1L) }
+    var realtimeReconciledOwnerGeneration by realtimeReconciledOwnerGenerationState
     var membersListRefreshKey by remember { mutableStateOf(0) }
-    var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
+    val membersAgentDetailRefreshKeyState = remember { mutableStateOf(0) }
+    var membersAgentDetailRefreshKey by membersAgentDetailRefreshKeyState
     var membersListCachedContent by remember { mutableStateOf<SharedMembersUiState.Content?>(null) }
     val foregroundBannerStore =
         remember(sharedStores, navigationStoreScope) {
             sharedStores.foregroundBannerStore(navigationStoreScope)
         }
     val foregroundMessageBanner by foregroundBannerStore.banner.collectAsState()
-    TaskPendingDraftsFollowSessionEffect(foregroundBannerStore.taskPendingDrafts, authGateState, readySession)
-    // System notifications stay silent for the conversation on screen, same rule as the in-app banner.
-    DisposableEffect(sharedStores, pager.pagerId, foregroundBannerStore) {
-        val ownerId = "app-shell:${pager.pagerId}"
-        RaftVisibleConversationRegistry.register(ownerId) {
-            if (!sharedStores.isActiveAppShellPager(pager.pagerId)) return@register null
-            RaftVisibleConversationSnapshot(
-                currentServerId = selectedServerStore.selectedServerId.value,
-                visibleConversationKey =
-                    appShellVisibleForegroundConversationKey(
-                        selectedTab = latestSelectedTab,
-                        selectedHomeDestination = latestSelectedHomeDestination,
-                        selectedConversationId = latestSelectedHomeConversationId
-                    ),
-                visibleRouteIdentity = foregroundBannerStore.visibleRouteIdentity(),
-                conversationDirectory = latestAppShellConversationDirectory
-            )
-        }
-        onDispose { RaftVisibleConversationRegistry.unregister(ownerId) }
-    }
+    AppShellTaskDraftsAndBannerEffects(
+        sharedStores = sharedStores,
+        pager = pager,
+        selectedTabState = selectedTabState,
+        selectedServerStore = selectedServerStore,
+        authGateStateState = authGateStateState,
+        selectedHomeDestination = selectedHomeDestination,
+        readySession = readySession,
+        latestSelectedTabState = latestSelectedTabState,
+        latestSelectedHomeDestinationState = latestSelectedHomeDestinationState,
+        latestAppShellConversationDirectoryState = latestAppShellConversationDirectoryState,
+        latestSelectedHomeConversationIdState = latestSelectedHomeConversationIdState,
+        foregroundBannerStore = foregroundBannerStore,
+    )
     val visibleRefreshGate = remember { AppShellVisibleRefreshGate() }
 
     fun refreshVisibleAppShellRoute(
@@ -4603,69 +4076,22 @@ private fun RaftAppShellReadyContent(
         }
     }
 
-    val conversationForwardGestureRuntimeAuthority =
-        remember(
-            settingsCapabilities.supportsConversationForwardGesture,
-            conversationForwardHistory,
-            bridge
-        ) {
-            ConversationForwardGestureRuntimeAuthority(
-                supported = settingsCapabilities.supportsConversationForwardGesture
-            ) { effectiveEnabled ->
-                conversationForwardGestureEnabled = effectiveEnabled
-                reconcileConversationForwardGesturePreference(
-                    enabled = effectiveEnabled,
-                    history = conversationForwardHistory,
-                    disableNativeGesture = {
-                        bridge.setConversationForwardGestureEnabled(false)
-                    }
-                )
-            }
-        }
-    val chatLayoutPreferenceSnapshotRuntimeAuthority =
-        remember(foregroundBannerStore) {
-            ChatLayoutPreferenceSnapshotRuntimeAuthority { chatLayout ->
-                myMessageAlignment = chatLayout.myMessageAlignment
-                desktopModeOnLargeScreen = chatLayout.desktopModeOnLargeScreen
-                compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
-                foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
-                if (!chatLayout.foregroundMessageBannersEnabled) {
-                    foregroundBannerStore.dismiss()
-                }
-                activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
-                serverDrawerEnabled = chatLayout.serverDrawerEnabled
-                homeServerAvatarEnabled = chatLayout.homeServerAvatarEnabled
-                    }
-        }
-    DisposableEffect(
-        chatLayoutPreferenceEvents,
-        chatLayoutPreferenceSnapshotRuntimeAuthority,
-        conversationForwardGestureRuntimeAuthority,
-    ) {
-        val forwardSubscription =
-            chatLayoutPreferenceEvents.addConversationForwardGestureListener { enabled ->
-                conversationForwardGestureRuntimeAuthority.applyProcessPreferenceChange(enabled)
-            }
-        val snapshotSubscription =
-            chatLayoutPreferenceEvents.addPreferenceListener { chatLayout ->
-                chatLayoutPreferenceSnapshotRuntimeAuthority.applyProcessPreferenceChange(chatLayout)
-            }
-        onDispose {
-            forwardSubscription.close()
-            snapshotSubscription.close()
-        }
-    }
-    LaunchedEffect(
-        chatLayoutPreferenceRepository,
-        chatLayoutPreferenceSnapshotRuntimeAuthority,
-        conversationForwardGestureRuntimeAuthority,
-    ) {
-        val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
-        chatLayoutPreferenceSnapshotRuntimeAuthority.seedFromRepository(chatLayout)
-        conversationForwardGestureRuntimeAuthority.seedFromRepository(
-            chatLayout.conversationForwardGestureEnabled
-        )
-    }
+    AppShellRuntimeAuthorityEffects(
+        desktopModeOnLargeScreenState = desktopModeOnLargeScreenState,
+        bridge = bridge,
+        conversationForwardHistory = conversationForwardHistory,
+        settingsCapabilities = settingsCapabilities,
+        chatLayoutPreferenceEvents = chatLayoutPreferenceEvents,
+        chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
+        myMessageAlignmentState = myMessageAlignmentState,
+        compactConsecutiveMessagesState = compactConsecutiveMessagesState,
+        foregroundMessageBannersEnabledState = foregroundMessageBannersEnabledState,
+        activityTaskStatusBadgesEnabledState = activityTaskStatusBadgesEnabledState,
+        serverDrawerEnabledState = serverDrawerEnabledState,
+        homeServerAvatarEnabledState = homeServerAvatarEnabledState,
+        conversationForwardGestureEnabledState = conversationForwardGestureEnabledState,
+        foregroundBannerStore = foregroundBannerStore,
+    )
     LaunchedEffect(conversationForwardGestureEnabled, authoritativeHomeStartAllowed) {
         conversationForwardHistory.setEnabled(conversationForwardGestureEnabled)
         armConversationForwardGesture()
@@ -4684,15 +4110,13 @@ private fun RaftAppShellReadyContent(
                 stringResource(Res.string.push_preview_sender_only_mention, RaftPushPreviewBannerStrings.SENDER_PLACEHOLDER)
         )
     )
-    SideEffect {
-        appShellContentStage =
-            appShellWhiteScreenStage(
-                restoring = authGateState == SharedAuthGateState.Restoring,
-                cachedHomePreview = cachedHomePreview,
-                selectedTab = selectedTab,
-                homeContentReady = homeState.content is SharedHomeContentState.Content,
-            )
-    }
+    AppShellContentStageEffect(
+        selectedTabState = selectedTabState,
+        authGateStateState = authGateStateState,
+        appShellContentStageState = appShellContentStageState,
+        homeState = homeState,
+        cachedHomePreview = cachedHomePreview,
+    )
     when (val gate = authGateState) {
         SharedAuthGateState.Restoring -> {
             if (cachedHomePreview) {
@@ -4789,51 +4213,21 @@ private fun RaftAppShellReadyContent(
         return
     }
 
-    LaunchedEffect(readyServerId, authGateState, authoritativeHomeStartAllowed) {
-        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
-        val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        when (
-            val request =
-                sharedStores.authLossFunnel.consumePendingOpenRequest(
-                    serverId = serverId,
-                    currentAccountPrincipalId = readySession?.user?.id.orEmpty(),
-                )
-        ) {
-            is AuthPendingOpenRequest.Thread -> {
-                bridge.log(
-                    "app_shell_auth_pending_open_consume type=thread serverId=$serverId " +
-                        "threadId=${request.sourceThreadId.orEmpty()} parentMessageId=${request.parentMessageId.orEmpty()}"
-                )
-                val resolution =
-                    resolveOpenRequest(
-                        serverId = serverId,
-                        sourceMessageIdentity = request.toConversationOpenSourceMessageIdentity(),
-                        conversationDirectory = appShellConversationDirectory,
-                        diagnosticsLogger = bridge::log
-                    )
-                val openRequest = (resolution as? ConversationOpenResolution.Resolved)?.request
-                val launchPayload =
-                    openRequest?.let {
-                        buildStandaloneConversationThreadLaunchPayload(
-                            conversation = it.conversationIdentity,
-                            timeContext = threadTimeContext,
-                            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                            compactConsecutiveMessages = compactConsecutiveMessages,
-                                            anchorMessageId = it.anchorMessageId,
-                            originFallback = it.originFallback,
-                            onWarn = bridge::logWarn
-                        )
-                    }
-                if (launchPayload == null) {
-                    bridge.logWarn("app_shell_auth_pending_open_rejected reason=identity_unresolved serverId=$serverId")
-                    bridge.toast(conversationNotReadyMessage)
-                } else {
-                    pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
-                }
-            }
-            null -> Unit
-        }
-    }
+    AppShellReadyServerEffect(
+        sharedStores = sharedStores,
+        conversationNotReadyMessage = conversationNotReadyMessage,
+        pager = pager,
+        bridge = bridge,
+        authGateStateState = authGateStateState,
+        myMessageAlignmentState = myMessageAlignmentState,
+        compactConsecutiveMessagesState = compactConsecutiveMessagesState,
+        readySession = readySession,
+        readyServerId = readyServerId,
+        authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
+        navigationStoreScope = navigationStoreScope,
+        appShellConversationDirectory = appShellConversationDirectory,
+        threadTimeContext = threadTimeContext,
+    )
 
     /**
      * Opens [launchPayload] in the shared workspace detail when the wide dual-pane workspace can
@@ -5045,11 +4439,11 @@ private fun RaftAppShellReadyContent(
     }
 
     // Every conversation the wide detail shows becomes its server's last conversation.
-    LaunchedEffect(adaptiveWorkspaceState?.selection?.identity, serverLastConversationOwnerKey) {
-        val identity = adaptiveWorkspaceState?.selection?.identity ?: return@LaunchedEffect
-        val conversation = identity.toServerLastConversation() ?: return@LaunchedEffect
-        serverLastConversationRepository.write(serverLastConversationOwnerKey, identity.serverId, conversation)
-    }
+    AppShellAdaptiveSelectionEffect(
+        adaptiveWorkspaceState = adaptiveWorkspaceState,
+        serverLastConversationRepository = serverLastConversationRepository,
+        serverLastConversationOwnerKey = serverLastConversationOwnerKey,
+    )
 
     LaunchedEffect(pageVisibleTick, authoritativeHomeStartAllowed) {
         if (!authoritativeHomeStartAllowed) {
@@ -5132,24 +4526,19 @@ private fun RaftAppShellReadyContent(
     // recreation or duplicate PendingIntent cannot replay the route. #4260: the opens themselves
     // run in [navigationIntake], which reads the latest shell state below; this effect only wakes
     // it when that state changes while the shell composes.
-    LaunchedEffect(
-        notificationWindowNavigationIntent?.key,
-        desktopShortcutWindowNavigationIntent?.key,
-        readySession?.currentServerId,
-        readySession?.servers,
-        homeState.content,
-        appShellConversationDirectory,
-        threadTimeContext,
-        myMessageAlignment,
-        authoritativeHomeStartAllowed
-    ) {
-        if (authoritativeHomeStartAllowed) {
-            notificationWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
-            desktopShortcutWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
-        }
-        navigationIntake.wake()
-    }
-    val latestNavigationReadiness by rememberUpdatedState {
+    AppShellChatLayoutEffect(
+        windowNavigationCoordinator = windowNavigationCoordinator,
+        myMessageAlignmentState = myMessageAlignmentState,
+        notificationWindowNavigationIntent = notificationWindowNavigationIntent,
+        desktopShortcutWindowNavigationIntent = desktopShortcutWindowNavigationIntent,
+        navigationIntake = navigationIntake,
+        homeState = homeState,
+        readySession = readySession,
+        authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
+        appShellConversationDirectory = appShellConversationDirectory,
+        threadTimeContext = threadTimeContext,
+    )
+    val latestNavigationReadinessState = rememberUpdatedState {
         if (!authoritativeHomeStartAllowed) return@rememberUpdatedState null
         val content = homeState.content as? SharedHomeContentState.Content
         WindowNavigationReadiness(
@@ -5160,7 +4549,8 @@ private fun RaftAppShellReadyContent(
             conversationDirectory = appShellConversationDirectory
         )
     }
-    val latestNavigationPerform by rememberUpdatedState<suspend (WindowNavigationAction) -> Unit> { action ->
+    val latestNavigationReadiness by latestNavigationReadinessState
+    val latestNavigationPerformState = rememberUpdatedState<suspend (WindowNavigationAction) -> Unit> { action ->
         val content = homeState.content as? SharedHomeContentState.Content
         when (action) {
             is WindowNavigationAction.ActivateServer -> {
@@ -5239,6 +4629,7 @@ private fun RaftAppShellReadyContent(
             }
         }
     }
+    val latestNavigationPerform by latestNavigationPerformState
     // An external message link (Android App Link / iOS Universal Link). It waits in the process
     // inbox while signed out or restoring; with a ready session [navigationIntake] takes it once,
     // resolves {slug}/conversation/message for this account, and either queues the same
@@ -5246,9 +4637,13 @@ private fun RaftAppShellReadyContent(
     // "Message not found" page. The resolve runs in the intake's scope so a session/key change
     // after the take cannot drop the link half-way.
     val messageLinkSessionReady = authoritativeHomeStartAllowed && readySession != null
-    LaunchedEffect(messageLinkSessionReady) { navigationIntake.wake() }
-    val latestMessageLinkSessionReady by rememberUpdatedState(messageLinkSessionReady)
-    val latestResolveMessageLink by rememberUpdatedState<suspend (RaftPendingMessageLink) -> WindowNavigationIntent?> { taken ->
+    AppShellMessageLinkWakeEffect(
+        navigationIntake = navigationIntake,
+        messageLinkSessionReady = messageLinkSessionReady,
+    )
+    val latestMessageLinkSessionReadyState = rememberUpdatedState(messageLinkSessionReady)
+    val latestMessageLinkSessionReady by latestMessageLinkSessionReadyState
+    val latestResolveMessageLinkState = rememberUpdatedState<suspend (RaftPendingMessageLink) -> WindowNavigationIntent?> { taken ->
         val servers = readySession?.servers.orEmpty()
         bridge.log("message_link_resolve id=${taken.id} servers=${servers.size}")
         val resolver = RaftMessageLinkResolver(
@@ -5279,169 +4674,37 @@ private fun RaftAppShellReadyContent(
             }
         }
     }
+    val latestResolveMessageLink by latestResolveMessageLinkState
     // An external Artifact link (`/s/{slug}/artifacts?artifact=…`, slock #13670): the in-app
     // viewer, over whatever is shown; its web page in the browser only when no page can open here.
-    val latestOpenArtifactLink by rememberUpdatedState<(RaftPendingArtifactLink) -> Unit> { taken ->
-        RaftArtifactOpenTrace.tap("deep_link", taken.target.id)
-        if (!pager.openRaftArtifactViewerPage(taken.target, navigationStoreScope)) {
-            RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_page_scope")
-            linkNavigator.open(artifactWebUrl(sharedStores.apiEnvironmentStore.current().webUrl, taken.target), RaftLinkOpenIntent.RaftWebPage)
-        }
-    }
-    val latestNavigationAccountId by rememberUpdatedState { readySession?.user?.id?.takeIf(String::isNotBlank) }
-    // An external channel invite link: its page, which reads the invite for this account.
-    val latestOpenExternalInviteLink by rememberUpdatedState<(RaftPendingExternalInviteLink) -> Unit> { taken ->
-        if (!pager.openExternalInvitePage(taken.token, navigationStoreScope)) {
-            bridge.log("external_invite_link_open result=browser_fallback reason=no_page_scope")
-            linkNavigator.open(
-                sharedSettingsResolvedWebBaseUrl(sharedStores.apiEnvironmentStore.current().webUrl) +
-                    "/external-invite/" + taken.token.encodeInviteTokenSegment()
-            )
-        }
-    }
-    // A server join link (`/join/{token}`), tapped in a message or opened from outside: the join
-    // page, which reads the link and joins for this account.
-    val latestOpenServerJoinLink by rememberUpdatedState<(RaftPendingExternalInviteLink) -> Unit> { taken ->
-        if (!pager.openServerJoinPage(taken.token, navigationStoreScope)) {
-            bridge.log("server_join_link_open result=browser_fallback reason=no_page_scope")
-            linkNavigator.open(
-                sharedSettingsResolvedWebBaseUrl(sharedStores.apiEnvironmentStore.current().webUrl) +
-                    "/join/" + taken.token.encodeInviteTokenSegment(),
-                RaftLinkOpenIntent.RaftWebPage,
-            )
-        }
-    }
-    // Phone layout: the conversation page on top of the shell, so a link to it is not pushed twice.
-    val latestNavigationTopPageRoute by rememberUpdatedState {
-        if (desktopModeOnLargeScreen) null else foregroundBannerStore.visibleRouteIdentity()
-    }
-    LaunchedEffect(navigationIntake) {
-        navigationIntake.run(
-            object : RaftShellNavigationIntakeHost {
-                override fun messageLinkSessionReady(): Boolean = latestMessageLinkSessionReady
-
-                override suspend fun resolveMessageLink(taken: RaftPendingMessageLink): WindowNavigationIntent? =
-                    latestResolveMessageLink(taken)
-
-                override fun openArtifactLink(taken: RaftPendingArtifactLink) = latestOpenArtifactLink(taken)
-
-                override fun openExternalInviteLink(taken: RaftPendingExternalInviteLink) = latestOpenExternalInviteLink(taken)
-
-                override fun openServerJoinLink(taken: RaftPendingExternalInviteLink) = latestOpenServerJoinLink(taken)
-
-                override fun currentAccountId(): String? = latestNavigationAccountId()
-
-                override fun readiness(): WindowNavigationReadiness? = latestNavigationReadiness()
-
-                override fun topPageRoute(): ThreadRouteIdentity? = latestNavigationTopPageRoute()
-
-                override suspend fun closeIncomingNavigationCover(): Boolean = foregroundBannerStore.incomingNavigation.closeAll()
-
-                override suspend fun perform(action: WindowNavigationAction) = latestNavigationPerform(action)
-
-                override fun log(message: String) = bridge.log(message)
-            }
-        )
-    }
-    LaunchedEffect(
-        processRealtimeAuthority?.witness?.connectionFamilyId,
-        processRealtimeAuthority?.accessToken,
-        realtimeAuthorityConnectTick,
-        // Task #366: realtime follows the current server, so a server switch
-        // must re-reconcile (disconnect old, connect new). Without this key the
-        // effect only re-ran on auth-family/token/tick changes.
-        canonicalFinalSelectedServerId,
-        authoritativeHomeStartAllowed,
-        realtimeShellForegroundTick,
-    ) {
-        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
-        // Phase 3: this window claims its server; with multi-session realtime on every claimed server
-        // keeps its own session, so no window has to take the connection from another one.
-        val multiSessionRealtime = raftMultiServerRealtimeEnabled()
-        canonicalFinalSelectedServerId?.let { serverId ->
-            raftProcessRealtimeSessionDemand.claim(storeScope.shellInstanceId, serverId)
-        }
-        if (
-            !multiSessionRealtime &&
-            !raftShellOwnsProcessRealtime(storeScope.shellInstanceId, raftMultiShellHostEnabled())
-        ) {
-            // A window behind another one never takes the connection away from the window in front.
-            bridge.log(
-                "app_shell_realtime_reconcile_skip reason=background_window " +
-                    "serverId=${canonicalFinalSelectedServerId.orEmpty()}"
-            )
-            pendingRealtimeAuthRefreshReason?.let { reason ->
-                pendingRealtimeAuthRefreshReason = null
-                pendingRealtimeAuthRefreshPreviousFamilyId = null
-                bridge.realtimeAuthRefreshFinished(reason, success = true)
-            }
-            return@LaunchedEffect
-        }
-        realtimeReconciledOwnerGeneration = raftProcessRealtimeOwnerGeneration()
-        if (!multiSessionRealtime) {
-            noteRaftShellRealtimeServer(canonicalFinalSelectedServerId.takeIf { raftMultiShellHostEnabled() })
-        }
-        val environment = sharedStores.apiEnvironmentStore.current()
-        val desired =
-            if (multiSessionRealtime) {
-                // The same set the process reconcile sends (ProcessRealtimeIngressCoordinator), so the
-                // two never take a server from each other.
-                realtimeProcessDesiredSession(
-                    authority = processRealtimeAuthority,
-                    environmentId = environment.apiBaseUrl,
-                    socketUrl = environment.socketBaseUrl,
-                    currentServerId = canonicalFinalSelectedServerId,
-                    serverIdsFor = { granted ->
-                        raftProcessRealtimeSessionDemand.desiredServerIds(
-                            grantedServerIds = granted,
-                            selectedServerId = canonicalFinalSelectedServerId,
-                            nowMillis = defaultNowMillis(),
-                            enabled = true,
-                        )
-                    },
-                )
-            } else {
-                realtimeProcessDesiredSession(
-                    authority = processRealtimeAuthority,
-                    environmentId = environment.apiBaseUrl,
-                    socketUrl = environment.socketBaseUrl,
-                    currentServerId = canonicalFinalSelectedServerId,
-                )
-            }
-        realtimeConnectionFamilyId = desired?.connectionFamilyId
-        appShellAgentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
-        bridge.realtimeReconcile(
-            serverIds = desired?.serverIds.orEmpty(),
-            accessToken = desired?.accessToken.orEmpty(),
-            environmentId = desired?.environmentId.orEmpty(),
-            socketUrl = desired?.socketUrl ?: environment.socketBaseUrl,
-            // Authority generation/family replacement is the reconnect
-            // identity. A refresh tick may arrive before the new durable
-            // authority publishes, so never force an old-token reconnect.
-            forceReconnect = false,
-            disconnectReason = GeneratedRealtimeContract.DisconnectReason.AuthInvalid,
-            authorityScopeLeaseId = processRealtimeAuthority?.witness?.scopeLeaseId.orEmpty(),
-            authorityPrincipalId = processRealtimeAuthority?.witness?.principalId.orEmpty(),
-            authorityAuthGeneration = processRealtimeAuthority?.witness?.authGeneration ?: 0L,
-            authorityConnectionFamilyId = processRealtimeAuthority?.witness?.connectionFamilyId.orEmpty(),
-            multiSession = multiSessionRealtime,
-        )
-        val familyId = desired?.connectionFamilyId
-        pendingRealtimeAuthRefreshReason?.let { reason ->
-            if (
-                pendingRealtimeAuthRefreshPreviousFamilyId == null ||
-                pendingRealtimeAuthRefreshPreviousFamilyId != familyId
-            ) {
-                pendingRealtimeAuthRefreshReason = null
-                pendingRealtimeAuthRefreshPreviousFamilyId = null
-                bridge.realtimeAuthRefreshFinished(reason, success = true)
-                bridge.log(
-                    "shared_realtime_auth_refresh_success reason=$reason " +
-                        "serverCount=${desired?.serverIds?.size ?: 0}"
-                )
-            }
-        }
-    }
+    AppShellExternalLinkNavigationEffects(
+        sharedStores = sharedStores,
+        pager = pager,
+        desktopModeOnLargeScreenState = desktopModeOnLargeScreenState,
+        bridge = bridge,
+        storeScope = storeScope,
+        processRealtimeAuthorityState = processRealtimeAuthorityState,
+        appShellAgentDetailStore = appShellAgentDetailStore,
+        selectedServerIdState = selectedServerIdState,
+        canonicalFinalSelectedServerId = canonicalFinalSelectedServerId,
+        linkNavigator = linkNavigator,
+        navigationIntake = navigationIntake,
+        readySession = readySession,
+        authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
+        navigationStoreScope = navigationStoreScope,
+        realtimeConnectionFamilyIdState = realtimeConnectionFamilyIdState,
+        pendingRealtimeAuthRefreshReasonState = pendingRealtimeAuthRefreshReasonState,
+        pendingRealtimeAuthRefreshPreviousFamilyIdState = pendingRealtimeAuthRefreshPreviousFamilyIdState,
+        realtimeAuthorityConnectTickState = realtimeAuthorityConnectTickState,
+        realtimeShellForegroundTickState = realtimeShellForegroundTickState,
+        realtimeReconciledOwnerGenerationState = realtimeReconciledOwnerGenerationState,
+        foregroundBannerStore = foregroundBannerStore,
+        latestNavigationReadinessState = latestNavigationReadinessState,
+        latestNavigationPerformState = latestNavigationPerformState,
+        messageLinkSessionReady = messageLinkSessionReady,
+        latestMessageLinkSessionReadyState = latestMessageLinkSessionReadyState,
+        latestResolveMessageLinkState = latestResolveMessageLinkState,
+    )
 
     fun dismissAdaptiveDetailSelection() {
         val current = adaptiveWorkspaceStore.snapshot().workspace
@@ -5654,7 +4917,7 @@ private fun RaftAppShellReadyContent(
         }
     }
 
-    val handleAppShellBack by rememberUpdatedState {
+    val handleAppShellBackState = rememberUpdatedState {
         if (popMainRoute()) {
             bridge.log(
                 "app_back_root result=main selectedTab=$selectedTab " +
@@ -5668,72 +4931,21 @@ private fun RaftAppShellReadyContent(
             bridge.closePage()
         }
     }
+    val handleAppShellBack by handleAppShellBackState
 
-    RaftAppShellRootBackHandler(
-        onLifecycleLog = { event ->
-            bridge.log(
-                "app_back_root_handler $event selectedTab=$selectedTab " +
-                    "homeDestination=${selectedHomeDestination.orEmpty()}"
-            )
-        }
-    ) { handleAppShellBack() }
-
-    LaunchedEffect(tasksRoute, selectedTab, tasksSurfaceActive, authoritativeHomeStartAllowed) {
-        if (tasksSurfaceActive && authoritativeHomeStartAllowed) {
-            val hasSnapshot = tasksState.hasCompletedTasksSnapshot()
-            bridge.performanceMarker(
-                phase = "tasks_screen_enter",
-                routeName = "kuikly_tasks",
-                event = "instant",
-                metadata =
-                    mapOf(
-                        "hasSnapshot" to hasSnapshot.toString(),
-                        "refreshing" to tasksState.refreshing.toString(),
-                        "filter" to tasksState.selectedFilter?.name.orEmpty()
-                    )
-            )
-            tasksRoute.start()
-        }
-    }
-    LaunchedEffect(selectedTab, tasksSurfaceActive, readyServerId, appShellServerMembersStore, authoritativeHomeStartAllowed) {
-        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
-        val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
-            ?: return@LaunchedEffect
-        if (tasksSurfaceActive) {
-            appShellServerMembersStore.refreshMembers(serverId, DataRequestPriority.Visible)
-        }
-    }
-    LaunchedEffect(selectedTab, tasksSurfaceActive, tasksState.loadState, tasksState.refreshing) {
-        if (!tasksSurfaceActive) {
-            tasksFirstRenderLoggedKey = null
-            return@LaunchedEffect
-        }
-        val (result, taskCount) =
-            when (val loadState = tasksState.loadState) {
-                is ScreenLoadState.Content -> "content" to loadState.data.tasks.size
-                is ScreenLoadState.Empty -> "empty:${loadState.reason.name}" to 0
-                is ScreenLoadState.Error -> "error:${loadState.error.code}" to 0
-                is ScreenLoadState.NoPermission -> "no_permission:${loadState.blocker.code}" to 0
-                ScreenLoadState.Loading -> "loading" to 0
-            }
-        val key = "$result:$taskCount:${tasksState.refreshing}"
-        if (tasksFirstRenderLoggedKey == key) {
-            return@LaunchedEffect
-        }
-        tasksFirstRenderLoggedKey = key
-        bridge.performanceMarker(
-            phase = "tasks_first_render",
-            routeName = "kuikly_tasks",
-            event = "instant",
-            metadata =
-                mapOf(
-                    "result" to result,
-                    "tasks" to taskCount.toString(),
-                    "refreshing" to tasksState.refreshing.toString()
-                )
-        )
-        bridge.log("tasks_first_render result=$result tasks=$taskCount refreshing=${tasksState.refreshing}")
-    }
+    AppShellBackAndTasksEffects(
+        selectedTabState = selectedTabState,
+        tasksSurfaceActive = tasksSurfaceActive,
+        bridge = bridge,
+        appShellServerMembersStore = appShellServerMembersStore,
+        selectedHomeDestination = selectedHomeDestination,
+        tasksFirstRenderLoggedKeyState = tasksFirstRenderLoggedKeyState,
+        readyServerId = readyServerId,
+        tasksRoute = tasksRoute,
+        tasksState = tasksState,
+        authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
+        handleAppShellBackState = handleAppShellBackState,
+    )
 
     fun loadCreateChannelMembers() {
         createChannelMembersLoading = true
@@ -5961,132 +5173,21 @@ private fun RaftAppShellReadyContent(
         { eventData -> handleRealtimeAuthRefreshRequest(eventData) }
     )
     val latestResetAppShellSessionState by rememberUpdatedState<() -> Unit>({ resetAppShellSessionState() })
-    val agentProfileRefreshCoalescer = remember(appShellCoroutineScope, appShellServerMembersStore) {
-        AgentProfileRefreshCoalescer(appShellCoroutineScope) { serverId ->
-            appShellServerMembersStore.refreshAgents(
-                serverId = build.raft.app.model.ServerId(serverId),
-                reason = "realtime_${build.raft.app.data.realtime.RealtimeSocketEvents.AgentUpdated}"
-            )
-        }
-    }
-    DisposableEffect(
-        appShellRealtimeDomainEventOwner,
-        homeShellStore,
-        bridge,
-    ) {
-        val sinks =
-            RealtimeGuardedDomainEventSinks(
-                applyHomeShell = { serverId, event ->
-                    homeShellStore.acceptRealtimeEvent(serverId, event)
-                },
-                applyHomeUnreadProjection = { serverId, event ->
-                    homeShellStore.acceptBackgroundServerUnreadEvent(serverId, event)
-                },
-                applyServerMembersRefresh = { serverId, event ->
-                    if (event.scope == build.raft.app.model.RealtimeRefreshScope.Agents && event.reason == "agent:deleted") {
-                        val agentId = event.subjectId?.takeIf { it.isNotBlank() }
-                            ?: event.memberId?.value?.takeIf { it.isNotBlank() }
-                        if (agentId != null) {
-                            appShellServerMembersStore.markAgentDeleted(
-                                serverId = build.raft.app.model.ServerId(serverId),
-                                agentId = build.raft.app.model.MemberId(agentId)
-                            )
-                        }
-                    }
-                    // Server-membership/profile mutations must invalidate the in-session
-                    // roster cache; otherwise updated fields (e.g. avatarUrl) stay stale
-                    // until process restart. Agents/Machines scopes already refresh through
-                    // their own projections, so only ServerMembers pays for a roster refetch —
-                    // except agent:updated (a profile edit, e.g. a new avatar), which re-reads
-                    // only the agents, as web re-reads /api/agents.
-                    if (event.isAgentProfileUpdate()) {
-                        agentProfileRefreshCoalescer.request(serverId)
-                        // An open agent Profile shows `GET /agents/:id`, not the roster: it re-reads too.
-                        event.updatedAgentIdOrNull()?.let { agentId ->
-                            sharedStores.agentUpdatedSignals.publish(serverId, agentId)
-                        }
-                    }
-                    if (
-                        event.scope == build.raft.app.model.RealtimeRefreshScope.ServerMembers &&
-                        (
-                            event.reason == build.raft.app.data.realtime.RealtimeSocketEvents.ServerMemberLeft ||
-                                event.reason == build.raft.app.data.realtime.RealtimeSocketEvents.ServerMemberRemoved
-                            )
-                    ) {
-                        // Data-layer plan step 3 (Tenny rule 2): a member who left / was removed
-                        // leaves the cached roster (memory + durable) at once, before the refetch.
-                        event.memberId?.value?.takeIf { it.isNotBlank() }?.let { memberId ->
-                            appShellServerMembersStore.removeMember(
-                                serverId = build.raft.app.model.ServerId(serverId),
-                                memberId = build.raft.app.model.MemberId(memberId)
-                            )
-                        }
-                    }
-                    if (event.scope == build.raft.app.model.RealtimeRefreshScope.ServerMembers) {
-                        appShellCoroutineScope.launch {
-                            appShellServerMembersStore.refreshMembers(
-                                serverId = build.raft.app.model.ServerId(serverId),
-                                priority = DataRequestPriority.Background,
-                                reason = "realtime_${event.reason}"
-                            )
-                        }
-                    }
-                },
-                applyAgentActivity = { event ->
-                    // task #136: members-store applyPresence moved to the
-                    // provider-installed presence sink (store lifetime, SSOT);
-                    // only the page-scoped agent-detail dispatch stays here.
-                    appShellAgentDetailStore.dispatch(
-                        SharedAgentDetailIntent.ApplyAgentActivityUpdate(event)
-                    )
-                },
-                requestMemberDetailRefresh = {
-                    membersAgentDetailRefreshKey += 1
-                },
-                joinChannel = { channelId ->
-                    realtimeEvents.joinChannel(channelId, latestReadySession?.currentServerId)
-                },
-                emitRouteMarker = { event ->
-                    if (event.shouldEmitAppShellRouteMarker()) {
-                        bridge.performanceMarker(
-                            phase = event.performanceMarkerPhase(),
-                            routeName = "kuikly_home",
-                            event = "instant",
-                            metadata =
-                                mapOf(
-                                    "type" to event.performanceMarkerName(),
-                                    "activeThread" to "false"
-                                )
-                        )
-                    }
-                },
-                log = raftLogger("SlockRealtimeDomain")
-            )
-        activeAppShellCanonicalFinalSinks = sinks
-        appShellRealtimeDomainEventOwner.registerGuardedSinks(sinks)
-        onDispose {
-            if (activeAppShellCanonicalFinalSinks === sinks) {
-                activeAppShellCanonicalFinalSinks = null
-            }
-            appShellRealtimeDomainEventOwner.unregisterGuardedSinks(sinks)
-        }
-    }
-
-    DisposableEffect(hostNetworkEvents, networkBannerGate) {
-        val callbackRef =
-            hostNetworkEvents.addListener { signal ->
-                appShellCoroutineScope.launch {
-                    networkBannerGate.onHostStatus(
-                        if (signal.online) {
-                            RaftAppShellNetworkStatus.Online
-                        } else {
-                            RaftAppShellNetworkStatus.Offline
-                        }
-                    )
-                }
-            }
-        onDispose { hostNetworkEvents.removeListener(callbackRef) }
-    }
+    AppShellRealtimeSinkAndNetworkEffects(
+        sharedStores = sharedStores,
+        bridge = bridge,
+        appShellServerMembersStore = appShellServerMembersStore,
+        appShellRealtimeDomainEventOwner = appShellRealtimeDomainEventOwner,
+        appShellAgentDetailStore = appShellAgentDetailStore,
+        activeAppShellCanonicalFinalSinksState = activeAppShellCanonicalFinalSinksState,
+        appShellCoroutineScope = appShellCoroutineScope,
+        networkBannerGate = networkBannerGate,
+        realtimeEvents = realtimeEvents,
+        hostNetworkEvents = hostNetworkEvents,
+        homeShellStore = homeShellStore,
+        latestReadySessionState = latestReadySessionState,
+        membersAgentDetailRefreshKeyState = membersAgentDetailRefreshKeyState,
+    )
 
     DisposableEffect(
         realtimeEvents,
@@ -6492,7 +5593,8 @@ private fun RaftAppShellReadyContent(
     // — not from each open call — so row taps, in-pane thread replaces, search / saved / activity
     // picks and member picks all count. Phone single-pane keeps its own back stack: nothing is
     // recorded or restored there.
-    var wideNavHistories by remember(storeScope.shellInstanceId) { mutableStateOf(RaftWideNavHistories()) }
+    val wideNavHistoriesState = remember(storeScope.shellInstanceId) { mutableStateOf(RaftWideNavHistories()) }
+    var wideNavHistories by wideNavHistoriesState
     var wideNavMemberOpenRequest by remember(readyServerId) { mutableStateOf<MemberDetailIdentity?>(null) }
     val wideNavShowing =
         if (navRailActive && pageVisible) {
@@ -6509,19 +5611,20 @@ private fun RaftAppShellReadyContent(
         } else {
             null
         }
-    val latestWideNavShowing by rememberUpdatedState(wideNavShowing)
-    LaunchedEffect(wideNavShowing) {
-        val entry = wideNavShowing ?: return@LaunchedEffect
-        wideNavHistories = wideNavHistories.record(entry)
-    }
+    val latestWideNavShowingState = rememberUpdatedState(wideNavShowing)
+    val latestWideNavShowing by latestWideNavShowingState
+    AppShellWideNavShowingEffect(
+        wideNavHistoriesState = wideNavHistoriesState,
+        wideNavShowing = wideNavShowing,
+    )
     val wideNavHistory = wideNavHistories.of(readyServerId)
-    LaunchedEffect(readyServerId, wideNavHistory.pendingRestore) {
-        val serverId = readyServerId ?: return@LaunchedEffect
-        val pending = wideNavHistory.pendingRestore ?: return@LaunchedEffect
-        delay(RaftWideNavRestoreSettleMillis)
-        bridge.logWarn("wide_history_restore_settled surface=${pending.surface} detail=${pending.detail}")
-        wideNavHistories = wideNavHistories.settle(serverId, latestWideNavShowing)
-    }
+    AppShellWideNavRestoreEffect(
+        bridge = bridge,
+        readyServerId = readyServerId,
+        wideNavHistoriesState = wideNavHistoriesState,
+        latestWideNavShowingState = latestWideNavShowingState,
+        wideNavHistory = wideNavHistory,
+    )
 
     /** Reopens [entry] through the normal open paths (identity only; the stores load the content). */
     fun restoreWideNavEntry(entry: RaftWideNavEntry) {
@@ -6630,7 +5733,7 @@ private fun RaftAppShellReadyContent(
     val currentComputerAttention = remember(homeState.notifications) {
         build.raft.app.data.raftComputerAttentionPairs(homeState.notifications.map { it.id })
     }
-    var computerAttentionSeen by remember(computerAttentionSeenStore, computerAttentionUserId, computerAttentionServerId) {
+    val computerAttentionSeenState = remember(computerAttentionSeenStore, computerAttentionUserId, computerAttentionServerId) {
         mutableStateOf(
             if (computerAttentionUserId != null && computerAttentionServerId != null) {
                 computerAttentionSeenStore?.read(computerAttentionUserId, computerAttentionServerId).orEmpty()
@@ -6639,6 +5742,7 @@ private fun RaftAppShellReadyContent(
             }
         )
     }
+    var computerAttentionSeen by computerAttentionSeenState
     val writeComputerAttentionSeen: (Set<String>) -> Unit = { next ->
         if (next != computerAttentionSeen) {
             computerAttentionSeen = next
@@ -6648,19 +5752,13 @@ private fun RaftAppShellReadyContent(
         }
     }
     // A computer observed leaving a state forgets it was seen there, so re-entering lights again.
-    val previousComputerAttention = remember(computerAttentionUserId, computerAttentionServerId) {
-        mutableStateOf<Set<String>?>(null)
-    }
-    LaunchedEffect(currentComputerAttention, computerAttentionUserId, computerAttentionServerId) {
-        writeComputerAttentionSeen(
-            build.raft.app.data.raftComputerAttentionObserve(
-                seen = computerAttentionSeen,
-                previous = previousComputerAttention.value,
-                current = currentComputerAttention,
-            )
-        )
-        previousComputerAttention.value = currentComputerAttention
-    }
+    AppShellComputerAttentionEffects(
+        computerAttentionUserId = computerAttentionUserId,
+        computerAttentionServerId = computerAttentionServerId,
+        currentComputerAttention = currentComputerAttention,
+        computerAttentionSeenState = computerAttentionSeenState,
+        writeComputerAttentionSeen = writeComputerAttentionSeen,
+    )
     // Every way into Computers (the More/Settings row, Settings > Computers on the wide rail, a
     // Home notice).
     val openComputersPageWith: (attention: Boolean) -> Unit = { attention ->
@@ -6706,7 +5804,11 @@ private fun RaftAppShellReadyContent(
         }
     // The menu belongs to the bar or the rail it rose from: it closes when they go (a pushed page
     // hides the bar, the window crosses the rail breakpoint).
-    LaunchedEffect(showAppShellBottomTabs, navRailActive) { serverMenuState.dismiss() }
+    AppShellServerMenuDismissEffect(
+        serverMenuState = serverMenuState,
+        navRailActive = navRailActive,
+        showAppShellBottomTabs = showAppShellBottomTabs,
+    )
     // web `useArtifactsRailShown`: the Artifacts entries (server panel row, wide rail tab) only where the current server's
     // workspace_artifacts_v0 is already loaded and on (the panel never asks for flags itself).
     val artifactsFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
@@ -6716,62 +5818,23 @@ private fun RaftAppShellReadyContent(
         }
     // Artifacts off for this server (or the flag turned off): its inline page closes and the wide
     // history's arrows never reopen it (review L1).
-    LaunchedEffect(serverMenuArtifactsShown, readyServerId) {
-        if (serverMenuArtifactsShown) return@LaunchedEffect
-        val serverId = readyServerId ?: return@LaunchedEffect
-        wideNavHistories = wideNavHistories.withoutSurface(serverId, AppShellRailArtifactsKey)
-        if (railInlineSecondaryDestination == AppShellRailArtifactsKey) railInlineSecondaryDestination = null
-    }
-
-    // artin 10-23: a server switch that ends without the server's Home (dropped load, error,
-    // timeout) says so once (web ServerSwitcherMenu `switchFailed`); the list is already back.
-    val serverSwitchFailedMessage = stringResource(Res.string.home_server_switch_failed)
-    val serverSwitchFailuresShown = remember { longArrayOf(homeState.serverSwitchState.failureCount) }
-    LaunchedEffect(homeState.serverSwitchState.failureCount) {
-        val failures = homeState.serverSwitchState.failureCount
-        if (failures > serverSwitchFailuresShown[0]) bridge.toast(serverSwitchFailedMessage)
-        serverSwitchFailuresShown[0] = failures
-    }
-    // artin 10-23: the Home switcher dropdown and the server panel never show together; the one
-    // opened last stays.
-    val serverMenusOpenBefore = remember { RaftServerMenusOpen() }
-    LaunchedEffect(serverMenuState.open, homeState.serverSwitcherExpanded) {
-        val now = RaftServerMenusOpen(panel = serverMenuState.open, homeSwitcher = homeState.serverSwitcherExpanded)
-        when (raftServerMenuToClose(before = serverMenusOpenBefore.copy(), now = now)) {
-            RaftServerMenuSurface.Panel -> serverMenuState.dismiss()
-            RaftServerMenuSurface.HomeSwitcher -> {
-                serverDrawerProgrammaticCloseFence?.invoke("server_panel")
-                homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
-            }
-            null -> Unit
-        }
-        serverMenusOpenBefore.panel = now.panel
-        serverMenusOpenBefore.homeSwitcher = now.homeSwitcher
-    }
-    // The server panel lists the account's servers as they are now: one joined from a link, on the
-    // web or on another device shows without opening the full list first. The stored list shows at
-    // once; the reloaded one replaces it when it comes.
-    LaunchedEffect(serverMenuState.open) {
-        if (!serverMenuState.open) return@LaunchedEffect
-        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SyncSessionServers))
-        val reloaded = runCatchingPreservingCancellation { authDataSource.loadServers() }.getOrNull()
-        bridge.log("app_shell_server_menu_servers_reload result=${if (reloaded is SharedAuthResult.Success) "success" else "skipped"}")
-        if (reloaded is SharedAuthResult.Success) {
-            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SyncSessionServers))
-        }
-    }
-    // A server page's origin lives only while a server page shows; a deep link to one finds none
-    // and goes back to Home.
-    LaunchedEffect(selectedTab) {
-        if (retainedAppShellSelectedTab(selectedTab) !in AppShellMoreChildTabKeys) serverPageOrigin = null
-    }
-    // Computers is a page of its own: when the shell shows again after it, focus the server tab.
-    LaunchedEffect(pageVisibleTick) {
-        if (serverTabFocusOnPageReturn) {
-            serverTabFocusOnPageReturn = false
-            serverTabFocusPending = true
-        }
-    }
+    AppShellServerMenuEffects(
+        pageVisibleTick = pageVisibleTick,
+        selectedTabState = selectedTabState,
+        serverMenuState = serverMenuState,
+        serverPageOriginState = serverPageOriginState,
+        serverTabFocusPendingState = serverTabFocusPendingState,
+        serverTabFocusOnPageReturnState = serverTabFocusOnPageReturnState,
+        railInlineSecondaryDestinationState = railInlineSecondaryDestinationState,
+        bridge = bridge,
+        authDataSource = authDataSource,
+        serverDrawerProgrammaticCloseFenceState = serverDrawerProgrammaticCloseFenceState,
+        homeShellStore = homeShellStore,
+        homeState = homeState,
+        readyServerId = readyServerId,
+        wideNavHistoriesState = wideNavHistoriesState,
+        serverMenuArtifactsShown = serverMenuArtifactsShown,
+    )
     val serverTabAccessibilityLabel =
         serverMenuModel?.let { stringResource(Res.string.server_tab_a11y_label, it.currentServer.name) }
     val appShellBottomTabItems = remember(
@@ -6814,25 +5877,15 @@ private fun RaftAppShellReadyContent(
     // The rail's tabs in the person's own order, saved on the account (web SortableRailTabs,
     // slock #10279): the session's `auth/me` seeds it, a drop saves it.
     val railTabOrderStore = sharedStores.railTabOrderStore
-    val railTabOrderState by railTabOrderStore.state.collectAsState()
-    val railTabOrderUser = readySession?.user
-    LaunchedEffect(railTabOrderStore, railTabOrderUser?.id, railTabOrderUser?.railTabOrder) {
-        if (railTabOrderUser != null) {
-            railTabOrderStore.dispatch(
-                build.raft.app.data.SharedRailTabOrderIntent.SessionLoaded(railTabOrderUser.id, railTabOrderUser.railTabOrder)
-            )
-        }
-    }
-    LaunchedEffect(railTabOrderStore, navRailActive) {
-        railTabOrderStore.dispatch(build.raft.app.data.SharedRailTabOrderIntent.RailShown(navRailActive))
-    }
-    val railTabOrderSaveFailed = stringResource(Res.string.rail_tab_order_save_failed)
-    LaunchedEffect(railTabOrderState.effect) {
-        if (railTabOrderState.effect == build.raft.app.data.SharedRailTabOrderEffect.SaveFailed) {
-            bridge.toast(railTabOrderSaveFailed)
-            railTabOrderStore.dispatch(build.raft.app.data.SharedRailTabOrderIntent.ConsumeEffect)
-        }
-    }
+    val railTabOrderStateState = railTabOrderStore.state.collectAsState()
+    val railTabOrderState by railTabOrderStateState
+    AppShellRailTabOrderEffects(
+        bridge = bridge,
+        readySession = readySession,
+        navRailActive = navRailActive,
+        railTabOrderStore = railTabOrderStore,
+        railTabOrderStateState = railTabOrderStateState,
+    )
     val railTabReorder =
         remember(railTabOrderStore) {
             RaftRailTabReorder { keys ->
@@ -6847,119 +5900,34 @@ private fun RaftAppShellReadyContent(
             }
         }
     // The rail's Help menu (web LeftRail HelpMenu), beside the rail.
-    var railHelpOpen by remember { mutableStateOf(false) }
+    val railHelpOpenState = remember { mutableStateOf(false) }
+    var railHelpOpen by railHelpOpenState
     // It belongs to the rail: it closes when the window leaves the wide layout, and when the
     // server panel or the bell opens.
-    LaunchedEffect(navRailActive) { railHelpOpen = false }
-    LaunchedEffect(serverMenuState.open) { if (serverMenuState.open) railHelpOpen = false }
+    AppShellRailHelpEffects(
+        serverMenuState = serverMenuState,
+        navRailActive = navRailActive,
+        railHelpOpenState = railHelpOpenState,
+    )
     val appShellBottomContentInset = shellScope.contentBottomInset(showAppShellBottomTabs)
-    val homeReadyForChildPagePrewarm =
-        authoritativeHomeStartAllowed &&
-            readyServerId != null &&
-            homeState.content is SharedHomeContentState.Content
-    val computersPrewarmServerId =
-        appShellComputersPrewarmServerId(
-            readyServerId = readyServerId,
-            sessionReady = readySession != null && authoritativeHomeStartAllowed,
-            homeContentReady = homeState.content is SharedHomeContentState.Content
-        )
-    LaunchedEffect(
-        selectedTab,
-        pageVisibleTick,
-        readyServerId,
-        homeState.content,
-        homeState.homeRealtimeDirty
-    ) {
-        prewarmAdmissionGate.invalidate("foreground_shell_state")
-    }
-    LaunchedEffect(
-        homeReadyForChildPagePrewarm,
-        childTabShellId,
-        childPagePrewarmPolicy,
-        authoritativeHomeStartAllowed,
-        slackNavTabKeys,
-    ) {
-        if (!homeReadyForChildPagePrewarm || childPagePrewarmPolicy.maxControllers <= 0) {
-            return@LaunchedEffect
-        }
-        // task #94: legacy prewarm targets (settings/tasks/members) are not child pages in
-        // Slack-nav mode; prewarming them would mount native child hosts for tabs that have
-        // no render slot. Slack-mode prewarm ordering is a follow-up.
-        if (slackNavMode) {
-            return@LaunchedEffect
-        }
-        while (prewarmedAppShellTabs.size < childPagePrewarmPolicy.maxControllers) {
-            val tab =
-                appShellChildPagePrewarmOrder(
-                    activeChildTab = appShellActiveChildPagerTab(selectedTab, slackNavTabKeys),
-                    retainedTabs = retainedAppShellTabs,
-                    prewarmedTabs = prewarmedAppShellTabs
-                ).firstOrNull() ?: return@LaunchedEffect
-            val waitStart = TimeSource.Monotonic.markNow()
-            val stableGeneration = awaitStablePrewarmGeneration(prewarmAdmissionGate)
-            var committed = false
-            withKuiklyIdleContext(pager.pagerId) {
-                val lease = prewarmAdmissionGate.tryAcquire(stableGeneration)
-                    ?: return@withKuiklyIdleContext
-                try {
-                    if (
-                        tab != appShellActiveChildPagerTab(selectedTab, slackNavTabKeys) &&
-                        tab !in retainedAppShellTabs &&
-                        tab !in prewarmedAppShellTabs
-                    ) {
-                        committed = lease.commit {
-                            prewarmedAppShellTabs = prewarmedAppShellTabs + tab
-                        }
-                    }
-                } finally {
-                    lease.release()
-                }
-            }
-            if (committed) {
-                bridge.log(
-                    "app_shell_child_tab_idle_prewarm tab=$tab mode=${childPagePrewarmPolicy.mode} " +
-                        "waitMs=${waitStart.elapsedNow().inWholeMilliseconds} selectedTab=$selectedTab " +
-                        "retained=$retainedAppShellTabs prewarmed=$prewarmedAppShellTabs"
-                )
-            }
-        }
-    }
-    // MEMBERS_COMPUTERS_IDLE_PREWARM_START
-    LaunchedEffect(
-        computersPrewarmServerId,
-        readySession?.user?.id,
-        readySession?.accessToken,
-        appShellComputersStore,
-        authoritativeHomeStartAllowed,
-    ) {
-        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
-        appShellComputersStore.reconcileOwner()
-        val serverId = computersPrewarmServerId ?: return@LaunchedEffect
-        while (true) {
-            val stableGeneration = awaitStablePrewarmGeneration(prewarmAdmissionGate)
-            var admitted = false
-            withKuiklyIdleContext(pager.pagerId) {
-                val lease = prewarmAdmissionGate.tryAcquire(stableGeneration)
-                    ?: return@withKuiklyIdleContext
-                try {
-                    admitted = lease.commit {
-                        appShellComputersStore.dispatch(
-                            SharedComputersIntent.EnsureComputerPicker(
-                                serverId = serverId,
-                                priority = DataRequestPriority.Background
-                            )
-                        )
-                    }
-                } finally {
-                    lease.release()
-                }
-            }
-            if (admitted) {
-                bridge.log("app_shell_computers_idle_prewarm serverId=$serverId priority=Background")
-                return@LaunchedEffect
-            }
-        }
-    }
+    AppShellChildPagePrewarmEffects(
+        pageVisibleTick = pageVisibleTick,
+        pager = pager,
+        selectedTabState = selectedTabState,
+        retainedAppShellTabsState = retainedAppShellTabsState,
+        prewarmedAppShellTabsState = prewarmedAppShellTabsState,
+        prewarmAdmissionGate = prewarmAdmissionGate,
+        childPagePrewarmPolicy = childPagePrewarmPolicy,
+        childTabShellId = childTabShellId,
+        bridge = bridge,
+        appShellComputersStore = appShellComputersStore,
+        homeState = homeState,
+        readySession = readySession,
+        readyServerId = readyServerId,
+        slackNavTabKeys = slackNavTabKeys,
+        slackNavMode = slackNavMode,
+        authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
+    )
     // MEMBERS_COMPUTERS_IDLE_PREWARM_END
 
     val appShellHomeLabels = RaftHomeShellLabels.localized()
@@ -7490,9 +6458,13 @@ private fun RaftAppShellReadyContent(
     // the top bar's search field and ⌘K / Ctrl+K open the search panel over the page, which stays
     // as it is behind the scrim; "Search for" goes on to the full results page (the list column's
     // Search). The phone layout keeps its Search tab: ⌘K there opens it.
-    var searchOverlayOpen by remember { mutableStateOf(false) }
+    val searchOverlayOpenState = remember { mutableStateOf(false) }
+    var searchOverlayOpen by searchOverlayOpenState
     var searchOverlayFocusRequest by remember { mutableStateOf(0) }
-    LaunchedEffect(navRailActive) { if (!navRailActive) searchOverlayOpen = false }
+    AppShellSearchOverlayRailEffect(
+        navRailActive = navRailActive,
+        searchOverlayOpenState = searchOverlayOpenState,
+    )
     fun openSearchOverlay(source: String) {
         if (!navRailActive) {
             openSearchTab(source)
@@ -7564,8 +6536,11 @@ private fun RaftAppShellReadyContent(
     }
     // Held down, the key repeats: one press toggles once.
     var sidebarShortcutHeld by remember { mutableStateOf(false) }
-    SideEffect { appShellTopBar.drawn = !railWithoutTopBar }
-    LaunchedEffect(appShellTopBar.bellOpen.value) { if (appShellTopBar.bellOpen.value) railHelpOpen = false }
+    AppShellTopBarEffects(
+        railHelpOpenState = railHelpOpenState,
+        railWithoutTopBar = railWithoutTopBar,
+        appShellTopBar = appShellTopBar,
+    )
     // Who is working on this server (Live agent activity): the wide top bar and the Home bar read it.
     val latestThreadTimeContext by rememberUpdatedState(threadTimeContext)
     val workingNowSource =
@@ -9574,6 +8549,2085 @@ private fun AppShellNotificationBadgeEffects(
         if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val serverId = readyServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "app_shell_server_ready")
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellExternalLinkNavigationEffects(
+    sharedStores: RaftSharedStoreProvider,
+    pager: Pager,
+    desktopModeOnLargeScreenState: MutableState<Boolean>,
+    bridge: build.raft.app.base.BridgeModule,
+    storeScope: RaftShellStoreScope,
+    processRealtimeAuthorityState: State<build.raft.app.data.RealtimeScopeAuthority?>,
+    appShellAgentDetailStore: SharedAgentDetailStore,
+    selectedServerIdState: State<String?>,
+    canonicalFinalSelectedServerId: String?,
+    linkNavigator: RaftLinkNavigator,
+    navigationIntake: RaftShellNavigationIntake,
+    readySession: StoredAuthSession?,
+    authoritativeHomeStartAllowed: Boolean,
+    navigationStoreScope: RaftShellStoreScope,
+    realtimeConnectionFamilyIdState: MutableState<String?>,
+    pendingRealtimeAuthRefreshReasonState: MutableState<String?>,
+    pendingRealtimeAuthRefreshPreviousFamilyIdState: MutableState<String?>,
+    realtimeAuthorityConnectTickState: MutableState<Int>,
+    realtimeShellForegroundTickState: MutableState<Int>,
+    realtimeReconciledOwnerGenerationState: MutableState<Long>,
+    foregroundBannerStore: SharedForegroundBannerStore,
+    latestNavigationReadinessState: State<() -> WindowNavigationReadiness?>,
+    latestNavigationPerformState: State<suspend (WindowNavigationAction) -> Unit>,
+    messageLinkSessionReady: Boolean,
+    latestMessageLinkSessionReadyState: State<Boolean>,
+    latestResolveMessageLinkState: State<suspend (RaftPendingMessageLink) -> WindowNavigationIntent?>,
+) {
+    var desktopModeOnLargeScreen by desktopModeOnLargeScreenState
+    val processRealtimeAuthority by processRealtimeAuthorityState
+    val selectedServerId by selectedServerIdState
+    var realtimeConnectionFamilyId by realtimeConnectionFamilyIdState
+    var pendingRealtimeAuthRefreshReason by pendingRealtimeAuthRefreshReasonState
+    var pendingRealtimeAuthRefreshPreviousFamilyId by pendingRealtimeAuthRefreshPreviousFamilyIdState
+    var realtimeAuthorityConnectTick by realtimeAuthorityConnectTickState
+    var realtimeShellForegroundTick by realtimeShellForegroundTickState
+    var realtimeReconciledOwnerGeneration by realtimeReconciledOwnerGenerationState
+    val latestNavigationReadiness by latestNavigationReadinessState
+    val latestNavigationPerform by latestNavigationPerformState
+    val latestMessageLinkSessionReady by latestMessageLinkSessionReadyState
+    val latestResolveMessageLink by latestResolveMessageLinkState
+    val latestOpenArtifactLink by rememberUpdatedState<(RaftPendingArtifactLink) -> Unit> { taken ->
+        RaftArtifactOpenTrace.tap("deep_link", taken.target.id)
+        if (!pager.openRaftArtifactViewerPage(taken.target, navigationStoreScope)) {
+            RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_page_scope")
+            linkNavigator.open(artifactWebUrl(sharedStores.apiEnvironmentStore.current().webUrl, taken.target), RaftLinkOpenIntent.RaftWebPage)
+        }
+    }
+    val latestNavigationAccountId by rememberUpdatedState { readySession?.user?.id?.takeIf(String::isNotBlank) }
+    // An external channel invite link: its page, which reads the invite for this account.
+    val latestOpenExternalInviteLink by rememberUpdatedState<(RaftPendingExternalInviteLink) -> Unit> { taken ->
+        if (!pager.openExternalInvitePage(taken.token, navigationStoreScope)) {
+            bridge.log("external_invite_link_open result=browser_fallback reason=no_page_scope")
+            linkNavigator.open(
+                sharedSettingsResolvedWebBaseUrl(sharedStores.apiEnvironmentStore.current().webUrl) +
+                    "/external-invite/" + taken.token.encodeInviteTokenSegment()
+            )
+        }
+    }
+    // A server join link (`/join/{token}`), tapped in a message or opened from outside: the join
+    // page, which reads the link and joins for this account.
+    val latestOpenServerJoinLink by rememberUpdatedState<(RaftPendingExternalInviteLink) -> Unit> { taken ->
+        if (!pager.openServerJoinPage(taken.token, navigationStoreScope)) {
+            bridge.log("server_join_link_open result=browser_fallback reason=no_page_scope")
+            linkNavigator.open(
+                sharedSettingsResolvedWebBaseUrl(sharedStores.apiEnvironmentStore.current().webUrl) +
+                    "/join/" + taken.token.encodeInviteTokenSegment(),
+                RaftLinkOpenIntent.RaftWebPage,
+            )
+        }
+    }
+    // Phone layout: the conversation page on top of the shell, so a link to it is not pushed twice.
+    val latestNavigationTopPageRoute by rememberUpdatedState {
+        if (desktopModeOnLargeScreen) null else foregroundBannerStore.visibleRouteIdentity()
+    }
+    LaunchedEffect(navigationIntake) {
+        navigationIntake.run(
+            object : RaftShellNavigationIntakeHost {
+                override fun messageLinkSessionReady(): Boolean = latestMessageLinkSessionReady
+
+                override suspend fun resolveMessageLink(taken: RaftPendingMessageLink): WindowNavigationIntent? =
+                    latestResolveMessageLink(taken)
+
+                override fun openArtifactLink(taken: RaftPendingArtifactLink) = latestOpenArtifactLink(taken)
+
+                override fun openExternalInviteLink(taken: RaftPendingExternalInviteLink) = latestOpenExternalInviteLink(taken)
+
+                override fun openServerJoinLink(taken: RaftPendingExternalInviteLink) = latestOpenServerJoinLink(taken)
+
+                override fun currentAccountId(): String? = latestNavigationAccountId()
+
+                override fun readiness(): WindowNavigationReadiness? = latestNavigationReadiness()
+
+                override fun topPageRoute(): ThreadRouteIdentity? = latestNavigationTopPageRoute()
+
+                override suspend fun closeIncomingNavigationCover(): Boolean = foregroundBannerStore.incomingNavigation.closeAll()
+
+                override suspend fun perform(action: WindowNavigationAction) = latestNavigationPerform(action)
+
+                override fun log(message: String) = bridge.log(message)
+            }
+        )
+    }
+    LaunchedEffect(
+        processRealtimeAuthority?.witness?.connectionFamilyId,
+        processRealtimeAuthority?.accessToken,
+        realtimeAuthorityConnectTick,
+        // Task #366: realtime follows the current server, so a server switch
+        // must re-reconcile (disconnect old, connect new). Without this key the
+        // effect only re-ran on auth-family/token/tick changes.
+        canonicalFinalSelectedServerId,
+        authoritativeHomeStartAllowed,
+        realtimeShellForegroundTick,
+    ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
+        // Phase 3: this window claims its server; with multi-session realtime on every claimed server
+        // keeps its own session, so no window has to take the connection from another one.
+        val multiSessionRealtime = raftMultiServerRealtimeEnabled()
+        canonicalFinalSelectedServerId?.let { serverId ->
+            raftProcessRealtimeSessionDemand.claim(storeScope.shellInstanceId, serverId)
+        }
+        if (
+            !multiSessionRealtime &&
+            !raftShellOwnsProcessRealtime(storeScope.shellInstanceId, raftMultiShellHostEnabled())
+        ) {
+            // A window behind another one never takes the connection away from the window in front.
+            bridge.log(
+                "app_shell_realtime_reconcile_skip reason=background_window " +
+                    "serverId=${canonicalFinalSelectedServerId.orEmpty()}"
+            )
+            pendingRealtimeAuthRefreshReason?.let { reason ->
+                pendingRealtimeAuthRefreshReason = null
+                pendingRealtimeAuthRefreshPreviousFamilyId = null
+                bridge.realtimeAuthRefreshFinished(reason, success = true)
+            }
+            return@LaunchedEffect
+        }
+        realtimeReconciledOwnerGeneration = raftProcessRealtimeOwnerGeneration()
+        if (!multiSessionRealtime) {
+            noteRaftShellRealtimeServer(canonicalFinalSelectedServerId.takeIf { raftMultiShellHostEnabled() })
+        }
+        val environment = sharedStores.apiEnvironmentStore.current()
+        val desired =
+            if (multiSessionRealtime) {
+                // The same set the process reconcile sends (ProcessRealtimeIngressCoordinator), so the
+                // two never take a server from each other.
+                realtimeProcessDesiredSession(
+                    authority = processRealtimeAuthority,
+                    environmentId = environment.apiBaseUrl,
+                    socketUrl = environment.socketBaseUrl,
+                    currentServerId = canonicalFinalSelectedServerId,
+                    serverIdsFor = { granted ->
+                        raftProcessRealtimeSessionDemand.desiredServerIds(
+                            grantedServerIds = granted,
+                            selectedServerId = canonicalFinalSelectedServerId,
+                            nowMillis = defaultNowMillis(),
+                            enabled = true,
+                        )
+                    },
+                )
+            } else {
+                realtimeProcessDesiredSession(
+                    authority = processRealtimeAuthority,
+                    environmentId = environment.apiBaseUrl,
+                    socketUrl = environment.socketBaseUrl,
+                    currentServerId = canonicalFinalSelectedServerId,
+                )
+            }
+        realtimeConnectionFamilyId = desired?.connectionFamilyId
+        appShellAgentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
+        bridge.realtimeReconcile(
+            serverIds = desired?.serverIds.orEmpty(),
+            accessToken = desired?.accessToken.orEmpty(),
+            environmentId = desired?.environmentId.orEmpty(),
+            socketUrl = desired?.socketUrl ?: environment.socketBaseUrl,
+            // Authority generation/family replacement is the reconnect
+            // identity. A refresh tick may arrive before the new durable
+            // authority publishes, so never force an old-token reconnect.
+            forceReconnect = false,
+            disconnectReason = GeneratedRealtimeContract.DisconnectReason.AuthInvalid,
+            authorityScopeLeaseId = processRealtimeAuthority?.witness?.scopeLeaseId.orEmpty(),
+            authorityPrincipalId = processRealtimeAuthority?.witness?.principalId.orEmpty(),
+            authorityAuthGeneration = processRealtimeAuthority?.witness?.authGeneration ?: 0L,
+            authorityConnectionFamilyId = processRealtimeAuthority?.witness?.connectionFamilyId.orEmpty(),
+            multiSession = multiSessionRealtime,
+        )
+        val familyId = desired?.connectionFamilyId
+        pendingRealtimeAuthRefreshReason?.let { reason ->
+            if (
+                pendingRealtimeAuthRefreshPreviousFamilyId == null ||
+                pendingRealtimeAuthRefreshPreviousFamilyId != familyId
+            ) {
+                pendingRealtimeAuthRefreshReason = null
+                pendingRealtimeAuthRefreshPreviousFamilyId = null
+                bridge.realtimeAuthRefreshFinished(reason, success = true)
+                bridge.log(
+                    "shared_realtime_auth_refresh_success reason=$reason " +
+                        "serverCount=${desired?.serverIds?.size ?: 0}"
+                )
+            }
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellServerMenuEffects(
+    pageVisibleTick: Int,
+    selectedTabState: MutableState<String>,
+    serverMenuState: build.raft.designsystem.components.RaftMobileNavServerPopoverState,
+    serverPageOriginState: MutableState<String?>,
+    serverTabFocusPendingState: MutableState<Boolean>,
+    serverTabFocusOnPageReturnState: MutableState<Boolean>,
+    railInlineSecondaryDestinationState: MutableState<String?>,
+    bridge: build.raft.app.base.BridgeModule,
+    authDataSource: SharedAuthDataSource,
+    serverDrawerProgrammaticCloseFenceState: MutableState<((String) -> Unit)?>,
+    homeShellStore: SharedHomeShellStore,
+    homeState: SharedHomeState,
+    readyServerId: String?,
+    wideNavHistoriesState: MutableState<RaftWideNavHistories>,
+    serverMenuArtifactsShown: Boolean,
+) {
+    var selectedTab by selectedTabState
+    var serverPageOrigin by serverPageOriginState
+    var serverTabFocusPending by serverTabFocusPendingState
+    var serverTabFocusOnPageReturn by serverTabFocusOnPageReturnState
+    var railInlineSecondaryDestination by railInlineSecondaryDestinationState
+    var serverDrawerProgrammaticCloseFence by serverDrawerProgrammaticCloseFenceState
+    var wideNavHistories by wideNavHistoriesState
+    LaunchedEffect(serverMenuArtifactsShown, readyServerId) {
+        if (serverMenuArtifactsShown) return@LaunchedEffect
+        val serverId = readyServerId ?: return@LaunchedEffect
+        wideNavHistories = wideNavHistories.withoutSurface(serverId, AppShellRailArtifactsKey)
+        if (railInlineSecondaryDestination == AppShellRailArtifactsKey) railInlineSecondaryDestination = null
+    }
+
+    // artin 10-23: a server switch that ends without the server's Home (dropped load, error,
+    // timeout) says so once (web ServerSwitcherMenu `switchFailed`); the list is already back.
+    val serverSwitchFailedMessage = stringResource(Res.string.home_server_switch_failed)
+    val serverSwitchFailuresShown = remember { longArrayOf(homeState.serverSwitchState.failureCount) }
+    LaunchedEffect(homeState.serverSwitchState.failureCount) {
+        val failures = homeState.serverSwitchState.failureCount
+        if (failures > serverSwitchFailuresShown[0]) bridge.toast(serverSwitchFailedMessage)
+        serverSwitchFailuresShown[0] = failures
+    }
+    // artin 10-23: the Home switcher dropdown and the server panel never show together; the one
+    // opened last stays.
+    val serverMenusOpenBefore = remember { RaftServerMenusOpen() }
+    LaunchedEffect(serverMenuState.open, homeState.serverSwitcherExpanded) {
+        val now = RaftServerMenusOpen(panel = serverMenuState.open, homeSwitcher = homeState.serverSwitcherExpanded)
+        when (raftServerMenuToClose(before = serverMenusOpenBefore.copy(), now = now)) {
+            RaftServerMenuSurface.Panel -> serverMenuState.dismiss()
+            RaftServerMenuSurface.HomeSwitcher -> {
+                serverDrawerProgrammaticCloseFence?.invoke("server_panel")
+                homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
+            }
+            null -> Unit
+        }
+        serverMenusOpenBefore.panel = now.panel
+        serverMenusOpenBefore.homeSwitcher = now.homeSwitcher
+    }
+    // The server panel lists the account's servers as they are now: one joined from a link, on the
+    // web or on another device shows without opening the full list first. The stored list shows at
+    // once; the reloaded one replaces it when it comes.
+    LaunchedEffect(serverMenuState.open) {
+        if (!serverMenuState.open) return@LaunchedEffect
+        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SyncSessionServers))
+        val reloaded = runCatchingPreservingCancellation { authDataSource.loadServers() }.getOrNull()
+        bridge.log("app_shell_server_menu_servers_reload result=${if (reloaded is SharedAuthResult.Success) "success" else "skipped"}")
+        if (reloaded is SharedAuthResult.Success) {
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SyncSessionServers))
+        }
+    }
+    // A server page's origin lives only while a server page shows; a deep link to one finds none
+    // and goes back to Home.
+    LaunchedEffect(selectedTab) {
+        if (retainedAppShellSelectedTab(selectedTab) !in AppShellMoreChildTabKeys) serverPageOrigin = null
+    }
+    // Computers is a page of its own: when the shell shows again after it, focus the server tab.
+    LaunchedEffect(pageVisibleTick) {
+        if (serverTabFocusOnPageReturn) {
+            serverTabFocusOnPageReturn = false
+            serverTabFocusPending = true
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellHomeStartEffects(
+    pageVisible: Boolean,
+    desktopModeOnLargeScreenState: MutableState<Boolean>,
+    selectedTabState: MutableState<String>,
+    bridge: build.raft.app.base.BridgeModule,
+    adaptiveWorkspaceStore: build.raft.app.data.SharedAdaptiveWorkspaceStore,
+    appShellCoroutineScope: kotlinx.coroutines.CoroutineScope,
+    appUpdateEvents: RaftAppUpdateEvents,
+    homeShellStore: SharedHomeShellStore,
+    homeState: SharedHomeState,
+    selectedHomeDestination: String?,
+    readySession: StoredAuthSession?,
+    readyServerId: String?,
+    slackNavMode: Boolean,
+    homePreviewServerId: String?,
+    setupAdmissionAllowsHome: Boolean,
+    authoritativeHomeStartAllowed: Boolean,
+    cachedHomePreview: Boolean,
+    latestAuthoritativeHomeStartAllowedState: State<Boolean>,
+    homeSurfaceVisible: Boolean,
+) {
+    var desktopModeOnLargeScreen by desktopModeOnLargeScreenState
+    var selectedTab by selectedTabState
+    val latestAuthoritativeHomeStartAllowed by latestAuthoritativeHomeStartAllowedState
+    val parentShouldStartHome =
+        authoritativeHomeStartAllowed &&
+        appShellParentShouldStartHome(
+            pageVisible = pageVisible,
+            selectedTab = selectedTab,
+            selectedHomeDestination = selectedHomeDestination,
+            readyServerId = readyServerId,
+            readyAccountId = readySession?.user?.id,
+            state = homeState,
+            // task #94: the DMs tab renders the same home store; starting the parent home
+            // store must not be gated on the literal "home" tab while Slack nav is active.
+            homeLikeTabs = if (slackNavMode) setOf("dms") else emptySet()
+        )
+    LaunchedEffect(parentShouldStartHome, readyServerId, homeState.content, homeState.homeRealtimeDirty) {
+        bridge.log(
+            "app_shell_parent_home_start_check shouldStart=$parentShouldStartHome " +
+                "selectedTab=$selectedTab homeDestination=${selectedHomeDestination.orEmpty()} " +
+                "readyServerId=${readyServerId.orEmpty()} state=${sharedHomeContentRenderSummary(homeState.content)} " +
+                "homeRealtimeDirty=${homeState.homeRealtimeDirty}"
+        )
+        if (parentShouldStartHome) {
+            bridge.log(
+                "app_shell_parent_home_start_dispatch readyServerId=${readyServerId.orEmpty()} " +
+                    "state=${sharedHomeContentRenderSummary(homeState.content)}"
+            )
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Start))
+        }
+    }
+    LaunchedEffect(
+        homeSurfaceVisible,
+        readyServerId,
+        authoritativeHomeStartAllowed,
+        setupAdmissionAllowsHome,
+        cachedHomePreview
+    ) {
+        val delayMs = homeSurfaceVisibilityDispatchDelayMs(homeSurfaceVisible)
+        val surfaceWaitMark = TimeSource.Monotonic.markNow()
+        if (delayMs > 0L) {
+            delay(delayMs)
+        }
+        homeShellStore.dispatch(
+            SharedHomeShellIntent.SetSurfaceVisible(
+                homeSurfaceVisible &&
+                    (readyServerId ?: homePreviewServerId) != null &&
+                    (setupAdmissionAllowsHome || cachedHomePreview)
+            )
+        )
+        raftLogInfo(
+            "SlockForegroundPerf",
+            "surface_visible_wait plannedMs=$delayMs actualMs=${surfaceWaitMark.elapsedNow().inWholeMilliseconds} visible=$homeSurfaceVisible"
+        )
+    }
+    // Home counts no realtime unread for its selected conversation. A conversation opened as a pushed page
+    // (phone, or desktop mode off) is closed once this shell page is visible again, so clear the selection
+    // then; a detail still shown inside the shell keeps its list selection.
+    var appShellPageWasHidden by remember { mutableStateOf(false) }
+    LaunchedEffect(pageVisible) {
+        if (!pageVisible) {
+            appShellPageWasHidden = true
+            return@LaunchedEffect
+        }
+        if (!appShellPageWasHidden) return@LaunchedEffect
+        appShellPageWasHidden = false
+        val selection =
+            adaptiveWorkspaceStore.snapshot().selectedConversationWhenShellReturns(desktopModeOnLargeScreen)
+        bridge.log("app_shell_return_selection selected=${selection.orEmpty()}")
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(selection))
+    }
+    LaunchedEffect(readyServerId, readySession?.accessToken, authoritativeHomeStartAllowed) {
+        if (readyServerId.isNullOrBlank() || !authoritativeHomeStartAllowed) return@LaunchedEffect
+        while (true) {
+            delay(AppUpdateNotificationRefreshIntervalMs)
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
+        }
+    }
+    DisposableEffect(appUpdateEvents, latestAuthoritativeHomeStartAllowed) {
+        val callbackRef =
+            appUpdateEvents.addStatusListener {
+                if (!latestAuthoritativeHomeStartAllowed) return@addStatusListener
+                appShellCoroutineScope.launch {
+                    homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
+                }
+            }
+        onDispose {
+            appUpdateEvents.removeStatusListener(callbackRef)
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellBackAndTasksEffects(
+    selectedTabState: MutableState<String>,
+    tasksSurfaceActive: Boolean,
+    bridge: build.raft.app.base.BridgeModule,
+    appShellServerMembersStore: SharedServerMembersStore,
+    selectedHomeDestination: String?,
+    tasksFirstRenderLoggedKeyState: MutableState<String?>,
+    readyServerId: String?,
+    tasksRoute: build.raft.app.data.SharedTasksRouteSession,
+    tasksState: build.raft.app.data.TasksUiState,
+    authoritativeHomeStartAllowed: Boolean,
+    handleAppShellBackState: State<() -> Unit>,
+) {
+    var selectedTab by selectedTabState
+    var tasksFirstRenderLoggedKey by tasksFirstRenderLoggedKeyState
+    val handleAppShellBack by handleAppShellBackState
+    RaftAppShellRootBackHandler(
+        onLifecycleLog = { event ->
+            bridge.log(
+                "app_back_root_handler $event selectedTab=$selectedTab " +
+                    "homeDestination=${selectedHomeDestination.orEmpty()}"
+            )
+        }
+    ) { handleAppShellBack() }
+
+    LaunchedEffect(tasksRoute, selectedTab, tasksSurfaceActive, authoritativeHomeStartAllowed) {
+        if (tasksSurfaceActive && authoritativeHomeStartAllowed) {
+            val hasSnapshot = tasksState.hasCompletedTasksSnapshot()
+            bridge.performanceMarker(
+                phase = "tasks_screen_enter",
+                routeName = "kuikly_tasks",
+                event = "instant",
+                metadata =
+                    mapOf(
+                        "hasSnapshot" to hasSnapshot.toString(),
+                        "refreshing" to tasksState.refreshing.toString(),
+                        "filter" to tasksState.selectedFilter?.name.orEmpty()
+                    )
+            )
+            tasksRoute.start()
+        }
+    }
+    LaunchedEffect(selectedTab, tasksSurfaceActive, readyServerId, appShellServerMembersStore, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
+        val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+            ?: return@LaunchedEffect
+        if (tasksSurfaceActive) {
+            appShellServerMembersStore.refreshMembers(serverId, DataRequestPriority.Visible)
+        }
+    }
+    LaunchedEffect(selectedTab, tasksSurfaceActive, tasksState.loadState, tasksState.refreshing) {
+        if (!tasksSurfaceActive) {
+            tasksFirstRenderLoggedKey = null
+            return@LaunchedEffect
+        }
+        val (result, taskCount) =
+            when (val loadState = tasksState.loadState) {
+                is ScreenLoadState.Content -> "content" to loadState.data.tasks.size
+                is ScreenLoadState.Empty -> "empty:${loadState.reason.name}" to 0
+                is ScreenLoadState.Error -> "error:${loadState.error.code}" to 0
+                is ScreenLoadState.NoPermission -> "no_permission:${loadState.blocker.code}" to 0
+                ScreenLoadState.Loading -> "loading" to 0
+            }
+        val key = "$result:$taskCount:${tasksState.refreshing}"
+        if (tasksFirstRenderLoggedKey == key) {
+            return@LaunchedEffect
+        }
+        tasksFirstRenderLoggedKey = key
+        bridge.performanceMarker(
+            phase = "tasks_first_render",
+            routeName = "kuikly_tasks",
+            event = "instant",
+            metadata =
+                mapOf(
+                    "result" to result,
+                    "tasks" to taskCount.toString(),
+                    "refreshing" to tasksState.refreshing.toString()
+                )
+        )
+        bridge.log("tasks_first_render result=$result tasks=$taskCount refreshing=${tasksState.refreshing}")
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellChildPagePrewarmEffects(
+    pageVisibleTick: Int,
+    pager: Pager,
+    selectedTabState: MutableState<String>,
+    retainedAppShellTabsState: MutableState<Set<String>>,
+    prewarmedAppShellTabsState: MutableState<Set<String>>,
+    prewarmAdmissionGate: PrewarmAdmissionGate,
+    childPagePrewarmPolicy: AppShellChildPagePrewarmPolicy,
+    childTabShellId: String,
+    bridge: build.raft.app.base.BridgeModule,
+    appShellComputersStore: SharedComputersStore,
+    homeState: SharedHomeState,
+    readySession: StoredAuthSession?,
+    readyServerId: String?,
+    slackNavTabKeys: List<String>,
+    slackNavMode: Boolean,
+    authoritativeHomeStartAllowed: Boolean,
+) {
+    var selectedTab by selectedTabState
+    var retainedAppShellTabs by retainedAppShellTabsState
+    var prewarmedAppShellTabs by prewarmedAppShellTabsState
+    val homeReadyForChildPagePrewarm =
+        authoritativeHomeStartAllowed &&
+            readyServerId != null &&
+            homeState.content is SharedHomeContentState.Content
+    val computersPrewarmServerId =
+        appShellComputersPrewarmServerId(
+            readyServerId = readyServerId,
+            sessionReady = readySession != null && authoritativeHomeStartAllowed,
+            homeContentReady = homeState.content is SharedHomeContentState.Content
+        )
+    LaunchedEffect(
+        selectedTab,
+        pageVisibleTick,
+        readyServerId,
+        homeState.content,
+        homeState.homeRealtimeDirty
+    ) {
+        prewarmAdmissionGate.invalidate("foreground_shell_state")
+    }
+    LaunchedEffect(
+        homeReadyForChildPagePrewarm,
+        childTabShellId,
+        childPagePrewarmPolicy,
+        authoritativeHomeStartAllowed,
+        slackNavTabKeys,
+    ) {
+        if (!homeReadyForChildPagePrewarm || childPagePrewarmPolicy.maxControllers <= 0) {
+            return@LaunchedEffect
+        }
+        // task #94: legacy prewarm targets (settings/tasks/members) are not child pages in
+        // Slack-nav mode; prewarming them would mount native child hosts for tabs that have
+        // no render slot. Slack-mode prewarm ordering is a follow-up.
+        if (slackNavMode) {
+            return@LaunchedEffect
+        }
+        while (prewarmedAppShellTabs.size < childPagePrewarmPolicy.maxControllers) {
+            val tab =
+                appShellChildPagePrewarmOrder(
+                    activeChildTab = appShellActiveChildPagerTab(selectedTab, slackNavTabKeys),
+                    retainedTabs = retainedAppShellTabs,
+                    prewarmedTabs = prewarmedAppShellTabs
+                ).firstOrNull() ?: return@LaunchedEffect
+            val waitStart = TimeSource.Monotonic.markNow()
+            val stableGeneration = awaitStablePrewarmGeneration(prewarmAdmissionGate)
+            var committed = false
+            withKuiklyIdleContext(pager.pagerId) {
+                val lease = prewarmAdmissionGate.tryAcquire(stableGeneration)
+                    ?: return@withKuiklyIdleContext
+                try {
+                    if (
+                        tab != appShellActiveChildPagerTab(selectedTab, slackNavTabKeys) &&
+                        tab !in retainedAppShellTabs &&
+                        tab !in prewarmedAppShellTabs
+                    ) {
+                        committed = lease.commit {
+                            prewarmedAppShellTabs = prewarmedAppShellTabs + tab
+                        }
+                    }
+                } finally {
+                    lease.release()
+                }
+            }
+            if (committed) {
+                bridge.log(
+                    "app_shell_child_tab_idle_prewarm tab=$tab mode=${childPagePrewarmPolicy.mode} " +
+                        "waitMs=${waitStart.elapsedNow().inWholeMilliseconds} selectedTab=$selectedTab " +
+                        "retained=$retainedAppShellTabs prewarmed=$prewarmedAppShellTabs"
+                )
+            }
+        }
+    }
+    // MEMBERS_COMPUTERS_IDLE_PREWARM_START
+    LaunchedEffect(
+        computersPrewarmServerId,
+        readySession?.user?.id,
+        readySession?.accessToken,
+        appShellComputersStore,
+        authoritativeHomeStartAllowed,
+    ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
+        appShellComputersStore.reconcileOwner()
+        val serverId = computersPrewarmServerId ?: return@LaunchedEffect
+        while (true) {
+            val stableGeneration = awaitStablePrewarmGeneration(prewarmAdmissionGate)
+            var admitted = false
+            withKuiklyIdleContext(pager.pagerId) {
+                val lease = prewarmAdmissionGate.tryAcquire(stableGeneration)
+                    ?: return@withKuiklyIdleContext
+                try {
+                    admitted = lease.commit {
+                        appShellComputersStore.dispatch(
+                            SharedComputersIntent.EnsureComputerPicker(
+                                serverId = serverId,
+                                priority = DataRequestPriority.Background
+                            )
+                        )
+                    }
+                } finally {
+                    lease.release()
+                }
+            }
+            if (admitted) {
+                bridge.log("app_shell_computers_idle_prewarm serverId=$serverId priority=Background")
+                return@LaunchedEffect
+            }
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellRuntimeAuthorityEffects(
+    desktopModeOnLargeScreenState: MutableState<Boolean>,
+    bridge: build.raft.app.base.BridgeModule,
+    conversationForwardHistory: build.raft.app.data.SharedConversationForwardHistory,
+    settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    chatLayoutPreferenceEvents: RaftChatLayoutPreferenceEvents,
+    chatLayoutPreferenceRepository: build.raft.app.data.ChatLayoutPreferenceRepository,
+    myMessageAlignmentState: MutableState<MyMessageAlignmentPreference>,
+    compactConsecutiveMessagesState: MutableState<Boolean>,
+    foregroundMessageBannersEnabledState: MutableState<Boolean>,
+    activityTaskStatusBadgesEnabledState: MutableState<Boolean>,
+    serverDrawerEnabledState: MutableState<Boolean>,
+    homeServerAvatarEnabledState: MutableState<Boolean>,
+    conversationForwardGestureEnabledState: MutableState<Boolean>,
+    foregroundBannerStore: SharedForegroundBannerStore,
+) {
+    var desktopModeOnLargeScreen by desktopModeOnLargeScreenState
+    var myMessageAlignment by myMessageAlignmentState
+    var compactConsecutiveMessages by compactConsecutiveMessagesState
+    var foregroundMessageBannersEnabled by foregroundMessageBannersEnabledState
+    var activityTaskStatusBadgesEnabled by activityTaskStatusBadgesEnabledState
+    var serverDrawerEnabled by serverDrawerEnabledState
+    var homeServerAvatarEnabled by homeServerAvatarEnabledState
+    var conversationForwardGestureEnabled by conversationForwardGestureEnabledState
+    val conversationForwardGestureRuntimeAuthority =
+        remember(
+            settingsCapabilities.supportsConversationForwardGesture,
+            conversationForwardHistory,
+            bridge
+        ) {
+            ConversationForwardGestureRuntimeAuthority(
+                supported = settingsCapabilities.supportsConversationForwardGesture
+            ) { effectiveEnabled ->
+                conversationForwardGestureEnabled = effectiveEnabled
+                reconcileConversationForwardGesturePreference(
+                    enabled = effectiveEnabled,
+                    history = conversationForwardHistory,
+                    disableNativeGesture = {
+                        bridge.setConversationForwardGestureEnabled(false)
+                    }
+                )
+            }
+        }
+    val chatLayoutPreferenceSnapshotRuntimeAuthority =
+        remember(foregroundBannerStore) {
+            ChatLayoutPreferenceSnapshotRuntimeAuthority { chatLayout ->
+                myMessageAlignment = chatLayout.myMessageAlignment
+                desktopModeOnLargeScreen = chatLayout.desktopModeOnLargeScreen
+                compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
+                foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
+                if (!chatLayout.foregroundMessageBannersEnabled) {
+                    foregroundBannerStore.dismiss()
+                }
+                activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
+                serverDrawerEnabled = chatLayout.serverDrawerEnabled
+                homeServerAvatarEnabled = chatLayout.homeServerAvatarEnabled
+                    }
+        }
+    DisposableEffect(
+        chatLayoutPreferenceEvents,
+        chatLayoutPreferenceSnapshotRuntimeAuthority,
+        conversationForwardGestureRuntimeAuthority,
+    ) {
+        val forwardSubscription =
+            chatLayoutPreferenceEvents.addConversationForwardGestureListener { enabled ->
+                conversationForwardGestureRuntimeAuthority.applyProcessPreferenceChange(enabled)
+            }
+        val snapshotSubscription =
+            chatLayoutPreferenceEvents.addPreferenceListener { chatLayout ->
+                chatLayoutPreferenceSnapshotRuntimeAuthority.applyProcessPreferenceChange(chatLayout)
+            }
+        onDispose {
+            forwardSubscription.close()
+            snapshotSubscription.close()
+        }
+    }
+    LaunchedEffect(
+        chatLayoutPreferenceRepository,
+        chatLayoutPreferenceSnapshotRuntimeAuthority,
+        conversationForwardGestureRuntimeAuthority,
+    ) {
+        val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
+        chatLayoutPreferenceSnapshotRuntimeAuthority.seedFromRepository(chatLayout)
+        conversationForwardGestureRuntimeAuthority.seedFromRepository(
+            chatLayout.conversationForwardGestureEnabled
+        )
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellRailTabOrderEffects(
+    bridge: build.raft.app.base.BridgeModule,
+    readySession: StoredAuthSession?,
+    navRailActive: Boolean,
+    railTabOrderStore: build.raft.app.data.SharedRailTabOrderStore,
+    railTabOrderStateState: State<build.raft.app.data.SharedRailTabOrderState>,
+) {
+    val railTabOrderState by railTabOrderStateState
+    val railTabOrderUser = readySession?.user
+    LaunchedEffect(railTabOrderStore, railTabOrderUser?.id, railTabOrderUser?.railTabOrder) {
+        if (railTabOrderUser != null) {
+            railTabOrderStore.dispatch(
+                build.raft.app.data.SharedRailTabOrderIntent.SessionLoaded(railTabOrderUser.id, railTabOrderUser.railTabOrder)
+            )
+        }
+    }
+    LaunchedEffect(railTabOrderStore, navRailActive) {
+        railTabOrderStore.dispatch(build.raft.app.data.SharedRailTabOrderIntent.RailShown(navRailActive))
+    }
+    val railTabOrderSaveFailed = stringResource(Res.string.rail_tab_order_save_failed)
+    LaunchedEffect(railTabOrderState.effect) {
+        if (railTabOrderState.effect == build.raft.app.data.SharedRailTabOrderEffect.SaveFailed) {
+            bridge.toast(railTabOrderSaveFailed)
+            railTabOrderStore.dispatch(build.raft.app.data.SharedRailTabOrderIntent.ConsumeEffect)
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellRealtimeSinkAndNetworkEffects(
+    sharedStores: RaftSharedStoreProvider,
+    bridge: build.raft.app.base.BridgeModule,
+    appShellServerMembersStore: SharedServerMembersStore,
+    appShellRealtimeDomainEventOwner: build.raft.app.data.SharedRealtimeDomainEventOwner,
+    appShellAgentDetailStore: SharedAgentDetailStore,
+    activeAppShellCanonicalFinalSinksState: MutableState<RealtimeGuardedDomainEventSinks?>,
+    appShellCoroutineScope: kotlinx.coroutines.CoroutineScope,
+    networkBannerGate: RaftAppShellNetworkBannerGate,
+    realtimeEvents: RaftRealtimeEvents,
+    hostNetworkEvents: RaftHostNetworkEvents,
+    homeShellStore: SharedHomeShellStore,
+    latestReadySessionState: State<StoredAuthSession?>,
+    membersAgentDetailRefreshKeyState: MutableState<Int>,
+) {
+    var activeAppShellCanonicalFinalSinks by activeAppShellCanonicalFinalSinksState
+    val latestReadySession by latestReadySessionState
+    var membersAgentDetailRefreshKey by membersAgentDetailRefreshKeyState
+    val agentProfileRefreshCoalescer = remember(appShellCoroutineScope, appShellServerMembersStore) {
+        AgentProfileRefreshCoalescer(appShellCoroutineScope) { serverId ->
+            appShellServerMembersStore.refreshAgents(
+                serverId = build.raft.app.model.ServerId(serverId),
+                reason = "realtime_${build.raft.app.data.realtime.RealtimeSocketEvents.AgentUpdated}"
+            )
+        }
+    }
+    DisposableEffect(
+        appShellRealtimeDomainEventOwner,
+        homeShellStore,
+        bridge,
+    ) {
+        val sinks =
+            RealtimeGuardedDomainEventSinks(
+                applyHomeShell = { serverId, event ->
+                    homeShellStore.acceptRealtimeEvent(serverId, event)
+                },
+                applyHomeUnreadProjection = { serverId, event ->
+                    homeShellStore.acceptBackgroundServerUnreadEvent(serverId, event)
+                },
+                applyServerMembersRefresh = { serverId, event ->
+                    if (event.scope == build.raft.app.model.RealtimeRefreshScope.Agents && event.reason == "agent:deleted") {
+                        val agentId = event.subjectId?.takeIf { it.isNotBlank() }
+                            ?: event.memberId?.value?.takeIf { it.isNotBlank() }
+                        if (agentId != null) {
+                            appShellServerMembersStore.markAgentDeleted(
+                                serverId = build.raft.app.model.ServerId(serverId),
+                                agentId = build.raft.app.model.MemberId(agentId)
+                            )
+                        }
+                    }
+                    // Server-membership/profile mutations must invalidate the in-session
+                    // roster cache; otherwise updated fields (e.g. avatarUrl) stay stale
+                    // until process restart. Agents/Machines scopes already refresh through
+                    // their own projections, so only ServerMembers pays for a roster refetch —
+                    // except agent:updated (a profile edit, e.g. a new avatar), which re-reads
+                    // only the agents, as web re-reads /api/agents.
+                    if (event.isAgentProfileUpdate()) {
+                        agentProfileRefreshCoalescer.request(serverId)
+                        // An open agent Profile shows `GET /agents/:id`, not the roster: it re-reads too.
+                        event.updatedAgentIdOrNull()?.let { agentId ->
+                            sharedStores.agentUpdatedSignals.publish(serverId, agentId)
+                        }
+                    }
+                    if (
+                        event.scope == build.raft.app.model.RealtimeRefreshScope.ServerMembers &&
+                        (
+                            event.reason == build.raft.app.data.realtime.RealtimeSocketEvents.ServerMemberLeft ||
+                                event.reason == build.raft.app.data.realtime.RealtimeSocketEvents.ServerMemberRemoved
+                            )
+                    ) {
+                        // Data-layer plan step 3 (Tenny rule 2): a member who left / was removed
+                        // leaves the cached roster (memory + durable) at once, before the refetch.
+                        event.memberId?.value?.takeIf { it.isNotBlank() }?.let { memberId ->
+                            appShellServerMembersStore.removeMember(
+                                serverId = build.raft.app.model.ServerId(serverId),
+                                memberId = build.raft.app.model.MemberId(memberId)
+                            )
+                        }
+                    }
+                    if (event.scope == build.raft.app.model.RealtimeRefreshScope.ServerMembers) {
+                        appShellCoroutineScope.launch {
+                            appShellServerMembersStore.refreshMembers(
+                                serverId = build.raft.app.model.ServerId(serverId),
+                                priority = DataRequestPriority.Background,
+                                reason = "realtime_${event.reason}"
+                            )
+                        }
+                    }
+                },
+                applyAgentActivity = { event ->
+                    // task #136: members-store applyPresence moved to the
+                    // provider-installed presence sink (store lifetime, SSOT);
+                    // only the page-scoped agent-detail dispatch stays here.
+                    appShellAgentDetailStore.dispatch(
+                        SharedAgentDetailIntent.ApplyAgentActivityUpdate(event)
+                    )
+                },
+                requestMemberDetailRefresh = {
+                    membersAgentDetailRefreshKey += 1
+                },
+                joinChannel = { channelId ->
+                    realtimeEvents.joinChannel(channelId, latestReadySession?.currentServerId)
+                },
+                emitRouteMarker = { event ->
+                    if (event.shouldEmitAppShellRouteMarker()) {
+                        bridge.performanceMarker(
+                            phase = event.performanceMarkerPhase(),
+                            routeName = "kuikly_home",
+                            event = "instant",
+                            metadata =
+                                mapOf(
+                                    "type" to event.performanceMarkerName(),
+                                    "activeThread" to "false"
+                                )
+                        )
+                    }
+                },
+                log = raftLogger("SlockRealtimeDomain")
+            )
+        activeAppShellCanonicalFinalSinks = sinks
+        appShellRealtimeDomainEventOwner.registerGuardedSinks(sinks)
+        onDispose {
+            if (activeAppShellCanonicalFinalSinks === sinks) {
+                activeAppShellCanonicalFinalSinks = null
+            }
+            appShellRealtimeDomainEventOwner.unregisterGuardedSinks(sinks)
+        }
+    }
+
+    DisposableEffect(hostNetworkEvents, networkBannerGate) {
+        val callbackRef =
+            hostNetworkEvents.addListener { signal ->
+                appShellCoroutineScope.launch {
+                    networkBannerGate.onHostStatus(
+                        if (signal.online) {
+                            RaftAppShellNetworkStatus.Online
+                        } else {
+                            RaftAppShellNetworkStatus.Offline
+                        }
+                    )
+                }
+            }
+        onDispose { hostNetworkEvents.removeListener(callbackRef) }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellAuthSessionEffects(
+    sharedStores: RaftSharedStoreProvider,
+    pager: Pager,
+    bridge: build.raft.app.base.BridgeModule,
+    authStore: build.raft.app.data.KeyValueAuthSessionStore,
+    shellAuthStore: build.raft.app.data.RaftAuthSessionStore,
+    authSessionTerminalSource: RaftAuthSessionTerminalSource?,
+    appShellCoroutineScope: kotlinx.coroutines.CoroutineScope,
+    authSessionEvents: RaftAuthSessionEvents,
+    authGateViewModel: SharedAuthGateViewModel,
+    authGateMessageState: MutableState<AuthGateMessage?>,
+    authSessionResetGenerationState: MutableState<Int>,
+) {
+    var authGateMessage by authGateMessageState
+    var authSessionResetGeneration by authSessionResetGenerationState
+    DisposableEffect(authSessionEvents, authStore) {
+        val callbackRef =
+            authSessionEvents.addSessionClearedListener { signal ->
+                if (authSessionEvents.isLocalSource(signal)) {
+                    return@addSessionClearedListener
+                }
+                raftLogInfo(
+                    "SlockSharedAuth",
+                    "shared_auth_session auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}",
+                    RaftPlatformLogHint.AuthCritical
+                )
+                appShellCoroutineScope.launch {
+                    runCatchingPreservingCancellation {
+                        authStore.clearSessionFromSessionClearedNotify(
+                            reason = signal.reason,
+                            previousSessionFingerprint = signal.previousSessionFingerprint
+                        )
+                    }.onSuccess { applied ->
+                        raftLogInfo(
+                            "SlockSharedAuth",
+                            "shared_auth_session auth_session_clear_notify_result result=success applied=$applied " +
+                                "source=${signal.source} reason=${signal.reason}",
+                            RaftPlatformLogHint.AuthCritical
+                        )
+                    }.onFailure { throwable ->
+                        raftLogWarn(
+                            "SlockSharedAuth",
+                            "shared_auth_session auth_session_clear_notify_result result=failure source=${signal.source} " +
+                                "reason=${signal.reason} error=${throwable.message.orEmpty()}",
+                            RaftPlatformLogHint.AuthCritical
+                        )
+                    }
+                }
+            }
+        onDispose {
+            authSessionEvents.removeSessionClearedListener(callbackRef)
+        }
+    }
+    LaunchedEffect(sharedStores.authLossFunnel, authStore, authSessionTerminalSource, pager.pagerId) {
+        var acceptedTerminalGeneration: Long? = null
+        val sessionInvalidationEffects =
+            authSessionTerminalSource
+                ?.authSessionTerminalEvents
+                ?.mapNotNull { event ->
+                    (event as? AuthSessionEvent.Cleared)?.let {
+                        AppShellOrderedAuthEffect.SessionInvalidated(it.generation)
+                    }
+                }
+                ?: authStore.sessionInvalidations.map {
+                    AppShellOrderedAuthEffect.SessionInvalidated(generation = null)
+                }
+        merge(
+            sharedStores.authLossFunnel.resolutions.map { AppShellOrderedAuthEffect.AuthLoss(it) },
+            authStore.sessionChanges.map { AppShellOrderedAuthEffect.SessionChanged(it) },
+            sessionInvalidationEffects,
+        ).collect { effect ->
+            when (effect) {
+                is AppShellOrderedAuthEffect.AuthLoss -> {
+                    val resolution = effect.resolution
+                    if (!sharedStores.isActiveAppShellPager(pager.pagerId)) {
+                        bridge.logWarn(
+                            "app_shell_auth_loss_effect_skip reason=inactive_pager " +
+                                "source=${resolution.signal.source} pagerId=${pager.pagerId}"
+                        )
+                        return@collect
+                    }
+                    when (val decision = resolution.decision) {
+                        is AuthLossDecision.SessionPreserved ->
+                            bridge.logWarn(
+                                "app_shell_auth_loss_effect decision=session_preserved " +
+                                    "reason=${decision.reason} source=${resolution.signal.source}"
+                            )
+                        is AuthLossDecision.AuthRequired -> {
+                            val terminalSnapshot =
+                                authSessionTerminalSource?.let { source ->
+                                    runCatchingPreservingCancellation {
+                                        source.readAuthSessionTerminalSnapshot()
+                                    }.getOrNull()
+                                }
+                            if (authSessionTerminalSource != null && terminalSnapshot == null) {
+                                sharedStores.authLossFunnel.discardPendingOpenRequest(resolution)
+                                bridge.logWarn(
+                                    "app_shell_auth_loss_effect_skip reason=terminal_snapshot_unavailable " +
+                                        "source=${resolution.signal.source}"
+                                )
+                                return@collect
+                            }
+                            val currentSession =
+                                terminalSnapshot?.session
+                                    ?: if (authSessionTerminalSource == null) {
+                                        runCatchingPreservingCancellation {
+                                            shellAuthStore.readSession()
+                                        }.getOrNull()
+                                    } else {
+                                        null
+                                    }
+                            if (
+                                !appShellAuthLossEffectShouldApply(
+                                    resolution.signal.capturedSession,
+                                    currentSession,
+                                )
+                            ) {
+                                sharedStores.authLossFunnel.discardPendingOpenRequest(resolution)
+                                bridge.logWarn(
+                                    "app_shell_auth_loss_effect_skip reason=auth_authority_changed " +
+                                        "source=${resolution.signal.source}"
+                                )
+                                return@collect
+                            }
+                            val authDecision =
+                                appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.AuthRequired)
+                            val applyEffect = {
+                                authGateMessage =
+                                    AuthGateMessage.Static(Res.string.auth_error_session_expired.desc())
+                                if (authDecision.resetSessionState) authSessionResetGeneration += 1
+                                authGateViewModel.dispatch(authDecision.intent)
+                            }
+                            var appliedWithoutTerminalSource = false
+                            val committedTerminalGeneration =
+                                if (authSessionTerminalSource != null && terminalSnapshot != null) {
+                                    if (acceptedTerminalGeneration == terminalSnapshot.generation) {
+                                        terminalSnapshot.generation
+                                    } else {
+                                        appShellRunIfAuthSessionTerminalOrAuthorityRevision(
+                                            authSessionTerminalSource,
+                                            terminalSnapshot.generation,
+                                            resolution.signal.capturedSession,
+                                        ) {
+                                            applyEffect()
+                                        }
+                                    }
+                                } else {
+                                    applyEffect()
+                                    appliedWithoutTerminalSource = true
+                                    null
+                                }
+                            val applied =
+                                appliedWithoutTerminalSource || committedTerminalGeneration != null
+                            if (!applied) {
+                                sharedStores.authLossFunnel.discardPendingOpenRequest(resolution)
+                                bridge.logWarn(
+                                    "app_shell_auth_loss_effect_skip reason=terminal_revision_changed " +
+                                        "source=${resolution.signal.source}"
+                                )
+                                return@collect
+                            }
+                            committedTerminalGeneration?.let { generation ->
+                                acceptedTerminalGeneration = generation
+                            }
+                            sharedStores.authLossFunnel.activatePendingOpenRequest(resolution)
+                            bridge.logWarn(
+                                "app_shell_auth_loss_effect decision=auth_required " +
+                                    "reason=${decision.reason} source=${resolution.signal.source}"
+                            )
+                        }
+                    }
+                }
+                is AppShellOrderedAuthEffect.SessionChanged -> {
+                    val cachedSession =
+                        runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()
+                    if (cachedSession == null) {
+                        ProcessAttachmentAuthScopes.retireAccount()
+                        bridge.attachmentDownloadOwnerChanged(null)
+                    }
+                    val currentSession =
+                        (authGateViewModel.state.value as? SharedAuthGateState.Ready)?.session
+                    val identityChanged = appShellSessionIdentityChanged(cachedSession, currentSession)
+                    val authDecision =
+                        appShellBootstrapAuthDecision(
+                            AppShellBootstrapAuthSignal.SessionChanged,
+                            identityChanged = identityChanged
+                        )
+                    bridge.log(
+                        "app_shell_session_change_received fingerprint=${effect.fingerprint} " +
+                            "hasSession=${cachedSession != null} identityChanged=$identityChanged"
+                    )
+                    authGateMessage = null
+                    if (identityChanged) {
+                        bridge.realtimeDisconnect("auth_changed")
+                    }
+                    if (authDecision.resetSessionState) authSessionResetGeneration += 1
+                    authGateViewModel.dispatch(authDecision.intent)
+                }
+                is AppShellOrderedAuthEffect.SessionInvalidated -> {
+                    val authDecision =
+                        appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.SessionInvalidated)
+                    val applyEffect = {
+                        bridge.realtimeDisconnect("auth_invalid")
+                        if (authDecision.resetSessionState) authSessionResetGeneration += 1
+                        authGateViewModel.dispatch(authDecision.intent)
+                    }
+                    val applied =
+                        if (effect.generation != null && authSessionTerminalSource != null) {
+                            if (acceptedTerminalGeneration == effect.generation) {
+                                true
+                            } else {
+                                appShellRunIfAuthSessionTerminalRevision(
+                                    authSessionTerminalSource,
+                                    effect.generation,
+                                ) {
+                                    applyEffect()
+                                    acceptedTerminalGeneration = effect.generation
+                                }
+                            }
+                        } else {
+                            val currentSession =
+                                runCatchingPreservingCancellation {
+                                    shellAuthStore.readSession()
+                                }.getOrNull()
+                            if (currentSession == null) {
+                                applyEffect()
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    if (!applied) {
+                        bridge.logWarn(
+                            "app_shell_session_invalidation_skip reason=terminal_revision_changed"
+                        )
+                    }
+                }
+            }
+        }
+    }
+    LaunchedEffect(authStore) {
+        authStore.authSessionEvents.collect { event ->
+            if (appShellAuthSessionEventRestoreIntent(event) == null) return@collect
+            val authDecision =
+                appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.BindingMetadataChanged)
+            bridge.log(
+                "app_shell_auth_session_event_received type=binding_metadata_changed " +
+                    "generation=${event.generation} action=refresh_silently"
+            )
+            authGateMessage = null
+            authGateViewModel.dispatch(authDecision.intent)
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellAppearanceEffects(
+    sharedStores: RaftSharedStoreProvider,
+    pager: Pager,
+    bridge: build.raft.app.base.BridgeModule,
+    storeScope: RaftShellStoreScope,
+    visibleAppearanceGeneration: Int,
+) {
+    LaunchedEffect(pager.pagerId, visibleAppearanceGeneration) {
+        if (visibleAppearanceGeneration > 0) {
+            sharedStores.markActiveAppShellPager(pager.pagerId)
+        }
+    }
+    // The app wears this shell's selected server theme from its first composition, and again
+    // whenever it appears (another window's shell may have taken over meanwhile).
+    LaunchedEffect(sharedStores, storeScope, visibleAppearanceGeneration) {
+        sharedStores.followServerTheme(storeScope)
+    }
+    // The account is scheduled for deletion (a 403 `account_deletion_pending` on any request): open
+    // the web deletion page, which shows the pending state and its Cancel. Once per session; the
+    // signal hands each request to one shell only.
+    LaunchedEffect(bridge, storeScope) {
+        build.raft.app.data.RaftAccountDeletionPendingSignal.Process.openRequests.collect {
+            bridge.logWarn("account_deletion_pending_open_page shell=${storeScope.shellInstanceId}")
+            pager.openSettingsAccountDeletionPage(storeScope)
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellForegroundBannerEffects(
+    pager: Pager,
+    suppressRestoreLanding: Boolean,
+    selectedTabState: MutableState<String>,
+    childTabShellId: String,
+    bridge: build.raft.app.base.BridgeModule,
+    appShellServerMembersStore: SharedServerMembersStore,
+    authGateStateState: MutableState<SharedAuthGateState>,
+    foregroundMessageBannersEnabledState: MutableState<Boolean>,
+    readyServerId: String?,
+    authoritativeHomeStartAllowed: Boolean,
+) {
+    var selectedTab by selectedTabState
+    var authGateState by authGateStateState
+    var foregroundMessageBannersEnabled by foregroundMessageBannersEnabledState
+    LaunchedEffect(
+        appShellServerMembersStore,
+        readyServerId,
+        foregroundMessageBannersEnabled,
+        authoritativeHomeStartAllowed
+    ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
+        val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (!foregroundMessageBannersEnabled) return@LaunchedEffect
+        appShellServerMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
+    }
+    LaunchedEffect(authGateState, suppressRestoreLanding, selectedTab, readyServerId) {
+        bridge.log(
+            "app_shell_auth_gate_state state=${authGateState.authGateDiagnosticsName()} " +
+                "selectedServer=${!readyServerId.isNullOrBlank()} selectedTab=$selectedTab " +
+                "suppressRestoreLanding=$suppressRestoreLanding pagerId=${pager.pagerId} " +
+                "childShellId=$childTabShellId"
+        )
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellTabAndDesktopModeEffects(
+    desktopModeOnLargeScreenState: MutableState<Boolean>,
+    selectedTabState: MutableState<String>,
+    childTabSwitchEpochState: MutableState<Int>,
+    appShellTabHistoryState: MutableState<AppShellTabHistory>,
+    retainedAppShellTabsState: MutableState<Set<String>>,
+    railInlineSecondaryDestinationState: MutableState<String?>,
+    railActivityReachedState: MutableState<Boolean>,
+    bridge: build.raft.app.base.BridgeModule,
+    shellScope: RaftAppShellScope,
+    slackNavTabKeys: List<String>,
+) {
+    var desktopModeOnLargeScreen by desktopModeOnLargeScreenState
+    var selectedTab by selectedTabState
+    var childTabSwitchEpoch by childTabSwitchEpochState
+    var appShellTabHistory by appShellTabHistoryState
+    var retainedAppShellTabs by retainedAppShellTabsState
+    var railInlineSecondaryDestination by railInlineSecondaryDestinationState
+    var railActivityReached by railActivityReachedState
+    LaunchedEffect(
+        slackNavTabKeys,
+        selectedTab,
+        desktopModeOnLargeScreen,
+        shellScope.adaptivePane,
+        railInlineSecondaryDestination,
+    ) {
+        // task #13: while the wide rail is active, Activity is a first-class rail
+        // destination even under the legacy tab order — the clamp must not evict it.
+        // navRailActive is declared later in this composable, so inline the same
+        // predicate here (rail = flag && LeftRail pref && DualPane).
+        val railActive =
+            raftAdaptiveNavRailActive(
+                desktopModeEnabled = desktopModeOnLargeScreen,
+                paneState = shellScope.adaptivePane
+            )
+        if (
+            retainedAppShellSelectedTab(selectedTab) == "activity" &&
+            (railActive || railInlineSecondaryDestination != null)
+        ) {
+            railActivityReached = true
+        }
+        val allowedKeys =
+            appShellAllowedTabKeys(
+                tabKeys = slackNavTabKeys,
+                railActive = railActive,
+                railInlineSecondaryDestination = railInlineSecondaryDestination,
+                activityReachedThisSession = railActivityReached,
+            )
+        // While an inline secondary destination (Search) covers the middle pane, the
+        // underlying rail tab is the host the cover returns to — clamping it now would
+        // strand the exit path (e.g. Activity + Search -> Home after close).
+        if (railInlineSecondaryDestination != null) return@LaunchedEffect
+        if (retainedAppShellSelectedTab(selectedTab) !in allowedKeys) {
+            bridge.log(
+                "app_shell_slack_nav_tab_clamp selectedTab=$selectedTab keys=${slackNavTabKeys.joinToString(",")}"
+            )
+            childTabSwitchEpoch =
+                appShellNextChildTabSwitchEpoch(selectedTab, "home", childTabSwitchEpoch)
+            selectedTab = "home"
+            retainedAppShellTabs = retainedAppShellTabs + "home"
+        }
+        // Back never returns to a tab that is no longer available.
+        appShellTabHistory = appShellTabHistory.sanitized(allowedKeys)
+    }
+
+    // task #45: rail-only transient surfaces must not leak into the single-column
+    // mobile shell — an open inline rail destination (Search) or a visible More
+    // menu is display state, not user data. This is edge-triggered on the OFF
+    // transition only: while OFF the user may still open the More menu or push a
+    // destination, and those must not be wiped by a persistent predicate.
+    // Destinations, selections and drafts are untouched (the workspace stays
+    // parked for the OFF->ON round trip).
+    var desktopModeCleanupArmed by remember { mutableStateOf(desktopModeOnLargeScreen) }
+    LaunchedEffect(desktopModeOnLargeScreen) {
+        val (shouldCleanup, nextArmed) =
+            desktopModeOffCleanupDecision(desktopModeOnLargeScreen, desktopModeCleanupArmed)
+        desktopModeCleanupArmed = nextArmed
+        if (shouldCleanup) {
+            bridge.log(
+                "desktop_mode_off_cleanup edge inline=${railInlineSecondaryDestination.orEmpty()} " +
+                    "selectedTab=$selectedTab"
+            )
+            if (railInlineSecondaryDestination != null) {
+                railInlineSecondaryDestination = null
+            }
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellSignInEffects(
+    pageVisible: Boolean,
+    bridge: build.raft.app.base.BridgeModule,
+    storeScope: RaftShellStoreScope,
+    authDataSource: SharedAuthDataSource,
+    authGateStateState: MutableState<SharedAuthGateState>,
+    settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    homeShellStore: SharedHomeShellStore,
+    homeState: SharedHomeState,
+    readyServerId: String?,
+) {
+    var authGateState by authGateStateState
+    QaBootstrapShellEffects(
+        authGateState = authGateState,
+        homeContent = homeState.content,
+        authDataSource = authDataSource,
+        onRefreshHome = { homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh)) },
+    )
+    LaunchedEffect(storeScope.shellInstanceId, authGateState, readyServerId) {
+        when (val state = authGateState) {
+            is SharedAuthGateState.Ready -> {
+                val serverId = readyServerId
+                if (serverId.isNullOrBlank()) {
+                    ProcessAttachmentAuthScopes.retireShell(storeScope.shellInstanceId)
+                    bridge.attachmentDownloadScopeRetired(storeScope.shellInstanceId)
+                } else {
+                    val lease = ProcessAttachmentAuthScopes.bind(storeScope, state.session, serverId)
+                    bridge.attachmentDownloadOwnerChanged(lease)
+                    // Product analytics: events go to the server the signed-in shell shows.
+                    RaftProductEvents.setSignedIn(serverId, userId = state.session.user.id)
+                }
+            }
+            SharedAuthGateState.AuthRequired,
+            is SharedAuthGateState.EmailVerificationRequired,
+            is SharedAuthGateState.ProfileSetupRequired,
+            is SharedAuthGateState.ServerRequired,
+            is SharedAuthGateState.BootstrapRecoveryRequired -> {
+                ProcessAttachmentAuthScopes.retireShell(storeScope.shellInstanceId)
+                bridge.attachmentDownloadScopeRetired(storeScope.shellInstanceId)
+                // Nothing before sign-in (RFC-067 native apps): drop what was recorded so far.
+                RaftProductEvents.setSignedOut()
+            }
+            SharedAuthGateState.Restoring,
+            is SharedAuthGateState.Error -> Unit
+        }
+    }
+    // artin 10-27: ask once for the notification permission when the signed-in shell shows (Android 13+).
+    NotificationPermissionAfterSignInEffect(
+        active = pageVisible && authGateState is SharedAuthGateState.Ready && !readyServerId.isNullOrBlank(),
+        settingsCapabilities = settingsCapabilities,
+    )
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellAuthRestoreEffects(
+    initialAuthRestoreTick: Int,
+    shellAuthStore: build.raft.app.data.RaftAuthSessionStore,
+    authGateViewModel: SharedAuthGateViewModel,
+    authGateStateState: MutableState<SharedAuthGateState>,
+    cachedRestoreSessionState: MutableState<StoredAuthSession?>,
+) {
+    var authGateState by authGateStateState
+    var cachedRestoreSession by cachedRestoreSessionState
+    LaunchedEffect(shellAuthStore, authGateState) {
+        if (authGateState == SharedAuthGateState.Restoring) {
+            cachedRestoreSession =
+                runCatchingPreservingCancellation { shellAuthStore.readSession() }
+                    .getOrNull()
+                    ?.takeIf { it.isColdStartCachedReadyEligible() }
+        } else if (authGateState is SharedAuthGateState.AuthRequired) {
+            cachedRestoreSession = null
+        }
+    }
+    var consumedInitialAuthRestoreTick by remember { mutableStateOf(0) }
+    LaunchedEffect(initialAuthRestoreTick) {
+        if (
+            initialAuthRestoreTick > 0 &&
+            consumedInitialAuthRestoreTick != initialAuthRestoreTick
+        ) {
+            consumedInitialAuthRestoreTick = initialAuthRestoreTick
+            requestAppShellInitialAuthRestore(authGateViewModel::dispatch)
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellWindowNavigationEventEffects(
+    bridge: build.raft.app.base.BridgeModule,
+    storeScope: RaftShellStoreScope,
+    windowNavigationCoordinator: build.raft.app.data.SharedWindowNavigationCoordinator,
+    eventBus: build.raft.app.data.RaftEventBusRelay,
+    navigationIntake: RaftShellNavigationIntake,
+    pendingNotificationActivityServerIdState: MutableState<String?>,
+) {
+    var pendingNotificationActivityServerId by pendingNotificationActivityServerIdState
+    DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
+        val subscription =
+            eventBus.observe(build.raft.app.data.RaftDesktopShortcutContract.OpenEventName) { eventData ->
+                // task #483: a shell-targeted event applies only to that shell;
+                // absent/blank slockShellInstanceId broadcasts to every shell.
+                val targetShellId =
+                    eventData?.optString(RAFT_SHELL_INSTANCE_ID)?.trim().orEmpty()
+                if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
+                    return@observe
+                }
+                val intent = eventData?.toKuiklyJson().appShellDesktopShortcutEventNavigationIntent()
+                if (intent == null) {
+                    bridge.logWarn("window_navigation_drop source=app_shortcut reason=invalid_identity")
+                    return@observe
+                }
+                val enqueued = navigationIntake.enqueue(intent)
+                bridge.log(
+                    "window_navigation_received source=app_shortcut enqueued=$enqueued " +
+                        "targetServerId=${intent.serverId}"
+                )
+            }
+        eventBus.post(
+            eventName = build.raft.app.data.RaftDesktopShortcutContract.OpenReadyEventName,
+            eventData = JSONObject(),
+            source = "app_shell_desktop_shortcut_navigation_ready"
+        )
+        onDispose {
+            eventBus.post(
+                eventName = build.raft.app.data.RaftDesktopShortcutContract.OpenNotReadyEventName,
+                eventData = JSONObject(),
+                source = "app_shell_desktop_shortcut_navigation_not_ready"
+            )
+            subscription.close()
+        }
+    }
+    DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
+        val subscription =
+            eventBus.observe(RaftSystemNotificationContract.OpenEventName) { eventData ->
+                // task #483: a shell-targeted event applies only to that shell;
+                // absent/blank slockShellInstanceId broadcasts to every shell.
+                val targetShellId =
+                    eventData?.optString(RAFT_SHELL_INSTANCE_ID)?.trim().orEmpty()
+                if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
+                    return@observe
+                }
+                val activityServerId = eventData?.toKuiklyJson()?.appShellNotificationActivityServerId()
+                if (activityServerId != null) {
+                    bridge.log("notification_open_activity source=system_notification targetServerId=$activityServerId")
+                    pendingNotificationActivityServerId = activityServerId
+                    return@observe
+                }
+                val intent = eventData?.toKuiklyJson().appShellSystemNotificationNavigationIntent()
+                if (intent == null) {
+                    bridge.logWarn("window_navigation_drop source=system_notification reason=invalid_identity")
+                    return@observe
+                }
+                val enqueued = navigationIntake.enqueue(intent)
+                bridge.log(
+                    "window_navigation_received source=system_notification enqueued=$enqueued " +
+                        "targetServerId=${intent.serverId}"
+                )
+            }
+        eventBus.post(
+            eventName = RaftSystemNotificationContract.OpenReadyEventName,
+            eventData = JSONObject(),
+            source = "app_shell_notification_navigation_ready"
+        )
+        onDispose {
+            eventBus.post(
+                eventName = RaftSystemNotificationContract.OpenNotReadyEventName,
+                eventData = JSONObject(),
+                source = "app_shell_notification_navigation_not_ready"
+            )
+            subscription.close()
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellAdaptiveColumnEffects(
+    adaptivePane: RaftAdaptivePaneState,
+    desktopModeOnLargeScreenState: MutableState<Boolean>,
+    selectedTabState: MutableState<String>,
+    bridge: build.raft.app.base.BridgeModule,
+    adaptiveWorkspaceStore: build.raft.app.data.SharedAdaptiveWorkspaceStore,
+    adaptiveWorkspaceSessionState: State<SharedAdaptiveWorkspaceSession>,
+    adaptiveWorkspaceState: RaftAdaptiveWorkspaceState?,
+    tasksDetailColumnActiveState: MutableState<Boolean>,
+    tasksDetailColumnExpandedState: MutableState<Boolean>,
+    listPaneResizeDefersFold: Boolean,
+) {
+    var desktopModeOnLargeScreen by desktopModeOnLargeScreenState
+    var selectedTab by selectedTabState
+    val adaptiveWorkspaceSession by adaptiveWorkspaceSessionState
+    var tasksDetailColumnActive by tasksDetailColumnActiveState
+    var tasksDetailColumnExpanded by tasksDetailColumnExpandedState
+    val sideThreadNeedsFold =
+        !listPaneResizeDefersFold &&
+            adaptiveWorkspaceSession.visibleSideThread() != null &&
+            !adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen)
+    LaunchedEffect(sideThreadNeedsFold) {
+        if (!sideThreadNeedsFold) return@LaunchedEffect
+        adaptiveWorkspaceStore.update { current ->
+            if (current.visibleSideThread() != null && !current.sideThreadColumnAvailable(desktopModeOnLargeScreen)) {
+                bridge.log("adaptive_side_thread_fold width=${current.detailPaneWidthDp} planFolds=${current.sideThreadFolds}")
+                current.foldSideThreadIntoDetail()
+            } else current
+        }
+    }
+    val tasksDetailColumnKeepsOwnership =
+        appShellTasksDetailColumnStaysActive(
+            desktopModeOnLargeScreen = desktopModeOnLargeScreen,
+            dualPane = adaptivePane.layout == RaftAdaptivePaneLayout.DualPane,
+            selectedTab = selectedTab,
+            selectionPresent = adaptiveWorkspaceState?.selection != null,
+        )
+    LaunchedEffect(tasksDetailColumnKeepsOwnership) {
+        if (!tasksDetailColumnKeepsOwnership && tasksDetailColumnActive) {
+            bridge.log("tasks_detail_column_release reason=surface_or_selection_changed")
+            tasksDetailColumnActive = false
+            tasksDetailColumnExpanded = false
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellComputerAttentionEffects(
+    computerAttentionUserId: String?,
+    computerAttentionServerId: String?,
+    currentComputerAttention: Set<String>,
+    computerAttentionSeenState: MutableState<Set<String>>,
+    writeComputerAttentionSeen: (Set<String>) -> Unit,
+) {
+    var computerAttentionSeen by computerAttentionSeenState
+    val previousComputerAttention = remember(computerAttentionUserId, computerAttentionServerId) {
+        mutableStateOf<Set<String>?>(null)
+    }
+    LaunchedEffect(currentComputerAttention, computerAttentionUserId, computerAttentionServerId) {
+        writeComputerAttentionSeen(
+            build.raft.app.data.raftComputerAttentionObserve(
+                seen = computerAttentionSeen,
+                previous = previousComputerAttention.value,
+                current = currentComputerAttention,
+            )
+        )
+        previousComputerAttention.value = currentComputerAttention
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellChatLayoutEffect(
+    windowNavigationCoordinator: build.raft.app.data.SharedWindowNavigationCoordinator,
+    myMessageAlignmentState: MutableState<MyMessageAlignmentPreference>,
+    notificationWindowNavigationIntent: WindowNavigationIntent?,
+    desktopShortcutWindowNavigationIntent: WindowNavigationIntent?,
+    navigationIntake: RaftShellNavigationIntake,
+    homeState: SharedHomeState,
+    readySession: StoredAuthSession?,
+    authoritativeHomeStartAllowed: Boolean,
+    appShellConversationDirectory: SharedConversationDirectoryState,
+    threadTimeContext: RaftTimeContext?,
+) {
+    var myMessageAlignment by myMessageAlignmentState
+    LaunchedEffect(
+        notificationWindowNavigationIntent?.key,
+        desktopShortcutWindowNavigationIntent?.key,
+        readySession?.currentServerId,
+        readySession?.servers,
+        homeState.content,
+        appShellConversationDirectory,
+        threadTimeContext,
+        myMessageAlignment,
+        authoritativeHomeStartAllowed
+    ) {
+        if (authoritativeHomeStartAllowed) {
+            notificationWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
+            desktopShortcutWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
+        }
+        navigationIntake.wake()
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellTaskDraftsAndBannerEffects(
+    sharedStores: RaftSharedStoreProvider,
+    pager: Pager,
+    selectedTabState: MutableState<String>,
+    selectedServerStore: build.raft.app.data.SelectedServerStore,
+    authGateStateState: MutableState<SharedAuthGateState>,
+    selectedHomeDestination: String?,
+    readySession: StoredAuthSession?,
+    latestSelectedTabState: State<String>,
+    latestSelectedHomeDestinationState: State<String?>,
+    latestAppShellConversationDirectoryState: State<SharedConversationDirectoryState>,
+    latestSelectedHomeConversationIdState: State<String?>,
+    foregroundBannerStore: SharedForegroundBannerStore,
+) {
+    var selectedTab by selectedTabState
+    var authGateState by authGateStateState
+    val latestSelectedTab by latestSelectedTabState
+    val latestSelectedHomeDestination by latestSelectedHomeDestinationState
+    val latestAppShellConversationDirectory by latestAppShellConversationDirectoryState
+    val latestSelectedHomeConversationId by latestSelectedHomeConversationIdState
+    TaskPendingDraftsFollowSessionEffect(foregroundBannerStore.taskPendingDrafts, authGateState, readySession)
+    // System notifications stay silent for the conversation on screen, same rule as the in-app banner.
+    DisposableEffect(sharedStores, pager.pagerId, foregroundBannerStore) {
+        val ownerId = "app-shell:${pager.pagerId}"
+        RaftVisibleConversationRegistry.register(ownerId) {
+            if (!sharedStores.isActiveAppShellPager(pager.pagerId)) return@register null
+            RaftVisibleConversationSnapshot(
+                currentServerId = selectedServerStore.selectedServerId.value,
+                visibleConversationKey =
+                    appShellVisibleForegroundConversationKey(
+                        selectedTab = latestSelectedTab,
+                        selectedHomeDestination = latestSelectedHomeDestination,
+                        selectedConversationId = latestSelectedHomeConversationId
+                    ),
+                visibleRouteIdentity = foregroundBannerStore.visibleRouteIdentity(),
+                conversationDirectory = latestAppShellConversationDirectory
+            )
+        }
+        onDispose { RaftVisibleConversationRegistry.unregister(ownerId) }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellReadyServerEffect(
+    sharedStores: RaftSharedStoreProvider,
+    conversationNotReadyMessage: String,
+    pager: Pager,
+    bridge: build.raft.app.base.BridgeModule,
+    authGateStateState: MutableState<SharedAuthGateState>,
+    myMessageAlignmentState: MutableState<MyMessageAlignmentPreference>,
+    compactConsecutiveMessagesState: MutableState<Boolean>,
+    readySession: StoredAuthSession?,
+    readyServerId: String?,
+    authoritativeHomeStartAllowed: Boolean,
+    navigationStoreScope: RaftShellStoreScope,
+    appShellConversationDirectory: SharedConversationDirectoryState,
+    threadTimeContext: RaftTimeContext?,
+) {
+    var authGateState by authGateStateState
+    var myMessageAlignment by myMessageAlignmentState
+    var compactConsecutiveMessages by compactConsecutiveMessagesState
+    LaunchedEffect(readyServerId, authGateState, authoritativeHomeStartAllowed) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
+        val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        when (
+            val request =
+                sharedStores.authLossFunnel.consumePendingOpenRequest(
+                    serverId = serverId,
+                    currentAccountPrincipalId = readySession?.user?.id.orEmpty(),
+                )
+        ) {
+            is AuthPendingOpenRequest.Thread -> {
+                bridge.log(
+                    "app_shell_auth_pending_open_consume type=thread serverId=$serverId " +
+                        "threadId=${request.sourceThreadId.orEmpty()} parentMessageId=${request.parentMessageId.orEmpty()}"
+                )
+                val resolution =
+                    resolveOpenRequest(
+                        serverId = serverId,
+                        sourceMessageIdentity = request.toConversationOpenSourceMessageIdentity(),
+                        conversationDirectory = appShellConversationDirectory,
+                        diagnosticsLogger = bridge::log
+                    )
+                val openRequest = (resolution as? ConversationOpenResolution.Resolved)?.request
+                val launchPayload =
+                    openRequest?.let {
+                        buildStandaloneConversationThreadLaunchPayload(
+                            conversation = it.conversationIdentity,
+                            timeContext = threadTimeContext,
+                            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                            compactConsecutiveMessages = compactConsecutiveMessages,
+                                            anchorMessageId = it.anchorMessageId,
+                            originFallback = it.originFallback,
+                            onWarn = bridge::logWarn
+                        )
+                    }
+                if (launchPayload == null) {
+                    bridge.logWarn("app_shell_auth_pending_open_rejected reason=identity_unresolved serverId=$serverId")
+                    bridge.toast(conversationNotReadyMessage)
+                } else {
+                    pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
+                }
+            }
+            null -> Unit
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellRailHelpEffects(
+    serverMenuState: build.raft.designsystem.components.RaftMobileNavServerPopoverState,
+    navRailActive: Boolean,
+    railHelpOpenState: MutableState<Boolean>,
+) {
+    var railHelpOpen by railHelpOpenState
+    LaunchedEffect(navRailActive) { railHelpOpen = false }
+    LaunchedEffect(serverMenuState.open) { if (serverMenuState.open) railHelpOpen = false }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellHomeStoreEffects(
+    bridge: build.raft.app.base.BridgeModule,
+    conversationRepository: RealConversationRepository,
+    homeStore: build.raft.app.data.SharedHomeStore,
+) {
+    val dmPreviewPrefetchCoordinator =
+        remember(conversationRepository, homeStore) {
+            SharedDirectMessagePreviewPrefetchCoordinator(
+                conversationRepository = conversationRepository,
+                dispatchHome = { intent -> homeStore.dispatch(intent) },
+                diagnostics = raftLogger("SlockDmPreviewPrefetch", "dm_preview_prefetch", RaftLogLevel.Debug),
+            )
+        }
+    // botiverse/slock #11792: the sidebar's Mark as Unread found nothing to mark; say why.
+    val markUnreadNothingMessage by rememberUpdatedState(stringResource(Res.string.home_action_mark_unread_nothing))
+    LaunchedEffect(homeStore) {
+        homeStore.readToggleNotices.collect { notice ->
+            when (notice) {
+                RaftReadToggleNotice.MarkUnreadNothing -> bridge.toast(markUnreadNothingMessage)
+            }
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellTopBarEffects(
+    railHelpOpenState: MutableState<Boolean>,
+    railWithoutTopBar: Boolean,
+    appShellTopBar: RaftAppShellTopBarState,
+) {
+    var railHelpOpen by railHelpOpenState
+    SideEffect { appShellTopBar.drawn = !railWithoutTopBar }
+    LaunchedEffect(appShellTopBar.bellOpen.value) { if (appShellTopBar.bellOpen.value) railHelpOpen = false }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellRailInlineProductPageEffect(
+    pager: Pager,
+    railInlineSecondaryDestinationState: MutableState<String?>,
+) {
+    var railInlineSecondaryDestination by railInlineSecondaryDestinationState
+    val railInlineProductPageSlot = remember(pager.pagerId) { "${pager.pagerId}#rail-inline" }
+    val railInlineProductPageView = appShellRailInlineProductPageView(railInlineSecondaryDestination)
+    DisposableEffect(railInlineProductPageSlot, railInlineProductPageView) {
+        val pageViews = RaftProductEvents.pageViews
+        if (railInlineProductPageView != null) {
+            pageViews.onPageRoute(railInlineProductPageSlot, railInlineProductPageView)
+            pageViews.onPageShown(railInlineProductPageSlot)
+        }
+        onDispose { pageViews.onPageClosed(railInlineProductPageSlot) }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellHomeShellStoreEffects(
+    selectedTabState: MutableState<String>,
+    homeShellStore: SharedHomeShellStore,
+) {
+    var selectedTab by selectedTabState
+    DisposableEffect(homeShellStore) {
+        onDispose { homeShellStore.clear() }
+    }
+    LaunchedEffect(homeShellStore, selectedTab) {
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedTab(selectedTab))
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellAnnouncementEffects(
+    announcementStore: build.raft.app.data.SharedAnnouncementStore,
+) {
+    DisposableEffect(announcementStore) {
+        onDispose { announcementStore.close() }
+    }
+    LaunchedEffect(announcementStore) { announcementStore.refresh() }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellWideNavRestoreEffect(
+    bridge: build.raft.app.base.BridgeModule,
+    readyServerId: String?,
+    wideNavHistoriesState: MutableState<RaftWideNavHistories>,
+    latestWideNavShowingState: State<RaftWideNavEntry?>,
+    wideNavHistory: RaftWideNavHistory,
+) {
+    var wideNavHistories by wideNavHistoriesState
+    val latestWideNavShowing by latestWideNavShowingState
+    LaunchedEffect(readyServerId, wideNavHistory.pendingRestore) {
+        val serverId = readyServerId ?: return@LaunchedEffect
+        val pending = wideNavHistory.pendingRestore ?: return@LaunchedEffect
+        delay(RaftWideNavRestoreSettleMillis)
+        bridge.logWarn("wide_history_restore_settled surface=${pending.surface} detail=${pending.detail}")
+        wideNavHistories = wideNavHistories.settle(serverId, latestWideNavShowing)
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellHomePreviewEffect(
+    bridge: build.raft.app.base.BridgeModule,
+    homeStore: build.raft.app.data.SharedHomeStore,
+    homePreviewSession: StoredAuthSession?,
+    readyAuthPhase: SharedAuthReadyPhase?,
+    homePreviewServerId: String?,
+) {
+    LaunchedEffect(homeStore, homePreviewSession?.user?.id, homePreviewServerId, readyAuthPhase) {
+        val serverId = homePreviewServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (
+            readyAuthPhase == SharedAuthReadyPhase.CachedRestorePending ||
+            readyAuthPhase == SharedAuthReadyPhase.CachedRestoreCompleted
+        ) {
+            val hydrated = homeStore.hydrateCachedHome(ServerId(serverId))
+            bridge.log(
+                "app_shell_cached_home_hydrate serverId=$serverId hydrated=$hydrated " +
+                    "authPhase=${readyAuthPhase.name}"
+            )
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellAdaptiveSelectionEffect(
+    adaptiveWorkspaceState: RaftAdaptiveWorkspaceState?,
+    serverLastConversationRepository: ServerLastConversationRepository,
+    serverLastConversationOwnerKey: String?,
+) {
+    LaunchedEffect(adaptiveWorkspaceState?.selection?.identity, serverLastConversationOwnerKey) {
+        val identity = adaptiveWorkspaceState?.selection?.identity ?: return@LaunchedEffect
+        val conversation = identity.toServerLastConversation() ?: return@LaunchedEffect
+        serverLastConversationRepository.write(serverLastConversationOwnerKey, identity.serverId, conversation)
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellCanonicalFinalSinkEffect(
+    appShellRealtimeDomainEventOwner: build.raft.app.data.SharedRealtimeDomainEventOwner,
+    canonicalFinalLifecycleEffects: build.raft.app.data.RealtimeCanonicalFinalSinkLifecycleEffects?,
+    selectedServerIdState: State<String?>,
+    canonicalFinalSelectedServerId: String?,
+    canonicalFinalDomainSlot: Pair<String, String>?,
+    canonicalFinalUnreadSlots: List<Pair<String, String>>,
+    activeAppShellCanonicalFinalSinksState: MutableState<RealtimeGuardedDomainEventSinks?>,
+) {
+    val selectedServerId by selectedServerIdState
+    var activeAppShellCanonicalFinalSinks by activeAppShellCanonicalFinalSinksState
+    DisposableEffect(
+        appShellRealtimeDomainEventOwner,
+        canonicalFinalLifecycleEffects,
+        canonicalFinalDomainSlot,
+        canonicalFinalUnreadSlots,
+        canonicalFinalSelectedServerId,
+        selectedServerId,
+    ) {
+        val canonicalFinalDomainHandle =
+            canonicalFinalDomainSlot?.let { (scopeLeaseId, serverId) ->
+                canonicalFinalLifecycleEffects?.mount(
+                    scopeLeaseId = scopeLeaseId,
+                    serverId = serverId,
+                    surfaceKey = RealtimeCanonicalFinalSinkSurfaceKey.AppShellDomain,
+                ) { event ->
+                    val sinksSnapshot = activeAppShellCanonicalFinalSinks ?: throw IllegalStateException()
+                    appShellRealtimeDomainEventOwner.deliverGuardedAppShellDomainFinal(
+                        sinks = sinksSnapshot,
+                        serverId = serverId,
+                        event = event,
+                    )
+                }
+            }
+        val canonicalFinalUnreadHandles =
+            canonicalFinalUnreadSlots.mapNotNull { (scopeLeaseId, serverId) ->
+                canonicalFinalLifecycleEffects?.mount(
+                    scopeLeaseId = scopeLeaseId,
+                    serverId = serverId,
+                    surfaceKey = RealtimeCanonicalFinalSinkSurfaceKey.AppShellHomeUnread,
+                ) { event ->
+                    val sinksSnapshot = activeAppShellCanonicalFinalSinks ?: throw IllegalStateException()
+                    appShellRealtimeDomainEventOwner.deliverGuardedAppShellHomeUnreadFinal(
+                        sinks = sinksSnapshot,
+                        serverId = serverId,
+                        event = event,
+                    )
+                }
+            }
+        onDispose {
+            canonicalFinalUnreadHandles.forEach { handle ->
+                canonicalFinalLifecycleEffects?.dispose(handle)
+            }
+            canonicalFinalLifecycleEffects?.dispose(canonicalFinalDomainHandle)
+        }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellStackRootTabEffect(
+    selectedTabState: MutableState<String>,
+) {
+    var selectedTab by selectedTabState
+    val stackRootTab = build.raft.app.nav.LocalRaftStackRootTab.current
+    if (stackRootTab != null) SideEffect { stackRootTab.tab = selectedTab }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellWideNavShowingEffect(
+    wideNavHistoriesState: MutableState<RaftWideNavHistories>,
+    wideNavShowing: RaftWideNavEntry?,
+) {
+    var wideNavHistories by wideNavHistoriesState
+    LaunchedEffect(wideNavShowing) {
+        val entry = wideNavShowing ?: return@LaunchedEffect
+        wideNavHistories = wideNavHistories.record(entry)
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellServerMenuDismissEffect(
+    serverMenuState: build.raft.designsystem.components.RaftMobileNavServerPopoverState,
+    navRailActive: Boolean,
+    showAppShellBottomTabs: Boolean,
+) {
+    LaunchedEffect(showAppShellBottomTabs, navRailActive) { serverMenuState.dismiss() }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellSearchOverlayRailEffect(
+    navRailActive: Boolean,
+    searchOverlayOpenState: MutableState<Boolean>,
+) {
+    var searchOverlayOpen by searchOverlayOpenState
+    LaunchedEffect(navRailActive) { if (!navRailActive) searchOverlayOpen = false }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellHomeServerSwitchEffect(
+    pendingHomeServerSwitchIdState: MutableState<String?>,
+    observedHomeServerSwitchIdState: MutableState<String?>,
+    bridge: build.raft.app.base.BridgeModule,
+    homeState: SharedHomeState,
+    renderedHomeServerId: String?,
+) {
+    var pendingHomeServerSwitchId by pendingHomeServerSwitchIdState
+    var observedHomeServerSwitchId by observedHomeServerSwitchIdState
+    LaunchedEffect(renderedHomeServerId, pendingHomeServerSwitchId) {
+        val targetServerId = pendingHomeServerSwitchId ?: return@LaunchedEffect
+        if (renderedHomeServerId != targetServerId) return@LaunchedEffect
+        bridge.performanceMarker(
+            phase = "home_server_switch_state_observed",
+            routeName = "kuikly_home",
+            event = "instant",
+            metadata =
+                mapOf(
+                    "serverId" to targetServerId,
+                    "channels" to
+                        ((homeState.content as? SharedHomeContentState.Content)
+                            ?.snapshot
+                            ?.channels
+                            ?.size
+                            ?: 0).toString()
+                )
+        )
+        observedHomeServerSwitchId = targetServerId
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellMessageLinkWakeEffect(
+    navigationIntake: RaftShellNavigationIntake,
+    messageLinkSessionReady: Boolean,
+) {
+    LaunchedEffect(messageLinkSessionReady) { navigationIntake.wake() }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellJointInviteEffect(
+    appShellRealtimeDomainEventOwner: build.raft.app.data.SharedRealtimeDomainEventOwner,
+    jointInviteStore: build.raft.app.data.SharedJointInviteStore,
+) {
+    DisposableEffect(appShellRealtimeDomainEventOwner, jointInviteStore) {
+        val sink =
+            build.raft.app.data.RealtimeGuardedActiveThreadSink { eventServerId, event ->
+                if (event is build.raft.app.model.JointInvitesChanged && event.serverId.value == eventServerId) {
+                    jointInviteStore.dispatch(build.raft.app.data.SharedJointInviteIntent.Changed(eventServerId))
+                }
+            }
+        appShellRealtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
+        onDispose { appShellRealtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
+    }
+}
+
+// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+@Composable
+@NonRestartableComposable
+private fun AppShellContentStageEffect(
+    selectedTabState: MutableState<String>,
+    authGateStateState: MutableState<SharedAuthGateState>,
+    appShellContentStageState: MutableState<RaftWhiteScreenStage?>,
+    homeState: SharedHomeState,
+    cachedHomePreview: Boolean,
+) {
+    var selectedTab by selectedTabState
+    var authGateState by authGateStateState
+    var appShellContentStage by appShellContentStageState
+    SideEffect {
+        appShellContentStage =
+            appShellWhiteScreenStage(
+                restoring = authGateState == SharedAuthGateState.Restoring,
+                cachedHomePreview = cachedHomePreview,
+                selectedTab = selectedTab,
+                homeContentReady = homeState.content is SharedHomeContentState.Content,
+            )
     }
 }
 
