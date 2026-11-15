@@ -421,7 +421,7 @@ internal fun advanceSystemKillWatermark(
 }
 
 /**
- * A visible or review report deferred for budget, fully built when it was deferred (message and
+ * A captured report waiting to be sent, fully built when its exit was first read (message and
  * metadata with the evidence already resolved), so it is sent as classified even after the exit
  * left the system's exit list or its telemetry left the snapshot ring.
  */
@@ -469,7 +469,7 @@ internal data class QueuedSystemKillReport(
     }
 }
 
-/** At most this many deferred reports wait on the device ([SystemKillProgress.enqueue]). */
+/** At most this many captured reports wait on the device ([SystemKillProgress.enqueue]). */
 internal const val MaxQueuedSystemKillReports = 20
 
 /**
@@ -511,15 +511,17 @@ internal data class SystemKillProgress(
     }
 
     /**
-     * Adds [report]; over [cap] the oldest review report is evicted first, the oldest visible one
-     * only when no review report is left. Each eviction is counted (category visible / review).
+     * Adds [report]; over [cap] the oldest background report is evicted first, then the oldest
+     * review one, the oldest visible one only when neither is left. Each eviction is counted: a
+     * background one with the background drops, a visible / review one in its own category.
      */
     fun enqueue(report: QueuedSystemKillReport, cap: Int = MaxQueuedSystemKillReports): SystemKillProgress {
         var nextQueue = queue + report
         var nextLedger = ledger
         while (nextQueue.size > cap) {
             val victim =
-                nextQueue.filter { it.budget == SystemKillBudget.Review }.minByOrNull { it.key.timestampMillis }
+                nextQueue.filter { it.budget == SystemKillBudget.Background }.minByOrNull { it.key.timestampMillis }
+                    ?: nextQueue.filter { it.budget == SystemKillBudget.Review }.minByOrNull { it.key.timestampMillis }
                     ?: nextQueue.minBy { it.key.timestampMillis }
             nextQueue = nextQueue - victim
             nextLedger = nextLedger.record(victim.versionCode, victim.key.timestampMillis, category = victim.budget.label)
@@ -532,26 +534,32 @@ internal data class SystemKillProgress(
 internal interface SystemKillProgressStore {
     fun load(): SystemKillProgress
 
-    fun commit(progress: SystemKillProgress)
+    /** True only when [progress] is on disk (`SharedPreferences.Editor.commit`); false: not saved. */
+    fun commit(progress: SystemKillProgress): Boolean
 }
 
 /**
- * One launch: first the queued reports (visible, then review, oldest first) within budget, then
- * the new exits [readPlan] plans with what is left of each budget. Every step is one commit.
+ * One launch, in two phases, every step one commit:
  *
- * - An upload carries the never-sent counts ([BackgroundDropBatch.extras]): frozen under their id
- *   and committed before the upload, so a retry resends the same id and entries; only an accepted
- *   upload clears them.
- * - A retryable upload error stops the launch (that report is retried next launch); Hands
- *   rejecting a ticket for good ([isPermanentHandsRejection]) handles it.
- * - A new visible or review exit over budget is built now and queued ([SystemKillProgress.enqueue])
- *   in the same commit that marks it handled; a background one is counted.
+ * 1. Capture. The new exits [readPlan] returns are classified and each reportable one is built
+ *    ([buildReport]) and queued ([SystemKillProgress.enqueue], cap [queueCap]) in the same commit
+ *    that marks it handled. Visible and review reports are always captured; a background one only
+ *    while the background day budget (sent today plus already queued) has room, else it is dropped
+ *    and counted. Nothing here uploads, so a failing upload can never stop capture.
+ * 2. Send. The whole queue, old and new together, visible first, then review, then background,
+ *    oldest first in each, within each budget's per-launch and per-24-hours [limits]. A retryable
+ *    upload error stops sending for this launch and keeps everything queued; Hands rejecting a
+ *    ticket for good ([isPermanentHandsRejection]) removes it.
+ *
+ * Every upload carries the never-sent counts ([BackgroundDropBatch.extras]), frozen under their id
+ * and committed before the upload, so a retry resends the same id and entries; only an accepted
+ * upload clears them.
  */
 internal suspend fun runSystemKillReports(
     store: SystemKillProgressStore,
     nowMillis: Long,
     limits: Map<SystemKillBudget, SystemKillBudgetLimit>,
-    readPlan: (progress: SystemKillProgress, remaining: Map<SystemKillBudget, SystemKillBudgetLimit>) -> List<SystemKillPlanItem>,
+    readPlan: (progress: SystemKillProgress, capture: Map<SystemKillBudget, SystemKillBudgetLimit>) -> List<SystemKillPlanItem>,
     buildReport: (item: SystemKillPlanItem) -> Pair<String, Map<String, Any?>>,
     newBatchId: () -> String,
     submit: suspend (message: String, extras: Map<String, Any?>) -> String,
@@ -560,85 +568,103 @@ internal suspend fun runSystemKillReports(
     queueCap: Int = MaxQueuedSystemKillReports,
 ) {
     var progress = store.load()
+
+    // 1. Capture.
+    val background = limits.getValue(SystemKillBudget.Background)
+    val unlimited = SystemKillBudgetLimit(Int.MAX_VALUE, Int.MAX_VALUE)
+    val capture =
+        mapOf(
+            SystemKillBudget.Visible to unlimited,
+            SystemKillBudget.Review to unlimited,
+            SystemKillBudget.Background to
+                SystemKillBudgetLimit(
+                    perLaunch = Int.MAX_VALUE,
+                    perDay = background.perDay,
+                    // Already queued background reports count against today's background budget.
+                    recentReportMillis =
+                        progress.recent(SystemKillBudget.Background, nowMillis) +
+                            progress.queue.filter { it.budget == SystemKillBudget.Background }.map { nowMillis },
+                ),
+        )
+    val plan = readPlan(progress, capture)
+    for (item in plan) {
+        val queued =
+            if (item.action == SystemKillAction.Submit || item.action == SystemKillAction.Deferred) {
+                val (message, extras) = buildReport(item)
+                QueuedSystemKillReport(item.key, item.budget, systemKillExitVersionCode(item.exit, item.telemetry), message, extras)
+            } else {
+                null
+            }
+        val next = progress.afterHandled(item, plan, queued, queueCap)
+        // Not on disk: stop the launch; the next one starts again from what was saved.
+        if (!store.commit(next)) return
+        progress = next
+        log(item, queued, if (queued != null) "queued" else "none")
+    }
+
+    // 2. Send.
     val sentNow = SystemKillBudget.entries.associateWith { 0 }.toMutableMap()
     fun hasRoom(budget: SystemKillBudget): Boolean {
         val limit = limits.getValue(budget)
         return sentNow.getValue(budget) < limit.perLaunch && progress.recent(budget, nowMillis).size < limit.perDay
     }
-
-    /** Uploads; null on a retryable error (progress holds the frozen batch), else progress after it. */
-    suspend fun upload(timestampMillis: Long, message: String, extras: Map<String, Any?>): Pair<SystemKillProgress, String>? {
-        val (ledger, dropped) = progress.ledger.attach(newBatchId)
-        if (ledger != progress.ledger) {
-            progress = progress.copy(ledger = ledger)
-            store.commit(progress)
-        }
-        val result = runCatching { submit(message, extras + dropped?.extras().orEmpty()) }
-        val error = result.exceptionOrNull()
-        if (error != null && !isPermanentHandsRejection(error)) {
-            onRetryableFailure(timestampMillis, error)
-            return null
-        }
-        val after = progress.copy(ledger = if (result.isSuccess) ledger.uploaded(dropped?.id) else ledger)
-        return after to (result.getOrNull()?.take(8) ?: "rejected")
-    }
-
     for (queued in progress.queue.sortedWith(compareBy<QueuedSystemKillReport>({ it.budget.ordinal }, { it.key.timestampMillis }))) {
         if (!hasRoom(queued.budget)) continue
-        val (after, ticket) = upload(queued.key.timestampMillis, queued.message, queued.extras) ?: return
-        progress = after.copy(queue = after.queue - queued).withReport(queued.budget, nowMillis)
-        sentNow[queued.budget] = sentNow.getValue(queued.budget) + 1
-        store.commit(progress)
-        log(null, queued, ticket)
-    }
-
-    val remaining =
-        limits.mapValues { (budget, limit) ->
-            SystemKillBudgetLimit(
-                perLaunch = (limit.perLaunch - sentNow.getValue(budget)).coerceAtLeast(0),
-                perDay = limit.perDay,
-                recentReportMillis = progress.recent(budget, nowMillis),
-            )
+        val (ledger, dropped) = progress.ledger.attach(newBatchId)
+        if (ledger != progress.ledger) {
+            val frozen = progress.copy(ledger = ledger)
+            // The batch id must be on disk before it is sent, or a retry could send it under another.
+            if (!store.commit(frozen)) return
+            progress = frozen
         }
-    val plan = readPlan(progress, remaining)
-    for (item in systemKillProcessingOrder(plan)) {
-        when (item.action) {
-            SystemKillAction.Submit -> {
-                val (message, extras) = buildReport(item)
-                val (after, ticket) = upload(item.exit.timestampMillis, message, extras) ?: return
-                progress = after.afterHandled(item, plan).withReport(item.budget, nowMillis)
-                store.commit(progress)
-                log(item, null, ticket)
-            }
-            SystemKillAction.Deferred -> {
-                val (message, extras) = buildReport(item)
-                val queued =
-                    QueuedSystemKillReport(item.key, item.budget, systemKillExitVersionCode(item.exit, item.telemetry), message, extras)
-                progress = progress.afterHandled(item, plan, queued, queueCap)
-                store.commit(progress)
-                log(item, queued, "queued")
-            }
-            SystemKillAction.Skip, SystemKillAction.RateLimited -> {
-                progress = progress.afterHandled(item, plan)
-                store.commit(progress)
-                log(item, null, "none")
-            }
+        val result = runCatching { submit(queued.message, queued.extras + dropped?.extras().orEmpty()) }
+        val error = result.exceptionOrNull()
+        if (error != null && !isPermanentHandsRejection(error)) {
+            // Network, server, auth or configuration: everything stays queued, no budget is used.
+            onRetryableFailure(queued.key.timestampMillis, error)
+            return
         }
+        val next =
+            if (error == null) {
+                progress.copy(ledger = progress.ledger.uploaded(dropped?.id), queue = progress.queue - queued)
+                    .withReport(queued.budget, nowMillis)
+            } else {
+                // Rejected for good (malformed): given up, counted with its status, no budget used.
+                progress.copy(
+                    ledger =
+                        progress.ledger.record(
+                            queued.versionCode,
+                            queued.key.timestampMillis,
+                            category = BackgroundDropEntry.Rejected,
+                            httpStatus = (error as? HandsFeedbackException)?.code ?: 0,
+                        ),
+                    queue = progress.queue - queued,
+                )
+            }
+        if (!store.commit(next)) return
+        progress = next
+        if (error == null) sentNow[queued.budget] = sentNow.getValue(queued.budget) + 1
+        log(null, queued, result.getOrNull()?.take(8) ?: "rejected")
     }
 }
 
 /**
- * Reports of one exit build and UTC exit day that were never sent: [category] `background` (over
- * the background budget) or `visible` / `review` (evicted from a full pending queue).
+ * Reports of one exit build and UTC exit day that never reached Hands: [category] `background`
+ * (over the background budget, or evicted), `visible` / `review` (evicted from a full pending
+ * queue) or `rejected` (Hands rejected it for good, with its [httpStatus]).
  */
 internal data class BackgroundDropEntry(
     val versionCode: Long,
     val exitDayUtc: String,
     val count: Int,
     val category: String = BackgroundDropEntry.Background,
+    /** The HTTP status Hands answered, for [Rejected]; 0 otherwise. */
+    val httpStatus: Int = 0,
 ) {
     companion object {
         const val Background = "background"
+        /** A report Hands rejected for good ([isPermanentHandsRejection]). */
+        const val Rejected = "rejected"
     }
 }
 
@@ -647,8 +673,23 @@ internal data class BackgroundDropBatch(val id: String, val entries: List<Backgr
     /** `crash_background_dropped`: `[{version_code, exit_day_utc, count}]`, background budget drops only. */
     fun toJson(): JSONArray = json(entries.filter { it.category == BackgroundDropEntry.Background }, withCategory = false)
 
-    /** `crash_pending_evicted`: `[{version_code, exit_day_utc, category, count}]`, queue evictions only. */
-    fun evictedToJson(): JSONArray = json(entries.filter { it.category != BackgroundDropEntry.Background }, withCategory = true)
+    /** `crash_pending_evicted`: `[{version_code, exit_day_utc, category, count}]`, visible / review evictions only. */
+    fun evictedToJson(): JSONArray =
+        json(
+            entries.filter { it.category != BackgroundDropEntry.Background && it.category != BackgroundDropEntry.Rejected },
+            withCategory = true,
+        )
+
+    /** `crash_rejected`: `[{version_code, exit_day_utc, http_status, count}]`, permanent rejections only. */
+    fun rejectedToJson(): JSONArray =
+        JSONArray().apply {
+            entries.filter { it.category == BackgroundDropEntry.Rejected }.forEach {
+                put(
+                    JSONObject().put("version_code", it.versionCode).put("exit_day_utc", it.exitDayUtc)
+                        .put("http_status", it.httpStatus).put("count", it.count),
+                )
+            }
+        }
 
     /** The ticket fields for this batch (none when empty): both lists share [id]. */
     fun extras(): Map<String, Any?> {
@@ -656,10 +697,12 @@ internal data class BackgroundDropBatch(val id: String, val entries: List<Backgr
         if (entries.isEmpty()) return emptyMap()
         val dropped = toJson()
         val evicted = evictedToJson()
+        val rejected = rejectedToJson()
         return buildMap {
             put("crash_background_dropped_id", id)
             if (dropped.length() > 0) put("crash_background_dropped", dropped)
             if (evicted.length() > 0) put("crash_pending_evicted", evicted)
+            if (rejected.length() > 0) put("crash_rejected", rejected)
         }
     }
 
@@ -670,7 +713,10 @@ internal data class BackgroundDropBatch(val id: String, val entries: List<Backgr
         JSONArray().apply {
             list.forEach {
                 val entry = JSONObject().put("version_code", it.versionCode).put("exit_day_utc", it.exitDayUtc)
-                if (withCategory) entry.put("category", it.category)
+                if (withCategory) {
+                    entry.put("category", it.category)
+                    if (it.httpStatus != 0) entry.put("http_status", it.httpStatus)
+                }
                 put(entry.put("count", it.count))
             }
         }
@@ -693,18 +739,24 @@ internal data class BackgroundDropLedger(
         versionCode: Long,
         exitTimestampMillis: Long,
         category: String = BackgroundDropEntry.Background,
+        httpStatus: Int = 0,
     ): BackgroundDropLedger {
         val day = utcDay(exitTimestampMillis)
         val existing =
-            accumulating.firstOrNull { it.versionCode == versionCode && it.exitDayUtc == day && it.category == category }
+            accumulating.firstOrNull {
+                it.versionCode == versionCode && it.exitDayUtc == day && it.category == category && it.httpStatus == httpStatus
+            }
         val next =
             if (existing != null) {
                 accumulating.map { if (it === existing) it.copy(count = it.count + 1) else it }
             } else {
-                accumulating + BackgroundDropEntry(versionCode, day, 1, category)
+                accumulating + BackgroundDropEntry(versionCode, day, 1, category, httpStatus)
             }
         return copy(
-            accumulating = next.sortedWith(compareBy<BackgroundDropEntry>({ it.exitDayUtc }, { it.category }, { it.versionCode })).takeLast(MaxEntries),
+            accumulating =
+                next.sortedWith(
+                    compareBy<BackgroundDropEntry>({ it.exitDayUtc }, { it.category }, { it.httpStatus }, { it.versionCode }),
+                ).takeLast(MaxEntries),
         )
     }
 
@@ -748,6 +800,7 @@ internal data class BackgroundDropLedger(
                     entry.optString("exit_day_utc"),
                     entry.optInt("count"),
                     entry.optString("category", BackgroundDropEntry.Background),
+                    entry.optInt("http_status", 0),
                 )
             }
 
@@ -1075,7 +1128,7 @@ internal object AndroidSystemKillReporter {
                     },
             )
 
-        override fun commit(progress: SystemKillProgress) {
+        override fun commit(progress: SystemKillProgress): Boolean {
             val editor =
                 preferences.edit()
                     .putLong(WatermarkKey, progress.watermarkMillis)
@@ -1085,7 +1138,7 @@ internal object AndroidSystemKillReporter {
             recentKeys.forEach { (budget, key) ->
                 editor.putString(key, progress.recentReportMillis[budget].orEmpty().joinToString(","))
             }
-            editor.commit()
+            return editor.commit()
         }
     }
 
@@ -1134,8 +1187,18 @@ internal object AndroidSystemKillReporter {
         )
 }
 
-/** Hands answers 4xx other than timeout/rate limit for a ticket that will never be accepted. */
+/**
+ * HTTP statuses that are not the report's fault and may pass once fixed or later: 401 (Hands
+ * answers it for a wrong or missing client key), 403, 404 (Hands answers it for an unknown app
+ * slug), 408 (timeout) and 429 (rate limit).
+ */
+internal val RetryableHandsStatuses = setOf(401, 403, 404, 408, 429)
+
+/**
+ * A ticket Hands will never accept as sent (malformed: 400, 413, 422 and the other 4xx not in
+ * [RetryableHandsStatuses]). Everything else, network errors and 5xx included, is retried.
+ */
 internal fun isPermanentHandsRejection(error: Throwable): Boolean {
     val code = (error as? HandsFeedbackException)?.code ?: return false
-    return code in 400..499 && code != 408 && code != 429
+    return code in 400..499 && code !in RetryableHandsStatuses
 }

@@ -306,6 +306,14 @@ class AndroidSystemKillReportTest {
         assertFalse(isPermanentHandsRejection(build.hands.update.HandsFeedbackException(429, "slow down")))
         assertFalse(isPermanentHandsRejection(build.hands.update.HandsFeedbackException(503, "down")))
         assertFalse(isPermanentHandsRejection(java.io.IOException("offline")))
+        // Configuration and auth answers are retried: a wrong client key (401), forbidden (403),
+        // an unknown app slug (404). Only malformed requests are given up.
+        for (code in listOf(401, 403, 404, 408)) {
+            assertFalse("$code", isPermanentHandsRejection(build.hands.update.HandsFeedbackException(code, "config")))
+        }
+        for (code in listOf(400, 413, 422)) {
+            assertTrue("$code", isPermanentHandsRejection(build.hands.update.HandsFeedbackException(code, "malformed")))
+        }
     }
 
     private fun exit(
