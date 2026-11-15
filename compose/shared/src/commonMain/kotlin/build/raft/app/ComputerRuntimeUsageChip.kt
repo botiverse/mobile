@@ -400,7 +400,7 @@ internal class ComputerRuntimeUsageController(
     fun confirmLimitReset() {
         val dialog = limitResetDialog ?: return
         if (dialog.submitting) return
-        limitResetDialog = dialog.copy(submitting = true, error = null)
+        limitResetDialog = dialog.copy(submitting = true, error = null, traceId = null)
         scope.launch {
             val result = store.redeemLimitReset(key, dialog.idempotencyKey)
             log("computer_runtime_usage_limit_reset provider=${key.provider.wire} result=${result.diagnosticsLabel()}")
@@ -412,12 +412,12 @@ internal class ComputerRuntimeUsageController(
                 }
                 is RuntimeLimitResetLoad.Failed -> {
                     handleLimitResetOutcome(result = null, snapshot = null)
-                    limitResetDialog = dialog.copy(submitting = false, error = result.refusal.limitResetError())
+                    limitResetDialog = dialog.copy(submitting = false, error = result.refusal.limitResetError(), traceId = result.refusal.traceId)
                 }
                 is RuntimeLimitResetLoad.Done -> {
                     handleLimitResetOutcome(result.reply.result, result.reply.snapshot)
                     val error = result.reply.result.limitResetError()
-                    limitResetDialog = if (error == null) null else dialog.copy(submitting = false, error = error)
+                    limitResetDialog = if (error == null) null else dialog.copy(submitting = false, error = error, traceId = null)
                 }
             }
         }
@@ -493,7 +493,8 @@ internal class ComputerRuntimeUsageController(
                                 ComputerRuntimeClaudeLimitResetText.ReadTimeout(viewOnly = !canUse)
                             } else {
                                 result.refusal.claudeRequestError()
-                            }
+                            },
+                            traceId = result.refusal.traceId,
                         )
                     is RuntimeLimitResetsReadLoad.Done ->
                         when (val read = result.result) {
@@ -576,7 +577,7 @@ internal class ComputerRuntimeUsageController(
     fun confirmClaudeLimitReset() {
         val dialog = claudeLimitResetConfirm ?: return
         if (dialog.submitting) return
-        claudeLimitResetConfirm = dialog.copy(submitting = true, error = null)
+        claudeLimitResetConfirm = dialog.copy(submitting = true, error = null, traceId = null)
         scope.launch {
             val result = store.redeemLimitReset(key, dialog.idempotencyKey, dialog.kind)
             log("computer_runtime_usage_claude_limit_reset kind=${dialog.kind.wire} result=${result.diagnosticsLabel()}")
@@ -590,7 +591,7 @@ internal class ComputerRuntimeUsageController(
                 is RuntimeLimitResetLoad.Failed -> {
                     val error =
                         if (result.refusal.outcomeUnknown) ComputerRuntimeClaudeLimitResetText.Timeout else result.refusal.claudeRequestError()
-                    claudeLimitResetConfirm = dialog.copy(submitting = false, error = error)
+                    claudeLimitResetConfirm = dialog.copy(submitting = false, error = error, traceId = result.refusal.traceId)
                 }
                 is RuntimeLimitResetLoad.Done -> {
                     val answer = result.reply.result
@@ -604,7 +605,7 @@ internal class ComputerRuntimeUsageController(
                         claudeLimitResetsDialog = null
                     } else {
                         claudeLimitResetConfirm =
-                            dialog.copy(submitting = false, error = claudeLimitResetRefusal(dialog.kind, answer, dialog.atFiveHourLimit))
+                            dialog.copy(submitting = false, error = claudeLimitResetRefusal(dialog.kind, answer, dialog.atFiveHourLimit), traceId = null)
                     }
                     // Never assume the limits recovered: show the usage read right after it, or read again.
                     val snapshot = result.reply.snapshot
