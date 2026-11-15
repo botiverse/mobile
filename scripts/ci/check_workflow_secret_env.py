@@ -20,6 +20,9 @@ $GITHUB_ENV / $GITHUB_OUTPUT flags
 
 Scripts under scripts/ get rule 1 only (their write lines).
 
+It also checks scope: in workflows, secrets.QA_* may appear only in the step-level env: of the
+steps listed in QA_SECRET_STEPS (never job/workflow env:, with:, or a run: body).
+
 Usage: check_workflow_secret_env.py [--root DIR] | --self-test
 """
 from __future__ import annotations
@@ -134,11 +137,65 @@ def check_text(path: str, text: str, workflow: bool) -> list[str]:
     return errors
 
 
+# Scope: the QA account secrets (secrets.QA_*) may be read only in the env: of these steps.
+# Anything else that reads them (another step, a job- or workflow-level env:, a with:, a run:
+# body, a new workflow) fails until it is reviewed and listed here.
+QA_SECRET_STEPS = {
+    "release-auto-login.yml": {"Old CLI task", "Check the QA credentials are configured", "Sign in on the emulator"},
+    "android-realtime-e2e.yml": {"Preflight — QA account must not see the production server", "Run realtime e2e on the emulator"},
+    "android-update-e2e.yml": {"Preflight — QA account must not see the production server", "Run update e2e on the emulator"},
+    "qa-acceptance.yml": {"Preflight — QA account must not see the production server", "Freeze legacy credential identity receipt",
+                          "Seed media fixtures (image + workspace)", "Run acceptance agent"},
+    "qa-acceptance-ios.yml": {"Preflight — QA account must not see the production server", "Freeze legacy credential identity receipt",
+                              "Run acceptance agent", "Run deterministic repro", "Report to Stamp"},
+    "ios-simulator-app.yml": {"Sign in and screenshot home"},
+}
+QA_SECRET = re.compile(r"secrets\.QA_[A-Z0-9_]+")
+STEP_NAME = re.compile(r"^\s*(?:-\s+)?name\s*:\s*(.+?)\s*$")
+
+
+def indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def check_qa_secret_scope(path: str, text: str, allowed: dict[str, set[str]] = QA_SECRET_STEPS) -> list[str]:
+    lines = text.splitlines()
+    uses = [i for i, l in enumerate(lines) if QA_SECRET.search(strip_comment(l))]
+    if not uses:
+        return []
+    name = Path(path).name
+    if name not in allowed:
+        return [f"{path}: reads secrets.QA_* but is not listed in QA_SECRET_STEPS (review its scope, then list its steps)"]
+    errors = []
+    seen = set()
+    for i in uses:
+        # The parent key of this line must be `env:`, and that env: must belong to a step (`- ` item).
+        parent = next((j for j in range(i - 1, -1, -1) if lines[j].strip() and indent_of(lines[j]) < indent_of(lines[i])), None)
+        if parent is None or lines[parent].strip() != "env:":
+            errors.append(f"{path}:{i + 1}: secrets.QA_* outside a step env: entry")
+            continue
+        step = next((j for j in range(parent - 1, -1, -1) if lines[j].strip() and indent_of(lines[j]) < indent_of(lines[parent])), None)
+        if step is None or not lines[step].lstrip().startswith("- ") or indent_of(lines[step]) + 2 != indent_of(lines[parent]):
+            errors.append(f"{path}:{i + 1}: secrets.QA_* in a job- or workflow-level env: (reaches every step)")
+            continue
+        block_end = next((j for j in range(step + 1, len(lines)) if lines[j].strip() and indent_of(lines[j]) <= indent_of(lines[step])), len(lines))
+        step_name = next((m.group(1).strip("'\"") for l in lines[step:block_end] if (m := STEP_NAME.match(l)) and indent_of(l) <= indent_of(lines[step]) + 2), None)
+        if step_name not in allowed[name]:
+            errors.append(f"{path}:{i + 1}: secrets.QA_* in step {step_name!r}, which is not an allowed credential step")
+        else:
+            seen.add(step_name)
+    for missing in sorted(allowed[name] - seen):
+        errors.append(f"{path}: allowed credential step {missing!r} no longer reads secrets.QA_* (renamed? update QA_SECRET_STEPS)")
+    return errors
+
+
 def scan(root: Path) -> list[str]:
     errors = []
     gh = root / ".github"
     for p in sorted(list(gh.glob("workflows/*.y*ml")) + list(gh.glob("actions/**/*.y*ml"))):
         errors += check_text(str(p.relative_to(root)), p.read_text(encoding="utf-8"), workflow=True)
+        if p.parent.name == "workflows":
+            errors += check_qa_secret_scope(str(p.relative_to(root)), p.read_text(encoding="utf-8"))
     for pattern in ("actions/**/*.sh",):
         for p in sorted(gh.glob(pattern)):
             errors += check_text(str(p.relative_to(root)), p.read_text(encoding="utf-8"), workflow=False)
@@ -227,6 +284,35 @@ def self_test() -> int:
     if not check_text("bad/script.sh", 'echo "DEPLOY_SECRET=$x" >> "${GITHUB_ENV:?}"\n', workflow=False):
         print("self-test FAIL: script write not flagged")
         failed += 1
+    scope_ok = """jobs:
+  a:
+    steps:
+      - name: Sign in
+        env:
+          QA_LOGIN_PASSWORD: ${{ secrets.QA_FAKE_PASSWORD }}
+        run: node login.mjs
+      - name: Later step
+        run: node other.mjs
+"""
+    allowed = {"w.yml": {"Sign in"}}
+    if check_qa_secret_scope("w.yml", scope_ok, allowed):
+        print(f"self-test FAIL: scope ok case flagged: {check_qa_secret_scope('w.yml', scope_ok, allowed)}")
+        failed += 1
+    scope_bad = {
+        "other_step": scope_ok.replace("        run: node other.mjs", "        env:\n          X: ${{ secrets.QA_FAKE_EMAIL }}\n        run: node other.mjs"),
+        "job_env": scope_ok.replace("    steps:", "    env:\n      QA_LOGIN_EMAIL: ${{ secrets.QA_FAKE_EMAIL }}\n    steps:"),
+        "workflow_env": "env:\n  QA_LOGIN_EMAIL: ${{ secrets.QA_FAKE_EMAIL }}\n" + scope_ok,
+        "run_body": scope_ok.replace("node other.mjs", "echo ${{ secrets.QA_FAKE_EMAIL }}"),
+        "with_input": scope_ok.replace("        run: node other.mjs", "        uses: x/y@v1\n        with:\n          pw: ${{ secrets.QA_FAKE_PASSWORD }}"),
+        "renamed": scope_ok.replace("name: Sign in", "name: Log in"),
+    }
+    for case, text in scope_bad.items():
+        if not check_qa_secret_scope("w.yml", text, allowed):
+            print(f"self-test FAIL: scope case {case} was not flagged")
+            failed += 1
+    if not check_qa_secret_scope("new.yml", scope_ok, allowed):
+        print("self-test FAIL: unlisted workflow reading secrets.QA_* was not flagged")
+        failed += 1
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         (root / ".github/workflows").mkdir(parents=True)
@@ -234,7 +320,7 @@ def self_test() -> int:
         if not scan(root):
             print("self-test FAIL: scan() missed a workflow file")
             failed += 1
-    print("self-test " + ("FAILED" if failed else "passed") + f" ({len(BAD_CASES) + len(GOOD_CASES) + 2} cases)")
+    print("self-test " + ("FAILED" if failed else "passed") + f" ({len(BAD_CASES) + len(GOOD_CASES) + 2 + 1 + 6 + 1} cases)")
     return 1 if failed else 0
 
 
