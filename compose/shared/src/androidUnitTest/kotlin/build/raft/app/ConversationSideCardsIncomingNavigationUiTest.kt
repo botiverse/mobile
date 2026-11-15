@@ -9,6 +9,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -66,6 +67,8 @@ class ConversationSideCardsIncomingNavigationUiTest {
     private val intake = RaftShellNavigationIntake(SharedWindowNavigationCoordinator(), inbox, RaftArtifactLinkInbox(nowEpochMillis = { 1_000L }))
     private val host = FakeShellNavigationIntakeHost()
     private val cards = ConversationSideCardsStore()
+    /** The cards stand beside the conversation; false: they cover it (a phone, a narrow pane). */
+    private val wideLayout = mutableStateOf(false)
 
     /**
      * The window's page stack starting at [firstPage] (`channel` or `channel@message`), the top
@@ -77,6 +80,7 @@ class ConversationSideCardsIncomingNavigationUiTest {
         val signal = RaftIncomingNavigationSignal()
         host.cover = signal
         host.topPage = if (wide) null else channelRoute(host)
+        wideLayout.value = wide
         cards.open(ConversationSideCard.Tasks)
         val pages = mutableStateListOf(firstPage)
         host.onPerform = { action ->
@@ -89,7 +93,7 @@ class ConversationSideCardsIncomingNavigationUiTest {
             LaunchedEffect(intake) { intake.run(host) }
             ThreadAssistantPanelTestPage(ThreadAssistantPanelTestNavigator { false }) {
                 // A new page is a new composition, as a pushed conversation page is.
-                key(pages.size) { ConversationPage(pages.last(), signal, wide) }
+                key(pages.size) { ConversationPage(pages.last(), signal, wideLayout.value) }
             }
         }
     }
@@ -165,6 +169,35 @@ class ConversationSideCardsIncomingNavigationUiTest {
             onNode(hasText("tasks card")).assertDoesNotExist()
             onNode(hasText("chat: channel-2@message-4")).assertExists()
             assertEquals(ConversationSideCardsState(), cards.state.value)
+        }
+
+    @Test
+    fun aPageOpenedAtAMessageThatFirstReadsWideClosesTheCoverOnceItMeasuresNarrow() =
+        runRobolectricComposeUiTest {
+            // Until it measures, a page on its own has the window's width: a split's narrow
+            // detail pane in a wide window first reads as "beside".
+            pagesWithTasksOpen(firstPage = "channel-2@message-4", wide = true)
+            onNode(hasText("tasks card beside")).assertExists()
+            assertTrue(cards.state.value.tasks)
+
+            runOnIdle { wideLayout.value = false }
+            waitForIdle()
+
+            onNode(hasText("tasks card")).assertDoesNotExist()
+            onNode(hasText("chat: channel-2@message-4")).assertExists()
+            assertEquals(ConversationSideCardsState(), cards.state.value)
+
+            // Once: cards opened again on that page stay, whatever the layout does next.
+            runOnIdle {
+                cards.open(ConversationSideCard.Tasks)
+                wideLayout.value = true
+            }
+            waitForIdle()
+            runOnIdle { wideLayout.value = false }
+            waitForIdle()
+
+            onNode(hasText("tasks card")).assertExists()
+            assertTrue(cards.state.value.tasks, "the message was handled; the reopened card stays")
         }
 
     @Test
