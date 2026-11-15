@@ -629,7 +629,7 @@ def real_tree_mutants() -> list[tuple[str, str, str, str]]:
         ("new $GITHUB_ENV writer borrows an allow-listed step name", qa, kvm,
          "      - name: Claim Stamp run case and resolve auth mode\n        env:\n          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}\n        run: |\n          f=$GITHUB_ENV\n          echo \"T=$STAMP_TOKEN\" >> \"$f\"\n\n" + kvm),
         ("new $GITHUB_OUTPUT writer borrows an allow-listed step id", ".github/workflows/android-update-e2e.yml",
-         "      - name: Install Hands CLI\n", "      - id: p\n        env:\n          A: ${{ secrets.QUIVER_BEARER_TOKEN }}\n        run: echo \"a=$A\" | tee -a \"$GITHUB_OUTPUT\"\n      - name: Install Hands CLI\n"),
+         "      - name: Install Hands CLI\n", "      - id: p\n        env:\n          A: ${{ secrets.FAKE_TOKEN }}\n        run: echo \"a=$A\" | tee -a \"$GITHUB_OUTPUT\"\n      - name: Install Hands CLI\n"),
     ]
     # Round-2 replay (28c4bea): a new step borrowing an output-allow-listed name, and edits of
     # reviewed allow-listed content.
