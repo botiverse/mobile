@@ -277,6 +277,17 @@ internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU_PARAM = "hostMenu"
 internal const val RAFT_ARTIFACT_VIEWER_HOST_DESKTOP_PARAM = "hostDesktop"
 internal const val RAFT_ARTIFACT_VIEWER_HOST_TOOLBAR_PARAM = "hostToolbar"
 
+/**
+ * The page's hand-over signal (#proj-workspace:#302, botiverse/slock #15036 `markHostPageShown`):
+ * inside the App's shell (`embed=raft-settings-v1&shell=host`) the page writes `hostLoaded=1` into
+ * its query (`history.replaceState`, as `hostToolbar=1`) once per document, at the moment its splash
+ * would start its ending (the frame's page loaded, or the drawn file arrived), or 150 ms after a
+ * failure left no splash on screen. A stale one is dropped as a document starts. Nothing is written
+ * on in-page reuse (a kept page routed to another Artifact or version). The App's splash covers a
+ * fresh load until then ([raftArtifactViewerLoadingIndicator], [raftArtifactViewerPageSaysLoaded]).
+ */
+internal const val RAFT_ARTIFACT_VIEWER_HOST_LOADED_PARAM = "hostLoaded"
+
 /** The `#host=<name>` actions the App offers the page's ⋯. */
 internal enum class RaftArtifactViewerHostAction(val wireName: String) {
     DesktopMode("desktop-mode"),
@@ -312,6 +323,10 @@ private fun raftArtifactViewerQueryParam(url: String, name: String): String? =
 /** Whether the page at [url] draws the only bar: its toolbar with Back and the App's items (`hostToolbar=1`). */
 internal fun raftArtifactViewerPageDrawsHostBar(url: String): Boolean =
     raftArtifactViewerQueryParam(url, RAFT_ARTIFACT_VIEWER_HOST_TOOLBAR_PARAM) == "1"
+
+/** Whether the page at [url] says its content loaded (`hostLoaded=1`, [RAFT_ARTIFACT_VIEWER_HOST_LOADED_PARAM]). */
+internal fun raftArtifactViewerPageSaysLoaded(url: String): Boolean =
+    raftArtifactViewerQueryParam(url, RAFT_ARTIFACT_VIEWER_HOST_LOADED_PARAM) == "1"
 
 /** `hostDesktop` as the App writes it: `on`/`off`, null (absent) where Desktop Mode is not offered. */
 internal fun raftArtifactViewerHostDesktopValue(desktopMode: Boolean?): String? =
@@ -361,7 +376,15 @@ internal const val RAFT_ARTIFACT_VIEWER_HOST_BACK = "host"
 internal const val RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT = "#host=close"
 
 private val RaftArtifactViewerEmbedKeys =
-    setOf("embed", "shell", "chrome", "back", RAFT_ARTIFACT_VIEWER_HOST_MENU_PARAM, RAFT_ARTIFACT_VIEWER_HOST_TOOLBAR_PARAM)
+    setOf(
+        "embed",
+        "shell",
+        "chrome",
+        "back",
+        RAFT_ARTIFACT_VIEWER_HOST_MENU_PARAM,
+        RAFT_ARTIFACT_VIEWER_HOST_TOOLBAR_PARAM,
+        RAFT_ARTIFACT_VIEWER_HOST_LOADED_PARAM,
+    )
 
 /**
  * [url] with the embed contract in its query: any `embed`/`shell` already there is replaced and a `chrome` dropped, every

@@ -4128,6 +4128,7 @@
     <string name="artifacts_card_comments_one">1 комментарий</string>
     <string name="artifacts_card_comments_many">Комментариев: %1$d</string>
     <string name="artifacts_card_loading">Загрузка Artifact…</string>
+    <string name="artifacts_viewer_getting_page">Получение страницы…</string>
     <string name="artifacts_card_excerpt_image">Изображение</string>
     <string name="artifacts_card_excerpt_image_named">Изображение: %1$s</string>
     <string name="artifacts_card_excerpt_diagram">Диаграмма</string>
