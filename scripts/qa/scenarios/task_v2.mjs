@@ -617,7 +617,8 @@ export async function run(ctx) {
 
     // ---------- s6-s8 (--release-checks) ----------
     if (releaseChecks) {
-      const atHomeR = (l) => Boolean(hasText(l, "Drafts")) && !statusChip(l) && !channelReady(l);
+      // Home: its bottom bar's server tab is there (the list may be scrolled past "Drafts").
+      const atHomeR = (l) => Boolean(find(l, (n) => n.pkg === PKG && n.desc.startsWith("Current server: "))) && !statusChip(l) && !channelReady(l) && !hasText(l, "Message this task");
       const homeAgain = async () => {
         for (let i = 0; i < 8; i += 1) {
           const list = nodes();
