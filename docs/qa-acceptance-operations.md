@@ -81,8 +81,11 @@ consumers keep this in sync:
   run is a login window": nothing is uploaded and the gate exits 1. Its record
   (`secure-evidence-gate.json`) is bound to the run and to `verdict.json`;
   `stamp_report.sh report-verdict` sends a product verdict only when that
-  record is clean/resolved. Modes that write no suppression record (e.g. the
-  TabPager probe, bootstrap smoke) therefore upload no evidence.
+  record is clean/resolved. Modes that never sign in (iOS `tabpager-probe`,
+  `bootstrap-smoke`; allow-list in `scripts/qa/no_login_receipt.mjs`) write a
+  positive no-login receipt bound to the run, attempt and mode; it latches
+  UNKNOWN if the mode sees anything login-like. Any other mode without a
+  record uploads no evidence.
 - **Device ownership.** The runner changes the device (recorder pause,
   autofill, clearing the browser/login surface and the keyboard, console
   typing) only on an emulator this run owns (`scripts/qa/device_ownership.mjs`).

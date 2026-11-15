@@ -30,6 +30,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
+import { LOGIN_SIGNAL, LOGIN_SIGNAL_MARKER } from "./no_login_receipt.mjs";
 import {
   parseBootstrapDiagnostics,
   parseReadyLine,
@@ -577,7 +578,11 @@ async function smoke() {
       expect: [["STAGE", "inbox_consumed"], ["STAGE", "envelope_validated"], ["FAILURE", "login_consume", "(?!runtime_gate)[a-z0-9_]+"]],
       fileLeft: false,
     });
-    run("xcrun", ["simctl", "io", udid, "screenshot", path.join(out, "after-delivery.png")], { allowFailure: true });
+    // No-login mode (no_login_receipt.mjs): no screenshot if the app log shows anything login-like;
+    // the marker makes the receipt's finish step latch UNKNOWN.
+    const loginSeen = LOGIN_SIGNAL.exec(stream.text());
+    if (loginSeen) fs.writeFileSync(path.join(out, "login-signal-observed.txt"), `${LOGIN_SIGNAL_MARKER}: app log\n`);
+    else run("xcrun", ["simctl", "io", udid, "screenshot", path.join(out, "after-delivery.png")], { allowFailure: true });
     await scenario("replayed request id finds nothing (one-shot)", {
       login: { request_id: good.request_id, envelope_digest: good.envelope_digest },
       expect: [["FAILURE", "inbox_consume", "missing"]],

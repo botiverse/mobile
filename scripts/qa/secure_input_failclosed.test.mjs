@@ -547,3 +547,186 @@ test("F8 workflow: the deterministic repro step gets no QA credentials", () => {
   const step = wf.slice(i, wf.indexOf("\n      - ", i + 1));
   assert.doesNotMatch(step, /QA_TEST_(EMAIL|PASSWORD)/);
 });
+
+// --------------------------------------- no-login receipt (non-login modes)
+
+const RUN = { GITHUB_RUN_ID: "4830", GITHUB_RUN_ATTEMPT: "1" };
+function receiptCli(cmd, mode, out, env = RUN) {
+  return spawnSync(process.execPath, [path.join(here, "no_login_receipt.mjs"), cmd, "--mode", mode, "--out", out],
+    { env: { PATH: process.env.PATH, ...env }, encoding: "utf8" });
+}
+// The mode's evidence: captures made AFTER begin (so an UNKNOWN latch from the mode's start covers them).
+function modeRun(mode, { signal = null } = {}) {
+  const root = tmp("failclosed-nologin-");
+  const ev = path.join(root, "qa-evidence");
+  fs.mkdirSync(ev);
+  assert.equal(receiptCli("begin", mode, ev).status, 0);
+  fs.writeFileSync(path.join(ev, "step-00-probe-launch.png"), fakePng("probe page"));
+  fs.writeFileSync(path.join(ev, "tabpager-probe.mp4"), fakeMp4("probe page"));
+  fs.writeFileSync(path.join(ev, "system-log-raft.txt"), `2026-11-15 06:00:01.000000+0000 iosApp: probe ready\n${signal ? `2026-11-15 06:00:02.000000+0000 iosApp: ${signal}\n` : ""}`);
+  fs.writeFileSync(path.join(ev, "verdict.json"), JSON.stringify({ verdict: "pass", reason: "fake" }));
+  return { root, ev };
+}
+function reportMode(root, mode) {
+  const bin = path.join(root, "bin"), rt = path.join(root, "rt"), sent = path.join(root, "sent");
+  for (const d of [bin, rt, sent]) fs.mkdirSync(d);
+  fs.writeFileSync(path.join(rt, "stamp-claim-rc-nl"), "lease", { mode: 0o600 });
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+a="$*"; p=""; while [ "$#" -gt 0 ]; do case "$1" in --data-binary) p="$2"; shift 2;; -d) p="$2"; shift 2;; *) shift;; esac; done
+n=$(ls "${sent}" | wc -l); printf '%s\\n' "$a" > "${sent}/$n.args"; case "$p" in @*) cp "\${p#@}" "${sent}/$n.body";; *) printf '%s' "$p" > "${sent}/$n.body";; esac; exit 0
+`, { mode: 0o755 });
+  const env = { ...process.env, ...RUN, PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`, RUNNER_TEMP: rt,
+    STAMP_RUN_CASE_ID: "rc-nl", STAMP_URL: "https://stamp.test", STAMP_TOKEN: "fake-token", QA_TEST_EMAIL: "", QA_TEST_PASSWORD: "", QA_MODE: mode };
+  delete env.STAMP_EVIDENCE_GATE_OUTCOME;
+  spawnSync("bash", [path.join(here, "stamp_report.sh"), "report", "qa-evidence"], { cwd: root, env, encoding: "utf8" });
+  const args = fs.readdirSync(sent).filter((f) => f.endsWith(".args")).map((f) => [f, fs.readFileSync(path.join(sent, f), "utf8")]);
+  const kinds = args.map(([, a]) => /kind=(\w+)/.exec(a)?.[1]).filter(Boolean);
+  const verdicts = args.filter(([, a]) => /\/verdict/.test(a)).map(([f]) => JSON.parse(fs.readFileSync(path.join(sent, f.replace(".args", ".body")), "utf8")).verdict);
+  return { kinds, verdicts };
+}
+
+test("no-login receipt: an allow-listed mode with its run-bound receipt passes the gate and uploads", async () => {
+  const { gateEvidence } = await mod("secure_evidence.mjs");
+  for (const mode of ["tabpager-probe", "bootstrap-smoke"]) {
+    const { root, ev } = modeRun(mode);
+    try {
+      const fin = receiptCli("finish", mode, ev);
+      assert.equal(fin.status, 0, fin.stderr);
+      const receipt = JSON.parse(fs.readFileSync(path.join(ev, "capture-suppression.json"), "utf8"));
+      assert.deepEqual([receipt.mode, receipt.no_login_window, receipt.capture_suppressed, receipt.completed, receipt.binding], [mode, true, false, true, { github_run_id: "4830", github_run_attempt: "1" }]);
+      assert.ok(receipt.reason.length > 20, "the reason is recorded");
+      const { ok, report } = gateEvidence(ev, { ...RUN, QA_MODE: mode });
+      assert.equal(ok, true, mode);
+      assert.equal(report.status, "clean", mode);
+      assert.ok(fs.existsSync(path.join(ev, "step-00-probe-launch.png")) && fs.existsSync(path.join(ev, "tabpager-probe.mp4")));
+      const r = reportMode(root, mode);
+      assert.ok(r.kinds.includes("screenshot"), `${mode}: evidence uploaded`);
+      assert.deepEqual(r.verdicts, ["pass"], mode);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("no-login receipt: the same mode with a login-like signal latches UNKNOWN and withholds the mode's captures", async () => {
+  const { gateEvidence } = await mod("secure_evidence.mjs");
+  for (const signal of ["web_login_attempt phase=opening", "AX role=SecureTextField label=Password", "SafariViewService presented", "“Raft” Wants to Use “example.test” to Sign In", "button Continue as fake person"]) {
+    const { root, ev } = modeRun("tabpager-probe", { signal });
+    try {
+      assert.equal(receiptCli("finish", "tabpager-probe", ev).status, 0);
+      const receipt = JSON.parse(fs.readFileSync(path.join(ev, "capture-suppression.json"), "utf8"));
+      assert.equal(receipt.unresolved, true, signal);
+      assert.equal(receipt.no_login_window, false, signal);
+      const { report } = gateEvidence(ev, { ...RUN, QA_MODE: "tabpager-probe" });
+      assert.equal(report.status, "UNKNOWN", signal);
+      assert.ok(!fs.existsSync(path.join(ev, "step-00-probe-launch.png")), `${signal}: capture kept`);
+      assert.ok(!fs.existsSync(path.join(ev, "tabpager-probe.mp4")), `${signal}: recording kept`);
+      const r = reportMode(root, "tabpager-probe");
+      assert.ok(!r.kinds.includes("screenshot"), signal);
+      assert.deepEqual(r.verdicts, ["harness"], signal);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("no-login receipt: unlisted modes get none, and a missing/{} record stays UNKNOWN for every mode", async () => {
+  const { gateEvidence } = await mod("secure_evidence.mjs");
+  const { NO_LOGIN_MODES } = await mod("no_login_receipt.mjs");
+  assert.deepEqual(Object.keys(NO_LOGIN_MODES).sort(), ["bootstrap-smoke", "tabpager-probe"]);
+  const dir = tmp("failclosed-nologin-unlisted-");
+  try {
+    for (const mode of ["agent", "deterministic", "", "some-new-mode"]) {
+      assert.notEqual(receiptCli("begin", mode, dir).status, 0, `begin accepted unlisted mode ${mode}`);
+    }
+    for (const mode of ["agent", "deterministic", "tabpager-probe", "bootstrap-smoke", "some-new-mode"]) {
+      for (const supp of [undefined, "{}"]) {
+        const ev = evidenceDir(supp);
+        try {
+          const { ok, report } = gateEvidence(ev, { ...RUN, QA_MODE: mode });
+          assert.equal(ok, false, `${mode} ${supp ?? "missing"}`);
+          assert.equal(report.status, "UNKNOWN");
+          assert.ok(!fs.existsSync(path.join(ev, "step-00.png")));
+        } finally {
+          fs.rmSync(ev, { recursive: true, force: true });
+        }
+      }
+    }
+    // A hand-made receipt naming an unlisted mode is not accepted either.
+    const ev = evidenceDir(JSON.stringify({ contract: "qa-capture-suppression/v1", kind: "qa-no-login-receipt/v1", mode: "deterministic", reason: "forged",
+      no_login_window: true, capture_suppressed: false, unresolved: false, active: false, completed: true, binding: { github_run_id: "4830", github_run_attempt: "1" }, phases: [] }));
+    try {
+      assert.equal(gateEvidence(ev, { ...RUN, QA_MODE: "deterministic" }).report.status, "UNKNOWN");
+    } finally {
+      fs.rmSync(ev, { recursive: true, force: true });
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("no-login receipt: a forged receipt (other run, other attempt, other mode, never finished) is rejected", async () => {
+  const { gateEvidence } = await mod("secure_evidence.mjs");
+  const cases = [
+    ["other run", { GITHUB_RUN_ID: "1", GITHUB_RUN_ATTEMPT: "1" }, "tabpager-probe", true],
+    ["other attempt", { GITHUB_RUN_ID: "4830", GITHUB_RUN_ATTEMPT: "2" }, "tabpager-probe", true],
+    ["receipt of another mode", RUN, "bootstrap-smoke", true],
+    ["begun but never finished", RUN, "tabpager-probe", false],
+  ];
+  for (const [name, beginEnv, gateMode, finish] of cases) {
+    const root = tmp("failclosed-nologin-forged-");
+    const ev = path.join(root, "qa-evidence");
+    fs.mkdirSync(ev);
+    try {
+      assert.equal(receiptCli("begin", "tabpager-probe", ev, beginEnv).status, 0);
+      if (finish) assert.equal(receiptCli("finish", "tabpager-probe", ev, beginEnv).status, 0);
+      fs.writeFileSync(path.join(ev, "step-00.png"), fakePng("x"));
+      const { ok, report } = gateEvidence(ev, { ...RUN, QA_MODE: gateMode });
+      assert.equal(ok, false, name);
+      assert.equal(report.status, "UNKNOWN", name);
+      assert.ok(!fs.existsSync(path.join(ev, "step-00.png")), name);
+      // finish itself refuses a receipt of another run.
+      if (name === "other run") assert.notEqual(receiptCli("finish", "tabpager-probe", ev, RUN).status, 0);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("no-login receipt: the TabPager probe that sees a login surface captures nothing and latches UNKNOWN", () => {
+  const f = iosFakes({ snapshots: [SECURE_FIELD] });
+  try {
+    assert.equal(receiptCli("begin", "tabpager-probe", f.out).status, 0);
+    const r = spawnSync(process.execPath, [path.join(here, "ios_tabpager_probe.mjs"), "--ios-io-dir", f.io, "--out", f.out, "--groups", "1"], { env: f.env, encoding: "utf8", timeout: 60000 });
+    assert.equal(r.status, 3, r.stderr + r.stdout);
+    const out = fs.readdirSync(f.out);
+    assert.ok(!out.some((x) => x.endsWith(".png") || /dump/.test(x)), out.join(","));
+    assert.equal(f.callList().filter((c) => c.includes("screenshot")).length, 0);
+    const receipt = JSON.parse(fs.readFileSync(path.join(f.out, "capture-suppression.json"), "utf8"));
+    assert.equal(receipt.unresolved, true);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("workflow coverage: every iOS mode reaching the gate writes a record (agent, deterministic) or a no-login receipt; Android has one agent lane", async () => {
+  const { NO_LOGIN_MODES } = await mod("no_login_receipt.mjs");
+  const ios = fs.readFileSync(path.resolve(here, "../../.github/workflows/qa-acceptance-ios.yml"), "utf8");
+  const modes = new Set([...ios.matchAll(/inputs\.mode == '([a-z-]*)'/g)].map((m) => m[1]));
+  assert.deepEqual([...modes].sort(), ["", "agent", "bootstrap-smoke", "deterministic", "tabpager-probe"]);
+  const step = (name) => { const i = ios.indexOf(`- name: ${name}\n`); assert.ok(i > 0, name); return ios.slice(i, ios.indexOf("\n      - ", i + 1)); };
+  assert.match(step("Run acceptance agent"), /acceptance_agent\.mjs/); // writes capture-suppression.json itself
+  assert.match(step("Run deterministic repro"), /ios_deterministic_repro\.mjs/); // writes capture-suppression.json itself
+  for (const [mode, name] of [["tabpager-probe", "Run TabPager probe (task #232/#233)"], ["bootstrap-smoke", "Run QA session bootstrap smoke"]]) {
+    assert.ok(Object.hasOwn(NO_LOGIN_MODES, mode));
+    const s = step(name);
+    assert.match(s, new RegExp(`no_login_receipt\\.mjs begin --mode ${mode} --out qa-evidence`));
+    assert.doesNotMatch(s, /QA_TEST_|secrets\./, `${mode} step must get no credentials`);
+    assert.ok(s.indexOf("no_login_receipt.mjs begin") < s.search(/recordVideo|ios_tabpager_probe\.mjs|ios_qa_bootstrap\.mjs smoke/), `${mode}: receipt before any capture`);
+  }
+  assert.match(step("Finish no-login receipt (non-login modes)"), /inputs\.mode == 'tabpager-probe' \|\| inputs\.mode == 'bootstrap-smoke'[\s\S]*no_login_receipt\.mjs finish/);
+  assert.ok(ios.indexOf("- name: Finish no-login receipt") < ios.indexOf("- name: Secure evidence gate\n"));
+  for (const name of ["Secure evidence gate", "Report to Stamp"]) assert.match(step(name), /QA_MODE: \$\{\{ inputs\.mode \|\| 'agent' \}\}/, name);
+  const android = fs.readFileSync(path.resolve(here, "../../.github/workflows/qa-acceptance.yml"), "utf8");
+  assert.doesNotMatch(android, /inputs\.mode/, "Android has no mode input: only the agent lane, which writes its own record");
+});

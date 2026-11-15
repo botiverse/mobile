@@ -644,6 +644,8 @@ jobs:
         if: ${{ inputs.mode == 'tabpager-probe' }}
         run: |
           mkdir -p qa-evidence
+          # No-login mode (no_login_receipt.mjs): positive receipt BEFORE anything is captured or recorded.
+          node scripts/qa/no_login_receipt.mjs begin --mode tabpager-probe --out qa-evidence
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
           date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
           node --check scripts/qa/ios_tabpager_probe.mjs
@@ -693,6 +695,8 @@ jobs:
         if: ${{ inputs.mode == 'bootstrap-smoke' }}
         run: |
           mkdir -p qa-evidence/bootstrap-smoke
+          # No-login mode (no_login_receipt.mjs): positive receipt BEFORE anything is captured.
+          node scripts/qa/no_login_receipt.mjs begin --mode bootstrap-smoke --out qa-evidence
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
           echo $(( $(date +%s) * 1000 )) > qa-evidence/perf-started.txt
           date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
@@ -827,10 +831,20 @@ jobs:
       # and log lines inside a login window that is not provably closed, and redacts/removes secret
       # values (system log, harness log, xcresult). The report step uploads no evidence and the artifact
       # is not uploaded unless this step succeeded. Credentials only on the legacy path, as for the agent.
+      # Modes that never sign in finalise their no-login receipt after every collector: any login-like
+      # signal in the collected evidence (app web-login attempt, secure field, web sign-in/Safari
+      # surface, "Continue as", an in-process marker) latches it UNKNOWN and the gate withholds the
+      # mode's captures. Without a begun receipt the gate fails closed.
+      - name: Finish no-login receipt (non-login modes)
+        if: ${{ always() && (inputs.mode == 'tabpager-probe' || inputs.mode == 'bootstrap-smoke') }}
+        run: node scripts/qa/no_login_receipt.mjs finish --mode "${{ inputs.mode }}" --out qa-evidence
+
       - name: Secure evidence gate
         id: secure-evidence
         if: always()
         env:
+          # The gate accepts a no-login receipt only for this run's own mode (and only allow-listed modes).
+          QA_MODE: ${{ inputs.mode || 'agent' }}
           QA_TEST_EMAIL: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_EMAIL || '' }}
           QA_TEST_PASSWORD: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_PASSWORD || '' }}
         run: node scripts/qa/secure_evidence.mjs --dir qa-evidence
@@ -850,6 +864,7 @@ jobs:
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
           QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
           STAMP_EVIDENCE_GATE_OUTCOME: ${{ steps.secure-evidence.outcome }}
+          QA_MODE: ${{ inputs.mode || 'agent' }}
         run: bash scripts/qa/stamp_report.sh report qa-evidence
 
       - name: Upload evidence

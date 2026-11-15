@@ -27,6 +27,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createIosDriver } from "./ios_driver.mjs";
+import { LOGIN_SIGNAL_MARKER, latchLoginSignal } from "./no_login_receipt.mjs";
 import { redactEditableValues } from "./ios_navigation_matcher.mjs";
 import {
   lowestRow, anyRowBounds, rowAtY,
@@ -65,8 +66,28 @@ const maxSeq = (dump) => { const n = seqNumbers(dump); return n.length ? Math.ma
 // be unit-tested: this file has no exports and no main-guard, so importing it would drive
 // a device (task #251). Behaviour is unchanged except G5's no-starting-tab branch.
 
+// No-login mode (no_login_receipt.mjs): before every capture or dump written to
+// the evidence dir, the screen must positively show no login surface. A login
+// surface or an unreadable/empty tree latches the run's receipt UNKNOWN and
+// stops the probe with nothing further captured.
+const assertNoLoginSurface = async (what) => {
+  let visible = null;
+  try { visible = await drv.loginSurfaceVisible(); } catch { visible = null; }
+  if (visible === false) return;
+  const signal = visible === true ? `login surface on screen before ${what}` : `login-surface probe unavailable before ${what}`;
+  fs.writeFileSync(path.join(outDir, "login-signal-observed.txt"), `${LOGIN_SIGNAL_MARKER}: ${signal}\n`);
+  latchLoginSignal({ out: outDir, signal });
+  write("cannot_run", `capture refused: ${signal} (a no-login mode must never capture a login surface)`);
+  process.exit(3);
+};
+const saveDump = async (name, dump) => {
+  await assertNoLoginSurface(name);
+  fs.writeFileSync(path.join(outDir, name), redactEditableValues(dump));
+};
+
 let lastMaxSeq = null;
 const capture = async (label) => {
+  await assertNoLoginSurface(label);
   const png = path.join(outDir, `${label}.png`);
   try { fs.writeFileSync(png, await drv.screenshotPng()); } catch (e) { rec(`screenshot ${label} failed: ${String(e).slice(0, 100)}`); }
   const dump = await drv.dumpUi();
@@ -186,7 +207,7 @@ try {
         advanced: seqAfter !== null && seqAfterProbe !== null ? seqAfterProbe > seqAfter : null,
         freshRowTaps: rowTapsPost - rowTapsPre,
       };
-      fs.writeFileSync(path.join(outDir, "step-03b-liveness-probe-dump.txt"), redactEditableValues(probeDump));
+      await saveDump("step-03b-liveness-probe-dump.txt", probeDump);
     }
     const alive = liveness.advanced === true || (liveness.freshRowTaps ?? 0) > 0;
     verdict.g3 = {
@@ -249,7 +270,7 @@ try {
     const probe4 = await drv.dumpUi();
     const seqAfterProbe4 = maxSeq(probe4);
     const rowTapsPost4 = (probe4.match(/rowTap [A-Za-z]+ \d+/g) || []).length;
-    fs.writeFileSync(path.join(outDir, "step-04b-liveness-probe-dump.txt"), redactEditableValues(probe4));
+    await saveDump("step-04b-liveness-probe-dump.txt", probe4);
     const liveness4 = {
       probe: "row-tap-after-slow-drag-derived-row", performed: true,
       probeExpectedRow: target4, probeYPx: probeY4, rowsVisible: rows4.length,
@@ -404,7 +425,7 @@ try {
       // label itself say who produced it.
       const probeY = 0.35;
       const preDump = await drv.dumpUi();
-      fs.writeFileSync(path.join(outDir, "step-06a-after-inside-tap-dump.txt"), redactEditableValues(preDump));
+      await saveDump("step-06a-after-inside-tap-dump.txt", preDump);
       const preTaps = (preDump.match(/rowTap [A-Za-z]+ \d+/g) || []).length;
       const preSeq = maxSeq(preDump);
       const probeYPx = Math.round(probeY * h);
@@ -434,7 +455,7 @@ try {
         advanced: preSeq !== null && postSeq !== null ? postSeq > preSeq : null,
         freshRowTaps: postTaps - preTaps,
       };
-      fs.writeFileSync(path.join(outDir, "step-06b-outside-arm-dump.txt"), redactEditableValues(postDump));
+      await saveDump("step-06b-outside-arm-dump.txt", postDump);
     }
     // Attribution by LABEL, not by which sample first saw a line. The inside tap is at
     // y=0.60 and the probe at y=0.35, so they hit different rows and emit different

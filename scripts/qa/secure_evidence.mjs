@@ -6,7 +6,9 @@
 // Unknown fails closed. The capture-suppression record (acceptance_agent /
 // ios_deterministic_repro) must be present, parse, carry the v1 schema, belong
 // to this run/attempt (binding) and be finalised (completed) unless it already
-// declares an unresolved window. Anything else -- missing, malformed, {} , a
+// declares an unresolved window. Modes that never sign in instead write a
+// positive no-login receipt (no_login_receipt.mjs), accepted only for an
+// allow-listed mode equal to QA_MODE. Anything else -- missing, malformed, {} , a
 // record from another run, a producer that crashed before finishing, a mode
 // that writes no record -- means "the whole run may be inside a login
 // window": every capture, recording, dump, log, opaque bundle and transcript
@@ -42,6 +44,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { MIN_SECRET_LENGTH, SUPPRESSION_CONTRACT, runBinding, secretValues } from "./secure_input.mjs";
+import { NO_LOGIN_KIND, NO_LOGIN_MODES } from "./no_login_receipt.mjs";
 
 const TEXT_EXT = new Set([".txt", ".json", ".jsonl", ".log", ".xml", ".md", ".csv", ".ips", ".html", ".plist", ".sh", ""]);
 const MEDIA_EXT = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".mov", ".m4v", ".webm"]);
@@ -138,6 +141,15 @@ export function readSuppressionRecord(dir, env = process.env) {
   if (!r.binding || r.binding.github_run_id !== want.github_run_id || r.binding.github_run_attempt !== want.github_run_attempt) {
     return unknown("capture-suppression.json belongs to another run or attempt");
   }
+  // A no-login receipt (no_login_receipt.mjs) counts only for an allow-listed
+  // mode that is this run's own mode (QA_MODE = the workflow's inputs.mode).
+  if (r.kind !== undefined || r.mode !== undefined) {
+    if (r.kind !== NO_LOGIN_KIND) return unknown("capture-suppression.json has an unknown kind");
+    if (!Object.hasOwn(NO_LOGIN_MODES, r.mode)) return unknown("no-login receipt for a mode that is not allow-listed");
+    if (String(env.QA_MODE || "") !== r.mode) return unknown("no-login receipt for another mode than this run's");
+    if (typeof r.reason !== "string" || !r.reason || r.capture_suppressed !== false) return unknown("no-login receipt incomplete");
+    if (!r.unresolved && (r.no_login_window !== true || r.phases.length)) return unknown("no-login receipt with a window");
+  }
   const open = r.unresolved || r.active || r.phases.some((p) => p.status !== "resumed");
   if (open && r.phases.length) return { state: "unresolved", phases: r.phases };
   if (r.completed !== true) return unknown("capture-suppression.json was never finalised (producer did not finish)");
@@ -196,7 +208,10 @@ export function gateEvidence(dir, env = process.env) {
     const phases = record.phases;
     const unresolved = record.state === "unresolved";
     const recordingUnconfirmed = phases.some((p) => p.recording !== "stopped" && p.recording !== "not_recorded");
-    const since = Math.min(...phases.map((p) => Number(p.start_ts)));
+    // File mtimes come from the kernel's coarse clock and can trail Date.now()
+    // by a few ms: a capture made just after the window began may look older.
+    // Count anything from 2 s before the earliest start as inside (fail closed).
+    const since = Math.min(...phases.map((p) => Number(p.start_ts))) - 2000;
     const dropped = new Set(phases.flatMap((p) => (Array.isArray(p.dropped_segments) ? p.dropped_segments : [])));
     for (const f of walk(dir)) {
       const ext = path.extname(f).toLowerCase();
