@@ -553,18 +553,73 @@ internal enum class RaftArtifactViewerLeaveAction {
 
     /** Drop the kept document and load the Artifact's page once in a new WebView. */
     ReloadFresh,
+
+    /**
+     * The page signed itself out ([raftArtifactViewerIsSessionLoss]): refresh the App's token and
+     * open the Artifact's page again in a new WebView ([RaftArtifactViewerSessionRecoveryGuard]).
+     */
+    RecoverSession,
+
+    /** Signed out again too soon after a recovery: the Unavailable state (with Close), never a silent close. */
+    SessionLost,
 }
 
 /** How soon after a kept document is shown again its own wander off reads as the document's, not the user's. */
 internal const val RAFT_ARTIFACT_VIEWER_KEPT_SELF_NAVIGATION_WINDOW_MS = 5_000L
 
+/** At most one session recovery reload in this long (#300): a page that signs out again sooner stays out. */
+internal const val RAFT_ARTIFACT_VIEWER_SESSION_RECOVERY_WINDOW_MS = 60_000L
+
 /**
- * A reused kept document that, right after it is shown again, routes itself somewhere that is no
- * Artifact or message ([RaftArtifactViewerNavigation.Close] that is not the page's own Back,
- * `#host=close`) did not do it for the user: its web app was parked for minutes, and may have lost
- * its session meanwhile and gone to the web root (Hands dd109a01: the viewer closed 0.8 s after it
- * opened). The viewer then loads the Artifact once in a fresh WebView ([reloadAvailable]: one per
- * open) instead of closing; a fresh document that leaves again, or the page's own Back, closes it.
+ * The web sign-in paths (botiverse/slock `packages/web/src/pages/landingPages.ts` `SIGN_IN_PATHS`:
+ * `/` and `/login`). A web client whose request is refused and that cannot refresh (the viewer's
+ * page holds no refresh token) signs out with `window.location.href = "/"` (slock
+ * `packages/web/src/api/client.ts` `clearAuthAndRedirect`), which a signed-out boot shows as `/login`.
+ */
+private val RaftArtifactViewerSignInPaths = setOf("/", "/login")
+
+/**
+ * Whether [url] is the page signing itself out: a web sign-in path ([RaftArtifactViewerSignInPaths])
+ * without the page's own Back (`#host=close`), which closes the viewer as before.
+ */
+internal fun raftArtifactViewerIsSessionLoss(url: String): Boolean {
+    if (raftArtifactViewerAsksHostClose(url)) return false
+    val rest = url.substringAfter("://", "")
+    if (rest.isEmpty()) return false
+    val start = rest.indexOfFirst { it == '/' || it == '?' || it == '#' }
+    val path = if (start < 0) "/" else rest.substring(start).substringBefore('#').substringBefore('?').ifEmpty { "/" }
+    return path.trimEnd('/').ifEmpty { "/" } in RaftArtifactViewerSignInPaths
+}
+
+/**
+ * Loop guard for the session recovery reload: at most one per [windowMs]. A page that signs out
+ * again within it is not reloaded again (the viewer shows Unavailable with Close).
+ */
+internal class RaftArtifactViewerSessionRecoveryGuard(
+    private val windowMs: Long = RAFT_ARTIFACT_VIEWER_SESSION_RECOVERY_WINDOW_MS,
+) {
+    private var lastAdmittedAtMs: Long? = null
+
+    fun available(nowMs: Long): Boolean = lastAdmittedAtMs.let { it == null || nowMs - it >= windowMs }
+
+    /** Records a reload at [nowMs]; false (nothing recorded) when one was made within the window. */
+    fun admit(nowMs: Long): Boolean {
+        if (!available(nowMs)) return false
+        lastAdmittedAtMs = nowMs
+        return true
+    }
+}
+
+/**
+ * The page signing itself out (#300: [raftArtifactViewerIsSessionLoss], its access token expired
+ * and it cannot refresh) is recovered, not taken for a close: [RaftArtifactViewerLeaveAction.RecoverSession]
+ * while [sessionRecoveryAvailable] ([RaftArtifactViewerSessionRecoveryGuard]), else
+ * [RaftArtifactViewerLeaveAction.SessionLost]. Otherwise a reused kept document that, right after it
+ * is shown again, routes itself somewhere that is no Artifact or message
+ * ([RaftArtifactViewerNavigation.Close] that is not the page's own Back, `#host=close`) did not do it
+ * for the user (Hands dd109a01: the viewer closed 0.8 s after it opened). The viewer then loads the
+ * Artifact once in a fresh WebView ([reloadAvailable]: one per open) instead of closing; a fresh
+ * document that leaves again, or the page's own Back, closes it.
  */
 internal fun raftArtifactViewerLeaveAction(
     navigation: RaftArtifactViewerNavigation,
@@ -572,8 +627,11 @@ internal fun raftArtifactViewerLeaveAction(
     reusedKept: Boolean,
     sinceShownMs: Long,
     reloadAvailable: Boolean,
+    sessionRecoveryAvailable: Boolean = true,
 ): RaftArtifactViewerLeaveAction =
-    if (
+    if (navigation == RaftArtifactViewerNavigation.Close && raftArtifactViewerIsSessionLoss(url)) {
+        if (sessionRecoveryAvailable) RaftArtifactViewerLeaveAction.RecoverSession else RaftArtifactViewerLeaveAction.SessionLost
+    } else if (
         navigation == RaftArtifactViewerNavigation.Close && reusedKept && reloadAvailable &&
         !raftArtifactViewerAsksHostClose(url) && sinceShownMs in 0..RAFT_ARTIFACT_VIEWER_KEPT_SELF_NAVIGATION_WINDOW_MS
     ) {

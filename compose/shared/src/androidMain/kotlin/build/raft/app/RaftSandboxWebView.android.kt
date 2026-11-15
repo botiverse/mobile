@@ -267,7 +267,8 @@ internal class RaftAndroidSandboxWebView(
         webView.destroy()
     }
 
-    private fun recreateWebView(restoreCurrentDocument: Boolean) {
+    /** [restoreUrl]: the page to load in the new WebView (the one shown, [raftWebViewRendererGoneRestoreUrl]); [src] when blank. */
+    private fun recreateWebView(restoreCurrentDocument: Boolean, restoreUrl: String = "") {
         diagnosticsInfo("recreate_webview previousSrc=${src.raftRedactedUrlForLog()}")
         loadedSrc = ""
         lastSuccessfulUrl = ""
@@ -286,10 +287,10 @@ internal class RaftAndroidSandboxWebView(
         removeAllViews()
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         configureWebView()
-        if (restoreCurrentDocument) restoreCurrentDocumentAfterRecreation()
+        if (restoreCurrentDocument) restoreCurrentDocumentAfterRecreation(restoreUrl)
     }
 
-    private fun restoreCurrentDocumentAfterRecreation() {
+    private fun restoreCurrentDocumentAfterRecreation(restoreUrl: String) {
         if (src.isBlank()) {
             webView.loadUrl(ABOUT_BLANK_URL)
             notifyNavigationState(force = true)
@@ -300,7 +301,7 @@ internal class RaftAndroidSandboxWebView(
             notifyNavigationState(force = true)
             return
         }
-        loadAllowedSrc(src)
+        loadAllowedSrc(src, documentUrl = restoreUrl.ifBlank { src })
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -405,6 +406,15 @@ internal class RaftAndroidSandboxWebView(
                         always = true,
                     )
                     val restoreDocument = loadedSrc.isNotBlank()
+                    // #300: the page it was showing (a kept Artifact viewer is routed in place from
+                    // its warm src), checked against the fence before the WebView is rebuilt.
+                    val restoreUrl =
+                        raftWebViewRendererGoneRestoreUrl(src, currentUrl) {
+                            // Same origin as the src only: its document-start script is scoped to that origin.
+                            !wouldBlockMainFrameNavigation(it) &&
+                                raftDocumentStartScriptOriginRule(it) == raftDocumentStartScriptOriginRule(src)
+                        }
+                    diagnosticsInfo("render_process_gone_restore url=${restoreUrl.raftRedactedUrlForLog()} shown=${restoreUrl != src}")
                     // The host's load watchdog: an error state when the page was not up yet.
                     events.onContentProcessGone(if (detail?.didCrash() == true) "render_process_crashed" else "render_process_killed")
                     removeHostMessageListener()
@@ -417,7 +427,7 @@ internal class RaftAndroidSandboxWebView(
                             it.destroy()
                         }
                     }
-                    recreateWebView(restoreCurrentDocument = restoreDocument)
+                    recreateWebView(restoreCurrentDocument = restoreDocument, restoreUrl = restoreUrl)
                     notifyNavigationState(force = true)
                     return true
                 }
@@ -799,28 +809,33 @@ internal class RaftAndroidSandboxWebView(
         loadAllowedSrc(normalized)
     }
 
-    private fun loadAllowedSrc(normalized: String) {
+    /**
+     * Loads [normalized] as this view's src. [documentUrl] is the page actually loaded: the src
+     * itself, or after a renderer rebuild the page that was shown ([raftWebViewRendererGoneRestoreUrl]).
+     * The src stays [loadedSrc], so the host's unchanged config does not load it over that page.
+     */
+    private fun loadAllowedSrc(normalized: String, documentUrl: String = normalized) {
         loadedSrc = normalized
-        currentUrl = normalized
+        currentUrl = documentUrl
         currentIsLoading = true
         notifyNavigationState()
         val documentStartInstalled = installDocumentStartScript(normalized)
         installHostMessageListener(normalized)
         if (shouldBootstrapInjectedJavaScript(documentStartInstalled)) {
-            val bootstrapDocumentUrl = raftInjectedJavaScriptBootstrapBaseUrl(normalized) ?: normalized
-            bootstrapNavigationFence.begin(targetUrl = normalized)
-            diagnosticsInfo("load_src bootstrap=true url=${normalized.raftRedactedUrlForLog()}")
+            val bootstrapDocumentUrl = raftInjectedJavaScriptBootstrapBaseUrl(documentUrl) ?: documentUrl
+            bootstrapNavigationFence.begin(targetUrl = documentUrl)
+            diagnosticsInfo("load_src bootstrap=true url=${documentUrl.raftRedactedUrlForLog()}")
             webView.loadDataWithBaseURL(
                 bootstrapDocumentUrl,
-                injectedJavaScriptBootstrapHtml(normalized),
+                injectedJavaScriptBootstrapHtml(documentUrl),
                 "text/html",
                 "UTF-8",
                 bootstrapDocumentUrl
             )
         } else {
             bootstrapNavigationFence.reset()
-            diagnosticsInfo("load_src bootstrap=false url=${normalized.raftRedactedUrlForLog()}")
-            webView.loadUrl(normalized)
+            diagnosticsInfo("load_src bootstrap=false url=${documentUrl.raftRedactedUrlForLog()}")
+            webView.loadUrl(documentUrl)
         }
     }
 

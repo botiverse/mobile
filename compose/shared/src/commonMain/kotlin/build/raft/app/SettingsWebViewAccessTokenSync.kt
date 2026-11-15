@@ -6,7 +6,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
@@ -239,10 +243,31 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
     binding: SettingsWebViewHostAuthBinding?,
     surface: SettingsWebViewSurface,
     logger: (String) -> Unit = {},
+    /** Refreshes the token ahead of its expiry while this surface is on screen (#300); null: none. */
+    refresher: SettingsWebViewAccessTokenRefresher? = null,
 ) {
     val session = snapshot.session ?: return
     val activeBinding = binding ?: return
     val fence = activeBinding.fence
+
+    if (refresher != null) {
+        // Only while this surface is composed and its page is at least started (the App in the
+        // foreground): back in the foreground, the loop starts again and an expired or nearly
+        // expired token is refreshed at once, while the page resumes.
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val currentLogger by rememberUpdatedState(logger)
+        LaunchedEffect(lifecycleOwner, refresher, fence) {
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                runSettingsWebViewAccessTokenRefreshAhead(
+                    surface = surface.diagnosticsName,
+                    readAccessToken = refresher::currentAccessToken,
+                    nowMillis = { build.raft.app.data.defaultNowMillis() },
+                    refresh = { reason, expiring -> refresher.refresh(reason, expiring) },
+                    logger = { currentLogger(it) },
+                )
+            }
+        }
+    }
 
     DisposableEffect(fence) {
         onDispose { fence.detach() }

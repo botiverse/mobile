@@ -173,6 +173,9 @@ internal fun rememberServerSetupAdmissionHost(
     val scope = rememberCoroutineScope()
     val controller = rememberRaftWebViewController()
     val authSnapshot = rememberSettingsWebViewAuthSnapshot(shellAuthStore, authEvents)
+    // #300: refreshed ahead of its expiry while the setup page is shown.
+    val accessTokenRefresher =
+        remember(shellAuthStore, authDataSource) { SettingsWebViewAccessTokenRefresher(shellAuthStore, authDataSource) }
     val accountId = session.user.id.trim()
     val serverSlug = session.servers.firstOrNull { it.id == serverId }?.slug
         ?: session.selectedServerSlug?.takeIf { session.currentServerId == serverId }
@@ -344,6 +347,8 @@ internal fun rememberServerSetupAdmissionHost(
                                 controller = controller,
                                 binding = binding,
                                 surface = SettingsWebViewSurface.Onboarding,
+                                logger = bridge::log,
+                                refresher = accessTokenRefresher,
                             )
                         }
                     }

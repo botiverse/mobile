@@ -136,3 +136,23 @@ internal expect val raftWebViewNeedsHostBottomInsets: Boolean
  * Desktop: no such mode.
  */
 internal expect val raftWebViewDesktopModeViaViewportMeta: Boolean
+
+/**
+ * Which address a WebView rebuilt after its renderer was gone loads (#300): the top-level page it
+ * was showing ([currentUrl]) when [allowsMainFrame] would let it load there, else the configured
+ * [src]. A page reached in place (a kept Artifact viewer booted on the warm route, then routed to
+ * an Artifact) must not come back as [src], which the viewer reads as leaving its Artifact. The page
+ * loads afresh, so an Artifact page gets a new entry ticket for its content. A `#host=<name>`
+ * fragment (a one-time ask to the App, e.g. the viewer's `#host=close`) is dropped, never replayed.
+ */
+internal fun raftWebViewRendererGoneRestoreUrl(
+    src: String,
+    currentUrl: String,
+    allowsMainFrame: (String) -> Boolean,
+): String {
+    val current = currentUrl.trim()
+    val scheme = current.substringBefore(':', "").lowercase()
+    if (current.isEmpty() || (scheme != "http" && scheme != "https")) return src
+    val restored = if (current.substringAfter('#', "").startsWith("host=")) current.substringBefore('#') else current
+    return if (allowsMainFrame(restored)) restored else src
+}

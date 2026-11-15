@@ -797,6 +797,49 @@ class SharedAuthDataSource(
         }
     }
 
+    /**
+     * Refreshes the access token a signed-in WebView holds before the server refuses it (#300: an
+     * Artifact page holds only the access token, 15 min, and its web client signs out when it is
+     * refused). Through the same single-flight refresh as every refused request. When the stored
+     * token is no longer [expiringAccessToken] another caller already rotated it: nothing is sent.
+     * Never clears the session; a refused refresh is left to the App's own requests to decide.
+     */
+    suspend fun refreshWebViewAccessToken(
+        reason: String,
+        expiringAccessToken: String?,
+    ): SharedAuthResult<StoredAuthSession> {
+        val current = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
+        if (expiringAccessToken != null && current.accessToken != expiringAccessToken) {
+            return SharedAuthResult.Success(current)
+        }
+        if (current.refreshToken.isBlank()) {
+            diagnosticsLogger("auth_webview_refresh_result result=unauthenticated reason=$reason missing_refresh_token=true")
+            return SharedAuthResult.Unauthenticated
+        }
+        return when (
+            val result =
+                authMiddleware.refreshAfterUnauthorized(
+                    failedSession = current,
+                    clearOnUnauthorized = false,
+                    reason = reason,
+                    caller = "webview_refresh_ahead"
+                )
+        ) {
+            is SharedAuthRefreshResult.Success -> {
+                diagnosticsLogger("auth_webview_refresh_result result=success reason=$reason")
+                SharedAuthResult.Success(result.session)
+            }
+            is SharedAuthRefreshResult.Failure -> {
+                val failure = result.response.toSharedAuthFailure()
+                criticalDiagnosticsLogger(
+                    "auth_webview_refresh_result result=failure reason=$reason code=${failure.code}"
+                )
+                failure
+            }
+            SharedAuthRefreshResult.Unavailable -> SharedAuthResult.Unauthenticated
+        }
+    }
+
     suspend fun loadServers(): SharedAuthResult<StoredAuthSession> {
         val session =
             sessionStore.readSession()
