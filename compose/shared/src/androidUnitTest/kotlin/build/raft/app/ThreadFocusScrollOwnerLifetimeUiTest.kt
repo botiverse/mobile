@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -99,11 +100,14 @@ class ThreadFocusScrollOwnerLifetimeUiTest {
         DisposableEffect(viewport) { onDispose { probe.scrollsAtDispose = viewport.issuedScrolls } }
     }
 
+    // With the clock paused, a state write reaches the Recomposer only through the global snapshot
+    // apply notification, which the paused clock never posts (MentionPreviewCardUiTest): send it.
+
     /** Starts the focused scroll and steps frames until its first scroll is issued (mid-scroll). */
     private fun ComposeUiTest.startFocusedScroll(probe: Probe) {
         waitForIdle()
         mainClock.autoAdvance = false
-        runOnUiThread { probe.request = 1 }
+        runOnUiThread { probe.request = 1; Snapshot.sendApplyNotifications() }
         repeat(MaxFrames) {
             if ((probe.viewport?.issuedScrolls ?: 0) > 0) return
             mainClock.advanceTimeByFrame()
@@ -124,7 +128,7 @@ class ThreadFocusScrollOwnerLifetimeUiTest {
             runOnIdle { stack.open("about", JsonObject(emptyMap()), from = stack.pages.first()) }
             startFocusedScroll(probe)
 
-            runOnUiThread { stack.back() }
+            runOnUiThread { stack.back(); Snapshot.sendApplyNotifications() }
             mainClock.advanceTimeBy(PopSettleMillis)
             mainClock.autoAdvance = true
             waitForIdle()
@@ -146,7 +150,7 @@ class ThreadFocusScrollOwnerLifetimeUiTest {
             setContent { if (probe.shown) FocusedScrollList(probe, targetIndex = FarTarget) }
             startFocusedScroll(probe)
 
-            runOnUiThread { probe.shown = false }
+            runOnUiThread { probe.shown = false; Snapshot.sendApplyNotifications() }
             mainClock.advanceTimeBy(PopSettleMillis)
             mainClock.autoAdvance = true
             waitForIdle()
