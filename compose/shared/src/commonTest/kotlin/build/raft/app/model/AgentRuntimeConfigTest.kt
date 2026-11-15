@@ -151,6 +151,12 @@ class AgentRuntimeConfigTest {
         assertTrue(supportsRuntimeReasoningEffort("builtin"))
         assertTrue(supportsRuntimeReasoningEffort("grok"))
         assertFalse(supportsRuntimeReasoningEffort("opencode"))
+        // slock #14619: Antigravity's effort is agy's thought level, only for a model that lists levels.
+        assertTrue(supportsRuntimeReasoningEffort("antigravity"))
+        assertFalse(runtimeOffersUndeclaredReasoningEfforts("antigravity"))
+        assertTrue(runtimeOffersUndeclaredReasoningEfforts("claude"))
+        assertEquals("default", runtimeChoiceModel("antigravity")?.id)
+        assertNull(runtimeChoiceModel("claude"))
     }
 
     // ── JSON round-trip ──

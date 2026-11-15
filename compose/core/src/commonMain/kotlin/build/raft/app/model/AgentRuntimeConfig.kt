@@ -154,7 +154,12 @@ fun getRuntimeDisplayName(id: String): String =
 
 // ── Reasoning effort ──
 
-val REASONING_EFFORT_RUNTIMES: Set<String> = setOf("builtin", "claude", "codex", "grok", "copilot", "pi")
+/**
+ * Shared `REASONING_EFFORT_RUNTIMES` without `kimi-sdk` (its effort follows the live model's
+ * capability, see MembersPage). Antigravity's is agy's thought level, offered only for a model whose
+ * levels the Computer lists (slock #14619).
+ */
+val REASONING_EFFORT_RUNTIMES: Set<String> = setOf("builtin", "claude", "codex", "grok", "antigravity", "copilot", "pi")
 val RUNTIME_FAST_MODE_RUNTIMES: Set<String> = setOf("claude", "codex")
 
 // ── Runtime models ──
@@ -306,6 +311,21 @@ fun canonicalizeRuntimeModelPresentation(
 fun supportsRuntimeFastMode(runtime: String): Boolean = RUNTIME_FAST_MODE_RUNTIMES.contains(runtime)
 
 fun supportsRuntimeReasoningEffort(runtime: String): Boolean = REASONING_EFFORT_RUNTIMES.contains(runtime)
+
+/**
+ * Shared `runtimeOffersUndeclaredReasoningEfforts` (slock #14619): whether a model that declares no
+ * efforts still offers the runtime's base set in the pickers. Antigravity does not: agy can only
+ * apply a level the Computer listed for that model.
+ */
+fun runtimeOffersUndeclaredReasoningEfforts(runtime: String): Boolean = runtime != "antigravity"
+
+/**
+ * Shared `runtimeChoiceModel` (slock #14619): the model entry meaning "the runtime chooses" (no
+ * model is passed), Antigravity's `default` ("AGY configured default"). Model pickers keep it first
+ * and preselect it.
+ */
+fun runtimeChoiceModel(runtime: String): RuntimeModelInfo? =
+    if (runtime == "antigravity") RUNTIME_MODELS["antigravity"]?.firstOrNull { it.id == "default" } else null
 
 // ── Name validation ──
 
