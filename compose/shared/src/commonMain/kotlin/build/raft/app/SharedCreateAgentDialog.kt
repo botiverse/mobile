@@ -48,6 +48,7 @@ import build.raft.app.data.CREATE_AGENT_HOSTED_PROVIDER
 import build.raft.app.data.HostedRuntimeModels
 import build.raft.app.data.BundledRuntimeCatalog
 import build.raft.app.data.createAgentRuntimeForOptions
+import build.raft.app.data.createAgentSuggestedRuntimeNoticeCause
 import build.raft.app.data.createAgentSuggestedRuntimeUnavailable
 import build.raft.app.data.CreateAgentSuggestedRuntimeUnavailable
 import build.raft.app.data.DataRequestPriority
@@ -454,8 +455,6 @@ internal fun SharedCreateAgentDialog(
      * and the form says why. The person may change it; it is never remembered unless created with.
      */
     suggestedRuntime: String? = null,
-    /** The agent that suggested [suggestedRuntime] (web `prefilledRuntimeSuggestedBy`); null: "the action card". */
-    suggestedRuntimeBy: String? = null,
     machines: List<SharedCreateAgentMachineOption> = emptyList(),
     machinesLoading: Boolean = false,
     machinesErrorMessage: String? = null,
@@ -966,7 +965,6 @@ internal fun SharedCreateAgentDialog(
                         ) {
                             CreateAgentSuggestedRuntimeNotice(
                                 suggestedRuntime = cleanSuggestedRuntime,
-                                suggestedBy = suggestedRuntimeBy,
                                 runtime = runtime,
                                 unavailable = suggestedRuntimeUnavailable,
                                 runtimeName = cleanSuggestedRuntime?.let { id ->
@@ -1365,35 +1363,20 @@ internal fun MachinePicker(
 }
 
 /**
- * Under the runtime picker, for a card's suggested runtime (web `SuggestedRuntimeNotice`): who
- * suggested it while it is the pick, or, where the chosen computer cannot run it (and nothing is
- * picked), why: the computer lacks it, or this server does not offer it for new agents.
+ * Under the runtime picker, for a card's suggested runtime (web `SuggestedRuntimeNotice`, slock
+ * #14976): only where the chosen computer cannot run it (and nothing is picked), why: the computer
+ * lacks it, or this server does not offer it for new agents. A suggestion that was preselected
+ * needs no note, so the dialog no longer says who suggested it.
  */
 @Composable
 private fun CreateAgentSuggestedRuntimeNotice(
     suggestedRuntime: String?,
-    suggestedBy: String?,
     runtime: String,
     unavailable: CreateAgentSuggestedRuntimeUnavailable?,
     runtimeName: String,
     computerName: String
 ) {
-    if (suggestedRuntime == null) return
-    if (runtime == suggestedRuntime) {
-        val by = suggestedBy?.trim()?.takeIf { it.isNotEmpty() }
-        Text(
-            text =
-                if (by != null) {
-                    Res.string.agent_create_runtime_suggested_by.format(listOf(by)).localized()
-                } else {
-                    stringResource(Res.string.agent_create_runtime_suggested_by_action_card)
-                },
-            style = RaftType.Caption,
-            color = RaftColor.TextMutedGray
-        )
-        return
-    }
-    val cause = unavailable ?: return
+    val cause = createAgentSuggestedRuntimeNoticeCause(suggestedRuntime, runtime, unavailable) ?: return
     Text(
         text =
             when (cause) {
