@@ -206,14 +206,29 @@ class AndroidSystemKillReportSampleAgeTest {
     }
 
     @Test
-    fun aBackgroundSnapshotIsNotForegroundEvidence() {
-        // Interactions are not written in the background, so it moved there after its last one.
+    fun aRecentInteractionCountsEvenWhenTheSnapshotSaysBackground() {
+        // The user acted, switched away, and the app was killed at importance 400.
         val telemetry = staleBackground().copy(lastInteractionAtMillis = exitAt - 1_000L)
-        assertNull(recentForegroundEvidence(telemetry, exitAt))
-        val item = plan(exit(importance = IMPORTANCE_CACHED), telemetry)
-        assertEquals(SystemKillDecision.ReportBackground, item.decision)
+        val exit = exit(importance = IMPORTANCE_CACHED)
+
+        assertEquals(ForegroundEvidence(ForegroundEvidence.Kind.Interaction, 1_000L), recentForegroundEvidence(telemetry, exitAt))
+        val item = plan(exit, telemetry)
+        assertEquals(SystemKillDecision.Report, item.decision)
         assertEquals(SystemKillAction.Submit, item.action)
-        assertRecentForeground(systemKillExtras(item.exit, telemetry), expected = false, source = "none", ageSeconds = null)
+        assertRecentForeground(systemKillExtras(exit, telemetry), expected = true, source = "interaction", ageSeconds = 1L)
+        assertTrue(systemKillMessage(exit, telemetry).contains("last interaction 1s before exit"))
+    }
+
+    @Test
+    fun aBackgroundSnapshotsSampleIsNotForegroundEvidence() {
+        // Sampled 5 s before the exit but already in background since: the sample source is not fresh.
+        val telemetry =
+            staleBackground().copy(sampledAtMillis = exitAt - 5_000L, lastInteractionAtMillis = exitAt - 600_000L)
+        val exit = exit(importance = IMPORTANCE_CACHED)
+
+        assertNull(recentForegroundEvidence(telemetry, exitAt))
+        assertEquals(SystemKillDecision.ReportBackground, plan(exit, telemetry).decision)
+        assertRecentForeground(systemKillExtras(exit, telemetry), expected = false, source = "none", ageSeconds = null)
     }
 
     @Test

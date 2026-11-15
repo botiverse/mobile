@@ -97,18 +97,20 @@ internal data class ForegroundEvidence(val kind: Kind, val ageMillis: Long) {
 }
 
 /**
- * Fresh foreground evidence from the app: it still saw itself in the foreground, and the user's
- * last interaction or its last sample was at most [SystemKillFreshSampleMillis] before the exit;
- * the interaction when both are (it is the user, not a timer); null when neither, even if the
- * other source is missing. Interactions are only written in the foreground, so a snapshot that
- * says "in background" moved there after the last one and is not evidence.
+ * Fresh foreground evidence from the app, either source at most [SystemKillFreshSampleMillis]
+ * before the exit (the interaction when both are: it is the user, not a timer); null when neither,
+ * even if the other source is missing:
+ * - the user's last interaction, whatever the snapshot's flag says now: the user may have acted,
+ *   switched away, and the app was killed.
+ * - the last sample, only while the snapshot still says "in foreground" (a background snapshot's
+ *   sample is from before its move to background).
  */
 internal fun recentForegroundEvidence(telemetry: MemoryTelemetrySnapshot?, exitTimestampMillis: Long): ForegroundEvidence? {
-    if (telemetry == null || !telemetry.foreground) return null
+    if (telemetry == null) return null
     return when {
         isTelemetryInteractionFresh(telemetry, exitTimestampMillis) ->
             ForegroundEvidence(ForegroundEvidence.Kind.Interaction, exitTimestampMillis - telemetry.lastInteractionAtMillis)
-        isTelemetrySampleFresh(telemetry, exitTimestampMillis) ->
+        telemetry.foreground && isTelemetrySampleFresh(telemetry, exitTimestampMillis) ->
             ForegroundEvidence(ForegroundEvidence.Kind.Sample, exitTimestampMillis - telemetry.sampledAtMillis)
         else -> null
     }
@@ -353,8 +355,7 @@ internal fun systemKillExtras(
                 put("crash_recent_foreground_source", evidence.kind.label)
                 put("crash_recent_foreground_age_s", evidence.ageMillis / 1000L)
             }
-            // "No" only when both the sample and the interaction time are known and old (or the
-            // snapshot says "in background", which it moved to after both).
+            // "No" only when both the sample and the interaction time are known and not evidence.
             telemetry != null &&
                 isKnownBeforeExit(telemetry.sampledAtMillis, exit.timestampMillis) &&
                 isKnownBeforeExit(telemetry.lastInteractionAtMillis, exit.timestampMillis) -> {
