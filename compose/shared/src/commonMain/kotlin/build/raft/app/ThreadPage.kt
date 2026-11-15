@@ -3797,9 +3797,7 @@ internal data class ThreadCreateAgentActionDialogState(
     val errorCode: String? = null,
     // task #193 honest-states: raw server error text for the unmapped-code
     // fallback so the dialog never shows a bare code.
-    val errorServerMessage: String? = null,
-    /** The card's author when an agent: who the dialog says suggested [ThreadActionCard.suggestedRuntime]. */
-    val suggestedRuntimeBy: String? = null
+    val errorServerMessage: String? = null
 )
 
 // task #193: single-source state transitions so a previous request's raw
@@ -14436,10 +14434,7 @@ private fun SharedThreadRouteContentContent(
                                 messageId = itemId,
                                 card = actionCard,
                                 submitting = false,
-                                errorCode = null,
-                                // The agent that prepared the card names its suggested runtime (web `requesterAgent`).
-                                suggestedRuntimeBy =
-                                    actionCardMessage?.takeIf { it.isThreadAgentAuthor() }?.authorName?.takeIf { it.isNotBlank() }
+                                errorCode = null
                         )
                         createAgentDialogState = dialogState
                         return@ThreadPageContent
@@ -16139,7 +16134,6 @@ private fun ThreadCreateAgentActionDialogHost(
         suggestedComputer = dialogState.card.suggestedComputer,
         requiredComputer = dialogState.card.requiredComputer,
         suggestedRuntime = dialogState.card.suggestedRuntime,
-        suggestedRuntimeBy = dialogState.suggestedRuntimeBy,
         machines = computerPickerSlice.machines,
         machinesLoading =
             computersStore != null &&

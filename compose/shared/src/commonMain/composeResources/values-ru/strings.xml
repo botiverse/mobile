@@ -2102,8 +2102,6 @@
     <string name="agent_create_action_add_computer">Добавить компьютер</string>
     <string name="agent_create_hint_required_computer">Требуется компьютер: %1$s</string>
     <string name="agent_create_hint_suggested_computer">Рекомендуемый компьютер: %1$s</string>
-    <string name="agent_create_runtime_suggested_by">Предложено: %1$s</string>
-    <string name="agent_create_runtime_suggested_by_action_card">Среда выполнения предложена карточкой действия.</string>
     <string name="agent_create_suggested_runtime_unavailable">%1$s недоступен на %2$s. Выберите среду выполнения.</string>
     <string name="agent_create_suggested_runtime_not_admitted">%1$s здесь нельзя использовать для новых агентов. Выберите среду выполнения.</string>
     <string name="agent_create_hosted_option">Облачный агент, работает в облаке · Временно бесплатно</string>

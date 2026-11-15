@@ -130,6 +130,22 @@ internal fun createAgentSuggestedRuntimeUnavailable(
     }
 }
 
+/**
+ * What the note under the runtime picker says about a card's [suggested] runtime (web
+ * `SuggestedRuntimeNotice`, slock #14976): only why it can't be used ([unavailable]) while it isn't
+ * the pick; nothing once it is preselected (the dialog no longer names who suggested it), and
+ * nothing without a suggestion.
+ */
+internal fun createAgentSuggestedRuntimeNoticeCause(
+    suggested: String?,
+    runtime: String,
+    unavailable: CreateAgentSuggestedRuntimeUnavailable?,
+): CreateAgentSuggestedRuntimeUnavailable? {
+    if (suggested.isNullOrEmpty()) return null
+    if (runtime == suggested) return null
+    return unavailable
+}
+
 /** The runtimes a create may default to: the runtime-options rows with `canSelectInThisContext`. */
 internal fun createAgentRuntimeCandidates(catalog: SharedCreateAgentRuntimeCatalog?): List<String> =
     catalog?.options.orEmpty()
