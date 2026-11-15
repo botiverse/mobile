@@ -524,7 +524,9 @@ internal data class SystemKillProgress(
                     ?: nextQueue.filter { it.budget == SystemKillBudget.Review }.minByOrNull { it.key.timestampMillis }
                     ?: nextQueue.minBy { it.key.timestampMillis }
             nextQueue = nextQueue - victim
-            nextLedger = nextLedger.record(victim.versionCode, victim.key.timestampMillis, category = victim.budget.label)
+            val category =
+                if (victim.budget == SystemKillBudget.Background) BackgroundDropEntry.EvictedBackground else victim.budget.label
+            nextLedger = nextLedger.record(victim.versionCode, victim.key.timestampMillis, category = category)
         }
         return copy(queue = nextQueue, ledger = nextLedger)
     }
@@ -665,6 +667,8 @@ internal data class BackgroundDropEntry(
         const val Background = "background"
         /** A report Hands rejected for good ([isPermanentHandsRejection]). */
         const val Rejected = "rejected"
+        /** A background report evicted from a full queue; sent in `crash_pending_evicted` as `background`. */
+        const val EvictedBackground = "evicted_background"
     }
 }
 
@@ -673,7 +677,7 @@ internal data class BackgroundDropBatch(val id: String, val entries: List<Backgr
     /** `crash_background_dropped`: `[{version_code, exit_day_utc, count}]`, background budget drops only. */
     fun toJson(): JSONArray = json(entries.filter { it.category == BackgroundDropEntry.Background }, withCategory = false)
 
-    /** `crash_pending_evicted`: `[{version_code, exit_day_utc, category, count}]`, visible / review evictions only. */
+    /** `crash_pending_evicted`: `[{version_code, exit_day_utc, category, count}]`, queue evictions (visible / review / background). */
     fun evictedToJson(): JSONArray =
         json(
             entries.filter { it.category != BackgroundDropEntry.Background && it.category != BackgroundDropEntry.Rejected },
@@ -707,14 +711,22 @@ internal data class BackgroundDropBatch(val id: String, val entries: List<Backgr
     }
 
     /** Every entry with its category, for the device's own store. */
-    fun allToJson(): JSONArray = json(entries, withCategory = true)
+    fun allToJson(): JSONArray =
+        JSONArray().apply {
+            entries.forEach {
+                put(
+                    JSONObject().put("version_code", it.versionCode).put("exit_day_utc", it.exitDayUtc)
+                        .put("category", it.category).put("http_status", it.httpStatus).put("count", it.count),
+                )
+            }
+        }
 
     private fun json(list: List<BackgroundDropEntry>, withCategory: Boolean): JSONArray =
         JSONArray().apply {
             list.forEach {
                 val entry = JSONObject().put("version_code", it.versionCode).put("exit_day_utc", it.exitDayUtc)
                 if (withCategory) {
-                    entry.put("category", it.category)
+                    entry.put("category", if (it.category == BackgroundDropEntry.EvictedBackground) "background" else it.category)
                     if (it.httpStatus != 0) entry.put("http_status", it.httpStatus)
                 }
                 put(entry.put("count", it.count))

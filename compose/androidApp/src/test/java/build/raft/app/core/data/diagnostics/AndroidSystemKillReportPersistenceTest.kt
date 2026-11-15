@@ -236,6 +236,26 @@ class AndroidSystemKillReportPersistenceTest {
     }
 
     @Test
+    fun anEvictedInBudgetBackgroundReportIsCountedAsAnEvictionNotABudgetDrop() {
+        fun queued(pid: Int, budget: SystemKillBudget) =
+            QueuedSystemKillReport(SystemKillExitKey(pid, now - 10_000L + pid), budget, 12600001L, "m$pid", emptyMap())
+        // A full queue (cap 2) holding an in-budget background report; a new visible exit arrives.
+        var progress = SystemKillProgress(queue = listOf(queued(1, SystemKillBudget.Background), queued(2, SystemKillBudget.Visible)))
+
+        progress = progress.enqueue(queued(3, SystemKillBudget.Visible), cap = 2)
+
+        assertEquals(listOf(2, 3), progress.queue.map { it.key.pid })
+        // Survives the device store, then goes out as an eviction with category background.
+        val ledger = BackgroundDropLedger.decode(progress.ledger.encode())
+        val extras = ledger.attach { "batch-1" }.second!!.extras()
+        assertFalse(extras.containsKey("crash_background_dropped"))
+        val evicted = extras["crash_pending_evicted"] as JSONArray
+        assertEquals(1, evicted.length())
+        assertEquals("background", evicted.getJSONObject(0).getString("category"))
+        assertEquals(1, evicted.getJSONObject(0).getInt("count"))
+    }
+
+    @Test
     fun aQueuedReportRoundTripsThroughItsStoredForm() {
         val report =
             QueuedSystemKillReport(
