@@ -30,6 +30,18 @@ class RaftWebViewRendererGoneRestoreTest {
     }
 
     @Test
+    fun oneTimeValuesAndTheBootstrapPlaceholderAreNeverReloaded() {
+        assertEquals(warm, raftWebViewRendererGoneRestoreUrl(warm, "$web$RAFT_WEBVIEW_BOOTSTRAP_PATH", sameOrigin))
+        assertEquals(
+            "$web/settings/billing?tab=plan",
+            raftWebViewRendererGoneRestoreUrl(warm, "$web/settings/billing?code=abc&tab=plan&state=xyz&access_token=t&ticket=1", sameOrigin),
+        )
+        assertEquals("$web/connect", raftWebViewRendererGoneRestoreUrl(warm, "$web/connect?handoffCode=h#host=close", sameOrigin))
+        // The embed contract's own query stays.
+        assertEquals(shown, raftWebViewRendererGoneRestoreUrl(warm, shown, sameOrigin))
+    }
+
+    @Test
     fun theSrcWhenTheShownPageCannotLoadThere() {
         for (current in listOf("", "about:blank", "data:text/html,x", "https://evil.example/artifacts/$id")) {
             assertEquals(warm, raftWebViewRendererGoneRestoreUrl(warm, current, sameOrigin), current)

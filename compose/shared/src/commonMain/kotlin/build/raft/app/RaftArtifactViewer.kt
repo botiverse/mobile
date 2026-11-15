@@ -591,6 +591,24 @@ internal fun raftArtifactViewerIsSessionLoss(url: String): Boolean {
     return path.trimEnd('/').ifEmpty { "/" } in RaftArtifactViewerSignInPaths
 }
 
+/** A token change this recent backs a sign-out of the page ([raftArtifactViewerSessionLossEvident]). */
+internal const val RAFT_ARTIFACT_VIEWER_SESSION_LOSS_RECENT_TOKEN_CHANGE_MS = 30_000L
+
+/**
+ * Whether a move to a sign-in path is backed by evidence that the page lost its session, rather
+ * than a home or logo link inside the Artifact: the token the page holds is expired or inside the
+ * refresh lead ([pageTokenRemainingMs], by the server's clock; null: unknown), or the App's token
+ * changed in the last [RAFT_ARTIFACT_VIEWER_SESSION_LOSS_RECENT_TOKEN_CHANGE_MS] ([sinceTokenChangeMs];
+ * null: not since the page opened), so the page may have sent the one it held before.
+ */
+internal fun raftArtifactViewerSessionLossEvident(
+    pageTokenRemainingMs: Long?,
+    sinceTokenChangeMs: Long?,
+    leadMs: Long = SETTINGS_WEBVIEW_REFRESH_LEAD_MS,
+): Boolean =
+    (pageTokenRemainingMs != null && pageTokenRemainingMs <= leadMs) ||
+        (sinceTokenChangeMs != null && sinceTokenChangeMs in 0..RAFT_ARTIFACT_VIEWER_SESSION_LOSS_RECENT_TOKEN_CHANGE_MS)
+
 /**
  * Loop guard for the session recovery reload: at most one per [windowMs]. A page that signs out
  * again within it is not reloaded again (the viewer shows Unavailable with Close).
@@ -612,9 +630,10 @@ internal class RaftArtifactViewerSessionRecoveryGuard(
 
 /**
  * The page signing itself out (#300: [raftArtifactViewerIsSessionLoss], its access token expired
- * and it cannot refresh) is recovered, not taken for a close: [RaftArtifactViewerLeaveAction.RecoverSession]
- * while [sessionRecoveryAvailable] ([RaftArtifactViewerSessionRecoveryGuard]), else
- * [RaftArtifactViewerLeaveAction.SessionLost]. Otherwise a reused kept document that, right after it
+ * and it cannot refresh) is recovered, not taken for a close, when [sessionLossEvident]
+ * ([raftArtifactViewerSessionLossEvident]; else it is a link to the web root, handled as before):
+ * [RaftArtifactViewerLeaveAction.RecoverSession] while [sessionRecoveryAvailable]
+ * ([RaftArtifactViewerSessionRecoveryGuard]), else [RaftArtifactViewerLeaveAction.SessionLost]. Otherwise a reused kept document that, right after it
  * is shown again, routes itself somewhere that is no Artifact or message
  * ([RaftArtifactViewerNavigation.Close] that is not the page's own Back, `#host=close`) did not do it
  * for the user (Hands dd109a01: the viewer closed 0.8 s after it opened). The viewer then loads the
@@ -627,9 +646,10 @@ internal fun raftArtifactViewerLeaveAction(
     reusedKept: Boolean,
     sinceShownMs: Long,
     reloadAvailable: Boolean,
+    sessionLossEvident: Boolean = false,
     sessionRecoveryAvailable: Boolean = true,
 ): RaftArtifactViewerLeaveAction =
-    if (navigation == RaftArtifactViewerNavigation.Close && raftArtifactViewerIsSessionLoss(url)) {
+    if (navigation == RaftArtifactViewerNavigation.Close && sessionLossEvident && raftArtifactViewerIsSessionLoss(url)) {
         if (sessionRecoveryAvailable) RaftArtifactViewerLeaveAction.RecoverSession else RaftArtifactViewerLeaveAction.SessionLost
     } else if (
         navigation == RaftArtifactViewerNavigation.Close && reusedKept && reloadAvailable &&

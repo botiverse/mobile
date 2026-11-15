@@ -23,34 +23,43 @@ class SettingsWebViewAccessTokenRefreshAheadTest {
     private val epochMs = 1_800_000_000_000L
     private val lifetimeMs = 15 * 60_000L
 
-    private fun jwt(expMs: Long, sub: String = "user-maya"): String {
+    private fun jwt(expMs: Long, sub: String = "user-maya", iatMs: Long? = null): String {
         val b64 = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
         val header = b64.encode("""{"alg":"HS256","typ":"JWT"}""".encodeToByteArray())
-        val payload = b64.encode("""{"sub":"$sub","type":"access","exp":${expMs / 1_000}}""".encodeToByteArray())
+        val iat = iatMs?.let { ""","iat":${it / 1_000}""" }.orEmpty()
+        val payload = b64.encode("""{"sub":"$sub","type":"access"$iat,"exp":${expMs / 1_000}}""".encodeToByteArray())
         return "$header.$payload.signature"
     }
 
-    /** A fake session: its token, and a refresh that mints one valid for [lifetimeMs] from now. */
+    /**
+     * A fake session: its token, and a refresh that mints one (with `iat`) valid for [mintLifetimeMs]
+     * by the server's clock. The device clock runs [deviceAheadMs] ahead of the server's.
+     */
     private inner class Session(
         private val scope: TestScope,
         var token: String,
         var refreshSucceeds: Boolean = true,
+        private val deviceAheadMs: Long = 0L,
+        private val mintLifetimeMs: Long = lifetimeMs,
     ) {
         val refreshes = mutableListOf<Pair<Long, String>>()
         val logs = mutableListOf<String>()
+        val clock = SettingsWebViewTokenClock()
         private var minted = 0
 
-        fun now() = epochMs + scope.currentTime
+        fun now() = epochMs + scope.currentTime + deviceAheadMs
+
+        fun serverNow() = epochMs + scope.currentTime
 
         suspend fun refresh(reason: String, expiring: String): Boolean {
             refreshes += scope.currentTime to reason
             assertEquals(token, expiring, "refresh names the token it replaces")
             if (!refreshSucceeds) return false
-            token = jwt(now() + lifetimeMs, sub = "user-maya-${++minted}")
+            token = jwt(serverNow() + mintLifetimeMs, sub = "user-maya-${++minted}", iatMs = serverNow())
             return true
         }
 
-        fun run(lead: Long = SETTINGS_WEBVIEW_REFRESH_LEAD_MS) =
+        fun run() =
             scope.launch {
                 runSettingsWebViewAccessTokenRefreshAhead(
                     surface = "artifact-viewer",
@@ -58,7 +67,7 @@ class SettingsWebViewAccessTokenRefreshAheadTest {
                     nowMillis = ::now,
                     refresh = ::refresh,
                     logger = { logs += it },
-                    leadMillis = lead,
+                    clock = clock,
                 )
             }
     }
@@ -146,6 +155,75 @@ class SettingsWebViewAccessTokenRefreshAheadTest {
         runCurrent()
         assertEquals(listOf(5 * 60_000L + lifetimeMs - SETTINGS_WEBVIEW_REFRESH_LEAD_MS), session.refreshes.map { it.first })
         job.cancel()
+    }
+
+    @Test
+    fun aNewTokenBornInsideTheLeadWindowIsNotRefreshedAgainAtOnce() = runTest {
+        // A 90 s token (shorter than the 2 min lead): every new one is "due" at once by its exp.
+        val shortMs = 90_000L
+        val session = Session(this, jwt(epochMs + shortMs, iatMs = epochMs), mintLifetimeMs = shortMs)
+        val job = session.run()
+        runCurrent()
+        assertEquals(listOf(0L), session.refreshes.map { it.first })
+        // Not again before half its lifetime (45 s, under the 60 s floor).
+        advanceTimeBy(shortMs / 2 - 1)
+        runCurrent()
+        assertEquals(listOf(0L), session.refreshes.map { it.first })
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(listOf(0L, shortMs / 2), session.refreshes.map { it.first })
+        job.cancel()
+    }
+
+    @Test
+    fun aFastDeviceClockRefreshesOnceThenOnScheduleNotInALoop() = runTest {
+        // The device runs 20 min ahead: by its clock every new token has already expired.
+        val ahead = 20 * 60_000L
+        val session = Session(this, jwt(epochMs + lifetimeMs, iatMs = epochMs), deviceAheadMs = ahead)
+        val job = session.run()
+        runCurrent()
+        // Its offset is unknown at first: one refresh at once, which teaches it.
+        assertEquals(listOf(0L), session.refreshes.map { it.first })
+        advanceTimeBy(lifetimeMs - SETTINGS_WEBVIEW_REFRESH_LEAD_MS - 1)
+        runCurrent()
+        assertEquals(listOf(0L), session.refreshes.map { it.first }, "no loop: ${session.logs}")
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(listOf(0L, lifetimeMs - SETTINGS_WEBVIEW_REFRESH_LEAD_MS), session.refreshes.map { it.first })
+        job.cancel()
+    }
+
+    @Test
+    fun aSlowDeviceClockStillRefreshesBeforeTheTokenExpires() = runTest {
+        // The device runs 20 min behind: by its clock the token would last 35 min.
+        val session = Session(this, jwt(epochMs + lifetimeMs, iatMs = epochMs), deviceAheadMs = -20 * 60_000L)
+        val job = session.run()
+        advanceTimeBy(lifetimeMs - SETTINGS_WEBVIEW_REFRESH_LEAD_MS - 1)
+        runCurrent()
+        assertTrue(session.refreshes.isEmpty(), "got ${session.refreshes}")
+        advanceTimeBy(1)
+        runCurrent()
+        // Received + lifetime − 2 min, whatever the device clock says.
+        assertEquals(listOf(lifetimeMs - SETTINGS_WEBVIEW_REFRESH_LEAD_MS), session.refreshes.map { it.first })
+        // And the next one on the same schedule.
+        advanceTimeBy(lifetimeMs - SETTINGS_WEBVIEW_REFRESH_LEAD_MS)
+        runCurrent()
+        assertEquals(2, session.refreshes.size, "got ${session.refreshes}")
+        job.cancel()
+    }
+
+    @Test
+    fun theTokenClockReadsAgeOnTheServersClock() {
+        val clock = SettingsWebViewTokenClock()
+        val token = jwt(epochMs + lifetimeMs, iatMs = epochMs)
+        // Unknown offset: the device's clock.
+        assertEquals(lifetimeMs, clock.remainingMillis(token, epochMs))
+        // Learned from a token minted just now on a device 20 min ahead.
+        clock.learnFromFreshToken(token, epochMs + 20 * 60_000L)
+        assertEquals(lifetimeMs, clock.remainingMillis(token, epochMs + 20 * 60_000L))
+        assertEquals(SETTINGS_WEBVIEW_REFRESH_LEAD_MS, settingsWebViewTokenSchedule(token, epochMs + 20 * 60_000L, clock)?.let {
+            epochMs + 20 * 60_000L + lifetimeMs - it.refreshAtDeviceMs
+        })
     }
 
     @Test

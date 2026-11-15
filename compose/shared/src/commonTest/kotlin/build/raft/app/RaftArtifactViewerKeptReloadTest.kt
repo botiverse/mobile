@@ -22,23 +22,22 @@ class RaftArtifactViewerKeptReloadTest {
         raftArtifactViewerLeaveAction(raftArtifactViewerNavigation(url, web, id), url, reusedKept, sinceShownMs, reloadAvailable)
 
     @Test
-    fun aReusedKeptPageThatGoesToTheServerReloadsInsteadOfClosing() {
-        assertEquals(RaftArtifactViewerNavigation.Close, raftArtifactViewerNavigation("$web/s/northwind", web, id))
+    fun aReusedKeptPageThatGoesToTheWebRootReloadsInsteadOfClosing() {
+        assertEquals(RaftArtifactViewerNavigation.Close, raftArtifactViewerNavigation("$web/", web, id))
+        assertEquals(RaftArtifactViewerLeaveAction.ReloadFresh, action("$web/"))
         assertEquals(RaftArtifactViewerLeaveAction.ReloadFresh, action("$web/s/northwind"))
-        // The web root is a sign-out now (#300): recovered with a refreshed session, see RaftArtifactViewerSessionRecoveryTest.
-        assertEquals(RaftArtifactViewerLeaveAction.RecoverSession, action("$web/"))
     }
 
     @Test
     fun aSecondSelfNavigationCloses() {
         // The one fresh load of this open is used: close as before.
-        assertEquals(RaftArtifactViewerLeaveAction.Leave, action("$web/s/northwind", reloadAvailable = false))
+        assertEquals(RaftArtifactViewerLeaveAction.Leave, action("$web/", reloadAvailable = false))
         // The fresh WebView is no kept page: it closes when it leaves.
-        assertEquals(RaftArtifactViewerLeaveAction.Leave, action("$web/s/northwind", reusedKept = false))
+        assertEquals(RaftArtifactViewerLeaveAction.Leave, action("$web/", reusedKept = false))
         // Long after it was shown it is the user's doing (Delete routes to the server): close.
         assertEquals(
             RaftArtifactViewerLeaveAction.Leave,
-            action("$web/s/northwind", sinceShownMs = RAFT_ARTIFACT_VIEWER_KEPT_SELF_NAVIGATION_WINDOW_MS + 1),
+            action("$web/", sinceShownMs = RAFT_ARTIFACT_VIEWER_KEPT_SELF_NAVIGATION_WINDOW_MS + 1),
         )
     }
 

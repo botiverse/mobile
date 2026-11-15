@@ -137,13 +137,25 @@ internal expect val raftWebViewNeedsHostBottomInsets: Boolean
  */
 internal expect val raftWebViewDesktopModeViaViewportMeta: Boolean
 
+/** The placeholder document Android loads first to install the injected script (never a page to restore). */
+internal const val RAFT_WEBVIEW_BOOTSTRAP_PATH = "/__raft_mobile_bootstrap__"
+
+/** Query keys that carry a one-time credential (a code, ticket, token, nonce): never replayed by a reload. */
+private fun raftWebViewOneTimeQueryKey(key: String): Boolean {
+    val k = key.lowercase()
+    return k == "state" || k == "sig" || k == "otp" ||
+        listOf("token", "ticket", "code", "nonce", "secret", "signature").any { it in k }
+}
+
 /**
- * Which address a WebView rebuilt after its renderer was gone loads (#300): the top-level page it
- * was showing ([currentUrl]) when [allowsMainFrame] would let it load there, else the configured
- * [src]. A page reached in place (a kept Artifact viewer booted on the warm route, then routed to
- * an Artifact) must not come back as [src], which the viewer reads as leaving its Artifact. The page
- * loads afresh, so an Artifact page gets a new entry ticket for its content. A `#host=<name>`
- * fragment (a one-time ask to the App, e.g. the viewer's `#host=close`) is dropped, never replayed.
+ * Which address a WebView rebuilt after its renderer (or web content process) was gone loads
+ * (#300): the top-level page it was showing ([currentUrl]) when [allowsMainFrame] would let it load
+ * there, else the configured [src]. A page reached in place (a kept Artifact viewer booted on the
+ * warm route, then routed to an Artifact) must not come back as [src], which the viewer reads as
+ * leaving its Artifact. The page loads afresh, so an Artifact page gets a new entry ticket for its
+ * content. Never replayed: a `#host=<name>` fragment (a one-time ask to the App, e.g. the viewer's
+ * `#host=close`), a one-time query value ([raftWebViewOneTimeQueryKey]), or the bootstrap
+ * placeholder ([RAFT_WEBVIEW_BOOTSTRAP_PATH]: [src] then).
  */
 internal fun raftWebViewRendererGoneRestoreUrl(
     src: String,
@@ -153,6 +165,20 @@ internal fun raftWebViewRendererGoneRestoreUrl(
     val current = currentUrl.trim()
     val scheme = current.substringBefore(':', "").lowercase()
     if (current.isEmpty() || (scheme != "http" && scheme != "https")) return src
-    val restored = if (current.substringAfter('#', "").startsWith("host=")) current.substringBefore('#') else current
+    val fragment = current.substringAfter('#', "")
+    val beforeFragment = current.substringBefore('#')
+    val path = beforeFragment.substringAfter("://", "").let { rest ->
+        val start = rest.indexOfFirst { it == '/' || it == '?' }
+        if (start < 0 || rest[start] == '?') "/" else rest.substring(start).substringBefore('?')
+    }
+    if (path.startsWith(RAFT_WEBVIEW_BOOTSTRAP_PATH)) return src
+    val base = beforeFragment.substringBefore('?')
+    val query =
+        beforeFragment.substringAfter('?', "").split('&')
+            .filter { it.isNotEmpty() && !raftWebViewOneTimeQueryKey(it.substringBefore('=')) }
+            .joinToString("&")
+    val restored =
+        base + (if (query.isEmpty()) "" else "?$query") +
+            (if (fragment.isEmpty() || fragment.startsWith("host=")) "" else "#$fragment")
     return if (allowsMainFrame(restored)) restored else src
 }

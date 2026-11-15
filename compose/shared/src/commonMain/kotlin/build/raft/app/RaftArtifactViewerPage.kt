@@ -377,7 +377,7 @@ private sealed interface RaftArtifactViewerBodyState {
      * token is refreshed, the signed-out document dropped, and the Artifact's page opened again in
      * a new WebView (the normal open path, so the page gets a new entry ticket for its content).
      */
-    data class RecoveringSession(val to: String) : RaftArtifactViewerBodyState
+    data class RecoveringSession(val to: String, val pageToken: String) : RaftArtifactViewerBodyState
 }
 
 private fun RaftArtifactViewerNavigation.logToken(): String =
@@ -494,7 +494,9 @@ private fun RaftArtifactViewerScreen() {
         }
         (bodyState as? RaftArtifactViewerBodyState.RecoveringSession)?.let { recovering ->
             // A new token first, so the new WebView boots signed in with one that is not about to expire.
-            val refreshed = accessTokenRefresher.refresh("artifact_viewer_session_lost", expiringAccessToken = null)
+            // The token the page held: when the App already has a newer one (the refresh-ahead timer),
+            // nothing is sent and the new WebView boots with that one.
+            val refreshed = accessTokenRefresher.refresh("artifact_viewer_session_lost", expiringAccessToken = recovering.pageToken)
             // The signed-out document (its storage cleared by the web) is dropped, never kept.
             RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
             raftWebViewKeepAliveClear()
@@ -610,9 +612,9 @@ private fun RaftArtifactViewerScreen() {
                             },
                             accessTokenRefresher = accessTokenRefresher,
                             sessionRecoveryAvailable = { sessionRecovery.available(sessionRecoveryClock.elapsedNow().inWholeMilliseconds) },
-                            onSessionLost = { to, recover ->
+                            onSessionLost = { to, recover, pageToken ->
                                 if (recover && sessionRecovery.admit(sessionRecoveryClock.elapsedNow().inWholeMilliseconds)) {
-                                    bodyState = RaftArtifactViewerBodyState.RecoveringSession(to)
+                                    bodyState = RaftArtifactViewerBodyState.RecoveringSession(to, pageToken)
                                 } else {
                                     // Signed out again within a minute of a recovery: say it, with Close.
                                     raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_session_recover outcome=gave_up to=$to")
@@ -652,7 +654,7 @@ private fun RaftArtifactViewerWebBody(
     /** Whether a sign-out of the page may still be recovered ([RaftArtifactViewerSessionRecoveryGuard]). */
     sessionRecoveryAvailable: () -> Boolean,
     /** The page signed itself out: [recover] it (reload once), or give up (Unavailable). */
-    onSessionLost: (to: String, recover: Boolean) -> Unit,
+    onSessionLost: (to: String, recover: Boolean, pageToken: String) -> Unit,
 ) {
     val authStore = remember(host) { host.sharedStores.authStore(host.storeScope) }
     val snapshot = rememberSettingsWebViewAuthSnapshot(authStore, host.sharedStores.authStore)
@@ -717,6 +719,17 @@ private fun RaftArtifactViewerWebBody(
     val currentOnReloadFresh by rememberUpdatedState(onReloadFresh)
     val currentOnSessionLost by rememberUpdatedState(onSessionLost)
     val currentSessionRecoveryAvailable by rememberUpdatedState(sessionRecoveryAvailable)
+    // The token the page holds (injected, or pushed on a rotation), and when the App's token last
+    // changed while it was shown: the evidence a move to `/` is a sign-out, not a link.
+    val currentPageToken by rememberUpdatedState(session.accessToken)
+    var tokenChangedAt by remember { mutableStateOf<kotlin.time.TimeMark?>(null) }
+    var lastSeenToken by remember { mutableStateOf(session.accessToken) }
+    LaunchedEffect(session.accessToken) {
+        if (session.accessToken != lastSeenToken) {
+            lastSeenToken = session.accessToken
+            tokenChangedAt = kotlin.time.TimeSource.Monotonic.markNow()
+        }
+    }
     val currentOnHostAction by rememberUpdatedState(onHostAction)
     // The page said once (this document) that its toolbar is the only bar: a web build does not
     // change under a document, and the address may lose the marker for a moment while it routes.
@@ -775,13 +788,22 @@ private fun RaftArtifactViewerWebBody(
                             reusedKept = kept != null,
                             sinceShownMs = attachedAt.elapsedNow().inWholeMilliseconds,
                             reloadAvailable = currentFreshReloadAvailable,
+                            sessionLossEvident =
+                                raftArtifactViewerSessionLossEvident(
+                                    pageTokenRemainingMs =
+                                        ProcessSettingsWebViewTokenClock.remainingMillis(
+                                            currentPageToken,
+                                            build.raft.app.data.defaultNowMillis(),
+                                        ),
+                                    sinceTokenChangeMs = tokenChangedAt?.elapsedNow()?.inWholeMilliseconds,
+                                ),
                             sessionRecoveryAvailable = currentSessionRecoveryAvailable(),
                         )
                     when (action) {
                         RaftArtifactViewerLeaveAction.ReloadFresh -> currentOnReloadFresh(to)
                         RaftArtifactViewerLeaveAction.Leave -> currentOnLeave(navigation, to)
-                        RaftArtifactViewerLeaveAction.RecoverSession -> currentOnSessionLost(to, true)
-                        RaftArtifactViewerLeaveAction.SessionLost -> currentOnSessionLost(to, false)
+                        RaftArtifactViewerLeaveAction.RecoverSession -> currentOnSessionLost(to, true, currentPageToken)
+                        RaftArtifactViewerLeaveAction.SessionLost -> currentOnSessionLost(to, false, currentPageToken)
                     }
                 }
         }
@@ -912,6 +934,7 @@ private fun RaftArtifactViewerWebBody(
             surface = SettingsWebViewSurface.ArtifactViewer,
             logger = host.bridge::log,
             refresher = accessTokenRefresher,
+            visible = rememberRaftPagerAppeared(host.pager),
         )
         if (loadError) {
             SettingsWebViewErrorContent(

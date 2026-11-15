@@ -473,6 +473,7 @@ private fun StandaloneSettingsWebViewBody(
         controller = controller,
         accessTokenSyncLogger = bridge::log,
         accessTokenRefresher = accessTokenRefresher,
+        accessTokenRefreshVisible = rememberRaftPagerAppeared(pager),
         onUrlChange = { url ->
             // Never the query: a Settings URL can carry tokens.
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=${raftWebViewUrlForLog(url)}")
@@ -506,6 +507,7 @@ internal fun StandaloneSettingsWebViewContent(
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
     accessTokenSyncLogger: (String) -> Unit = {},
     accessTokenRefresher: SettingsWebViewAccessTokenRefresher? = null,
+    accessTokenRefreshVisible: Boolean = true,
 ) {
     val session = authSnapshot.session
     val localeTag = rememberStandaloneSettingsLocaleTag(spec.includeLocaleQuery)
@@ -555,6 +557,7 @@ internal fun StandaloneSettingsWebViewContent(
         surface = spec.surface,
         logger = accessTokenSyncLogger,
         refresher = accessTokenRefresher,
+        visible = accessTokenRefreshVisible,
     )
 }
 

@@ -245,18 +245,21 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
     logger: (String) -> Unit = {},
     /** Refreshes the token ahead of its expiry while this surface is on screen (#300); null: none. */
     refresher: SettingsWebViewAccessTokenRefresher? = null,
+    /** Whether the surface's page is on screen ([rememberRaftPagerAppeared]): not covered by another page. */
+    visible: Boolean = true,
 ) {
     val session = snapshot.session ?: return
     val activeBinding = binding ?: return
     val fence = activeBinding.fence
 
     if (refresher != null) {
-        // Only while this surface is composed and its page is at least started (the App in the
-        // foreground): back in the foreground, the loop starts again and an expired or nearly
-        // expired token is refreshed at once, while the page resumes.
+        // Only while this surface is composed, its page is on screen (not covered by another page)
+        // and the App is in the foreground: back on screen, the loop starts again and an expired or
+        // nearly expired token is refreshed at once, while the page resumes.
         val lifecycleOwner = LocalLifecycleOwner.current
         val currentLogger by rememberUpdatedState(logger)
-        LaunchedEffect(lifecycleOwner, refresher, fence) {
+        LaunchedEffect(lifecycleOwner, refresher, fence, visible) {
+            if (!visible) return@LaunchedEffect
             lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 runSettingsWebViewAccessTokenRefreshAhead(
                     surface = surface.diagnosticsName,
@@ -303,6 +306,31 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
         val update = fence.onAuthEvent(snapshot.event, session) ?: return@LaunchedEffect
         dispatch(update)
     }
+}
+
+/**
+ * Whether [pager] is on screen (its host's appear / disappear events: the App in the foreground and
+ * the page not covered by another one). True without a page (fixtures).
+ */
+@Composable
+internal fun rememberRaftPagerAppeared(pager: build.raft.app.compat.pager.Pager?): Boolean {
+    if (pager == null) return true
+    var appeared by remember(pager) { mutableStateOf(pager.isAppeared) }
+    DisposableEffect(pager) {
+        appeared = pager.isAppeared
+        val observer =
+            object : build.raft.app.compat.pager.IPagerEventObserver {
+                override fun onPagerEvent(pagerEvent: String, eventData: build.raft.app.compat.json.JSONObject) {
+                    when (pagerEvent) {
+                        build.raft.app.compat.pager.Pager.PAGER_EVENT_DID_APPEAR -> appeared = true
+                        build.raft.app.compat.pager.Pager.PAGER_EVENT_DID_DISAPPEAR -> appeared = false
+                    }
+                }
+            }
+        pager.addPagerEventObserver(observer)
+        onDispose { pager.removePagerEventObserver(observer) }
+    }
+    return appeared
 }
 
 private val nextSettingsWebViewSessionGeneration = atomic(0L)

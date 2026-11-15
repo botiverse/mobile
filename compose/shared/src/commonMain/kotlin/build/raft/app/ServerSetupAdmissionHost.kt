@@ -176,6 +176,8 @@ internal fun rememberServerSetupAdmissionHost(
     // #300: refreshed ahead of its expiry while the setup page is shown.
     val accessTokenRefresher =
         remember(shellAuthStore, authDataSource) { SettingsWebViewAccessTokenRefresher(shellAuthStore, authDataSource) }
+    val accessTokenRefreshVisible =
+        rememberRaftPagerAppeared(build.raft.app.compat.pager.LocalActivity.current.getPager())
     val accountId = session.user.id.trim()
     val serverSlug = session.servers.firstOrNull { it.id == serverId }?.slug
         ?: session.selectedServerSlug?.takeIf { session.currentServerId == serverId }
@@ -349,6 +351,7 @@ internal fun rememberServerSetupAdmissionHost(
                                 surface = SettingsWebViewSurface.Onboarding,
                                 logger = bridge::log,
                                 refresher = accessTokenRefresher,
+                                visible = accessTokenRefreshVisible,
                             )
                         }
                     }

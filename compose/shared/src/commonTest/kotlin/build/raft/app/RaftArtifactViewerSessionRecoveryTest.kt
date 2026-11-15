@@ -21,6 +21,7 @@ class RaftArtifactViewerSessionRecoveryTest {
         reusedKept: Boolean = false,
         sinceShownMs: Long = 20 * 60_000L,
         reloadAvailable: Boolean = true,
+        sessionLossEvident: Boolean = true,
         sessionRecoveryAvailable: Boolean = true,
     ) = raftArtifactViewerLeaveAction(
         raftArtifactViewerNavigation(url, web, id),
@@ -28,6 +29,7 @@ class RaftArtifactViewerSessionRecoveryTest {
         reusedKept,
         sinceShownMs,
         reloadAvailable,
+        sessionLossEvident,
         sessionRecoveryAvailable,
     )
 
@@ -55,6 +57,37 @@ class RaftArtifactViewerSessionRecoveryTest {
             assertFalse(raftArtifactViewerIsSessionLoss("$web$path"), path)
         }
         assertEquals(RaftArtifactViewerLeaveAction.Leave, action("$web/s/northwind"))
+    }
+
+    @Test
+    fun aRootLinkWithoutEvidenceOfASignOutClosesAsBefore() {
+        // A home or logo link in the Artifact, while the page's token is good and was not just changed.
+        assertEquals(RaftArtifactViewerLeaveAction.Leave, action("$web/", sessionLossEvident = false))
+        assertEquals(RaftArtifactViewerLeaveAction.Leave, action("$web/login", sessionLossEvident = false))
+        // A reused kept page right after it is shown again: the dd109a01 fresh reload, as before.
+        assertEquals(
+            RaftArtifactViewerLeaveAction.ReloadFresh,
+            action("$web/", reusedKept = true, sinceShownMs = 800, sessionLossEvident = false),
+        )
+    }
+
+    @Test
+    fun evidenceIsAnExpiringPageTokenOrARecentTokenChange() {
+        val lead = SETTINGS_WEBVIEW_REFRESH_LEAD_MS
+        // The page's token expired, or is inside the refresh lead.
+        assertTrue(raftArtifactViewerSessionLossEvident(pageTokenRemainingMs = -5_000, sinceTokenChangeMs = null))
+        assertTrue(raftArtifactViewerSessionLossEvident(pageTokenRemainingMs = lead, sinceTokenChangeMs = null))
+        // The App's token changed moments ago: the page may have sent the one it held before.
+        assertTrue(raftArtifactViewerSessionLossEvident(pageTokenRemainingMs = 10 * 60_000L, sinceTokenChangeMs = 4_000))
+        // A good token, no recent change, or nothing known: no evidence.
+        assertFalse(raftArtifactViewerSessionLossEvident(pageTokenRemainingMs = lead + 1, sinceTokenChangeMs = null))
+        assertFalse(
+            raftArtifactViewerSessionLossEvident(
+                pageTokenRemainingMs = 10 * 60_000L,
+                sinceTokenChangeMs = RAFT_ARTIFACT_VIEWER_SESSION_LOSS_RECENT_TOKEN_CHANGE_MS + 1,
+            )
+        )
+        assertFalse(raftArtifactViewerSessionLossEvident(pageTokenRemainingMs = null, sinceTokenChangeMs = null))
     }
 
     @Test

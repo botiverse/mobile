@@ -409,7 +409,8 @@ internal class RaftAndroidSandboxWebView(
                     // #300: the page it was showing (a kept Artifact viewer is routed in place from
                     // its warm src), checked against the fence before the WebView is rebuilt.
                     val restoreUrl =
-                        raftWebViewRendererGoneRestoreUrl(src, currentUrl) {
+                        // Gone during a bootstrap load: the page it was loading, not the placeholder.
+                        raftWebViewRendererGoneRestoreUrl(src, bootstrapNavigationFence.pendingTargetUrl ?: currentUrl) {
                             // Same origin as the src only: its document-start script is scoped to that origin.
                             !wouldBlockMainFrameNavigation(it) &&
                                 raftDocumentStartScriptOriginRule(it) == raftDocumentStartScriptOriginRule(src)
@@ -1175,7 +1176,7 @@ internal fun raftDocumentStartScriptOriginRule(targetUrl: String): String? =
     }.getOrNull()
 
 internal fun raftInjectedJavaScriptBootstrapBaseUrl(targetUrl: String): String? =
-    raftDocumentStartScriptOriginRule(targetUrl)?.let { origin -> "$origin/__raft_mobile_bootstrap__" }
+    raftDocumentStartScriptOriginRule(targetUrl)?.let { origin -> "$origin$RAFT_WEBVIEW_BOOTSTRAP_PATH" }
 
 /** Holds load success until the real target (not the bootstrap document) has started. */
 internal class RaftWebViewBootstrapNavigationFence {
@@ -1191,6 +1192,9 @@ internal class RaftWebViewBootstrapNavigationFence {
         targetUrl = null
         targetStarted = false
     }
+
+    /** The page a bootstrap load is on its way to, until it started (then the WebView's own URL is it). */
+    val pendingTargetUrl: String? get() = targetUrl?.takeIf { !targetStarted }
 
     fun onMainFrameStarted(url: String) {
         if (url == targetUrl) targetStarted = true
