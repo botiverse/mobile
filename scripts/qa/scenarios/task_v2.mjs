@@ -261,14 +261,14 @@ export async function run(ctx) {
       // Release checks: two tasks with no conversation yet (empty task pages), deleted at the end.
       const empties = [];
       if (releaseChecks) {
-        for (const which of ["A", "B"]) {
+        for (const which of ["A", "B", "C"]) {
           const made = listOf(await write("POST", `tasks/channel/${channel.id}`, {
             tasks: [{ title: `${TEST_PREFIX} empty task ${which} ${runTag}`, description: "Empty task (no conversation) for the mobile release QA run; deleted at the end of the run." }],
             status: "todo",
           }, `create empty test task ${which}`), "tasks")[0];
           if (!made) throw new Error(`empty test task ${which}: 2xx without the task`);
           created.tasks.push({ id: made.id, channelId: channel.id, number: made.taskNumber, title: made.title });
-          empties.push({ id: made.id, number: made.taskNumber, title: made.title, sourceMessageId: made.sourceMessageId ?? null });
+          empties.push({ id: made.id, number: made.taskNumber, title: made.title, key: `empty task ${which} ${runTag}`, sourceMessageId: made.sourceMessageId ?? null });
         }
       }
       // A seed message in the task conversation, so the page has messages to show.
@@ -678,6 +678,7 @@ export async function run(ctx) {
       };
       const emptyA = setup?.empties?.[0];
       const emptyB = setup?.empties?.[1];
+      const emptyC = setup?.empties?.[2];
 
       // s6: the first reply in an empty task replaces the empty page; the draft clears; Back works.
       await scenario("s6", async () => {
@@ -722,11 +723,14 @@ export async function run(ctx) {
         return `empty page shown (${opened?.header ?? "task"}), replaced by the conversation, draft cleared, Back left the task`;
       });
 
-      // s7: message links while an empty task page with a draft is open.
-      await scenario("s7", async () => {
-        if (!emptyB) throw notCovered("no empty test task (setup did not run)");
-        if (!otherChannelName) throw notCovered("no --other-channel given");
-        // Targets (read only): a message in the bound channel and one in the other channel.
+      // s7 / s7b: message links while an empty task page with a draft is open, in two conditions
+      // (the Tasks / Files side card is app-wide and on phone covers the conversation):
+      //   s7  card CLOSED: the task opened from its message in the chat; expect the link's message
+      //       visible, the draft kept.
+      //   s7b card OPEN: the task opened from the Tasks card; the link's message opens under the card
+      //       (known, fixed in 1.26: not counted as a 1.25.1 failure); expect the task page to close,
+      //       the right channel, no other task opened, the draft kept.
+      const linkTargets = async () => {
         const channels = listOf(ok(await api("GET", "channels"), "list channels"), "channels").filter((c) => !["dm", "thread", "task"].includes(c.type));
         const others = channels.filter((c) => c.name === otherChannelName);
         if (others.length !== 1 || others[0].id === setup.channel.id) throw notCovered(`#${otherChannelName}: ${others.length} channels match exactly`);
@@ -737,62 +741,134 @@ export async function run(ctx) {
           : pick(messagesOf(ok(await api("GET", `messages/channel/${setup.channel.id}?limit=20`), "read the channel")));
         const otherMsg = pick(messagesOf(ok(await api("GET", `messages/channel/${other.id}?limit=20`), "read the other channel")));
         if (!sameMsg || !otherMsg) throw notCovered("no message to link to");
-        report.s7_targets = { same_channel_message: sameMsg.id.slice(0, 8), other_channel: other.name, other_channel_message: otherMsg.id.slice(0, 8) };
-        const draft = `draft keep check ${runTag}`;
-        const head = (c) => String(c).trim().slice(0, 24);
-        const linkLands = async (channelId, channelLabel, msg) => {
-          deepLink(channelUrl(channelId, msg.id));
-          const deadline = Date.now() + 30_000;
-          let list = [];
-          while (Date.now() < deadline) {
-            await sleep(1500);
-            list = nodes();
-            const offTask = !statusChip(list) && !hasText(list, "Message this task");
-            if (offTask && hasText(list, "Open Tasks") && !hasText(list, "Close Tasks") && textNodeWith(list, head(msg.content))) break;
-          }
+        return { other, sameMsg, otherMsg };
+      };
+      const closeCard = async () => {
+        const close = hasText(nodes(), "Close Tasks");
+        if (close) {
+          tapNode(close);
+          await waitUntil("the Tasks card closed", (l) => hasText(l, "Open Tasks") && !hasText(l, "Close Tasks"), { timeoutMs: 10_000 });
+        }
+      };
+      // The empty task's page from its source message in the chat, with the side card closed.
+      const openEmptyTaskFromChat = async (empty) => {
+        await homeAgain();
+        deepLink(channelUrl(setup.channel.id));
+        await waitUntil(`#${setup.channel.name}`, channelReady, { timeoutMs: 45_000 });
+        await closeCard();
+        await hideKeyboard();
+        let titleNode = null;
+        for (let i = 0; i < 14 && !titleNode; i += 1) {
+          titleNode = nodes().filter((n) => n.pkg === PKG && n.bounds && n.bounds[1] > 250 && n.bounds[3] < 2150 && n.cls !== "android.widget.EditText" && n.text.includes(empty.key)).at(-1) ?? null;
+          if (!titleNode) { if (i < 2) swipeUp(); else swipeDown(); await sleep(900); }
+        }
+        if (!titleNode) throw new Error(`task #${empty.number}'s message is not in the chat; on screen: ${visible()}`);
+        const list = nodes();
+        const below = (n) => n.bounds && n.bounds[1] >= titleNode.bounds[1] - 20 && n.bounds[1] < titleNode.bounds[3] + 400;
+        const entry = find(list, (n) => n.pkg === PKG && below(n) && (n.desc.startsWith(`Open task #${empty.number}`) || n.text.startsWith(`Open task #${empty.number}`)))
+          ?? find(list, (n) => n.pkg === PKG && below(n) && n.text.trim() === `#${empty.number}`);
+        if (!entry) throw new Error(`no task entry under task #${empty.number}'s message; on screen: ${visible(list)}`);
+        tapNode(entry);
+        await waitUntil("the task page", (l) => statusChip(l) || hasText(l, "Message this task"), { timeoutMs: 45_000 });
+        const after = nodes();
+        if (!find(after, (n) => n.pkg === PKG && n.text.trim() === `Task #${empty.number}`)) throw new Error(`a page opened but not task #${empty.number}; on screen: ${visible(after)}`);
+        return { opened_from: "chat", card_closed_before: true, empty_state_shown: Boolean(textNodeWith(after, EMPTY_TEXT)) };
+      };
+      // The app's own log lines after the link that mention the target message (non-secret: the
+      // message part only, cut to 200 characters).
+      const appLinesAbout = (sinceEpoch, msgId) => {
+        const pid = String(shell(`pidof ${PKG}`, { allowFailure: true }) ?? "").trim().split(/\s+/)[0];
+        if (!/^\d+$/.test(pid ?? "")) return { pid: null, lines: [] };
+        const raw = String(ctx.adb(["logcat", "-d", "-v", "epoch", `--pid=${pid}`], { allowFailure: true, timeoutMs: 60_000 }) ?? "");
+        const short = msgId.slice(0, 8);
+        const lines = raw.split("\n").filter((l) => {
+          const t = Number(l.trim().split(/\s+/)[0]);
+          return t && t >= sinceEpoch && (l.includes(short) || /anchor/i.test(l));
+        }).map((l) => l.replace(/^\s*\S+\s+\d+\s+\d+\s+/, "").slice(0, 200)).slice(-8);
+        return { pid: Number(pid), lines };
+      };
+      const deviceNow = () => Number(String(shell("date +%s.%N", { allowFailure: true }) ?? "").trim()) || 0;
+      const draftText = (which) => `draft keep check ${which} ${runTag}`;
+      const draftIn = (text) => {
+        const field = composer(nodes());
+        return Boolean(field && field.text.includes(text.slice(0, 18)));
+      };
+      // After a link: where it landed (no taps, no fixed coordinates).
+      const landing = async (channelId, channelLabel, msg, { cardOpenExpected }) => {
+        const since = deviceNow();
+        deepLink(channelUrl(channelId, msg.id));
+        const head = String(msg.content).trim().slice(0, 24);
+        const deadline = Date.now() + 30_000;
+        let list = [];
+        while (Date.now() < deadline) {
+          await sleep(1500);
+          list = nodes();
           const offTask = !statusChip(list) && !hasText(list, "Message this task");
-          // The Tasks card covers the conversation while open (its rows stay in the UI dump): the
-          // message counts as shown only with the card closed.
-          const cardOpen = Boolean(hasText(list, "Close Tasks"));
-          const result = { task_page_closed: offTask, channel_open: Boolean(channelReady(list)), tasks_card_open: cardOpen, message_in_dump: Boolean(textNodeWith(list, head(msg.content))), message_shown: !cardOpen && Boolean(textNodeWith(list, head(msg.content))), channel_name_shown: Boolean(find(list, (n) => n.pkg === PKG && n.text.includes(channelLabel))) };
-          if (!offTask) throw new Error(`the link did nothing: the task page is still open; on screen: ${visible(list)}`);
-          if (!result.channel_open || !result.message_shown) throw new Error(`the link closed the task page but the message is not shown (${JSON.stringify(result)})`);
-          return result;
+          if (offTask && channelReady(list) && textNodeWith(list, head) && (cardOpenExpected || !hasText(list, "Close Tasks"))) break;
+        }
+        await sleep(1500);
+        list = nodes();
+        const cardOpen = Boolean(hasText(list, "Close Tasks"));
+        const otherTaskPage = find(list, (n) => n.pkg === PKG && /^Task #\d+$/.test(n.text.trim()));
+        return {
+          task_page_closed: !statusChip(list) && !hasText(list, "Message this task"),
+          channel_open: Boolean(channelReady(list)),
+          channel_name_shown: Boolean(find(list, (n) => n.pkg === PKG && n.text.includes(channelLabel))),
+          tasks_card_open: cardOpen,
+          message_in_dump: Boolean(textNodeWith(list, head)),
+          message_visible: !cardOpen && Boolean(textNodeWith(list, head)),
+          other_task_page_open: otherTaskPage ? otherTaskPage.text : null,
+          app_log: appLinesAbout(since, msg.id).lines,
         };
-        const draftKept = async () => {
-          await openEmptyTask(emptyB);
-          await sleep(1000);
-          const field = composer(nodes());
-          const kept = Boolean(field && field.text.includes(draft.slice(0, 12)));
-          if (!kept) throw new Error(`the draft is gone from task #${emptyB.number}'s composer (it reads "${field?.text ?? "no composer"}")`);
-          return { draft_kept: true };
-        };
+      };
+      const runCondition = async (id, empty, opener, { cardOpenExpected }) => {
+        if (!empty) throw notCovered("no empty test task (setup did not run)");
+        if (!otherChannelName) throw notCovered("no --other-channel given");
+        const { other, sameMsg, otherMsg } = await linkTargets();
+        report[`${id}_targets`] = { same_channel_message: sameMsg.id.slice(0, 8), other_channel: other.name, other_channel_message: otherMsg.id.slice(0, 8) };
+        const draft = draftText(id);
         const results = {};
-        // Control: does the draft survive a plain Back (no link) and reopening the task?
-        await sstep("s7", "control-draft-after-back", async () => {
-          await openEmptyTask(emptyB);
+        // Control: the draft through a plain Back (no link) and reopening the task the same way.
+        await sstep(id, "control-draft-after-back", async () => {
+          await opener(empty);
           await typeDraft(draft);
-          await hideKeyboard();
-          await back();
-          await waitUntil("off the task page", (l) => !statusChip(l) && !hasText(l, "Message this task"), { timeoutMs: 15_000 });
-          return await draftKept();
-        }).then((r) => { results.control_after_back = r; }, (e) => { results.control_after_back = { error: e.message }; });
-        await sstep("s7", "empty-task-with-draft", async () => {
-          const r = await openEmptyTask(emptyB);
-          const field = composer(nodes());
-          if (!field || !field.text.includes(draft.slice(0, 12))) await typeDraft(draft);
-          return r;
-        });
-        await sstep("s7", "link-same-channel", async () => { results.same = await linkLands(setup.channel.id, setup.channel.name, sameMsg); return results.same; }).catch((e) => { results.same = { error: e.message }; });
-        await sstep("s7", "draft-kept-after-same-channel-link", draftKept).then((r) => { results.draft_after_same = r; }, (e) => { results.draft_after_same = { error: e.message }; });
-        // The empty task page with the draft is open again (draftKept reopened it).
-        await sstep("s7", "link-other-channel", async () => { results.other = await linkLands(other.id, other.name, otherMsg); return results.other; }).catch((e) => { results.other = { error: e.message }; });
-        await sstep("s7", "draft-kept-after-other-channel-link", draftKept).then((r) => { results.draft_after_other = r; }, (e) => { results.draft_after_other = { error: e.message }; });
-        report.s7 = results;
-        const failed = Object.entries(results).filter(([k, v]) => v?.error && k !== "control_after_back");
+          for (let i = 0; i < 3 && (statusChip(nodes()) || hasText(nodes(), "Message this task")); i += 1) await back();
+          if (statusChip(nodes()) || hasText(nodes(), "Message this task")) throw new Error("Back did not leave the task page");
+          await opener(empty);
+          await sleep(1000);
+          return { draft_kept_after_back: draftIn(draft) };
+        }).then((r) => { results.control = r; }, (e) => { results.control = { error: e.message }; });
+        for (const [key, channelId, label, msg] of [["same", setup.channel.id, setup.channel.name, sameMsg], ["other", other.id, other.name, otherMsg]]) {
+          await sstep(id, `task-page-with-draft-before-${key}-link`, async () => {
+            if (!statusChip(nodes()) && !hasText(nodes(), "Message this task")) await opener(empty);
+            if (!draftIn(draft)) await typeDraft(draft);
+            return { draft_typed: true, card_open: Boolean(hasText(nodes(), "Close Tasks")) };
+          }).catch((e) => { results[`${key}_setup`] = { error: e.message }; });
+          await sstep(id, `link-${key}-channel`, async () => {
+            const r = await landing(channelId, label, msg, { cardOpenExpected });
+            results[key] = r;
+            if (!r.task_page_closed) throw new Error("the link did nothing: the task page is still open");
+            if (r.other_task_page_open) throw new Error(`another task page opened: ${r.other_task_page_open}`);
+            if (!r.channel_open || !r.channel_name_shown) throw new Error(`the link did not open #${label}`);
+            if (!cardOpenExpected && !r.message_visible) throw new Error(`#${label} opened but the message is not visible (card open: ${r.tasks_card_open})`);
+            return r;
+          }).catch((e) => { results[key] = { ...(results[key] ?? {}), error: e.message }; });
+          await sstep(id, `draft-kept-after-${key}-channel-link`, async () => {
+            await opener(empty);
+            await sleep(1000);
+            if (!draftIn(draft)) throw new Error(`the draft is gone from task #${empty.number}'s composer (it reads "${composer(nodes())?.text ?? "no composer"}")`);
+            return { draft_kept: true };
+          }).then((r) => { results[`draft_after_${key}`] = r; }, (e) => { results[`draft_after_${key}`] = { error: e.message }; });
+        }
+        report[id] = results;
+        const failed = Object.entries(results).filter(([k, v]) => v?.error && k !== "control");
         if (failed.length) throw new Error(failed.map(([k, v]) => `${k}: ${v.error}`).join(" | ").slice(0, 600));
-        return "both links closed the task page and landed on the message; the draft was kept";
-      });
+        return cardOpenExpected
+          ? "links closed the task page and opened the target channel (message under the open card: known, fixed in 1.26); draft kept"
+          : "links closed the task page and showed the message; draft kept";
+      };
+      await scenario("s7", () => runCondition("s7", emptyB, openEmptyTaskFromChat, { cardOpenExpected: false }));
+      await scenario("s7b", () => runCondition("s7b", emptyC, openEmptyTask, { cardOpenExpected: true }));
 
       // s8: smoke of the app shell.
       await scenario("s8", async () => {
@@ -877,7 +953,7 @@ export async function run(ctx) {
     log(`scenario cleanup: ${JSON.stringify(cleanup)}`);
   }
   const outcome = overallResult({
-    requested: [...(skipCore ? [] : ["s1", "s2", "s3", "s4", "s5"]), ...(releaseChecks ? ["s6", "s7", "s8"] : [])],
+    requested: [...(skipCore ? [] : ["s1", "s2", "s3", "s4", "s5"]), ...(releaseChecks ? ["s6", "s7", "s7b", "s8"] : [])],
     results,
     unknownWrites,
     cleanup: (report.cleanup?.deleted_tasks ?? []).map((c) => ({ what: `delete task #${c.task}`, outcome: c.outcome, status: c.status })),
