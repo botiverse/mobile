@@ -59,25 +59,53 @@ internal fun settingsWebViewAccessTokenExpiryMillis(accessToken: String): Long? 
     settingsWebViewAccessTokenTimes(accessToken)?.expiresAtMs
 
 /**
- * The device clock against the server's (#300 review): the offset is learned from a token this
+ * The device clock against the server's (#300 reviews): the offset is learned from a token this
  * App was just given (its `iat` is the server's "now"), so a device clock that runs fast or slow
- * neither refreshes in a loop nor too late. Unknown (0) until a refresh with an `iat` was seen.
+ * neither refreshes in a loop nor too late. Unknown until a refresh with an `iat` was seen in this
+ * run: the refresh schedule then reads the device clock as the server's ([serverNow]; a fast clock
+ * refreshes once, which teaches it), but evidence of expiry ([remainingMillis]) never does.
  */
-internal class SettingsWebViewTokenClock {
+internal class SettingsWebViewTokenClock(private val maxRemembered: Int = 8) {
     private val lock = SynchronizedObject()
-    private var deviceMinusServerMs: Long = 0L
+    private var deviceMinusServerMs: Long? = null
+    private val firstSeenAt = LinkedHashMap<String, Long>()
 
-    fun serverNow(deviceNowMs: Long): Long = synchronized(lock) { deviceNowMs - deviceMinusServerMs }
+    /** Whether the device-server offset was learned in this run. */
+    val offsetKnown: Boolean get() = synchronized(lock) { deviceMinusServerMs != null }
+
+    /** The server's time at [deviceNowMs]; the device's own while the offset is unknown (the schedule only). */
+    fun serverNow(deviceNowMs: Long): Long = synchronized(lock) { deviceNowMs - (deviceMinusServerMs ?: 0L) }
+
+    /** When [token] was first seen in this run (now, [deviceNowMs], if never before): when the App received it. */
+    fun noteSeen(token: String, deviceNowMs: Long): Long =
+        synchronized(lock) {
+            firstSeenAt[token] ?: deviceNowMs.also {
+                firstSeenAt[token] = it
+                while (firstSeenAt.size > maxRemembered) firstSeenAt.remove(firstSeenAt.keys.first())
+            }
+        }
 
     /** [token] was minted just now (the App's own refresh returned it at [deviceNowMs]). */
     fun learnFromFreshToken(token: String, deviceNowMs: Long) {
+        noteSeen(token, deviceNowMs)
         val issuedAt = settingsWebViewAccessTokenTimes(token)?.issuedAtMs ?: return
         synchronized(lock) { deviceMinusServerMs = deviceNowMs - issuedAt }
     }
 
-    /** How long [token] has left by the server's clock; null without an `exp`. */
-    fun remainingMillis(token: String, deviceNowMs: Long): Long? =
-        settingsWebViewAccessTokenTimes(token)?.let { it.expiresAtMs - serverNow(deviceNowMs) }
+    /**
+     * How long [token] has left, as evidence that it expired (the viewer's sign-out check); null:
+     * unknown. With the offset known: by the server's clock. Unknown: the device clock is not
+     * trusted against the server's (a fast one would read every fresh token as expired), so the
+     * token lasts its lifetime (`exp − iat`) from when this run first saw it; without `iat`, unknown.
+     */
+    fun remainingMillis(token: String, deviceNowMs: Long): Long? {
+        val times = settingsWebViewAccessTokenTimes(token) ?: return null
+        val seenAt = noteSeen(token, deviceNowMs)
+        val offset = synchronized(lock) { deviceMinusServerMs }
+        if (offset != null) return times.expiresAtMs - (deviceNowMs - offset)
+        val issuedAt = times.issuedAtMs ?: return null
+        return seenAt + (times.expiresAtMs - issuedAt) - deviceNowMs
+    }
 }
 
 /** The process' clock estimate, shared by every signed-in WebView surface. */
@@ -137,7 +165,9 @@ internal suspend fun runSettingsWebViewAccessTokenRefreshAhead(
     while (true) {
         val token = readAccessToken()?.takeIf { it.isNotBlank() } ?: return
         if (token != seenToken) {
-            schedule = settingsWebViewTokenSchedule(token, nowMillis(), clock, leadMillis)
+            val receivedAt = nowMillis()
+            clock.noteSeen(token, receivedAt)
+            schedule = settingsWebViewTokenSchedule(token, receivedAt, clock, leadMillis)
             seenToken = token
         }
         val due = schedule

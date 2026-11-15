@@ -745,17 +745,13 @@ private fun RaftArtifactViewerWebBody(
     val currentOnReloadFresh by rememberUpdatedState(onReloadFresh)
     val currentOnSessionLost by rememberUpdatedState(onSessionLost)
     val currentSessionRecoveryAvailable by rememberUpdatedState(sessionRecoveryAvailable)
-    // The token the page holds (injected, or pushed on a rotation), and when the App's token last
-    // changed while it was shown: the evidence a move to `/` is a sign-out, not a link.
-    val currentPageToken by rememberUpdatedState(session.accessToken)
-    var tokenChangedAt by remember { mutableStateOf<kotlin.time.TimeMark?>(null) }
-    var lastSeenToken by remember { mutableStateOf(session.accessToken) }
-    LaunchedEffect(session.accessToken) {
-        if (session.accessToken != lastSeenToken) {
-            lastSeenToken = session.accessToken
-            tokenChangedAt = kotlin.time.TimeSource.Monotonic.markNow()
+    // The token the page holds (the one it loaded with, then each push) and the App's: the evidence
+    // a move to `/` is a sign-out, not a link.
+    val pageTokens =
+        remember {
+            RaftArtifactViewerPageTokenTracker(session.accessToken, ProcessSettingsWebViewTokenClock, build.raft.app.data.defaultNowMillis())
         }
-    }
+    val currentAppToken by rememberUpdatedState(session.accessToken)
     val currentOnHostAction by rememberUpdatedState(onHostAction)
     // The page said once (this document) that its toolbar is the only bar: a web build does not
     // change under a document, and the address may lose the marker for a moment while it routes.
@@ -827,21 +823,14 @@ private fun RaftArtifactViewerWebBody(
                             sinceShownMs = attachedAt.elapsedNow().inWholeMilliseconds,
                             reloadAvailable = currentFreshReloadAvailable,
                             sessionLossEvident =
-                                raftArtifactViewerSessionLossEvident(
-                                    pageTokenRemainingMs =
-                                        ProcessSettingsWebViewTokenClock.remainingMillis(
-                                            currentPageToken,
-                                            build.raft.app.data.defaultNowMillis(),
-                                        ),
-                                    sinceTokenChangeMs = tokenChangedAt?.elapsedNow()?.inWholeMilliseconds,
-                                ),
+                                pageTokens.sessionLossEvident(currentToken = currentAppToken, nowMs = build.raft.app.data.defaultNowMillis()),
                             sessionRecoveryAvailable = currentSessionRecoveryAvailable(),
                         )
                     when (action) {
                         RaftArtifactViewerLeaveAction.ReloadFresh -> currentOnReloadFresh(to)
                         RaftArtifactViewerLeaveAction.Leave -> currentOnLeave(navigation, to)
-                        RaftArtifactViewerLeaveAction.RecoverSession -> currentOnSessionLost(to, true, currentPageToken)
-                        RaftArtifactViewerLeaveAction.SessionLost -> currentOnSessionLost(to, false, currentPageToken)
+                        RaftArtifactViewerLeaveAction.RecoverSession -> currentOnSessionLost(to, true, pageTokens.pageToken)
+                        RaftArtifactViewerLeaveAction.SessionLost -> currentOnSessionLost(to, false, pageTokens.pageToken)
                     }
                 }
         }
@@ -864,6 +853,8 @@ private fun RaftArtifactViewerWebBody(
         if (controller.evaluateJavaScript(script)) {
             // The kept page routes to this Artifact now: its splash counts from here, so the App's does too.
             currentOnPageLoadStarted()
+            // The routed page now holds this session's token.
+            pageTokens.onDocumentLoaded(session.accessToken, build.raft.app.data.defaultNowMillis())
             navigated = true
             RaftArtifactViewerMemory.cache.rememberKeptDocument(scope, target, pageUrl, session.accessToken)
             RaftArtifactOpenTrace.mark("viewer_nav_started", "where=page")
@@ -969,6 +960,8 @@ private fun RaftArtifactViewerWebBody(
             keepAliveKey = scope.keepAliveKey,
             loadWatchdog = loadWatchdog,
             onLoadCommit = {
+                // A new document: it holds the token its injected session wrote.
+                pageTokens.onDocumentLoaded(currentAppToken, build.raft.app.data.defaultNowMillis())
                 visible = true
                 RaftArtifactOpenTrace.mark("webview_commit")
             },
@@ -1006,6 +999,7 @@ private fun RaftArtifactViewerWebBody(
             logger = host.bridge::log,
             refresher = accessTokenRefresher,
             visible = rememberRaftPagerAppeared(host.pager),
+            onAccessTokenDispatched = { token -> pageTokens.onPushed(token, build.raft.app.data.defaultNowMillis()) },
         )
         if (loadError) {
             SettingsWebViewErrorContent(
