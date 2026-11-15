@@ -17,8 +17,9 @@ schema.
 
 Shared implementation: [`reduceActivityRow`](../../src/activityRowPosition.ts)
 and [`activityLiveUnread`](../../src/activityUnreadPredicate.ts) in
-`@botiverse/raft-shared`. Nothing applies them yet (no behaviour change):
-web adopts them in step 2, behind a flag.
+`@botiverse/raft-shared`. Web applies them with the server flag
+`inbox_row_position_v1` on (step 2, `packages/web/src/store/inboxRowPosition.ts`);
+off, web keeps its earlier live patch.
 
 Plain JSON, no dependencies: `case.schema.json` (JSON Schema 2020-12) and one
 case per file in `cases/`.
@@ -105,6 +106,8 @@ The rule, in full (design doc "Fact 1"):
    muted conversation) lights the @ and keeps it mention-only.
 7. A read at or past the shown position clears the unread and @. A read below
    it, on a mention-only row, or on a row without a position, re-reads the row.
+   Either way the applied seqs at or below the read no longer count, so an
+   answer below them does not count them again (`read_then_answer_below_applied`).
 
 ### Predicate inputs
 
@@ -139,25 +142,28 @@ that their own candidate is still what they do. Once decided, move the chosen
 expectation to the top level, set `"status": "agreed"`, record it below, and
 add a `knownGaps` entry for a side that still differs. None is open today.
 
-A web `knownGaps` entry here is about web's live patch today
-(`inboxInPlaceUnread.ts`), not the shared rule: web's loader still runs the
-case against the shared rule (which web adopts in step 2), and checks that its
-live patch still differs, so the entry is removed when it stops differing.
+A web `knownGaps` entry here is about web with `inbox_row_position_v1` on
+(`inboxRowPosition.ts`), the path that follows these cases; there is none
+today. Where web's flag-off live patch (`inboxInPlaceUnread.ts`, kept as it was
+while the flag is off) differs, web's loader lists the case in its own
+`FLAG_OFF_DIFFERS`, not here.
 
 ## Decisions
 
 | Date | Who | Where | Cases | Decision | Differs today |
 | --- | --- | --- | --- | --- | --- |
-| 2026-11-14 | Tenny | #14988 review | `predicate_channel_own_caused_system`, `predicate_dm_own_caused_system` | A system message the viewer caused does not count, on any row kind (RisingWave). | web live patch (thread rows only) |
-| 2026-11-14 | Tenny | #14988 review | `predicate_channel_uncounted_subtype`, `predicate_channel_self_unfollow_subtype` | `channel.self_unfollow_thread` and `task.deleted_summary` do not count, on any row kind (RisingWave). | web live patch (thread rows only) |
-| 2026-11-14 | Tenny | #14988 review | `predicate_muted_channel_message` | A new message in a muted conversation does not count (RisingWave muted prefix). | web live patch (no mute input) |
-| 2026-11-14 | Tenny | #14988 review | `predicate_muted_channel_mention` | A mention in a muted conversation lights the @ and does not count (RisingWave). | web live patch |
+| 2026-11-14 | Tenny | #14988 review | `predicate_channel_own_caused_system`, `predicate_dm_own_caused_system` | A system message the viewer caused does not count, on any row kind (RisingWave). | web flag-off live patch (thread rows only) |
+| 2026-11-14 | Tenny | #14988 review | `predicate_channel_uncounted_subtype`, `predicate_channel_self_unfollow_subtype` | `channel.self_unfollow_thread` and `task.deleted_summary` do not count, on any row kind (RisingWave). | web flag-off live patch (thread rows only) |
+| 2026-11-14 | Tenny | #14988 review | `predicate_muted_channel_message` | A new message in a muted conversation does not count (RisingWave muted prefix). | web flag-off live patch (no mute input) |
+| 2026-11-14 | Tenny | #14993 review | `read_then_answer_below_applied` | A read covers the live seqs applied at or below it: an answer below them does not count them again (shared `applyRead`). | none (shared reducer since #14993) |
+| 2026-11-14 | Tenny | #14988 review | `predicate_muted_channel_mention` | A mention in a muted conversation lights the @ and does not count (RisingWave). | web flag-off live patch |
 
-Web's gaps close in step 2 (web switches to the shared predicate). The
-server runner checks every server-decided predicate case against both SQL
-rules: the RisingWave `unread_count` FILTER and the canonical Postgres read's
-fragments in `getInboxItems` (search, guest access, forced reads):
-`inboxRowMessageCountsUnreadSql` and `inboxPersonalMentionSql`.
+Web's gaps closed in step 2 for the flag-on path (`inbox_row_position_v1`);
+the server's pure inbox model (`inboxPolicyModel.ts`) follows all four rows
+since step 2 too. The server runner checks every server-decided predicate
+case against both SQL rules: the RisingWave `unread_count` FILTER and the
+canonical Postgres read's fragments in `getInboxItems` (search, guest access,
+forced reads): `inboxRowMessageCountsUnreadSql` and `inboxPersonalMentionSql`.
 
 ## Adding a case
 
@@ -194,10 +200,12 @@ as passed without its expectations being checked.
   the named cases present, and every agreed case through `reduceActivityRow` /
   `activityLiveUnread`.
 - **Web**: [`packages/web/tests/contractCases.activityRow.test.ts`](../../../web/tests/contractCases.activityRow.test.ts):
-  every agreed case against the shared rule through the package path; and
-  each predicate case through web's live patch today (`liveActivityUnread` +
-  `liveUnreadFields`): an agreed case must match, unless it has a web
-  `knownGaps` entry, then it must still differ.
+  every agreed case against the shared rule through the package path; each
+  agreed predicate case through web's flag-on adapter (`rowPositionVerdict`),
+  which must give the case's verdict exactly; and each predicate case through
+  web's flag-off live patch (`liveActivityUnread` + `liveUnreadFields`), which
+  must match, except the cases in its `FLAG_OFF_DIFFERS`, which must still
+  differ.
 - **Server**: [`packages/server/src/services/activityUnreadPredicate.contractCases.test.ts`](../../../server/src/services/activityUnreadPredicate.contractCases.test.ts):
   each predicate case the server decides, against the RisingWave
   `unread_count` FILTER read from `infra/risingwave/sql/075-…` (and the muted

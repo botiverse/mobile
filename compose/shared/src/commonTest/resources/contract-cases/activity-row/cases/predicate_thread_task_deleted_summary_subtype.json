@@ -7,7 +7,8 @@
   "status": "agreed",
   "sources": {
     "web": [
-      "packages/web/src/store/inboxInPlaceUnread.ts (liveActivityUnread, liveUnreadFields)"
+      "packages/web/src/store/inboxInPlaceUnread.ts (liveActivityUnread, liveUnreadFields)",
+      "packages/web/src/store/inboxRowPosition.ts (rowPositionVerdict, with inbox_row_position_v1 on)"
     ],
     "server": [
       "infra/risingwave/sql/075-inbox-cursor-decouple.sql (unread_count FILTER)",
