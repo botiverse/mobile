@@ -4164,6 +4164,7 @@
     <string name="artifacts_card_comments_one">1 comentário</string>
     <string name="artifacts_card_comments_many">%1$d comentários</string>
     <string name="artifacts_card_loading">Carregando Artifact</string>
+    <string name="artifacts_viewer_getting_page">Buscando a página</string>
     <string name="artifacts_card_excerpt_image">Imagem</string>
     <string name="artifacts_card_excerpt_image_named">Imagem: %1$s</string>
     <string name="artifacts_card_excerpt_images">%1$d imagens</string>

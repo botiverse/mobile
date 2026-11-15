@@ -4344,6 +4344,7 @@
     <string name="artifacts_card_comments_one">コメント 1 件</string>
     <string name="artifacts_card_comments_many">コメント %1$d 件</string>
     <string name="artifacts_card_loading">Artifact を読み込み中</string>
+    <string name="artifacts_viewer_getting_page">ページを取得中</string>
     <string name="artifacts_card_excerpt_image">画像</string>
     <string name="artifacts_card_excerpt_image_named">画像：%1$s</string>
     <string name="artifacts_card_excerpt_images">画像 %1$d 枚</string>

@@ -4164,6 +4164,7 @@
     <string name="artifacts_card_comments_one">1 則留言</string>
     <string name="artifacts_card_comments_many">%1$d 則留言</string>
     <string name="artifacts_card_loading">正在載入 Artifact</string>
+    <string name="artifacts_viewer_getting_page">正在取得頁面</string>
     <string name="artifacts_card_excerpt_image">圖片</string>
     <string name="artifacts_card_excerpt_image_named">圖片：%1$s</string>
     <string name="artifacts_card_excerpt_images">%1$d 張圖片</string>

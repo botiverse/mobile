@@ -450,6 +450,15 @@ private fun RaftArtifactViewerScreen() {
         remember(host, authStore) {
             SettingsWebViewAccessTokenRefresher(authStore, host.sharedStores.createAuthDataSourceForCurrentEnvironment(host.storeScope))
         }
+    // #301: the opening's loading splash (the web's, ported) counts from here: its 1-second wait and
+    // its cycle. Moved to when the page starts loading while nothing shows yet, so it runs on the same
+    // clock as the page's own splash, which counts from its navigation.
+    var splashOpenedAt by remember(params.toString()) { mutableStateOf(kotlin.time.TimeSource.Monotonic.markNow()) }
+    fun splashStartsNowIfWaiting() {
+        if (splashOpenedAt.elapsedNow().inWholeMilliseconds < RAFT_ARTIFACT_SPLASH_APPEAR_AFTER_MS) {
+            splashOpenedAt = kotlin.time.TimeSource.Monotonic.markNow()
+        }
+    }
     // The page draws the only bar (`hostToolbar=1`, shown, no load error): this one is left out.
     var pageDrawsBar by remember(params.toString()) { mutableStateOf(false) }
 
@@ -488,11 +497,15 @@ private fun RaftArtifactViewerScreen() {
             RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
             raftWebViewKeepAliveClear()
             host.bridge.log("artifact_viewer_kept_reload reason=self_navigation to=${reloading.to}")
+            // A new load: a new opening for the splash, as the page's own starts again.
+            splashOpenedAt = kotlin.time.TimeSource.Monotonic.markNow()
             webRetry += 1
             bodyState = RaftArtifactViewerBodyState.Viewing
             return@LaunchedEffect
         }
         (bodyState as? RaftArtifactViewerBodyState.RecoveringSession)?.let { recovering ->
+            // A new load after the refresh: a new opening for the splash, drawn while the token is refreshed.
+            splashOpenedAt = kotlin.time.TimeSource.Monotonic.markNow()
             // A new token first, so the new WebView boots signed in with one that is not about to expire.
             // The token the page held: when the App already has a newer one (the refresh-ahead timer),
             // nothing is sent and the new WebView boots with that one.
@@ -563,7 +576,8 @@ private fun RaftArtifactViewerScreen() {
             RaftArtifactViewerBodyState.Unavailable -> RaftArtifactViewerUnavailable(onClose = ::closePage)
             is RaftArtifactViewerBodyState.Left -> Unit
             is RaftArtifactViewerBodyState.ReloadingFresh,
-            is RaftArtifactViewerBodyState.RecoveringSession -> RaftCenteredLoading(stringResource(Res.string.common_loading))
+            is RaftArtifactViewerBodyState.RecoveringSession ->
+                RaftArtifactViewerSplashCover(header?.kind, splashOpenedAt, desktopMode)
             RaftArtifactViewerBodyState.Viewing ->
                 if (scope == null) {
                     // An unknown subject reuses nothing and keeps nothing: the page in the browser, as before.
@@ -605,6 +619,9 @@ private fun RaftArtifactViewerScreen() {
                             },
                             onPageDrawsBar = { pageDrawsBar = it },
                             freshReloadAvailable = !freshReloadUsed,
+                            splashKind = header?.kind,
+                            splashOpenedAt = splashOpenedAt,
+                            onPageLoadStarted = ::splashStartsNowIfWaiting,
                             onLeave = { navigation, to -> bodyState = RaftArtifactViewerBodyState.Left(navigation, to) },
                             onReloadFresh = { to ->
                                 freshReloadUsed = true
@@ -648,6 +665,11 @@ private fun RaftArtifactViewerWebBody(
     onPageDrawsBar: (Boolean) -> Unit,
     /** One fresh load per open may replace a close ([raftArtifactViewerLeaveAction]). */
     freshReloadAvailable: Boolean,
+    /** The loading splash's Artifact kind (the card's; null: not known yet) and its opening ([RaftArtifactViewerSplashCover]). */
+    splashKind: build.raft.app.data.ArtifactKind?,
+    splashOpenedAt: kotlin.time.TimeMark,
+    /** A new document starts loading (the splash then counts from it, as the page's own does). */
+    onPageLoadStarted: () -> Unit,
     onLeave: (navigation: RaftArtifactViewerNavigation, to: String) -> Unit,
     onReloadFresh: (to: String) -> Unit,
     accessTokenRefresher: SettingsWebViewAccessTokenRefresher,
@@ -674,7 +696,7 @@ private fun RaftArtifactViewerWebBody(
                 "artifact_viewer_waiting_session elapsedMs=$RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS sessionRead=${readSession != null}",
             )
         }
-        RaftCenteredLoading(stringResource(Res.string.common_loading))
+        RaftArtifactViewerSplashCover(splashKind, splashOpenedAt, desktopMode)
         return
     }
     // A kept document of this scope and session is shown as it is (the same Artifact: at once;
@@ -809,9 +831,12 @@ private fun RaftArtifactViewerWebBody(
         }
     }
     LaunchedEffect(Unit) { kept?.currentUrl?.let(::onAddress) }
+    val currentOnPageLoadStarted by rememberUpdatedState(onPageLoadStarted)
     LaunchedEffect(Unit) {
         RaftArtifactOpenTrace.mark("webview_attach", "kept=${kept != null} showsTarget=$showsTarget")
         if (kept == null) RaftArtifactViewerMemory.cache.rememberKeptDocument(scope, target, pageUrl, session.accessToken)
+        // A new document: the page's splash counts from its navigation, so the App's does too.
+        if (kept == null) currentOnPageLoadStarted()
     }
     val injected =
         remember(scope, session.accessToken, binding?.webViewGeneration, desktopMode) {
@@ -821,6 +846,8 @@ private fun RaftArtifactViewerWebBody(
         if (!documentReady || navigated) return@LaunchedEffect
         val script = raftArtifactViewerNavigateScript(scope.webOrigin, settingsWebViewAuthStorageJavaScript(session, binding), target)
         if (controller.evaluateJavaScript(script)) {
+            // The kept page routes to this Artifact now: its splash counts from here, so the App's does too.
+            currentOnPageLoadStarted()
             navigated = true
             RaftArtifactViewerMemory.cache.rememberKeptDocument(scope, target, pageUrl, session.accessToken)
             RaftArtifactOpenTrace.mark("viewer_nav_started", "where=page")
@@ -846,6 +873,30 @@ private fun RaftArtifactViewerWebBody(
         controller.evaluateJavaScript(raftArtifactViewerHostDesktopScript(scope.webOrigin, hostDesktop))
     }
     val drawsBar = pageAcked && visible && !loadError
+    // #301: one loader. The App's splash covers the page until the page has drawn itself (its bar is up:
+    // from then its own splash, on the same clock, or its content), then the page's alone.
+    var documentReadyAt by remember { mutableStateOf<kotlin.time.TimeMark?>(null) }
+    LaunchedEffect(documentReady) { documentReadyAt = if (documentReady) kotlin.time.TimeSource.Monotonic.markNow() else null }
+    var coverFallbackTick by remember { mutableStateOf(0) }
+    LaunchedEffect(documentReadyAt) {
+        if (documentReadyAt == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS)
+        coverFallbackTick += 1
+    }
+    val loadingIndicator =
+        raftArtifactViewerLoadingIndicator(
+            RaftArtifactViewerOpenState(
+                sessionRead = true,
+                documentShown = visible,
+                pageDrewItself = pageAcked,
+                keptShowsTarget = showsTarget,
+                loadError = loadError,
+                sinceDocumentReadyMs = documentReadyAt?.elapsedNow()?.inWholeMilliseconds.also { coverFallbackTick },
+            )
+        )
+    LaunchedEffect(loadingIndicator) {
+        raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_loading_indicator shown=${loadingIndicator.logToken}")
+    }
     val currentOnPageDrawsBar by rememberUpdatedState(onPageDrawsBar)
     LaunchedEffect(drawsBar) { currentOnPageDrawsBar(drawsBar) }
     DisposableEffect(Unit) { onDispose { currentOnPageDrawsBar(false) } }
@@ -870,6 +921,8 @@ private fun RaftArtifactViewerWebBody(
             navigationBarBottomPx = with(density) { raftBottomSafeAreaPadding().roundToPx() },
             hostPadsWebView = raftWebViewNeedsHostBottomInsets,
         )
+    // The page, and over it the App's splash while it covers the page (one loader at a time).
+    Box(Modifier.fillMaxSize()) {
     Box(
         modifier =
             Modifier
@@ -943,9 +996,43 @@ private fun RaftArtifactViewerWebBody(
                 body = settingsWebViewErrorBody(loadWatchdog.state.phase),
                 onAction = onRetry,
             )
-        } else if (!visible) {
-            RaftCenteredLoading(stringResource(Res.string.common_loading))
         }
+    }
+    if (loadingIndicator == RaftArtifactViewerLoadingIndicator.AppSplash) {
+        RaftArtifactViewerSplashCover(splashKind, splashOpenedAt, desktopMode)
+    }
+    }
+}
+
+/**
+ * The App's loading splash over the viewer's body (#301): the web's ArtifactLoadingSplash, ported
+ * ([RaftArtifactLoadingSplash]), where the page's own will show, so the hand-over moves nothing.
+ * The page's splash lies over its content area, under its toolbar row and above its bottom safe
+ * area; that row takes the place of the App's bar when the page draws itself (both about 56 dp), so
+ * centred in the body below the App's bar the icon is where the page's will be. The bottom: what the
+ * WebView is padded by (Android) or the safe area the page keeps (iOS, `safe-bottom`). In Desktop
+ * Mode the page is fitted from a desktop width, so its splash is drawn smaller: scaled alike.
+ * The kind is the card's (null: a document and "Loading Artifact", as the page's link screen).
+ */
+@Composable
+private fun RaftArtifactViewerSplashCover(kind: build.raft.app.data.ArtifactKind?, openedAt: kotlin.time.TimeMark, desktopMode: Boolean) {
+    val density = LocalDensity.current
+    val bottomPx =
+        if (raftWebViewNeedsHostBottomInsets) {
+            raftArtifactViewerWebBottomInsetPx(
+                imeBottomPx = raftImeBottomPx(density),
+                navigationBarBottomPx = with(density) { raftBottomSafeAreaPadding().roundToPx() },
+                hostPadsWebView = true,
+            )
+        } else {
+            with(density) { raftBottomSafeAreaPadding().roundToPx() }
+        }
+    val windowWidthDp = with(density) { LocalWindowInfo.current.containerSize.width.toDp().value }
+    val widthDp = LocalRaftArtifactViewerColumnWidthDp.current ?: windowWidthDp
+    val scale = raftArtifactViewerSplashScale(desktopMode, widthDp)
+    val label = stringResource(if (kind == null) Res.string.artifacts_card_loading else Res.string.artifacts_viewer_getting_page)
+    Box(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(bottom = with(density) { bottomPx.toDp() })) {
+        RaftArtifactLoadingSplash(kind = kind, label = label, openedAt = openedAt, scale = scale)
     }
 }
 
