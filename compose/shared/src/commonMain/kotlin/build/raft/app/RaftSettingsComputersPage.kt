@@ -9,6 +9,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.rememberTextMeasurer
+import build.raft.app.data.ComputerLoginStepAction
 import build.raft.app.data.RaftAgentCreateEntry
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.RaftAgentsNetworkApi
@@ -1714,7 +1715,7 @@ private fun RaftComputerRackCells(
             val column = own.usage.firstOrNull { it.provider == fleetColumn.provider }
             Box(Modifier.width(cellWidth)) {
                 if (column != null && !usageLoads[column.provider].unsupportedRead) {
-                    val line = raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage, row.id, nowMillis)
+                    val line = raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage, row.id, nowMillis, raftRackLoginStep(row.runtimes, row.loginSteps, column.provider))
                     val card = line.usageCard
                     if (card != null) card { RaftRackUsageCellContent(line, click = null) } else RaftRackUsageCellContent(line, click = line.onClick)
                 }
@@ -1846,7 +1847,7 @@ private fun RaftComputerRackMeters(
     val leadProvider = (sortKey as? ComputersRackSortKey.Remaining)?.provider
     val usage =
         columns.usage.filter { !usageLoads[it.provider].unsupportedRead }.map { column ->
-            val line = raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage, row.id, nowMillis)
+            val line = raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage, row.id, nowMillis, raftRackLoginStep(row.runtimes, row.loginSteps, column.provider))
             if (column.provider == leadProvider) line.emphasize() else line
         }
     val lead = usage.firstOrNull { it.emphasized }
@@ -2008,6 +2009,7 @@ private fun raftRackUsageLine(
     onOpenUsage: (RaftRackUsageColumn, String) -> Unit,
     machineId: String,
     nowMillis: Long,
+    step: ComputerLoginStepAction? = null,
 ): RaftRackLine {
     val runtimeId = cell.column.runtimeId
     val name = runtimeCatalog.entry(runtimeId)?.displayName ?: raftAgentRuntimeDisplayName(runtimeId)
@@ -2020,6 +2022,33 @@ private fun raftRackUsageLine(
         } else {
             null
         }
+    if (step != null) {
+        // Web `StepText` (slock #14602): the login's step instead of the bar, in warning-strong; no attention pixel.
+        val stepText =
+            stringResource(
+                when (step) {
+                    ComputerLoginStepAction.VerifyAccount -> Res.string.settings_computers_rack_step_verify_account
+                    ComputerLoginStepAction.SignIn -> Res.string.settings_computers_rack_step_sign_in
+                },
+            )
+        val spoken =
+            stringResource(
+                when (step) {
+                    ComputerLoginStepAction.VerifyAccount -> Res.string.settings_computers_readiness_do_verify_account
+                    ComputerLoginStepAction.SignIn -> Res.string.settings_computers_readiness_do_sign_in
+                },
+            )
+        return RaftRackLine(
+            label = label,
+            runtimeMark = runtimeId,
+            bar = null,
+            value = stepText,
+            warn = true,
+            semantics = stringResource(Res.string.settings_computers_rack_usage_meter, name, spoken),
+            onClick = onClick,
+            usageCard = usageCard,
+        )
+    }
     return when (cell) {
         is RaftRackUsageCell.Unavailable ->
             RaftRackLine(

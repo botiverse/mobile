@@ -3468,7 +3468,7 @@
     <string name="runtime_quota_window_five_hour">5 小時</string>
     <string name="runtime_quota_window_week">本週</string>
     <string name="runtime_quota_used">%1$s 已用 %2$s</string>
-    <string name="runtime_quota_used_up">%1$s 已用完 · %2$s恢復</string>
+    <string name="runtime_quota_used_up">%1$s 已用完 · %2$s重設</string>
     <string name="runtime_quota_used_up_no_reset">%1$s 已用完</string>
     <string name="runtime_quota_attention">%1$s · 需要處理</string>
     <string name="runtime_picker_search">搜尋</string>

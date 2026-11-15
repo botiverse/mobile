@@ -3030,7 +3030,8 @@ internal fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnaps
         installerRepairHint = installerRepairHint,
         runtimeVersions = runtimeVersions,
         diskStatus = diskStatus?.let { SettingsComputerSizeStatusSnapshot(it.availableBytes, it.totalBytes) },
-        memoryStatus = memoryStatus?.let { SettingsComputerSizeStatusSnapshot(it.availableBytes, it.totalBytes) }
+        memoryStatus = memoryStatus?.let { SettingsComputerSizeStatusSnapshot(it.availableBytes, it.totalBytes) },
+        loginSteps = loginSteps.orEmpty()
     )
 
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =

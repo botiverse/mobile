@@ -3465,7 +3465,7 @@
     <string name="runtime_quota_window_five_hour">5 ч</string>
     <string name="runtime_quota_window_week">Неделя</string>
     <string name="runtime_quota_used">%1$s: использовано %2$s</string>
-    <string name="runtime_quota_used_up">%1$s: исчерпано · вернётся %2$s</string>
+    <string name="runtime_quota_used_up">%1$s: исчерпано · сброс %2$s</string>
     <string name="runtime_quota_used_up_no_reset">%1$s: исчерпано</string>
     <string name="runtime_quota_attention">%1$s · требует внимания</string>
     <string name="runtime_picker_search">Поиск</string>

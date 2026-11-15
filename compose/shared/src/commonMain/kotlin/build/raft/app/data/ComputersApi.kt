@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ServerId
+import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.model.RuntimeModelInfo
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
@@ -8,6 +9,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -910,7 +912,13 @@ internal data class ComputerSummary(
     /** Server `diskStatus`: free and total disk while online; null when offline or never reported. */
     val diskStatus: ComputerSizeStatus? = null,
     /** Server `memoryStatus`: free and total memory while online; null when offline, never reported, or an older Computer. */
-    val memoryStatus: ComputerSizeStatus? = null
+    val memoryStatus: ComputerSizeStatus? = null,
+    /**
+     * The machine logins of server `attention.items` that hold agents and need a step (slock #14602,
+     * web `rackLoginStep`). Null: the row carried no `attention` (an older server, a viewer the
+     * server computes none for, or an incremental-sync row, which never carries it).
+     */
+    val loginSteps: List<ComputerLoginStep>? = null
 )
 
 /**
@@ -1150,7 +1158,12 @@ private data class ComputerDto(
     // `memoryStatus: MachineMemoryStatus | null` (packages/shared/src/index.ts), both null unless
     // the machine is online; memory is absent from Computers older than its report (slock #11032).
     val diskStatus: MachineSizeStatusDto? = null,
-    val memoryStatus: MachineSizeStatusDto? = null
+    val memoryStatus: MachineSizeStatusDto? = null,
+    // routes/servers.ts GET /:id/machines `attention: computerAttentionForViewer(...)` (slock #14587,
+    // packages/shared/src/readiness.ts `ReadinessAttention`): what a person must act on. Additive:
+    // absent from older servers and when the server's readiness read failed. Kept raw and read item
+    // by item ([computerLoginSteps]) so an item this build cannot read never drops the machine.
+    val attention: JsonElement? = null
 )
 
 /**
@@ -1424,7 +1437,8 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         owner = owner?.toSnapshot(),
         agentScopes = agentScopes?.toSnapshot(),
         diskStatus = diskStatus?.toStatus(),
-        memoryStatus = memoryStatus?.toStatus()
+        memoryStatus = memoryStatus?.toStatus(),
+        loginSteps = attention?.let(::computerLoginSteps)
     )
 }
 
@@ -1447,6 +1461,63 @@ private fun MachineRenameDto.toSummary(): ComputerSummary? {
         createdAt = createdAt,
         creatorUserId = userId?.trim()?.takeIf { it.isNotBlank() }
     )
+}
+
+/** slock `ReadinessAction` (packages/shared/src/readiness.ts `READINESS_ACTIONS`) a usage cell shows as its step. */
+enum class ComputerLoginStepAction(val wire: String) {
+    VerifyAccount("verify_account"),
+    SignIn("sign_in")
+}
+
+/** A machine login (`shared:<runtime>`) that holds agents and needs [action] (web `rackLoginStep`). */
+data class ComputerLoginStep(val runtimeId: String, val action: ComputerLoginStepAction)
+
+/**
+ * slock `ReadinessAttentionItem`: `{ code?, resource?, actor, actorName?, action, agentIds?, agentCount }`.
+ * `code` and `resource` are absent for a viewer who may not see the reason. Only the fields the
+ * usage cell's step reads.
+ */
+@Serializable
+private data class ReadinessAttentionItemDto(
+    val code: String? = null,
+    val resource: ReadinessResourceDto? = null,
+    val action: String? = null,
+    val agentCount: Int = 0
+)
+
+/** slock `ReadinessResource`, the `login` member only: `{ kind: "login", key }` (`key` "shared:<runtime>" for a machine login). */
+@Serializable
+private data class ReadinessResourceDto(
+    val kind: String? = null,
+    val key: String? = null
+)
+
+/** slock `READINESS_ACTIONS`: every action the server derives from a code. */
+private val READINESS_ACTION_WIRES = setOf("sign_in", "verify_account", "update_computer", "fix")
+
+/**
+ * Web `rackLoginStep`'s items (slock #14602): each `attention.items` entry with a `code` (the
+ * viewer may see the reason), at least one agent, a machine login resource (`shared:<runtime>`)
+ * and the action "verify_account" or "sign_in", in the server's order. An item this build cannot
+ * read is skipped; an action outside slock's set is logged.
+ */
+internal fun computerLoginSteps(attention: JsonElement): List<ComputerLoginStep> {
+    val items = (attention as? JsonObject)?.get("items") as? JsonArray ?: return emptyList()
+    return items.mapNotNull { row ->
+        val item = runCatching { computersApiJson.decodeFromJsonElement(ReadinessAttentionItemDto.serializer(), row) }.getOrNull()
+            ?: return@mapNotNull null
+        val action = item.action
+        if (action != null && action !in READINESS_ACTION_WIRES) {
+            reportUnknownTypeDropped(source = "machines.attention", field = "action", value = action, fallback = "no_step")
+        }
+        if (item.code.isNullOrBlank() || item.agentCount <= 0) return@mapNotNull null
+        val resource = item.resource ?: return@mapNotNull null
+        val key = resource.key ?: return@mapNotNull null
+        if (resource.kind != "login" || !key.startsWith("shared:")) return@mapNotNull null
+        val runtimeId = key.removePrefix("shared:").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val step = ComputerLoginStepAction.entries.firstOrNull { it.wire == action } ?: return@mapNotNull null
+        ComputerLoginStep(runtimeId, step)
+    }
 }
 
 @Serializable

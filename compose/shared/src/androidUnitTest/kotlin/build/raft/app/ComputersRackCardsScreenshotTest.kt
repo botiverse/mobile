@@ -13,6 +13,8 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.app.data.ComputerLoginStep
+import build.raft.app.data.ComputerLoginStepAction
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageHealth
 import build.raft.app.data.RuntimeAccountUsageLoad
@@ -298,6 +300,8 @@ private fun ComputersListVisualContent(
                         versionGate = SettingsComputerVersionGateSnapshot(reason = "computer_version_unsupported", minVersion = "1.0.50"),
                         latestComputerVersion = "1.0.53",
                         runtimes = listOf("claude", "grok"),
+                        // Its Claude login needs verifying and holds an agent: the Claude line says "Verify" (slock #14602).
+                        loginSteps = listOf(ComputerLoginStep("claude", ComputerLoginStepAction.VerifyAccount)),
                         diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 40 * gib, totalBytes = 256 * gib),
                         memoryStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 6 * gib, totalBytes = 16 * gib),
                         upgradeRequest =
@@ -421,8 +425,9 @@ private fun ComputersListVisualContent(
 }
 
 /**
- * The cards' usage reads: Studio normal + warning; build-box used up ("Back in 3h") + stale; old-node nothing
- * read ("—") + an account needing attention ("—" with the pixel); gpu-rig normal. The offline
+ * The cards' usage reads: Studio normal + warning; build-box used up ("Back in 3h") + stale; old-node's
+ * Claude login step ("Verify" in warning, no bar, slock #14602) + an account needing attention ("—"
+ * with the pixel); gpu-rig normal. The offline
  * laptop has a read that must not show.
  */
 private fun rackUsageFixture(): Map<String, Map<RuntimeAccountUsageProvider, RuntimeAccountUsageLoad>> {
