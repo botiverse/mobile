@@ -59,7 +59,7 @@ class ChannelAddMemberCreateExternalAgentTest {
     }
 
     @Test
-    fun withoutPermissionTheWholeRowStaysListedButDisabled() {
+    fun withoutPermissionTheSpecIsInert() {
         val spec = threadAddMemberCreateRowSpec(canCreateAgents = false, createName = "mia", adding = false)
         assertFalse(spec.enabled || spec.showsAutoJoin || spec.promoted)
         assertEquals("", spec.initialName)

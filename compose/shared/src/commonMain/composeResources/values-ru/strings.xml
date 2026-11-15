@@ -3458,7 +3458,6 @@
     <string name="thread_members_add_selected">Добавить выбранных (%1$d)</string>
     <string name="thread_members_create_agent">Создать агента</string>
     <string name="thread_add_member_create_external_agent">Создать внешнего агента</string>
-    <string name="thread_members_create_no_permission">Вы можете добавлять участников в этот канал, но для создания агентов на этом сервере нужны права владельца или администратора. Попросите их выдать вам разрешение или создать агента, чтобы вы могли его добавить.</string>
     <string name="thread_members_created_join_failed">Агент создан, но добавить его в канал не удалось. Повторите попытку — нового агента создавать не придётся.</string>
     <string name="thread_members_create_named_agent">Создать агента «%1$s»</string>
     <string name="app_update_download_paused">Скачивание приостановлено — ожидание возобновления</string>
