@@ -469,7 +469,8 @@ class ComputersApiTest {
         )
     }
 
-    private class RecordingComputersApi(
+    // Shared with ComputerControllerPermissionsTest.
+    internal class RecordingComputersApi(
         private val machinesBody: String =
             """{"machines":[{"id":"machine-1","name":"Maria Laptop","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"daemonVersion":"0.53.0","computerVersion":"0.0.61","isComputer":true,"hostname":"maria.local","os":"darwin","description":"Runs production agents","lastHeartbeat":"2026-06-14T02:00:00.000Z","createdAt":"2026-05-01T00:00:00.000Z"}],"latestDaemonVersion":"0.53.0","latestComputerVersion":"0.0.62"}""",
         private val registerBody: String =

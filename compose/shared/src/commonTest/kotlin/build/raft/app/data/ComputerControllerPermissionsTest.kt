@@ -32,7 +32,7 @@ class ComputerControllerPermissionsTest {
 
     private suspend fun snapshots(): Map<String, SettingsComputerSnapshot> =
         assertIs<DataResult.Content<ComputerListSummary>>(
-            RaftComputersApiClient(RecordingComputersApi(machinesBody = body)).machines(ServerId("server-1"), DataRequestPriority.Visible)
+            RaftComputersApiClient(ComputersApiTest.RecordingComputersApi(machinesBody = body)).machines(ServerId("server-1"), DataRequestPriority.Visible)
         ).data.machines.map { it.toSettingsComputerSnapshot() }.associateBy { it.id }
 
     @Test
