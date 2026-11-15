@@ -194,6 +194,8 @@ class RaftMinBuildGateUiTest {
                             currentServerId = "botiverse",
                             servers = listOf(RaftServerSwitcherItem(id = "botiverse", name = SERVER, slug = "botiverse")),
                             showBottomBar = true,
+                            // As the app composes Home: the head runs edge to edge.
+                            outerPadding = 0.dp,
                             onServerBadgeClick = { switcherTaps++ },
                             onTabSelected = { tabs += it },
                         )
@@ -257,13 +259,13 @@ class RaftMinBuildGateUiTest {
 
         val band = onNodeWithTag(RAFT_MIN_BUILD_GATE_BAND_TAG).getBoundsInRoot()
         val workspace = onNodeWithText(SERVER).getBoundsInRoot()
-        val search = onNodeWithText("Search").getBoundsInRoot()
+        val search = onNodeWithText("Search", useUnmergedTree = true).getBoundsInRoot()
         assertFalse(band.overlaps(workspace), "the banner covers the server switcher: band=$band workspace=$workspace")
         assertFalse(band.overlaps(search), "the banner covers the search field: band=$band search=$search")
         assertTrue(workspace.top - band.bottom < STATUS_BAR, "the top bar pads the status bar again under the band")
 
         onNodeWithText(SERVER).performClick()
-        onNodeWithText("Search").performClick()
+        onNodeWithText("Search", useUnmergedTree = true).performClick()
         waitForIdle()
         assertEquals(1, workspaceTaps)
         assertEquals(1, searchTaps)

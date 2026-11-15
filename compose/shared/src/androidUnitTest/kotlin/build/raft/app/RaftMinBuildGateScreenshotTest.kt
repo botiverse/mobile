@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.RaftMinBuildGateDecision
@@ -100,6 +101,8 @@ class RaftMinBuildGateScreenshotTest {
                 currentServerId = "botiverse",
                 servers = listOf(RaftServerSwitcherItem(id = "botiverse", name = "Botiverse", slug = "botiverse")),
                 showBottomBar = true,
+                // As the app composes Home: the head runs edge to edge.
+                outerPadding = 0.dp,
             )
         }
 
