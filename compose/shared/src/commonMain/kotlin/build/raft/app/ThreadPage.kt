@@ -26,6 +26,7 @@ import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.raftToastAvoid
 import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.nav.LocalRaftStackPageInMotion
+import build.raft.app.nav.LocalRaftStackPageLeaving
 import build.raft.app.resources.*
 import build.raft.app.emoji.RaftEmojiCatalog
 import build.raft.app.emoji.RaftEmojiPickerPreferences
@@ -23627,9 +23628,20 @@ private fun ThreadMessagesListContent(
         }
         dispatchViewportEvent(LazyViewportEvent.ContentMutated(mutation))
     }
+    // Owner lifetime (Hands 712d8386): popping the page while this effect was still placing a
+    // focused message scrolled a list whose LazyColumn was already leaving, and crashed in
+    // prefetch cleanup. Leaving the stack restarts the effect, which then does nothing.
+    val stackPageLeaving = LocalRaftStackPageLeaving.current
+    val currentStackPageLeavingState = rememberUpdatedState(stackPageLeaving)
     // The only production owner allowed to mutate listState.
-    LaunchedEffect(threadInstanceKey, viewportControllerState.pendingCommand?.id) {
+    LaunchedEffect(threadInstanceKey, viewportControllerState.pendingCommand?.id, stackPageLeaving) {
         val command = viewportControllerState.pendingCommand ?: return@LaunchedEffect
+        if (stackPageLeaving) return@LaunchedEffect
+        val commandContext = coroutineContext
+        // Job active, list still composed, page not leaving: checked before the command's own
+        // currency, so a dead owner neither scrolls nor dispatches viewport events.
+        fun commandOwnerLive(): Boolean =
+            listState.scrollOwnerLive(commandContext, pageLeaving = currentStackPageLeavingState.value)
         fun commandStillCurrent(): Boolean =
             currentViewportControllerState.value.acceptsRenderedTailCommand(
                 command = command,
@@ -23639,6 +23651,7 @@ private fun ThreadMessagesListContent(
             )
         var staleRenderedTailInvalidationDispatched = false
         fun commandIsLiveOrTerminallyInvalidate(): Boolean {
+            if (!commandOwnerLive()) return false
             if (commandStillCurrent()) return true
             val anchor = command.target as? LazyViewportCommandTarget.Anchor
             val controller = currentViewportControllerState.value
@@ -23764,6 +23777,8 @@ private fun ThreadMessagesListContent(
             }
         }
     }
+    // After the effect above: disposed before its job is cancelled.
+    ThreadListViewportRetireOnDispose(listState)
     val headerScrollToTopRequestFence =
         remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
     var outlineOriginJumpRequest by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -29027,7 +29042,13 @@ private suspend fun ThreadListViewport.scrollLatestItemToRenderedBottom(
     return commandStillCurrent()
 }
 
-private suspend fun ThreadListViewport.scrollThreadItemToFocusedViewport(
+/**
+ * Places row [itemIndex] in the focused viewport over a few frames. [commandStillCurrent] is checked
+ * after every suspension and before every scroll; production folds the owner lifetime
+ * ([scrollOwnerLive]) into it, and [ThreadListViewport] itself refuses to scroll from a cancelling
+ * job or a retired list.
+ */
+internal suspend fun ThreadListViewport.scrollThreadItemToFocusedViewport(
     itemIndex: Int,
     focusedScrollOffset: (itemSize: Int, info: LazyListLayoutInfo) -> Int = { itemSize, info ->
         threadFocusedItemScrollOffset(

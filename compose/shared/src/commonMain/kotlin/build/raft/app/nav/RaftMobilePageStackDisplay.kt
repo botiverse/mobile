@@ -83,10 +83,15 @@ fun RaftMobilePageStackDisplay(
                 RaftStackPageViewModels {
                     val top = stack.pages.lastOrNull() === page
                     val settled = motion.settledTop == page.contentKey
+                    // Popped or replaced: still composed while it slides out, never shown again.
+                    val leaving = stack.pages.none { it === page }
                     // On top: resumed at once (its content renders through the slide), active (back
                     // handlers, viewDidAppear: read state, realtime interest, loads) once settled.
                     // Until then it is in motion (LocalRaftStackPageInMotion): heavy first builds wait.
-                    CompositionLocalProvider(LocalRaftStackPageInMotion provides (top && !settled)) {
+                    CompositionLocalProvider(
+                        LocalRaftStackPageInMotion provides (top && !settled),
+                        LocalRaftStackPageLeaving provides leaving,
+                    ) {
                         RaftStackPageActivity(resumed = top, active = top && settled) { pageContent(page) }
                     }
                 }
@@ -105,6 +110,14 @@ private const val RaftMobileStackSettleFallbackMillis = 1_000L
  * while this is true, so that build lands after the slide instead of on its frames.
  */
 val LocalRaftStackPageInMotion = compositionLocalOf { false }
+
+/**
+ * True once the enclosing stack page has left the stack (popped, or replaced by another page) while
+ * it is still composed for its exit motion; a covered page is not leaving. False on every host
+ * without a mobile page stack. Work that must not outlive the page, such as a programmatic scroll of
+ * its message list (Hands 712d8386), stops here instead of waiting for the page's disposal.
+ */
+val LocalRaftStackPageLeaving = compositionLocalOf { false }
 
 /**
  * A stack page's lifecycle cap and page activity: on top it is resumed at once (its content renders
