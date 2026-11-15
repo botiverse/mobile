@@ -34,14 +34,14 @@ class AndroidSystemKillReportPersistenceTest {
             )
         val store = FakeStore()
 
-        launch(store, exits, submit = { _, _ -> throw IOException("offline") })
+        oneLaunch(store, exits, submit = { _, _ -> throw IOException("offline") })
 
         // The watermark stays below the shared millisecond; the swipe-away is kept as handled.
         assertTrue(store.persisted.watermarkMillis < sameMillisecond)
         assertEquals(setOf(SystemKillExitKey(1, sameMillisecond)), store.persisted.handledAboveWatermark)
 
         val sent = mutableListOf<Any?>()
-        launch(store, exits, submit = { _, extras -> sent += extras["crash_process_id"]; "ticket" })
+        oneLaunch(store, exits, submit = { _, extras -> sent += extras["crash_process_id"]; "ticket" })
         assertEquals(listOf<Any?>(2), sent)
         assertEquals(sameMillisecond, store.persisted.watermarkMillis)
         assertTrue(store.persisted.handledAboveWatermark.isEmpty())
@@ -57,11 +57,11 @@ class AndroidSystemKillReportPersistenceTest {
         val store = FakeStore()
 
         // No visible slot this launch: pid 2 is built and queued, in the commit that handles it.
-        launch(store, exits, limits = limits(visiblePerLaunch = 0), submit = { _, _ -> error("not sent") })
+        oneLaunch(store, exits, limits = limits(visiblePerLaunch = 0), submit = { _, _ -> error("not sent") })
         assertEquals(listOf(SystemKillExitKey(2, sameMillisecond)), store.persisted.queue.map { it.key })
 
         val sent = mutableListOf<Any?>()
-        launch(store, exits, submit = { _, extras -> sent += extras["crash_process_id"]; "ticket" })
+        oneLaunch(store, exits, submit = { _, extras -> sent += extras["crash_process_id"]; "ticket" })
         assertEquals(listOf<Any?>(2), sent)
         assertTrue(store.persisted.queue.isEmpty())
     }
@@ -71,16 +71,16 @@ class AndroidSystemKillReportPersistenceTest {
         val exit = exit(pid = 1, at = now - 1_000L, importance = IMPORTANCE_VISIBLE)
         val store = FakeStore(SystemKillProgress(recentReportMillis = mapOf(SystemKillBudget.Visible to List(5) { now - 10_000L })))
 
-        launch(store, listOf(exit), submit = { _, _ -> error("not sent") })
+        oneLaunch(store, listOf(exit), submit = { _, _ -> error("not sent") })
         assertEquals(1, store.persisted.queue.size)
 
         // A restart within the day: still no room, still queued.
-        launch(store, listOf(exit), at = now + 60_000L, submit = { _, _ -> error("not sent") })
+        oneLaunch(store, listOf(exit), at = now + 60_000L, submit = { _, _ -> error("not sent") })
         assertEquals(1, store.persisted.queue.size)
 
         // A day later the budget is free again: the queued report goes out first.
         val sent = mutableListOf<String>()
-        launch(store, emptyList(), at = now + day, submit = { message, _ -> sent += message; "ticket" })
+        oneLaunch(store, emptyList(), at = now + day, submit = { message, _ -> sent += message; "ticket" })
         assertEquals(1, sent.size)
         assertTrue(sent.single(), sent.single().startsWith("System kill: low_memory"))
         assertTrue(store.persisted.queue.isEmpty())
@@ -90,12 +90,12 @@ class AndroidSystemKillReportPersistenceTest {
     fun aQueuedReportIsSentAfterItsExitLeftTheSystemsExitList() = runTest {
         val exit = exit(pid = 1, at = now - 100_000L, importance = IMPORTANCE_VISIBLE)
         val store = FakeStore()
-        launch(store, listOf(exit), limits = limits(visiblePerLaunch = 0), submit = { _, _ -> error("not sent") })
+        oneLaunch(store, listOf(exit), limits = limits(visiblePerLaunch = 0), submit = { _, _ -> error("not sent") })
 
         // The next launch reads only the newest 16 exits; this one is no longer among them.
         val newer = (2..17).map { exit(pid = it, at = now - 50_000L + it, importance = IMPORTANCE_CACHED, reason = ApplicationExitInfo.REASON_USER_REQUESTED) }
         val sent = mutableListOf<Any?>()
-        launch(store, newer, submit = { _, extras -> sent += extras["crash_process_id"]; "ticket" })
+        oneLaunch(store, newer, submit = { _, extras -> sent += extras["crash_process_id"]; "ticket" })
 
         assertEquals(listOf<Any?>(1), sent)
     }
@@ -106,13 +106,13 @@ class AndroidSystemKillReportPersistenceTest {
         val exit = exit(pid = 1, at = now - 100_000L, importance = IMPORTANCE_CACHED)
         val snapshot = old(1, exit.timestampMillis).copy(lastInteractionAtMillis = exit.timestampMillis - 1_000L)
         val store = FakeStore()
-        launch(store, listOf(exit), listOf(snapshot), limits = limits(visiblePerLaunch = 0), submit = { _, _ -> error("not sent") })
+        oneLaunch(store, listOf(exit), listOf(snapshot), limits = limits(visiblePerLaunch = 0), submit = { _, _ -> error("not sent") })
         assertEquals(SystemKillBudget.Visible, store.persisted.queue.single().budget)
 
         // Six newer processes pushed it out of the ring.
         val ring = (2..7).map { old(it, now) }
         val sent = mutableListOf<Map<String, Any?>>()
-        launch(store, emptyList(), ring, submit = { _, extras -> sent += extras; "ticket" })
+        oneLaunch(store, emptyList(), ring, submit = { _, extras -> sent += extras; "ticket" })
 
         val extras = sent.single()
         assertEquals(true, extras["crash_recent_foreground"])
@@ -130,16 +130,16 @@ class AndroidSystemKillReportPersistenceTest {
 
         // The process dies while handling the drop: that commit never lands.
         store.dieOnCommitWhere = { progress -> progress.ledger.accumulating.isNotEmpty() }
-        runCatching { launch(store, exits, snapshots, limits = limits) }
+        runCatching { oneLaunch(store, exits, snapshots, limits = limits) }
         assertTrue(store.persisted.ledger.accumulating.isEmpty())
         assertFalse(SystemKillExitKey(4, exits.last().timestampMillis) in store.persisted.handledAboveWatermark)
 
         store.dieOnCommitWhere = { false }
-        launch(store, exits, snapshots, limits = limits)
+        oneLaunch(store, exits, snapshots, limits = limits)
         assertEquals(1, store.persisted.ledger.accumulating.single().count)
 
         // A further relaunch handles and counts nothing more.
-        launch(store, exits, snapshots, limits = limits)
+        oneLaunch(store, exits, snapshots, limits = limits)
         assertEquals(1, store.persisted.ledger.accumulating.single().count)
     }
 
@@ -148,7 +148,7 @@ class AndroidSystemKillReportPersistenceTest {
         val exit = exit(pid = 1, at = now - 1_000L, importance = IMPORTANCE_CACHED)
         val store = FakeStore()
 
-        launch(store, listOf(exit), listOf(old(1, exit.timestampMillis)), limits = limits(backgroundPerLaunch = 0))
+        oneLaunch(store, listOf(exit), listOf(old(1, exit.timestampMillis)), limits = limits(backgroundPerLaunch = 0))
 
         val committed = store.commits.single()
         assertEquals(exit.timestampMillis, committed.watermarkMillis)
@@ -162,8 +162,8 @@ class AndroidSystemKillReportPersistenceTest {
         val carried = mutableListOf<Map<String, Any?>>()
         var ids = 0
 
-        launch(store, exits, newBatchId = { "batch-${++ids}" }, submit = { _, extras -> carried += extras; throw IOException("offline") })
-        launch(store, exits, newBatchId = { "batch-${++ids}" }, submit = { _, extras -> carried += extras; "ticket" })
+        oneLaunch(store, exits, newBatchId = { "batch-${++ids}" }, submit = { _, extras -> carried += extras; throw IOException("offline") })
+        oneLaunch(store, exits, newBatchId = { "batch-${++ids}" }, submit = { _, extras -> carried += extras; "ticket" })
 
         assertEquals(listOf("batch-1", "batch-1"), carried.map { it["crash_background_dropped_id"] })
         assertEquals(carried[0]["crash_background_dropped"].toString(), carried[1]["crash_background_dropped"].toString())
@@ -279,7 +279,7 @@ class AndroidSystemKillReportPersistenceTest {
     )
 
     /** One launch over [exits] and [snapshots] at [at]. */
-    private suspend fun launch(
+    private suspend fun oneLaunch(
         store: FakeStore,
         exits: List<SystemKillExit>,
         snapshots: List<MemoryTelemetrySnapshot> = emptyList(),
