@@ -209,6 +209,44 @@ internal fun systemKillBudget(exit: SystemKillExit, telemetry: MemoryTelemetrySn
     }
 }
 
+/**
+ * Every reason not listed above is a system kill: unknown, signaled, low_memory,
+ * initialization_failure, excessive_resource_usage, dependency_died, other, freezer, and codes
+ * added after API 35. On a device that does not explain its kills (the Huawei in Hands
+ * fb-52cc0499 recorded `reason=other`) any of them can be the "app vanished" users describe.
+ *
+ * Every system kill is sent; this only says whether it was a foreground or a background one (the
+ * decision label in the local log; the ticket carries the raw fields and the evidence separately,
+ * see [systemKillExtras]):
+ * - foreground ([SystemKillDecision.Report]) when the exit record says importance foreground
+ *   (100) or visible (200), whatever the app's telemetry says or how old it is (the app may have
+ *   come back to the foreground after its last snapshot was written); or when the app's telemetry
+ *   for the exited process ([telemetry], matched by the caller) has recent foreground evidence, a
+ *   sample or a user interaction at most [SystemKillFreshSampleMillis] before the exit
+ *   ([recentForegroundEvidence]), whatever the importance. The Huawei kill (fb-52cc0499)
+ *   recorded `importance=400` one second after the user scrolled.
+ * - background ([SystemKillDecision.ReportBackground]) otherwise: foreground service (125),
+ *   perceptible (230), service (300), cached (400) without such evidence, including a snapshot
+ *   that says "in foreground" from long before the kill (Hands 4a5504d3: foreground 600 s, sample
+ *   570 s before an exit at importance 300).
+ */
+internal fun classifySystemKill(
+    reasonCode: Int,
+    importance: Int,
+    telemetry: MemoryTelemetrySnapshot?,
+    exitTimestampMillis: Long,
+    status: Int = 0,
+): SystemKillDecision =
+    when {
+        reasonCode in UserInitiatedReasons -> SystemKillDecision.SkipUserInitiated
+        reasonCode in PackageChangeReasons -> SystemKillDecision.SkipPackageChange
+        reasonCode in ReportedElsewhereReasons -> SystemKillDecision.SkipReportedElsewhere
+        reasonCode == ApplicationExitInfo.REASON_SIGNALED && status in CrashSignals -> SystemKillDecision.SkipReportedElsewhere
+        importance in VisibleImportances -> SystemKillDecision.Report
+        recentForegroundEvidence(telemetry, exitTimestampMillis) != null -> SystemKillDecision.Report
+        else -> SystemKillDecision.ReportBackground
+    }
+
 /** The fields of one [ApplicationExitInfo] the report uses; a plain value so planning is testable. */
 internal data class SystemKillExit(
     val pid: Int,
@@ -545,7 +583,7 @@ internal suspend fun runSystemKillReports(
         return after to (result.getOrNull()?.take(8) ?: "rejected")
     }
 
-    for (queued in progress.queue.sortedWith(compareBy({ it.budget.ordinal }, { it.key.timestampMillis }))) {
+    for (queued in progress.queue.sortedWith(compareBy<QueuedSystemKillReport>({ it.budget.ordinal }, { it.key.timestampMillis }))) {
         if (!hasRoom(queued.budget)) continue
         val (after, ticket) = upload(queued.key.timestampMillis, queued.message, queued.extras) ?: return
         progress = after.copy(queue = after.queue - queued).withReport(queued.budget, nowMillis)
@@ -614,7 +652,7 @@ internal data class BackgroundDropBatch(val id: String, val entries: List<Backgr
 
     /** The ticket fields for this batch (none when empty): both lists share [id]. */
     fun extras(): Map<String, Any?> =
-        buildMap {
+        buildMap<String, Any?> {
             if (entries.isEmpty()) return@buildMap
             put("crash_background_dropped_id", id)
             toJson().takeIf { it.length() > 0 }?.let { put("crash_background_dropped", it) }
@@ -662,7 +700,7 @@ internal data class BackgroundDropLedger(
                 accumulating + BackgroundDropEntry(versionCode, day, 1, category)
             }
         return copy(
-            accumulating = next.sortedWith(compareBy({ it.exitDayUtc }, { it.category }, { it.versionCode })).takeLast(MaxEntries),
+            accumulating = next.sortedWith(compareBy<BackgroundDropEntry>({ it.exitDayUtc }, { it.category }, { it.versionCode })).takeLast(MaxEntries),
         )
     }
 
@@ -963,7 +1001,8 @@ internal object AndroidSystemKillReporter {
         val snapshots = RaftMemoryTelemetry.previousSnapshots.await()
         val preferences = context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
-        val installId = runCatching { HandsDeviceId.get(context) }.getOrDefault("")
+        // The id Hands already keeps per install; without it crash_exit_event_id is omitted, never shared.
+        val installId = runCatching { HandsDeviceId.get(context) }.getOrNull()?.takeIf { it.isNotBlank() }
         val mainProcessName = context.applicationInfo.processName ?: context.packageName
         runSystemKillReports(
             store = PreferencesProgressStore(preferences),
@@ -999,7 +1038,7 @@ internal object AndroidSystemKillReporter {
             },
             newBatchId = { UUID.randomUUID().toString() },
             submit = submit,
-            log = ::log,
+            log = ::logOutcome,
             onRetryableFailure = { timestampMillis, error ->
                 RaftAndroidLocalDiagnostics.recordLog(
                     "warn",
@@ -1046,7 +1085,7 @@ internal object AndroidSystemKillReporter {
         }
     }
 
-    private fun log(item: SystemKillPlanItem?, queued: QueuedSystemKillReport?, outcome: String) {
+    private fun logOutcome(item: SystemKillPlanItem?, queued: QueuedSystemKillReport?, outcome: String) {
         if (item == null) {
             RaftAndroidLocalDiagnostics.recordLog(
                 "warn",
