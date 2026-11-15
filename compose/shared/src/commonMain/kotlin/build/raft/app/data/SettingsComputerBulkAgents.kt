@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.REASONING_EFFORT_RUNTIMES
+import build.raft.app.model.runtimeOffersUndeclaredReasoningEfforts
 import build.raft.app.model.RUNTIME_CONFIG_VERSION
 import build.raft.app.model.RUNTIME_FAST_MODE_RUNTIMES
 import kotlinx.serialization.json.JsonNull
@@ -181,11 +182,15 @@ private val RAFT_BASE_REASONING_EFFORTS = setOf("low", "medium", "high", "xhigh"
 
 /**
  * Web `reasoningEffortOptionsForModel` for the bulk runtimes: the model's declared efforts, else
- * the base set; none on a runtime without reasoning effort.
+ * the base set, or none where the runtime applies only listed levels (Antigravity, slock #14619);
+ * none on a runtime without reasoning effort.
  */
 fun raftBulkReasoningEffortOptions(runtime: String, supported: List<String>): List<String> {
     if (runtime !in REASONING_EFFORT_RUNTIMES) return emptyList()
-    val allowed = supported.toSet().ifEmpty { RAFT_BASE_REASONING_EFFORTS }
+    val allowed =
+        supported.toSet().ifEmpty {
+            if (runtimeOffersUndeclaredReasoningEfforts(runtime)) RAFT_BASE_REASONING_EFFORTS else emptySet()
+        }
     return RAFT_REASONING_EFFORT_ORDER.filter { it in allowed }
 }
 
@@ -200,7 +205,8 @@ fun raftBulkReconcileReasoningEffort(
     current: String?,
 ): String? {
     if (runtime !in REASONING_EFFORT_RUNTIMES) return null
-    if (supported.isEmpty()) return current?.takeIf { it in RAFT_BASE_REASONING_EFFORTS }
+    // A model with no listed levels on a runtime that offers none for it: Default.
+    if (supported.isEmpty()) return current?.takeIf { runtimeOffersUndeclaredReasoningEfforts(runtime) && it in RAFT_BASE_REASONING_EFFORTS }
     if (current != null && current in supported) return current
     return defaultEffort?.takeIf { it in supported }
 }

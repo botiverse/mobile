@@ -50,6 +50,7 @@ import build.raft.app.data.raftBulkReconcileReasoningEffort
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.getModelLabel
+import build.raft.app.model.runtimeChoiceModel
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
@@ -136,9 +137,10 @@ internal class RaftComputerBulkAgentActions(
 
     suspend fun models(runtime: String): RaftBulkModelCatalog? =
         (modelCatalog.loadRuntimeModels(serverId, machineId, runtime) as? DataResult.Content)?.data?.let { catalog ->
-            RaftBulkModelCatalog(
-                models = catalog.models.map { RaftBulkModelOption(it.id, it.label, it.supportedReasoningEfforts, it.defaultReasoningEffort) },
-                defaultModel = catalog.defaultModel,
+            raftBulkModelCatalog(
+                runtime,
+                catalog.models.map { RaftBulkModelOption(it.id, it.label, it.supportedReasoningEfforts, it.defaultReasoningEffort) },
+                catalog.defaultModel,
             )
         }
 
@@ -158,6 +160,19 @@ internal data class RaftBulkModelOption(
 )
 
 internal data class RaftBulkModelCatalog(val models: List<RaftBulkModelOption>, val defaultModel: String?)
+
+/**
+ * The bulk Change model's list for [runtime] from the Computer's [models] (web
+ * `BulkChangeModelDialog`, slock #14619): "the runtime chooses" (Antigravity's "AGY configured
+ * default", shared `runtimeChoiceModel`) stays first and preselected, so confirming without a pick
+ * does not pin the agents to the model the runtime happens to start on today, nor to its effort.
+ */
+internal fun raftBulkModelCatalog(runtime: String, models: List<RaftBulkModelOption>, defaultModel: String?): RaftBulkModelCatalog {
+    val choice =
+        runtimeChoiceModel(runtime)?.let { RaftBulkModelOption(it.id, it.label, it.supportedReasoningEfforts, it.defaultReasoningEffort) }
+            ?: return RaftBulkModelCatalog(models, defaultModel)
+    return RaftBulkModelCatalog(models = listOf(choice) + models.filter { it.id != choice.id }, defaultModel = choice.id)
+}
 
 /** The last bulk Change model on this page (web `bulkChangeModelReceiptStore`). */
 internal sealed class RaftComputerBulkReceipt {
