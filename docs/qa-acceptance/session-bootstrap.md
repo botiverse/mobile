@@ -179,8 +179,11 @@ workflow's final step, run after screenshots, logs, crash reports and perf were 
 use the same function. `delete-simulator` calls an unlisted device "already deleted" (no
 second delete) **only** with that valid deletion receipt AND a strictly parsed list without
 the UDID; a malformed list, refused ownership, or absence without the receipt is `unknown`
-and non-zero, and its record is still written. The record states **separate facts**, never
-more than they prove:
+and non-zero, and its record is still written. Its **first** action, before any check, is
+to atomically replace the `--output` record with this run's `unknown` (so a leftover record
+from another run never survives an early exit); only a final verified result replaces it
+again. Every record carries `github_run_id`, `github_run_attempt`, `simulator_udid` and
+`simulator_name`. The record states **separate facts**, never more than they prove:
 
 ```json
 {"platform":"ios-simulator","application_id":"…","simulator_udid":"…","simulator_name":"raft-qa-run-…",
@@ -212,7 +215,9 @@ more than they prove:
   `STAMP_DEVICE_CLEANUP_RECORD=qa-evidence/simulator-cleanup.json`. `stamp_report.sh
   report|report-verdict` (also whenever such a record exists) still uploads evidence but sends
   the product verdict (pass or fail) only if the record says `simulator_deleted` /
-  `deleted_and_absent`; otherwise — unknown, failed, malformed or missing — it sends only a
+  `deleted_and_absent` AND is bound to this run (`github_run_id`/`github_run_attempt` equal
+  `GITHUB_RUN_ID`/`GITHUB_RUN_ATTEMPT`, `simulator_udid`/`simulator_name` equal this job's
+  ownership receipt); otherwise — unknown, failed, malformed or missing — it sends only a
   harness `workflow-error` (phase `device_cleanup`) and exits non-zero. Testbed accepts one
   verdict while the case is running, so a product verdict sent first could not be corrected
   by a later workflow-error.

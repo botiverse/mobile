@@ -102,6 +102,15 @@ function writePrivateJson(file, value) {
   fs.chmodSync(file, 0o600);
 }
 
+/** Atomic replace (0600 temp file + rename): a reader never sees a stale or half-written record. */
+function writePrivateJsonAtomic(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp-${process.pid}`;
+  fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: "w" });
+  fs.chmodSync(tmp, 0o600);
+  fs.renameSync(tmp, file);
+}
+
 function appContainer(udid, bundleId, kind) {
   const value = simctl(["get_app_container", udid, bundleId, kind]).stdout.trim();
   if (!path.isAbsolute(value) || !fs.existsSync(value)) throw new Error(`${kind} container of ${bundleId} is unavailable (is it installed on ${udid}?)`);
@@ -421,15 +430,25 @@ function cleanupFailureMessage(result) {
  * absent without receipt — the result is unknown and non-zero.
  */
 function deleteSimulator() {
+  const output = argument("output", false);
+  // Bound to THIS run (reporter checks run id/attempt + UDID/name against the ownership receipt).
+  const base = {
+    platform: "ios-simulator", github_run_id: process.env.GITHUB_RUN_ID ?? null, github_run_attempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
+    simulator_udid: String(argument("udid", false) ?? "").toUpperCase(), simulator_name: argument("simulator-name", false) ?? null,
+  };
+  const unknownRecord = (reason, message) => ({
+    ...base, cleanup_receipt: "unknown", simulator: "unknown", simulator_reason: reason,
+    app_process: "unknown", server_session: "not_proven_by_device_cleanup", ...(message ? { error: message } : {}),
+  });
+  // FIRST action, before any check: replace whatever record is there (e.g. another run's leftover)
+  // with this run's "unknown". Only a final verified result below replaces it again.
+  if (output) writePrivateJsonAtomic(output, unknownRecord("not_completed"));
   const udid = requireSimulatorUdid(argument("udid"));
   const name = argument("simulator-name");
-  const output = argument("output", false);
-  const base = { platform: "ios-simulator", simulator_udid: udid, simulator_name: name };
   const unknown = (reason, message) => {
     if (output) {
-      writePrivateJson(output, {
-        ...base, cleanup_receipt: "unknown", simulator: "unknown", simulator_reason: reason,
-        app_process: "unknown", server_session: "not_proven_by_device_cleanup", error: message,
+      writePrivateJsonAtomic(output, {
+        ...unknownRecord(reason, message),
       });
     }
     throw new Error(message);
@@ -449,7 +468,7 @@ function deleteSimulator() {
       unknown(verdict, `${name} (${udid}) is not listed, but this job holds no valid deletion receipt (${verdict}); absence alone is not proof of deletion`);
     }
     if (output) {
-      writePrivateJson(output, {
+      writePrivateJsonAtomic(output, {
         ...base, cleanup_receipt: "simulator_deleted", simulator: "deleted_and_absent", simulator_reason: "deleted_earlier_in_this_job",
         listed_after_delete: "absent", app_process: "unknown", server_session: "not_proven_by_device_cleanup",
       });
@@ -458,7 +477,7 @@ function deleteSimulator() {
     return;
   }
   const result = deleteOwnedSimulator(udid, argument("bundle-id", false));
-  if (output) writePrivateJson(output, { ...base, ...result });
+  if (output) writePrivateJsonAtomic(output, { ...base, ...result });
   if (result.cleanup_receipt !== "simulator_deleted") throw new Error(cleanupFailureMessage(result));
   console.log(`ios-qa-bootstrap: deleted ${name} (${udid}); simulator=deleted_and_absent app_process=unknown server_session=not_proven_by_device_cleanup`);
 }
@@ -483,6 +502,8 @@ function cleanup() {
   writePrivateJson(argument("output"), {
     platform: "ios-simulator",
     application_id: bundleId,
+    github_run_id: process.env.GITHUB_RUN_ID ?? null,
+    github_run_attempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
     simulator_udid: udid,
     simulator_name: simulatorName,
     boot_generation: login.envelope.boot_generation,

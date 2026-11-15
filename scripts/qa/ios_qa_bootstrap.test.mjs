@@ -679,3 +679,73 @@ test("entry point: already deleted only with this job's own deletion receipt fro
   assert.equal(r.status, 2);
   assert.equal(JSON.parse(fs.readFileSync(path.join(tampered.root, "x.json"), "utf8")).simulator_reason, "deletion_receipt_unprotected");
 });
+
+// ---- Round 5 (Argus, c92fe10c): the cleanup record is always THIS run's ----------------------------
+
+/** Runs the real stamp_report.sh `report` on <root>/qa-evidence against a fake Testbed; returns verdicts sent. */
+function reportVerdicts(host) {
+  const evidence = path.join(host.root, "qa-evidence");
+  fs.mkdirSync(evidence, { recursive: true });
+  fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({ verdict: "pass" }));
+  fs.writeFileSync(path.join(host.runnerTemp, "stamp-claim-rc-ios"), "fake-lease");
+  const bin = path.join(host.root, "curl-bin");
+  fs.mkdirSync(bin, { recursive: true });
+  const sent = path.join(host.root, "verdicts");
+  fs.writeFileSync(path.join(bin, "curl"), `#!${process.execPath}
+const fs=require("fs");const a=process.argv.slice(2);let d="",u="";
+for(let i=0;i<a.length;i++){if(a[i]==="--data-binary"||a[i]==="-d")d=a[++i];else if(/^https:/.test(a[i]))u=a[i];}
+if(u.includes("/verdict")){const b=d.startsWith("@")?fs.readFileSync(d.slice(1),"utf8"):d;fs.appendFileSync(${JSON.stringify(sent)},JSON.parse(b).verdict+"\\n");if(a.includes("-w"))process.stdout.write("200");}
+`, { mode: 0o755 });
+  const env = {
+    ...process.env, PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`, RUNNER_TEMP: host.runnerTemp,
+    STAMP_RUN_CASE_ID: "rc-ios", STAMP_URL: "https://stamp.test", STAMP_TOKEN: "fake", GITHUB_RUN_ID: "222", GITHUB_RUN_ATTEMPT: "1",
+    GITHUB_REPOSITORY: "botiverse/mobile", STAMP_REQUIRE_DEVICE_CLEANUP: "1", STAMP_DEVICE_CLEANUP_RECORD: "qa-evidence/simulator-cleanup.json",
+  };
+  delete env.QA_TEST_EMAIL;
+  delete env.RAFT_QA_SIMULATOR_OWNERSHIP_RECEIPT;
+  spawnSync("bash", [fileURLToPath(new URL("./stamp_report.sh", import.meta.url)), "report", "qa-evidence"], { cwd: host.root, env, encoding: "utf8" });
+  return fs.existsSync(sent) ? fs.readFileSync(sent, "utf8").trim().split("\n") : [];
+}
+
+const FOREIGN_LEFTOVER = {
+  platform: "ios-simulator", github_run_id: "111", github_run_attempt: "1", simulator_udid: FOREIGN, simulator_name: "raft-qa-run-111-1",
+  cleanup_receipt: "simulator_deleted", simulator: "deleted_and_absent", app_process: "unknown", server_session: "not_proven_by_device_cleanup",
+};
+
+test("delete-simulator: a leftover foreign simulator_deleted record is replaced first; an early exit leaves this run's unknown and only an error is reported", () => {
+  for (const [name, prepareHost] of [
+    ["ownership lost (device renamed)", (host) => { assert.equal(host.record().status, 0); setList(host, listDevices([{ udid, name: "shared-iPhone", state: "Booted" }])); }],
+    ["no ownership receipt", () => {}],
+    ["malformed list", (host) => { assert.equal(host.record().status, 0); setList(host, { status: 0, stdout: "{}" }); }],
+  ]) {
+    const host = fakeHost(healthyCleanup);
+    prepareHost(host);
+    const out = path.join(host.root, "qa-evidence", "simulator-cleanup.json");
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, JSON.stringify(FOREIGN_LEFTOVER));
+    const r = host.runHarness(deleteArgs(out));
+    assert.equal(r.status, 2, name);
+    const rec = JSON.parse(fs.readFileSync(out, "utf8"));
+    assert.equal(rec.cleanup_receipt, "unknown", name);
+    assert.equal(rec.github_run_id, "222", name);
+    assert.equal(rec.github_run_attempt, "1", name);
+    assert.equal(rec.simulator_udid, udid, name);
+    assert.equal(rec.simulator_name, "raft-qa-run-222-1", name);
+    assert.equal(host.calls().some((x) => / delete /.test(x)), false, name);
+    assert.deepEqual(reportVerdicts(host), ["error"], `${name}: never pass`);
+  }
+});
+
+test("delete-simulator → report end to end: this run's verified deletion sends the product verdict (positive control)", () => {
+  const host = fakeHost(healthyCleanup);
+  assert.equal(host.record().status, 0);
+  const out = path.join(host.root, "qa-evidence", "simulator-cleanup.json");
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  fs.writeFileSync(out, JSON.stringify(FOREIGN_LEFTOVER));
+  const r = host.runHarness(deleteArgs(out));
+  assert.equal(r.status, 0, r.stderr);
+  const rec = JSON.parse(fs.readFileSync(out, "utf8"));
+  assert.equal(rec.cleanup_receipt, "simulator_deleted");
+  assert.deepEqual([rec.github_run_id, rec.github_run_attempt, rec.simulator_udid, rec.simulator_name], ["222", "1", udid, "raft-qa-run-222-1"]);
+  assert.deepEqual(reportVerdicts(host), ["pass"]);
+});

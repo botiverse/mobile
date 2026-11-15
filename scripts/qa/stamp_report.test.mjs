@@ -1116,13 +1116,14 @@ esac
 
 // ---- Round 4 (Argus, 41151acd): no product verdict before a proven device cleanup ----------------
 
-function iosReportHarness(name, { cleanup, extraEnv = {} } = {}) {
+function iosReportHarness(name, { cleanup, extraEnv = {}, ownership } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `ios-report-${name}-`));
   const evidence = path.join(root, "qa-evidence"), bin = path.join(root, "bin"), temp = path.join(root, "temp");
   fs.mkdirSync(evidence); fs.mkdirSync(bin); fs.mkdirSync(temp);
   fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({ verdict: "pass" }));
   if (cleanup !== undefined) fs.writeFileSync(path.join(evidence, "simulator-cleanup.json"), typeof cleanup === "string" ? cleanup : JSON.stringify(cleanup));
   fs.writeFileSync(path.join(temp, "stamp-claim-rc-ios"), "fake-lease");
+  if (ownership !== null) fs.writeFileSync(path.join(temp, "raft-qa-simulator-ownership.json"), JSON.stringify(ownership ?? IOS_OWNERSHIP), { mode: 0o400 });
   // Fake Testbed: accepts the FIRST verdict while running, answers 409 RUN_CASE_NOT_RUNNING afterwards.
   fs.writeFileSync(path.join(bin, "curl"), `#!${process.execPath}
 const fs=require('fs');const args=process.argv.slice(2),root=${JSON.stringify(root)};let data='',out='',url='';
@@ -1133,8 +1134,9 @@ if(!exists){fs.writeFileSync(root+'/first-verdict',body);if(out)fs.writeFileSync
 else{if(out)fs.writeFileSync(out,JSON.stringify({code:'RUN_CASE_NOT_RUNNING'}));if(args.includes('-w'))process.stdout.write('409');process.exitCode=22;}}
 `, { mode: 0o755 });
   const env = { ...process.env, PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`, RUNNER_TEMP: temp,
-    STAMP_RUN_CASE_ID: "rc-ios", STAMP_URL: "https://stamp.test", STAMP_TOKEN: "fake-test-token", GITHUB_RUN_ID: "222", GITHUB_REPOSITORY: "botiverse/mobile", ...extraEnv };
+    STAMP_RUN_CASE_ID: "rc-ios", STAMP_URL: "https://stamp.test", STAMP_TOKEN: "fake-test-token", GITHUB_RUN_ID: "222", GITHUB_RUN_ATTEMPT: "1", GITHUB_REPOSITORY: "botiverse/mobile", ...extraEnv };
   delete env.QA_TEST_EMAIL;
+  delete env.RAFT_QA_SIMULATOR_OWNERSHIP_RECEIPT;
   const reporter = new URL("./stamp_report.sh", import.meta.url).pathname;
   const phase = (...args) => spawnSync("bash", [reporter, ...args], { cwd: root, env, encoding: "utf8" }).status;
   const calls = () => (fs.existsSync(path.join(root, "calls")) ? fs.readFileSync(path.join(root, "calls"), "utf8").trim().split("\n").map((l) => JSON.parse(l)) : []);
@@ -1142,7 +1144,12 @@ else{if(out)fs.writeFileSync(out,JSON.stringify({code:'RUN_CASE_NOT_RUNNING'}));
 }
 
 const IOS_ENV = { STAMP_REQUIRE_DEVICE_CLEANUP: "1", STAMP_DEVICE_CLEANUP_RECORD: "qa-evidence/simulator-cleanup.json" };
-const DELETED = { cleanup_receipt: "simulator_deleted", simulator: "deleted_and_absent", app_process: "unknown", server_session: "not_proven_by_device_cleanup" };
+const IOS_UDID = "0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0";
+const IOS_OWNERSHIP = { contract: "raft-qa-simulator-ownership/v1", udid: IOS_UDID, name: "raft-qa-run-222-1", github_run_id: "222", github_run_attempt: "1", created_at: "2026-11-15T00:00:00Z" };
+const DELETED = {
+  platform: "ios-simulator", github_run_id: "222", github_run_attempt: "1", simulator_udid: IOS_UDID, simulator_name: "raft-qa-run-222-1",
+  cleanup_receipt: "simulator_deleted", simulator: "deleted_and_absent", app_process: "unknown", server_session: "not_proven_by_device_cleanup",
+};
 
 test("review-extra: after fake simulator cleanup failure, iOS report submits product verdict before error", () => {
   // Argus's replay (41151acd): cleanup unknown, then `report` sent pass and the later workflow-error got 409.
@@ -1159,8 +1166,20 @@ test("report: device cleanup gate (missing or malformed record → error only; s
     ["unparseable record", "not json"],
     ["deleted claimed but simulator unknown", { ...DELETED, simulator: "unknown" }],
     ["legacy clean", { cleanup_receipt: "clean" }],
+    // Round 5 (Argus, c92fe10c): a simulator_deleted record that is not THIS run's.
+    ["another run's record", { ...DELETED, github_run_id: "111" }],
+    ["another attempt's record", { ...DELETED, github_run_attempt: "2" }],
+    ["another simulator's record", { ...DELETED, simulator_udid: "11111111-2222-3333-4444-555555555555" }],
+    ["another name in the record", { ...DELETED, simulator_name: "raft-qa-run-111-1" }],
+    ["record without run binding", { cleanup_receipt: "simulator_deleted", simulator: "deleted_and_absent" }],
   ]) {
     const h = iosReportHarness(name.replace(/\W+/g, "-"), { cleanup, extraEnv: IOS_ENV });
+    assert.equal(h.phase("report", "qa-evidence"), 1, name);
+    assert.deepEqual(h.calls().map((c) => c.verdict), ["error"], name);
+  }
+  // This run's record but no (or another run's) ownership receipt: error only.
+  for (const [name, ownership] of [["no ownership receipt", null], ["foreign ownership receipt", { ...IOS_OWNERSHIP, github_run_id: "111", name: "raft-qa-run-111-1" }]]) {
+    const h = iosReportHarness(name.replace(/\W+/g, "-"), { cleanup: DELETED, extraEnv: IOS_ENV, ownership });
     assert.equal(h.phase("report", "qa-evidence"), 1, name);
     assert.deepEqual(h.calls().map((c) => c.verdict), ["error"], name);
   }

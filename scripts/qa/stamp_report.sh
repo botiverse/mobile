@@ -543,12 +543,24 @@ fi
 if [ "$REPORT_VERDICT" = "true" ]; then
   # Device-cleanup gate (iOS: the job-owned Simulator is deleted before reporting). When the workflow
   # requires it (STAMP_REQUIRE_DEVICE_CLEANUP=1) or a cleanup record exists, a product verdict (pass or
-  # fail) may only be sent if that record says the simulator was deleted and confirmed absent.
+  # fail) may only be sent if that record says the simulator was deleted and confirmed absent, and it is
+  # bound to this run (run id/attempt) and this job's simulator (ownership receipt UDID/name).
   # Otherwise only a harness workflow error is sent: Testbed accepts one verdict while running, so a
   # product verdict sent first could never be corrected by a later workflow-error.
   DEVICE_CLEANUP_RECORD="${STAMP_DEVICE_CLEANUP_RECORD:-$EV/simulator-cleanup.json}"
   if [ "${STAMP_REQUIRE_DEVICE_CLEANUP:-}" = "1" ] || [ -e "$DEVICE_CLEANUP_RECORD" ]; then
-    if ! node -e 'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(v&&v.cleanup_receipt==="simulator_deleted"&&v.simulator==="deleted_and_absent"?0:1)' "$DEVICE_CLEANUP_RECORD" 2>/dev/null; then
+    # The record must also be THIS run's: same GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT, and the UDID/name of
+    # this job's simulator ownership receipt (a leftover record from another run never counts).
+    OWNERSHIP_RECEIPT="${RAFT_QA_SIMULATOR_OWNERSHIP_RECEIPT:-${RUNNER_TEMP:-}/raft-qa-simulator-ownership.json}"
+    if ! RUN_ID="${GITHUB_RUN_ID:-}" RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" node -e '
+        const fs=require("fs"),e=process.env;
+        const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8")),o=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
+        const ok=v&&v.cleanup_receipt==="simulator_deleted"&&v.simulator==="deleted_and_absent"&&
+          /^[0-9]+$/.test(e.RUN_ID)&&/^[0-9]+$/.test(e.RUN_ATTEMPT)&&
+          v.github_run_id===e.RUN_ID&&v.github_run_attempt===e.RUN_ATTEMPT&&
+          o&&o.github_run_id===e.RUN_ID&&o.github_run_attempt===e.RUN_ATTEMPT&&
+          typeof o.udid==="string"&&String(v.simulator_udid).toUpperCase()===o.udid.toUpperCase()&&v.simulator_name===o.name;
+        process.exit(ok?0:1)' "$DEVICE_CLEANUP_RECORD" "$OWNERSHIP_RECEIPT" 2>/dev/null; then
       echo "stamp: device cleanup is not proven (record ${DEVICE_CLEANUP_RECORD}); product verdict suppressed, reporting a harness workflow error" >&2
       STAMP_POSTCLAIM_ERROR_PHASE=device_cleanup \
         STAMP_POSTCLAIM_ERROR_REASON="job-owned simulator deletion not proven (cleanup record missing or not simulator_deleted); product verdict suppressed" \
