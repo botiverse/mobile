@@ -32,7 +32,7 @@ import org.robolectric.shadows.ShadowDialog
 
 /**
  * JVM screenshots of Add Member's "Create External Agent" (web ChannelMembers, slock staging
- * 947bd94), in English: the one Create agent row (closed, menu open, and disabled without create permission with its reason),
+ * 947bd94), in English: the one Create agent row (closed, menu open, and left out without create permission, slock #14948),
  * the add panel in the wide layout's profile column, and the Create External Agent dialog
  * opened from it (no Computer or runtime, the channel it joins said on the info wash), as the
  * phone sheet and the wide centred card, plus its submit error and the plan's agent limit. Verify / record as

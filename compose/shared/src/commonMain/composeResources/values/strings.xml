@@ -3625,7 +3625,6 @@
     <string name="thread_members_add_selected">Add Selected (%1$d)</string>
     <string name="thread_members_create_agent">Create agent</string>
     <string name="thread_add_member_create_external_agent">Create external agent</string>
-    <string name="thread_members_create_no_permission">You can add members here, but creating Agents on this server needs an owner or admin. Ask one to grant the permission, or have them create the Agent so you can add it.</string>
     <string name="thread_members_created_join_failed">Agent created, but joining this channel failed. Retry joining without creating another agent.</string>
     <string name="thread_members_create_named_agent">Create agent “%1$s”</string>
     <string name="app_update_download_paused">Download paused — waiting to resume</string>

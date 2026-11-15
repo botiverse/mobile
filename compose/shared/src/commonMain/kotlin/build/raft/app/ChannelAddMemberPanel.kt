@@ -70,7 +70,8 @@ import build.raft.designsystem.components.raftClickable
  * Search, then raft-ui ChoiceList `multiple` ([RaftMultiChoiceList]): an Agents and a Humans
  * heading, a checkbox per candidate (tapping ticks it, never adds it), the selected people as
  * removable badges above the list, the "Create Agent" and "Create External Agent" rows pinned
- * under it as on the web (the new agent joins this channel once created), and "Add Selected (N)"
+ * under it as on the web (the new agent joins this channel once created; only for a viewer who may
+ * create agents), and "Add Selected (N)"
  * — disabled at 0 — sending one atomic batch.
  * Members already in this server's projection are not listed (web `memberCandidates`).
  */
@@ -212,18 +213,27 @@ internal fun ThreadAddMemberPanel(
                 ),
             matchedValues = matchedKeys,
             fill = true,
-            footer = {
-                Column(Modifier.fillMaxWidth()) {
-                    ThreadAddMemberCreateAgentRows(
-                        canCreateAgents = canCreateAgents,
-                        createName = createName,
-                        channelName = channelName,
-                        enabled = !adding,
-                        onCreateAgent = onCreateAgent,
-                    )
-                    externalInviteEntry?.invoke()
-                }
-            },
+            // Web `createAgentFooter` (slock #14948): without create permission there is no create
+            // row at all, only the external-member row when allowed, and no footer when neither is.
+            footer =
+                if (canCreateAgents || externalInviteEntry != null) {
+                    {
+                        Column(Modifier.fillMaxWidth()) {
+                            if (canCreateAgents) {
+                                ThreadAddMemberCreateAgentRows(
+                                    canCreateAgents = true,
+                                    createName = createName,
+                                    channelName = channelName,
+                                    enabled = !adding,
+                                    onCreateAgent = onCreateAgent,
+                                )
+                            }
+                            externalInviteEntry?.invoke()
+                        }
+                    }
+                } else {
+                    null
+                },
         )
         RaftButton(
             text =
@@ -293,8 +303,9 @@ internal data class ThreadAddMemberCreateRowSpec(
 
 /**
  * The footer's one create row. Both menu items share one gate (owner or admin, web
- * `capabilities.createAgents`), so without it the whole row stays listed, disabled, with the
- * reason under it: hiding it would recreate the dead end it removes.
+ * `capabilities.createAgents`). Without it the row is not drawn at all (slock #14948, cindyz
+ * #wg-rbac:#76: a button the viewer can't use is noise), so [ThreadAddMemberPanel] only draws it
+ * for a viewer who may create agents; the spec stays inert for `false` all the same.
  */
 internal fun threadAddMemberCreateRowSpec(
     canCreateAgents: Boolean,
@@ -332,7 +343,7 @@ internal fun threadAddMemberCanCreateAgents(permissions: build.raft.app.model.Se
  * Members page agent "+" menu's items, "Create agent" and "Create external agent", each opening
  * its create dialog with this channel preselected; the new agent joins this channel once created
  * (an external one then opens on its profile, to be set up). A search that found no one names
- * the row. Without create permission the row stays, disabled, with the reason under it.
+ * the row. Drawn only with create permission (slock #14948); the panel leaves it out otherwise.
  */
 @Composable
 internal fun ThreadAddMemberCreateAgentRows(
@@ -376,14 +387,6 @@ internal fun ThreadAddMemberCreateAgentRows(
                 }
             }
         }
-        if (!canCreateAgents) {
-            RaftText(
-                stringResource(Res.string.thread_members_create_no_permission),
-                modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 4.dp),
-                style = RaftTheme.typography.caption,
-                color = RaftTheme.colors.foregroundHint,
-            )
-        }
     }
 }
 
@@ -405,7 +408,7 @@ private fun ThreadAddMemberCreateMenuItems(onSelect: (MembersCreateAgentMode) ->
 /**
  * The create row (web `createAgentFooter`): a dashed plus tile, "Create agent" (`Create agent
  * “name”` on the brand wash when the search found no one) and "Joins #channel automatically
- * after creation". Grey and inert without permission.
+ * after creation".
  */
 @Composable
 internal fun ThreadAddMemberCreateAgentRow(

@@ -23,6 +23,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.designsystem.text.RaftText
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -143,7 +144,6 @@ class ChannelAddMemberPanelUiTest {
     fun membersAlreadyInTheChannelAreNotListed() =
         runRobolectricComposeUiTest {
             show(Calls(), members = listOf(RaftThreadMemberItem("agent-cindy", "Cindy", handle = "cindy", kind = "agent")))
-            row("Cindy").assertDoesNotExist()
             row("Product UX Designer").assertExists()
             onNodeWithText("Agents").assertExists()
             onNodeWithText("Humans").assertExists()
@@ -186,15 +186,42 @@ class ChannelAddMemberPanelUiTest {
         }
 
     @Test
-    fun withoutCreatePermissionTheWholeRowIsDisabledWithTheReasonAndNoMenu() =
+    fun withoutCreatePermissionThereIsNoCreateRowAndNoReason() =
         runRobolectricComposeUiTest {
+            // slock #14948: a viewer who can't create agents sees no Create agent row, no reason
+            // under it and no menu; picking members works as before.
             val calls = Calls()
             show(calls, canCreateAgents = false)
-            onNodeWithText("Create agent").assertIsNotEnabled()
-            onNodeWithText("Create agent").performClick()
+            onNodeWithText("Create agent").assertDoesNotExist()
             onNodeWithText("Create external agent").assertDoesNotExist()
-            assertTrue(calls.creates.isEmpty())
             onNodeWithText("Joins #design automatically after creation").assertDoesNotExist()
-            onAllNodesWithText("creating Agents on this server needs an owner or admin", substring = true).assertCountEquals(1)
+            onAllNodesWithText("needs an owner or admin", substring = true).assertCountEquals(0)
+            onNode(hasSetTextAction()).performTextInput("@mia")
+            onNodeWithText("Create agent “mia”").assertDoesNotExist()
+            assertTrue(calls.creates.isEmpty())
+        }
+
+    @Test
+    fun withoutCreatePermissionTheExternalMemberRowStillShows() =
+        runRobolectricComposeUiTest {
+            setContent {
+                RaftDesignSystemTheme {
+                    Box(Modifier.fillMaxSize()) {
+                        ThreadAddMemberPanel(
+                            members = emptyList(),
+                            candidates = candidates,
+                            canAddMembers = true,
+                            channelName = "design",
+                            addMemberStatus = "idle",
+                            addMemberErrorCode = null,
+                            onSubmitBatch = {},
+                            canCreateAgents = false,
+                            externalInviteEntry = { RaftText("Invite people outside") },
+                        )
+                    }
+                }
+            }
+            onNodeWithText("Invite people outside").assertExists()
+            onNodeWithText("Create agent").assertDoesNotExist()
         }
 }
