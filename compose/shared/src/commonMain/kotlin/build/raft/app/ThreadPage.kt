@@ -23630,18 +23630,15 @@ private fun ThreadMessagesListContent(
     }
     // Owner lifetime (Hands 712d8386): popping the page while this effect was still placing a
     // focused message scrolled a list whose LazyColumn was already leaving, and crashed in
-    // prefetch cleanup. Leaving the stack restarts the effect, which then does nothing.
-    val stackPageLeaving = LocalRaftStackPageLeaving.current
-    val currentStackPageLeavingState = rememberUpdatedState(stackPageLeaving)
+    // prefetch cleanup. ThreadListScrollOwnerEffect restarts the effect (which then does nothing)
+    // when the page starts leaving the stack, and retires the list before cancelling its job.
+    val currentStackPageLeavingState = rememberUpdatedState(LocalRaftStackPageLeaving.current)
     // The only production owner allowed to mutate listState.
-    LaunchedEffect(threadInstanceKey, viewportControllerState.pendingCommand?.id, stackPageLeaving) {
-        val command = viewportControllerState.pendingCommand ?: return@LaunchedEffect
-        if (stackPageLeaving) return@LaunchedEffect
-        val commandContext = coroutineContext
+    ThreadListScrollOwnerEffect(listState, threadInstanceKey, viewportControllerState.pendingCommand?.id) {
+        val command = viewportControllerState.pendingCommand ?: return@ThreadListScrollOwnerEffect
         // Job active, list still composed, page not leaving: checked before the command's own
         // currency, so a dead owner neither scrolls nor dispatches viewport events.
-        fun commandOwnerLive(): Boolean =
-            listState.scrollOwnerLive(commandContext, pageLeaving = currentStackPageLeavingState.value)
+        fun commandOwnerLive(): Boolean = ownerLive()
         fun commandStillCurrent(): Boolean =
             currentViewportControllerState.value.acceptsRenderedTailCommand(
                 command = command,
@@ -23687,26 +23684,26 @@ private fun ThreadMessagesListContent(
             }
             return false
         }
-        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
+        if (!commandIsLiveOrTerminallyInvalidate()) return@ThreadListScrollOwnerEffect
         listState.awaitThreadMessagesLayoutFrame()
-        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
+        if (!commandIsLiveOrTerminallyInvalidate()) return@ThreadListScrollOwnerEffect
         val executed =
             when (val target = command.target) {
                 is LazyViewportCommandTarget.Top -> {
-                    if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
+                    if (!commandIsLiveOrTerminallyInvalidate()) return@ThreadListScrollOwnerEffect
                     if (target.animated) {
                         raftExpressiveTopSettleAnchor(
                             firstVisibleItemIndex = listState.firstVisibleItemIndex,
                             visibleItemCount = listState.layoutInfo.visibleItemsInfo.size
                         )?.let { anchor ->
                             listState.scrollToItem(anchor)
-                            if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
+                            if (!commandIsLiveOrTerminallyInvalidate()) return@ThreadListScrollOwnerEffect
                         }
                         listState.animateScrollToItem(0)
-                        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
+                        if (!commandIsLiveOrTerminallyInvalidate()) return@ThreadListScrollOwnerEffect
                     } else {
                         listState.scrollToItem(0)
-                        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
+                        if (!commandIsLiveOrTerminallyInvalidate()) return@ThreadListScrollOwnerEffect
                     }
                     true
                 }
@@ -23715,11 +23712,11 @@ private fun ThreadMessagesListContent(
                     if (targetIndex < 0) {
                         false
                     } else {
-                        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
+                        if (!commandIsLiveOrTerminallyInvalidate()) return@ThreadListScrollOwnerEffect
                         listState.scrollLatestItemToRenderedBottom(targetIndex) {
                             commandIsLiveOrTerminallyInvalidate()
                         }
-                        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
+                        if (!commandIsLiveOrTerminallyInvalidate()) return@ThreadListScrollOwnerEffect
                         true
                     }
                 }
@@ -23729,7 +23726,7 @@ private fun ThreadMessagesListContent(
                         dispatchViewportEvent(LazyViewportEvent.AnchorUnavailable(command.id))
                         false
                     } else {
-                        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
+                        if (!commandIsLiveOrTerminallyInvalidate()) return@ThreadListScrollOwnerEffect
                         val anchorExecuted =
                             when (target.placement) {
                                 LazyViewportAnchorPlacement.ExactOffset -> {
@@ -23764,7 +23761,7 @@ private fun ThreadMessagesListContent(
                                         commandIsLiveOrTerminallyInvalidate()
                                     }
                             }
-                        if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
+                        if (!commandIsLiveOrTerminallyInvalidate()) return@ThreadListScrollOwnerEffect
                         anchorExecuted
                     }
                 }
@@ -23777,8 +23774,6 @@ private fun ThreadMessagesListContent(
             }
         }
     }
-    // After the effect above: disposed before its job is cancelled.
-    ThreadListViewportRetireOnDispose(listState)
     val headerScrollToTopRequestFence =
         remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
     var outlineOriginJumpRequest by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -24308,8 +24303,13 @@ private fun ThreadMessagesListContent(
             if (anchor != null) {
                 listState.awaitThreadMessagesLayoutFrame()
             }
+            // Owner lifetime (Hands 712d8386): the older page can land after Back, while the page
+            // slides out; its list must not be scrolled then.
+            val restoreOwnerLive =
+                listState.scrollOwnerLive(coroutineContext, pageLeaving = currentStackPageLeavingState.value)
             if (
                 anchor != null &&
+                restoreOwnerLive &&
                 shouldRestoreThreadOlderPageAnchor(
                     capturedUserScrollGeneration = anchor.userScrollGeneration,
                     currentUserScrollGeneration = userScrollGeneration.value
@@ -24324,6 +24324,10 @@ private fun ThreadMessagesListContent(
                             "userScrollGeneration=${userScrollGeneration.value}"
                     )
                 }
+            } else if (anchor != null && !restoreOwnerLive) {
+                diagnosticsLogger(
+                    "thread_older_anchor_restore result=skipped_owner_gone messageId=${anchor.messageId}"
+                )
             } else if (anchor != null) {
                 diagnosticsLogger(
                     "thread_older_anchor_restore result=skipped_user_moved messageId=${anchor.messageId} " +

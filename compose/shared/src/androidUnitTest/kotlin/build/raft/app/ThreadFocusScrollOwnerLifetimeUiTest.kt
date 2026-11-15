@@ -7,12 +7,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
@@ -27,7 +26,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -39,13 +42,15 @@ import org.robolectric.annotation.Config
  * (`LayoutNode should be attached to an owner`, from prefetch cleanup inside `LazyListState.scroll`),
  * because the focused-scroll job, already cancelling, scrolled a list that was leaving.
  *
- * [FocusedScrollList] is wired as ThreadMessagesListContent wires its viewport command effect: a
- * reversed [ThreadListViewport] over a real LazyColumn, the production
- * [scrollThreadItemToFocusedViewport] with [scrollOwnerLive] (job active, list not retired,
- * [LocalRaftStackPageLeaving]) folded into its currency check, the effect keyed on the leaving flag,
- * and [ThreadListViewportRetireOnDispose] after the effect. The pop runs through the real
+ * [FocusedScrollList] composes the production [ThreadListScrollOwnerEffect] (the wrapper
+ * ThreadMessagesListContent's viewport command effect is: keyed on [LocalRaftStackPageLeaving], no run
+ * on a leaving page, [ThreadListViewportRetireOnDispose] after the effect) over a reversed
+ * [ThreadListViewport] on a real LazyColumn, and runs the production
+ * [scrollThreadItemToFocusedViewport] in it with [ThreadListScrollOwnerScope.ownerLive] as its
+ * currency check, as the command body does. The pop runs through the real
  * [RaftMobilePageStackDisplay]. Test boundary: this proves no scroll is issued once the page is
- * leaving, disposed, or the job cancelling; it does not reproduce the device prefetch race itself.
+ * leaving, the list is disposed, or the job is cancelling; the rest of the command body is
+ * source-reviewed, and the device prefetch race itself is not reproduced.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -77,12 +82,10 @@ class ThreadFocusScrollOwnerLifetimeUiTest {
             }
         }
         val leaving = LocalRaftStackPageLeaving.current
-        val leavingState = rememberUpdatedState(leaving)
         if (leaving) SideEffect { if (probe.scrollsWhenLeaving == null) probe.scrollsWhenLeaving = viewport.issuedScrolls }
-        LaunchedEffect(probe.request, leaving) {
-            if (probe.request == 0 || leaving) return@LaunchedEffect
-            val context = coroutineContext
-            probe.job = context[Job]
+        ThreadListScrollOwnerEffect(viewport, Unit, probe.request) {
+            if (probe.request == 0) return@ThreadListScrollOwnerEffect
+            probe.job = currentCoroutineContext()[Job]
             viewport.scrollThreadItemToFocusedViewport(
                 itemIndex = targetIndex,
                 focusedScrollOffset = { _, _ ->
@@ -92,11 +95,10 @@ class ThreadFocusScrollOwnerLifetimeUiTest {
                     0
                 },
             ) {
-                viewport.scrollOwnerLive(context, pageLeaving = leavingState.value)
+                ownerLive()
             }
             probe.finished = true
         }
-        ThreadListViewportRetireOnDispose(viewport)
         DisposableEffect(viewport) { onDispose { probe.scrollsAtDispose = viewport.issuedScrolls } }
     }
 
@@ -144,10 +146,16 @@ class ThreadFocusScrollOwnerLifetimeUiTest {
         }
 
     @Test
-    fun disposingTheListMidFocusScrollIssuesNoFurtherScroll() =
+    fun aDisposedListRefusesScrollsEvenFromALiveJob() =
         runRobolectricComposeUiTest {
             val probe = Probe()
-            setContent { if (probe.shown) FocusedScrollList(probe, targetIndex = FarTarget) }
+            lateinit var outerScope: CoroutineScope
+            setContent {
+                // Outlives the list: its jobs are not cancelled by the disposal, so only the
+                // retired check (wired by ThreadListScrollOwnerEffect) can stop their scrolls.
+                outerScope = rememberCoroutineScope()
+                if (probe.shown) FocusedScrollList(probe, targetIndex = FarTarget)
+            }
             startFocusedScroll(probe)
 
             runOnUiThread { probe.shown = false; Snapshot.sendApplyNotifications() }
@@ -158,9 +166,23 @@ class ThreadFocusScrollOwnerLifetimeUiTest {
             val viewport = assertNotNull(probe.viewport)
             val atDispose = assertNotNull(probe.scrollsAtDispose, "the list never left composition")
             assertTrue(atDispose > 0, "the disposal landed mid focus scroll")
-            assertTrue(viewport.isRetired)
-            assertEquals(atDispose, viewport.issuedScrolls, "a scroll was issued after the list was disposed")
+            assertTrue(viewport.isRetired, "the disposed list's viewport was not retired")
+            assertEquals(atDispose, viewport.issuedScrolls, "the focused scroll scrolled after the list was disposed")
             assertFalse(probe.finished)
+
+            // Straight into the viewport's scroll calls, no suspension first, from an active job.
+            var lateJob: Job? = null
+            runOnUiThread {
+                lateJob =
+                    outerScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        viewport.scrollToItem(0)
+                        viewport.scrollBy(10f)
+                    }
+            }
+            waitForIdle()
+            val job = assertNotNull(lateJob)
+            assertTrue(job.isCompleted && !job.isCancelled, "the late scroll should be refused, not cancelled")
+            assertEquals(atDispose, viewport.issuedScrolls, "a scroll was issued on the disposed list")
         }
 
     @Test

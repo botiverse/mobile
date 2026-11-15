@@ -2,6 +2,9 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.scrollBy
@@ -9,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.unit.IntSize
+import build.raft.app.nav.LocalRaftStackPageLeaving
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -159,6 +163,39 @@ internal fun ThreadListViewportRetireOnDispose(viewport: ThreadListViewport) {
  */
 internal fun ThreadListViewport.scrollOwnerLive(context: CoroutineContext, pageLeaving: Boolean): Boolean =
     context.isActive && !isRetired && !pageLeaving
+
+/** What a [ThreadListScrollOwnerEffect] block checks after each suspension: [ownerLive]. */
+internal class ThreadListScrollOwnerScope(
+    val viewport: ThreadListViewport,
+    private val context: CoroutineContext,
+    private val pageLeaving: State<Boolean>,
+) {
+    /** [scrollOwnerLive] for this effect's job, its list and its page, read now. */
+    fun ownerLive(): Boolean = viewport.scrollOwnerLive(context, pageLeaving = pageLeaving.value)
+}
+
+/**
+ * A `LaunchedEffect(key1, key2)` that scrolls [viewport], with the owner lifetime wired in (Hands
+ * 712d8386): it is also keyed on the page leaving the stack (`LocalRaftStackPageLeaving`) and does
+ * not run [block] on a leaving page, and it retires [viewport] when it leaves composition, before
+ * its job is cancelled ([ThreadListViewportRetireOnDispose] after the effect). [block] still has to
+ * check [ThreadListScrollOwnerScope.ownerLive] after every suspension, before its next scroll.
+ */
+@Composable
+internal fun ThreadListScrollOwnerEffect(
+    viewport: ThreadListViewport,
+    key1: Any?,
+    key2: Any?,
+    block: suspend ThreadListScrollOwnerScope.() -> Unit,
+) {
+    val pageLeaving = LocalRaftStackPageLeaving.current
+    val pageLeavingState = rememberUpdatedState(pageLeaving)
+    LaunchedEffect(key1, key2, pageLeaving) {
+        if (pageLeaving) return@LaunchedEffect
+        ThreadListScrollOwnerScope(viewport, coroutineContext, pageLeavingState).block()
+    }
+    ThreadListViewportRetireOnDispose(viewport)
+}
 
 private const val ThreadListViewportSettleFrames = 6
 private const val ThreadListViewportSettleFrameMs = 16L
