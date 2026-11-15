@@ -167,12 +167,17 @@ QA_SECRET_STEPS: dict[str, dict[str, dict[str, dict]]] = {
         "Freeze legacy credential identity receipt": {"if": RECEIPT_IF, "env": _plain("QA_TEST_EMAIL")},
         "Seed media fixtures (image + workspace)": {"if": LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
         "Run acceptance agent": {"if": None, "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        # #222 (secure input): the egress gate before the artifact upload scans qa-evidence for the
+        # credential VALUES to redact them; it never types, logs or forwards them. Legacy path only.
+        "Secure evidence gate": {"if": "always()", "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
     }},
     "qa-acceptance-ios.yml": {"acceptance": {
         PREFLIGHT: {"if": LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
         "Freeze legacy credential identity receipt": {"if": RECEIPT_IF, "env": _plain("QA_TEST_EMAIL")},
         "Run acceptance agent": {"if": "${{ inputs.mode == 'agent' || inputs.mode == '' }}", "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
         "Run deterministic repro": {"if": "${{ inputs.mode == 'deterministic' }}", "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        # #222: same egress gate as Android, before both exits (Stamp report + artifact).
+        "Secure evidence gate": {"if": "always()", "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
         # Pre-existing, unchanged by #4817: the reporter reads the email on every path.
         "Report to Stamp": {"if": "always()", "env": _plain("QA_TEST_EMAIL")},
     }},

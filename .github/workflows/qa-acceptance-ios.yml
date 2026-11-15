@@ -824,6 +824,18 @@ jobs:
             exit 1
           }
 
+      # Egress gate for BOTH exits of qa-evidence (Stamp report + artifact): drops captures, recordings
+      # and log lines inside a login window that is not provably closed, and redacts/removes secret
+      # values (system log, harness log, xcresult). The report step uploads no evidence and the artifact
+      # is not uploaded unless this step succeeded. Credentials only on the legacy path, as for the agent.
+      - name: Secure evidence gate
+        id: secure-evidence
+        if: always()
+        env:
+          QA_TEST_EMAIL: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_EMAIL || '' }}
+          QA_TEST_PASSWORD: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_PASSWORD || '' }}
+        run: node scripts/qa/secure_evidence.mjs --dir qa-evidence
+
       # Runs after the verified deletion above: stamp_report.sh sends the product verdict only when the
       # delete step succeeded (steps.delete_simulator.outcome) AND qa-evidence/simulator-cleanup.json
       # says simulator_deleted for this run id/attempt and this job's ownership receipt UDID/name;
@@ -838,10 +850,11 @@ jobs:
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
           QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
+          STAMP_EVIDENCE_GATE_OUTCOME: ${{ steps.secure-evidence.outcome }}
         run: bash scripts/qa/stamp_report.sh report qa-evidence
 
       - name: Upload evidence
-        if: always()
+        if: ${{ always() && steps.secure-evidence.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: qa-acceptance-ios-evidence

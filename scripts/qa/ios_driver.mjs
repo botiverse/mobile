@@ -11,6 +11,24 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { SecureInputError, containsSecret, redactSecrets } from "./secure_input.mjs";
+
+// Neither iOS channel can carry a secret safely: agent-device takes text only
+// as a CLI argument (`type <text>` / `fill <target> <text>`, no stdin form in
+// 0.20.x), and qa-loop's only channel is a JSON command file on disk that the
+// XCUITest runner also records as a `typeText` activity in the .xcresult. Both
+// drivers therefore refuse secret input (fail closed), and text() refuses any
+// value that contains a configured secret so no caller can route around it.
+function refuseSecret(driver) {
+  return async () => {
+    throw new SecureInputError(`iOS ${driver} driver refuses secret input: no channel keeps the value out of argv and files`);
+  };
+}
+function assertNotSecret(driver, value) {
+  if (containsSecret(value)) {
+    throw new SecureInputError(`iOS ${driver} driver refuses text containing a configured secret; secrets cannot be typed on iOS`);
+  }
+}
 
 export const DRIVER_AGENT_DEVICE = "agent-device";
 export const DRIVER_QA_LOOP = "qa-loop";
@@ -65,6 +83,19 @@ function isEditableNode(node) {
   return /textfield|textarea|searchfield|securetextfield|edit/.test(role);
 }
 
+function isSecureNode(node) {
+  if (node.secure === true || node.isSecure === true) return true;
+  return /securetextfield|password/.test(String(node.role || node.type || node.elementType || "").toLowerCase());
+}
+
+// Login-surface probe for the login window: true when a secure (password)
+// field or a web sign-in sheet is on screen. Advisory, used only to START
+// suppression; the nodes stay in memory. null = could not tell.
+export function loginSurfaceFromNodes(nodes) {
+  if (!Array.isArray(nodes)) return null;
+  return nodes.some((n) => isSecureNode(n) || /wants to use .* to sign in/i.test(String(n.label || "")));
+}
+
 function isClickableNode(node) {
   if (node.clickable === true || node.hittable === true) return true;
   const role = String(node.role || node.type || "").toLowerCase();
@@ -88,12 +119,13 @@ export function snapshotToDescribeNodes(rawNodes) {
       focused: node.focused === true,
       editable: isEditableNode(node),
       clickable: isClickableNode(node),
+      secure: isSecureNode(node),
       ref: node.ref,
     };
   });
 }
 
-export function compactDumpUi(nodes, toPx) {
+export function compactDumpUi(nodes, toPx, redact = (s) => s) {
   const lines = [];
   for (const n of nodes) {
     const label = n.label || n.id || "";
@@ -103,7 +135,7 @@ export function compactDumpUi(nodes, toPx) {
     const bounds = `[${toPx(fx)},${toPx(fy)}][${toPx(fx + fw)},${toPx(fy + fh)}]`;
     const flags = `${n.editable ? "[INPUT] " : ""}${n.focused ? "[FOCUSED] " : ""}${!n.editable && n.clickable && !label ? "[BTN] " : ""}`;
     const shown = n.editable && value ? value : label || value;
-    lines.push(`${flags}"${shown}" ${bounds}`);
+    lines.push(redact(`${flags}"${shown}" ${bounds}`));
   }
   const compact = lines.join("\n") || "(no labelled nodes on screen)";
   return compact.length > 20000 ? compact.slice(0, 20000) + "\n[truncated]" : compact;
@@ -312,8 +344,10 @@ function createQaLoopDriver({ ioDir, udid, bundle, simctl }) {
       return { distancePt: Math.round(distancePt), velocityPointsPerSecond: velocity };
     },
     async text(value) {
+      assertNotSecret(DRIVER_QA_LOOP, value);
       await send({ type: "text", text: value });
     },
+    secureText: refuseSecret(DRIVER_QA_LOOP),
     async key(name) {
       await send({ type: "key", text: name });
     },
@@ -335,8 +369,11 @@ function createQaLoopDriver({ ioDir, udid, bundle, simctl }) {
       await send({ type: "tap", x: picked.x / screenSizePx().w, y: picked.y / screenSizePx().h });
       return picked;
     },
-    async dumpUi() {
-      return compactDumpUi(await describeNodes(), toPx);
+    async dumpUi(redact) {
+      return compactDumpUi(await describeNodes(), toPx, redact);
+    },
+    async loginSurfaceVisible() {
+      try { return loginSurfaceFromNodes(await describeNodes()); } catch { return null; }
     },
     async tapText(wanted) {
       return pickTapText(await describeNodes(), wanted, toPx);
@@ -347,7 +384,7 @@ function createQaLoopDriver({ ioDir, udid, bundle, simctl }) {
         const f = nodes.find((n) => n.focused);
         if (!f) return "typed; no focused field found in describe — verify via screenshot";
         const [fx, fy, fw, fh] = f.frame || [0, 0, 0, 0];
-        return `typed; focused field now contains "${String(f.value || "").slice(0, 80)}" at [${toPx(fx)},${toPx(fy)}][${toPx(fx + fw)},${toPx(fy + fh)}]`;
+        return `typed; focused field now contains "${redactSecrets(String(f.value || "")).slice(0, 80)}" at [${toPx(fx)},${toPx(fy)}][${toPx(fx + fw)},${toPx(fy + fh)}]`;
       } catch {
         return "typed; focus check failed — verify via screenshot";
       }
@@ -377,7 +414,7 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
       });
     } catch (error) {
       const detail = [error.stderr, error.stdout, error.message].filter(Boolean).join("\n").trim();
-      throw new Error(`agent-device ${args.join(" ")} failed: ${detail.slice(0, 800)}`);
+      throw new Error(`agent-device ${args[0]} failed: ${redactSecrets(detail).slice(0, 800)}`);
     }
   }
 
@@ -466,8 +503,10 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
       return { distancePt, velocityPointsPerSecond: null };
     },
     async text(value) {
+      assertNotSecret(DRIVER_AGENT_DEVICE, value);
       runAd(["type", String(value)]);
     },
+    secureText: refuseSecret(DRIVER_AGENT_DEVICE),
     async key(name) {
       const mapped = mapIosKeyToAgentDevice(name);
       try {
@@ -508,8 +547,11 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
       const escaped = String(text).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
       return runAd(["press", `role="button" label="${escaped}" || label="${escaped}"`, "--settle"]);
     },
-    async dumpUi() {
-      return compactDumpUi(describeNodes(), toPx);
+    async dumpUi(redact) {
+      return compactDumpUi(describeNodes(), toPx, redact);
+    },
+    async loginSurfaceVisible() {
+      try { return loginSurfaceFromNodes(describeNodes()); } catch { return null; }
     },
     async tapText(wanted) {
       return pickTapText(describeNodes(), wanted, toPx);
@@ -520,7 +562,7 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
         const f = nodes.find((n) => n.focused);
         if (!f) return "typed; no focused field found in describe — verify via screenshot";
         const [fx, fy, fw, fh] = f.frame || [0, 0, 0, 0];
-        return `typed; focused field now contains "${String(f.value || "").slice(0, 80)}" at [${toPx(fx)},${toPx(fy)}][${toPx(fx + fw)},${toPx(fy + fh)}]`;
+        return `typed; focused field now contains "${redactSecrets(String(f.value || "")).slice(0, 80)}" at [${toPx(fx)},${toPx(fy)}][${toPx(fx + fw)},${toPx(fy + fh)}]`;
       } catch {
         return "typed; focus check failed — verify via screenshot";
       }

@@ -53,9 +53,25 @@ consumers keep this in sync:
   `clear` action jumps to the end (MOVE_END) and sends one adb call with a
   60×DEL burst.
 - `input text` cannot carry shell metacharacters (runner rejects them) and
-  encodes spaces as `%s` — keep acceptance inputs simple; credentials go in as
-  `{{QA_EMAIL}}` / `{{QA_PASSWORD}}` placeholders, substituted only at adb
-  time and redacted from all evidence.
+  encodes spaces as `%s` — keep acceptance inputs simple.
+- **Credentials are secret references, typed blind.** Type
+  `${secret:QA_TEST_EMAIL}` / `${secret:QA_TEST_PASSWORD}` (alone, as the whole
+  value). Android types them through the emulator console (no process argument,
+  no file); iOS drivers and devices without a console refuse.
+- **Login window.** From entering the login page (the app logs
+  `web_login_attempt phase=opening`, a browser/custom tab takes focus, an
+  explicit `secret_phase` `begin`, or a secret is about to be typed) the runner
+  takes no screenshot, sends none to the model, stops the screen recording and
+  deletes the segment that may show the entry, withholds logcat lines and the
+  activity dump, and `dump_ui` returns only input-field bounds. Plan: tap field
+  → type → tap next field → type → `key enter` → `wait` → `secret_phase` `end`.
+  Capture resumes only on receipts: the app's login-complete (or sign-in exit)
+  log line, the app focused, the browser force-stopped + cleared and gone, the
+  keyboard hidden and its learned data cleared, autofill off while typing. The
+  accessibility tree is an advisory veto only. Otherwise the run ends UNKNOWN
+  (`verdict.json` `secure_input.status`), and `capture-suppression.json`
+  records the window. `scripts/qa/secure_evidence.mjs` gates every exit
+  (Stamp upload, artifact). Use the Stamp session bootstrap on iOS.
 
 ## Timing
 

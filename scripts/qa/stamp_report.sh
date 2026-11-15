@@ -433,9 +433,25 @@ case "$PHASE" in
   *) echo "stamp: unknown phase $PHASE" >&2; exit 2;;
 esac
 
+# Egress gate (scripts/qa/secure_evidence.mjs): before anything leaves for
+# Stamp, drop recordings, captures, screen dumps and log lines inside a login
+# window that is not provably closed, and redact/remove secret values. If the
+# gate cannot vouch for the directory, nothing is uploaded. A workflow that ran
+# the gate as its own step (with the credentials to scan for) passes that
+# step's outcome: anything but success also means no upload.
+if [ "$REPORT_EVIDENCE" = "true" ]; then
+  if { [ -n "${STAMP_EVIDENCE_GATE_OUTCOME+x}" ] && [ "${STAMP_EVIDENCE_GATE_OUTCOME}" != "success" ]; } \
+    || ! node "$SCRIPT_DIR/secure_evidence.mjs" --dir "$EV"; then
+    echo "stamp: secure evidence gate refused egress; no evidence uploaded" >&2
+    [ "$REPORT_VERDICT" = "true" ] || exit 1
+    REPORT_EVIDENCE=false
+    EVIDENCE_GATE_FAILED=1
+  fi
+fi
+
 # Freeze the execution identity before any scoped log or verdict write. Stamp
 # accepts an exact repeat idempotently and rejects a conflicting generation.
-evidence_rc=0
+evidence_rc="${EVIDENCE_GATE_FAILED:-0}"
 CAPTURE_PROOF_REQUIRED=false
 CAPTURE_WINDOW_NONCE=""
 CAPTURE_SCOPE_GENERATION=""

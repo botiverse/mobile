@@ -12,9 +12,20 @@
 // every action the runner replies with a fresh screenshot. Coordinates should
 // come from dump_ui (uiautomator bounds), not eyeballing pixels.
 //
-// Credentials never enter the model context or evidence: the goal/preamble
-// reference {{QA_EMAIL}}/{{QA_PASSWORD}} placeholders, substituted only at
-// adb-execution time and redacted from everything written to disk/stdout.
+// Secret input + login window (scripts/qa/secure_input.mjs has the contract):
+// the model only NAMES a secret (`${secret:QA_TEST_EMAIL}` /
+// `${secret:QA_TEST_PASSWORD}`; legacy {{QA_EMAIL}}/{{QA_PASSWORD}} map onto
+// them). Android types the value through the emulator console (no argv, no
+// file); iOS drivers and consoleless devices refuse (fail closed). From
+// entering the login page (web-login attempt opens, a browser/custom tab takes
+// focus, an explicit secret_phase begin, or a secret about to be typed) until
+// positive receipts, nothing screen-derived is captured, saved, logged or sent
+// to the model; only a "suppressed" placeholder with the time window. Resume
+// needs: app login-complete / sign-in-exit log line, the app focused, the
+// browser force-stopped + cleared and gone, keyboard hidden + IME learned data
+// cleared, autofill off while typing. The AX tree is an advisory veto only,
+// read in memory. Anything less ends the run UNKNOWN (verdict error,
+// secure_input.status=UNKNOWN).
 //
 // Needs PI_API_KEY/MINIMAX_API_KEY + @earendil-works/pi-ai (SLOCK_PI_AI_MODULE).
 //
@@ -42,6 +53,23 @@ import { capacityClientFromEnv, runWithModelRetries } from "./model_capacity.mjs
 import { detectForeignAndroidSystemBlocker } from "./system_blocker.mjs";
 import { serverGuardSection } from "./server_guard.mjs";
 import { adbRunAsShellArgs } from "./mobile_login_bootstrap_lib.mjs";
+import {
+  CaptureGate,
+  SecureInputError,
+  emulatorConsolePort,
+  emulatorConsoleType,
+  evaluateResumeReceipts,
+  findLoginExit,
+  formOutline,
+  isExternalLoginSurface,
+  loginLogState,
+  parseFocusedPackage,
+  parseImePackage,
+  parseKeyboardShown,
+  parseTextValue,
+  parseUiautomatorNodes,
+  redactSecrets,
+} from "./secure_input.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
@@ -69,10 +97,9 @@ let drv = null;
 let modelCapacity = null;
 let lastCaptureBoundary = null;
 
-const SECRETS = {
-  "{{QA_EMAIL}}": process.env.QA_TEST_EMAIL || "",
-  "{{QA_PASSWORD}}": process.env.QA_TEST_PASSWORD || "",
-};
+const gate = new CaptureGate();
+const RECORDING_PAUSE_FLAG = "/data/local/tmp/qa-rec-pause";
+let interruptHook = null;
 
 const piKey = () => process.env.MINIMAX_API_KEY || process.env.PI_API_KEY || "";
 function loadModels() {
@@ -83,11 +110,7 @@ function loadModels() {
 // logs). GitHub Actions masks secrets in job logs, but evidence artifacts and
 // verdict.json are downloadable — keep them clean at the source.
 function redact(s) {
-  let out = String(s);
-  for (const v of Object.values(SECRETS)) {
-    if (v) out = out.split(v).join("***");
-  }
-  return out;
+  return redactSecrets(s);
 }
 
 function adb(args, opts2 = {}) {
@@ -96,6 +119,7 @@ function adb(args, opts2 = {}) {
 }
 
 function screenshotPng() {
+  gate.assertCaptureAllowed("screenshot");
   if (drv) return drv.screenshotPng();
   const captured = captureAndroidScreenshotWithPostProof(
     () => adb(["exec-out", "screencap", "-p"], { encoding: "buffer" }),
@@ -176,9 +200,20 @@ function captureAndroidQaBoundary(imageSha256) {
 
 // Structured view of the current uiautomator dump — the single source both
 // dump_ui (rendered) and tap_text (fresh-bounds resolution) read from.
-function uiNodes() {
+// While a secret phase is open the dump streams to stdout (/dev/tty) and stays
+// in memory: the on-device dump file would hold whatever the fields show.
+function uiXml() {
+  if (gate.suppressed) {
+    const out = adb(["exec-out", "uiautomator", "dump", "/dev/tty"], { encoding: "utf8" });
+    const end = out.lastIndexOf("</hierarchy>");
+    return end >= 0 ? out.slice(0, end + "</hierarchy>".length) : "";
+  }
   adb(["shell", "uiautomator", "dump", "/sdcard/qa_window_dump.xml"], { encoding: "utf8" });
-  const xml = adb(["exec-out", "cat", "/sdcard/qa_window_dump.xml"], { encoding: "utf8" });
+  return adb(["exec-out", "cat", "/sdcard/qa_window_dump.xml"], { encoding: "utf8" });
+}
+
+function uiNodes() {
+  const xml = uiXml();
   const nodes = [];
   for (const m of xml.matchAll(/<node[^>]*>/g)) {
     const tag = m[0];
@@ -197,7 +232,8 @@ function uiNodes() {
 }
 
 async function dumpUi() {
-  if (drv) return drv.dumpUi();
+  gate.assertCaptureAllowed("dump_ui");
+  if (drv) return drv.dumpUi(redact);
   // Raw uiautomator XML for a busy screen is ~60KB of mostly-useless
   // attributes, and long dumps in context measurably degrade M3's output
   // format (the forward-message batch run drowned in malformed replies right
@@ -213,7 +249,8 @@ async function dumpUi() {
     if (!n.text && !n.desc && !n.focused && !n.editable && !n.clickable) continue;
     const bounds = n.bounds ? `[${n.bounds[0]},${n.bounds[1]}][${n.bounds[2]},${n.bounds[3]}]` : "";
     const flags = `${n.editable ? "[INPUT] " : ""}${n.focused ? "[FOCUSED] " : ""}${!n.editable && n.clickable && !n.text ? "[BTN] " : ""}`;
-    lines.push(`${flags}"${n.text || n.desc}" ${bounds}`);
+    // Redact per line BEFORE the length cap so a cut can never leave half a secret.
+    lines.push(redact(`${flags}"${n.text || n.desc}" ${bounds}`));
   }
   const compact = lines.join("\n") || "(no labelled nodes on screen)";
   return compact.length > 20000 ? compact.slice(0, 20000) + "\n[truncated]" : compact;
@@ -262,8 +299,21 @@ function tapTextResolve(wanted) {
 // don't need them, and a typo here would execute on the device.
 async function inputText(value) {
   if (drv) return drv.text(value);
+  if (redact(value) !== value) throw new SecureInputError("plain text contains a configured secret value");
   if (/[\\'"`$&|;<>(){}\[\]!*?~#]/.test(value)) throw new Error("input text contains unsupported shell metacharacters");
   adb(["shell", "input", "text", value.replace(/ /g, "%s")]);
+}
+
+// Secret typing: emulator console only (secure_input.mjs emulatorConsoleType),
+// so the value is in no host or device argv and no file. The iOS drivers and
+// an Android device without a console refuse. Failures surface as fixed text.
+async function secureType(secret) {
+  if (drv) return drv.secureText(secret);
+  let serial = opts.device;
+  if (!serial) {
+    try { serial = adb(["get-serialno"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { serial = ""; }
+  }
+  await emulatorConsoleType({ port: emulatorConsolePort(serial), secret, tokenFile: process.env.QA_EMULATOR_CONSOLE_TOKEN_FILE || undefined });
 }
 
 const KEYCODES = { back: "4", home: "3", enter: "66", tab: "61", del: "67", esc: "111", app_switch: "187" };
@@ -289,7 +339,7 @@ async function focusedFieldReport() {
     if (!node) return "typed; no focused field found in dump — verify via screenshot";
     const text = /text="([^"]*)"/.exec(node)?.[1] ?? "";
     const bounds = /bounds="(\[[^"]*\])"/.exec(node)?.[1] ?? "?";
-    return `typed; focused field now contains "${text.slice(0, 80)}" at ${bounds}`;
+    return `typed; focused field now contains "${redact(text).slice(0, 80)}" at ${bounds}`;
   } catch {
     return "typed; focus check failed — verify via screenshot";
   }
@@ -324,6 +374,7 @@ function preamble(size) {
     '  {"action":"open_link","url":"<https or app link>"}   open a link/deeplink via Android intent',
     '  {"action":"swipe","direction":"up|down|left|right"}   scroll the screen',
     '  {"action":"text","value":"<text>"}             type into the focused field (tap it first)',
+    '  {"action":"secret_phase","state":"begin|end"}  open/close a blind secret-input phase (see Rules)',
     '  {"action":"key","name":"back|home|enter|tab|del|esc"}  press a key (esc hides the keyboard)',
     '  {"action":"clear"}                             clear the FOCUSED text field completely',
     '  {"action":"dump_ui"}                           list on-screen nodes as `"text" [x1,y1][x2,y2]` lines',
@@ -356,8 +407,14 @@ function preamble(size) {
     "  earlier dump coordinates stale. Use coordinate tap only for unlabelled targets.",
     "- Before tapping anything unlabelled, use dump_ui and compute the tap point from node bounds",
     '  ("[x1,y1][x2,y2]" -> center). Screenshots alone are not reliable for coordinates.',
-    "- The test account is email {{QA_EMAIL}} password {{QA_PASSWORD}} — type them as these",
-    "  EXACT placeholder strings in a text action; the runner substitutes real values.",
+    "- The test account is email ${secret:QA_TEST_EMAIL} password ${secret:QA_TEST_PASSWORD} —",
+    "  type each as that EXACT reference, alone, as the whole text value; the runner types the",
+    "  real value. The sign-in page (from tapping sign-in until the app is back) is a LOGIN",
+    "  WINDOW: you get no screenshots, dump_ui gives only input-field bounds, feedback is",
+    "  ok/failed, note and finish are refused. Tap a field, type, tap the next field, type,",
+    "  key enter, wait, then send {\"action\":\"secret_phase\",\"state\":\"end\"}. The runner resumes",
+    "  capture only when it can prove the login flow ended and the login page, keyboard and",
+    "  autofill are cleared; otherwise the run ends UNKNOWN.",
     "- Typing goes to the FOCUSED field. When the on-screen keyboard opens, the layout may",
     "  shift — dump_ui AGAIN before tapping the next field, and verify focus moved (tap the",
     "  field, then check the screenshot for a cursor) before typing into it.",
@@ -636,9 +693,220 @@ async function main() {
     fs.appendFileSync(stepsPath, redact(JSON.stringify({ ts: Date.now(), ...rec })) + "\n");
   };
 
+  // ---- login window (capture suppression) ----
+  // capture-suppression.json is the placeholder record (time window, status,
+  // receipt NAMES; never content). secure_evidence.mjs and the workflows read
+  // it: recordings, captures, logcat lines and screen dumps that overlap a
+  // window that is not provably closed never leave the runner.
+  const suppressionPath = path.join(opts.out, "capture-suppression.json");
+  const writeSuppression = () => fs.writeFileSync(suppressionPath, JSON.stringify(gate.summary(), null, 2));
+  writeSuppression();
+  let phaseCtx = null;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const adbQuiet = (args) => adb(args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  // pidof exits 1 with no output when nothing matches; any other failure is "unknown".
+  const noProcess = (name) => {
+    try { return adbQuiet(["shell", "pidof", name]).trim() === ""; } catch (e) { return e?.status === 1; }
+  };
+  const focusedPackage = () => {
+    try { return parseFocusedPackage(adbQuiet(["shell", "dumpsys", "window"])); } catch { return null; }
+  };
+  const deviceEpoch = () => {
+    try { const v = Number(adbQuiet(["shell", "date", "+%s"]).trim()); return Number.isFinite(v) && v > 0 ? v : NaN; } catch { return NaN; }
+  };
+  // Device-local "MM-DD HH:MM:SS" (logcat threadtime prefix) for the logcat filter.
+  const deviceLocal = () => {
+    try { const v = adbQuiet(["shell", "date '+%m-%d %H:%M:%S'"]).trim(); return /^\d\d-\d\d \d\d:\d\d:\d\d$/.test(v) ? v : ""; } catch { return ""; }
+  };
+  const loginLog = () => {
+    try { return adbQuiet(["logcat", "-d", "-v", "epoch", "-s", "SlockAppLogin:I"]); } catch { return null; }
+  };
+  const pmClear = (pkg) => {
+    try { return /\bSuccess\b/.test(adbQuiet(["shell", "pm", "clear", pkg])); } catch { return false; }
+  };
+  // The workflow's screenrecord loop idles while the pause flag exists. At a
+  // window start the running segment is interrupted, two consecutive "no
+  // screenrecord process" reads are required, and the NEWEST segment is
+  // deleted on the device (it may show the login page being entered: never
+  // trimmed, dropped whole). Recording restarts (new segment) only after the
+  // receipts.
+  async function stopRecording() {
+    try { adbQuiet(["shell", "touch", RECORDING_PAUSE_FLAG]); } catch { return { stopped: false, dropped: [] }; }
+    try { adbQuiet(["shell", "pkill", "-INT", "screenrecord"]); } catch { /* none running */ }
+    let clean = 0;
+    for (let i = 0; i < 20 && clean < 2; i++) {
+      clean = noProcess("screenrecord") ? clean + 1 : 0;
+      // A segment that started between the loop's flag check and our pkill.
+      if (clean === 0) { try { adbQuiet(["shell", "pkill", "-INT", "screenrecord"]); } catch { /* raced exit */ } }
+      if (clean < 2) await sleep(500);
+    }
+    if (clean < 2) return { stopped: false, dropped: [] };
+    const list = () => {
+      try {
+        const out = adbQuiet(["shell", "ls /sdcard/qa-rec-*.mp4 2>/dev/null; echo LIST-END"]);
+        if (!out.includes("LIST-END")) return null;
+        return out.split(/\s+/).filter((f) => /^\/sdcard\/qa-rec-\d+\.mp4$/.test(f)).sort();
+      } catch { return null; }
+    };
+    const before = list();
+    if (before === null) return { stopped: false, dropped: [] };
+    const newest = before.at(-1);
+    if (!newest) return { stopped: true, dropped: [] };
+    try { adbQuiet(["shell", "rm", "-f", newest]); } catch { /* verified next */ }
+    const after = list();
+    if (after === null || after.includes(newest)) return { stopped: false, dropped: [] };
+    return { stopped: true, dropped: [path.basename(newest)] };
+  }
+  function markUnknown(turn, reasons) {
+    const phase = gate.markUnknown(turn, reasons);
+    logStep({ turn, event: "capture_suppressed", phase: "unknown", start_ts: phase.start_ts, unknown_ts: phase.unknown_ts, reasons });
+    writeSuppression();
+  }
+  // Login-log cursor: only attempts that open AFTER the last check (or one
+  // still open at the first check) start a window.
+  let loginCursor = null;
+  let lastCheckLocal = "";
+  async function beginSecretPhase(turn, reason, { sinceEpoch = NaN, surface = null } = {}) {
+    if (gate.active) {
+      if (surface) phaseCtx.entrySurfaces.add(surface);
+      return gate.active.recording === "stopped" || gate.active.recording === "not_recorded";
+    }
+    const phase = gate.begin(turn, reason);
+    phaseCtx = { sinceEpoch: NaN, entrySurfaces: new Set(), secretTyped: false, loginAttempted: reason === "login_page", autofillOff: null };
+    if (surface) phaseCtx.entrySurfaces.add(surface);
+    if (drv) {
+      phase.recording = "not_recorded";
+    } else {
+      // Logcat lines are withheld from the previous check on (the entry
+      // happened during the last action).
+      phase.device_start_local = lastCheckLocal || deviceLocal();
+      writeSuppression();
+      const now = deviceEpoch();
+      phaseCtx.sinceEpoch = Number.isFinite(sinceEpoch) ? Math.min(sinceEpoch, now) : now;
+      const rec = await stopRecording();
+      phase.recording = rec.stopped ? "stopped" : "unconfirmed";
+      phase.dropped_segments = rec.dropped;
+    }
+    logStep({ turn, event: "capture_suppressed", phase: "begin", reason, start_ts: phase.start_ts });
+    writeSuppression();
+    return (phase.recording === "stopped" && Number.isFinite(phaseCtx.sinceEpoch)) || phase.recording === "not_recorded";
+  }
+  // Runs before EVERY capture. Returns "clear" (capture allowed), "window"
+  // (a login window is open) or "unconfirmed" (could not tell: skip this
+  // turn's capture, which is recorded as suppressed).
+  async function detectLoginWindow(turn) {
+    if (gate.suppressed) {
+      if (!drv && phaseCtx) {
+        const f = focusedPackage();
+        if (isExternalLoginSurface(f, opts.appPackage)) phaseCtx.entrySurfaces.add(f);
+      }
+      return "window";
+    }
+    if (drv) {
+      let visible = null;
+      try { visible = typeof drv.loginSurfaceVisible === "function" ? await drv.loginSurfaceVisible() : null; } catch { visible = null; }
+      if (visible === true) {
+        if (!(await beginSecretPhase(turn, "login_page"))) markUnknown(turn, ["capture could not be suppressed"]);
+        return "window";
+      }
+      return "clear";
+    }
+    const local = deviceLocal();
+    const logs = loginLog();
+    const focused = focusedPackage();
+    if (logs === null || focused === null) return "unconfirmed";
+    const state = loginLogState(logs, loginCursor ?? -Infinity);
+    const opened = loginCursor === null ? (state.open ? state.newest : null) : state.openedAfter;
+    loginCursor = Math.max(loginCursor ?? -Infinity, state.newest);
+    const external = isExternalLoginSurface(focused, opts.appPackage);
+    if (opened !== null || external) {
+      const ok = await beginSecretPhase(turn, opened !== null ? "login_page" : "browser_surface", { sinceEpoch: opened ?? NaN, surface: external ? focused : null });
+      if (!ok) markUnknown(turn, ["screen recording could not be confirmed stopped at the login window"]);
+      return "window";
+    }
+    lastCheckLocal = local;
+    return "clear";
+  }
+  // Resume ONLY on positive receipts (secure_input.mjs evaluateResumeReceipts).
+  async function endSecretPhase(turn) {
+    if (!gate.active) return true;
+    let result = { ok: false, reasons: ["iOS has no receipt channel that can prove the login window is clean"], receipts: {} };
+    if (!drv) {
+      try { adbQuiet(["shell", "input", "keyevent", "111"]); } catch { /* checked below */ }
+      const ctx = phaseCtx;
+      const external = [...ctx.entrySurfaces].filter((p) => p && p !== opts.appPackage);
+      let cleared = null;
+      let imeCleared = null;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await sleep(attempt === 0 ? 500 : 1500);
+        const loginExit = findLoginExit(loginLog() ?? "", ctx.sinceEpoch);
+        const focused = focusedPackage();
+        const exitProven = Boolean(loginExit) || (!ctx.secretTyped && !ctx.loginAttempted);
+        // Clear the external login surface (form fields, autofill, saved
+        // passwords, cookies) only once the app has the foreground and the
+        // flow has exited: never kill the browser mid-login.
+        if (exitProven && focused === opts.appPackage && external.length && cleared !== true) {
+          let ok = true;
+          for (const pkg of external) {
+            try { adbQuiet(["shell", "am", "force-stop", pkg]); } catch { /* verified next */ }
+            ok = pmClear(pkg) && ok;
+          }
+          await sleep(300);
+          cleared = ok && external.every((pkg) => noProcess(pkg));
+        }
+        // The keyboard may have learned what was typed (suggestion strip):
+        // clear the IME's data after a secret was typed.
+        if (exitProven && ctx.secretTyped && focused === opts.appPackage && imeCleared !== true) {
+          let ime = null;
+          try { ime = parseImePackage(adbQuiet(["shell", "settings", "get", "secure", "default_input_method"])); } catch { ime = null; }
+          imeCleared = ime ? pmClear(ime) : false;
+        }
+        let keyboardShown = null;
+        try { keyboardShown = parseKeyboardShown(adbQuiet(["shell", "dumpsys", "input_method"])); } catch { /* unknown */ }
+        // Advisory only, in memory, never stored or sent.
+        let xml = "";
+        try { xml = uiXml(); } catch { /* no tree: proves nothing */ }
+        result = evaluateResumeReceipts({
+          appPackage: opts.appPackage, entrySurfaces: ctx.entrySurfaces, loginExit,
+          secretTyped: ctx.secretTyped, loginAttempted: ctx.loginAttempted,
+          focusedPackage: focused, keyboardShown, externalSurfacesCleared: cleared, imeCleared,
+          autofillOff: ctx.autofillOff, uiXml: xml,
+        });
+        xml = "";
+        if (result.ok) break;
+      }
+    }
+    if (!result.ok) {
+      markUnknown(turn, result.reasons);
+      return false;
+    }
+    const phase = gate.resume(turn, result.receipts);
+    if (!drv) {
+      phase.device_end_local = deviceLocal();
+      loginCursor = Math.max(loginCursor ?? -Infinity, deviceEpoch() || -Infinity);
+      try { adbQuiet(["shell", "rm", "-f", RECORDING_PAUSE_FLAG]); } catch { /* loop stays idle: safe */ }
+    }
+    phaseCtx = null;
+    logStep({ turn, event: "capture_suppressed", phase: "end", start_ts: phase.start_ts, end_ts: phase.end_ts, receipts: Object.keys(phase.receipts) });
+    writeSuppression();
+    return true;
+  }
+  // An interrupted run (signal, crash) inside a login window stays UNKNOWN on
+  // disk, so every later collector and egress gate keeps it suppressed.
+  const onInterrupt = (why) => {
+    if (gate.active || gate.unresolved) { try { markUnknown(turns ?? 0, [`run interrupted (${why}) inside a login window`]); } catch { /* best effort */ } }
+  };
+  interruptHook = onInterrupt;
+  for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"]) process.once(sig, () => { onInterrupt(sig); process.exit(2); });
+  const SECRET_PHASE_ACTIONS = new Set(["tap", "tap_text", "swipe", "long_press", "text", "key", "clear", "wait", "dump_ui", "secret_phase"]);
+
+  const SUPPRESSED_NOTE = 'Screen capture SUPPRESSED (login window): no screenshot and no UI text until the runner can prove the login flow ended. dump_ui returns only a bounds-only form outline; tap a field, type ${secret:NAME}, then submit (key enter), wait, and send {"action":"secret_phase","state":"end"}.';
+  const initialWindow = await detectLoginWindow(0);
   const messages = [{
     role: "user",
-    content: [{ type: "text", text: preamble(size) }, { type: "text", text: "Current screen:" }, shoot(0)],
+    content: initialWindow === "clear"
+      ? [{ type: "text", text: preamble(size) }, { type: "text", text: "Current screen:" }, shoot(0)]
+      : [{ type: "text", text: preamble(size) }, { type: "text", text: SUPPRESSED_NOTE }],
     timestamp: Date.now(),
   }];
   logStep({ turn: 0, event: "start", goal: opts.goal, screen: size });
@@ -659,6 +927,7 @@ async function main() {
   const tapAnnotations = [];
   const assertionAnnotations = [];
   while (turns < opts.maxTurns && Date.now() < deadline) {
+    if (gate.unresolved) break;
     turns++;
     pruneImages(messages);
     let action;
@@ -698,7 +967,7 @@ async function main() {
       break;
     }
 
-    if (action.action === "finish") {
+    if (action.action === "finish" && !gate.active) {
       executionDiagnosis = bindDiagnosisToLedger(normalizeSelfDiagnosis(action.diagnosis, redact), {
         actions: actionLedger, observations: observationLedger, checkpoints: checkpointLedger,
       });
@@ -710,10 +979,14 @@ async function main() {
     }
 
     let feedback = "ok";
+    let feedbackSafe = false; // fixed runner text, safe even inside a secret phase
     let mechanicallyPerformed = false;
     let checkpointMilestone = null;
     try {
-      switch (action.action) {
+      if (gate.active && !SECRET_PHASE_ACTIONS.has(String(action.action))) {
+        feedback = `${String(action.action).slice(0, 40)} refused: a secret-input phase is active (end it with secret_phase state=end)`;
+        feedbackSafe = true;
+      } else switch (action.action) {
         case "tap":
           if (drv) await drv.tap(Math.round(action.x), Math.round(action.y));
           else adb(["shell", "input", "tap", String(Math.round(action.x)), String(Math.round(action.y))]);
@@ -766,15 +1039,60 @@ async function main() {
           break;
         }
         case "text": {
-          let v = String(action.value ?? "");
-          for (const [ph, real] of Object.entries(SECRETS)) v = v.split(ph).join(real);
-          await inputText(v);
+          const parsed = parseTextValue(action.value);
+          if (parsed.kind === "plain") {
+            await inputText(parsed.value);
+            mechanicallyPerformed = true;
+            // The recurring login failure mode is text landing in the wrong
+            // field because a tap didn't move focus. Report the focused node's
+            // content back mechanically so the model sees the landing spot
+            // without spending a turn on dump_ui (batch round finding ③).
+            // Never inside a secret phase: that is screen-derived content.
+            if (!gate.active) feedback = redact(await focusedFieldReport());
+            break;
+          }
+          // Suppression starts BEFORE the value can reach the screen.
+          feedbackSafe = true;
+          if (!(await beginSecretPhase(turns, "secret_text"))) {
+            markUnknown(turns, ["screen recording could not be confirmed stopped before secret entry"]);
+            feedback = "secret input refused: capture could not be suppressed; run ends UNKNOWN";
+            break;
+          }
+          if (!drv) {
+            phaseCtx.entrySurfaces.add(focusedPackage());
+            // Autofill must be off while a secret is typed (no save/fill
+            // prompt, no autofill service seeing the value).
+            if (phaseCtx.autofillOff !== true) {
+              try { adbQuiet(["shell", "settings", "put", "secure", "autofill_service", "null"]); } catch { /* verified next */ }
+              let value = "?";
+              try { value = adbQuiet(["shell", "settings", "get", "secure", "autofill_service"]).trim(); } catch { value = "?"; }
+              phaseCtx.autofillOff = value === "null" || value === "";
+            }
+            if (!phaseCtx.autofillOff) {
+              markUnknown(turns, ["autofill could not be confirmed off before secret entry"]);
+              feedback = "secret input refused: autofill could not be turned off; run ends UNKNOWN";
+              break;
+            }
+          }
+          phaseCtx.secretTyped = true;
+          await secureType(parsed.value);
           mechanicallyPerformed = true;
-          // The recurring login failure mode is text landing in the wrong
-          // field because a tap didn't move focus. Report the focused node's
-          // content back mechanically so the model sees the landing spot
-          // without spending a turn on dump_ui (batch round finding ③).
-          feedback = redact(await focusedFieldReport());
+          feedback = `typed ${parsed.name} (capture suppressed)`;
+          break;
+        }
+        case "secret_phase": {
+          feedbackSafe = true;
+          if (action.state === "begin") {
+            if (await beginSecretPhase(turns, "explicit")) feedback = "secret phase active: capture suppressed";
+            else {
+              markUnknown(turns, ["screen recording could not be confirmed stopped"]);
+              feedback = "secret phase could not suppress capture; run ends UNKNOWN";
+            }
+          } else if (action.state === "end") {
+            if (!gate.active) feedback = "no secret phase is active";
+            else if (await endSecretPhase(turns)) feedback = "secret phase closed: login completion and cleanup confirmed; capture resumed";
+            else feedback = "secret phase cleanup could not be confirmed; run ends UNKNOWN";
+          } else feedback = 'secret_phase needs state "begin" or "end"';
           break;
         }
         case "key":
@@ -783,7 +1101,16 @@ async function main() {
           mechanicallyPerformed = true;
           break;
         case "clear": await clearField(); mechanicallyPerformed = true; break;
-        case "dump_ui": feedback = await dumpUi(); break;
+        case "dump_ui":
+          if (gate.suppressed) {
+            // Inside a login window: field bounds only (no text), Android only.
+            feedbackSafe = true;
+            let xml = "";
+            try { xml = drv ? "" : uiXml(); } catch { xml = ""; }
+            feedback = drv ? "dump_ui withheld during the login window" : formOutline(xml);
+            xml = "";
+          } else feedback = await dumpUi();
+          break;
         case "wait": await new Promise((r) => setTimeout(r, Math.min(10, Math.max(1, Number(action.seconds) || 2)) * 1000)); mechanicallyPerformed = true; break;
         case "launch":
           if (drv) await drv.launch();
@@ -802,7 +1129,14 @@ async function main() {
         default: feedback = `unknown action "${action.action}" — use one of the documented actions`;
       }
     } catch (e) {
-      feedback = `action failed: ${String(e?.message || e).slice(0, 200)}`;
+      const safe = e instanceof SecureInputError;
+      feedback = `action failed: ${redact(String(e?.message || e)).slice(0, 200)}`;
+      if (safe) feedbackSafe = true;
+    }
+    // Inside a secret phase nothing screen- or driver-derived reaches the model
+    // or the logs (tap_text labels, AX text, driver error details).
+    if (gate.suppressed && !feedbackSafe) {
+      feedback = feedback.startsWith("action failed") ? "action failed (details withheld during the secret phase)" : "ok";
     }
     // Give the UI a beat to settle before observing (animations are disabled
     // on the CI AVD, but page transitions/network still take real time).
@@ -817,12 +1151,15 @@ async function main() {
       safe_summary: `${String(action.action)}:${createHash("sha256").update(actionKey).digest("hex").slice(0, 12)}`,
     };
     actionLedger.set(turns, actionFact);
-    recordSession("user_turn", { turn: turns, feedback: feedback === "ok" ? "ok" : `${feedback.length} chars`, screenshot: `step-${String(turns).padStart(2, "0")}.png` });
-    const observation = shoot(turns);
+    const windowState = await detectLoginWindow(turns);
+    const suppressed = gate.suppressed || windowState !== "clear";
+    recordSession("user_turn", { turn: turns, feedback: feedback === "ok" ? "ok" : `${feedback.length} chars`, screenshot: suppressed ? null : `step-${String(turns).padStart(2, "0")}.png`, ...(suppressed ? { capture: "suppressed" } : {}) });
+    const observation = suppressed ? null : shoot(turns);
     logStep({
       turn: turns, event: "action_fact", action_step: turns, action_type: actionFact.action_type,
       action_identity_sha256: actionFact.identity_sha256, action_summary: actionFact.safe_summary,
       performed: actionFact.performed, post_action_screenshot_sha256: observationLedger.get(turns),
+      ...(suppressed ? { capture: "suppressed" } : {}),
     });
     if (checkpointMilestone) {
       const checkpointFact = { milestone: checkpointMilestone, screenshot_sha256: observationLedger.get(turns) };
@@ -831,15 +1168,14 @@ async function main() {
     }
     messages.push({
       role: "user",
-      content: [
-        { type: "text", text: `Result: ${feedback}\nTurn ${turns}/${opts.maxTurns}. Current screen:` },
-        observation,
-      ],
+      content: observation
+        ? [{ type: "text", text: `Result: ${feedback}\nTurn ${turns}/${opts.maxTurns}. Current screen:` }, observation]
+        : [{ type: "text", text: `Result: ${feedback}\nTurn ${turns}/${opts.maxTurns}. ${gate.suppressed ? SUPPRESSED_NOTE : "Screen capture skipped this turn (login-window state could not be confirmed)."}` }],
       timestamp: Date.now(),
     });
     const fingerprint = observationFingerprint({
       actionKey,
-      screenshotSha256: observationLedger.get(turns),
+      screenshotSha256: observationLedger.get(turns) ?? "capture-suppressed",
       feedback: feedback === "ok" ? "ok" : feedback,
     });
     sameObservationTurns = fingerprint === lastObservationFingerprint ? sameObservationTurns + 1 : 1;
@@ -849,6 +1185,19 @@ async function main() {
       logStep({ turn: turns, event: "no_progress_fuse", repeated_action: action.action, unchanged_observation_turns: sameObservationTurns });
       break;
     }
+  }
+
+  // A run that stops (budget, fuse) inside a secret phase gets exactly one
+  // receipt check; anything unproven is UNKNOWN and overrides every verdict.
+  if (gate.active && !gate.unresolved) await endSecretPhase(turns);
+  if (gate.unresolved) {
+    const unknownPhase = gate.phases.find((p) => p.status === "UNKNOWN");
+    verdict = "error";
+    reason = `secret-input phase UNKNOWN: capture stays suppressed (${(unknownPhase?.reasons ?? []).join("; ")})`;
+    executionDiagnosis = {
+      classification: "infra", confidence: "high", target_surface_reached: false, surface_evidence_steps: [],
+      first_blocked_step: "secret-phase-cleanup", missing_guidance: [], first_product_failure: null,
+    };
   }
 
   if (!verdict) {
@@ -920,7 +1269,7 @@ async function main() {
   // preserve the screenshots/annotations but force an honest harness error.
   // A Raft/app-under-test ANR does not match this narrow allowlist and remains
   // a product fail.
-  if (opts.platform === "android" && verdict === "fail") {
+  if (opts.platform === "android" && verdict === "fail" && !gate.suppressed) {
     try {
       const blocker = detectForeignAndroidSystemBlocker(uiNodes());
       if (blocker) {
@@ -951,6 +1300,9 @@ async function main() {
     // goal_completed here means the loop ended on its own terms, NOT that the goal
     // passed — read `verdict` for that. It only rules out budget/fuse truncation.
     terminated_by: terminatedBy,
+    secure_input: gate.unresolved
+      ? { status: "UNKNOWN", reasons: gate.phases.find((p) => p.status === "UNKNOWN")?.reasons ?? [] }
+      : { status: gate.phases.length ? "resumed" : "not_used", phases: gate.phases.length },
     execution_budget: { max_turns: opts.maxTurns, max_minutes: opts.maxMinutes, no_progress_turns: opts.noProgressTurns },
     usage: { ...modelUsage, totalTokens: modelUsage.input + modelUsage.output },
     annotations: {
@@ -964,6 +1316,7 @@ async function main() {
   };
   fs.writeFileSync(path.join(opts.out, "usage.json"), JSON.stringify({ ...modelUsage, totalTokens: modelUsage.input + modelUsage.output, model: modelName, perCall: usageDetail }, null, 2));
   fs.writeFileSync(path.join(opts.out, "verdict.json"), JSON.stringify(result, null, 2));
+  writeSuppression();
   stampCheckpoint(turns, "auto:verdict", `${verdict}: ${reason}`);
   await Promise.allSettled(stampPending);
   if (drv) await drv.finish();
@@ -971,4 +1324,8 @@ async function main() {
   process.exit(verdict === "pass" ? 0 : verdict === "fail" ? 1 : 2);
 }
 
-main().catch((e) => { console.error(String(e?.stack || e)); process.exit(2); });
+main().catch((e) => {
+  try { interruptHook?.("executor error"); } catch { /* best effort */ }
+  console.error(redact(String(e?.stack || e)));
+  process.exit(2);
+});

@@ -1224,3 +1224,114 @@ test("iOS workflow: delete → read record → report, and the report step requi
   const del = workflow.slice(at("Delete run-owned simulator"), at("Report to Stamp"));
   assert.match(del, /delete-simulator[\s\S]*--output qa-evidence\/simulator-cleanup\.json/);
 });
+
+test("report-evidence never uploads a secret or a recording that overlaps an unresolved secret phase", () => {
+  const FAKE_SECRET = "FAKE-pw-7Q";
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-secret-egress-"));
+  const evidence = path.join(root, "qa-evidence");
+  const bin = path.join(root, "bin");
+  const runnerTemp = path.join(root, "runner-temp");
+  const uploads = path.join(root, "uploads");
+  for (const d of [evidence, bin, runnerTemp, uploads]) fs.mkdirSync(d);
+  fs.writeFileSync(path.join(evidence, "step-00.png"), "PNG-before-login");
+  fs.writeFileSync(path.join(evidence, "steps.jsonl"), '{"turn":1,"event":"capture_suppressed"}\n');
+  // App/system logs can echo what was typed into a field.
+  fs.writeFileSync(path.join(evidence, "logcat.txt"), `I/Chromium: autofill value=${FAKE_SECRET}\n`);
+  fs.writeFileSync(path.join(evidence, "activity-top.txt"), `mText=${FAKE_SECRET}\n`);
+  fs.writeFileSync(path.join(evidence, "qa-rec-01.mp4"), "MP4-covering-login-window");
+  fs.writeFileSync(path.join(evidence, "capture-suppression.json"), JSON.stringify({
+    contract: "qa-capture-suppression/v1", unresolved: true, active: false,
+    phases: [{ start_ts: Date.now() + 5000, start_turn: 1, status: "UNKNOWN", recording: "stopped" }],
+  }));
+  fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({
+    verdict: "error", reason: "x",
+    log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "99:1" },
+  }));
+  fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-secret"), "lease-token", { mode: 0o600 });
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+args="$*"; payload=""
+while [ "$#" -gt 0 ]; do case "$1" in --data-binary) payload="$2"; shift 2;; *) shift;; esac; done
+n=$(ls "${uploads}" | wc -l)
+printf '%s\\n' "$args" > "${uploads}/$n.args"
+[ -n "$payload" ] && cp "\${payload#@}" "${uploads}/$n.body"
+exit 0
+`, { mode: 0o755 });
+  try {
+    execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "report-evidence", "qa-evidence"], {
+      cwd: root,
+      env: {
+        ...process.env,
+        PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+        RUNNER_TEMP: runnerTemp,
+        STAMP_RUN_CASE_ID: "rc-secret",
+        STAMP_URL: "https://stamp.test",
+        STAMP_TOKEN: "test-token",
+        QA_TEST_EMAIL: "",
+        QA_TEST_PASSWORD: FAKE_SECRET,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch { /* a refused upload may exit non-zero; what matters is what left */ }
+  const sent = fs.readdirSync(uploads);
+  for (const f of sent) {
+    assert.ok(!fs.readFileSync(path.join(uploads, f), "latin1").includes(FAKE_SECRET), `secret uploaded in ${f}`);
+  }
+  const args = sent.filter((f) => f.endsWith(".args")).map((f) => fs.readFileSync(path.join(uploads, f), "utf8")).join("\n");
+  assert.doesNotMatch(args, /kind=recording/, "recording overlapping an unresolved secret phase was uploaded");
+  // The local artifact dir (uploaded wholesale by actions/upload-artifact) is clean too.
+  assert.ok(!fs.existsSync(path.join(evidence, "qa-rec-01.mp4")), "recording left in the artifact dir");
+  for (const f of fs.readdirSync(evidence)) {
+    assert.ok(!fs.readFileSync(path.join(evidence, f), "latin1").includes(FAKE_SECRET), `secret left in artifact dir ${f}`);
+  }
+  assert.match(args, /kind=screenshot&/, "pre-phase frames are still reported");
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test("report: a failed workflow evidence-gate step means no evidence upload (iOS twin of the in-step gate)", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-gate-outcome-"));
+  const evidence = path.join(root, "qa-evidence"), bin = path.join(root, "bin"), runnerTemp = path.join(root, "runner-temp"), uploads = path.join(root, "uploads");
+  for (const d of [evidence, bin, runnerTemp, uploads]) fs.mkdirSync(d);
+  fs.writeFileSync(path.join(evidence, "step-00.png"), "PNG");
+  fs.writeFileSync(path.join(evidence, "steps.jsonl"), "{}\n");
+  fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-gate"), "lease-token", { mode: 0o600 });
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash\nn=$(ls "${uploads}" | wc -l)\nprintf '%s\\n' "$*" > "${uploads}/$n.args"\nexit 0\n`, { mode: 0o755 });
+  const run = (outcome) => {
+    for (const f of fs.readdirSync(uploads)) fs.rmSync(path.join(uploads, f));
+    const r = spawnSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "report-evidence", "qa-evidence"], {
+      cwd: root, encoding: "utf8",
+      env: { ...process.env, PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`, RUNNER_TEMP: runnerTemp,
+        STAMP_RUN_CASE_ID: "rc-gate", STAMP_URL: "https://stamp.test", STAMP_TOKEN: "fake-test-token", QA_TEST_EMAIL: "", QA_TEST_PASSWORD: "",
+        ...(outcome === undefined ? {} : { STAMP_EVIDENCE_GATE_OUTCOME: outcome }) },
+    });
+    return { status: r.status, kinds: fs.readdirSync(uploads).map((f) => /kind=(\w+)/.exec(fs.readFileSync(path.join(uploads, f), "utf8"))?.[1]).filter(Boolean) };
+  };
+  for (const outcome of ["failure", "cancelled", "skipped", ""]) {
+    const r = run(outcome);
+    assert.equal(r.status, 1, outcome);
+    assert.deepEqual(r.kinds, [], `evidence uploaded after gate outcome ${outcome || "missing"}`);
+  }
+  assert.ok(run("success").kinds.includes("screenshot"));
+  assert.ok(run(undefined).kinds.includes("screenshot"), "Android: no workflow gate outcome, the in-script gate decides");
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test("workflows: every evidence exit sits behind the secure evidence gate", () => {
+  const read = (f) => fs.readFileSync(path.resolve(".github/workflows", f), "utf8");
+  const step = (wf, name) => { const i = wf.indexOf(`- name: ${name}\n`); assert.ok(i > 0, name); const j = wf.indexOf("\n      - ", i + 1); return wf.slice(i, j < 0 ? undefined : j); };
+  for (const f of ["qa-acceptance.yml", "qa-acceptance-ios.yml"]) {
+    const wf = read(f);
+    assert.match(step(wf, "Secure evidence gate"), /id: secure-evidence\n\s+if: always\(\)[\s\S]*run: node scripts\/qa\/secure_evidence\.mjs --dir qa-evidence/);
+    assert.match(step(wf, "Upload evidence"), /if: \$\{\{ always\(\) && steps\.secure-evidence\.outcome == 'success' \}\}/, f);
+    assert.ok(wf.indexOf("- name: Secure evidence gate\n") < wf.indexOf("- name: Upload evidence\n"), f);
+  }
+  const ios = read("qa-acceptance-ios.yml");
+  assert.ok(ios.indexOf("- name: Secure evidence gate\n") < ios.indexOf("- name: Report to Stamp\n"));
+  assert.match(step(ios, "Report to Stamp"), /STAMP_EVIDENCE_GATE_OUTCOME: \$\{\{ steps\.secure-evidence\.outcome \}\}/);
+  assert.doesNotMatch(step(ios, "Report to Stamp"), /QA_TEST_PASSWORD/);
+  const android = step(read("qa-acceptance.yml"), "Run acceptance agent");
+  // Recording loop honours the login-window pause flag; the in-step gate runs before report-evidence;
+  // no post-run screen dump unless every window closed on receipts.
+  assert.match(android, /if \[ -e \/data\/local\/tmp\/qa-rec-pause \]; then sleep 1; continue; fi; screenrecord/);
+  assert.ok(android.indexOf("secure_evidence.mjs --dir qa-evidence") < android.indexOf("stamp_report.sh report-evidence"));
+  assert.match(android, /v\.unresolved===false&&v\.active===false\?0:1[\s\S]*dumpsys activity top/);
+});
