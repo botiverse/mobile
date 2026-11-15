@@ -247,28 +247,23 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
     refresher: SettingsWebViewAccessTokenRefresher? = null,
     /** Whether the surface's page is on screen ([rememberRaftPagerAppeared]): not covered by another page. */
     visible: Boolean = true,
+    /** A token reached the shown document (pushed into it). */
+    onAccessTokenDispatched: (String) -> Unit = {},
 ) {
     val session = snapshot.session ?: return
     val activeBinding = binding ?: return
     val fence = activeBinding.fence
 
     if (refresher != null) {
-        // Only while this surface is composed, its page is on screen (not covered by another page)
-        // and the App is in the foreground: back on screen, the loop starts again and an expired or
-        // nearly expired token is refreshed at once, while the page resumes.
-        val lifecycleOwner = LocalLifecycleOwner.current
         val currentLogger by rememberUpdatedState(logger)
-        LaunchedEffect(lifecycleOwner, refresher, fence, visible) {
-            if (!visible) return@LaunchedEffect
-            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                runSettingsWebViewAccessTokenRefreshAhead(
-                    surface = surface.diagnosticsName,
-                    readAccessToken = refresher::currentAccessToken,
-                    nowMillis = { build.raft.app.data.defaultNowMillis() },
-                    refresh = { reason, expiring -> refresher.refresh(reason, expiring) },
-                    logger = { currentLogger(it) },
-                )
-            }
+        SettingsWebViewWhileShown(visible, refresher, fence) {
+            runSettingsWebViewAccessTokenRefreshAhead(
+                surface = surface.diagnosticsName,
+                readAccessToken = refresher::currentAccessToken,
+                nowMillis = { build.raft.app.data.defaultNowMillis() },
+                refresh = { reason, expiring -> refresher.refresh(reason, expiring) },
+                logger = { currentLogger(it) },
+            )
         }
     }
 
@@ -288,7 +283,7 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
                     sequence = update.sequence,
                 )
             )
-        if (!dispatched) fence.onDispatchFailed(update)
+        if (!dispatched) fence.onDispatchFailed(update) else onAccessTokenDispatched(update.accessToken)
         logger(
             "settings_webview_access_token_sync surface=${surface.diagnosticsName} " +
                 "generation=${update.authMutationGeneration} result=${if (dispatched) "dispatched" else "detached"}"
@@ -305,6 +300,21 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
     LaunchedEffect(fence, snapshot.event, session.accessToken) {
         val update = fence.onAuthEvent(snapshot.event, session) ?: return@LaunchedEffect
         dispatch(update)
+    }
+}
+
+/**
+ * Runs [block] only while the surface is shown: [visible] (its page not covered by another,
+ * [rememberRaftPagerAppeared]) and the App's lifecycle at least STARTED (in the foreground). It is
+ * cancelled when either stops and started again when both hold, and when one of [keys] changes.
+ */
+@Composable
+internal fun SettingsWebViewWhileShown(visible: Boolean, vararg keys: Any?, block: suspend () -> Unit) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentBlock by rememberUpdatedState(block)
+    LaunchedEffect(lifecycleOwner, visible, *keys) {
+        if (!visible) return@LaunchedEffect
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) { currentBlock() }
     }
 }
 

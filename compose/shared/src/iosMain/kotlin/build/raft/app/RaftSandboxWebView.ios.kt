@@ -678,12 +678,7 @@ internal class RaftIosSandboxWebView(
         // #300: the page that was shown (a kept Artifact viewer is routed in place from its warm src,
         // which the viewer would read as leaving its Artifact), if it may load here.
         val restoreUrl =
-            raftWebViewRendererGoneRestoreUrl(src, currentURL) { candidate ->
-                val url = NSURL.URLWithString(candidate) ?: return@raftWebViewRendererGoneRestoreUrl false
-                isNavigationSchemeAllowed(url) && isOnLockedOrigin(url) &&
-                    (allowNavigation || isAllowedMainDocumentURL(url)) &&
-                    raftWebOriginOf(candidate) == raftWebOriginOf(src)
-            }
+            raftWebViewRendererGoneRestoreUrl(src, currentURL, ::rendererGoneRestoreAllows)
         diagnosticsInfo("content_process_gone_restore url=${raftWebViewUrlForLog(restoreUrl)} shown=${restoreUrl != src}")
         rebuildWebView(restoreUrl)
         notifyNavigationState(force = true)
@@ -806,6 +801,18 @@ internal class RaftIosSandboxWebView(
             (allowed.path ?: "") == (targetURL.path ?: "") &&
             (allowed.query ?: "") == (targetURL.query ?: "") &&
             (allowed.port?.longValue ?: -1L) == (targetURL.port?.longValue ?: -1L)
+    }
+
+    /**
+     * Whether a WebView rebuilt after its web content process was gone may load [candidate] instead
+     * of its src ([raftWebViewRendererGoneRestoreUrl]): an allowed scheme, on the origin lock, a main
+     * document the fence lets load, and on the src's origin.
+     */
+    internal fun rendererGoneRestoreAllows(candidate: String): Boolean {
+        val url = NSURL.URLWithString(candidate) ?: return false
+        return isNavigationSchemeAllowed(url) && isOnLockedOrigin(url) &&
+            (allowNavigation || isAllowedMainDocumentURL(url)) &&
+            raftWebOriginOf(candidate) == raftWebOriginOf(src)
     }
 
     /** True unless an origin lock is set and [targetURL] is on another origin. */

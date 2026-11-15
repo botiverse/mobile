@@ -614,23 +614,72 @@ internal fun raftArtifactViewerIsSessionLoss(url: String): Boolean {
     return path.trimEnd('/').ifEmpty { "/" } in RaftArtifactViewerSignInPaths
 }
 
-/** A token change this recent backs a sign-out of the page ([raftArtifactViewerSessionLossEvident]). */
-internal const val RAFT_ARTIFACT_VIEWER_SESSION_LOSS_RECENT_TOKEN_CHANGE_MS = 30_000L
+/**
+ * A push of a new token into the page this recent backs a sign-out ([raftArtifactViewerSessionLossEvident]):
+ * a request the page sent just before it carried the old one.
+ */
+internal const val RAFT_ARTIFACT_VIEWER_SESSION_LOSS_RECENT_PUSH_MS = 5_000L
 
 /**
  * Whether a move to a sign-in path is backed by evidence that the page lost its session, rather
  * than a home or logo link inside the Artifact: the token the page holds is expired or inside the
- * refresh lead ([pageTokenRemainingMs], by the server's clock; null: unknown), or the App's token
- * changed in the last [RAFT_ARTIFACT_VIEWER_SESSION_LOSS_RECENT_TOKEN_CHANGE_MS] ([sinceTokenChangeMs];
- * null: not since the page opened), so the page may have sent the one it held before.
+ * refresh lead ([pageTokenRemainingMs], [SettingsWebViewTokenClock]; null: unknown), the page still
+ * holds an older token than the App's ([pageHoldsStaleToken]: the push has not reached it), or a new
+ * token was pushed into it in the last [RAFT_ARTIFACT_VIEWER_SESSION_LOSS_RECENT_PUSH_MS]
+ * ([sincePageTokenPushMs]; null: none since it loaded). A scheduled refresh alone is no evidence:
+ * once the page holds the new token, a root link closes as before.
  */
 internal fun raftArtifactViewerSessionLossEvident(
     pageTokenRemainingMs: Long?,
-    sinceTokenChangeMs: Long?,
+    pageHoldsStaleToken: Boolean,
+    sincePageTokenPushMs: Long?,
     leadMs: Long = SETTINGS_WEBVIEW_REFRESH_LEAD_MS,
 ): Boolean =
     (pageTokenRemainingMs != null && pageTokenRemainingMs <= leadMs) ||
-        (sinceTokenChangeMs != null && sinceTokenChangeMs in 0..RAFT_ARTIFACT_VIEWER_SESSION_LOSS_RECENT_TOKEN_CHANGE_MS)
+        pageHoldsStaleToken ||
+        (sincePageTokenPushMs != null && sincePageTokenPushMs in 0..RAFT_ARTIFACT_VIEWER_SESSION_LOSS_RECENT_PUSH_MS)
+
+/**
+ * Which token the viewer's page holds (#4828 review): the one its document loaded with (the injected
+ * session, or the navigate script's), then each one the token sync pushed into it. Not the App's
+ * current token, which may be newer than the page's until the push lands. Each is noted on [clock]
+ * as it reaches the page, so its age is known without trusting the device clock.
+ */
+internal class RaftArtifactViewerPageTokenTracker(
+    initialToken: String,
+    private val clock: SettingsWebViewTokenClock,
+    nowMs: Long,
+) {
+    var pageToken: String = initialToken
+        private set
+    private var pushedAtMs: Long? = null
+
+    init {
+        clock.noteSeen(initialToken, nowMs)
+    }
+
+    /** A document loaded (or was routed) with [token] written into it. */
+    fun onDocumentLoaded(token: String, nowMs: Long) {
+        clock.noteSeen(token, nowMs)
+        pageToken = token
+        pushedAtMs = null
+    }
+
+    /** The token sync pushed [token] into the shown document at [nowMs]. */
+    fun onPushed(token: String, nowMs: Long) {
+        clock.noteSeen(token, nowMs)
+        pageToken = token
+        pushedAtMs = nowMs
+    }
+
+    /** [raftArtifactViewerSessionLossEvident] for the page now, the App holding [currentToken]. */
+    fun sessionLossEvident(currentToken: String, nowMs: Long): Boolean =
+        raftArtifactViewerSessionLossEvident(
+            pageTokenRemainingMs = clock.remainingMillis(pageToken, nowMs),
+            pageHoldsStaleToken = pageToken != currentToken,
+            sincePageTokenPushMs = pushedAtMs?.let { nowMs - it },
+        )
+}
 
 /**
  * Loop guard for the session recovery reload: at most one per [windowMs]. A page that signs out

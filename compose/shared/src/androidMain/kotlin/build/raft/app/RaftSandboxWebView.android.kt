@@ -410,11 +410,11 @@ internal class RaftAndroidSandboxWebView(
                     // its warm src), checked against the fence before the WebView is rebuilt.
                     val restoreUrl =
                         // Gone during a bootstrap load: the page it was loading, not the placeholder.
-                        raftWebViewRendererGoneRestoreUrl(src, bootstrapNavigationFence.pendingTargetUrl ?: currentUrl) {
-                            // Same origin as the src only: its document-start script is scoped to that origin.
-                            !wouldBlockMainFrameNavigation(it) &&
-                                raftDocumentStartScriptOriginRule(it) == raftDocumentStartScriptOriginRule(src)
-                        }
+                        raftWebViewRendererGoneRestoreUrl(
+                            src,
+                            bootstrapNavigationFence.pendingTargetUrl ?: currentUrl,
+                            ::rendererGoneRestoreAllows,
+                        )
                     diagnosticsInfo("render_process_gone_restore url=${restoreUrl.raftRedactedUrlForLog()} shown=${restoreUrl != src}")
                     // The host's load watchdog: an error state when the page was not up yet.
                     events.onContentProcessGone(if (detail?.didCrash() == true) "render_process_crashed" else "render_process_killed")
@@ -857,6 +857,15 @@ internal class RaftAndroidSandboxWebView(
         val target = url ?: return true
         return !isNavigationSchemeAllowed(target)
     }
+
+    /**
+     * Whether a WebView rebuilt after its renderer was gone may load [candidate] instead of its src
+     * ([raftWebViewRendererGoneRestoreUrl]): the navigation fence lets it load as a main frame, and it
+     * is on the src's origin (the document-start script is scoped to that origin).
+     */
+    internal fun rendererGoneRestoreAllows(candidate: String): Boolean =
+        !wouldBlockMainFrameNavigation(candidate) &&
+            raftDocumentStartScriptOriginRule(candidate) == raftDocumentStartScriptOriginRule(src)
 
     private fun wouldBlockMainFrameNavigation(url: String?): Boolean {
         val target = url ?: return true

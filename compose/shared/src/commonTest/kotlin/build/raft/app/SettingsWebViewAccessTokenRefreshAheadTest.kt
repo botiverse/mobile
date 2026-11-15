@@ -213,16 +213,31 @@ class SettingsWebViewAccessTokenRefreshAheadTest {
     }
 
     @Test
-    fun theTokenClockReadsAgeOnTheServersClock() {
+    fun anUnknownOffsetIsNoEvidenceFromTheDeviceClock() {
         val clock = SettingsWebViewTokenClock()
+        val ahead = 20 * 60_000L
         val token = jwt(epochMs + lifetimeMs, iatMs = epochMs)
-        // Unknown offset: the device's clock.
-        assertEquals(lifetimeMs, clock.remainingMillis(token, epochMs))
-        // Learned from a token minted just now on a device 20 min ahead.
-        clock.learnFromFreshToken(token, epochMs + 20 * 60_000L)
-        assertEquals(lifetimeMs, clock.remainingMillis(token, epochMs + 20 * 60_000L))
-        assertEquals(SETTINGS_WEBVIEW_REFRESH_LEAD_MS, settingsWebViewTokenSchedule(token, epochMs + 20 * 60_000L, clock)?.let {
-            epochMs + 20 * 60_000L + lifetimeMs - it.refreshAtDeviceMs
+        // A device 20 min ahead, no refresh yet in this run: not "expired 5 min ago" (the device clock
+        // against `exp`), but its lifetime from when it was first seen.
+        assertEquals(false, clock.offsetKnown)
+        assertEquals(lifetimeMs, clock.remainingMillis(token, epochMs + ahead))
+        assertEquals(lifetimeMs - 5 * 60_000L, clock.remainingMillis(token, epochMs + ahead + 5 * 60_000L))
+        // Seen first by the refresh loop: counted from then.
+        val other = jwt(epochMs + lifetimeMs, sub = "user-maya-2", iatMs = epochMs)
+        clock.noteSeen(other, epochMs + ahead - 60_000L)
+        assertEquals(lifetimeMs - 60_000L, clock.remainingMillis(other, epochMs + ahead))
+        // Without `iat` and no offset: unknown, never the device clock.
+        assertNull(clock.remainingMillis(jwt(epochMs + lifetimeMs, sub = "user-maya-3"), epochMs + ahead))
+        // Learned from a token minted just now: the server's clock from then on, for every token.
+        val fresh = jwt(epochMs + 60_000L + lifetimeMs, sub = "user-maya-4", iatMs = epochMs + 60_000L)
+        clock.learnFromFreshToken(fresh, epochMs + ahead + 60_000L)
+        assertEquals(true, clock.offsetKnown)
+        assertEquals(lifetimeMs, clock.remainingMillis(fresh, epochMs + ahead + 60_000L))
+        assertEquals(lifetimeMs - 60_000L, clock.remainingMillis(token, epochMs + ahead + 60_000L))
+        assertEquals(lifetimeMs - 60_000L, clock.remainingMillis(jwt(epochMs + lifetimeMs, sub = "user-maya-3"), epochMs + ahead + 60_000L))
+        // The schedule reads the server's clock too once the offset is known.
+        assertEquals(SETTINGS_WEBVIEW_REFRESH_LEAD_MS, settingsWebViewTokenSchedule(fresh, epochMs + ahead + 60_000L, clock)?.let {
+            epochMs + ahead + 60_000L + lifetimeMs - it.refreshAtDeviceMs
         })
     }
 
