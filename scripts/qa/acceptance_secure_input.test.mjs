@@ -45,10 +45,31 @@ function screen(s) {
   return "app: home" + (s.imeLearned ? " IME-SUGGEST=[" + s.imeLearned + "]" : "") + (s.autofillSaved ? " AUTOFILL-CHIP=[" + s.autofillSaved + "]" : "") + (s.clipboard ? " CLIP=[" + s.clipboard + "]" : "");
 }
 function record(s) {
-  if (s.recPaused) return;
+  if (!s.recRunning) return;
   const seg = s.segments[s.recCurrent] || (s.segments[s.recCurrent] = []);
   const frame = screen(s);
   if (seg.at(-1) !== frame) seg.push(frame);
+}
+// The workflow's on-device screenrecord loop, one step per device interaction.
+// pauseNonce = content of the pause flag (null = absent). race = the loop had
+// already checked "no pause" when the pause arrived: it starts its next
+// segment anyway, race calls later (the reviewer's interleaving).
+function startSegment(s) {
+  s.recIndex = (s.recIndex || 1) + 1;
+  s.recCurrent = "qa-rec-" + String(s.recIndex).padStart(2, "0") + ".mp4";
+  s.segments[s.recCurrent] = s.segments[s.recCurrent] || [];
+  s.recRunning = true;
+}
+function loopStep(s) {
+  if (s.loopDead || s.recRunning) return;
+  if (s.pending > 0) { s.pending--; if (s.pending === 0) startSegment(s); return; }
+  if (s.pauseNonce) { s.ackNonce = s.pauseNonce; return; }
+  startSegment(s);
+}
+function interrupt(s) {
+  if (!s.recRunning) return;
+  s.recRunning = false;
+  if (s.race && !s.raceUsed && s.pauseNonce) { s.raceUsed = true; s.pending = s.race; }
 }
 function type(s, text) {
   if (s.focus !== BROWSER || !s.field) return;
@@ -58,7 +79,7 @@ function type(s, text) {
   if (s.autofillService !== "null") { s.autofillSaved = text; log(s, "AutofillManager", "save request value=" + text); }
   log(s, "chromium", "[form] field " + s.field + " value=" + s.form[s.field]);
 }
-module.exports = { APP, BROWSER, IME, load, store, local, log, screen, record, type };
+module.exports = { APP, BROWSER, IME, load, store, local, log, screen, record, type, loopStep, interrupt };
 `;
 
 const FAKE_ADB = String.raw`#!/usr/bin/env node
@@ -73,6 +94,7 @@ fs.appendFileSync(env.FAKE_ADB_LOG, JSON.stringify({ argv: process.argv.slice(2)
 const s = D.load(env.FAKE_ADB_STATE);
 const out = (x) => process.stdout.write(x);
 const done = (code = 0) => { D.record(s); D.store(env.FAKE_ADB_STATE, s); process.exit(code); };
+D.loopStep(s);
 D.record(s);
 const a = args.join(" ");
 const nodes = () => {
@@ -124,6 +146,7 @@ if (a === "shell dumpsys input_method") { out("  mInputShown=" + (s.keyboard ? "
 if (a === "shell dumpsys activity top") { out("TASK " + s.focus + "\n  mText=" + (s.focus === D.BROWSER ? s.form.email + " " + s.form.password : "home") + "\n"); done(); }
 if (a === "shell date +%s") { out(String(Math.floor(Date.now() / 1000)) + "\n"); done(); }
 if (a === "shell date '+%m-%d %H:%M:%S'") { out(D.local(Date.now()) + "\n"); done(); }
+if (s.logcatFails && args[0] === "logcat" && args.includes("epoch")) { process.stderr.write("transport lost\n"); done(1); }
 if (args[0] === "logcat" && args.includes("epoch")) {
   for (const l of s.logs) if (l.tag === "SlockAppLogin") out((l.t / 1000).toFixed(3) + "  4242  4242 I SlockAppLogin: " + l.msg + "\n");
   done();
@@ -139,11 +162,20 @@ if (a === "shell pm clear " + D.IME) { s.imeLearned = ""; out("Success\n"); done
 if (a === "shell pm clear " + D.BROWSER) { s.form = { email: "", password: "" }; s.sessionEmail = ""; s.browserRunning = false; out("Success\n"); done(); }
 if (a === "shell am force-stop " + D.BROWSER) { s.browserRunning = false; done(); }
 if (a === "shell pidof " + D.BROWSER) { if (!s.browserRunning) done(1); out("777\n"); done(); }
-if (a === "shell pidof screenrecord") done(1);
+if (a === "shell pidof screenrecord") { if (!s.recRunning) done(1); out("999\n"); done(); }
+if (a === "shell pkill -INT screenrecord") { D.interrupt(s); done(); }
+if (a === "shell cat /data/local/tmp/qa-run-owner") { if (!s.ownerMarker) done(1); out(s.ownerMarker + "\n"); done(); }
+if (a === "shell getprop ro.boot.qemu.avd_name") { out((s.avdName || "") + "\n"); done(); }
+if (a === "shell getprop ro.kernel.qemu.avd_name") { out("\n"); done(); }
+{ const m = /^shell echo ([A-Za-z0-9]+) > \/data\/local\/tmp\/qa-rec-pause$/.exec(a); if (m) { s.pauseNonce = m[1]; done(); } }
+if (a === "shell cat /data/local/tmp/qa-rec-pause") { if (!s.pauseNonce) done(1); out(s.pauseNonce + "\n"); done(); }
+if (a === "shell cat /data/local/tmp/qa-rec-ack") { if (!s.ackNonce) done(1); out(s.ackNonce + "\n"); done(); }
+if (a === "shell [ -e /data/local/tmp/qa-rec-done ] && echo DONE || echo RUNNING") { out("RUNNING\n"); done(); }
 if (a === "shell pidof " + D.APP) { out("1234\n"); done(); }
 if (/clipboard/.test(a)) { s.clipboard = a; done(); }
-if (a === "shell touch /data/local/tmp/qa-rec-pause") { s.recPaused = true; done(); }
-if (a === "shell rm -f /data/local/tmp/qa-rec-pause") { if (s.recPaused) { s.recPaused = false; s.recIndex = (s.recIndex || 1) + 1; s.recCurrent = "qa-rec-" + String(s.recIndex).padStart(2, "0") + ".mp4"; } done(); }
+// a36fc69's protocol (touch flag) maps onto the same loop model, so a test can replay either head.
+if (a === "shell touch /data/local/tmp/qa-rec-pause") { s.pauseNonce = "legacy"; done(); }
+if (a === "shell rm -f /data/local/tmp/qa-rec-pause") { s.pauseNonce = null; done(); }
 if (a === "shell ls /sdcard/qa-rec-*.mp4 2>/dev/null; echo LIST-END") { for (const n of Object.keys(s.segments).sort()) out("/sdcard/" + n + "\n"); out("LIST-END\n"); done(); }
 if (args[0] === "shell" && args[1] === "rm" && args[2] === "-f" && /^\/sdcard\/qa-rec-\d+\.mp4$/.test(args[3] || "")) { delete s.segments[args[3].slice(8)]; done(); }
 done();
@@ -167,7 +199,7 @@ export function builtinModels() {
 `;
 
 // Fake emulator console: `event text X` types X on the fake device.
-async function startConsole(root, statePath, libPath) {
+async function startConsole(root, statePath, libPath, consoleAvdName = null) {
   const D = (await import(libPath)).default;
   const lines = [];
   const server = net.createServer((sock) => {
@@ -181,6 +213,7 @@ async function startConsole(root, statePath, libPath) {
         const line = buf.slice(0, i); buf = buf.slice(i + 1);
         lines.push(line);
         if (line.startsWith("auth ")) sock.write(line === "auth fake-console-token" ? "OK\r\n" : "KO: bad auth\r\n");
+        else if (line === "avd name") sock.write(`${consoleAvdName ?? D.load(statePath).avdName}\r\nOK\r\n`);
         else if (line.startsWith("event text ")) {
           const s = D.load(statePath);
           D.record(s);
@@ -198,7 +231,8 @@ async function startConsole(root, statePath, libPath) {
   return { port: server.address().port, tokenFile, lines, close: () => server.close() };
 }
 
-async function runAgent({ script, state = {}, console: withConsole = true, killWhen = null }) {
+const OWNER_TOKEN = "fake-owner-token-0123456789";
+async function runAgent({ script, state = {}, console: withConsole = true, killWhen = null, consoleAvdName = null, extraEnv = {}, extraArgs = [] }) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "qa-secure-input-"));
   const bin = path.join(root, "bin");
   const out = path.join(root, "qa-evidence");
@@ -215,11 +249,18 @@ async function runAgent({ script, state = {}, console: withConsole = true, killW
   fs.writeFileSync(adbState, JSON.stringify({
     focus: APP, loggedIn: false, page: "", field: "", keyboard: false, form: { email: "", password: "" },
     sessionEmail: "", browserRunning: false, imeLearned: "", autofillService: "com.google.android.gms/.autofill.AutofillService",
-    autofillSaved: "", clipboard: "", logs: [], segments: {}, recCurrent: "qa-rec-01.mp4", recPaused: false, ...state,
+    autofillSaved: "", clipboard: "", logs: [], segments: {}, recCurrent: "qa-rec-01.mp4", recIndex: 1, recRunning: true,
+    pauseNonce: null, ackNonce: null, ownerMarker: OWNER_TOKEN, avdName: "Fake_AVD_34", ...state,
   }));
   const modelLog = path.join(root, "model.log");
   fs.writeFileSync(modelLog, "");
-  const consoleSrv = withConsole ? await startConsole(root, adbState, libPath) : null;
+  const consoleSrv = withConsole ? await startConsole(root, adbState, libPath, consoleAvdName) : null;
+  // The fake emulator's serial names its console port (emulator-<port>).
+  if (consoleSrv && state.serial === undefined) {
+    const st = JSON.parse(fs.readFileSync(adbState, "utf8"));
+    st.serial = `emulator-${consoleSrv.port}`;
+    fs.writeFileSync(adbState, JSON.stringify(st));
+  }
   const env = {
     PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
     HOME: root,
@@ -234,12 +275,14 @@ async function runAgent({ script, state = {}, console: withConsole = true, killW
     QA_TEST_EMAIL: FAKE_EMAIL,
     QA_TEST_PASSWORD: FAKE_PASSWORD,
     QA_PLAYBOOK: path.join(root, "no-playbook.md"),
+    QA_DEVICE_OWNER_TOKEN: OWNER_TOKEN,
+    ...extraEnv,
     ...(consoleSrv ? { QA_EMULATOR_CONSOLE_PORT: String(consoleSrv.port), QA_EMULATOR_CONSOLE_TOKEN_FILE: consoleSrv.tokenFile } : {}),
   };
   fs.mkdirSync(env.TMPDIR);
   const result = await new Promise((resolve) => {
     let stdout = "", stderr = "";
-    const child = spawn(process.execPath, [agentPath, "--goal", "log in and confirm home", "--max-turns", "20", "--max-minutes", "10", "--out", out],
+    const child = spawn(process.execPath, [agentPath, "--goal", "log in and confirm home", "--max-turns", "20", "--max-minutes", "10", "--out", out, ...extraArgs],
       { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] });
     child.stdout.on("data", (d) => { stdout += d; });
     child.stderr.on("data", (d) => { stderr += d; });
@@ -467,6 +510,90 @@ test("interrupted inside the login window (SIGTERM after the password): browser 
     // The device still shows the filled form and the keyboard learned the values: only the gate stands between.
     assert.equal(run.device().form.password, FAKE_PASSWORD);
     assert.ok(!fs.existsSync(path.join(run.out, "activity-top.txt")));
+  } finally {
+    cleanup(run);
+  }
+});
+
+// ---- #4830 review: unknown fails closed (Argus) -------------------------------------------------
+
+const DEVICE_CHANGES = /pm clear|force-stop|autofill_service null|pkill|qa-rec-pause/;
+const deviceChanges = (run) => run.adbCalls().map((c) => c.argv.join(" ")).filter((a) => DEVICE_CHANGES.test(a));
+
+test("F3 a failed login-window probe (logcat unreadable) latches UNKNOWN: no capture, and the model's pass is not the verdict", async () => {
+  const run = await runAgent({
+    script: [{ action: "finish", verdict: "pass", reason: "fake", diagnosis: null, annotations: [] }],
+    state: { logcatFails: true },
+  });
+  try {
+    assertNoLeak(run);
+    const supp = readJson(run, "capture-suppression.json");
+    assert.equal(supp.unresolved, true);
+    assert.ok(supp.phases[0].reasons.some((r) => /probe failed/.test(r)), JSON.stringify(supp.phases));
+    const verdict = readJson(run, "verdict.json");
+    assert.equal(verdict.verdict, "error");
+    assert.equal(verdict.secure_input.status, "UNKNOWN");
+    assert.ok(!fs.readdirSync(run.out).some((f) => /^step-\d+\.png$/.test(f)), "a frame was captured although the probe failed");
+    assert.ok(!run.modelCalls.some((m) => lastUserHasImage(m)));
+    assert.equal(run.code, 2);
+  } finally {
+    cleanup(run);
+  }
+});
+
+test("F5 without this run's ownership proof the device is not modified: no recorder pause/kill, no autofill change, no clearing, nothing typed", async () => {
+  for (const [name, opts] of [
+    ["no owner token", { extraEnv: { QA_DEVICE_OWNER_TOKEN: "" } }],
+    ["marker of another owner", { state: { ownerMarker: "someone-elses-token-000000" } }],
+    ["hosted runner without a receipt", { extraEnv: { GITHUB_ACTIONS: "true", GITHUB_RUN_ID: "4830", GITHUB_RUN_ATTEMPT: "1" } }],
+  ]) {
+    const run = await runAgent({ script: LOGIN_SCRIPT, ...opts });
+    try {
+      assertNoLeak(run);
+      assert.deepEqual(deviceChanges(run), [], `${name}: device modified`);
+      assert.equal(run.consoleLines.length, 0, `${name}: console used`);
+      assert.equal(run.device().form.email, "", name);
+      assert.equal(readJson(run, "verdict.json").secure_input.status, "UNKNOWN", name);
+    } finally {
+      cleanup(run);
+    }
+  }
+});
+
+test("F5 the console must belong to the ADB target: a console naming another AVD never receives the secret", async () => {
+  const run = await runAgent({ script: LOGIN_SCRIPT, consoleAvdName: "Other_Emulator_AVD" });
+  try {
+    assertNoLeak(run);
+    assert.deepEqual(run.consoleLines.filter((l) => l.startsWith("event text")), []);
+    assert.equal(readJson(run, "verdict.json").secure_input.status, "UNKNOWN");
+  } finally {
+    cleanup(run);
+  }
+});
+
+test("F6 a segment the loop starts AFTER the pause (checked before it) is waited for, interrupted and dropped before anything is typed", async () => {
+  const run = await runAgent({ script: LOGIN_SCRIPT, state: { race: 6 } });
+  try {
+    assertNoLeak(run);
+    const [phase] = readJson(run, "capture-suppression.json").phases;
+    assert.equal(phase.status, "resumed");
+    assert.ok(phase.dropped_segments.includes("qa-rec-02.mp4"), JSON.stringify(phase));
+    // Every kept segment shows only frames from outside the window.
+    for (const frames of Object.values(run.device().segments)) for (const f of frames) assert.doesNotMatch(f, /^browser:/);
+  } finally {
+    cleanup(run);
+  }
+});
+
+test("F6 a loop that never acknowledges the pause (unconfirmed stop) ends UNKNOWN before anything is typed", async () => {
+  const run = await runAgent({ script: LOGIN_SCRIPT, state: { loopDead: true } });
+  try {
+    assertNoLeak(run);
+    assert.equal(run.consoleLines.length, 0);
+    assert.equal(run.device().form.email, "");
+    const [phase] = readJson(run, "capture-suppression.json").phases;
+    assert.equal(phase.recording, "unconfirmed");
+    assert.equal(readJson(run, "verdict.json").secure_input.status, "UNKNOWN");
   } finally {
     cleanup(run);
   }

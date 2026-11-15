@@ -27,11 +27,24 @@
 // read in memory. Anything less ends the run UNKNOWN (verdict error,
 // secure_input.status=UNKNOWN).
 //
+// Unknown fails closed: a login-window probe that cannot be read (Android
+// logcat/focus/clock, iOS accessibility tree) latches UNKNOWN before anything
+// is captured; iOS geometry comes from device info, never from a screenshot.
+// Device changes (recorder pause, autofill, clearing the browser/login surface
+// and the keyboard, console typing) happen only on an emulator this run owns
+// (device_ownership.mjs: hosted receipt or standalone token); otherwise the
+// device is not touched and a login window ends UNKNOWN. The recorder pause is
+// an acknowledged handshake with the workflow's loop (secure_input.mjs
+// pauseRecorder). capture-suppression.json is bound to the run/attempt and
+// marked completed only at the very end; secure_evidence.mjs treats anything
+// else as unknown.
+//
 // Needs PI_API_KEY/MINIMAX_API_KEY + @earendil-works/pi-ai (SLOCK_PI_AI_MODULE).
 //
 // Usage:
 //   node scripts/qa/acceptance_agent.mjs --goal "<acceptance goal>" [--out qa-evidence]
 //     [--max-turns 30] [--max-minutes 20] [--device <serial>]
+//     [--device-ownership-receipt <file> (hosted) | --device-owner-token <token> (standalone)]
 
 import { resolvePiModel } from "./pi_model.mjs";
 import { execFileSync } from "node:child_process";
@@ -52,6 +65,7 @@ import { buildEvidenceOverlays, screenshotPixelTap } from "./evidence_annotation
 import { capacityClientFromEnv, runWithModelRetries } from "./model_capacity.mjs";
 import { detectForeignAndroidSystemBlocker } from "./system_blocker.mjs";
 import { serverGuardSection } from "./server_guard.mjs";
+import { verifySeatOwnership } from "./device_ownership.mjs";
 import { adbRunAsShellArgs } from "./mobile_login_bootstrap_lib.mjs";
 import {
   CaptureGate,
@@ -63,6 +77,11 @@ import {
   formOutline,
   isExternalLoginSurface,
   loginLogState,
+  pauseRecorder,
+  RECORDING_ACK,
+  RECORDING_DONE,
+  RECORDING_PAUSE,
+  segmentIndex,
   parseFocusedPackage,
   parseImePackage,
   parseKeyboardShown,
@@ -89,6 +108,8 @@ const opts = {
   platform: arg("--platform", process.env.QA_PLATFORM || "android"),
   iosIoDir: arg("--ios-io-dir", process.env.QA_LOOP_IO_DIR || ""),
   iosUdid: arg("--ios-udid", process.env.QA_IOS_UDID || "booted"),
+  deviceOwnershipReceipt: arg("--device-ownership-receipt", process.env.QA_DEVICE_OWNERSHIP_RECEIPT || ""),
+  deviceOwnerToken: arg("--device-owner-token", process.env.QA_DEVICE_OWNER_TOKEN || ""),
 };
 
 // Non-null only on --platform ios; every device-touching helper below branches
@@ -98,8 +119,9 @@ let modelCapacity = null;
 let lastCaptureBoundary = null;
 
 const gate = new CaptureGate();
-const RECORDING_PAUSE_FLAG = "/data/local/tmp/qa-rec-pause";
 let interruptHook = null;
+// Seat ownership (Android): null until verified at start.
+let seat = null;
 
 const piKey = () => process.env.MINIMAX_API_KEY || process.env.PI_API_KEY || "";
 function loadModels() {
@@ -309,11 +331,13 @@ async function inputText(value) {
 // an Android device without a console refuse. Failures surface as fixed text.
 async function secureType(secret) {
   if (drv) return drv.secureText(secret);
-  let serial = opts.device;
-  if (!serial) {
-    try { serial = adb(["get-serialno"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { serial = ""; }
-  }
-  await emulatorConsoleType({ port: emulatorConsolePort(serial), secret, tokenFile: process.env.QA_EMULATOR_CONSOLE_TOKEN_FILE || undefined });
+  // Only the emulator this run owns, through ITS console (port of the verified
+  // serial; the console must name the same AVD as the ADB target).
+  if (!seat?.owned) throw new SecureInputError("device ownership not verified: refusing to type a secret");
+  await emulatorConsoleType({
+    port: emulatorConsolePort(seat.serial), secret, expectAvdName: seat.avdName,
+    tokenFile: process.env.QA_EMULATOR_CONSOLE_TOKEN_FILE || undefined,
+  });
 }
 
 const KEYCODES = { back: "4", home: "3", enter: "66", tab: "61", del: "67", esc: "111", app_switch: "187" };
@@ -638,6 +662,24 @@ async function main() {
   if (!limits) { console.error("invalid execution budget: turns 20-160, minutes 10-90, no-progress 3-30 required"); process.exit(2); }
   Object.assign(opts, limits);
   fs.mkdirSync(opts.out, { recursive: true });
+  // The suppression record exists from the first moment (not completed): a
+  // run that dies before its end leaves a record the egress gate refuses.
+  const suppressionPath = path.join(opts.out, "capture-suppression.json");
+  const writeSuppression = () => fs.writeFileSync(suppressionPath, JSON.stringify(gate.summary(), null, 2));
+  writeSuppression();
+  let turns = 0;
+  // An interrupted run (signal, crash) cannot prove it never entered a login
+  // window after its last check: it stays UNKNOWN on disk, so every later
+  // collector and egress gate keeps it suppressed.
+  const onInterrupt = (why) => {
+    try {
+      const phase = gate.markUnknown(turns, [`run interrupted (${why})${gate.active ? " inside a login window" : ""}`]);
+      if (drv && phase.recording === "unknown") phase.recording = "not_recorded";
+      writeSuppression();
+    } catch { /* best effort */ }
+  };
+  interruptHook = onInterrupt;
+  for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"]) process.once(sig, () => { onInterrupt(sig); process.exit(2); });
   modelCapacity = capacityClientFromEnv({
     outDir: opts.out,
     onEvent: (event) => recordSession("model_capacity", event),
@@ -648,6 +690,13 @@ async function main() {
     drv = createIosDriver({ ioDir: opts.iosIoDir, udid: opts.iosUdid, bundle: opts.appPackage });
     console.error(`waiting for the iOS driver (${drv.driver}) to open the app...`);
     await drv.waitReady();
+  } else {
+    // Read-only: proves (or not) that this run may modify the device.
+    seat = verifySeatOwnership({
+      adb: (args) => adb(args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }),
+      device: opts.device, receiptPath: opts.deviceOwnershipReceipt, token: opts.deviceOwnerToken,
+    });
+    console.error(seat.owned ? `device ownership verified (${seat.mode}, ${seat.serial})` : `device ownership NOT verified: ${seat.reason}; the device will not be modified`);
   }
   const stepsPath = path.join(opts.out, "steps.jsonl");
   const pidPath = path.join(opts.out, "app-pids.txt");
@@ -698,9 +747,7 @@ async function main() {
   // receipt NAMES; never content). secure_evidence.mjs and the workflows read
   // it: recordings, captures, logcat lines and screen dumps that overlap a
   // window that is not provably closed never leave the runner.
-  const suppressionPath = path.join(opts.out, "capture-suppression.json");
-  const writeSuppression = () => fs.writeFileSync(suppressionPath, JSON.stringify(gate.summary(), null, 2));
-  writeSuppression();
+  logStep({ turn: 0, event: "device_ownership", ...(drv ? { platform: "ios" } : seat.owned ? { owned: true, mode: seat.mode } : { owned: false, reason: seat.reason }) });
   let phaseCtx = null;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const adbQuiet = (args) => adb(args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
@@ -724,47 +771,44 @@ async function main() {
   const pmClear = (pkg) => {
     try { return /\bSuccess\b/.test(adbQuiet(["shell", "pm", "clear", pkg])); } catch { return false; }
   };
-  // The workflow's screenrecord loop idles while the pause flag exists. At a
-  // window start the running segment is interrupted, two consecutive "no
-  // screenrecord process" reads are required, and the NEWEST segment is
-  // deleted on the device (it may show the login page being entered: never
-  // trimmed, dropped whole). Recording restarts (new segment) only after the
-  // receipts.
+  // Acknowledged pause of the workflow's screenrecord loop (secure_input.mjs
+  // pauseRecorder): a fresh nonce in the pause flag, recordings interrupted
+  // until the LOOP acknowledges that nonce (or has exited), then every segment
+  // from the one current at the previous clean check is deleted whole.
+  // Recording restarts (new segment) only after the receipts.
+  const listSegments = () => {
+    const out = adbQuiet(["shell", "ls /sdcard/qa-rec-*.mp4 2>/dev/null; echo LIST-END"]);
+    if (!out.includes("LIST-END")) throw new Error("segment list incomplete");
+    return out.split(/\s+/).filter((f) => /^\/sdcard\/qa-rec-\d+\.mp4$/.test(f)).sort();
+  };
+  let segmentBoundary = null;
   async function stopRecording() {
-    try { adbQuiet(["shell", "touch", RECORDING_PAUSE_FLAG]); } catch { return { stopped: false, dropped: [] }; }
-    try { adbQuiet(["shell", "pkill", "-INT", "screenrecord"]); } catch { /* none running */ }
-    let clean = 0;
-    for (let i = 0; i < 20 && clean < 2; i++) {
-      clean = noProcess("screenrecord") ? clean + 1 : 0;
-      // A segment that started between the loop's flag check and our pkill.
-      if (clean === 0) { try { adbQuiet(["shell", "pkill", "-INT", "screenrecord"]); } catch { /* raced exit */ } }
-      if (clean < 2) await sleep(500);
-    }
-    if (clean < 2) return { stopped: false, dropped: [] };
-    const list = () => {
-      try {
-        const out = adbQuiet(["shell", "ls /sdcard/qa-rec-*.mp4 2>/dev/null; echo LIST-END"]);
-        if (!out.includes("LIST-END")) return null;
-        return out.split(/\s+/).filter((f) => /^\/sdcard\/qa-rec-\d+\.mp4$/.test(f)).sort();
-      } catch { return null; }
-    };
-    const before = list();
-    if (before === null) return { stopped: false, dropped: [] };
-    const newest = before.at(-1);
-    if (!newest) return { stopped: true, dropped: [] };
-    try { adbQuiet(["shell", "rm", "-f", newest]); } catch { /* verified next */ }
-    const after = list();
-    if (after === null || after.includes(newest)) return { stopped: false, dropped: [] };
-    return { stopped: true, dropped: [path.basename(newest)] };
+    if (!seat?.owned) return { stopped: false, dropped: [], reason: `device ownership not verified (${seat?.reason ?? "unknown"}): recorder not touched` };
+    const nonce = randomUUID().replace(/-/g, "");
+    return pauseRecorder({
+      nonce, boundary: segmentBoundary, sleep,
+      ops: {
+        writePause: (n) => { adbQuiet(["shell", `echo ${n} > ${RECORDING_PAUSE}`]); return adbQuiet(["shell", "cat", RECORDING_PAUSE]).trim() === n; },
+        interrupt: () => adbQuiet(["shell", "pkill", "-INT", "screenrecord"]),
+        readAck: () => adbQuiet(["shell", "cat", RECORDING_ACK]).trim(),
+        loopDone: () => /\bDONE\b/.test(adbQuiet(["shell", `[ -e ${RECORDING_DONE} ] && echo DONE || echo RUNNING`])),
+        recorderRunning: () => !noProcess("screenrecord"),
+        list: listSegments,
+        remove: (f) => adbQuiet(["shell", "rm", "-f", f]),
+      },
+    });
   }
   function markUnknown(turn, reasons) {
     const phase = gate.markUnknown(turn, reasons);
+    if (drv && phase.recording === "unknown") phase.recording = "not_recorded";
+    // Logcat lines are withheld from the last clean check on.
+    if (!drv && !phase.device_start_local && lastCheckLocal) phase.device_start_local = lastCheckLocal;
     logStep({ turn, event: "capture_suppressed", phase: "unknown", start_ts: phase.start_ts, unknown_ts: phase.unknown_ts, reasons });
     writeSuppression();
   }
   // Login-log cursor: only attempts that open AFTER the last check (or one
   // still open at the first check) start a window.
-  let loginCursor = null;
+  let loginCursor = null; // { epoch, seen } (secure_input.mjs loginLogState)
   let lastCheckLocal = "";
   async function beginSecretPhase(turn, reason, { sinceEpoch = NaN, surface = null } = {}) {
     if (gate.active) {
@@ -786,14 +830,15 @@ async function main() {
       const rec = await stopRecording();
       phase.recording = rec.stopped ? "stopped" : "unconfirmed";
       phase.dropped_segments = rec.dropped;
+      if (!rec.stopped) phase.recording_reason = rec.reason;
     }
     logStep({ turn, event: "capture_suppressed", phase: "begin", reason, start_ts: phase.start_ts });
     writeSuppression();
     return (phase.recording === "stopped" && Number.isFinite(phaseCtx.sinceEpoch)) || phase.recording === "not_recorded";
   }
-  // Runs before EVERY capture. Returns "clear" (capture allowed), "window"
-  // (a login window is open) or "unconfirmed" (could not tell: skip this
-  // turn's capture, which is recorded as suppressed).
+  // Runs before EVERY capture. Returns "clear" (capture allowed) or "window"
+  // (a login window is open, or the probe could not tell: then the window is
+  // latched UNKNOWN for the rest of the run -- unknown is never clear).
   async function detectLoginWindow(turn) {
     if (gate.suppressed) {
       if (!drv && phaseCtx) {
@@ -809,22 +854,34 @@ async function main() {
         if (!(await beginSecretPhase(turn, "login_page"))) markUnknown(turn, ["capture could not be suppressed"]);
         return "window";
       }
+      if (visible !== false) {
+        markUnknown(turn, ["login-surface probe unavailable (accessibility tree unreadable or empty): treated as a login window"]);
+        return "window";
+      }
       return "clear";
     }
     const local = deviceLocal();
     const logs = loginLog();
     const focused = focusedPackage();
-    if (logs === null || focused === null) return "unconfirmed";
+    let segments = null;
+    try { segments = listSegments(); } catch { segments = null; }
+    const failed = [!local && "device clock", logs === null && "app login log", focused === null && "focused window", segments === null && "recording segments"].filter(Boolean);
+    if (failed.length) {
+      markUnknown(turn, [`login-window probe failed (${failed.join(", ")}): treated as a login window`]);
+      return "window";
+    }
     const state = loginLogState(logs, loginCursor ?? -Infinity);
     const opened = loginCursor === null ? (state.open ? state.newest : null) : state.openedAfter;
-    loginCursor = Math.max(loginCursor ?? -Infinity, state.newest);
+    loginCursor = state.cursor;
     const external = isExternalLoginSurface(focused, opts.appPackage);
     if (opened !== null || external) {
       const ok = await beginSecretPhase(turn, opened !== null ? "login_page" : "browser_surface", { sinceEpoch: opened ?? NaN, surface: external ? focused : null });
-      if (!ok) markUnknown(turn, ["screen recording could not be confirmed stopped at the login window"]);
+      if (!ok) markUnknown(turn, [`screen recording could not be confirmed stopped at the login window${gate.active?.recording_reason ? ` (${gate.active.recording_reason})` : ""}`]);
       return "window";
     }
     lastCheckLocal = local;
+    const newest = segments.map(segmentIndex).filter(Number.isFinite);
+    segmentBoundary = newest.length ? Math.max(...newest) : null;
     return "clear";
   }
   // Resume ONLY on positive receipts (secure_input.mjs evaluateResumeReceipts).
@@ -883,21 +940,15 @@ async function main() {
     const phase = gate.resume(turn, result.receipts);
     if (!drv) {
       phase.device_end_local = deviceLocal();
-      loginCursor = Math.max(loginCursor ?? -Infinity, deviceEpoch() || -Infinity);
-      try { adbQuiet(["shell", "rm", "-f", RECORDING_PAUSE_FLAG]); } catch { /* loop stays idle: safe */ }
+      const now = deviceEpoch();
+      if (Number.isFinite(now) && now > (loginCursor?.epoch ?? -Infinity)) loginCursor = { epoch: now, seen: new Map() };
+      try { adbQuiet(["shell", "rm", "-f", RECORDING_PAUSE]); } catch { /* loop stays idle: safe */ }
     }
     phaseCtx = null;
     logStep({ turn, event: "capture_suppressed", phase: "end", start_ts: phase.start_ts, end_ts: phase.end_ts, receipts: Object.keys(phase.receipts) });
     writeSuppression();
     return true;
   }
-  // An interrupted run (signal, crash) inside a login window stays UNKNOWN on
-  // disk, so every later collector and egress gate keeps it suppressed.
-  const onInterrupt = (why) => {
-    if (gate.active || gate.unresolved) { try { markUnknown(turns ?? 0, [`run interrupted (${why}) inside a login window`]); } catch { /* best effort */ } }
-  };
-  interruptHook = onInterrupt;
-  for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"]) process.once(sig, () => { onInterrupt(sig); process.exit(2); });
   const SECRET_PHASE_ACTIONS = new Set(["tap", "tap_text", "swipe", "long_press", "text", "key", "clear", "wait", "dump_ui", "secret_phase"]);
 
   const SUPPRESSED_NOTE = 'Screen capture SUPPRESSED (login window): no screenshot and no UI text until the runner can prove the login flow ended. dump_ui returns only a bounds-only form outline; tap a field, type ${secret:NAME}, then submit (key enter), wait, and send {"action":"secret_phase","state":"end"}.';
@@ -914,7 +965,7 @@ async function main() {
   // (auto:* prefix distinguishes source on the Stamp timeline).
   stampCheckpoint(0, "auto:start", opts.goal);
 
-  let verdict = null, reason = "", turns = 0, executionDiagnosis = null;
+  let verdict = null, reason = "", executionDiagnosis = null;
   let noProgressTriggered = false, lastObservationFingerprint = "", sameObservationTurns = 0;
   // Why this exists: "undecided" has several causes with OPPOSITE next actions —
   // budget exhausted (raise the budget and rerun) vs the no-progress fuse (raise
@@ -1316,6 +1367,8 @@ async function main() {
   };
   fs.writeFileSync(path.join(opts.out, "usage.json"), JSON.stringify({ ...modelUsage, totalTokens: modelUsage.input + modelUsage.output, model: modelName, perCall: usageDetail }, null, 2));
   fs.writeFileSync(path.join(opts.out, "verdict.json"), JSON.stringify(result, null, 2));
+  // Finalised only here: the record now covers the whole run.
+  gate.completed = true;
   writeSuppression();
   stampCheckpoint(turns, "auto:verdict", `${verdict}: ${reason}`);
   await Promise.allSettled(stampPending);

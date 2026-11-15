@@ -94,18 +94,34 @@ export function encodeConsoleText(secret) {
   return value;
 }
 
+// The console port is the ADB serial's own (emulator-<port>). An override
+// (QA_EMULATOR_CONSOLE_PORT) is accepted only when it names that same port: a
+// console that belongs to another emulator must never receive a secret.
 export function emulatorConsolePort(serial, env = process.env) {
-  if (env.QA_EMULATOR_CONSOLE_PORT && /^\d+$/.test(env.QA_EMULATOR_CONSOLE_PORT)) return Number(env.QA_EMULATOR_CONSOLE_PORT);
   const m = /^emulator-(\d+)$/.exec(String(serial || ""));
-  return m ? Number(m[1]) : null;
+  const own = m ? Number(m[1]) : null;
+  const override = env.QA_EMULATOR_CONSOLE_PORT;
+  if (override !== undefined && override !== "") {
+    if (!/^\d+$/.test(override) || Number(override) !== own) return null;
+  }
+  return own;
 }
 
 // Types `secret` through the emulator console. Resolves on the console's OK;
 // every failure is a SecureInputError with a fixed message (console replies
 // are never echoed: they could quote the line that was sent).
-export async function emulatorConsoleType({ port, secret, tokenFile, connect = net.connect, timeoutMs = 15000 }) {
+//
+// Console binding: before anything is typed the console is asked `avd name`
+// and the answer must equal `expectAvdName` (read from the ADB target's
+// ro.boot.qemu.avd_name). A console that answers for another emulator, or a
+// missing expectation, refuses: the secret goes only to the device whose
+// ownership was verified over ADB.
+export async function emulatorConsoleType({ port, secret, tokenFile, expectAvdName, connect = net.connect, timeoutMs = 15000 }) {
   const text = encodeConsoleText(secret);
   if (!Number.isInteger(port) || port <= 0) throw new SecureInputError("no emulator console: refusing to type a secret (no argv-free channel)");
+  if (typeof expectAvdName !== "string" || !/^[A-Za-z0-9._-]+$/.test(expectAvdName)) {
+    throw new SecureInputError("emulator console not bound to the ADB target (AVD name unknown): refusing to type a secret");
+  }
   let token = "";
   try { token = fs.readFileSync(tokenFile || path.join(os.homedir(), ".emulator_console_auth_token"), "utf8").trim(); } catch { /* checked below */ }
   return await new Promise((resolve, reject) => {
@@ -132,16 +148,18 @@ export async function emulatorConsoleType({ port, secret, tokenFile, connect = n
       if (!/(^|\n)OK\r?\n/.test(buffer)) return;
       const banner = buffer;
       buffer = "";
+      const askName = () => { stage = "avd"; socket.write("avd name\n"); };
       if (stage === "banner") {
         if (/Authentication required/i.test(banner)) {
           if (!token) return done(new SecureInputError("emulator console needs an auth token that is not readable"));
           stage = "auth";
           socket.write(`auth ${token}\n`);
-        } else {
-          stage = "text";
-          socket.write(`event text ${text}\n`);
-        }
+        } else askName();
       } else if (stage === "auth") {
+        askName();
+      } else if (stage === "avd") {
+        const name = banner.split(/\r?\n/).map((l) => l.trim()).find((l) => l && l !== "OK");
+        if (name !== expectAvdName) return done(new SecureInputError("emulator console belongs to a different emulator than the ADB target: refusing to type a secret"));
         stage = "text";
         socket.write(`event text ${text}\n`);
       } else if (stage === "text") {
@@ -153,12 +171,25 @@ export async function emulatorConsoleType({ port, secret, tokenFile, connect = n
 
 // ---------------------------------------------------------------- capture gate
 
+export const SUPPRESSION_CONTRACT = "qa-capture-suppression/v1";
+
+// The run this record belongs to. The egress gate compares it with its own
+// environment: a record from another run/attempt is no record.
+export function runBinding(env = process.env) {
+  return { github_run_id: String(env.GITHUB_RUN_ID || ""), github_run_attempt: String(env.GITHUB_RUN_ATTEMPT || "") };
+}
+
 export class CaptureGate {
-  constructor(now = () => Date.now()) {
+  constructor(now = () => Date.now(), env = process.env) {
     this.now = now;
     this.active = null;
     this.phases = [];
     this.unresolved = false;
+    // Set only when the producer ran to its end. A record that is not
+    // completed (crash, kill, early exit) proves nothing about the time after
+    // its last write: the egress gate treats it as unknown.
+    this.completed = false;
+    this.binding = runBinding(env);
   }
 
   get suppressed() {
@@ -195,9 +226,11 @@ export class CaptureGate {
 
   summary() {
     return {
-      contract: "qa-capture-suppression/v1",
+      contract: SUPPRESSION_CONTRACT,
       unresolved: this.unresolved,
       active: this.active !== null,
+      completed: this.completed,
+      binding: { ...this.binding },
       phases: this.phases.map((p) => ({ ...p })),
     };
   }
@@ -226,13 +259,17 @@ export function parseImePackage(settingValue) {
 }
 
 // Surfaces that never hold login input and stay capturable (system chrome,
-// permission prompts, the system resolver). Everything else that is not the
-// app under test and looks like a browser is an external login surface.
-const SYSTEM_SURFACES = new Set(["android", "com.android.systemui", "com.android.permissioncontroller", "com.google.android.permissioncontroller"]);
-const BROWSER_LIKE = /chrome|chromium|browser|firefox|mozilla|webview|customtab|opera|brave|samsung\.android\.app\.sbrowser|duckduckgo/i;
+// permission prompts, the system resolver, the stock launchers). Everything
+// else that is not the app under test is treated as a possible login surface
+// (fail closed): a login provider's own app or an unlisted browser cannot be
+// recognised by name, so an unknown package opens a login window too.
+const SYSTEM_SURFACES = new Set([
+  "android", "com.android.systemui", "com.android.permissioncontroller", "com.google.android.permissioncontroller",
+  "com.google.android.apps.nexuslauncher", "com.android.launcher3",
+]);
 export function isExternalLoginSurface(pkg, appPackage) {
   if (!pkg || pkg === appPackage || SYSTEM_SURFACES.has(pkg)) return false;
-  return BROWSER_LIKE.test(pkg);
+  return true;
 }
 
 // The app's own web-login diagnostics (compose/shared WebLoginAttempt.kt and
@@ -248,8 +285,8 @@ export const DEFAULT_COMPLETION_MARKER = LOGIN_COMPLETED_MARKER;
 export function parseLoginLog(logcatEpoch) {
   const out = [];
   for (const line of String(logcatEpoch ?? "").split("\n")) {
-    const m = /^\s*(\d+)\.(\d+)\s+\d+\s+\d+\s+[VDIWEF]\s+SlockAppLogin\s*:\s*(.*?)\s*$/.exec(line);
-    if (m) out.push({ epoch: Number(`${m[1]}.${m[2]}`), msg: m[3] });
+    const m = /^\s*(\d+)\.(\d+)\s+(\d+)\s+(\d+)\s+[VDIWEF]\s+SlockAppLogin\s*:\s*(.*?)\s*$/.exec(line);
+    if (m) out.push({ epoch: Number(`${m[1]}.${m[2]}`), msg: m[5], key: `${m[3]}/${m[4]}/${m[5]}` });
   }
   return out;
 }
@@ -367,21 +404,103 @@ export function evaluateResumeReceipts({
   return { ok: reasons.length === 0, reasons, receipts };
 }
 
-// Login-log state after `afterEpoch` (exclusive): the newest event epoch seen,
-// whether a login page opened after it, and whether an attempt is still open
-// at the end of the log (opened, with no exit after it).
-export function loginLogState(logcatEpoch, afterEpoch = -Infinity) {
-  let newest = afterEpoch;
+// Login-log state after a cursor. The cursor is the newest epoch already seen
+// plus how many times each line identity (pid/tid/message) was seen AT that
+// epoch: logcat stamps to the millisecond, so a new login-page line can share
+// the cursor's timestamp and must still count as new (>=, deduplicated by line
+// identity, not >). A plain number is a cursor with nothing seen at it.
+// Returns the newest epoch, the first login-page opening after the cursor,
+// whether an attempt is still open at the end of the log, and the new cursor.
+export function loginLogState(logcatEpoch, cursor = -Infinity) {
+  const after = typeof cursor === "number" ? cursor : Number.isFinite(cursor?.epoch) ? cursor.epoch : -Infinity;
+  const seenAt = cursor && typeof cursor === "object" && cursor.seen instanceof Map ? cursor.seen : new Map();
+  const countAtAfter = new Map(); // running count per line identity at `after`
+  const countsAtNewest = new Map(); // count per line identity at the newest epoch
+  let newest = after;
   let openedAfter = null;
   let open = false;
   for (const e of parseLoginLog(logcatEpoch)) {
+    let fresh = e.epoch > after;
+    if (e.epoch === after) {
+      const n = (countAtAfter.get(e.key) ?? 0) + 1;
+      countAtAfter.set(e.key, n);
+      fresh = n > (seenAt.get(e.key) ?? 0);
+    }
     if (LOGIN_PAGE_MARKER.test(e.msg)) {
       open = true;
-      if (e.epoch > afterEpoch && openedAfter === null) openedAfter = e.epoch;
+      if (fresh && openedAfter === null) openedAfter = e.epoch;
     } else if (LOGIN_COMPLETED_MARKER.test(e.msg) || LOGIN_ABANDONED_MARKER.test(e.msg) || /^web_login_attempt phase=idle\b/.test(e.msg)) {
       open = false;
     }
-    if (e.epoch > newest) newest = e.epoch;
+    if (e.epoch > newest) { newest = e.epoch; countsAtNewest.clear(); }
+    if (e.epoch === newest) countsAtNewest.set(e.key, (countsAtNewest.get(e.key) ?? 0) + 1);
   }
-  return { newest, openedAfter, open };
+  const seen = new Map(countsAtNewest);
+  if (newest === after) for (const [k, n] of seenAt) seen.set(k, Math.max(n, seen.get(k) ?? 0));
+  return { newest, openedAfter, open, cursor: { epoch: newest, seen } };
+}
+
+// ------------------------------------------------------ recorder pause fence
+//
+// The workflow's on-device screenrecord loop (RECORDING_LOOP_SH, started by
+// qa-acceptance.yml) and the agent share three files:
+//   PAUSE  written by the agent with a fresh nonce: "do not start a segment";
+//   ACK    written ONLY by the loop, with PAUSE's content, at the top of an
+//          iteration where it saw PAUSE. screenrecord runs in the loop's
+//          foreground, so an ACK means: no segment of the loop is running, and
+//          the loop will start none while PAUSE exists (it only re-checks);
+//   DONE   written by the loop after its last segment, when it exits for good.
+// The loop's check-then-start is not atomic: it may have checked (no PAUSE)
+// and be about to start a segment when PAUSE appears. That segment cannot be
+// prevented, but it cannot be missed either: no ACK carrying this nonce can
+// be written until that segment has ended, and the agent keeps interrupting
+// recordings until it holds the ACK. Then every segment from the one that was
+// current at the previous clean check onwards is deleted whole (never trimmed).
+export const RECORDING_DIR = "/data/local/tmp";
+export const RECORDING_PAUSE = `${RECORDING_DIR}/qa-rec-pause`;
+export const RECORDING_ACK = `${RECORDING_DIR}/qa-rec-ack`;
+export const RECORDING_DONE = `${RECORDING_DIR}/qa-rec-done`;
+// Canonical loop (workflow test pins the workflow's copy to this text).
+export const RECORDING_LOOP_SH =
+  `P=${RECORDING_PAUSE}; A=${RECORDING_ACK}; D=${RECORDING_DONE}; rm -f $P $A $D; i=1; ` +
+  "while :; do if [ -e $P ]; then cat $P > $A; sleep 1; continue; fi; [ $i -le 8 ] || break; " +
+  "screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 180 /sdcard/qa-rec-$(printf %02d $i).mp4; i=$((i+1)); done; touch $D";
+
+export const segmentIndex = (name) => {
+  const m = /qa-rec-(\d+)\.mp4$/.exec(String(name));
+  return m ? Number(m[1]) : NaN;
+};
+
+// ops (all synchronous device reads/writes; any throw = could not tell):
+//   writePause(nonce) -> bool     readAck() -> string|null   loopDone() -> bool|null
+//   interrupt()                   recorderRunning() -> bool|null
+//   list() -> string[]|null (segment names)   remove(name)
+// boundary: the newest segment index seen at the previous clean check (null =
+// none seen; every segment is then dropped).
+export async function pauseRecorder({ ops, nonce, boundary = null, attempts = 40, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+  const fail = (reason) => ({ stopped: false, dropped: [], reason });
+  if (!/^[A-Za-z0-9]{16,}$/.test(String(nonce))) return fail("pause nonce invalid");
+  try { if (ops.writePause(nonce) !== true) return fail("pause flag not written"); } catch { return fail("pause flag not written"); }
+  let acked = false;
+  for (let i = 0; i < attempts && !acked; i++) {
+    try { ops.interrupt(); } catch { /* none running, or raced exit */ }
+    let ack = null;
+    let done = null;
+    try { ack = ops.readAck(); } catch { ack = null; }
+    try { done = ops.loopDone(); } catch { done = null; }
+    acked = ack === nonce || done === true;
+    if (!acked) await sleep(500);
+  }
+  if (!acked) return fail("recording loop never acknowledged the pause");
+  let running = null;
+  try { running = ops.recorderRunning(); } catch { running = null; }
+  if (running !== false) return fail("a screenrecord process is still running after the acknowledgement");
+  const listed = (() => { try { return ops.list(); } catch { return null; } })();
+  if (!Array.isArray(listed)) return fail("segments could not be listed");
+  const floor = Number.isFinite(boundary) ? boundary : -Infinity;
+  const drop = listed.filter((n) => !(segmentIndex(n) < floor)).sort();
+  for (const n of drop) { try { ops.remove(n); } catch { /* verified next */ } }
+  const after = (() => { try { return ops.list(); } catch { return null; } })();
+  if (!Array.isArray(after) || drop.some((n) => after.includes(n))) return fail("a segment that may show the login window could not be deleted");
+  return { stopped: true, dropped: drop.map((n) => n.replace(/^.*\//, "")) };
 }

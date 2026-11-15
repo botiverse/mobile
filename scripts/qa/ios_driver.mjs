@@ -89,11 +89,16 @@ function isSecureNode(node) {
 }
 
 // Login-surface probe for the login window: true when a secure (password)
-// field or a web sign-in sheet is on screen. Advisory, used only to START
-// suppression; the nodes stay in memory. null = could not tell.
+// field, a web sign-in sheet ("wants to use ... to sign in"), an account
+// chooser of a signed-in browser ("Continue as ...") or a provider button
+// ("Sign in with ...", "Log in with ...") is on screen. The nodes stay in
+// memory. null = could not tell: no tree, or an EMPTY tree (another process,
+// e.g. a browser sheet, can own the screen while the app's tree is empty); the
+// caller treats null as a login window (fail closed).
+const LOGIN_LABEL = /wants to use .* to sign in|\bcontinue as\b|\bsign in with\b|\blog ?in with\b/i;
 export function loginSurfaceFromNodes(nodes) {
-  if (!Array.isArray(nodes)) return null;
-  return nodes.some((n) => isSecureNode(n) || /wants to use .* to sign in/i.test(String(n.label || "")));
+  if (!Array.isArray(nodes) || nodes.length === 0) return null;
+  return nodes.some((n) => isSecureNode(n) || LOGIN_LABEL.test(String(n.label || "")) || LOGIN_LABEL.test(String(n.value || "")));
 }
 
 function isClickableNode(node) {
@@ -224,8 +229,27 @@ export function swipePoints(direction, sizePt) {
   }
 }
 
-function pngSize(buf) {
-  return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+// Screen geometry from DEVICE INFO, never from a screenshot: the first
+// screenshot may only be taken after the login-window gate has decided the
+// screen is safe, so nothing (not even an in-memory frame) can be captured to
+// learn the size. The simulator's device type profile carries the main screen
+// size in pixels and its scale: `simctl list devices -j` (deviceTypeIdentifier)
+// -> `simctl list devicetypes -j` (bundlePath) -> Contents/Resources/
+// profile.plist (mainScreenWidth/Height/Scale). Any gap throws (unknown).
+export function simulatorScreenFromDeviceInfo({ simctl, udid = "booted", plutil = (file) => execFileSync("plutil", ["-convert", "json", "-o", "-", file], { encoding: "utf8", timeout: 30000 }) }) {
+  const devices = JSON.parse(String(simctl(["list", "devices", "-j"], { encoding: "utf8" })));
+  const all = Object.values(devices?.devices ?? {}).flat();
+  const booted = all.filter((d) => d?.state === "Booted");
+  const dev = UDID_RE.test(String(udid)) ? all.find((d) => String(d?.udid).toUpperCase() === String(udid).toUpperCase())
+    : booted.length === 1 ? booted[0] : null;
+  if (!dev?.deviceTypeIdentifier) throw new Error("iOS screen geometry unknown: simulator device type not found");
+  const types = JSON.parse(String(simctl(["list", "devicetypes", "-j"], { encoding: "utf8" })))?.devicetypes ?? [];
+  const type = types.find((t) => t?.identifier === dev.deviceTypeIdentifier);
+  if (!type?.bundlePath) throw new Error("iOS screen geometry unknown: device type profile not found");
+  const profile = JSON.parse(String(plutil(path.join(type.bundlePath, "Contents", "Resources", "profile.plist"))));
+  const w = Number(profile?.mainScreenWidth), h = Number(profile?.mainScreenHeight), scale = Number(profile?.mainScreenScale);
+  if (!(w > 0 && h > 0 && scale > 0)) throw new Error("iOS screen geometry unknown: profile has no main screen size");
+  return { w, h, scale };
 }
 
 export function createIosDriver({
@@ -243,8 +267,9 @@ export function createIosDriver({
   const simctl = (args, extra = {}) =>
     execFileSync("xcrun", ["simctl", ...args], { maxBuffer: 64 * 1024 * 1024, timeout: 60000, ...extra });
 
+  const screen = () => simulatorScreenFromDeviceInfo({ simctl, udid });
   if (resolved === DRIVER_QA_LOOP) {
-    return createQaLoopDriver({ ioDir, udid, bundle, simctl });
+    return createQaLoopDriver({ ioDir, udid, bundle, simctl, screen });
   }
   return createAgentDeviceDriver({
     ioDir,
@@ -254,13 +279,21 @@ export function createIosDriver({
     fixturePage,
     fixturePageData,
     simctl,
+    screen,
   });
 }
 
-function createQaLoopDriver({ ioDir, udid, bundle, simctl }) {
+// Post-gate screenshot: read and immediately removed from the io dir.
+function takeScreenshot(simctl, udid, ioDir) {
+  const f = path.join(ioDir, "shot.png");
+  simctl(["io", udid, "screenshot", f]);
+  try { return fs.readFileSync(f); } finally { fs.rmSync(f, { force: true }); }
+}
+
+function createQaLoopDriver({ ioDir, udid, bundle, simctl, screen }) {
   let seq = 0;
-  let sizePx = null;
-  let pointScale = null;
+  let geometry = null;
+  const deviceGeometry = () => (geometry ??= screen());
 
   async function send(action, timeoutMs = 90000) {
     seq += 1;
@@ -280,27 +313,15 @@ function createQaLoopDriver({ ioDir, udid, bundle, simctl }) {
     throw new Error(`ios harness timeout on ${action.type} (step ${seq})`);
   }
 
-  function screenshotPng() {
-    const f = path.join(ioDir, "shot.png");
-    simctl(["io", udid, "screenshot", f]);
-    const buf = fs.readFileSync(f);
-    sizePx = pngSize(buf);
-    return buf;
-  }
-
-  function screenSizePx() {
-    if (!sizePx) screenshotPng();
-    return sizePx;
-  }
+  const screenshotPng = () => takeScreenshot(simctl, udid, ioDir);
+  const screenSizePx = () => ({ w: deviceGeometry().w, h: deviceGeometry().h });
+  const pointScale = () => deviceGeometry().scale;
 
   async function describeNodes() {
-    const nodes = (await send({ type: "describe" })) || [];
-    const rootW = Math.max(1, ...nodes.map((n) => n.frame?.[2] || 0));
-    pointScale = screenSizePx().w / rootW;
-    return nodes;
+    return (await send({ type: "describe" })) || [];
   }
 
-  const toPx = (v) => Math.round(v * pointScale);
+  const toPx = (v) => Math.round(v * pointScale());
 
   return {
     platform: "ios",
@@ -315,7 +336,7 @@ function createQaLoopDriver({ ioDir, udid, bundle, simctl }) {
       throw new Error("ios harness never became ready (no ready.json)");
     },
     screenSize: () => screenSizePx(),
-    screenSizePt: () => (pointScale ? { w: screenSizePx().w / pointScale, h: screenSizePx().h / pointScale, scale: pointScale } : null),
+    screenSizePt: () => ({ w: screenSizePx().w / pointScale(), h: screenSizePx().h / pointScale(), scale: pointScale() }),
     screenshotPng,
     async tap(x, y) {
       const { w, h } = screenSizePx();
@@ -330,8 +351,8 @@ function createQaLoopDriver({ ioDir, udid, bundle, simctl }) {
     },
     async drag({ from, to, durationSeconds = 0.3, holdSeconds = 0.05 }) {
       const { w, h } = screenSizePx();
-      const dxPt = (to.x - from.x) * w / pointScale;
-      const dyPt = (to.y - from.y) * h / pointScale;
+      const dxPt = (to.x - from.x) * w / pointScale();
+      const dyPt = (to.y - from.y) * h / pointScale();
       const distancePt = Math.sqrt(dxPt * dxPt + dyPt * dyPt);
       const velocity = Math.max(1, Math.round(distancePt / Math.max(durationSeconds, 0.01)));
       await send({
@@ -373,7 +394,7 @@ function createQaLoopDriver({ ioDir, udid, bundle, simctl }) {
       return compactDumpUi(await describeNodes(), toPx, redact);
     },
     async loginSurfaceVisible() {
-      try { return loginSurfaceFromNodes(await describeNodes()); } catch { return null; }
+      return probeLoginSurface(async () => describeNodes());
     },
     async tapText(wanted) {
       return pickTapText(await describeNodes(), wanted, toPx);
@@ -397,10 +418,23 @@ function createQaLoopDriver({ ioDir, udid, bundle, simctl }) {
   };
 }
 
-function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fixturePageData, simctl }) {
+// An empty tree is retried briefly (the app may be between screens); still
+// empty or unreadable -> null (unknown).
+async function probeLoginSurface(describe, { tries = 3, waitMs = 1000 } = {}) {
+  for (let i = 0; i < tries; i++) {
+    let nodes;
+    try { nodes = await describe(); } catch { return null; }
+    const v = loginSurfaceFromNodes(nodes);
+    if (v !== null) return v;
+    if (i + 1 < tries) await new Promise((r) => setTimeout(r, waitMs));
+  }
+  return null;
+}
+
+function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fixturePageData, simctl, screen }) {
   const session = `qa-ios-${String(udid).replace(/[^A-Za-z0-9]/g, "").slice(0, 24) || "booted"}`;
-  let sizePx = null;
-  let pointScale = null;
+  let geometry = null;
+  const deviceGeometry = () => (geometry ??= screen());
   let opened = false;
 
   function runAd(args, { timeout = 90000 } = {}) {
@@ -418,33 +452,21 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
     }
   }
 
-  function screenshotPng() {
-    const f = path.join(ioDir, "shot.png");
-    simctl(["io", udid, "screenshot", f]);
-    const buf = fs.readFileSync(f);
-    sizePx = pngSize(buf);
-    return buf;
-  }
-
-  function screenSizePx() {
-    if (!sizePx) screenshotPng();
-    return sizePx;
-  }
+  const screenshotPng = () => takeScreenshot(simctl, udid, ioDir);
+  const screenSizePx = () => ({ w: deviceGeometry().w, h: deviceGeometry().h });
+  const pointScale = () => deviceGeometry().scale;
 
   function describeNodes() {
     const stdout = runAd(["snapshot", "-i", "--json"]);
     const payload = unwrapSnapshotPayload(parseJsonStdout(stdout));
-    const nodes = snapshotToDescribeNodes(payload.nodes);
-    const rootW = Math.max(1, ...nodes.map((n) => n.frame?.[2] || 0));
-    pointScale = screenSizePx().w / rootW;
-    return nodes;
+    return snapshotToDescribeNodes(payload.nodes);
   }
 
-  const toPx = (v) => Math.round(v * pointScale);
-  const toPt = (pixel) => Math.round(pixel / (pointScale || 1));
+  const toPx = (v) => Math.round(v * pointScale());
+  const toPt = (pixel) => Math.round(pixel / pointScale());
 
   function ensureScale() {
-    if (!pointScale) describeNodes();
+    pointScale();
   }
 
   function launchWithFixture() {
@@ -473,7 +495,7 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
       describeNodes();
     },
     screenSize: () => screenSizePx(),
-    screenSizePt: () => (pointScale ? { w: screenSizePx().w / pointScale, h: screenSizePx().h / pointScale, scale: pointScale } : null),
+    screenSizePt: () => ({ w: screenSizePx().w / pointScale(), h: screenSizePx().h / pointScale(), scale: pointScale() }),
     screenshotPng,
     async tap(x, y) {
       ensureScale();
@@ -485,7 +507,7 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
     },
     async swipe(direction) {
       ensureScale();
-      const sizePt = { w: screenSizePx().w / pointScale, h: screenSizePx().h / pointScale };
+      const sizePt = { w: screenSizePx().w / pointScale(), h: screenSizePx().h / pointScale() };
       const [x1, y1, x2, y2] = swipePoints(direction, sizePt);
       runAd(["swipe", String(x1), String(y1), String(x2), String(y2)]);
     },
@@ -551,7 +573,7 @@ function createAgentDeviceDriver({ ioDir, udid, bundle, binary, fixturePage, fix
       return compactDumpUi(describeNodes(), toPx, redact);
     },
     async loginSurfaceVisible() {
-      try { return loginSurfaceFromNodes(describeNodes()); } catch { return null; }
+      return probeLoginSurface(async () => describeNodes());
     },
     async tapText(wanted) {
       return pickTapText(describeNodes(), wanted, toPx);

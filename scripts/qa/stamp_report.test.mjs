@@ -5,6 +5,16 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { canonicalJson, sha256Digest } from "./mobile_login_bootstrap_lib.mjs";
+import { RECORDING_LOOP_SH } from "./secure_input.mjs";
+
+// A finalised, clean capture-suppression record (no login window) bound to the run the reporter
+// will see (#222: the evidence gate refuses a directory without one).
+function cleanSuppressionRecord(evidence, runId = process.env.GITHUB_RUN_ID || "", attempt = process.env.GITHUB_RUN_ATTEMPT || "") {
+  fs.writeFileSync(path.join(evidence, "capture-suppression.json"), JSON.stringify({
+    contract: "qa-capture-suppression/v1", unresolved: false, active: false, completed: true,
+    binding: { github_run_id: String(runId), github_run_attempt: String(attempt) }, phases: [],
+  }));
+}
 
 /** A complete, digest-correct issuance response bound to the given run case, CI job and device binding. */
 function issuedLogin({ runCaseId, runId, binding, requestId = "request-1", applicationId = "build.raft.app.alpha" }) {
@@ -339,6 +349,7 @@ test("report reads a relative verdict path and freezes scope before writes", () 
     verdict: "pass",
     log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "99:1" },
   }));
+  cleanSuppressionRecord(evidence, "99");
   fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc1"), "lease-token", { mode: 0o600 });
   const curlLog = path.join(root, "curl.log");
   fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${curlLog}"\nexit 0\n`, { mode: 0o755 });
@@ -385,6 +396,7 @@ test("evidence reporting binds one app-scoped stable principal to the frozen ema
     reason: "fixture setup",
     log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "99:1" },
   }));
+  cleanSuppressionRecord(evidence, "99");
   fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-subject"), "lease-token", { mode: 0o600 });
   fs.writeFileSync(path.join(runnerTemp, "stamp-bootstrap-spec-rc-subject.json"), JSON.stringify({ required: false }), { mode: 0o600 });
   const receipt = path.join(root, "receipt.json");
@@ -431,6 +443,7 @@ test("evidence reporting ignores forged model and broad-system subjects and bind
     reason: "fixture setup",
     log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "99:1" },
   }));
+  cleanSuppressionRecord(evidence, "99");
   fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-forgery"), "lease-token", { mode: 0o600 });
   fs.writeFileSync(path.join(runnerTemp, "stamp-bootstrap-spec-rc-forgery.json"), JSON.stringify({ required: false }), { mode: 0o600 });
   const calls = path.join(root, "calls");
@@ -525,6 +538,7 @@ test("bootstrap reporting enforces ready evidence, torn-down verdict, and no pos
     verdict: "pass",
     log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "500:1" },
   }));
+  cleanSuppressionRecord(evidence, "500");
   fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-order"), "lease-token", { mode: 0o600 });
   fs.writeFileSync(path.join(runnerTemp, "stamp-bootstrap-spec-rc-order.json"), JSON.stringify({
     required: true, terminal_endpoint: "/terminal", capture_proof_endpoint: "/capture-proof",
@@ -1075,6 +1089,7 @@ test("capture-proof reporting rejects missing scope, stale generation, proof SHA
   fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({
     verdict: "pass", log_scope: { filtered: true, package_id: "build.raft.app", pids: [9], generation: "generation-1" },
   }));
+  cleanSuppressionRecord(evidence, "900", "1");
   fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-proof"), "lease", { mode: 0o600 });
   fs.writeFileSync(path.join(runnerTemp, "stamp-bootstrap-spec-rc-proof.json"), JSON.stringify({ required: true }), { mode: 0o600 });
   const context = path.join(runnerTemp, "stamp-bootstrap-capture-context-rc-proof.json");
@@ -1129,6 +1144,7 @@ function iosReportHarness(name, { cleanup, extraEnv = {}, ownership } = {}) {
   const evidence = path.join(root, "qa-evidence"), bin = path.join(root, "bin"), temp = path.join(root, "temp");
   fs.mkdirSync(evidence); fs.mkdirSync(bin); fs.mkdirSync(temp);
   fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({ verdict: "pass" }));
+  cleanSuppressionRecord(evidence, "222", "1");
   if (cleanup !== undefined) fs.writeFileSync(path.join(evidence, "simulator-cleanup.json"), typeof cleanup === "string" ? cleanup : JSON.stringify(cleanup));
   fs.writeFileSync(path.join(temp, "stamp-claim-rc-ios"), "fake-lease");
   if (ownership !== null) fs.writeFileSync(path.join(temp, "raft-qa-simulator-ownership.json"), JSON.stringify(ownership ?? IOS_OWNERSHIP), { mode: 0o400 });
@@ -1240,7 +1256,8 @@ test("report-evidence never uploads a secret or a recording that overlaps an unr
   fs.writeFileSync(path.join(evidence, "activity-top.txt"), `mText=${FAKE_SECRET}\n`);
   fs.writeFileSync(path.join(evidence, "qa-rec-01.mp4"), "MP4-covering-login-window");
   fs.writeFileSync(path.join(evidence, "capture-suppression.json"), JSON.stringify({
-    contract: "qa-capture-suppression/v1", unresolved: true, active: false,
+    contract: "qa-capture-suppression/v1", unresolved: true, active: false, completed: false,
+    binding: { github_run_id: process.env.GITHUB_RUN_ID || "", github_run_attempt: process.env.GITHUB_RUN_ATTEMPT || "" },
     phases: [{ start_ts: Date.now() + 5000, start_turn: 1, status: "UNKNOWN", recording: "stopped" }],
   }));
   fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({
@@ -1293,6 +1310,7 @@ test("report: a failed workflow evidence-gate step means no evidence upload (iOS
   for (const d of [evidence, bin, runnerTemp, uploads]) fs.mkdirSync(d);
   fs.writeFileSync(path.join(evidence, "step-00.png"), "PNG");
   fs.writeFileSync(path.join(evidence, "steps.jsonl"), "{}\n");
+  cleanSuppressionRecord(evidence);
   fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-gate"), "lease-token", { mode: 0o600 });
   fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash\nn=$(ls "${uploads}" | wc -l)\nprintf '%s\\n' "$*" > "${uploads}/$n.args"\nexit 0\n`, { mode: 0o755 });
   const run = (outcome) => {
@@ -1329,9 +1347,14 @@ test("workflows: every evidence exit sits behind the secure evidence gate", () =
   assert.match(step(ios, "Report to Stamp"), /STAMP_EVIDENCE_GATE_OUTCOME: \$\{\{ steps\.secure-evidence\.outcome \}\}/);
   assert.doesNotMatch(step(ios, "Report to Stamp"), /QA_TEST_PASSWORD/);
   const android = step(read("qa-acceptance.yml"), "Run acceptance agent");
-  // Recording loop honours the login-window pause flag; the in-step gate runs before report-evidence;
-  // no post-run screen dump unless every window closed on receipts.
-  assert.match(android, /if \[ -e \/data\/local\/tmp\/qa-rec-pause \]; then sleep 1; continue; fi; screenrecord/);
+  // The recording loop is exactly the canonical acknowledged-pause loop; the in-step gate runs before
+  // report-evidence; no post-run screen dump unless every window closed on receipts and the record is final.
+  const loop = /adb shell "nohup sh -c '([^']*)' >\/dev\/null 2>&1 &"/.exec(android)?.[1];
+  assert.equal(loop?.replace(/\\\$/g, "$"), RECORDING_LOOP_SH);
+  assert.ok(android.indexOf("device_ownership.mjs claim-hosted") < android.indexOf("nohup sh -c"));
+  assert.match(android, /acceptance_agent\.mjs --device-ownership-receipt "\$RUNNER_TEMP\/qa-device-ownership\.json"/);
   assert.ok(android.indexOf("secure_evidence.mjs --dir qa-evidence") < android.indexOf("stamp_report.sh report-evidence"));
-  assert.match(android, /v\.unresolved===false&&v\.active===false\?0:1[\s\S]*dumpsys activity top/);
+  assert.match(android, /v\.unresolved===false&&v\.active===false&&v\.completed===true\?0:1[\s\S]*dumpsys activity top/);
+  assert.match(android, /echo end > \/data\/local\/tmp\/qa-rec-pause[\s\S]*pkill -INT screenrecord/, "the loop is paused for good before the final interrupt");
+  assert.match(step(read("qa-acceptance.yml"), "Report verdict"), /STAMP_EVIDENCE_GATE_OUTCOME: \$\{\{ steps\.secure-evidence\.outcome \}\}[\s\S]*stamp_report\.sh report-verdict/);
 });

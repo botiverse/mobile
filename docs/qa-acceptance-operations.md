@@ -72,6 +72,29 @@ consumers keep this in sync:
   (`verdict.json` `secure_input.status`), and `capture-suppression.json`
   records the window. `scripts/qa/secure_evidence.mjs` gates every exit
   (Stamp upload, artifact). Use the Stamp session bootstrap on iOS.
+- **Unknown fails closed.** A login-window probe that cannot be read (logcat,
+  focused window, device clock or the recording list on Android; an unreadable
+  or empty accessibility tree on iOS) latches UNKNOWN before anything is
+  captured. iOS takes no screenshot before the gate: screen geometry comes from
+  the simulator's device type profile. The evidence gate treats a missing,
+  malformed, foreign-run or unfinished `capture-suppression.json` as "the whole
+  run is a login window": nothing is uploaded and the gate exits 1. Its record
+  (`secure-evidence-gate.json`) is bound to the run and to `verdict.json`;
+  `stamp_report.sh report-verdict` sends a product verdict only when that
+  record is clean/resolved. Modes that write no suppression record (e.g. the
+  TabPager probe, bootstrap smoke) therefore upload no evidence.
+- **Device ownership.** The runner changes the device (recorder pause,
+  autofill, clearing the browser/login surface and the keyboard, console
+  typing) only on an emulator this run owns (`scripts/qa/device_ownership.mjs`).
+  Hosted: the workflow runs `claim-hosted` right after boot and passes
+  `--device-ownership-receipt`. Standalone: on a disposable emulator you created,
+  `adb -s emulator-NNNN shell 'echo <token> > /data/local/tmp/qa-run-owner'`
+  and pass `--device-owner-token <token>` (16+ chars). Without proof nothing is
+  modified and a login window ends UNKNOWN. The console must report the same
+  AVD name as the ADB target. Without the workflow's recording loop, create
+  `/data/local/tmp/qa-rec-done` (no recorder) or a login window ends UNKNOWN.
+- **Deterministic iOS mode never signs in** and captures only after the same
+  gate; a signed-out start is a harness error.
 
 ## Timing
 

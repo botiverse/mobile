@@ -687,6 +687,11 @@ function reportVerdicts(host, deleteStatus) {
   const evidence = path.join(host.root, "qa-evidence");
   fs.mkdirSync(evidence, { recursive: true });
   fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({ verdict: "pass" }));
+  // A clean, finalised capture-suppression record of run 222/1 (#222: the evidence gate needs one).
+  fs.writeFileSync(path.join(evidence, "capture-suppression.json"), JSON.stringify({
+    contract: "qa-capture-suppression/v1", unresolved: false, active: false, completed: true,
+    binding: { github_run_id: "222", github_run_attempt: "1" }, phases: [],
+  }));
   fs.writeFileSync(path.join(host.runnerTemp, "stamp-claim-rc-ios"), "fake-lease");
   const bin = path.join(host.root, "curl-bin");
   fs.mkdirSync(bin, { recursive: true });

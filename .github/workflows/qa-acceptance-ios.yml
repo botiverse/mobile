@@ -666,11 +666,10 @@ jobs:
           echo "$rc" > qa-evidence/agent-rc.txt
           echo "tabpager probe exit code $rc"
 
+      # Never signs in and gets no QA credentials (#222): it captures only after the login-window
+      # gate says the screen is safe, and stops UNKNOWN on a login surface or an unreadable probe.
       - name: Run deterministic repro
         if: ${{ inputs.mode == 'deterministic' }}
-        env:
-          QA_TEST_EMAIL: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_EMAIL || '' }}
-          QA_TEST_PASSWORD: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_PASSWORD || '' }}
         run: |
           mkdir -p qa-evidence
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true

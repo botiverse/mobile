@@ -588,8 +588,27 @@ if [ "$REPORT_VERDICT" = "true" ]; then
   prerequisite_rc="${3:-$evidence_rc}"
   VERDICT_FILE="$EV/verdict.json"
   OVERRIDE_FILE="${RUNNER_TEMP:-$EV}/stamp-harness-verdict-$STAMP_RUN_CASE_ID.json"
+  OVERRIDE_REASON="Stamp evidence/bootstrap lifecycle incomplete; product verdict suppressed"
+  # Evidence-gate binding (secure_evidence.mjs): a product verdict is sent only
+  # when the gate's own record says ok with status clean/resolved, for THIS
+  # run/attempt, and was computed over exactly this verdict.json (sha256). A
+  # missing, failed, UNKNOWN or stale gate record -- or a workflow gate step
+  # that did not succeed -- turns it into a harness verdict, whoever calls
+  # report-verdict.
+  if { [ -n "${STAMP_EVIDENCE_GATE_OUTCOME+x}" ] && [ "${STAMP_EVIDENCE_GATE_OUTCOME}" != "success" ]; } \
+    || ! RUN_ID="${GITHUB_RUN_ID:-}" RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" node -e '
+        const fs=require("fs"),crypto=require("crypto"),e=process.env;
+        const g=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+        const v=fs.existsSync(process.argv[2])?crypto.createHash("sha256").update(fs.readFileSync(process.argv[2])).digest("hex"):null;
+        const ok=g&&g.contract==="qa-secure-evidence-gate/v2"&&g.ok===true&&(g.status==="clean"||g.status==="resolved")&&
+          g.binding&&g.binding.github_run_id===e.RUN_ID&&g.binding.github_run_attempt===e.RUN_ATTEMPT&&g.verdict_sha256===v;
+        process.exit(ok?0:1)' "$EV/secure-evidence-gate.json" "$EV/verdict.json" 2>/dev/null; then
+    echo "stamp: secure evidence gate did not pass for this verdict (missing, failed, UNKNOWN or stale); product verdict suppressed" >&2
+    prerequisite_rc=1
+    OVERRIDE_REASON="secure evidence gate UNKNOWN or failed (login window not provably closed); product verdict suppressed"
+  fi
   if [ "$prerequisite_rc" != "0" ]; then
-    node -e 'const fs=require("fs");fs.writeFileSync(process.argv[1],JSON.stringify({verdict:"harness",reason:"Stamp evidence/bootstrap lifecycle incomplete; product verdict suppressed"}))' "$OVERRIDE_FILE"
+    REASON="$OVERRIDE_REASON" node -e 'const fs=require("fs");fs.writeFileSync(process.argv[1],JSON.stringify({verdict:"harness",reason:process.env.REASON}))' "$OVERRIDE_FILE"
     VERDICT_FILE="$OVERRIDE_FILE"
   fi
   if [ -f "$VERDICT_FILE" ]; then

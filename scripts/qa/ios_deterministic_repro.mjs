@@ -16,6 +16,16 @@
 //     asserted here; that is the case's remaining scope)
 //   - app alive but no picker → verdict fail "picker did not open"
 //
+// Login and capture policy (secure input, #222): this mode NEVER signs in and
+// takes no capture before the same login-window gate the agent uses. Before
+// every screenshot and every dump written to the evidence dir it probes the
+// screen (ios_driver loginSurfaceVisible, in memory): a login surface (secure
+// field, web sign-in sheet, "Continue as ...", provider button) or an
+// unreadable/empty tree stops the run UNKNOWN with nothing captured from then
+// on. A signed-out start ends as a harness error (use the Stamp session
+// bootstrap). It writes capture-suppression.json like the agent, finalised
+// only at its end, so the egress gate can tell a clean run from a crashed one.
+//
 // Usage:
 //   node scripts/qa/ios_deterministic_repro.mjs \
 //     --ios-io-dir "$QA_LOOP_IO_DIR" --ios-udid "$UDID" \
@@ -25,6 +35,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { createIosDriver } from "./ios_driver.mjs";
+import { CaptureGate, redactSecrets as redactConfiguredSecrets } from "./secure_input.mjs";
 import {
   dumpShowsComposer,
   findAllChannelTarget,
@@ -41,14 +52,35 @@ const outDir = arg("--out", "qa-evidence");
 if (!ioDir) { console.error("--ios-io-dir / QA_LOOP_IO_DIR required"); process.exit(2); }
 
 fs.mkdirSync(outDir, { recursive: true });
+const gate = new CaptureGate();
+const suppressionPath = path.join(outDir, "capture-suppression.json");
+const writeSuppression = () => fs.writeFileSync(suppressionPath, JSON.stringify(gate.summary(), null, 2));
+writeSuppression();
 const drv = createIosDriver({ ioDir, udid, bundle });
 const steps = [];
 const rec = (msg) => { steps.push({ ts: Date.now(), msg }); console.error(msg); };
 
+class LoginWindowStop extends Error {}
+// The trusted gate before ANY capture: false = safe; true or unknown = stop.
+const assertCaptureSafe = async (what) => {
+  let visible = null;
+  try { visible = await drv.loginSurfaceVisible(); } catch { visible = null; }
+  if (visible === false) return;
+  const reason = visible === true ? `login surface on screen before ${what}` : `login-surface probe unavailable before ${what}`;
+  const phase = gate.markUnknown(0, [reason]);
+  phase.recording = "not_recorded";
+  writeSuppression();
+  throw new LoginWindowStop(reason);
+};
 const shot = async (name) => {
+  await assertCaptureSafe(name);
   const png = await drv.screenshotPng();
   fs.writeFileSync(path.join(outDir, name), png);
   rec(`captured ${name}`);
+};
+const saveDump = async (name, dump) => {
+  await assertCaptureSafe(name);
+  fs.writeFileSync(path.join(outDir, name), redactEditableValues(dump));
 };
 
 const processAlive = () => {
@@ -83,71 +115,23 @@ function parseBounds(line) {
   return m ? { x: Math.round((Number(m[1]) + Number(m[3])) / 2), y: Math.round((Number(m[2]) + Number(m[4])) / 2) } : null;
 }
 
-// Deterministic login for a cold simulator: Sign In screen → email/password →
-// Sign In → (optional) server picker → home. Kuikly fields do not expose
-// native editability consistently at the first snapshot, so resolve them by
-// the stable label-relative position (field sits below Email/Password).
+// Never signs in: credentials cannot be typed safely on iOS (no argv-free
+// channel; ios_driver refuses), so a signed-out start is a harness error. The
+// sign-in screen is only inspected in memory, after the capture gate.
 async function ensureLoggedIn() {
-  let dump = await drv.dumpUi();
-  fs.writeFileSync(path.join(outDir, "sign-in-dump.txt"), redactEditableValues(dump));
-  if (!/Sign In|Email|Password/.test(dump)) { rec("already past sign-in screen"); return; }
-  const email = process.env.QA_TEST_EMAIL;
-  const password = process.env.QA_TEST_PASSWORD;
-  if (!email || !password) throw new Error("QA_TEST_EMAIL/QA_TEST_PASSWORD not set for login step");
-  rec("sign-in screen detected, logging in deterministically");
-
-  const fieldUnder = (label) => {
-    const line = dump.split("\n").find((l) => {
-      const t = /"([^"]*)"/.exec(l)?.[1] ?? "";
-      return t.trim() === label;
-    });
-    if (!line) throw new Error(`"${label}" label not found in sign-in dump`);
-    const m = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(line);
-    // tap the field below the label: label center-x, label bottom + ~45px
-    return { x: Math.round((Number(m[1]) + Number(m[3])) / 2), y: Number(m[4]) + 45 };
-  };
-
-  let p = fieldUnder("Email");
-  await drv.tap(p.x, p.y);
-  await drv.text(email);
-  rec(`email typed at [${p.x},${p.y}]`);
-  p = fieldUnder("Password");
-  await drv.tap(p.x, p.y);
-  try {
-    await drv.text(password);
-  } catch {
-    // Never let the driver's error text (which may echo the typed value)
-    // reach the steps/verdict output.
-    throw new Error("typing the password failed");
+  await assertCaptureSafe("sign-in check");
+  const dump = await drv.dumpUi();
+  if (/Sign In|Email|Password/.test(dump)) {
+    writeVerdict("error", "signed-out start: deterministic mode never signs in (use the Stamp session bootstrap)");
+    process.exit(2);
   }
-  rec(`password typed at [${p.x},${p.y}]`);
-
-  // On this auth form, agent-device keyboard dismiss taps Return/Go and
-  // already submits. Name that action: keyboard enter. Do not press Sign In
-  // afterwards — the button is gone.
-  const enterOut = await drv.key("enter");
-  rec(`submitting via keyboard enter stdout: ${String(enterOut || "").replace(/\s+/g, " ").slice(0, 300)}`);
-  await new Promise((r2) => setTimeout(r2, 8000));
-
-  if (typeof drv.dismissSystemAlerts === "function") {
-    const alerts = await drv.dismissSystemAlerts();
-    rec(`system alerts: present=${Boolean(alerts?.present)} accepted=${Boolean(alerts?.accepted)}`);
-  }
-
-  dump = await drv.dumpUi();
-  const stillLogin = /"Email"/.test(dump) && /"Password"/.test(dump);
-  if (stillLogin) {
-    // Do NOT screenshot here: the form holds the typed email (secret hygiene —
-    // r3 artifact was flagged for exactly this). Steps carry the failure.
-    writeVerdict("fail", "login did not complete: Sign In page still visible after keyboard enter");
-    process.exit(1);
-  }
-
-  dump = await drv.dumpUi();
+  rec("already past sign-in screen");
+  // A signed-in start may still ask for the server: pick the QA server row
+  // only, never another row as a fallback.
   if (/Choose server|OranixSlockTest/.test(dump) && !dump.includes('"Message #')) {
     const rowLine = dump.split("\n").find((l) => /OranixSlockTest/.test(l));
     if (!rowLine) throw new Error("server picker shown but OranixSlockTest row not found");
-    p = parseBounds(rowLine);
+    const p = parseBounds(rowLine);
     await drv.tap(p.x, p.y);
     rec("server OranixSlockTest selected");
     await new Promise((r2) => setTimeout(r2, 6000));
@@ -155,18 +139,24 @@ async function ensureLoggedIn() {
 }
 
 const verdict = { verdict: "error", reason: "", steps };
-// Secret hygiene: the verdict and its console echo must never carry the QA
-// password, whatever an error message contains.
-const redactSecrets = (text) => {
-  const pw = process.env.QA_TEST_PASSWORD;
-  const s = String(text);
-  return pw ? s.split(pw).join("***") : s;
-};
+// Secret hygiene: the verdict and its console echo must never carry a
+// configured QA secret, whatever an error message contains.
+const redactSecrets = (text) => redactConfiguredSecrets(String(text));
 const writeVerdict = (v, reason) => {
-  verdict.verdict = v;
-  verdict.reason = redactSecrets(reason);
-  fs.writeFileSync(path.join(outDir, "steps.jsonl"), steps.map((s) => JSON.stringify(s)).join("\n") + "\n");
+  // A login window (or an unknown probe) overrides every outcome.
+  if (gate.unresolved) {
+    verdict.verdict = "error";
+    verdict.reason = redactSecrets(`secret-input phase UNKNOWN: capture stays suppressed (${gate.phases.flatMap((p) => p.reasons ?? []).join("; ")})`);
+    verdict.secure_input = { status: "UNKNOWN", reasons: gate.phases.flatMap((p) => p.reasons ?? []) };
+  } else {
+    verdict.verdict = v;
+    verdict.reason = redactSecrets(reason);
+    verdict.secure_input = { status: "not_used", phases: 0 };
+  }
+  fs.writeFileSync(path.join(outDir, "steps.jsonl"), steps.map((s) => redactSecrets(JSON.stringify(s))).join("\n") + "\n");
   fs.writeFileSync(path.join(outDir, "verdict.json"), JSON.stringify(verdict, null, 2));
+  gate.completed = true;
+  writeSuppression();
   console.log(JSON.stringify(verdict, null, 2));
 };
 
@@ -184,7 +174,7 @@ try {
   // Do not alert-get on Home: iOS runner get/accept ignore timeout and use a
   // 10s main-thread budget that Kuikly Home exceeds.
   let dump = await drv.dumpUi();
-  fs.writeFileSync(path.join(outDir, "home-dump.txt"), redactEditableValues(dump));
+  await saveDump("home-dump.txt", dump);
   if (!dumpShowsComposer(dump)) {
     let target;
     try {
@@ -198,7 +188,7 @@ try {
     await new Promise((r) => setTimeout(r, 4000));
     dump = await drv.dumpUi();
   }
-  fs.writeFileSync(path.join(outDir, "channel-dump.txt"), redactEditableValues(dump));
+  await saveDump("channel-dump.txt", dump);
   if (!dumpShowsComposer(dump)) {
     writeVerdict("fail", "#all composer [INPUT] not visible after open (agent-device dumps have no placeholder)");
     process.exit(1);
@@ -245,6 +235,10 @@ try {
   writeVerdict("fail", "picker did not open after single tap (app alive, no picker markers in app dump or SpringBoard log)");
   process.exit(1);
 } catch (e) {
+  if (e instanceof LoginWindowStop) {
+    writeVerdict("error", e.message);
+    process.exit(2);
+  }
   writeVerdict("error", `harness/script error: ${String(e).slice(0, 300)}`);
   process.exit(2);
 }

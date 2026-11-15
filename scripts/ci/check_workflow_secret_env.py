@@ -175,7 +175,8 @@ QA_SECRET_STEPS: dict[str, dict[str, dict[str, dict]]] = {
         PREFLIGHT: {"if": LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
         "Freeze legacy credential identity receipt": {"if": RECEIPT_IF, "env": _plain("QA_TEST_EMAIL")},
         "Run acceptance agent": {"if": "${{ inputs.mode == 'agent' || inputs.mode == '' }}", "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
-        "Run deterministic repro": {"if": "${{ inputs.mode == 'deterministic' }}", "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        # #222 re-pin: "Run deterministic repro" no longer receives QA credentials (it never signs in and
+        # refuses to capture a login surface), so its entry is removed: QA secrets in that step now fail.
         # #222: same egress gate as Android, before both exits (Stamp report + artifact).
         "Secure evidence gate": {"if": "always()", "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
         # Pre-existing, unchanged by #4817: the reporter reads the email on every path.
@@ -608,8 +609,10 @@ def real_tree_mutants() -> list[tuple[str, str, str, str]]:
         ("extra alias in an allowed step", qa, "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}",
          "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n          EXTRA_ALIAS: ${{ secrets.QA_TEST_PASSWORD }}"),
         ("acceptance runner no longer gated on bootstrap", qa, gate, "secrets.QA_TEST_PASSWORD"),
-        ("iOS deterministic repro no longer gated on bootstrap", ios, f"QA_TEST_PASSWORD: ${{{{ {gate} }}}}\n        run: |\n          mkdir -p qa-evidence\n          cp \"$GITHUB_WORKSPACE/build-info-ios.json\" qa-evidence/build-info.json 2>/dev/null || true\n          echo $((",
-         "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence\n          cp \"$GITHUB_WORKSPACE/build-info-ios.json\" qa-evidence/build-info.json 2>/dev/null || true\n          echo $(("),
+        # #222: the deterministic repro never signs in; credentials given back to it must be red.
+        ("iOS deterministic repro gets the QA credentials back", ios,
+         "      - name: Run deterministic repro\n        if: ${{ inputs.mode == 'deterministic' }}\n        run: |\n",
+         f"      - name: Run deterministic repro\n        if: ${{{{ inputs.mode == 'deterministic' }}}}\n        env:\n          QA_TEST_PASSWORD: ${{{{ {gate} }}}}\n        run: |\n"),
         ("preflight gate -> true", qa, f"        if: {LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
          "        if: ${{ true }}\n        env:\n          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}\n          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence"),
         ("preflight gate -> false", qa, f"        if: {LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",

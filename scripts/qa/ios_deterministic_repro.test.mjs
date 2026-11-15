@@ -8,7 +8,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 // Runs the real ios_deterministic_repro.mjs entry point in a child process with its iOS driver
 // replaced by a scripted fake (a module resolve hook swaps ./ios_driver.mjs). The fake plays a
-// cold simulator: sign-in form, then the server picker, and records every tap. This script reads
+// signed-in simulator that asks for the server (the mode never signs in, #222), and records every
+// tap and text. This script reads
 // no goal, so none of the acceptance agent's server guards apply to it: it must pick the QA
 // server row itself, and must never fall back to another row (artin, 2026-08-31).
 
@@ -36,10 +37,11 @@ const bounds = (line) => {
   return m && { x1: +m[1], y1: +m[2], x2: +m[3], y2: +m[4] };
 };
 export function createIosDriver() {
-  let state = "signin";
+  let state = scenario.start || "picker";
   return {
     async waitReady() {},
-    async screenshotPng() { return Buffer.from("png"); },
+    async loginSurfaceVisible() { return state === "signin" ? scenario.signInProbe ?? false : false; },
+    async screenshotPng() { log({ type: "screenshot", state }); return Buffer.from("png"); },
     async dumpUi() {
       if (state === "signin") return scenario.signIn;
       if (state === "picker") return scenario.picker;
@@ -57,14 +59,14 @@ export function createIosDriver() {
       }
       log({ type: "tap", x, y, screen: row === null ? "other" : "picker", row });
     },
-    async text() {},
+    async text(value) { log({ type: "text" }); },
     async key(name) { if (name === "enter" && state === "signin") state = "picker"; return ""; },
     async dismissSystemAlerts() { return { present: false, accepted: false }; },
   };
 }
 `;
 
-function runRepro(pickerRows) {
+function runRepro(pickerRows, extra = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ios-deterministic-repro-test-"));
   const fakeDriver = path.join(dir, "fake_ios_driver.mjs");
   fs.writeFileSync(fakeDriver, FAKE_DRIVER);
@@ -86,7 +88,7 @@ const realSetTimeout = globalThis.setTimeout;
 globalThis.setTimeout = (fn, _ms, ...args) => realSetTimeout(fn, 0, ...args);
 `);
   const scenarioFile = path.join(dir, "scenario.json");
-  fs.writeFileSync(scenarioFile, JSON.stringify({ signIn: SIGN_IN_DUMP, picker: pickerDump(pickerRows) }));
+  fs.writeFileSync(scenarioFile, JSON.stringify({ signIn: SIGN_IN_DUMP, picker: pickerDump(pickerRows), ...extra }));
   const logFile = path.join(dir, "driver.jsonl");
   const out = path.join(dir, "out");
   const result = spawnSync(
@@ -111,8 +113,10 @@ globalThis.setTimeout = (fn, _ms, ...args) => realSetTimeout(fn, 0, ...args);
     : [];
   const verdictFile = path.join(out, "verdict.json");
   const verdict = fs.existsSync(verdictFile) ? JSON.parse(fs.readFileSync(verdictFile, "utf8")) : null;
+  const files = fs.existsSync(out) ? fs.readdirSync(out) : [];
+  const supp = files.includes("capture-suppression.json") ? JSON.parse(fs.readFileSync(path.join(out, "capture-suppression.json"), "utf8")) : null;
   fs.rmSync(dir, { recursive: true, force: true });
-  return { ...result, pickerTaps: taps.filter((t) => t.screen === "picker"), verdict };
+  return { ...result, pickerTaps: taps.filter((t) => t.screen === "picker"), calls: taps, verdict, files, supp };
 }
 
 test("selects the QA server row even when the production server is listed first", () => {
@@ -132,4 +136,15 @@ test("refuses to pick any server when the QA server row is missing", () => {
   assert.equal(result.status, 2, result.stderr);
   assert.equal(result.verdict?.verdict, "error");
   assert.match(result.verdict.reason, new RegExp(`${QA_SERVER} row not found`));
+});
+
+test("a signed-out start never signs in: no credential typed, nothing captured, harness error", () => {
+  const result = runRepro(["Raft Android, /raft"], { start: "signin", signInProbe: false });
+  assert.deepEqual(result.calls.filter((c) => c.type === "text" || c.type === "screenshot").map((c) => c.type), ["screenshot"],
+    "only the launch frame of the app's own (password-free) sign-in screen; no typing");
+  assert.equal(result.status, 2, result.stderr);
+  assert.equal(result.verdict?.verdict, "error");
+  assert.match(result.verdict.reason, /never signs in/);
+  assert.ok(!result.files.some((f) => /dump/.test(f)), "no UI dump written");
+  assert.equal(result.supp?.completed, true);
 });

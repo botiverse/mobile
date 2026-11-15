@@ -25,6 +25,8 @@ import {
 import { filterLogWindows, gateEvidence } from "./secure_evidence.mjs";
 
 const env = { QA_TEST_EMAIL: "fake.user@example.test", QA_TEST_PASSWORD: "FAKE-pw-7Q" };
+// A finalised v1 suppression record for this (local, unbound) run.
+const record = (r) => JSON.stringify({ contract: "qa-capture-suppression/v1", completed: true, binding: { github_run_id: "", github_run_attempt: "" }, ...r });
 const APP = "build.raft.app";
 const homeXml = `<hierarchy><node text="Home" class="android.widget.TextView" package="${APP}" focused="false" password="false" bounds="[0,0][10,10]" /></hierarchy>`;
 const goodReceipts = {
@@ -48,7 +50,9 @@ test("emulator console channel: value only on the socket, auth first, fails clos
   for (const bad of ["line\nbreak", " lead", "trail ", "tab\tx", "ünï"]) assert.throws(() => encodeConsoleText(bad), /cannot type exactly/);
   assert.equal(emulatorConsolePort("emulator-5556", {}), 5556);
   assert.equal(emulatorConsolePort("R58M123ABC", {}), null, "a physical device has no console");
-  await assert.rejects(() => emulatorConsoleType({ port: null, secret: env.QA_TEST_PASSWORD }), /no emulator console/);
+  assert.equal(emulatorConsolePort("emulator-5556", { QA_EMULATOR_CONSOLE_PORT: "5556" }), 5556);
+  assert.equal(emulatorConsolePort("emulator-5556", { QA_EMULATOR_CONSOLE_PORT: "5558" }), null, "an override naming another emulator's console is refused");
+  await assert.rejects(() => emulatorConsoleType({ port: null, secret: env.QA_TEST_PASSWORD, expectAvdName: "Fake_AVD" }), /no emulator console/);
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "console-"));
   const tokenFile = path.join(dir, "token");
@@ -65,6 +69,7 @@ test("emulator console channel: value only on the socket, auth first, fails clos
         const line = buf.slice(0, i); buf = buf.slice(i + 1);
         lines.push(line);
         if (line.startsWith("auth ")) sock.write(line === "auth fake-console-token" ? "OK\r\n" : "KO: bad auth\r\n");
+        else if (line === "avd name") sock.write("Fake_AVD\r\nOK\r\n");
         else if (line.startsWith("event text ")) sock.write("OK\r\n");
       }
     });
@@ -72,11 +77,11 @@ test("emulator console channel: value only on the socket, auth first, fails clos
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   try {
     const { port } = server.address();
-    await emulatorConsoleType({ port, secret: env.QA_TEST_PASSWORD, tokenFile });
+    await emulatorConsoleType({ port, secret: env.QA_TEST_PASSWORD, tokenFile, expectAvdName: "Fake_AVD" });
     await new Promise((r) => setTimeout(r, 50));
-    assert.deepEqual(lines.slice(0, 2), ["auth fake-console-token", `event text ${env.QA_TEST_PASSWORD}`]);
+    assert.deepEqual(lines.slice(0, 3), ["auth fake-console-token", "avd name", `event text ${env.QA_TEST_PASSWORD}`]);
     fs.writeFileSync(tokenFile, "wrong");
-    const err = await emulatorConsoleType({ port, secret: env.QA_TEST_PASSWORD, tokenFile }).catch((e) => e);
+    const err = await emulatorConsoleType({ port, secret: env.QA_TEST_PASSWORD, tokenFile, expectAvdName: "Fake_AVD" }).catch((e) => e);
     assert.match(String(err.message), /refused/);
     assert.ok(!String(err.message).includes(env.QA_TEST_PASSWORD));
   } finally {
@@ -148,6 +153,7 @@ test("system-channel parsers fail closed on unknown output", () => {
   assert.equal(isExternalLoginSurface("com.android.chrome", APP), true);
   assert.equal(isExternalLoginSurface(APP, APP), false);
   assert.equal(isExternalLoginSurface("com.android.permissioncontroller", APP), false);
+  assert.equal(isExternalLoginSurface("example.loginprovider.web", APP), true, "an unlisted package is a possible login surface");
   const log = "1700000000.100  1  1 I SlockAppLogin: app_login_complete result=app_shell reason=exchanged\n";
   assert.ok(findCompletionReceipt(log, 1700000000, DEFAULT_COMPLETION_MARKER));
   assert.equal(findCompletionReceipt(log, 1700000001, DEFAULT_COMPLETION_MARKER), null, "older than the window");
@@ -160,7 +166,8 @@ test("system-channel parsers fail closed on unknown output", () => {
   assert.equal(loginLogState(opened).open, true);
   assert.equal(loginLogState(opened + log).open, false);
   assert.equal(loginLogState(opened, 1699999999).openedAfter, 1700000000);
-  assert.equal(loginLogState(opened, 1700000000).openedAfter, null);
+  // A cursor that has already seen this exact line does not reopen it.
+  assert.equal(loginLogState(opened, loginLogState(opened).cursor).openedAfter, null);
 });
 
 test("form outline carries field bounds only — never text, hints or values", () => {
@@ -182,7 +189,7 @@ test("evidence gate redacts text, removes binaries holding a secret, and drops m
     fs.utimesSync(path.join(dir, "step-00.png"), old, old);
     fs.writeFileSync(path.join(dir, "late.png"), "after");
     fs.writeFileSync(path.join(dir, "qa-rec-01.mp4"), "video");
-    fs.writeFileSync(path.join(dir, "capture-suppression.json"), JSON.stringify({ unresolved: true, phases: [{ start_ts: Date.now() - 1000, status: "UNKNOWN", recording: "stopped", device_start_local: "11-15 10:00:00" }] }));
+    fs.writeFileSync(path.join(dir, "capture-suppression.json"), record({ unresolved: true, active: false, completed: false, phases: [{ start_ts: Date.now() - 1000, status: "UNKNOWN", recording: "stopped", device_start_local: "11-15 10:00:00" }] }));
     const { ok, report } = gateEvidence(dir, env);
     assert.equal(ok, true);
     assert.equal(fs.readFileSync(path.join(dir, "notes.txt"), "utf8"), "a *** b ***\n");
@@ -191,6 +198,7 @@ test("evidence gate redacts text, removes binaries holding a secret, and drops m
     assert.ok(!fs.existsSync(path.join(dir, "late.png")));
     assert.ok(!fs.existsSync(path.join(dir, "qa-rec-01.mp4")));
     assert.equal(report.suppression, "unresolved");
+    assert.equal(report.status, "UNKNOWN", "an unresolved window never reports a clean gate");
     assert.ok(!JSON.stringify(report).includes("FAKE-pw"));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -201,11 +209,11 @@ test("evidence gate: unconfirmed recording stop drops all recordings; a resolved
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "secure-evidence-rec-"));
   try {
     fs.writeFileSync(path.join(dir, "qa-rec-01.mp4"), "video");
-    fs.writeFileSync(path.join(dir, "capture-suppression.json"), JSON.stringify({ unresolved: false, active: false, phases: [{ start_ts: 1, status: "resumed", recording: "unconfirmed" }] }));
+    fs.writeFileSync(path.join(dir, "capture-suppression.json"), record({ unresolved: false, active: false, phases: [{ start_ts: 1, end_ts: 2, status: "resumed", recording: "unconfirmed" }] }));
     assert.equal(gateEvidence(dir, {}).ok, true);
     assert.ok(!fs.existsSync(path.join(dir, "qa-rec-01.mp4")));
     for (const f of ["qa-rec-01.mp4", "qa-rec-02.mp4", "qa-rec-03.mp4"]) fs.writeFileSync(path.join(dir, f), "video");
-    fs.writeFileSync(path.join(dir, "capture-suppression.json"), JSON.stringify({ unresolved: false, active: false, phases: [{ start_ts: 1, end_ts: 2, status: "resumed", recording: "stopped", dropped_segments: ["qa-rec-02.mp4"], device_start_local: "11-15 10:00:00", device_end_local: "11-15 10:01:00" }] }));
+    fs.writeFileSync(path.join(dir, "capture-suppression.json"), record({ unresolved: false, active: false, phases: [{ start_ts: 1, end_ts: 2, status: "resumed", recording: "stopped", dropped_segments: ["qa-rec-02.mp4"], device_start_local: "11-15 10:00:00", device_end_local: "11-15 10:01:00" }] }));
     assert.equal(gateEvidence(dir, {}).ok, true);
     assert.deepEqual(fs.readdirSync(dir).filter((f) => f.endsWith(".mp4")).sort(), ["qa-rec-01.mp4", "qa-rec-03.mp4"]);
   } finally {
