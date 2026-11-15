@@ -82,6 +82,9 @@ import org.robolectric.annotation.GraphicsMode
  * (web `leadUsage`); `.sorted_memory`: Sort by Memory used, Memory before Disk in bold; `.grouped` (cards and list): Group by
  * Provider, AWS and Hetzner Cloud then Personal computers; `.no_match`: a search and Needs
  * attention matching nothing, with Clear all.
+ * `settings.computers.usage_pending` (cards and list): Studio Mac's Claude read but not answered yet,
+ * drawn as bars in the value's shape in two lines (web `PendingUsageCell`, slock #14650); old-node's
+ * Claude, pending too, keeps its "Verify" step.
  * `settings.computers.loading`: no saved list yet, the toolbar over four card-shaped placeholders
  * (web `ComputersSkeleton`), at rest.
  * Agents carry no avatar image, so the capture draws initials without a fetch.
@@ -135,6 +138,14 @@ class ComputersRackCardsScreenshotTest {
 
     @Test
     fun computersLoadingDark() = captureComputersRack(activities, "settings.computers.loading.dark", RaftAppAppearance.Dark, ComputersRackView.Cards, wide = false, loading = true)
+
+    @Test
+    fun computersUsagePendingLight() =
+        captureComputersRack(activities, "settings.computers.usage_pending", RaftAppAppearance.Light, ComputersRackView.Cards, wide = false, pendingUsage = true)
+
+    @Test
+    fun computersUsagePendingListLight() =
+        captureComputersRack(activities, "settings.computers.list.usage_pending", RaftAppAppearance.Light, ComputersRackView.List, wide = false, pendingUsage = true)
 
     @Test
     fun computersNoMatchLight() = capture("settings.computers.no_match", RaftAppAppearance.Light, toolbar = noMatchToolbar)
@@ -211,6 +222,7 @@ private fun captureComputersRack(
     wide: Boolean,
     toolbar: RaftComputersRackToolbarState = RaftComputersRackToolbarState(serverId = "server-1"),
     loading: Boolean = false,
+    pendingUsage: Boolean = false,
 ) {
     run {
         RaftAppThemeState.apply(appearance)
@@ -222,7 +234,7 @@ private fun captureComputersRack(
             }
         activity.setContent {
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftSettingsWideDetail provides wide) {
-                ComputersListVisualContent(appearance, view, wide, toolbar, loading)
+                ComputersListVisualContent(appearance, view, wide, toolbar, loading, pendingUsage)
             }
         }
         settle()
@@ -254,6 +266,7 @@ private fun ComputersListVisualContent(
     wide: Boolean = false,
     toolbar: RaftComputersRackToolbarState = RaftComputersRackToolbarState(serverId = "server-1"),
     loading: Boolean = false,
+    pendingUsage: Boolean = false,
 ) {
     val timeContext =
         RaftTimeContext(
@@ -400,7 +413,22 @@ private fun ComputersListVisualContent(
                         null
                     },
             ) {
+                // `.usage_pending` (slock #14650, #14662): Studio Mac's Claude and old-node's Claude are
+                // read but not answered yet: bars, two lines for Studio's (its last answer had a model line).
+                // old-node's Claude login needs verifying, so it keeps "Verify": a step wins over pending (web useRackCell).
+                val pending =
+                    if (pendingUsage) {
+                        RaftRackUsagePending(
+                            isPending = { machineId, provider -> provider == RuntimeAccountUsageProvider.Claude && machineId in setOf("m-studio", "m-old") },
+                            twoLines = { machineId, _ -> machineId == "m-studio" },
+                            animated = false,
+                        )
+                    } else {
+                        null
+                    }
+                val usageLoads = rackUsageFixture().let { loads -> if (pendingUsage) loads + ("m-studio" to loads.getValue("m-studio") - RuntimeAccountUsageProvider.Claude) else loads }
                 RaftComputersTheme {
+                  CompositionLocalProvider(LocalRaftRackUsagePending provides pending) {
                     RaftSettingsComputersContent(
                         model = if (loading) RaftComputersListModel.Loading else raftComputersListModel(ScreenLoadState.Content(snapshot)),
                         skeletonAnimated = false,
@@ -408,7 +436,7 @@ private fun ComputersListVisualContent(
                         onAddComputer = {},
                         onOpenComputer = {},
                         agentsByMachine = agentsByMachine,
-                        usageLoads = rackUsageFixture(),
+                        usageLoads = usageLoads,
                         rackView = view,
                         toolbar = toolbar,
                         serverId = "server-1",
@@ -418,6 +446,7 @@ private fun ComputersListVisualContent(
                         summaryInHeader = wide,
                         computerControl = SettingsComputerControlState(restart = SettingsComputerRestartProgress(machineId = "m-studio")),
                     )
+                  }
                 }
             }
         }
