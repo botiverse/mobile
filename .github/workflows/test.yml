@@ -616,7 +616,16 @@ jobs:
       # compile); fails closed when the class directory is missing.
       - name: Check :shared JVM method sizes
         if: ${{ !cancelled() }}
-        run: python3 scripts/ci/check_jvm_method_size.py compose/shared/build/tmp/kotlin-classes/debug
+        run: python3 scripts/ci/check_jvm_method_size.py --profile-out "$RUNNER_TEMP/method-profile.tsv" compose/shared/build/tmp/kotlin-classes/debug
+
+      # TEMPORARY (task #102 measurement, removed before merge).
+      - name: Upload method profile
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: method-profile
+          path: ${{ runner.temp }}/method-profile.tsv
+          if-no-files-found: warn
 
       # The gate above compiles with the visual fixtures on (SLOCK_VISUAL_FIXTURES, job env), so it
       # never sees the configuration that ships: release, fixtures off (src/visualFixturesOff,

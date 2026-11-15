@@ -38,6 +38,16 @@ class ClassFormatError(Exception):
 
 def method_code_sizes(data: bytes) -> tuple[str, list[tuple[str, str, int]]]:
     """(class name, [(method name, descriptor, code_length)]) for one class file."""
+    class_name, methods, _ = read_class(data)
+    return class_name, [(name, descriptor, length) for name, descriptor, length, _ in methods]
+
+
+def read_class(data: bytes) -> tuple[str, list[tuple[str, str, int, list[tuple[int, int]]]], int | None]:
+    """(class name, [(name, descriptor, code_length, [(start_pc, line)])], last line of the source file).
+
+    The last real source line comes from Kotlin's SMAP (SourceDebugExtension): line numbers above it
+    belong to inlined function bodies. None when the class has no SMAP.
+    """
     pos = 0
 
     def take(fmt: str) -> tuple:
@@ -101,7 +111,7 @@ def method_code_sizes(data: bytes) -> tuple[str, list[tuple[str, str, int]]]:
         skip(6)
         skip_attributes()
 
-    methods: list[tuple[str, str, int]] = []
+    methods: list[tuple[str, str, int, list[tuple[int, int]]]] = []
     (method_count,) = take(">H")
     for _ in range(method_count):
         _, name_index, descriptor_index = take(">HHH")
@@ -109,28 +119,84 @@ def method_code_sizes(data: bytes) -> tuple[str, list[tuple[str, str, int]]]:
         for _ in range(attribute_count):
             attribute_name_index, length = take(">HI")
             if utf8.get(attribute_name_index) == "Code":
-                _, _, code_length = struct.unpack_from(">HHI", data, pos)
-                methods.append((utf8.get(name_index, "?"), utf8.get(descriptor_index, "?"), code_length))
+                methods.append(
+                    (utf8.get(name_index, "?"), utf8.get(descriptor_index, "?"), *_code_lines(data, pos, utf8))
+                )
             skip(length)
-    return class_name, methods
+    last_source_line = None
+    (attribute_count,) = take(">H")
+    for _ in range(attribute_count):
+        attribute_name_index, length = take(">HI")
+        if utf8.get(attribute_name_index) == "SourceDebugExtension":
+            last_source_line = _smap_last_line(data[pos : pos + length].decode("utf-8", errors="replace"))
+        skip(length)
+    return class_name, methods, last_source_line
 
 
-def scan(roots: list[Path]) -> list[tuple[int, str]]:
-    """(code_length, "class.method(descriptor)") for every method with code, largest first."""
-    sizes: list[tuple[int, str]] = []
+def _code_lines(data: bytes, pos: int, utf8: dict[int, str]) -> tuple[int, list[tuple[int, int]]]:
+    """A Code attribute's code_length and its LineNumberTable entries."""
+    _, _, code_length = struct.unpack_from(">HHI", data, pos)
+    pos += 8 + code_length
+    (exception_count,) = struct.unpack_from(">H", data, pos)
+    pos += 2 + 8 * exception_count
+    (attribute_count,) = struct.unpack_from(">H", data, pos)
+    pos += 2
+    lines: list[tuple[int, int]] = []
+    for _ in range(attribute_count):
+        name_index, length = struct.unpack_from(">HI", data, pos)
+        if utf8.get(name_index) == "LineNumberTable":
+            (count,) = struct.unpack_from(">H", data, pos + 6)
+            lines += [struct.unpack_from(">HH", data, pos + 8 + 4 * i) for i in range(count)]
+        pos += 6 + length
+    return code_length, sorted(lines)
+
+
+def _smap_last_line(smap: str) -> int | None:
+    """`*L` section's first range `1#1,N:1`: lines 1..N are the source file's own."""
+    lines = smap.splitlines()
+    if "*L" not in lines:
+        return None
+    first = lines[lines.index("*L") + 1]
+    if not first.startswith("1#1,"):
+        return None
+    try:
+        return int(first[len("1#1,") :].split(":")[0])
+    except ValueError:
+        return None
+
+
+def line_profile(
+    code_length: int, lines: list[tuple[int, int]], last_source_line: int | None
+) -> list[tuple[int, int]]:
+    """[(source line, bytecode bytes)]: inlined code (a line past the file's own) counts for the line it was inlined at."""
+    owner: dict[int, int] = {}
+    current = None
+    entries = lines + [(code_length, -1)]
+    for (start, line), (end, _) in zip(entries, entries[1:]):
+        if last_source_line is None or line <= last_source_line:
+            current = line
+        if current is not None:
+            owner[current] = owner.get(current, 0) + end - start
+    return sorted(owner.items())
+
+
+def scan(roots: list[Path]) -> list[tuple[int, str, list[tuple[int, int]]]]:
+    """(code_length, "class.method(descriptor)", line profile) for every method with code, largest first."""
+    sizes: list[tuple[int, str, list[tuple[int, int]]]] = []
     for root in roots:
         for class_file in sorted(root.rglob("*.class")):
             try:
-                class_name, methods = method_code_sizes(class_file.read_bytes())
-            except ClassFormatError as error:
+                class_name, methods, last_line = read_class(class_file.read_bytes())
+            except (ClassFormatError, struct.error) as error:
                 raise ClassFormatError(f"{class_file}: {error}") from None
-            for name, descriptor, length in methods:
-                sizes.append((length, f"{class_name.replace('/', '.')}.{name}{descriptor}"))
+            for name, descriptor, length, lines in methods:
+                profile = line_profile(length, lines, last_line)
+                sizes.append((length, f"{class_name.replace('/', '.')}.{name}{descriptor}", profile))
     sizes.sort(key=lambda item: (-item[0], item[1]))
     return sizes
 
 
-def check(roots: list[Path], max_bytes: int, top: int) -> int:
+def check(roots: list[Path], max_bytes: int, top: int, profile_out: Path | None = None) -> int:
     missing = [str(root) for root in roots if not root.is_dir()]
     if missing:
         print(f"check_jvm_method_size: class directory not found: {', '.join(missing)}", file=sys.stderr)
@@ -144,13 +210,21 @@ def check(roots: list[Path], max_bytes: int, top: int) -> int:
         print(f"check_jvm_method_size: no compiled methods under {', '.join(map(str, roots))}", file=sys.stderr)
         return 1
     print(f"Largest JVM methods (budget {max_bytes} bytes, JVM limit {JVM_METHOD_LIMIT}):")
-    for length, method in sizes[:top]:
+    for length, method, _ in sizes[:top]:
         print(f"  {length:6d}  {method}")
-    over = [(length, method) for length, method in sizes if length > max_bytes]
+    if profile_out is not None:
+        largest = sizes[0]
+        profile_out.write_text("".join(f"{line}\t{size}\n" for line, size in largest[2]))
+        print(f"Line profile of {largest[1]} written to {profile_out}")
+    over = [(length, method, profile) for length, method, profile in sizes if length > max_bytes]
     if not over:
         return 0
+    for length, method, profile in over:
+        print(f"\n{method}: source lines with the most bytecode (inlined code counted where it is inlined):")
+        for line, size in sorted(profile, key=lambda item: -item[1])[:15]:
+            print(f"  line {line:6d}  {size:5d} bytes")
     print(file=sys.stderr)
-    for length, method in over:
+    for length, method, _ in over:
         print(
             f"::error::{method} is {length} bytes of bytecode, over the {max_bytes}-byte budget "
             f"(the JVM refuses methods over {JVM_METHOD_LIMIT}: 'Method too large'). Move cohesive "
@@ -193,6 +267,9 @@ def self_test() -> int:
     name, methods = method_code_sizes(_class_file([("small", 10), ("big", 60000)]))
     assert name == "T", name
     assert methods == [("small", "()V", 10), ("big", "()V", 60000)], methods
+    # Lines past the file's own (100) are inlined code: counted for the line they were inlined at.
+    assert line_profile(30, [(0, 10), (5, 12), (9, 250), (20, 13)], 100) == [(10, 5), (12, 15), (13, 10)]
+    assert _smap_last_line("SMAP\nA.kt\nKotlin\n*S Kotlin\n*F\n+ 1 A.kt\nA\n*L\n1#1,100:1\n*E\n") == 100
     try:
         method_code_sizes(b"\x00\x00\x00\x00")
         raise AssertionError("a non-class file must be rejected")
@@ -215,6 +292,9 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
     parser.add_argument("--top", type=int, default=10)
+    parser.add_argument(
+        "--profile-out", type=Path, help="write the largest method's bytecode bytes per source line (TSV)"
+    )
     parser.add_argument("class_dirs", nargs="*", type=Path)
     args = parser.parse_args(argv)
     if args.self_test:
@@ -222,7 +302,7 @@ def main(argv: list[str]) -> int:
     if not args.class_dirs:
         parser.print_usage(sys.stderr)
         return 2
-    return check(args.class_dirs, args.max_bytes, args.top)
+    return check(args.class_dirs, args.max_bytes, args.top, args.profile_out)
 
 
 if __name__ == "__main__":
