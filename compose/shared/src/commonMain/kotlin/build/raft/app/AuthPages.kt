@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
@@ -50,7 +51,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
@@ -774,7 +774,7 @@ internal fun AuthProfileSetupContent(
                 isError = !handleError.isNullOrBlank(),
                 errorText = handleError,
                 forceFocused = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions.copy(imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { displayNameFocusRequester.requestFocus() })
             )
             Text(
@@ -791,7 +791,7 @@ internal fun AuthProfileSetupContent(
                 isError = !displayNameError.isNullOrBlank(),
                 errorText = displayNameError,
                 focusRequester = displayNameFocusRequester,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions.copy(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submitIfAllowed() })
             )
             Text(

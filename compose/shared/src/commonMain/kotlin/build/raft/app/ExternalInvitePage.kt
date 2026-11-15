@@ -40,6 +40,7 @@ import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.ConversationKind
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
@@ -735,6 +736,7 @@ private fun InviteNewServerStep(
                 onValueChange = { onIntent(ExternalInviteIntent.SetNewServerName(it)) },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = stringResource(Res.string.external_invite_new_server_name_placeholder),
+                keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                 enabled = !state.busy && kept == null,
                 invalid = state.fieldErrors.name != null,
             )
@@ -748,6 +750,7 @@ private fun InviteNewServerStep(
                 value = state.newServerSlug,
                 onValueChange = { onIntent(ExternalInviteIntent.SetNewServerSlug(it)) },
                 modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                 enabled = !state.busy && kept == null,
                 invalid = state.fieldErrors.slug != null,
             )

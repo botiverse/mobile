@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.components.RaftDesignSystemEditor
 import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftTextField
@@ -647,7 +648,7 @@ private fun SettingsAccountProfileCard(
         ) {
             val editor =
                 rememberRaftDesignSystemEditor(
-                    keyboardOptions = KeyboardOptions.Default,
+                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                     keyboardActions = KeyboardActions.Default,
                     keyboardHeightChange = {},
                     focusRequester = remember { FocusRequester() },
