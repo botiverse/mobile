@@ -106,6 +106,41 @@ final class RaftIosComposerPasteTests: XCTestCase {
         XCTAssertEqual(editorText(editor), "hello", "the field's text unchanged")
     }
 
+    /// Only PNG bytes on the clipboard (`public.png`, no UIImage), as another app's copy puts
+    /// there: ⌘V (the system's `paste:`) reads them and the image goes to the composer.
+    func testCommandVPastesPngBytesWithoutAUIImage() throws {
+        let png = try XCTUnwrap(Self.redImage().pngData())
+        UIPasteboard.general.items = []
+        UIPasteboard.general.setData(png, forPasteboardType: "public.png")
+        try assertCommandVPastesAnImage()
+    }
+
+    /// An item whose first image type has no image bytes (UIKit's in-process image type, as an
+    /// image set by another process lists first) next to PNG bytes: the read goes on to the PNG.
+    /// The read up to 1.26 tried the first image type only and pasted nothing (vphone).
+    func testCommandVPastesThePngOfAnItemWhoseFirstImageTypeHasNoImage() throws {
+        let png = try XCTUnwrap(Self.redImage().pngData())
+        UIPasteboard.general.items = [["com.apple.uikit.image": Data([0x00, 0x01, 0x02]), "public.png": png]]
+        try assertCommandVPastesAnImage()
+    }
+
+    private func assertCommandVPastesAnImage() throws {
+        XCTAssertTrue(RaftIosComposerImagePasteKt.raftIosClipboardHoldsOnlyImages(), "only images: \(UIPasteboard.general.types)")
+        let editor = try focusedEditor(composerClipboard: false, reportsFocus: true)
+        XCTAssertTrue(
+            waitFor(seconds: 3) { editor.canPerformAction(Self.paste, withSender: nil) },
+            "Paste offered (\(type(of: editor)))"
+        )
+        // The next paste is its own press (one claim per press).
+        _ = waitFor(seconds: 1) { false }
+        let count = RaftIosComposerPasteProbeKt.raftComposerPasteProbeImagePasteCount()
+        XCTAssertTrue(UIApplication.shared.sendAction(Self.paste, to: nil, from: nil, for: nil), "paste: has a target")
+        XCTAssertTrue(
+            waitFor(seconds: 5) { RaftIosComposerPasteProbeKt.raftComposerPasteProbeImagePasteCount() > count },
+            "⌘V: the image went to the composer (images=1, image editor flow)"
+        )
+    }
+
     /// (b) The system's Paste in the suggested actions (as on iPad, iOS 26.1, where UIKit shows it),
     /// only an image on the clipboard: one Paste, ours in its place with its title (not a second
     /// item); choosing it, and the system's `paste:` sent through the responder chain as UIKit does

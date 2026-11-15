@@ -330,23 +330,90 @@ enum RaftIosImagePaste {
     }
 
     /// The clipboard's images as stored (their original bytes where there are some), at most
-    /// `raftIosPasteMaxImages()`.
+    /// `raftIosPasteMaxImages()`. Each item's image types are tried in turn, encoded types
+    /// (public.png, public.jpeg, public.heic …) first and UIKit's in-process `com.apple.uikit.image`
+    /// last, and only bytes ImageIO can decode count. The read up to 1.26 took each item's first
+    /// image type only and gave up on the item when it had no bytes; vphone (1.26.0-main) logged
+    /// `paste images=0` for an item typed com.apple.uikit.image, public.png, public.jpeg (an image
+    /// set by another process, whose in-process UIKit type has no bytes here). Then the
+    /// whole-pasteboard reads, then `images` / `image`. Logs the types and how many each step
+    /// found (never the content).
     fileprivate static func captureClipboardImages() -> [Source] {
         let board = UIPasteboard.general
         let limit = Int(RaftIosComposerImagePasteKt.raftIosPasteMaxImages())
+        let itemTypes = board.types(forItemSet: nil) ?? []
         var sources: [Source] = []
-        for (index, types) in (board.types(forItemSet: nil) ?? []).enumerated() {
+        var perItem = 0
+        var misses: [String] = []
+        for (index, types) in itemTypes.enumerated() {
             if sources.count >= limit { break }
-            let imageType = types.first { UTType($0)?.conforms(to: .image) == true }
-            guard let imageType,
-                  let data = board.data(forPasteboardType: imageType, inItemSet: IndexSet(integer: index))?.first
-            else { continue }
-            sources.append(.data(data))
+            let set = IndexSet(integer: index)
+            var found = false
+            for type in imageTypesInReadOrder(types) {
+                if let data = board.data(forPasteboardType: type, inItemSet: set)?.first, isDecodableImage(data) {
+                    sources.append(.data(data))
+                    perItem += 1
+                    found = true
+                    break
+                }
+                misses.append(type)
+            }
+            if !found, types.contains(where: isImageType) { misses.append("item\(index)") }
         }
+        var whole = 0
+        if sources.isEmpty {
+            let types = imageTypesInReadOrder(Array(Set(itemTypes.flatMap { $0 }))) +
+                [UTType.png.identifier, UTType.jpeg.identifier, UTType.heic.identifier]
+            for type in uniqued(types) {
+                if let data = board.data(forPasteboardType: type), isDecodableImage(data) {
+                    sources.append(.data(data))
+                    whole += 1
+                    break
+                }
+            }
+        }
+        var images = 0
         if sources.isEmpty {
             sources = (board.images ?? []).prefix(limit).map { .image($0) }
+            images = sources.count
         }
+        if sources.isEmpty, let image = board.image {
+            sources = [.image(image)]
+            images = 1
+        }
+        let typeList = itemTypes.map { "[" + $0.joined(separator: ",") + "]" }.joined(separator: ",")
+        RaftIosDiagnosticsRecord(
+            "info", "RaftImagePaste",
+            "read items=\(itemTypes.count) types=\(typeList) perItem=\(perItem) whole=\(whole) images=\(images) " +
+                "missed=\(misses.joined(separator: ","))"
+        )
         return sources
+    }
+
+    private static let uikitImageType = "com.apple.uikit.image"
+
+    private static func isImageType(_ type: String) -> Bool {
+        type == uikitImageType || UTType(type)?.conforms(to: .image) == true
+    }
+
+    /// [types]' image types: encoded ones (ImageIO reads their bytes) in the item's order, then
+    /// any other image type, UIKit's in-process one last.
+    static func imageTypesInReadOrder(_ types: [String]) -> [String] {
+        let images = types.filter(isImageType)
+        let encoded = images.filter { $0 != uikitImageType && $0.hasPrefix("public.") }
+        let others = images.filter { $0 != uikitImageType && !$0.hasPrefix("public.") }
+        let uikit = images.filter { $0 == uikitImageType }
+        return encoded + others + uikit
+    }
+
+    private static func uniqued(_ types: [String]) -> [String] {
+        var seen = Set<String>()
+        return types.filter { seen.insert($0).inserted }
+    }
+
+    private static func isDecodableImage(_ data: Data) -> Bool {
+        guard !data.isEmpty, let source = CGImageSourceCreateWithData(data as CFData, nil) else { return false }
+        return CGImageSourceGetCount(source) > 0
     }
 
     /// Each image upright (EXIF orientation applied), no longer than `maxPixelSize` on its longest
