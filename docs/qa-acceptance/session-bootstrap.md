@@ -214,7 +214,9 @@ again. Every record carries `github_run_id`, `github_run_attempt`, `simulator_ud
   after the deletion and sets `STAMP_REQUIRE_DEVICE_CLEANUP=1` /
   `STAMP_DEVICE_CLEANUP_RECORD=qa-evidence/simulator-cleanup.json`. `stamp_report.sh
   report|report-verdict` (also whenever such a record exists) still uploads evidence but sends
-  the product verdict (pass or fail) only if the record says `simulator_deleted` /
+  the product verdict (pass or fail) only if the delete step itself succeeded
+  (`STAMP_DEVICE_CLEANUP_OUTCOME=${{ steps.delete_simulator.outcome }}` must be `success`) AND
+  the record says `simulator_deleted` /
   `deleted_and_absent` AND is bound to this run (`github_run_id`/`github_run_attempt` equal
   `GITHUB_RUN_ID`/`GITHUB_RUN_ATTEMPT`, `simulator_udid`/`simulator_name` equal this job's
   ownership receipt); otherwise — unknown, failed, malformed or missing — it sends only a

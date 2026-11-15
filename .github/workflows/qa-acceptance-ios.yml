@@ -819,6 +819,7 @@ jobs:
       # simulator deleted_and_absent|unknown, app_process unknown, server_session not proven. A no-op
       # if this job's device was already deleted (no double delete). Fails the job unless deleted.
       - name: Delete run-owned simulator
+        id: delete_simulator
         if: always()
         run: |
           [ -n "${UDID:-}" ] && [ -n "${SIM_NAME:-}" ] || { echo "no run-owned simulator recorded"; exit 0; }
@@ -830,14 +831,16 @@ jobs:
             exit 1
           }
 
-      # Runs after the verified deletion above and reads its record: stamp_report.sh sends the product
-      # verdict only when qa-evidence/simulator-cleanup.json says simulator_deleted; otherwise (unknown,
-      # failed or missing) it uploads evidence but sends only a harness workflow error, never pass/fail.
+      # Runs after the verified deletion above: stamp_report.sh sends the product verdict only when the
+      # delete step succeeded (steps.delete_simulator.outcome) AND qa-evidence/simulator-cleanup.json
+      # says simulator_deleted for this run id/attempt and this job's ownership receipt UDID/name;
+      # otherwise it uploads evidence but sends only a harness workflow error, never pass/fail.
       - name: Report to Stamp
         if: always()
         env:
           STAMP_REQUIRE_DEVICE_CLEANUP: "1"
           STAMP_DEVICE_CLEANUP_RECORD: qa-evidence/simulator-cleanup.json
+          STAMP_DEVICE_CLEANUP_OUTCOME: ${{ steps.delete_simulator.outcome }}
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id || '' }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}

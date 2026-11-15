@@ -552,7 +552,8 @@ if [ "$REPORT_VERDICT" = "true" ]; then
     # The record must also be THIS run's: same GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT, and the UDID/name of
     # this job's simulator ownership receipt (a leftover record from another run never counts).
     OWNERSHIP_RECEIPT="${RAFT_QA_SIMULATOR_OWNERSHIP_RECEIPT:-${RUNNER_TEMP:-}/raft-qa-simulator-ownership.json}"
-    if ! RUN_ID="${GITHUB_RUN_ID:-}" RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" node -e '
+    # AND the delete step itself must have succeeded (the workflow passes steps.<id>.outcome).
+    if [ "${STAMP_DEVICE_CLEANUP_OUTCOME:-}" != "success" ] || ! RUN_ID="${GITHUB_RUN_ID:-}" RUN_ATTEMPT="${GITHUB_RUN_ATTEMPT:-}" node -e '
         const fs=require("fs"),e=process.env;
         const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8")),o=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
         const ok=v&&v.cleanup_receipt==="simulator_deleted"&&v.simulator==="deleted_and_absent"&&
@@ -561,7 +562,7 @@ if [ "$REPORT_VERDICT" = "true" ]; then
           o&&o.github_run_id===e.RUN_ID&&o.github_run_attempt===e.RUN_ATTEMPT&&
           typeof o.udid==="string"&&String(v.simulator_udid).toUpperCase()===o.udid.toUpperCase()&&v.simulator_name===o.name;
         process.exit(ok?0:1)' "$DEVICE_CLEANUP_RECORD" "$OWNERSHIP_RECEIPT" 2>/dev/null; then
-      echo "stamp: device cleanup is not proven (record ${DEVICE_CLEANUP_RECORD}); product verdict suppressed, reporting a harness workflow error" >&2
+      echo "stamp: device cleanup is not proven (delete step outcome=${STAMP_DEVICE_CLEANUP_OUTCOME:-missing}, record ${DEVICE_CLEANUP_RECORD}); product verdict suppressed, reporting a harness workflow error" >&2
       STAMP_POSTCLAIM_ERROR_PHASE=device_cleanup \
         STAMP_POSTCLAIM_ERROR_REASON="job-owned simulator deletion not proven (cleanup record missing or not simulator_deleted); product verdict suppressed" \
         "$0" workflow-error "$EV" || true

@@ -1143,7 +1143,7 @@ else{if(out)fs.writeFileSync(out,JSON.stringify({code:'RUN_CASE_NOT_RUNNING'}));
   return { phase, calls };
 }
 
-const IOS_ENV = { STAMP_REQUIRE_DEVICE_CLEANUP: "1", STAMP_DEVICE_CLEANUP_RECORD: "qa-evidence/simulator-cleanup.json" };
+const IOS_ENV = { STAMP_REQUIRE_DEVICE_CLEANUP: "1", STAMP_DEVICE_CLEANUP_RECORD: "qa-evidence/simulator-cleanup.json", STAMP_DEVICE_CLEANUP_OUTCOME: "success" };
 const IOS_UDID = "0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0";
 const IOS_OWNERSHIP = { contract: "raft-qa-simulator-ownership/v1", udid: IOS_UDID, name: "raft-qa-run-222-1", github_run_id: "222", github_run_attempt: "1", created_at: "2026-11-15T00:00:00Z" };
 const DELETED = {
@@ -1177,6 +1177,12 @@ test("report: device cleanup gate (missing or malformed record → error only; s
     assert.equal(h.phase("report", "qa-evidence"), 1, name);
     assert.deepEqual(h.calls().map((c) => c.verdict), ["error"], name);
   }
+  // A matching record is not enough: the delete step itself must have succeeded.
+  for (const outcome of ["failure", "cancelled", "skipped", ""]) {
+    const h = iosReportHarness(`outcome-${outcome || "missing"}`, { cleanup: DELETED, extraEnv: { ...IOS_ENV, STAMP_DEVICE_CLEANUP_OUTCOME: outcome } });
+    assert.equal(h.phase("report", "qa-evidence"), 1, outcome);
+    assert.deepEqual(h.calls().map((c) => c.verdict), ["error"], `delete step outcome ${outcome || "missing"}`);
+  }
   // This run's record but no (or another run's) ownership receipt: error only.
   for (const [name, ownership] of [["no ownership receipt", null], ["foreign ownership receipt", { ...IOS_OWNERSHIP, github_run_id: "111", name: "raft-qa-run-111-1" }]]) {
     const h = iosReportHarness(name.replace(/\W+/g, "-"), { cleanup: DELETED, extraEnv: IOS_ENV, ownership });
@@ -1205,6 +1211,8 @@ test("iOS workflow: delete → read record → report, and the report step requi
   const report = workflow.slice(at("Report to Stamp"), at("Upload evidence"));
   assert.match(report, /STAMP_REQUIRE_DEVICE_CLEANUP: "1"/);
   assert.match(report, /STAMP_DEVICE_CLEANUP_RECORD: qa-evidence\/simulator-cleanup\.json/);
+  assert.match(report, /STAMP_DEVICE_CLEANUP_OUTCOME: \$\{\{ steps\.delete_simulator\.outcome \}\}/);
+  assert.match(workflow.slice(at("Delete run-owned simulator")), /^- name: Delete run-owned simulator\n\s+id: delete_simulator\n/);
   const del = workflow.slice(at("Delete run-owned simulator"), at("Report to Stamp"));
   assert.match(del, /delete-simulator[\s\S]*--output qa-evidence\/simulator-cleanup\.json/);
 });

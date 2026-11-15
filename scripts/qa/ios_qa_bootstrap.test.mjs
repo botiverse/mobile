@@ -683,7 +683,7 @@ test("entry point: already deleted only with this job's own deletion receipt fro
 // ---- Round 5 (Argus, c92fe10c): the cleanup record is always THIS run's ----------------------------
 
 /** Runs the real stamp_report.sh `report` on <root>/qa-evidence against a fake Testbed; returns verdicts sent. */
-function reportVerdicts(host) {
+function reportVerdicts(host, deleteStatus) {
   const evidence = path.join(host.root, "qa-evidence");
   fs.mkdirSync(evidence, { recursive: true });
   fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({ verdict: "pass" }));
@@ -700,6 +700,8 @@ if(u.includes("/verdict")){const b=d.startsWith("@")?fs.readFileSync(d.slice(1),
     ...process.env, PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`, RUNNER_TEMP: host.runnerTemp,
     STAMP_RUN_CASE_ID: "rc-ios", STAMP_URL: "https://stamp.test", STAMP_TOKEN: "fake", GITHUB_RUN_ID: "222", GITHUB_RUN_ATTEMPT: "1",
     GITHUB_REPOSITORY: "botiverse/mobile", STAMP_REQUIRE_DEVICE_CLEANUP: "1", STAMP_DEVICE_CLEANUP_RECORD: "qa-evidence/simulator-cleanup.json",
+    // What the workflow passes as steps.delete_simulator.outcome.
+    STAMP_DEVICE_CLEANUP_OUTCOME: deleteStatus === 0 ? "success" : "failure",
   };
   delete env.QA_TEST_EMAIL;
   delete env.RAFT_QA_SIMULATOR_OWNERSHIP_RECEIPT;
@@ -732,7 +734,10 @@ test("delete-simulator: a leftover foreign simulator_deleted record is replaced 
     assert.equal(rec.simulator_udid, udid, name);
     assert.equal(rec.simulator_name, "raft-qa-run-222-1", name);
     assert.equal(host.calls().some((x) => / delete /.test(x)), false, name);
-    assert.deepEqual(reportVerdicts(host), ["error"], `${name}: never pass`);
+    assert.deepEqual(reportVerdicts(host, r.status), ["error"], `${name}: never pass`);
+    // Even if the step outcome were (wrongly) reported as success, the record alone blocks pass.
+    fs.rmSync(path.join(host.root, "verdicts"), { force: true });
+    assert.deepEqual(reportVerdicts(host, 0), ["error"], `${name}: record gate alone`);
   }
 });
 
@@ -747,5 +752,38 @@ test("delete-simulator → report end to end: this run's verified deletion sends
   const rec = JSON.parse(fs.readFileSync(out, "utf8"));
   assert.equal(rec.cleanup_receipt, "simulator_deleted");
   assert.deepEqual([rec.github_run_id, rec.github_run_attempt, rec.simulator_udid, rec.simulator_name], ["222", "1", udid, "raft-qa-run-222-1"]);
-  assert.deepEqual(reportVerdicts(host), ["pass"]);
+  assert.deepEqual(reportVerdicts(host, r.status), ["pass"]);
+});
+
+// Argus's round-5 replays (c92fe10c): run 111's stale simulator_deleted record + run 222 losing ownership
+// AFTER shutdown. There, delete-simulator exited 2 without overwriting it and `report` sent pass.
+const STALE_111 = { platform: "ios-simulator", simulator_udid: FOREIGN, simulator_name: "raft-qa-run-111-1", cleanup_receipt: "simulator_deleted", simulator: "deleted_and_absent", app_process: "unknown", server_session: "not_proven_by_device_cleanup" };
+
+test("independent stale output: success file can survive a later delete exception", () => {
+  const host = fakeHost({ ...healthyCleanup, swapListAfter: { key: "shutdown", list: listDevices([{ udid, name: "foreign-shared", state: "Shutdown" }]) } });
+  assert.equal(host.record().status, 0);
+  const out = path.join(host.root, "record.json");
+  fs.writeFileSync(out, JSON.stringify(STALE_111));
+  const r = host.runHarness(["delete-simulator", "--udid", udid, "--simulator-name", "raft-qa-run-222-1", "--output", out]);
+  assert.equal(r.status, 2);
+  const rec = JSON.parse(fs.readFileSync(out, "utf8"));
+  assert.equal(rec.cleanup_receipt, "unknown", "the stale success record does not survive");
+  assert.deepEqual([rec.github_run_id, rec.github_run_attempt, rec.simulator_udid, rec.simulator_name], ["222", "1", udid, "raft-qa-run-222-1"]);
+  assert.equal(host.calls().filter((c) => / delete /.test(c)).length, 0);
+});
+
+test("independent full sequence: stale foreign cleanup record survives current failure and reporter posts pass", () => {
+  const host = fakeHost({ ...healthyCleanup, swapListAfter: { key: "shutdown", list: listDevices([{ udid, name: "foreign-shared", state: "Shutdown" }]) } });
+  assert.equal(host.record().status, 0);
+  const out = path.join(host.root, "qa-evidence", "simulator-cleanup.json");
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  fs.writeFileSync(out, JSON.stringify(STALE_111));
+  const del = host.runHarness(["delete-simulator", "--udid", udid, "--simulator-name", "raft-qa-run-222-1", "--output", out]);
+  assert.equal(del.status, 2);
+  assert.equal(host.calls().filter((c) => / delete /.test(c)).length, 0);
+  assert.deepEqual(reportVerdicts(host, del.status), ["error"], "only the harness error; never pass");
+  // The stale record itself (restored) would also be refused even with a success outcome.
+  fs.writeFileSync(out, JSON.stringify(STALE_111));
+  fs.rmSync(path.join(host.root, "verdicts"), { force: true });
+  assert.deepEqual(reportVerdicts(host, 0), ["error"]);
 });
