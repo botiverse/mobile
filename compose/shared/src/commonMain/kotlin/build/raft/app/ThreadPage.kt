@@ -13858,6 +13858,8 @@ private fun SharedThreadRouteContentContent(
             adaptiveCloseRequest = adaptiveCloseRequest,
             adaptiveStoreScope = storeScope,
             adaptiveEventBus = eventBus,
+            // From values this lambda already captures (see the JVM-limit note above).
+            incomingNavigation = sharedStores.foregroundBannerStore(storeScope).incomingNavigation,
             onLoadNewer = {
                 threadViewModel.loadNewerPage()
             },
@@ -17044,6 +17046,8 @@ private data class ThreadPageContentData(
     val adaptiveStoreScope: RaftShellStoreScope,
     val adaptiveEventBus: RaftEventBus,
     val onThreadEvent: ThreadEventHandler,
+    /** The window's "something is about to open" signal: an open Tasks / Files cover closes on it. */
+    val incomingNavigation: RaftIncomingNavigationSignal? = null,
 )
 
 /** task #346: callback payload of [ThreadPageContent]. See ThreadPageContentData. */
@@ -17184,6 +17188,7 @@ fun ThreadPageContent(
     adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest? = null,
     adaptiveStoreScope: RaftShellStoreScope = RaftShellStoreScope.Legacy,
     adaptiveEventBus: RaftEventBus,
+    incomingNavigation: RaftIncomingNavigationSignal? = null,
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onJumpToLatest: suspend () -> Boolean,
     onBack: () -> Unit,
@@ -17272,6 +17277,7 @@ fun ThreadPageContent(
                 adaptiveStoreScope = adaptiveStoreScope,
                 adaptiveEventBus = adaptiveEventBus,
                 onThreadEvent = onThreadEvent,
+                incomingNavigation = incomingNavigation,
             ),
         callbacks =
             ThreadPageContentCallbacks(
@@ -17391,6 +17397,14 @@ private fun ThreadPageContentContent(
             } else {
                 conversationSideCardsBeside(sideCardsWindowWidthDp, sideCardsPageWidthDp)
             }
+    // On a phone the cards cover the conversation: a link, notification or shortcut into a
+    // conversation (or a page opened at a message) closes them, so the message is not under them.
+    ConversationSideCardsIncomingNavigationEffect(
+        store = sideCardsStore,
+        signal = data.incomingNavigation,
+        coverConversation = sideCardsEnabled && !sideCardsBeside,
+        focusedMessageId = payload.focusedMessageId,
+    )
     val onSelectedTabChanged = callbacks.onSelectedTabChanged
     val onSuggestionDemandChanged = callbacks.onSuggestionDemandChanged
     val activityMuteState = data.activityMuteState

@@ -133,6 +133,21 @@ class ConversationSideCardsTest {
     }
 
     @Test
+    fun incomingNavigationClosesCardsOnlyWhereTheyCoverTheConversation() {
+        val store = ConversationSideCardsStore()
+        // Nothing open: nothing covered, whatever the layout.
+        assertFalse(store.closeForIncomingNavigation(coverConversation = true))
+        store.open(ConversationSideCard.Tasks)
+        store.open(ConversationSideCard.Files)
+        // Beside the conversation (wide) the cards stay.
+        assertFalse(store.closeForIncomingNavigation(coverConversation = false))
+        assertEquals(ConversationSideCardsState(tasks = true, files = true, focus = ConversationSideCard.Files), store.state.value)
+        // Over it (phone) every card closes, and the cover is reported.
+        assertTrue(store.closeForIncomingNavigation(coverConversation = true))
+        assertEquals(ConversationSideCardsState(), store.state.value)
+    }
+
+    @Test
     fun unreadableStoredCardsAreClosed() {
         assertEquals(ConversationSideCardsState(), decodeConversationSideCardsOpen(null))
         assertEquals(ConversationSideCardsState(), decodeConversationSideCardsOpen("not json"))

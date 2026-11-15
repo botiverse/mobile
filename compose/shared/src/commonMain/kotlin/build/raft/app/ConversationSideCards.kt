@@ -8,9 +8,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -139,6 +144,17 @@ internal class ConversationSideCardsStore(
 
     fun closeAll() = change { ConversationSideCardsState() }
 
+    /**
+     * Something is about to open ([RaftIncomingNavigationSignal]): where the cards cover the
+     * conversation ([coverConversation], a phone), open cards close; true when they were open.
+     * Beside the conversation (a wide page) they stay.
+     */
+    fun closeForIncomingNavigation(coverConversation: Boolean): Boolean {
+        if (!coverConversation || !state.value.anyOpen) return false
+        closeAll()
+        return true
+    }
+
     private fun change(transform: (ConversationSideCardsState) -> ConversationSideCardsState) {
         val before = mutableState.value
         mutableState.update(transform)
@@ -155,6 +171,40 @@ internal class ConversationSideCardsStore(
 }
 
 internal val LocalConversationSideCards = staticCompositionLocalOf { ConversationSideCardsStore.App }
+
+/**
+ * The cards are one setting for the person, so on a phone a conversation opened while they are
+ * open showed them over it: a message link, a notification, banner or shortcut open landed under
+ * the cover, its message anchored but hidden, and into the same conversation nothing seemed to
+ * happen (the open was skipped as "already the top page"). Where the cards cover the conversation
+ * ([coverConversation]):
+ * - an incoming open ([signal], fired by [RaftShellNavigationIntake] before it opens) closes them
+ *   and reports the cover, so an open into this conversation still goes through to its message;
+ * - a page opened at a message ([focusedMessageId], e.g. at cold start, before any page could
+ *   hear the signal) closes them once for that message.
+ * Beside the conversation (a wide page) the cards stay open.
+ */
+@Composable
+internal fun ConversationSideCardsIncomingNavigationEffect(
+    store: ConversationSideCardsStore,
+    signal: RaftIncomingNavigationSignal?,
+    coverConversation: Boolean,
+    focusedMessageId: String?,
+) {
+    val cover by rememberUpdatedState(coverConversation)
+    DisposableEffect(store, signal) {
+        val unregister = signal?.register { store.closeForIncomingNavigation(cover) }
+        onDispose { unregister?.invoke() }
+    }
+    // Once per message: the page coming back (Back from a page over it) keeps the cards as left.
+    var focusHandled by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(store, focusedMessageId) {
+        val focused = focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (focused == focusHandled) return@LaunchedEffect
+        focusHandled = focused
+        store.closeForIncomingNavigation(cover)
+    }
+}
 
 /** Cards replace the tab row only with the flag on, on a page that has the tab row. */
 internal fun conversationSideCardsEnabled(
