@@ -461,6 +461,32 @@ class SharedComputersStoreTest {
     }
 
     @Test
+    fun aSyncedMachineRowKeepsTheListsLoginSteps() = runBlocking {
+        // A sync `machine` row never carries `attention` (the list computes it per viewer, slock
+        // routes/servers.ts): the usage cells keep the list's step until the list is read again.
+        val api = RecordingComputersApi()
+        api.respond = {
+            HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """{"machines":[{"id":"machine-1","name":"Maria Laptop","status":"online","runtimes":["codex"],""" +
+                        """"attention":{"count":1,"items":[{"code":"signed_out","resource":{"kind":"login","key":"shared:codex"},""" +
+                        """"actor":"computer_owner","action":"sign_in","agentIds":["a1"],"agentCount":1}],"waitingAgents":0}}]}"""
+            )
+        }
+        val store = store(api)
+        store.ensureComputerPickerForServer("server-1")
+        val renamed = parseSyncedComputerRow(syncMachineRow("machine-1", "Maria Desktop", "online"))!!
+        assertNull(renamed.loginSteps)
+
+        assertTrue(store.applySyncedMachineRows("server-1", listOf(renamed), deletes = emptySet()))
+
+        val machine = store.state.value.selectComputerServerSlice("server-1").machines.single()
+        assertEquals("Maria Desktop", machine.name)
+        assertEquals(listOf(ComputerLoginStep("codex", ComputerLoginStepAction.SignIn)), machine.loginSteps)
+    }
+
+    @Test
     fun syncedMachineRowsLeaveAnUnloadedServerForItsLoad() = runBlocking {
         val store = store(RecordingComputersApi())
         val row = parseSyncedComputerRow(syncMachineRow("machine-1", "Maria Laptop", "online"))!!

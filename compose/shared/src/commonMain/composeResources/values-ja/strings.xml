@@ -3057,6 +3057,10 @@
     <string name="settings_computers_rack_usage_unavailable">%1$s: 使用量を取得できません</string>
     <string name="settings_computers_rack_usage_meter">%1$s アカウント: %2$s</string>
     <string name="settings_computers_rack_usage_meter_stale">%1$s アカウント: %2$s · 最後に取得した値</string>
+    <string name="settings_computers_rack_step_verify_account">確認</string>
+    <string name="settings_computers_rack_step_sign_in">ログイン</string>
+    <string name="settings_computers_readiness_do_verify_account">アカウントを確認</string>
+    <string name="settings_computers_readiness_do_sign_in">ログイン</string>
     <string name="settings_computers_rack_view_label">コンピューターの表示</string>
     <string name="settings_computers_rack_view_list">リスト</string>
     <string name="settings_computers_rack_view_cards">カード</string>
@@ -3632,8 +3636,8 @@
     <string name="runtime_quota_window_five_hour">5 時間</string>
     <string name="runtime_quota_window_week">今週</string>
     <string name="runtime_quota_used">%1$s 使用済み %2$s</string>
-    <string name="runtime_quota_used_up">%1$s 上限到達 · %2$sに回復</string>
-    <string name="runtime_quota_used_up_no_reset">%1$s 上限に達しました</string>
+    <string name="runtime_quota_used_up">%1$s 上限到達 · リセット：%2$s</string>
+    <string name="runtime_quota_used_up_no_reset">%1$s 上限到達</string>
     <string name="runtime_quota_attention">%1$s · 対応が必要</string>
     <string name="runtime_picker_search">検索</string>
     <string name="runtime_picker_no_matches">「%1$s」に一致する項目はありません</string>

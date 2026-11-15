@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.format.RaftFormat
 import build.raft.app.data.COMPUTER_ACTION_DELETE
+import build.raft.app.data.ComputerLoginStep
+import build.raft.app.data.ComputerLoginStepAction
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
@@ -96,6 +98,8 @@ internal data class RaftComputerRowModel(
      * "Public (no owner)".
      */
     val owner: RaftComputerCreatorModel? = null,
+    /** The machine logins that hold agents and need a step (server `attention`, slock #14602): the usage cells' "Verify" / "Sign in". */
+    val loginSteps: List<ComputerLoginStep> = emptyList(),
 )
 
 /**
@@ -323,6 +327,7 @@ internal fun SettingsComputerSnapshot.toRaftComputerRow(): RaftComputerRowModel 
         canViewRuntimeUsage = canViewRuntimeUsage,
         owner = raftComputerOwner(this),
         updating = updating,
+        loginSteps = loginSteps,
     )
 }
 
@@ -471,6 +476,22 @@ internal fun RuntimeAccountUsageAccount.rackModelLine(): RaftRackModelLine? {
     }
     return tightest
 }
+
+/**
+ * Web `rackLoginStep` (slock #14602): the step a provider's usage line shows instead of its bar,
+ * when the Computer's machine login of one of the provider's runtimes holds agents and needs
+ * "Verify" or "Sign in" (an item of the server's needs-attention summary). Only a viewer who may
+ * see the reason gets the item's code and resource, so anyone else keeps the line as it was. Null
+ * when nothing on that login needs a step.
+ */
+internal fun raftRackLoginStep(
+    runtimes: List<String>,
+    loginSteps: List<ComputerLoginStep>,
+    provider: RuntimeAccountUsageProvider,
+): ComputerLoginStepAction? =
+    loginSteps.firstOrNull { step ->
+        step.runtimeId in runtimes && RuntimeAccountUsageProvider.forRuntime(step.runtimeId) == provider
+    }?.action
 
 /** Web `rackRuntimeCell`'s `unsupported`: this Computer reads no usage for the provider, so it has no line (slock #14667). */
 internal val RuntimeAccountUsageLoad?.unsupportedRead: Boolean

@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.data.ComputerLoginStep
+import build.raft.app.data.ComputerLoginStepAction
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageHealth
 import build.raft.app.data.RuntimeAccountUsageLoad
@@ -167,6 +169,26 @@ class RaftComputersRackModelTest {
         // A 360dp phone (328dp inside): four usage columns and Other share what is left.
         assertEquals(64.dp, raftRackPhoneUsageCellWidth(328.dp, usageCount = 4, hasOther = true))
         assertEquals(0.dp, raftRackPhoneUsageCellWidth(328.dp, usageCount = 0, hasOther = true))
+    }
+
+    @Test
+    fun aLoginHoldingAgentsGivesItsProvidersLineTheStep() {
+        // Web rackLoginStep (slock #14602): the first machine login of one of the provider's runtimes
+        // this Computer has; Kimi CLI's login steps Kimi's line; a runtime it doesn't have, none.
+        val steps =
+            listOf(
+                ComputerLoginStep("grok", ComputerLoginStepAction.SignIn),
+                ComputerLoginStep("kimi-sdk", ComputerLoginStepAction.VerifyAccount),
+                ComputerLoginStep("claude", ComputerLoginStepAction.VerifyAccount),
+                ComputerLoginStep("claude", ComputerLoginStepAction.SignIn),
+            )
+        val runtimes = listOf("claude", "kimi-sdk", "codex")
+        assertEquals(ComputerLoginStepAction.VerifyAccount, raftRackLoginStep(runtimes, steps, RuntimeAccountUsageProvider.Claude))
+        assertEquals(ComputerLoginStepAction.VerifyAccount, raftRackLoginStep(runtimes, steps, RuntimeAccountUsageProvider.Kimi))
+        assertNull(raftRackLoginStep(runtimes, steps, RuntimeAccountUsageProvider.Codex))
+        assertNull(raftRackLoginStep(runtimes, steps, RuntimeAccountUsageProvider.Grok))
+        // The row carries the server's steps through.
+        assertEquals(steps, computer().copy(runtimes = runtimes, loginSteps = steps).toRaftComputerRow().loginSteps)
     }
 
     private fun computer(

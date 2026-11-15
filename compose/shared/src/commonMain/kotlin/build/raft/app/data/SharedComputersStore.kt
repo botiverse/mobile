@@ -509,7 +509,9 @@ class SharedComputersStore internal constructor(
                         .mapValues { (_, machine) ->
                             machine.copy(
                                 latestComputerVersion = current.latestComputerVersion,
-                                latestComputerReleaseNotes = releaseNotes
+                                latestComputerReleaseNotes = releaseNotes,
+                                // A sync row never carries `attention` (the list computes it per viewer): keep the list's.
+                                loginSteps = machine.loginSteps ?: current.machines.firstOrNull { it.id == machine.id }?.loginSteps
                             )
                         }
                 val kept = current.machines.filterNot { it.id in deletes }

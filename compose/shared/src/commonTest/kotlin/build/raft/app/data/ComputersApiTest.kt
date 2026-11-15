@@ -176,6 +176,50 @@ class ComputersApiTest {
     }
 
     @Test
+    fun attentionLoginItemsBecomeTheUsageCellsSteps() = runPortableCoroutineTest {
+        // Wire shape per botiverse/slock 9d710a10a: routes/servers.ts GET /:id/machines adds
+        // `attention: computerAttentionForViewer(...)`, a ReadinessAttention `{count, items, waitingAgents}`
+        // (packages/shared/src/readiness.ts). Items as web computersRackRuntimeUsage.behavior.test.tsx
+        // (#14602) sends them; a guest's item has no code or resource; an older server sends none.
+        val body =
+            """
+            {"machines":[
+              {"id":"hetzner","name":"Hetzner","status":"online","isComputer":true,"runtimes":["claude","codex"],
+               "attention":{"count":1,"items":[{"code":"verification_required","resource":{"kind":"login","key":"shared:claude"},
+                 "actor":"computer_owner","actorName":"Olive","action":"verify_account","agentIds":["a1"],"agentCount":1}],"waitingAgents":0}},
+              {"id":"signed-out","name":"Signed out","status":"online","isComputer":true,"runtimes":["codex"],
+               "attention":{"count":3,"items":[
+                 {"code":"signed_out","resource":{"kind":"login","key":"shared:codex"},"actor":"computer_owner","action":"sign_in","agentIds":["a2"],"agentCount":1},
+                 {"code":"verification_required","resource":{"kind":"login","key":"agent:a3"},"actor":"agent_owner","action":"verify_account","agentIds":["a3"],"agentCount":1},
+                 {"code":"signed_out","resource":{"kind":"login","key":"shared:claude"},"actor":"computer_owner","action":"sign_in","agentIds":[],"agentCount":0},
+                 {"code":"computer_update_available","resource":{"kind":"computer"},"actor":"computer_owner","action":"update_computer","agentCount":0},
+                 {"code":"made_up","resource":{"kind":"login","key":"shared:grok"},"actor":"computer_owner","action":"fix","agentIds":["a4"],"agentCount":1},
+                 "not an item"
+               ],"waitingAgents":0}},
+              {"id":"mbp","name":"MBP","status":"online","isComputer":true,"runtimes":["claude"],
+               "attention":{"count":1,"items":[{"actor":"computer_owner","actorName":"Olive","action":"fix","agentCount":1}],"waitingAgents":0}},
+              {"id":"old","name":"Old server","status":"online","isComputer":true,"runtimes":["claude"]}
+            ],"latestDaemonVersion":null,"latestComputerVersion":"1.25.0"}
+            """.trimIndent()
+        val machines =
+            assertIs<DataResult.Content<ComputerListSummary>>(
+                RaftComputersApiClient(RecordingComputersApi(machinesBody = body)).machines(ServerId("server-1"), DataRequestPriority.Visible)
+            ).data.machines.associateBy { it.id }
+
+        assertEquals(listOf(ComputerLoginStep("claude", ComputerLoginStepAction.VerifyAccount)), machines.getValue("hetzner").loginSteps)
+        // Only a machine login (`shared:`) holding an agent, with a step the cell shows.
+        assertEquals(listOf(ComputerLoginStep("codex", ComputerLoginStepAction.SignIn)), machines.getValue("signed-out").loginSteps)
+        // A viewer who may not see the reason gets no code: no step.
+        assertEquals(emptyList(), machines.getValue("mbp").loginSteps)
+        assertEquals(null, machines.getValue("old").loginSteps)
+        assertEquals(
+            listOf(ComputerLoginStep("claude", ComputerLoginStepAction.VerifyAccount)),
+            machines.getValue("hetzner").toSettingsComputerSnapshot().loginSteps
+        )
+        assertEquals(emptyList(), machines.getValue("old").toSettingsComputerSnapshot().loginSteps)
+    }
+
+    @Test
     fun diskAndMemoryStatusMapFromTheMachineReadModel() = runPortableCoroutineTest {
         // Wire shape per botiverse/slock 424c5203: services/machineReadModel.ts sends
         // `diskStatus: status === "online" ? diskStatus : null` and the same for `memoryStatus`,

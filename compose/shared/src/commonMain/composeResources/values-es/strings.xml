@@ -3468,8 +3468,8 @@
     <string name="runtime_quota_window_five_hour">5 h</string>
     <string name="runtime_quota_window_week">Semana</string>
     <string name="runtime_quota_used">%1$s: %2$s usado</string>
-    <string name="runtime_quota_used_up">%1$s: agotado · vuelve %2$s</string>
-    <string name="runtime_quota_used_up_no_reset">%1$s agotado</string>
+    <string name="runtime_quota_used_up">%1$s: agotado · se restablece %2$s</string>
+    <string name="runtime_quota_used_up_no_reset">%1$s: agotado</string>
     <string name="runtime_quota_attention">%1$s · requiere atención</string>
     <string name="runtime_picker_search">Buscar</string>
     <string name="runtime_picker_no_matches">Nada coincide con “%1$s”</string>

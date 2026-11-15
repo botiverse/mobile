@@ -126,12 +126,13 @@ internal fun rememberRuntimeQuotaLineParts(quota: RuntimeQuotaLoads): Map<String
     val copy = rememberRuntimeQuotaLineCopy()
     val summaries = quota.keys.mapNotNull { (optionId, key) -> quota.loads[optionId].quotaSummary(key)?.let { optionId to it } }
     val timeContext = currentRaftTimeContextProvider?.current
-    // Relative reset words ("3 小时后") for every used-up window, resolved in composition.
+    // Reset words for every used-up window, resolved in composition, as the usage card and the
+    // rack count them (web `usageResetText`, slock #14717): "in 5 days"; a reset already past "3 hours ago".
     val resetLabels =
         summaries
             .flatMap { (_, summary) -> summary.segments.mapNotNull { if (it.usedUp) it.resetsAt else null } }
             .distinct()
-            .associateWith { raftRelativeTimestampLabel(it, timeContext) }
+            .associateWith { computerRuntimeUsageResetText(it, timeContext) }
     return summaries.associate { (optionId, summary) -> optionId to runtimeQuotaLineParts(summary, copy) { resetLabels[it] } }
 }
 
