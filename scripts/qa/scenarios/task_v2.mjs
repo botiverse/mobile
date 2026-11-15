@@ -28,6 +28,11 @@ const TEST_PREFIX = "[QA test data, please ignore]";
 export async function run(ctx) {
   const { step, nodes, find, tapNode, shell, sleep, log, label, option, web, account, PKG } = ctx;
   const serverName = option("server-name", "");
+  // --release-checks: also s6 (first reply in an empty task), s7 (message links while an empty task
+  // page with a draft is open; --other-channel <exact name> is the second channel, read only) and
+  // s8 (smoke: cold start, server switch and back, Settings and back).
+  const releaseChecks = ctx.flag?.("release-checks") ?? false;
+  const otherChannelName = String(option("other-channel", "")).replace(/^#/, "");
   const channelName = String(option("channel", "")).replace(/^#/, "");
   if (!serverName || !channelName) throw new Error("task_v2 needs --server-name and --channel (one exact test server and channel)");
   const runTag = `${process.env.GITHUB_RUN_ID ?? "local"}-${Date.now().toString(36)}`;
@@ -251,6 +256,19 @@ export async function run(ctx) {
       }, "create the backlog test task");
       const backlogTask = listOf(backlog, "tasks")[0];
       created.tasks.push({ id: backlogTask.id, channelId: channel.id, number: backlogTask.taskNumber, title: backlogTask.title, status: backlogTask.status });
+      // Release checks: two tasks with no conversation yet (empty task pages), deleted at the end.
+      const empties = [];
+      if (releaseChecks) {
+        for (const which of ["A", "B"]) {
+          const made = listOf(await write("POST", `tasks/channel/${channel.id}`, {
+            tasks: [{ title: `${TEST_PREFIX} empty task ${which} ${runTag}`, description: "Empty task (no conversation) for the mobile release QA run; deleted at the end of the run." }],
+            status: "todo",
+          }, `create empty test task ${which}`), "tasks")[0];
+          if (!made) throw new Error(`empty test task ${which}: 2xx without the task`);
+          created.tasks.push({ id: made.id, channelId: channel.id, number: made.taskNumber, title: made.title });
+          empties.push({ id: made.id, number: made.taskNumber, title: made.title, sourceMessageId: made.sourceMessageId ?? null });
+        }
+      }
       // A seed message in the task conversation, so the page has messages to show.
       const conv = await write("POST", `tasks/${task.id}/conversation`, {}, "open the task conversation");
       const conversationId = conv.conversationChannelId;
@@ -261,6 +279,8 @@ export async function run(ctx) {
         task: { id: task.id, number: task.taskNumber, title: task.title, status: task.status, v2: !task.isLegacy && Boolean(task.conversationChannelId || task.conversationAnchored), conversationId },
         backlog: { id: backlogTask.id, number: backlogTask.taskNumber, title: backlogTask.title, status: backlogTask.status },
         seed_message_id: seed?.id ?? seed?.message?.id ?? null,
+        source_message_id: task.sourceMessageId ?? null,
+        empties,
         me: { id: account.userId, name: account.displayName },
       };
     }).catch((error) => {
@@ -594,6 +614,214 @@ export async function run(ctx) {
         return { via, head_status: statusOf(chip), header: numbered.text };
       });
     });
+
+    // ---------- s6-s8 (--release-checks) ----------
+    if (releaseChecks) {
+      const atHomeR = (l) => Boolean(hasText(l, "Drafts")) && !statusChip(l) && !channelReady(l);
+      const homeAgain = async () => {
+        for (let i = 0; i < 8; i += 1) {
+          const list = nodes();
+          if (atHomeR(list)) return;
+          if (!list.some((n) => n.pkg === PKG)) break;
+          await back();
+        }
+        ctx.launchApp();
+        await sleep(2500);
+        await waitUntil("Home", atHomeR, { timeoutMs: 30_000 });
+      };
+      const EMPTY_TEXT = "No discussion in this task yet";
+      const composer = (l) => find(l, (n) => n.pkg === PKG && n.cls === "android.widget.EditText");
+      const textNodeWith = (l, text) => find(l, (n) => n.pkg === PKG && n.cls !== "android.widget.EditText" && (n.text.includes(text) || n.desc.includes(text)));
+      const messagesOf = (json) => {
+        const out = [];
+        const seen = new Set();
+        const walk = (v) => {
+          if (!v || typeof v !== "object" || seen.has(v)) return;
+          seen.add(v);
+          if (!Array.isArray(v) && typeof v.id === "string" && typeof v.content === "string") out.push(v);
+          for (const c of Array.isArray(v) ? v : Object.values(v)) walk(c);
+        };
+        walk(json);
+        return out;
+      };
+      // An empty task's page, from the channel's Tasks card.
+      const openEmptyTask = async (empty) => {
+        await homeAgain();
+        deepLink(channelUrl(setup.channel.id));
+        await waitUntil(`#${setup.channel.name}`, channelReady, { timeoutMs: 45_000 });
+        await openTasksCard();
+        const { row } = await findInTasksCard(setup.channel.name, empty.number);
+        if (!row) throw new Error(`task #${empty.number} is not in the Tasks card; on screen: ${visible()}`);
+        tapNode(row);
+        await waitUntil("the task page", (l) => statusChip(l) || hasText(l, "Message this task"), { timeoutMs: 45_000 });
+        const list = nodes();
+        return { empty_state_shown: Boolean(textNodeWith(list, EMPTY_TEXT)), header: find(list, (n) => n.pkg === PKG && n.text.trim() === `Task #${empty.number}`)?.text ?? null };
+      };
+      const typeDraft = async (text) => {
+        const field = await waitUntil("the composer", composer);
+        tapNode(field);
+        await sleep(600);
+        await typeText(text);
+        await sleep(800);
+        const typed = find(nodes(), (n) => n.cls === "android.widget.EditText" && n.text.includes(text.slice(0, 12)));
+        if (!typed) throw new Error(`the text was not typed into the composer; on screen: ${visible()}`);
+      };
+      const emptyA = setup?.empties?.[0];
+      const emptyB = setup?.empties?.[1];
+
+      // s6: the first reply in an empty task replaces the empty page; the draft clears; Back works.
+      await scenario("s6", async () => {
+        if (!emptyA) throw notCovered("no empty test task (setup did not run)");
+        const opened = await sstep("s6", "open-empty-task", async () => {
+          const r = await openEmptyTask(emptyA);
+          if (!r.empty_state_shown) throw new Error(`the empty task page does not say "${EMPTY_TEXT}"; on screen: ${visible()}`);
+          return r;
+        });
+        const replyText = `first reply check ${runTag}`;
+        await sstep("s6", "type-and-send-first-reply", async () => {
+          await typeDraft(replyText);
+          const send = await waitUntil("Send", (l) => hasText(l, (n) => (n.desc === "Send" || n.text === "Send") && n.enabled), { timeoutMs: 10_000 });
+          tapNode(send);
+          await waitUntil("the reply in the conversation", (l) => textNodeWith(l, replyText), { timeoutMs: 30_000 });
+          await sleep(1500);
+          const list = nodes();
+          const emptyGone = !textNodeWith(list, EMPTY_TEXT);
+          const field = composer(list);
+          const draftCleared = !field || !field.text.includes(replyText.slice(0, 12));
+          const stillOnTask = Boolean(statusChip(list) || hasText(list, "Message this task"));
+          if (!emptyGone) throw new Error("the empty-state text is still shown after the first reply");
+          if (!draftCleared) throw new Error("the composer still holds the sent text");
+          if (!stillOnTask) throw new Error(`left the task page after sending; on screen: ${visible(list)}`);
+          return { empty_state_replaced: emptyGone, draft_cleared: draftCleared };
+        });
+        await sstep("s6", "server-has-first-reply", async () => {
+          const tasks = listOf(ok(await api("GET", `tasks/channel/${setup.channel.id}`), "list channel tasks"), "tasks");
+          const t = tasks.find((x) => x.id === emptyA.id);
+          const convId = t?.conversationChannelId ?? null;
+          if (!convId) throw new Error("the task has no conversation on the server after the first reply");
+          const msgs = messagesOf(ok(await api("GET", `messages/channel/${convId}?limit=20`), "read the task conversation"));
+          if (!msgs.some((m) => m.content.includes(replyText))) throw new Error("the server's task conversation does not have the reply");
+          return { conversation: "created", reply_on_server: true };
+        });
+        await sstep("s6", "back-from-task", async () => {
+          await hideKeyboard();
+          await back();
+          await waitUntil("off the task page (channel / Tasks card)", (l) => !statusChip(l) && !hasText(l, "Message this task") && l.some((n) => n.pkg === PKG), { timeoutMs: 15_000 });
+          return { on_screen: visible().slice(0, 160) };
+        });
+        return `empty page shown (${opened?.header ?? "task"}), replaced by the conversation, draft cleared, Back left the task`;
+      });
+
+      // s7: message links while an empty task page with a draft is open.
+      await scenario("s7", async () => {
+        if (!emptyB) throw notCovered("no empty test task (setup did not run)");
+        if (!otherChannelName) throw notCovered("no --other-channel given");
+        // Targets (read only): a message in the bound channel and one in the other channel.
+        const channels = listOf(ok(await api("GET", "channels"), "list channels"), "channels").filter((c) => !["dm", "thread", "task"].includes(c.type));
+        const others = channels.filter((c) => c.name === otherChannelName);
+        if (others.length !== 1 || others[0].id === setup.channel.id) throw notCovered(`#${otherChannelName}: ${others.length} channels match exactly`);
+        const other = others[0];
+        const pick = (msgs) => msgs.filter((m) => m.content.trim().length >= 8 && !/\n/.test(m.content.slice(0, 40))).at(-1) ?? null;
+        const sameMsg = setup.source_message_id
+          ? { id: setup.source_message_id, content: setup.task.title }
+          : pick(messagesOf(ok(await api("GET", `messages/channel/${setup.channel.id}?limit=20`), "read the channel")));
+        const otherMsg = pick(messagesOf(ok(await api("GET", `messages/channel/${other.id}?limit=20`), "read the other channel")));
+        if (!sameMsg || !otherMsg) throw notCovered("no message to link to");
+        report.s7_targets = { same_channel_message: sameMsg.id.slice(0, 8), other_channel: other.name, other_channel_message: otherMsg.id.slice(0, 8) };
+        const draft = `draft keep check ${runTag}`;
+        const head = (c) => String(c).trim().slice(0, 24);
+        const linkLands = async (channelId, channelLabel, msg) => {
+          deepLink(channelUrl(channelId, msg.id));
+          const deadline = Date.now() + 30_000;
+          let list = [];
+          while (Date.now() < deadline) {
+            await sleep(1500);
+            list = nodes();
+            const offTask = !statusChip(list) && !hasText(list, "Message this task");
+            if (offTask && channelReady(list) && textNodeWith(list, head(msg.content))) break;
+          }
+          const offTask = !statusChip(list) && !hasText(list, "Message this task");
+          const result = { task_page_closed: offTask, channel_open: Boolean(channelReady(list)), message_shown: Boolean(textNodeWith(list, head(msg.content))), channel_name_shown: Boolean(find(list, (n) => n.pkg === PKG && n.text.includes(channelLabel))) };
+          if (!offTask) throw new Error(`the link did nothing: the task page is still open; on screen: ${visible(list)}`);
+          if (!result.channel_open || !result.message_shown) throw new Error(`the link closed the task page but did not land on the message (${JSON.stringify(result)}); on screen: ${visible(list)}`);
+          return result;
+        };
+        const draftKept = async () => {
+          await openEmptyTask(emptyB);
+          await sleep(1000);
+          const field = composer(nodes());
+          const kept = Boolean(field && field.text.includes(draft.slice(0, 12)));
+          if (!kept) throw new Error(`the draft is gone from task #${emptyB.number}'s composer (it reads "${field?.text ?? "no composer"}")`);
+          return { draft_kept: true };
+        };
+        await sstep("s7", "empty-task-with-draft", async () => {
+          const r = await openEmptyTask(emptyB);
+          await typeDraft(draft);
+          return r;
+        });
+        const results = {};
+        await sstep("s7", "link-same-channel", async () => { results.same = await linkLands(setup.channel.id, setup.channel.name, sameMsg); return results.same; }).catch((e) => { results.same = { error: e.message }; });
+        await sstep("s7", "draft-kept-after-same-channel-link", draftKept).then((r) => { results.draft_after_same = r; }, (e) => { results.draft_after_same = { error: e.message }; });
+        // The empty task page with the draft is open again (draftKept reopened it).
+        await sstep("s7", "link-other-channel", async () => { results.other = await linkLands(other.id, other.name, otherMsg); return results.other; }).catch((e) => { results.other = { error: e.message }; });
+        await sstep("s7", "draft-kept-after-other-channel-link", draftKept).then((r) => { results.draft_after_other = r; }, (e) => { results.draft_after_other = { error: e.message }; });
+        report.s7 = results;
+        const failed = Object.entries(results).filter(([, v]) => v?.error);
+        if (failed.length) throw new Error(failed.map(([k, v]) => `${k}: ${v.error}`).join(" | ").slice(0, 600));
+        return "both links closed the task page and landed on the message; the draft was kept";
+      });
+
+      // s8: smoke of the app shell.
+      await scenario("s8", async () => {
+        const currentServer = (l) => find(l, (n) => n.pkg === PKG && n.desc.startsWith("Current server: "));
+        const panelSettings = (l) => find(l, (n) => n.pkg === PKG && (n.text === "Settings" || n.desc === "Settings"));
+        await sstep("s8", "cold-start-to-home", async () => {
+          shell(`am force-stop ${PKG}`, { allowFailure: true });
+          await sleep(1500);
+          const started = Date.now();
+          ctx.launchApp();
+          await waitUntil("Home after a cold start", (l) => atHomeR(l) && currentServer(l), { timeoutMs: 60_000 });
+          return { seconds_to_home: Math.round((Date.now() - started) / 1000), current: currentServer(nodes())?.desc ?? null };
+        });
+        const servers = listOf(ok(await web("GET", "servers"), "list servers"), "servers");
+        const otherServer = servers.find((sv) => sv.name !== serverName && sv.name);
+        if (!otherServer) throw notCovered("the QA account is on one server only");
+        const openPanelAndTap = async (matcher, what) => {
+          const cs = await waitUntil("the server tab", currentServer, { timeoutMs: 20_000 });
+          tapNode(cs);
+          await sleep(1500);
+          for (let i = 0; i < 9; i += 1) {
+            const hit = matcher(nodes());
+            if (hit) { tapNode(hit); return; }
+            shell("input swipe 540 1600 540 900 400", { allowFailure: true });
+            await sleep(1000);
+          }
+          throw new Error(`${what} is not in the server panel; on screen: ${visible()}`);
+        };
+        await sstep("s8", "switch-server", async () => {
+          await homeAgain();
+          await openPanelAndTap((l) => find(l, (n) => n.pkg === PKG && n.text.trim() === otherServer.name), `server ${otherServer.name}`);
+          await waitUntil(`Home of ${otherServer.name}`, (l) => find(l, (n) => n.desc === `Current server: ${otherServer.name}`), { timeoutMs: 45_000 });
+          return { switched_to: otherServer.name };
+        });
+        await sstep("s8", "switch-server-back", async () => {
+          await openPanelAndTap((l) => find(l, (n) => n.pkg === PKG && n.text.trim() === serverName), `server ${serverName}`);
+          await waitUntil(`Home of ${serverName}`, (l) => find(l, (n) => n.desc === `Current server: ${serverName}`), { timeoutMs: 45_000 });
+          return { back_on: serverName };
+        });
+        await sstep("s8", "settings-open", async () => {
+          await openPanelAndTap(panelSettings, "Settings");
+          await waitUntil("Settings", (l) => hasText(l, "Account") && (hasText(l, "Settings")), { timeoutMs: 20_000 });
+          return { settings: "open" };
+        });
+        await sstep("s8", "settings-back", async () => {
+          await back();
+          await waitUntil("Home after Settings", (l) => atHomeR(l) && currentServer(l), { timeoutMs: 20_000 });
+          return { home: true };
+        });
+        return "cold start to Home, server switched and back, Settings opened and closed";
+      });
+    }
   } finally {
     // Back to Home, where the runner's own Sign out starts.
     for (let i = 0; i < 8; i += 1) {
@@ -624,7 +852,7 @@ export async function run(ctx) {
     log(`scenario cleanup: ${JSON.stringify(cleanup)}`);
   }
   const outcome = overallResult({
-    requested: ["s1", "s2", "s3", "s4", "s5"],
+    requested: ["s1", "s2", "s3", "s4", "s5", ...(releaseChecks ? ["s6", "s7", "s8"] : [])],
     results,
     unknownWrites,
     cleanup: (report.cleanup?.deleted_tasks ?? []).map((c) => ({ what: `delete task #${c.task}`, outcome: c.outcome, status: c.status })),
