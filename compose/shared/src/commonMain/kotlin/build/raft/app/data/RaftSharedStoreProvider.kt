@@ -144,6 +144,8 @@ private const val PixelAvatarRefreshDelayMaxMs = 60_000L
 private const val SharedCanonicalFinalSinkCapacity = 64
 /** Diagnostics reason of the agents/Computers read after a switch no socket connect followed. */
 private const val ServerSwitchCatchUpReason = "server_switch_catch_up"
+/** Diagnostics reason of the periodic agents/Computers read while the app stays in front. */
+private const val AgentStatusReconcileReason = "agent_status_reconcile"
 
 private fun logSharedAuthDiagnostic(
     prefix: String,
@@ -1266,7 +1268,7 @@ internal class RaftSharedStoreProvider private constructor(
      */
     private fun noteServerSelected(serverId: String, reason: String) {
         reconnectRefetchJitter.onServerSelected(serverId, reason = reason) {
-            refreshServerLiveStatusAfterSwitch(serverId)
+            refreshServerLiveStatus(serverId, reason = ServerSwitchCatchUpReason)
         }
     }
 
@@ -1275,14 +1277,34 @@ internal class RaftSharedStoreProvider private constructor(
      * does ([PresenceTransportRosterRefetch]): agent presence and machine status are not in the
      * change log. A read this store started repairs a status a missed push left stale.
      */
-    private suspend fun refreshServerLiveStatusAfterSwitch(serverId: String) {
-        val reason = ServerSwitchCatchUpReason
+    private suspend fun refreshServerLiveStatus(serverId: String, reason: String) {
         coroutineScope {
             launch { refreshMachinesForSync(serverId, reason = reason) }
             serverMembersStoresShowing(serverId).forEach { store ->
                 launch { store.refreshAgents(serverId = ServerId(serverId), reason = reason) }
             }
         }
+    }
+
+    /**
+     * Web's 10-minute status reconcile while the app stays in front ([RaftAgentStatusReconcile]):
+     * the same `/agents` + machine read, for each server on screen whose socket has connected.
+     */
+    private val agentStatusReconcile: RaftAgentStatusReconcile by lazy {
+        RaftAgentStatusReconcile(
+            scope = threadSendScope,
+            foreground = RaftStaleReadRecoverySignals.foreground,
+            serverIds = {
+                selectedServerStores.entries()
+                    .mapNotNull { (_, store) ->
+                        store.selectedServerId.value?.trim()?.takeIf { it.isNotBlank() && !store.disposed.value }
+                    }
+                    .distinct()
+                    .filter(reconnectRefetchJitter::hasConnected)
+            },
+            reconcile = { serverId -> refreshServerLiveStatus(serverId, reason = AgentStatusReconcileReason) },
+            logger = sharedInfoLogger("SlockRealtime", "agent_status_reconcile"),
+        )
     }
 
     /** The process store and every shell store whose shell selects [serverId]. */
@@ -1602,6 +1624,9 @@ internal class RaftSharedStoreProvider private constructor(
             appForeground = RaftStaleReadRecoverySignals.foreground,
             coversServer = ::syncChangesPullAllowed,
         )
+        // Agent status pushes are best effort: read agents and Computers again every 10 minutes
+        // while the app stays in front, as the web does (Hands c76f162d, 46b6cebe).
+        agentStatusReconcile.start()
         // A theme changed on another device while backgrounded: read the selected server's again.
         serverAppearanceCatchUp.followAppLifecycle(RaftStaleReadRecoverySignals.foreground) {
             authStore.readSession()?.currentServerId
