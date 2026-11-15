@@ -1,6 +1,6 @@
 ---
 type: changed
-area: design-system
+area: ui
 platforms:
   - android
   - ios
