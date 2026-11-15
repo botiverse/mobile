@@ -24,6 +24,14 @@ class AndroidSystemKillReportTest {
         assertEquals(SystemKillDecision.Report, classify(ApplicationExitInfo.REASON_OTHER, cached, true))
         assertEquals(SystemKillDecision.ReportBackground, classify(ApplicationExitInfo.REASON_OTHER, cached, false))
         assertEquals(SystemKillDecision.ReportBackground, classify(ApplicationExitInfo.REASON_OTHER, cached, null))
+        // botiverse/hands#955: a foreground sample 1 s before the exit counts even if the snapshot
+        // already says background (the app switched away in that second).
+        val switchedAway =
+            snapshot(pid = 1, start = 1_000L, foreground = false).copy(foregroundChangedAtMillis = 99_500L, sampledAtMillis = 99_000L)
+        assertEquals(
+            SystemKillDecision.Report,
+            classifySystemKill(ApplicationExitInfo.REASON_OTHER, cached, switchedAway, exitTimestampMillis = 100_000L),
+        )
     }
 
     @Test
@@ -322,12 +330,22 @@ class AndroidSystemKillReportTest {
     private fun snapshot(pid: Int, start: Long, foreground: Boolean) =
         MemoryTelemetrySnapshot(pid, start, start + 10L, foreground, start + 5L)
 
-    /** [classifySystemKill] with no telemetry, or telemetry sampled one second before the exit. */
+    /**
+     * [classifySystemKill] with no telemetry; a foreground snapshot sampled one second before the
+     * exit; or a background one, moved there 300 s before the exit after its last foreground sample
+     * (nothing is sampled in the background, so a real backgrounded process has no fresh sample).
+     */
     private fun classify(reason: Int, importance: Int, telemetryForeground: Boolean?, status: Int = 0): SystemKillDecision {
-        val at = 100_000L
+        val at = 400_000L
         val telemetry =
-            telemetryForeground?.let {
-                snapshot(pid = 1, start = 1_000L, foreground = it).copy(sampledAtMillis = at - 1_000L)
+            when (telemetryForeground) {
+                null -> null
+                true -> snapshot(pid = 1, start = 1_000L, foreground = true).copy(sampledAtMillis = at - 1_000L)
+                false ->
+                    snapshot(pid = 1, start = 1_000L, foreground = false).copy(
+                        foregroundChangedAtMillis = at - 300_000L,
+                        sampledAtMillis = at - 301_000L,
+                    )
             }
         return classifySystemKill(reason, importance, telemetry, at, status)
     }
