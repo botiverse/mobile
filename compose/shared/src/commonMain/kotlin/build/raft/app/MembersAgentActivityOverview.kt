@@ -115,8 +115,8 @@ internal data class MembersAgentActivityOverviewBinding(
 internal enum class MembersAgentActivityView { Overview, Raw, Subagents }
 
 /**
- * Web AgentActivityLog's SegmentedControl: Overview / Raw Log, and Subagents with its count once
- * the agent has had one ([subagentCount] non-null). Without the Overview ([showOverview] false,
+ * Web AgentActivityLog's SegmentedControl: Overview / Raw Log, and Subagents with its count, 0
+ * included, when [subagentCount] is non-null ([membersAgentActivityShowsSubagents]). Without the Overview ([showOverview] false,
  * its flag off) the switch is Raw Log / Subagents.
  */
 @Composable

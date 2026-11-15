@@ -185,6 +185,20 @@ internal fun agentActivitySubagentRowPresence(lineage: AgentActivitySubagentLine
     }
 
 /**
+ * Runtimes whose agents can start sub-agents that Activity lists (slock #14961, shared
+ * `runtimeCatalog.ts` `RUNTIMES_WITH_SUBAGENTS`): Claude Code, Codex and Kimi Code report them from
+ * their own events, Qwen Code and Qoder as OAR tasks of type `agent`. Grok is left out until its OAR
+ * route is the default, as on the web.
+ */
+internal val AgentRuntimesWithSubagents: List<String> = listOf("claude", "codex", "kimi-sdk", "qwen", "qoder")
+
+/**
+ * Web `runtimeHasSubagents`: an agent on one of [AgentRuntimesWithSubagents] always offers the
+ * Sub-agents view in Activity, with 0 when it has none.
+ */
+internal fun agentRuntimeHasSubagents(runtime: String?): Boolean = runtime != null && runtime in AgentRuntimesWithSubagents
+
+/**
  * The runtimes that can stop one sub-agent (web `SUBAGENT_STOP_RUNTIMES`): Codex, Claude Code,
  * Kimi (one another sub-agent started answers `unsupported`), Qoder (OAR's `stopTask`).
  */
