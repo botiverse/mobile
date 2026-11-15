@@ -181,7 +181,8 @@ internal val LocalConversationSideCards = staticCompositionLocalOf { Conversatio
  * - an incoming open ([signal], fired by [RaftShellNavigationIntake] before it opens) closes them
  *   and reports the cover, so an open into this conversation still goes through to its message;
  * - a page opened at a message ([focusedMessageId], e.g. at cold start, before any page could
- *   hear the signal) closes them once for that message.
+ *   hear the signal) closes them once for that message, as soon as they cover it (also when the
+ *   page first reads as wide and then measures narrow).
  * Beside the conversation (a wide page) the cards stay open.
  */
 @Composable
@@ -197,12 +198,15 @@ internal fun ConversationSideCardsIncomingNavigationEffect(
         onDispose { unregister?.invoke() }
     }
     // Once per message: the page coming back (Back from a page over it) keeps the cards as left.
+    // Handled only once the cards cover the page: until it measures, a page on its own has the
+    // window's width, so a narrow pane in a wide window (a split's detail pane) first reads as
+    // "beside" and closes the cover when it turns out narrow.
     var focusHandled by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(store, focusedMessageId) {
+    LaunchedEffect(store, focusedMessageId, coverConversation) {
         val focused = focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        if (focused == focusHandled) return@LaunchedEffect
+        if (focused == focusHandled || !coverConversation) return@LaunchedEffect
         focusHandled = focused
-        store.closeForIncomingNavigation(cover)
+        store.closeForIncomingNavigation(coverConversation = true)
     }
 }
 
