@@ -1,5 +1,10 @@
 package build.raft.app
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.scrollBy
@@ -7,7 +12,12 @@ import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.unit.IntSize
+import build.raft.app.nav.LocalRaftStackPageLeaving
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 
 /** Whether this thread route lays its message list out bottom-up (always, on a thread page); see [ThreadListViewport]. */
 internal val LocalThreadReverseLayout = staticCompositionLocalOf { false }
@@ -27,6 +37,35 @@ internal class ThreadListViewport(
     val raw: LazyListState,
     val reverse: Boolean,
 ) {
+    /**
+     * Owner lifetime (scroll ownership contract, "Coordinator and native-view lifetime"; Hands
+     * 712d8386): set for good when the list this adapter drives leaves composition
+     * ([ThreadListViewportRetireOnDispose]). A retired adapter issues no scroll: a scroll on a
+     * [LazyListState] whose LazyColumn is gone cancels prefetch work on detached nodes and
+     * crashes (`LayoutNode should be attached to an owner`).
+     */
+    var isRetired: Boolean = false
+        private set
+
+    /** Scrolls this adapter has passed to [raw]; the owner-lifetime tests read it. */
+    var issuedScrolls: Int = 0
+        private set
+
+    fun retire() {
+        isRetired = true
+    }
+
+    /**
+     * Checked right before each mutation of [raw], with no suspension in between: never from a
+     * cancelling job (throws its [kotlinx.coroutines.CancellationException]), never on a retired list.
+     */
+    private suspend fun admitScroll(): Boolean {
+        currentCoroutineContext().ensureActive()
+        if (isRetired) return false
+        issuedScrolls += 1
+        return true
+    }
+
     val layoutInfo: LazyListLayoutInfo
         get() = raw.layoutInfo.let { info -> if (reverse) ReversedThreadLayoutInfo(info) else info }
 
@@ -55,8 +94,10 @@ internal class ThreadListViewport(
             }
 
     /** Forward semantics: positive moves the content up, revealing newer rows. */
-    suspend fun scrollBy(value: Float): Float =
-        if (reverse) -raw.scrollBy(-value) else raw.scrollBy(value)
+    suspend fun scrollBy(value: Float): Float {
+        if (!admitScroll()) return 0f
+        return if (reverse) -raw.scrollBy(-value) else raw.scrollBy(value)
+    }
 
     /**
      * Forward semantics, as `LazyListState.scrollToItem`: afterwards row [index] has `offset == -scrollOffset`,
@@ -65,27 +106,32 @@ internal class ThreadListViewport(
      */
     suspend fun scrollToItem(index: Int, scrollOffset: Int = 0) {
         if (!reverse) {
+            if (!admitScroll()) return
             raw.scrollToItem(index, scrollOffset)
             return
         }
         val count = raw.layoutInfo.totalItemsCount
         if (index !in 0 until count) return
         if (layoutInfo.visibleItemsInfo.none { it.index == index }) {
+            if (!admitScroll()) return
             raw.scrollToItem(reversedThreadListIndex(index, count))
             awaitVisible(index)
         }
         val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
         val delta = forwardScrollToItemDelta(itemOffset = item.offset, scrollOffset = scrollOffset)
+        // scrollBy admits again: awaitVisible suspended since the first scroll.
         if (delta != 0) scrollBy(delta.toFloat())
     }
 
     suspend fun animateScrollToItem(index: Int, scrollOffset: Int = 0) {
         if (!reverse) {
+            if (!admitScroll()) return
             raw.animateScrollToItem(index, scrollOffset)
             return
         }
         val count = raw.layoutInfo.totalItemsCount
         if (index !in 0 until count) return
+        if (!admitScroll()) return
         raw.animateScrollToItem(reversedThreadListIndex(index, count))
         scrollToItem(index, scrollOffset)
     }
@@ -96,6 +142,59 @@ internal class ThreadListViewport(
             delay(ThreadListViewportSettleFrameMs)
         }
     }
+}
+
+/**
+ * Retires [viewport] ([ThreadListViewport.retire]) when this leaves composition. Call it in the
+ * composable that owns the list, after the effects that scroll [viewport]: effects are disposed in
+ * reverse order, so the list is retired before those effects' jobs are cancelled (the contract's
+ * "invalidate before scope cancellation").
+ */
+@Composable
+internal fun ThreadListViewportRetireOnDispose(viewport: ThreadListViewport) {
+    DisposableEffect(viewport) { onDispose { viewport.retire() } }
+}
+
+/**
+ * Whether the owner of a programmatic thread-list scroll is still live after a suspension: the job
+ * issuing it ([context]) is active, the list is still composed, and its page is not leaving the
+ * page stack ([pageLeaving], `LocalRaftStackPageLeaving`). Checked after every suspension point,
+ * before the next `scrollToItem` / `scrollBy`, on top of the command's own currency checks.
+ */
+internal fun ThreadListViewport.scrollOwnerLive(context: CoroutineContext, pageLeaving: Boolean): Boolean =
+    context.isActive && !isRetired && !pageLeaving
+
+/** What a [ThreadListScrollOwnerEffect] block checks after each suspension: [ownerLive]. */
+internal class ThreadListScrollOwnerScope(
+    val viewport: ThreadListViewport,
+    private val context: CoroutineContext,
+    private val pageLeaving: State<Boolean>,
+) {
+    /** [scrollOwnerLive] for this effect's job, its list and its page, read now. */
+    fun ownerLive(): Boolean = viewport.scrollOwnerLive(context, pageLeaving = pageLeaving.value)
+}
+
+/**
+ * A `LaunchedEffect(key1, key2)` that scrolls [viewport], with the owner lifetime wired in (Hands
+ * 712d8386): it is also keyed on the page leaving the stack (`LocalRaftStackPageLeaving`) and does
+ * not run [block] on a leaving page, and it retires [viewport] when it leaves composition, before
+ * its job is cancelled ([ThreadListViewportRetireOnDispose] after the effect). [block] still has to
+ * check [ThreadListScrollOwnerScope.ownerLive] after every suspension, before its next scroll.
+ */
+@Composable
+internal fun ThreadListScrollOwnerEffect(
+    viewport: ThreadListViewport,
+    key1: Any?,
+    key2: Any?,
+    block: suspend ThreadListScrollOwnerScope.() -> Unit,
+) {
+    val pageLeaving = LocalRaftStackPageLeaving.current
+    val pageLeavingState = rememberUpdatedState(pageLeaving)
+    LaunchedEffect(key1, key2, pageLeaving) {
+        if (pageLeaving) return@LaunchedEffect
+        ThreadListScrollOwnerScope(viewport, coroutineContext, pageLeavingState).block()
+    }
+    ThreadListViewportRetireOnDispose(viewport)
 }
 
 private const val ThreadListViewportSettleFrames = 6
