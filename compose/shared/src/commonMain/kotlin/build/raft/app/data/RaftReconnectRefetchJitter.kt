@@ -211,6 +211,12 @@ internal class RaftReconnectRefetchJitter(
         if (current) job.start() else job.cancel()
     }
 
+    /** Whether a socket of [serverId] connected since the process started or the last [reset]. */
+    fun hasConnected(serverId: String): Boolean {
+        val id = serverId.trim().takeIf { it.isNotEmpty() } ?: return false
+        return synchronized(lock) { connectedSessions.any { it.serverId.trim() == id } }
+    }
+
     /**
      * A full-list refetch that must never run at once, whatever the session: the fallback of an
      * incremental pull that failed or timed out (every client fails together during a server
