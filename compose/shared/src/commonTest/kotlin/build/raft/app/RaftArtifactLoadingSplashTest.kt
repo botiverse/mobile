@@ -6,6 +6,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TestTimeSource
 
 /**
  * #301: the App's Artifact loading splash is the web's (botiverse/slock
@@ -123,13 +125,14 @@ class RaftArtifactLoadingSplashTest {
         fun state(
             sessionRead: Boolean = true,
             documentShown: Boolean = false,
-            pageDrewItself: Boolean = false,
-            keptShowsTarget: Boolean = false,
+            reusesKeptPage: Boolean = false,
             loadError: Boolean = false,
             sinceDocumentReadyMs: Long? = null,
             reloading: Boolean = false,
+            pageLoaded: Boolean = false,
+            splashEnded: Boolean = false,
         ) = raftArtifactViewerLoadingIndicator(
-            RaftArtifactViewerOpenState(sessionRead, documentShown, pageDrewItself, keptShowsTarget, loadError, sinceDocumentReadyMs, reloading)
+            RaftArtifactViewerOpenState(sessionRead, documentShown, reusesKeptPage, loadError, sinceDocumentReadyMs, reloading, pageLoaded, splashEnded)
         )
         val app = RaftArtifactViewerLoadingIndicator.AppSplash
         val none = RaftArtifactViewerLoadingIndicator.None
@@ -138,23 +141,87 @@ class RaftArtifactLoadingSplashTest {
         assertEquals(app, state())
         assertEquals(app, state(documentShown = true))
         assertEquals(app, state(documentShown = true, sinceDocumentReadyMs = 1_000))
-        // ...until the page drew itself: then the page's own splash (same clock) or its content, alone.
-        assertEquals(none, state(documentShown = true, pageDrewItself = true, sinceDocumentReadyMs = 100))
-        // Warm: a kept page already showing it: nothing of the App's.
-        assertEquals(none, state(documentShown = true, keptShowsTarget = true))
-        // A kept page routing to it: the App's splash until the page drew itself.
-        assertEquals(app, state(documentShown = true, keptShowsTarget = false))
-        // A fresh reload between WebViews: the App's splash.
-        assertEquals(app, state(reloading = true))
-        // The error screen replaces it; a page that never says it drew itself is shown after the fallback.
-        assertEquals(none, state(documentShown = true, loadError = true))
+        // ...until the page says its content loaded (`hostLoaded=1`): the App's splash plays its ending, then the page alone.
+        assertEquals(app, state(documentShown = true, sinceDocumentReadyMs = 100, pageLoaded = true))
+        assertEquals(none, state(documentShown = true, sinceDocumentReadyMs = 100, pageLoaded = true, splashEnded = true))
+        // The ending is not cut by the fallback.
+        assertEquals(app, state(documentShown = true, sinceDocumentReadyMs = RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS, pageLoaded = true))
+        // An older web never says so: shown at the fallback (it drew its bar by then), not before.
+        assertEquals(app, state(documentShown = true, sinceDocumentReadyMs = RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS - 1))
         assertEquals(none, state(documentShown = true, sinceDocumentReadyMs = RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS))
+        // Warm: a kept page reused (already showing it, or routed to it): nothing of the App's, it sends no
+        // `hostLoaded` then (slock #15036), and its own splash shows.
+        assertEquals(none, state(documentShown = true, reusesKeptPage = true))
+        assertEquals(none, state(documentShown = false, reusesKeptPage = true))
+        // A fresh reload or a session recovery, between WebViews: the App's splash.
+        assertEquals(app, state(reloading = true))
+        assertEquals(app, state(reloading = true, documentShown = true, pageLoaded = true, splashEnded = true))
+        // The error screen replaces it.
+        assertEquals(none, state(documentShown = true, loadError = true))
         // Every state yields exactly one owner of the loader: the App's splash covers the page, or the page shows.
-        for (shown in listOf(false, true)) for (drew in listOf(false, true)) for (kept in listOf(false, true)) for (error in listOf(false, true)) {
-            val result = state(documentShown = shown, pageDrewItself = drew, keptShowsTarget = kept, loadError = error)
+        for (shown in listOf(false, true)) for (loaded in listOf(false, true)) for (kept in listOf(false, true)) for (error in listOf(false, true)) {
+            val result = state(documentShown = shown, pageLoaded = loaded, reusesKeptPage = kept, loadError = error)
             assertTrue(result == app || result == none)
-            if (!shown && !error) assertEquals(app, result, "nothing shown yet: the App's splash, never a blank page")
+            if (!shown && !error && !kept) assertEquals(app, result, "a fresh load with nothing shown yet: the App's splash, never a blank page")
         }
+    }
+
+    @Test
+    fun aKindLearnedMidCycleTakesOverAtTheNextCycle() {
+        val appear = RAFT_ARTIFACT_SPLASH_APPEAR_AFTER_MS
+        val cycle = RAFT_ARTIFACT_SPLASH_CYCLE_MS
+        // No change since the opening: the kind as it is.
+        assertTrue(raftArtifactSplashKindSwitched(changedAfterMs = null, elapsedMs = appear + 500))
+        // Known before the icon appeared: drawn from the start.
+        assertTrue(raftArtifactSplashKindSwitched(changedAfterMs = appear - 1, elapsedMs = appear))
+        // Known 40% into the first cycle: that cycle ends with the document...
+        val known = appear + cycle * 4 / 10
+        assertEquals(false, raftArtifactSplashKindSwitched(known, elapsedMs = known))
+        assertEquals(false, raftArtifactSplashKindSwitched(known, elapsedMs = appear + cycle - 1))
+        // ...and the next starts with the new icon.
+        assertTrue(raftArtifactSplashKindSwitched(known, elapsedMs = appear + cycle))
+        assertTrue(raftArtifactSplashKindSwitched(known, elapsedMs = appear + cycle * 3))
+        // Known in a later cycle: the same, from that cycle's end.
+        val later = appear + cycle * 2 + 100
+        assertEquals(false, raftArtifactSplashKindSwitched(later, elapsedMs = appear + cycle * 3 - 1))
+        assertTrue(raftArtifactSplashKindSwitched(later, elapsedMs = appear + cycle * 3))
+        // On a cycle's boundary: at once (web `artifactSplashUntilNextCycle` is 0 there).
+        assertTrue(raftArtifactSplashKindSwitched(appear + cycle, elapsedMs = appear + cycle))
+        // Not looping, as on the web: the ending (loaded) and reduced motion take the new kind at once.
+        assertEquals(false, raftArtifactSplashKindSwitched(known, elapsedMs = known + 100, loadedAfterMs = known + 200))
+        assertTrue(raftArtifactSplashKindSwitched(known, elapsedMs = known + 300, loadedAfterMs = known + 200))
+        assertTrue(raftArtifactSplashKindSwitched(known, elapsedMs = known + 100, reducedMotion = true))
+    }
+
+    @Test
+    fun theKindStateDrawsTheDocumentUntilTheCycleEnds() {
+        val time = TestTimeSource()
+        val openedAt = time.markNow()
+        val kinds = RaftArtifactSplashKindState(initial = null, timeSource = time)
+        fun shownAt(elapsedMs: Long): ArtifactKind? {
+            time += (elapsedMs - openedAt.elapsedNow().inWholeMilliseconds).milliseconds
+            return kinds.shownKind(openedAt, elapsedMs)
+        }
+        val appear = RAFT_ARTIFACT_SPLASH_APPEAR_AFTER_MS
+        val cycle = RAFT_ARTIFACT_SPLASH_CYCLE_MS
+        // Unknown: the document (the web's `artifactSplashIcon`).
+        assertEquals(null, shownAt(appear + 300))
+        assertEquals(RaftArtifactSplashIcon.Doc, raftArtifactSplashIcon(kinds.shownKind(openedAt, appear + 300)))
+        // The card arrives mid-cycle: still the document until this cycle ends.
+        kinds.update(ArtifactKind.Html, openedAt)
+        assertEquals(ArtifactKind.Html, kinds.kind)
+        assertEquals(null, shownAt(appear + 600))
+        assertEquals(null, shownAt(appear + cycle - 1))
+        assertEquals(ArtifactKind.Html, shownAt(appear + cycle))
+        // The same kind again changes nothing.
+        kinds.update(ArtifactKind.Html, openedAt)
+        assertEquals(ArtifactKind.Html, shownAt(appear + cycle + 10))
+        // Known before the icon appears (a new opening): drawn from the start.
+        val reopened = time.markNow()
+        val fresh = RaftArtifactSplashKindState(initial = null, timeSource = time)
+        fresh.update(ArtifactKind.Image, reopened)
+        time += (appear + 10).milliseconds
+        assertEquals(ArtifactKind.Image, fresh.shownKind(reopened, appear + 10))
     }
 
     @Test

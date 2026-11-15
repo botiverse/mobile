@@ -132,6 +132,19 @@ class RaftArtifactViewerEmbedTest {
     }
 
     @Test
+    fun thePageSaysItsContentLoadedInItsAddress() {
+        val page = "$web/artifacts/$id?$embed"
+        assertEquals(false, raftArtifactViewerPageSaysLoaded(page))
+        assertEquals(false, raftArtifactViewerPageSaysLoaded("$page&hostToolbar=1"))
+        assertEquals(false, raftArtifactViewerPageSaysLoaded("$page&hostLoaded=0"))
+        assertEquals(false, raftArtifactViewerPageSaysLoaded("$page#hostLoaded=1"))
+        assertEquals(true, raftArtifactViewerPageSaysLoaded("$page&hostToolbar=1&hostLoaded=1"))
+        assertEquals(true, raftArtifactViewerPageSaysLoaded("$web/artifacts/$id/v/2?hostLoaded=1&$embed#panel=files"))
+        // The App never asks for it itself: an address carrying it is opened without it.
+        assertEquals("$web/artifacts/$id?$embed", raftArtifactViewerEmbeddedUrl("$page&hostLoaded=1"))
+    }
+
+    @Test
     fun desktopModeStateIsKeptInTheAddress() {
         val page = "$web/artifacts/$id?$embed#panel=comments"
         assertEquals("$web/artifacts/$id?$embed&hostDesktop=on#panel=comments", raftArtifactViewerWithHostDesktop(page, true))

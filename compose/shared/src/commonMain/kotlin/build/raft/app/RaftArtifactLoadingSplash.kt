@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -32,6 +33,7 @@ import build.raft.app.data.ArtifactKind
 import build.raft.designsystem.motion.rememberRaftReducedMotion
 import kotlin.math.floor
 import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /*
  * The Artifact loading splash, ported from the web (#proj-workspace:#301): botiverse/slock
@@ -136,6 +138,69 @@ internal fun raftArtifactSplashLitAt(cell: RaftArtifactSplashCell, phaseMs: Long
     return at >= cell.on && at < cell.off
 }
 
+/** Which cycle [elapsedMs] after the opening falls in (0: the first, from when the icon appears). */
+internal fun raftArtifactSplashCycleIndex(elapsedMs: Long): Long =
+    (elapsedMs - RAFT_ARTIFACT_SPLASH_APPEAR_AFTER_MS).floorDiv(RAFT_ARTIFACT_SPLASH_CYCLE_MS)
+
+/**
+ * Whether a change of the splash's kind, made [changedAfterMs] after the opening (null: none since
+ * it), is drawn at [elapsedMs] (design, Kirby, #301; web `useArtifactSplashShownIcon` /
+ * `artifactSplashUntilNextCycle`, slock #15036): a looping icon never changes mid-cycle. The cycle
+ * under way when the kind became known plays out with the icon it began with (unknown: the
+ * document), and the new one starts with the next cycle; a change on a cycle's boundary, or before
+ * the icon appeared, shows at once. An icon that is not looping takes the new kind at once, as on
+ * the web: [reducedMotion] (still), or the ending once the content loaded ([loadedAfterMs]).
+ */
+internal fun raftArtifactSplashKindSwitched(
+    changedAfterMs: Long?,
+    elapsedMs: Long,
+    loadedAfterMs: Long? = null,
+    reducedMotion: Boolean = false,
+): Boolean {
+    if (changedAfterMs == null || changedAfterMs < RAFT_ARTIFACT_SPLASH_APPEAR_AFTER_MS) return true
+    if (reducedMotion || (loadedAfterMs != null && elapsedMs >= loadedAfterMs)) return true
+    if (raftArtifactSplashPhase(changedAfterMs) == 0L) return true
+    return raftArtifactSplashCycleIndex(elapsedMs) > raftArtifactSplashCycleIndex(changedAfterMs)
+}
+
+/**
+ * The splash's Artifact kind (null: not known yet, drawn as a document with "Loading Artifact"),
+ * and when it last changed, so a kind learned while the icon cycles takes over at the next cycle
+ * ([raftArtifactSplashKindSwitched]). One per opening of the viewer: every cover it draws (session
+ * read, page load, reload) reads it, so a cover drawn again does not switch mid-cycle either.
+ */
+@Stable
+internal class RaftArtifactSplashKindState(
+    initial: ArtifactKind?,
+    private val timeSource: TimeSource = TimeSource.Monotonic,
+) {
+    /** The kind now known. */
+    var kind: ArtifactKind? by mutableStateOf(initial)
+        private set
+
+    /** The kind drawn before [kind] took over. */
+    var previousKind: ArtifactKind? by mutableStateOf(initial)
+        private set
+
+    /** When [kind] changed (null: never since this state began). */
+    var changedAt: TimeMark? by mutableStateOf(null)
+        private set
+
+    /** The kind drawn [elapsedMs] after [openedAt] (its content loaded [loadedAfterMs] after it, or null). */
+    fun shownKind(openedAt: TimeMark, elapsedMs: Long, loadedAfterMs: Long? = null, reducedMotion: Boolean = false): ArtifactKind? {
+        val changedAfterMs = changedAt?.let { (openedAt.elapsedNow() - it.elapsedNow()).inWholeMilliseconds }
+        return if (raftArtifactSplashKindSwitched(changedAfterMs, elapsedMs, loadedAfterMs, reducedMotion)) kind else previousKind
+    }
+
+    /** The kind is now [kind] (the card's, read or refreshed); [openedAt]: the splash's opening. */
+    fun update(kind: ArtifactKind?, openedAt: TimeMark) {
+        if (kind == this.kind) return
+        previousKind = shownKind(openedAt, openedAt.elapsedNow().inWholeMilliseconds)
+        this.kind = kind
+        changedAt = timeSource.markNow()
+    }
+}
+
 /** What the cover draws [elapsedMs] after the opening; [loadedAfterMs]: when its content loaded (null: not yet). */
 internal sealed interface RaftArtifactSplashFrame {
     /** The first second: an empty cover (a fast open goes from nothing to the page). */
@@ -200,26 +265,27 @@ internal fun raftArtifactSplashEaseOut(t: Float): Float {
 }
 
 /**
- * The cover (web ArtifactLoadingSplash): an opaque canvas, the icon in the middle and [label] under
- * it, counting from [openedAt] (the opening: the 1-second wait and the cycle's phase both count from
+ * The cover (web ArtifactLoadingSplash): an opaque canvas, the icon of [kinds]' kind in the middle
+ * and its line ([labelFor]) under it (a kind learned mid-cycle takes over at the next cycle), counting from [openedAt] (the opening: the 1-second wait and the cycle's phase both count from
  * there, so a cover drawn again for the same opening picks the cycle up where it was). [loadedAt]:
  * the content loaded (play the ending, then [onGone]). [scale]: the page's zoom (Desktop Mode lays
  * the page out wider and fits it, so its splash is drawn smaller).
  */
 @Composable
 internal fun RaftArtifactLoadingSplash(
-    kind: ArtifactKind?,
-    label: String,
+    kinds: RaftArtifactSplashKindState,
+    labelFor: (ArtifactKind?) -> String,
     openedAt: TimeMark,
     modifier: Modifier = Modifier,
     loadedAt: TimeMark? = null,
     scale: Float = 1f,
     onGone: () -> Unit = {},
 ) {
-    val icon = raftArtifactSplashIcon(kind)
     val reducedMotion = rememberRaftReducedMotion()
     var elapsedMs by remember { mutableLongStateOf(openedAt.elapsedNow().inWholeMilliseconds) }
     val loadedAfterMs = loadedAt?.let { (openedAt.elapsedNow() - it.elapsedNow()).inWholeMilliseconds }
+    val kind = kinds.shownKind(openedAt, elapsedMs, loadedAfterMs, reducedMotion)
+    val icon = raftArtifactSplashIcon(kind)
     val frame = raftArtifactSplashFrame(icon, elapsedMs, loadedAfterMs, reducedMotion)
     var goneReported by remember { mutableStateOf(false) }
     LaunchedEffect(openedAt, loadedAt, reducedMotion) {
@@ -238,7 +304,7 @@ internal fun RaftArtifactLoadingSplash(
         }
         return
     }
-    RaftArtifactLoadingSplashFrameContent(icon, frame, label, modifier, scale)
+    RaftArtifactLoadingSplashFrameContent(icon, frame, labelFor(kind), modifier, scale)
 }
 
 /**
@@ -324,37 +390,51 @@ internal data class RaftArtifactViewerOpenState(
     val sessionRead: Boolean,
     /** The WebView shows a document (committed, or a kept one shown again). */
     val documentShown: Boolean,
-    /** The page drew itself: its toolbar is up (`hostToolbar=1`), so its own splash or content is there. */
-    val pageDrewItself: Boolean,
-    /** A kept document already showing this Artifact is shown again (nothing loads). */
-    val keptShowsTarget: Boolean,
+    /**
+     * A kept document is reused (it shows this Artifact already, or the web app routes to it): no
+     * native cover, the page's own splash shows (slock #15036 sends no `hostLoaded` on in-page reuse).
+     */
+    val reusesKeptPage: Boolean,
     /** The load watchdog shows its error screen (with Retry). */
     val loadError: Boolean,
     /** How long the document has been loaded (null: not yet); past [RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS] the page is shown. */
     val sinceDocumentReadyMs: Long?,
-    /** The viewer is between WebViews (a fresh reload of a wandered-off kept page). */
+    /** The viewer is between WebViews (a fresh reload of a wandered-off kept page, or a session recovery). */
     val reloading: Boolean = false,
+    /** The page said its content loaded (`hostLoaded=1`, [raftArtifactViewerPageSaysLoaded]). */
+    val pageLoaded: Boolean = false,
+    /** After [pageLoaded], the App's splash played its ending (fill, hold, fade). */
+    val splashEnded: Boolean = false,
 )
 
 /**
  * After the document loaded, the page is shown at the latest this much later even if it never said
- * it drew itself (a web build without `hostToolbar`, a page of its own like Unavailable): never a
- * cover over a page that is up.
+ * its content loaded (`hostLoaded=1`): a web build from before that signal (it drew its bar,
+ * `hostToolbar=1`, by then, and its own splash or content is there), a page of its own like
+ * Unavailable, or content still loading (then the page's own splash, on the same clock). Never a
+ * cover over a page that is up for longer.
  */
 internal const val RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS = 4_000L
 
 /**
- * One loader at a time (#301): the App's splash until the page has drawn itself, then the page's
- * alone. Before, the App showed its generic "Loading" (a small spinner and a line) until the WebView
- * committed a document, and the page then its own pixel splash: two different loaders in a row on a
- * cold open, one on a warm one. Now the App's splash is the page's ([RaftArtifactLoadingSplash]), on
- * the same clock, and hands over when the page's is there.
+ * One loader at a time (#301): on a fresh load the App's splash covers the page until the page
+ * says its loading is over (`hostLoaded=1`, slock #15036: the moment its own splash would start its
+ * ending, or 150 ms after a failure left no splash on screen), plays its ending, then the page
+ * alone. A kept page reused for this Artifact is never covered (it sends no signal): its own splash
+ * shows. A page that never says so (an older web) is shown at
+ * [RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS]. Before, the App showed its generic "Loading" (a small
+ * spinner and a line) until the WebView committed a document, and the page then its own pixel
+ * splash: two different loaders in a row on a cold open, one on a warm one. Now the App's splash is
+ * the page's ([RaftArtifactLoadingSplash]), on the same clock.
  */
 internal fun raftArtifactViewerLoadingIndicator(state: RaftArtifactViewerOpenState): RaftArtifactViewerLoadingIndicator =
     when {
         state.reloading || !state.sessionRead -> RaftArtifactViewerLoadingIndicator.AppSplash
         state.loadError -> RaftArtifactViewerLoadingIndicator.None
-        state.documentShown && (state.keptShowsTarget || state.pageDrewItself) -> RaftArtifactViewerLoadingIndicator.None
+        // In-page reuse gets no hand-over signal: the page's own splash, never the App's over it.
+        state.reusesKeptPage -> RaftArtifactViewerLoadingIndicator.None
+        // Loaded: the App's splash plays its ending over the page, then the page alone.
+        state.pageLoaded -> if (state.splashEnded) RaftArtifactViewerLoadingIndicator.None else RaftArtifactViewerLoadingIndicator.AppSplash
         state.sinceDocumentReadyMs != null && state.sinceDocumentReadyMs >= RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS ->
             RaftArtifactViewerLoadingIndicator.None
         else -> RaftArtifactViewerLoadingIndicator.AppSplash
