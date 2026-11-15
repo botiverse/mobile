@@ -85,6 +85,7 @@ import build.raft.app.data.AgentSubagentStopFeedback
 import build.raft.app.data.AgentSubagentStopIntent
 import build.raft.app.data.AgentSubagentStopState
 import build.raft.app.data.AgentSubagentStopStore
+import build.raft.app.data.agentRuntimeHasSubagents
 import build.raft.app.data.canStopAgentSubagents
 import build.raft.app.data.AgentTurnStopIntent
 import build.raft.app.data.AgentTurnStopState
@@ -14028,6 +14029,14 @@ private fun MembersAgentAppLoginScopeChip(scope: String) {
     RaftBadge(text = scope, appearance = RaftBadgeAppearance.Outline)
 }
 
+/**
+ * Web AgentActivityLog `showSubagents` (slock #14961): the Sub-agents segment shows for a runtime
+ * that can start sub-agents ([agentRuntimeHasSubagents]) even at 0, else once one has appeared, and
+ * always while it is the view.
+ */
+internal fun membersAgentActivityShowsSubagents(runtime: String?, subagentCount: Int, viewing: Boolean): Boolean =
+    agentRuntimeHasSubagents(runtime) || subagentCount > 0 || viewing
+
 @Composable
 private fun MembersAgentActivityTab(
     detail: AgentDetailSnapshot?,
@@ -14077,8 +14086,14 @@ private fun MembersAgentActivityTab(
     RaftBackHandler(enabled = activityView == MembersAgentActivityView.Subagents && openSubagent != null, label = "agent_subagent_detail") {
         openSubagentKey = null
     }
-    // Web: the Sub-agents segment appears once the agent has had one.
-    val showSubagents = subagents.isNotEmpty() || activityView == MembersAgentActivityView.Subagents
+    // Web AgentActivityLog (slock #14961): a runtime that can start sub-agents always offers the
+    // Sub-agents segment, with 0 too; any other runtime shows it once a sub-agent has appeared.
+    val showSubagents =
+        membersAgentActivityShowsSubagents(
+            runtime = detail?.summary?.runtime,
+            subagentCount = subagents.size,
+            viewing = activityView == MembersAgentActivityView.Subagents,
+        )
     val changeView: (MembersAgentActivityView) -> Unit = { next ->
         chosenActivityView = next
         openSubagentKey = null
@@ -14134,7 +14149,8 @@ private fun MembersAgentActivityTab(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
             ) {
-                // Web AgentActivityLog: Overview / Raw Log, and Subagents once the agent has had one.
+                // Web AgentActivityLog: Overview / Raw Log, and Subagents (always for a runtime that
+                // can start them, else once the agent has had one).
                 // The switch takes what the button leaves; three segments scroll in their track.
                 Box(Modifier.weight(1f)) {
                     MembersAgentActivityViewSwitch(
