@@ -487,24 +487,17 @@ jobs:
           echo "bootstrap_required=$required" >> "$GITHUB_OUTPUT"
           echo "STAMP_BOOTSTRAP_REQUIRED=$required" >> "$GITHUB_ENV"
 
-      - name: Expose legacy UI-login credentials
-        if: ${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}
-        env:
-          QA_TEST_EMAIL_SECRET: ${{ secrets.QA_TEST_EMAIL }}
-          QA_TEST_PASSWORD_SECRET: ${{ secrets.QA_TEST_PASSWORD }}
-        run: |
-          python3 - <<'PY'
-          import os, uuid
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as out:
-              for name in ("QA_TEST_EMAIL", "QA_TEST_PASSWORD"):
-                  value = os.environ[f"{name}_SECRET"]
-                  delimiter = f"SLOCK_{uuid.uuid4().hex}"
-                  out.write(f"{name}<<{delimiter}\n{value}\n{delimiter}\n")
-          PY
-
+      # Password-login cases still exercise the UI normally. The QA account goes only to the
+      # steps that use it, through their own env: from secrets.*, and only on the legacy path
+      # (no Stamp case, or a case whose auth mode is not bootstrap): those steps carry that
+      # `if:`, and the ungated runner steps take it under the same condition. Never through
+      # $GITHUB_ENV, which would hand it to every later step and process of the job (background
+      # harnesses included). Auth-bootstrap cases therefore have no QA credentials anywhere:
+      # not in the runner process, its argv/env, logs or evidence.
+      # scripts/ci/check_workflow_secret_env.py enforces the no-$GITHUB_ENV half.
       - name: Preflight — QA account must not see the production server
         # Layer 2 of three, wired here because this is the first point where the QA
-        # credentials exist (the step above puts them in the environment) and the last point
+        # credentials exist (its own env: takes them from secrets.*) and the last point
         # before anything drives the app. Same `if:` as that step on purpose: without it this
         # would run credential-less on the bootstrap path, exit 2 every time, and quietly
         # become a step that never actually checks anything.
@@ -531,8 +524,8 @@ jobs:
         # contract, because the unknown case must not default to the cheap one.
         if: ${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}
         env:
-          QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
-          QA_TEST_PASSWORD: ${{ env.QA_TEST_PASSWORD }}
+          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
         run: |
           mkdir -p qa-evidence
           set +e
@@ -571,7 +564,7 @@ jobs:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
-          QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
+          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
         run: bash scripts/qa/stamp_report.sh credential-receipt
 
       - name: Prepare iOS driver I/O dir
@@ -612,8 +605,8 @@ jobs:
         env:
           PI_API_KEY: ${{ secrets.PI_API_KEY }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
-          QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
-          QA_TEST_PASSWORD: ${{ env.QA_TEST_PASSWORD }}
+          QA_TEST_EMAIL: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_EMAIL || '' }}
+          QA_TEST_PASSWORD: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_PASSWORD || '' }}
           QA_GOAL: ${{ inputs.goal || '' }}
           QA_MAX_TURNS: ${{ inputs.max_turns || '40' }}
           QA_MAX_MINUTES: ${{ inputs.max_minutes || '20' }}
@@ -676,8 +669,8 @@ jobs:
       - name: Run deterministic repro
         if: ${{ inputs.mode == 'deterministic' }}
         env:
-          QA_TEST_EMAIL: ${{ env.QA_TEST_EMAIL }}
-          QA_TEST_PASSWORD: ${{ env.QA_TEST_PASSWORD }}
+          QA_TEST_EMAIL: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_EMAIL || '' }}
+          QA_TEST_PASSWORD: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_PASSWORD || '' }}
         run: |
           mkdir -p qa-evidence
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true

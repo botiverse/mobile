@@ -240,22 +240,17 @@ jobs:
       - name: Build the QA capture browser
         run: bash scripts/qa/capture-browser/build.sh "${RUNNER_TEMP}/capture-browser.apk"
 
-      - name: Expose QA credentials
+      # The QA account goes only to the steps that use it, through their own env: from secrets.*,
+      # never through $GITHUB_ENV (that would hand it to every later step and process of the job).
+      # scripts/ci/check_workflow_secret_env.py enforces this.
+      - name: Check the QA credentials are configured
         env:
           # A staging-only account may be set as QA_STAGING_TEST_EMAIL / QA_STAGING_TEST_PASSWORD;
           # otherwise the QA account (it exists with the same password on staging and production).
-          EMAIL: ${{ (needs.plan.outputs.environment == 'staging' && secrets.QA_STAGING_TEST_EMAIL) || secrets.QA_TEST_EMAIL }}
-          PASSWORD: ${{ (needs.plan.outputs.environment == 'staging' && secrets.QA_STAGING_TEST_PASSWORD) || secrets.QA_TEST_PASSWORD }}
+          QA_LOGIN_EMAIL: ${{ (needs.plan.outputs.environment == 'staging' && secrets.QA_STAGING_TEST_EMAIL) || secrets.QA_TEST_EMAIL }}
+          QA_LOGIN_PASSWORD: ${{ (needs.plan.outputs.environment == 'staging' && secrets.QA_STAGING_TEST_PASSWORD) || secrets.QA_TEST_PASSWORD }}
         run: |
-          [ -n "${EMAIL}" ] && [ -n "${PASSWORD}" ] || { echo "::error::QA credentials secret is missing (QA_TEST_EMAIL / QA_TEST_PASSWORD)"; exit 1; }
-          echo "::add-mask::${EMAIL}"
-          python3 - <<'PY'
-          import os, uuid
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as out:
-              for name, key in (("QA_LOGIN_EMAIL", "EMAIL"), ("QA_LOGIN_PASSWORD", "PASSWORD")):
-                  delimiter = f"QA_{uuid.uuid4().hex}"
-                  out.write(f"{name}<<{delimiter}\n{os.environ[key]}\n{delimiter}\n")
-          PY
+          [ -n "${QA_LOGIN_EMAIL}" ] && [ -n "${QA_LOGIN_PASSWORD}" ] || { echo "::error::QA credentials secret is missing (QA_TEST_EMAIL / QA_TEST_PASSWORD)"; exit 1; }
 
       - name: Enable KVM
         run: |
@@ -265,6 +260,11 @@ jobs:
 
       - name: Sign in on the emulator
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          # Same account as the check above; release_auto_login.mjs reads it from these two names
+          # and redacts both values from its own output.
+          QA_LOGIN_EMAIL: ${{ (needs.plan.outputs.environment == 'staging' && secrets.QA_STAGING_TEST_EMAIL) || secrets.QA_TEST_EMAIL }}
+          QA_LOGIN_PASSWORD: ${{ (needs.plan.outputs.environment == 'staging' && secrets.QA_STAGING_TEST_PASSWORD) || secrets.QA_TEST_PASSWORD }}
         with:
           api-level: 34
           arch: x86_64
