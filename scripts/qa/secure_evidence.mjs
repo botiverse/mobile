@@ -209,9 +209,11 @@ export function gateEvidence(dir, env = process.env) {
     const unresolved = record.state === "unresolved";
     const recordingUnconfirmed = phases.some((p) => p.recording !== "stopped" && p.recording !== "not_recorded");
     // File mtimes come from the kernel's coarse clock and can trail Date.now()
-    // by a few ms: a capture made just after the window began may look older.
-    // Count anything from 2 s before the earliest start as inside (fail closed).
-    const since = Math.min(...phases.map((p) => Number(p.start_ts))) - 2000;
+    // by up to a kernel tick (a few ms): a capture made just after the window
+    // began may look older. Count anything from 250 ms before the earliest
+    // start as inside (fail closed; a frame taken before the action that opened
+    // the window is >= 1.5 s older and stays).
+    const since = Math.min(...phases.map((p) => Number(p.start_ts))) - 250;
     const dropped = new Set(phases.flatMap((p) => (Array.isArray(p.dropped_segments) ? p.dropped_segments : [])));
     for (const f of walk(dir)) {
       const ext = path.extname(f).toLowerCase();
