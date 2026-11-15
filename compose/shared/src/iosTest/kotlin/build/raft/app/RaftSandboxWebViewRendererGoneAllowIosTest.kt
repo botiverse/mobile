@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
  * `contentProcessDidTerminate` hands [raftWebViewRendererGoneRestoreUrl]). iOS counterpart of
  * RaftAndroidSandboxWebViewRendererGoneAllowTest.
  */
-class RaftIosSandboxWebViewRendererGoneAllowTest {
+class RaftSandboxWebViewRendererGoneAllowIosTest {
     private val web = "https://app.raft.build"
     private val id = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
     private val warm = raftArtifactViewerWarmUrl(web)
