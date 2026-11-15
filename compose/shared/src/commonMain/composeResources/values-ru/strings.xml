@@ -793,7 +793,7 @@
     <string name="channel_settings_mute_detail">Из этого чата не будет никаких уведомлений, даже об @-упоминаниях.</string>
     <string name="channel_settings_pin">Закрепить канал</string>
     <string name="channel_settings_pin_detail">Показывать канал первым в разделе «Закреплённые» на главной</string>
-    <string name="channel_settings_status_joint">Общий канал</string>
+    <string name="channel_settings_status_joint">Внешний</string>
     <string name="channel_settings_info">Сведения</string>
     <string name="channel_settings_info_detail">Название и описание, которые видны во всём рабочем пространстве.</string>
     <string name="channel_settings_section_detail">Выберите, в каком разделе боковой панели будет этот канал.</string>
@@ -3674,7 +3674,7 @@
     <string name="invite_human_update_confirm_message">Обновить эту ссылку-приглашение? По старой ссылке больше нельзя будет присоединиться.</string>
     <string name="invite_human_updating">Обновление…</string>
     <string name="joint_connections_title">Подключённые серверы</string>
-    <string name="joint_connections_rule">В общем канале может быть до 30 серверов, из них до 2 — на тарифе Free</string>
+    <string name="joint_connections_rule">Во внешнем канале серверов и гостей вместе может быть не больше %1$d, включая сервер, на котором размещён канал.</string>
     <string name="joint_connections_this_server">Этот сервер</string>
     <string name="joint_connections_plan_free">Free</string>
     <string name="joint_connections_plan_paid">Платный</string>
@@ -3709,7 +3709,7 @@
     <string name="joint_invite_rate_limited_later">Слишком много приглашений за короткое время. Попробуйте позже.</string>
     <string name="joint_limit_host_free">Сервер, на котором размещён этот общий канал, достиг лимита общих каналов. Попросите его администратора освободить место, а затем снова примите приглашение.</string>
     <string name="joint_disconnect_channel">Отключить канал</string>
-    <string name="joint_disconnect_title">Отключить общий канал</string>
+    <string name="joint_disconnect_title">Отключить внешний канал?</string>
     <string name="joint_disconnect_confirm">Участники и агенты вашего сервера выйдут из канала #%1$s, и он будет удалён с этого сервера. Остальные серверы сохранят канал и его историю.</string>
     <string name="joint_disconnect_action">Отключить</string>
     <string name="joint_disconnecting">Отключение…</string>
@@ -4343,13 +4343,13 @@
     <string name="upgrade_dialog_pro_theme_title">Тема «Скучный серый» доступна в Pro</string>
     <string name="upgrade_dialog_pro_theme_hint">Переведите сервер %1$s на Pro, и тема «Скучный серый» станет доступна всем его участникам.</string>
     <string name="upgrade_dialog_general_title">Перевести сервер %1$s на Pro</string>
-    <string name="upgrade_dialog_general_hint">Pro снимает ограничения тарифа Free на историю чата, загрузку файлов и общие каналы.</string>
+    <string name="upgrade_dialog_general_hint">Pro снимает ограничения тарифа Free на историю чата, загрузку файлов и внешние каналы.</string>
     <string name="upgrade_dialog_benefit_history_pro">Неограниченная история сообщений</string>
     <string name="upgrade_dialog_benefit_history_free">Free: последние 30 дней</string>
     <string name="upgrade_dialog_benefit_files_pro">Без месячного лимита, до 200 МБ на файл</string>
     <string name="upgrade_dialog_benefit_files_free">Free: 100 МБ в месяц, до 50 МБ на файл</string>
-    <string name="upgrade_dialog_benefit_joint_pro">Неограниченное число общих каналов</string>
-    <string name="upgrade_dialog_benefit_joint_free">Free: можно разместить 1</string>
+    <string name="upgrade_dialog_benefit_joint_pro">Неограниченное число внешних каналов</string>
+    <string name="upgrade_dialog_benefit_joint_free">Free: 1 внешний канал</string>
     <string name="upgrade_dialog_benefit_migration_pro">Перенос агентов между компьютерами</string>
     <string name="upgrade_dialog_benefit_migration_free">Free: не входит</string>
     <string name="upgrade_dialog_owner_note">Повышение тарифа завершается в веб-версии: раздел «Тариф и оплата» сервера %1$s откроется в браузере.</string>

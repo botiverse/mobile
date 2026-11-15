@@ -803,7 +803,7 @@
     <string name="channel_settings_mute_detail">@メンションも含め、この会話からは何も通知されません。</string>
     <string name="channel_settings_pin">チャンネルをピン留め</string>
     <string name="channel_settings_pin_detail">ホームのピン留め欄で優先表示します</string>
-    <string name="channel_settings_status_joint">共同チャンネル</string>
+    <string name="channel_settings_status_joint">外部</string>
     <string name="channel_settings_info">情報</string>
     <string name="channel_settings_info_detail">ワークスペース全体に表示される名前と説明です。</string>
     <string name="channel_settings_section_detail">このチャンネルをサイドバーのどのセクションに表示するかを選びます。</string>
@@ -3841,7 +3841,7 @@
     <string name="invite_human_update_confirm_message">この招待リンクを更新しますか？古い URL を知っている人も、そのリンクからは参加できなくなります。</string>
     <string name="invite_human_updating">更新中…</string>
     <string name="joint_connections_title">接続済みのサーバー</string>
-    <string name="joint_connections_rule">1 つの共同チャンネルには最大 30 個のサーバーが参加でき、そのうち無料プランのサーバー枠は 2 個です</string>
+    <string name="joint_connections_rule">外部チャンネルに参加できるのは、ホストのサーバーを含め、サーバーとゲストを合わせて最大 %1$d までです。</string>
     <string name="joint_connections_this_server">このサーバー</string>
     <string name="joint_connections_plan_free">無料プラン</string>
     <string name="joint_connections_plan_paid">有料プラン</string>
@@ -3876,7 +3876,7 @@
     <string name="joint_invite_rate_limited_later">短時間に招待しすぎました。しばらくしてからもう一度お試しください。</string>
     <string name="joint_limit_host_free">この共同チャンネルをホストしているサーバーは、共同チャンネルの上限に達しています。そのサーバーの管理者に枠を空けてもらってから、もう一度招待を承諾してください。</string>
     <string name="joint_disconnect_channel">チャンネルの接続を解除</string>
-    <string name="joint_disconnect_title">共同チャンネルの接続を解除</string>
+    <string name="joint_disconnect_title">外部チャンネルの接続を解除しますか？</string>
     <string name="joint_disconnect_confirm">このサーバーのメンバーとエージェントは #%1$s から退出し、チャンネルはこのサーバーから削除されます。他のサーバーでは、チャンネルとその履歴が保持されます。</string>
     <string name="joint_disconnect_action">接続を解除</string>
     <string name="joint_disconnecting">接続を解除中…</string>
@@ -4572,13 +4572,13 @@
     <string name="upgrade_dialog_pro_theme_title">退屈グレーは Pro のテーマです</string>
     <string name="upgrade_dialog_pro_theme_hint">%1$s を Pro にアップグレードすると、メンバー全員が退屈グレーを使えます。</string>
     <string name="upgrade_dialog_general_title">%1$s を Pro にアップグレード</string>
-    <string name="upgrade_dialog_general_hint">Pro にすると、チャット履歴、ファイルのアップロード、共同チャンネルに関する無料プランの制限がなくなります。</string>
+    <string name="upgrade_dialog_general_hint">Pro にすると、チャット履歴、ファイルのアップロード、外部チャンネルに関する無料プランの制限がなくなります。</string>
     <string name="upgrade_dialog_benefit_history_pro">メッセージ履歴が無制限</string>
     <string name="upgrade_dialog_benefit_history_free">Free：直近 30 日間</string>
     <string name="upgrade_dialog_benefit_files_pro">月間の上限なし、1 ファイル 200 MB</string>
     <string name="upgrade_dialog_benefit_files_free">Free：月 100 MB、1 ファイル 50 MB</string>
-    <string name="upgrade_dialog_benefit_joint_pro">共同チャンネル数が無制限</string>
-    <string name="upgrade_dialog_benefit_joint_free">Free：共同チャンネルを 1 個までホスト可能</string>
+    <string name="upgrade_dialog_benefit_joint_pro">外部チャンネル数が無制限</string>
+    <string name="upgrade_dialog_benefit_joint_free">Free：外部チャンネル 1 つまで</string>
     <string name="upgrade_dialog_benefit_migration_pro">コンピューター間でエージェントを移動</string>
     <string name="upgrade_dialog_benefit_migration_free">Free：利用不可</string>
     <string name="upgrade_dialog_owner_note">アップグレードはウェブで完了します：%1$s のプランと請求がブラウザで開きます。</string>

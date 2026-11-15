@@ -803,7 +803,7 @@
     <string name="channel_settings_mute_detail">这个会话里的任何消息都不会通知你，@你 也不会。</string>
     <string name="channel_settings_pin">置顶频道</string>
     <string name="channel_settings_pin_detail">在首页置顶区域优先显示</string>
-    <string name="channel_settings_status_joint">联合频道</string>
+    <string name="channel_settings_status_joint">外部</string>
     <string name="channel_settings_info">信息</string>
     <string name="channel_settings_info_detail">在整个工作空间中显示的名称和描述。</string>
     <string name="channel_settings_section_detail">选择此频道在侧栏中所在的分区。</string>
@@ -3841,7 +3841,7 @@
     <string name="invite_human_update_confirm_message">更新此邀请链接？仍持有旧链接的任何人都将无法再用它加入。</string>
     <string name="invite_human_updating">更新中…</string>
     <string name="joint_connections_title">已连接的服务器</string>
-    <string name="joint_connections_rule">每个联合频道最多 30 个服务器，有连接 2 个免费版服务器的名额</string>
+    <string name="joint_connections_rule">外部频道的服务器和访客加起来最多 %1$d 个，包括托管频道的服务器。</string>
     <string name="joint_connections_this_server">此服务器</string>
     <string name="joint_connections_plan_free">免费版</string>
     <string name="joint_connections_plan_paid">付费版</string>
@@ -3876,7 +3876,7 @@
     <string name="joint_invite_rate_limited_later">短时间内邀请太多了，请稍后再试。</string>
     <string name="joint_limit_host_free">发起这个联合频道的服务器已达到联合频道数量上限。请联系对方管理员处理后，再重新接受邀请。</string>
     <string name="joint_disconnect_channel">断开频道</string>
-    <string name="joint_disconnect_title">断开联合频道</string>
+    <string name="joint_disconnect_title">断开外部频道？</string>
     <string name="joint_disconnect_confirm">你的成员和 Agent 将离开 #%1$s，这个频道也会从此服务器移除。其他服务器会保留这个频道及其历史记录。</string>
     <string name="joint_disconnect_action">断开</string>
     <string name="joint_disconnecting">正在断开…</string>
@@ -4572,13 +4572,13 @@
     <string name="upgrade_dialog_pro_theme_title">无聊灰是 Pro 主题</string>
     <string name="upgrade_dialog_pro_theme_hint">升级 %1$s 后，所有成员都可以使用无聊灰主题。</string>
     <string name="upgrade_dialog_general_title">将 %1$s 升级到 Pro</string>
-    <string name="upgrade_dialog_general_hint">升级到 Pro，免费版在聊天记录、文件上传和联合频道上的限制都会解除。</string>
+    <string name="upgrade_dialog_general_hint">升级到 Pro，免费版在聊天记录、文件上传和外部频道上的限制都会解除。</string>
     <string name="upgrade_dialog_benefit_history_pro">无限消息历史</string>
     <string name="upgrade_dialog_benefit_history_free">免费版：最近 30 天</string>
     <string name="upgrade_dialog_benefit_files_pro">不限每月上传量，单个文件 200 MB</string>
     <string name="upgrade_dialog_benefit_files_free">免费版：每月 100 MB，单个文件 50 MB</string>
-    <string name="upgrade_dialog_benefit_joint_pro">不限数量的联合频道</string>
-    <string name="upgrade_dialog_benefit_joint_free">免费版：可发起 1 个</string>
+    <string name="upgrade_dialog_benefit_joint_pro">不限数量的外部频道</string>
+    <string name="upgrade_dialog_benefit_joint_free">免费版：1 个外部频道</string>
     <string name="upgrade_dialog_benefit_migration_pro">在电脑之间迁移 Agent</string>
     <string name="upgrade_dialog_benefit_migration_free">免费版：不包含</string>
     <string name="upgrade_dialog_owner_note">升级在网页上完成：%1$s 的套餐与账单会在浏览器中打开。</string>

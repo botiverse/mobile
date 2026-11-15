@@ -793,7 +793,7 @@
     <string name="channel_settings_mute_detail">Nada de esta conversación te avisa, ni siquiera las menciones.</string>
     <string name="channel_settings_pin">Fijar canal</string>
     <string name="channel_settings_pin_detail">Muestra este canal primero en la sección Fijados de Inicio</string>
-    <string name="channel_settings_status_joint">Canal compartido</string>
+    <string name="channel_settings_status_joint">Externo</string>
     <string name="channel_settings_info">Información</string>
     <string name="channel_settings_info_detail">Nombre y descripción que se muestran en todo el espacio de trabajo.</string>
     <string name="channel_settings_section_detail">Elige dónde aparece este canal en tu barra lateral.</string>
@@ -3677,7 +3677,7 @@
     <string name="invite_human_update_confirm_message">¿Actualizar este enlace de invitación? Quien todavía tenga la URL anterior ya no podrá usarla para unirse.</string>
     <string name="invite_human_updating">Actualizando…</string>
     <string name="joint_connections_title">Servidores conectados</string>
-    <string name="joint_connections_rule">Cada canal compartido admite hasta 30 servidores, de los cuales hasta 2 pueden tener el plan Free</string>
+    <string name="joint_connections_rule">Un canal externo admite hasta %1$d servidores e invitados en total, incluido el servidor que aloja el canal.</string>
     <string name="joint_connections_this_server">Este servidor</string>
     <string name="joint_connections_plan_free">Free</string>
     <string name="joint_connections_plan_paid">De pago</string>
@@ -3712,7 +3712,7 @@
     <string name="joint_invite_rate_limited_later">Demasiadas invitaciones en poco tiempo. Vuelve a intentarlo más tarde.</string>
     <string name="joint_limit_host_free">El servidor que aloja este canal compartido alcanzó su límite de canales compartidos. Pide a su administrador que libere espacio y vuelve a aceptar la invitación.</string>
     <string name="joint_disconnect_channel">Desconectar canal</string>
-    <string name="joint_disconnect_title">Desconectar canal compartido</string>
+    <string name="joint_disconnect_title">¿Desconectar canal externo?</string>
     <string name="joint_disconnect_confirm">Tus miembros y agentes saldrán de #%1$s, y el canal se quitará de este servidor. Los demás servidores conservan el canal y su historial.</string>
     <string name="joint_disconnect_action">Desconectar</string>
     <string name="joint_disconnecting">Desconectando…</string>

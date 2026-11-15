@@ -793,7 +793,7 @@
     <string name="channel_settings_mute_detail">這個對話裡的任何訊息都不會通知你，@你 也不會。</string>
     <string name="channel_settings_pin">釘選頻道</string>
     <string name="channel_settings_pin_detail">在首頁的「已釘選」區塊優先顯示此頻道</string>
-    <string name="channel_settings_status_joint">聯合頻道</string>
+    <string name="channel_settings_status_joint">外部</string>
     <string name="channel_settings_info">資訊</string>
     <string name="channel_settings_info_detail">在整個工作區中顯示的名稱和說明。</string>
     <string name="channel_settings_section_detail">選擇此頻道在側邊欄中所在的區段。</string>
@@ -3677,7 +3677,7 @@
     <string name="invite_human_update_confirm_message">要更新此邀請連結嗎？仍持有舊網址的任何人都將無法再用它加入。</string>
     <string name="invite_human_updating">更新中…</string>
     <string name="joint_connections_title">已連結的伺服器</string>
-    <string name="joint_connections_rule">每個聯合頻道最多可有 30 個伺服器，其中 2 個名額可給免費版伺服器</string>
+    <string name="joint_connections_rule">外部頻道的伺服器和訪客合計最多 %1$d 個，包括託管頻道的伺服器。</string>
     <string name="joint_connections_this_server">此伺服器</string>
     <string name="joint_connections_plan_free">免費版</string>
     <string name="joint_connections_plan_paid">付費版</string>
@@ -3712,7 +3712,7 @@
     <string name="joint_invite_rate_limited_later">短時間內邀請太多了，請稍後再試。</string>
     <string name="joint_limit_host_free">發起這個聯合頻道的伺服器已達聯合頻道數量上限。請對方的管理員騰出名額後，再重新接受邀請。</string>
     <string name="joint_disconnect_channel">中斷頻道連結</string>
-    <string name="joint_disconnect_title">中斷聯合頻道連結</string>
+    <string name="joint_disconnect_title">中斷外部頻道連結？</string>
     <string name="joint_disconnect_confirm">你的成員和 Agent 將離開 #%1$s，這個頻道也會從此伺服器移除。其他伺服器會保留這個頻道及其歷史記錄。</string>
     <string name="joint_disconnect_action">中斷連結</string>
     <string name="joint_disconnecting">正在中斷連結…</string>

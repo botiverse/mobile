@@ -803,7 +803,7 @@
     <string name="channel_settings_mute_detail">Nothing in this conversation notifies you, not even @mentions.</string>
     <string name="channel_settings_pin">Pin Channel</string>
     <string name="channel_settings_pin_detail">Show this channel first in Home’s Pinned section</string>
-    <string name="channel_settings_status_joint">Joint Channel</string>
+    <string name="channel_settings_status_joint">External</string>
     <string name="channel_settings_info">Info</string>
     <string name="channel_settings_info_detail">Name and description shown across the workspace.</string>
     <string name="channel_settings_section_detail">Choose where this channel appears in your sidebar.</string>
@@ -3841,7 +3841,7 @@
     <string name="invite_human_update_confirm_message">Update this invite link? Anyone who still has the old URL will stop being able to join with it.</string>
     <string name="invite_human_updating">Updating…</string>
     <string name="joint_connections_title">Connected servers</string>
-    <string name="joint_connections_rule">Each Joint Channel can have up to 30 servers, with 2 free-server slots</string>
+    <string name="joint_connections_rule">An external channel holds up to %1$d servers and guests together, including the server that hosts it.</string>
     <string name="joint_connections_this_server">This server</string>
     <string name="joint_connections_plan_free">Free</string>
     <string name="joint_connections_plan_paid">Paid</string>
@@ -3876,7 +3876,7 @@
     <string name="joint_invite_rate_limited_later">Too many invites in a short time. Try again later.</string>
     <string name="joint_limit_host_free">The server hosting this Joint Channel has reached its Joint Channel limit. Ask its admin to make room, then accept the invite again.</string>
     <string name="joint_disconnect_channel">Disconnect channel</string>
-    <string name="joint_disconnect_title">Disconnect joint channel</string>
+    <string name="joint_disconnect_title">Disconnect external channel?</string>
     <string name="joint_disconnect_confirm">Your members and agents will leave #%1$s, and it will be removed from this server. The other servers keep the channel and its history.</string>
     <string name="joint_disconnect_action">Disconnect</string>
     <string name="joint_disconnecting">Disconnecting…</string>
@@ -4572,13 +4572,13 @@
     <string name="upgrade_dialog_pro_theme_title">Boring Gray is a Pro theme</string>
     <string name="upgrade_dialog_pro_theme_hint">Upgrade %1$s to Pro and everyone in it can use Boring Gray.</string>
     <string name="upgrade_dialog_general_title">Upgrade %1$s to Pro</string>
-    <string name="upgrade_dialog_general_hint">Pro lifts the Free limits on chat history, file uploads and Joint Channels.</string>
+    <string name="upgrade_dialog_general_hint">Pro lifts the Free limits on chat history, file uploads and external channels.</string>
     <string name="upgrade_dialog_benefit_history_pro">Unlimited message history</string>
     <string name="upgrade_dialog_benefit_history_free">Free: Last 30 days</string>
     <string name="upgrade_dialog_benefit_files_pro">No monthly limit, 200 MB per file</string>
     <string name="upgrade_dialog_benefit_files_free">Free: 100 MB a month, 50 MB per file</string>
-    <string name="upgrade_dialog_benefit_joint_pro">Unlimited joint channels</string>
-    <string name="upgrade_dialog_benefit_joint_free">Free: Host 1</string>
+    <string name="upgrade_dialog_benefit_joint_pro">Unlimited external channels</string>
+    <string name="upgrade_dialog_benefit_joint_free">Free: 1 external channel</string>
     <string name="upgrade_dialog_benefit_migration_pro">Move agents between computers</string>
     <string name="upgrade_dialog_benefit_migration_free">Free: Not included</string>
     <string name="upgrade_dialog_owner_note">You finish upgrading on the web: Plan &amp; Billing for %1$s opens in your browser.</string>
