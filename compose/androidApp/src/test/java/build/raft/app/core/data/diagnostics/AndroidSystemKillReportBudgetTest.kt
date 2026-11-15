@@ -16,8 +16,8 @@ import org.junit.Assert.assertSame
 import org.junit.Test
 
 /**
- * Confirmed background kills have their own caps, never use up or hold up the protected ones, and
- * their drops are counted for the next report.
+ * Visible, review and background kills have their own caps, planned in that order; only
+ * background ones are dropped (and counted) over budget.
  */
 class AndroidSystemKillReportBudgetTest {
     private val day = 24L * 60 * 60 * 1000
@@ -35,35 +35,41 @@ class AndroidSystemKillReportBudgetTest {
 
         for (importance in listOf(IMPORTANCE_FOREGROUND_SERVICE, IMPORTANCE_PERCEPTIBLE, IMPORTANCE_SERVICE, IMPORTANCE_CACHED)) {
             assertEquals("$importance old", SystemKillBudget.Background, budget(importance, old))
-            assertEquals("$importance recent", SystemKillBudget.Protected, budget(importance, recent))
-            assertEquals("$importance unknown", SystemKillBudget.Protected, budget(importance, unknown))
-            assertEquals("$importance none", SystemKillBudget.Protected, budget(importance, null))
+            assertEquals("$importance recent", SystemKillBudget.Visible, budget(importance, recent))
+            assertEquals("$importance unknown", SystemKillBudget.Review, budget(importance, unknown))
+            assertEquals("$importance none", SystemKillBudget.Review, budget(importance, null))
+            assertEquals(
+                "$importance reason 9",
+                SystemKillBudget.Review,
+                budget(importance, old, ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE),
+            )
         }
         for (importance in listOf(IMPORTANCE_FOREGROUND, IMPORTANCE_VISIBLE)) {
-            assertEquals("$importance old", SystemKillBudget.Protected, budget(importance, old))
+            assertEquals("$importance old", SystemKillBudget.Visible, budget(importance, old))
+            assertEquals("$importance none", SystemKillBudget.Visible, budget(importance, null))
         }
         // Below foreground service (not a background importance Hands archives on).
-        assertEquals(SystemKillBudget.Protected, budget(0, old))
+        assertEquals(SystemKillBudget.Review, budget(0, old))
     }
 
     @Test
-    fun importanceServiceWithUnknownRecentForegroundUsesTheProtectedBudget() {
+    fun importanceServiceWithUnknownRecentForegroundUsesTheReviewBudget() {
         val at = now - 1_000L
         val unknown = old(pid = 1, at = at).copy(lastInteractionAtMillis = -1L)
         val item = plan(listOf(exit(pid = 1, at = at, importance = IMPORTANCE_SERVICE)), snapshots = listOf(unknown)).single()
 
         assertEquals(SystemKillDecision.ReportBackground, item.decision)
-        assertEquals(SystemKillBudget.Protected, item.budget)
+        assertEquals(SystemKillBudget.Review, item.budget)
     }
 
     @Test
-    fun anExcessiveResourceUsageKillUsesTheProtectedBudget() {
+    fun anExcessiveResourceUsageKillUsesTheReviewBudget() {
         // Hands never auto-archives reason 9 (ACTIONABLE_SYSTEM_KILL_REASON_CODES).
         val at = now - 1_000L
         val exit = exit(pid = 1, at = at, importance = IMPORTANCE_CACHED, reason = ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE)
         val item = plan(listOf(exit), snapshots = listOf(old(pid = 1, at = at))).single()
 
-        assertEquals(SystemKillBudget.Protected, item.budget)
+        assertEquals(SystemKillBudget.Review, item.budget)
         assertEquals(setOf(4, 5, 6, 9), HandsActionableSystemKillReasonCodes)
     }
 
@@ -74,7 +80,7 @@ class AndroidSystemKillReportBudgetTest {
 
         val plan = plan(exits, snapshots = background.map { old(it.pid, it.timestampMillis) })
 
-        assertEquals(List(5) { SystemKillBudget.Background } + SystemKillBudget.Protected, plan.map { it.budget })
+        assertEquals(List(5) { SystemKillBudget.Background } + SystemKillBudget.Visible, plan.map { it.budget })
         assertEquals(
             listOf(
                 SystemKillAction.Submit, SystemKillAction.Submit, SystemKillAction.Submit,
@@ -87,7 +93,7 @@ class AndroidSystemKillReportBudgetTest {
     }
 
     @Test
-    fun fiveBackgroundKillsEarlierTodayDoNotUseTheProtectedBudget() {
+    fun fiveBackgroundKillsEarlierTodayDoNotUseTheVisibleBudget() {
         val exits =
             listOf(
                 exit(pid = 1, at = now - 2_000L, importance = IMPORTANCE_SERVICE),
@@ -101,16 +107,64 @@ class AndroidSystemKillReportBudgetTest {
     }
 
     @Test
-    fun aFullProtectedDayDoesNotStopBackgroundKills() {
+    fun fiveReviewReportsEarlierTodayDoNotUseTheVisibleBudget() {
+        val exits =
+            listOf(
+                exit(pid = 1, at = now - 2_000L, importance = IMPORTANCE_SERVICE), // no snapshot: review
+                exit(pid = 2, at = now - 1_000L, importance = IMPORTANCE_FOREGROUND),
+            )
+
+        val plan = plan(exits, recentReview = List(5) { now - 60_000L * (it + 1) })
+
+        assertEquals(listOf(SystemKillBudget.Review, SystemKillBudget.Visible), plan.map { it.budget })
+        // The review kill waits (queued), the visible one is sent.
+        assertEquals(listOf(SystemKillAction.Deferred, SystemKillAction.Submit), plan.map { it.action })
+    }
+
+    @Test
+    fun budgetsArePlannedVisibleFirstThenReviewThenBackground() {
+        // Older review and background kills first in time; the visible one is the newest.
+        val review = (1..5).map { exit(pid = it, at = now - 20_000L + it, importance = IMPORTANCE_SERVICE) }
+        val background = (6..9).map { exit(pid = it, at = now - 10_000L + it, importance = IMPORTANCE_CACHED) }
+        val visible = exit(pid = 10, at = now - 1_000L, importance = IMPORTANCE_FOREGROUND)
+
+        val plan =
+            plan(
+                review + background + visible,
+                snapshots = background.map { old(it.pid, it.timestampMillis) },
+                perLaunchCap = 1,
+                reviewPerLaunch = 3,
+                backgroundPerLaunch = 2,
+            )
+
+        assertEquals(SystemKillAction.Submit, plan.last().action)
+        assertEquals(
+            List(3) { SystemKillAction.Submit } + List(2) { SystemKillAction.Deferred },
+            plan.filter { it.budget == SystemKillBudget.Review }.map { it.action },
+        )
+        assertEquals(
+            List(2) { SystemKillAction.Submit } + List(2) { SystemKillAction.RateLimited },
+            plan.filter { it.budget == SystemKillBudget.Background }.map { it.action },
+        )
+        // Uploads go visible, then review, then background.
+        assertEquals(
+            listOf(10, 1, 2, 3, 6, 7),
+            systemKillProcessingOrder(plan).filter { it.action == SystemKillAction.Submit }.map { it.exit.pid },
+        )
+    }
+
+    @Test
+    fun aFullVisibleDayDoesNotStopBackgroundKills() {
         val exits =
             listOf(
                 exit(pid = 1, at = now - 2_000L, importance = IMPORTANCE_VISIBLE),
                 exit(pid = 2, at = now - 1_000L, importance = IMPORTANCE_CACHED),
             )
 
-        val plan = plan(exits, snapshots = listOf(old(2, now - 1_000L)), recentProtected = List(5) { now - 60_000L * (it + 1) })
+        val plan = plan(exits, snapshots = listOf(old(2, now - 1_000L)), recentVisible = List(5) { now - 60_000L * (it + 1) })
 
-        assertEquals(listOf(SystemKillAction.RateLimited, SystemKillAction.Submit), plan.map { it.action })
+        // The visible kill over its day is queued, never dropped.
+        assertEquals(listOf(SystemKillAction.Deferred, SystemKillAction.Submit), plan.map { it.action })
     }
 
     @Test
@@ -126,7 +180,7 @@ class AndroidSystemKillReportBudgetTest {
     }
 
     @Test
-    fun protectedKillsOverTheLaunchCapStillDeferEverythingAfterThem() {
+    fun visibleKillsOverTheLaunchCapAreDeferredWithoutHoldingUpOthers() {
         val exits =
             (1..4).map { exit(pid = it, at = now - 10_000L + it, importance = IMPORTANCE_VISIBLE) } +
                 exit(pid = 5, at = now - 1_000L, importance = IMPORTANCE_CACHED)
@@ -136,7 +190,7 @@ class AndroidSystemKillReportBudgetTest {
         assertEquals(
             listOf(
                 SystemKillAction.Submit, SystemKillAction.Submit, SystemKillAction.Submit,
-                SystemKillAction.Deferred, SystemKillAction.Deferred,
+                SystemKillAction.Deferred, SystemKillAction.Submit,
             ),
             plan.map { it.action },
         )
@@ -149,7 +203,7 @@ class AndroidSystemKillReportBudgetTest {
                 exit(pid = 1, at = now - 5_000L, importance = IMPORTANCE_CACHED), // background
                 exit(pid = 2, at = now - 4_000L, importance = IMPORTANCE_VISIBLE),
                 exit(pid = 3, at = now - 3_000L, importance = IMPORTANCE_CACHED), // background
-                exit(pid = 4, at = now - 2_000L, importance = IMPORTANCE_CACHED), // unknown: protected
+                exit(pid = 4, at = now - 2_000L, importance = IMPORTANCE_CACHED), // unknown: review
             )
         val plan = plan(exits, snapshots = listOf(old(1, now - 5_000L), old(3, now - 3_000L)))
 
@@ -280,23 +334,26 @@ class AndroidSystemKillReportBudgetTest {
     private fun plan(
         exits: List<SystemKillExit>,
         snapshots: List<MemoryTelemetrySnapshot> = emptyList(),
-        recentProtected: List<Long> = emptyList(),
+        recentVisible: List<Long> = emptyList(),
+        recentReview: List<Long> = emptyList(),
         recentBackground: List<Long> = emptyList(),
         watermark: Long = 0L,
         handled: Set<SystemKillExitKey> = emptySet(),
+        perLaunchCap: Int = AndroidSystemKillReporter.MaxReportsPerLaunch,
+        reviewPerLaunch: Int = AndroidSystemKillReporter.MaxReviewReportsPerLaunch,
+        backgroundPerLaunch: Int = AndroidSystemKillReporter.MaxBackgroundReportsPerLaunch,
     ) = planSystemKillReports(
         exits = exits,
         snapshots = snapshots,
         cutoffMillis = 0L,
         watermarkMillis = watermark,
-        recentReportMillis = recentProtected,
+        recentReportMillis = recentVisible,
         nowMillis = now,
-        perLaunchCap = AndroidSystemKillReporter.MaxReportsPerLaunch,
+        perLaunchCap = perLaunchCap,
         dailyCap = AndroidSystemKillReporter.MaxReportsPerDay,
         mainProcessName = mainProcess,
-        recentBackgroundReportMillis = recentBackground,
-        backgroundPerLaunchCap = AndroidSystemKillReporter.MaxBackgroundReportsPerLaunch,
-        backgroundDailyCap = AndroidSystemKillReporter.MaxBackgroundReportsPerDay,
+        review = SystemKillBudgetLimit(reviewPerLaunch, AndroidSystemKillReporter.MaxReviewReportsPerDay, recentReview),
+        background = SystemKillBudgetLimit(backgroundPerLaunch, AndroidSystemKillReporter.MaxBackgroundReportsPerDay, recentBackground),
         handledAboveWatermark = handled,
     )
 

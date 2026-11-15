@@ -148,26 +148,27 @@ class AndroidSystemKillReportTest {
                 SystemKillAction.Skip, SystemKillAction.Submit, // 100, 200
                 SystemKillAction.Skip, SystemKillAction.Submit, // 300, 400
                 SystemKillAction.Skip, // 500
-                SystemKillAction.Deferred, // 600: over this launch's cap
-                // Everything after a deferred exit waits too, so the watermark stops before 600.
-                SystemKillAction.Deferred, SystemKillAction.Deferred,
-                SystemKillAction.Deferred, SystemKillAction.Deferred
+                // Over this launch's visible cap: queued for a later launch, never dropped.
+                SystemKillAction.Deferred, SystemKillAction.Skip,
+                SystemKillAction.Deferred, SystemKillAction.Skip,
+                SystemKillAction.Deferred
             ),
             plan.map { it.action }
         )
     }
 
     @Test
-    fun theDailyCapRateLimitsAndCountsEarlierReports() {
+    fun theDailyCapDefersVisibleKillsAndCountsEarlierReports() {
         val day = 24L * 60 * 60 * 1000
         val now = 10 * day
         val exits = (1..3).map { exit(pid = it, at = now - 1_000L + it, importance = foreground) }
 
         val plan = plan(exits, now = now, recent = listOf(now - day, now - 5L), dailyCap = 2)
 
-        // One slot left today; an older report (a day ago) no longer counts.
+        // One slot left today; an older report (a day ago) no longer counts. Visible kills over the
+        // day's budget are queued, not dropped.
         assertEquals(
-            listOf(SystemKillAction.Submit, SystemKillAction.RateLimited, SystemKillAction.RateLimited),
+            listOf(SystemKillAction.Submit, SystemKillAction.Deferred, SystemKillAction.Deferred),
             plan.map { it.action }
         )
         assertEquals(listOf(now - 5L), decodeRecentReports("${now - day},${now - 5},junk", now))
