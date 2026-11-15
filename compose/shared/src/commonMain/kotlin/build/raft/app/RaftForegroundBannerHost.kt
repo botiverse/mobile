@@ -146,6 +146,13 @@ internal class SharedForegroundBannerStore(
     /** This window's task surfaces, closed before an incoming navigation opens ([RaftShellNavigationIntake]). */
     val incomingNavigation = RaftIncomingNavigationSignal()
 
+    /**
+     * This window's drafts for tasks without a conversation yet, shared by every page that opens a
+     * task so a draft outlives the page ([TaskPendingDraftStore]). Not dropped by [clear] (a server
+     * switch, e.g. a link into another server, keeps it); the shell follows the sign-in instead.
+     */
+    val taskPendingDrafts = TaskPendingDraftStore()
+
     fun show(next: RaftForegroundMessageBanner) {
         synchronized(lock) {
             if (mutableBanner.value?.id == next.id) return

@@ -123,7 +123,7 @@ class TaskOpenSurfacesTest {
             )
         assertEquals(null, send())
         assertEquals("Couldn't send the message", flow.errorText)
-        assertEquals("On it", flow.draft("t-1"), "the typed text stays after a failure")
+        assertEquals("On it", flow.draft("server-1", "t-1"), "the typed text stays after a failure")
         send()?.let { (_, conversation) -> opened += conversation }
         assertEquals(listOf("post:t-1", "post:t-1"), calls.filter { it.startsWith("post:") })
         assertEquals(listOf("conv-local" to "rid-1", "conv-local" to "rid-1"), sends, "same conversation, same randomId")
@@ -137,7 +137,7 @@ class TaskOpenSurfacesTest {
         flow.finishHandOff()
         assertEquals(null, flow.surface, "it gives way to the conversation page")
         assertFalse(flow.handingOff)
-        assertEquals("", flow.draft("t-1"))
+        assertEquals("", flow.draft("server-1", "t-1"))
 
         // The next draft gets a new id.
         flow.open(TaskOpenSurface.Pending(preV2))
@@ -150,7 +150,7 @@ class TaskOpenSurfacesTest {
         val preV2 = task("""{"messageId":"msg-host","hostMessageId":"msg-host","conversationChannelId":null,"conversationAnchored":false,"isLegacy":false}""")
         val flow = TaskOpenSurfaceFlow(newRandomId = { "rid" })
         flow.open(TaskOpenSurface.Pending(preV2))
-        flow.onDraftChange("t-1", "half a thought")
+        flow.onDraftChange("server-1", "t-1", "half a thought")
         // Another task's update, and the same copy: nothing changes.
         assertEquals(null, flow.onTaskChanged(preV2.copy(id = TaskId("t-2")), taskV2Enabled = true))
         assertEquals(null, flow.onTaskChanged(preV2, taskV2Enabled = true))
@@ -165,7 +165,7 @@ class TaskOpenSurfacesTest {
         val anchored = reviewed.copy(conversationChannelId = ChannelId("conv-1"), conversationAnchored = true)
         assertEquals(anchored, flow.onTaskChanged(anchored, taskV2Enabled = true))
         assertEquals(null, flow.surface)
-        assertEquals("half a thought", flow.draft("t-1"), "the draft is kept while the page lives")
+        assertEquals("half a thought", flow.draft("server-1", "t-1"), "the draft is kept while the page lives")
     }
 
     @Test
@@ -174,9 +174,9 @@ class TaskOpenSurfacesTest {
         val api = ConversationApi(HomeNetworkResponse(200, """{"conversationChannelId":"conv-local","canonicalConversationChannelId":"conv-1","created":true}"""), mutableListOf())
         val flow = TaskOpenSurfaceFlow(newRandomId = { "rid" })
         flow.open(TaskOpenSurface.Pending(preV2))
-        flow.onDraftChange("t-1", "draft")
+        flow.onDraftChange("server-1", "t-1", "draft")
         assertTrue(flow.dismiss())
-        assertEquals("draft", flow.draft("t-1"))
+        assertEquals("draft", flow.draft("server-1", "t-1"))
         flow.open(TaskOpenSurface.Pending(preV2))
         var server = "server-1"
         val opened =

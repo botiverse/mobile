@@ -4499,6 +4499,7 @@ private fun RaftAppShellReadyContent(
             sharedStores.foregroundBannerStore(navigationStoreScope)
         }
     val foregroundMessageBanner by foregroundBannerStore.banner.collectAsState()
+    TaskPendingDraftsFollowSessionEffect(foregroundBannerStore.taskPendingDrafts, authGateState, readySession)
     // System notifications stay silent for the conversation on screen, same rule as the in-app banner.
     DisposableEffect(sharedStores, pager.pagerId, foregroundBannerStore) {
         val ownerId = "app-shell:${pager.pagerId}"
@@ -8306,7 +8307,7 @@ private fun RaftAppShellReadyContent(
                     }
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         // Task v2: a task opened without a page of its own (its empty conversation, a legacy panel).
-                        val tasksOpenSurfaceFlow = remember { TaskOpenSurfaceFlow() }
+                        val tasksOpenSurfaceFlow = remember { TaskOpenSurfaceFlow(foregroundBannerStore.taskPendingDrafts) }
                         TaskOpenSurfaceIncomingNavigationEffect(tasksOpenSurfaceFlow, foregroundBannerStore.incomingNavigation)
                         val tasksOpenGate = remember { TaskOpenGate() }
                         val latestTasksOpenServerId by rememberUpdatedState(readyServerId)
