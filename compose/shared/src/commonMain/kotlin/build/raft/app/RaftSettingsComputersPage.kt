@@ -22,6 +22,7 @@ import build.raft.app.data.RuntimeAccountUsageLoad
 import build.raft.app.data.RuntimeAccountUsageProvider
 import build.raft.app.data.RaftComputersRackUsageSession
 import build.raft.app.data.raftComputersRackUsageKeys
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftMeter
 import build.raft.designsystem.components.RaftMeterSize
 import build.raft.designsystem.components.RaftProgressBar
@@ -3473,7 +3474,14 @@ private fun RaftComputerEditableText(
             if (multiline) {
                 RaftTextarea(value = value, onValueChange = onValueChange, placeholder = placeholder, enabled = !saving)
             } else {
-                RaftTextField(value = value, onValueChange = onValueChange, placeholder = placeholder, enabled = !saving)
+                // The single-line field is the computer name: no autocorrect (CMP-10674 on iOS).
+                RaftTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    placeholder = placeholder,
+                    enabled = !saving,
+                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
+                )
             }
         }
         // Web: Save (accent) and Cancel, with the description's `n/500` counter at the end.

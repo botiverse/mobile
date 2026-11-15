@@ -46,6 +46,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
@@ -542,7 +543,12 @@ internal fun RaftCreateExternalAgentDialog(host: RaftExternalAgentCreateHost, on
             ) {
                 error?.let { RaftText(it, style = RaftTheme.typography.callout, color = RaftTheme.colors.dangerStrong) }
                 RaftField(label = stringResource(Res.string.external_agent_create_name), modifier = Modifier.fillMaxWidth(), enabled = !busy) {
-                    RaftTextField(value = name, onValueChange = { name = it }, modifier = Modifier.fillMaxWidth())
+                    RaftTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
+                    )
                 }
                 RaftField(
                     label = stringResource(Res.string.external_agent_create_description),

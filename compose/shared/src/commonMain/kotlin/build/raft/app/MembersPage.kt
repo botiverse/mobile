@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.LocalRaftBarButtons
 import build.raft.app.data.agentOffersLounge
@@ -10810,6 +10811,15 @@ private class MembersAgentProfileEditInputs(
  * dialog, web AgentHeaderName + AgentProfileEditDialog) and the description, each with its own
  * edit state machine (task #1130 part 2).
  */
+/**
+ * Keyboard options of the agent "Edit display name" dialog field: a name, so autocorrect is off,
+ * like the other name fields (see [RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions], CMP-10674).
+ * iOS 1.24.0 crashed on a tap in this field right after the dialog opened; the symbolicated trap is
+ * in Skia's caret hit test (`ParagraphImpl::countSurroundingGraphemes`), so turning autocorrect
+ * off (no autocorrect / inline-prediction text in the field) is a mitigation, not a proven fix.
+ */
+internal val MembersAgentDisplayNameKeyboardOptions: KeyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions
+
 @Composable
 private fun MembersAgentProfileFieldsSection(
     member: MemberProfile,
@@ -11112,7 +11122,7 @@ private fun MembersAgentProfileFieldsSection(
                     // The app editor behaviour (IME action, focus dismiss) plus the open-on-edit focus.
                     val displayNameEditor =
                         rememberRaftDesignSystemEditor(
-                            keyboardOptions = KeyboardOptions.Default,
+                            keyboardOptions = MembersAgentDisplayNameKeyboardOptions,
                             keyboardActions = KeyboardActions.Default,
                             keyboardHeightChange = {},
                             focusRequester = remember { FocusRequester() },
