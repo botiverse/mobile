@@ -196,7 +196,10 @@ internal enum class SystemKillAction(val label: String) {
     Submit("report"),
     /** Not reportable: advance the watermark. */
     Skip("skip"),
-    /** Over the daily cap: advance the watermark, so a burst never backs up. */
+    /**
+     * Over the daily cap, or a background kill over this launch's background cap: advance the
+     * watermark, so a burst never backs up (and background kills never hold up a foreground one).
+     */
     RateLimited("rate_limited"),
     /** Over this launch's cap: leave the watermark, the next launch continues here. */
     Deferred("deferred"),
@@ -213,10 +216,16 @@ internal data class SystemKillPlanItem(
  * What to do with each exit since the watermark, oldest first.
  *
  * Every exit newer than the install of the first build with this reporter and the watermark (the
- * newest exit already handled) is classified; only submissions are capped. At most
- * [perLaunchCap] are submitted now (the rest are [SystemKillAction.Deferred], watermark not
- * passed), and at most [dailyCap] in any 24 hours counting [recentReportMillis] (the rest are
- * [SystemKillAction.RateLimited]). Telemetry is matched per exit ([MemoryTelemetryRing.match]).
+ * newest exit already handled) is classified; only submissions are capped, in two separate
+ * budgets so background kills never use up the one for kills the user saw:
+ * - foreground ([SystemKillDecision.Report]: importance 100/200 or recent foreground evidence): at
+ *   most [perLaunchCap] now (the rest are [SystemKillAction.Deferred], watermark not passed) and
+ *   at most [dailyCap] in any 24 hours counting [recentReportMillis] (the rest are
+ *   [SystemKillAction.RateLimited]).
+ * - background ([SystemKillDecision.ReportBackground]): at most [backgroundPerLaunchCap] now and
+ *   [backgroundDailyCap] in any 24 hours counting [recentBackgroundReportMillis]; the rest are
+ *   [SystemKillAction.RateLimited] (never deferred, so they cannot hold up a later foreground kill).
+ * Telemetry is matched per exit ([MemoryTelemetryRing.match]).
  */
 internal fun planSystemKillReports(
     exits: List<SystemKillExit>,
@@ -229,10 +238,15 @@ internal fun planSystemKillReports(
     dailyCap: Int,
     /** The main app process name; exits of any other process are [SystemKillDecision.SkipSecondaryProcess]. */
     mainProcessName: String? = null,
+    recentBackgroundReportMillis: List<Long> = emptyList(),
+    backgroundPerLaunchCap: Int = perLaunchCap,
+    backgroundDailyCap: Int = dailyCap,
 ): List<SystemKillPlanItem> {
     val floor = maxOf(cutoffMillis, watermarkMillis)
     val reportedToday = recentReportMillis.filter { nowMillis - it < DayMillis }.toMutableList()
+    val backgroundReportedToday = recentBackgroundReportMillis.filter { nowMillis - it < DayMillis }.toMutableList()
     var submitted = 0
+    var backgroundSubmitted = 0
     var deferring = false
     return exits
         .filter { it.timestampMillis > floor }
@@ -252,6 +266,14 @@ internal fun planSystemKillReports(
                     // Once deferred, everything after waits too: the watermark cannot skip over it.
                     deferring -> SystemKillAction.Deferred
                     !decision.report -> SystemKillAction.Skip
+                    decision == SystemKillDecision.ReportBackground ->
+                        if (backgroundReportedToday.size >= backgroundDailyCap || backgroundSubmitted >= backgroundPerLaunchCap) {
+                            SystemKillAction.RateLimited
+                        } else {
+                            backgroundSubmitted += 1
+                            backgroundReportedToday += nowMillis
+                            SystemKillAction.Submit
+                        }
                     reportedToday.size >= dailyCap -> SystemKillAction.RateLimited
                     submitted >= perLaunchCap -> {
                         deferring = true
@@ -456,10 +478,14 @@ internal object AndroidSystemKillReporter {
     private const val Tag = "SlockAndroidProcessExit"
     private const val PreferencesName = "raft-process-exit-diagnostics"
     private const val WatermarkKey = "system-kill-reported-timestamp-millis"
+    /** Foreground reports (and every report before the background budget existed). */
     private const val RecentReportsKey = "system-kill-recent-reports"
+    private const val RecentBackgroundReportsKey = "system-kill-recent-background-reports"
     private const val MaxExitsQueried = 16
     internal const val MaxReportsPerLaunch = 3
     internal const val MaxReportsPerDay = 5
+    internal const val MaxBackgroundReportsPerLaunch = 3
+    internal const val MaxBackgroundReportsPerDay = 5
     private val started = AtomicBoolean(false)
     private val uploadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -512,6 +538,10 @@ internal object AndroidSystemKillReporter {
                 nowMillis = now,
                 perLaunchCap = MaxReportsPerLaunch,
                 dailyCap = MaxReportsPerDay,
+                recentBackgroundReportMillis =
+                    decodeRecentReports(preferences.getString(RecentBackgroundReportsKey, null), now),
+                backgroundPerLaunchCap = MaxBackgroundReportsPerLaunch,
+                backgroundDailyCap = MaxBackgroundReportsPerDay,
                 mainProcessName = context.applicationInfo.processName ?: context.packageName,
             )
         for (item in plan) {
@@ -536,7 +566,11 @@ internal object AndroidSystemKillReporter {
                         return
                     }
                     ticket = result.getOrNull()?.take(8) ?: "rejected"
-                    recordReport(preferences, now)
+                    recordReport(
+                        preferences,
+                        if (item.decision == SystemKillDecision.ReportBackground) RecentBackgroundReportsKey else RecentReportsKey,
+                        now,
+                    )
                 }
                 SystemKillAction.Skip, SystemKillAction.RateLimited -> Unit
             }
@@ -562,9 +596,9 @@ internal object AndroidSystemKillReporter {
         return preferences.getLong(key, now)
     }
 
-    private fun recordReport(preferences: SharedPreferences, now: Long) {
-        val recent = decodeRecentReports(preferences.getString(RecentReportsKey, null), now) + now
-        preferences.edit().putString(RecentReportsKey, recent.joinToString(",")).commit()
+    private fun recordReport(preferences: SharedPreferences, key: String, now: Long) {
+        val recent = decodeRecentReports(preferences.getString(key, null), now) + now
+        preferences.edit().putString(key, recent.joinToString(",")).commit()
     }
 
     private fun ApplicationExitInfo.toSystemKillExit(): SystemKillExit =
