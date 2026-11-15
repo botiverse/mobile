@@ -493,6 +493,17 @@ internal fun raftRackLoginStep(
         step.runtimeId in runtimes && RuntimeAccountUsageProvider.forRuntime(step.runtimeId) == provider
     }?.action
 
+/**
+ * Web `rackUsageTwoLines` (slock #14650): whether [load] draws [provider]'s line in two lines (its
+ * tightest account has a model line), for the placeholder the next time it is read. Null for a
+ * read that failed or was refused: it says nothing of the line's shape, so nothing is remembered.
+ */
+internal fun raftRackUsageTwoLines(provider: RuntimeAccountUsageProvider, load: RuntimeAccountUsageLoad): Boolean? {
+    if (load !is RuntimeAccountUsageLoad.Loaded) return null
+    val cell = raftRackUsageCell(RaftRackUsageColumn(provider, provider.wire), load)
+    return (cell as? RaftRackUsageCell.Value)?.model != null
+}
+
 /** Web `rackRuntimeCell`'s `unsupported`: this Computer reads no usage for the provider, so it has no line (slock #14667). */
 internal val RuntimeAccountUsageLoad?.unsupportedRead: Boolean
     get() = (this as? RuntimeAccountUsageLoad.Loaded)?.read == RuntimeAccountUsageRead.Unsupported

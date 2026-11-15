@@ -11,6 +11,8 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.rememberTextMeasurer
 import build.raft.app.data.ComputerLoginStepAction
 import build.raft.app.data.RaftAgentCreateEntry
+import build.raft.app.data.RaftRackUsageLinesMemory
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.RaftAgentsNetworkApi
 import build.raft.app.data.RaftComputersApiClient
@@ -67,6 +69,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -449,11 +452,14 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
             serverId = usageServerId,
             computers = (settingsState.computers as? ScreenLoadState.Content)?.data?.computers.orEmpty(),
         )
+    // How many lines each usage line drew last time, for its placeholder while it is read again (web rackUsageLines).
+    val usageLinesMemory = remember { RaftRackUsageLinesMemory(raftSharedPreferenceStore()) }
     val onUsageResult: (RuntimeAccountUsageKey, RuntimeAccountUsageLoad) -> Unit = { key, load ->
         if (load == RuntimeAccountUsageLoad.Superseded) {
             usageAccess.onIdentityChanged()
         } else {
             usageReads = usageReads + (key to load)
+            raftRackUsageTwoLines(key.provider, load)?.let { usageLinesMemory.remember(key.serverId, key.machineId, key.provider, it) }
         }
     }
     LaunchedEffect(usageKeys) {
@@ -466,6 +472,15 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                 .entries
                 .groupBy({ it.key.machineId }, { it.key.provider to it.value })
                 .mapValues { (_, loads) -> loads.toMap() }
+        }
+    // A line read but not answered yet is pending (web `rackRuntimeCell` "pending"): placeholders, not "—".
+    val usagePending =
+        remember(usageKeys, usageLoads, usageServerId, usageLinesMemory) {
+            val pending = usageKeys.filter { usageLoads[it.machineId]?.get(it.provider) == null }.mapTo(HashSet()) { it.machineId to it.provider }
+            RaftRackUsagePending(
+                isPending = { machineId, provider -> (machineId to provider) in pending },
+                twoLines = { machineId, provider -> usageServerId?.let { usageLinesMemory.twoLines(it, machineId, provider) } ?: false },
+            )
         }
     var openUsage by remember { mutableStateOf<RaftComputersOpenUsage?>(null) }
     var deleteComputerId by remember { mutableStateOf<String?>(null) }
@@ -552,7 +567,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                 }
             }
         RaftComputersTheme {
-          CompositionLocalProvider(LocalRaftRackUsageCard provides usageCard) {
+          CompositionLocalProvider(LocalRaftRackUsageCard provides usageCard, LocalRaftRackUsagePending provides usagePending) {
             RaftSettingsComputersContent(
                 model = model,
                 refreshErrorCode = refreshErrorCode,
@@ -1738,6 +1753,23 @@ private fun RaftComputerRackCells(
 /** Web `RackUsageCell`'s face: the value (and the attention pixel) over the meter, or "—". */
 @Composable
 private fun RaftRackUsageCellContent(line: RaftRackLine, click: (() -> Unit)?) {
+    line.pending?.let { pending ->
+        // Web `PendingUsageCell`: the value's line over its track, twice when it last had a model line.
+        Column(
+            Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = line.semantics },
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            RaftRackPendingText(56.dp, pending.animated)
+            RaftRackPendingBar(pending.animated)
+            if (pending.twoLines) {
+                Column(Modifier.padding(top = 2.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    RaftRackPendingText(64.dp, pending.animated)
+                    RaftRackPendingBar(pending.animated)
+                }
+            }
+        }
+        return
+    }
     Column(
         Modifier
             .fillMaxWidth()
@@ -1803,9 +1835,29 @@ private class RaftRackLine(
     val emphasized: Boolean = false,
     /** A usage line's model line (web `ModelUsageLine` / `ModelCardLine`, slock #14605); null: one line. */
     val model: RaftRackModelLineUi? = null,
+    /** A usage line being read: placeholders instead of its bar and value (web `PendingUsageCell`); null when answered. */
+    val pending: RaftRackLinePending? = null,
 ) {
     fun emphasize(): RaftRackLine =
-        RaftRackLine(label, runtimeMark, bar, value, warn, attention, dimmed, semantics, onClick, usageCard, emphasized = true, model = model)
+        RaftRackLine(label, runtimeMark, bar, value, warn, attention, dimmed, semantics, onClick, usageCard, emphasized = true, model = model, pending = pending)
+}
+
+/** A pending usage line's shape: two lines when it last had a model line; whether its placeholders pulse. */
+private class RaftRackLinePending(val twoLines: Boolean, val animated: Boolean)
+
+/** Web `SkeletonTextBar` on a mono-meta line: a bar [width] wide in a line as tall as the value's text. */
+@Composable
+private fun RaftRackPendingText(width: Dp, animated: Boolean, modifier: Modifier = Modifier, alignEnd: Boolean = false) {
+    Box(modifier, contentAlignment = if (alignEnd) Alignment.CenterEnd else Alignment.CenterStart) {
+        RaftText("\u00A0", style = RaftTheme.typography.monoMeta, maxLines = 1)
+        RaftSkeleton(Modifier.width(width).height(9.dp), variant = RaftSkeletonVariant.Line, animated = animated)
+    }
+}
+
+/** A pending value's track, as tall as the loaded Meter's (`RaftMeterSize.Sm`). */
+@Composable
+private fun RaftRackPendingBar(animated: Boolean) {
+    RaftSkeleton(Modifier.fillMaxWidth().height(RaftMeterSize.Sm.track), animated = animated)
 }
 
 /** A model line as drawn: the model's name, its value ("40%", "6d", "Used up"), whether it warns, and its bar. */
@@ -1890,6 +1942,10 @@ private fun RaftRackLineRow(line: RaftRackLine, valueWidth: Dp) {
 
 @Composable
 private fun RaftRackLineRowContent(line: RaftRackLine, valueWidth: Dp, click: (() -> Unit)?) {
+    line.pending?.let { pending ->
+        RaftRackPendingLineRow(line, pending, valueWidth)
+        return
+    }
     val model = line.model
     if (model == null) {
         RaftRackLineRowFace(line, valueWidth, Modifier.raftRackLineTarget(line, click))
@@ -1919,6 +1975,37 @@ private fun RaftRackLineRowContent(line: RaftRackLine, valueWidth: Dp, click: ((
                     maxLines = 1,
                     softWrap = false,
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Web `PendingUsageCardLine` (slock #14650, #14662): the line's name, then a bar and a value
+ * placeholder in the grid's columns; a second row (name, bar, value) when it last had a model line.
+ */
+@Composable
+private fun RaftRackPendingLineRow(line: RaftRackLine, pending: RaftRackLinePending, valueWidth: Dp) {
+    Column(
+        Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = line.semantics },
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(RaftRackLineLabelWidth)) { RaftRackLineLabel(line) }
+            Spacer(Modifier.width(RaftRackLineGap))
+            Box(Modifier.weight(1f)) { RaftRackPendingBar(pending.animated) }
+            Spacer(Modifier.width(RaftRackLineGap))
+            RaftRackPendingText(48.dp, pending.animated, Modifier.width(valueWidth), alignEnd = true)
+        }
+        if (pending.twoLines) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(RaftRackLineLabelWidth).padding(start = 18.dp)) {
+                    RaftSkeleton(Modifier.width(40.dp).height(9.dp), variant = RaftSkeletonVariant.Line, animated = pending.animated)
+                }
+                Spacer(Modifier.width(RaftRackLineGap))
+                Box(Modifier.weight(1f)) { RaftRackPendingBar(pending.animated) }
+                Spacer(Modifier.width(RaftRackLineGap))
+                RaftRackPendingText(32.dp, pending.animated, Modifier.width(valueWidth), alignEnd = true)
             }
         }
     }
@@ -2016,6 +2103,7 @@ private fun raftRackUsageLine(
     val label = raftRackRuntimeShortName(runtimeId, runtimeCatalog)
     val onClick = if (canView) ({ onOpenUsage(cell.column, name) }) else null
     val cardHost = LocalRaftRackUsageCard.current
+    val pending = LocalRaftRackUsagePending.current
     val usageCard: (@Composable (@Composable () -> Unit) -> Unit)? =
         if (canView && cardHost != null) {
             { trigger -> cardHost.card(machineId, cell.column, name, trigger) }
@@ -2051,17 +2139,31 @@ private fun raftRackUsageLine(
     }
     return when (cell) {
         is RaftRackUsageCell.Unavailable ->
-            RaftRackLine(
-                label = label,
-                runtimeMark = runtimeId,
-                bar = null,
-                value = "—",
-                warn = false,
-                attention = cell.attention,
-                semantics = stringResource(Res.string.settings_computers_rack_usage_unavailable, name),
-                onClick = onClick,
-                usageCard = usageCard,
-            )
+            if (pending?.isPending(machineId, cell.column.provider) == true) {
+                // Web `PendingUsageCell` / `PendingUsageCardLine` (slock #14650): bars in the value's
+                // shape, two lines when the last answer had a model line; a screen reader hears it is loading.
+                RaftRackLine(
+                    label = label,
+                    runtimeMark = runtimeId,
+                    bar = null,
+                    value = "",
+                    warn = false,
+                    semantics = stringResource(Res.string.settings_computers_rack_usage_meter, name, stringResource(Res.string.common_loading)),
+                    pending = RaftRackLinePending(twoLines = pending.twoLines(machineId, cell.column.provider), animated = pending.animated),
+                )
+            } else {
+                RaftRackLine(
+                    label = label,
+                    runtimeMark = runtimeId,
+                    bar = null,
+                    value = "—",
+                    warn = false,
+                    attention = cell.attention,
+                    semantics = stringResource(Res.string.settings_computers_rack_usage_unavailable, name),
+                    onClick = onClick,
+                    usageCard = usageCard,
+                )
+            }
         is RaftRackUsageCell.Value -> {
             val words = raftRackUsageWords(cell, nowMillis)
             val value = words.value
@@ -4020,6 +4122,19 @@ internal class RaftRackUsageCard(
 )
 
 internal val LocalRaftRackUsageCard = staticCompositionLocalOf<RaftRackUsageCard?> { null }
+
+/**
+ * Which usage lines are being read with no answer yet (web `rackRuntimeCell` "pending", slock
+ * #14650), and whether each drew two lines last time ([RaftRackUsageLinesMemory], #14662).
+ * [animated]: the placeholders pulse (false in screenshots).
+ */
+internal class RaftRackUsagePending(
+    val isPending: (machineId: String, provider: RuntimeAccountUsageProvider) -> Boolean,
+    val twoLines: (machineId: String, provider: RuntimeAccountUsageProvider) -> Boolean,
+    val animated: Boolean = true,
+)
+
+internal val LocalRaftRackUsagePending = compositionLocalOf<RaftRackUsagePending?> { null }
 
 /**
  * A Computers card's usage line with its usage card (web rack `UsageCardTrigger`): it opens on

@@ -9,6 +9,7 @@ import build.raft.app.data.RuntimeAccountUsageProvider
 import build.raft.app.data.RuntimeAccountUsageRead
 import build.raft.app.data.RuntimeAccountUsageSnapshot
 import build.raft.app.data.RuntimeAccountUsageWindow
+import build.raft.app.data.RuntimeAccountUsageWindowScope
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.SettingsComputerSizeStatusSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
@@ -189,6 +190,25 @@ class RaftComputersRackModelTest {
         assertNull(raftRackLoginStep(runtimes, steps, RuntimeAccountUsageProvider.Grok))
         // The row carries the server's steps through.
         assertEquals(steps, computer().copy(runtimes = runtimes, loginSteps = steps).toRaftComputerRow().loginSteps)
+    }
+
+    @Test
+    fun anAnswersShapeIsRememberedButAFailureSaysNothing() {
+        // Web rackUsageTwoLines (slock #14650): two lines when the tightest account has a model line.
+        val modelWindow =
+            RuntimeAccountUsageWindow(
+                id = "opus",
+                label = "Current week (Opus)",
+                status = RuntimeAccountUsageWindowStatus.Ok,
+                usedRatio = 0.4,
+                resetsAt = null,
+                scope = RuntimeAccountUsageWindowScope.Model("Opus"),
+            )
+        assertEquals(true, raftRackUsageTwoLines(RuntimeAccountUsageProvider.Claude, loaded(account(window(0.6), modelWindow))))
+        assertEquals(false, raftRackUsageTwoLines(RuntimeAccountUsageProvider.Claude, loaded(account(window(0.6)))))
+        assertEquals(false, raftRackUsageTwoLines(RuntimeAccountUsageProvider.Claude, RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Unsupported)))
+        assertNull(raftRackUsageTwoLines(RuntimeAccountUsageProvider.Claude, RuntimeAccountUsageLoad.Failed("network", retryable = true)))
+        assertNull(raftRackUsageTwoLines(RuntimeAccountUsageProvider.Claude, RuntimeAccountUsageLoad.Forbidden))
     }
 
     private fun computer(
