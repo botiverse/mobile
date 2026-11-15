@@ -1,5 +1,6 @@
 package build.raft.app.core.data.diagnostics
 
+import android.app.ActivityManager.RunningAppProcessInfo as Importance
 import android.app.ApplicationExitInfo
 import build.raft.app.shared.RaftBuildStamp
 import org.junit.Assert.assertEquals
@@ -8,12 +9,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidSystemKillReportTest {
-    private val cached = 400 // IMPORTANCE_CACHED
-    private val foreground = 100 // IMPORTANCE_FOREGROUND
-    private val foregroundService = 125
-    private val visible = 200
-    private val perceptible = 230
-    private val service = 300
+    private val cached = Importance.IMPORTANCE_CACHED
+    private val foreground = Importance.IMPORTANCE_FOREGROUND
+    private val foregroundService = Importance.IMPORTANCE_FOREGROUND_SERVICE
+    private val visible = Importance.IMPORTANCE_VISIBLE
+    private val perceptible = Importance.IMPORTANCE_PERCEPTIBLE
+    private val service = Importance.IMPORTANCE_SERVICE
     private val stamp = RaftBuildStamp.StampedBuild("1.22.0", 12200001L)
 
     @Test
@@ -35,9 +36,10 @@ class AndroidSystemKillReportTest {
     }
 
     @Test
-    fun telemetryOverridesTheRecordedImportance() {
+    fun freshTelemetryRaisesABackgroundImportanceButNeverLowersAVisibleOne() {
+        // The exit record is authoritative when it says foreground or visible.
         assertEquals(
-            SystemKillDecision.SkipNotImportant,
+            SystemKillDecision.Report,
             classify(ApplicationExitInfo.REASON_LOW_MEMORY, foreground, false)
         )
         assertEquals(

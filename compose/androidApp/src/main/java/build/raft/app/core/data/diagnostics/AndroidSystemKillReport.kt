@@ -88,20 +88,21 @@ internal fun isTelemetrySampleFresh(telemetry: MemoryTelemetrySnapshot, exitTime
  * fb-52cc0499 recorded `reason=other`) any of them can be the "app vanished" users describe.
  *
  * A system kill is reported only when an activity was on screen:
- * - the app's own telemetry for the exited process ([telemetry], matched by the caller) decides
- *   when it says "in background" (the move to background is committed at once), or "in
+ * - the exit record is authoritative when it says so: importance foreground (100) or visible
+ *   (200) always reports, whatever the app's telemetry says or how old it is. The app may have
+ *   come back to the foreground after its last snapshot was written.
+ * - otherwise (the system recorded a background importance) only the app's telemetry for the
+ *   exited process ([telemetry], matched by the caller) can make it a foreground kill: "in
  *   foreground" with a sample at most [SystemKillFreshSampleMillis] before the exit
- *   ([isTelemetrySampleFresh]). The Huawei kill recorded `importance=400` one second after the
- *   user scrolled, and a background kill of the process kept alive by the foreground service
- *   (RaftBackgroundConnectionService, on by default without Play services) records 125;
- *   telemetry gets both right.
- * - "in foreground" with an older sample (or none) is not trusted: the process stopped sampling
- *   long before the kill, and about 31 such tickets (Hands 4a5504d3: foreground 600 s, sample
- *   570 s before an exit at importance 300) were background kills. The exit record decides, as
- *   without telemetry.
- * - without telemetry, only importance foreground (100) or visible (200) counts. Foreground
- *   service (125) and perceptible (230) do not: that is the service-held background process,
- *   and reporting its swipe-away or power-manager kills would flood Hands.
+ *   ([isTelemetrySampleFresh]). The Huawei kill (fb-52cc0499) recorded `importance=400` one
+ *   second after the user scrolled; that stays reported.
+ * - an older foreground sample (or none) is not trusted: the process stopped sampling long
+ *   before the kill, and about 31 such tickets (Hands 4a5504d3: foreground 600 s, sample 570 s
+ *   before an exit at importance 300) were background kills. A background snapshot or none skips
+ *   too. Each such skip leaves a local audit line ([systemKillSkipAuditLine]).
+ * - foreground service (125) and perceptible (230) are background here: that is the process
+ *   RaftBackgroundConnectionService keeps alive, and reporting its swipe-away or power-manager
+ *   kills would flood Hands.
  */
 internal fun classifySystemKill(
     reasonCode: Int,
@@ -115,9 +116,9 @@ internal fun classifySystemKill(
         reasonCode in PackageChangeReasons -> SystemKillDecision.SkipPackageChange
         reasonCode in ReportedElsewhereReasons -> SystemKillDecision.SkipReportedElsewhere
         reasonCode == ApplicationExitInfo.REASON_SIGNALED && status in CrashSignals -> SystemKillDecision.SkipReportedElsewhere
-        telemetry != null && !telemetry.foreground -> SystemKillDecision.SkipNotImportant
-        telemetry != null && isTelemetrySampleFresh(telemetry, exitTimestampMillis) -> SystemKillDecision.Report
         importance in VisibleImportances -> SystemKillDecision.Report
+        telemetry != null && telemetry.foreground && isTelemetrySampleFresh(telemetry, exitTimestampMillis) ->
+            SystemKillDecision.Report
         else -> SystemKillDecision.SkipNotImportant
     }
 
@@ -371,6 +372,35 @@ private fun beforeExit(exitMillis: Long, atMillis: Long): String {
     return if (age >= 0L) "${age / 1000L}s before exit" else "${-age / 1000L}s after exit"
 }
 
+/**
+ * The local diagnostics line for an exit skipped as [SystemKillDecision.SkipNotImportant] (the
+ * system recorded a background importance and no fresh foreground sample says otherwise), so a
+ * skipped kill still shows up in the next feedback ZIP, e.g.
+ * `system_kill_skipped reason=low_memory importance=300 snapshot_age_s=570 fg_age_s=600
+ * telemetry_foreground=true`. Ages are seconds before the exit: the last sample and the last
+ * foreground change; `none` without a snapshot or sample. Null for every other plan item.
+ */
+internal fun systemKillSkipAuditLine(item: SystemKillPlanItem): String? {
+    if (item.decision != SystemKillDecision.SkipNotImportant) return null
+    val exit = item.exit
+    val telemetry = item.telemetry
+    fun ageSeconds(atMillis: Long?): String =
+        if (atMillis == null || atMillis < 0L) "none" else ((exit.timestampMillis - atMillis) / 1000L).toString()
+    return "system_kill_skipped reason=${historicalProcessExitReasonLabel(exit.reasonCode)} " +
+        "importance=${exit.importance} " +
+        "snapshot_age_s=${ageSeconds(telemetry?.sampledAtMillis)} " +
+        "fg_age_s=${ageSeconds(telemetry?.foregroundChangedAtMillis)} " +
+        "telemetry_foreground=${telemetry?.foreground ?: "none"} " +
+        "timestampMillis=${exit.timestampMillis}"
+}
+
+/** Writes [systemKillSkipAuditLine] through [record] when [item] has one; whether it wrote. */
+internal fun recordSystemKillSkipAudit(item: SystemKillPlanItem, record: (message: String) -> Unit): Boolean {
+    val line = systemKillSkipAuditLine(item) ?: return false
+    record(line)
+    return true
+}
+
 /** Report timestamps in the last 24 hours, as persisted (comma separated). */
 internal fun decodeRecentReports(encoded: String?, nowMillis: Long): List<Long> =
     encoded.orEmpty().split(',').mapNotNull(String::toLongOrNull).filter { nowMillis - it < DayMillis }
@@ -470,7 +500,9 @@ internal object AndroidSystemKillReporter {
                     ticket = result.getOrNull()?.take(8) ?: "rejected"
                     recordReport(preferences, now)
                 }
-                SystemKillAction.Skip, SystemKillAction.RateLimited -> Unit
+                SystemKillAction.Skip ->
+                    recordSystemKillSkipAudit(item) { line -> RaftAndroidLocalDiagnostics.recordLog("info", Tag, line) }
+                SystemKillAction.RateLimited -> Unit
             }
             preferences.edit().putLong(WatermarkKey, exit.timestampMillis).commit()
             log(item, ticket)
