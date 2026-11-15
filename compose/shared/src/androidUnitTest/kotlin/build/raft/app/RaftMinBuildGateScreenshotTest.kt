@@ -110,6 +110,7 @@ class RaftMinBuildGateScreenshotTest {
                 currentServerId = "botiverse",
                 servers = listOf(RaftServerSwitcherItem(id = "botiverse", name = "Botiverse", slug = "botiverse")),
                 showBottomBar = true,
+                outerPadding = 0.dp,
             )
         }
 
