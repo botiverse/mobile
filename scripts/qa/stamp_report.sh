@@ -541,6 +541,21 @@ if [ "$REPORT_EVIDENCE" = "true" ]; then
 fi
 
 if [ "$REPORT_VERDICT" = "true" ]; then
+  # Device-cleanup gate (iOS: the job-owned Simulator is deleted before reporting). When the workflow
+  # requires it (STAMP_REQUIRE_DEVICE_CLEANUP=1) or a cleanup record exists, a product verdict (pass or
+  # fail) may only be sent if that record says the simulator was deleted and confirmed absent.
+  # Otherwise only a harness workflow error is sent: Testbed accepts one verdict while running, so a
+  # product verdict sent first could never be corrected by a later workflow-error.
+  DEVICE_CLEANUP_RECORD="${STAMP_DEVICE_CLEANUP_RECORD:-$EV/simulator-cleanup.json}"
+  if [ "${STAMP_REQUIRE_DEVICE_CLEANUP:-}" = "1" ] || [ -e "$DEVICE_CLEANUP_RECORD" ]; then
+    if ! node -e 'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(v&&v.cleanup_receipt==="simulator_deleted"&&v.simulator==="deleted_and_absent"?0:1)' "$DEVICE_CLEANUP_RECORD" 2>/dev/null; then
+      echo "stamp: device cleanup is not proven (record ${DEVICE_CLEANUP_RECORD}); product verdict suppressed, reporting a harness workflow error" >&2
+      STAMP_POSTCLAIM_ERROR_PHASE=device_cleanup \
+        STAMP_POSTCLAIM_ERROR_REASON="job-owned simulator deletion not proven (cleanup record missing or not simulator_deleted); product verdict suppressed" \
+        "$0" workflow-error "$EV" || true
+      exit 1
+    fi
+  fi
   prerequisite_rc="${3:-$evidence_rc}"
   VERDICT_FILE="$EV/verdict.json"
   OVERRIDE_FILE="${RUNNER_TEMP:-$EV}/stamp-harness-verdict-$STAMP_RUN_CASE_ID.json"

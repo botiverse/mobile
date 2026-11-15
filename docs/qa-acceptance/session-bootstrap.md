@@ -168,12 +168,19 @@ of that name. Missing, mismatched or ambiguous ownership is refused before anyth
 **Cleanup = delete the job-owned Simulator, after all evidence collection.** Each run
 creates its own Simulator, so cleanup removes the whole device instead of inferring that
 the app, its process and its data are gone: verify ownership → `simctl shutdown` → verify
-ownership again → `simctl delete <udid>` → a fresh `simctl list devices -j` (parsed as
-`{devices: {<runtime>: [{udid, …}]}}`) must no longer list the UDID. `cleanup` (bound to the
-login/READY material) and `delete-simulator` (the workflow's final step, run after
-screenshots, logs, crash reports and perf were collected) use the same function;
-`delete-simulator` is a no-op when this job's device is already gone, so it is never
-deleted twice. The record states **separate facts**, never more than they prove:
+ownership again → `simctl delete <udid>` → a fresh `simctl list devices -j` must no longer
+list the UDID. Every device list is parsed **strictly** (an object whose `devices` maps each
+runtime to an array of objects with string `udid`, `name` and `state`); any schema violation
+is `unknown`, never "no matching device". After a proven delete + readback the harness
+writes this job's deletion receipt next to the ownership receipt
+(`raft-qa-simulator-ownership.deletion.json`, 0400, exclusive, bound to UDID, name, run id
+and attempt). `cleanup` (bound to the login/READY material) and `delete-simulator` (the
+workflow's final step, run after screenshots, logs, crash reports and perf were collected)
+use the same function. `delete-simulator` calls an unlisted device "already deleted" (no
+second delete) **only** with that valid deletion receipt AND a strictly parsed list without
+the UDID; a malformed list, refused ownership, or absence without the receipt is `unknown`
+and non-zero, and its record is still written. The record states **separate facts**, never
+more than they prove:
 
 ```json
 {"platform":"ios-simulator","application_id":"…","simulator_udid":"…","simulator_name":"raft-qa-run-…",
@@ -200,6 +207,15 @@ deleted twice. The record states **separate facts**, never more than they prove:
 - `cleanup_receipt` (the overall verdict) is `simulator_deleted` exactly when `simulator`
   is `deleted_and_absent`, else `unknown`. There is no `clean`. `cleanup` and
   `delete-simulator` exit 0 only for `simulator_deleted`; the record is always written.
+- **Reporting is gated on it.** In `qa-acceptance-ios.yml` the `Report to Stamp` step runs
+  after the deletion and sets `STAMP_REQUIRE_DEVICE_CLEANUP=1` /
+  `STAMP_DEVICE_CLEANUP_RECORD=qa-evidence/simulator-cleanup.json`. `stamp_report.sh
+  report|report-verdict` (also whenever such a record exists) still uploads evidence but sends
+  the product verdict (pass or fail) only if the record says `simulator_deleted` /
+  `deleted_and_absent`; otherwise — unknown, failed, malformed or missing — it sends only a
+  harness `workflow-error` (phase `device_cleanup`) and exits non-zero. Testbed accepts one
+  verdict while the case is running, so a product verdict sent first could not be corrected
+  by a later workflow-error.
 
 Why a file plus launch arguments: launch arguments and `SIMCTL_CHILD_*` environment
 values are visible to every process on the host (`ps`) and land in logs, so they carry

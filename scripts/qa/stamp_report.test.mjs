@@ -1113,3 +1113,79 @@ esac
   fs.writeFileSync(path.join(evidence, "logcat.txt"), "different bytes\n");
   assert.throws(() => execFileSync("bash", [reporter, "report-evidence", "qa-evidence"], { cwd: root, env }));
 });
+
+// ---- Round 4 (Argus, 41151acd): no product verdict before a proven device cleanup ----------------
+
+function iosReportHarness(name, { cleanup, extraEnv = {} } = {}) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), `ios-report-${name}-`));
+  const evidence = path.join(root, "qa-evidence"), bin = path.join(root, "bin"), temp = path.join(root, "temp");
+  fs.mkdirSync(evidence); fs.mkdirSync(bin); fs.mkdirSync(temp);
+  fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({ verdict: "pass" }));
+  if (cleanup !== undefined) fs.writeFileSync(path.join(evidence, "simulator-cleanup.json"), typeof cleanup === "string" ? cleanup : JSON.stringify(cleanup));
+  fs.writeFileSync(path.join(temp, "stamp-claim-rc-ios"), "fake-lease");
+  // Fake Testbed: accepts the FIRST verdict while running, answers 409 RUN_CASE_NOT_RUNNING afterwards.
+  fs.writeFileSync(path.join(bin, "curl"), `#!${process.execPath}
+const fs=require('fs');const args=process.argv.slice(2),root=${JSON.stringify(root)};let data='',out='',url='';
+for(let i=0;i<args.length;i++){if(args[i]==='--data-binary')data=args[++i];else if(args[i]==='-d')data=args[++i];else if(args[i]==='-o')out=args[++i];else if(/^https:/.test(args[i]))url=args[i];}
+if(url.includes('/verdict')){const body=data.startsWith('@')?fs.readFileSync(data.slice(1),'utf8'):data;const exists=fs.existsSync(root+'/first-verdict');
+fs.appendFileSync(root+'/calls',JSON.stringify({phase:exists?'later':'first',verdict:JSON.parse(body).verdict,...(JSON.parse(body).phase?{error_phase:JSON.parse(body).phase}:{})})+'\\n');
+if(!exists){fs.writeFileSync(root+'/first-verdict',body);if(out)fs.writeFileSync(out,'{}');if(args.includes('-w'))process.stdout.write('200');}
+else{if(out)fs.writeFileSync(out,JSON.stringify({code:'RUN_CASE_NOT_RUNNING'}));if(args.includes('-w'))process.stdout.write('409');process.exitCode=22;}}
+`, { mode: 0o755 });
+  const env = { ...process.env, PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`, RUNNER_TEMP: temp,
+    STAMP_RUN_CASE_ID: "rc-ios", STAMP_URL: "https://stamp.test", STAMP_TOKEN: "fake-test-token", GITHUB_RUN_ID: "222", GITHUB_REPOSITORY: "botiverse/mobile", ...extraEnv };
+  delete env.QA_TEST_EMAIL;
+  const reporter = new URL("./stamp_report.sh", import.meta.url).pathname;
+  const phase = (...args) => spawnSync("bash", [reporter, ...args], { cwd: root, env, encoding: "utf8" }).status;
+  const calls = () => (fs.existsSync(path.join(root, "calls")) ? fs.readFileSync(path.join(root, "calls"), "utf8").trim().split("\n").map((l) => JSON.parse(l)) : []);
+  return { phase, calls };
+}
+
+const IOS_ENV = { STAMP_REQUIRE_DEVICE_CLEANUP: "1", STAMP_DEVICE_CLEANUP_RECORD: "qa-evidence/simulator-cleanup.json" };
+const DELETED = { cleanup_receipt: "simulator_deleted", simulator: "deleted_and_absent", app_process: "unknown", server_session: "not_proven_by_device_cleanup" };
+
+test("review-extra: after fake simulator cleanup failure, iOS report submits product verdict before error", () => {
+  // Argus's replay (41151acd): cleanup unknown, then `report` sent pass and the later workflow-error got 409.
+  const h = iosReportHarness("unknown", { cleanup: { cleanup_receipt: "unknown", simulator: "unknown", app_process: "unknown", server_session: "not_proven_by_device_cleanup" } });
+  assert.equal(h.phase("report", "qa-evidence"), 1);
+  assert.equal(h.phase("workflow-error", "qa-evidence"), 0, "the later workflow-error is an idempotent no-op");
+  assert.deepEqual(h.calls(), [{ phase: "first", verdict: "error", error_phase: "device_cleanup" }, { phase: "later", verdict: "error", error_phase: "post_claim" }]);
+  assert.equal(h.calls().some((c) => c.verdict === "pass"), false, "never pass after an unproven cleanup");
+});
+
+test("report: device cleanup gate (missing or malformed record → error only; simulator_deleted → product verdict; Android unchanged)", () => {
+  for (const [name, cleanup] of [
+    ["missing record", undefined],
+    ["unparseable record", "not json"],
+    ["deleted claimed but simulator unknown", { ...DELETED, simulator: "unknown" }],
+    ["legacy clean", { cleanup_receipt: "clean" }],
+  ]) {
+    const h = iosReportHarness(name.replace(/\W+/g, "-"), { cleanup, extraEnv: IOS_ENV });
+    assert.equal(h.phase("report", "qa-evidence"), 1, name);
+    assert.deepEqual(h.calls().map((c) => c.verdict), ["error"], name);
+  }
+  // Positive control: deletion proven → the product verdict is sent (once).
+  const ok = iosReportHarness("deleted", { cleanup: DELETED, extraEnv: IOS_ENV });
+  assert.equal(ok.phase("report", "qa-evidence"), 0);
+  assert.deepEqual(ok.calls(), [{ phase: "first", verdict: "pass" }]);
+  // Android (no requirement, no record): unchanged.
+  const android = iosReportHarness("android", {});
+  assert.equal(android.phase("report", "qa-evidence"), 0);
+  assert.deepEqual(android.calls(), [{ phase: "first", verdict: "pass" }]);
+});
+
+test("iOS workflow: delete → read record → report, and the report step requires the cleanup record", () => {
+  const workflow = fs.readFileSync(path.resolve(".github/workflows/qa-acceptance-ios.yml"), "utf8");
+  const at = (name) => workflow.indexOf(`- name: ${name}\n`);
+  for (const name of ["Collect harness log + system log + crashes + xcresult", "Collect perf summary", "Delete run-owned simulator", "Report to Stamp", "Upload evidence"]) {
+    assert.ok(at(name) > 0, name);
+  }
+  assert.ok(at("Collect perf summary") < at("Delete run-owned simulator"));
+  assert.ok(at("Delete run-owned simulator") < at("Report to Stamp"));
+  assert.ok(at("Report to Stamp") < at("Upload evidence"));
+  const report = workflow.slice(at("Report to Stamp"), at("Upload evidence"));
+  assert.match(report, /STAMP_REQUIRE_DEVICE_CLEANUP: "1"/);
+  assert.match(report, /STAMP_DEVICE_CLEANUP_RECORD: qa-evidence\/simulator-cleanup\.json/);
+  const del = workflow.slice(at("Delete run-owned simulator"), at("Report to Stamp"));
+  assert.match(del, /delete-simulator[\s\S]*--output qa-evidence\/simulator-cleanup\.json/);
+});

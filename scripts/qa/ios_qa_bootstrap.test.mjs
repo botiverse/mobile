@@ -23,8 +23,11 @@ import {
   parsePsLstartUtc,
   requireRunOwnedSimulator,
   requireSimulatorUdid,
+  parseSimctlDeviceList,
   simulatorCleanupFacts,
+  simulatorDeletionReceipt,
   simulatorOwnershipReceipt,
+  verifySimulatorDeletionReceipt,
 } from "./ios_qa_bootstrap_lib.mjs";
 
 const udid = "0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0";
@@ -284,9 +287,9 @@ test("ownership: only a protected receipt binding the UDID to THIS run id + atte
   assert.throws(() => requireRunOwnedSimulator(renamed, udid, "raft-qa-run-222-1", { ...job, receipt: receiptFor(own) }), /named iPhone 14/);
   const gone = JSON.stringify({ devices: {} });
   assert.throws(() => requireRunOwnedSimulator(gone, udid, "raft-qa-run-222-1", { ...job, receipt: receiptFor(own) }), /not listed/);
-  const twin = JSON.stringify({ devices: { a: [{ udid, name: "raft-qa-run-222-1" }], b: [{ udid: FOREIGN, name: "raft-qa-run-222-1" }] } });
+  const twin = JSON.stringify({ devices: { a: [{ udid, name: "raft-qa-run-222-1", state: "Booted" }], b: [{ udid: FOREIGN, name: "raft-qa-run-222-1", state: "Booted" }] } });
   assert.throws(() => requireRunOwnedSimulator(twin, udid, "raft-qa-run-222-1", { ...job, receipt: receiptFor(own) }), /2 simulators are named raft-qa-run-222-1; ownership is ambiguous/);
-  const dup = JSON.stringify({ devices: { a: [{ udid, name: "raft-qa-run-222-1" }], b: [{ udid, name: "raft-qa-run-222-1" }] } });
+  const dup = JSON.stringify({ devices: { a: [{ udid, name: "raft-qa-run-222-1", state: "Booted" }], b: [{ udid, name: "raft-qa-run-222-1", state: "Booted" }] } });
   assert.throws(() => requireRunOwnedSimulator(dup, udid, "raft-qa-run-222-1", { ...job, receipt: receiptFor(own) }), /listed 2 times/);
   assert.throws(() => simulatorOwnershipReceipt({ udid, name: "raft-qa-run-111-1", runId: "222", runAttempt: "1", createdAt: "x" }), /not this job's/);
 });
@@ -575,4 +578,104 @@ test("entry point: prepare re-verifies ownership right before launch (positive a
   assert.equal(r2.status, 2);
   assert.match(r2.stderr, /named shared-iPhone/);
   assert.equal(lost.calls().some((line) => / launch /.test(line)), false, "no launch after ownership was lost");
+});
+
+// ---- Round 4 (Argus, 41151acd): an unlisted device is not a deleted device ------------------------
+
+test("device list parsing is strict: any schema violation throws", () => {
+  assert.equal(parseSimctlDeviceList(JSON.stringify({ devices: { r: [{ udid, name: "n", state: "Booted" }], s: [] } })).length, 1);
+  assert.equal(parseSimctlDeviceList(JSON.stringify({ devices: {} })).length, 0);
+  for (const text of ["", "{", "{}", '{"devices":[]}', '{"devices":null}', '{"devices":{"runtime":[{"name":"x"}]}}',
+    '{"devices":{"r":{}}}', '{"devices":{"r":["x"]}}', `{"devices":{"r":[{"udid":"${udid}","name":"n"}]}}`, `{"devices":{"r":[{"udid":"${udid}","state":"Booted"}]}}`]) {
+    assert.throws(() => parseSimctlDeviceList(text), /device list/, text);
+  }
+});
+
+test("deletion receipt binds this job, this device, and a proven delete", () => {
+  const job = { udid, name: "raft-qa-run-222-1", runId: "222", runAttempt: "1", uid: 501 };
+  const receipt = simulatorDeletionReceipt({ ...job, deletedAt: "2026-11-15T00:00:00Z" });
+  const file = (record, stat = {}) => ({ text: JSON.stringify(record), stat: { isFile: true, isSymbolicLink: false, mode: 0o100400, uid: 501, ...stat } });
+  assert.equal(verifySimulatorDeletionReceipt(file(receipt), job), true);
+  assert.equal(verifySimulatorDeletionReceipt(null, job), "deletion_receipt_missing");
+  assert.equal(verifySimulatorDeletionReceipt(file(receipt, { mode: 0o100644 }), job), "deletion_receipt_unprotected");
+  assert.equal(verifySimulatorDeletionReceipt(file(receipt, { isSymbolicLink: true, isFile: false }), job), "deletion_receipt_not_regular");
+  assert.equal(verifySimulatorDeletionReceipt(file(receipt, { uid: 0 }), job), "deletion_receipt_foreign_owner");
+  assert.equal(verifySimulatorDeletionReceipt(file(receipt), { ...job, runAttempt: "2" }), "deletion_receipt_other_run");
+  assert.equal(verifySimulatorDeletionReceipt(file(receipt), { ...job, udid: FOREIGN }), "deletion_receipt_other_device");
+  assert.equal(verifySimulatorDeletionReceipt(file({ ...receipt, simulator: "unknown" }), job), "deletion_receipt_shape");
+  assert.equal(verifySimulatorDeletionReceipt(file({ ...receipt, extra: 1 }), job), "deletion_receipt_shape");
+});
+
+const setList = (host, list) => {
+  const file = path.join(host.root, "scenario.json");
+  const s = JSON.parse(fs.readFileSync(file, "utf8"));
+  s.list = list;
+  fs.writeFileSync(file, JSON.stringify(s));
+};
+const deleteArgs = (out) => ["delete-simulator", "--udid", udid, "--simulator-name", "raft-qa-run-222-1", "--output", out];
+
+test("review-extra: malformed list on first deletion read must not become successful already deleted", () => {
+  for (const list of [{ status: 0, stdout: "{}" }, { status: 0, stdout: '{"devices":[]}' }, { status: 0, stdout: '{"devices":{"runtime":[{"name":"x"}]}}' }]) {
+    const host = fakeHost(healthyCleanup);
+    assert.equal(host.record().status, 0);
+    setList(host, list);
+    const out = path.join(host.root, "last-cleanup.json");
+    const r = host.runHarness(deleteArgs(out));
+    assert.equal(r.status, 2, list.stdout);
+    assert.doesNotMatch(r.stdout, /already deleted/, list.stdout);
+    const rec = JSON.parse(fs.readFileSync(out, "utf8"));
+    assert.equal(rec.cleanup_receipt, "unknown", list.stdout);
+    assert.equal(rec.simulator, "unknown", list.stdout);
+    assert.equal(rec.simulator_reason, "list_unexpected_shape", list.stdout);
+    assert.equal(host.calls().filter((x) => / delete /.test(x)).length, 0, list.stdout);
+  }
+});
+
+test("review-extra: a genuinely unlisted simulator without deletion receipt must not infer deletion", () => {
+  const host = fakeHost(healthyCleanup);
+  assert.equal(host.record().status, 0);
+  setList(host, foreignOnly);
+  const out = path.join(host.root, "last-cleanup.json");
+  const r = host.runHarness(deleteArgs(out));
+  assert.equal(r.status, 2);
+  assert.doesNotMatch(r.stdout, /already deleted/);
+  const rec = JSON.parse(fs.readFileSync(out, "utf8"));
+  assert.equal(rec.cleanup_receipt, "unknown");
+  assert.equal(rec.simulator_reason, "deletion_receipt_missing");
+  assert.equal(host.calls().filter((x) => / delete /.test(x)).length, 0, "and no other device is touched");
+});
+
+test("entry point: already deleted only with this job's own deletion receipt from a proven delete (positive + stale)", () => {
+  const host = fakeHost(healthyCleanup);
+  assert.equal(host.record().status, 0);
+  const out = path.join(host.root, "cleanup-1.json");
+  // A proven delete (cleanup) writes the protected receipt.
+  assert.equal(host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1")).status, 0);
+  const deletion = path.join(host.runnerTemp, "raft-qa-simulator-ownership.deletion.json");
+  assert.equal(fs.statSync(deletion).mode & 0o777, 0o400);
+  // Positive: the final step sees a well-formed list without the UDID + the receipt: no second delete.
+  let r = host.runHarness(deleteArgs(out));
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /already deleted/);
+  const rec = JSON.parse(fs.readFileSync(out, "utf8"));
+  assert.equal(rec.cleanup_receipt, "simulator_deleted");
+  assert.equal(rec.simulator_reason, "deleted_earlier_in_this_job");
+  assert.equal(rec.app_process, "unknown");
+  assert.equal(host.calls().filter((x) => / delete /.test(x)).length, 1);
+  // …but a malformed list still wins over the receipt.
+  setList(host, { status: 0, stdout: "{}" });
+  assert.equal(host.runHarness(deleteArgs(out)).status, 2);
+  // A failed delete never writes the receipt.
+  const failing = fakeHost({ ...healthyCleanup, delete: { status: 1 } });
+  assert.equal(failing.record().status, 0);
+  assert.equal(failing.runHarness(failing.cleanupArgs(udid, "raft-qa-run-222-1")).status, 2);
+  assert.equal(fs.existsSync(path.join(failing.runnerTemp, "raft-qa-simulator-ownership.deletion.json")), false);
+  // A tampered (writable) receipt is not accepted.
+  const tampered = fakeHost(healthyCleanup);
+  assert.equal(tampered.record().status, 0);
+  assert.equal(tampered.runHarness(tampered.cleanupArgs(udid, "raft-qa-run-222-1")).status, 0);
+  fs.chmodSync(path.join(tampered.runnerTemp, "raft-qa-simulator-ownership.deletion.json"), 0o644);
+  r = tampered.runHarness(deleteArgs(path.join(tampered.root, "x.json")));
+  assert.equal(r.status, 2);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(tampered.root, "x.json"), "utf8")).simulator_reason, "deletion_receipt_unprotected");
 });

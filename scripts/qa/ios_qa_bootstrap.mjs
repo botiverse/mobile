@@ -55,7 +55,10 @@ import {
   requireRunOwnedSimulator,
   requireSimulatorUdid,
   runOwnedSimulatorName,
+  parseSimctlDeviceList,
   simulatorCleanupFacts,
+  simulatorDeletionReceipt,
+  verifySimulatorDeletionReceipt,
   simulatorOwnershipReceipt,
 } from "./ios_qa_bootstrap_lib.mjs";
 
@@ -116,6 +119,13 @@ function ownershipReceiptPath() {
   return path.join(process.env.RUNNER_TEMP, "raft-qa-simulator-ownership.json");
 }
 
+/** This job's deletion receipt lives next to its ownership receipt. */
+function deletionReceiptPath() {
+  return ownershipReceiptPath().replace(/(\.json)?$/, ".deletion.json");
+}
+
+const currentUid = () => (typeof process.getuid === "function" ? process.getuid() : undefined);
+
 function readOwnershipReceipt(file) {
   let stat;
   try {
@@ -139,7 +149,7 @@ function requireOwned(udid, { allowUnlisted = false } = {}) {
     receipt: readOwnershipReceipt(ownershipReceiptPath()),
     runId: process.env.GITHUB_RUN_ID,
     runAttempt: process.env.GITHUB_RUN_ATTEMPT,
-    uid: typeof process.getuid === "function" ? process.getuid() : undefined,
+    uid: currentUid(),
     allowUnlisted,
   });
   return allowUnlisted ? { name, listed: device !== null } : name;
@@ -156,9 +166,9 @@ function recordOwnership() {
   const runId = process.env.GITHUB_RUN_ID;
   const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
   if (name !== runOwnedSimulatorName(runId, runAttempt)) throw new Error(`simulator name ${name} is not this job's run-owned name`);
-  const devices = Object.values(JSON.parse(simctl(["list", "devices", "-j"]).stdout).devices ?? {}).flat();
-  const byUdid = devices.filter((d) => String(d?.udid ?? "").toUpperCase() === udid);
-  const byName = devices.filter((d) => d?.name === name);
+  const devices = parseSimctlDeviceList(simctl(["list", "devices", "-j"]).stdout);
+  const byUdid = devices.filter((d) => d.udid.toUpperCase() === udid);
+  const byName = devices.filter((d) => d.name === name);
   if (byUdid.length !== 1 || byUdid[0].name !== name || byName.length !== 1) {
     throw new Error(`simulator ${udid} is not listed exactly once under the unique name ${name}; not recording ownership`);
   }
@@ -375,6 +385,15 @@ function deleteOwnedSimulator(udid, bundleId) {
   const deleteResult = simctl(["delete", udid], { allowFailure: true, timeoutMs: 120_000 });
   const listAfter = simctl(["list", "devices", "-j"], { allowFailure: true, timeoutMs: 30_000 });
   const facts = simulatorCleanupFacts({ deleteResult, listAfter, udid });
+  if (facts.simulator === "deleted_and_absent") {
+    // Proven delete + strict readback: record it once (0400, exclusive) for this job only.
+    const receipt = simulatorDeletionReceipt({
+      udid, name: argument("simulator-name"), runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+      deletedAt: new Date().toISOString(),
+    });
+    fs.writeFileSync(deletionReceiptPath(), `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o400, flag: "wx" });
+    fs.chmodSync(deletionReceiptPath(), 0o400);
+  }
   return {
     ...facts,
     simulator_deletion: {
@@ -396,19 +415,50 @@ function cleanupFailureMessage(result) {
 
 /**
  * Final step of qa-acceptance-ios.yml (after all evidence collection): the same verified deletion
- * as `cleanup`. Idempotent: if this job's receipt is valid and its device is already gone (deleted by
- * `cleanup`), nothing is deleted twice.
+ * as `cleanup`. A record is ALWAYS written to --output. If the device is not listed, it is called
+ * deleted only when a strictly parsed list omits the UDID AND this job holds its own deletion receipt
+ * from an earlier proven delete (e.g. by `cleanup`); otherwise — malformed list, ownership refused,
+ * absent without receipt — the result is unknown and non-zero.
  */
 function deleteSimulator() {
   const udid = requireSimulatorUdid(argument("udid"));
-  const { name, listed } = requireOwned(udid, { allowUnlisted: true });
-  if (!listed) {
-    console.log(`ios-qa-bootstrap: ${name} (${udid}) is already deleted (not listed); nothing to delete`);
+  const name = argument("simulator-name");
+  const output = argument("output", false);
+  const base = { platform: "ios-simulator", simulator_udid: udid, simulator_name: name };
+  const unknown = (reason, message) => {
+    if (output) {
+      writePrivateJson(output, {
+        ...base, cleanup_receipt: "unknown", simulator: "unknown", simulator_reason: reason,
+        app_process: "unknown", server_session: "not_proven_by_device_cleanup", error: message,
+      });
+    }
+    throw new Error(message);
+  };
+  let ownership;
+  try {
+    ownership = requireOwned(udid, { allowUnlisted: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    unknown(/device list/.test(message) ? "list_unexpected_shape" : "ownership_not_verified", `simulator deletion not attempted: ${message}`);
+  }
+  if (!ownership.listed) {
+    const verdict = verifySimulatorDeletionReceipt(readOwnershipReceipt(deletionReceiptPath()), {
+      udid, name, runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT, uid: currentUid(),
+    });
+    if (verdict !== true) {
+      unknown(verdict, `${name} (${udid}) is not listed, but this job holds no valid deletion receipt (${verdict}); absence alone is not proof of deletion`);
+    }
+    if (output) {
+      writePrivateJson(output, {
+        ...base, cleanup_receipt: "simulator_deleted", simulator: "deleted_and_absent", simulator_reason: "deleted_earlier_in_this_job",
+        listed_after_delete: "absent", app_process: "unknown", server_session: "not_proven_by_device_cleanup",
+      });
+    }
+    console.log(`ios-qa-bootstrap: ${name} (${udid}) is already deleted (this job's deletion receipt + not listed); nothing to delete`);
     return;
   }
   const result = deleteOwnedSimulator(udid, argument("bundle-id", false));
-  const output = argument("output", false);
-  if (output) writePrivateJson(output, { platform: "ios-simulator", simulator_udid: udid, simulator_name: name, ...result });
+  if (output) writePrivateJson(output, { ...base, ...result });
   if (result.cleanup_receipt !== "simulator_deleted") throw new Error(cleanupFailureMessage(result));
   console.log(`ios-qa-bootstrap: deleted ${name} (${udid}); simulator=deleted_and_absent app_process=unknown server_session=not_proven_by_device_cleanup`);
 }

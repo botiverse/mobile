@@ -205,9 +205,32 @@ export function combineProcessStates(launchctl, host) {
 }
 
 /**
+ * Strict parser for `xcrun simctl list devices -j`: an object whose `devices` is an object of
+ * runtime → array of objects, each with string `udid`, `name` and `state`. Any schema violation
+ * throws (a malformed or partial list never reads as "no matching device").
+ */
+export function parseSimctlDeviceList(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(text));
+  } catch {
+    throw new Error("simctl device list is unparseable");
+  }
+  const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  if (!isObject(parsed) || !isObject(parsed.devices)) throw new Error("simctl device list has an unexpected shape");
+  const devices = [];
+  for (const runtime of Object.values(parsed.devices)) {
+    if (!Array.isArray(runtime) || !runtime.every((d) => isObject(d) && typeof d.udid === "string" && typeof d.name === "string" && typeof d.state === "string")) {
+      throw new Error("simctl device list has an unexpected shape");
+    }
+    devices.push(...runtime);
+  }
+  return devices;
+}
+
+/**
  * Classifies a fresh `xcrun simctl list devices -j` read taken AFTER `simctl delete <udid>`:
- *   absent  — the read succeeded, parsed as {devices: {<runtime>: [{udid: string, …}, …]}} and no entry
- *             carries this UDID;
+ *   absent  — the read succeeded, parsed strictly (parseSimctlDeviceList) and no entry carries this UDID;
  *   present — the UDID is still listed;
  *   unknown — failure, timeout, unparseable or structurally unexpected JSON.
  */
@@ -215,18 +238,11 @@ export function classifyDeviceListedAfterDelete(result, udid) {
   const wanted = requireSimulatorUdid(udid);
   if (result?.error || result?.timedOut) return { state: "unknown", reason: result.timedOut ? "list_timeout" : "list_spawn_error" };
   if (result?.status !== 0) return { state: "unknown", reason: `list_exit_${result?.status ?? "none"}` };
-  let parsed;
+  let devices;
   try {
-    parsed = JSON.parse(String(result.stdout));
-  } catch {
-    return { state: "unknown", reason: "list_unparseable" };
-  }
-  const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-  if (!isObject(parsed) || !isObject(parsed.devices)) return { state: "unknown", reason: "list_unexpected_shape" };
-  const devices = [];
-  for (const runtime of Object.values(parsed.devices)) {
-    if (!Array.isArray(runtime) || !runtime.every((d) => isObject(d) && typeof d.udid === "string")) return { state: "unknown", reason: "list_unexpected_shape" };
-    devices.push(...runtime);
+    devices = parseSimctlDeviceList(result.stdout);
+  } catch (error) {
+    return { state: "unknown", reason: /unparseable/.test(error.message) ? "list_unparseable" : "list_unexpected_shape" };
   }
   return devices.some((d) => d.udid.toUpperCase() === wanted) ? { state: "present", reason: "udid_still_listed" } : { state: "absent", reason: "udid_not_listed" };
 }
@@ -324,19 +340,67 @@ export function requireRunOwnedSimulator(listJson, udid, expectedName, { receipt
   if (String(record.udid).toUpperCase() !== wanted || record.name !== expectedName) {
     throw new Error(`simulator ownership receipt records ${record.name} ${record.udid}, not ${expectedName} ${wanted}`);
   }
-  const devices = Object.values(JSON.parse(String(listJson)).devices ?? {}).flat();
-  const byUdid = devices.filter((d) => String(d?.udid ?? "").toUpperCase() === wanted);
+  const devices = parseSimctlDeviceList(listJson);
+  const byUdid = devices.filter((d) => d.udid.toUpperCase() === wanted);
   if (byUdid.length === 0) {
-    // Only for the idempotent final delete: this job's receipt is valid and its device is already gone.
+    // Only for the final delete: the receipt is valid and a STRICTLY parsed list does not contain the
+    // UDID. That is observed absence, not proof of deletion: the caller needs this job's own deletion
+    // receipt (verifySimulatorDeletionReceipt) before it may call the device deleted.
     if (allowUnlisted) return null;
     throw new Error(`simulator ${wanted} is not listed`);
   }
   if (byUdid.length > 1) throw new Error(`simulator ${wanted} is listed ${byUdid.length} times; ownership is ambiguous`);
   const device = byUdid[0];
   if (device.name !== expectedName) throw new Error(`simulator ${wanted} is named ${device.name}, not the run-owned ${expectedName}`);
-  const byName = devices.filter((d) => d?.name === expectedName);
+  const byName = devices.filter((d) => d.name === expectedName);
   if (byName.length !== 1) throw new Error(`${byName.length} simulators are named ${expectedName}; ownership is ambiguous`);
   return device;
+}
+
+export const SIMULATOR_DELETION_CONTRACT = "raft-qa-simulator-deletion/v1";
+
+/**
+ * Written (0400, exclusive) by deleteOwnedSimulator ONLY after `simctl delete` exited 0 and a fresh,
+ * strictly parsed list no longer contained the UDID. It is the one thing that lets a later
+ * `delete-simulator` in the same job call an unlisted device "already deleted".
+ */
+export function simulatorDeletionReceipt({ udid, name, runId, runAttempt, deletedAt }) {
+  const expectedName = runOwnedSimulatorName(runId, runAttempt);
+  if (name !== expectedName) throw new Error(`simulator name ${name} is not this job's ${expectedName}`);
+  return {
+    contract: SIMULATOR_DELETION_CONTRACT,
+    udid: requireSimulatorUdid(udid),
+    name,
+    github_run_id: runId,
+    github_run_attempt: runAttempt,
+    deleted_at: deletedAt,
+    simulator: "deleted_and_absent",
+  };
+}
+
+/**
+ * Verifies this job's deletion receipt: protected regular file of this uid, exact shape and contract,
+ * bound to this run id/attempt, this UDID and this name. Returns true, or a string reason when it does
+ * not hold (missing, stale, unrelated or tampered).
+ */
+export function verifySimulatorDeletionReceipt(receipt, { udid, name, runId, runAttempt, uid }) {
+  if (!receipt) return "deletion_receipt_missing";
+  const { stat } = receipt;
+  if (!stat?.isFile || stat.isSymbolicLink) return "deletion_receipt_not_regular";
+  if ((stat.mode & 0o077) !== 0) return "deletion_receipt_unprotected";
+  if (uid !== undefined && stat.uid !== uid) return "deletion_receipt_foreign_owner";
+  let record;
+  try {
+    record = JSON.parse(String(receipt.text));
+  } catch {
+    return "deletion_receipt_unreadable";
+  }
+  const keys = ["contract", "deleted_at", "github_run_attempt", "github_run_id", "name", "simulator", "udid"];
+  if (!record || typeof record !== "object" || Array.isArray(record) || Object.keys(record).sort().join(",") !== keys.join(",") ||
+      record.contract !== SIMULATOR_DELETION_CONTRACT || record.simulator !== "deleted_and_absent") return "deletion_receipt_shape";
+  if (record.github_run_id !== runId || record.github_run_attempt !== runAttempt) return "deletion_receipt_other_run";
+  if (String(record.udid).toUpperCase() !== requireSimulatorUdid(udid) || record.name !== name) return "deletion_receipt_other_device";
+  return true;
 }
 
 /**
