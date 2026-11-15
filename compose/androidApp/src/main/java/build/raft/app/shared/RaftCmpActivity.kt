@@ -143,6 +143,7 @@ import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.core.data.diagnostics.RaftAuthCriticalJournal
+import build.raft.app.core.data.diagnostics.RaftMemoryTelemetry
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.core.data.diagnostics.RaftPerformanceDiagnostics
 import build.raft.app.core.data.diagnostics.RaftResumeFrameProbe
@@ -1910,6 +1911,12 @@ internal open class RaftCmpActivity :
             pageName = pageName,
             source = source
         )
+    }
+
+    /** Every touch down and key event: the "user was here" time a later kill report reads (throttled). */
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        RaftMemoryTelemetry.onUserInteraction()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
