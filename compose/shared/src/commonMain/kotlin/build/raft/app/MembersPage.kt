@@ -13991,20 +13991,15 @@ private fun MembersAgentAppLoginCard(
                 color = RaftTheme.colors.foregroundMuted
             )
         }
-        item.clientAgentManifestUrl?.takeIf { it.isNotBlank() }?.let {
-            MembersDetailField(stringResource(Res.string.member_label_agent_manifest), it)
-        }
-        if (item.scopes.isNotEmpty()) {
-            @OptIn(ExperimentalLayoutApi::class)
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
-                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-            ) {
-                item.scopes.forEach { scope ->
-                    MembersAgentAppLoginScopeChip(scope)
-                }
-            }
+        // Web AgentAppGrantsRow (slock #14769): one plain sentence with the App as its subject
+        // ("Stamp can sign in as this agent and send notifications"), not raw scope chips. The
+        // App's agent manifest is a developer detail and is not on the row.
+        membersAgentAppCanSummary(item.clientName, item.scopes)?.let { summary ->
+            RaftText(
+                text = summary,
+                style = RaftTheme.typography.callout,
+                color = RaftTheme.colors.foreground
+            )
         }
         item.clientHomepageUrl?.takeIf { it.isNotBlank() }?.let { homepageUrl ->
             RaftButton(
@@ -14024,9 +14019,40 @@ private fun MembersAgentAppLoginStatusBadge(label: String) {
     RaftBadge(text = label, appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Success)
 }
 
+/**
+ * What an App can do for an Agent (web `agentAppGrants.ts` `ABILITIES`, slock #14769). The identity
+ * scopes together are one ability, signing in as the Agent; [short] reads after "{app} can".
+ */
+internal enum class MembersAgentAppAbility(val scopes: List<String>, val short: StringResource) {
+    SignIn(listOf("identity", "openid", "profile"), Res.string.member_app_ability_sign_in),
+    Email(listOf("email"), Res.string.member_app_ability_email),
+    AgentDirectory(listOf("agent:read"), Res.string.member_app_ability_agent_directory),
+    Events(listOf("agent:event:write"), Res.string.member_app_ability_events),
+    Notifications(listOf("agent:notification:write"), Res.string.member_app_ability_notifications),
+    ActionRequests(listOf("agent:action_request:write"), Res.string.member_app_ability_action_requests),
+}
+
+/** One thing a grant lets the App do: a known [ability], or an unknown [rawScope] shown as itself. */
+internal data class MembersAgentAppAbilityItem(val ability: MembersAgentAppAbility?, val rawScope: String?)
+
+/** Web `appAbilities`: the abilities behind [scopes], known ones in a fixed order, then unknown scopes as given. */
+internal fun membersAgentAppAbilities(scopes: List<String>): List<MembersAgentAppAbilityItem> {
+    val unique = scopes.distinct()
+    val known = MembersAgentAppAbility.entries
+        .filter { ability -> ability.scopes.any { it in unique } }
+        .map { MembersAgentAppAbilityItem(ability = it, rawScope = null) }
+    val labelled = MembersAgentAppAbility.entries.flatMap { it.scopes }.toSet()
+    val unknown = unique.filter { it !in labelled }.map { MembersAgentAppAbilityItem(ability = null, rawScope = it) }
+    return known + unknown
+}
+
+/** Web `agent.apps.canSummary`: "{app} can {abilities}"; null when the grant names no scope. */
 @Composable
-private fun MembersAgentAppLoginScopeChip(scope: String) {
-    RaftBadge(text = scope, appearance = RaftBadgeAppearance.Outline)
+private fun membersAgentAppCanSummary(appName: String, scopes: List<String>): String? {
+    val abilities = membersAgentAppAbilities(scopes)
+    if (abilities.isEmpty()) return null
+    val words = abilities.map { item -> item.ability?.let { stringResource(it.short) } ?: item.rawScope.orEmpty() }
+    return stringResource(Res.string.member_app_can_summary, appName, jointMemberConnectNames(words))
 }
 
 /**

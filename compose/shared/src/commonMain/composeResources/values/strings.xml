@@ -1674,7 +1674,6 @@
     <string name="member_label_agent">Agent</string>
     <string name="member_label_files">Files</string>
     <string name="member_label_state">State</string>
-    <string name="member_label_agent_manifest">Agent manifest</string>
     <string name="member_label_custom_avatar">Custom avatar</string>
     <string name="member_label_revision">rev %1$s</string>
     <string name="member_action_choose_avatar">Change avatar</string>
@@ -4610,6 +4609,13 @@
     <string name="member_app_grant_source_agent_login">Granted when the agent signed in</string>
     <string name="member_app_grant_source_app_request">Granted automatically to the app</string>
     <string name="member_app_grant_source_legacy_import">Granted when the agent’s reminders moved to this app</string>
+    <string name="member_app_can_summary">%1$s can %2$s</string>
+    <string name="member_app_ability_sign_in">sign in as this agent</string>
+    <string name="member_app_ability_email">see this agent's email address</string>
+    <string name="member_app_ability_agent_directory">see the server's agents</string>
+    <string name="member_app_ability_events">send events</string>
+    <string name="member_app_ability_notifications">send notifications</string>
+    <string name="member_app_ability_action_requests">ask this agent to act</string>
     <!-- Agent Lounge v0: web agent.lounge.*, message.pendingMention.loungeAgentExcluded, message.composer.messagePlaceholder, message.chatPanel.archivedNotice / unarchive -->
     <string name="agent_lounge_label">Lounge</string>
     <string name="agent_lounge_title">%1$s's Lounge</string>

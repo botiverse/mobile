@@ -1640,7 +1640,6 @@
     <string name="member_label_agent">Agent</string>
     <string name="member_label_files">檔案</string>
     <string name="member_label_state">狀態</string>
-    <string name="member_label_agent_manifest">Agent manifest</string>
     <string name="member_label_custom_avatar">自訂大頭貼</string>
     <string name="member_label_revision">rev %1$s</string>
     <string name="member_action_choose_avatar">更換大頭貼</string>
@@ -4332,9 +4331,16 @@
     <string name="thread_link_preview_unreviewed_note">%1$s 由本伺服器建立，未經 Raft 審核。它會收到你的名字，並用自己的權限執行。</string>
     <string name="thread_link_preview_connect_action">連結帳號</string>
     <string name="member_app_grant_source_person">由真人授權</string>
-    <string name="member_app_grant_source_agent_login">Agent 登入時授權</string>
+    <string name="member_app_grant_source_agent_login">這個 Agent 自己登入時授予</string>
     <string name="member_app_grant_source_app_request">自動授權給應用程式</string>
     <string name="member_app_grant_source_legacy_import">Agent 的提醒移轉到這個應用程式時授權</string>
+    <string name="member_app_can_summary">%1$s 可以%2$s</string>
+    <string name="member_app_ability_sign_in">用這個 Agent 的身分登入</string>
+    <string name="member_app_ability_email">查看這個 Agent 的電子郵件地址</string>
+    <string name="member_app_ability_agent_directory">查看伺服器裡的 Agent</string>
+    <string name="member_app_ability_events">傳送事件</string>
+    <string name="member_app_ability_notifications">傳送通知</string>
+    <string name="member_app_ability_action_requests">請這個 Agent 執行操作</string>
     <!-- Agent Lounge v0: web agent.lounge.*, message.pendingMention.loungeAgentExcluded, message.composer.messagePlaceholder, message.chatPanel.archivedNotice / unarchive -->
     <string name="agent_lounge_label">會客廳</string>
     <string name="agent_lounge_title">%1$s 的會客廳</string>
