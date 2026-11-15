@@ -651,13 +651,17 @@ internal data class BackgroundDropBatch(val id: String, val entries: List<Backgr
     fun evictedToJson(): JSONArray = json(entries.filter { it.category != BackgroundDropEntry.Background }, withCategory = true)
 
     /** The ticket fields for this batch (none when empty): both lists share [id]. */
-    fun extras(): Map<String, Any?> =
-        buildMap<String, Any?> {
-            if (entries.isEmpty()) return@buildMap
+    fun extras(): Map<String, Any?> {
+        // Checked outside buildMap: inside it, `entries` is the map being built.
+        if (entries.isEmpty()) return emptyMap()
+        val dropped = toJson()
+        val evicted = evictedToJson()
+        return buildMap {
             put("crash_background_dropped_id", id)
-            toJson().takeIf { it.length() > 0 }?.let { put("crash_background_dropped", it) }
-            evictedToJson().takeIf { it.length() > 0 }?.let { put("crash_pending_evicted", it) }
+            if (dropped.length() > 0) put("crash_background_dropped", dropped)
+            if (evicted.length() > 0) put("crash_pending_evicted", evicted)
         }
+    }
 
     /** Every entry with its category, for the device's own store. */
     fun allToJson(): JSONArray = json(entries, withCategory = true)

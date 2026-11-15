@@ -134,13 +134,21 @@ class AndroidSystemKillReportPersistenceTest {
         assertTrue(store.persisted.ledger.accumulating.isEmpty())
         assertFalse(SystemKillExitKey(4, exits.last().timestampMillis) in store.persisted.handledAboveWatermark)
 
+        // Relaunch: the drop is counted, and the next upload of the same launch carries it.
         store.dieOnCommitWhere = { false }
-        oneLaunch(store, exits, snapshots, limits = limits)
-        assertEquals(1, store.persisted.ledger.accumulating.single().count)
+        val sent = mutableListOf<Map<String, Any?>>()
+        oneLaunch(store, exits, snapshots, limits = limits, submit = { _, extras -> sent += extras; "ticket" })
 
-        // A further relaunch handles and counts nothing more.
-        oneLaunch(store, exits, snapshots, limits = limits)
-        assertEquals(1, store.persisted.ledger.accumulating.single().count)
+        // A further relaunch handles, counts and sends nothing more.
+        oneLaunch(store, exits, snapshots, limits = limits, submit = { _, extras -> sent += extras; "ticket" })
+
+        val carried =
+            sent.mapNotNull { it["crash_background_dropped"] as JSONArray? }
+                .flatMap { array -> (0 until array.length()).map { array.getJSONObject(it).getInt("count") } }
+        assertEquals(listOf(1), carried)
+        assertEquals(3, sent.size)
+        assertTrue(store.persisted.ledger.accumulating.isEmpty())
+        assertEquals(null, store.persisted.ledger.pending)
     }
 
     @Test
