@@ -18,6 +18,7 @@ on:
       # this job on its own PR, not only after it lands (LiBai, #2327 review).
       - "compose/shared/src/commonMain/composeResources/values*/strings.xml"
       - "scripts/ci/check_source_constraints.py"
+      - "scripts/ci/check_jvm_method_size.py"
       # check_no_production_run_blocking (#3823) scans every non-test Kotlin source set.
       - "compose/**/src/**/*.kt"
       # check_native_apple_authentication_services (task #82) reads these iOS files.
@@ -62,6 +63,10 @@ jobs:
 
       - name: Enforce constraints
         run: python3 scripts/ci/check_source_constraints.py
+
+      # The class-file reader behind test.yml's ":shared JVM method sizes" gate (#4802).
+      - name: Self-test JVM method size checker
+        run: python3 scripts/ci/check_jvm_method_size.py --self-test
 
       # task #189: runs inside this already-required job on purpose. A guard that
       # is only wired to an optional task is how verifyNoProductionVisualPages
