@@ -141,8 +141,12 @@ internal value class RuntimeLimitResetIdempotencyKey private constructor(val val
     }
 }
 
-/** Why a limit-reset request got no outcome: the HTTP status and the route's `code`, when it sent one. */
-internal data class RuntimeLimitResetRefusal(val status: Int?, val code: String?)
+/**
+ * Why a limit-reset request got no outcome: the HTTP status and the route's `code`, when it sent
+ * one, and the request's `X-Trace-Id` (AGENTS.md "Errors carry the trace ID"; for an answer read
+ * from a machine operation, the starting request's, whose trace holds the work).
+ */
+internal data class RuntimeLimitResetRefusal(val status: Int?, val code: String?, val traceId: String? = null)
 
 /** What [RaftComputersApiClient.redeemRuntimeLimitReset] / the store's redeem got back. */
 internal sealed interface RuntimeLimitResetLoad {

@@ -209,7 +209,8 @@ internal sealed interface ComputerRuntimeClaudeLimitResetsPhase {
     data object Consent : ComputerRuntimeClaudeLimitResetsPhase
     data class Reading(val consent: Boolean) : ComputerRuntimeClaudeLimitResetsPhase
     data class Read(val result: RuntimeLimitResetsReadResult.Read) : ComputerRuntimeClaudeLimitResetsPhase
-    data class Failed(val message: ComputerRuntimeClaudeLimitResetText) : ComputerRuntimeClaudeLimitResetsPhase
+    /** [traceId]: the failed request's `X-Trace-Id`, when a server answer failed it. */
+    data class Failed(val message: ComputerRuntimeClaudeLimitResetText, val traceId: String? = null) : ComputerRuntimeClaudeLimitResetsPhase
 }
 
 /** The open "Claude limit resets" list. */
@@ -245,6 +246,8 @@ internal data class ComputerRuntimeClaudeLimitResetConfirmState(
     val atFiveHourLimit: Boolean,
     val submitting: Boolean = false,
     val error: ComputerRuntimeClaudeLimitResetText? = null,
+    /** The failed request's `X-Trace-Id`, shown under [error]. */
+    val traceId: String? = null,
 )
 
 private const val CLAUDE_CODE_NAME = "Claude Code"
@@ -470,6 +473,7 @@ internal fun ComputerRuntimeClaudeLimitResetsDialog(
             }
             if (phase is ComputerRuntimeClaudeLimitResetsPhase.Failed) {
                 RaftBanner(description = phase.message.text(), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                RaftTraceIdNote(phase.traceId)
             }
             if (listed?.fiveHourSpent == true) {
                 RaftBanner(
@@ -577,6 +581,7 @@ internal fun ComputerRuntimeClaudeLimitResetConfirmDialog(
             )
             state.error?.let { error ->
                 RaftBanner(description = error.text(), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                RaftTraceIdNote(state.traceId)
             }
         }
     }

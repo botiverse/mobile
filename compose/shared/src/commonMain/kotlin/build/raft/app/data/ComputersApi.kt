@@ -168,6 +168,12 @@ interface RaftComputersApi {
         machineId: String,
         body: String
     ): HomeNetworkResponse = error("readClaudeLimitResets is not implemented")
+    /**
+     * `GET servers/:id/machine-operations/:operationId` (slock #14842, runtimeAuthRoutes.ts): a
+     * Computer wait started with `respondAsync`, pending or done (MachineOperations.kt).
+     */
+    suspend fun machineOperation(serverId: ServerId, operationId: String): HomeNetworkResponse =
+        error("machineOperation is not implemented")
     suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse
     /**
      * `POST servers/:id/machines/:machineId/computer/:action` with `action` `restart` (body `{}`) or
@@ -461,6 +467,14 @@ internal class RaftComputersNetworkApi(
             bodyText = body
         )
 
+    override suspend fun machineOperation(serverId: ServerId, operationId: String): HomeNetworkResponse =
+        networkClient.request(
+            // The person waits on the dialog for this answer; the reads repeat every 1.5 s.
+            priority = DataRequestPriority.Visible,
+            path = "servers/${serverId.value}/machine-operations/${operationId.trim()}",
+            serverIdOverride = serverId
+        )
+
     override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Foreground,
@@ -687,8 +701,9 @@ internal class RaftComputersApiClient(
         runtime: RuntimeAuthRuntime,
         providerId: String? = null,
     ): RuntimeAuthCall<RuntimeAuthLogoutResult> {
-        val body = runtimeAuthBodyJson.encodeToString(RuntimeAuthLogoutBody.serializer(), RuntimeAuthLogoutBody(providerId))
-        return transport.logoutRuntime(serverId, machineId, runtime.wire, body).runtimeAuthCall { wire ->
+        val body = runtimeAuthBodyJson.encodeToString(RuntimeAuthLogoutBody.serializer(), RuntimeAuthLogoutBody(providerId, respondAsync = true))
+        val started = transport.logoutRuntime(serverId, machineId, runtime.wire, body)
+        return answerOf(serverId, started, RUNTIME_AUTH_LOGOUT_RELAY_BUDGET_MILLIS).runtimeAuthCall { wire ->
             (wire as? JsonObject)?.get("result")?.toRuntimeAuthLogoutResult()
         }
     }
@@ -726,24 +741,22 @@ internal class RaftComputersApiClient(
         /** Claude: the one kind the person chose (required by the server for Claude, refused for others). */
         kind: RuntimeLimitResetKind? = null
     ): RuntimeLimitResetLoad {
-        val response =
+        val started =
             transport.redeemRuntimeLimitReset(
                 serverId = serverId,
                 machineId = machineId,
                 provider = provider.wire,
                 body = if (kind == null) buildRuntimeLimitResetBody(idempotencyKey) else buildClaudeLimitResetBody(idempotencyKey, kind)
             )
-        if (!response.isSuccessful) {
-            return RuntimeLimitResetLoad.Failed(
-                RuntimeLimitResetRefusal(status = response.code.takeIf { it > 0 }, code = response.computersRouteErrorCodeOrNull())
-            )
-        }
+        val budget = if (kind == null) RUNTIME_LIMIT_RESET_RELAY_BUDGET_MILLIS else RUNTIME_LIMIT_RESET_CLAUDE_RELAY_BUDGET_MILLIS
+        val response = answerOf(serverId, started, budget)
+        if (!response.isSuccessful) return RuntimeLimitResetLoad.Failed(response.limitResetRefusal())
         val reply =
             response.bodyText?.takeIf { it.isNotBlank() }?.let { body ->
                 runCatching { computersApiJson.parseToJsonElement(body) }.getOrNull()?.toRuntimeLimitResetReply()
             }
         return reply?.let(RuntimeLimitResetLoad::Done)
-            ?: RuntimeLimitResetLoad.Failed(RuntimeLimitResetRefusal(status = response.code, code = "malformed_response"))
+            ?: RuntimeLimitResetLoad.Failed(RuntimeLimitResetRefusal(status = response.code, code = "malformed_response", traceId = response.traceId))
     }
 
     /**
@@ -752,19 +765,24 @@ internal class RaftComputersApiClient(
      * older program's 5-hour reset. No readable result is [RuntimeLimitResetsReadLoad.Failed].
      */
     suspend fun readClaudeLimitResets(serverId: ServerId, machineId: String, consent: Boolean): RuntimeLimitResetsReadLoad {
-        val response = transport.readClaudeLimitResets(serverId, machineId, buildClaudeLimitResetsReadBody(consent))
-        if (!response.isSuccessful) {
-            return RuntimeLimitResetsReadLoad.Failed(
-                RuntimeLimitResetRefusal(status = response.code.takeIf { it > 0 }, code = response.computersRouteErrorCodeOrNull())
-            )
-        }
+        val started = transport.readClaudeLimitResets(serverId, machineId, buildClaudeLimitResetsReadBody(consent))
+        val response = answerOf(serverId, started, RUNTIME_LIMIT_RESET_CLAUDE_RELAY_BUDGET_MILLIS)
+        if (!response.isSuccessful) return RuntimeLimitResetsReadLoad.Failed(response.limitResetRefusal())
         val result =
             response.bodyText?.takeIf { it.isNotBlank() }?.let { body ->
                 runCatching { computersApiJson.parseToJsonElement(body) }.getOrNull()?.toRuntimeLimitResetsReadReply()
             }
         return result?.let(RuntimeLimitResetsReadLoad::Done)
-            ?: RuntimeLimitResetsReadLoad.Failed(RuntimeLimitResetRefusal(status = response.code, code = "malformed_response"))
+            ?: RuntimeLimitResetsReadLoad.Failed(RuntimeLimitResetRefusal(status = response.code, code = "malformed_response", traceId = response.traceId))
     }
+
+    /**
+     * The answer a request that waits on the Computer would have had: [started] itself, or, when
+     * the server started a machine operation for it (`respondAsync`), the operation's answer read
+     * within [budgetMillis] (web `postWaitingOnComputer`, MachineOperations.kt).
+     */
+    private suspend fun answerOf(serverId: ServerId, started: HomeNetworkResponse, budgetMillis: Long): HomeNetworkResponse =
+        awaitMachineOperation(started, budgetMillis) { operationId -> transport.machineOperation(serverId, operationId) }
 
     suspend fun runtimeOptions(
         serverId: ServerId,
@@ -1024,6 +1042,10 @@ private inline fun <T> HomeNetworkResponse.runtimeAuthCall(read: (JsonElement) -
 /** Only the status, the route's `code` and the trace id are read: never the request. */
 private fun HomeNetworkResponse.runtimeAuthRequestError(): RuntimeAuthRequestError =
     RuntimeAuthRequestError(status = code.takeIf { it > 0 }, code = computersRouteErrorCodeOrNull(), traceId = traceId)
+
+/** A limit-reset request with no outcome: the status (none without an answer), the route's `code` and the trace id. */
+private fun HomeNetworkResponse.limitResetRefusal(): RuntimeLimitResetRefusal =
+    RuntimeLimitResetRefusal(status = code.takeIf { it > 0 }, code = computersRouteErrorCodeOrNull(), traceId = traceId)
 
 private fun HomeNetworkResponse.computersRouteErrorCodeOrNull(): String? {
     val payload = bodyText?.takeIf { it.isNotBlank() }
@@ -1647,26 +1669,34 @@ private fun <T> HomeNetworkResponse.toComputerControlError(): DataResult<T> {
 @Serializable
 internal data class RegisterComputerBody(val name: String)
 
+/** [respondAsync]: always true, the answer may come as a machine operation (MachineOperations.kt). */
 @Serializable
-private data class RuntimeLimitResetBody(val idempotencyKey: String)
+private data class RuntimeLimitResetBody(val idempotencyKey: String, val respondAsync: Boolean)
 
-/** `{idempotencyKey}`, the key passed through unchanged (slock runtimeAuthRoutes.ts). */
+/** `{idempotencyKey, respondAsync: true}`, the key passed through unchanged (slock runtimeAuthRoutes.ts). */
 internal fun buildRuntimeLimitResetBody(idempotencyKey: RuntimeLimitResetIdempotencyKey): String =
-    computersApiJson.encodeToString(RuntimeLimitResetBody(idempotencyKey = idempotencyKey.value))
+    computersApiJson.encodeToString(RuntimeLimitResetBody(idempotencyKey = idempotencyKey.value, respondAsync = true))
 
 @Serializable
-private data class ClaudeLimitResetBody(val idempotencyKey: String, val kind: String)
+private data class ClaudeLimitResetBody(val idempotencyKey: String, val kind: String, val respondAsync: Boolean)
 
-/** `{idempotencyKey, kind}`: a Claude redeem names the kind the person chose (slock #14336). */
+/** `{idempotencyKey, kind, respondAsync: true}`: a Claude redeem names the kind the person chose (slock #14336). */
 internal fun buildClaudeLimitResetBody(idempotencyKey: RuntimeLimitResetIdempotencyKey, kind: RuntimeLimitResetKind): String =
-    computersApiJson.encodeToString(ClaudeLimitResetBody(idempotencyKey = idempotencyKey.value, kind = kind.wire))
+    computersApiJson.encodeToString(ClaudeLimitResetBody(idempotencyKey = idempotencyKey.value, kind = kind.wire, respondAsync = true))
 
+/** [consent] is left out unless true (the route takes only `true`). */
 @Serializable
-private data class ClaudeLimitResetsReadConsentBody(val consent: Boolean)
+private data class ClaudeLimitResetsReadBody(val consent: Boolean? = null, val respondAsync: Boolean)
 
-/** `{consent: true}` once the person accepted the read at the 5-hour limit, else `{}` (web `readLimitResets`). */
+/**
+ * `{consent: true, respondAsync: true}` once the person accepted the read at the 5-hour limit,
+ * else `{respondAsync: true}` (web `readLimitResets`).
+ */
 internal fun buildClaudeLimitResetsReadBody(consent: Boolean): String =
-    if (consent) computersApiJson.encodeToString(ClaudeLimitResetsReadConsentBody(consent = true)) else "{}"
+    runtimeAuthBodyJson.encodeToString(
+        ClaudeLimitResetsReadBody.serializer(),
+        ClaudeLimitResetsReadBody(consent = true.takeIf { consent }, respondAsync = true),
+    )
 
 @Serializable
 private data class RuntimeAccountUsageRefreshBody(val reason: String)

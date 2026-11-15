@@ -209,7 +209,8 @@ class RuntimeAuthContractTest {
                 Triple("login", "codex", emptyMap()),
                 Triple("login", "kimi", mapOf("region" to "global")),
                 Triple("login", "pi", mapOf("providerId" to "openai-codex")),
-                Triple("logout", "grok", emptyMap<String, String>()),
+                // Sign-out may outlive the edge's 30 s: it always asks for a machine operation (slock #14843).
+                Triple("logout", "grok", mapOf("respondAsync" to "true")),
                 Triple("login", "opencode", mapOf("providerId" to "github-copilot", "oauthMethod" to "Login with GitHub (device)")),
             ),
             api.calls.map { (route, runtime, body) -> Triple(route, runtime, body.mapValues { it.value.jsonPrimitive.content }) },

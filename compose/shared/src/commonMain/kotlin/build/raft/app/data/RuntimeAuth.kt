@@ -532,9 +532,13 @@ internal data class RuntimeAuthLoginStartBody(
 @Serializable
 internal data class RuntimeAuthLoginCodeBody(val code: String)
 
-/** `POST …/:runtime/logout` body: the provider for Pi, nothing for the others. */
+/**
+ * `POST …/:runtime/logout` body: the provider for Pi, nothing else for the others. [respondAsync]:
+ * the sign-out may outlive the edge's 30 s, so its answer may come as a machine operation
+ * (slock #14843, MachineOperations.kt); no default, so it is always written.
+ */
 @Serializable
-internal data class RuntimeAuthLogoutBody(val providerId: String? = null)
+internal data class RuntimeAuthLogoutBody(val providerId: String? = null, val respondAsync: Boolean)
 
 /** `POST …/:runtime/connect-provider` body for Pi: a provider and a key only. The key is never logged. */
 @Serializable

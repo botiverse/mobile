@@ -72,7 +72,10 @@ class RuntimeLimitResetTest {
         val api = FakeLimitResetApi(redeem = { ok("""{"result":{"kind":"reset"},"snapshot":${snapshot(1)}}""") })
         val key = assertNotNull(RuntimeLimitResetIdempotencyKey.of(KEY))
         val load = RaftComputersApiClient(api).redeemRuntimeLimitReset(ServerId("s1"), "m1", RuntimeAccountUsageProvider.Codex, key)
-        assertEquals(listOf("""POST servers/s1/machines/m1/runtime-account-usage/codex/limit-reset {"idempotencyKey":"$KEY"}"""), api.calls)
+        assertEquals(
+            listOf("""POST servers/s1/machines/m1/runtime-account-usage/codex/limit-reset {"idempotencyKey":"$KEY","respondAsync":true}"""),
+            api.calls,
+        )
         val reply = assertIs<RuntimeLimitResetLoad.Done>(load).reply
         assertEquals(RuntimeLimitResetResult.Reset, reply.result)
         val account = assertNotNull(reply.snapshot).accounts.single()
@@ -189,8 +192,27 @@ class RuntimeLimitResetTest {
         private val auth: () -> HomeNetworkResponse = { error("no runtime-auth read expected") },
         private val redeem: () -> HomeNetworkResponse = { error("no redeem expected") },
         private val refresh: () -> HomeNetworkResponse = { error("no refresh expected") },
+        private val logout: () -> HomeNetworkResponse = { error("no logout expected") },
+        private val readClaude: () -> HomeNetworkResponse = { error("no Claude read expected") },
+        /** `GET …/machine-operations/:id` answers, in order (MachineOperations.kt). */
+        private val operation: () -> HomeNetworkResponse = { error("no machine-operation read expected") },
     ) : RaftComputersApi {
         val calls = mutableListOf<String>()
+
+        override suspend fun logoutRuntime(serverId: ServerId, machineId: String, runtime: String, body: String): HomeNetworkResponse {
+            calls += "POST servers/${serverId.value}/machines/$machineId/runtime-auth/$runtime/logout $body"
+            return logout()
+        }
+
+        override suspend fun readClaudeLimitResets(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse {
+            calls += "POST servers/${serverId.value}/machines/$machineId/runtime-account-usage/claude/limit-resets/read $body"
+            return readClaude()
+        }
+
+        override suspend fun machineOperation(serverId: ServerId, operationId: String): HomeNetworkResponse {
+            calls += "GET servers/${serverId.value}/machine-operations/$operationId"
+            return operation()
+        }
 
         override suspend fun refreshRuntimeAccountUsage(
             serverId: ServerId,

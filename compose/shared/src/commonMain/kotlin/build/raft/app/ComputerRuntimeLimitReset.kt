@@ -124,6 +124,8 @@ internal data class ComputerRuntimeLimitResetDialogState(
     val idempotencyKey: RuntimeLimitResetIdempotencyKey,
     val submitting: Boolean = false,
     val error: ComputerRuntimeLimitResetError? = null,
+    /** The failed request's `X-Trace-Id`, shown under [error] (AGENTS.md "Errors carry the trace ID"). */
+    val traceId: String? = null,
 )
 
 @Composable
@@ -236,6 +238,7 @@ internal fun ComputerRuntimeLimitResetDialog(
             )
             state.error?.let { error ->
                 RaftBanner(description = error.text(runtimeName), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                RaftTraceIdNote(state.traceId)
             }
         }
     }
