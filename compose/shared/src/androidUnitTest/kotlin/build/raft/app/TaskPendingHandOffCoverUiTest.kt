@@ -110,7 +110,7 @@ class TaskPendingHandOffCoverUiTest {
             val task = pendingTask()
             val flow = TaskOpenSurfaceFlow(newRandomId = { "rid-1" })
             flow.open(TaskOpenSurface.Pending(task))
-            flow.onDraftChange(task.id.value, "On it")
+            flow.onDraftChange(SERVER, task.id.value, "On it")
             val navigator = RecordingNavigator { flow.surface != null }
             hostPage(navigator, flow)
             onNode(hasText("No discussion in this task yet")).assertExists()
@@ -136,7 +136,7 @@ class TaskPendingHandOffCoverUiTest {
             assertEquals(listOf(CONVERSATION_PAGE to false), navigator.pushes, "the pending page closed before the push")
             assertNull(flow.surface)
             assertFalse(flow.handingOff)
-            assertEquals("", flow.draft(task.id.value), "the sent text is no draft any more")
+            assertEquals("", flow.draft(SERVER, task.id.value), "the sent text is no draft any more")
             waitForIdle()
             onNode(hasText("No discussion in this task yet")).assertDoesNotExist()
         }

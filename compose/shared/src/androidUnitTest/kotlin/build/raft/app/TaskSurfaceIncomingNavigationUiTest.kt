@@ -90,7 +90,7 @@ class TaskSurfaceIncomingNavigationUiTest {
             val task = pendingTask()
             val flow = TaskOpenSurfaceFlow(newRandomId = { "rid-1" })
             flow.open(TaskOpenSurface.Pending(task))
-            flow.onDraftChange(task.id.value, "half a thought")
+            flow.onDraftChange(ShellNavigationIntakeFixtures.SERVER, task.id.value, "half a thought")
             channelPageWithPendingTask(flow)
             onNode(hasText("No discussion in this task yet")).assertExists()
 
@@ -102,7 +102,7 @@ class TaskSurfaceIncomingNavigationUiTest {
             onNode(hasText("No discussion in this task yet")).assertDoesNotExist()
             onNode(hasText("top page: channel-1@message-9")).assertExists()
             assertNull(flow.surface)
-            assertEquals("half a thought", flow.draft(task.id.value), "the draft stays for the next open")
+            assertEquals("half a thought", flow.draft(ShellNavigationIntakeFixtures.SERVER, task.id.value), "the draft stays for the next open")
             assertEquals(emptyList(), host.logs.filter { it.startsWith("window_navigation_open_skipped") })
         }
 

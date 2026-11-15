@@ -248,7 +248,7 @@ class RaftShellNavigationIntakeTest {
         advanceUntilIdle()
         assertIs<WindowNavigationAction.OpenConversation>(host.performed.single())
         assertNull(flow.surface, "closed once the send ended")
-        assertEquals("On it", flow.draft(task.id.value), "the unsent text stays as the draft")
+        assertEquals("On it", flow.draft(SERVER, task.id.value), "the unsent text stays as the draft")
     }
 
     private fun intakeTest(body: suspend TestScope.() -> Unit) = runTest {

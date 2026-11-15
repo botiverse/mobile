@@ -19,6 +19,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.SharedAuthGateState
+import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksEvent
 import build.raft.app.data.SharedTasksRouteIntent
@@ -137,19 +139,105 @@ internal suspend fun startTaskConversation(
 }
 
 /**
+ * The first message typed into a task that has no conversation yet ([TaskOpenSurface.Pending]),
+ * per server and task, for one window's signed-in session. The conversation composer's drafts are
+ * keyed by a conversation channel, which such a task does not have, so they live here instead: the
+ * window's [SharedForegroundBannerStore] owns one, and every page that opens a task (a channel or
+ * thread page, the Tasks tab) passes it to its [TaskOpenSurfaceFlow]. Closing the page that opened
+ * the task, or following a link elsewhere, keeps the draft; it is not saved across app restarts.
+ *
+ * Each draft keeps its first-send `randomId` too, so a retry from a reopened page does not post the
+ * message twice. Cleared for a task when its first send created the conversation, and as a whole
+ * on sign-out or another account ([followSession]), which also drops servers the account left.
+ */
+internal class TaskPendingDraftStore {
+    private data class Key(val serverId: String, val taskId: String)
+
+    private val drafts = mutableStateMapOf<Key, String>()
+    private val randomIds = mutableMapOf<Key, String>()
+    private var accountId: String? = null
+
+    private fun key(serverId: String?, taskId: String) = Key(serverId.orEmpty(), taskId)
+
+    fun draft(serverId: String?, taskId: String): String = drafts[key(serverId, taskId)].orEmpty()
+
+    fun update(serverId: String?, taskId: String, text: String) {
+        drafts[key(serverId, taskId)] = text
+    }
+
+    /** The draft's one first-send id, made by [newRandomId] the first time and reused until [clear]. */
+    fun randomId(serverId: String?, taskId: String, newRandomId: () -> String): String =
+        randomIds.getOrPut(key(serverId, taskId), newRandomId)
+
+    /** The first send created the task's conversation: its text is a message now, not a draft. */
+    fun clear(serverId: String?, taskId: String) {
+        val key = key(serverId, taskId)
+        drafts.remove(key)
+        randomIds.remove(key)
+    }
+
+    fun clearAll() {
+        drafts.clear()
+        randomIds.clear()
+    }
+
+    /**
+     * The window's sign-in: [signedOut] drops every draft; another account drops the previous
+     * one's; a known [serverIds] list drops drafts of servers no longer in it (left, removed,
+     * deleted). A session still restoring ([accountId] null) changes nothing.
+     */
+    fun followSession(signedOut: Boolean, accountId: String?, serverIds: Collection<String>?) {
+        if (signedOut) {
+            clearAll()
+            this.accountId = null
+            return
+        }
+        if (accountId == null) return
+        if (this.accountId != null && this.accountId != accountId) clearAll()
+        this.accountId = accountId
+        if (serverIds.isNullOrEmpty()) return
+        drafts.keys.filter { it.serverId !in serverIds }.forEach { drafts.remove(it) }
+        randomIds.keys.filter { it.serverId !in serverIds }.forEach { randomIds.remove(it) }
+    }
+}
+
+/**
+ * The window's [TaskPendingDraftStore] follows its sign-in: sign-out, another account, or a server
+ * no longer in the session drops the drafts that went with it.
+ */
+@Composable
+internal fun TaskPendingDraftsFollowSessionEffect(
+    drafts: TaskPendingDraftStore,
+    authGateState: SharedAuthGateState,
+    readySession: StoredAuthSession?,
+) {
+    val signedOut = authGateState == SharedAuthGateState.AuthRequired
+    val accountId = readySession?.user?.id
+    val serverIds = readySession?.servers?.map { it.id }
+    LaunchedEffect(drafts, signedOut, accountId, serverIds) {
+        drafts.followSession(signedOut, accountId, serverIds)
+    }
+}
+
+/**
  * The page's task-open surface ([TaskOpenSurface]) and its first send, shared by every place a task
  * opens (thread, Tasks tab):
  * - one `randomId` per draft, reused on every retry until a send succeeds, so a first message the
  *   server took before the answer was lost is not posted twice (a repeated POST /conversation
  *   answers the same conversation);
- * - the typed text is kept per task while the page lives (closing the sheet keeps it; the app's
- *   composer drafts are keyed by a conversation channel, which this task does not have yet);
+ * - the typed text is kept per server and task in [drafts] (closing the sheet keeps it; the app's
+ *   composer drafts are keyed by a conversation channel, which this task does not have yet). The
+ *   pages pass the window's [TaskPendingDraftStore], so the draft outlives the page that opened
+ *   the task (leaving the channel, a link);
  * - the task follows the store ([onTaskChanged]): fresh status and assignee, and when its
  *   conversation appears (someone else wrote first, `task:updated`) the caller opens it, as web
  *   `TaskConversationDialog` binds to it;
  * - a send that finishes after the reader switched server opens nothing (web stops too).
  */
-internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::newThreadSendRandomId) {
+internal class TaskOpenSurfaceFlow(
+    private val drafts: TaskPendingDraftStore = TaskPendingDraftStore(),
+    private val newRandomId: () -> String = ::newThreadSendRandomId,
+) {
     var surface by mutableStateOf<TaskOpenSurface?>(null)
         private set
     var sending by mutableStateOf(false)
@@ -164,8 +252,6 @@ internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::new
      */
     var handingOff by mutableStateOf(false)
         private set
-    private val drafts = mutableStateMapOf<String, String>()
-    private val randomIds = mutableMapOf<String, String>()
 
     fun open(surface: TaskOpenSurface) {
         if (sending) return
@@ -206,10 +292,10 @@ internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::new
         errorText = null
     }
 
-    fun draft(taskId: String): String = drafts[taskId].orEmpty()
+    fun draft(serverId: String?, taskId: String): String = drafts.draft(serverId, taskId)
 
-    fun onDraftChange(taskId: String, text: String) {
-        drafts[taskId] = text
+    fun onDraftChange(serverId: String?, taskId: String, text: String) {
+        drafts.update(serverId, taskId, text)
     }
 
     /**
@@ -252,9 +338,9 @@ internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::new
     ): Pair<TaskSummary, ChannelId>? {
         val task = (surface as? TaskOpenSurface.Pending)?.task ?: return null
         if (sending || text.isBlank()) return null
-        val key = task.id.value
-        drafts[key] = text
-        val randomId = randomIds.getOrPut(key, newRandomId)
+        val taskId = task.id.value
+        drafts.update(serverId, taskId, text)
+        val randomId = drafts.randomId(serverId, taskId, newRandomId)
         sending = true
         sendRunning.value = true
         errorText = null
@@ -266,8 +352,7 @@ internal class TaskOpenSurfaceFlow(private val newRandomId: () -> String = ::new
             }
             return when (started) {
                 is TaskConversationStart.Started -> {
-                    drafts.remove(key)
-                    randomIds.remove(key)
+                    drafts.clear(serverId, taskId)
                     handingOff = true
                     task to started.conversationChannelId
                 }
@@ -373,8 +458,8 @@ internal fun TaskOpenSurfaceHost(
                     sending = flow.sending || flow.handingOff,
                     errorText = flow.errorText,
                     joined = joined(task),
-                    draft = flow.draft(task.id.value),
-                    onDraftChange = { flow.onDraftChange(task.id.value, it) },
+                    draft = flow.draft(serverId, task.id.value),
+                    onDraftChange = { flow.onDraftChange(serverId, task.id.value, it) },
                     onBack = { flow.dismiss() },
                     onSend = { text -> onSend(task, text) },
                     onJoin = { onJoin(task) },
