@@ -10,7 +10,7 @@ import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.resolveAvatarSlot
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -174,16 +174,19 @@ internal fun rememberRaftJointActor(
     memberId: String?,
     enabled: Boolean,
 ): ResolvedActor? {
-    val actorFlow =
-        remember(memberAvatarResolver, kind, memberId, enabled) {
-            if (enabled) memberAvatarResolver.jointActor(kind, memberId) else flowOf(null)
-        }
-    val initial =
-        remember(memberAvatarResolver, kind, memberId, enabled) {
-            if (enabled) memberAvatarResolver.currentJointActor(kind, memberId) else null
-        }
-    val actor by actorFlow.collectAsState(initial)
-    return actor
+    // Keyed as a whole: `collectAsState` keeps its state across a new flow, so without the key the
+    // first frame after the member changes would still paint the previous member's actor.
+    return key(memberAvatarResolver, kind, memberId, enabled) {
+        val actorFlow =
+            remember {
+                if (enabled) memberAvatarResolver.jointActor(kind, memberId) else flowOf(null)
+            }
+        val initial =
+            remember {
+                if (enabled) memberAvatarResolver.currentJointActor(kind, memberId) else null
+            }
+        actorFlow.collectAsState(initial).value
+    }
 }
 
 @Composable
@@ -191,11 +194,12 @@ internal fun rememberRaftMemberAvatarWireValue(
     memberAvatarResolver: RaftMemberAvatarResolver,
     memberId: String?
 ): String? {
-    val avatarFlow = remember(memberAvatarResolver, memberId) { memberAvatarResolver(memberId) }
-    val initialAvatarWireValue =
-        remember(memberAvatarResolver, memberId) {
-            memberAvatarResolver.current(memberId)
-        }
-    val avatarWireValue by avatarFlow.collectAsState(initialAvatarWireValue)
-    return avatarWireValue
+    // Keyed as a whole: `collectAsState` keeps its state across a new flow, so without the key a row
+    // whose sender changes (it moved to the top with a new message) painted the previous sender's face
+    // for a frame.
+    return key(memberAvatarResolver, memberId) {
+        val avatarFlow = remember { memberAvatarResolver(memberId) }
+        val initialAvatarWireValue = remember { memberAvatarResolver.current(memberId) }
+        avatarFlow.collectAsState(initialAvatarWireValue).value
+    }
 }
