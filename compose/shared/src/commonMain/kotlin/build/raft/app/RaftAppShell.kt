@@ -98,7 +98,9 @@ internal fun rememberRaftAppShellScope(
     adaptivePane: RaftAdaptivePaneState = RaftAdaptivePaneState()
 ): RaftAppShellScope {
     // A host tab bar laid out along the top edge covers the status bar area too.
-    val topSafeArea = maxOf(raftWindowTopSafeAreaPadding(), raftNativeTabBarEdgeInsets().top)
+    // Under the minimum build gate's notice the band above the page cleared both already.
+    val topSafeArea =
+        if (LocalRaftTopSafeAreaClearedAbovePage.current) 0.dp else maxOf(raftWindowTopSafeAreaPadding(), raftNativeTabBarEdgeInsets().top)
     val bottomSafeArea = raftBottomSafeAreaPadding()
     val bottomTabBarContentInset = raftAppBottomTabBarContentInset(bottomSafeArea)
     val bottomTabBarOverlaysContent = raftAppBottomTabBarOverlaysContent()

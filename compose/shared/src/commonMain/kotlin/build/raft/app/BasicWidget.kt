@@ -1478,7 +1478,11 @@ fun Modal(
         // describes the activity window underneath (RaftHostImeInsets).
         // A full-window layer again: its content keeps the window's top safe area even when the
         // page that opened it sits under the wide top bar.
-        CompositionLocalProvider(LocalRaftHostImeInsets provides null, LocalRaftTopSafeAreaConsumed provides false) {
+        CompositionLocalProvider(
+            LocalRaftHostImeInsets provides null,
+            LocalRaftTopSafeAreaConsumed provides false,
+            LocalRaftTopSafeAreaClearedAbovePage provides false,
+        ) {
             RaftInputFocusDismissHost { focusDismissModifier ->
                 Box(modifier = modifier.then(focusDismissModifier).fillMaxSize()) {
                     RaftHorizontalSafeAreaShell(required = horizontalSafeArea, windowRoot = true) {

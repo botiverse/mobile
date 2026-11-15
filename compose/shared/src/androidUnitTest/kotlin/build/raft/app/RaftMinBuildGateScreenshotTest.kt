@@ -3,7 +3,9 @@ package build.raft.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.RaftMinBuildGateDecision
@@ -21,8 +23,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * JVM screenshots of the minimum build gate: the full-screen block ("Please update to the latest
- * version", Update, Send feedback, Sign out) and the dismissible banner over a page. Light and
- * dark; verify / record as [RaftRobolectricScreenshot].
+ * version", Update, Send feedback, Sign out) and the dismissible banner in its band above Home
+ * (phone) and above the wide top bar. Light and dark; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -53,11 +55,22 @@ class RaftMinBuildGateScreenshotTest {
     @Test
     fun blockDark() = capture("app.min-build-gate.block.dark", RaftAppAppearance.Dark, block)
 
+    // The banner over Home with a 24dp status bar (#103): a band above the page that clears the
+    // status bar; Home's head (server switcher, bell) starts under it, nothing of it covered.
     @Test
-    fun bannerLight() = capture("app.min-build-gate.banner", RaftAppAppearance.Light, banner)
+    fun bannerLight() = captureHome("app.min-build-gate.banner", RaftAppAppearance.Light)
 
     @Test
-    fun bannerDark() = capture("app.min-build-gate.banner.dark", RaftAppAppearance.Dark, banner)
+    fun bannerDark() = captureHome("app.min-build-gate.banner.dark", RaftAppAppearance.Dark)
+
+    // The wide layout: the band above the app shell's top bar.
+    @Test
+    @Config(qualifiers = "w1024dp-h600dp-mdpi")
+    fun bannerWideLight() = captureWide("app.min-build-gate.banner.wide", RaftAppAppearance.Light)
+
+    @Test
+    @Config(qualifiers = "w1024dp-h600dp-mdpi")
+    fun bannerWideDark() = captureWide("app.min-build-gate.banner.wide.dark", RaftAppAppearance.Dark)
 
     private fun capture(name: String, appearance: RaftAppAppearance, decision: RaftMinBuildGateDecision) =
         RaftRobolectricScreenshot.capture(
@@ -78,6 +91,43 @@ class RaftMinBuildGateScreenshotTest {
                 ) {
                     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas))
                 }
+            }
+        }
+
+    private fun captureHome(name: String, appearance: RaftAppAppearance) =
+        captureBannerOver(name, appearance) {
+            RaftStructuralHomeShell(
+                currentServerName = "Botiverse",
+                currentServerId = "botiverse",
+                servers = listOf(RaftServerSwitcherItem(id = "botiverse", name = "Botiverse", slug = "botiverse")),
+                showBottomBar = true,
+                // As the app composes Home: the head runs edge to edge.
+                outerPadding = 0.dp,
+            )
+        }
+
+    private fun captureWide(name: String, appearance: RaftAppAppearance) = captureBannerOver(name, appearance) { MinBuildGateWideShell() }
+
+    private fun captureBannerOver(name: String, appearance: RaftAppAppearance, page: @Composable () -> Unit) =
+        RaftRobolectricScreenshot.capture(
+            name,
+            appearance,
+            reportDir = "build/reports/home-screenshots",
+            activities = activities,
+        ) {
+            MinBuildGateTestPage(windowId = "test:min-build-gate-screenshot") {
+                RaftMinBuildGateFrame(
+                    decision = banner,
+                    dismissedBannerThreshold = null,
+                    signingOut = false,
+                    onUpdate = {},
+                    onSendFeedback = {},
+                    onSignOut = {},
+                    onDismissBanner = {},
+                    bannerTopInset = raftMinBuildGateBannerTopInset(),
+                    bannerHorizontalInsets = raftMinBuildGateBannerHorizontalInsets(),
+                    content = page,
+                )
             }
         }
 }

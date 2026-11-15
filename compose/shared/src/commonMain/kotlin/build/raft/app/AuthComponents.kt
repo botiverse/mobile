@@ -148,7 +148,9 @@ internal fun AuthScaffold(
     topBanner: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
+    // Under the minimum build gate's notice the band above the page already cleared the status bar.
+    val statusBarHeight =
+        if (LocalRaftTopSafeAreaClearedAbovePage.current) 0f else LocalActivity.current.pageData.statusBarHeight
     val authListState = rememberLazyListState()
     val authScrollScope = rememberCoroutineScope()
     val density = LocalDensity.current

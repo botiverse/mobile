@@ -244,9 +244,27 @@ internal fun raftNativeNavBarLiveTop(): Dp? {
  */
 @Composable
 internal fun raftTopSafeAreaPadding(): Dp {
-    if (LocalRaftTopSafeAreaConsumed.current) return 0.dp
+    if (LocalRaftTopSafeAreaConsumed.current || LocalRaftTopSafeAreaClearedAbovePage.current) return 0.dp
     return raftWindowTopSafeAreaPadding()
 }
+
+/**
+ * True while a page layer lays a band out above the whole page and that band clears the status bar
+ * itself (the minimum build gate's notice, RaftMinBuildGateFrame): the page starts under the band,
+ * so neither its headers nor the app shell's top bar pad the window's top safe area again. Unlike
+ * [LocalRaftTopSafeAreaConsumed] it also reaches the shell ([raftPageWindowTopSafeAreaPadding]). A
+ * [Modal] resets it: it is a full-window layer over the band.
+ */
+internal val LocalRaftTopSafeAreaClearedAbovePage = staticCompositionLocalOf { false }
+
+/**
+ * The window's top safe area for a page's own top edge (the app shell, a full-page web view): 0
+ * under a band that already cleared it ([LocalRaftTopSafeAreaClearedAbovePage]). Full-window
+ * layers ([Modal], viewers) keep [raftWindowTopSafeAreaPadding].
+ */
+@Composable
+internal fun raftPageWindowTopSafeAreaPadding(): Dp =
+    if (LocalRaftTopSafeAreaClearedAbovePage.current) 0.dp else raftWindowTopSafeAreaPadding()
 
 /**
  * True inside the wide shell's content, under its top bar (RaftAppShellSurface): the bar already

@@ -1,20 +1,38 @@
 package build.raft.app
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.DpRect
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.PageData
+import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.RaftMinBuildGateDecision
 import build.raft.app.data.stringDescLocaleType
@@ -25,6 +43,8 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -33,7 +53,8 @@ import org.robolectric.annotation.Config
 /**
  * The minimum build gate layer on a real composition ([RaftMinBuildGateFrame]): a block takes every
  * touch and hides the page from accessibility, keeps Update / Send feedback / Sign out working, and
- * goes away when the decision does (flag off); a banner leaves the page usable and dismisses.
+ * goes away when the decision does (flag off); a banner leaves the page usable and dismisses, and
+ * sits above the page (Home's head and tabs, the wide top bar) rather than over it.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -141,7 +162,191 @@ class RaftMinBuildGateUiTest {
         onNodeWithTag(RAFT_MIN_BUILD_GATE_BANNER_TAG).assertDoesNotExist()
     }
 
+    /**
+     * #103: on Home the banner lay over the head and covered the server switcher until dismissed.
+     * It is now a band above the page: the head (switcher) and the bottom tabs are laid out under
+     * it, never under its bounds, and both take taps while it shows. The head starts right under
+     * the band (the band cleared the status bar, so the head does not pad it again), and goes back
+     * under the status bar once the banner is dismissed.
+     */
+    @Test
+    fun bannerSitsAboveHomeHeadAndLeavesTheSwitcherAndTabsReachable() = runRobolectricComposeUiTest {
+        val threshold = 12_000_000L
+        var dismissed by mutableStateOf<Long?>(null)
+        var switcherTaps = 0
+        val tabs = mutableListOf<String>()
+        setContent {
+            MinBuildGateTestPage(windowId = "test:min-build-gate-home") {
+                RaftTheme(appearance = RaftAppearance.Light) {
+                    RaftMinBuildGateFrame(
+                        decision = RaftMinBuildGateDecision.Banner(threshold, url),
+                        dismissedBannerThreshold = dismissed,
+                        signingOut = false,
+                        onUpdate = {},
+                        onSendFeedback = {},
+                        onSignOut = {},
+                        onDismissBanner = { dismissed = it },
+                        bannerTopInset = raftMinBuildGateBannerTopInset(),
+                        bannerHorizontalInsets = raftMinBuildGateBannerHorizontalInsets(),
+                    ) {
+                        RaftStructuralHomeShell(
+                            currentServerName = SERVER,
+                            currentServerId = "botiverse",
+                            servers = listOf(RaftServerSwitcherItem(id = "botiverse", name = SERVER, slug = "botiverse")),
+                            showBottomBar = true,
+                            // As the app composes Home: the head runs edge to edge.
+                            outerPadding = 0.dp,
+                            onServerBadgeClick = { switcherTaps++ },
+                            onTabSelected = { tabs += it },
+                        )
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        val band = onNodeWithTag(RAFT_MIN_BUILD_GATE_BAND_TAG).getBoundsInRoot()
+        val switcher = onNodeWithText(SERVER).getBoundsInRoot()
+        val tab = lowestNodeWithText("Tasks").getBoundsInRoot()
+        assertEquals(0.dp, band.top, "the band starts at the window's top edge")
+        assertTrue(band.bottom > STATUS_BAR, "the band clears the status bar")
+        assertFalse(band.overlaps(switcher), "the banner covers the server switcher: band=$band switcher=$switcher")
+        assertFalse(band.overlaps(tab), "the banner covers the bottom tabs: band=$band tab=$tab")
+        assertTrue(switcher.top >= band.bottom, "the head is laid out under the band")
+        assertTrue(switcher.top - band.bottom < STATUS_BAR, "the head pads the status bar again under the band: band=$band switcher=$switcher")
+
+        onNodeWithText(SERVER).performClick()
+        lowestNodeWithText("Tasks").performClick()
+        waitForIdle()
+        assertEquals(1, switcherTaps, "the server switcher did not take the tap")
+        assertEquals(listOf("tasks"), tabs, "the bottom tab did not take the tap")
+
+        onNodeWithText("Dismiss").performClick()
+        waitForIdle()
+        onNodeWithTag(RAFT_MIN_BUILD_GATE_BAND_TAG).assertDoesNotExist()
+        assertTrue(onNodeWithText(SERVER).getBoundsInRoot().top >= STATUS_BAR, "without the band the head pads the status bar")
+    }
+
+    /**
+     * The wide layout: the band sits above the app shell's top bar (server switcher, search), which
+     * starts right under it and keeps taking taps.
+     */
+    @Test
+    @Config(qualifiers = "w1024dp-h600dp-mdpi")
+    fun bannerSitsAboveTheWideTopBar() = runRobolectricComposeUiTest {
+        var workspaceTaps = 0
+        var searchTaps = 0
+        setContent {
+            MinBuildGateTestPage(windowId = "test:min-build-gate-wide") {
+                RaftTheme(appearance = RaftAppearance.Light) {
+                    RaftMinBuildGateFrame(
+                        decision = RaftMinBuildGateDecision.Banner(12_000_000L, url),
+                        dismissedBannerThreshold = null,
+                        signingOut = false,
+                        onUpdate = {},
+                        onSendFeedback = {},
+                        onSignOut = {},
+                        onDismissBanner = {},
+                        bannerTopInset = raftMinBuildGateBannerTopInset(),
+                        bannerHorizontalInsets = raftMinBuildGateBannerHorizontalInsets(),
+                    ) {
+                        MinBuildGateWideShell(onWorkspaceClick = { workspaceTaps++ }, onSearchClick = { searchTaps++ })
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        val band = onNodeWithTag(RAFT_MIN_BUILD_GATE_BAND_TAG).getBoundsInRoot()
+        val workspace = onNodeWithText(SERVER).getBoundsInRoot()
+        val search = onNodeWithText("Search", useUnmergedTree = true).getBoundsInRoot()
+        assertFalse(band.overlaps(workspace), "the banner covers the server switcher: band=$band workspace=$workspace")
+        assertFalse(band.overlaps(search), "the banner covers the search field: band=$band search=$search")
+        assertTrue(workspace.top - band.bottom < STATUS_BAR, "the top bar pads the status bar again under the band")
+
+        onNodeWithText(SERVER).performClick()
+        onNodeWithText("Search", useUnmergedTree = true).performClick()
+        waitForIdle()
+        assertEquals(1, workspaceTaps)
+        assertEquals(1, searchTaps)
+    }
+
+    private fun ComposeUiTest.lowestNodeWithText(text: String): SemanticsNodeInteraction {
+        val nodes = onAllNodesWithText(text)
+        val count = nodes.fetchSemanticsNodes().size
+        return (0 until count).map { nodes[it] }.maxBy { it.getBoundsInRoot().top.value }
+    }
+
+    private fun DpRect.overlaps(other: DpRect): Boolean =
+        left < other.right && other.left < right && top < other.bottom && other.top < bottom
+
     private companion object {
         const val PAGE = "page"
+        const val SERVER = "Botiverse"
+        val STATUS_BAR = 24.dp
+    }
+}
+
+/** A page with a 24dp status bar (its own window id: the inset map is process-wide). */
+@Composable
+internal fun MinBuildGateTestPage(windowId: String, content: @Composable () -> Unit) {
+    val density = LocalDensity.current.density
+    val pager =
+        remember {
+            object : Pager() {}.apply {
+                pageData =
+                    PageData(
+                        JSONObject().apply {
+                            put("slockWindowId", windowId)
+                            // Pixels: 24dp at the test's density.
+                            put("statusBarHeight", (24 * density).toString())
+                        },
+                    )
+            }
+        }
+    CompositionLocalProvider(
+        LocalActivity provides RaftPageActivity(pager),
+        LocalRaftAppShellTopBar provides remember { RaftAppShellTopBarState() },
+    ) {
+        RaftDesignSystemTheme(content)
+    }
+}
+
+/** The wide app shell as the app composes it: the top bar over the rail and the content. */
+@Composable
+internal fun MinBuildGateWideShell(onWorkspaceClick: () -> Unit = {}, onSearchClick: () -> Unit = {}) {
+    val shellScope = rememberRaftAppShellScope()
+    val server = RaftServerSwitcherItem(id = "botiverse", name = "Botiverse", slug = "botiverse")
+    RaftAppShellSurface(
+        shellScope = shellScope,
+        bottomTabs = emptyList(),
+        onBottomTabSelected = {},
+        showBottomTabs = false,
+        leadingNavigation = {
+            RaftNavigationRailTabBar(
+                items =
+                    listOf(
+                        RaftBottomTabItemPayload("home", "Home", RaftLucideIconName.MessageSquare, selected = true),
+                        RaftBottomTabItemPayload("members", "Members", RaftLucideIconName.Users),
+                    ),
+                onSelect = {},
+                modifier = Modifier.fillMaxHeight(),
+            )
+        },
+        topNavigation = {
+            RaftAppShellTopBar(
+                currentServer = server,
+                servers = listOf(server),
+                serverMenuOpen = false,
+                onWorkspaceClick = onWorkspaceClick,
+                onServerPick = {},
+                searchLabel = "Search",
+                onSearchClick = onSearchClick,
+                windowWidth = 1024.dp,
+                topSafeArea = shellScope.topSafeArea,
+            )
+        },
+    ) {
+        Box(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite))
     }
 }
