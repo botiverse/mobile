@@ -19,7 +19,7 @@ import build.raft.app.model.ServerId
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.flow.Flow
@@ -150,8 +150,13 @@ internal fun rememberRaftAgentStatusIndicatorState(
     agentStatusResolver: RaftAgentStatusResolver,
     memberId: String?
 ): RaftAgentStatusIndicatorState? {
-    val statusFlow = remember(agentStatusResolver, memberId) { agentStatusResolver(memberId) }
-    val status by statusFlow.collectAsState((statusFlow as? RaftAgentStatusFlow)?.initial)
+    // Keyed as a whole: `collectAsState` keeps its state across a new flow, so without the key the
+    // first frame after the member changes would still paint the previous member's dot.
+    val status =
+        key(agentStatusResolver, memberId) {
+            val statusFlow = remember { agentStatusResolver(memberId) }
+            statusFlow.collectAsState((statusFlow as? RaftAgentStatusFlow)?.initial).value
+        }
     // task #410: the external presence tier depends on `now` as well as the
     // fact. Re-resolve it whenever the live time context ticks (minute
     // boundary) or the underlying state changes, so "online" does not outlive
