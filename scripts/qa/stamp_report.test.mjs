@@ -5,6 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { canonicalJson, sha256Digest } from "./mobile_login_bootstrap_lib.mjs";
+import { writeRecord } from "./login_phase.mjs";
+
+// #222: report-evidence runs the evidence gate first; these fixtures are runs that never sign in.
+const noLogin = (dir, run, attempt = process.env.GITHUB_RUN_ATTEMPT) =>
+  writeRecord(dir, { mode: "none", status: "no-login", login_end: null }, { GITHUB_RUN_ID: run, GITHUB_RUN_ATTEMPT: attempt });
 
 /** A complete, digest-correct issuance response bound to the given run case, CI job and device binding. */
 function issuedLogin({ runCaseId, runId, binding, requestId = "request-1", applicationId = "build.raft.app.alpha" }) {
@@ -339,6 +344,7 @@ test("report reads a relative verdict path and freezes scope before writes", () 
     verdict: "pass",
     log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "99:1" },
   }));
+  noLogin(evidence, "99");
   fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc1"), "lease-token", { mode: 0o600 });
   const curlLog = path.join(root, "curl.log");
   fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${curlLog}"\nexit 0\n`, { mode: 0o755 });
@@ -385,6 +391,7 @@ test("evidence reporting binds one app-scoped stable principal to the frozen ema
     reason: "fixture setup",
     log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "99:1" },
   }));
+  noLogin(evidence, "99");
   fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-subject"), "lease-token", { mode: 0o600 });
   fs.writeFileSync(path.join(runnerTemp, "stamp-bootstrap-spec-rc-subject.json"), JSON.stringify({ required: false }), { mode: 0o600 });
   const receipt = path.join(root, "receipt.json");
@@ -431,6 +438,7 @@ test("evidence reporting ignores forged model and broad-system subjects and bind
     reason: "fixture setup",
     log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "99:1" },
   }));
+  noLogin(evidence, "99");
   fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-forgery"), "lease-token", { mode: 0o600 });
   fs.writeFileSync(path.join(runnerTemp, "stamp-bootstrap-spec-rc-forgery.json"), JSON.stringify({ required: false }), { mode: 0o600 });
   const calls = path.join(root, "calls");
@@ -506,6 +514,12 @@ test("Android and iOS freeze legacy email before execution and expose none for b
     const executeBlock = source.slice(execute, source.indexOf("\n      - name:", execute + 1));
     assert.match(executeBlock, /STAMP_URL:.*stamp_run_case_id != ''/);
     assert.match(executeBlock, /STAMP_TOKEN:.*stamp_run_case_id != ''/);
+    if (workflow === "qa-acceptance-ios.yml") {
+      // #222: iOS has no safe way to type a secret; the agent step gets no account at all.
+      assert.doesNotMatch(executeBlock, /QA_TEST_/);
+      assert.match(executeBlock, new RegExp(`QA_PASSWORD_LOGIN: \\$\\{\\{ ${legacy} && 'true' \\|\\| 'false' \\}\\}`));
+      continue;
+    }
     assert.match(executeBlock, new RegExp(`QA_TEST_EMAIL: \\$\\{\\{ ${legacy} && secrets\\.QA_TEST_EMAIL \\|\\| '' \\}\\}`));
     assert.match(executeBlock, new RegExp(`QA_TEST_PASSWORD: \\$\\{\\{ ${legacy} && secrets\\.QA_TEST_PASSWORD \\|\\| '' \\}\\}`));
   }
@@ -525,6 +539,7 @@ test("bootstrap reporting enforces ready evidence, torn-down verdict, and no pos
     verdict: "pass",
     log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "500:1" },
   }));
+  noLogin(evidence, "500");
   fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-order"), "lease-token", { mode: 0o600 });
   fs.writeFileSync(path.join(runnerTemp, "stamp-bootstrap-spec-rc-order.json"), JSON.stringify({
     required: true, terminal_endpoint: "/terminal", capture_proof_endpoint: "/capture-proof",
@@ -1075,6 +1090,7 @@ test("capture-proof reporting rejects missing scope, stale generation, proof SHA
   fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({
     verdict: "pass", log_scope: { filtered: true, package_id: "build.raft.app", pids: [9], generation: "generation-1" },
   }));
+  noLogin(evidence, "900", "1");
   fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-proof"), "lease", { mode: 0o600 });
   fs.writeFileSync(path.join(runnerTemp, "stamp-bootstrap-spec-rc-proof.json"), JSON.stringify({ required: true }), { mode: 0o600 });
   const context = path.join(runnerTemp, "stamp-bootstrap-capture-context-rc-proof.json");
@@ -1129,6 +1145,7 @@ function iosReportHarness(name, { cleanup, extraEnv = {}, ownership } = {}) {
   const evidence = path.join(root, "qa-evidence"), bin = path.join(root, "bin"), temp = path.join(root, "temp");
   fs.mkdirSync(evidence); fs.mkdirSync(bin); fs.mkdirSync(temp);
   fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({ verdict: "pass" }));
+  noLogin(evidence, "222", "1");
   if (cleanup !== undefined) fs.writeFileSync(path.join(evidence, "simulator-cleanup.json"), typeof cleanup === "string" ? cleanup : JSON.stringify(cleanup));
   fs.writeFileSync(path.join(temp, "stamp-claim-rc-ios"), "fake-lease");
   if (ownership !== null) fs.writeFileSync(path.join(temp, "raft-qa-simulator-ownership.json"), JSON.stringify(ownership ?? IOS_OWNERSHIP), { mode: 0o400 });

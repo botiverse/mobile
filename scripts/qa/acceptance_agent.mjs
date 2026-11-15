@@ -12,9 +12,12 @@
 // every action the runner replies with a fresh screenshot. Coordinates should
 // come from dump_ui (uiautomator bounds), not eyeballing pixels.
 //
-// Credentials never enter the model context or evidence: the goal/preamble
-// reference {{QA_EMAIL}}/{{QA_PASSWORD}} placeholders, substituted only at
-// adb-execution time and redacted from everything written to disk/stdout.
+// Credentials never reach this process's model, actions or evidence: the
+// login is a separate phase before it (login_phase.mjs), and the run starts
+// only on a valid login record of this run. Before every screenshot and every
+// UI tree sent to the model, a login-like or unreadable screen latches the
+// record UNKNOWN and stops the run (no capture). Secret values are refused by
+// every text action and redacted from everything written.
 //
 // Needs PI_API_KEY/MINIMAX_API_KEY + @earendil-works/pi-ai (SLOCK_PI_AI_MODULE).
 //
@@ -42,6 +45,7 @@ import { capacityClientFromEnv, runWithModelRetries } from "./model_capacity.mjs
 import { detectForeignAndroidSystemBlocker } from "./system_blocker.mjs";
 import { serverGuardSection } from "./server_guard.mjs";
 import { adbRunAsShellArgs } from "./mobile_login_bootstrap_lib.mjs";
+import { LoginWindowError, loginLike, markUnknown, readRecord, refuseSecret, secretValues } from "./login_phase.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
@@ -69,10 +73,6 @@ let drv = null;
 let modelCapacity = null;
 let lastCaptureBoundary = null;
 
-const SECRETS = {
-  "{{QA_EMAIL}}": process.env.QA_TEST_EMAIL || "",
-  "{{QA_PASSWORD}}": process.env.QA_TEST_PASSWORD || "",
-};
 
 const piKey = () => process.env.MINIMAX_API_KEY || process.env.PI_API_KEY || "";
 function loadModels() {
@@ -83,11 +83,20 @@ function loadModels() {
 // logs). GitHub Actions masks secrets in job logs, but evidence artifacts and
 // verdict.json are downloadable — keep them clean at the source.
 function redact(s) {
-  let out = String(s);
-  for (const v of Object.values(SECRETS)) {
-    if (v) out = out.split(v).join("***");
-  }
-  return out;
+  return secretValues().reduce((out, v) => out.split(v).join("***"), String(s));
+}
+
+// Android login probe (iOS: ios_driver.mjs guards its own captures). Sticky: once the
+// screen looked like a login or could not be read, no further capture happens.
+let loginLatch = null;
+function androidLoginProbe() {
+  if (loginLatch) throw loginLatch;
+  let nodes = [];
+  try { nodes = uiNodes(); } catch {}
+  const reason = !nodes.length ? "login probe could not read the screen" : loginLike(nodes) ? "login-like surface on screen" : null;
+  if (!reason) return nodes;
+  markUnknown(opts.out, reason);
+  throw (loginLatch = new LoginWindowError(reason));
 }
 
 function adb(args, opts2 = {}) {
@@ -95,8 +104,9 @@ function adb(args, opts2 = {}) {
   return execFileSync("adb", [...base, ...args], { maxBuffer: 64 * 1024 * 1024, timeout: 60000, ...opts2 });
 }
 
-function screenshotPng() {
+async function screenshotPng() {
   if (drv) return drv.screenshotPng();
+  androidLoginProbe();
   const captured = captureAndroidScreenshotWithPostProof(
     () => adb(["exec-out", "screencap", "-p"], { encoding: "buffer" }),
     (imageSha256) => captureAndroidQaBoundary(imageSha256)
@@ -188,10 +198,11 @@ function uiNodes() {
     const pkg = /package="([^"]*)"/.exec(tag)?.[1] ?? "";
     const resourceId = /resource-id="([^"]*)"/.exec(tag)?.[1] ?? "";
     const focused = /focused="true"/.test(tag);
+    const password = /password="true"/.test(tag);
     const clickable = /clickable="true"/.test(tag);
     const editable = /EditText|TextField|AutoComplete/i.test(cls);
     const b = /bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(tag);
-    nodes.push({ text, desc, cls, pkg, resourceId, editable, clickable, focused, bounds: b ? [+b[1], +b[2], +b[3], +b[4]] : null });
+    nodes.push({ text, desc, cls, pkg, resourceId, editable, clickable, focused, password, bounds: b ? [+b[1], +b[2], +b[3], +b[4]] : null });
   }
   return nodes;
 }
@@ -204,7 +215,7 @@ async function dumpUi() {
   // after dump-heavy turns). The agent only ever uses text + bounds (+focus),
   // so compress to exactly that — lossless for its purposes, ~10x smaller.
   const lines = [];
-  for (const n of uiNodes()) {
+  for (const n of androidLoginProbe()) {
     // v2 keep-set (first compression dropped empty EditTexts — the login
     // fields — and the agent went blind, batch rerun 29505605156): editable
     // nodes ALWAYS survive even when empty, clickable nodes survive so
@@ -261,6 +272,7 @@ function tapTextResolve(wanted) {
 // through two shells — acceptance inputs (emails, passwords, search words)
 // don't need them, and a typo here would execute on the device.
 async function inputText(value) {
+  refuseSecret(value);
   if (drv) return drv.text(value);
   if (/[\\'"`$&|;<>(){}\[\]!*?~#]/.test(value)) throw new Error("input text contains unsupported shell metacharacters");
   adb(["shell", "input", "text", value.replace(/ /g, "%s")]);
@@ -356,8 +368,8 @@ function preamble(size) {
     "  earlier dump coordinates stale. Use coordinate tap only for unlabelled targets.",
     "- Before tapping anything unlabelled, use dump_ui and compute the tap point from node bounds",
     '  ("[x1,y1][x2,y2]" -> center). Screenshots alone are not reliable for coordinates.',
-    "- The test account is email {{QA_EMAIL}} password {{QA_PASSWORD}} — type them as these",
-    "  EXACT placeholder strings in a text action; the runner substitutes real values.",
+    "- The runner signs the app in before you start; you never type credentials. If a sign-in",
+    "  page or a password field appears, finish with verdict error (the run cannot continue).",
     "- Typing goes to the FOCUSED field. When the on-screen keyboard opens, the layout may",
     "  shift — dump_ui AGAIN before tapping the next field, and verify focus moved (tap the",
     "  field, then check the screenshot for a cursor) before typing into it.",
@@ -581,6 +593,9 @@ async function main() {
   if (!limits) { console.error("invalid execution budget: turns 20-160, minutes 10-90, no-progress 3-30 required"); process.exit(2); }
   Object.assign(opts, limits);
   fs.mkdirSync(opts.out, { recursive: true });
+  // No valid login record of this run (login_phase.mjs) = no capture at all.
+  const login = readRecord(opts.out);
+  if (!login.ok) throw new LoginWindowError(login.reason);
   modelCapacity = capacityClientFromEnv({
     outDir: opts.out,
     onEvent: (event) => recordSession("model_capacity", event),
@@ -588,7 +603,7 @@ async function main() {
   if (opts.platform === "ios") {
     if (!opts.iosIoDir) { console.error("--platform ios requires --ios-io-dir / QA_LOOP_IO_DIR"); process.exit(2); }
     const { createIosDriver } = await import("./ios_driver.mjs");
-    drv = createIosDriver({ ioDir: opts.iosIoDir, udid: opts.iosUdid, bundle: opts.appPackage });
+    drv = createIosDriver({ ioDir: opts.iosIoDir, udid: opts.iosUdid, bundle: opts.appPackage, recordDir: opts.out });
     console.error(`waiting for the iOS driver (${drv.driver}) to open the app...`);
     await drv.waitReady();
   }
@@ -605,8 +620,8 @@ async function main() {
   const observationLedger = new Map();
   const checkpointLedger = new Map();
 
-  const shoot = (turn) => {
-    const png = screenshotPng();
+  const shoot = async (turn) => {
+    const png = await screenshotPng();
     const imageSha256 = createHash("sha256").update(png).digest("hex");
     observationLedger.set(turn, imageSha256);
     const fileName = `step-${String(turn).padStart(2, "0")}.png`;
@@ -638,7 +653,7 @@ async function main() {
 
   const messages = [{
     role: "user",
-    content: [{ type: "text", text: preamble(size) }, { type: "text", text: "Current screen:" }, shoot(0)],
+    content: [{ type: "text", text: preamble(size) }, { type: "text", text: "Current screen:" }, await shoot(0)],
     timestamp: Date.now(),
   }];
   logStep({ turn: 0, event: "start", goal: opts.goal, screen: size });
@@ -766,9 +781,7 @@ async function main() {
           break;
         }
         case "text": {
-          let v = String(action.value ?? "");
-          for (const [ph, real] of Object.entries(SECRETS)) v = v.split(ph).join(real);
-          await inputText(v);
+          await inputText(String(action.value ?? ""));
           mechanicallyPerformed = true;
           // The recurring login failure mode is text landing in the wrong
           // field because a tap didn't move focus. Report the focused node's
@@ -818,7 +831,7 @@ async function main() {
     };
     actionLedger.set(turns, actionFact);
     recordSession("user_turn", { turn: turns, feedback: feedback === "ok" ? "ok" : `${feedback.length} chars`, screenshot: `step-${String(turns).padStart(2, "0")}.png` });
-    const observation = shoot(turns);
+    const observation = await shoot(turns);
     logStep({
       turn: turns, event: "action_fact", action_step: turns, action_type: actionFact.action_type,
       action_identity_sha256: actionFact.identity_sha256, action_summary: actionFact.safe_summary,
@@ -971,4 +984,12 @@ async function main() {
   process.exit(verdict === "pass" ? 0 : verdict === "fail" ? 1 : 2);
 }
 
-main().catch((e) => { console.error(String(e?.stack || e)); process.exit(2); });
+main().catch((e) => {
+  if (e?.loginWindow) {
+    // Rule 3: UNKNOWN, never pass/fail; secure_evidence.mjs withholds the evidence.
+    fs.mkdirSync(opts.out, { recursive: true });
+    fs.writeFileSync(path.join(opts.out, "verdict.json"), JSON.stringify({ verdict: "unknown", reason: `UNKNOWN: ${e.reason}` }, null, 2));
+  }
+  console.error(redact(String(e?.stack || e)));
+  process.exit(2);
+});

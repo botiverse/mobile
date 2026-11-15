@@ -7,6 +7,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { validateLoginResponse } from "./mobile_login_bootstrap_lib.mjs";
+import { writeRecord } from "./login_phase.mjs";
 import {
   buildSmokeLogin,
   classifyDeviceListedAfterDelete,
@@ -687,6 +688,7 @@ function reportVerdicts(host, deleteStatus) {
   const evidence = path.join(host.root, "qa-evidence");
   fs.mkdirSync(evidence, { recursive: true });
   fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({ verdict: "pass" }));
+  writeRecord(evidence, { mode: "none", status: "no-login", login_end: null }, { GITHUB_RUN_ID: "222", GITHUB_RUN_ATTEMPT: "1" }); // #222 evidence gate
   fs.writeFileSync(path.join(host.runnerTemp, "stamp-claim-rc-ios"), "fake-lease");
   const bin = path.join(host.root, "curl-bin");
   fs.mkdirSync(bin, { recursive: true });

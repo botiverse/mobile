@@ -171,8 +171,9 @@ QA_SECRET_STEPS: dict[str, dict[str, dict[str, dict]]] = {
     "qa-acceptance-ios.yml": {"acceptance": {
         PREFLIGHT: {"if": LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
         "Freeze legacy credential identity receipt": {"if": RECEIPT_IF, "env": _plain("QA_TEST_EMAIL")},
-        "Run acceptance agent": {"if": "${{ inputs.mode == 'agent' || inputs.mode == '' }}", "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
-        "Run deterministic repro": {"if": "${{ inputs.mode == 'deterministic' }}", "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        # #222 re-pin: "Run acceptance agent" and "Run deterministic repro" no longer get the QA
+        # account. iOS has no safe way to type a secret (password login fails closed) and the
+        # deterministic repro never signs in, so QA secrets in either step now fail.
         # Pre-existing, unchanged by #4817: the reporter reads the email on every path.
         "Report to Stamp": {"if": "always()", "env": _plain("QA_TEST_EMAIL")},
     }},
@@ -603,8 +604,11 @@ def real_tree_mutants() -> list[tuple[str, str, str, str]]:
         ("extra alias in an allowed step", qa, "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}",
          "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n          EXTRA_ALIAS: ${{ secrets.QA_TEST_PASSWORD }}"),
         ("acceptance runner no longer gated on bootstrap", qa, gate, "secrets.QA_TEST_PASSWORD"),
-        ("iOS deterministic repro no longer gated on bootstrap", ios, f"QA_TEST_PASSWORD: ${{{{ {gate} }}}}\n        run: |\n          mkdir -p qa-evidence\n          cp \"$GITHUB_WORKSPACE/build-info-ios.json\" qa-evidence/build-info.json 2>/dev/null || true\n          echo $((",
-         "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence\n          cp \"$GITHUB_WORKSPACE/build-info-ios.json\" qa-evidence/build-info.json 2>/dev/null || true\n          echo $(("),
+        # #222: neither iOS step may get the account back, gated or not.
+        ("iOS deterministic repro gets the QA password back", ios, "        # Never signs in, so no QA credentials (#222).\n",
+         f"        env:\n          QA_TEST_PASSWORD: ${{{{ {gate} }}}}\n"),
+        ("iOS acceptance agent gets the QA password back", ios, "          QA_PASSWORD_LOGIN: ",
+         f"          QA_TEST_PASSWORD: ${{{{ {gate} }}}}\n          QA_PASSWORD_LOGIN: "),
         ("preflight gate -> true", qa, f"        if: {LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
          "        if: ${{ true }}\n        env:\n          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}\n          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence"),
         ("preflight gate -> false", qa, f"        if: {LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",

@@ -433,9 +433,19 @@ case "$PHASE" in
   *) echo "stamp: unknown phase $PHASE" >&2; exit 2;;
 esac
 
+# Evidence gate (#222, secure_evidence.mjs) before anything leaves for Stamp: without a valid
+# login record of this run (or with a login-like signal, or a secret value) it deletes the
+# evidence, rewrites verdict.json to "unknown" and nothing is uploaded.
+evidence_rc=0
+if [ "$REPORT_EVIDENCE" = "true" ] && ! node "$SCRIPT_DIR/secure_evidence.mjs" --dir "$EV"; then
+  echo "stamp: evidence gate UNKNOWN; no evidence uploaded" >&2
+  REPORT_EVIDENCE=false
+  evidence_rc=1
+  [ "$REPORT_VERDICT" = "true" ] || exit 1
+fi
+
 # Freeze the execution identity before any scoped log or verdict write. Stamp
 # accepts an exact repeat idempotently and rejects a conflicting generation.
-evidence_rc=0
 CAPTURE_PROOF_REQUIRED=false
 CAPTURE_WINDOW_NONCE=""
 CAPTURE_SCOPE_GENERATION=""
@@ -572,7 +582,11 @@ if [ "$REPORT_VERDICT" = "true" ]; then
   prerequisite_rc="${3:-$evidence_rc}"
   VERDICT_FILE="$EV/verdict.json"
   OVERRIDE_FILE="${RUNNER_TEMP:-$EV}/stamp-harness-verdict-$STAMP_RUN_CASE_ID.json"
-  if [ "$prerequisite_rc" != "0" ]; then
+  # An UNKNOWN run (#222) never reports pass/fail.
+  if node -e 'const v=require(require("path").resolve(process.argv[1]));process.exit(v.verdict==="unknown"?0:1)' "$VERDICT_FILE" 2>/dev/null; then
+    node -e 'const fs=require("fs");fs.writeFileSync(process.argv[1],JSON.stringify({verdict:"harness",reason:"UNKNOWN: login window or evidence not provably clean; product verdict suppressed"}))' "$OVERRIDE_FILE"
+    VERDICT_FILE="$OVERRIDE_FILE"
+  elif [ "$prerequisite_rc" != "0" ]; then
     node -e 'const fs=require("fs");fs.writeFileSync(process.argv[1],JSON.stringify({verdict:"harness",reason:"Stamp evidence/bootstrap lifecycle incomplete; product verdict suppressed"}))' "$OVERRIDE_FILE"
     VERDICT_FILE="$OVERRIDE_FILE"
   fi

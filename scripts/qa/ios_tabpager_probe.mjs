@@ -42,7 +42,9 @@ const groups = arg("--groups", "1,2,3,4,5,6,7,8").split(",").map((s) => s.trim()
 if (!ioDir) { console.error("--ios-io-dir / QA_LOOP_IO_DIR required"); process.exit(2); }
 
 fs.mkdirSync(outDir, { recursive: true });
-const drv = createIosDriver({ ioDir, udid, bundle });
+// Never signs in (#222): the driver probes the screen before every capture and latches the
+// login record (written by the workflow) UNKNOWN on anything login-like.
+const drv = createIosDriver({ ioDir, udid, bundle, recordDir: outDir });
 const steps = [];
 const rec = (msg, extra = {}) => {
   const e = { t: new Date().toISOString(), msg, ...extra };
@@ -79,12 +81,13 @@ const capture = async (label) => {
   return dump;
 };
 
-const { w, h } = drv.screenSize();
+let w = 0, h = 0; // geometry exists only after waitReady's login probe
 const P = (fx, fy) => ({ x: Math.round(fx * w), y: Math.round(fy * h) });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 try {
   await drv.waitReady();
+  ({ w, h } = drv.screenSize());
   rec("harness ready", { screenW: w, screenH: h });
 
   let dump = await capture("step-00-probe-launch");
@@ -543,6 +546,6 @@ try {
     `Log-sequence advanced on ${compared.length - stalled.length}/${compared.length} adjacent pairs.`);
   process.exit(0);
 } catch (e) {
-  write("error", `harness/script error: ${String(e).slice(0, 300)}`);
+  write(e?.loginWindow ? "unknown" : "error", `${e?.loginWindow ? "UNKNOWN" : "harness/script error"}: ${String(e).slice(0, 300)}`);
   process.exit(2);
 }

@@ -53,9 +53,14 @@ consumers keep this in sync:
   `clear` action jumps to the end (MOVE_END) and sends one adb call with a
   60×DEL burst.
 - `input text` cannot carry shell metacharacters (runner rejects them) and
-  encodes spaces as `%s` — keep acceptance inputs simple; credentials go in as
-  `{{QA_EMAIL}}` / `{{QA_PASSWORD}}` placeholders, substituted only at adb
-  time and redacted from all evidence.
+  encodes spaces as `%s` — keep acceptance inputs simple.
+- **The agent never signs in (#222).** `scripts/qa/login_phase.mjs` signs the
+  app in before the agent, the recorder or any capture starts (Android:
+  credentials typed through the emulator console, on this run's own emulator
+  only; iOS password login fails closed). A run without a valid login record
+  captures nothing and ends UNKNOWN; `scripts/qa/secure_evidence.mjs` gates
+  both evidence uploads. A password field or "Continue as" on screen stops the
+  run UNKNOWN.
 
 ## Timing
 
@@ -100,7 +105,7 @@ consumers keep this in sync:
 - Give position hints for every icon-only control the flow touches.
 - Name the surfaces by their on-screen text (the dump locator) — e.g. "the
   CHANNELS section", "the row `#all`" — that is what the agent can find.
-- Expect the login state: cold-start lands on Sign In; a server picker may
+- Expect the login state: the run starts signed in; a server picker may
   follow login (round-2 had to choose the server before Home).
 
 ## Stale bounds in dialogs — prefer tap_text
