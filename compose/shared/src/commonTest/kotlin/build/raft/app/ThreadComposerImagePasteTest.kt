@@ -66,12 +66,84 @@ class ThreadComposerImagePasteTest {
         )
     }
 
+    private fun withPasteLog(block: (MutableList<String>) -> Unit) {
+        val lines = mutableListOf<String>()
+        val previous = ThreadComposerImagePasteLog.sink
+        ThreadComposerImagePasteLog.sink = { lines += it }
+        try {
+            block(lines)
+        } finally {
+            ThreadComposerImagePasteLog.sink = previous
+        }
+    }
+
     @Test
-    fun onePastePerPress() {
+    fun onePastePerPressAndTheLogSaysWhichRouteTookIt() = withPasteLog { lines ->
         val start = TimeSource.Monotonic.markNow()
-        assertTrue(ThreadComposerImagePasteRequests.claim(start + 10_000.milliseconds))
-        assertFalse(ThreadComposerImagePasteRequests.claim(start + 10_100.milliseconds))
-        assertTrue(ThreadComposerImagePasteRequests.claim(start + 11_000.milliseconds))
+        val system = ThreadComposerImagePasteRoute.SystemPaste
+        val placeholder = ThreadComposerImagePasteRoute.Placeholder
+        assertTrue(ThreadComposerImagePasteRequests.claim(system, start + 10_000.milliseconds))
+        assertFalse(ThreadComposerImagePasteRequests.claim(placeholder, start + 10_100.milliseconds))
+        assertTrue(ThreadComposerImagePasteRequests.claim(placeholder, start + 11_000.milliseconds))
+        assertEquals(
+            listOf(
+                "composer_image_paste_claim route=system_paste granted=true",
+                "composer_image_paste_claim route=placeholder granted=false previousRoute=system_paste sinceLastMs=100",
+                "composer_image_paste_claim route=placeholder granted=true previousRoute=system_paste sinceLastMs=1000",
+            ),
+            // The first line's previous claim depends on the tests that ran before.
+            listOf(lines[0].substringBefore(" previousRoute=")) + lines.drop(1),
+        )
+    }
+
+    @Test
+    fun onIosTheKeyHandlerLeavesCmdVWithImagesToTheSystemPasteAction() = withPasteLog { lines ->
+        var pasted = 0
+        val consumed =
+            threadComposerHandlePasteShortcut(
+                shortcut = true,
+                clipboardHasAttachments = { true },
+                // iOS: raftPlatformComposerKeyHandlerPastesAttachments() is false.
+                keyHandlerPastesAttachments = false,
+                onPaste = { pasted++ },
+            )
+        // The key passes through to UIKit, which sends the editor paste: (the host's hook).
+        assertFalse(consumed)
+        assertEquals(0, pasted)
+        // No claim: the system paste action's claim for this press is not denied.
+        assertEquals(listOf("composer_paste_key route=key_handler decision=leave_to_system_paste"), lines)
+        val later = TimeSource.Monotonic.markNow() + 100_000.milliseconds
+        assertTrue(ThreadComposerImagePasteRequests.claim(ThreadComposerImagePasteRoute.SystemPaste, later))
+    }
+
+    @Test
+    fun onDesktopTheKeyHandlerStillAttachesOnCmdV() = withPasteLog { lines ->
+        var pasted = 0
+        val consumed =
+            threadComposerHandlePasteShortcut(
+                shortcut = true,
+                clipboardHasAttachments = { true },
+                keyHandlerPastesAttachments = true,
+                onPaste = { pasted++ },
+            )
+        assertTrue(consumed)
+        assertEquals(1, pasted)
+        assertEquals("composer_paste_key route=key_handler decision=paste_attachments", lines.first())
+        assertTrue(lines[1].startsWith("composer_image_paste_claim route=key_handler granted=true"), lines[1])
+    }
+
+    @Test
+    fun textAndOtherKeysPassThroughTheKeyHandler() = withPasteLog { lines ->
+        var asked = 0
+        var pasted = 0
+        for (keyHandlerPastes in listOf(true, false)) {
+            assertFalse(threadComposerHandlePasteShortcut(false, { asked++; true }, keyHandlerPastes) { pasted++ })
+            assertFalse(threadComposerHandlePasteShortcut(true, { false }, keyHandlerPastes) { pasted++ })
+        }
+        // A key that is not the paste shortcut never asks the clipboard and logs nothing.
+        assertEquals(0, asked)
+        assertEquals(0, pasted)
+        assertEquals(List(2) { "composer_paste_key route=key_handler decision=paste_text" }, lines)
     }
 
     @Test

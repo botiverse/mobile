@@ -48,6 +48,9 @@ internal actual fun raftPlatformImagePasteClipEntry(): ClipEntry? = null
 
 internal actual fun raftPlatformComposerUsesImagePasteClipboard(): Boolean = false
 
+// As before: the key handler would take it, but Android's clipboard never reports attachments.
+internal actual fun raftPlatformComposerKeyHandlerPastesAttachments(): Boolean = true
+
 internal actual fun raftPlatformPastedImagesOpenEditor(): Boolean = false
 
 internal actual fun raftPlatformComposerMinimumBottomPaddingDp(): Float = 0f

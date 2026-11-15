@@ -86,9 +86,9 @@ fun raftIosPasteMaxImages(): Int = ThreadComposerImagePasteMaxImages
 
 /**
  * The host's paste action is about to attach images. False when this press was already taken
- * (⌘V reaches both the system paste action and the composer's key handler): then do nothing.
+ * (one image paste per press): then do nothing.
  */
-fun raftComposerImagePasteClaim(): Boolean = ThreadComposerImagePasteRequests.claim()
+fun raftComposerImagePasteClaim(): Boolean = ThreadComposerImagePasteRequests.claim(ThreadComposerImagePasteRoute.SystemPaste)
 
 /** Images the host read in its paste action; the focused composer opens them in the editor. */
 fun raftComposerImagesPasted(images: List<RaftIosPastedImage>) {
