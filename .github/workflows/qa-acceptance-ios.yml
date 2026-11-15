@@ -694,8 +694,9 @@ jobs:
       # (private inbox in the app data container + `simctl launch` arguments) with fake-token
       # envelopes. Needs no QA account and no Stamp claim: it proves delivery, one-shot
       # consumption, digest/binding validation and the replay refusal on this exact build, then
-      # reboots the run-owned Simulator (boot_generation must change; harness and app must agree)
-      # and ends with the device cleanup, which must report a clean receipt.
+      # reboots the run-owned Simulator (boot_generation must change; harness and app must agree).
+      # The device itself is deleted by the verified "Delete run-owned simulator" step after evidence
+      # collection (qa-evidence/simulator-cleanup.json).
       - name: Run QA session bootstrap smoke
         if: ${{ inputs.mode == 'bootstrap-smoke' }}
         run: |
@@ -810,6 +811,25 @@ jobs:
             --started "$(cat qa-evidence/perf-started.txt 2>/dev/null || echo 0)" \
             --out qa-evidence/perf.json || true
 
+      # Delete the job-owned Simulator, AFTER all evidence collection above (screenshots, logs, crash
+      # reports, perf) and before the evidence is reported/uploaded so its record ships with it.
+      # Same verified deletion as `ios_qa_bootstrap.mjs cleanup`: ownership receipt (UDID + this run
+      # id + attempt) and a fresh device list checked before shutdown and again before delete, then a
+      # fresh `simctl list devices -j` must no longer list the UDID. The record states separate facts:
+      # simulator deleted_and_absent|unknown, app_process unknown, server_session not proven. A no-op
+      # if this job's device was already deleted (no double delete). Fails the job unless deleted.
+      - name: Delete run-owned simulator
+        if: always()
+        run: |
+          [ -n "${UDID:-}" ] && [ -n "${SIM_NAME:-}" ] || { echo "no run-owned simulator recorded"; exit 0; }
+          case "$SIM_NAME" in raft-qa-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}) ;; *) echo "::error::SIM_NAME $SIM_NAME is not this run's"; exit 1;; esac
+          mkdir -p qa-evidence
+          node scripts/qa/ios_qa_bootstrap.mjs delete-simulator --udid "$UDID" --simulator-name "$SIM_NAME" \
+            --bundle-id "${BUNDLE_ID:-build.raft.app}" --output qa-evidence/simulator-cleanup.json || {
+            echo "::error::the run-owned simulator $SIM_NAME ($UDID) is not proven deleted (see qa-evidence/simulator-cleanup.json)"
+            exit 1
+          }
+
       - name: Report to Stamp
         if: always()
         env:
@@ -826,27 +846,6 @@ jobs:
           name: qa-acceptance-ios-evidence
           path: qa-evidence
           if-no-files-found: warn
-
-      # Delete the run-owned Simulator, after a name/UDID ownership check: never a device this run
-      # did not create. The job's ownership receipt (record-ownership) must also bind the UDID to
-      # this run id + attempt.
-      - name: Delete run-owned simulator
-        if: always()
-        run: |
-          [ -n "${UDID:-}" ] && [ -n "${SIM_NAME:-}" ] || { echo "no run-owned simulator recorded"; exit 0; }
-          case "$SIM_NAME" in raft-qa-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}) ;; *) echo "::error::SIM_NAME $SIM_NAME is not this run's"; exit 1;; esac
-          name=$(xcrun simctl list devices -j | python3 -c "import json,sys,os; print(next((d['name'] for ds in json.load(sys.stdin)['devices'].values() for d in ds if d['udid']==os.environ['UDID']), ''))")
-          if [ "$name" != "$SIM_NAME" ]; then
-            echo "::error::simulator $UDID is named '${name}', not the run-owned $SIM_NAME; not deleting"
-            exit 1
-          fi
-          node scripts/qa/ios_qa_bootstrap.mjs verify-ownership --udid "$UDID" --simulator-name "$SIM_NAME" || {
-            echo "::error::ownership receipt does not bind $UDID to this run; not deleting"
-            exit 1
-          }
-          xcrun simctl shutdown "$UDID" 2>/dev/null || true
-          xcrun simctl delete "$UDID"
-          echo "deleted run-owned simulator $SIM_NAME ($UDID)"
 
       - name: Report verdict
         if: always()

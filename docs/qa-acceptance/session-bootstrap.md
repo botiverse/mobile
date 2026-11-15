@@ -126,13 +126,13 @@ non-debuggable APKs the same way).
 node scripts/qa/ios_qa_bootstrap.mjs binding --udid "$UDID" --bundle-id "$BUNDLE_ID" \
   --output "$RUNNER_TEMP/stamp-bootstrap-device-binding.json"
 bash scripts/qa/stamp_report.sh bootstrap-login "$RUNNER_TEMP/stamp-bootstrap-device-binding.json"
-node scripts/qa/ios_qa_bootstrap.mjs prepare --udid "$UDID" --bundle-id "$BUNDLE_ID" \
+node scripts/qa/ios_qa_bootstrap.mjs prepare --udid "$UDID" --simulator-name "$SIM_NAME" --bundle-id "$BUNDLE_ID" \
   --response "$RUNNER_TEMP/stamp-bootstrap-login-$STAMP_RUN_CASE_ID.json" \
   --binding "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" \
   --run-case-id "$STAMP_RUN_CASE_ID" --ci-job-ref "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
   --ready-output "$RUNNER_TEMP/stamp-bootstrap-ready.json"
 bash scripts/qa/stamp_report.sh bootstrap-ready "$RUNNER_TEMP/stamp-bootstrap-ready.json"
-# … run the case on the signed-in app …
+# … run the case on the signed-in app, then collect ALL evidence (screenshots, logs, crash reports) …
 node scripts/qa/ios_qa_bootstrap.mjs cleanup --udid "$UDID" --simulator-name "$SIM_NAME" --bundle-id "$BUNDLE_ID" \
   --response … --binding … --ready "$RUNNER_TEMP/stamp-bootstrap-ready.json" --outcome completed \
   --output "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" --run-case-id … --ci-job-ref …
@@ -141,82 +141,65 @@ bash scripts/qa/stamp_report.sh bootstrap-terminal completed "$RUNNER_TEMP/stamp
 
 `prepare` does, in order:
 
-1. `xcrun simctl get_app_container <udid> <bundle> data` → `<data>`.
-2. `mkdir -p "<data>/Library/Application Support/qa-bootstrap/inbox"` (mode 0700).
-3. Write the canonical envelope bytes to `.<request_id>.session.tmp` (mode 0600),
+1. Verify **ownership** of the Simulator (below); refused → nothing is read, written or launched.
+2. `xcrun simctl get_app_container <udid> <bundle> data` → `<data>`.
+3. `mkdir -p "<data>/Library/Application Support/qa-bootstrap/inbox"` (mode 0700).
+4. Write the canonical envelope bytes to `.<request_id>.session.tmp` (mode 0600),
    rename to `<request_id>.session`, read back mode/size/sha256.
-4. Start `xcrun simctl spawn <udid> log stream --style compact --predicate 'eventMessage CONTAINS "SlockQaBootstrap"'`.
-5. `xcrun simctl launch --terminate-running-process <udid> <bundle> -qaBootstrapRequestId <request_id> -qaBootstrapEnvelopeDigest <envelope_digest>`.
-6. Wait (≤ 120 s) for the exact-bound `QA_BOOTSTRAP_READY` line; on timeout report the
+5. Start `xcrun simctl spawn <udid> log stream --style compact --predicate 'eventMessage CONTAINS "SlockQaBootstrap"'`.
+6. Verify ownership **again**, then `xcrun simctl launch --terminate-running-process <udid> <bundle> -qaBootstrapRequestId <request_id> -qaBootstrapEnvelopeDigest <envelope_digest>`.
+7. Wait (≤ 120 s) for the exact-bound `QA_BOOTSTRAP_READY` line; on timeout report the
    `QA_BOOTSTRAP_STAGE`/`FAILURE` stages and the app's `QA_BOOTSTRAP_DIAG` line.
 
-`cleanup` (and `smoke`) first require a Simulator **owned by this job**.
-`qa-acceptance-ios.yml` creates the device fresh for every run as
+**Ownership.** `prepare`, `cleanup`, `delete-simulator` and `smoke` only act on a Simulator
+**owned by this job**. `qa-acceptance-ios.yml` creates the device fresh for every run as
 `raft-qa-run-<run id>-<attempt>` (it never reuses a device found by name) and right after
 `simctl create` runs `ios_qa_bootstrap.mjs record-ownership`, which writes the ownership
 receipt `$RUNNER_TEMP/raft-qa-simulator-ownership.json` once (exclusive create, mode 0400):
 `{contract:"raft-qa-simulator-ownership/v1", udid, name, github_run_id,
-github_run_attempt, created_at}`. Immediately before every destructive action (terminate,
-uninstall, the smoke's launches and shutdown) the harness re-verifies: the receipt is a
-regular file of this uid with no group/other permissions and the exact shape; its run
-id/attempt are this job's `GITHUB_RUN_ID`/`GITHUB_RUN_ATTEMPT`; its UDID/name equal
-`--udid`/`--simulator-name`, which must be `raft-qa-run-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`;
-and a fresh `simctl list devices -j` shows that UDID exactly once under that name, with no
-other device of that name. A missing, mismatched or ambiguous ownership is refused before
-anything is stopped. The workflow's last step deletes the device only after
-`verify-ownership` passes as well. Then
-`cleanup` terminates the app, `simctl uninstall`s it (the data container holds the MMKV
-session and the inbox; the app stores nothing in the keychain) and classifies each read
-as **present / absent / unknown**:
+github_run_attempt, created_at}`. Immediately before every container write, launch,
+terminate, shutdown and delete the harness re-verifies: the receipt is a regular file of
+this uid with no group/other permissions and the exact shape; its run id/attempt are this
+job's `GITHUB_RUN_ID`/`GITHUB_RUN_ATTEMPT`; its UDID/name equal `--udid`/`--simulator-name`,
+which must be `raft-qa-run-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`; and a fresh
+`simctl list devices -j` shows that UDID exactly once under that name, with no other device
+of that name. Missing, mismatched or ambiguous ownership is refused before anything happens.
 
-- app process — two independent reads, and `absent` needs both:
-  `xcrun simctl spawn <udid> launchctl list` is `present` if a running
-  `UIKitApplication:<bundle>[…]` job is listed; it says `absent` only if the command
-  succeeded, the listing is structurally whole (ends with a newline, every line is the
-  header or a `pid\tstatus\tlabel` row) and shows a running positive-control service
-  (`com.apple.SpringBoard` or `com.apple.backboardd`). The control proves the listing
-  covered that service, not that it was complete (a cut at a line boundary is invisible),
-  so the host `ps -axww -o pid=,args=` must also succeed, end with a newline, list this
-  Simulator's launchd_sim (positive control) and no `<App>.app/<CFBundleExecutable>`
-  process under this device's bundle containers. Non-zero exit, timeout, truncated or
-  control-less output of either read is `unknown`. **Evidence ceiling:** the completeness of
-  a process listing cannot be proven — a listing cut exactly at a newline after the
-  launchd_sim line reads absent. Process absence therefore never carries the receipt on its
-  own: `clean` additionally needs uninstall exit 0 and the container confirmed absent through
-  the allowlisted not-installed result and the validated listapps above.
-- data container — `xcrun simctl get_app_container <udid> <bundle> data`: `present` on
-  exit 0 with a path (or when the validated `simctl listapps` still lists the bundle).
-  `absent` only if ALL hold: the app read AND a control read of a never-installed bundle id
-  (same command, same moment) are each an **allowlisted** not-installed result
-  (`IOS_NOT_INSTALLED_RESULTS`: today only exit 2 with `An error was encountered processing
-  the command (domain=NSPOSIXErrorDomain, code=2): [The operation couldn’t be completed.]
-  No such file or directory`, the text simctl printed in run 43628962682) with the same
-  status and text; a fresh `simctl list devices -j` shows the device `Booted`; and
-  `simctl listapps <udid>`, parsed by the host's `plutil -convert json -o - -` (which fails
-  on a malformed or cut property list) and type-checked as a non-empty dictionary whose
-  every value is a dictionary with `CFBundleIdentifier` equal to its key, lists a system
-  positive-control app (`com.apple.Preferences` or `com.apple.mobilesafari`) and not the
-  bundle. Any other error — even one identical on both reads — and any parse/type failure
-  is `unknown`. New simctl error formats stay `unknown` until observed and added.
-
-The record is:
+**Cleanup = delete the job-owned Simulator, after all evidence collection.** Each run
+creates its own Simulator, so cleanup removes the whole device instead of inferring that
+the app, its process and its data are gone: verify ownership → `simctl shutdown` → verify
+ownership again → `simctl delete <udid>` → a fresh `simctl list devices -j` (parsed as
+`{devices: {<runtime>: [{udid, …}]}}`) must no longer list the UDID. `cleanup` (bound to the
+login/READY material) and `delete-simulator` (the workflow's final step, run after
+screenshots, logs, crash reports and perf were collected) use the same function;
+`delete-simulator` is a no-op when this job's device is already gone, so it is never
+deleted twice. The record states **separate facts**, never more than they prove:
 
 ```json
 {"platform":"ios-simulator","application_id":"…","simulator_udid":"…","simulator_name":"raft-qa-run-…",
  "boot_generation":"…","request_id":"…","envelope_digest":"…","process_instance_id":"…","process_generation":"…",
- "cleanup_receipt":"clean|failed|unknown",
- "app_process":{"method":"…","state":"absent",
-   "launchctl":{"state":"absent","reason":"app_job_not_listed","positive_control":"com.apple.SpringBoard"},
-   "host_process":{"state":"absent","reason":"app_process_not_listed","positive_control":"launchd_sim"}},
- "app_uninstall":{"method":"xcrun simctl uninstall","exit_status":0,"timed_out":false},
- "app_data_container":{"method":"…","state":"absent","reason":"not_installed_confirmed","positive_control":"com.apple.Preferences",
-   "exit_status":2,"control_exit_status":2,"listapps_exit_status":0,"listapps_plutil_exit_status":0,"listapps_plutil_error":"","error_signature":"…"}}
+ "cleanup_receipt":"simulator_deleted|unknown",
+ "simulator":"deleted_and_absent|unknown","simulator_reason":"udid_not_listed|delete_exit_1|udid_still_listed|list_…",
+ "listed_after_delete":"absent|present|unknown",
+ "app_process":"unknown",
+ "server_session":"not_proven_by_device_cleanup",
+ "simulator_deletion":{"method":"…","shutdown_exit_status":0,"delete_exit_status":0,"delete_timed_out":false,"listed_after_delete":"absent","reason":"udid_not_listed"},
+ "app_process_observations":{"note":"diagnostic …","launchctl":{…},"host_process":{…,"evidence_ceiling":"listing_completeness_unprovable"},"combined":"…"}}
 ```
 
-`cleanup_receipt` is `clean` only for process `absent`, uninstall exit 0 and container
-`absent`; `failed` if either read is `present`; otherwise `unknown`, never clean. `cleanup`
-exits 0 only for `clean`. It is a statement about this app on this Simulator, not proof
-that other sessions of the account were revoked (that is the separate logout receipt).
+- `simulator` is `deleted_and_absent` only when `simctl delete` exited 0 (no timeout) AND
+  the fresh, structurally valid list no longer contains the UDID (it cannot be selected
+  again); a failed/timed-out delete, a UDID still listed, or a failed/unparseable list is
+  `unknown`.
+- `app_process` is always `unknown`: deleting the device does not prove that a process of
+  the app exited, and process listings cannot be proven complete (a cut exactly at a
+  newline is invisible). One `launchctl list` and one host `ps -axww` read before shutdown
+  are attached as `app_process_observations`, diagnostics only.
+- `server_session` is always `not_proven_by_device_cleanup`: revocation is the server's
+  terminal/logout receipt, not a device fact.
+- `cleanup_receipt` (the overall verdict) is `simulator_deleted` exactly when `simulator`
+  is `deleted_and_absent`, else `unknown`. There is no `clean`. `cleanup` and
+  `delete-simulator` exit 0 only for `simulator_deleted`; the record is always written.
 
 Why a file plus launch arguments: launch arguments and `SIMCTL_CHILD_*` environment
 values are visible to every process on the host (`ps`) and land in logs, so they carry
@@ -306,9 +289,14 @@ correctly bound, through the real channel. It passes when
   previous boot is refused (`envelope_binding code=boot_generation`) and one bound to the
   new boot is validated. `smoke-report.json` `reboot` also records `kern.boottime` read
   inside the Simulator and on the host, as evidence of why it is not used;
-- the device cleanup ends with `cleanup_receipt: clean`.
+- after all evidence collection, the workflow's verified `delete-simulator` step deletes the
+  job-owned Simulator and records `cleanup_receipt: simulator_deleted` /
+  `simulator: deleted_and_absent` (with `app_process: unknown`, `server_session:
+  not_proven_by_device_cleanup`) in `qa-evidence/simulator-cleanup.json`; the job fails
+  otherwise.
 
-Evidence: `qa-evidence/bootstrap-smoke/{smoke-report.json,bootstrap-log.txt,after-delivery.png}`.
+Evidence: `qa-evidence/bootstrap-smoke/{smoke-report.json,bootstrap-log.txt,after-delivery.png}`
+and `qa-evidence/simulator-cleanup.json`.
 
 ## Not wired yet (iOS)
 

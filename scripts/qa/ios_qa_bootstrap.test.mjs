@@ -9,24 +9,21 @@ import { fileURLToPath } from "node:url";
 import { validateLoginResponse } from "./mobile_login_bootstrap_lib.mjs";
 import {
   buildSmokeLogin,
-  classifyAppContainerRead,
-  classifyDeviceBooted,
+  classifyDeviceListedAfterDelete,
   classifyHostProcessRead,
   classifyLaunchctlRead,
   combineProcessStates,
-  isRecognizedNotInstalled,
   findLaunchdSimPid,
   hasBootstrapLine,
   iosBootGeneration,
-  iosCleanupReceipt,
   iosCodeImages,
   iosInboxPaths,
   iosLaunchArgs,
   launchctlAppAlive,
   parsePsLstartUtc,
-  parseListAppsJson,
   requireRunOwnedSimulator,
   requireSimulatorUdid,
+  simulatorCleanupFacts,
   simulatorOwnershipReceipt,
 } from "./ios_qa_bootstrap_lib.mjs";
 
@@ -209,100 +206,40 @@ test("process state is absent only when launchctl AND the host query both show a
   assert.equal(combineProcessStates(present, unknown), "present");
 });
 
-// `simctl listapps` text (old-style plist) and what the host's `plutil -convert json -o - -` makes of it.
-const LISTAPPS = `{
-    "com.apple.Preferences" =     {
-        ApplicationType = System;
-        Bundle = "file:///Library/Developer/CoreSimulator/Volumes/iOS/Applications/Preferences.app/";
-        CFBundleIdentifier = "com.apple.Preferences";
-        GroupContainers =         {
-            "group.com.apple.settings" = "file:///x/";
-        };
-        SBAppTags =         (
-        );
-    };
-    "com.apple.mobilesafari" =     {
-        ApplicationType = System;
-        CFBundleIdentifier = "com.apple.mobilesafari";
-    };
-}
-`;
-const LISTAPPS_JSON = JSON.stringify({
-  "com.apple.Preferences": { ApplicationType: "System", Bundle: "file:///x/Preferences.app/", CFBundleIdentifier: "com.apple.Preferences", GroupContainers: { "group.com.apple.settings": "file:///x/" }, SBAppTags: [] },
-  "com.apple.mobilesafari": { ApplicationType: "System", CFBundleIdentifier: "com.apple.mobilesafari" },
-});
-const converted = (value) => ({ status: 0, stdout: typeof value === "string" ? value : JSON.stringify(value) });
-const bootedList = (state = "Booted") => ({ status: 0, stdout: JSON.stringify({ devices: { "iOS-27-0": [{ udid, name: "raft-qa-run-222-1", state }] } }) });
-// The not-installed result simctl actually printed in qa-acceptance-ios.yml run 43628962682 attempt 2.
-const OBSERVED_NOT_INSTALLED = "An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=2):\nThe operation couldn’t be completed. No such file or directory\nNo such file or directory\n";
+const devicesList = (devices) => ({ status: 0, stdout: JSON.stringify({ devices: { "com.apple.CoreSimulator.SimRuntime.iOS-27-0": devices } }) });
 
-test("listapps: only a plutil-converted, fully typed dictionary of apps counts", () => {
-  assert.deepEqual([...parseListAppsJson(converted(LISTAPPS_JSON))].sort(), ["com.apple.Preferences", "com.apple.mobilesafari"]);
-  // Conversion failed (plutil rejects malformed/cut plists), timed out or never ran.
-  assert.equal(parseListAppsJson({ status: 1, stdout: "", stderr: "Property List error: Unexpected character ) at line 1" }), null);
-  assert.equal(parseListAppsJson({ status: -1, stdout: LISTAPPS_JSON, timedOut: true }), null);
-  assert.equal(parseListAppsJson(undefined), null);
-  // Not JSON / cut JSON / wrong top-level type / empty.
-  assert.equal(parseListAppsJson(converted(LISTAPPS_JSON.slice(0, 80))), null);
-  assert.equal(parseListAppsJson(converted("[]")), null);
-  assert.equal(parseListAppsJson(converted("{}")), null);
-  // Mistyped entries: value not a dictionary, missing/non-string id, id not equal to its key.
-  assert.equal(parseListAppsJson(converted({ "com.apple.Preferences": "x" })), null);
-  assert.equal(parseListAppsJson(converted({ "com.apple.Preferences": [] })), null);
-  assert.equal(parseListAppsJson(converted({ "com.apple.Preferences": {} })), null);
-  assert.equal(parseListAppsJson(converted({ "com.apple.Preferences": { CFBundleIdentifier: 7 } })), null);
-  assert.equal(parseListAppsJson(converted({ "com.apple.Preferences": { CFBundleIdentifier: "com.apple.mobilesafari" } })), null);
-  assert.equal(classifyDeviceBooted(bootedList(), udid).booted, true);
-  assert.deepEqual(classifyDeviceBooted(bootedList("Shutdown"), udid), { booted: false, reason: "device_shutdown" });
-  assert.deepEqual(classifyDeviceBooted({ status: 1, stdout: "" }, udid), { booted: false, reason: "list_exit_1" });
-  assert.deepEqual(classifyDeviceBooted({ status: 0, stdout: "{" }, udid), { booted: false, reason: "list_unparseable" });
+test("deletion is confirmed only by a successful, well-formed device list without the UDID", () => {
+  const gone = devicesList([{ udid: "11111111-2222-3333-4444-555555555555", name: "other", state: "Booted" }]);
+  assert.deepEqual(classifyDeviceListedAfterDelete(gone, udid.toLowerCase()), { state: "absent", reason: "udid_not_listed" });
+  assert.deepEqual(classifyDeviceListedAfterDelete(devicesList([]), udid), { state: "absent", reason: "udid_not_listed" });
+  assert.deepEqual(classifyDeviceListedAfterDelete(devicesList([{ udid, name: "raft-qa-run-222-1", state: "Shutdown" }]), udid), { state: "present", reason: "udid_still_listed" });
+  assert.deepEqual(classifyDeviceListedAfterDelete({ status: 1, stdout: "" }, udid), { state: "unknown", reason: "list_exit_1" });
+  assert.deepEqual(classifyDeviceListedAfterDelete({ status: -1, stdout: "", timedOut: true }, udid), { state: "unknown", reason: "list_timeout" });
+  assert.deepEqual(classifyDeviceListedAfterDelete({ status: 0, stdout: '{"devices":{"r":[{"udid":' }, udid), { state: "unknown", reason: "list_unparseable" });
+  for (const shape of ["[]", "{}", '{"devices":[]}', '{"devices":{"r":{}}}', '{"devices":{"r":[{"name":"x"}]}}', '{"devices":{"r":["x"]}}']) {
+    assert.deepEqual(classifyDeviceListedAfterDelete({ status: 0, stdout: shape }, udid), { state: "unknown", reason: "list_unexpected_shape" }, shape);
+  }
 });
 
-test("not-installed allowlist: only the exact simctl result observed in CI is recognized", () => {
-  const bundle = "build.raft.app";
-  assert.equal(isRecognizedNotInstalled({ status: 2, stderr: OBSERVED_NOT_INSTALLED }, bundle), true);
-  assert.equal(isRecognizedNotInstalled({ status: 2, stderr: "An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=2):\nNo such file or directory\n" }, bundle), true);
-  assert.equal(isRecognizedNotInstalled({ status: 1, stderr: OBSERVED_NOT_INSTALLED }, bundle), false, "other exit status");
-  assert.equal(isRecognizedNotInstalled({ status: 7, stderr: "Simulator processing error domain=synthetic.example code=7\n" }, bundle), false);
-  assert.equal(isRecognizedNotInstalled({ status: 2, stderr: `${OBSERVED_NOT_INSTALLED}extra trailing text` }, bundle), false);
-  assert.equal(isRecognizedNotInstalled({ status: 2, stderr: "An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=20):\nNot a directory\n" }, bundle), false);
-  assert.equal(isRecognizedNotInstalled({ status: 2, stderr: "" }, bundle), false);
-});
-
-test("app container read: absent only for an allowlisted not-installed result plus independent positive controls", () => {
-  const bundle = "build.raft.app";
-  const controlId = "build.raft.qa.never-installed.abc123";
-  const notInstalled = { status: 2, stdout: "", stderr: OBSERVED_NOT_INSTALLED };
-  const confirmed = { listApps: converted(LISTAPPS_JSON), device: bootedList(), udid };
-  assert.deepEqual(classifyAppContainerRead(notInstalled, bundle, notInstalled, controlId, confirmed),
-    { state: "absent", reason: "not_installed_confirmed", positive_control: "com.apple.Preferences" });
-  assert.equal(classifyAppContainerRead({ status: 0, stdout: "/Users/r/data/Containers/Data/Application/X\n" }, bundle, notInstalled, controlId, confirmed).state, "present");
-  const stillListed = { ...confirmed, listApps: converted({ ...JSON.parse(LISTAPPS_JSON), [bundle]: { CFBundleIdentifier: bundle } }) };
-  assert.deepEqual(classifyAppContainerRead(notInstalled, bundle, notInstalled, controlId, stillListed), { state: "present", reason: "listed_by_listapps" });
-
-  // Argus (b1c6af1d): identical UNRECOGNIZED errors with a Booted device and healthy listapps.
-  const synthetic = { status: 7, stdout: "", stderr: "Simulator processing error domain=synthetic.example code=7\n" };
-  assert.deepEqual(classifyAppContainerRead(synthetic, bundle, synthetic, controlId, confirmed), { state: "unknown", reason: "unrecognized_error_exit_7" });
-  const shutdown = { status: 149, stdout: "", stderr: "Unable to lookup in current state: Shutdown" };
-  assert.equal(classifyAppContainerRead(shutdown, bundle, shutdown, controlId, confirmed).state, "unknown");
-  assert.deepEqual(classifyAppContainerRead(notInstalled, bundle, synthetic, controlId, confirmed), { state: "unknown", reason: "control_unrecognized_error" });
-  // The allowlisted result, but without the independent positive controls: unknown.
-  assert.equal(classifyAppContainerRead(notInstalled, bundle, notInstalled, controlId).state, "unknown");
-  assert.deepEqual(classifyAppContainerRead(notInstalled, bundle, notInstalled, controlId, { ...confirmed, device: bootedList("Shutdown") }), { state: "unknown", reason: "device_shutdown" });
-  assert.deepEqual(classifyAppContainerRead(notInstalled, bundle, notInstalled, controlId, { ...confirmed, listApps: { status: 1, stdout: "", stderr: "Property List error" } }), { state: "unknown", reason: "listapps_unavailable" });
-  assert.deepEqual(classifyAppContainerRead(notInstalled, bundle, notInstalled, controlId, { ...confirmed, listApps: converted({ "com.example.other": { CFBundleIdentifier: "com.example.other" } }) }), { state: "unknown", reason: "listapps_no_positive_control" });
-  assert.equal(classifyAppContainerRead({ status: -1, stdout: "", stderr: "", timedOut: true }, bundle, notInstalled, controlId, confirmed).state, "unknown");
-  assert.equal(classifyAppContainerRead({ status: 0, stdout: "" }, bundle, notInstalled, controlId, confirmed).state, "unknown");
-  assert.equal(classifyAppContainerRead(notInstalled, bundle, { status: 0, stdout: "/x" }, controlId, confirmed).state, "unknown");
-});
-
-test("cleanup receipt is clean only for confirmed absence; unknown never reads as clean", () => {
-  assert.equal(iosCleanupReceipt({ processState: "absent", uninstallStatus: 0, containerState: "absent" }), "clean");
-  assert.equal(iosCleanupReceipt({ processState: "unknown", uninstallStatus: 0, containerState: "absent" }), "unknown");
-  assert.equal(iosCleanupReceipt({ processState: "absent", uninstallStatus: 0, containerState: "unknown" }), "unknown");
-  assert.equal(iosCleanupReceipt({ processState: "absent", uninstallStatus: 1, containerState: "absent" }), "unknown");
-  assert.equal(iosCleanupReceipt({ processState: "present", uninstallStatus: 0, containerState: "absent" }), "failed");
-  assert.equal(iosCleanupReceipt({ processState: "absent", uninstallStatus: 0, containerState: "present" }), "failed");
+test("cleanup facts: only deletion confirmed by the list counts; app process and server session are never claimed", () => {
+  const gone = devicesList([]);
+  const ok = simulatorCleanupFacts({ deleteResult: { status: 0 }, listAfter: gone, udid });
+  assert.deepEqual(ok, {
+    cleanup_receipt: "simulator_deleted", simulator: "deleted_and_absent", simulator_reason: "udid_not_listed",
+    listed_after_delete: "absent", app_process: "unknown", server_session: "not_proven_by_device_cleanup",
+  });
+  const still = devicesList([{ udid, name: "raft-qa-run-222-1", state: "Shutdown" }]);
+  for (const [name, facts] of [
+    ["delete failed", simulatorCleanupFacts({ deleteResult: { status: 1 }, listAfter: gone, udid })],
+    ["delete timed out", simulatorCleanupFacts({ deleteResult: { status: -1, timedOut: true }, listAfter: gone, udid })],
+    ["still listed", simulatorCleanupFacts({ deleteResult: { status: 0 }, listAfter: still, udid })],
+    ["list failed", simulatorCleanupFacts({ deleteResult: { status: 0 }, listAfter: { status: 1, stdout: "" }, udid })],
+  ]) {
+    assert.equal(facts.cleanup_receipt, "unknown", name);
+    assert.equal(facts.simulator, "unknown", name);
+    assert.equal(facts.app_process, "unknown", name);
+    assert.equal(facts.server_session, "not_proven_by_device_cleanup", name);
+  }
 });
 
 const FOREIGN = "11111111-2222-3333-4444-555555555555";
@@ -358,11 +295,14 @@ test("ownership: only a protected receipt binding the UDID to THIS run id + atte
 
 const harness = fileURLToPath(new URL("./ios_qa_bootstrap.mjs", import.meta.url));
 const BUNDLE = "build.raft.app";
+const JOB_REF = "https://github.com/botiverse/mobile/actions/runs/222";
 
 /**
  * A scratch PATH with fake xcrun/ps/plutil. `scenario` maps a call key to { status, stdout, stderr }:
- * list, terminate, launchctl, uninstall, container:<data|app>, control, listapps, ps, plutil.
- * Every xcrun call is appended to <root>/calls.
+ * list, terminate, shutdown, delete, launch, log, launchctl, container:<data|app>, ps, plutil.
+ * A successful `delete` replaces `list` with `scenario.afterDelete` when given. `swapListAfter`
+ * ({ key, list }) replaces `list` right after the first call with that key (ownership changes mid-run).
+ * Every call is appended to <root>/calls.
  */
 function fakeHost(scenario) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ios-qa-bootstrap-"));
@@ -373,32 +313,30 @@ function fakeHost(scenario) {
 const fs = require("fs");
 const args = process.argv.slice(2);
 const root = ${JSON.stringify(root)};
-fs.appendFileSync(root + "/calls", ${JSON.stringify(path.basename("x"))}.slice(0, 0) + process.argv[1].split("/").pop() + " " + args.join(" ") + "\\n");
-const scenario = JSON.parse(fs.readFileSync(root + "/scenario.json", "utf8"));
+fs.appendFileSync(root + "/calls", process.argv[1].split("/").pop() + " " + args.join(" ") + "\\n");
+const file = root + "/scenario.json";
+const scenario = JSON.parse(fs.readFileSync(file, "utf8"));
 const key = (${keyExpr})(args);
-let r = scenario[key] ?? { status: 97, stderr: "fake: no scenario for " + key };
-if (key === "plutil-convert") {
-  // Stands in for the host's plutil: converts ONLY the listings it was taught (scenario.conversions,
-  // keyed by the exact input text); anything else fails like plutil does on a malformed plist.
-  const input = fs.readFileSync(0, "utf8");
-  r = (scenario.conversions ?? {})[input] ?? { status: 1, stderr: "<stdin>: Property List error: Unexpected character / JSON error: not a property list\\n" };
-}
+const r = scenario[key] ?? { status: 97, stderr: "fake: no scenario for " + key };
+if (key === "delete" && (r.status ?? 0) === 0 && scenario.afterDelete) scenario.list = scenario.afterDelete;
+if (scenario.swapListAfter && scenario.swapListAfter.key === key) { scenario.list = scenario.swapListAfter.list; delete scenario.swapListAfter; }
+fs.writeFileSync(file, JSON.stringify(scenario));
 if (r.stdout) process.stdout.write(r.stdout);
 if (r.stderr) process.stderr.write(r.stderr);
 process.exitCode = r.status ?? 0;
 `;
   fs.writeFileSync(path.join(bin, "xcrun"), fake(`(a) => {
     const c = a[1];
-    if (c === "get_app_container") return a[3].startsWith("build.raft.qa.never-installed.") ? "control" : "container:" + a[4];
+    if (c === "get_app_container") return "container:" + a[4];
     if (c === "spawn") return a[3];
     return c;
   }`), { mode: 0o755 });
   fs.writeFileSync(path.join(bin, "ps"), fake(`() => "ps"`), { mode: 0o755 });
-  fs.writeFileSync(path.join(bin, "plutil"), fake(`(a) => (a[0] === "-convert" ? "plutil-convert" : "plutil")`), { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, "plutil"), fake(`() => "plutil"`), { mode: 0o755 });
   fs.writeFileSync(path.join(bin, "sleep"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
   const login = buildSmokeLogin({
     applicationId: BUNDLE, signingCertSha256: digest("exe"), bootGeneration: digest("boot"),
-    runCaseId: "rc-ios", ciJobRef: "https://github.com/botiverse/mobile/actions/runs/222", requestId: "req-1",
+    runCaseId: "rc-ios", ciJobRef: JOB_REF, requestId: "req-1",
   });
   fs.writeFileSync(path.join(root, "login.json"), JSON.stringify({ request_id: login.request_id, envelope_digest: login.envelope_digest, envelope: login.envelope }));
   fs.writeFileSync(path.join(root, "binding.json"), JSON.stringify({ signing_cert_sha256: digest("exe"), boot_generation: digest("boot") }));
@@ -408,212 +346,233 @@ process.exitCode = r.status ?? 0;
   delete env.RAFT_QA_SIMULATOR_OWNERSHIP_RECEIPT;
   const calls = () => (fs.existsSync(path.join(root, "calls")) ? fs.readFileSync(path.join(root, "calls"), "utf8").trim().split("\n") : []);
   const runHarness = (args, extraEnv = {}) => spawnSync(process.execPath, [harness, ...args], { env: { ...env, ...extraEnv }, encoding: "utf8" });
+  const record = () => host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]);
   const cleanupArgs = (deviceUdid, name) => [
     "cleanup", "--udid", deviceUdid, "--simulator-name", name, "--bundle-id", BUNDLE,
     "--response", path.join(root, "login.json"), "--binding", path.join(root, "binding.json"), "--outcome", "aborted",
-    "--output", path.join(root, "cleanup.json"), "--run-case-id", "rc-ios", "--ci-job-ref", "https://github.com/botiverse/mobile/actions/runs/222",
+    "--output", path.join(root, "cleanup.json"), "--run-case-id", "rc-ios", "--ci-job-ref", JOB_REF,
   ];
-  return { root, runnerTemp, calls, runHarness, cleanupArgs };
+  const prepareArgs = (deviceUdid, name) => [
+    "prepare", "--udid", deviceUdid, ...(name ? ["--simulator-name", name] : []), "--bundle-id", BUNDLE,
+    "--response", path.join(root, "login.json"), "--binding", path.join(root, "binding.json"),
+    "--run-case-id", "rc-ios", "--ci-job-ref", JOB_REF, "--ready-output", path.join(root, "ready.json"), "--timeout-seconds", "1",
+  ];
+  const cleanupRecord = () => JSON.parse(fs.readFileSync(path.join(root, "cleanup.json"), "utf8"));
+  const host = { root, runnerTemp, calls, runHarness, record, cleanupArgs, prepareArgs, cleanupRecord };
+  return host;
 }
 
-const listDevices = (devices) => ({ status: 0, stdout: JSON.stringify({ devices: { "com.apple.CoreSimulator.SimRuntime.iOS-27-0": devices } }) });
+const listDevices = devicesList;
 const ownDevices = [
   { udid, name: "raft-qa-run-222-1", state: "Booted" },
   { udid: FOREIGN, name: "raft-qa-run-111-1", state: "Booted" },
 ];
+const foreignOnly = listDevices([ownDevices[1]]);
 const healthyCleanup = {
   list: listDevices(ownDevices),
+  afterDelete: foreignOnly,
   terminate: { status: 0 },
+  shutdown: { status: 0 },
+  delete: { status: 0 },
   launchctl: { status: 0, stdout: `${LAUNCHCTL_HEADER}\n${springboard}\n` },
   ps: { status: 0, stdout: `  1 /sbin/launchd\n${launchdSimLine}\n` },
   "container:app": { status: 0, stdout: `${DEVICE_DIR}/data/Containers/Bundle/Application/AAAA-BBBB/iosApp.app\n` },
   plutil: { status: 0, stdout: "iosApp\n" },
-  uninstall: { status: 0 },
-  "container:data": { status: 2, stderr: OBSERVED_NOT_INSTALLED },
-  control: { status: 2, stderr: OBSERVED_NOT_INSTALLED },
-  listapps: { status: 0, stdout: LISTAPPS },
-  conversions: { [LISTAPPS]: { status: 0, stdout: LISTAPPS_JSON } },
 };
+const xcrunCalls = (host) => host.calls().filter((line) => line.startsWith("xcrun"));
 
-test("entry point: record-ownership then cleanup of this job's Simulator ends clean (positive control)", () => {
+test("entry point: cleanup deletes this job's Simulator and reports only what deletion proves (positive control)", () => {
   const host = fakeHost(healthyCleanup);
-  const recorded = host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]);
-  assert.equal(recorded.status, 0, recorded.stderr);
-  const receiptFile = path.join(host.runnerTemp, "raft-qa-simulator-ownership.json");
-  assert.equal(fs.statSync(receiptFile).mode & 0o777, 0o400);
-  // The receipt is written exactly once.
-  assert.notEqual(host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
+  assert.equal(host.record().status, 0);
+  assert.equal(fs.statSync(path.join(host.runnerTemp, "raft-qa-simulator-ownership.json")).mode & 0o777, 0o400);
+  assert.notEqual(host.record().status, 0, "the receipt is written exactly once");
   const result = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
   assert.equal(result.status, 0, result.stderr);
-  const record = JSON.parse(fs.readFileSync(path.join(host.root, "cleanup.json"), "utf8"));
-  assert.equal(record.cleanup_receipt, "clean");
-  assert.equal(record.app_process.launchctl.state, "absent");
-  assert.equal(record.app_process.host_process.state, "absent");
-  assert.equal(record.app_data_container.reason, "not_installed_confirmed");
-  // Ownership was re-read right before terminate and right before uninstall.
-  const calls = host.calls().filter((line) => line.startsWith("xcrun"));
-  const terminateAt = calls.findIndex((line) => line.includes(" terminate "));
-  const uninstallAt = calls.findIndex((line) => line.includes(" uninstall "));
-  assert.match(calls[terminateAt - 1], / list devices -j/);
-  assert.match(calls[uninstallAt - 1], / list devices -j/);
+  const rec = host.cleanupRecord();
+  assert.equal(rec.cleanup_receipt, "simulator_deleted");
+  assert.equal(rec.simulator, "deleted_and_absent");
+  assert.equal(rec.app_process, "unknown", "deletion does not prove a process exited");
+  assert.equal(rec.server_session, "not_proven_by_device_cleanup");
+  assert.equal(rec.simulator_deletion.listed_after_delete, "absent");
+  assert.equal(JSON.stringify(rec).includes('"clean"'), false);
+  // ownership → shutdown → ownership → delete → fresh list.
+  const calls = xcrunCalls(host);
+  const shutdownAt = calls.findIndex((line) => line.includes(" shutdown "));
+  const deleteAt = calls.findIndex((line) => line.includes(" delete "));
+  assert.match(calls[shutdownAt - 1], / list devices -j/);
+  assert.match(calls[deleteAt - 1], / list devices -j/);
+  assert.match(calls[deleteAt + 1], / list devices -j/);
+  assert.equal(calls.filter((line) => line.includes(" delete ")).length, 1);
+  assert.equal(calls.some((line) => / (uninstall|get_app_container \S+ \S+ data|listapps) /.test(line)), false, "no inference from app/container reads");
 });
 
-test("entry point: identical infrastructure errors on both container reads never yield a clean receipt", () => {
-  const shutdown = { status: 149, stderr: "An error was encountered processing the command (domain=com.apple.CoreSimulator.SimError, code=405):\nUnable to lookup in current state: Shutdown\n" };
-  for (const [name, overrides] of [
-    ["shutdown text, everything else healthy", { "container:data": shutdown, control: shutdown }],
-    ["generic identical error, listapps failing", {
-      "container:data": { status: 1, stderr: "simctl: something went wrong\n" }, control: { status: 1, stderr: "simctl: something went wrong\n" },
-      listapps: { status: 1, stderr: "simctl: something went wrong\n" },
-    }],
-    ["generic identical error, listapps cut", {
-      "container:data": { status: 1, stderr: "E\n" }, control: { status: 1, stderr: "E\n" }, listapps: { status: 0, stdout: LISTAPPS.slice(0, 120) },
-    }],
-    ["container reads time out (fake exit by signal)", { "container:data": { status: 137 }, control: { status: 137 } }],
+test("review-independent: dual line-boundary truncations can hide a live app and return clean", () => {
+  // Argus (77005df3): launchctl and ps each cut at a newline right after their positive control, hiding
+  // a running app, gave cleanup_receipt=clean. Now process listings never feed the verdict.
+  const completeLaunchctl = `${LAUNCHCTL_HEADER}\n${springboard}\n777\t0\tUIKitApplication:build.raft.app[d4][rb-legacy]\n`;
+  const completePs = `  1 /sbin/launchd\n${launchdSimLine}\n${appLine}\n`;
+  const truncatedLaunchctl = `${LAUNCHCTL_HEADER}\n${springboard}\n`;
+  const truncatedPs = `  1 /sbin/launchd\n${launchdSimLine}\n`;
+  for (const [name, launchctl, ps, observed] of [
+    ["app visible in both listings", completeLaunchctl, completePs, "present"],
+    ["both silently truncated at newline", truncatedLaunchctl, truncatedPs, "absent"],
   ]) {
-    const host = fakeHost({ ...healthyCleanup, ...overrides });
-    assert.equal(host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
-    const result = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
-    assert.notEqual(result.status, 0, name);
-    const record = JSON.parse(fs.readFileSync(path.join(host.root, "cleanup.json"), "utf8"));
-    assert.equal(record.cleanup_receipt, "unknown", name);
-    assert.equal(record.app_data_container.state, "unknown", name);
-    assert.doesNotMatch(result.stdout, /cleanup_receipt=clean|device cleanup confirmed/, name);
+    for (const [deleteCase, overrides, receipt, status] of [
+      ["delete confirmed", {}, "simulator_deleted", 0],
+      ["delete failed", { delete: { status: 1, stderr: "Unable to delete\n" } }, "unknown", 2],
+    ]) {
+      const host = fakeHost({ ...healthyCleanup, launchctl: { status: 0, stdout: launchctl }, ps: { status: 0, stdout: ps }, ...overrides });
+      assert.equal(host.record().status, 0);
+      const r = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
+      const rec = host.cleanupRecord();
+      assert.equal(r.status, status, `${name}/${deleteCase}`);
+      assert.equal(rec.cleanup_receipt, receipt, `${name}/${deleteCase}`);
+      assert.notEqual(rec.cleanup_receipt, "clean");
+      assert.equal(rec.app_process, "unknown", `${name}/${deleteCase}: never inferred from listings`);
+      assert.equal(rec.app_process_observations.combined, observed, `${name}/${deleteCase}: kept as a diagnostic`);
+    }
   }
 });
 
-// Argus's replays against b1c6af1d (both reported exit=0, receipt=clean, container=absent there).
-test("independent: matching unknown generic errors with positive controls must not be clean", () => {
-  const generic = { status: 7, stderr: "Simulator processing error domain=synthetic.example code=7\n" };
-  const host = fakeHost({ ...healthyCleanup, "container:data": generic, control: generic });
-  assert.equal(host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
-  const result = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
-  const record = JSON.parse(fs.readFileSync(path.join(host.root, "cleanup.json"), "utf8"));
-  assert.notEqual(result.status, 0);
-  assert.equal(record.cleanup_receipt, "unknown");
-  assert.equal(record.app_data_container.state, "unknown");
-  assert.equal(record.app_data_container.reason, "unrecognized_error_exit_7");
-});
-
-test("independent: malformed listapps with balanced overall depth must not be clean", () => {
-  const bad = '{ "com.apple.Preferences" = { CFBundleIdentifier = "com.apple.Preferences"; )}';
-  const host = fakeHost({ ...healthyCleanup, listapps: { status: 0, stdout: bad } });
-  assert.equal(host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
-  const result = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
-  const record = JSON.parse(fs.readFileSync(path.join(host.root, "cleanup.json"), "utf8"));
-  assert.notEqual(result.status, 0);
-  assert.equal(record.cleanup_receipt, "unknown");
-  assert.equal(record.app_data_container.reason, "listapps_unavailable");
-  assert.equal(record.app_data_container.listapps_plutil_exit_status, 1);
-  // The listing went through plutil (structural parse), not a text scan.
-  assert.ok(host.calls().some((line) => line.startsWith("plutil -convert json -o - -")));
-});
-
-test("entry point: listapps cut at a line boundary, or converted to a mistyped document, is not clean", () => {
-  const cut = LISTAPPS.slice(0, LISTAPPS.indexOf('    "com.apple.mobilesafari"'));
-  for (const [name, overrides] of [
-    ["cut at a line boundary after the positive control", { listapps: { status: 0, stdout: cut } }],
-    ["plutil output mistyped", { conversions: { [LISTAPPS]: { status: 0, stdout: JSON.stringify({ "com.apple.Preferences": { CFBundleIdentifier: ["com.apple.Preferences"] } }) } } }],
-    ["plutil fails", { conversions: {} }],
+test("entry point: delete failure, a UDID still listed, or an unreadable list after delete is unknown and non-zero", () => {
+  const stillListed = listDevices([{ ...ownDevices[0], state: "Shutdown" }, ownDevices[1]]);
+  for (const [name, overrides, reason] of [
+    ["delete exits 1", { delete: { status: 1, stderr: "Invalid device state\n" } }, "delete_exit_1"],
+    ["delete exits 0 but the UDID is still listed", { afterDelete: stillListed }, "udid_still_listed"],
+    ["list after delete fails", { afterDelete: { status: 1, stderr: "CoreSimulatorService unavailable\n" } }, "list_exit_1"],
+    ["list after delete is malformed", { afterDelete: { status: 0, stdout: '{"devices":{"r":[{"name":"x"}]}}' } }, "list_unexpected_shape"],
   ]) {
     const host = fakeHost({ ...healthyCleanup, ...overrides });
-    assert.equal(host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
-    const result = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
-    const record = JSON.parse(fs.readFileSync(path.join(host.root, "cleanup.json"), "utf8"));
-    assert.notEqual(result.status, 0, name);
-    assert.equal(record.cleanup_receipt, "unknown", name);
+    assert.equal(host.record().status, 0);
+    const r = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
+    assert.equal(r.status, 2, name);
+    const rec = host.cleanupRecord();
+    assert.equal(rec.cleanup_receipt, "unknown", name);
+    assert.equal(rec.simulator, "unknown", name);
+    assert.equal(rec.simulator_reason, reason, name);
+    assert.match(r.stderr, /not proven deleted/, name);
   }
 });
 
-test("entry point: a host ps listing cut exactly at the newline after launchd_sim is never proof on its own", () => {
-  // The evidence ceiling: such a cut is indistinguishable from a whole listing, so the host query
-  // reads absent (and says so in evidence_ceiling).
-  const cutPs = { status: 0, stdout: `  1 /sbin/launchd\n${launchdSimLine}\n` };
-  assert.deepEqual(classifyHostProcessRead(cutPs, udid, "iosApp"),
-    { state: "absent", reason: "app_process_not_listed", positive_control: "launchd_sim", evidence_ceiling: "listing_completeness_unprovable" });
-  // It cannot carry the receipt alone: with launchctl not proving absence, or with the container
-  // not confirmed through the allowlisted not-installed result, the cleanup is unknown.
-  const unrecognized = { status: 7, stderr: "Simulator processing error domain=synthetic.example code=7\n" };
-  for (const [name, overrides] of [
-    ["launchctl failing", { ps: cutPs, launchctl: { status: 1, stderr: "spawn failed\n" } }],
-    ["container not confirmed", { ps: cutPs, "container:data": unrecognized, control: unrecognized }],
-  ]) {
-    const host = fakeHost({ ...healthyCleanup, ...overrides });
-    assert.equal(host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
-    const result = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
-    const record = JSON.parse(fs.readFileSync(path.join(host.root, "cleanup.json"), "utf8"));
-    assert.notEqual(result.status, 0, name);
-    assert.equal(record.cleanup_receipt, "unknown", name);
-    assert.equal(record.app_process.host_process.evidence_ceiling, "listing_completeness_unprovable", name);
-  }
-});
-
-test("entry point: launchctl truncation or a failed host process query keeps the receipt unknown", () => {
-  for (const [name, overrides, expected] of [
-    ["truncated launchctl", { launchctl: { status: 0, stdout: `${LAUNCHCTL_HEADER}\n${springboard}` } }, /launchctl|incomplete_listing/],
-    ["ps fails", { ps: { status: 1, stderr: "ps: sysctl failed\n" } }, /exit_1/],
-    ["ps without this launchd_sim", { ps: { status: 0, stdout: "  1 /sbin/launchd\n" } }, /no_positive_control/],
-    ["host still runs the app", { ps: { status: 0, stdout: `${launchdSimLine}\n${appLine}\n` } }, /app_process_running/],
-  ]) {
-    const host = fakeHost({ ...healthyCleanup, ...overrides });
-    assert.equal(host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
-    const result = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
-    assert.notEqual(result.status, 0, name);
-    const record = JSON.parse(fs.readFileSync(path.join(host.root, "cleanup.json"), "utf8"));
-    assert.notEqual(record.cleanup_receipt, "clean", name);
-    assert.match(result.stderr, expected, name);
-  }
-});
-
-test("entry point: run 222 handed run 111's name and matching foreign UDID is refused before terminate", () => {
+test("entry point: run 222 handed run 111's name and matching foreign UDID is refused before anything destructive", () => {
   const host = fakeHost(healthyCleanup);
-  // No receipt at all, foreign name + UDID.
   let result = host.runHarness(host.cleanupArgs(FOREIGN, "raft-qa-run-111-1"));
   assert.equal(result.status, 2);
   assert.match(result.stderr, /not this job's run-owned raft-qa-run-222-1/);
-  // This job's receipt exists (for its own device): the foreign device is still refused.
-  assert.equal(host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
+  assert.equal(host.record().status, 0);
   result = host.runHarness(host.cleanupArgs(FOREIGN, "raft-qa-run-111-1"));
   assert.equal(result.status, 2);
-  // Foreign UDID under this job's name: receipt UDID mismatch.
   result = host.runHarness(host.cleanupArgs(FOREIGN, "raft-qa-run-222-1"));
   assert.equal(result.status, 2);
   assert.match(result.stderr, /receipt records raft-qa-run-222-1/);
-  // Smoke is refused the same way.
+  result = host.runHarness(["delete-simulator", "--udid", FOREIGN, "--simulator-name", "raft-qa-run-111-1"]);
+  assert.equal(result.status, 2);
   result = host.runHarness(["smoke", "--udid", FOREIGN, "--simulator-name", "raft-qa-run-111-1", "--bundle-id", BUNDLE, "--out", path.join(host.root, "smoke")]);
   assert.equal(result.status, 2);
-  const destructive = host.calls().filter((line) => / (terminate|uninstall|shutdown|launch) /.test(line));
+  const destructive = host.calls().filter((line) => / (terminate|uninstall|shutdown|delete|launch) /.test(line));
   assert.deepEqual(destructive, [], "nothing destructive may run on a Simulator this job does not own");
-  // Without a receipt this job cannot even clean its own device.
   const fresh = fakeHost(healthyCleanup);
   result = fresh.runHarness(fresh.cleanupArgs(udid, "raft-qa-run-222-1"));
   assert.equal(result.status, 2);
   assert.match(result.stderr, /receipt is missing/);
-  assert.deepEqual(fresh.calls().filter((line) => / (terminate|uninstall) /.test(line)), []);
-  // record-ownership refuses another run's name, and a device listed under an ambiguous name.
+  assert.deepEqual(fresh.calls().filter((line) => / (terminate|shutdown|delete) /.test(line)), []);
   assert.notEqual(fresh.runHarness(["record-ownership", "--udid", FOREIGN, "--simulator-name", "raft-qa-run-111-1"]).status, 0);
   const ambiguous = fakeHost({ ...healthyCleanup, list: listDevices([...ownDevices, { udid: "22222222-2222-3333-4444-555555555555", name: "raft-qa-run-222-1", state: "Booted" }]) });
-  assert.notEqual(ambiguous.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
+  assert.notEqual(ambiguous.record().status, 0);
 });
 
-test("entry point: ownership verified at the start but lost before uninstall stops before uninstall", () => {
-  // The device is renamed between the terminate check and the uninstall check (list returns the
-  // run-owned name for the first reads, then a foreign name).
-  const host = fakeHost(healthyCleanup);
-  assert.equal(host.runHarness(["record-ownership", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 0);
-  const scenarioFile = path.join(host.root, "scenario.json");
-  const xcrun = path.join(host.root, "bin", "xcrun");
-  // Swap the scenario after `terminate` is seen: wrap the fake xcrun.
-  fs.renameSync(xcrun, `${xcrun}.real`);
-  fs.writeFileSync(xcrun, `#!/bin/sh
-"${xcrun}.real" "$@"; rc=$?
-if [ "$2" = "terminate" ]; then
-  ${JSON.stringify(process.execPath)} -e 'const fs=require("fs"),f=process.argv[1],s=JSON.parse(fs.readFileSync(f,"utf8"));s.list={status:0,stdout:JSON.stringify({devices:{r:[{udid:process.argv[2],name:"shared-iPhone",state:"Booted"}]}})};fs.writeFileSync(f,JSON.stringify(s))' "${scenarioFile}" "${udid}"
-fi
-exit $rc
-`, { mode: 0o755 });
+test("entry point: ownership lost between shutdown and delete stops before delete", () => {
+  const host = fakeHost({ ...healthyCleanup, swapListAfter: { key: "shutdown", list: listDevices([{ udid, name: "shared-iPhone", state: "Shutdown" }]) } });
+  assert.equal(host.record().status, 0);
   const result = host.runHarness(host.cleanupArgs(udid, "raft-qa-run-222-1"));
   assert.equal(result.status, 2);
   assert.match(result.stderr, /named shared-iPhone/);
-  assert.equal(host.calls().some((line) => / uninstall /.test(line)), false);
+  assert.equal(host.calls().some((line) => / delete /.test(line)), false);
+});
+
+test("entry point: delete-simulator is the same verified deletion, and a no-op when this job's device is already gone", () => {
+  const host = fakeHost(healthyCleanup);
+  assert.equal(host.record().status, 0);
+  const out = path.join(host.root, "simulator-cleanup.json");
+  let result = host.runHarness(["delete-simulator", "--udid", udid, "--simulator-name", "raft-qa-run-222-1", "--bundle-id", BUNDLE, "--output", out]);
+  assert.equal(result.status, 0, result.stderr);
+  const rec = JSON.parse(fs.readFileSync(out, "utf8"));
+  assert.equal(rec.cleanup_receipt, "simulator_deleted");
+  assert.equal(rec.app_process, "unknown");
+  // Second run (e.g. after `cleanup` already deleted it): no second delete.
+  result = host.runHarness(["delete-simulator", "--udid", udid, "--simulator-name", "raft-qa-run-222-1", "--output", out]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /already deleted/);
+  assert.equal(host.calls().filter((line) => / delete /.test(line)).length, 1);
+  // Still verifies this job's receipt even then.
+  result = host.runHarness(["delete-simulator", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"], { GITHUB_RUN_ATTEMPT: "2" });
+  assert.equal(result.status, 2);
+  // Delete failure is non-zero.
+  const failing = fakeHost({ ...healthyCleanup, delete: { status: 1 } });
+  assert.equal(failing.record().status, 0);
+  assert.equal(failing.runHarness(["delete-simulator", "--udid", udid, "--simulator-name", "raft-qa-run-222-1"]).status, 2);
+});
+
+const prepareScenario = (host) => {
+  const dataDir = path.join(host.root, "data-container");
+  fs.mkdirSync(dataDir);
+  const file = path.join(host.root, "scenario.json");
+  const s = JSON.parse(fs.readFileSync(file, "utf8"));
+  s["container:data"] = { status: 0, stdout: `${dataDir}\n` };
+  s.log = { status: 0, stdout: "Filtering the log data…\n" };
+  s.launch = { status: 0, stdout: `${BUNDLE}: 1234\n` };
+  fs.writeFileSync(file, JSON.stringify(s));
+  return path.join(dataDir, "Library", "Application Support", "qa-bootstrap", "inbox");
+};
+
+test("review-independent: prepare targets a foreign simulator without ownership receipt", () => {
+  // Argus (77005df3): prepare wrote into run 111's data container and launched with
+  // --terminate-running-process without ever consulting ownership. Now refused before either.
+  for (const [name, name2, withReceipt] of [
+    ["foreign device, no receipt", "raft-qa-run-111-1", false],
+    ["foreign device, this job's receipt", "raft-qa-run-111-1", true],
+    ["foreign device under this job's name", "raft-qa-run-222-1", true],
+  ]) {
+    const host = fakeHost({ ...healthyCleanup });
+    const inbox = prepareScenario(host);
+    if (withReceipt) assert.equal(host.record().status, 0);
+    const r = host.runHarness(host.prepareArgs(FOREIGN, name2));
+    assert.equal(r.status, 2, name);
+    assert.doesNotMatch(r.stderr, /READY was not observed/, name);
+    assert.equal(fs.existsSync(inbox), false, `${name}: nothing written`);
+    assert.equal(host.calls().some((line) => / (launch|terminate|get_app_container) /.test(line)), false, `${name}: no container access, no launch`);
+    assert.ok(host.calls().some((line) => line.includes("simctl list devices -j")), `${name}: ownership consulted`);
+  }
+  // Without --simulator-name at all, prepare is refused too.
+  const bare = fakeHost({ ...healthyCleanup });
+  prepareScenario(bare);
+  assert.equal(bare.runHarness(bare.prepareArgs(udid)).status, 2);
+  assert.equal(bare.calls().some((line) => / launch /.test(line)), false);
+});
+
+test("entry point: prepare re-verifies ownership right before launch (positive and negative)", () => {
+  // Positive control: this job's device passes both checks, the envelope is written, the app is launched.
+  const host = fakeHost({ ...healthyCleanup });
+  const inbox = prepareScenario(host);
+  assert.equal(host.record().status, 0);
+  const r = host.runHarness(host.prepareArgs(udid, "raft-qa-run-222-1"));
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /READY was not observed/, "got past both ownership checks to the (fake) READY wait");
+  assert.equal(fs.existsSync(inbox), true);
+  const calls = xcrunCalls(host);
+  const writeAt = calls.findIndex((line) => line.includes(" get_app_container ") && line.endsWith(" data"));
+  const launchAt = calls.findIndex((line) => line.includes(" launch "));
+  assert.match(calls[writeAt - 1], / list devices -j/, "ownership right before the container write");
+  assert.match(calls[launchAt - 1], / list devices -j/, "ownership right before launch");
+  // Negative: ownership changes after the inbox write (device renamed when the log stream starts).
+  const lost = fakeHost({ ...healthyCleanup, swapListAfter: { key: "log", list: listDevices([{ udid, name: "shared-iPhone", state: "Booted" }]) } });
+  prepareScenario(lost);
+  const s = JSON.parse(fs.readFileSync(path.join(lost.root, "scenario.json"), "utf8"));
+  s.swapListAfter = { key: "log", list: listDevices([{ udid, name: "shared-iPhone", state: "Booted" }]) };
+  fs.writeFileSync(path.join(lost.root, "scenario.json"), JSON.stringify(s));
+  assert.equal(lost.record().status, 0);
+  const r2 = lost.runHarness(lost.prepareArgs(udid, "raft-qa-run-222-1"));
+  assert.equal(r2.status, 2);
+  assert.match(r2.stderr, /named shared-iPhone/);
+  assert.equal(lost.calls().some((line) => / launch /.test(line)), false, "no launch after ownership was lost");
 });

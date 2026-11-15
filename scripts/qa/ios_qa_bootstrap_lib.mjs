@@ -177,9 +177,8 @@ const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  *             name to look for.
  * EVIDENCE CEILING: completeness of a process listing cannot be proven. A listing cut exactly at a
  * newline right after the launchd_sim line is indistinguishable from a whole one and reads absent.
- * So this "absent" is never proof on its own: the cleanup receipt is clean only when it agrees with
- * launchctl (combineProcessStates) AND uninstall succeeded AND the data container is confirmed absent
- * through the allowlisted not-installed result (classifyAppContainerRead); otherwise unknown.
+ * So this is a diagnostic observation only: the cleanup record's app_process fact is always
+ * "unknown" (see simulatorCleanupFacts), whatever these reads say.
  */
 export function classifyHostProcessRead(result, udid, executableName) {
   const device = requireSimulatorUdid(udid);
@@ -205,123 +204,58 @@ export function combineProcessStates(launchctl, host) {
   return "unknown";
 }
 
-const containerErrorSignature = (stderr, bundleId) => String(stderr).split(bundleId).join("<bundle>").replace(/\s+/g, " ").trim();
-
 /**
- * ALLOWLIST of `simctl get_app_container` results recognized as "this bundle is not installed".
- * Only results actually observed from simctl in CI are listed; any other error — even one that the
- * app read and the never-installed control return identically — is unknown, never absent.
- *   - exit 2, NSPOSIXErrorDomain code=2 (ENOENT): observed for the uninstalled app and the
- *     never-installed control in qa-acceptance-ios.yml bootstrap-smoke run 43628962682 attempt 2
- *     (cleanup error_signature), exit status 2 for this domain/code as in the same run's
- *     `simctl spawn` ENOENT ("unavailable (exit 2: … domain=NSPOSIXErrorDomain, code=2 …)").
+ * Classifies a fresh `xcrun simctl list devices -j` read taken AFTER `simctl delete <udid>`:
+ *   absent  — the read succeeded, parsed as {devices: {<runtime>: [{udid: string, …}, …]}} and no entry
+ *             carries this UDID;
+ *   present — the UDID is still listed;
+ *   unknown — failure, timeout, unparseable or structurally unexpected JSON.
  */
-export const IOS_NOT_INSTALLED_RESULTS = [
-  {
-    status: 2,
-    signature: /^An error was encountered processing the command \(domain=NSPOSIXErrorDomain, code=2\): (?:The operation couldn[’']t be completed\. )?No such file or directory(?: No such file or directory)?$/,
-  },
-];
-
-export function isRecognizedNotInstalled(result, bundleId) {
-  const signature = containerErrorSignature(result?.stderr ?? "", bundleId);
-  return IOS_NOT_INSTALLED_RESULTS.some((known) => result?.status === known.status && known.signature.test(signature));
-}
-
-const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
-
-/**
- * Validates `xcrun simctl listapps <udid>` AFTER the host converted it to JSON
- * (`plutil -convert json -o - -`, which fails on anything that is not one complete property list).
- * Returns the set of installed bundle ids, or null unless it is a non-empty dictionary whose every
- * value is a dictionary carrying a CFBundleIdentifier string equal to its key. No text scanning:
- * an unparseable or mistyped listing is unknown.
- */
-export function parseListAppsJson(conversion) {
-  if (!conversion || conversion.error || conversion.timedOut || conversion.status !== 0) return null;
-  let value;
-  try {
-    value = JSON.parse(String(conversion.stdout));
-  } catch {
-    return null;
-  }
-  if (!isPlainObject(value)) return null;
-  const entries = Object.entries(value);
-  if (entries.length === 0) return null;
-  for (const [key, app] of entries) {
-    if (!isPlainObject(app) || typeof app.CFBundleIdentifier !== "string" || app.CFBundleIdentifier !== key) return null;
-  }
-  return new Set(entries.map(([key]) => key));
-}
-
-/** System apps present on every iOS Simulator runtime: the listapps positive control. */
-export const IOS_LISTAPPS_POSITIVE_CONTROLS = ["com.apple.Preferences", "com.apple.mobilesafari"];
-
-/**
- * `xcrun simctl list devices -j` read at the moment of the container check: the device must be
- * listed exactly once and Booted, from a successful, parseable read.
- */
-export function classifyDeviceBooted(result, udid) {
+export function classifyDeviceListedAfterDelete(result, udid) {
   const wanted = requireSimulatorUdid(udid);
-  if (result?.error || result?.timedOut) return { booted: false, reason: result.timedOut ? "list_timeout" : "list_spawn_error" };
-  if (result?.status !== 0) return { booted: false, reason: `list_exit_${result?.status ?? "none"}` };
-  let devices;
+  if (result?.error || result?.timedOut) return { state: "unknown", reason: result.timedOut ? "list_timeout" : "list_spawn_error" };
+  if (result?.status !== 0) return { state: "unknown", reason: `list_exit_${result?.status ?? "none"}` };
+  let parsed;
   try {
-    devices = Object.values(JSON.parse(String(result.stdout)).devices ?? {}).flat();
+    parsed = JSON.parse(String(result.stdout));
   } catch {
-    return { booted: false, reason: "list_unparseable" };
+    return { state: "unknown", reason: "list_unparseable" };
   }
-  const matches = devices.filter((d) => String(d?.udid ?? "").toUpperCase() === wanted);
-  if (matches.length !== 1) return { booted: false, reason: `device_listed_${matches.length}` };
-  if (matches[0].state !== "Booted") return { booted: false, reason: `device_${String(matches[0].state ?? "unknown").toLowerCase()}` };
-  return { booted: true, reason: "booted" };
+  const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  if (!isObject(parsed) || !isObject(parsed.devices)) return { state: "unknown", reason: "list_unexpected_shape" };
+  const devices = [];
+  for (const runtime of Object.values(parsed.devices)) {
+    if (!Array.isArray(runtime) || !runtime.every((d) => isObject(d) && typeof d.udid === "string")) return { state: "unknown", reason: "list_unexpected_shape" };
+    devices.push(...runtime);
+  }
+  return devices.some((d) => d.udid.toUpperCase() === wanted) ? { state: "present", reason: "udid_still_listed" } : { state: "absent", reason: "udid_not_listed" };
 }
 
 /**
- * Classifies the data container after uninstall. Inputs (all read at the same moment, after uninstall):
- *   result   — `xcrun simctl get_app_container <udid> <bundle> data`;
- *   control  — the same command for a bundle id that was never installed;
- *   listApps — `xcrun simctl listapps <udid>` converted by `plutil -convert json -o - -`;
- *   device   — `xcrun simctl list devices -j`.
- *   present — the app read exits 0 with an absolute path, or the validated listapps lists the bundle;
- *   absent  — ONLY when the app read AND the never-installed control are each an allowlisted
- *             not-installed result (IOS_NOT_INSTALLED_RESULTS) with the same exit status and text,
- *             AND the device is listed Booted, AND the structurally validated listapps lists a
- *             system positive-control app and not the bundle;
- *   unknown — everything else: timeouts, spawn errors, ANY unrecognized error (identical or not),
- *             a non-booted device, a failed/unparseable/mistyped listapps, no positive control.
+ * The cleanup record states separate facts and never more than they prove:
+ *   simulator      — "deleted_and_absent" only when `simctl delete` exited 0 (no timeout) AND a fresh,
+ *                    structurally valid `simctl list devices -j` no longer lists the UDID (it cannot be
+ *                    selected again); otherwise "unknown";
+ *   app_process    — always "unknown": deleting the device does not prove that a process of the app
+ *                    exited, and process listings cannot be proven complete (observations are
+ *                    attached as diagnostics only);
+ *   server_session — always "not_proven_by_device_cleanup": revocation is the server's terminal/logout
+ *                    receipt, not a device fact.
+ * cleanup_receipt (the overall verdict) is "simulator_deleted" exactly when simulator is
+ * deleted_and_absent, else "unknown". There is no "clean".
  */
-export function classifyAppContainerRead(result, bundleId, control, controlBundleId, { listApps, device, udid } = {}) {
-  requireBundleId(bundleId);
-  requireBundleId(controlBundleId);
-  if (result?.error || result?.timedOut) return { state: "unknown", reason: result.timedOut ? "timeout" : "spawn_error" };
-  if (result?.status === 0) {
-    return path.isAbsolute(String(result.stdout).trim()) ? { state: "present", reason: "container_path" } : { state: "unknown", reason: "exit_0_without_path" };
-  }
-  const apps = parseListAppsJson(listApps);
-  if (apps?.has(bundleId)) return { state: "present", reason: "listed_by_listapps" };
-  if (!control || control.error || control.timedOut || control.status === 0 || typeof control.status !== "number") {
-    return { state: "unknown", reason: "control_not_refused" };
-  }
-  if (!isRecognizedNotInstalled(result, bundleId)) return { state: "unknown", reason: `unrecognized_error_exit_${result.status}` };
-  if (!isRecognizedNotInstalled(control, controlBundleId)) return { state: "unknown", reason: "control_unrecognized_error" };
-  if (result.status !== control.status || containerErrorSignature(result.stderr, bundleId) !== containerErrorSignature(control.stderr, controlBundleId)) {
-    return { state: "unknown", reason: "control_differs" };
-  }
-  if (!device || !udid) return { state: "unknown", reason: "device_unread" };
-  const booted = classifyDeviceBooted(device, udid);
-  if (!booted.booted) return { state: "unknown", reason: booted.reason };
-  if (!apps) return { state: "unknown", reason: "listapps_unavailable" };
-  const positive = IOS_LISTAPPS_POSITIVE_CONTROLS.find((id) => apps.has(id));
-  if (!positive) return { state: "unknown", reason: "listapps_no_positive_control" };
-  return { state: "absent", reason: "not_installed_confirmed", positive_control: positive };
-}
-
-/** clean only when the process was confirmed gone, uninstall succeeded and the container is confirmed absent. */
-export function iosCleanupReceipt({ processState, uninstallStatus, containerState }) {
-  if (processState === "present" || containerState === "present") return "failed";
-  if (processState === "absent" && uninstallStatus === 0 && containerState === "absent") return "clean";
-  return "unknown";
+export function simulatorCleanupFacts({ deleteResult, listAfter, udid }) {
+  const after = classifyDeviceListedAfterDelete(listAfter, udid);
+  const deleted = deleteResult?.status === 0 && !deleteResult?.timedOut && !deleteResult?.error;
+  const simulator = deleted && after.state === "absent" ? "deleted_and_absent" : "unknown";
+  return {
+    cleanup_receipt: simulator === "deleted_and_absent" ? "simulator_deleted" : "unknown",
+    simulator,
+    simulator_reason: !deleted ? `delete_${deleteResult?.timedOut ? "timeout" : `exit_${deleteResult?.status ?? "none"}`}` : after.reason,
+    listed_after_delete: after.state,
+    app_process: "unknown",
+    server_session: "not_proven_by_device_cleanup",
+  };
 }
 
 /** Run-owned Simulators are created per workflow run as `raft-qa-run-<run id>-<attempt>`. */
@@ -362,8 +296,9 @@ export function simulatorOwnershipReceipt({ udid, name, runId, runAttempt, creat
  *   - `simctl list devices -j` lists that UDID exactly once, under that name, and no other device
  *     carries that name (ambiguous ownership is refused).
  * `receipt` is { text, stat: { isFile, isSymbolicLink, mode, uid } } or null when the file is missing.
+ * With allowUnlisted, a UDID no longer listed at all returns null (already deleted) instead of throwing.
  */
-export function requireRunOwnedSimulator(listJson, udid, expectedName, { receipt, runId, runAttempt, uid } = {}) {
+export function requireRunOwnedSimulator(listJson, udid, expectedName, { receipt, runId, runAttempt, uid, allowUnlisted = false } = {}) {
   const wanted = requireSimulatorUdid(udid);
   if (!RUN_OWNED_SIMULATOR.test(expectedName ?? "")) throw new Error(`simulator name ${expectedName} is not a run-owned name`);
   const jobName = runOwnedSimulatorName(runId, runAttempt);
@@ -391,7 +326,11 @@ export function requireRunOwnedSimulator(listJson, udid, expectedName, { receipt
   }
   const devices = Object.values(JSON.parse(String(listJson)).devices ?? {}).flat();
   const byUdid = devices.filter((d) => String(d?.udid ?? "").toUpperCase() === wanted);
-  if (byUdid.length === 0) throw new Error(`simulator ${wanted} is not listed`);
+  if (byUdid.length === 0) {
+    // Only for the idempotent final delete: this job's receipt is valid and its device is already gone.
+    if (allowUnlisted) return null;
+    throw new Error(`simulator ${wanted} is not listed`);
+  }
   if (byUdid.length > 1) throw new Error(`simulator ${wanted} is listed ${byUdid.length} times; ownership is ambiguous`);
   const device = byUdid[0];
   if (device.name !== expectedName) throw new Error(`simulator ${wanted} is named ${device.name}, not the run-owned ${expectedName}`);

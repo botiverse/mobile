@@ -4,24 +4,29 @@
 // channel differs (xcrun simctl instead of adb). Contract: docs/qa-acceptance/session-bootstrap.md.
 //
 //   binding --udid <udid> --bundle-id <id> --output <binding.json>
-//   prepare --udid <udid> --bundle-id <id> --response <login.json> --binding <binding.json>
-//           --run-case-id <id> --ci-job-ref <url> --ready-output <ready.json> [--timeout-seconds 120]
+//   prepare --udid <udid> --simulator-name <raft-qa-run-…> --bundle-id <id> --response <login.json>
+//           --binding <binding.json> --run-case-id <id> --ci-job-ref <url> --ready-output <ready.json>
+//           [--timeout-seconds 120]   (ownership verified before the inbox write AND before launch)
 //   record-ownership --udid <udid> --simulator-name raft-qa-run-<run id>-<attempt> [--ownership-receipt <file>]
 //           (run by the job right after `simctl create`: writes the protected ownership receipt once)
 //   verify-ownership --udid <udid> --simulator-name <raft-qa-run-…> [--ownership-receipt <file>]
 //   cleanup --udid <udid> --simulator-name <raft-qa-run-…> --bundle-id <id> --response <login.json>
 //           --binding <binding.json> [--ready <ready.json>] --outcome completed|aborted
 //           --output <cleanup.json> --run-case-id <id> --ci-job-ref <url>
-//           (exit 0 only for cleanup_receipt=clean; the output is written for clean|failed|unknown)
+//           (run only after ALL evidence collection: deletes the job-owned Simulator. Exit 0 only for
+//           cleanup_receipt=simulator_deleted, i.e. simulator=deleted_and_absent; app_process is always
+//           unknown and server_session not_proven_by_device_cleanup; the output is always written)
+//   delete-simulator --udid <udid> --simulator-name <raft-qa-run-…> [--bundle-id <id>] [--output <file>]
+//           (the workflow's final step: the same verified deletion; a no-op if this job's device is
+//           already gone)
 //   smoke   --udid <udid> --simulator-name <raft-qa-run-…> --bundle-id <id> --out <dir>
 //           (no server: fake-token envelopes prove delivery, one-shot consumption, digest/binding
-//           validation and the replay refusal; then a Simulator reboot must change boot_generation,
-//           and the device cleanup must end with a clean receipt)
-// cleanup and smoke uninstall the app, so they refuse any Simulator that is not this job's own: the
-// ownership receipt (default $RUNNER_TEMP/raft-qa-simulator-ownership.json) must bind the UDID to
-// this GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT, and it is re-verified immediately before every destructive
-// action (terminate, uninstall, shutdown).
-import crypto from "node:crypto";
+//           validation and the replay refusal; then a Simulator reboot must change boot_generation.
+//           The device is deleted afterwards by the workflow's delete-simulator step)
+// Every command that writes into, launches on, stops or deletes the Simulator refuses any device that
+// is not this job's own: the ownership receipt (default $RUNNER_TEMP/raft-qa-simulator-ownership.json)
+// must bind the UDID to this GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT, and it is re-verified (with a fresh
+// device list) immediately before every such action.
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
@@ -36,14 +41,12 @@ import {
   IOS_LOG_PREDICATE,
   IOS_QA_BOOTSTRAP_MARKER,
   buildSmokeLogin,
-  classifyAppContainerRead,
   classifyHostProcessRead,
   classifyLaunchctlRead,
   combineProcessStates,
   findLaunchdSimPid,
   hasBootstrapLine,
   iosBootGeneration,
-  iosCleanupReceipt,
   iosCodeImages,
   iosInboxPaths,
   iosLaunchArgs,
@@ -52,6 +55,7 @@ import {
   requireRunOwnedSimulator,
   requireSimulatorUdid,
   runOwnedSimulatorName,
+  simulatorCleanupFacts,
   simulatorOwnershipReceipt,
 } from "./ios_qa_bootstrap_lib.mjs";
 
@@ -129,15 +133,16 @@ function readOwnershipReceipt(file) {
  * UDID and name to this GITHUB_RUN_ID/GITHUB_RUN_ATTEMPT, and a fresh `simctl list` must show that
  * UDID exactly once under that (unique) name. Called again immediately before each destructive action.
  */
-function requireOwned(udid) {
+function requireOwned(udid, { allowUnlisted = false } = {}) {
   const name = argument("simulator-name");
-  requireRunOwnedSimulator(simctl(["list", "devices", "-j"]).stdout, udid, name, {
+  const device = requireRunOwnedSimulator(simctl(["list", "devices", "-j"]).stdout, udid, name, {
     receipt: readOwnershipReceipt(ownershipReceiptPath()),
     runId: process.env.GITHUB_RUN_ID,
     runAttempt: process.env.GITHUB_RUN_ATTEMPT,
     uid: typeof process.getuid === "function" ? process.getuid() : undefined,
+    allowUnlisted,
   });
-  return name;
+  return allowUnlisted ? { name, listed: device !== null } : name;
 }
 
 /**
@@ -288,6 +293,13 @@ async function prepare() {
   const envelope = login.envelope;
   let paths;
   try {
+    // Ownership BEFORE the first container write (refused → nothing is written) …
+    try {
+      requireOwned(udid);
+    } catch (error) {
+      login.bytes.fill(0);
+      throw error;
+    }
     paths = installPrivateEnvelope(udid, bundleId, login.requestId, login.bytes);
   } finally {
     login.bytes.fill(0);
@@ -295,6 +307,8 @@ async function prepare() {
   const stream = await startLogStream(udid);
   try {
     console.log("ios-qa-bootstrap: launching app with the bootstrap request; polling READY");
+    // … and again immediately before launch --terminate-running-process.
+    requireOwned(udid);
     launch(udid, bundleId, login.requestId, login.envelopeDigest);
     const expected = {
       envelopeDigest: login.envelopeDigest,
@@ -331,69 +345,72 @@ async function prepare() {
 }
 
 /**
- * Terminates the app and reads `launchctl list` inside the Simulator until a read classifies the app
- * as absent (with a positive control) or attempts run out. Returns the last classification:
- * present / absent / unknown (see classifyLaunchctlRead).
+ * Diagnostic only (never part of the verdict): one launchctl read inside the Simulator and one host
+ * process read, before the device is shut down. Process listings cannot be proven complete, and
+ * deleting the device does not prove a process exited, so the record's app_process stays "unknown".
  */
-function terminateAndConfirm(udid, bundleId, executableName) {
-  requireOwned(udid);
-  simctl(["terminate", udid, bundleId], { allowFailure: true });
-  let last = { state: "unknown", launchctl: { state: "unknown", reason: "not_read" }, host: { state: "unknown", reason: "not_read" } };
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const launchctl = classifyLaunchctlRead(simctl(["spawn", udid, "launchctl", "list"], { allowFailure: true, timeoutMs: 30_000 }), bundleId);
-    const host = classifyHostProcessRead(run("ps", ["-axww", "-o", "pid=,args="], { allowFailure: true, timeoutMs: 30_000 }), udid, executableName);
-    last = { state: combineProcessStates(launchctl, host), launchctl, host };
-    if (last.state === "absent") return last;
-    spawnSync("sleep", ["1"]);
-  }
-  return last;
+function processObservations(udid, bundleId) {
+  const executableName = installedExecutableName(udid, bundleId);
+  const describe = (check) => ({ state: check.state, reason: check.reason, ...(check.positive_control ? { positive_control: check.positive_control } : {}), ...(check.evidence_ceiling ? { evidence_ceiling: check.evidence_ceiling } : {}) });
+  const launchctl = classifyLaunchctlRead(simctl(["spawn", udid, "launchctl", "list"], { allowFailure: true, timeoutMs: 30_000 }), bundleId);
+  const host = classifyHostProcessRead(run("ps", ["-axww", "-o", "pid=,args="], { allowFailure: true, timeoutMs: 30_000 }), udid, executableName);
+  return { note: "diagnostic observations before shutdown; not proof of process exit", launchctl: describe(launchctl), host_process: describe(host), combined: combineProcessStates(launchctl, host) };
 }
 
 /**
- * Stop, uninstall and prove the data container is gone. `simctl uninstall` drops the whole data
- * container (MMKV session, inbox); the app keeps no keychain items. Every read is classified
- * present / absent / unknown, and only absent+absent with a successful uninstall is "clean".
+ * The end-of-run device cleanup of the job-owned Simulator (run only after ALL evidence collection:
+ * screenshots, logs, crash reports). Each run creates its own Simulator, so cleanup removes the whole
+ * device instead of inferring that an app and its data are gone:
+ *   verify ownership → simctl shutdown → verify ownership again → simctl delete <udid> →
+ *   a fresh simctl list devices -j must no longer list the UDID.
+ * Returns separate facts (simulatorCleanupFacts): simulator deleted_and_absent|unknown,
+ * app_process unknown, server_session not proven. Shared by `cleanup` and `delete-simulator`.
  */
-function deviceCleanup(udid, bundleId) {
-  const executableName = installedExecutableName(udid, bundleId);
-  const processCheck = terminateAndConfirm(udid, bundleId, executableName);
+function deleteOwnedSimulator(udid, bundleId) {
   requireOwned(udid);
-  const uninstall = simctl(["uninstall", udid, bundleId], { allowFailure: true });
-  const controlBundleId = `build.raft.qa.never-installed.${crypto.randomBytes(6).toString("hex")}`;
-  const control = simctl(["get_app_container", udid, controlBundleId, "data"], { allowFailure: true, timeoutMs: 30_000 });
-  const read = simctl(["get_app_container", udid, bundleId, "data"], { allowFailure: true, timeoutMs: 30_000 });
-  // listapps prints an old-style property list; the host's plutil parses it completely (and fails on
-  // anything malformed or cut) and converts it to JSON, which classifyAppContainerRead type-checks.
-  const listAppsRaw = simctl(["listapps", udid], { allowFailure: true, timeoutMs: 30_000 });
-  const listApps = listAppsRaw.status === 0 && !listAppsRaw.timedOut && !listAppsRaw.error
-    ? run("plutil", ["-convert", "json", "-o", "-", "-"], { allowFailure: true, timeoutMs: 30_000, input: listAppsRaw.stdout })
-    : listAppsRaw;
-  const device = simctl(["list", "devices", "-j"], { allowFailure: true, timeoutMs: 30_000 });
-  const container = classifyAppContainerRead(read, bundleId, control, controlBundleId, { listApps, device, udid });
-  const receipt = iosCleanupReceipt({ processState: processCheck.state, uninstallStatus: uninstall.timedOut ? -1 : uninstall.status, containerState: container.state });
-  const describe = (check) => ({ state: check.state, reason: check.reason, ...(check.positive_control ? { positive_control: check.positive_control } : {}), ...(check.evidence_ceiling ? { evidence_ceiling: check.evidence_ceiling } : {}) });
+  const observations = bundleId ? processObservations(udid, bundleId) : undefined;
+  requireOwned(udid);
+  const shutdown = simctl(["shutdown", udid], { allowFailure: true, timeoutMs: 120_000 });
+  requireOwned(udid);
+  const deleteResult = simctl(["delete", udid], { allowFailure: true, timeoutMs: 120_000 });
+  const listAfter = simctl(["list", "devices", "-j"], { allowFailure: true, timeoutMs: 30_000 });
+  const facts = simulatorCleanupFacts({ deleteResult, listAfter, udid });
   return {
-    cleanup_receipt: receipt,
-    app_process: {
-      method: "xcrun simctl terminate, then xcrun simctl spawn <udid> launchctl list AND host ps -axww (both must show absence)",
-      state: processCheck.state,
-      launchctl: describe(processCheck.launchctl),
-      host_process: describe(processCheck.host),
+    ...facts,
+    simulator_deletion: {
+      method: "ownership-verified xcrun simctl shutdown + xcrun simctl delete <udid>, then a fresh xcrun simctl list devices -j must not list the UDID",
+      shutdown_exit_status: shutdown.status,
+      delete_exit_status: deleteResult.status,
+      delete_timed_out: deleteResult.timedOut,
+      listed_after_delete: facts.listed_after_delete,
+      reason: facts.simulator_reason,
     },
-    app_uninstall: { method: "xcrun simctl uninstall", exit_status: uninstall.status, timed_out: uninstall.timedOut },
-    app_data_container: {
-      method: "xcrun simctl get_app_container <udid> <bundle> data and a never-installed control, both an allowlisted not-installed result, confirmed by simctl list (Booted) and simctl listapps parsed by plutil -convert json (system positive control, bundle not listed)",
-      exit_status: read.status,
-      control_exit_status: control.status,
-      listapps_exit_status: listAppsRaw.status,
-      ...(listApps !== listAppsRaw ? { listapps_plutil_exit_status: listApps.status, listapps_plutil_error: String(listApps.stderr ?? "").trim().slice(0, 200) } : {}),
-      state: container.state,
-      reason: container.reason,
-      ...(container.positive_control ? { positive_control: container.positive_control } : {}),
-      // Masked error text of the app read (diagnostics; never used as a positive signal on its own).
-      error_signature: String(read.stderr ?? "").split(bundleId).join("<bundle>").replace(/\s+/g, " ").trim().slice(0, 300),
-    },
+    ...(observations ? { app_process_observations: observations } : {}),
   };
+}
+
+function cleanupFailureMessage(result) {
+  return `device cleanup is ${result.cleanup_receipt} (simulator=${result.simulator}/${result.simulator_reason}, ` +
+    `delete exit=${result.simulator_deletion.delete_exit_status}, listed after delete=${result.listed_after_delete}); the simulator is not proven deleted`;
+}
+
+/**
+ * Final step of qa-acceptance-ios.yml (after all evidence collection): the same verified deletion
+ * as `cleanup`. Idempotent: if this job's receipt is valid and its device is already gone (deleted by
+ * `cleanup`), nothing is deleted twice.
+ */
+function deleteSimulator() {
+  const udid = requireSimulatorUdid(argument("udid"));
+  const { name, listed } = requireOwned(udid, { allowUnlisted: true });
+  if (!listed) {
+    console.log(`ios-qa-bootstrap: ${name} (${udid}) is already deleted (not listed); nothing to delete`);
+    return;
+  }
+  const result = deleteOwnedSimulator(udid, argument("bundle-id", false));
+  const output = argument("output", false);
+  if (output) writePrivateJson(output, { platform: "ios-simulator", simulator_udid: udid, simulator_name: name, ...result });
+  if (result.cleanup_receipt !== "simulator_deleted") throw new Error(cleanupFailureMessage(result));
+  console.log(`ios-qa-bootstrap: deleted ${name} (${udid}); simulator=deleted_and_absent app_process=unknown server_session=not_proven_by_device_cleanup`);
 }
 
 function cleanup() {
@@ -411,7 +428,7 @@ function cleanup() {
   if (outcome === "completed" && (!runtime?.process_instance_id || !runtime?.process_generation)) {
     throw new Error("completed cleanup requires the exact READY process binding");
   }
-  const result = deviceCleanup(udid, bundleId);
+  const result = deleteOwnedSimulator(udid, bundleId);
   // iOS-specific record: what was actually checked on the Simulator (no Android force-stop/pm clear).
   writePrivateJson(argument("output"), {
     platform: "ios-simulator",
@@ -425,12 +442,8 @@ function cleanup() {
     process_generation: runtime.process_generation,
     ...result,
   });
-  if (result.cleanup_receipt !== "clean") {
-    throw new Error(`device cleanup receipt is ${result.cleanup_receipt} (process=${result.app_process.state}/` +
-      `${result.app_process.launchctl.reason}+${result.app_process.host_process.reason}, ` +
-      `uninstall=${result.app_uninstall.exit_status}, container=${result.app_data_container.state}/${result.app_data_container.reason}); not clean`);
-  }
-  console.log(`ios-qa-bootstrap: device cleanup confirmed bundle=${bundleId}`);
+  if (result.cleanup_receipt !== "simulator_deleted") throw new Error(cleanupFailureMessage(result));
+  console.log(`ios-qa-bootstrap: simulator deleted and absent (app_process=unknown, server_session=not_proven_by_device_cleanup) bundle=${bundleId}`);
 }
 
 async function waitFor(stream, from, predicate, timeoutMs) {
@@ -561,16 +574,15 @@ async function smoke() {
     results.push({ name: "Simulator reboot changes boot_generation (harness and app agree)", pass: changed && agrees, ...reboot });
     console.log(`ios-qa-bootstrap smoke: ${changed && agrees ? "PASS" : "FAIL"} reboot ${JSON.stringify(reboot)}`);
 
-    // Teardown on this run-owned Simulator: stop + uninstall must end with a clean receipt.
-    const teardown = deviceCleanup(udid, bundleId);
-    results.push({ name: "device cleanup ends with a clean receipt", pass: teardown.cleanup_receipt === "clean", ...teardown });
-    console.log(`ios-qa-bootstrap smoke: ${teardown.cleanup_receipt === "clean" ? "PASS" : "FAIL"} cleanup ${JSON.stringify(teardown)}`);
+    // No inline device cleanup: the job-owned Simulator is deleted by the workflow's final
+    // `delete-simulator` step (the same verified deletion as `cleanup`), after all evidence
+    // collection; its record is qa-evidence/simulator-cleanup.json.
   } finally {
     stream.stop();
     fs.writeFileSync(path.join(out, "bootstrap-log.txt"), earlierLog + stream.text());
   }
   const passed = results.every((r) => r.pass);
-  fs.writeFileSync(path.join(out, "smoke-report.json"), `${JSON.stringify({ contract: "qa-bootstrap-login/v1", platform: "ios-simulator", udid, bundle_id: bundleId, passed, reboot, results }, null, 2)}\n`);
+  fs.writeFileSync(path.join(out, "smoke-report.json"), `${JSON.stringify({ contract: "qa-bootstrap-login/v1", platform: "ios-simulator", udid, bundle_id: bundleId, passed, reboot, results, device_cleanup: "performed after evidence collection by the workflow's delete-simulator step; see qa-evidence/simulator-cleanup.json" }, null, 2)}\n`);
   if (!passed) throw new Error("iOS QA session bootstrap smoke failed; see smoke-report.json and bootstrap-log.txt");
   console.log("ios-qa-bootstrap smoke: all scenarios passed");
 }
@@ -582,8 +594,9 @@ try {
   else if (command === "cleanup") cleanup();
   else if (command === "record-ownership") recordOwnership();
   else if (command === "verify-ownership") verifyOwnership();
+  else if (command === "delete-simulator") deleteSimulator();
   else if (command === "smoke") await smoke();
-  else fail("command must be binding|prepare|cleanup|smoke|record-ownership|verify-ownership");
+  else fail("command must be binding|prepare|cleanup|smoke|record-ownership|verify-ownership|delete-simulator");
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
