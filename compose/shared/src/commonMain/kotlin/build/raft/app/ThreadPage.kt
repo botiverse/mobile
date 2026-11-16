@@ -26364,7 +26364,7 @@ private fun ThreadMessagesListContent(
                                     markdownTagContextSignature = markdownTagContextSignature,
                                     activeMarkdownTagKey = activeMarkdownTagKey,
                                     taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
-                                    taskStatusActionsEnabled = renderPayload.channelTaskWritesShown() && isRichContentEnabled,
+                                    taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
                                     isMarkdownTagValid = isMarkdownTagValid,
                                     onShowActions = { anchor ->
                                         if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
