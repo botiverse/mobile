@@ -939,6 +939,7 @@ jobs:
             adaptive-pane-host-instrumentation.txt
             qa-session-bootstrap-inbox-instrumentation.txt
             composed-character-boundary-instrumentation.txt
+            webview-renderer-gone-instrumentation.txt
             thread-open-budget-telemetry.txt
             *-instrumentation.txt.attempt-*
           if-no-files-found: warn

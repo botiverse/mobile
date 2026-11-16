@@ -132,6 +132,9 @@ internal class RaftAndroidSandboxWebView(
     /** [RaftWebViewConfig.keepAliveKey]: parked past its page instead of destroyed. */
     internal var keepAliveKey: String? = null
         private set
+    /** [RaftWebViewConfig.diagnosticsSurface]; `_parked` is appended while kept alive without a page. */
+    private var diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT
+    private var parkedForKeepAlive: Boolean = false
     /**
      * The app's light/dark mode the WebView was built in. Its page reads `prefers-color-scheme`
      * from the construction context's theme, which follows the app's choice (androidApp
@@ -183,6 +186,7 @@ internal class RaftAndroidSandboxWebView(
         updateHostEventsEnabled(config.hostEventsEnabled)
         mainFrameOrigin = config.mainFrameOrigin?.let(::raftDocumentStartScriptOriginRule)
         keepAliveKey = config.keepAliveKey
+        diagnosticsSurface = config.diagnosticsSurface
         updatePlaceholderBackground(config.backgroundArgb)
         updateSrc(config.url)
     }
@@ -230,6 +234,7 @@ internal class RaftAndroidSandboxWebView(
         boundController?.unbindCommandDispatcher(this)
         boundController = null
         events = RaftWebViewEvents()
+        parkedForKeepAlive = true
         (parent as? android.view.ViewGroup)?.removeView(this)
         (context as? MutableContextWrapper)?.baseContext = context.applicationContext
     }
@@ -237,6 +242,7 @@ internal class RaftAndroidSandboxWebView(
     /** Keep-alive: shown by a page again, in that page's [hostContext]. */
     internal fun attachFromKeepAlive(hostContext: Context, nextEvents: RaftWebViewEvents) {
         (context as? MutableContextWrapper)?.baseContext = hostContext
+        parkedForKeepAlive = false
         events = nextEvents
         lastNavigationStateKey = ""
         notifyNavigationState(force = true)
@@ -399,6 +405,12 @@ internal class RaftAndroidSandboxWebView(
                  */
                 override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
                     if (destroyed) return true
+                    // Logged and joined to the death event (one Hands ticket however many WebViews it took).
+                    RaftWebViewRendererGone.record(
+                        context,
+                        if (parkedForKeepAlive) "${diagnosticsSurface}_parked" else diagnosticsSurface,
+                        detail,
+                    )
                     diagnosticsWarn(
                         "render_process_gone didCrash=${detail?.didCrash()} " +
                             "priority=${detail?.rendererPriorityAtExit()} " +

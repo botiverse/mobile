@@ -669,6 +669,7 @@ internal fun SettingsWebViewContent(
                     hostEventsEnabled = hostEventsEnabled,
                     controller = controller,
                     loadWatchdog = loadWatchdog,
+                    diagnosticsSurface = "settings_web_view",
                     onLoadCommit = {
                         loadError = null
                         committed = true

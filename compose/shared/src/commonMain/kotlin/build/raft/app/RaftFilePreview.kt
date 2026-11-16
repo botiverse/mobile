@@ -9139,7 +9139,8 @@ internal fun RaftFilePreviewPayloadContent(
                         // injected desktop viewport needs it; other platforms have no equivalent flag.
                         useWideViewPort = htmlDesktopMode,
                         controller = htmlWideViewPortController,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        diagnosticsSurface = "file_preview_html"
                     )
                 } else {
                     RaftFilePreviewMessage(

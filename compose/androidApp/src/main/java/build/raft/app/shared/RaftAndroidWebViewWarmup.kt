@@ -4,7 +4,10 @@ import android.content.Context
 import android.os.Looper
 import android.os.MessageQueue
 import android.util.Log
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
+import build.raft.app.RaftDetachedWebViewClient
+import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -30,10 +33,20 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - **Silent on failure.** A provider that refuses to initialise must never surface as a
  *   crash at startup; the real web surface still works exactly as before (it just pays the
  *   cold cost). Never rethrows.
- * - **No behavioural dependency.** Nothing waits for this. The created instance is discarded;
- *   it exists only to trigger provider initialisation. It is detached from any window
- *   (never added to a `ViewGroup`), so it cannot draw, intercept input, or hold a
- *   `WebViewClient`.
+ * - **No behavioural dependency.** Nothing waits for this. The instance is kept (in
+ *   `warmInstance`) for the life of the process so its renderer process stays up for the first
+ *   real surface: a renderer lives only while some WebView uses it, so a destroyed warm-up
+ *   would leave only the provider load (and its compiled code) warm, not the renderer.
+ *   It is detached from any window (never added to a `ViewGroup`), so it cannot draw or
+ *   intercept input, and it never reaches product content: no JS, no navigation, no page hooks.
+ * - **Survives its renderer.** A kept WebView shares the app's one renderer process with every
+ *   product WebView, and when that renderer dies Chromium kills the whole app unless *every*
+ *   WebView on it handles `onRenderProcessGone`. So the warm instance does hold a
+ *   [RaftDetachedWebViewClient]: a client with no product behaviour (it refuses every navigation
+ *   and loads nothing) whose only job is that callback. It reports the death (shared
+ *   `RaftWebViewRendererGone`), drops `warmInstance`, destroys the WebView and returns true. The
+ *   warm-up is not redone: the provider stays loaded and the next product WebView starts a new
+ *   renderer itself.
  *
  * The warm-up does not change any security-relevant setting on the real surfaces: those are
  * applied per-instance in `SlockSandboxWebViewRenderView.configureWebView()`.
@@ -41,12 +54,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal object RaftAndroidWebViewWarmup {
     private const val LOG_TAG = "SlockWebViewWarmup"
 
+    /** Surface name of the warm instance in renderer-death logs and tickets. */
+    internal const val WARMUP_SURFACE = "warmup"
+
     /**
      * Test seam: production points at the real construction path. Tests replace this to count
      * attempts and to simulate a provider that throws, without needing a WebView on the JVM.
      */
     @Volatile
-    internal var createWarmInstance: (Any?) -> Any = { context -> WebView(context as Context) }
+    internal var createWarmInstance: (Any?) -> Any = { context -> newWarmWebView(context as Context) }
 
     /**
      * Test seam: how a scheduled warm-up is dispatched. Production waits for the main looper's
@@ -73,10 +89,39 @@ internal object RaftAndroidWebViewWarmup {
     @Volatile
     internal var log: (String) -> Unit = { message -> Log.i(LOG_TAG, message) }
 
+    /**
+     * Test seam: the local diagnostics log for the renderer-death line (kept in the diagnostics
+     * ring, unlike [log]). Tests replace it.
+     */
+    @Volatile
+    internal var logWarn: (String) -> Unit = { message -> RaftAndroidLocalDiagnostics.recordLog("warn", LOG_TAG, message) }
+
     private val attempted = AtomicBoolean(false)
 
     @Volatile
     private var warmInstance: Any? = null
+
+    /** Test-only view of the kept instance. */
+    internal val warmInstanceForTest: Any? get() = warmInstance
+
+    /** The warm WebView: no settings beyond the defaults, a client that only survives its renderer. */
+    internal fun newWarmWebView(context: Context): WebView =
+        WebView(context).apply {
+            webViewClient = RaftDetachedWebViewClient(WARMUP_SURFACE) { view, detail -> onWarmRendererGone(view, detail) }
+        }
+
+    /**
+     * The warm instance's renderer is gone: let it go (drop and destroy it). Main thread, from
+     * [RaftDetachedWebViewClient.onRenderProcessGone], which returns true.
+     */
+    internal fun onWarmRendererGone(view: WebView?, detail: RenderProcessGoneDetail?) {
+        val held = view != null && warmInstance === view
+        if (held) warmInstance = null
+        val didCrash = detail?.didCrash()
+        val priority = detail?.rendererPriorityAtExit()
+        runCatching { logWarn("webview_warmup released reason=render_process_gone didCrash=$didCrash priority=$priority held=$held") }
+        runCatching { view?.destroy() }
+    }
 
     /**
      * Schedules a one-shot warm-up on the next main-thread idle slot. Safe to call from any
@@ -124,9 +169,9 @@ internal object RaftAndroidWebViewWarmup {
                             return
                         }
                 warmInstance = warm
-                // Load an empty document so the provider completes its own bootstrap, then
-                // keep the instance detached. No client/JS/navigation configuration is
-                // applied: this instance must never be able to reach product content.
+                // Load an empty document so the provider completes its own bootstrap (and starts
+                // the renderer), then keep the instance detached. Defaults only (no JS, no
+                // navigation): this instance must never be able to reach product content.
                 (warm as? WebView)?.loadUrl("about:blank")
                 val elapsedMs = (System.nanoTime() - startedNs) / 1_000_000L
                 log("webview_warmup completed elapsedMs=$elapsedMs")
@@ -142,10 +187,11 @@ internal object RaftAndroidWebViewWarmup {
     internal fun resetForTest() {
         attempted.set(false)
         warmInstance = null
-        createWarmInstance = { context -> WebView(context as Context) }
+        createWarmInstance = { context -> newWarmWebView(context as Context) }
         dispatch = ::dispatchOnMainIdle
         resolveContext = { context -> (context as Context).applicationContext ?: context }
         log = { message -> Log.i(LOG_TAG, message) }
+        logWarn = { message -> RaftAndroidLocalDiagnostics.recordLog("warn", LOG_TAG, message) }
     }
 
     /** Runs [task] once, the next time the main looper has nothing due. Any thread. */

@@ -57,6 +57,7 @@ DECLARED_TEST_IDS=(
   "adaptive-pane-host"
   "qa-session-bootstrap-inbox"
   "composed-character-boundary"
+  "webview-renderer-gone"
 )
 
 # Test metadata maps
@@ -199,6 +200,12 @@ init_test_metadata() {
   TEST_RETRIES["composed-character-boundary"]=1
   TEST_OUTPUT["composed-character-boundary"]="composed-character-boundary-instrumentation.txt"
   TEST_CONDITION["composed-character-boundary"]="always"
+
+  TEST_CLASS["webview-renderer-gone"]="build.raft.app.RaftWebViewRendererGoneRuntimeTest"
+  TEST_RUNNER["webview-renderer-gone"]="$RUNNER_SHARED"
+  TEST_RETRIES["webview-renderer-gone"]=1
+  TEST_OUTPUT["webview-renderer-gone"]="webview-renderer-gone-instrumentation.txt"
+  TEST_CONDITION["webview-renderer-gone"]="always"
 
   for id in "${DECLARED_TEST_IDS[@]}"; do
     TEST_STATUS["$id"]="not_run"
