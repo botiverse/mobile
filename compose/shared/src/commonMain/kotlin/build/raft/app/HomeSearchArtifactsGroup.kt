@@ -36,6 +36,7 @@ import build.raft.designsystem.components.RaftSearchResultRow
 import build.raft.designsystem.components.RaftSearchSectionHeader
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonVariant
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.flow.StateFlow
