@@ -15194,7 +15194,8 @@ internal fun SharedHomeSavedPanel(
             RaftBaseMenuItem(
                 SharedHomeSavedMenuActionRemove,
                 removeLabel,
-                RaftLucideIconName.Bookmark,
+                // web SavedPanel: the menu's remove item draws BookmarkMinus, as the row's toggle does.
+                RaftLucideIconName.BookmarkMinus,
                 dividerBefore = true
             )
         )
@@ -15925,7 +15926,9 @@ private data class SharedHomeSavedResultGestureCallbacks(
 
 /**
  * web SavedPanel toggle: a pressed PanelToggleAction drawn quiet (no sticker fill) on a phone,
- * 44dp, with the filled 22dp bookmark — every row is saved, so the filled mark is the state.
+ * 44dp, with the outline 22dp BookmarkMinus in `foreground`. Every row is saved, so the toggle
+ * is the remove action, drawn as the message menu draws it (icon standard v4: no filled icon
+ * for a state), and named "Remove from Saved" (web `aria-label` `saved.remove`).
  */
 @Composable
 private fun SharedHomeSavedUnsaveButton(
@@ -15933,18 +15936,19 @@ private fun SharedHomeSavedUnsaveButton(
     modifier: Modifier = Modifier
 ) {
     val currentOnClick by rememberUpdatedState(onClick)
+    val removeLabel = stringResource(Res.string.saved_action_remove)
     Box(
         modifier =
             modifier
                 .size(SavedUnsaveHitTargetSize)
                 .zIndex(1f)
-                .raftButtonAccessibility(enabled = true) { currentOnClick() },
+                .raftButtonAccessibility(enabled = true) { currentOnClick() }
+                .semantics { contentDescription = removeLabel },
         contentAlignment = Alignment.Center
     ) {
         RaftLucideIcon(
-            RaftLucideIconName.Bookmark,
+            RaftLucideIconName.BookmarkMinus,
             color = RaftColor.TextBlackArgb,
-            fill = RaftColor.TextBlackArgb,
             modifier = Modifier.size(22.dp)
         )
     }
@@ -19674,8 +19678,19 @@ private val homeCreateChannelVisualMembers = listOf(
 )
 
 // savedMessagesFixture.json (slock packages/visual-testing/shared): three entries of 5, more to
-// load. Times are what react renders for each createdAt at the fixture instant
-// (2026-06-19T12:30Z): 2026-06-22 -> "in 3 days", 2026-06-21T09:12Z -> "in 2 days".
+// load. Each row carries the fixture's own `createdAt`, rendered against the fixture instant
+// (fixtureData.locale: 2026-06-19T12:30Z, Asia/Shanghai) the way react renders it:
+// 2026-06-22T02:30Z / 01:40Z -> "in 3 days", 2026-06-21T09:12Z -> "in 2 days". A display label
+// such as "in 3 days" is not a timestamp: under the page's live clock it reads "unknown time".
+private val homeSavedVisualTimeContext =
+    AppShellThreadTimeContext(
+        // VisualFixtureData.Locale (visualFixtureData is not on this source set's path).
+        localOffsetMinutes = 480,
+        todayEpochDay = 20623L,
+        nowEpochMillis = 1781872200000L,
+        timeFormat = RaftTimeFormat24Hour,
+    )
+
 private val homeSavedVisualState = SharedHomeSavedPanelState(
     items =
         listOf(
@@ -19686,7 +19701,7 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
                 channelName = "design",
                 lastMessageId = MessageId("msg-saved-visual-1"),
                 lastMessagePreview = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
-                lastMessageAt = "in 3 days",
+                lastMessageAt = "2026-06-22T02:30:00.000Z",
                 lastMessageSenderName = "Cindy",
                 lastMessageSenderId = "agent-cindy",
                 lastMessageSenderKind = MemberKind.Agent,
@@ -19699,7 +19714,7 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
                 channelName = "design",
                 lastMessageId = MessageId("msg-saved-visual-2"),
                 lastMessagePreview = "Rename old visual cases under components.* before rerunning baseline.",
-                lastMessageAt = "in 3 days",
+                lastMessageAt = "2026-06-22T01:40:00.000Z",
                 lastMessageSenderName = "artin",
                 lastMessageSenderId = "visual-user",
                 lastMessageSenderKind = MemberKind.Human,
@@ -19716,7 +19731,7 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
                 channelName = "design",
                 lastMessageId = MessageId("msg-saved-visual-3"),
                 lastMessagePreview = "Publish preflight is green — report goes live after the next full run.",
-                lastMessageAt = "in 2 days",
+                lastMessageAt = "2026-06-21T09:12:00.000Z",
                 lastMessageSenderName = "Product UX Designer",
                 lastMessageSenderId = "agent-product-ux",
                 lastMessageSenderKind = MemberKind.Agent,
@@ -19838,7 +19853,8 @@ internal fun HomeSavedVisualContent(
             onClose = protoOnBack ?: {},
             onOpenItem = {},
             bottomContentPadding = 12.dp,
-            includeTopSafeArea = protoOnBack != null || params.optBoolean("task797IncludeTopSafeArea", false)
+            includeTopSafeArea = protoOnBack != null || params.optBoolean("task797IncludeTopSafeArea", false),
+            timeContext = homeSavedVisualTimeContext
         )
     }
 }
