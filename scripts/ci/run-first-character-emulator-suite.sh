@@ -57,6 +57,7 @@ DECLARED_TEST_IDS=(
   "adaptive-pane-host"
   "qa-session-bootstrap-inbox"
   "composed-character-boundary"
+  "source-task-live-update"
 )
 
 # Test metadata maps
@@ -200,6 +201,14 @@ init_test_metadata() {
   TEST_OUTPUT["composed-character-boundary"]="composed-character-boundary-instrumentation.txt"
   TEST_CONDITION["composed-character-boundary"]="always"
 
+  # Crash c41fd092: task rows under reused messages getting live status/assignee updates (in-memory
+  # fakes only; no network). Deterministic: Compose idleness and the test frame clock, no polling.
+  TEST_CLASS["source-task-live-update"]="build.raft.app.ThreadMessageSourceTaskListLiveUpdateConnectedTest"
+  TEST_RUNNER["source-task-live-update"]="$RUNNER_SHARED"
+  TEST_RETRIES["source-task-live-update"]=1
+  TEST_OUTPUT["source-task-live-update"]="source-task-live-update-instrumentation.txt"
+  TEST_CONDITION["source-task-live-update"]="always"
+
   for id in "${DECLARED_TEST_IDS[@]}"; do
     TEST_STATUS["$id"]="not_run"
     TEST_REASON["$id"]="unreached"
@@ -212,7 +221,7 @@ init_test_metadata() {
 run_pre_hook() {
   local id="$1"
   case "$id" in
-    ime-visibility-probe|composer-session-retirement|attachment-private-file-provider|child-page-visibility)
+    ime-visibility-probe|composer-session-retirement|attachment-private-file-provider|child-page-visibility|source-task-live-update)
       adb logcat -c || true
       ;;
     *)
@@ -253,6 +262,10 @@ run_post_hook() {
       ;;
     attachment-private-file-provider)
       adb logcat -d -v threadtime 'AndroidRuntime:E' 'ActivityTaskManager:I' 'TestRunner:E' '*:S' > attachment-private-file-provider-logcat.txt 2>/dev/null || true
+      ;;
+    source-task-live-update)
+      # A RectManager crash ("LayoutNode not found in RectList") surfaces here as a process crash.
+      adb logcat -d -v threadtime 'AndroidRuntime:E' 'TestRunner:*' '*:S' > source-task-live-update-logcat.txt 2>/dev/null || true
       ;;
     child-page-visibility)
       adb exec-out run-as build.raft.app.connectedtest cat files/child-page-visibility-accepted.png > child-page-visibility-accepted.png 2>/dev/null || rm -f child-page-visibility-accepted.png

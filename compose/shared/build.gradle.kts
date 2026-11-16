@@ -298,6 +298,11 @@ kotlin {
             dependencies {
                 implementation(libs.androidx.junit)
                 implementation(libs.androidx.espresso.core)
+                // Compose UI tests on the emulator (createAndroidComposeRule, e.g.
+                // ThreadMessageSourceTaskListLiveUpdateConnectedTest). CMP's artifact resolves to the
+                // androidx ui-test-junit4 matching :shared's Compose; ComponentActivity is declared in
+                // src/androidInstrumentedTest/AndroidManifest.xml.
+                implementation(libs.cmp.ui.test.junit4)
             }
         }
 

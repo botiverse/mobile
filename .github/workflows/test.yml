@@ -939,6 +939,8 @@ jobs:
             adaptive-pane-host-instrumentation.txt
             qa-session-bootstrap-inbox-instrumentation.txt
             composed-character-boundary-instrumentation.txt
+            source-task-live-update-instrumentation.txt
+            source-task-live-update-logcat.txt
             thread-open-budget-telemetry.txt
             *-instrumentation.txt.attempt-*
           if-no-files-found: warn

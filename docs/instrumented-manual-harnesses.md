@@ -48,6 +48,11 @@ androidInstrumentedTest RaftComposedCharacterBoundaryRuntimeTest to the same
 job (`scripts/ci/run-first-character-emulator-suite.sh`, every run of the
 device suite).
 
+Shared androidInstrumentedTest ThreadMessageSourceTaskListLiveUpdateConnectedTest
+(crash c41fd092, task rows under reused messages taking live status/assignee
+updates; in-memory fakes, no network) runs in the same suite as
+`source-task-live-update`, every run of the device suite.
+
 ## On HOLD for a production fix (do not promote, do not "fix" the test)
 
 **AndroidShellTaskReuseConnectedTest** — its first-ever CI run (task #19)
