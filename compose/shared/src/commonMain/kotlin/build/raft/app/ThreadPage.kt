@@ -4545,6 +4545,24 @@ internal fun RaftThreadScreenPayload.artifactOpenConversationId(taskConversation
     }
 
 /**
+ * The conversation page's link navigator: an Artifact link tapped in a message opens with this
+ * conversation (`hostConversation`, [artifactOpenConversationId]), as its cards do. Its own function:
+ * SharedThreadRouteContentContent is at its JVM method-size ceiling.
+ */
+@Composable
+private fun rememberThreadLinkNavigator(
+    pager: Pager,
+    bridge: build.raft.app.base.BridgeModule,
+    payload: RaftThreadScreenPayload,
+    taskConversationHostChannelId: ChannelId?,
+): RaftLinkNavigator =
+    rememberRaftLinkNavigator(
+        pager,
+        bridge,
+        artifactConversationId = payload.artifactOpenConversationId(taskConversationHostChannelId?.value),
+    )
+
+/**
  * Load [contextChannelId]'s tasks for this conversation's task refs only when nothing else does: the
  * write-gated [taskChannelId] load covers the same channel, and a task conversation's host channel
  * is loaded by its header's tasks store.
@@ -9466,13 +9484,7 @@ private fun SharedThreadRouteContentContent(
                 .withFirstFrameKnownMarkdownChannelNames(firstFrameHomeSnapshot)
         }
     val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
-    // An Artifact link tapped in a message opens with this conversation (`hostConversation`), as its cards do.
-    val linkNavigator =
-        rememberRaftLinkNavigator(
-            pager,
-            bridge,
-            artifactConversationId = renderedThread.artifactOpenConversationId(taskConversationParentChannelId?.value),
-        )
+    val linkNavigator = rememberThreadLinkNavigator(pager, bridge, renderedThread, taskConversationParentChannelId)
     val threadViewerIsGuest = currentSession.threadViewerIsGuest(headerProjectionServerId?.value)
     val threadForwardSourceAvailable = renderedPayload.threadForwardSourceChannelId() != null
     val renderedTimelineSlice =
