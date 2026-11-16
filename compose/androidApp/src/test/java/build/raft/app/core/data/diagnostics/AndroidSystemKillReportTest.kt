@@ -5,6 +5,7 @@ import android.app.ApplicationExitInfo
 import build.raft.app.shared.RaftBuildStamp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -405,43 +406,89 @@ class AndroidSystemKillReportTest {
         assertFalse(extras.containsKey("crash_background_duration_ms"))
     }
 
+    /** One version-source case: what the exit, its process record and this install say. */
+    private data class VersionCase(
+        val name: String,
+        val stamped: Boolean = false,
+        /** The exited process's memory record: [recordedTelemetry], [unversionedTelemetry] or none. */
+        val telemetry: MemoryTelemetrySnapshot? = null,
+        val packageUpdatedMillis: Long? = 50_000L,
+        val exitAt: Long = 100_000L,
+        val expectedSource: String,
+        /** Expected fallback_version_code; null when none is sent. */
+        val expectedFallbackCode: Long? = null,
+    )
+
+    private val reporter = SystemKillReporterBuild("1.26.0", 12600002L, packageUpdatedMillis = null, nowMillis = 200_000L)
+    /** A record from an older install (1.23.0) than this one; its own record is what counts. */
+    private val recordedTelemetry =
+        snapshot(pid = 7, start = 1_000L, foreground = true).copy(versionCode = 12300004L, versionName = "1.23.0")
+    private val unversionedTelemetry = snapshot(pid = 7, start = 1_000L, foreground = true)
+
+    private val versionCases =
+        listOf(
+            VersionCase("stamp wins over record and install", stamped = true, telemetry = recordedTelemetry, expectedSource = "process_state_summary"),
+            VersionCase("record wins over install", telemetry = recordedTelemetry, expectedSource = "last_process_state", expectedFallbackCode = 12300004L),
+            VersionCase("updated before exit", expectedSource = "installed_before_exit", expectedFallbackCode = 12600002L),
+            VersionCase("unversioned record, updated before exit", telemetry = unversionedTelemetry, expectedSource = "installed_before_exit", expectedFallbackCode = 12600002L),
+            VersionCase("unversioned record, no update time", telemetry = unversionedTelemetry, packageUpdatedMillis = null, expectedSource = "unknown"),
+            VersionCase("updated at the exit millisecond", packageUpdatedMillis = 100_000L, expectedSource = "unknown"),
+            VersionCase("updated after exit", packageUpdatedMillis = 150_000L, expectedSource = "unknown"),
+            VersionCase("no update time", packageUpdatedMillis = null, expectedSource = "unknown"),
+            VersionCase("zero update time", packageUpdatedMillis = 0L, expectedSource = "unknown"),
+            VersionCase("negative update time", packageUpdatedMillis = -1L, expectedSource = "unknown"),
+            VersionCase("update and exit in the future", packageUpdatedMillis = 250_000L, exitAt = 300_000L, expectedSource = "unknown"),
+            VersionCase("exit in the future", exitAt = 250_000L, expectedSource = "unknown"),
+        )
+
+    private fun extrasFor(case: VersionCase): Map<String, Any?> =
+        systemKillExtras(
+            exit(pid = 7, at = case.exitAt).copy(build = if (case.stamped) stamp else null),
+            case.telemetry,
+            reporter = reporter.copy(packageUpdatedMillis = case.packageUpdatedMillis),
+        )
+
     @Test
-    fun anUnstampedExitFallsBackToTheVersionItsProcessRecorded() {
-        // The process ran an older install (1.23.0) than this one; its own record is what counts.
-        val telemetry =
-            snapshot(pid = 7, start = 1_000L, foreground = true).copy(versionCode = 12300004L, versionName = "1.23.0")
+    fun versionSourceIsStampThenProcessRecordThenInstalledBeforeExitThenUnknown() {
+        for (case in versionCases) {
+            val extras = extrasFor(case)
 
-        val extras = systemKillExtras(exit(pid = 7, at = 100_000L).copy(build = null), telemetry)
-
-        assertFalse(extras.containsKey("version_code"))
-        assertFalse(extras.containsKey("version_name"))
-        assertEquals(12300004L, extras["fallback_version_code"])
-        assertEquals("1.23.0", extras["fallback_version_name"])
-        assertEquals("last_process_state", extras["crash_version_source"])
+            assertEquals(case.name, case.expectedSource, extras["crash_version_source"])
+            assertEquals(case.name, case.expectedSource == "installed_before_exit", extras["crash_version_inferred"])
+            assertEquals(case.name, case.expectedFallbackCode, extras["fallback_version_code"])
+            assertEquals(
+                case.name,
+                mapOf(12300004L to "1.23.0", 12600002L to "1.26.0")[case.expectedFallbackCode],
+                extras["fallback_version_name"],
+            )
+            // version_* is only ever the exit's own stamp.
+            assertEquals(case.name, if (case.stamped) 12200001L else null, extras["version_code"])
+            assertEquals(case.name, if (case.stamped) "1.22.0" else null, extras["version_name"])
+        }
     }
 
     @Test
-    fun aStampedExitUsesItsOwnVersionAndNoFallback() {
-        val telemetry =
-            snapshot(pid = 7, start = 1_000L, foreground = true).copy(versionCode = 12300004L, versionName = "1.23.0")
+    fun reporterVersionIsSentWithEveryVersionSourceAndNeverAsTheExitVersion() {
+        for (case in versionCases) {
+            val extras = extrasFor(case)
 
-        val extras = systemKillExtras(exit(pid = 7, at = 100_000L), telemetry)
-
-        assertEquals(12200001L, extras["version_code"])
-        assertEquals("process_state_summary", extras["crash_version_source"])
-        assertFalse(extras.containsKey("fallback_version_code"))
-        assertFalse(extras.containsKey("fallback_version_name"))
+            assertEquals(case.name, "1.26.0", extras["reporter_version_name"])
+            assertEquals(case.name, 12600002L, extras["reporter_version_code"])
+            assertNotEquals(case.name, 12600002L, extras["version_code"])
+        }
+        // Without a reporter build (older call sites) nothing is inferred and no reporter field is sent.
+        val bare = systemKillExtras(exit(pid = 7, at = 100_000L).copy(build = null), null)
+        assertEquals("unknown", bare["crash_version_source"])
+        assertFalse(bare.containsKey("reporter_version_code"))
     }
 
     @Test
-    fun withNeitherStampNorRecordedVersionTheSourceIsUnknown() {
-        val unversionedTelemetry = snapshot(pid = 7, start = 1_000L, foreground = true)
-        listOf(null, unversionedTelemetry).forEach { telemetry ->
-            val extras = systemKillExtras(exit(pid = 7, at = 100_000L).copy(build = null), telemetry)
+    fun extrasMarkAnIsolatedProcessOnlyWhenKnown() {
+        for (isolated in listOf(true, false, null)) {
+            val extras = systemKillExtras(exit(pid = 7, at = 100_000L).copy(isolatedProcess = isolated), null)
 
-            assertEquals("unknown", extras["crash_version_source"])
-            assertFalse(extras.containsKey("fallback_version_code"))
-            assertFalse(extras.containsKey("fallback_version_name"))
+            assertEquals("$isolated", isolated, extras["crash_process_isolated"])
+            assertEquals("$isolated", isolated != null, extras.containsKey("crash_process_isolated"))
         }
     }
 
