@@ -159,6 +159,11 @@ internal data class ActivityConversationListContext(
      * with the agent's face and the Lounge mark, never `#<agent>-lounge`.
      */
     val loungesByChannelId: Map<String, ActivityConversationLounge> = emptyMap(),
+    /**
+     * Home's joint channels by id. An object row carries only its home's channel id, so this is how
+     * it knows its actor may be the other server's and must be resolved through `POST /api/actors/resolve`.
+     */
+    val jointChannelIds: Set<String> = emptySet(),
 ) {
     companion object {
         val Empty = ActivityConversationListContext()
@@ -203,8 +208,13 @@ internal fun HomeSnapshot?.toActivityConversationListContext(activityServerId: S
         currentMemberId = snapshot.currentMember.id.value.takeIf { it.isNotBlank() },
         channelSymbolsByChannelId = snapshot.activityChannelSymbolsByChannelId(),
         loungesByChannelId = snapshot.activityLoungesByChannelId(),
+        jointChannelIds = snapshot.activityJointChannelIds(),
     )
 }
+
+/** The ids of this server's joint channels on Home ([channelSettingsIsJoint]). */
+internal fun HomeSnapshot.activityJointChannelIds(): Set<String> =
+    channels.filter(::channelSettingsIsJoint).mapTo(mutableSetOf()) { it.channelId.value }
 
 /** An agent's Lounge as an Activity row draws it. */
 internal data class ActivityConversationLounge(
@@ -500,7 +510,7 @@ internal fun InboxItem.activityConversationRowModel(
     dmPeerNames: Map<String, String> = emptyMap(),
     activityTaskStatusBadgesEnabled: Boolean = true,
 ): ActivityConversationRowModel {
-    if (kind == InboxItemKind.Object) return activityObjectRowModel(selectedFilter, senderProfiles)
+    if (kind == InboxItemKind.Object) return activityObjectRowModel(selectedFilter, senderProfiles, context.jointChannelIds)
     val directMessage = isActivityDirectMessageConversation()
     val leadingKind =
         when {
@@ -620,6 +630,7 @@ internal fun InboxItem.activityConversationRowModel(
 internal fun InboxItem.activityObjectRowModel(
     selectedFilter: InboxFilter,
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
+    jointChannelIds: Set<String> = emptySet(),
 ): ActivityConversationRowModel {
     val row = activityObject ?: ActivityObjectRow()
     val unread = unreadCount.coerceAtLeast(0)
@@ -653,6 +664,9 @@ internal fun InboxItem.activityObjectRowModel(
                         avatarWireValue = null,
                         label = actorName.orEmpty(),
                         senderId = row.actorId.takeIf { it.isNotBlank() },
+                        // An object in a joint channel may be the other server's agent's or person's,
+                        // in neither of this server's rosters: resolve them as its conversation rows do.
+                        jointSurface = row.homeChannelId?.let { it in jointChannelIds } == true,
                     ),
             ),
         objectIcon = ArtifactKind.fromWire(row.artifactKind).lucideIcon(),
