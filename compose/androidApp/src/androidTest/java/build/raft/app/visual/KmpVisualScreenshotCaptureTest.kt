@@ -3138,9 +3138,9 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // The entity row under the search header, whose filter chips wrap onto two lines
-    // since #4160; the Pin item opens 30dp below the press.
-    private val SEARCH_PIN_ROW_Y_DP = 260f
+    // The entity row under the search header, whose filters sit on one line since #4807
+    // (two wrapped lines before, row at 260dp); the Pin item opens 30dp below the press.
+    private val SEARCH_PIN_ROW_Y_DP = 214f
 
     private fun captureHomeSearchEntityPinMenu(
         caseId: String,
