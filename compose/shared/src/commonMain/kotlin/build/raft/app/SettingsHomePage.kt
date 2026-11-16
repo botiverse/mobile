@@ -18,6 +18,8 @@ import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftTextFieldDefaults
+import build.raft.designsystem.components.RaftConversationKindGlyph
+import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextarea
@@ -16298,10 +16300,11 @@ private fun SharedHomeSavedResultCard(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            RaftLucideIcon(
-                                RaftLucideIconName.MessageSquare,
-                                color = raftArgbHex(RaftColor.ForegroundHint),
-                                modifier = Modifier.size(12.dp)
+                            // web SavedPanel: raft-ui ThreadIcon (two bubbles) at 12px, as Activity marks a thread.
+                            RaftConversationKindIcon(
+                                RaftConversationKindGlyph.Thread,
+                                size = 12.dp,
+                                color = RaftColor.ForegroundHint
                             )
                             Text(
                                 text = stringResource(Res.string.saved_meta_thread),
