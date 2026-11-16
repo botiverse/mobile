@@ -105,12 +105,13 @@ private fun RaftDialogSheetSurfaceImpl(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
+    val navigationBarInsets = rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
     CompositionLocalProvider(LocalRaftContentColor provides colors.foreground, LocalRaftSurfaceColor provides colors.layerPopover) {
         Column(
             modifier
                 .fillMaxWidth()
                 .raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Dialog, 0.dp)
-                .then(if (clearNavigationBar) Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)) else Modifier),
+                .then(if (clearNavigationBar) Modifier.windowInsetsPadding(navigationBarInsets) else Modifier),
         ) {
             // The head's buttons are bar buttons (28dp under a fine pointer).
             CompositionLocalProvider(LocalRaftBarButtons provides true) {
@@ -235,7 +236,7 @@ fun RaftDialogSheet(
                     Modifier
                         .fillMaxSize()
                         // Clear of the system bars, the cutout and the keyboard, then 16dp.
-                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                        .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing))
                         .padding(16.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -306,7 +307,7 @@ private fun RaftDialogSheetBottom(
         Modifier
             .fillMaxSize()
             // Never under a side cutout; the bottom is the sheet's own.
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+            .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))),
         contentAlignment = Alignment.BottomCenter,
     ) {
         RaftDialogSheetSurfaceImpl(

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.unit.Dp
@@ -44,8 +43,9 @@ val LocalRaftSafeAreaInsets = compositionLocalOf { RaftSafeAreaInsets.Zero }
 fun Modifier.raftSafeAreaHorizontalPadding(sides: WindowInsetsSides = WindowInsetsSides.Horizontal): Modifier =
     composed {
         val insets = LocalRaftSafeAreaInsets.current
-        val windowInsets = remember(insets, sides) { insets.asWindowInsets().only(sides) }
-        windowInsetsPadding(windowInsets)
+        // One stable insets object: a new value re-measures, it never re-runs the element's update()
+        // (see RaftStableWindowInsets.kt; Hands crash 8da5d67f).
+        windowInsetsPadding(rememberRaftStableWindowInsets(insets.asWindowInsets().only(sides)))
     }
 
 /**
@@ -55,8 +55,7 @@ fun Modifier.raftSafeAreaHorizontalPadding(sides: WindowInsetsSides = WindowInse
 fun Modifier.raftConsumeSafeAreaHorizontal(sides: WindowInsetsSides = WindowInsetsSides.Horizontal): Modifier =
     composed {
         val insets = LocalRaftSafeAreaInsets.current
-        val windowInsets = remember(insets, sides) { insets.asWindowInsets().only(sides) }
-        consumeWindowInsets(windowInsets)
+        consumeWindowInsets(rememberRaftStableWindowInsets(insets.asWindowInsets().only(sides)))
     }
 
 private fun RaftSafeAreaInsets.asWindowInsets(): WindowInsets =

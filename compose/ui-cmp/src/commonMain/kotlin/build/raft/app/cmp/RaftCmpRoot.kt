@@ -40,6 +40,7 @@ import build.raft.designsystem.components.RaftStatusBarBackdrop
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.designsystem.components.RaftSystemBarsAppearance
 import build.raft.designsystem.components.raftSystemBarsAppearance
+import build.raft.designsystem.components.rememberRaftStableWindowInsets
 import build.raft.designsystem.gesture.LocalRaftBackSwipeRegions
 import build.raft.designsystem.gesture.RaftBackSwipeRegions
 import build.raft.designsystem.text.RaftText
@@ -232,7 +233,7 @@ private fun RaftSystemBarsReporter(
 @Composable
 private fun UnknownCmpPage(pageName: String) {
     Box(
-        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(RaftSpacing.Lg),
+        Modifier.fillMaxSize().windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing)).padding(RaftSpacing.Lg),
         contentAlignment = Alignment.Center,
     ) {
         RaftText(pageName, color = RaftTheme.colors.foregroundMuted, style = RaftTheme.typography.monoMeta)

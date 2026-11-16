@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.rememberRaftStablePaddingValues
 import build.raft.designsystem.theme.raftTrackPointerInput
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -458,10 +459,13 @@ internal fun RaftHorizontalSafeAreaShell(
     val window = if (windowRoot) required else LocalRaftWindowHorizontalSafeArea.current.union(required)
     val padding = if (windowRoot) required else RaftHorizontalSafeArea.Zero
     val paddingValues = PaddingValues.Absolute(left = padding.left, right = padding.right)
+    // One stable object for the consumption: a rotation re-measures, it never re-runs the consuming
+    // element's update() (see RaftStableWindowInsets.kt; Hands crash 8da5d67f).
+    val consumedPadding = rememberRaftStablePaddingValues(paddingValues)
     // Always the same node, whatever the insets: a rotation must not reset the page's state.
     // Every page's root also tells the design system which input is in use (a finger, or a mouse
     // or trackpad), which picks the control metrics.
-    Box(Modifier.fillMaxSize().raftTrackPointerInput().padding(paddingValues).consumeWindowInsets(paddingValues)) {
+    Box(Modifier.fillMaxSize().raftTrackPointerInput().padding(paddingValues).consumeWindowInsets(consumedPadding)) {
         CompositionLocalProvider(
             LocalRaftWindowHorizontalSafeArea provides window,
             LocalRaftHorizontalSafeAreaBleed provides padding,

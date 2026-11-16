@@ -53,6 +53,7 @@ import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftIconTileVariant
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
+import build.raft.designsystem.components.rememberRaftStableWindowInsets
 import kotlinx.coroutines.launch
 
 internal const val RAFT_MIN_BUILD_GATE_BLOCK_TAG = "raft_min_build_gate_block"
@@ -150,6 +151,7 @@ internal fun RaftMinBuildGateFrame(
 ) {
     val blocked = decision is RaftMinBuildGateDecision.Block
     val banner = (decision as? RaftMinBuildGateDecision.Banner)?.takeIf { dismissedBannerThreshold != it.threshold }
+    val statusBarInsets = rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
     Box(modifier = Modifier.fillMaxSize()) {
         // The banner never lies over the page (#103: over Home it covered the server switcher): it
         // is a band above the page, and the page starts under it. The band clears the status bar,
@@ -171,7 +173,7 @@ internal fun RaftMinBuildGateFrame(
                     Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .then(if (banner != null) Modifier.consumeWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)) else Modifier)
+                        .then(if (banner != null) Modifier.consumeWindowInsets(statusBarInsets) else Modifier)
                         .then(if (blocked) Modifier.clearAndSetSemantics {} else Modifier)
             ) {
                 CompositionLocalProvider(LocalRaftTopSafeAreaClearedAbovePage provides (banner != null), content = content)
@@ -208,7 +210,7 @@ internal fun RaftMinBuildGateBannerBand(
                 Modifier
                     .fillMaxWidth()
                     .padding(top = topInset)
-                    .windowInsetsPadding(horizontalInsets.union(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)))
+                    .windowInsetsPadding(rememberRaftStableWindowInsets(horizontalInsets.union(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))))
                     .padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm),
             contentAlignment = Alignment.TopCenter,
         ) {
@@ -246,7 +248,7 @@ internal fun RaftMinBuildGateBlockContent(
                     }
                 }
                 .background(RaftColor.SurfaceCream)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing))
                 .padding(RaftAppSpacing.Xl),
         contentAlignment = Alignment.Center,
     ) {

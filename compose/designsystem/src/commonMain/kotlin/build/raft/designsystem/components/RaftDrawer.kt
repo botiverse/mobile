@@ -259,6 +259,7 @@ internal fun RaftDrawerSurfaceImpl(
     val fillColor: Color = if (fill == RaftDrawerFill.Canvas) colors.layerCanvas else colors.layerPopover
     val dismiss by rememberUpdatedState(onDismissRequest)
     val flingPx = with(LocalDensity.current) { RaftDrawerFlingVelocity.toPx() }
+    val navigationBarInsets = rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
     val dragArea =
         if (state == null) {
             Modifier
@@ -282,7 +283,7 @@ internal fun RaftDrawerSurfaceImpl(
                 // After the window's 82% cap (or the snap layout's height): the surface takes all of it.
                 .fillMaxHeight()
                 .raftOverlaySurface(fillColor, colors.lineSeam, RaftTheme.isDark, RaftRadius.Dialog, 0.dp)
-                .then(if (clearNavigationBar) Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)) else Modifier),
+                .then(if (clearNavigationBar) Modifier.windowInsetsPadding(navigationBarInsets) else Modifier),
         ) {
             RaftSheetGrabHandle(Modifier.raftDrawerDragArea())
             content()
