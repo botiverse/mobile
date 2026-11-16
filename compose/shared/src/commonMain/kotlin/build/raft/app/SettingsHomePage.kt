@@ -4985,6 +4985,21 @@ private fun RaftAppShellReadyContent(
         }
     }
 
+    fun openCreateJointChannelDialog() {
+        createJointChannelDialogOpen = true
+        createChannelMembers = emptyList()
+        loadCreateChannelMembers()
+    }
+
+    fun openCreateChannelDialog(external: Boolean = false) {
+        createChannelExternalChosen = external
+        createChannelDialogOpen = true
+        createChannelError = null
+        createChannelCollision = null
+        createChannelMembers = emptyList()
+        loadCreateChannelMembers()
+    }
+
     // Web useExternalLimitGate (surface sidebar): on a Free server whose one external channel is
     // taken, the External section's "+" opens the upgrade dialog instead of Create Channel. Not
     // Free (or not known), or a failed read: Create Channel with External chosen.
@@ -5014,21 +5029,6 @@ private fun RaftAppShellReadyContent(
                 pager.openSettingsBillingPage(storeScope)
             }
         }
-    }
-
-    fun openCreateJointChannelDialog() {
-        createJointChannelDialogOpen = true
-        createChannelMembers = emptyList()
-        loadCreateChannelMembers()
-    }
-
-    fun openCreateChannelDialog(external: Boolean = false) {
-        createChannelExternalChosen = external
-        createChannelDialogOpen = true
-        createChannelError = null
-        createChannelCollision = null
-        createChannelMembers = emptyList()
-        loadCreateChannelMembers()
     }
 
     // A created channel: the dialog closes onto it (tygg 11-06: land in the new channel, as the
