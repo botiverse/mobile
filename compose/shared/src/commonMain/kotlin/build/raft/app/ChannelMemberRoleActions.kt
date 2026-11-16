@@ -27,7 +27,8 @@ import build.raft.designsystem.components.RaftMenuItem
 /*
  * The channel members page's role action (web `MemberRoleActions`, botiverse/slock
  * packages/web/src/components/agent/MemberRoleActions.tsx): "Make admin" / "Demote" on a member's
- * row. The web shows it as an outline button at rest on touch; here it sits in the row's ⋯ menu.
+ * row. The web shows it as an outline button at rest on touch; here it sits in the row's ⋯ menu,
+ * with Remove from channel (task #triage:#416: one ⋯ per row on mobile; the web is unchanged).
  */
 
 /** What a member row's role menu offers (web `MemberRoleActions` `nextRole` / `canExplainProtectedDemote`). */
@@ -107,17 +108,37 @@ internal data class ChannelMemberRoleChangeState(
 
 internal const val ChannelMemberRoleMenuTestTag = "channel-member-role-menu"
 internal const val ChannelMemberRoleActionTestTag = "channel-member-role-action"
+internal const val ChannelMemberRemoveActionTestTag = "channel-member-remove-action"
 
 /**
- * The row's ⋯ with its menu: one item, the web button's label ("Make admin" / "Demote"), which
- * reads its full sentence ("Make ada a channel admin") to a screen reader.
+ * Which items a member row's ⋯ menu holds (task #triage:#416, mobile only): the role item when
+ * [roleAction] is set, then Remove from channel when [canRemove]. Null when neither applies, and
+ * the row then shows no ⋯ at all. The eligibility of each stays where it was decided
+ * ([channelMemberRoleAction], the roster's `canRemove`).
+ */
+internal data class ChannelMemberRowMenu(
+    val roleAction: ChannelMemberRoleAction?,
+    val canRemove: Boolean,
+)
+
+internal fun channelMemberRowMenu(roleAction: ChannelMemberRoleAction?, canRemove: Boolean): ChannelMemberRowMenu? =
+    if (roleAction == null && !canRemove) null else ChannelMemberRowMenu(roleAction, canRemove)
+
+/**
+ * The row's one ⋯ with its menu: the role item, the web button's label ("Make admin" / "Demote"),
+ * read as its full sentence ("Make ada a channel admin"); then "Remove from channel", read as
+ * [removeLabel] ("Remove ada"), which opens the page's confirmation. Like every raft-ui menu item
+ * it is not coloured: the confirmation's danger button carries the consequence. [busy] (a role
+ * change or a removal of this row in flight) turns the ⋯ into its spinner.
  */
 @Composable
-internal fun ChannelMemberRoleMenuButton(
-    action: ChannelMemberRoleAction,
+internal fun ChannelMemberRowMenuButton(
+    menu: ChannelMemberRowMenu,
     memberName: String,
+    removeLabel: String,
     busy: Boolean,
-    onAction: () -> Unit,
+    onRoleAction: () -> Unit,
+    onRemove: () -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
@@ -133,26 +154,39 @@ internal fun ChannelMemberRoleMenuButton(
             RaftContentLucideIcon(RaftLucideIconName.Ellipsis, size = 18.dp)
         }
         RaftDropdownMenu(expanded = open, onDismissRequest = { open = false }, minWidth = 192.dp, alignEnd = true) {
-            val makeAdmin = action == ChannelMemberRoleAction.MakeAdmin
-            val fullLabel =
-                stringResource(
-                    if (makeAdmin) Res.string.channel_members_make_admin else Res.string.channel_members_remove_admin,
-                    memberName,
-                )
-            RaftMenuItem(
-                text =
+            menu.roleAction?.let { action ->
+                val makeAdmin = action == ChannelMemberRoleAction.MakeAdmin
+                val fullLabel =
                     stringResource(
-                        if (makeAdmin) Res.string.channel_members_make_admin_short else Res.string.channel_members_remove_admin_short
-                    ),
-                modifier = Modifier.testTag(ChannelMemberRoleActionTestTag).semantics { contentDescription = fullLabel },
-                leadingIcon = {
-                    MembersMenuIcon(if (makeAdmin) RaftLucideIconName.ShieldCheck else RaftLucideIconName.Shield)
-                },
-                onClick = {
-                    open = false
-                    onAction()
-                },
-            )
+                        if (makeAdmin) Res.string.channel_members_make_admin else Res.string.channel_members_remove_admin,
+                        memberName,
+                    )
+                RaftMenuItem(
+                    text =
+                        stringResource(
+                            if (makeAdmin) Res.string.channel_members_make_admin_short else Res.string.channel_members_remove_admin_short
+                        ),
+                    modifier = Modifier.testTag(ChannelMemberRoleActionTestTag).semantics { contentDescription = fullLabel },
+                    leadingIcon = {
+                        MembersMenuIcon(if (makeAdmin) RaftLucideIconName.ShieldCheck else RaftLucideIconName.Shield)
+                    },
+                    onClick = {
+                        open = false
+                        onRoleAction()
+                    },
+                )
+            }
+            if (menu.canRemove) {
+                RaftMenuItem(
+                    text = stringResource(Res.string.channel_members_remove_from_channel_short),
+                    modifier = Modifier.testTag(ChannelMemberRemoveActionTestTag).semantics { contentDescription = removeLabel },
+                    leadingIcon = { MembersMenuIcon(RaftLucideIconName.UserMinus) },
+                    onClick = {
+                        open = false
+                        onRemove()
+                    },
+                )
+            }
         }
     }
 }

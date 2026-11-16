@@ -3429,6 +3429,7 @@
     <string name="channel_members_remove_admin">Снять с участника %1$s роль администратора канала</string>
     <string name="channel_members_make_admin_short">Сделать администратором</string>
     <string name="channel_members_remove_admin_short">Сделать участником</string>
+    <string name="channel_members_remove_from_channel_short">Удалить из канала</string>
     <string name="channel_members_update_role_failed">Не удалось изменить роль этого участника в канале. Попробуйте ещё раз.</string>
     <string name="channel_members_cannot_demote_server_admin_title">Нельзя понизить администраторов сервера</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s — владелец или администратор сервера, поэтому остаётся администратором во всех каналах. Сначала измените роль этого участника на сервере в разделе «Администрирование».</string>

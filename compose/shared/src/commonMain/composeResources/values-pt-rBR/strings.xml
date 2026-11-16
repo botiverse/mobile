@@ -3432,6 +3432,7 @@
     <string name="channel_members_remove_admin">Remover %1$s da administração do canal</string>
     <string name="channel_members_make_admin_short">Tornar admin</string>
     <string name="channel_members_remove_admin_short">Rebaixar</string>
+    <string name="channel_members_remove_from_channel_short">Remover do canal</string>
     <string name="channel_members_update_role_failed">Não foi possível atualizar a função deste membro no canal. Tente novamente.</string>
     <string name="channel_members_cannot_demote_server_admin_title">Não é possível rebaixar admins do servidor</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s tem a função de proprietário ou admin do servidor e, por isso, continua como admin em todos os canais. Primeiro, altere a função de %1$s no servidor em Administração do servidor.</string>

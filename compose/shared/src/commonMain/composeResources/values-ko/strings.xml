@@ -3432,6 +3432,7 @@
     <string name="channel_members_remove_admin">%1$s 님의 채널 관리자 권한 해제</string>
     <string name="channel_members_make_admin_short">관리자로 지정</string>
     <string name="channel_members_remove_admin_short">관리자 해제</string>
+    <string name="channel_members_remove_from_channel_short">채널에서 제거</string>
     <string name="channel_members_update_role_failed">이 멤버의 채널 역할을 업데이트하지 못했어요. 다시 시도해 주세요.</string>
     <string name="channel_members_cannot_demote_server_admin_title">서버 관리자의 권한은 해제할 수 없어요</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s 님은 서버 소유자 또는 관리자라서 모든 채널에서 채널 관리자로 유지돼요. 먼저 서버 관리에서 서버 역할을 변경해 주세요.</string>

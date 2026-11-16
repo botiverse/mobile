@@ -3600,6 +3600,7 @@
     <string name="channel_members_remove_admin">Remove channel admin from %1$s</string>
     <string name="channel_members_make_admin_short">Make admin</string>
     <string name="channel_members_remove_admin_short">Demote</string>
+    <string name="channel_members_remove_from_channel_short">Remove from channel</string>
     <string name="channel_members_update_role_failed">Could not update this member's channel role. Try again.</string>
     <string name="channel_members_cannot_demote_server_admin_title">Can't demote server admins</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s is a server owner or admin, so they remain a Channel Admin in every channel. Change their server role in Server Administration first.</string>

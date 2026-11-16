@@ -40404,18 +40404,19 @@ internal fun ThreadMembersPagerRow(
         avatarOriginServers = member.originServers,
         divider = divider,
         removing = removing,
-        removeLabel = stringResource(Res.string.thread_members_remove_name, member.displayName),
-        onRemove = if (member.canRemove && !removing) ({ onRemove(member) }) else null,
         onClick = { onOpen(member) },
+        // One ⋯ per row (task #triage:#416): the role item and Remove from channel share its menu.
         moreActions =
-            member.roleAction?.let { action ->
+            channelMemberRowMenu(member.roleAction, canRemove = member.canRemove)?.let { menu ->
                 {
-                    ChannelMemberRoleMenuButton(
-                        action = action,
+                    ChannelMemberRowMenuButton(
+                        menu = menu,
                         // Web `formatMessage(..., { name: member.name })`: the handle.
                         memberName = member.handle.ifBlank { member.displayName },
-                        busy = roleChanging,
-                        onAction = { onRoleAction(member) },
+                        removeLabel = stringResource(Res.string.thread_members_remove_name, member.displayName),
+                        busy = roleChanging || removing,
+                        onRoleAction = { onRoleAction(member) },
+                        onRemove = { onRemove(member) },
                     )
                 }
             },

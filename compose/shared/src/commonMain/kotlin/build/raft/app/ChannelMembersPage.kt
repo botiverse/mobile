@@ -35,8 +35,6 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowText
 import build.raft.designsystem.components.RaftSpinner
@@ -128,10 +126,9 @@ internal data class ChannelMemberBadge(val text: String, val kind: ChannelMember
  * agent's activity light, the name in 15/20, the activity or description line, a hairline from where
  * the text starts), the whole row opening the profile.
  *
- * Trailing: the role tag, then Remove as a visible ghost icon button. On the web the
- * remove button is hover-only with a mouse but shown at rest below `md` (touch), which is
- * what this page does; a long press on it names the action ([RaftIconButton] tooltip).
- * A long press on the name copies it (the row's tap still opens the profile).
+ * Trailing: the role tag, then the row's one ⋯ ([moreActions]: the role item and Remove from
+ * channel, task #triage:#416). The web keeps a separate remove button there; mobile folds it into
+ * the ⋯ menu. A long press on the name copies it (the row's tap still opens the profile).
  */
 @Composable
 internal fun ChannelMembersRow(
@@ -146,14 +143,12 @@ internal fun ChannelMembersRow(
     badges: List<ChannelMemberBadge>,
     divider: Boolean,
     removing: Boolean = false,
-    removeLabel: String? = null,
-    onRemove: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     subtitleCopyText: String? = null,
     titleBadge: (@Composable () -> Unit)? = null,
     /** Someone from another server: the first one's tile on the avatar's top-left corner. */
     avatarOriginServers: List<MemberServerRef> = emptyList(),
-    /** A ⋯ menu between the tags and Remove (the channel role action, web `MemberRoleActions`). */
+    /** The row's ⋯ menu after the tags ([ChannelMemberRowMenuButton]: role action, Remove from channel). */
     moreActions: (@Composable () -> Unit)? = null,
 ) {
     RaftListRow(
@@ -185,7 +180,7 @@ internal fun ChannelMembersRow(
             }
         },
         trailing =
-            if (badges.isNotEmpty() || onRemove != null || removing || moreActions != null) {
+            if (badges.isNotEmpty() || moreActions != null) {
                 {
                     badges.forEach { badge ->
                         RaftBadge(
@@ -198,17 +193,6 @@ internal fun ChannelMembersRow(
                         )
                     }
                     moreActions?.invoke()
-                    if ((onRemove != null || removing) && removeLabel != null) {
-                        RaftIconButton(
-                            onClick = { onRemove?.invoke() },
-                            tooltip = removeLabel,
-                            variant = RaftButtonVariant.Ghost,
-                            size = RaftIconButtonSize.Md,
-                            loading = removing,
-                        ) {
-                            ChannelMembersIcon(RaftLucideIconName.UserMinus, size = 18.dp)
-                        }
-                    }
                 }
             } else {
                 null

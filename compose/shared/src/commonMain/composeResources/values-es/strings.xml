@@ -3432,6 +3432,7 @@
     <string name="channel_members_remove_admin">Quitar a %1$s el rol de admin del canal</string>
     <string name="channel_members_make_admin_short">Hacer admin</string>
     <string name="channel_members_remove_admin_short">Quitar admin</string>
+    <string name="channel_members_remove_from_channel_short">Quitar del canal</string>
     <string name="channel_members_update_role_failed">No se pudo actualizar el rol de este miembro en el canal. Inténtalo de nuevo.</string>
     <string name="channel_members_cannot_demote_server_admin_title">No se puede degradar a los admins del servidor</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s tiene el rol de propietario o admin del servidor, por lo que conserva el rol de admin en todos los canales. Primero cambia su rol en el servidor desde Administración del servidor.</string>
