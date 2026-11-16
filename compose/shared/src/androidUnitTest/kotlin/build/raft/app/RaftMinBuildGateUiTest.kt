@@ -206,7 +206,7 @@ class RaftMinBuildGateUiTest {
         waitForIdle()
 
         val band = onNodeWithTag(RAFT_MIN_BUILD_GATE_BAND_TAG).getBoundsInRoot()
-        val switcher = onNodeWithText(SERVER).getBoundsInRoot()
+        val switcher = highestNodeWithText(SERVER).getBoundsInRoot()
         val tab = lowestNodeWithText("Tasks").getBoundsInRoot()
         assertEquals(0.dp, band.top, "the band starts at the window's top edge")
         assertTrue(band.bottom > STATUS_BAR, "the band clears the status bar")
@@ -215,7 +215,7 @@ class RaftMinBuildGateUiTest {
         assertTrue(switcher.top >= band.bottom, "the head is laid out under the band")
         assertTrue(switcher.top - band.bottom < STATUS_BAR, "the head pads the status bar again under the band: band=$band switcher=$switcher")
 
-        onNodeWithText(SERVER).performClick()
+        highestNodeWithText(SERVER).performClick()
         lowestNodeWithText("Tasks").performClick()
         waitForIdle()
         assertEquals(1, switcherTaps, "the server switcher did not take the tap")
@@ -224,7 +224,7 @@ class RaftMinBuildGateUiTest {
         onNodeWithText("Dismiss").performClick()
         waitForIdle()
         onNodeWithTag(RAFT_MIN_BUILD_GATE_BAND_TAG).assertDoesNotExist()
-        assertTrue(onNodeWithText(SERVER).getBoundsInRoot().top >= STATUS_BAR, "without the band the head pads the status bar")
+        assertTrue(highestNodeWithText(SERVER).getBoundsInRoot().top >= STATUS_BAR, "without the band the head pads the status bar")
     }
 
     /**
@@ -258,13 +258,13 @@ class RaftMinBuildGateUiTest {
         waitForIdle()
 
         val band = onNodeWithTag(RAFT_MIN_BUILD_GATE_BAND_TAG).getBoundsInRoot()
-        val workspace = onNodeWithText(SERVER).getBoundsInRoot()
+        val workspace = highestNodeWithText(SERVER).getBoundsInRoot()
         val search = onNodeWithText("Search", useUnmergedTree = true).getBoundsInRoot()
         assertFalse(band.overlaps(workspace), "the banner covers the server switcher: band=$band workspace=$workspace")
         assertFalse(band.overlaps(search), "the banner covers the search field: band=$band search=$search")
         assertTrue(workspace.top - band.bottom < STATUS_BAR, "the top bar pads the status bar again under the band")
 
-        onNodeWithText(SERVER).performClick()
+        highestNodeWithText(SERVER).performClick()
         onNodeWithText("Search", useUnmergedTree = true).performClick()
         waitForIdle()
         assertEquals(1, workspaceTaps)
@@ -275,6 +275,13 @@ class RaftMinBuildGateUiTest {
         val nodes = onAllNodesWithText(text)
         val count = nodes.fetchSemanticsNodes().size
         return (0 until count).map { nodes[it] }.maxBy { it.getBoundsInRoot().top.value }
+    }
+
+    /** The head's server switcher: the bottom bar's server tab carries the server name too. */
+    private fun ComposeUiTest.highestNodeWithText(text: String): SemanticsNodeInteraction {
+        val nodes = onAllNodesWithText(text)
+        val count = nodes.fetchSemanticsNodes().size
+        return (0 until count).map { nodes[it] }.minBy { it.getBoundsInRoot().top.value }
     }
 
     private fun DpRect.overlaps(other: DpRect): Boolean =

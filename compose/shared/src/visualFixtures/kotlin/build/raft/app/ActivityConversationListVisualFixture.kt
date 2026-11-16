@@ -24,6 +24,10 @@ import build.raft.app.model.TaskStatus
  * wrap to two lines, a muted channel with unread (bell-off, no count), a DM whose last message came from
  * the peer (preview alone), a person's DM last written by the viewer (localized "You" sender), and a
  * mention action (localized "System" sender).
+ *
+ * Times are ISO stamps 2 minutes to 2 days before the fixture clock (homeVisualFixtureTimeContext,
+ * 2026-06-19T12:30Z, Asia/Shanghai), which the panel is given: a label such as "2m" is not a
+ * timestamp, and under the page's live clock it reads "unknown time".
  */
 
 private val activityConversationListVisualItems: List<InboxItem> =
@@ -45,7 +49,7 @@ private val activityConversationListVisualItems: List<InboxItem> =
             parentMessagePreview = "Ship the conversation list behind the server flag",
             latestActivityMessageId = MessageId("msg-conv-list-reply"),
             latestActivityPreview = "Pinned rows now float to the top, and the preview wraps to a second line before it ellipsizes.",
-            latestActivityAt = "2m",
+            latestActivityAt = "2026-06-19T12:28:00.000Z",
             latestActivitySenderName = "Mahua",
             latestActivitySenderId = "agent-mahua",
             latestActivitySenderKind = MemberKind.Agent,
@@ -63,7 +67,7 @@ private val activityConversationListVisualItems: List<InboxItem> =
             firstUnreadMessageId = MessageId("msg-conv-list-android"),
             lastMessageId = MessageId("msg-conv-list-android"),
             lastMessagePreview = "Published the new render artifact to staging.",
-            lastMessageAt = "5m",
+            lastMessageAt = "2026-06-19T12:25:00.000Z",
             lastMessageSenderName = "artin",
             lastMessageSenderId = "user-artin",
             lastMessageSenderKind = MemberKind.Human,
@@ -76,7 +80,7 @@ private val activityConversationListVisualItems: List<InboxItem> =
             unreadCount = 4,
             lastMessageId = MessageId("msg-conv-list-random"),
             lastMessagePreview = "Anyone up for lunch?",
-            lastMessageAt = "1h",
+            lastMessageAt = "2026-06-19T11:30:00.000Z",
             lastMessageSenderName = "Cindy",
             lastMessageSenderId = "agent-cindy",
             lastMessageSenderKind = MemberKind.Agent,
@@ -91,7 +95,7 @@ private val activityConversationListVisualItems: List<InboxItem> =
             unreadCount = 1,
             lastMessageId = MessageId("msg-conv-list-fable"),
             lastMessagePreview = "Storyboard for the launch thread is ready to review.",
-            lastMessageAt = "3h",
+            lastMessageAt = "2026-06-19T09:30:00.000Z",
             lastMessageSenderName = "Fable",
             lastMessageSenderId = "agent-fable",
             lastMessageSenderKind = MemberKind.Agent,
@@ -104,7 +108,7 @@ private val activityConversationListVisualItems: List<InboxItem> =
             channelKind = ConversationKind.DirectMessage,
             lastMessageId = MessageId("msg-conv-list-xxchan"),
             lastMessagePreview = "Sounds good, merging after CI.",
-            lastMessageAt = "1d",
+            lastMessageAt = "2026-06-18T12:30:00.000Z",
             lastMessageSenderName = "you",
             lastMessageSenderId = "user-me",
             lastMessageSenderKind = MemberKind.Human,
@@ -118,7 +122,7 @@ private val activityConversationListVisualItems: List<InboxItem> =
             hasMention = true,
             lastMessageId = MessageId("msg-conv-list-mention"),
             lastMessagePreview = "@quill was not notified at send time.",
-            lastMessageAt = "2d",
+            lastMessageAt = "2026-06-17T12:30:00.000Z",
         ),
     )
 
@@ -181,6 +185,7 @@ internal fun HomeActivityConversationListVisualContent(withPins: Boolean) {
             snapshot = activityConversationListVisualSnapshot,
             onOpenItem = {},
             onClose = {},
+            timeContext = homeVisualFixtureTimeContext,
             activityTaskStatusBadgesEnabled = true,
             draftProjection = activityConversationListVisualDraftProjection,
             foregroundEpoch = 0L,
