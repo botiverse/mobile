@@ -453,8 +453,21 @@ internal fun RaftThreadScreenPayload.withAgentLoungeAccess(
         return this
     }
     val postable = lounge.postable
-    if (joined && canSend == postable && composer.enabled == postable) return this
-    return copy(joined = true, canSend = postable, composer = composer.copy(enabled = postable))
+    // Task writes need post authority too (web canWriteTasksInChannel reads the Lounge's `canPost`).
+    val taskStatusActions = showTaskStatusActions && postable
+    val asTaskToggle = composer.showAsTaskToggle && postable
+    if (
+        joined && canSend == postable && composer.enabled == postable &&
+        showTaskStatusActions == taskStatusActions && composer.showAsTaskToggle == asTaskToggle
+    ) {
+        return this
+    }
+    return copy(
+        joined = true,
+        canSend = postable,
+        showTaskStatusActions = taskStatusActions,
+        composer = composer.copy(enabled = postable, showAsTaskToggle = asTaskToggle),
+    )
 }
 
 /** "{Name}'s Lounge" while the composer belongs to a Lounge (its placeholder names the Lounge); null elsewhere. */

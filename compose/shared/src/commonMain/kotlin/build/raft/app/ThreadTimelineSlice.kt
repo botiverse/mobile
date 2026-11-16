@@ -121,7 +121,7 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
         showMessageSaveAction = showMessageSaveAction,
         showReactionActions = showReactionActions,
         showTaskOpenActions = showTaskOpenActions,
-        showTaskStatusActions = showTaskStatusActions,
+        showTaskStatusActions = channelTaskWritesShown(),
         canConvertMessagesToTasks = canConvertMessagesToTasks(),
         beginningReplyCountLabel = threadBeginningReplyCountLabel(),
         beginningReplyCount = threadBeginningReplyCount(),

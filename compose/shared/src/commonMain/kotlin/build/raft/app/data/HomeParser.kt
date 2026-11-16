@@ -495,7 +495,9 @@ internal fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
             ConversationPermissions(
                 canSend = joined,
                 canAttach = joined,
-                canCreateTask = joined
+                // Task writes need post authority and refuse an archived channel (web
+                // canWriteTasksInChannel); the channel row carries no `canPost` of its own.
+                canCreateTask = canWriteTasksInChannel(taskChannelWriteFacts())
             )
         },
         channelCapabilities = channelCapabilities?.toModel(),

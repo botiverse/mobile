@@ -90,6 +90,12 @@ class AgentLoungeRulesTest {
         val opened = unjoined.withAgentLoungeAccess(lounge)
         assertTrue(opened.joined && opened.canSend && opened.composer.enabled)
         assertFalse(unjoined.withAgentLoungeAccess(lounge.copy(canPost = false)).canSend)
+        // Web canWriteTasksInChannel reads the Lounge's canPost: a reader gets no task writes either.
+        val readOnly = unjoined.withAgentLoungeAccess(lounge.copy(canPost = false))
+        assertFalse(readOnly.showTaskStatusActions, "no message-menu task items")
+        assertFalse(readOnly.composer.showAsTaskToggle, "no send as task")
+        assertTrue(readOnly.showTaskOpenActions, "its tasks still open")
+        assertTrue(opened.showTaskStatusActions)
         // A terminal access state the store closed stays closed: a Lounge never reopens it.
         for (closed in listOf(ThreadAccessResolution.NoPermission, ThreadAccessResolution.Error)) {
             assertEquals(unjoined, unjoined.withAgentLoungeAccess(lounge, closed))

@@ -67,6 +67,7 @@ import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.boardColumns
 import build.raft.app.data.inConversationSectionOrder
 import build.raft.app.data.isCreatingTasksFor
+import build.raft.app.data.LocalTaskChannelWriteCheck
 import build.raft.app.data.reduce
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.tasksAssigneeDisplayName
@@ -167,8 +168,13 @@ internal fun SharedTasksScreen(
     query: SharedTasksQueryBinding? = null,
     /** The task open beside the list on the wide layout (RaftTasksTaskColumn.kt): its card shows it. */
     openTaskId: String? = null,
+    /** Whether the reader may write a channel's tasks ([LocalTaskChannelWriteCheck]); unknown: yes. */
+    canWriteTaskChannel: (ChannelId?) -> Boolean = { true },
 ) {
-    CompositionLocalProvider(LocalSharedTasksOpenTaskId provides openTaskId) {
+    CompositionLocalProvider(
+        LocalSharedTasksOpenTaskId provides openTaskId,
+        LocalTaskChannelWriteCheck provides canWriteTaskChannel,
+    ) {
     SharedTasksPanel(
         state = state,
         onIntent = onIntent,
@@ -431,6 +437,14 @@ private fun localizedSharedTasksEmptyStateCopy(
 internal fun sharedTasksEmptyToolbarVisible(createTasksChannelId: ChannelId?): Boolean =
     createTasksChannelId != null
 
+/**
+ * A task's status, Backlog-reason and assignee menus open: the task is not read-only (historical
+ * joint), not the offline stand-in, and the reader may write its channel ([canWriteTaskChannel],
+ * web canWriteTasksInChannel).
+ */
+internal fun TaskSummary.opensTaskMutationMenus(standIn: Boolean, canWriteTaskChannel: (ChannelId?) -> Boolean): Boolean =
+    readOnlyReason == null && !standIn && canWriteTaskChannel(channelId)
+
 private fun TasksVisibleContent.hasAnyPresentationFilter(): Boolean =
     selectedChannelNames.isNotEmpty() ||
         selectedCreatorIds.isNotEmpty() ||
@@ -536,6 +550,8 @@ private fun SharedTasksLoadedBodyContent(
                 )
         }
     var presentationState by remember(viewModeRepository) { mutableStateOf(initialPresentationState) }
+    // Web canWriteTasksInChannel (slock #15155): task writes only where the reader may write the channel.
+    val canWriteTaskChannel = LocalTaskChannelWriteCheck.current
     val sortedContent = remember(content) {
         content.copy(tasks = content.tasks.sortedByTaskDisplayOrder())
     }
@@ -837,7 +853,7 @@ private fun SharedTasksLoadedBodyContent(
                     selectedMode = presentationState.selectedMode,
                     showChannelFilter = showChannelFilter,
                     openFilterId = presentationState.openFilterId,
-                    showCreateButton = createTasksChannelId != null,
+                    showCreateButton = createTasksChannelId != null && canWriteTaskChannel(createTasksChannelId),
                     onModeSelected = { mode ->
                         viewModeRepository.selectTasksViewModeSync(mode)
                         presentationState = presentationState.reduce(TasksPresentationIntent.SelectMode(mode))
@@ -1137,9 +1153,10 @@ private fun SharedTasksLoadedBodyContent(
             else -> Unit
         }
 
-        // Read-only tasks (e.g. historical joint tasks) never open mutation menus, like web; nor does the
-        // stored offline stand-in before the network confirmed it.
-        statusMenuTask?.takeIf { it.readOnlyReason == null && !state.standIn }?.let { task ->
+        // Read-only tasks (e.g. historical joint tasks) never open mutation menus, like web; nor do
+        // tasks of a channel the reader may not write (not joined, archived), nor does the stored
+        // offline stand-in before the network confirmed it.
+        statusMenuTask?.takeIf { it.opensTaskMutationMenus(state.standIn, canWriteTaskChannel) }?.let { task ->
             val updating = state.statusUpdatingTaskId == task.id.value
             val resolvedStatusAnchor =
                 statusMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
@@ -1167,7 +1184,7 @@ private fun SharedTasksLoadedBodyContent(
             )
         }
 
-        backlogReasonTask?.takeIf { it.readOnlyReason == null && !state.standIn }?.let { task ->
+        backlogReasonTask?.takeIf { it.opensTaskMutationMenus(state.standIn, canWriteTaskChannel) }?.let { task ->
             TaskBacklogReasonDialog(
                 taskNumber = task.taskNumber,
                 onDismiss = { backlogReasonTask = null },
@@ -1186,7 +1203,7 @@ private fun SharedTasksLoadedBodyContent(
         // picker reuses the searchable filter sheet (stdrc msg=4c357cb1) — humans
         // first, then agents, "unassigned" sentinel always first and never filtered
         // away. Matching is on the visible display name, mirroring TaskProperties.tsx.
-        assigneeMenuTask?.takeIf { it.readOnlyReason == null && !state.standIn }?.let { task ->
+        assigneeMenuTask?.takeIf { it.opensTaskMutationMenus(state.standIn, canWriteTaskChannel) }?.let { task ->
             // The picker opens for the task whose assignee chip was tapped.
             assigneeMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
                 ?: return@let
@@ -1235,7 +1252,7 @@ private fun SharedTasksLoadedBodyContent(
             )
         }
 
-        if (createDialogOpen && createTasksChannelId != null && !state.standIn) {
+        if (createDialogOpen && createTasksChannelId != null && !state.standIn && canWriteTaskChannel(createTasksChannelId)) {
             TasksCreateDialog(
                 // Task v2: a task can start in Backlog, Todo or In Progress (web Create Task's Status field).
                 statusField = taskV2Enabled,

@@ -279,6 +279,7 @@ import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.canWriteTasksInChannel
 import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.SharedDirectMessagePreviewPrefetchCoordinator
 import build.raft.app.data.mergedSharedConversationDirectoryState
@@ -7279,6 +7280,13 @@ private fun RaftAppShellReadyContent(
                         val tasksOpenSurfaceFlow = remember { TaskOpenSurfaceFlow(foregroundBannerStore.taskPendingDrafts) }
                         TaskOpenSurfaceIncomingNavigationEffect(tasksOpenSurfaceFlow, foregroundBannerStore.incomingNavigation)
                         val tasksOpenGate = remember { TaskOpenGate() }
+                        // Web canWriteTasksInChannel (slock #15155): the Tasks page and the task pages it opens
+                        // offer task writes only in a channel the reader may write (this server's Home rows).
+                        val tasksChannelWriteServerId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+                        val tasksChannelWriteCheck: (ChannelId?) -> Boolean =
+                            remember(appShellConversationDirectory, tasksChannelWriteServerId) {
+                                { channelId -> appShellConversationDirectory.canWriteTasksInChannel(tasksChannelWriteServerId, channelId) }
+                            }
                         val latestTasksOpenServerId by rememberUpdatedState(readyServerId)
                         val tasksSendFailedLabel = stringResource(Res.string.task_conversation_send_failed)
                         val tasksUpdateFailedLabel = stringResource(Res.string.thread_error_update_task)
@@ -7342,6 +7350,7 @@ private fun RaftAppShellReadyContent(
                             } == true
                         TaskOpenSurfaceHost(
                             flow = tasksOpenSurfaceFlow,
+                            canWriteTaskChannel = tasksChannelWriteCheck,
                             detailsRepository = remember(appShellNetworkClient) { TaskConversationDetailsRepository(appShellNetworkClient) },
                             serverId = readyServerId,
                             timeContext = threadTimeContext,
@@ -7438,6 +7447,7 @@ private fun RaftAppShellReadyContent(
                         val tasksQueryState = tasksQueryStore?.let { store -> store.state.collectAsState().value }
                         SharedTasksScreen(
                             openTaskId = tasksDetailColumnTaskId.takeIf { tasksDetailColumnOpen },
+                            canWriteTaskChannel = tasksChannelWriteCheck,
                             query =
                                 // A server without the board query (before slock v1.21.63): the app's own list.
                                 if (tasksQueryStore != null && tasksQueryState != null && !tasksQueryState.unsupported) {

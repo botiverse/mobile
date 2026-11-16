@@ -216,6 +216,8 @@ internal fun TaskSummary.taskConversationHeadModel(
     editable: Boolean = true,
     /** The task's server, whose member directory the head's faces read. */
     serverId: String? = null,
+    /** False: the reader may not write the task's channel ([build.raft.app.data.canWriteTasksInChannel]). */
+    canWriteChannel: Boolean = true,
 ): TaskConversationHeadModel {
     val sourceId = taskHeadSourceMessageId()
     val sourcePreview = details.source.valueOrNull?.takeIf { it.messageId == sourceId }
@@ -243,7 +245,7 @@ internal fun TaskSummary.taskConversationHeadModel(
         }
     return TaskConversationHeadModel(
         bar =
-            taskConversationHeaderBarModel(state, statusUpdating).let { bar ->
+            taskConversationHeaderBarModel(state, statusUpdating, canWriteChannel).let { bar ->
                 if (editable) bar else bar.copy(statusOptions = emptyList(), assigneeEditable = false)
             },
         title = title,
@@ -1086,6 +1088,11 @@ internal fun TaskConversationHeadRoute(
     onAmend: (suspend (TaskAmendPatch, Long?) -> TaskAmendResult)? = null,
     /** Deletes the task once confirmed: null when deleted, else the refusal. Null: no Delete task. */
     onDelete: (suspend () -> build.raft.app.data.ScreenError?)? = null,
+    /**
+     * False: the reader may not write the task's channel (not joined, archived;
+     * [build.raft.app.data.canWriteTasksInChannel]): status, assignee, title and description are plain.
+     */
+    canWriteChannel: Boolean = true,
 ) {
     var assigneeSheetOpen by remember(task.id) { mutableStateOf(false) }
     var backlogReasonOpen by remember(task.id) { mutableStateOf(false) }
@@ -1097,11 +1104,11 @@ internal fun TaskConversationHeadRoute(
         }
     }
     var assigneeQuery by remember(task.id) { mutableStateOf("") }
-    val model = task.taskConversationHeadModel(state, details, statusUpdating, assigneeCandidates, timeContext, editable, serverId)
+    val model = task.taskConversationHeadModel(state, details, statusUpdating, assigneeCandidates, timeContext, editable, serverId, canWriteChannel)
     // The pulled-down head closes when the keyboard comes up, so the text is edited in the head's
     // row (a phone) or the pinned head (wider), not there.
     val editing =
-        onAmend?.takeIf { editable && task.canAmendText() && placement != TaskHeadPlacement.PullDown }?.let { send ->
+        onAmend?.takeIf { editable && task.canAmendText(canWriteChannel) && placement != TaskHeadPlacement.PullDown }?.let { send ->
             TaskHeadEditing(scrollState.edit, task, send)
         }
     // Another task in this page's head: an edit of the last one does not carry over (web keys it by task).

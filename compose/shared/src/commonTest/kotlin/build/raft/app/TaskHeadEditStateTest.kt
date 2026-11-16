@@ -136,6 +136,9 @@ class TaskHeadEditStateTest {
         assertTrue(made.canBeDeletedBy("user-2", "admin"))
         assertTrue(made.canBeDeletedBy("user-2", "owner"))
         assertFalse(made.copy(readOnlyReason = "historical_joint_task").canBeDeletedBy("user-1", "owner"))
+        // Web useCanDeleteTask: never in a channel the reader may not write (not joined, archived).
+        assertFalse(made.canBeDeletedBy("user-1", "member", canWriteChannel = false))
+        assertFalse(made.canBeDeletedBy("user-2", "owner", canWriteChannel = false))
     }
 
     @Test
@@ -143,5 +146,6 @@ class TaskHeadEditStateTest {
         assertTrue(task.canAmendText())
         assertFalse(task.copy(isLegacy = true).canAmendText())
         assertFalse(task.copy(readOnlyReason = "historical_joint_task").canAmendText())
+        assertFalse(task.canAmendText(canWriteChannel = false), "a channel the reader may not write")
     }
 }

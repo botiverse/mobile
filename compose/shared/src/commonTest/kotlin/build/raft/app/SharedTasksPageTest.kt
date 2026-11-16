@@ -52,6 +52,18 @@ class SharedTasksPageTest {
     }
 
     @Test
+    fun taskMenusOpenOnlyWhereTheReaderMayWriteTheChannel() {
+        // Web canWriteTasksInChannel (slock #15155): status, Backlog reason and assignee menus.
+        val task = TaskSummary(id = TaskId("task-1"), title = "Ship it", status = TaskStatus.Todo, updatedAtLabel = "", channelId = ChannelId("ch-reader"))
+        val reader: (ChannelId?) -> Boolean = { it != ChannelId("ch-reader") }
+        assertEquals(true, task.opensTaskMutationMenus(standIn = false) { true })
+        assertEquals(false, task.opensTaskMutationMenus(standIn = false, canWriteTaskChannel = reader))
+        assertEquals(true, task.copy(channelId = ChannelId("ch-member")).opensTaskMutationMenus(standIn = false, canWriteTaskChannel = reader))
+        assertEquals(false, task.opensTaskMutationMenus(standIn = true) { true }, "the offline stand-in")
+        assertEquals(false, task.copy(readOnlyReason = "historical_joint_task").opensTaskMutationMenus(standIn = false) { true })
+    }
+
+    @Test
     fun serverWideEmptyTasksSkipsToolbarWithoutCreateAction() {
         assertEquals(false, sharedTasksEmptyToolbarVisible(createTasksChannelId = null))
         assertEquals(true, sharedTasksEmptyToolbarVisible(createTasksChannelId = ChannelId("channel-1")))

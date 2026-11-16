@@ -240,6 +240,8 @@ import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.canWriteTasksInChannel
+import build.raft.app.data.LocalTaskChannelWriteCheck
 import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.toSharedConversationDirectoryState
@@ -4454,8 +4456,17 @@ internal fun RaftThreadScreenPayload.taskThreadLaunchPayload(
     return launchPayload.toInitialPayloadOrNull(launchPayload.instanceId)
 }
 
+/**
+ * The page offers task writes (the message menu's task items, a task card's status actions, New
+ * task in the Tasks tab): its conversation allows them, and the channel is not archived as the
+ * page's own load knows it (archive / unarchive flip [RaftThreadScreenPayload.channelArchived] on a
+ * loaded page; the server refuses task writes there with 409). Web canWriteTasksInChannel.
+ */
+internal fun RaftThreadScreenPayload.channelTaskWritesShown(): Boolean =
+    showTaskStatusActions && !channelArchived
+
 internal fun RaftThreadScreenPayload.canConvertMessagesToTasks(): Boolean =
-    showTaskStatusActions &&
+    channelTaskWritesShown() &&
         !surfaceKind.equals(RaftThreadSurfaceKind.ReplyThread, ignoreCase = true) &&
         parentMessageId.isNullOrBlank() &&
         originParentMessageId.isNullOrBlank()
@@ -12992,6 +13003,14 @@ private fun SharedThreadRouteContentContent(
             openCanonicalTask(arrived, "task_conversation_arrived")
         },
         timeContext = timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext(),
+        // Web canWriteTasksInChannel: known for the channel this page shows (its task actions' gate);
+        // another channel is not known here and stays writable.
+        canWriteTaskChannel = { channelId ->
+            renderedThread.surfaceKind != RaftThreadSurfaceKind.Channel ||
+                channelId == null ||
+                channelId != renderedThread.joinChannelTargetId() ||
+                renderedThread.channelTaskWritesShown()
+        },
         // Known for the channel this page shows (web ThreadPanel `parentJoined`); else not known here.
         joined = { task ->
             task.channelId?.takeIf { it == renderedThread.joinChannelTargetId() }?.let { renderedThread.joined }
@@ -13438,6 +13457,19 @@ private fun SharedThreadRouteContentContent(
                 MutableStateFlow(SharedServerChannelMembersSlice(serverId = currentServerId, channelId = taskConversationParentChannelId?.value.orEmpty()))
             }
         }.collectAsState(SharedServerChannelMembersSlice(serverId = currentServerId, channelId = taskConversationParentChannelId?.value.orEmpty()))
+        // Web canWriteTasksInChannel (slock #15155): status, assignee, title / description edit and
+        // Delete only where the reader may write the task's channel (joined, not archived). A channel
+        // this page does not know stays writable; the server refuses with its sentence and trace id.
+        val taskConversationChannelWritable by remember(conversationIdentityProvider, taskConversationMembersServerId, taskConversationParentChannelId) {
+            val provider = conversationIdentityProvider
+            val server = taskConversationMembersServerId
+            val channelId = taskConversationParentChannelId
+            if (provider == null || server == null || channelId == null) {
+                MutableStateFlow(true)
+            } else {
+                provider.observeServer(server).map { directory -> directory.canWriteTasksInChannel(server, channelId) }.distinctUntilChanged()
+            }
+        }.collectAsState(true)
         // Task v2: leave the task for a place in its channel (web `onLeave` + `nav.toMessage`): its
         // source / host message, the channel itself, or a pre-v2 task's earlier discussion thread.
         fun openTaskConversationTarget(request: HomeMessageOpenRequest?, action: String) {
@@ -13506,6 +13538,7 @@ private fun SharedThreadRouteContentContent(
                                 taskConversationTask.canBeDeletedBy(
                                     currentSession?.user?.id,
                                     currentSession?.servers?.firstOrNull { it.id == currentServerId }?.role,
+                                    canWriteChannel = taskConversationChannelWritable,
                                 )
                         },
                 )
@@ -13565,6 +13598,7 @@ private fun SharedThreadRouteContentContent(
                         onRetryHistory = { taskConversationDetailsViewModel?.retryHistory() },
                         // The offline stand-in refuses writes: its status and assignee are plain facts.
                         editable = taskConversationTasksState?.standIn != true,
+                        canWriteChannel = taskConversationChannelWritable,
                         placement = placement,
                         serverId = currentServerId,
                         onAmend = taskConversationTasksViewModel.taskHeadAmend(taskConversationTask),
@@ -18587,6 +18621,9 @@ private fun ThreadPageContentContent(
                         active = tab == selectedTab || tab.conversationSideCard()?.let { sideCardShowing(sideCards, sideCardsBeside, it) } == true,
                         identityOptions = taskIdentityOptions,
                         openTaskEnabled = payload.showTaskOpenActions,
+                        // Web canWriteTasksInChannel: New task, status and assignee only where the reader may
+                        // write this channel's tasks (the message menu's own gate).
+                        taskWritesEnabled = payload.channelTaskWritesShown(),
                         draftProjection = draftProjection,
                         timeContext = payload.toRaftTimeCapabilities().staticContext(),
                         taskV2Enabled = linkedTasksProjection.taskV2Enabled,
@@ -38635,6 +38672,7 @@ private fun ThreadTasksTab(
     active: Boolean,
     identityOptions: List<MemberProfile>,
     openTaskEnabled: Boolean,
+    taskWritesEnabled: Boolean = true,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     timeContext: RaftTimeContext? = null,
     taskV2Enabled: Boolean = false,
@@ -38653,6 +38691,9 @@ private fun ThreadTasksTab(
     RaftLiveCatchUpEffect(serverId = serverId, visible = active && tasksViewModel != null) {
         onIntent(SharedTasksRouteIntent.CatchUp)
     }
+    // Every task here is this channel's: one answer for all of them.
+    val canWriteTaskChannel: (ChannelId?) -> Boolean = remember(taskWritesEnabled) { { taskWritesEnabled } }
+    CompositionLocalProvider(LocalTaskChannelWriteCheck provides canWriteTaskChannel) {
     SharedTasksPanel(
         state = state,
         showHeader = false,
@@ -38669,6 +38710,7 @@ private fun ThreadTasksTab(
         },
         onIntent = onIntent
     )
+    }
 }
 
 
