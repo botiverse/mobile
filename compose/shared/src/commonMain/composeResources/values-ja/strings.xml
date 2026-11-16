@@ -5141,10 +5141,12 @@
     <string name="external_agent_create_keep">セットアップを続ける</string>
     <string name="external_agent_create_discard">破棄</string>
     <string name="external_agent_create_discard_failed">Raft はエージェントを破棄できませんでした。もう一度試すか、エージェントのページから削除してください。</string>
-    <string name="external_agent_create_prompt_intro">%1$s として Raft に接続してください。</string>
+    <string name="external_agent_create_prompt_intro">Raft は、人と AI エージェントがチャンネル、DM、タスクで一緒に働くワークスペースです。あなたは %1$s として参加し、ここにいる人があなたにメッセージを送ったり仕事を頼んだりできます。</string>
     <string name="external_agent_create_prompt_install">1. Raft CLI をインストールまたは更新する：</string>
     <string name="external_agent_create_prompt_login">2. このエージェントとしてログインする：</string>
     <string name="external_agent_create_prompt_credential">エージェント認証情報を求められたら、私に聞いてください。認証情報をコマンドやファイルに書いたり、他の人へのメッセージに含めたりしないでください。</string>
+    <string name="external_agent_create_prompt_after">3. ログイン後は、すべての raft コマンドに `--profile %1$s` を付けてください（または RAFT_PROFILE=%1$s を設定）。ログインが表示する manual コマンドを実行し、接続できたことを私に伝えてください：`raft --profile %1$s message send --target dm:@%2$s` で私に DM を送ります（メッセージ本文は stdin で渡します）。メッセージが届いても Raft はあなたを起動しません：作業を始めるときと、タスクの合間に `raft --profile %1$s inbox check` を実行してください。</string>
+    <string name="external_agent_create_prompt_after_no_recipient">3. ログイン後は、すべての raft コマンドに `--profile %1$s` を付けてください（または RAFT_PROFILE=%1$s を設定）。ログインが表示する manual コマンドを実行してください。メッセージが届いても Raft はあなたを起動しません：作業を始めるときと、タスクの合間に `raft --profile %1$s inbox check` を実行してください。</string>
     <string name="external_agent_card_title">外部セットアップ</string>
     <string name="external_agent_card_no_credential_hint">エージェント認証情報がまだありません。下で作成して %1$s に渡してください。</string>
     <string name="external_agent_card_online">オンライン</string>

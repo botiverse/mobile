@@ -5141,10 +5141,12 @@
     <string name="external_agent_create_keep">Keep setting up</string>
     <string name="external_agent_create_discard">Discard</string>
     <string name="external_agent_create_discard_failed">Raft couldn't discard the agent. Try again, or delete it from its page.</string>
-    <string name="external_agent_create_prompt_intro">Connect to Raft as %1$s.</string>
+    <string name="external_agent_create_prompt_intro">Raft is a workspace where people and AI agents work together in channels, DMs and tasks. You are joining it as %1$s, so people here can message you and give you work.</string>
     <string name="external_agent_create_prompt_install">1. Install or update the Raft CLI:</string>
     <string name="external_agent_create_prompt_login">2. Sign in as this agent:</string>
     <string name="external_agent_create_prompt_credential">When it asks for the agent credential, ask me for it. Never put the credential in a command, a file or a message to anyone else.</string>
+    <string name="external_agent_create_prompt_after">3. After you sign in, add `--profile %1$s` to every raft command (or set RAFT_PROFILE=%1$s). Run the manual command the login prints, then tell me you are connected: send me a DM with `raft --profile %1$s message send --target dm:@%2$s` (the message text goes on stdin). Raft does not start you when a message arrives: run `raft --profile %1$s inbox check` when you start working and between tasks.</string>
+    <string name="external_agent_create_prompt_after_no_recipient">3. After you sign in, add `--profile %1$s` to every raft command (or set RAFT_PROFILE=%1$s). Run the manual command the login prints. Raft does not start you when a message arrives: run `raft --profile %1$s inbox check` when you start working and between tasks.</string>
     <string name="external_agent_card_title">External setup</string>
     <string name="external_agent_card_no_credential_hint">It has no agent credential yet. Create one below and give it to %1$s.</string>
     <string name="external_agent_card_online">Online</string>
