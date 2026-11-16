@@ -2418,8 +2418,13 @@
     <string name="search_overlay_recent_conversations">Recent conversations</string>
     <string name="search_overlay_footer_select">Select</string>
     <string name="search_overlay_footer_open">Open</string>
-    <string name="search_show_all_entities">Show All %1$d</string>
-    <string name="search_show_fewer_entities">Show Fewer</string>
+    <string name="search_show_all_entities">Show all %1$d</string>
+    <string name="search_show_fewer_entities">Show fewer</string>
+    <string name="search_history_limited">On the Free plan, search covers only the last %1$d days of messages.</string>
+    <string name="search_incomplete_no_matches_yet">No matches yet</string>
+    <string name="search_continue_searching">Continue searching</string>
+    <string name="search_incomplete_searched_through">Searched messages back to %1$s. Older messages have not been searched yet.</string>
+    <string name="search_incomplete_searched_part">Only part of the messages has been searched so far.</string>
     <string name="search_section_messages">Messages</string>
     <string name="search_action_load_more_results">Load more results</string>
     <string name="search_filter_scope">Scope</string>

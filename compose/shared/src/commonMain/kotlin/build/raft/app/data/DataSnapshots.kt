@@ -1466,7 +1466,11 @@ data class SearchSnapshot(
     /** Server `relaxedSkipped: "too_broad"`: the page is empty because the search is too broad. */
     val tooBroad: Boolean = false,
     /** Server `relevanceFallback: "too_broad"`: too many matches to rank, sorted newest first. */
-    val relevanceFallback: Boolean = false
+    val relevanceFallback: Boolean = false,
+    /** Server `incomplete` with a cursor: the walk stopped at its scan budget (web `searchIncomplete`). */
+    val incomplete: Boolean = false,
+    /** With [incomplete]: the oldest message time the walk read (ISO). */
+    val searchedThrough: String? = null,
 )
 
 data class SettingsConnectedAppsSnapshot(

@@ -2386,6 +2386,11 @@
     <string name="search_overlay_footer_open">Abrir</string>
     <string name="search_show_all_entities">Mostrar todos os %1$d</string>
     <string name="search_show_fewer_entities">Mostrar menos</string>
+    <string name="search_history_limited">No plano gratuito, a pesquisa abrange só as mensagens dos últimos %1$d dias.</string>
+    <string name="search_incomplete_no_matches_yet">Nenhuma correspondência até agora</string>
+    <string name="search_continue_searching">Continuar pesquisando</string>
+    <string name="search_incomplete_searched_through">A pesquisa cobriu as mensagens desde %1$s. As mensagens mais antigas ainda não foram pesquisadas.</string>
+    <string name="search_incomplete_searched_part">Até agora, só uma parte das mensagens foi pesquisada.</string>
     <string name="search_section_messages">Mensagens</string>
     <string name="search_action_load_more_results">Carregar mais resultados</string>
     <string name="search_filter_scope">Escopo</string>

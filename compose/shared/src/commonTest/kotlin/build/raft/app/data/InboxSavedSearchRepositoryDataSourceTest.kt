@@ -1019,6 +1019,30 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals(Triple(true, SearchWalkCursorVector, 1), Triple(recent.data.hasMore, recent.data.nextCursor, recent.data.nextOffset))
         assertTrue(relevance is DataResult.Content)
         assertEquals(null to 1, relevance.data.nextCursor to relevance.data.nextOffset)
+        // web `searchIncomplete` / `incompleteSearchNote`: only a walk this client can continue.
+        assertEquals(true to "2026-10-01T00:00:00.123Z", recent.data.incomplete to recent.data.searchedThrough)
+        assertEquals(false, relevance.data.incomplete)
+    }
+
+    @Test
+    fun anIncompleteEmptySearchPageStaysContentWithItsCursor() = runBlocking {
+        // web SearchNoResultsState: no hit yet from a walk that stopped part way is "No matches
+        // yet / Continue searching", so the empty page must keep its cursor and note.
+        val network =
+            FakeInboxNetworkClient(
+                searchJson = """{"results":[],"hasMore":false,"incomplete":true,"nextCursor":"$SearchWalkCursorVector","searchedThrough":"2026-09-30T08:00:00.000Z","searchedMessages":10000,"historyLimited":false}"""
+            )
+        val page =
+            RealSearchRepository(sampleStore(), network)
+                .search(ServerId("server-1"), "release", options = SearchQueryOptions(sort = SearchSort.Recent))
+
+        assertTrue(page is DataResult.Content, "an incomplete empty page is not 'no results': $page")
+        assertEquals(emptyList(), page.data.items)
+        assertEquals(
+            listOf(true, true),
+            listOf(page.data.hasMore, page.data.incomplete),
+        )
+        assertEquals(SearchWalkCursorVector to "2026-09-30T08:00:00.000Z", page.data.nextCursor to page.data.searchedThrough)
     }
 
     @Test

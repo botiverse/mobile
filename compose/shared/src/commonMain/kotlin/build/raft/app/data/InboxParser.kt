@@ -676,6 +676,8 @@ private data class WireSearchResult(
     val createdAt: String,
     /** RFC 077 `searchService.ts` `MessageSearchResult.delegatedBy`. */
     val delegatedBy: WireDelegatedBy? = null,
+    /** RFC 077 `MessageSearchResult.retracted`: its owner retracted it (`content` is the placeholder). */
+    val retracted: Boolean? = null,
     /** Task v2: set on a task-conversation hit (`channelType: "task"`). */
     val taskId: String? = null,
     val taskNumber: Int? = null,
@@ -693,6 +695,8 @@ private data class WireSearchResponse(
     val hasMore: Boolean = false,
     val nextCursor: String? = null,
     val incomplete: Boolean = false,
+    /** With `incomplete`: the oldest message time the walk read (ISO). */
+    val searchedThrough: String? = null,
     /** `"too_broad"`: no message has every word and the any-word search was skipped (slock #14398). */
     val relaxedSkipped: String? = null,
     /** `"too_broad"`: too many matches to rank, so the page is sorted newest first (slock #14480). */
@@ -716,6 +720,13 @@ data class SharedSearchItems(
     /** `relevanceFallback: "too_broad"`: a relevance search answered newest first (too many matches to rank). */
     val relevanceFallback: Boolean = false,
     val nextCursor: String? = null,
+    /**
+     * The walk stopped at its scan budget with a cursor to continue from (web `searchIncomplete`:
+     * `incomplete && nextCursor !== null`): the page is not every match.
+     */
+    val incomplete: Boolean = false,
+    /** With [incomplete]: the oldest message time the walk read (ISO; web `searchedThrough`). */
+    val searchedThrough: String? = null,
 )
 
 fun parseSharedSearchItems(
@@ -732,8 +743,20 @@ fun parseSharedSearchItems(
         nextCursor = nextCursor,
         tooBroad = decoded.relaxedSkipped == SearchTooBroadWireValue,
         relevanceFallback = decoded.relevanceFallback == SearchTooBroadWireValue,
+        incomplete = decoded.incomplete && nextCursor != null,
+        searchedThrough = decoded.searchedThrough?.trim()?.takeIf { it.isNotEmpty() && decoded.incomplete },
     )
 }.getOrNull()
+
+/**
+ * The server's text for a retracted message (RFC 077 `assistantSendAsOwnerService.ts`), for a server
+ * that predates the `retracted` flag (web delegatedMessage.ts `SERVER_RETRACTED_CONTENT`).
+ */
+internal const val ServerRetractedMessageContent = "This message was retracted by its sender."
+
+/** Web `isRetractedPreviewOf`: the server's flag when it sent one, else its placeholder text. */
+internal fun isRetractedSearchHit(flag: Boolean?, content: String?): Boolean =
+    flag ?: (content?.trim() == ServerRetractedMessageContent)
 
 private const val SearchTooBroadWireValue = "too_broad"
 
@@ -776,6 +799,8 @@ private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxIt
         parentMessageId = parentMessageId?.let(::MessageId),
         parentMessagePreview = parentMessageContent,
         latestDelegatedBy = delegatedBy.toMessageDelegatedBy(),
+        // The hit is this row's latest message: a retracted one shows the muted retracted line.
+        latestRetracted = isRetractedSearchHit(retracted, content),
     )
     return if (conversationKind == ConversationKind.Task) item.asTaskConversationHit(taskId, taskNumber, taskTitle) else item
 }

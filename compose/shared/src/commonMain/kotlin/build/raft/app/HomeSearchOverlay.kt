@@ -81,16 +81,19 @@ internal class HomeSearchOverlayContent(
     val typed: Boolean,
     val recent: List<SearchEntityResult>,
     val exact: SearchEntityResult?,
-    /** Every destination but the exact one; the panel shows [HomeSearchOverlayEntityPreviewCount] unless expanded. */
+    /** Every destination but the exact one; the panel shows [HomeSearchEntityPreviewCount] unless expanded. */
     val entities: List<SearchEntityResult>,
     val entitiesExpanded: Boolean,
     val messages: List<HomeSearchResultGroup>,
     val messageCount: Int?,
     val searched: Boolean,
     val loading: Boolean,
+    /** The plan's history window in days (web `historyNotice`), or null: no notice. */
+    val historyWindowDays: Int? = null,
+    /** Where a search the server stopped part way got to (web `incompleteSearchNote`), or null. */
+    val incompleteNote: String? = null,
 ) {
-    val shownEntities: List<SearchEntityResult> =
-        if (entitiesExpanded) entities else entities.take(HomeSearchOverlayEntityPreviewCount)
+    val shownEntities: List<SearchEntityResult> = entities.homeSearchShownEntities(entitiesExpanded)
 
     val rows: List<HomeSearchOverlayRow> =
         homeSearchOverlayRows(
@@ -120,6 +123,7 @@ internal val HomeSearchResultGroup.firstItem: InboxItem?
 /** One lazy item of the panel's body; [rowKey] is its [HomeSearchOverlayRow] key when the cursor can rest on it. */
 internal sealed class HomeSearchOverlayEntry(val itemKey: String, val rowKey: String? = null) {
     object Empty : HomeSearchOverlayEntry("empty")
+    class HistoryNotice(val days: Int) : HomeSearchOverlayEntry("history-notice")
     object RecentHeading : HomeSearchOverlayEntry("recent-heading")
     class Recent(val result: SearchEntityResult) : HomeSearchOverlayEntry("recent:${result.key}", "recent:${result.key}")
     class Exact(val result: SearchEntityResult) : HomeSearchOverlayEntry("exact:${result.key}", result.key)
@@ -131,11 +135,14 @@ internal sealed class HomeSearchOverlayEntry(val itemKey: String, val rowKey: St
     class Message(val group: HomeSearchResultGroup, val index: Int) : HomeSearchOverlayEntry("message:${group.overlayKey}", group.overlayKey)
     object Loading : HomeSearchOverlayEntry("loading")
     object NoResults : HomeSearchOverlayEntry("no-results")
+    class NoMatchesYet(val note: String) : HomeSearchOverlayEntry("no-matches-yet")
 }
 
 /** The panel body's lazy items, in drawing order. */
 internal fun HomeSearchOverlayContent.entries(): List<HomeSearchOverlayEntry> =
     buildList {
+        // web MessageSearchPage `historyNotice`: a Free server says so on every search, typed or not.
+        historyWindowDays?.let { add(HomeSearchOverlayEntry.HistoryNotice(it)) }
         if (!typed) {
             if (recent.isEmpty()) {
                 add(HomeSearchOverlayEntry.Empty)
@@ -150,7 +157,7 @@ internal fun HomeSearchOverlayContent.entries(): List<HomeSearchOverlayEntry> =
         if (entities.isNotEmpty()) {
             add(HomeSearchOverlayEntry.EntitiesHeading(entities.size))
             shownEntities.forEach { add(HomeSearchOverlayEntry.Entity(it)) }
-            if (entities.size > HomeSearchOverlayEntityPreviewCount) {
+            if (homeSearchEntitiesCollapsible(entities.size)) {
                 add(HomeSearchOverlayEntry.ShowAll(entities.size, entitiesExpanded))
             }
         }
@@ -160,7 +167,10 @@ internal fun HomeSearchOverlayContent.entries(): List<HomeSearchOverlayEntry> =
                 messages.forEachIndexed { index, group -> add(HomeSearchOverlayEntry.Message(group, index)) }
             }
             loading && entities.isEmpty() && exact == null -> add(HomeSearchOverlayEntry.Loading)
-            searched && entities.isEmpty() && exact == null -> add(HomeSearchOverlayEntry.NoResults)
+            searched && entities.isEmpty() && exact == null ->
+                // web SearchNoResultsState `searchIncomplete`: not "no results" while the server
+                // has more to read.
+                add(incompleteNote?.let(HomeSearchOverlayEntry::NoMatchesYet) ?: HomeSearchOverlayEntry.NoResults)
         }
     }
 
@@ -185,6 +195,9 @@ internal fun HomeSearchOverlayBody(
     onOpenItem: (InboxItem) -> Unit,
     onOpenFullResults: () -> Unit,
     modifier: Modifier = Modifier,
+    loadingMore: Boolean = false,
+    onContinueSearching: () -> Unit = {},
+    onHistoryUpgrade: (() -> Unit)? = null,
 ) {
     val entries = remember(content) { content.entries() }
     LazyColumn(state = listState, modifier = modifier.fillMaxWidth()) {
@@ -198,6 +211,8 @@ internal fun HomeSearchOverlayBody(
                         typography = RaftTheme.typography,
                         modifier = Modifier.fillParentMaxHeight(),
                     )
+                is HomeSearchOverlayEntry.HistoryNotice ->
+                    HomeSearchHistoryWindowBanner(days = entry.days, onUpgrade = onHistoryUpgrade)
                 HomeSearchOverlayEntry.RecentHeading ->
                     RaftSearchSectionHeader(stringResource(Res.string.search_overlay_recent_conversations), icon = RaftGlyph.Clock)
                 is HomeSearchOverlayEntry.Recent ->
@@ -256,6 +271,12 @@ internal fun HomeSearchOverlayBody(
                         }
                     }
                 HomeSearchOverlayEntry.Loading -> RaftCenteredLoading(modifier = Modifier.fillMaxWidth().height(160.dp))
+                is HomeSearchOverlayEntry.NoMatchesYet ->
+                    HomeSearchIncompleteEmptyState(
+                        note = entry.note,
+                        loadingMore = loadingMore,
+                        onContinueSearching = onContinueSearching,
+                    )
                 HomeSearchOverlayEntry.NoResults ->
                     RaftSearchEmptyState(
                         title = Res.string.search_empty_results_query.format(listOf(query.trim())).localized(),
@@ -325,6 +346,9 @@ internal fun HomeSearchOverlayPanel(
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     onOpenItem: (InboxItem) -> Unit,
     onOpenEntity: (SearchEntityResult) -> Unit,
+    historyWindowDays: Int? = null,
+    incompleteNote: String? = null,
+    onHistoryUpgrade: (() -> Unit)? = null,
 ) {
     val typed = state.query.isNotBlank()
     val channelLabel = stringResource(Res.string.search_entity_channel)
@@ -374,6 +398,8 @@ internal fun HomeSearchOverlayPanel(
             messageCount = state.totalCount.takeIf { it > 0 && !state.loading },
             searched = state.searched,
             loading = state.loading || state.querySearchPending,
+            historyWindowDays = historyWindowDays,
+            incompleteNote = incompleteNote,
         )
     val rows = content.rows
     var cursor by remember { mutableStateOf(HomeSearchOverlayCursor()) }
@@ -463,6 +489,15 @@ internal fun HomeSearchOverlayPanel(
                 onOpenItem = openItem,
                 onOpenFullResults = { overlay.onOpenFullResults(state.query) },
                 modifier = Modifier.weight(1f),
+                loadingMore = state.loadingMore,
+                onContinueSearching = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSearch) },
+                onHistoryUpgrade =
+                    onHistoryUpgrade?.let { upgrade ->
+                        {
+                            overlay.onDismiss()
+                            upgrade()
+                        }
+                    },
             )
         }
         popups()

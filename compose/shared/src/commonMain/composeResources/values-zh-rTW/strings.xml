@@ -2384,8 +2384,13 @@
     <string name="search_overlay_recent_conversations">最近的對話</string>
     <string name="search_overlay_footer_select">選取</string>
     <string name="search_overlay_footer_open">開啟</string>
-    <string name="search_show_all_entities">顯示全部 %1$d 個</string>
+    <string name="search_show_all_entities">顯示全部 %1$d 項</string>
     <string name="search_show_fewer_entities">收合</string>
+    <string name="search_history_limited">免費版只能搜尋最近 %1$d 天的訊息。</string>
+    <string name="search_incomplete_no_matches_yet">目前還沒有相符的結果</string>
+    <string name="search_continue_searching">繼續搜尋</string>
+    <string name="search_incomplete_searched_through">已搜尋至 %1$s 的訊息，更早的訊息尚未搜尋。</string>
+    <string name="search_incomplete_searched_part">目前只搜尋了部分訊息。</string>
     <string name="search_section_messages">訊息</string>
     <string name="search_action_load_more_results">載入更多結果</string>
     <string name="search_filter_scope">範圍</string>

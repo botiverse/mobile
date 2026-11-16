@@ -253,6 +253,8 @@ internal class SharedHomeSearchSavedStore(
                         nextCursor = null,
                         tooBroad = false,
                         relevanceFallback = false,
+                        searchIncomplete = false,
+                        searchedThrough = null,
                         errorCode = null,
                         noPermissionCode = null,
                         resultQuery = null,
@@ -871,6 +873,8 @@ internal class SharedHomeSearchSavedStore(
                         nextCursor = null,
                         tooBroad = false,
                         relevanceFallback = false,
+                        searchIncomplete = false,
+                        searchedThrough = null,
                         errorCode = null,
                         noPermissionCode = null,
                         resultQuery = null,
@@ -1242,6 +1246,8 @@ internal class SharedHomeSearchSavedStore(
                                 nextCursor = result.data.nextCursor,
                                 tooBroad = result.data.tooBroad,
                                 relevanceFallback = result.data.relevanceFallback,
+                                searchIncomplete = result.data.incomplete,
+                                searchedThrough = result.data.searchedThrough,
                                 searched = true,
                                 empty = items.isEmpty(),
                                 loading = false,
@@ -1263,6 +1269,8 @@ internal class SharedHomeSearchSavedStore(
                                 nextCursor = null,
                                 tooBroad = false,
                                 relevanceFallback = false,
+                                searchIncomplete = false,
+                                searchedThrough = null,
                                 loading = false,
                                 refreshing = false,
                                 loadingMore = false,
@@ -1796,6 +1804,13 @@ data class SharedHomeSearchPanelState(
     val tooBroad: Boolean = false,
     /** Last page's `relevanceFallback: "too_broad"` (web `continuation.relevanceFallback`): sorted newest first. */
     val relevanceFallback: Boolean = false,
+    /**
+     * The last page stopped at the server's scan budget with a cursor to continue from (web
+     * `searchIncomplete`): what is shown is not every match, and "Continue searching" reads on.
+     */
+    val searchIncomplete: Boolean = false,
+    /** With [searchIncomplete]: the oldest message time the walk read (ISO; web `searchedThrough`). */
+    val searchedThrough: String? = null,
     val errorCode: String? = null,
     val noPermissionCode: String? = null,
     val resultQuery: String? = null,
@@ -1964,13 +1979,15 @@ internal suspend fun loadSearchSnapshotToDepth(
                         nextOffset = page.data.nextOffset,
                         nextCursor = page.data.nextCursor,
                         tooBroad = page.data.tooBroad,
-                        relevanceFallback = page.data.relevanceFallback
+                        relevanceFallback = page.data.relevanceFallback,
+                        incomplete = page.data.incomplete,
+                        searchedThrough = page.data.searchedThrough,
                     )
                 // A page of rows already shown cannot make progress; stop instead of looping.
                 if (!grew) break
             }
             is DataResult.Empty -> {
-                combined = combined.copy(hasMore = false, nextOffset = null, nextCursor = null)
+                combined = combined.copy(hasMore = false, nextOffset = null, nextCursor = null, incomplete = false, searchedThrough = null)
             }
             else -> break
         }

@@ -19,8 +19,24 @@ internal data class HomeSearchOverlayRow(val key: String, val section: HomeSearc
 /** The "Search for" row's key (web `OVERLAY_ALL_RESULTS_KEY`). */
 internal const val HomeSearchOverlaySearchForKey = "action:view-all-results"
 
-/** The panel shows at most this many destinations before "Show all" (web `ENTITY_PREVIEW_COUNT`). */
-internal const val HomeSearchOverlayEntityPreviewCount = 5
+/**
+ * The search page and the panel show at most this many destinations before "Show all N" (web
+ * `ENTITY_PREVIEW_COUNT`).
+ */
+internal const val HomeSearchEntityPreviewCount = 5
+
+/**
+ * Every reasonable destination match, up to this many, is reachable through "Show all N" (web
+ * `MAX_ENTITY_RESULTS`).
+ */
+internal const val HomeSearchEntityResultLimit = 50
+
+/** The destinations shown: the first [HomeSearchEntityPreviewCount] unless [expanded]. */
+internal fun <T> List<T>.homeSearchShownEntities(expanded: Boolean): List<T> =
+    if (expanded) this else take(HomeSearchEntityPreviewCount)
+
+/** Whether the destinations need a "Show all N" / "Show fewer" toggle (web `count > ENTITY_PREVIEW_COUNT`). */
+internal fun homeSearchEntitiesCollapsible(count: Int): Boolean = count > HomeSearchEntityPreviewCount
 
 /** The panel previews at most this many messages (web `OVERLAY_MESSAGE_PREVIEW_LIMIT`). */
 internal const val HomeSearchOverlayMessagePreviewCount = 5

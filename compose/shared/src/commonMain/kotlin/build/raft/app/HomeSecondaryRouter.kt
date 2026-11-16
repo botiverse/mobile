@@ -34,6 +34,7 @@ import build.raft.app.data.ReadReceiptCoordinator
 import build.raft.app.data.ReadReceiptOwner
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealSavedRepository
+import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealSearchRepository
 import build.raft.app.data.SearchTimeRange
 import build.raft.app.data.SharedAdaptiveWorkspaceStore
@@ -971,6 +972,43 @@ private fun HomeSearchRouterContent(
             items = searchSavedState.search.items
         )
     }
+    val searchChannelRepository =
+        remember(environment.authStore, environment.networkClient) {
+            RealChannelRepository(
+                sessionStore = environment.authStore,
+                networkClient = environment.networkClient,
+                warningLogger = { message -> environment.bridge.log("home_search_channel_repository $message") },
+            )
+        }
+    // A search entity's own open: inline in the wide shell when it takes it, else its page.
+    val openSearchEntity: (SearchEntityResult) -> Boolean = { entity ->
+        openHomeSearchEntityResult(entity, environment.inlineOpenEntity) {
+            // task #45: OFF standalone entity opens (channel/DM search results)
+            // park the current selection so re-enabling restores this
+            // conversation — same contract as the message-open fallback above.
+            (entity.destinationOrNull() as? HomeSearchEntityDestination.Conversation)
+                ?.let { destination ->
+                    parkStandaloneSelection(
+                        environment = environment,
+                        workspaceStore = environment.sharedWorkspaceStore,
+                        request =
+                            HomeMessageOpenRequest(
+                                conversationIdentity = destination.identity,
+                                anchorMessageId = null,
+                            ),
+                        serverId = searchServerId,
+                    )
+                }
+            environment.pager.openHomeSearchEntity(
+                bridge = environment.bridge,
+                entity = entity,
+                timeContext = environment.timeContext,
+                alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                storeScope = environment.storeScope
+            )
+        }
+    }
     val chrome = homeSearchPageChrome(tabRoot = environment.tabRoot, railInline = environment.inlineOnClose != null)
     SharedHomeSearchPanel(
         state = searchSavedState.search,
@@ -1042,44 +1080,44 @@ private fun HomeSearchRouterContent(
                 }
             }
         },
-        onOpenEntity = { entity ->
-            val opened =
-                openHomeSearchEntityResult(entity, environment.inlineOpenEntity) {
-                        // task #45: OFF standalone entity opens (channel/DM search results)
-                        // park the current selection so re-enabling restores this
-                        // conversation — same contract as the message-open fallback above.
-                        (entity.destinationOrNull() as? HomeSearchEntityDestination.Conversation)
-                            ?.let { destination ->
-                                parkStandaloneSelection(
-                                    environment = environment,
-                                    workspaceStore = environment.sharedWorkspaceStore,
-                                    request =
-                                        HomeMessageOpenRequest(
-                                            conversationIdentity = destination.identity,
-                                            anchorMessageId = null,
-                                        ),
-                                    serverId = searchServerId,
-                                )
-                            }
-                        environment.pager.openHomeSearchEntity(
-                            bridge = environment.bridge,
-                            entity = entity,
-                            timeContext = environment.timeContext,
-                            alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                            compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                            storeScope = environment.storeScope
+        onOpenEntity = { tapped ->
+            val searchSnapshot = (searchHomeState.content as? SharedHomeContentState.Content)?.snapshot
+            val recordQuery = searchSavedState.search.query
+            val recordOpen: (Boolean) -> Unit = { opened ->
+                if (opened) {
+                    val entityKey = tapped.searchPersonalizationEntityKeyOrNull()
+                    searchSavedViewModel.dispatch(
+                        SharedHomeSearchSavedIntent.RecordSuccessfulSearchOpen(
+                            query = recordQuery,
+                            entityKind = entityKey?.kind,
+                            entityId = entityKey?.id,
+                            serverId = searchServerId,
                         )
-                    }
-            if (opened) {
-                val entityKey = entity.searchPersonalizationEntityKeyOrNull()
-                searchSavedViewModel.dispatch(
-                    SharedHomeSearchSavedIntent.RecordSuccessfulSearchOpen(
-                        query = searchSavedState.search.query,
-                        entityKind = entityKey?.kind,
-                        entityId = entityKey?.id,
-                        serverId = searchServerId,
                     )
-                )
+                }
+            }
+            if (tapped.destinationOrNull() !is HomeSearchEntityDestination.Member) {
+                recordOpen(openSearchEntity(tapped))
+            } else {
+                // web openEntityResult: a person or agent opens the DM with them (created when
+                // Home lists none), else their profile. Not tied to this page: the wide panel
+                // closes as the row opens.
+                homeSearchMemberOpenScope.launch {
+                    val (_, opened) =
+                        openHomeSearchEntityWithDirectMessage(
+                            entity = tapped,
+                            openDirectMessage = { identity ->
+                                searchChannelRepository.openPinnedMemberDirectMessage(identity, searchSnapshot)?.also { result ->
+                                    if (result is DataResult.Content) {
+                                        environment.sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                                    }
+                                }
+                            },
+                            open = openSearchEntity,
+                            log = { line -> environment.bridge.log(line) },
+                        )
+                    recordOpen(opened)
+                }
             }
         },
         onRefreshComputers = {
@@ -1102,6 +1140,16 @@ private fun HomeSearchRouterContent(
                     )
                 }
             },
+        onHistoryUpgrade = {
+            // web HistoryWindowBanner (surface "search"): the upgrade dialog for the 30-day window;
+            // iOS view-only Billing: the view-only Plan & Billing page.
+            environment.bridge.log("search_history_notice_upgrade offersUpgrade=${settingsBillingOffersUpgrade()}")
+            if (settingsBillingOffersUpgrade()) {
+                environment.pager.openRaftUpgradeDialog(RaftUpgradeGate.History30d, environment.storeScope)
+            } else {
+                environment.pager.openSettingsBillingPage(environment.storeScope)
+            }
+        },
         initialOpenFilterId = initialOpenFilterId,
         initialFocusInput = initialFocusInput || chrome.focusesInputOnOpen,
         inputActive = inputActive,

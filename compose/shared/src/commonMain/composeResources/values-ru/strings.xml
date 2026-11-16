@@ -2383,6 +2383,11 @@
     <string name="search_overlay_footer_open">Открыть</string>
     <string name="search_show_all_entities">Показать все (%1$d)</string>
     <string name="search_show_fewer_entities">Свернуть</string>
+    <string name="search_history_limited">На тарифе Free поиск охватывает только сообщения за последние %1$d дней.</string>
+    <string name="search_incomplete_no_matches_yet">Пока совпадений нет</string>
+    <string name="search_continue_searching">Продолжить поиск</string>
+    <string name="search_incomplete_searched_through">Просмотрены сообщения вплоть до %1$s. Более ранние сообщения ещё не проверены.</string>
+    <string name="search_incomplete_searched_part">Пока просмотрена только часть сообщений.</string>
     <string name="search_section_messages">Сообщения</string>
     <string name="search_action_load_more_results">Загрузить ещё результаты</string>
     <string name="search_filter_scope">Область</string>
