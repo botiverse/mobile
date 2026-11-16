@@ -32,12 +32,12 @@ class RaftComputersRackModelTest {
                 disk = SettingsComputerSizeStatusSnapshot(availableBytes = 6 * gib, totalBytes = 500 * gib),
                 memory = SettingsComputerSizeStatusSnapshot(availableBytes = 0.5 * gib, totalBytes = 64 * gib),
             ).toRaftComputerRow()
-        assertEquals(RaftComputerResourceMeter(percentUsed = 99, warn = true), row.disk)
-        assertEquals(RaftComputerResourceMeter(percentUsed = 99, warn = false), row.memory)
+        assertEquals(RaftComputerResourceMeter(percentUsed = 99, warn = true, availableBytes = 6 * gib, totalBytes = 500 * gib), row.disk)
+        assertEquals(RaftComputerResourceMeter(percentUsed = 99, warn = false, availableBytes = 0.5 * gib, totalBytes = 64 * gib), row.memory)
 
         // 85% used but 150 GiB free: not low, no warning (not Meter's 80%).
         val roomy = computer(disk = SettingsComputerSizeStatusSnapshot(availableBytes = 150 * gib, totalBytes = 1000 * gib)).toRaftComputerRow()
-        assertEquals(RaftComputerResourceMeter(percentUsed = 85, warn = false), roomy.disk)
+        assertEquals(RaftComputerResourceMeter(percentUsed = 85, warn = false, availableBytes = 150 * gib, totalBytes = 1000 * gib), roomy.disk)
         assertNull(roomy.memory)
 
         // Offline: no meters at all.

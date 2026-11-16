@@ -103,4 +103,53 @@ class AgentMigrationStageSizesUiTest {
             onNodeWithText("Download finished. Unpacking the workspace on Build box.").assertExists()
             onNodeWithText("compressed", substring = true).assertDoesNotExist()
         }
+
+    // The times (botiverse/slock staging 7a631c0ffe `agent.detail.migrationWaitingForAgent` /
+    // `agent.detail.migrationPackingElapsed`), against the fixtures' clock (08:00).
+
+    @Test
+    fun aWaitingSourceSaysAtMostHowManyMoreMinutes() =
+        runRobolectricComposeUiTest {
+            section(AgentMigrationDrainRetryFixtures.waiting)
+            onNodeWithText(
+                "Waiting for the agent to finish its current work on Studio Mac (at most 6 more minutes). It is then stopped and its workspace packed. Stop the agent to continue now.",
+            ).assertExists()
+        }
+
+    @Test
+    fun theLastMinuteIsSingular() =
+        runRobolectricComposeUiTest {
+            section(AgentMigrationDrainRetryFixtures.waiting.copy(sourceDrainUntil = "2026-11-11T08:00:20.000Z"))
+            onNodeWithText("(at most 1 more minute)", substring = true).assertExists()
+        }
+
+    @Test
+    fun aPassedWaitSaysTheSourceIsStoppingTheAgent() =
+        runRobolectricComposeUiTest {
+            section(AgentMigrationDrainRetryFixtures.waiting.copy(sourceDrainUntil = "2026-11-11T07:59:00.000Z"))
+            onNodeWithText("Stopping the agent on Studio Mac so its workspace can be packed.").assertExists()
+        }
+
+    @Test
+    fun packingWithNoSizesYetSaysHowLongItHasRun() =
+        runRobolectricComposeUiTest {
+            section(AgentMigrationDrainRetryFixtures.packingFor)
+            onNodeWithText("Packing the workspace on Studio Mac (4 minutes so far). Large workspaces can take up to 30 minutes.").assertExists()
+        }
+
+    @Test
+    fun packingMinutesInRussianTakeTheirPluralForm() =
+        runRobolectricComposeUiTest {
+            StringDesc.localeType = AppLocale.Russian.stringDescLocaleType
+            section(AgentMigrationDrainRetryFixtures.packingFor)
+            onNodeWithText("(уже 4 минуты)", substring = true).assertExists()
+        }
+
+    @Test
+    fun waitingMinutesInRussianTakeTheirPluralForm() =
+        runRobolectricComposeUiTest {
+            StringDesc.localeType = AppLocale.Russian.stringDescLocaleType
+            section(AgentMigrationDrainRetryFixtures.waiting)
+            onNodeWithText("(не более 6 минут)", substring = true).assertExists()
+        }
 }

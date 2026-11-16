@@ -2953,6 +2953,8 @@
     <string name="settings_computers_rack_no_match_title">沒有符合的 Computer</string>
     <string name="settings_computers_rack_no_match_description">換個關鍵字，或清除篩選。</string>
     <string name="settings_computers_disk_low">磁碟空間不足</string>
+    <string name="settings_computers_disk_low_detail">剩 %1$s，共 %2$s</string>
+    <string name="settings_computers_rack_resource_detail">剩 %1$s，共 %2$s</string>
     <string name="settings_computers_workspace_status_active">啟用中</string>
     <string name="settings_computers_workspace_status_orphan">已孤立</string>
     <string name="settings_computers_cannot_delete_message_one">這台電腦還有 %1$d 個 Agent。請先移除所有 Agent，再刪除電腦。</string>
@@ -3965,7 +3967,11 @@
     <string name="agent_migration_hosted_step_switch">切換到雲端</string>
     <string name="agent_migration_hosted_step_complete">在雲端執行</string>
     <string name="agent_migration_detail_migration_stopping_source">正在停止 %1$s 上的 Agent，以便打包工作區。</string>
+    <string name="agent_migration_detail_migration_waiting_for_agent_one">正在等待 %1$s 上的 Agent 完成目前的工作（最多還需 %2$d 分鐘），之後會停止 Agent 並打包工作區。停止 Agent 即可立即繼續。</string>
+    <string name="agent_migration_detail_migration_waiting_for_agent_other">正在等待 %1$s 上的 Agent 完成目前的工作（最多還需 %2$d 分鐘），之後會停止 Agent 並打包工作區。停止 Agent 即可立即繼續。</string>
     <string name="agent_migration_detail_migration_packing">正在 %1$s 上打包工作區。工作區較大時，最多可能需要 30 分鐘。</string>
+    <string name="agent_migration_detail_migration_packing_elapsed_one">正在 %1$s 上打包工作區（已進行 %2$d 分鐘）。工作區較大時，最多可能需要 30 分鐘。</string>
+    <string name="agent_migration_detail_migration_packing_elapsed_other">正在 %1$s 上打包工作區（已進行 %2$d 分鐘）。工作區較大時，最多可能需要 30 分鐘。</string>
     <string name="agent_migration_detail_migration_uploading">正在從 %1$s 上傳工作區，以便傳送到 %2$s。</string>
     <string name="agent_migration_hosted_uploading">正在將工作區從 %1$s 上傳到雲端。</string>
     <string name="agent_migration_detail_migration_ready">工作區已上傳，%2$s 正在下載。</string>

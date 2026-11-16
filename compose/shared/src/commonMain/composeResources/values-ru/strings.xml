@@ -2950,6 +2950,8 @@
     <string name="settings_computers_rack_no_match_title">Нет подходящих Computer</string>
     <string name="settings_computers_rack_no_match_description">Измените запрос или сбросьте фильтры.</string>
     <string name="settings_computers_disk_low">Мало места</string>
+    <string name="settings_computers_disk_low_detail">Свободно %1$s из %2$s</string>
+    <string name="settings_computers_rack_resource_detail">Свободно %1$s из %2$s</string>
     <string name="settings_computers_workspace_status_active">Активно</string>
     <string name="settings_computers_workspace_status_orphan">Осиротевшее</string>
     <string name="settings_computers_cannot_delete_message_one">К этому компьютеру привязан %1$d агент. Удалите всех агентов, прежде чем удалять компьютер.</string>
@@ -3962,7 +3964,11 @@
     <string name="agent_migration_hosted_step_switch">Переход в облако</string>
     <string name="agent_migration_hosted_step_complete">Работа в облаке</string>
     <string name="agent_migration_detail_migration_stopping_source">Останавливаем агента на компьютере %1$s, чтобы упаковать его рабочее пространство.</string>
+    <string name="agent_migration_detail_migration_waiting_for_agent_one">Ждём, пока агент закончит текущую работу на компьютере %1$s (не более %2$d минуты). Затем он будет остановлен, а его рабочее пространство упаковано. Остановите агента, чтобы продолжить сейчас.</string>
+    <string name="agent_migration_detail_migration_waiting_for_agent_other">Ждём, пока агент закончит текущую работу на компьютере %1$s (не более %2$d минуты). Затем он будет остановлен, а его рабочее пространство упаковано. Остановите агента, чтобы продолжить сейчас.</string>
     <string name="agent_migration_detail_migration_packing">Упаковываем рабочее пространство на компьютере %1$s. Для больших рабочих пространств это может занять до 30 минут.</string>
+    <string name="agent_migration_detail_migration_packing_elapsed_one">Упаковываем рабочее пространство на компьютере %1$s (уже %2$d минута). Для больших рабочих пространств это может занять до 30 минут.</string>
+    <string name="agent_migration_detail_migration_packing_elapsed_other">Упаковываем рабочее пространство на компьютере %1$s (уже %2$d минуты). Для больших рабочих пространств это может занять до 30 минут.</string>
     <string name="agent_migration_detail_migration_uploading">Загружаем рабочее пространство с компьютера %1$s для передачи на компьютер %2$s.</string>
     <string name="agent_migration_hosted_uploading">Загрузка рабочего пространства с компьютера %1$s в облако.</string>
     <string name="agent_migration_detail_migration_ready">Рабочее пространство загружено. Компьютер %2$s скачивает его.</string>

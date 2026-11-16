@@ -69,6 +69,12 @@ internal object AgentMigrationDrainRetryFixtures {
         notice("provisioning", sourceQuiescedAt = null)
             .copy(sourceDrain = AgentMigrationSourceDrain(until = until, waitingFor = waitingFor, reportedAt = "2026-11-11T07:59:30.000Z"))
 
+    /** A source that waits for its agent until 08:06 without saying for what (`sourceDrainUntil` only): at most 6 more minutes. */
+    val waiting = notice("provisioning", sourceQuiescedAt = null).copy(sourceDrainUntil = "2026-11-11T08:06:00.000Z")
+
+    /** Packing since 07:56 with no sizes reported yet (`sourceQuiescedAt`): 4 minutes so far. */
+    val packingFor = notice("provisioning", sourceQuiescedAt = "2026-11-11T07:56:00.000Z")
+
     private val tooLarge = AgentMigrationRetryPreviousFailure("MIGRATION_OBJECT_STORE_BUNDLE_TOO_LARGE", entries = null, bytes = Math.round(10.4 * GIB), bytesIsLowerBound = true)
     private val tooManyEntries = AgentMigrationRetryPreviousFailure("MIGRATION_OBJECT_STORE_ENTRY_COUNT_LIMIT_EXCEEDED", entries = 48_210, bytes = null)
 

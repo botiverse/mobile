@@ -13,6 +13,8 @@ import kotlinx.serialization.json.Json
 // sourceDrain (#14221/#14230) and the agent's own retry (#14275): botiverse/slock staging
 // 0e8b4fab7440307f58c64e3448e820f517359194 (routes/agents.ts serializeOwnerMigrationStatus +
 // retryComparison, services/agentMigrationRetry.ts, shared/src/agentMigration.ts).
+// sourceDrainUntil: botiverse/slock staging 7a631c0ffe9bf219129165049114f193d7098a29 (routes/agents.ts
+// serializeOwnerMigrationStatus, services/agentMigrationService.ts `sourceDrainUntil`).
 private val migrationJson = Json { ignoreUnknownKeys = true }
 private val migrationRequestJson = Json { explicitNulls = false }
 
@@ -72,6 +74,12 @@ internal data class AgentMigrationNotice(
     val transportLostAt: String? = null,
     val prepDeadlineAt: String? = null,
     val sourceQuiescedAt: String? = null,
+    /**
+     * Until when the source waits for the agent to finish its current work before it stops it
+     * (ISO; server `sourceDrainUntil(row)`): null once quiesced, or when the source stops at once.
+     * REST only: the realtime payload does not carry it.
+     */
+    val sourceDrainUntil: String? = null,
     val sourceBuildProgress: AgentMigrationSourceBuildProgress? = null,
     val transferProgress: AgentMigrationTransferProgress? = null,
     val transferDeadlineAt: String? = null,

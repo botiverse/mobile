@@ -3118,6 +3118,8 @@
     <string name="settings_computers_rack_no_match_title">没有匹配的 Computer</string>
     <string name="settings_computers_rack_no_match_description">换个关键词，或清除筛选。</string>
     <string name="settings_computers_disk_low">磁盘不足</string>
+    <string name="settings_computers_disk_low_detail">剩 %1$s，共 %2$s</string>
+    <string name="settings_computers_rack_resource_detail">剩 %1$s，共 %2$s</string>
     <string name="settings_computers_workspace_status_active">活跃</string>
     <string name="settings_computers_workspace_status_orphan">已孤立</string>
     <string name="settings_computers_cannot_delete_message_one">这台 Computer 还有 %1$d 个 Agent。请先移除所有 Agent，再删除 Computer。</string>
@@ -4133,7 +4135,11 @@
     <string name="agent_migration_hosted_step_switch">切换到云端</string>
     <string name="agent_migration_hosted_step_complete">在云端运行</string>
     <string name="agent_migration_detail_migration_stopping_source">正在停止 %1$s 上的 Agent，以便打包工作区。</string>
+    <string name="agent_migration_detail_migration_waiting_for_agent_one">正在等待 %1$s 上的 Agent 完成当前工作（最多还需 %2$d 分钟），之后会停止 Agent 并打包工作区。停止 Agent 即可立即继续。</string>
+    <string name="agent_migration_detail_migration_waiting_for_agent_other">正在等待 %1$s 上的 Agent 完成当前工作（最多还需 %2$d 分钟），之后会停止 Agent 并打包工作区。停止 Agent 即可立即继续。</string>
     <string name="agent_migration_detail_migration_packing">正在 %1$s 上打包工作区。工作区较大时最长可能需要 30 分钟。</string>
+    <string name="agent_migration_detail_migration_packing_elapsed_one">正在 %1$s 上打包工作区，已用 %2$d 分钟。工作区较大时最长可能需要 30 分钟。</string>
+    <string name="agent_migration_detail_migration_packing_elapsed_other">正在 %1$s 上打包工作区，已用 %2$d 分钟。工作区较大时最长可能需要 30 分钟。</string>
     <string name="agent_migration_detail_migration_uploading">正在从 %1$s 上传工作区，准备传到 %2$s。</string>
     <string name="agent_migration_hosted_uploading">正在把工作区从 %1$s 上传到云端。</string>
     <string name="agent_migration_detail_migration_ready">工作区已上传，%2$s 正在下载。</string>

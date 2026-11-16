@@ -30,8 +30,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The Agent migration section on an agent's profile (web AgentMigrationSection), light and dark:
- * idle (the Migrate entry), a move in progress (the Steps with the running step, its line and
- * Cancel), a canceled move whose cleanup needs attention (warning banner, migration ID with
+ * idle (the Migrate entry), a move in progress (the Steps with the running step, its line with
+ * how long packing has run, and Cancel), a canceled move whose cleanup needs attention (warning banner, migration ID with
  * copy), and a failed move between computers (Steps stopped at the failed one, the summary
  * banner). The spinner's motion is covered by [AgentMigrationSectionStepsTest]. Reports land in
  * `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
@@ -100,8 +100,12 @@ private fun migrationInputs() =
         onOpenBilling = {},
         onCopy = {},
         formatTimestamp = { "Oct 23, 10:12" },
-        onAgentPlacementChanged = {}
+        onAgentPlacementChanged = {},
+        // 2026-10-23T02:34:35Z: the move in progress has packed for 4 minutes (web `migrationPackingElapsed`).
+        nowMillis = { MIGRATION_NOW }
     )
+
+private const val MIGRATION_NOW = 1_792_722_875_000L
 
 private fun migrationNotice(
     state: String,
