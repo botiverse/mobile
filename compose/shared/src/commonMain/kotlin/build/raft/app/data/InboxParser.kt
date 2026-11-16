@@ -130,6 +130,21 @@ private fun JsonElement.latestActivitySeqOrNull(): String? {
     return pair.stringFieldOrNull("seq")?.takeIf(::isCanonicalActivitySeq)
 }
 
+/** A present frontier's `readStateVersion` (a JSON number), else null. */
+private fun JsonElement.presentReadStateVersionOrNull(): Long? {
+    val frontier = this as? JsonObject ?: return null
+    if (frontier.stringFieldOrNull("kind") != "present") return null
+    val version = frontier["readStateVersion"] as? JsonPrimitive ?: return null
+    return if (version.isString) null else version.content.toLongOrNull()
+}
+
+/** A present frontier's `maxReadSeq` (a decimal string), else null. */
+private fun JsonElement.presentMaxReadSeqOrNull(): String? {
+    val frontier = this as? JsonObject ?: return null
+    if (frontier.stringFieldOrNull("kind") != "present") return null
+    return frontier.stringFieldOrNull("maxReadSeq")
+}
+
 /**
  * The mark of an `InboxScopeReadFrontier` (botiverse/slock #11795,
  * `packages/shared/src/inboxScopeReadFrontier.ts`): `{kind: "present", ..., markedUnread?: true}`.
@@ -420,6 +435,8 @@ private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): In
                 contract = MemberKindWireContract.InboxActor,
             ),
         readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
+        readStateVersion = readState?.presentReadStateVersionOrNull(),
+        readStateMaxReadSeq = readState?.presentMaxReadSeqOrNull(),
         markedUnread = readState?.isMarkedUnreadFrontier() == true,
         latestActivitySeq = latestActivitySeq?.takeIf(::isCanonicalActivitySeq),
         doneFrontierSeq = doneFrontierSeq,
@@ -481,6 +498,8 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
         taskClaimedByName = taskClaimedByName,
         isFollowing = isFollowing,
         readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
+        readStateVersion = readState?.presentReadStateVersionOrNull(),
+        readStateMaxReadSeq = readState?.presentMaxReadSeqOrNull(),
         markedUnread = readState?.isMarkedUnreadFrontier() == true,
         latestActivitySeq = latestActivitySeq?.takeIf(::isCanonicalActivitySeq),
         doneFrontierSeq = doneFrontierSeq,

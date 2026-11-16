@@ -363,10 +363,37 @@ class SharedActivityStorePositionAuditTest {
                     """"meta":{"outcomeDetail":"step=local_read;before=0;served=3;after=0","touched":1,"timestamp":${lowered.timestampMillis}},""" +
                     """"inbox.lowered.step":"local_read","inbox.lowered.before":"0","inbox.lowered.served":"3",""" +
                     """"inbox.lowered.after":"0","inbox.lowered.fetch_reason":"visibility","inbox.lowered.fetch_trigger":"none",""" +
-                    """"inbox.lowered.row_position":"true"}"""
+                    """"inbox.lowered.row_position":"true","inbox.lowered.row_kind":"channel","inbox.lowered.scope_id":"channel-1",""" +
+                    """"inbox.lowered.row_latest_seq":"10","inbox.lowered.served_read_version":"-","inbox.lowered.served_read_seq":"-",""" +
+                    """"inbox.lowered.served_latest_activity_seq":"10","inbox.lowered.ledger_read_version":"-",""" +
+                    """"inbox.lowered.ledger_read_seq":"-"}"""
             ),
             lowered.stateTransitionTraceAttrs()
         )
+    }
+
+    @Test
+    fun aListAnswerOlderThanAReadAcceptedHereIsACorrection() = runTest {
+        // A read from elsewhere (version 2, read through 10) clears the row; the next list answer
+        // still serves 3 unread. Served at version 1 it is stale (the ledger step, corrected); served
+        // at version 2 the ledger holds nothing newer, so the local read hold lowers it (lowered).
+        listOf(1L to ("activity:list_row_corrected" to ActivityListRowStep.Ledger), 2L to ("activity:list_row_lowered" to ActivityListRowStep.LocalRead))
+            .forEach { (servedVersion, expected) ->
+                val served = channelRow.copy(unreadCount = 3, readStateVersion = servedVersion, readStateMaxReadSeq = "5")
+                val f = loadedStore(listOf(snapshot(listOf(channelRow.copy(unreadCount = 1))), snapshot(listOf(served))))
+                f.store.dispatch(readState("channel-1", maxReadSeq = 10L))
+                runCurrent()
+                f.store.dispatch(SharedActivityIntent.Refresh)
+                runCurrent()
+
+                val lowered = f.lowered.single()
+                assertEquals(expected, lowered.event to lowered.step, "served version $servedVersion")
+                assertEquals(
+                    listOf(servedVersion, "5", "10", 2L, "10"),
+                    listOf(lowered.servedReadVersion, lowered.servedReadSeq, lowered.servedLatestActivitySeq, lowered.ledgerReadVersion, lowered.ledgerReadSeq),
+                    "served version $servedVersion"
+                )
+            }
     }
 
     @Test
