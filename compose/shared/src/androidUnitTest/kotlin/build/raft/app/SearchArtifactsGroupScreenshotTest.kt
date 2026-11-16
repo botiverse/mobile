@@ -104,7 +104,12 @@ class SearchArtifactsGroupScreenshotTest {
     @Test
     fun loading() =
         RaftRobolectricScreenshot.capture("search.artifacts.loading", RaftAppAppearance.Light, reportDir = REPORT_DIR, activities = activities) {
-            Host { Panel(SearchArtifactsState(serverId = "server-1", query = "plan", status = SearchArtifactsStatus.Loading)) }
+            Host {
+                // At rest: a pulsing skeleton never lets the capture settle.
+                CompositionLocalProvider(LocalHomeSearchArtifactsSkeletonAnimated provides false) {
+                    Panel(SearchArtifactsState(serverId = "server-1", query = "plan", status = SearchArtifactsStatus.Loading))
+                }
+            }
         }
 
     @Test

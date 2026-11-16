@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -132,9 +133,13 @@ internal fun HomeSearchArtifactsHeading(state: SearchArtifactsState, overlay: Bo
     }
 }
 
+/** Whether the group's skeleton pulses; screenshots draw it at rest (raft-ui `motion-reduce:animate-none`). */
+internal val LocalHomeSearchArtifactsSkeletonAnimated = staticCompositionLocalOf { true }
+
 /** web `AppHitSkeleton`: three rows of the entity row's tile and two lines. */
 @Composable
 internal fun HomeSearchArtifactsSkeleton() {
+    val animated = LocalHomeSearchArtifactsSkeletonAnimated.current
     Column(Modifier.fillMaxWidth().testTag(HomeSearchArtifactsTags.Loading)) {
         repeat(3) {
             Row(
@@ -142,10 +147,10 @@ internal fun HomeSearchArtifactsSkeleton() {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(RaftSearchMetrics.EntityGap),
             ) {
-                RaftSkeleton(Modifier.size(RaftSearchMetrics.EntityLeading))
+                RaftSkeleton(Modifier.size(RaftSearchMetrics.EntityLeading), animated = animated)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RaftSkeleton(Modifier.fillMaxWidth(0.4f), variant = RaftSkeletonVariant.Line)
-                    RaftSkeleton(Modifier.fillMaxWidth(0.6f), variant = RaftSkeletonVariant.Line)
+                    RaftSkeleton(Modifier.fillMaxWidth(0.4f), variant = RaftSkeletonVariant.Line, animated = animated)
+                    RaftSkeleton(Modifier.fillMaxWidth(0.6f), variant = RaftSkeletonVariant.Line, animated = animated)
                 }
             }
         }
