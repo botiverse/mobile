@@ -7,6 +7,7 @@ import build.raft.app.data.AgentMigrationRetryPacked
 import build.raft.app.data.AgentMigrationRetryPreviousFailure
 import build.raft.app.data.AgentMigrationSourceBuildProgress
 import build.raft.app.data.AgentMigrationSourceDrain
+import build.raft.app.data.AgentMigrationTransferProgress
 import build.raft.app.data.RaftProGateDecision
 
 /**
@@ -78,6 +79,18 @@ internal object AgentMigrationDrainRetryFixtures {
             retryOfMigrationId = "0f1e2d3c-4b5a-4968-8776-655443322110",
             triggeredByAgentId = AGENT,
             retryComparison = AgentMigrationRetryComparison(tooLarge, AgentMigrationRetryPacked(files = 1203, bytes = 812 * MIB, final = false)),
+        )
+
+    /** A plain move packing on the source, with what it packed so far (`sourceBuildProgress`). */
+    val packing =
+        notice("provisioning").copy(sourceBuildProgress = AgentMigrationSourceBuildProgress("packing", files = 48_210, bytes = Math.round(2.5 * GIB)))
+
+    /** The target downloading the compressed bundle (`transferProgress`): 120 of 320 MiB. */
+    val downloading =
+        notice("ready").copy(
+            transportControlRegisteredAt = "2026-11-11T08:06:00.000Z",
+            readyAt = "2026-11-11T08:07:00.000Z",
+            transferProgress = AgentMigrationTransferProgress(receivedBytes = 120 * MIB, totalBytes = 320 * MIB, receivedChunks = 15, totalChunks = 40),
         )
 
     /** The retry of a too-many-files move stopped too: what it had packed then, and the next move is a person's. */

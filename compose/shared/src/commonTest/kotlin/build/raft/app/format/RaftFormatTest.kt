@@ -45,6 +45,27 @@ class RaftFormatTest {
     }
 
     @Test
+    fun diskSizesAreDecimalLikeTheWebsFormatDiskSizeBytes() {
+        val table =
+            listOf(
+                0L to "0 B",
+                999L to "999 B",
+                1_000L to "1.0 KB",
+                1_500_000L to "1.5 MB",
+                // A Mac's "245.11 GB" disk (the web doc's example), not 228.3 in binary units.
+                245_107_195_904L to "245.1 GB",
+                2_000_000_000_000L to "2000.0 GB"
+            )
+        for (locale in RaftFormatLocale.entries) {
+            for ((bytes, expected) in table) {
+                assertEquals(expected, RaftFormat.diskBytes(bytes, locale), "${locale.languageTag} $bytes")
+            }
+            assertEquals("245.1 GB", RaftFormat.diskBytes(245_107_195_904.0, locale))
+            assertEquals("0 B", RaftFormat.diskBytes(Double.NaN, locale))
+        }
+    }
+
+    @Test
     fun speedIsTheSizePerSecondAndUnknownBelowOneByte() {
         for (locale in RaftFormatLocale.entries) {
             assertEquals("850.0 KB/s", RaftFormat.speed(850L * 1024, locale), locale.languageTag)

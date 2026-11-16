@@ -3927,6 +3927,8 @@
     <string name="agent_migration_detail_migration_uploading">正在從 %1$s 上傳工作區，以便傳送到 %2$s。</string>
     <string name="agent_migration_hosted_uploading">正在將工作區從 %1$s 上傳到雲端。</string>
     <string name="agent_migration_detail_migration_ready">工作區已上傳，%2$s 正在下載。</string>
+    <string name="agent_migration_detail_migration_packing_progress">正在 %1$s 上打包工作區：目前已處理 %2$s 個檔案，共 %3$s。</string>
+    <string name="agent_migration_detail_migration_downloading">%1$s 正在下載工作區：%2$s（%3$s / %4$s，壓縮後）。</string>
     <string name="agent_migration_detail_migration_unpacking">下載完成，正在 %2$s 上解壓縮工作區。</string>
     <string name="agent_migration_detail_migration_arriving">正在 %2$s 上設定工作區。</string>
     <string name="agent_migration_detail_migration_starting">正在 %2$s 上啟動 Agent。</string>

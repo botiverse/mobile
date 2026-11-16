@@ -3927,6 +3927,8 @@
     <string name="agent_migration_detail_migration_uploading">Subiendo el espacio de trabajo desde %1$s para enviarlo a %2$s.</string>
     <string name="agent_migration_hosted_uploading">Subiendo el espacio de trabajo de %1$s a la nube.</string>
     <string name="agent_migration_detail_migration_ready">El espacio de trabajo ya está subido. %2$s lo está descargando.</string>
+    <string name="agent_migration_detail_migration_packing_progress">Empaquetando el espacio de trabajo en %1$s: %2$s archivos y %3$s hasta ahora.</string>
+    <string name="agent_migration_detail_migration_downloading">%1$s está descargando el espacio de trabajo: %2$s (%3$s de %4$s, comprimido).</string>
     <string name="agent_migration_detail_migration_unpacking">Descarga completa. Descomprimiendo el espacio de trabajo en %2$s.</string>
     <string name="agent_migration_detail_migration_arriving">Preparando el espacio de trabajo en %2$s.</string>
     <string name="agent_migration_detail_migration_starting">Iniciando el agente en %2$s.</string>
