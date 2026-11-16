@@ -4443,8 +4443,8 @@
     <string name="member_removal_impact_more_computers">outros</string>
     <string name="member_removal_impact_loading">Verificando quais computadores ficarão offline…</string>
     <string name="member_removal_impact_failed">Não foi possível verificar quais computadores ficarão offline.</string>
-    <string name="member_removal_impact_recover_one">Para recuperá-lo, alguém que continue neste servidor configura essa máquina de novo. Os agentes mantêm as configurações deles.</string>
-    <string name="member_removal_impact_recover_other">Para recuperá-los, alguém que continue neste servidor configura essa máquina de novo. Os agentes mantêm as configurações deles.</string>
+    <string name="member_removal_impact_recover_one">Para os agentes dele voltarem a funcionar, mova-os para outro computador. Eles mantêm as configurações.</string>
+    <string name="member_removal_impact_recover_other">Para os agentes deles voltarem a funcionar, mova-os para outro computador. Eles mantêm as configurações.</string>
     <string name="member_removal_impact_list_two">%1$s e %2$s</string>
     <string name="member_removal_impact_list_more">%1$s, %2$s</string>
     <string name="member_removal_impact_list_end">%1$s e %2$s</string>

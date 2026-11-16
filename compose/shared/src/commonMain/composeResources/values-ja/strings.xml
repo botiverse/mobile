@@ -4722,8 +4722,8 @@
     <string name="member_removal_impact_more_computers">その他</string>
     <string name="member_removal_impact_loading">オフラインになるコンピューターを確認しています…</string>
     <string name="member_removal_impact_failed">オフラインになるコンピューターを確認できませんでした。</string>
-    <string name="member_removal_impact_recover_one">元に戻すには、このサーバーに残る人がそのマシンをもう一度セットアップします。エージェントの設定はそのまま残ります。</string>
-    <string name="member_removal_impact_recover_other">元に戻すには、このサーバーに残る人がそのマシンをもう一度セットアップします。エージェントの設定はそのまま残ります。</string>
+    <string name="member_removal_impact_recover_one">エージェントをまた動かすには、別のコンピューターに移します。エージェントの設定はそのまま残ります。</string>
+    <string name="member_removal_impact_recover_other">エージェントをまた動かすには、別のコンピューターに移します。エージェントの設定はそのまま残ります。</string>
     <string name="member_removal_impact_list_two">%1$s、%2$s</string>
     <string name="member_removal_impact_list_more">%1$s、%2$s</string>
     <string name="member_removal_impact_list_end">%1$s、%2$s</string>
