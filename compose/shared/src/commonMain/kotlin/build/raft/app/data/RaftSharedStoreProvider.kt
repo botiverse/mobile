@@ -2042,7 +2042,11 @@ internal class RaftSharedStoreProvider private constructor(
                 delegate = authStore,
                 selectedServerStore = selectedServerStore(scope),
                 eventScope = threadSendScope,
-                onProcessSessionCleared = ::clearActiveShellServerSelections
+                onProcessSessionCleared = {
+                    // Sign-out: held `local_read` lowerings go now, as lowerings (slock #15197 follow-up).
+                    homeActivityStores.entries().forEach { (_, store) -> store.flushHeldListRowsOnSignout() }
+                    clearActiveShellServerSelections()
+                }
             )
         }
 
@@ -2929,7 +2933,12 @@ internal class RaftSharedStoreProvider private constructor(
                 homeActivityStores.entries().forEach { (shellScope, store) ->
                     runOnStoreScope(homeActivityStoreScopes.get(shellScope)) {
                         store.dispatch(
-                            SharedActivityIntent.ApplyReadReceiptResult(request, result.isReadReceiptSuccess())
+                            SharedActivityIntent.ApplyReadReceiptResult(
+                                request = request,
+                                succeeded = result.isReadReceiptSuccess(),
+                                // The read ack: settles held `local_read` lowerings (slock #15197).
+                                maxReadSeq = content?.data?.maxReadSeq
+                            )
                         )
                     }
                 }

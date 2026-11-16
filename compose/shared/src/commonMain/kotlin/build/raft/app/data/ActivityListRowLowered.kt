@@ -18,8 +18,13 @@ import kotlinx.serialization.json.putJsonObject
  * - `activity:list_row_corrected` (outcome `noop`): the `ledger` step, where this client holds a
  *   newer server-issued read (higher version) whose read covers the answer's latest activity for
  *   the row. The answer was stale and the page was right; not counted against the bar.
- * - `activity:list_row_lowered` (outcome `conflict`): every other step (and a ledger step whose
- *   facts don't show that cover). This is the defect count.
+ * - `activity:list_row_corrected` too (slock #15197): the `local_read` step, when this client's own
+ *   read ack for the row's scope lands within [ActivityLocalReadAckWindowMillis] and its read covers
+ *   the answer's latest activity (the answer was read while this client's read was in flight). Such
+ *   a row is held until the ack or the window ends, then sent once ([ActivityLocalReadAckHold]);
+ *   `ack_read_seq`, `ack_delay_ms` and `held_end` say what decided it.
+ * - `activity:list_row_lowered` (outcome `conflict`): every other step (and a ledger or local_read
+ *   step whose facts don't show that cover). This is the defect count.
  *
  * The app applies an answer in this order: `local_read` (a Read here, and reads from elsewhere the
  * app held: the local read overlay), `done` (a local Done), `merge` (the realtime fold and the
@@ -31,6 +36,23 @@ import kotlinx.serialization.json.putJsonObject
 
 internal const val ActivityListRowLoweredTraceEvent = "activity:list_row_lowered"
 internal const val ActivityListRowCorrectedTraceEvent = "activity:list_row_corrected"
+
+/**
+ * Web `inbox.lowered.held_end`: how a held `local_read` row ended. Web sends `pagehide` for a page
+ * that closes; the app flushes on [Background], [ServerSwitch] and [Signout] instead.
+ */
+enum class ActivityListRowHeldEnd(val wireValue: String) {
+    /** This client's read ack for the scope settled it. */
+    Ack("ack"),
+    /** No usable ack within [ActivityLocalReadAckWindowMillis]. */
+    Window("window"),
+    /** The app went to the background. */
+    Background("background"),
+    /** The store switched to another server. */
+    ServerSwitch("server_switch"),
+    /** The session was cleared or the store's shell scope was released. */
+    Signout("signout"),
+}
 
 /** Web `ListRowStep`. */
 enum class ActivityListRowStep(val wireValue: String) {
@@ -70,10 +92,24 @@ data class ActivityListRowLowered(
     /** This client's accepted read state for the scope when the answer was applied. */
     val ledgerReadVersion: Long?,
     val ledgerReadSeq: String?,
+    /** `local_read` only: the `maxReadSeq` of this client's read ack that settled the row; null without one. */
+    val ackReadSeq: String? = null,
+    /** `local_read` only: how long after the lowering that ack landed; null without one. */
+    val ackDelayMs: Long? = null,
+    /** `local_read` only: how the hold ended; null for a row that was never held. */
+    val heldEnd: ActivityListRowHeldEnd? = null,
 ) {
-    /** Web `isLedgerCorrection`, on the `ledger` step only. */
+    /**
+     * Web `isLedgerCorrection` on the `ledger` step; on the `local_read` step, this client's read ack
+     * covers the answer's latest activity (web `covers(ack.readSeq, servedLatestActivitySeq)`).
+     */
     val corrected: Boolean
-        get() = step == ActivityListRowStep.Ledger && isLedgerCorrection(servedReadVersion, servedLatestActivitySeq, ledgerReadVersion, ledgerReadSeq)
+        get() =
+            when (step) {
+                ActivityListRowStep.Ledger -> isLedgerCorrection(servedReadVersion, servedLatestActivitySeq, ledgerReadVersion, ledgerReadSeq)
+                ActivityListRowStep.LocalRead -> ackReadSeq != null && listRowSeqCovers(ackReadSeq, servedLatestActivitySeq)
+                else -> false
+            }
 
     val event: String
         get() = if (corrected) ActivityListRowCorrectedTraceEvent else ActivityListRowLoweredTraceEvent
@@ -89,7 +125,20 @@ private fun isLedgerCorrection(
     if (servedReadVersion == null || ledgerReadVersion == null) return false
     if (ledgerReadVersion <= servedReadVersion) return false
     if (servedLatestActivitySeq == null || ledgerReadSeq == null) return false
-    return compareActivitySeq(ledgerReadSeq, servedLatestActivitySeq) >= 0
+    return listRowSeqCovers(ledgerReadSeq, servedLatestActivitySeq)
+}
+
+/** Web `parseSeq`: a read or activity seq as a decimal string, or null when it is not a non-negative integer. */
+internal fun parseListRowSeq(value: String?): String? = value?.takeIf { it.isNotEmpty() && it.all { c -> c in '0'..'9' } }
+
+/** Web `parseSeq` for a numeric seq: null when negative. */
+internal fun parseListRowSeq(value: Long?): String? = value?.takeIf { it >= 0 }?.toString()
+
+/** Web `covers`: both seqs usable and [readSeq] >= [latestSeq]. */
+internal fun listRowSeqCovers(readSeq: String?, latestSeq: String?): Boolean {
+    val read = parseListRowSeq(readSeq)?.trimStart('0')?.ifEmpty { "0" } ?: return false
+    val latest = parseListRowSeq(latestSeq)?.trimStart('0')?.ifEmpty { "0" } ?: return false
+    return compareActivitySeq(read, latest) >= 0
 }
 
 private fun InboxItem.isListRowLoweredRow(): Boolean =
@@ -202,4 +251,7 @@ internal fun ActivityListRowLowered.stateTransitionTraceAttrs(): JsonObject =
         put("inbox.lowered.served_latest_activity_seq", servedLatestActivitySeq ?: "-")
         put("inbox.lowered.ledger_read_version", ledgerReadVersion?.toString() ?: "-")
         put("inbox.lowered.ledger_read_seq", ledgerReadSeq ?: "-")
+        put("inbox.lowered.ack_read_seq", ackReadSeq ?: "-")
+        put("inbox.lowered.ack_delay_ms", ackDelayMs?.toString() ?: "-")
+        put("inbox.lowered.held_end", heldEnd?.wireValue ?: "-")
     }

@@ -353,6 +353,11 @@ class SharedActivityStorePositionAuditTest {
         runCurrent()
         f.store.dispatch(SharedActivityIntent.Refresh)
         runCurrent()
+        // slock #15197: a local_read lowering waits 5 s for this client's read ack (the read's own
+        // answer came before the list answer: it settles nothing), then goes as a lowering.
+        assertEquals(emptyList(), f.lowered)
+        advanceTimeBy(ActivityLocalReadAckWindowMillis)
+        runCurrent()
 
         val lowered = f.lowered.single()
         assertEquals(ActivityListRowStep.LocalRead to Triple(0, 3, 0), lowered.step to Triple(lowered.before, lowered.served, lowered.after))
@@ -366,7 +371,8 @@ class SharedActivityStorePositionAuditTest {
                     """"inbox.lowered.row_position":"true","inbox.lowered.row_kind":"channel","inbox.lowered.scope_id":"channel-1",""" +
                     """"inbox.lowered.row_latest_seq":"10","inbox.lowered.served_read_version":"-","inbox.lowered.served_read_seq":"-",""" +
                     """"inbox.lowered.served_latest_activity_seq":"10","inbox.lowered.ledger_read_version":"-",""" +
-                    """"inbox.lowered.ledger_read_seq":"-"}"""
+                    """"inbox.lowered.ledger_read_seq":"-","inbox.lowered.ack_read_seq":"-","inbox.lowered.ack_delay_ms":"-",""" +
+                    """"inbox.lowered.held_end":"window"}"""
             ),
             lowered.stateTransitionTraceAttrs()
         )
@@ -385,6 +391,8 @@ class SharedActivityStorePositionAuditTest {
                 runCurrent()
                 f.store.dispatch(SharedActivityIntent.Refresh)
                 runCurrent()
+                advanceTimeBy(ActivityLocalReadAckWindowMillis) // a held local_read row's window
+                runCurrent()
 
                 val lowered = f.lowered.single()
                 assertEquals(expected, lowered.event to lowered.step, "served version $servedVersion")
@@ -394,6 +402,102 @@ class SharedActivityStorePositionAuditTest {
                     "served version $servedVersion"
                 )
             }
+    }
+
+    private val owner = ReadReceiptOwner("production", "user-1", "server-1")
+
+    private fun readAck(channelId: String, maxReadSeq: Long?) =
+        SharedActivityIntent.ApplyReadReceiptResult(ReadReceiptRequest.All(ChannelId(channelId), owner, revision = 1L), succeeded = true, maxReadSeq = maxReadSeq)
+
+    /** The list answer serves channel-1 at 3 unread (latest 10) while this client's read of it is still in flight. */
+    private fun TestScope.heldLocalRead(): Fixture {
+        val f = loadedStore(listOf(snapshot(listOf(channelRow.copy(unreadCount = 1))), snapshot(listOf(channelRow.copy(unreadCount = 3)))))
+        f.store.dispatch(SharedActivityIntent.MarkRead(f.row(channelRow.key)))
+        runCurrent()
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(emptyList(), f.lowered, "the local_read lowering is held")
+        return f
+    }
+
+    private fun ActivityListRowLowered.ackAttrs(): List<String> =
+        stateTransitionTraceAttrs().let { attrs ->
+            listOf("ack_read_seq", "ack_delay_ms", "held_end").map { attrs["inbox.lowered.$it"].toString().trim('"') }
+        }
+
+    @Test
+    fun aLocalReadLoweringItsOwnReadAckCoversWithinFiveSecondsIsACorrection() = runTest {
+        val f = heldLocalRead()
+        advanceTimeBy(39L)
+        f.store.dispatch(readAck("channel-1", maxReadSeq = 10L))
+        runCurrent()
+        val lowered = f.lowered.single()
+        assertEquals("activity:list_row_corrected" to ActivityListRowStep.LocalRead, lowered.event to lowered.step)
+        assertEquals(listOf("10", "39", "ack"), lowered.ackAttrs())
+        advanceTimeBy(ActivityLocalReadAckWindowMillis)
+        runCurrent()
+        assertEquals(1, f.lowered.size, "one event per row")
+    }
+
+    @Test
+    fun aLocalReadLoweringIsALoweringWhenItsAckIsLowerUnusableLateOrFromAnotherAccount() = runTest {
+        // Lower.
+        heldLocalRead().let { f ->
+            f.store.dispatch(readAck("channel-1", maxReadSeq = 9L))
+            runCurrent()
+            assertEquals("activity:list_row_lowered" to listOf("9", "0", "ack"), f.lowered.single().let { it.event to it.ackAttrs() })
+        }
+        // No usable seq, another account's ack, then late: the window decides, the late ack adds nothing.
+        heldLocalRead().let { f ->
+            f.store.dispatch(readAck("channel-1", maxReadSeq = null))
+            f.store.dispatch(
+                SharedActivityIntent.ApplyReadReceiptResult(
+                    ReadReceiptRequest.All(ChannelId("channel-1"), owner.copy(accountId = "user-2"), revision = 1L),
+                    succeeded = true,
+                    maxReadSeq = 10L
+                )
+            )
+            runCurrent()
+            assertEquals(emptyList(), f.lowered)
+            advanceTimeBy(ActivityLocalReadAckWindowMillis)
+            runCurrent()
+            f.store.dispatch(readAck("channel-1", maxReadSeq = 10L))
+            runCurrent()
+            assertEquals("activity:list_row_lowered" to listOf("-", "-", "window"), f.lowered.single().let { it.event to it.ackAttrs() })
+        }
+    }
+
+    @Test
+    fun heldLocalReadLoweringsAreFlushedWhenTheAppGoesToTheBackground() = runTest {
+        val f = heldLocalRead()
+        advanceTimeBy(1_000L)
+        f.foreground.value = false
+        runCurrent()
+        assertEquals("activity:list_row_lowered" to listOf("-", "-", "background"), f.lowered.single().let { it.event to it.ackAttrs() })
+        f.store.dispatch(readAck("channel-1", maxReadSeq = 10L))
+        advanceTimeBy(ActivityLocalReadAckWindowMillis)
+        runCurrent()
+        assertEquals(1, f.lowered.size, "flushed once; neither the ack nor the window sends it again")
+    }
+
+    @Test
+    fun heldLocalReadLoweringsAreFlushedWhenTheStoreOrItsScopeIsCleared() = runTest {
+        heldLocalRead().let { f ->
+            f.store.dispatch(SharedActivityIntent.ServerSelected("server-2"))
+            runCurrent()
+            assertEquals(listOf("-", "-", "server_switch"), f.lowered.single().ackAttrs())
+        }
+        heldLocalRead().let { f ->
+            f.store.flushHeldListRowsOnSignout()
+            assertEquals(listOf("-", "-", "signout"), f.lowered.single().ackAttrs())
+        }
+        heldLocalRead().let { f ->
+            f.store.clear()
+            assertEquals("activity:list_row_lowered" to listOf("-", "-", "signout"), f.lowered.single().let { it.event to it.ackAttrs() })
+            advanceTimeBy(ActivityLocalReadAckWindowMillis)
+            runCurrent()
+            assertEquals(1, f.lowered.size)
+        }
     }
 
     @Test

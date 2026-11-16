@@ -97,6 +97,10 @@ class ActivityListRowLoweredTest {
                 "served_latest_activity_seq" to "100",
                 "ledger_read_version" to "5",
                 "ledger_read_seq" to "100",
+                // Never held (slock #15197): no ack, no hold end.
+                "ack_read_seq" to "-",
+                "ack_delay_ms" to "-",
+                "held_end" to "-",
             ),
             corrected.stateTransitionTraceAttrs().loweredAttrs()
         )

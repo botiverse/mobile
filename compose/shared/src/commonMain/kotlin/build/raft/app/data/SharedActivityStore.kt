@@ -66,6 +66,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.Serializable
 import kotlin.concurrent.Volatile
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.time.Clock
 import kotlin.time.TimeSource
 
@@ -411,6 +413,12 @@ class SharedActivityStore internal constructor(
      */
     private val listRowLoweredSink: (serverId: String, lowered: ActivityListRowLowered) -> Unit = { _, _ -> },
     /**
+     * Where the 5 s `local_read` ack window's timer runs ([ActivityLocalReadAckHold]), added to
+     * [scope]; injectable for tests. The window is measured with `delay` and `ack_delay_ms` with
+     * [nowMillis].
+     */
+    localReadAckHoldContext: CoroutineContext = EmptyCoroutineContext,
+    /**
      * `inbox_row_position_v1` for the server the store is bound to (#triage:#244, inbox redesign step
      * 2, web `rowPositionOn`). Read only where `mobile_inbox_inplace_v0` is on too: each listed row is
      * then kept by the shared per-row position rule ([reduceActivityRow]) instead of the timed
@@ -450,6 +458,15 @@ class SharedActivityStore internal constructor(
     // Local read / Done overlays: keep a confirmed mutation applied while the
     // lagging Activity view still serves the click-time activity marker.
     private val readOverlay = ActivityLocalMutationOverlay(nowMillis, localMutationHoldMillis)
+    /** `inbox_row_position_v1`: `local_read` lowerings waiting for this client's read ack (slock #15197). */
+    private val localReadAckHold =
+        ActivityLocalReadAckHold(
+            scope = scope,
+            nowMillis = nowMillis,
+            timerContext = localReadAckHoldContext,
+            log = { diagnosticsLogger(it) },
+            sink = { serverId, lowered -> listRowLoweredSink(serverId, lowered) }
+        )
     private val doneOverlay = ActivityLocalMutationOverlay(nowMillis, localMutationHoldMillis)
     private var lastResetLoadStartedAtMillis: Long? = null
     /** Wall time the shown rows were last read from the server (any refresh, background too). */
@@ -644,6 +661,8 @@ class SharedActivityStore internal constructor(
             var previous = appForeground.value
             appForeground.collect { foreground ->
                 val returned = foreground && !previous
+                // The app went to the background: held `local_read` rows go now, as lowerings.
+                if (previous && !foreground) localReadAckHold.flush(ActivityListRowHeldEnd.Background)
                 previous = foreground
                 if (returned) onAppForegroundReturned()
             }
@@ -767,7 +786,7 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.ApplyReadReceiptPrediction -> applyReadReceiptPrediction(intent.prediction)
             is SharedActivityIntent.ApplyReadReceiptFailure -> handleReadReceiptFailure(intent.request)
             is SharedActivityIntent.ApplyReadReceiptResult ->
-                handleReadReceiptResult(intent.request, intent.succeeded)
+                handleReadReceiptResult(intent.request, intent.succeeded, intent.maxReadSeq)
             is SharedActivityIntent.PrewarmVisibleReplyThreads -> prewarmVisibleReplyThreads(intent.markers)
             is SharedActivityIntent.PrewarmActivityTail -> prewarmActivityTail(intent.orderedMarkers)
             SharedActivityIntent.DetachPrewarmViewport -> prewarmVisibleReplyThreads(emptySet())
@@ -971,6 +990,16 @@ class SharedActivityStore internal constructor(
         }
         ownerServerId?.let { serverId -> replyThreadFreshnessLedger.invalidateServer(serverId, cause = "activity_cleared") }
         clearReplyPrewarmState()
+        // The shell scope is released (sign-out closes it) or the store is reset: send what is held.
+        localReadAckHold.flush(ActivityListRowHeldEnd.Signout)
+    }
+
+    /**
+     * The process session was cleared (sign-out): every held `local_read` lowering goes now, as a
+     * lowering ([ActivityListRowHeldEnd.Signout]).
+     */
+    fun flushHeldListRowsOnSignout() {
+        localReadAckHold.flush(ActivityListRowHeldEnd.Signout)
     }
 
     fun reset() {
@@ -1480,6 +1509,7 @@ class SharedActivityStore internal constructor(
                 true
             }
         if (!switched) return
+        localReadAckHold.flush(ActivityListRowHeldEnd.ServerSwitch)
         diagnosticsLogger(
             "store_load domain=activity phase=server_selected serverId=$serverId " +
                 "cached=${_state.value.snapshot != null}"
@@ -2939,6 +2969,16 @@ class SharedActivityStore internal constructor(
             nowMillis = nowEpochMillis(),
             ledgerOf = ledgerOf
         ).forEach { lowered ->
+            // Web (slock #15197): a `local_read` lowering waits up to 5 s for this client's read ack.
+            // Only queued here (its own lock and a timer on the store's scope), never sent.
+            if (lowered.step == ActivityListRowStep.LocalRead && lowered.scopeId != null) {
+                diagnosticsLogger(
+                    "activity_list_row_held step=${lowered.step.wireValue} " +
+                        "before=${lowered.before} served=${lowered.served} after=${lowered.after}"
+                )
+                localReadAckHold.hold(serverId, lowered)
+                return@forEach
+            }
             diagnosticsLogger(
                 "activity_list_row_${if (lowered.corrected) "corrected" else "lowered"} step=${lowered.step.wireValue} " +
                     "before=${lowered.before} served=${lowered.served} after=${lowered.after}"
@@ -5136,6 +5176,10 @@ class SharedActivityStore internal constructor(
                 } else {
                     readOverlay.confirmAll(overlayOwner, readGenerations)
                     onUnreadCountsChanged()
+                    // No coordinator: this answer is the read ack (web `markRead` -> `noteLocalReadAck`).
+                    if (serverId != null && serverId.value == _state.value.ownerServerId) {
+                        localReadAckHold.noteAck(targetChannelId.value, (result as? DataResult.Content)?.data?.maxReadSeq)
+                    }
                 }
             }
         }
@@ -5229,16 +5273,20 @@ class SharedActivityStore internal constructor(
      * request's own result. An entry no result ever reaches lapses at its
      * pending backstop.
      */
-    internal fun handleReadReceiptResult(request: ReadReceiptRequest, succeeded: Boolean) {
+    internal fun handleReadReceiptResult(request: ReadReceiptRequest, succeeded: Boolean, maxReadSeq: Long? = null) {
         if (!succeeded) return
-        synchronized(realtimeOwnerLock) {
-            val current = _state.value
-            if (!current.matchesReadReceiptOwner(request.owner)) return@synchronized
-            val (revision, generations) = readPredictionHolds[request.channelId] ?: return@synchronized
-            if (request.revision < revision) return@synchronized
-            readOverlay.confirmAll(overlayOwner(current), generations)
-            readPredictionHolds = readPredictionHolds - request.channelId
-        }
+        val owned =
+            synchronized(realtimeOwnerLock) {
+                val current = _state.value
+                if (!current.matchesReadReceiptOwner(request.owner)) return@synchronized false
+                val (revision, generations) = readPredictionHolds[request.channelId] ?: return@synchronized true
+                if (request.revision < revision) return@synchronized true
+                readOverlay.confirmAll(overlayOwner(current), generations)
+                readPredictionHolds = readPredictionHolds - request.channelId
+                true
+            }
+        // Web `markRead` -> `noteLocalReadAck(channelId, maxReadSeq)` (slock #15197), off the realtime lock.
+        if (owned) localReadAckHold.noteAck(request.channelId.value, maxReadSeq)
     }
 
     private fun SharedActivityState.matchesReadReceiptOwner(owner: ReadReceiptOwner): Boolean {
@@ -6109,8 +6157,16 @@ sealed interface SharedActivityIntent {
     data class MarkUnread(val item: InboxItem) : SharedActivityIntent
     data class ApplyReadReceiptPrediction(val prediction: ReadReceiptPrediction) : SharedActivityIntent
     data class ApplyReadReceiptFailure(val request: ReadReceiptRequest) : SharedActivityIntent
-    /** A coordinator read write completed; a success starts the local read hold. */
-    data class ApplyReadReceiptResult(val request: ReadReceiptRequest, val succeeded: Boolean) : SharedActivityIntent
+    /**
+     * A coordinator read write completed; a success starts the local read hold. [maxReadSeq] is the
+     * ack's `maxReadSeq` (else `seq`), null when the answer had none: it settles held `local_read`
+     * lowerings of the channel (slock #15197).
+     */
+    data class ApplyReadReceiptResult(
+        val request: ReadReceiptRequest,
+        val succeeded: Boolean,
+        val maxReadSeq: Long? = null
+    ) : SharedActivityIntent
     data class PrewarmVisibleReplyThreads(
         val markers: Set<ActivityReplyThreadPrewarmMarker>
     ) : SharedActivityIntent
