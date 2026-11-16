@@ -35,6 +35,7 @@ import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftWindowDialog
 import build.raft.designsystem.components.RaftWindowDialogProperties
+import build.raft.designsystem.components.rememberRaftStableWindowInsets
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -563,7 +564,7 @@ internal fun TaskPendingConversationWindow(onDismissRequest: () -> Unit, content
             Modifier
                 .fillMaxSize()
                 .background(RaftTheme.colors.layerCanvas)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+                .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)))
         ) {
             content()
         }

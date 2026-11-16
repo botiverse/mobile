@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.LocalRaftPageArgs
 import build.raft.app.toRaftJsonString
+import build.raft.designsystem.components.rememberRaftStableWindowInsets
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -49,7 +50,7 @@ internal fun CmpHelloPage() {
     Column(
         Modifier
             .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing))
             .verticalScroll(rememberScrollState())
             .padding(horizontal = RaftSpacing.Md, vertical = RaftSpacing.Lg),
         verticalArrangement = Arrangement.spacedBy(RaftSpacing.Md),

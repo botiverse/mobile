@@ -262,7 +262,7 @@ fun RaftDialog(
                 .fillMaxSize()
                 .pointerInput(dismissOnClickOutside) { detectTapGestures { if (dismissOnClickOutside) dismiss() } }
                 // Clear of the system bars, the cutout and the keyboard, then 16dp.
-                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing))
                 .padding(16.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -353,6 +353,7 @@ internal fun RaftSheetSurfaceImpl(
     require(actions == null || rowActions == null) { "RaftSheet takes actions or rowActions, not both" }
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
+    val navigationBarInsets = rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
     CompositionLocalProvider(LocalRaftContentColor provides colors.foreground, LocalRaftSurfaceColor provides colors.layerPopover) {
         Column(
             modifier
@@ -362,7 +363,7 @@ internal fun RaftSheetSurfaceImpl(
                 .raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Dialog, 0.dp)
                 // `pb-[env(safe-area-inset-bottom)]`: the fill runs under the bar (and the
                 // keyboard), the content clears the home indicator and the keyboard.
-                .then(if (clearNavigationBar) Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)) else Modifier),
+                .then(if (clearNavigationBar) Modifier.windowInsetsPadding(navigationBarInsets) else Modifier),
         ) {
             RaftSheetGrabHandle()
             // `pt-2` under the handle (drawer.recipe `side: "down"` header), `pb-2`.
@@ -542,7 +543,7 @@ internal fun RaftSheetWindow(
                     .fillMaxSize()
                     .pointerInput(Unit) { detectTapGestures { dismiss() } }
                     // Never under the status bar or a side cutout; the bottom is the sheet's own.
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
+                    .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))),
                 contentAlignment = Alignment.BottomCenter,
             ) {
                 surface(

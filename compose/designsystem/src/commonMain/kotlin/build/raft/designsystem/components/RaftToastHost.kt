@@ -113,7 +113,7 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
         DisposableEffect(state) { onDispose { state.setPaused(false) } }
         Column(
             Modifier
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)))
                 .padding(start = RaftToastViewportSideMargin, end = RaftToastViewportSideMargin, bottom = bottom)
                 .widthIn(max = 384.dp)
                 .raftToastPausesTimers(state),
