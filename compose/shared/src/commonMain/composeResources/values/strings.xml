@@ -4088,6 +4088,8 @@
     <string name="agent_migration_detail_migration_uploading">Uploading the workspace from %1$s to send to %2$s.</string>
     <string name="agent_migration_hosted_uploading">Uploading the workspace from %1$s to the cloud.</string>
     <string name="agent_migration_detail_migration_ready">The workspace is uploaded. %2$s is downloading it.</string>
+    <string name="agent_migration_detail_migration_packing_progress">Packing the workspace on %1$s: %2$s files, %3$s so far.</string>
+    <string name="agent_migration_detail_migration_downloading">%1$s is downloading the workspace: %2$s% (%3$s of %4$s, compressed).</string>
     <string name="agent_migration_detail_migration_unpacking">Download finished. Unpacking the workspace on %2$s.</string>
     <string name="agent_migration_detail_migration_arriving">Setting up the workspace on %2$s.</string>
     <string name="agent_migration_detail_migration_starting">Starting the agent on %2$s.</string>

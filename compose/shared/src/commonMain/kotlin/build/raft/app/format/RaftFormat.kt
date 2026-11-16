@@ -41,6 +41,28 @@ object RaftFormat {
         return "${oneDecimal(value, locale)} ${Units[unit]}"
     }
 
+    /**
+     * A disk's size in decimal units (1 GB = 10^9 bytes), as the Web's `formatDiskSizeBytes`
+     * (botiverse/slock #14306) and macOS Finder, disk vendors and `df -H` say it: a Mac's
+     * "245.11 GB" disk reads `245.1 GB`, not the 228.3 its bytes make in 1024-based units. Disks
+     * only: memory and file sizes keep [bytes].
+     */
+    fun diskBytes(bytes: Long, locale: RaftFormatLocale = RaftFormatLocale.current()): String {
+        if (bytes <= 0L) return "0 B"
+        if (bytes < 1000L) return "$bytes B"
+        var value = bytes / 1000.0
+        var unit = 0
+        while (value >= 1000.0 && unit < Units.lastIndex) {
+            value /= 1000.0
+            unit += 1
+        }
+        return "${oneDecimal(value, locale)} ${Units[unit]}"
+    }
+
+    /** [diskBytes] for a JavaScript number (disk reports are doubles); not finite is `0 B`. */
+    fun diskBytes(bytes: Double, locale: RaftFormatLocale = RaftFormatLocale.current()): String =
+        if (!bytes.isFinite() || bytes <= 0.0) diskBytes(0L, locale) else diskBytes(bytes.toLong(), locale)
+
     /** [bytes] for a JavaScript number (the server sends some sizes as doubles); not finite is `0 B`. */
     fun bytes(bytes: Double, locale: RaftFormatLocale = RaftFormatLocale.current()): String =
         if (!bytes.isFinite() || bytes <= 0.0) bytes(0L, locale) else bytes(bytes.toLong(), locale)

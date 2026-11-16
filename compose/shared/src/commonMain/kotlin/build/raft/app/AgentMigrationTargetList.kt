@@ -378,7 +378,9 @@ private fun AgentMigrationTargetDetailsContent(
                         Res.string.agent_migration_target_disk_unknown,
                         Res.string.agent_migration_target_disk_offline,
                         Res.string.agent_migration_target_disk_offline_for
-                    )
+                    ),
+                    // A disk reads in decimal units, memory in binary (web TargetComputerDetails, #14306).
+                    formatSize = { RaftFormat.diskBytes(it) }
                 )
         )
     }
@@ -391,15 +393,21 @@ private class SizeWords(
 )
 
 @Composable
-private fun agentMigrationSizeText(status: ComputerSizeStatus?, offline: Boolean, offlineFor: String?, words: SizeWords): String =
+private fun agentMigrationSizeText(
+    status: ComputerSizeStatus?,
+    offline: Boolean,
+    offlineFor: String?,
+    words: SizeWords,
+    formatSize: (Double) -> String = { RaftFormat.bytes(it) }
+): String =
     when {
         // What is used, as the row says it, then free of total (web #11855 `usedDetail`).
         status != null ->
             stringResource(
                 Res.string.agent_migration_target_used_detail,
                 "${agentMigrationResourceUsedPercent(status)}%",
-                RaftFormat.bytes(status.availableBytes),
-                RaftFormat.bytes(status.totalBytes)
+                formatSize(status.availableBytes),
+                formatSize(status.totalBytes)
             )
         offline && offlineFor != null -> stringResource(words.offlineFor, offlineFor)
         offline -> stringResource(words.offline)

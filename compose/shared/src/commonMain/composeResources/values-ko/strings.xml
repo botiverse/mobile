@@ -3920,6 +3920,8 @@
     <string name="agent_migration_detail_migration_uploading">%2$s에 보낼 워크스페이스를 %1$s에서 업로드하는 중이에요.</string>
     <string name="agent_migration_hosted_uploading">%1$s에서 클라우드로 워크스페이스를 업로드하고 있어요.</string>
     <string name="agent_migration_detail_migration_ready">워크스페이스 업로드를 마쳤어요. %2$s에서 내려받는 중이에요.</string>
+    <string name="agent_migration_detail_migration_packing_progress">%1$s에서 워크스페이스를 패키징하는 중이에요 (지금까지 파일 %2$s개, %3$s).</string>
+    <string name="agent_migration_detail_migration_downloading">%1$s에서 워크스페이스를 내려받는 중이에요: %2$s%(%3$s / %4$s, 압축 후).</string>
     <string name="agent_migration_detail_migration_unpacking">다운로드를 마쳤어요. %2$s에서 워크스페이스 압축을 푸는 중이에요.</string>
     <string name="agent_migration_detail_migration_arriving">%2$s에서 워크스페이스를 설정하는 중이에요.</string>
     <string name="agent_migration_detail_migration_starting">%2$s에서 에이전트를 시작하는 중이에요.</string>

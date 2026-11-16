@@ -613,20 +613,13 @@ private fun agentMigrationNoticeCopy(notice: AgentMigrationNotice, inputs: Agent
                     notice.sourceQuiescedAt == null ->
                         notice.sourceDrain?.let { agentMigrationSourceDrainMessage(it, inputs) }
                             ?: stringResource(Res.string.agent_migration_detail_migration_stopping_source, source)
-                    else -> stringResource(Res.string.agent_migration_detail_migration_packing, source)
+                    // What the source has packed so far, once it reported any.
+                    else -> agentMigrationPackingMessage(notice, source)
                 }
             )
         "prep" -> status(stringResource(Res.string.agent_migration_detail_migration_packing, source))
-        "ready" -> {
-            val progress = notice.transferProgress
-            status(
-                if (progress != null && progress.totalChunks > 0 && progress.receivedChunks >= progress.totalChunks) {
-                    stringResource(Res.string.agent_migration_detail_migration_unpacking, source, target)
-                } else {
-                    stringResource(Res.string.agent_migration_detail_migration_ready, source, target)
-                }
-            )
-        }
+        // How much of the compressed bundle the target has downloaded, once it reported any.
+        "ready" -> status(agentMigrationDownloadMessage(notice, source, target))
         "in_transit" -> status(stringResource(Res.string.agent_migration_detail_migration_unpacking, source, target))
         "arriving" -> status(stringResource(Res.string.agent_migration_detail_migration_arriving, source, target))
         "starting" ->

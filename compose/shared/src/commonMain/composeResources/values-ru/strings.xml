@@ -3917,6 +3917,8 @@
     <string name="agent_migration_detail_migration_uploading">Загружаем рабочее пространство с компьютера %1$s для передачи на компьютер %2$s.</string>
     <string name="agent_migration_hosted_uploading">Загрузка рабочего пространства с компьютера %1$s в облако.</string>
     <string name="agent_migration_detail_migration_ready">Рабочее пространство загружено. Компьютер %2$s скачивает его.</string>
+    <string name="agent_migration_detail_migration_packing_progress">Упаковываем рабочее пространство на компьютере %1$s. Пока упаковано файлов: %2$s (%3$s).</string>
+    <string name="agent_migration_detail_migration_downloading">Компьютер %1$s скачивает рабочее пространство: %2$s% (%3$s из %4$s, в сжатом виде).</string>
     <string name="agent_migration_detail_migration_unpacking">Скачивание завершено. Распаковываем рабочее пространство на компьютере %2$s.</string>
     <string name="agent_migration_detail_migration_arriving">Настраиваем рабочее пространство на компьютере %2$s.</string>
     <string name="agent_migration_detail_migration_starting">Запускаем агента на компьютере %2$s.</string>
