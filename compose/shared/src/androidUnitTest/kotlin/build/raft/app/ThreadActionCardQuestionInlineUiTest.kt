@@ -149,7 +149,8 @@ class ThreadActionCardQuestionInlineUiTest {
         assertEquals(emptyList(), pressed, "no button went to the sheet")
     }
 
-    // 2026-11-09 10:03 UTC; the cards expire 7 days later.
+    // 2026-11-09 10:03 UTC; the cards expire 7 days later. The stores read this clock too (not the
+    // wall clock), or every answer is refused as expired from 2026-11-16 10:03 UTC on.
     private val nowMillis = 1_794_218_580_000L
     private val expiresAt = "2026-11-16T10:03:00.000Z"
     private val names = ThreadActionCardNameLookup { kind, id -> if (kind == ThreadActionCardEntityKind.Human && id == "u-maya") "Maya" else null }
@@ -208,6 +209,7 @@ class ThreadActionCardQuestionInlineUiTest {
                     DataResult.Content(ActionCardExecuteOutcome.Executed(null))
                 },
                 applyCard = { _, _ -> },
+                nowMillis = { nowMillis },
             )
         mainClock.autoAdvance = false
         showCard(mayaCard(), viewer = "u-maya", store = store)
@@ -236,6 +238,7 @@ class ThreadActionCardQuestionInlineUiTest {
                 scope = CoroutineScope(Dispatchers.Unconfined),
                 execute = { _, _, _ -> DataResult.Content(ActionCardExecuteOutcome.Executed(null)) },
                 applyCard = { _, _ -> },
+                nowMillis = { nowMillis },
             )
         showCard(mayaCard(), viewer = "u-maya", store = store)
         onNodeWithText("Answer").assertDoesNotExist()
@@ -371,6 +374,7 @@ class ThreadActionCardQuestionInlineUiTest {
                 DataResult.Content(outcome)
             },
             applyCard = { _, _ -> },
+            nowMillis = { nowMillis },
         )
 
     @Test
