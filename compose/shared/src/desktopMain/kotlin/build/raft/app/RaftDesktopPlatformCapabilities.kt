@@ -83,6 +83,9 @@ internal actual fun raftPlatformSupportsVideoAttachmentContainer(container: Raft
 internal actual fun raftPlatformVideoPlayerFormatProfile(): RaftVideoPlayerFormatProfile? =
     RaftVideoPlayerFormatProfile.DesktopMacAvFoundation.takeIf { RaftDesktopVideoSupport.available }
 
+// No VLC on desktop: WebM / MKV there keep the download card and its note.
+internal actual fun raftPlatformVlcVideoEngineAvailable(): Boolean = false
+
 internal actual fun raftPlatformSupportsPushPreviewPrivacySetting(): Boolean = false
 
 internal actual fun raftPlatformSupportsSaveImageToPhotos(): Boolean = false

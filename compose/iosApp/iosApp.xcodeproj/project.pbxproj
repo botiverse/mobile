@@ -28,6 +28,8 @@
 		7555FF83242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* ContentView.swift */; };
 		A47100010000000000000001 /* RaftIosSceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47100020000000000000001 /* RaftIosSceneDelegate.swift */; };
 		A47300010000000000000001 /* RaftIosImagePaste.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47300020000000000000001 /* RaftIosImagePaste.swift */; };
+		A48800010000000000000001 /* RaftIosVlcVideoPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48800020000000000000001 /* RaftIosVlcVideoPlayer.swift */; };
+		A48800010000000000000002 /* RaftIosVlcEngine.m in Sources */ = {isa = PBXBuildFile; fileRef = A48800020000000000000002 /* RaftIosVlcEngine.m */; };
 		B7A1E0010000000000000125 /* RaftIosStoreReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A1E0020000000000000125 /* RaftIosStoreReview.swift */; };
 		B7A1E0010000000000000210 /* RaftIosQaSessionBootstrapContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A1E0020000000000000210 /* RaftIosQaSessionBootstrapContract.swift */; };
 		B7A1E0010000000000000211 /* RaftIosQaSessionBootstrapHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A1E0020000000000000211 /* RaftIosQaSessionBootstrapHost.swift */; };
@@ -125,6 +127,9 @@
 		2152FB032600AC8F00CF470E /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
 		A47100020000000000000001 /* RaftIosSceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosSceneDelegate.swift; sourceTree = "<group>"; };
 		A47300020000000000000001 /* RaftIosImagePaste.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosImagePaste.swift; sourceTree = "<group>"; };
+		A48800020000000000000001 /* RaftIosVlcVideoPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosVlcVideoPlayer.swift; sourceTree = "<group>"; };
+		A48800020000000000000002 /* RaftIosVlcEngine.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RaftIosVlcEngine.m; sourceTree = "<group>"; };
+		A48800020000000000000003 /* RaftIosVlcEngine.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RaftIosVlcEngine.h; sourceTree = "<group>"; };
 		B7A1E0020000000000000125 /* RaftIosStoreReview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosStoreReview.swift; sourceTree = "<group>"; };
 		B7A1E0020000000000000210 /* RaftIosQaSessionBootstrapContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosQaSessionBootstrapContract.swift; sourceTree = "<group>"; };
 		B7A1E0020000000000000211 /* RaftIosQaSessionBootstrapHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosQaSessionBootstrapHost.swift; sourceTree = "<group>"; };
@@ -356,6 +361,9 @@
 				7555FF82242A565900829871 /* ContentView.swift */,
 				A47100020000000000000001 /* RaftIosSceneDelegate.swift */,
 				A47300020000000000000001 /* RaftIosImagePaste.swift */,
+				A48800020000000000000001 /* RaftIosVlcVideoPlayer.swift */,
+				A48800020000000000000003 /* RaftIosVlcEngine.h */,
+				A48800020000000000000002 /* RaftIosVlcEngine.m */,
 				B7A1E0020000000000000125 /* RaftIosStoreReview.swift */,
 				B7A1E0020000000000000210 /* RaftIosQaSessionBootstrapContract.swift */,
 				B7A1E0020000000000000211 /* RaftIosQaSessionBootstrapHost.swift */,
@@ -835,6 +843,8 @@
 				7555FF83242A565900829871 /* ContentView.swift in Sources */,
 				A47100010000000000000001 /* RaftIosSceneDelegate.swift in Sources */,
 				A47300010000000000000001 /* RaftIosImagePaste.swift in Sources */,
+				A48800010000000000000001 /* RaftIosVlcVideoPlayer.swift in Sources */,
+				A48800010000000000000002 /* RaftIosVlcEngine.m in Sources */,
 				B7A1E0010000000000000125 /* RaftIosStoreReview.swift in Sources */,
 				B7A1E0010000000000000210 /* RaftIosQaSessionBootstrapContract.swift in Sources */,
 				B7A1E0010000000000000211 /* RaftIosQaSessionBootstrapHost.swift in Sources */,

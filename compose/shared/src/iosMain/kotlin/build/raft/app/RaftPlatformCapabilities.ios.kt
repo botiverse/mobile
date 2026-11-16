@@ -120,16 +120,23 @@ internal actual fun raftPlatformUsesNativeVideoController(): Boolean = true
 
 internal actual fun raftPlatformPlaysAudioOnlyMedia(): Boolean = true
 
+// AVPlayer's containers, and with the app's VLC player registered, the rest (WebM, MKV, TS/PS,
+// FLV) through MobileVLCKit (RaftIosVlcVideoPlayer.kt).
 internal actual fun raftPlatformSupportsVideoAttachmentContainer(
     container: RaftPreviewableVideoContainer
 ): Boolean =
-    raftVideoPlayerFormatProfileSupports(
+    raftVideoPlaybackEngineFor(
         profile = RaftVideoPlayerFormatProfile.IosAvPlayer,
+        vlcAvailable = raftPlatformVlcVideoEngineAvailable(),
         container = container
-    )
+    ) != null
 
+// Stays AVPlayer: when VLC cannot open a file, the download card's note says what AVPlayer
+// cannot play (raftFilePreviewUnplayableVideoNote).
 internal actual fun raftPlatformVideoPlayerFormatProfile(): RaftVideoPlayerFormatProfile? =
     RaftVideoPlayerFormatProfile.IosAvPlayer
+
+internal actual fun raftPlatformVlcVideoEngineAvailable(): Boolean = RaftIosVlcVideoHost.factory != null
 
 internal actual fun raftPlatformSupportsPushPreviewPrivacySetting(): Boolean = true
 

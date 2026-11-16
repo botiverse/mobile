@@ -10,3 +10,6 @@ for the list of components and their licenses. In particular:
   (third_party/markdown-parser/LICENSE).
 - Portions of the markdown renderer — Copyright 2023 Saket Narayan. Apache License 2.0.
 - Stately, SQLiter (Touchlab) and SQLDelight (Cash App) forks — Apache License 2.0.
+- VLCKit (MobileVLCKit) and libVLC (iOS app, video playback) — Copyright (C) the VLC authors and
+  VideoLAN. Licensed under the GNU Lesser General Public License v2.1 or later; source at
+  https://code.videolan.org/videolan/VLCKit. Used unmodified as a separate dynamic framework.

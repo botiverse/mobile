@@ -8504,6 +8504,89 @@ internal fun raftVideoPlayerFormatProfileSupports(
             }
     }
 
+/** Which player plays a recognised video container: the platform's own, or VLC (iOS only). */
+internal enum class RaftVideoPlaybackEngine {
+    /** Media3 on Android, AVPlayer on iOS, ComposeMediaPlayer on the desktop. */
+    Platform,
+
+    /** MobileVLCKit on iOS: the containers AVPlayer cannot demux (WebM, MKV, TS/PS, FLV). */
+    Vlc
+}
+
+/**
+ * The player for [container]: the platform's own when its [profile] demuxes it, else VLC where
+ * the platform has it ([vlcAvailable]), else null (the file page's download card, with
+ * [raftFilePreviewUnplayableVideoNote]).
+ */
+internal fun raftVideoPlaybackEngineFor(
+    profile: RaftVideoPlayerFormatProfile?,
+    vlcAvailable: Boolean,
+    container: RaftPreviewableVideoContainer
+): RaftVideoPlaybackEngine? =
+    when {
+        profile != null && raftVideoPlayerFormatProfileSupports(profile, container) -> RaftVideoPlaybackEngine.Platform
+        vlcAvailable -> RaftVideoPlaybackEngine.Vlc
+        else -> null
+    }
+
+/** [raftVideoPlaybackEngineFor] of an attachment's name and MIME type; null when it is no recognised video. */
+internal fun raftFilePreviewVideoPlaybackEngine(
+    fileName: String,
+    mimeType: String,
+    profile: RaftVideoPlayerFormatProfile? = raftPlatformVideoPlayerFormatProfile(),
+    vlcAvailable: Boolean = raftPlatformVlcVideoEngineAvailable()
+): RaftVideoPlaybackEngine? =
+    raftFilePreviewVideoContainer(fileName = fileName, mimeType = mimeType)
+        ?.let { container -> raftVideoPlaybackEngineFor(profile, vlcAvailable, container) }
+
+/** The engine a file page's video payload plays with (Platform for audio and unrecognised files). */
+internal fun RaftFilePreviewPayload.videoPlaybackEngine(
+    profile: RaftVideoPlayerFormatProfile? = raftPlatformVideoPlayerFormatProfile(),
+    vlcAvailable: Boolean = raftPlatformVlcVideoEngineAvailable()
+): RaftVideoPlaybackEngine =
+    if (audioOnly) {
+        RaftVideoPlaybackEngine.Platform
+    } else {
+        raftFilePreviewVideoPlaybackEngine(
+            fileName = externalFileName.ifBlank { name.ifBlank { path } },
+            mimeType = externalMimeType,
+            profile = profile,
+            vlcAvailable = vlcAvailable
+        ) ?: RaftVideoPlaybackEngine.Platform
+    }
+
+/**
+ * VLC could not open the file: it failed before it ever played (the open or its probe of the
+ * container failed). The file page then shows the download card with its note and Open in
+ * another app instead of the player. A failure after playback started (a dropped connection)
+ * stays in the player. The platform players keep their own failure state.
+ */
+internal fun raftVideoFallbackEngineOpenFailed(
+    engine: RaftVideoPlaybackEngine,
+    playState: PlayState,
+    everPlayed: Boolean
+): Boolean = engine == RaftVideoPlaybackEngine.Vlc && playState == PlayState.ERROR && !everPlayed
+
+/**
+ * The kind the file page draws [payload] as: a video VLC could not open ([vlcOpenFailedSource]
+ * is its link) draws as the download card ("file"); everything else as its own kind.
+ */
+internal fun raftFilePreviewContentKind(
+    payload: RaftFilePreviewPayload,
+    engine: RaftVideoPlaybackEngine,
+    vlcOpenFailedSource: String?
+): String =
+    if (
+        payload.kind == "video" &&
+        engine == RaftVideoPlaybackEngine.Vlc &&
+        vlcOpenFailedSource != null &&
+        vlcOpenFailedSource == payload.videoUrl
+    ) {
+        "file"
+    } else {
+        payload.kind
+    }
+
 internal fun raftFilePreviewVideoContainer(
     fileName: String,
     mimeType: String
@@ -8806,9 +8889,18 @@ internal fun RaftFilePreviewPayloadContent(
     onRetryLoad: (() -> Unit)? = null,
     /** The player profile whose unplayable videos get a note on the download card (tests pin it). */
     videoProfile: RaftVideoPlayerFormatProfile? = raftPlatformVideoPlayerFormatProfile(),
+    /** Whether VLC plays the containers [videoProfile] cannot (iOS; tests pin it). */
+    vlcVideoAvailable: Boolean = raftPlatformVlcVideoEngineAvailable(),
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
+    val videoEngine =
+        remember(payload.externalFileName, payload.name, payload.path, payload.externalMimeType, payload.audioOnly, videoProfile, vlcVideoAvailable) {
+            payload.videoPlaybackEngine(profile = videoProfile, vlcAvailable = vlcVideoAvailable)
+        }
+    // The link VLC could not open: the page shows the download card for it instead of the player.
+    // A new link (Retry, a refreshed preview) tries the player again.
+    var vlcOpenFailedSource by remember { mutableStateOf<String?>(null) }
     val actionTerms = raftFilePreviewLocalizedActionTerms()
     val fallbackFile = stringResource(Res.string.file_preview_fallback_file)
     if (payload.kind == "loading" || payload.kind == "image") {
@@ -8896,7 +8988,7 @@ internal fun RaftFilePreviewPayloadContent(
         }
         return
     }
-    when (payload.kind) {
+    when (raftFilePreviewContentKind(payload, videoEngine, vlcOpenFailedSource)) {
         "markdown" ->
             RaftFilePreviewDownloadStatusOverlay(
                 statusLabel = downloadStatusLabel,
@@ -9075,6 +9167,8 @@ internal fun RaftFilePreviewPayloadContent(
                     fallbackMessage = payload.localizedMessage(),
                     audioOnly = payload.audioOnly,
                     videoComments = videoComments,
+                    engine = videoEngine,
+                    onOpenFailed = { source -> vlcOpenFailedSource = source },
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -9370,10 +9464,18 @@ private fun RaftFilePreviewVideoPanel(
     fallbackMessage: String,
     audioOnly: Boolean = false,
     videoComments: RaftFilePreviewVideoComments? = null,
+    engine: RaftVideoPlaybackEngine = RaftVideoPlaybackEngine.Platform,
+    /** VLC could not open [source] ([raftVideoFallbackEngineOpenFailed]). */
+    onOpenFailed: (source: String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var playControl by remember(source) { mutableStateOf(VideoPlayControl.PREPLAY) }
     var playState by remember(source) { mutableStateOf(PlayState.NONE) }
+    var everPlayed by remember(source) { mutableStateOf(false) }
+    val currentOnOpenFailed by rememberUpdatedState(onOpenFailed)
+    LaunchedEffect(source, engine, playState, everPlayed) {
+        if (raftVideoFallbackEngineOpenFailed(engine, playState, everPlayed)) currentOnOpenFailed(source)
+    }
     var firstFrameVisible by remember(source) { mutableStateOf(false) }
     var currentTimeMs by remember(source) { mutableStateOf(0) }
     var totalTimeMs by remember(source) { mutableStateOf(0) }
@@ -9418,13 +9520,17 @@ private fun RaftFilePreviewVideoPanel(
             contentAlignment = Alignment.Center
         ) {
             if (canPlay) {
-                CompositionLocalProvider(LocalRaftVideoPlayerAudioOnly provides audioOnly) {
+                CompositionLocalProvider(
+                    LocalRaftVideoPlayerAudioOnly provides audioOnly,
+                    LocalRaftVideoPlaybackEngine provides engine
+                ) {
                     RaftFilePreviewKuiklyVideo(
                         source = source,
                         playControl = playControl,
                         seekRequest = seekRequest,
                         onPlayStateChanged = { state ->
                             playState = state
+                            if (state == PlayState.PLAYING) everPlayed = true
                             // The native controller plays and pauses without going through
                             // playControl; mirror it so a comment jump's PAUSE is always a change
                             // the player applies.

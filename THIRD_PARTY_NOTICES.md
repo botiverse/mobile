@@ -53,10 +53,14 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 | Pod | Version | License |
 |---|---|---|
 | OpenKuiklyIOSRender (Botiverse-built podspec) | 2.28.0-raft.15-2.1.21 | KuiklyUI license |
-| Hands (oranix-io/hands, tag ios-v0.2.1) | 0.2.1 | MIT |
-| MMKV / MMKVCore | 2.4.0 | BSD-3-Clause |
+| Hands (oranix-io/hands, tag ios-v0.2.2) | 0.2.2 | MIT |
+| MMKV / MMKVCore | 2.4.3 | BSD-3-Clause |
+| MobileVLCKit (VLCKit + libVLC; in-app playback of WebM / MKV / MPEG-TS/PS / FLV; prebuilt dynamic framework from download.videolan.org, sha256 pinned by the trunk spec) | 3.7.5 | **LGPL-2.1-or-later** (VLCKit `COPYING.txt`; libVLC and its bundled codec/demux libraries under LGPL-2.1-or-later or compatible permissive licenses) — https://code.videolan.org/videolan/VLCKit |
 | SDWebImage | 5.21.7 | MIT |
 | SDWebImageSVGCoder | 1.8.0 | MIT |
+
+The iOS app lists these frameworks in Settings > About > Open Source Licenses
+(`RaftIosOpenSourceLicensesResult` in `compose/iosApp/iosApp/Host/HRBridgeModule.m`).
 
 ## Tooling — npm (compose/package.json; dev/CI only, not shipped)
 MIT: console-error, console-info, console-warn, koa, koa-bodyparser, koa-router, koa-static, koa-whistle, mime-types, uuid, yargs, file-loader, gulp, gulp-zip, husky, querystring, shell · BSD-3-Clause: md5, shelljs · Unlicense: big-integer.
@@ -75,7 +79,11 @@ Details: `compose/androidApp/FONTS-PROVENANCE.md`.
 | Lucide (lucide.dev) | SVG path data of 8 icons drawn by `RaftGlyph` (chevron-right, info, triangle-alert, octagon-alert, circle-check, at-sign, plus, copy) | ISC |
 
 ## Copyleft check
-No GPL / LGPL / AGPL / MPL component found in any ecosystem. EPL-1.0 (junit) is test-only. The only non-OSI terms are the KuiklyUI license (permissive + no-hot-update clause) and Google's Android SDK license (binary dependency).
+One LGPL component: MobileVLCKit (VLCKit + libVLC, LGPL-2.1-or-later), iOS only. It is linked unmodified as a
+separate dynamic framework (`MobileVLCKit.framework` in the app bundle), so it can be replaced by a
+compatible build; its source is published by VideoLAN at https://code.videolan.org/videolan/VLCKit
+(tag 3.7.5) and the notice is shown in the app. No GPL / AGPL / MPL component found in any ecosystem.
+EPL-1.0 (junit) is test-only. The only non-OSI terms are the KuiklyUI license (permissive + no-hot-update clause) and Google's Android SDK license (binary dependency).
 
 ## Scope
 
