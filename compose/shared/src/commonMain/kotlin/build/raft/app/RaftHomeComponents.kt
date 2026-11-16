@@ -3916,6 +3916,9 @@ private fun RaftStructuralHomeShellContent(
             RaftHomePreviewBottomTabBar(
                 selectedTabKey = selectedTabKey,
                 onSelect = onBottomTabSelected,
+                currentServerId = currentServerId,
+                currentServerName = currentServerName,
+                servers = servers,
                 modifier = Modifier.fillMaxWidth(),
                 bottomSafeArea = bottomSafeArea
             )
@@ -3925,6 +3928,9 @@ private fun RaftStructuralHomeShellContent(
             RaftHomePreviewBottomTabBar(
                 selectedTabKey = selectedTabKey,
                 onSelect = onBottomTabSelected,
+                currentServerId = currentServerId,
+                currentServerName = currentServerName,
+                servers = servers,
                 modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
                 bottomSafeArea = bottomSafeArea
             )
@@ -3932,11 +3938,18 @@ private fun RaftStructuralHomeShellContent(
     }
 }
 
-/** Stand-in for the app-shell bottom bar (visual fixtures): the same phone tabs and Search action. */
+/**
+ * Stand-in for the app-shell bottom bar (visual fixtures): the same phone tabs and Search action,
+ * and, as the app shell's bar, the current server as the last tab (the server the head shows,
+ * built as the shell builds its server menu model) instead of More.
+ */
 @Composable
 private fun RaftHomePreviewBottomTabBar(
     selectedTabKey: String,
     onSelect: (String) -> Unit,
+    currentServerId: String,
+    currentServerName: String,
+    servers: List<RaftServerSwitcherItem>,
     modifier: Modifier,
     bottomSafeArea: Dp,
 ) {
@@ -3945,7 +3958,25 @@ private fun RaftHomePreviewBottomTabBar(
     val tasksTabLabel = stringResource(Res.string.tab_tasks)
     val moreTabLabel = stringResource(Res.string.tab_more)
     val searchLabel = stringResource(Res.string.home_nav_search)
-    val items = remember(selectedTabKey, homeTabLabel, activityTabLabel, searchLabel, tasksTabLabel, moreTabLabel) {
+    val serverTab =
+        remember(currentServerId, currentServerName, servers) {
+            raftServerMenuModel(
+                servers = servers,
+                currentServerId = currentServerId,
+                currentServerName = currentServerName,
+            )
+        }
+    val serverTabAccessibilityLabel = stringResource(Res.string.server_tab_a11y_label, serverTab.currentServer.name)
+    val items = remember(
+        selectedTabKey,
+        homeTabLabel,
+        activityTabLabel,
+        searchLabel,
+        tasksTabLabel,
+        moreTabLabel,
+        serverTab,
+        serverTabAccessibilityLabel
+    ) {
         appShellPhoneBottomTabs(
             selectedTab = selectedTabKey,
             homeLabel = homeTabLabel,
@@ -3953,6 +3984,8 @@ private fun RaftHomePreviewBottomTabBar(
             searchLabel = searchLabel,
             tasksLabel = tasksTabLabel,
             moreLabel = moreTabLabel,
+            serverTab = serverTab,
+            serverTabAccessibilityLabel = serverTabAccessibilityLabel,
         )
     }
     RaftAppBottomTabBarHost(
