@@ -1,0 +1,141 @@
+name: Android System-Kill Joint Test
+
+# Android <-> Hands joint test for system-kill reports (scripts/qa/android_system_kill_e2e.sh). Builds a
+# debug APK from `ref` that reports to a Hands TEST app (never raft-android), then runs cases A-E on an
+# emulator. The test app's client key comes as the `hands_client_key` input: it is read from the event
+# payload and masked in the first step, never put in a step's env or script text, never written to
+# $GITHUB_ENV, and scrubbed from the evidence before upload. The APK itself is not uploaded.
+#
+# The push trigger only registers the workflow for dispatch on this branch; it runs nothing.
+on:
+  push:
+    branches: [agent/lagoon/syskill-jointtest]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit to build (default: the workflow ref)"
+        required: false
+        type: string
+        default: ""
+      hands_app_slug:
+        description: "Hands TEST app slug (must not be raft-android)"
+        required: true
+        type: string
+        default: raft-android-jointtest
+      hands_client_key:
+        description: "The test app's public client key (masked)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      EVIDENCE: syskill-e2e-evidence
+      GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dkotlin.compiler.execution.strategy=in-process"
+    steps:
+      - name: Mask the client key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="$(jq -r '.inputs.hands_client_key // empty' "$GITHUB_EVENT_PATH")"
+          [ -n "$key" ] || { echo "::error::hands_client_key is empty"; exit 1; }
+          echo "::add-mask::$key"
+          umask 077
+          printf '%s' "$key" > "$RUNNER_TEMP/hands-client-key"
+          slug="$(jq -r '.inputs.hands_app_slug // empty' "$GITHUB_EVENT_PATH")"
+          case "$slug" in
+            ""|raft-android|raft-ios) echo "::error::refusing slug '$slug'"; exit 1 ;;
+          esac
+          printf '%s' "$slug" > "$RUNNER_TEMP/hands-app-slug"
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve source commit
+        id: source
+        env:
+          REQUESTED_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          cp scripts/qa/android_system_kill_e2e.sh "$RUNNER_TEMP/"
+          if [ -n "$REQUESTED_REF" ]; then git checkout --detach "$REQUESTED_REF"; fi
+          echo "sha=$(git rev-parse HEAD)" | tee -a "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;36.0.0"
+
+      # Read-only: nothing from this build (configuration cache included) is saved to the Actions cache.
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      - name: Build debug APK for the Hands test app
+        working-directory: compose
+        run: |
+          set -euo pipefail
+          SLOCK_HANDS_APP_SLUG="$(cat "$RUNNER_TEMP/hands-app-slug")" \
+          SLOCK_HANDS_CHANNEL=main \
+          SLOCK_HANDS_CLIENT_KEY="$(cat "$RUNNER_TEMP/hands-client-key")" \
+          ./gradlew :shared:generateSqlDelightInterface :androidApp:assembleDebug \
+            --no-daemon --no-configuration-cache --max-workers=2 --console=plain
+          APK="$(ls androidApp/build/outputs/apk/debug/*.apk | head -1)"
+          cp "$APK" "$RUNNER_TEMP/app.apk"
+          grep -h -E 'HANDS_APP_SLUG|HANDS_CHANNEL|VERSION_CODE' \
+            androidApp/build/generated/source/buildConfig/debug/build/raft/app/BuildConfig.java || true
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run cases A-E on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          ram-size: 4096M
+          cores: 2
+          disk-size: 6000M
+          emulator-boot-timeout: 1200
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash "$RUNNER_TEMP/android_system_kill_e2e.sh" "$RUNNER_TEMP/app.apk" build.raft.app "$GITHUB_WORKSPACE/${{ env.EVIDENCE }}"
+
+      - name: Scrub the client key from the evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          [ -d "$EVIDENCE" ] || exit 0
+          key="$(cat "$RUNNER_TEMP/hands-client-key")"
+          grep -rlI -F "$key" "$EVIDENCE" | while read -r f; do sed -i "s/$key/<hands-client-key>/g" "$f"; done
+          if grep -rl -F "$key" "$EVIDENCE"; then echo "::error::client key still in evidence"; rm -rf "$EVIDENCE"; exit 1; fi
+          echo "source_sha=${{ steps.source.outputs.sha }}" > "$EVIDENCE/source.txt"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: syskill-e2e-evidence
+          path: ${{ env.EVIDENCE }}
+          if-no-files-found: warn
+          retention-days: 14
