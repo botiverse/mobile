@@ -28,8 +28,7 @@ import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.rememberRaftStablePaddingValues
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
+import kotlin.test.assertNotEquals
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -38,14 +37,18 @@ import org.robolectric.annotation.Config
 /**
  * Hands iOS crash 8da5d67f: "visitSubtreeIf called on an unattached node" from
  * `InsetsPaddingModifierElement.update` while `CopyNodesToNewAnchorLocation` re-inserted movable
- * content. Movable content (a Nav3 scene's page, ThreadPage's movable parts) moves to a new parent
- * in the same frame the safe area changes (a rotation): the moved node gets its new modifier while
- * detached, `LayoutNode.attach` applies it before the modifier nodes are attached, and the insets
- * node's `update()` walks its descendants and throws.
+ * content. Compose runs an insets node's `update()` only when its element compares unequal, and that
+ * `update()` throws on a node that is not attached yet.
  *
  * The app keeps every insets element equal across value changes (RaftStableWindowInsets.kt), so
- * `update()` never runs; the padding still follows the value. The first case pins the upstream
- * Compose behaviour this works around: when it stops throwing, Compose has fixed it.
+ * `update()` never runs; the padding still follows the value. These cases pin both halves: the
+ * element stays equal when the safe area changes, and the layout is the one a new `WindowInsets`
+ * per value gave.
+ *
+ * The throw itself does not reproduce here: under Robolectric (androidx foundation-layout 1.12.1)
+ * movable content moved to a new parent is not recomposed with new values in the move's frame, so
+ * the detached `update()` never runs, with or without the fix. The move case below therefore only
+ * checks that a moved node keeps padding by the current safe area.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -59,93 +62,111 @@ class RaftStableWindowInsetsMoveUiTest {
         var left by mutableStateOf(0.dp)
     }
 
-    /** [moved] lives in one of two parents; [Frame.left] is the safe area it pads. */
-    private fun ComposeUiTest.showMoving(frame: Frame, moved: @Composable () -> Unit) =
+    /** [content] under a safe area of [Frame.left], in one of two parents. */
+    private fun ComposeUiTest.show(frame: Frame, content: @Composable () -> Unit) =
         setContent {
-            val content = remember { movableContentOf(moved) }
+            val moving = remember { movableContentOf(content) }
             CompositionLocalProvider(LocalRaftSafeAreaInsets provides RaftSafeAreaInsets(left = frame.left)) {
                 if (frame.inFirstParent) {
-                    Box(Modifier.testTag(FIRST)) { content() }
+                    Box { moving() }
                 } else {
-                    Column(Modifier.testTag(SECOND)) { content() }
+                    Column { moving() }
                 }
             }
         }
-
-    /** Moves the content and changes the safe area in one frame, as the rotation during resume did. */
-    private fun ComposeUiTest.moveWhileSafeAreaChanges(frame: Frame) {
-        runOnIdle {
-            frame.inFirstParent = false
-            frame.left = 24.dp
-        }
-        waitForIdle()
-    }
 
     private fun ComposeUiTest.innerLeft(): Dp = onNodeWithTag(INNER).getUnclippedBoundsInRoot().left
 
-    @Test
-    fun upstreamInsetsPaddingThrowsWhenItsInsetsChangeDuringAMove() {
-        val failure =
-            assertFailsWith<IllegalStateException> {
-                runRobolectricComposeUiTest {
-                    val frame = Frame()
-                    showMoving(frame) {
-                        // A new WindowInsets per value: what raftSafeAreaHorizontalPadding did before.
-                        val insets = WindowInsets(left = LocalRaftSafeAreaInsets.current.left)
-                        Box(Modifier.windowInsetsPadding(insets)) { Box(Modifier.size(10.dp).testTag(INNER)) }
-                    }
-                    onNodeWithTag(INNER).assertExists()
-                    moveWhileSafeAreaChanges(frame)
-                }
-            }
-        assertTrue(
-            failure.message.orEmpty().contains("unattached"),
-            "expected Compose's unattached-node failure, got: $failure",
-        )
+    /** The insets-padding element on the node tagged [PADDED] (compared, never its class or text). */
+    private fun ComposeUiTest.insetsPaddingElement(): Modifier =
+        onNodeWithTag(PADDED).fetchSemanticsNode().layoutInfo.getModifierInfo()
+            .map { it.modifier }
+            .single { it.javaClass.simpleName == "InsetsPaddingModifierElement" }
+
+    private fun ComposeUiTest.elementAcrossASafeAreaChange(frame: Frame): Pair<Modifier, Modifier> {
+        val before = insetsPaddingElement()
+        runOnIdle { frame.left = 24.dp }
+        return before to insetsPaddingElement()
     }
 
     @Test
-    fun safeAreaPaddingFollowsTheValueAcrossAMove() =
+    fun safeAreaPaddingElementStaysEqualWhenTheSafeAreaChanges() =
         runRobolectricComposeUiTest {
             val frame = Frame()
-            showMoving(frame) {
-                // Nested as in production (a row inside a padded header): the inner one pads nothing more.
+            show(frame) {
+                Box(Modifier.testTag(PADDED).raftSafeAreaHorizontalPadding()) { Box(Modifier.size(10.dp).testTag(INNER)) }
+            }
+            val (before, after) = elementAcrossASafeAreaChange(frame)
+            assertEquals(before, after, "a new safe area must not make the element unequal (update() would run)")
+            assertEquals(24.dp, innerLeft(), "the padding still follows the safe area")
+        }
+
+    @Test
+    fun aNewWindowInsetsPerValueMakesTheElementUnequal() =
+        runRobolectricComposeUiTest {
+            // What raftSafeAreaHorizontalPadding did before: the trigger for update().
+            val frame = Frame()
+            show(frame) {
+                val insets = WindowInsets(left = LocalRaftSafeAreaInsets.current.left)
+                Box(Modifier.testTag(PADDED).windowInsetsPadding(insets)) { Box(Modifier.size(10.dp).testTag(INNER)) }
+            }
+            val (before, after) = elementAcrossASafeAreaChange(frame)
+            assertNotEquals(before, after)
+            assertEquals(24.dp, innerLeft())
+        }
+
+    @Test
+    fun nestedSafeAreaPaddingPadsOnceAndFollowsEveryValue() =
+        runRobolectricComposeUiTest {
+            val frame = Frame()
+            show(frame) {
+                // As in production (a row inside a padded header): the inner one pads nothing more.
                 Box(Modifier.raftSafeAreaHorizontalPadding()) {
                     Box(Modifier.raftSafeAreaHorizontalPadding()) { Box(Modifier.size(10.dp).testTag(INNER)) }
                 }
             }
-            onNodeWithTag(FIRST).assertExists()
-            assertEquals(0.dp, innerLeft())
-
-            moveWhileSafeAreaChanges(frame)
-
-            onNodeWithTag(SECOND).assertExists()
-            assertEquals(24.dp, innerLeft(), "padded once by the new safe area after the move")
-            runOnIdle { frame.left = 8.dp }
-            assertEquals(8.dp, innerLeft(), "a later value re-measures without a new element")
+            for (left in listOf(24.dp, 8.dp, 0.dp)) {
+                runOnIdle { frame.left = left }
+                assertEquals(left, innerLeft(), "padded once by a safe area of $left")
+            }
         }
 
     @Test
-    fun consumedPaddingFollowsTheValueAcrossAMove() =
+    fun stableConsumedPaddingFollowsTheValue() =
         runRobolectricComposeUiTest {
             val frame = Frame()
-            showMoving(frame) {
-                // RaftHorizontalSafeAreaShell / RaftSideColumnScaffold: consume what the box padded.
+            show(frame) {
+                // RaftHorizontalSafeAreaShell / RaftSideColumnScaffold: consume what the shell padded.
                 val consumed = rememberRaftStablePaddingValues(PaddingValues.Absolute(left = frame.left))
                 Box(Modifier.consumeWindowInsets(consumed)) {
-                    Box(Modifier.raftSafeAreaHorizontalPadding()) { Box(Modifier.size(10.dp).testTag(INNER)) }
+                    Box(Modifier.windowInsetsPadding(WindowInsets(left = 30.dp))) { Box(Modifier.size(10.dp).testTag(INNER)) }
                 }
             }
-            assertEquals(0.dp, innerLeft())
+            assertEquals(30.dp, innerLeft())
+            runOnIdle { frame.left = 24.dp }
+            assertEquals(6.dp, innerLeft(), "24dp consumed leaves 6dp of the 30dp to pad")
+            runOnIdle { frame.left = 8.dp }
+            assertEquals(22.dp, innerLeft())
+        }
 
-            moveWhileSafeAreaChanges(frame)
-
-            assertEquals(0.dp, innerLeft(), "the consumed 24dp leaves nothing to pad")
+    @Test
+    fun movedSafeAreaPaddingKeepsFollowingTheValue() =
+        runRobolectricComposeUiTest {
+            val frame = Frame()
+            show(frame) {
+                Box(Modifier.raftSafeAreaHorizontalPadding()) { Box(Modifier.size(10.dp).testTag(INNER)) }
+            }
+            // The crash's frame: the content moves while the safe area changes.
+            runOnIdle {
+                frame.inFirstParent = false
+                frame.left = 24.dp
+            }
+            runOnIdle { frame.left = 8.dp }
+            assertEquals(8.dp, innerLeft(), "the moved node pads by the current safe area")
         }
 
     private companion object {
-        const val FIRST = "first"
-        const val SECOND = "second"
+        const val PADDED = "padded"
         const val INNER = "inner"
     }
 }
