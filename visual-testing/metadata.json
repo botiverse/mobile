@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-11-16T05:11:16.381Z",
-  "runId": "9c40cb4b-20261116044956",
-  "commit": "9c40cb4b-20261116044956",
-  "commitSubject": "test(visual): search pin-menu cases press the entity row after filters went one line (#4855)",
+  "generatedAt": "2026-11-16T06:43:20.936Z",
+  "runId": "381dcbdf-20261116064230",
+  "commit": "381dcbdf-20261116064230",
+  "commitSubject": "feat(activity): keep Activity rows by the per-row position rule (inbox_row_position_v1, B1) (#4857)",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",

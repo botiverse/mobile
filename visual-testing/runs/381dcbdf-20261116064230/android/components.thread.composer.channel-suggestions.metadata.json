@@ -1,0 +1,53 @@
+            {
+              "provider": "android",
+              "providerType": "android-kuikly-shared-page",
+              "source": "kmp-shared",
+              "caseId": "components.thread.composer.channel-suggestions",
+              "appLocale": null,
+              "stringDescLocale": null,
+              "route": {"pageName":"compose_thread_composer_visual","realProductRoute":false},
+              "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.thread.composer.channel-suggestions.png",
+              "viewport": { "width": 1026, "height": 960, "density": 1 },
+              "systemBars": "hidden",
+              "crop": {
+                "mode": "manual-rect",
+                "contract": "component-bounds",
+                "rect": { "x": 24, "y": 0, "width": 342, "height": 320 }
+              },
+              "capture": {
+                "method": "app-window-root-draw-manual-crop-density-resize",
+                "fullscreen": true,
+                "systemBars": "hidden",
+                "validation": {
+                  "uniqueColors": 641,
+                  "dominantRatio": 0.6868218
+                },
+                "readyTokenObserved": false,
+                "readyTokenRequired": false,
+                "stableFrameCount": 1
+              },
+              "diagnostics": {
+    "displayWidthPx": 1170,
+    "displayHeightPx": 2342,
+    "densityDpi": 480,
+    "rootWidthPx": 1170,
+    "rootHeightPx": 2532,
+    "hardwareAccelerated": true,
+    "totalViews": 8,
+    "laidOutViews": 7,
+    "visibleContentLeafViews": 0,
+    "targetPackage": "build.raft.app.connectedtest",
+    "processId": 4858,
+    "processUid": 10192
+},
+              "captureIdentity": {
+                "attempt": 1,
+                "generation": "cc1a4c069f8c1b3f9c5a6e96d86cc3c0",
+                "bootId": "097ebfa2-ff19-4051-bc96-7f05b06ec586",
+                "capturedAtEpochMs": 1794804479269,
+                "capturedAtMonotonicNs": 202502184860
+              },
+              "clampedToShortWindow": false,
+              "fullLength": null,
+              "capturedAt": "1794804479269"
+            }

@@ -1,9 +1,9 @@
 # Raft Visual Testing
 
-Generated: 2026-11-16 05:11:16 UTC
-Latest run: 9c40cb4b-20261116044956
-Latest commit: 9c40cb4b-20261116044956
-Commit subject: test(visual): search pin-menu cases press the entity row after filters went one line (#4855)
+Generated: 2026-11-16 06:43:20 UTC
+Latest run: 381dcbdf-20261116064230
+Latest commit: 381dcbdf-20261116064230
+Commit subject: feat(activity): keep Activity rows by the per-row position rule (inbox_row_position_v1, B1) (#4857)
 Providers: react vs android
 Summary: total 133, same 0, pass 1, basic-pass 8, different 74, missing 50
 AI analysis: ready 39 / total 133, pending 94
@@ -114,6 +114,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 381dcbdf-20261116064230: react vs android, total 133, pass 1, basic-pass 8, different 74, matrix runs/381dcbdf-20261116064230/component-matrix.json, page runs/381dcbdf-20261116064230/
 - 9c40cb4b-20261116044956: react vs android, total 133, pass 1, basic-pass 8, different 74, matrix runs/9c40cb4b-20261116044956/component-matrix.json, page runs/9c40cb4b-20261116044956/
 - a489a2e6-20261114180622: react vs android, total 133, pass 1, basic-pass 8, different 74, matrix runs/a489a2e6-20261114180622/component-matrix.json, page runs/a489a2e6-20261114180622/
 - 41a40027-20261109220201: react vs android, total 122, pass 1, basic-pass 8, different 76, matrix runs/41a40027-20261109220201/component-matrix.json, page runs/41a40027-20261109220201/
