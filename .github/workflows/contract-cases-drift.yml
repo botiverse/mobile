@@ -10,7 +10,8 @@ name: Unread contract cases drift
 #
 # Fix a red run: SLOCK_SOURCE_REPO=<slock checkout> python3
 # scripts/sync_slock_contract_cases.py --ref origin/staging, run
-# UnreadContractCasesTest and ActivityRowContractCasesTest, and open a PR with the new copy.
+# UnreadContractCasesTest, ActivityRowContractCasesTest and ActivityRowContractCaseReducerTest, and
+# open a PR with the new copy.
 
 on:
   schedule:
@@ -37,6 +38,9 @@ on:
       # The app code the Activity row cases drive (in-place row patch, live unread predicate).
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedActivityStore.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedActivityLocalMutationOverlay.kt"
+      # The pure port of slock's shared Activity row rule (reduceActivityRow, activityLiveUnread).
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/ActivityRowPosition.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/ActivityUnreadPredicate.kt"
       - "scripts/sync_slock_contract_cases.py"
       # Notification level fixture (slock docs/contracts/fixtures/notification-levels.json).
       - "compose/shared/src/androidUnitTest/kotlin/build/raft/app/contract/NotificationLevelContractCasesTest.kt"

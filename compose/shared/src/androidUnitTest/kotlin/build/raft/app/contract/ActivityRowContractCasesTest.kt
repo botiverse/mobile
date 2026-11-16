@@ -124,6 +124,17 @@ class ActivityRowContractCaseListsTest {
         assertEquals(emptyList(), unplanned, "agreed cases no app driver can run")
     }
 
+    /** The commonTest reducer suite reads a generated copy ([ActivityRowVendoredCases]); it must be these files. */
+    @Test
+    fun generatedCopyMatchesTheVendoredFiles() {
+        val ids = ActivityRowContractCasesTest.cases()
+        assertEquals(ids, ActivityRowVendoredCases.files.keys.sorted(), "generated case ids")
+        ids.forEach { id ->
+            assertEquals(ActivityRowContractCasesTest.caseFile(id).readText(), ActivityRowVendoredCases.files[id], "$id text")
+        }
+        assertEquals(ActivityRowContractCasesTest.sourceSha(), ActivityRowVendoredCases.SOURCE_SHA)
+    }
+
     @Test
     fun copyIsPinnedToASlockCommit() {
         assertTrue(

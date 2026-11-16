@@ -7,6 +7,8 @@ vendored, each run by its own unit test (:shared:testDebugUnitTest):
 
     unread         unread/thread rules (task #proj-mobile:#70)       UnreadContractCasesTest
     activity-row   Activity row position + unread predicate (#triage:#244)  ActivityRowContractCasesTest
+                   (the store), ActivityRowContractCaseReducerTest (the pure reducer, commonTest; it
+                   reads a Kotlin copy :shared:generateActivityRowContractCases generates at build time)
 
     compose/shared/src/commonTest/resources/contract-cases/<set>/
         SOURCE_SHA            the slock commit the copy was taken from
@@ -39,7 +41,7 @@ DEST_ROOT = REPO_ROOT / "compose/shared/src/commonTest/resources/contract-cases"
 # set name -> the app test that runs it.
 CASE_SETS = {
     "unread": "UnreadContractCasesTest",
-    "activity-row": "ActivityRowContractCasesTest",
+    "activity-row": "ActivityRowContractCasesTest and ActivityRowContractCaseReducerTest",
 }
 SHA_FILE = "SOURCE_SHA"
 
