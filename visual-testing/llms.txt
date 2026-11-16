@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-16 04:50:52 UTC
+Generated: 2026-11-16 05:11:16 UTC
 Latest run: 9c40cb4b-20261116044956
 Latest commit: 9c40cb4b-20261116044956
 Commit subject: test(visual): search pin-menu cases press the entity row after filters went one line (#4855)
 Providers: react vs android
 Summary: total 133, same 0, pass 1, basic-pass 8, different 74, missing 50
-AI analysis: ready 30 / total 133, pending 103
+AI analysis: ready 39 / total 133, pending 94
 Visual coverage matrix: active 142 / total 162, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-11-16T04:50:52.209Z",
+  "generatedAt": "2026-11-16T05:11:16.381Z",
   "latestRunId": "9c40cb4b-20261116044956",
   "latest": {
     "runId": "9c40cb4b-20261116044956",
     "commit": "9c40cb4b-20261116044956",
     "commitSubject": "test(visual): search pin-menu cases press the entity row after filters went one line (#4855)",
-    "generatedAt": "2026-11-16T04:50:52.209Z",
+    "generatedAt": "2026-11-16T05:11:16.381Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 133,
-      "ready": 30,
-      "pending": 103
+      "ready": 39,
+      "pending": 94
     },
     "comparisons": [
       "react__android"
@@ -127,7 +127,7 @@
       "runId": "9c40cb4b-20261116044956",
       "commit": "9c40cb4b-20261116044956",
       "commitSubject": "test(visual): search pin-menu cases press the entity row after filters went one line (#4855)",
-      "generatedAt": "2026-11-16T04:50:52.209Z",
+      "generatedAt": "2026-11-16T05:11:16.381Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -140,8 +140,8 @@
       },
       "analysisSummary": {
         "total": 133,
-        "ready": 30,
-        "pending": 103
+        "ready": 39,
+        "pending": 94
       },
       "comparisons": [
         "react__android"
