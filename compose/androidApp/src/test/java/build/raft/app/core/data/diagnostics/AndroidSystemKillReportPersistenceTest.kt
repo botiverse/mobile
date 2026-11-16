@@ -155,7 +155,7 @@ class AndroidSystemKillReportPersistenceTest {
         assertEquals(listOf(1), carried)
         assertEquals(3, sent.size)
         assertTrue(store.persisted.ledger.accumulating.isEmpty())
-        assertEquals(null, store.persisted.ledger.pending)
+        assertTrue(store.persisted.ledger.pending.isEmpty())
     }
 
     @Test
@@ -183,7 +183,7 @@ class AndroidSystemKillReportPersistenceTest {
         assertEquals(listOf("batch-1", "batch-1"), carried.map { it["crash_background_dropped_id"] })
         assertEquals(carried[0]["crash_background_dropped"].toString(), carried[1]["crash_background_dropped"].toString())
         assertEquals(carried[0]["crash_exit_event_id"], carried[1]["crash_exit_event_id"])
-        assertEquals(null, store.persisted.ledger.pending)
+        assertTrue(store.persisted.ledger.pending.isEmpty())
         assertTrue(store.persisted.ledger.accumulating.isEmpty())
     }
 
@@ -202,7 +202,7 @@ class AndroidSystemKillReportPersistenceTest {
 
         progress = progress.enqueue(queued(4, SystemKillBudget.Review), cap = 3) // evicts review 2
         assertEquals(listOf(1, 3, 4), progress.queue.map { it.key.pid })
-        assertEquals(bound, progress.ledger.pending)
+        assertEquals(listOf(bound), progress.ledger.pending)
         progress = progress.enqueue(queued(5, SystemKillBudget.Visible), cap = 3) // evicts review 4
         assertEquals(listOf(1, 3, 5), progress.queue.map { it.key.pid })
         progress = progress.enqueue(queued(6, SystemKillBudget.Visible), cap = 3) // no review left: visible 1
@@ -212,6 +212,38 @@ class AndroidSystemKillReportPersistenceTest {
             mapOf("review" to 2, "visible" to 1),
             progress.ledger.accumulating.associate { it.category to it.count },
         )
+    }
+
+    @Test
+    fun twoAttemptedReportsEvictedInARowSendTheirBatchesLaterUnderTheirOwnIdsOnceEach() = runTest {
+        fun queued(pid: Int, budget: SystemKillBudget) =
+            QueuedSystemKillReport(SystemKillExitKey(pid, now - 10_000L + pid), budget, 12600001L, "m$pid", emptyMap())
+        // Two review reports whose first attempts may have been stored by Hands, each holding its batch.
+        val first = BackgroundDropBatch("batch-a", listOf(BackgroundDropEntry(12600001L, "2026-11-14", 2)))
+        val second = BackgroundDropBatch("batch-b", listOf(BackgroundDropEntry(12600001L, "2026-11-15", 3)))
+        var progress =
+            SystemKillProgress(
+                queue =
+                    listOf(
+                        queued(1, SystemKillBudget.Review).copy(attempted = true, sentBatch = first),
+                        queued(2, SystemKillBudget.Review).copy(attempted = true, sentBatch = second),
+                    ),
+            )
+        progress = progress.enqueue(queued(3, SystemKillBudget.Visible), cap = 2) // evicts review 1
+        progress = progress.enqueue(queued(4, SystemKillBudget.Visible), cap = 2) // evicts review 2
+        assertEquals(listOf(first, second), progress.ledger.pending)
+
+        val store = FakeStore(SystemKillProgress(ledger = BackgroundDropLedger.decode(progress.ledger.encode()), queue = progress.queue))
+        val sent = mutableListOf<Map<String, Any?>>()
+        oneLaunch(store, emptyList(), newBatchId = { "batch-new" }, submit = { _, extras -> sent += extras; "ticket" })
+
+        // Each batch leaves once, with one report, under the id its first attempt used.
+        assertEquals(listOf("batch-a", "batch-b"), sent.map { it["crash_background_dropped_id"] })
+        val counts = sent.map { (it["crash_background_dropped"] as JSONArray).getJSONObject(0).getInt("count") }
+        assertEquals(listOf(2, 3), counts)
+        assertTrue(store.persisted.ledger.pending.isEmpty())
+        // Only the two eviction counts are left for a later report; none of the batches' counts.
+        assertEquals(listOf("review" to 2), store.persisted.ledger.accumulating.map { it.category to it.count })
     }
 
     @Test
@@ -307,6 +339,10 @@ class AndroidSystemKillReportPersistenceTest {
         val ledger =
             """{"pending_id":"batch-old","pending":[{"version_code":12600001,"exit_day_utc":"2026-11-14",""" +
                 """"category":"background","http_status":0,"count":3}],"accumulating":[]}"""
+        assertEquals(
+            listOf(BackgroundDropBatch("batch-old", listOf(BackgroundDropEntry(12600001L, "2026-11-14", 3)))),
+            BackgroundDropLedger.decode(ledger).pending,
+        )
         val old = QueuedSystemKillReport.decodeAll(stored).single()
         assertFalse(old.attempted)
         assertEquals(null, old.sentBatch)
@@ -320,7 +356,7 @@ class AndroidSystemKillReportPersistenceTest {
         // The old batch goes out under its own id with that report, and is resent unchanged.
         assertEquals(listOf("batch-old", "batch-old"), sent.map { it["crash_background_dropped_id"] })
         assertEquals(sent[0]["crash_background_dropped"].toString(), sent[1]["crash_background_dropped"].toString())
-        assertEquals(null, store.persisted.ledger.pending)
+        assertTrue(store.persisted.ledger.pending.isEmpty())
         assertTrue(store.persisted.queue.isEmpty())
     }
 
@@ -405,7 +441,7 @@ class AndroidSystemKillReportPersistenceTest {
                 .flatMap { array -> (0 until array.length()).map { array.getJSONObject(it).getInt("count") } }
         assertEquals(listOf(1, 1), counts)
         assertTrue(store.persisted.queue.isEmpty())
-        assertEquals(null, store.persisted.ledger.pending)
+        assertTrue(store.persisted.ledger.pending.isEmpty())
         assertTrue(store.persisted.ledger.accumulating.isEmpty())
     }
 

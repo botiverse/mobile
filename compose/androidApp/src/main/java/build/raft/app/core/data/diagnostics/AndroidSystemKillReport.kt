@@ -789,12 +789,20 @@ internal data class BackgroundDropBatch(val id: String, val entries: List<Backgr
  *
  * New drops go to [accumulating]. A report's first upload takes them, frozen under a fresh id
  * ([attach]), and keeps them as its own ([QueuedSystemKillReport.sentBatch]) until it is accepted.
- * [pending] holds a batch no report owns: one written by an earlier version of this reporter, or
- * one handed back by an evicted report ([restore]); the next first upload takes it first, under
- * its id. At most [MaxEntries] per list; the oldest days go first.
+ * [pending] holds batches no report owns, oldest first: one written by an earlier version of
+ * this reporter, or ones handed back by evicted reports ([restore]); each later first upload
+ * takes the oldest one first, under its own id.
+ *
+ * Overflow (both best effort, both rare):
+ * - More than [MaxPending] pending batches: the oldest is merged into [accumulating] and later
+ *   goes out under a new id; counted twice if its first attempt had been stored ([restore]).
+ * - More than [MaxEntries] distinct (version, day, category, status) entries in [accumulating]:
+ *   the entries of the oldest days are dropped with their counts, uncounted anywhere: a known
+ *   undercount ([bounded]).
+ * Counts no later report carries (no further system-kill report is ever sent) never reach Hands.
  */
 internal data class BackgroundDropLedger(
-    val pending: BackgroundDropBatch? = null,
+    val pending: List<BackgroundDropBatch> = emptyList(),
     val accumulating: List<BackgroundDropEntry> = emptyList(),
 ) {
     fun record(
@@ -819,34 +827,55 @@ internal data class BackgroundDropLedger(
 
     /**
      * The batch a report's first upload carries (null when nothing was dropped), and the ledger
-     * without it: the batch now belongs to that report alone.
+     * without it: the batch now belongs to that report alone. The oldest [pending] batch goes
+     * first; [accumulating] only once none is pending.
      */
     fun attach(newId: () -> String): Pair<BackgroundDropLedger, BackgroundDropBatch?> =
         when {
-            pending != null -> copy(pending = null) to pending
+            pending.isNotEmpty() -> copy(pending = pending.drop(1)) to pending.first()
             accumulating.isEmpty() -> this to null
             else -> BackgroundDropBatch(newId(), accumulating).let { copy(accumulating = emptyList()) to it }
         }
 
     /**
      * Takes back [batch] of a report that will never be accepted. With [keepId] (evicted: its
-     * first attempt may have reached Hands, so a repeat must keep the id Hands can dedupe on) as
-     * [pending] when that is free; otherwise (rejected: Hands never stored it) its counts are
-     * added to [accumulating] and go out with the next batch.
+     * first attempt may have reached Hands, so a repeat must keep the id Hands can dedupe on) it
+     * joins the end of [pending] under its id; without (rejected: Hands never stored it) its counts
+     * are added to [accumulating] and go out with the next batch.
+     *
+     * Over [MaxPending], the oldest pending batch is merged into [accumulating] and later goes
+     * out under a new id. That is the only remaining way a count can reach Hands twice (when that
+     * batch's first attempt was stored), and it needs more than [MaxPending] attempted reports
+     * evicted before any later report's first upload.
      */
     fun restore(batch: BackgroundDropBatch?, keepId: Boolean): BackgroundDropLedger =
         when {
             batch == null || batch.entries.isEmpty() -> this
-            keepId && pending == null -> copy(pending = batch)
-            else -> {
-                val merged =
-                    (accumulating + batch.entries)
-                        .groupBy { listOf(it.versionCode, it.exitDayUtc, it.category, it.httpStatus) }
-                        .values.map { same -> same.first().copy(count = same.sumOf { it.count }) }
-                copy(accumulating = bounded(merged))
+            keepId -> {
+                val next = pending + batch
+                val overflow = next.size - MaxPending
+                if (overflow <= 0) {
+                    copy(pending = next)
+                } else {
+                    next.take(overflow).fold(copy(pending = next.drop(overflow))) { ledger, oldest -> ledger.merge(oldest.entries) }
+                }
             }
+            else -> merge(batch.entries)
         }
 
+    private fun merge(entries: List<BackgroundDropEntry>): BackgroundDropLedger {
+        val merged =
+            (accumulating + entries)
+                .groupBy { listOf(it.versionCode, it.exitDayUtc, it.category, it.httpStatus) }
+                .values.map { same -> same.first().copy(count = same.sumOf { it.count }) }
+        return copy(accumulating = bounded(merged))
+    }
+
+    /**
+     * Keeps the [MaxEntries] newest entries (by exit day, then category, status, version). The
+     * rest are dropped with their counts and reported nowhere: a known undercount, accepted
+     * because it needs more than [MaxEntries] distinct entries waiting for one report.
+     */
     private fun bounded(entries: List<BackgroundDropEntry>): List<BackgroundDropEntry> =
         entries.sortedWith(
             compareBy<BackgroundDropEntry>({ it.exitDayUtc }, { it.category }, { it.httpStatus }, { it.versionCode }),
@@ -854,20 +883,40 @@ internal data class BackgroundDropLedger(
 
     fun encode(): String =
         JSONObject().apply {
-            pending?.let { put("pending_id", it.id).put("pending", it.allToJson()) }
+            if (pending.isNotEmpty()) {
+                put(
+                    "pending_batches",
+                    JSONArray().apply { pending.forEach { put(JSONObject().put("id", it.id).put("entries", it.allToJson())) } },
+                )
+            }
             put("accumulating", BackgroundDropBatch("", accumulating).allToJson())
         }.toString()
 
     companion object {
         const val MaxEntries = 32
 
+        /** Pending batches kept under their own id, as many as [MaxQueuedSystemKillReports]. */
+        const val MaxPending = MaxQueuedSystemKillReports
+
         fun decode(encoded: String?): BackgroundDropLedger {
             if (encoded.isNullOrBlank()) return BackgroundDropLedger()
             return runCatching {
                 val json = JSONObject(encoded)
-                val pendingId = json.optString("pending_id", "")
+                val batches = json.optJSONArray("pending_batches")
+                val pending =
+                    if (batches != null) {
+                        (0 until batches.length()).mapNotNull { index ->
+                            val batch = batches.optJSONObject(index) ?: return@mapNotNull null
+                            val id = batch.optString("id", "")
+                            if (id.isEmpty()) null else BackgroundDropBatch(id, entries(batch.optJSONArray("entries")))
+                        }
+                    } else {
+                        // Written before pending became a list: one batch as `pending_id` / `pending`.
+                        val pendingId = json.optString("pending_id", "")
+                        if (pendingId.isNotEmpty()) listOf(BackgroundDropBatch(pendingId, entries(json.optJSONArray("pending")))) else emptyList()
+                    }
                 BackgroundDropLedger(
-                    pending = if (pendingId.isNotEmpty()) BackgroundDropBatch(pendingId, entries(json.optJSONArray("pending"))) else null,
+                    pending = pending,
                     accumulating = entries(json.optJSONArray("accumulating")),
                 )
             }.getOrDefault(BackgroundDropLedger())
