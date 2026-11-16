@@ -8,6 +8,7 @@ import android.os.Build
 import build.hands.update.HandsFeedback
 import build.hands.update.HandsDeviceId
 import build.hands.update.HandsFeedbackException
+import build.raft.app.BuildConfig
 import build.raft.app.shared.RaftBuildStamp
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -262,6 +263,12 @@ internal data class SystemKillExit(
     val processName: String = "",
     /** [ApplicationExitInfo.getDescription], as the system wrote it; null when none. */
     val description: String? = null,
+    /**
+     * Whether the exited process ran under a uid other than the package's: an isolated process
+     * (`android:isolatedProcess`) or an app-zygote child ([ApplicationExitInfo.getRealUid] !=
+     * [ApplicationExitInfo.getPackageUid]); null when unknown.
+     */
+    val isolatedProcess: Boolean? = null,
 ) {
     fun toSnapshot(): HistoricalProcessExitSnapshot =
         HistoricalProcessExitSnapshot(
@@ -976,6 +983,29 @@ internal const val MaxExitDescriptionChars = 200
  */
 internal fun exitImportanceForeground(importance: Int): Boolean = importance in VisibleImportances
 
+/**
+ * The build that writes the report, read once per launch: its BuildConfig version and
+ * `PackageInfo.lastUpdateTime` (null when the package manager gave none), with the time it was read.
+ */
+internal data class SystemKillReporterBuild(
+    val versionName: String,
+    val versionCode: Long,
+    val packageUpdatedMillis: Long?,
+    val nowMillis: Long,
+)
+
+/**
+ * Whether [exit] ran the build [reporter] is: the package was last updated strictly before the
+ * exit (an update kills the app's processes and moves `lastUpdateTime`, so nothing older can have
+ * exited after it). A missing, zero or negative update time, an update at or after the exit, and an
+ * update time or exit in the future all leave it unknown.
+ */
+internal fun exitRanReporterBuild(exit: SystemKillExit, reporter: SystemKillReporterBuild): Boolean {
+    val updated = reporter.packageUpdatedMillis ?: return false
+    val exitAt = exit.timestampMillis
+    return updated > 0L && exitAt > 0L && updated <= reporter.nowMillis && exitAt <= reporter.nowMillis && updated < exitAt
+}
+
 /** Ticket metadata (merged into Hands `metadata_json`), in the `crash_*` vocabulary ANR tickets use. */
 internal fun systemKillExtras(
     exit: SystemKillExit,
@@ -983,6 +1013,11 @@ internal fun systemKillExtras(
     droppedBatch: BackgroundDropBatch? = null,
     /** The per-install id ([build.hands.update.HandsDeviceId]) for `crash_exit_event_id`; none when null. */
     installId: String? = null,
+    /**
+     * The build writing the report: always sent as `reporter_version_*` (never `version_*`), and
+     * the last version source when the exit carries none of its own; none when null.
+     */
+    reporter: SystemKillReporterBuild? = null,
 ): Map<String, Any?> =
     buildMap {
         installId?.let { put("crash_exit_event_id", systemKillExitEventId(it, exit)) }
@@ -999,7 +1034,19 @@ internal fun systemKillExtras(
                 put("fallback_version_name", fallbackVersion.versionName)
                 put("crash_version_source", "last_process_state")
             }
+            // Neither: the installed build, when the package has not been updated since before
+            // the exit. Inferred, not recorded by the process; crash_version_inferred says so.
+            reporter != null && exitRanReporterBuild(exit, reporter) -> {
+                put("fallback_version_code", reporter.versionCode)
+                put("fallback_version_name", reporter.versionName)
+                put("crash_version_source", "installed_before_exit")
+            }
             else -> put("crash_version_source", "unknown")
+        }
+        put("crash_version_inferred", get("crash_version_source") == "installed_before_exit")
+        reporter?.let {
+            put("reporter_version_name", it.versionName)
+            put("reporter_version_code", it.versionCode)
         }
         put("crash_type", "system_kill")
         put("crash_reason", reason)
@@ -1017,6 +1064,7 @@ internal fun systemKillExtras(
         put("crash_exit_timestamp", exit.timestampMillis)
         put("crash_foreground", exitImportanceForeground(exit.importance))
         put("crash_process_name", exit.processName)
+        exit.isolatedProcess?.let { put("crash_process_isolated", it) }
         exit.description?.trim()?.takeIf(String::isNotEmpty)?.let {
             put("crash_exit_description", it.take(MaxExitDescriptionChars))
         }
@@ -1168,7 +1216,8 @@ internal object AndroidSystemKillReporter {
         uploadScope.launch {
             runCatching {
                 val feedback by lazy {
-                    // Version comes from each exit's stamp in the extras, never this install.
+                    // Version comes from each exit's extras (stamp, its process's record, or the
+                    // installed build when it predates the exit), never set here for this install.
                     HandsFeedback(
                         context = appContext,
                         baseUrl = baseUrl,
@@ -1199,6 +1248,10 @@ internal object AndroidSystemKillReporter {
         // The id Hands already keeps per install; without it crash_exit_event_id is omitted, never shared.
         val installId = runCatching { HandsDeviceId.get(context) }.getOrNull()?.takeIf { it.isNotBlank() }
         val mainProcessName = context.applicationInfo.processName ?: context.packageName
+        val packageUpdatedMillis =
+            runCatching { context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime }.getOrNull()
+        val reporter =
+            SystemKillReporterBuild(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong(), packageUpdatedMillis, now)
         runSystemKillReports(
             store = PreferencesProgressStore(preferences),
             nowMillis = now,
@@ -1216,7 +1269,7 @@ internal object AndroidSystemKillReporter {
                             .map { it.toSystemKillExit() },
                     snapshots = snapshots,
                     // Before the first launch with this reporter nothing was decided; do not look back.
-                    cutoffMillis = firstSeenMillis(context, preferences, now),
+                    cutoffMillis = firstSeenMillis(preferences, packageUpdatedMillis, now),
                     watermarkMillis = progress.watermarkMillis,
                     recentReportMillis = visible.recentReportMillis,
                     nowMillis = now,
@@ -1229,7 +1282,8 @@ internal object AndroidSystemKillReporter {
                 )
             },
             buildReport = { item ->
-                systemKillMessage(item.exit, item.telemetry) to systemKillExtras(item.exit, item.telemetry, installId = installId)
+                systemKillMessage(item.exit, item.telemetry) to
+                    systemKillExtras(item.exit, item.telemetry, installId = installId, reporter = reporter)
             },
             newBatchId = { UUID.randomUUID().toString() },
             submit = submit,
@@ -1304,12 +1358,11 @@ internal object AndroidSystemKillReporter {
         )
     }
 
-    private fun firstSeenMillis(context: Context, preferences: SharedPreferences, now: Long): Long {
+    private fun firstSeenMillis(preferences: SharedPreferences, packageUpdatedMillis: Long?, now: Long): Long {
         val key = "system-kill-first-seen-millis"
         return resolveSystemKillBaseline(
             storedMillis = if (preferences.contains(key)) preferences.getLong(key, now) else null,
-            packageUpdatedMillis =
-                runCatching { context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime }.getOrNull(),
+            packageUpdatedMillis = packageUpdatedMillis,
             nowMillis = now,
             persist = { preferences.edit().putLong(key, it).commit() },
             onPersistFailed = {
@@ -1330,6 +1383,8 @@ internal object AndroidSystemKillReporter {
             build = RaftBuildStamp.decodeStamp(processStateSummary),
             processName = processName.orEmpty(),
             description = description,
+            // realUid/packageUid are API 30, like the reporter (start() returns below R).
+            isolatedProcess = realUid != packageUid,
         )
 }
 
