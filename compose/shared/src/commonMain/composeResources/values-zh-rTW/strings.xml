@@ -3423,6 +3423,7 @@
     <string name="channel_members_remove_admin">移除 %1$s 的頻道管理員身分</string>
     <string name="channel_members_make_admin_short">設為管理員</string>
     <string name="channel_members_remove_admin_short">降為成員</string>
+    <string name="channel_members_remove_from_channel_short">移出頻道</string>
     <string name="channel_members_update_role_failed">無法更新此成員的頻道角色。請再試一次。</string>
     <string name="channel_members_cannot_demote_server_admin_title">無法將伺服器管理員降級</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s 是伺服器擁有者或管理員，因此在所有頻道中都會保有頻道管理員身分。請先到「伺服器管理」變更其伺服器角色。</string>

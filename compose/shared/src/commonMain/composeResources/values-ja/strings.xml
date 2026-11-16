@@ -3591,6 +3591,7 @@
     <string name="channel_members_remove_admin">%1$s のチャンネル管理者権限を解除</string>
     <string name="channel_members_make_admin_short">管理者に設定</string>
     <string name="channel_members_remove_admin_short">メンバーに戻す</string>
+    <string name="channel_members_remove_from_channel_short">チャンネルから削除</string>
     <string name="channel_members_update_role_failed">このメンバーのチャンネルでの役割を更新できませんでした。もう一度お試しください。</string>
     <string name="channel_members_cannot_demote_server_admin_title">サーバー管理者は降格できません</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s はサーバーのオーナーまたは管理者のため、すべてのチャンネルでチャンネル管理者のままになります。先に「設定 → 管理」でサーバーでの役割を変更してください。</string>

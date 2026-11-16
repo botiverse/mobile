@@ -59,9 +59,10 @@ class ChannelMembersPageScreenshotTest {
     fun channelMembersJointLight() =
         capture("channel.members.joint", RaftAppAppearance.Light) { ChannelMembersVisualContent(jointVisualRoster()) }
 
-    // Channel role actions (web MemberRoleActions, #triage:#398): a ⋯ on every row the viewer may
-    // change (Make admin / Demote, or the server admin's cannot-demote note), none on the viewer's
-    // own row, and the warning a refused change leaves above the roster.
+    // Channel role actions (web MemberRoleActions, #triage:#398): one ⋯ on every row the viewer may
+    // change or remove (its menu: Make admin / Demote or the server admin's cannot-demote note, and
+    // Remove from channel, #triage:#416), none on the viewer's own row, and the warning a refused
+    // change leaves above the roster.
     @Test
     fun channelMembersRoleActionsLight() =
         capture("channel.members.role-actions", RaftAppAppearance.Light) {
@@ -186,10 +187,10 @@ private fun ChannelMembersVisualContent(
     }
 }
 
-/** The roster a channel admin sees: their own row bare, everyone they may change with a ⋯. */
+/** The roster a channel admin sees: their own row bare, everyone they may change or remove with a ⋯. */
 private fun roleActionVisualRoster(): List<RaftThreadMemberItem> =
     listOf(
-        RaftThreadMemberItem("human-artea", "Artea", handle = "artea", effectiveChannelRole = "admin"),
+        RaftThreadMemberItem("human-artea", "Artea", handle = "artea", effectiveChannelRole = "admin", canRemove = false),
         RaftThreadMemberItem(
             "human-artin", "artin", handle = "artin", description = "产品负责人", effectiveChannelRole = "owner",
             roleAction = ChannelMemberRoleAction.ExplainProtectedDemote,

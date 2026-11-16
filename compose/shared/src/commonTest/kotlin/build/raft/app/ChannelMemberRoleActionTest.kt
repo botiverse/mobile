@@ -111,4 +111,19 @@ class ChannelMemberRoleActionTest {
         // No server role sent (another server's member): a plain member, never protected.
         assertNull(action(member(serverRole = null, effectiveChannelRole = null, canChangeChannelRole = false)))
     }
+
+    @Test
+    fun theRowMenuHoldsWhicheverActionsApplyAndIsAbsentWithNeither() {
+        // Task #triage:#416: one ⋯ per row; a row with a single action still uses it.
+        assertEquals(
+            ChannelMemberRowMenu(ChannelMemberRoleAction.MakeAdmin, canRemove = true),
+            channelMemberRowMenu(ChannelMemberRoleAction.MakeAdmin, canRemove = true),
+        )
+        assertEquals(ChannelMemberRowMenu(null, canRemove = true), channelMemberRowMenu(null, canRemove = true))
+        assertEquals(
+            ChannelMemberRowMenu(ChannelMemberRoleAction.ExplainProtectedDemote, canRemove = false),
+            channelMemberRowMenu(ChannelMemberRoleAction.ExplainProtectedDemote, canRemove = false),
+        )
+        assertNull(channelMemberRowMenu(null, canRemove = false))
+    }
 }
