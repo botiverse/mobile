@@ -192,14 +192,17 @@ class AndroidSystemKillReportPersistenceTest {
         fun queued(pid: Int, budget: SystemKillBudget) =
             QueuedSystemKillReport(SystemKillExitKey(pid, now - 10_000L + pid), budget, 12600001L, "m$pid", emptyMap())
         var progress = SystemKillProgress()
+        // Review 2 was attempted and holds a batch; evicted, it hands the batch back to the ledger.
+        val bound = BackgroundDropBatch("batch-1", listOf(BackgroundDropEntry(12600001L, "2026-11-15", 2)))
         listOf(
             queued(1, SystemKillBudget.Visible),
-            queued(2, SystemKillBudget.Review),
+            queued(2, SystemKillBudget.Review).copy(attempted = true, sentBatch = bound),
             queued(3, SystemKillBudget.Visible),
         ).forEach { progress = progress.enqueue(it, cap = 3) }
 
         progress = progress.enqueue(queued(4, SystemKillBudget.Review), cap = 3) // evicts review 2
         assertEquals(listOf(1, 3, 4), progress.queue.map { it.key.pid })
+        assertEquals(bound, progress.ledger.pending)
         progress = progress.enqueue(queued(5, SystemKillBudget.Visible), cap = 3) // evicts review 4
         assertEquals(listOf(1, 3, 5), progress.queue.map { it.key.pid })
         progress = progress.enqueue(queued(6, SystemKillBudget.Visible), cap = 3) // no review left: visible 1
@@ -274,6 +277,136 @@ class AndroidSystemKillReportPersistenceTest {
         assertEquals(300, (decoded.extras["crash_exit_importance"] as Number).toInt())
         assertEquals("unknown", decoded.extras["crash_recent_foreground_source"])
         assertEquals(false, decoded.extras["crash_foreground"])
+        assertFalse(decoded.attempted)
+        assertEquals(null, decoded.sentBatch)
+
+        val batch =
+            BackgroundDropBatch(
+                "batch-1",
+                listOf(
+                    BackgroundDropEntry(12600001L, "2026-11-14", 2),
+                    BackgroundDropEntry(12600001L, "2026-11-15", 1, BackgroundDropEntry.Rejected, 422),
+                ),
+            )
+        val attempted = report.copy(attempted = true, sentBatch = batch)
+        val decodedAttempted = QueuedSystemKillReport.decodeAll(QueuedSystemKillReport.encodeAll(listOf(attempted))).single()
+        assertTrue(decodedAttempted.attempted)
+        assertEquals(batch, decodedAttempted.sentBatch)
+        // Attempted with no counts stays "no counts".
+        val bare = QueuedSystemKillReport.decodeAll(QueuedSystemKillReport.encodeAll(listOf(report.copy(attempted = true)))).single()
+        assertTrue(bare.attempted)
+        assertEquals(null, bare.sentBatch)
+    }
+
+    @Test
+    fun aQueueEntryStoredBeforeTheBatchWasBoundLoadsAsNotAttemptedAndTakesTheOldPendingBatch() = runTest {
+        // Written by the previous version: no attempted / sent_batch, and a frozen pending batch in the ledger.
+        val stored =
+            """[{"pid":9,"timestamp":${now - 50_000L},"budget":"Visible","version_code":12600001,""" +
+                """"message":"old","extras":{"crash_process_id":9}}]"""
+        val ledger =
+            """{"pending_id":"batch-old","pending":[{"version_code":12600001,"exit_day_utc":"2026-11-14",""" +
+                """"category":"background","http_status":0,"count":3}],"accumulating":[]}"""
+        val old = QueuedSystemKillReport.decodeAll(stored).single()
+        assertFalse(old.attempted)
+        assertEquals(null, old.sentBatch)
+        assertEquals(9, (old.extras["crash_process_id"] as Number).toInt())
+
+        val store = FakeStore(SystemKillProgress(ledger = BackgroundDropLedger.decode(ledger), queue = listOf(old)))
+        val sent = mutableListOf<Map<String, Any?>>()
+        oneLaunch(store, emptyList(), submit = { _, extras -> sent += extras; throw IOException("offline") })
+        oneLaunch(store, emptyList(), submit = { _, extras -> sent += extras; "ticket" })
+
+        // The old batch goes out under its own id with that report, and is resent unchanged.
+        assertEquals(listOf("batch-old", "batch-old"), sent.map { it["crash_background_dropped_id"] })
+        assertEquals(sent[0]["crash_background_dropped"].toString(), sent[1]["crash_background_dropped"].toString())
+        assertEquals(null, store.persisted.ledger.pending)
+        assertTrue(store.persisted.queue.isEmpty())
+    }
+
+    @Test
+    fun aResendAfterALostResponseCarriesExactlyTheFirstAttemptsCountsAndKeepsNewerOnesForTheNextReport() = runTest {
+        // Hands stored the first attempt; the app never saw the answer (offline or died before the
+        // commit). Hands replays a resend with the first ticket and stores nothing from it.
+        for (initialCounts in listOf(false, true)) {
+            for (diesBeforeCommit in listOf(false, true)) {
+                val case = "initialCounts=$initialCounts diesBeforeCommit=$diesBeforeCommit"
+                val ledger = if (initialCounts) BackgroundDropLedger().record(12600001L, now - 50_000L) else BackgroundDropLedger()
+                val store = FakeStore(SystemKillProgress(ledger = ledger))
+                val a = exit(pid = 1, at = now - 3_000L, importance = IMPORTANCE_VISIBLE)
+                val sent = mutableListOf<Map<String, Any?>>()
+                var ids = 0
+                val newId = { "batch-${++ids}" }
+
+                if (diesBeforeCommit) store.failCommitWhere = { progress -> progress.queue.isEmpty() }
+                oneLaunch(store, listOf(a), newBatchId = newId, submit = { _, extras ->
+                    sent += extras
+                    if (diesBeforeCommit) "ticket-a" else throw IOException("response lost")
+                })
+                store.failCommitWhere = { false }
+                assertEquals(case, 1, store.persisted.queue.size)
+
+                // Next launch: a background kill over the budget is counted, then A is resent.
+                val dropped = exit(pid = 2, at = now - 2_000L, importance = IMPORTANCE_CACHED)
+                oneLaunch(
+                    store,
+                    listOf(a, dropped),
+                    listOf(old(2, dropped.timestampMillis)),
+                    limits = limits(backgroundPerDay = 0),
+                    newBatchId = newId,
+                    submit = { _, extras -> sent += extras; "ticket-a" },
+                )
+                assertEquals(case, 2, sent.size)
+                assertEquals(case, wire(sent[0]), wire(sent[1]))
+                assertTrue(case, store.persisted.queue.isEmpty())
+                // The new drop was not sent with the replay; it waits for the next report.
+                assertEquals(case, 1, store.persisted.ledger.accumulating.single().count)
+
+                oneLaunch(store, listOf(exit(pid = 3, at = now - 1_000L, importance = IMPORTANCE_VISIBLE)), newBatchId = newId, submit = { _, extras ->
+                    sent += extras
+                    "ticket-c"
+                })
+                val next = sent.last()
+                assertNotEquals(case, sent[0]["crash_background_dropped_id"], next["crash_background_dropped_id"])
+                assertEquals(case, 1, (next["crash_background_dropped"] as JSONArray).getJSONObject(0).getInt("count"))
+                assertTrue(case, store.persisted.ledger.accumulating.isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun aNewerReportSentFirstNeverTakesTheBatchBoundToAnAttemptedReport() = runTest {
+        // Background report A is attempted with the counts (batch-1) and fails.
+        val store = FakeStore(SystemKillProgress(ledger = BackgroundDropLedger().record(12600001L, now - 50_000L)))
+        val a = exit(pid = 1, at = now - 3_000L, importance = IMPORTANCE_CACHED)
+        val snapshots = mutableListOf(old(1, a.timestampMillis))
+        val sent = mutableListOf<Map<String, Any?>>()
+        var ids = 0
+        val newId = { "batch-${++ids}" }
+        oneLaunch(store, listOf(a), snapshots, newBatchId = newId, submit = { _, extras -> sent += extras; throw IOException("offline") })
+        assertEquals("batch-1", store.persisted.queue.single().sentBatch?.id)
+
+        // Next launch: a background kill over the budget is counted, and a new visible report C
+        // goes out before A (visible first).
+        val dropped = exit(pid = 2, at = now - 2_000L, importance = IMPORTANCE_CACHED)
+        snapshots += old(2, dropped.timestampMillis)
+        val c = exit(pid = 3, at = now - 1_000L, importance = IMPORTANCE_VISIBLE)
+        oneLaunch(store, listOf(a, dropped, c), snapshots, limits = limits(backgroundPerDay = 1), newBatchId = newId, submit = { _, extras ->
+            sent += extras
+            "ticket"
+        })
+
+        assertEquals(listOf<Any?>(1, 3, 1), sent.map { it["crash_process_id"] })
+        // C carries only the new drop, under a new id; A's resend is its first attempt, unchanged.
+        assertEquals("batch-2", sent[1]["crash_background_dropped_id"])
+        assertEquals(wire(sent[0]), wire(sent[2]))
+        val counts =
+            sent.drop(1).mapNotNull { it["crash_background_dropped"] as JSONArray? }
+                .flatMap { array -> (0 until array.length()).map { array.getJSONObject(it).getInt("count") } }
+        assertEquals(listOf(1, 1), counts)
+        assertTrue(store.persisted.queue.isEmpty())
+        assertEquals(null, store.persisted.ledger.pending)
+        assertTrue(store.persisted.ledger.accumulating.isEmpty())
     }
 
     @Test
@@ -305,7 +438,7 @@ class AndroidSystemKillReportPersistenceTest {
         assertEquals(2, attempts.size)
         assertTrue(attempts[0], attempts[0].startsWith("System kill:")) // the new visible one first
         assertEquals("old review", attempts[1])
-        assertEquals(listOf(oldReview), store.persisted.queue)
+        assertEquals(listOf(oldReview.copy(attempted = true)), store.persisted.queue)
         assertEquals(listOf(now), store.persisted.recent(SystemKillBudget.Visible, now))
     }
 
@@ -377,7 +510,8 @@ class AndroidSystemKillReportPersistenceTest {
     @Test
     fun aMalformedReportRejectedWith422IsGivenUpAndCountedInCrashRejected() = runTest {
         val bad = QueuedSystemKillReport(SystemKillExitKey(9, now - 50_000L), SystemKillBudget.Visible, 12600001L, "bad", emptyMap())
-        val store = FakeStore(SystemKillProgress(queue = listOf(bad)))
+        // It takes the waiting drop count with it; rejected, the count goes back for a later report.
+        val store = FakeStore(SystemKillProgress(ledger = BackgroundDropLedger().record(12600001L, now - 60_000L), queue = listOf(bad)))
 
         oneLaunch(store, emptyList(), submit = { _, _ -> throw HandsFeedbackException(422, "invalid") })
         assertTrue(store.persisted.queue.isEmpty())
@@ -393,7 +527,7 @@ class AndroidSystemKillReportPersistenceTest {
         assertEquals(422, rejected.getJSONObject(0).getInt("http_status"))
         assertEquals(1, rejected.getJSONObject(0).getInt("count"))
         assertEquals(12600001L, rejected.getJSONObject(0).getLong("version_code"))
-        assertFalse(carried.single().containsKey("crash_background_dropped"))
+        assertEquals(1, (carried.single()["crash_background_dropped"] as JSONArray).getJSONObject(0).getInt("count"))
     }
 
     @Test
@@ -444,6 +578,9 @@ class AndroidSystemKillReportPersistenceTest {
         assertEquals("batch-1", sent[1]["crash_background_dropped_id"])
         assertTrue(store.persisted.queue.isEmpty())
     }
+
+    /** The upload's fields as sent (a JSONArray compares by identity). */
+    private fun wire(extras: Map<String, Any?>): Map<String, String> = extras.mapValues { it.value.toString() }
 
     /**
      * Persisted state. A commit matching [dieOnCommitWhere] is lost and kills the "process"; one

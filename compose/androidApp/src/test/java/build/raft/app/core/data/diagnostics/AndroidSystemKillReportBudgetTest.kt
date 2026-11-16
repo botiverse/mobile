@@ -13,6 +13,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -265,24 +266,33 @@ class AndroidSystemKillReportBudgetTest {
     }
 
     @Test
-    fun aDroppedBatchIsResentWithTheSameIdUntilAnUploadSucceeds() {
+    fun anAttachedBatchLeavesTheLedgerAndARestoredOneIsTakenNextUnderItsId() {
         val first = BackgroundDropLedger().record(12600001L, now - 1_000L)
 
         val (attached, batch) = first.attach { "batch-1" }
         assertEquals("batch-1", batch?.id)
         assertEquals(first.accumulating, batch?.entries)
+        // The batch now belongs to the report that took it: no other report can attach it.
+        assertNull(attached.pending)
+        assertTrue(attached.accumulating.isEmpty())
 
-        // The upload failed; drops recorded meanwhile wait for a later batch.
-        val afterFailure = BackgroundDropLedger.decode(attached.record(12600001L, now - 500L).encode())
-        val (retried, retryBatch) = afterFailure.attach { "batch-2" }
-        assertEquals(batch, retryBatch)
-
-        // Success clears only that batch.
-        val afterSuccess = retried.uploaded(retryBatch?.id)
-        assertNull(afterSuccess.pending)
-        val (_, next) = afterSuccess.attach { "batch-3" }
-        assertEquals("batch-3", next?.id)
+        // Drops recorded meanwhile go to a later batch.
+        val later = BackgroundDropLedger.decode(attached.record(12600001L, now - 500L).encode())
+        val (afterNext, next) = later.attach { "batch-2" }
+        assertEquals("batch-2", next?.id)
         assertEquals(1, next?.entries?.single()?.count)
+
+        // Handed back by an evicted report: the next first upload takes it, same id.
+        val restored = BackgroundDropLedger.decode(afterNext.restore(batch, keepId = true).encode())
+        assertEquals(batch, restored.pending)
+        assertEquals(batch, restored.attach { "unused" }.second)
+        // A second one handed back while one waits, or one of a rejected report, joins the counts.
+        val both = restored.restore(next, keepId = true)
+        assertEquals(batch, both.pending)
+        assertEquals(next!!.entries, both.accumulating)
+        val rejected = afterNext.record(12600001L, now - 500L).restore(next, keepId = false)
+        assertNull(rejected.pending)
+        assertEquals(2, rejected.accumulating.single().count)
 
         // Nothing dropped: nothing attached.
         val empty = BackgroundDropLedger()
