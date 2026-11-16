@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.LocalRaftBarButtons
+import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.data.agentOffersLounge
 import build.raft.app.data.isFor
 import build.raft.app.data.AgentBlockedState
@@ -4498,6 +4499,20 @@ internal fun MemberDetailPageContent(
         // The canonical detail request already includes the freshly merged durable/current
         // activity snapshot. Do not immediately repeat the same visible activity request.
     }
+    // Hands 11c0ed95: this page stays composed under the pages opened over it, and another agent's
+    // profile opened there takes over the shell's one agent-detail store. Uncovered, this page shows
+    // its agent only once the store holds it again: re-run the load above (cached detail at once,
+    // else select and fetch). See MemberDetailAgentStoreReclaimEffect for the loop guards.
+    MemberDetailAgentStoreReclaimEffect(
+        store = provider.agentDetailStore,
+        agentId = memberIdentity?.takeIf { it.kind == MemberKind.Agent }?.memberId,
+        visible = pageVisible && LocalRaftPageActive.current,
+        routeIsAgent = routeState is MemberDetailRouteState.Agent,
+        onReclaim = {
+            bridge.log("member_detail_store_reclaim agentId=${selectedMemberId?.value.orEmpty()}")
+            localAgentDetailRefreshKey += 1
+        },
+    )
     // Realtime `agent:updated { agentId }` (a profile edit, or botiverse/slock #13492: the agent's
     // modelLimits signal may have changed): the app shell re-reads the roster, and the open Profile
     // re-reads this agent's detail in the background, keeping what it shows until the answer lands.
@@ -4713,12 +4728,9 @@ internal fun MemberDetailPageContent(
                 val loungeEnabled =
                     rememberAgentLoungeEnabled(provider.serverFeatureFlags, current.server.id.value, current.server.role)
                 if (member == null) {
-                    Box(
-                        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        RaftCenteredLoading()
-                    }
+                    // The store holds another agent (or none) until this page's load lands: keep the
+                    // page's header and Back around the spinner (Hands 11c0ed95).
+                    MemberDetailLoadingPageShell(onBack = { closeDetail() })
                 } else {
                     val agentMachineId =
                         selectedAgentDetail.summary?.machineId
