@@ -100,7 +100,9 @@ The rule, in full (design doc "Fact 1"):
 4. A row with `position: null`: every live message re-reads it.
 5. An answer at `Pa < P`: keep the row. Otherwise take the answer and apply
    again the seqs applied above `Pa`; those at or below `Pa` are trusted as
-   counted in it, unless an inversion was seen: then re-read the row.
+   counted in it, unless an inversion was seen: then re-read the row. An
+   older answer is kept out whether or not a live message came first
+   (`older_answer_kept`, `older_answer_kept_no_live`).
 6. A mention-only row: a counted message above it, a counted mention
    included, makes it a normal unread row; a mention that does not count (a
    muted conversation) lights the @ and keeps it mention-only.
@@ -108,6 +110,13 @@ The rule, in full (design doc "Fact 1"):
    it, on a mention-only row, or on a row without a position, re-reads the row.
    Either way the applied seqs at or below the read no longer count, so an
    answer below them does not count them again (`read_then_answer_below_applied`).
+   A read covers only what is at or below it: an answer with a message past
+   the read keeps its unread (`read_covers_only_its_activity`, #15049).
+
+The rule has no clock: a row is kept by its positions alone, never by how long
+ago something happened. A client that holds a row read for a while (a local
+read hold) must not depend on that hold to keep a late, older answer out
+(`older_answer_kept_without_hold`).
 
 ### Predicate inputs
 
