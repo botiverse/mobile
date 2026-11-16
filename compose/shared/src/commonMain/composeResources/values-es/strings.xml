@@ -4455,8 +4455,8 @@
     <string name="member_removal_impact_more_computers">otras</string>
     <string name="member_removal_impact_loading">Comprobando qué computadoras se quedan sin conexión…</string>
     <string name="member_removal_impact_failed">No se pudo comprobar qué computadoras se quedan sin conexión.</string>
-    <string name="member_removal_impact_recover_one">Para recuperarla, alguien que siga en este servidor configura esa máquina de nuevo. Sus agentes conservan su configuración.</string>
-    <string name="member_removal_impact_recover_other">Para recuperarlas, alguien que siga en este servidor configura esa máquina de nuevo. Sus agentes conservan su configuración.</string>
+    <string name="member_removal_impact_recover_one">Para que sus agentes vuelvan a funcionar, muévelos a otra computadora. Conservan su configuración.</string>
+    <string name="member_removal_impact_recover_other">Para que sus agentes vuelvan a funcionar, muévelos a otra computadora. Conservan su configuración.</string>
     <string name="member_removal_impact_list_two">%1$s y %2$s</string>
     <string name="member_removal_impact_list_more">%1$s, %2$s</string>
     <string name="member_removal_impact_list_end">%1$s y %2$s</string>

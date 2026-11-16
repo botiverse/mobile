@@ -4532,8 +4532,8 @@
     <string name="member_removal_impact_more_computers">другие</string>
     <string name="member_removal_impact_loading">Проверка, какие компьютеры окажутся не в сети…</string>
     <string name="member_removal_impact_failed">Не удалось проверить, какие компьютеры окажутся не в сети.</string>
-    <string name="member_removal_impact_recover_one">Чтобы вернуть его, кто-то из оставшихся на сервере должен заново настроить эту машину. Настройки агентов сохранятся.</string>
-    <string name="member_removal_impact_recover_other">Чтобы вернуть их, кто-то из оставшихся на сервере должен заново настроить эту машину. Настройки агентов сохранятся.</string>
+    <string name="member_removal_impact_recover_one">Чтобы его агенты снова заработали, перенесите их на другой компьютер. Настройки агентов сохранятся.</string>
+    <string name="member_removal_impact_recover_other">Чтобы их агенты снова заработали, перенесите их на другой компьютер. Настройки агентов сохранятся.</string>
     <string name="member_removal_impact_list_two">%1$s и %2$s</string>
     <string name="member_removal_impact_list_more">%1$s, %2$s</string>
     <string name="member_removal_impact_list_end">%1$s и %2$s</string>

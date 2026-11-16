@@ -62,7 +62,7 @@ class MemberRemovalImpactUiTest {
             "Leaving takes the 2 Computers you attached offline: Alpha and Beta. 1 agent on them belongs to other people and goes offline too.",
             substring = true,
         ).assertIsDisplayed()
-        onNodeWithText("To bring them back, someone who stays in this server sets up that machine again.", substring = true).assertIsDisplayed()
+        onNodeWithText("To get their agents running again, move them to another computer.", substring = true).assertIsDisplayed()
         onNodeWithTag(SETTINGS_SERVER_LEAVE_CONFIRM_TAG).assertIsEnabled().performClick()
         waitForIdle()
         assertEquals(1, leaves.size)
@@ -147,7 +147,7 @@ class MemberRemovalImpactUiTest {
             "Removing Bea takes 1 Computer offline: Studio. 1 agent on them belongs to other people and goes offline too.",
             substring = true,
         ).assertIsDisplayed()
-        onNodeWithText("To bring it back,", substring = true).assertIsDisplayed()
+        onNodeWithText("To get its agents running again,", substring = true).assertIsDisplayed()
         onNodeWithTag(MEMBER_REMOVE_CONFIRM_TAG).assertIsEnabled()
     }
 

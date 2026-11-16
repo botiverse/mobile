@@ -4734,8 +4734,8 @@
     <string name="member_removal_impact_more_computers">其他</string>
     <string name="member_removal_impact_loading">正在确认哪些 Computer 会离线…</string>
     <string name="member_removal_impact_failed">没能确认哪些 Computer 会离线。</string>
-    <string name="member_removal_impact_recover_one">要恢复，需要一位留在这个服务器里的人重新设置那台机器。上面的 Agent 会保留原来的设置。</string>
-    <string name="member_removal_impact_recover_other">要恢复，需要一位留在这个服务器里的人重新设置那台机器。上面的 Agent 会保留原来的设置。</string>
+    <string name="member_removal_impact_recover_one">要让上面的 Agent 重新运行，需要把它们移到另一台 Computer 上。它们会保留原来的设置。</string>
+    <string name="member_removal_impact_recover_other">要让上面的 Agent 重新运行，需要把它们移到另一台 Computer 上。它们会保留原来的设置。</string>
     <string name="member_removal_impact_list_two">%1$s和%2$s</string>
     <string name="member_removal_impact_list_more">%1$s、%2$s</string>
     <string name="member_removal_impact_list_end">%1$s和%2$s</string>
