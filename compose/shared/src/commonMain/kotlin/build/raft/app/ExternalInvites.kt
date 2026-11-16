@@ -11,6 +11,11 @@ import build.raft.app.data.ExternalInviteAnswer
 import build.raft.app.data.ExternalInvitePreview
 import build.raft.app.data.ExternalInviteRefusal
 import build.raft.app.data.ExternalInvitesApi
+import build.raft.app.data.InviteConnectableServer
+import build.raft.app.data.OwnConnectableServers
+import build.raft.app.data.RealJointChannelRepository
+import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.data.SendExternalInvitesResult
 import build.raft.app.data.SentExternalInvite
 import build.raft.app.data.parseExternalInviteEmailEntries
@@ -227,9 +232,10 @@ internal fun externalInviteSlotsLine(slotsLeft: Int?, taking: Int): ExternalInvi
  * While typing (web `typedSlotsHint`): every entry counted as an invite until the review sorts
  * them, said only within the 20 at a time; Next stays open (the review counts what is sent).
  */
-internal fun externalInviteTypedSlotsLine(channelSlotsLeft: Int?, entries: Int): ExternalInviteSlotsLine? {
+internal fun externalInviteTypedSlotsLine(channelSlotsLeft: Int?, entries: Int, servers: Int = 0): ExternalInviteSlotsLine? {
     if (channelSlotsLeft == null || channelSlotsLeft > EXTERNAL_INVITE_MAX_EMAILS || entries == 0) return null
-    val left = channelSlotsLeft - entries
+    // Checked servers take a slot each too (web `typedLeft`).
+    val left = channelSlotsLeft - entries - servers
     return when {
         channelSlotsLeft == 0 -> ExternalInviteSlotsLine.Full
         left < 0 -> ExternalInviteSlotsLine.Over(room = channelSlotsLeft, count = -left)
@@ -238,26 +244,50 @@ internal fun externalInviteTypedSlotsLine(channelSlotsLeft: Int?, entries: Int):
     }
 }
 
-/** Invite people outside {server}: the emails, then the review, then the send (web `ExternalInviteSteps`). */
+/**
+ * Web `ExternalInviteSteps`' review of a choice with no emails, only servers (`NO_EMAILS_PREVIEW`):
+ * nothing to classify, no request.
+ */
+internal val NoEmailsExternalInvitePreview = ExternalInvitePreview()
+
+/**
+ * Web `AddExternalMemberDialog`'s servers: "Your servers" less the ones already active in the
+ * channel (a joint channel this server hosts). An unknown [connected] (not joint, or its servers
+ * not read) leaves the list as it is; the server refuses a connected one as `already_connected`.
+ */
+internal fun externalInviteOfferedServers(
+    own: List<InviteConnectableServer>,
+    connected: Set<String>,
+): List<InviteConnectableServer> = if (connected.isEmpty()) own else own.filterNot { it.id in connected }
+
+/** Invite people outside {server}: the emails and your servers, then the review, then the send (web `ExternalInviteSteps`). */
 internal data class ExternalInviteDialogState(
     val text: String = "",
     val preview: ExternalInvitePreview? = null,
     val busy: Boolean = false,
     val failure: ExternalInviteFailure? = null,
+    /** "Your servers" offered beside the emails (web `servers`); none: the section isn't drawn. */
+    val servers: List<InviteConnectableServer> = emptyList(),
+    /** The checked servers' ids. */
+    val serverIds: Set<String> = emptySet(),
 ) {
     val entries: List<String> get() = parseExternalInviteEmailEntries(text)
 
     /** How many entries over the 20 at a time. */
     val overBy: Int get() = entries.size - EXTERNAL_INVITE_MAX_EMAILS
 
+    /** The checked servers still offered, in the list's order: what the confirm connects (web `chosenServers`). */
+    val chosenServers: List<InviteConnectableServer> get() = servers.filter { it.id in serverIds && !it.atLimit }
+
     val inviteCount: Int get() = preview?.valid?.size ?: 0
 
-    /** Invited, or added to the channel as members of the server: what the commit does. */
-    val actionCount: Int get() = inviteCount + (preview?.alreadyMembers?.size ?: 0)
+    /** Invited, added to the channel as members of the server, or servers connected: what the commit does. */
+    val actionCount: Int get() = inviteCount + (preview?.alreadyMembers?.size ?: 0) + chosenServers.size
 
-    val overSlots: Int get() = preview?.slotsLeft?.let { inviteCount - it } ?: 0
+    /** Each invite and each server checked takes a slot; members added none. */
+    val overSlots: Int get() = preview?.slotsLeft?.let { inviteCount + chosenServers.size - it } ?: 0
 
-    val canNext: Boolean get() = !busy && entries.isNotEmpty() && overBy <= 0
+    val canNext: Boolean get() = !busy && (entries.isNotEmpty() || chosenServers.isNotEmpty()) && overBy <= 0
 
     val canSend: Boolean get() = !busy && preview != null && actionCount > 0 && overSlots <= 0
 }
@@ -273,6 +303,67 @@ internal sealed interface ExternalInvitesEffect {
 
     /** A row action (Resend) refused: a toast with the text and trace ID. */
     data class Failed(val failure: ExternalInviteFailure) : ExternalInvitesEffect
+
+    /** Web `channel.externalInvite.serversConnected`. */
+    data class ServersConnected(val count: Int) : ExternalInvitesEffect
+
+    /** Web `channel.externalInvite.serversConnecting`: the channel is converted first. */
+    data class ServersConnecting(val count: Int) : ExternalInvitesEffect
+
+    /** One chosen server refused (web `serverRefused` with the reason as its description). */
+    data class ServerRefused(val serverName: String, val reason: ExternalInviteServerRefusal, val traceId: String?) : ExternalInvitesEffect
+
+    /** Connecting the servers failed as a whole after the invites went out (web `serversFailed`): one toast. */
+    data class ServersNotConnected(val traceId: String?) : ExternalInvitesEffect
+}
+
+/** Why a chosen server wasn't connected, as web `toastServerOutcomes` words it. */
+internal sealed interface ExternalInviteServerRefusal {
+    /** The host's own limit: this dialog's plan sentence (`channel.externalInvite.error.freeLimit`). */
+    data object HostFreeLimit : ExternalInviteServerRefusal
+
+    /** Too many guests for the joint's party cap (`channel.edit.convertJointPartyLimit`). */
+    data object PartyLimit : ExternalInviteServerRefusal
+
+    /** The connecting server's own refusal (web `inviteeErrorMessage(..., "connect", { id })`). */
+    data class Invitee(val message: InviteeMessage) : ExternalInviteServerRefusal
+}
+
+/** Web `toastServerOutcomes`' reason for one refused server. */
+internal fun externalInviteServerRefusal(outcome: ServerConnectOutcome.Refused): ExternalInviteServerRefusal {
+    val hostLimit =
+        outcome.limitSide == "host" ||
+            outcome.code == "joint_channel_free_limit_reached" ||
+            outcome.code == "joint_channel_plan_limit_reached"
+    return when {
+        hostLimit -> ExternalInviteServerRefusal.HostFreeLimit
+        outcome.code == "joint_party_limit" -> ExternalInviteServerRefusal.PartyLimit
+        else ->
+            ExternalInviteServerRefusal.Invitee(
+                inviteeErrorMessage(outcome.asRefusal(), InviteeAction.Connect, target = null, targetId = outcome.serverId)
+            )
+    }
+}
+
+/**
+ * Web `toastServerOutcomes`: one toast for what the chosen servers came to (connected, being
+ * connected while the channel is converted) and one per server refused, saying why.
+ */
+internal fun externalInviteServerEffects(
+    outcomes: List<ServerConnectOutcome>,
+    servers: List<InviteConnectableServer>,
+    traceId: String?,
+): List<ExternalInvitesEffect> {
+    val connected = outcomes.count { it is ServerConnectOutcome.Connected }
+    val connecting = outcomes.count { it is ServerConnectOutcome.Connecting }
+    return buildList {
+        if (connected > 0) add(ExternalInvitesEffect.ServersConnected(connected))
+        if (connecting > 0) add(ExternalInvitesEffect.ServersConnecting(connecting))
+        outcomes.filterIsInstance<ServerConnectOutcome.Refused>().forEach { outcome ->
+            val name = servers.firstOrNull { it.id == outcome.serverId }?.name.orEmpty()
+            add(ExternalInvitesEffect.ServerRefused(name, externalInviteServerRefusal(outcome), traceId))
+        }
+    }
 }
 
 internal data class ExternalInvitesState(
@@ -293,11 +384,15 @@ internal data class ExternalInvitesState(
 internal sealed interface ExternalInvitesIntent {
     data object Load : ExternalInvitesIntent
 
-    data object OpenDialog : ExternalInvitesIntent
+    /** [joint]: a joint channel this server hosts, whose connected servers aren't offered. */
+    data class OpenDialog(val joint: Boolean = false) : ExternalInvitesIntent
 
     data object CloseDialog : ExternalInvitesIntent
 
     data class SetText(val text: String) : ExternalInvitesIntent
+
+    /** The checked "Your servers". */
+    data class SetServers(val serverIds: Set<String>) : ExternalInvitesIntent
 
     data object Next : ExternalInvitesIntent
 
@@ -327,6 +422,14 @@ internal interface ExternalInvitesDataSource {
     suspend fun resend(inviteId: String): DataResult<ExternalInviteAnswer<SentExternalInvite>>
 
     suspend fun revoke(inviteId: String): DataResult<ExternalInviteAnswer<Unit>>
+
+    /** "Your servers" (`GET channels/external-connect-servers`). */
+    suspend fun ownConnectableServers(): DataResult<ExternalInviteAnswer<OwnConnectableServers>>
+
+    /** The servers active in this (joint) channel, to leave out of "Your servers"; null when unknown. */
+    suspend fun connectedServerIds(): Set<String>?
+
+    suspend fun connectOwnServers(serverIds: List<String>, makePrivate: Boolean): DataResult<ExternalInviteAnswer<List<ServerConnectOutcome>>>
 }
 
 /** The members page's data source: every call under the route's authority (a switched account reads nothing). */
@@ -350,6 +453,20 @@ internal class RealExternalInvitesDataSource(
     override suspend fun resend(inviteId: String) = api { it.resend(channelId, inviteId) }
 
     override suspend fun revoke(inviteId: String) = api { it.revoke(channelId, inviteId) }
+
+    override suspend fun ownConnectableServers() = api { it.ownConnectableServers() }
+
+    override suspend fun connectedServerIds(): Set<String>? {
+        val result =
+            runner.run { _, networkClient ->
+                RealJointChannelRepository(networkClient) { logger("external_invites $it") }
+                    .loadConnections(channelId, DataRequestPriority.Visible)
+            }
+        return (result as? DataResult.Content)?.data?.servers?.filter { it.active }?.map { it.serverId }?.toSet()
+    }
+
+    override suspend fun connectOwnServers(serverIds: List<String>, makePrivate: Boolean) =
+        api { it.connectOwnServers(channelId, serverIds, makePrivate) }
 }
 
 /**
@@ -364,14 +481,17 @@ internal class ExternalInvitesStore(
     private val mutableState = MutableStateFlow(ExternalInvitesState())
     val state: StateFlow<ExternalInvitesState> = mutableState.asStateFlow()
     private var generation = 0
+    /** Each opening of the dialog: an older opening's "Your servers" answer is dropped. */
+    private var dialogGeneration = 0
 
     fun dispatch(intent: ExternalInvitesIntent) {
         when (intent) {
             ExternalInvitesIntent.Load -> load()
-            ExternalInvitesIntent.OpenDialog -> mutableState.update { it.copy(dialog = ExternalInviteDialogState()) }
+            is ExternalInvitesIntent.OpenDialog -> openDialog(intent.joint)
             ExternalInvitesIntent.CloseDialog ->
                 mutableState.update { if (it.dialog?.busy == true) it else it.copy(dialog = null) }
             is ExternalInvitesIntent.SetText -> updateDialog { it.copy(text = intent.text, failure = null) }
+            is ExternalInvitesIntent.SetServers -> updateDialog { if (it.busy) it else it.copy(serverIds = intent.serverIds) }
             ExternalInvitesIntent.Next -> next()
             ExternalInvitesIntent.Back -> updateDialog { if (it.busy) it else it.copy(preview = null, failure = null) }
             is ExternalInvitesIntent.Send -> send(intent.makePrivate)
@@ -413,10 +533,32 @@ internal class ExternalInvitesStore(
         }
     }
 
+    /**
+     * Web `useOwnConnectableServers(true)`, read once per opening: empty until the answer is in,
+     * and when the read fails (the section isn't drawn). A joint channel leaves out its own.
+     */
+    private fun openDialog(joint: Boolean) {
+        val mine = ++dialogGeneration
+        mutableState.update { it.copy(dialog = ExternalInviteDialogState()) }
+        scope.launch {
+            val own = ((dataSource.ownConnectableServers() as? DataResult.Content)?.data as? ExternalInviteAnswer.Ok)?.value?.servers
+            if (own.isNullOrEmpty() || mine != dialogGeneration) return@launch
+            val connected = if (joint) dataSource.connectedServerIds().orEmpty() else emptySet()
+            if (mine != dialogGeneration) return@launch
+            val offered = externalInviteOfferedServers(own, connected)
+            updateDialog { it.copy(servers = offered) }
+        }
+    }
+
     private fun next() {
         val dialog = mutableState.value.dialog ?: return
         if (!dialog.canNext) return
         val entries = dialog.entries
+        // Only servers: nothing for the server to classify.
+        if (entries.isEmpty()) {
+            updateDialog { it.copy(preview = NoEmailsExternalInvitePreview, failure = null) }
+            return
+        }
         updateDialog { it.copy(busy = true, failure = null) }
         scope.launch {
             val result = dataSource.preview(entries)
@@ -437,25 +579,53 @@ internal class ExternalInvitesStore(
         if (!dialog.canSend) return
         // The previewed addresses, so what is sent is what was reviewed.
         val addresses = preview.valid + preview.alreadyMembers
+        val chosen = dialog.chosenServers
         updateDialog { it.copy(busy = true, failure = null) }
         scope.launch {
-            val result = dataSource.send(addresses, makePrivate)
-            when (val answer = (result as? DataResult.Content)?.data) {
-                is ExternalInviteAnswer.Ok -> {
-                    val sent = answer.value.sent.size
-                    val added = answer.value.added.size
-                    mutableState.update { it.copy(dialog = null) }
-                    emit(
-                        *listOfNotNull(
-                            ExternalInvitesEffect.Sent(sent).takeIf { sent > 0 },
-                            ExternalInvitesEffect.Added(added).takeIf { added > 0 },
-                        ).toTypedArray()
-                    )
-                    load()
+            // Web `sendInvitesAndConnectServers`: the invites first (a channel being converted for
+            // a server takes no send), then the servers. Either may be empty.
+            var sent = 0
+            var added = 0
+            if (addresses.isNotEmpty()) {
+                val result = dataSource.send(addresses, makePrivate)
+                when (val answer = (result as? DataResult.Content)?.data) {
+                    is ExternalInviteAnswer.Ok -> {
+                        sent = answer.value.sent.size
+                        added = answer.value.added.size
+                    }
+                    is ExternalInviteAnswer.Refused -> {
+                        updateDialog { it.copy(busy = false, failure = answer.refusal.toFailure()) }
+                        return@launch
+                    }
+                    null -> {
+                        updateDialog { it.copy(busy = false, failure = result.toFailure()) }
+                        return@launch
+                    }
                 }
-                is ExternalInviteAnswer.Refused -> updateDialog { it.copy(busy = false, failure = answer.refusal.toFailure()) }
-                null -> updateDialog { it.copy(busy = false, failure = result.toFailure()) }
             }
+            val serverEffects =
+                if (chosen.isEmpty()) {
+                    emptyList()
+                } else {
+                    // A failed connect never hides the send that went through: one toast says the
+                    // servers weren't connected.
+                    val result = dataSource.connectOwnServers(chosen.map { it.id }, makePrivate)
+                    when (val answer = (result as? DataResult.Content)?.data) {
+                        is ExternalInviteAnswer.Ok -> externalInviteServerEffects(answer.value, chosen, answer.traceId)
+                        is ExternalInviteAnswer.Refused -> listOf(ExternalInvitesEffect.ServersNotConnected(answer.refusal.traceId))
+                        null -> listOf(ExternalInvitesEffect.ServersNotConnected((result as? DataResult.Error)?.error?.traceId))
+                    }
+                }
+            mutableState.update { it.copy(dialog = null) }
+            emit(
+                *(
+                    listOfNotNull(
+                        ExternalInvitesEffect.Sent(sent).takeIf { sent > 0 },
+                        ExternalInvitesEffect.Added(added).takeIf { added > 0 },
+                    ) + serverEffects
+                ).toTypedArray()
+            )
+            load()
         }
     }
 

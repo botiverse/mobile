@@ -15,6 +15,8 @@ import build.raft.app.data.ChannelExternalInviteList
 import build.raft.app.data.DataResult
 import build.raft.app.data.ExternalInviteAnswer
 import build.raft.app.data.ExternalInvitePreview
+import build.raft.app.data.InviteConnectableServer
+import build.raft.app.data.OwnConnectableServers
 import build.raft.app.data.ExternalInviteRefusal
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,7 +49,7 @@ class ExternalInvitesUiTest {
             val state by store.state.collectAsState()
             RaftDesignSystemTheme {
                 Column {
-                    ExternalInviteEntryRow(serverName = "Acme", enabled = true, onClick = { store.dispatch(ExternalInvitesIntent.OpenDialog) })
+                    ExternalInviteEntryRow(serverName = "Acme", enabled = true, onClick = { store.dispatch(ExternalInvitesIntent.OpenDialog()) })
                     state.invites.forEachIndexed { index, invite ->
                         ExternalInviteRow(
                             invite = invite,
@@ -69,6 +71,7 @@ class ExternalInvitesUiTest {
                         channelSlotsLeft = state.slotsLeft,
                         onDismiss = { store.dispatch(ExternalInvitesIntent.CloseDialog) },
                         onTextChange = { store.dispatch(ExternalInvitesIntent.SetText(it)) },
+                        onServersChange = { store.dispatch(ExternalInvitesIntent.SetServers(it)) },
                         onNext = { store.dispatch(ExternalInvitesIntent.Next) },
                         onBack = { store.dispatch(ExternalInvitesIntent.Back) },
                         onSend = { store.dispatch(ExternalInvitesIntent.Send(makePrivate = true)) },
@@ -177,6 +180,42 @@ class ExternalInvitesUiTest {
     }
 
     @Test
+    fun yourServersAreListedUnderTheEmailsAndAPickedOneConnectsOnInvite() = runRobolectricComposeUiTest {
+        val source = FakeExternalInvitesDataSource()
+        source.ownServersAnswer =
+            DataResult.Content(
+                ExternalInviteAnswer.Ok(
+                    OwnConnectableServers(
+                        listOf(
+                            InviteConnectableServer(id = "s2", name = "Botiverse", slug = "botiverse", canConnectDirectly = true),
+                            InviteConnectableServer(id = "s3", name = "Kaze", slug = "kaze", canConnectDirectly = true, atLimit = true),
+                        )
+                    )
+                )
+            )
+        show(source)
+        onNodeWithTag(ExternalInviteEntryTag, useUnmergedTree = true).performClick()
+        waitForIdle()
+        assertEquals(1, count(ExternalInviteServersTag))
+        assertTrue(shown("Connect your servers"))
+        assertTrue(shown("At external channel limit"))
+
+        onNodeWithText("Botiverse", useUnmergedTree = true).performClick()
+        waitForIdle()
+        onNodeWithText("Next", useUnmergedTree = true).performClick()
+        waitForIdle()
+        assertEquals(emptyList(), source.previewCalls)
+        assertEquals(1, count(ExternalInviteReviewServerTag))
+        assertTrue(shown("Botiverse connects now · no invite needed"))
+
+        onNodeWithText("Invite", useUnmergedTree = true).performClick()
+        waitForIdle()
+        assertEquals(emptyList(), source.sendCalls)
+        assertEquals(listOf(listOf("s2") to true), source.connectCalls)
+        assertEquals(0, count(ExternalInviteSheetTag))
+    }
+
+    @Test
     fun theFreePlanLimitOffersUpgradeWithTheTraceId() = runRobolectricComposeUiTest {
         val source = FakeExternalInvitesDataSource()
         source.previewAnswer =
@@ -187,7 +226,7 @@ class ExternalInvitesUiTest {
             )
         val store = show(source)
         runOnIdle {
-            store.dispatch(ExternalInvitesIntent.OpenDialog)
+            store.dispatch(ExternalInvitesIntent.OpenDialog())
             store.dispatch(ExternalInvitesIntent.SetText("new@example.com"))
         }
         waitForIdle()

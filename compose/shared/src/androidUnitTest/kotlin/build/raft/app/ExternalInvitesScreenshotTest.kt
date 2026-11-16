@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ExternalInviteGuestElsewhere
 import build.raft.app.data.ExternalInvitePreview
+import build.raft.app.data.InviteConnectableServer
 import build.raft.app.resources.Res
 import build.raft.app.resources.channel_external_invite_title
 import build.raft.app.resources.common_close
@@ -55,6 +56,33 @@ class ExternalInvitesScreenshotTest {
                 ),
         )
 
+    private val ownServers =
+        listOf(
+            InviteConnectableServer(id = "s2", name = "Botiverse", slug = "botiverse", canConnectDirectly = true),
+            InviteConnectableServer(id = "s3", name = "Kaze", slug = "kaze", canConnectDirectly = true),
+            InviteConnectableServer(id = "s4", name = "Northwind", slug = "northwind", canConnectDirectly = true, atLimit = true),
+        )
+
+    /** The emails empty, "Connect your servers" with one checked (web `ExternalInviteServersField`). */
+    private val servers = ExternalInviteDialogState(servers = ownServers, serverIds = setOf("s3"))
+
+    private val serversReview =
+        ExternalInviteDialogState(
+            text = "lena@contoso.com",
+            preview = ExternalInvitePreview(valid = listOf("lena@contoso.com"), slotsLeft = 28),
+            servers = ownServers,
+            serverIds = setOf("s2", "s3"),
+        )
+
+    @Test
+    fun serversLight() = sheet("channel.external-invite.servers", RaftAppAppearance.Light, servers, historyHint = true)
+
+    @Test
+    fun serversDark() = sheet("channel.external-invite.servers.dark", RaftAppAppearance.Dark, servers, historyHint = true)
+
+    @Test
+    fun serversReviewLight() = sheet("channel.external-invite.servers-review", RaftAppAppearance.Light, serversReview)
+
     @Test
     fun emailsLight() = sheet("channel.external-invite.emails", RaftAppAppearance.Light, emails)
 
@@ -70,7 +98,7 @@ class ExternalInvitesScreenshotTest {
     @Test
     fun invitedRowsDark() = rows("channel.external-invite.rows.dark", RaftAppAppearance.Dark)
 
-    private fun sheet(name: String, appearance: RaftAppAppearance, state: ExternalInviteDialogState) =
+    private fun sheet(name: String, appearance: RaftAppAppearance, state: ExternalInviteDialogState, historyHint: Boolean = false) =
         capture(name, appearance) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
                 RaftDialogSheetSurface(
@@ -90,6 +118,7 @@ class ExternalInvitesScreenshotTest {
                         channelSlotsLeft = 3,
                         onTextChange = {},
                         onUpgrade = {},
+                        serversHistoryHint = historyHint,
                     )
                 }
             }

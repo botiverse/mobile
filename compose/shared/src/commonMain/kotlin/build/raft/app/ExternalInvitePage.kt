@@ -207,28 +207,32 @@ private data class InviteValues(val channel: String, val server: String, val inv
 
 @Composable
 private fun inviteeMessageText(message: InviteeMessage, values: InviteValues, target: String): String =
+    inviteeMessageDesc(message, target = target, channel = values.channel, server = values.server, inviter = values.inviter).localized()
+
+/** A refusal's text (web `INVITEE_ERROR_IDS`), values {channel} (with its #), {server} the host, {target}, {inviter}. */
+internal fun inviteeMessageDesc(message: InviteeMessage, target: String, channel: String, server: String, inviter: String): StringDesc =
     when (message) {
-        InviteeMessage.GuestUnavailable -> stringResource(Res.string.external_invite_error_guest_unavailable, values.channel)
-        InviteeMessage.AlreadyMember -> stringResource(Res.string.external_invite_error_already_member, values.server, values.channel)
-        InviteeMessage.GuestElsewhere -> stringResource(Res.string.external_invite_error_guest_elsewhere, values.channel)
-        InviteeMessage.ChannelFull -> stringResource(Res.string.external_invite_error_channel_full, values.channel, values.inviter)
-        InviteeMessage.InvalidServer -> stringResource(Res.string.external_invite_error_invalid_server, target, values.channel)
-        InviteeMessage.ServerAdminRequired -> stringResource(Res.string.external_invite_error_server_admin_required, target)
-        InviteeMessage.ServerMembershipRequired -> stringResource(Res.string.external_invite_error_server_membership_required, target)
-        InviteeMessage.InvalidApprover -> stringResource(Res.string.external_invite_error_invalid_approver, target)
-        InviteeMessage.GuestsPresent -> stringResource(Res.string.external_invite_error_guests_present, values.channel)
+        InviteeMessage.GuestUnavailable -> Res.string.external_invite_error_guest_unavailable.format(channel)
+        InviteeMessage.AlreadyMember -> Res.string.external_invite_error_already_member.format(server, channel)
+        InviteeMessage.GuestElsewhere -> Res.string.external_invite_error_guest_elsewhere.format(channel)
+        InviteeMessage.ChannelFull -> Res.string.external_invite_error_channel_full.format(channel, inviter)
+        InviteeMessage.InvalidServer -> Res.string.external_invite_error_invalid_server.format(target, channel)
+        InviteeMessage.ServerAdminRequired -> Res.string.external_invite_error_server_admin_required.format(target)
+        InviteeMessage.ServerMembershipRequired -> Res.string.external_invite_error_server_membership_required.format(target)
+        InviteeMessage.InvalidApprover -> Res.string.external_invite_error_invalid_approver.format(target)
+        InviteeMessage.GuestsPresent -> Res.string.external_invite_error_guests_present.format(channel)
         InviteeMessage.JointPartyLimit ->
-            stringResource(Res.string.external_invite_error_joint_party_limit, values.channel, JOINT_CHANNEL_MAX_SERVERS, values.inviter)
-        InviteeMessage.AlreadyConnected -> stringResource(Res.string.external_invite_error_already_connected, target, values.channel)
-        InviteeMessage.JointServerLimit -> stringResource(Res.string.external_invite_error_joint_server_limit, values.channel)
-        InviteeMessage.HostLimit -> stringResource(Res.string.external_invite_error_host_limit, values.server, values.inviter)
-        InviteeMessage.TargetFreeLimit -> stringResource(Res.string.external_invite_error_target_free_limit, target)
-        InviteeMessage.JointFreeServerLimit -> stringResource(Res.string.external_invite_error_joint_free_server_limit, values.channel, target)
-        InviteeMessage.ConnectInProgress -> stringResource(Res.string.external_invite_error_connect_in_progress, values.channel)
-        InviteeMessage.Archived -> stringResource(Res.string.external_invite_error_archived, values.channel)
-        InviteeMessage.Busy -> stringResource(Res.string.external_invite_error_busy, values.channel)
-        InviteeMessage.TooManyAttempts -> stringResource(Res.string.external_invite_error_too_many_attempts)
-        InviteeMessage.Generic -> stringResource(Res.string.external_invite_error_generic)
+            Res.string.external_invite_error_joint_party_limit.format(channel, JOINT_CHANNEL_MAX_SERVERS, inviter)
+        InviteeMessage.AlreadyConnected -> Res.string.external_invite_error_already_connected.format(target, channel)
+        InviteeMessage.JointServerLimit -> Res.string.external_invite_error_joint_server_limit.format(channel)
+        InviteeMessage.HostLimit -> Res.string.external_invite_error_host_limit.format(server, inviter)
+        InviteeMessage.TargetFreeLimit -> Res.string.external_invite_error_target_free_limit.format(target)
+        InviteeMessage.JointFreeServerLimit -> Res.string.external_invite_error_joint_free_server_limit.format(channel, target)
+        InviteeMessage.ConnectInProgress -> Res.string.external_invite_error_connect_in_progress.format(channel)
+        InviteeMessage.Archived -> Res.string.external_invite_error_archived.format(channel)
+        InviteeMessage.Busy -> Res.string.external_invite_error_busy.format(channel)
+        InviteeMessage.TooManyAttempts -> Res.string.external_invite_error_too_many_attempts.desc()
+        InviteeMessage.Generic -> Res.string.external_invite_error_generic.desc()
     }
 
 @Composable
