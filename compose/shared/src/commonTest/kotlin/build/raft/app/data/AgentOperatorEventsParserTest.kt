@@ -66,7 +66,7 @@ class AgentOperatorEventsParserTest {
         val page = parseSharedAgentOperatorEventsPage(body) { logs += it }!!
         assertEquals(kinds, page.events.map { it.kind.wireValue })
         assertEquals(true, page.truncated)
-        assertEquals(emptyList(), logs)
+        assertEquals(emptyList<String>(), logs)
     }
 
     @Test
@@ -133,7 +133,7 @@ class AgentOperatorEventsParserTest {
 
         val idle = agentActivityOverviewTimeline(turns, events, runningStartEpochMillis = null)
         assertEquals(listOf("late", "run"), idle.eventsBeforeRunning.map { it.id })
-        assertEquals(emptyList(), idle.eventsDuringRunning)
+        assertEquals(emptyList<AgentOperatorEvent>(), idle.eventsDuringRunning)
         assertEquals(listOf(AgentActivityOverviewSegment.Turns(turns)), agentActivityOverviewTimeline(turns, emptyList(), null).segments)
     }
 }

@@ -529,7 +529,7 @@ class SharedAgentActivityOverviewStoreTest {
         val store = openLoaded(repository, page(turn("t1", 3_000)))
         // An older server without the route: the overview shows the turns alone.
         assertEquals(1, repository.operatorEventCalls.size)
-        assertEquals(emptyList(), store.state.value.operatorEvents)
+        assertEquals(emptyList<AgentOperatorEvent>(), store.state.value.operatorEvents)
         assertEquals(AgentActivityOverviewStatus.Loaded, store.state.value.status)
 
         repository.operatorEventAnswers += events(operatorEvent("e1", 2_500))
