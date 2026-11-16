@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -359,7 +361,7 @@ internal fun SettingsFeedbackTicketsScreen(
     timeContext: RaftTimeContext?,
     actions: SettingsFeedbackTicketsActions,
     bottomContentPadding: androidx.compose.ui.unit.Dp = 0.dp,
-    /** The client this app files as: a ticket filed on another one names it on its first message. */
+    /** The client this app files as: a ticket filed on another one names it on its row and its first message. */
     ownClient: FeedbackClient? = feedbackOwnClient(raftFeedbackWebViewClientKind()),
     replyComposer: SettingsFeedbackReplyComposer = { draft, enabled, sending, error, onChange, onSend ->
         SettingsFeedbackThreadReplyComposer(draft, enabled, sending, error, onChange, onSend, bottomContentPadding)
@@ -414,7 +416,7 @@ internal fun SettingsFeedbackTicketsScreen(
             },
     ) {
         if (detail == null) {
-            FeedbackTicketList(state.list, timeContext, actions, bottomContentPadding, showAgentHint = state.showAgentHint)
+            FeedbackTicketList(state.list, timeContext, actions, bottomContentPadding, ownClient = ownClient, showAgentHint = state.showAgentHint)
         } else {
             FeedbackTicketDetail(detail, timeContext, actions, replyComposer, bottomContentPadding, ownClient = ownClient, onOpenCloseDialog = openCloseDialog)
         }
@@ -498,6 +500,7 @@ private fun FeedbackTicketList(
     timeContext: RaftTimeContext?,
     actions: SettingsFeedbackTicketsActions,
     bottomContentPadding: androidx.compose.ui.unit.Dp,
+    ownClient: FeedbackClient?,
     showAgentHint: Boolean = false,
 ) {
     Column(Modifier.fillMaxSize()) {
@@ -575,7 +578,7 @@ private fun FeedbackTicketList(
                             }
                         }
                         items(visible, key = { it.id }) { ticket ->
-                            FeedbackTicketRow(ticket, timeContext, onClick = { actions.onOpenTicket(ticket.id) })
+                            FeedbackTicketRow(ticket, timeContext, filedFrom = feedbackForeignClient(ticket, ownClient), onClick = { actions.onOpenTicket(ticket.id) })
                         }
                         if (list.nextCursor != null) {
                             item(key = "more") {
@@ -695,15 +698,27 @@ private fun FeedbackErrorBannerBody(kind: FeedbackErrorKind?, retrying: Boolean,
     )
 }
 
-/** Web FeedbackTicketRow: kind and first line, the latest comment, status / replies / new, the time. */
+/**
+ * Web FeedbackTicketRow: kind and first line, the latest comment, status / replies / new, the time.
+ * [filedFrom]: the client it was filed on when that is not this one (design
+ * settings.md "Feedback", option G; Hands feedback-react 0.5.6): the same Badge as its first
+ * message, last in the metadata, and the row's label ends with "Filed on …".
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FeedbackTicketRow(ticket: FeedbackTicket, timeContext: RaftTimeContext?, onClick: () -> Unit) {
+private fun FeedbackTicketRow(ticket: FeedbackTicket, timeContext: RaftTimeContext?, filedFrom: FeedbackClient?, onClick: () -> Unit) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val newCount = ticket.newCount
     val title = ticket.title
-    val label =
+    val unreadLabel =
         if (newCount > 0) stringResource(Res.string.settings_feedback_tickets_unread_label, title, newCount) else title
+    val label =
+        if (filedFrom != null) {
+            stringResource(Res.string.settings_feedback_tickets_filed_on_label, unreadLabel, stringResource(filedFrom.labelResource()))
+        } else {
+            unreadLabel
+        }
     Row(
         Modifier
             .fillMaxWidth()
@@ -754,7 +769,12 @@ private fun FeedbackTicketRow(ticket: FeedbackTicket, timeContext: RaftTimeConte
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Wraps rather than clips once the client joins the state, the replies and the new count.
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
                 FeedbackStatusChip(ticket)
                 RaftBadge(
                     text = feedbackReplyCountLabel(ticket.commentCount),
@@ -768,6 +788,7 @@ private fun FeedbackTicketRow(ticket: FeedbackTicket, timeContext: RaftTimeConte
                         variant = RaftBadgeVariant.Accent,
                     )
                 }
+                if (filedFrom != null) FeedbackFiledFromBadge(filedFrom, testTag = SettingsFeedbackTicketRowFiledFromTag)
             }
         }
     }
@@ -1081,14 +1102,15 @@ private fun FeedbackConversationMessage(
 
 /**
  * The client a ticket was filed on, when it is not this one (design settings.md "Feedback"): an
- * outline muted Badge with the client's icon and name, after the first message's time.
+ * outline muted Badge with the client's icon and name, after the first message's time and last in
+ * the list row's metadata.
  */
 @Composable
-internal fun FeedbackFiledFromBadge(client: FeedbackClient) {
+internal fun FeedbackFiledFromBadge(client: FeedbackClient, testTag: String = SettingsFeedbackTicketFiledFromTag) {
     val colors = RaftTheme.colors
     RaftBadge(
         text = stringResource(client.labelResource()),
-        modifier = Modifier.testTag(SettingsFeedbackTicketFiledFromTag),
+        modifier = Modifier.testTag(testTag),
         appearance = RaftBadgeAppearance.Outline,
         variant = RaftBadgeVariant.Muted,
         icon = { RaftLucideIcon(client.iconName(), modifier = Modifier.size(14.dp), color = raftArgbHex(colors.foregroundMuted)) },
@@ -1096,6 +1118,7 @@ internal fun FeedbackFiledFromBadge(client: FeedbackClient) {
 }
 
 internal const val SettingsFeedbackTicketFiledFromTag = "settings_feedback_ticket_filed_from"
+internal const val SettingsFeedbackTicketRowFiledFromTag = "settings_feedback_ticket_row_filed_from"
 
 private fun FeedbackClient.labelResource(): StringResource =
     when (this) {

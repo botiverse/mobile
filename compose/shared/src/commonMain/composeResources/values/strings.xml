@@ -4810,6 +4810,7 @@
     <string name="settings_feedback_tickets_sender_team">Team</string>
     <string name="settings_feedback_tickets_sender_update">Update</string>
     <string name="settings_feedback_tickets_unread_label">%1$s, %2$d unread</string>
+    <string name="settings_feedback_tickets_filed_on_label">%1$s, Filed on %2$s</string>
     <string name="settings_feedback_tickets_list_date">%1$s %2$d</string>
     <string name="settings_feedback_tickets_list_date_year">%1$s %2$d, %3$d</string>
     <string name="settings_feedback_tickets_close_ticket">Close Ticket</string>
