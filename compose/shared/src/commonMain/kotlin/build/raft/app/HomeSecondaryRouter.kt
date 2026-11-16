@@ -62,6 +62,13 @@ import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.artifactWebUrl
+import build.raft.app.data.NetworkRaftWebSearchApi
+import build.raft.app.data.SearchArtifactsEvent
+import build.raft.app.data.SearchArtifactsIntent
+import build.raft.app.data.SharedSearchArtifactsStore
+import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.data.asSearchArtifactsSource
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.mergedSharedConversationDirectoryState
@@ -1009,6 +1016,43 @@ private fun HomeSearchRouterContent(
             )
         }
     }
+    // The Artifacts group of core's search (web useSearchAppResults): only while the server's
+    // workspace_artifacts_v0 is loaded and on (no request otherwise), and not in a conversation's own
+    // search (the groups are server-wide). The wide panel asks for 5 (web overlay `limit`).
+    val sharedStores = remember(environment.bridge) { RaftSharedStoreRegistry.get(environment.bridge) }
+    val artifactsFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val artifactsOn =
+        remember(searchScopeServerId, artifactsFlagRevision) { appShellArtifactsShown(sharedStores.serverFeatureFlags, searchScopeServerId) }
+    val conversationScopedSearch = normalizedInitialChannelId != null && !environment.tabRoot && environment.inlineOnClose == null
+    val artifactsViewModel: HomeSearchArtifactsViewModel =
+        viewModel(key = if (overlay != null) "home-secondary-search-artifacts-overlay" else "home-secondary-search-artifacts") {
+            HomeSearchArtifactsViewModel(
+                source = NetworkRaftWebSearchApi(environment.networkClient).asSearchArtifactsSource(),
+                limit = if (overlay != null) SharedSearchArtifactsStore.OVERLAY_LIMIT else null,
+                logger = { line -> environment.bridge.log(line) },
+            )
+        }
+    val artifactsState by artifactsViewModel.state.collectAsState()
+    val searchQuery = searchSavedState.search.query
+    LaunchedEffect(artifactsViewModel, searchScopeServerId, searchQuery, artifactsOn, conversationScopedSearch) {
+        artifactsViewModel.store.dispatch(
+            SearchArtifactsIntent.Query(searchScopeServerId, searchQuery, enabled = artifactsOn && !conversationScopedSearch)
+        )
+    }
+    val artifactsMoreFailed =
+        stringResource(Res.string.search_app_group_more_failed, stringResource(Res.string.search_app_group_artifacts))
+    val latestArtifactsMoreFailed by rememberUpdatedState(artifactsMoreFailed)
+    LaunchedEffect(artifactsViewModel) {
+        artifactsViewModel.store.events.collect { event ->
+            when (event) {
+                is SearchArtifactsEvent.MoreFailed -> environment.bridge.errorToast(latestArtifactsMoreFailed, event.error)
+            }
+        }
+    }
+    val openArtifactWebPage = rememberRaftWebPageOpener()
+    val artifactsWebBaseUrl = remember(sharedStores) { standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore) }
+    // The Artifacts home page's opener: the in-app viewer, not opened from a conversation.
+    val artifactOpener = rememberRaftArtifactOpener(conversationId = null) { openArtifactWebPage(artifactWebUrl(artifactsWebBaseUrl, it)) }
     val chrome = homeSearchPageChrome(tabRoot = environment.tabRoot, railInline = environment.inlineOnClose != null)
     SharedHomeSearchPanel(
         state = searchSavedState.search,
@@ -1178,6 +1222,12 @@ private fun HomeSearchRouterContent(
         shellScope = environment.shellScope,
         listState = searchListState,
         overlay = overlay,
+        artifacts = artifactsState.takeIf { artifactsOn && !conversationScopedSearch },
+        onArtifactsIntent = artifactsViewModel.store::dispatch,
+        onOpenArtifact = { hit ->
+            val target = ArtifactLinkTarget(hit.id)
+            artifactOpener.open(target, RaftArtifactViewerHeader.of(hit.row.summary, target), "home_search")
+        },
     )
 }
 

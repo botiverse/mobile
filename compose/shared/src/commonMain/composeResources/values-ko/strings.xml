@@ -2394,6 +2394,10 @@
     <string name="search_overlay_footer_select">선택</string>
     <string name="search_overlay_footer_open">열기</string>
     <string name="search_show_all_entities">%1$d개 모두 보기</string>
+    <string name="search_app_group_artifacts">Artifacts</string>
+    <string name="search_app_group_timed_out">%1$s 검색 시간이 초과됐어요.</string>
+    <string name="search_app_group_failed">%1$s을(를) 검색하지 못했어요.</string>
+    <string name="search_app_group_more_failed">%1$s에서 더 불러오지 못했어요.</string>
     <string name="search_show_fewer_entities">접기</string>
     <string name="search_history_limited">무료 요금제에서는 최근 %1$d일 동안의 메시지만 검색할 수 있어요.</string>
     <string name="search_incomplete_no_matches_yet">아직 일치하는 결과가 없어요</string>

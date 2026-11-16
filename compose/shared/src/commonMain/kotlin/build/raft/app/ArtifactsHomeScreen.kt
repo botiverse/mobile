@@ -506,7 +506,7 @@ private fun ArtifactsHomeAuthorFilter(state: ArtifactsHomeState, readerId: Strin
 }
 
 /** web `artifactActorName`: the display name, else the handle; a gone actor as "Someone". */
-private fun artifactsHomeActorName(actor: ArtifactsHomeActor, unknown: String): String =
+internal fun artifactsHomeActorName(actor: ArtifactsHomeActor, unknown: String): String =
     actor.displayName.takeIf { it.isNotBlank() } ?: actor.name.takeIf { it.isNotBlank() } ?: unknown
 
 @Composable
