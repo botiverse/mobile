@@ -87,6 +87,7 @@ import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.KnownEntityScope
+import build.raft.app.data.ThreadFindIntent
 import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.memberOrigin
 import build.raft.app.data.memberRemovableFromChannel
@@ -139,7 +140,6 @@ import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.RaftUiMenuSurface
 import build.raft.app.components.raftMenuWidth
-import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.components.raftCardSurface
 import build.raft.app.components.raftControlSurface
@@ -357,6 +357,8 @@ import build.raft.app.markdown.raftTaskStatusPixelStyle
 import build.raft.app.markdown.RaftMarkdownMentionReadStateScope
 import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
 import build.raft.app.markdown.LocalRaftUnavailableQuotedPermalink
+import build.raft.app.markdown.LocalRaftMarkdownFindQuery
+import build.raft.app.markdown.withRaftMarkdownFindMarks
 import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
 import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
@@ -1624,6 +1626,12 @@ internal fun threadTransientBackTarget(
         else -> null
     }
 
+/** Back for the page's transient states ([threadTransientBackTarget]), the most recent first. */
+@Composable
+internal fun ThreadTransientBackHandler(target: ThreadTransientBackTarget?, onBack: (ThreadTransientBackTarget) -> Unit) {
+    RaftBackHandler(enabled = target != null, label = target?.label) { target?.let(onBack) }
+}
+
 internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
     DEBUG_THREAD_VIRTUAL_RENDER_LOG || durationMs >= ThreadPerformanceSlowThresholdMs
 
@@ -2294,10 +2302,6 @@ private val ThreadHeaderEdgeInset: Dp
  * (`px-5`, composerHost.ts) for the composer frame, and the header title's start when Back is gone.
  */
 private val ThreadSplitDetailEdgeInset = 20.dp
-// The inline search bar keeps its own compact controls (former 30dp head action, 16dp glyph)
-// so the 44dp header PanelAction does not inflate the bar under the search field.
-private val ThreadInlineSearchActionSize = 30.dp
-private val ThreadInlineSearchActionIconSize = 16.dp
 private val ThreadHeaderDmAgentActivityMaxWidth = 150.dp
 private val ThreadHeaderDmAgentActivityLeadingGap = RaftAppSpacing.Sm
 // React AgentDMStatus uses the canonical StatusDot default (`md`, 10px).
@@ -5281,9 +5285,18 @@ private fun ThreadPageScreen(
             onBack = rootBack,
         )
     val threadOutlineApi = remember(networkClient) { build.raft.app.data.NetworkRaftThreadOutlineApi(networkClient) }
+    // Search in this thread reads the whole thread; a failed read is an error toast with its trace id.
+    val threadFindLoadFailedLabel = stringResource(Res.string.thread_find_load_failed)
+    val threadFindEnvironment =
+        remember(networkClient, bridge, threadFindLoadFailedLabel) {
+            ThreadFindEnvironment(build.raft.app.data.NetworkRaftThreadFindApi(networkClient)) { error ->
+                bridge.errorToast(threadFindLoadFailedLabel, error)
+            }
+        }
     CompositionLocalProvider(
         LocalConversationUnavailableNav provides conversationUnavailableNav,
         LocalThreadOutlineApi provides threadOutlineApi,
+        LocalThreadFindEnvironment provides threadFindEnvironment,
         LocalThreadAdaptiveInitiationCapture provides adaptiveInitiationCaptureHolder,
         LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
         LocalThreadQuotedPermalinkLoader provides quotedPermalinkLoader,
@@ -14237,9 +14250,10 @@ private fun SharedThreadRouteContentContent(
                             )
                         )
                     }
-                    action == ThreadOutlineJumpAction && !itemId.isNullOrBlank() -> {
-                        // The thread timeline (botiverse/slock #13534): focus the message as a search
-                        // hit does, loading around it first when it isn't loaded; top-aligned.
+                    (action == ThreadOutlineJumpAction || action == ThreadFindJumpAction) && !itemId.isNullOrBlank() -> {
+                        // The thread timeline (botiverse/slock #13534), and Search in this thread's
+                        // match the page hasn't loaded (web useThreadReplyContext): focus the message
+                        // as a search hit does, loading around it first when it isn't loaded; top-aligned.
                         threadViewModel.dispatch(
                             SharedThreadIntent.JumpToMessage(
                                 messageId = itemId,
@@ -17783,7 +17797,11 @@ private fun ThreadPageContentContent(
     var shareCaptureScrollOffsetPx by remember(threadInstanceKey) {
         mutableStateOf(ThreadShareCaptureTopScrollOffsetPx)
     }
-    var inlineSearchVisible by remember(threadInstanceKey) { mutableStateOf(false) }
+    // Search in this thread (web ThreadSearchBar): a reply thread's or a task's own bar.
+    val threadFind =
+        rememberThreadFindController(threadInstanceKey, taskSurface = payload.isTaskConversationSurface())
+    val threadFindState by threadFind.store.state.collectAsState()
+    val inlineSearchVisible = threadFindState.open
     var forwardTargets by remember(threadInstanceKey) { mutableStateOf<List<ForwardMessageTarget>>(emptyList()) }
     var forwardPickerFlow by remember(threadInstanceKey) { mutableStateOf(RaftForwardPickerFlowState()) }
     var forwardSending by remember(threadInstanceKey) { mutableStateOf(false) }
@@ -18077,15 +18095,11 @@ private fun ThreadPageContentContent(
             // Beside the conversation the cards cover nothing: Back is the page's (web: only a phone's Back closes them).
             sideCardsOpen = sideCards.anyOpen && !sideCardsBeside
         )
-    RaftBackHandler(
-        enabled = transientBackTarget != null,
-        label = transientBackTarget?.label
-    ) {
-        when (transientBackTarget) {
+    ThreadTransientBackHandler(transientBackTarget) { target ->
+        when (target) {
             ThreadTransientBackTarget.SideCards -> sideCardsStore.closeAll()
             ThreadTransientBackTarget.ShareSelection -> clearShareSelection()
-            ThreadTransientBackTarget.InlineSearch -> inlineSearchVisible = false
-            null -> Unit
+            ThreadTransientBackTarget.InlineSearch -> threadFind.store.dispatch(ThreadFindIntent.Close)
         }
     }
     suspend fun captureSelectedShareFragments(): ThreadShareCaptureRect? {
@@ -18658,7 +18672,12 @@ private fun ThreadPageContentContent(
     LaunchedEffect(threadOutline, threadOutlineActive) {
         if (threadOutlineActive) threadOutline?.loadNewest()
     }
-    CompositionLocalProvider(LocalThreadOutlineState provides threadOutline) {
+    CompositionLocalProvider(
+        LocalThreadOutlineState provides threadOutline,
+        LocalThreadFindController provides
+            threadFind.takeIf { payload.threadHeaderSearchAction() == ThreadHeaderSearchAction.InlineThreadSearch },
+        LocalThreadFindHighlightQuery provides threadFindState.query.takeIf { threadFindState.open },
+    ) {
     scaffold(
         ThreadRouteScaffoldSlots(
             scaffoldPlan = ThreadRouteMountPlan.FeatureSurfaces.toThreadRouteScaffoldPlan(),
@@ -18744,7 +18763,8 @@ private fun ThreadPageContentContent(
                                     onSelectedTabChanged(RaftThreadTab.Chat)
                                     onThreadEvent("selectTab", null, null, RaftThreadTab.Chat.wireValue)
                                 }
-                                inlineSearchVisible = !inlineSearchVisible
+                                // web: the menu's Search in thread opens the bar (its last words kept).
+                                threadFind.store.dispatch(ThreadFindIntent.Open)
                             }
                             null -> Unit
                         }
@@ -23464,39 +23484,35 @@ private fun ThreadMessagesListContent(
                     )
                 }
         )
-    var inlineSearchQuery by remember(threadInstanceKey) { mutableStateOf("") }
-    var inlineSearchCurrentIndex by remember(threadInstanceKey) { mutableStateOf(0) }
-    val inlineSearchMatches =
-        remember(
-            inlineSearchVisible,
-            inlineSearchQuery,
-            renderPayload.originStatus,
-            renderPayload.originMessage?.id,
-            renderPayload.originMessage?.body,
-            renderPayload.messages
-        ) {
-            if (inlineSearchVisible) {
-                renderPayload.threadInlineSearchMatches(inlineSearchQuery)
-            } else {
-                emptyList()
-            }
-        }
-    LaunchedEffect(inlineSearchVisible) {
-        if (!inlineSearchVisible) {
-            inlineSearchQuery = ""
-            inlineSearchCurrentIndex = 0
+    // Search in this thread (web useThreadSearch): the bar's store reads the whole thread; the page
+    // tells it what it holds, and lands on the open match (loading around it when it isn't loaded).
+    val threadFind = LocalThreadFindController.current
+    val threadFindWindow = remember(renderPayload) { renderPayload.threadFindWindow() }
+    LaunchedEffect(threadFind, threadFindWindow) {
+        if (threadFind != null && threadFindWindow != null) {
+            threadFind.store.dispatch(ThreadFindIntent.Window(threadFindWindow))
         }
     }
-    LaunchedEffect(inlineSearchMatches.size, inlineSearchQuery) {
-        inlineSearchCurrentIndex = inlineSearchCurrentIndex.coerceIn(0, (inlineSearchMatches.size - 1).coerceAtLeast(0))
-    }
+    val threadFindState = threadFind?.store?.state?.collectAsState()?.value
+    val inlineSearchQuery = threadFindState?.query.orEmpty()
     val activeInlineSearchMatch =
-        if (inlineSearchVisible && inlineSearchMatches.isNotEmpty()) {
-            inlineSearchMatches[inlineSearchCurrentIndex.coerceIn(0, inlineSearchMatches.lastIndex)]
-        } else {
-            null
+        threadFindState?.activeMessageId?.takeIf { inlineSearchVisible }?.let { messageId ->
+            ThreadInlineSearchMatch(messageId, renderPayload.threadMessageListItemIndex(messageId))
         }
     val activeInlineSearchMessageId = activeInlineSearchMatch?.messageId
+    // A match the page hasn't loaded: the thread timeline's jump loads around it, once per match.
+    var threadFindJumpRequested by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    LaunchedEffect(activeInlineSearchMatch) {
+        val match = activeInlineSearchMatch
+        if (match == null || match.listItemIndex >= 0 || match.messageId == renderPayload.originMessage?.id) {
+            threadFindJumpRequested = null
+            return@LaunchedEffect
+        }
+        if (threadFindJumpRequested == match.messageId) return@LaunchedEffect
+        threadFindJumpRequested = match.messageId
+        diagnosticsLogger("thread_find_jump messageId=${match.messageId.take(8)}")
+        onThreadEvent(ThreadFindJumpAction, match.messageId, null, null)
+    }
     // Adjacent system messages fold into one row (ThreadSystemMessageGroups.kt, web
     // systemMessageGrouping). Render-only: every message keeps its own lazy item, key and index.
     // Groups are closed by default; the open ones are kept while this conversation is shown.
@@ -26528,31 +26544,9 @@ private fun ThreadMessagesListContent(
             // bottom padding row, the messages count down, the origin card comes last (at the top).
             (if (reverseLayout) threadListSegments.asReversed() else threadListSegments).forEach { segment -> segment() }
         }
-        if (inlineSearchVisible) {
-            ThreadInlineSearchBar(
-                query = inlineSearchQuery,
-                matchCount = inlineSearchMatches.size,
-                currentIndex = inlineSearchCurrentIndex,
-                onQueryChange = {
-                    inlineSearchQuery = it
-                    inlineSearchCurrentIndex = 0
-                },
-                onPrevious = {
-                    if (inlineSearchMatches.isNotEmpty()) {
-                        inlineSearchCurrentIndex =
-                            if (inlineSearchCurrentIndex <= 0) inlineSearchMatches.lastIndex else inlineSearchCurrentIndex - 1
-                    }
-                },
-                onNext = {
-                    if (inlineSearchMatches.isNotEmpty()) {
-                        inlineSearchCurrentIndex =
-                            if (inlineSearchCurrentIndex >= inlineSearchMatches.lastIndex) 0 else inlineSearchCurrentIndex + 1
-                    }
-                },
-                onClear = {
-                    inlineSearchQuery = ""
-                    inlineSearchCurrentIndex = 0
-                },
+        if (threadFind != null) {
+            ThreadFindBarHost(
+                controller = threadFind,
                 modifier = Modifier.align(Alignment.BottomCenter)
                     .zIndex(ThreadInlineSearchBarZIndex)
             )
@@ -27510,74 +27504,6 @@ internal fun ThreadComposerDock(
                         keyboardPx = { raftImeBottomPx(ime, hostIme, density).toFloat() },
                     )
         ) { composer() }
-    }
-}
-
-@Composable
-private fun ThreadInlineSearchBar(
-    query: String,
-    matchCount: Int,
-    currentIndex: Int,
-    onQueryChange: (String) -> Unit,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onClear: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val normalizedCurrent = if (matchCount > 0) currentIndex.coerceIn(0, matchCount - 1) + 1 else 0
-    Column(modifier = modifier.fillMaxWidth().background(RaftColor.Canvas)) {
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .raftSafeAreaHorizontalPadding()
-                    .padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Xs),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-        ) {
-            SharedHomeSearchInput(
-                query = query,
-                loading = false,
-                interactive = true,
-                onQueryChange = onQueryChange,
-                onSubmit = {},
-                onClear = onClear,
-                autoFocus = true,
-                placeholder = stringResource(Res.string.thread_placeholder_search),
-                modifier = Modifier.weight(1f),
-            )
-            Box(
-                modifier =
-                    Modifier
-                        .height(ThreadInlineSearchActionSize)
-                        .widthIn(min = 40.dp)
-                        .background(RaftColor.SurfaceWhite)
-                        .padding(horizontal = RaftAppSpacing.Xs),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "$normalizedCurrent/$matchCount",
-                    // raft-ui ThreadPanelSearchCount: font-mono text-mono-meta (12/16 regular).
-                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontWeight = FontWeight.Normal),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            ThreadHeaderCompactAction(
-                icon = RaftLucideIconName.ChevronUp,
-                onClick = onPrevious,
-                actionSize = ThreadInlineSearchActionSize,
-                iconSize = ThreadInlineSearchActionIconSize
-            )
-            ThreadHeaderCompactAction(
-                icon = RaftLucideIconName.ChevronDown,
-                onClick = onNext,
-                actionSize = ThreadInlineSearchActionSize,
-                iconSize = ThreadInlineSearchActionIconSize
-            )
-        }
     }
 }
 
@@ -31398,7 +31324,10 @@ private fun ThreadMessageCardContent(
                                                             LocalRaftUnavailableQuotedPermalink provides
                                                                 quotedPermalinkTarget.takeIf {
                                                                     quotedPermalinkState.value == ThreadQuotedPermalinkUiState.Unavailable
-                                                                }
+                                                                },
+                                                            // Search in this thread marks its words in the open match only.
+                                                            LocalRaftMarkdownFindQuery provides
+                                                                (if (searchMatch) LocalThreadFindHighlightQuery.current else null)
                                                           ) {
                                                             RaftMarkdownBody(
                                                                 body = bodyForRender,
@@ -31426,8 +31355,9 @@ private fun ThreadMessageCardContent(
                                                         }
                                                     }
                                                 } else {
+                                                    val findQuery = if (searchMatch) LocalThreadFindHighlightQuery.current else null
                                                     Text(
-                                                        text = bodyForRender,
+                                                        text = AnnotatedString(bodyForRender).withRaftMarkdownFindMarks(findQuery),
                                                         style = messageBodyTextStyle,
                                                         color = RaftColor.TextBlack,
                                                         modifier = Modifier

@@ -1207,7 +1207,13 @@
     <string name="thread_files_download_file">Скачать файл</string>
     <string name="thread_state_note">КОММЕНТАРИЙ</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
-    <string name="thread_placeholder_search">Поиск в этой ветке…</string>
+    <string name="thread_placeholder_search">Искать в этой ветке</string>
+    <string name="thread_placeholder_search_task">Искать в этой задаче</string>
+    <string name="thread_find_previous_match">Предыдущее совпадение</string>
+    <string name="thread_find_next_match">Следующее совпадение</string>
+    <string name="thread_find_close">Закрыть поиск по ветке</string>
+    <string name="thread_find_loading">Загрузка</string>
+    <string name="thread_find_load_failed">Не удалось загрузить ветку</string>
     <string name="thread_long_message_show_more">Показать полностью</string>
     <string name="thread_long_message_show_less">Свернуть</string>
     <string name="composer_placeholder_message_design">Отправить сообщение: design</string>

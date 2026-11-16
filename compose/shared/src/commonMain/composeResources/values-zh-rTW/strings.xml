@@ -1207,7 +1207,13 @@
     <string name="thread_files_download_file">下載檔案</string>
     <string name="thread_state_note">備註</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
-    <string name="thread_placeholder_search">搜尋此討論串…</string>
+    <string name="thread_placeholder_search">搜尋此討論串</string>
+    <string name="thread_placeholder_search_task">搜尋此任務</string>
+    <string name="thread_find_previous_match">上一個相符結果</string>
+    <string name="thread_find_next_match">下一個相符結果</string>
+    <string name="thread_find_close">關閉討論串搜尋</string>
+    <string name="thread_find_loading">載入中</string>
+    <string name="thread_find_load_failed">無法載入此討論串</string>
     <string name="thread_long_message_show_more">展開全文</string>
     <string name="thread_long_message_show_less">收起</string>
     <string name="composer_placeholder_message_design">傳送訊息至 design</string>

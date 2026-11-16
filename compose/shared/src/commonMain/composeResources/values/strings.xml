@@ -444,7 +444,7 @@
     <string name="thread_action_open_with">Open with</string>
     <string name="thread_action_select_message">Select Message</string>
     <string name="thread_action_search">Search</string>
-    <string name="thread_action_search_in_thread">Search in Thread</string>
+    <string name="thread_action_search_in_thread">Search in thread</string>
     <string name="thread_action_quote">Quote</string>
     <string name="thread_action_translate">Translate</string>
     <string name="thread_action_copy_link">Copy Link</string>
@@ -1220,7 +1220,13 @@
     <string name="thread_files_download_file">Download File</string>
     <string name="thread_state_note">NOTE</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
-    <string name="thread_placeholder_search">Search this thread…</string>
+    <string name="thread_placeholder_search">Search this thread</string>
+    <string name="thread_placeholder_search_task">Search this task</string>
+    <string name="thread_find_previous_match">Previous match</string>
+    <string name="thread_find_next_match">Next match</string>
+    <string name="thread_find_close">Close thread search</string>
+    <string name="thread_find_loading">Loading</string>
+    <string name="thread_find_load_failed">Couldn't load this thread</string>
     <string name="thread_long_message_show_more">Show More</string>
     <string name="thread_long_message_show_less">Show Less</string>
     <string name="composer_placeholder_message_design">Message design</string>
@@ -1973,7 +1979,7 @@
     <string name="task_legacy_no_description">No description</string>
     <string name="task_legacy_unknown">Unknown</string>
     <string name="task_legacy_unknown_channel">unknown</string>
-    <string name="task_conversation_search">Search in Task</string>
+    <string name="task_conversation_search">Search in task</string>
     <string name="task_conversation_view_in_channel">View in Channel</string>
     <string name="task_head_status">Status</string>
     <string name="task_head_assignee">Assignee</string>

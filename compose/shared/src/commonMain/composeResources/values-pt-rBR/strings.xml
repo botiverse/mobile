@@ -1207,7 +1207,13 @@
     <string name="thread_files_download_file">Baixar arquivo</string>
     <string name="thread_state_note">NOTA</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
-    <string name="thread_placeholder_search">Pesquisar nesta thread…</string>
+    <string name="thread_placeholder_search">Pesquisar nesta thread</string>
+    <string name="thread_placeholder_search_task">Pesquisar nesta tarefa</string>
+    <string name="thread_find_previous_match">Resultado anterior</string>
+    <string name="thread_find_next_match">Próximo resultado</string>
+    <string name="thread_find_close">Fechar pesquisa na thread</string>
+    <string name="thread_find_loading">Carregando</string>
+    <string name="thread_find_load_failed">Não foi possível carregar esta thread</string>
     <string name="thread_long_message_show_more">Mostrar mais</string>
     <string name="thread_long_message_show_less">Mostrar menos</string>
     <string name="composer_placeholder_message_design">Mensagem para design</string>

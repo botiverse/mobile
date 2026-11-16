@@ -216,6 +216,38 @@ internal val LocalRaftMessagePermalinkLabelResolver =
  */
 internal val LocalRaftUnavailableQuotedPermalink = compositionLocalOf<ParsedRaftPermalink?> { null }
 
+/**
+ * Search in this thread's words in this body (web `threadSearchHighlightQuery`, the open match
+ * only): every case-insensitive hit is marked with the DS search hit (`sticker-ink` on `you`,
+ * web `MessageTextMark`). Null: no marks. Code blocks draw their own text and stay unmarked, as
+ * on the web.
+ */
+internal val LocalRaftMarkdownFindQuery = compositionLocalOf<String?> { null }
+
+/** [query]'s hits in this text marked ([LocalRaftMarkdownFindQuery]); the text as is without one. */
+internal fun AnnotatedString.withRaftMarkdownFindMarks(query: String?): AnnotatedString {
+    val ranges = raftMarkdownFindRanges(text, query)
+    if (ranges.isEmpty()) return this
+    val mark = SpanStyle(color = RaftColor.StickerInk, background = RaftColor.You)
+    return AnnotatedString.Builder(this)
+        .apply { ranges.forEach { range -> addStyle(mark, range.first, range.last + 1) } }
+        .toAnnotatedString()
+}
+
+/** The hits of [query] (trimmed, any case) in [text], left to right, never overlapping. */
+internal fun raftMarkdownFindRanges(text: String, query: String?): List<IntRange> {
+    val needle = query?.trim()?.takeIf { it.isNotEmpty() } ?: return emptyList()
+    val ranges = mutableListOf<IntRange>()
+    var from = 0
+    while (from <= text.length - needle.length) {
+        val at = text.indexOf(needle, from, ignoreCase = true)
+        if (at < 0) break
+        ranges += at until at + needle.length
+        from = at + needle.length
+    }
+    return ranges
+}
+
 /** Same message: the web compares the links' identity, not their spelling. */
 private fun ParsedRaftPermalink.sameMessageAs(other: ParsedRaftPermalink): Boolean =
     serverSlug == other.serverSlug &&
@@ -1396,7 +1428,8 @@ private object RaftMarkdownTextProvider : TextProvider {
                     onTextLayout?.invoke(result)
                 }
             }
-        if (bodyClick == null) {
+        val findQuery = LocalRaftMarkdownFindQuery.current
+        if (bodyClick == null && raftMarkdownFindRanges(text, findQuery).isEmpty()) {
             KuiklyText(
                 text = text,
                 modifier = textModifier,
@@ -1418,7 +1451,7 @@ private object RaftMarkdownTextProvider : TextProvider {
             )
         } else {
             KuiklyText(
-                text = AnnotatedString(text).withRaftMarkdownBodyClick(bodyClick),
+                text = AnnotatedString(text).withRaftMarkdownFindMarks(findQuery).withRaftMarkdownBodyClick(bodyClick),
                 modifier = textModifier,
                 color = color,
                 fontSize = fontSize,
@@ -1595,8 +1628,11 @@ private object RaftMarkdownTextProvider : TextProvider {
         // links, so they never change here.
         var hoveredLink by remember(resolvedText) { mutableStateOf<IntRange?>(null) }
         val hoverInk = raftMarkdownLinkHoverInk()
+        val findQuery = LocalRaftMarkdownFindQuery.current
         val displayText =
-            remember(resolvedText, hoveredLink, hoverInk) { resolvedText.withRaftMarkdownLinkHover(hoveredLink, hoverInk) }
+            remember(resolvedText, hoveredLink, hoverInk, findQuery) {
+                resolvedText.withRaftMarkdownFindMarks(findQuery).withRaftMarkdownLinkHover(hoveredLink, hoverInk)
+            }
         // The tint restyles the text, and Compose drops a selection in a text that changes: while
         // the body holds a selection (a mouse drag across a link included) the tint stays as it is.
         val bodySelection = LocalRaftMarkdownLinkDragSelection.current
