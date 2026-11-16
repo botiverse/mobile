@@ -793,9 +793,11 @@ internal data class BackgroundDropBatch(val id: String, val entries: List<Backgr
  * this reporter, or ones handed back by evicted reports ([restore]); each later first upload
  * takes the oldest one first, under its own id.
  *
- * Overflow (both best effort, both rare):
+ * Limits (best effort):
+ * - A restored batch whose first attempt was stored is sent again (same id) with another report;
+ *   it is counted twice until Hands dedupes by batch id ([restore]).
  * - More than [MaxPending] pending batches: the oldest is merged into [accumulating] and later
- *   goes out under a new id; counted twice if its first attempt had been stored ([restore]).
+ *   goes out under a new id, which a future dedupe by the original id cannot catch either.
  * - More than [MaxEntries] distinct (version, day, category, status) entries in [accumulating]:
  *   the entries of the oldest days are dropped with their counts, uncounted anywhere: a known
  *   undercount ([bounded]).
@@ -843,9 +845,14 @@ internal data class BackgroundDropLedger(
      * joins the end of [pending] under its id; without (rejected: Hands never stored it) its counts
      * are added to [accumulating] and go out with the next batch.
      *
+     * A restored batch can reach Hands twice even without overflow: when the evicted report's first
+     * attempt was accepted but its response was lost, the same batch goes out again with another
+     * report. Keeping its id lets a batch-level dedupe on the Hands side catch that; Hands does
+     * not dedupe by batch yet, so such counts may currently be counted twice.
+     *
      * Over [MaxPending], the oldest pending batch is merged into [accumulating] and later goes
-     * out under a new id. That is the only remaining way a count can reach Hands twice (when that
-     * batch's first attempt was stored), and it needs more than [MaxPending] attempted reports
+     * out under a new id. That adds a second risk: once its id has changed, even a future dedupe
+     * by the original id cannot catch it. It needs more than [MaxPending] attempted reports
      * evicted before any later report's first upload.
      */
     fun restore(batch: BackgroundDropBatch?, keepId: Boolean): BackgroundDropLedger =
