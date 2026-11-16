@@ -148,8 +148,8 @@ internal val LocalRaftArtifactOpenStoreScope = compositionLocalOf<RaftShellStore
 /**
  * The conversation an Artifact opened here is opened from (`hostConversation`,
  * [RAFT_ARTIFACT_VIEWER_HOST_CONVERSATION_PARAM]): a conversation page provides it (ThreadPage: the
- * channel or DM; for a thread or a task conversation, the channel it belongs to). Null elsewhere
- * (Artifacts home, Activity, links from outside the app).
+ * channel or DM; for a thread, the channel it belongs to). Null elsewhere (a task conversation, whose
+ * web dialog records nothing; Artifacts home, Activity, links from outside the app).
  */
 internal val LocalRaftArtifactOpenConversation = compositionLocalOf<String?> { null }
 

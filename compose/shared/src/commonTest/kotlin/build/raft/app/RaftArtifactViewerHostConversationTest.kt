@@ -126,14 +126,14 @@ class RaftArtifactViewerHostConversationTest {
     }
 
     @Test
-    fun theConversationOfAThreadOrTaskIsItsChannel() {
+    fun aThreadOpensFromItsChannelATaskConversationFromNone() {
         val dm = "d0d0d0d0-0000-4000-8000-000000000002"
         val channelPage =
             RaftThreadScreenPayload(status = "content", surfaceKind = RaftThreadSurfaceKind.Channel, sourceThreadId = channel, streamChannelId = channel)
-        assertEquals(channel, channelPage.artifactOpenConversationId(taskConversationHostChannelId = null))
+        assertEquals(channel, channelPage.artifactOpenConversationId())
         val dmPage =
             RaftThreadScreenPayload(status = "content", surfaceKind = RaftThreadSurfaceKind.DirectMessage, sourceThreadId = dm, streamChannelId = dm)
-        assertEquals(dm, dmPage.artifactOpenConversationId(taskConversationHostChannelId = null))
+        assertEquals(dm, dmPage.artifactOpenConversationId())
         // A reply thread: the channel it belongs to (web: recorded beside its channel), not the thread's stream.
         val thread =
             RaftThreadScreenPayload(
@@ -144,9 +144,9 @@ class RaftArtifactViewerHostConversationTest {
                 parentChannelId = channel,
                 parentMessageId = "a0a0a0a0-0000-4000-8000-000000000009",
             )
-        assertEquals(channel, thread.artifactOpenConversationId(taskConversationHostChannelId = null))
-        assertNull(thread.copy(parentChannelId = null).artifactOpenConversationId(taskConversationHostChannelId = null))
-        // A task conversation: its task's host channel, none until the header resolves it.
+        assertEquals(channel, thread.artifactOpenConversationId())
+        assertNull(thread.copy(parentChannelId = null).artifactOpenConversationId())
+        // A task conversation: none (the web's task dialog keeps the plain title and records nothing).
         val task =
             RaftThreadScreenPayload(
                 status = "content",
@@ -155,7 +155,6 @@ class RaftArtifactViewerHostConversationTest {
                 sourceThreadId = "task-conv-1",
                 streamChannelId = "task-conv-1",
             )
-        assertNull(task.artifactOpenConversationId(taskConversationHostChannelId = null))
-        assertEquals(channel, task.artifactOpenConversationId(taskConversationHostChannelId = channel))
+        assertNull(task.artifactOpenConversationId())
     }
 }

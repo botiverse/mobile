@@ -4532,13 +4532,12 @@ internal fun RaftThreadScreenPayload.markdownTaskContextChannelId(
 /**
  * The conversation an Artifact opened here is opened from (`hostConversation`, botiverse/slock
  * #15103): the channel or DM itself; for a reply thread, its parent channel (the web records an
- * Artifact opened from a thread beside its channel: only a channel's own side card lists them); for a
- * task conversation, its task's host channel ([taskConversationHostChannelId], as the conversation
- * header resolves it), and none until it resolves, never the task conversation's own id.
+ * Artifact opened from a thread beside its channel: only a channel's own side card lists them). None
+ * for a task conversation: the web's task dialog keeps the plain title and records nothing.
  */
-internal fun RaftThreadScreenPayload.artifactOpenConversationId(taskConversationHostChannelId: String?): String? =
+internal fun RaftThreadScreenPayload.artifactOpenConversationId(): String? =
     if (channelKind == RaftTaskConversationChannelKind) {
-        taskConversationHostChannelId.nonBlank()
+        null
     } else {
         val route = resolveThreadRouteIdentity()
         if (route.surfaceKind == RaftThreadSurfaceKind.ReplyThread) parentChannelId.nonBlank() else route.timelineChannelId
@@ -4576,13 +4575,8 @@ private fun rememberThreadLinkNavigator(
     pager: Pager,
     bridge: build.raft.app.base.BridgeModule,
     payload: RaftThreadScreenPayload,
-    taskConversationHostChannelId: ChannelId?,
 ): RaftLinkNavigator =
-    rememberRaftLinkNavigator(
-        pager,
-        bridge,
-        artifactConversationId = payload.artifactOpenConversationId(taskConversationHostChannelId?.value),
-    )
+    rememberRaftLinkNavigator(pager, bridge, artifactConversationId = payload.artifactOpenConversationId())
 
 /**
  * Load [contextChannelId]'s tasks for this conversation's task refs only when nothing else does: the
@@ -9506,7 +9500,7 @@ private fun SharedThreadRouteContentContent(
                 .withFirstFrameKnownMarkdownChannelNames(firstFrameHomeSnapshot)
         }
     val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
-    val linkNavigator = rememberThreadLinkNavigator(pager, bridge, renderedThread, taskConversationParentChannelId)
+    val linkNavigator = rememberThreadLinkNavigator(pager, bridge, renderedThread)
     val threadViewerIsGuest = currentSession.threadViewerIsGuest(headerProjectionServerId?.value)
     val threadForwardSourceAvailable = renderedPayload.threadForwardSourceChannelId() != null
     val renderedTimelineSlice =
@@ -13259,8 +13253,7 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadAppLinkPreviewHost provides appLinkPreviewHost,
                 // The conversation its Artifacts (cards, links, Files) are opened from (`hostConversation`).
                 // From values this lambda already captures (see the JVM-limit note below).
-                LocalRaftArtifactOpenConversation provides
-                    renderedThread.artifactOpenConversationId(taskConversationParentChannelId?.value),
+                LocalRaftArtifactOpenConversation provides renderedThread.artifactOpenConversationId(),
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
                 LocalThreadPeerReadReceipts provides peerReadReceipts,
                 LocalThreadAgentTyping provides agentTyping,

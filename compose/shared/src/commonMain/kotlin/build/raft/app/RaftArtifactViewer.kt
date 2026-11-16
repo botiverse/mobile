@@ -305,8 +305,9 @@ internal const val RAFT_ARTIFACT_VIEWER_HOST_TOOLBAR_PARAM = "hostToolbar"
  * the Artifacts this person recently opened there (kept in the WebView's storage). Picking one moves
  * the page to `/artifacts/<id>` in place (the web's keeper keeps the App's params), without a new
  * `hostLoaded=1` ([raftArtifactViewerSwitchesInPlace]). Set only where the App opens an Artifact from
- * a conversation (its messages, its Files); for a thread or a task conversation it is the channel it
- * belongs to, as the web records one opened from a thread beside its channel. The web latches it per
+ * a conversation (its messages, its Files); for a thread it is the channel it belongs to, as the web
+ * records one opened from a thread beside its channel; a task conversation sends none (the web's task
+ * dialog keeps the plain title and records nothing). The web latches it per
  * document, as the rest of the embed contract ([RaftArtifactViewerCache.keptDocumentUsable]).
  */
 internal const val RAFT_ARTIFACT_VIEWER_HOST_CONVERSATION_PARAM = "hostConversation"
