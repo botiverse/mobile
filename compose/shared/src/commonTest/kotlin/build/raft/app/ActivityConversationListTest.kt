@@ -2,12 +2,14 @@ package build.raft.app
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import build.raft.app.data.ActivityObjectEventVerb
 import build.raft.app.data.ActivityObjectRow
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
+import build.raft.app.data.ResolvedActor
 import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedHomeContentState
@@ -560,6 +562,32 @@ class ActivityConversationListTest {
         assertFalse(avatarOf(objectRowIn("channel", "general"))?.jointSurface ?: true)
         assertFalse(avatarOf(objectRowIn("dm", "dm-fable"))?.jointSurface ?: true)
         assertFalse(avatarOf(objectRowIn("server", null))?.jointSurface ?: true)
+    }
+
+    @Test
+    fun objectRowNamesAnActorNoRosterHasAsTheJointActorResolveAnswered() {
+        val cachet =
+            ResolvedActor(
+                kind = MemberKind.Agent,
+                id = "agent-cachet",
+                homeServerId = "server-2",
+                name = "cachet",
+                displayName = "Cachet",
+                avatarUrl = "https://example.test/cachet.png",
+                gravatarHash = null,
+            )
+        val line = ActivityObjectLine(actorName = "cachet", verb = ActivityObjectEventVerb.Published, version = null, home = "#joint-stamp", avatar = null)
+        assertEquals("Cachet", line.displayActorName(cachet))
+        assertEquals("cachet", line.displayActorName(cachet.copy(displayName = " ")))
+        // Not resolved (yet): the handle the row carries.
+        assertEquals("cachet", line.displayActorName(null))
+        // This server's roster always wins.
+        assertEquals("Fable", line.copy(actorName = "Fable", actorNameKnownLocally = true).displayActorName(cachet))
+        assertEquals(
+            "Cachet",
+            ResolvedActor(MemberKind.Agent, "agent-cachet", "server-2", name = "Cachet", displayName = null, avatarUrl = null, gravatarHash = null)
+                .let { line.copy(actorName = null).displayActorName(it) },
+        )
     }
 
     @Test
