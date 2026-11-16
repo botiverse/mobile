@@ -145,6 +145,9 @@ internal class ProcessActivityUnreadStore(
     /** See [deriveBadgeFromList]. */
     @kotlin.concurrent.Volatile
     private var listDerivesBadge: (ProcessActivityUnreadOwner) -> Boolean = { false }
+    /** See [deriveBadgeFromList]'s `owns`. */
+    @kotlin.concurrent.Volatile
+    private var listOwnsBadge: (ProcessActivityUnreadOwner) -> Boolean = { false }
 
     /**
      * `mobile_inbox_inplace_v0` (Inbox refresh step 4, rule 6): while [derives] holds for an owner
@@ -152,9 +155,20 @@ internal class ProcessActivityUnreadStore(
      * list publishes ([submitFact]: in-place patches, read predictions, its own reads), so the reads
      * that list already answers are not made ([isListDerivedActivitySummaryRead]). Not installed:
      * every read is today's.
+     *
+     * [owns] (`inbox_row_position_v1`, #triage:#244): while it holds (the list is loaded and shown),
+     * that list is the badge's only writer. No summary read is made for any reason (the return to the
+     * foreground and an explicit refresh included: the shown list reads itself then), and a read
+     * already in flight that lands writes nothing. Two writers made the badge jump between the list's
+     * count and an older summary answer.
      */
-    fun deriveBadgeFromList(derives: (ProcessActivityUnreadOwner) -> Boolean) {
+    fun deriveBadgeFromList(
+        owns: (ProcessActivityUnreadOwner) -> Boolean = { false },
+        // Last, so a trailing lambda still binds here.
+        derives: (ProcessActivityUnreadOwner) -> Boolean
+    ) {
         listDerivesBadge = derives
+        listOwnsBadge = owns
     }
 
     /**
@@ -405,6 +419,13 @@ internal class ProcessActivityUnreadStore(
                     )
                     return@withLock
                 }
+                if (listOwnsBadge(owner)) {
+                    logger(
+                        "process_activity_unread_request result=derived reason=list_owns_badge " +
+                            "${owner.diagnosticsKey} source=$reason"
+                    )
+                    return@withLock
+                }
                 if (reason.isListDerivedActivitySummaryRead() && listDerivesBadge(owner)) {
                     logger(
                         "process_activity_unread_request result=derived reason=inbox_inplace " +
@@ -562,6 +583,7 @@ internal class ProcessActivityUnreadStore(
                     // This attempt answers every ask folded so far; later ones count for the next.
                     val trigger = entry.pendingTrigger
                     entry.pendingTrigger = null
+                    val freshnessBefore = entry.projection.freshness
                     entry.projection =
                         entry.projection.copy(
                             freshness = ActivityUnreadSummaryFreshness.Refreshing,
@@ -576,7 +598,8 @@ internal class ProcessActivityUnreadStore(
                         generation = entry.requestGeneration,
                         factRevision = entry.factRevision,
                         reason = reason,
-                        trigger = trigger
+                        trigger = trigger,
+                        freshnessBefore = freshnessBefore
                     )
                 }
             val result =
@@ -609,6 +632,25 @@ internal class ProcessActivityUnreadStore(
                         )
                         entry.active = false
                         // No later attempt of this loop covers them; let a redelivery fetch again.
+                        entry.pendingEventMarkers = emptySet()
+                        entry.pendingTrigger = null
+                        return@withLock false
+                    }
+                    if (listOwnsBadge(owner)) {
+                        // `inbox_row_position_v1`: the shown list took the badge while this read was
+                        // out; it writes nothing, and the asks folded into it are the list's now.
+                        logger(
+                            "process_activity_unread_load result=superseded reason=list_owns_badge " +
+                                "${owner.diagnosticsKey} generation=${attempt.generation} source=${attempt.reason}"
+                        )
+                        // A fact the list published meanwhile set the freshness; else it is as before the read.
+                        if (entry.factRevision == attempt.factRevision) {
+                            entry.projection =
+                                entry.projection.copy(freshness = attempt.freshnessBefore, revision = nextProjectionRevision())
+                            publish(owner, entry)
+                        }
+                        entry.active = false
+                        entry.pending = false
                         entry.pendingEventMarkers = emptySet()
                         entry.pendingTrigger = null
                         return@withLock false
@@ -793,7 +835,8 @@ internal class ProcessActivityUnreadStore(
         val generation: Long,
         val factRevision: Long,
         val reason: String,
-        val trigger: InboxRefreshTriggerCount?
+        val trigger: InboxRefreshTriggerCount?,
+        val freshnessBefore: ActivityUnreadSummaryFreshness
     )
 
     private class Entry(

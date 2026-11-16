@@ -1573,10 +1573,19 @@ internal class RaftSharedStoreProvider private constructor(
         RaftMinBuildGate.flagRefetch = { serverId -> serverFeatureFlagChangeRefresher.onForeground(serverId) }
         // Inbox refresh step 4, rule 6: with the flag on, a server whose Activity All list is loaded
         // takes its badge from that list instead of the summary read.
-        activityUnreadSummaryStore.deriveBadgeFromList { owner ->
-            inboxInPlaceEnabled(owner.serverId) &&
-                homeActivityStores.entries().any { (_, store) -> store.state.value.derivesBadgeFor(owner) }
-        }
+        // `inbox_row_position_v1`: while that list is shown it is the badge's only writer (no summary
+        // read for any reason; the shown list reads itself on the return and on a refresh).
+        activityUnreadSummaryStore.deriveBadgeFromList(
+            derives = { owner ->
+                inboxInPlaceEnabled(owner.serverId) &&
+                    homeActivityStores.entries().any { (_, store) -> store.state.value.derivesBadgeFor(owner) }
+            },
+            owns = { owner ->
+                inboxInPlaceEnabled(owner.serverId) &&
+                    inboxRowPositionEnabled(owner.serverId) &&
+                    homeActivityStores.entries().any { (_, store) -> store.ownsBadgeFor(owner) }
+            }
+        )
         // Message storage Phase 0a: the V1 shadow writers are gone and nothing ever read their rows, so drop
         // every surviving `sync-core.messages.v1` row once per start (idempotent; V2 and read-state untouched).
         threadSendScope.launch {

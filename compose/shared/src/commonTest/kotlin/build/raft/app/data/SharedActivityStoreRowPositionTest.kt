@@ -3,6 +3,8 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageSystemProvenance
+import build.raft.app.model.MessageType
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.ServerId
@@ -263,6 +265,34 @@ class SharedActivityStoreRowPositionTest {
             ActivityRowClientState(position = "10", applied = emptyList(), inversionObserved = false),
             f.store.rowPositionStateForTest("channel-1")
         )
+    }
+
+    @Test
+    fun aHiddenListCountsLiveMessagesByTheSharedRule() = runTest {
+        // B2: the hidden list's badge +1 (no row patch) follows the same rule as a shown row.
+        fun TestScope.badgeAfter(rowPosition: Boolean, intent: SharedActivityIntent.ApplyRealtimeSummaryEvent): Int {
+            val f = loadedStore(listOf(snapshot(listOf(channelRow))), rowPosition)
+            f.store.dispatch(intent)
+            runCurrent()
+            return f.store.state.value.totalUnreadCount
+        }
+        val plain = SharedActivityIntent.ApplyRealtimeSummaryEvent(MessageNew(message("m-11", "channel-1", seq = 11L)), null)
+        val muted = plain.copy(activityMuted = true)
+        val ownCausedSystem =
+            SharedActivityIntent.ApplyRealtimeSummaryEvent(
+                MessageNew(
+                    message("m-12", "channel-1", authorId = "system", seq = 12L).copy(messageType = MessageType.System),
+                    systemProvenance = MessageSystemProvenance("channel.member_joined", causalActorType = "user", causalActorId = "user-1")
+                ),
+                null
+            )
+
+        assertEquals(1, badgeAfter(rowPosition = true, plain))
+        assertEquals(0, badgeAfter(rowPosition = true, muted), "past the Activity mute: no count")
+        assertEquals(0, badgeAfter(rowPosition = true, ownCausedSystem), "a system line the reader caused")
+        // Flag off: today's author-only check counts both.
+        assertEquals(1, badgeAfter(rowPosition = false, muted))
+        assertEquals(1, badgeAfter(rowPosition = false, ownCausedSystem))
     }
 
     @Test

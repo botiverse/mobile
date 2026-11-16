@@ -571,6 +571,14 @@ class SharedActivityStore internal constructor(
     /** Bumped when the row state goes (server switch, reset): an answer from before is dropped. */
     private var rowRereadGeneration = 0L
 
+    /**
+     * `inbox_row_position_v1`: this list can be [owner]'s badge's only writer: it counts the badge
+     * ([derivesBadgeFor]) and is shown, so it reads itself on the return to the foreground and on a
+     * refresh. A hidden list is not re-read until it shows, so the summary read still counts then.
+     */
+    internal fun ownsBadgeFor(owner: ProcessActivityUnreadOwner): Boolean =
+        !activitySurfaceHidden && _state.value.derivesBadgeFor(owner)
+
     /** Test hook: the position state kept for a row's conversation. */
     internal fun rowPositionStateForTest(scopeId: String): ActivityRowClientState? = rowPositions.keptForTest(scopeId)
 
@@ -745,7 +753,7 @@ class SharedActivityStore internal constructor(
         when (intent) {
             is SharedActivityIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent)
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
-                applyRealtimeSummaryEvent(intent.event, intent.activeConversationId)
+                applyRealtimeSummaryEvent(intent.event, intent.activeConversationId, intent.activityMuted)
             else -> error("applyLiveRealtime only accepts realtime intents")
         }
     }
@@ -2616,7 +2624,8 @@ class SharedActivityStore internal constructor(
 
     private suspend fun applyRealtimeSummaryEvent(
         event: RealtimeEvent,
-        activeConversationId: String?
+        activeConversationId: String?,
+        activityMuted: Boolean = false
     ) {
         if (event is PerReceiverReadStateChanged) {
             applyPerReceiverReadStateChanged(event)
@@ -2625,9 +2634,28 @@ class SharedActivityStore internal constructor(
         val current = _state.value
         val snapshot = current.snapshot ?: return
         val currentUserId = currentUserId() ?: return
+        // `inbox_row_position_v1`: a hidden list counts a live message by the shared rule (the mute,
+        // system lines and noise subtypes included), not by today's author-only check.
+        val rowPosition =
+            current.ownerServerId?.let { serverId -> inboxInPlaceEnabled(serverId) && inboxRowPositionEnabled(serverId) } == true
+        val sharedRule: ((Message) -> Boolean)? =
+            if (!rowPosition) {
+                null
+            } else {
+                { message ->
+                    snapshot.hiddenListMessageCounts(
+                        message = message,
+                        provenance = (event as? MessageNew)?.systemProvenance,
+                        principalId = currentUserId,
+                        // The shell judges the mute for a `message:new` only.
+                        activityMuted = activityMuted && event is MessageNew,
+                        activeConversationId = activeConversationId
+                    )
+                }
+            }
         val increment =
             synchronized(realtimeOwnerLock) {
-                event.activitySummaryUnreadIncrement(snapshot, activeConversationId, currentUserId) { seq ->
+                event.activitySummaryUnreadIncrement(snapshot, activeConversationId, currentUserId, sharedRule) { seq ->
                     // false = already counted; else record it (oldest dropped past the cap).
                     realtimeCountedUnreadSeqs.add(seq).also {
                         while (realtimeCountedUnreadSeqs.size > ActivityRealtimeCountedSeqLimit) {
@@ -2638,7 +2666,7 @@ class SharedActivityStore internal constructor(
             }
         if (increment <= 0) return
         reduceState(
-            SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId),
+            SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId, activityMuted),
             current.copy(
                 snapshot =
                     snapshot.copy(
@@ -5719,7 +5747,9 @@ sealed interface SharedActivityIntent {
     ) : SharedActivityIntent
     data class ApplyRealtimeSummaryEvent(
         val event: RealtimeEvent,
-        val activeConversationId: String?
+        val activeConversationId: String?,
+        /** See [ApplyRealtimeEvent.activityMuted]; read only with `inbox_row_position_v1` on. */
+        val activityMuted: Boolean = false
     ) : SharedActivityIntent
 
     /**
@@ -5955,15 +5985,17 @@ private fun RealtimeEvent.activitySummaryUnreadIncrement(
     snapshot: InboxSnapshot,
     activeConversationId: String?,
     currentUserId: String,
+    /** `inbox_row_position_v1`: whether a message counts, by the shared rule. Null: today's checks. */
+    sharedRule: ((Message) -> Boolean)?,
     markCounted: (seq: Long) -> Boolean,
 ): Int =
     when (this) {
-        is MessageNew -> snapshot.unreadIncrementForMessage(message, activeConversationId, currentUserId, markCounted)
+        is MessageNew -> snapshot.unreadIncrementForMessage(message, activeConversationId, currentUserId, sharedRule, markCounted)
         is SyncResumeResponse ->
             messages
                 .distinctBy { it.id }
                 .sumOf { message ->
-                    snapshot.unreadIncrementForMessage(message, activeConversationId, currentUserId, markCounted)
+                    snapshot.unreadIncrementForMessage(message, activeConversationId, currentUserId, sharedRule, markCounted)
                 }
         is ThreadUpdated ->
             unreadCount
@@ -5983,18 +6015,60 @@ private fun InboxSnapshot.unreadIncrementForMessage(
     message: Message,
     activeConversationId: String?,
     currentUserId: String,
+    sharedRule: ((Message) -> Boolean)?,
     markCounted: (seq: Long) -> Boolean,
 ): Int {
     val channelId = message.channelId ?: message.threadChannelId ?: return 0
-    if (message.author.id.value == currentUserId) return 0
-    if (isActiveActivityConversation(channelId.value, activeConversationId, this)) return 0
-    if (items.any { item ->
-            item.isUnfollowedActivityThread &&
-                (item.threadChannelId == channelId || item.channelId == channelId)
-        }) return 0
+    if (sharedRule != null) {
+        if (!sharedRule(message)) return 0
+    } else {
+        if (message.author.id.value == currentUserId) return 0
+        if (isActiveActivityConversation(channelId.value, activeConversationId, this)) return 0
+        if (items.any { item ->
+                item.isUnfollowedActivityThread &&
+                    (item.threadChannelId == channelId || item.channelId == channelId)
+            }) return 0
+    }
     if (items.any { item -> item.latestActivityMessageId == message.id || item.lastMessageId == message.id }) return 0
     val seq = message.seq ?: return 1
     return if (markCounted(seq)) 1 else 0
+}
+
+/**
+ * `inbox_row_position_v1`: a live message counts on a hidden list's badge as the shared rule says
+ * ([activityLiveUnread]): by its listed row, or, for a conversation the list does not show, as a
+ * followed thread reply or a channel/DM message. One the rule cannot judge (a system line without
+ * its provenance) does not count: the list reads the row when it shows.
+ */
+private fun InboxSnapshot.hiddenListMessageCounts(
+    message: Message,
+    provenance: MessageSystemProvenance?,
+    principalId: String,
+    activityMuted: Boolean,
+    activeConversationId: String?
+): Boolean {
+    val streamChannelId = message.channelId ?: message.threadChannelId ?: return false
+    val readOnArrival = isActiveActivityConversation(streamChannelId.value, activeConversationId, this)
+    val threadIndex = threadRowIndex(streamChannelId)
+    val row =
+        if (threadIndex >= 0) {
+            items[threadIndex]
+        } else {
+            items.firstOrNull { item -> item.isChannelOrDmRow() && item.channelId == message.channelId }
+        }
+    if (row != null) {
+        return activityRowLiveVerdict(row, message, provenance, principalId, activityMuted, readOnArrival).counts == true
+    }
+    val threadReply = message.conversationContext?.parentChannelId != null || message.parentMessageId != null
+    return activityLiveUnread(
+        message.toActivityUnreadMessage(provenance),
+        ActivityUnreadViewer(type = "user", id = principalId),
+        ActivityUnreadScope(
+            rowKind = if (threadReply) ActivityUnreadRowKind.Thread else ActivityUnreadRowKind.Channel,
+            activityMuted = activityMuted && !threadReply,
+            readOnArrival = readOnArrival
+        )
+    ).counts == true
 }
 
 private fun isActiveActivityConversation(
