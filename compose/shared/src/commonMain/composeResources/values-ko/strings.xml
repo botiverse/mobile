@@ -837,13 +837,6 @@
     <string name="channel_settings_leave_delete_title">나가고 채널을 삭제할까요?</string>
     <string name="channel_settings_leave_delete_message">이 비공개 채널의 마지막 멤버예요. 나가면 채널과 메시지가 삭제되며 복구할 수 없어요.</string>
     <string name="channel_settings_leave_delete_action">나가고 삭제</string>
-    <string name="channel_settings_guest_title">게스트 접근</string>
-    <string name="channel_settings_guest_detail">게스트가 이 채널을 찾고 직접 참여할 수 있는지 선택하세요.</string>
-    <string name="channel_settings_guest_visible">게스트에게 표시</string>
-    <string name="channel_settings_guest_visible_detail">게스트가 참여하지 않고도 이 채널을 읽을 수 있어요. 이 서버가 공개 상태라면 공개 페이지에도 표시돼요.</string>
-    <string name="channel_settings_guest_joinable">게스트 참여 허용</string>
-    <string name="channel_settings_guest_joinable_detail">게스트가 이 채널에 직접 참여할 수 있어요. 참여하면 채널이 게스트의 사이드바에 계속 표시되고, 새 메시지는 읽지 않음으로 표시되며, 게스트가 채널 멤버 목록에도 나타나요.</string>
-    <string name="channel_settings_guest_failed">게스트 접근 설정을 업데이트하지 못했어요</string>
     <string name="channel_settings_unavailable">채널 설정을 사용할 수 없어요</string>
     <string name="channel_settings_unavailable_detail">채널이 삭제되었거나 설정을 불러오지 못했어요.</string>
     <string name="channel_settings_invalid_route">이 페이지에 유효한 서버 또는 채널 정보가 없어요.</string>
@@ -860,8 +853,6 @@
     <string name="channel_details_shown_to_server">%1$s의 모든 사람에게 표시됩니다.</string>
     <string name="channel_details_shown_to_members">채널 멤버에게 표시됩니다.</string>
     <string name="channel_details_shown_external">이 채널에 참여한 모든 서버에 표시되는 이름과 설명이에요.</string>
-    <string name="channel_details_visitor_visible">방문자에게 표시</string>
-    <string name="channel_details_visitor_visible_detail">로그인하지 않아도 누구나 이 서버의 공개 페이지에서 이 채널의 메시지와 답글을 읽을 수 있어요.</string>
     <string name="channel_details_slack_title">Slack</string>
     <string name="channel_details_slack_not_connected">연결 안 됨</string>
     <string name="channel_details_slack_connected">#%1$s · 동기화됨</string>
@@ -3505,8 +3496,6 @@
     <string name="settings_public_visibility_description">아래 채널은 로그인하거나 초대받지 않아도 누구나 읽을 수 있어요.</string>
     <string name="settings_public_visibility_public_url">공개 페이지</string>
     <string name="settings_public_visibility_copy_url">복사</string>
-    <string name="settings_public_visibility_allow_guest_join">방문자가 게스트로 참여하도록 허용</string>
-    <string name="settings_public_visibility_allow_guest_join_description">로그인한 방문자는 읽기 전용 게스트로 서버에 참여하고, 게스트에게 열린 채널을 팔로우하고, 다른 채널에 초대받을 수 있어요.</string>
     <string name="settings_public_visibility_allow_search">검색 엔진 노출 허용</string>
     <string name="settings_public_visibility_allow_search_description">검색 엔진이 누구나 볼 수 있는 채널과 그 스레드를 검색 결과에 표시할 수 있어요. 끄면 더 이상 노출되지 않지만, 이미 등록된 결과가 사라지기까지는 시간이 걸릴 수 있어요. 채널은 계속 공개 상태로 유지돼요.</string>
     <string name="settings_public_visibility_channel_list_label">누구나 볼 수 있는 채널</string>
@@ -3518,7 +3507,6 @@
     <string name="settings_public_visibility_confirm_saving">공개로 전환 중…</string>
     <string name="settings_public_visibility_failed_load">공개 접근 설정을 불러오지 못했어요</string>
     <string name="settings_public_visibility_failed_update">공개 접근 설정을 업데이트하지 못했어요</string>
-    <string name="settings_public_visibility_failed_guest_join_update">게스트 참여 설정을 업데이트하지 못했어요</string>
     <string name="settings_public_visibility_failed_search_update">검색 엔진 노출 설정을 업데이트하지 못했어요</string>
     <string name="channel_public_page_readable">누구나 공개 페이지에서 이 채널을 읽을 수 있어요</string>
     <string name="channel_external_members">외부 채널</string>

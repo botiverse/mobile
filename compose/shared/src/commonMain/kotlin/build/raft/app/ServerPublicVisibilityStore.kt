@@ -35,7 +35,7 @@ internal enum class ServerPublicVisibilityAvailability {
     LoadFailed,
 }
 
-internal enum class ServerPublicVisibilityErrorKind { Load, Update, GuestJoinUpdate, SearchUpdate }
+internal enum class ServerPublicVisibilityErrorKind { Load, Update, SearchUpdate }
 
 internal data class ServerPublicVisibilityError(
     val kind: ServerPublicVisibilityErrorKind,
@@ -47,8 +47,6 @@ internal data class ServerPublicVisibilityState(
     val serverId: String? = null,
     val availability: ServerPublicVisibilityAvailability = ServerPublicVisibilityAvailability.Hidden,
     val readback: ServerPublicVisibilityReadback? = null,
-    /** `server_guest_v0` evaluated with platform "web" for this server (web: serverGuestEnabled). */
-    val guestJoinApplicable: Boolean = false,
     val saving: Boolean = false,
     val confirmOpen: Boolean = false,
     val error: ServerPublicVisibilityError? = null,
@@ -72,9 +70,6 @@ internal data class ServerPublicVisibilityState(
     /** Sub-switches additionally require a public server: `|| !readback.publiclyVisible`. */
     val subSwitchesEnabled: Boolean
         get() = visibilitySwitchEnabled && readback?.publiclyVisible == true
-
-    val guestJoinChecked: Boolean
-        get() = readback?.publicGuestJoinEnabled == true
 
     /** `checked={readback?.publiclyVisible === true && readback.publicSearchEnabled}`. */
     val searchChecked: Boolean
@@ -103,8 +98,6 @@ internal sealed interface ServerPublicVisibilityIntent {
     data object ConfirmMakePublic : ServerPublicVisibilityIntent
 
     data object DismissConfirm : ServerPublicVisibilityIntent
-
-    data class GuestJoinToggled(val checked: Boolean) : ServerPublicVisibilityIntent
 
     data class SearchToggled(val checked: Boolean) : ServerPublicVisibilityIntent
 }
@@ -144,12 +137,6 @@ internal class ServerPublicVisibilityStore(
             ServerPublicVisibilityIntent.DismissConfirm -> {
                 val current = mutableState.value
                 if (current.confirmOpen && !current.saving) mutableState.value = current.copy(confirmOpen = false)
-            }
-            is ServerPublicVisibilityIntent.GuestJoinToggled -> {
-                val current = mutableState.value
-                if (!current.guestJoinApplicable || !current.subSwitchesEnabled) return
-                if (current.guestJoinChecked == intent.checked) return
-                updateGuestJoin(intent.checked)
             }
             is ServerPublicVisibilityIntent.SearchToggled -> {
                 val current = mutableState.value
@@ -194,7 +181,6 @@ internal class ServerPublicVisibilityStore(
                             mutableState.value.copy(
                                 availability = ServerPublicVisibilityAvailability.Available,
                                 readback = result.readback,
-                                guestJoinApplicable = result.guestJoinApplicable,
                             )
                         ServerPublicVisibilityLoadResult.Unavailable ->
                             mutableState.value.copy(availability = ServerPublicVisibilityAvailability.Unavailable)
@@ -214,22 +200,10 @@ internal class ServerPublicVisibilityStore(
             onSuccess = { state, update ->
                 state.copy(
                     confirmOpen = false,
-                    readback =
-                        state.readback?.copy(
-                            publiclyVisible = update.publiclyVisible,
-                            publicGuestJoinEnabled = update.publicGuestJoinEnabled,
-                        ),
+                    readback = state.readback?.copy(publiclyVisible = update.publiclyVisible),
                 )
             },
             afterSuccess = { runCatchingPreservingCancellation { refreshServerList() } },
-        )
-    }
-
-    private fun updateGuestJoin(enabled: Boolean) {
-        launchMutation(
-            errorKind = ServerPublicVisibilityErrorKind.GuestJoinUpdate,
-            request = { serverId -> repository.setPublicGuestJoinEnabled(serverId, enabled) },
-            onSuccess = { state, value -> state.copy(readback = state.readback?.copy(publicGuestJoinEnabled = value)) },
         )
     }
 

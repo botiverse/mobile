@@ -6692,7 +6692,6 @@ internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
                     permissions = panel.permissions ?: ChannelSettingsPermissions(),
                     writeActionsEnabled = true,
                     canStopAllAgents = panel.canStopAllAgents,
-                    showGuestAccess = false,
                     section = panel.section,
                     serverName = "Botiverse",
                 ),

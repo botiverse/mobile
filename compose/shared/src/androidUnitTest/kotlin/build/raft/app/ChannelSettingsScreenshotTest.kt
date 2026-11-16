@@ -130,7 +130,6 @@ internal fun ChannelSettingsVisualContent() {
                     permissions = channelSettingsPermissions(triage, canManage = true),
                     writeActionsEnabled = true,
                     canStopAllAgents = true,
-                    showGuestAccess = true,
                     slackBridge =
                         ChannelSlackBridgeState(
                             options =

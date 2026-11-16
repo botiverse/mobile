@@ -241,8 +241,7 @@ internal data class ThreadChannelSettingsPanel(
     val agentControlsApi: build.raft.app.data.RaftAgentControlsApi? = null,
     /** Web: #all hides its members from a member when the server hides people (ChatPanel `hideAllChannelMembersButton`). */
     val hideMembersStrip: Boolean = false,
-    /** Without a store: Guest access and the Slack pick as the fixture shows them. */
-    val showGuestAccess: Boolean = false,
+    /** Without a store: the Slack pick as the fixture shows it. */
     val slackBridge: build.raft.app.data.ChannelSlackBridgeState? = null,
     val onProfileSaved: (name: String, description: String?) -> Unit = { _, _ -> },
     val onChannelChanged: () -> Unit = {},

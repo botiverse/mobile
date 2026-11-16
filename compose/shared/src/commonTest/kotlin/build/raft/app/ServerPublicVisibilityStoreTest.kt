@@ -33,15 +33,10 @@ class ServerPublicVisibilityStoreTest {
         val loads = mutableListOf<ServerId>()
         val visibilityWrites = mutableListOf<Boolean>()
         val searchWrites = mutableListOf<Boolean>()
-        val guestJoinWrites = mutableListOf<Boolean>()
         var visibilityResult: (Boolean) -> ServerPublicMutationResult<ServerPublicVisibilityUpdate> = { visible ->
-            ServerPublicMutationResult.Success(
-                // Server semantics (servers.ts:4615-4616): turning visibility off clears guest join.
-                ServerPublicVisibilityUpdate(publiclyVisible = visible, publicGuestJoinEnabled = false, publicSearchEnabled = true)
-            )
+            ServerPublicMutationResult.Success(ServerPublicVisibilityUpdate(publiclyVisible = visible, publicSearchEnabled = true))
         }
         var searchResult: (Boolean) -> ServerPublicMutationResult<Boolean> = { ServerPublicMutationResult.Success(it) }
-        var guestJoinResult: (Boolean) -> ServerPublicMutationResult<Boolean> = { ServerPublicMutationResult.Success(it) }
         var mutationGate: CompletableDeferred<Unit>? = null
 
         override suspend fun load(serverId: ServerId): ServerPublicVisibilityLoadResult {
@@ -59,12 +54,6 @@ class ServerPublicVisibilityStoreTest {
             searchWrites += publicSearchEnabled
             mutationGate?.await()
             return searchResult(publicSearchEnabled)
-        }
-
-        override suspend fun setPublicGuestJoinEnabled(serverId: ServerId, publicGuestJoinEnabled: Boolean): ServerPublicMutationResult<Boolean> {
-            guestJoinWrites += publicGuestJoinEnabled
-            mutationGate?.await()
-            return guestJoinResult(publicGuestJoinEnabled)
         }
     }
 
@@ -120,17 +109,15 @@ class ServerPublicVisibilityStoreTest {
     }
 
     @Test
-    fun turningOffAppliesDirectlyAndClearsGuestJoin() {
-        val repository = FakeRepository(loadResult = loaded(readback(publiclyVisible = true, publicGuestJoinEnabled = true)))
+    fun turningOffAppliesDirectly() {
+        val repository = FakeRepository(loadResult = loaded(readback(publiclyVisible = true)))
         val store = startedStore(repository)
-        assertTrue(store.state.value.guestJoinChecked)
 
         store.dispatch(ServerPublicVisibilityIntent.VisibilityToggled(checked = false))
 
         assertEquals(listOf(false), repository.visibilityWrites)
         assertFalse(store.state.value.confirmOpen)
         assertFalse(store.state.value.visibilityChecked)
-        assertFalse(store.state.value.guestJoinChecked)
         assertNull(store.state.value.publicUrl("https://raft.example"))
         assertEquals(1, serverListRefreshes)
     }
@@ -143,9 +130,7 @@ class ServerPublicVisibilityStoreTest {
         assertTrue(store.state.value.visibilitySwitchEnabled)
         assertFalse(store.state.value.subSwitchesEnabled)
         store.dispatch(ServerPublicVisibilityIntent.SearchToggled(checked = true))
-        store.dispatch(ServerPublicVisibilityIntent.GuestJoinToggled(checked = true))
         assertTrue(repository.searchWrites.isEmpty())
-        assertTrue(repository.guestJoinWrites.isEmpty())
     }
 
     @Test
@@ -163,7 +148,7 @@ class ServerPublicVisibilityStoreTest {
     }
 
     @Test
-    fun subSwitchWritesPatchOnlyTheirSliceAndReportTheirOwnErrors() {
+    fun searchWritesPatchOnlyItsSliceAndReportItsOwnError() {
         val repository = FakeRepository(loadResult = loaded(readback(publiclyVisible = true, publicSearchEnabled = true)))
         val store = startedStore(repository)
 
@@ -172,22 +157,11 @@ class ServerPublicVisibilityStoreTest {
         assertFalse(store.state.value.searchChecked)
         assertTrue(store.state.value.visibilityChecked)
 
-        repository.guestJoinResult = { ServerPublicMutationResult.Failed(code = 404, serverMessage = "Not found") }
-        store.dispatch(ServerPublicVisibilityIntent.GuestJoinToggled(checked = true))
-        assertEquals(listOf(true), repository.guestJoinWrites)
-        assertFalse(store.state.value.guestJoinChecked, "failure keeps the previous state")
-        assertEquals(ServerPublicVisibilityError(ServerPublicVisibilityErrorKind.GuestJoinUpdate, "Not found"), store.state.value.error)
-    }
-
-    @Test
-    fun guestJoinSwitchIsInertWhenTheGateDoesNotApply() {
-        val repository = FakeRepository(loadResult = loaded(readback(publiclyVisible = true), guestJoinApplicable = false))
-        val store = startedStore(repository)
-
-        store.dispatch(ServerPublicVisibilityIntent.GuestJoinToggled(checked = true))
-
-        assertFalse(store.state.value.guestJoinApplicable)
-        assertTrue(repository.guestJoinWrites.isEmpty())
+        repository.searchResult = { ServerPublicMutationResult.Failed(code = 409, serverMessage = "Not public") }
+        store.dispatch(ServerPublicVisibilityIntent.SearchToggled(checked = true))
+        assertEquals(listOf(false, true), repository.searchWrites)
+        assertFalse(store.state.value.searchChecked, "failure keeps the previous state")
+        assertEquals(ServerPublicVisibilityError(ServerPublicVisibilityErrorKind.SearchUpdate, "Not public"), store.state.value.error)
     }
 
     @Test
@@ -216,18 +190,15 @@ class ServerPublicVisibilityStoreTest {
     private companion object {
         fun readback(
             publiclyVisible: Boolean = false,
-            publicGuestJoinEnabled: Boolean = false,
             publicSearchEnabled: Boolean = true,
             slug: String = "acme",
         ) = ServerPublicVisibilityReadback(
             publiclyVisible = publiclyVisible,
-            publicGuestJoinEnabled = publicGuestJoinEnabled,
             publicSearchEnabled = publicSearchEnabled,
             slug = slug,
             exposedChannels = listOf(ServerPublicExposedChannel("c-1", "announcements", null)),
         )
 
-        fun loaded(readback: ServerPublicVisibilityReadback, guestJoinApplicable: Boolean = true) =
-            ServerPublicVisibilityLoadResult.Loaded(readback, guestJoinApplicable)
+        fun loaded(readback: ServerPublicVisibilityReadback) = ServerPublicVisibilityLoadResult.Loaded(readback)
     }
 }

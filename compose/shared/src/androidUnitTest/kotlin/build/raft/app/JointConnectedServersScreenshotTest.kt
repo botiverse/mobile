@@ -90,7 +90,6 @@ class JointConnectedServersScreenshotTest {
                                 permissions = channelSettingsPermissions(wgDeck, canManage = true),
                                 writeActionsEnabled = true,
                                 canStopAllAgents = false,
-                                showGuestAccess = false,
                                 externalChannelsEnabled = true,
                                 section = ChannelSectionPlacement(customSections = emptyList(), pinned = false, placementSectionId = null),
                                 serverName = "Botiverse",

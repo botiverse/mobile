@@ -205,7 +205,6 @@ class ChannelSettingsDrawerTest {
                 permissions = channelSettingsPermissions(row, canManage),
                 writeActionsEnabled = true,
                 canStopAllAgents = canStopAllAgents,
-                showGuestAccess = false,
             )
         )
 

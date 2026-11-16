@@ -152,8 +152,6 @@ data class ConversationSummary(
      * Only meaningful for `type == "channel"`; never true for DMs / threads.
      */
     val guestVisible: Boolean = false,
-    /** Channel row `guestJoinable` (see [build.raft.app.data.HomeChannelWireDto.guestJoinable]). */
-    val guestJoinable: Boolean = false,
     /** Channel row `hasExternalRelation` (see [build.raft.app.data.HomeChannelWireDto.hasExternalRelation]). */
     val hasExternalRelation: Boolean = false,
     val activityNotificationPreference: ChannelActivityNotificationPreference = ChannelActivityNotificationPreference.Unsupported,
@@ -205,7 +203,6 @@ data class ChannelCapabilities(
     val archiveChannels: Boolean? = null,
     val deleteChannels: Boolean? = null,
     val changeChannelVisibility: Boolean? = null,
-    val manageGuestAccess: Boolean? = null,
     val federateChannels: Boolean? = null,
 )
 

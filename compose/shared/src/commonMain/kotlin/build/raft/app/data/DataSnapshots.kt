@@ -312,9 +312,6 @@ sealed interface HomeConversationRow {
     /** Channel `guestVisible` (see [HomeChannelWireDto.guestVisible]); only channels carry one. */
     val guestVisible: Boolean
         get() = false
-    /** Channel `guestJoinable` (see [HomeChannelWireDto.guestJoinable]); only channels carry one. */
-    val guestJoinable: Boolean
-        get() = false
     /** Channel `hasExternalRelation` (see [HomeChannelWireDto.hasExternalRelation]); only channels carry one. */
     val hasExternalRelation: Boolean
         get() = false
@@ -376,7 +373,6 @@ data class HomeChannelRow(
     override val jointOverLimitGraceEndsAt: String? = null,
     override val bridgeProvider: String? = null,
     override val guestVisible: Boolean = false,
-    override val guestJoinable: Boolean = false,
     override val hasExternalRelation: Boolean = false,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
@@ -472,7 +468,6 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         bridgeProvider = bridgeProvider,
         guestVisible = guestVisible,
-        guestJoinable = guestJoinable,
         hasExternalRelation = hasExternalRelation,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
@@ -518,7 +513,6 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         bridgeProvider = bridgeProvider,
         guestVisible = guestVisible,
-        guestJoinable = guestJoinable,
         hasExternalRelation = hasExternalRelation,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,

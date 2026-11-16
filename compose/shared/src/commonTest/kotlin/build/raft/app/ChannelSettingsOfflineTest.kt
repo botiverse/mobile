@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.ChannelActivityMuteSettings
-import build.raft.app.data.ChannelGuestPolicyUpdate
 import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.ChannelSlackBridgeState
 import build.raft.app.data.ConversationDetailResourceSpec
@@ -327,9 +326,6 @@ private class OfflineFakeChannelSettingsDataSource(
 
     override suspend fun unarchiveChannel(channelId: ChannelId): DataResult<HomeChannelRow> =
         DataResult.Content(HomeChannelRow(threadId = ThreadId(channelId.value), channelId = channelId, name = "#x"))
-
-    override suspend fun updateGuestPolicy(update: ChannelGuestPolicyUpdate): DataResult<HomeChannelRow> =
-        DataResult.Content(HomeChannelRow(threadId = ThreadId("channel-1"), channelId = ChannelId("channel-1"), name = "#x"))
 
     override suspend fun archive(): DataResult<Unit> = DataResult.Content(Unit)
 

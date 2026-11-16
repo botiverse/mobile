@@ -407,49 +407,6 @@ class ChannelRepositoryDataSourceTest {
             """"archivedByAgentId":null,"deletedAt":null}"""
 
     @Test
-    fun guestPolicyPatchSendsOnlyTheChangedFlagsAndReadsTheRow() = runBlocking {
-        val network = FakeChannelNetworkClient(responseBody = canonicalChannelRow)
-        val repository = RealChannelRepository(sampleStore(), network)
-
-        val result =
-            repository.updateChannelGuestPolicy(
-                ChannelId("channel-1"),
-                ChannelGuestPolicyUpdate(guestVisible = true, guestJoinable = true),
-            )
-
-        val row = assertIs<DataResult.Content<HomeChannelRow>>(result).data
-        assertTrue(row.guestVisible)
-        assertTrue(row.guestJoinable)
-        assertEquals(
-            listOf(RecordedChannelRequest(DataRequestPriority.Foreground, "PATCH", "channels/channel-1")),
-            network.requests,
-        )
-        val body = network.bodies.single().asJsonObject()
-        assertEquals(setOf("guestVisible", "guestJoinable"), body.keys)
-
-        repository.updateChannelGuestPolicy(ChannelId("channel-1"), ChannelGuestPolicyUpdate(guestJoinable = false))
-        assertEquals(setOf("guestJoinable"), network.bodies.last().asJsonObject().keys)
-        assertEquals("false", network.bodies.last().asJsonObject()["guestJoinable"]?.jsonPrimitive?.content)
-    }
-
-    @Test
-    fun guestPolicyLimitConflictKeepsTheServerCode() = runBlocking {
-        val network =
-            FakeChannelNetworkClient(
-                responseCode = 409,
-                responseBody = null,
-                responseErrorBody =
-                    """{"error":"Guest-joinable channel limit reached","code":"guest_joinable_channel_limit_reached","limit":3}""",
-            )
-        val repository = RealChannelRepository(sampleStore(), network)
-
-        val result =
-            repository.updateChannelGuestPolicy(ChannelId("channel-1"), ChannelGuestPolicyUpdate(guestVisible = true, guestJoinable = true))
-
-        assertEquals("guest_joinable_channel_limit_reached", assertIs<DataResult.Error>(result).error.code)
-    }
-
-    @Test
     fun unarchivePostsAndReadsTheRestoredRow() = runBlocking {
         val network = FakeChannelNetworkClient(responseBody = canonicalChannelRow)
         val repository = RealChannelRepository(sampleStore(), network)

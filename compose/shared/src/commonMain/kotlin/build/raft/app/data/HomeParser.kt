@@ -82,11 +82,6 @@ data class HomeChannelWireDto(
      */
     val guestVisible: Boolean = false,
     /**
-     * `channels.guest_joinable` (botiverse/slock packages/server/src/routes/channels.ts PATCH `/:id`
-     * reads/writes `guestJoinable`; web `channel.guestJoinable`): guests may join the channel.
-     */
-    val guestJoinable: Boolean = false,
-    /**
      * The channel has people from outside the Server (a Guest, or an open external invite):
      * botiverse/slock packages/server/src/services/channelService.ts `attachExternalRelations`,
      * on `GET /api/channels` items and `GET /api/channels/:id`. Omitted (false) for a joint
@@ -169,11 +164,6 @@ private data class HomeChannelDetailWireDto(
     val bridge: HomeChannelBridgeWireDto? = null,
     /** See [HomeChannelWireDto.guestVisible]. */
     val guestVisible: Boolean = false,
-    /**
-     * `channels.guest_joinable` (botiverse/slock packages/server/src/routes/channels.ts PATCH `/:id`
-     * reads/writes `guestJoinable`; web `channel.guestJoinable`): guests may join the channel.
-     */
-    val guestJoinable: Boolean = false,
     /** See [HomeChannelWireDto.hasExternalRelation]. */
     val hasExternalRelation: Boolean = false,
     val activityMuted: Boolean = false,
@@ -203,7 +193,6 @@ data class WireChannelCapabilities(
     val archiveChannels: Boolean? = null,
     val deleteChannels: Boolean? = null,
     val changeChannelVisibility: Boolean? = null,
-    val manageGuestAccess: Boolean? = null,
     val federateChannels: Boolean? = null,
 ) {
     fun toModel(): ChannelCapabilities =
@@ -215,7 +204,6 @@ data class WireChannelCapabilities(
             archiveChannels = archiveChannels,
             deleteChannels = deleteChannels,
             changeChannelVisibility = changeChannelVisibility,
-            manageGuestAccess = manageGuestAccess,
             federateChannels = federateChannels,
         )
 }
@@ -270,7 +258,6 @@ internal fun parseRaftChannelDetail(
             jointOverLimitGraceEndsAt = wire.jointOverLimitGraceEndsAt,
             bridge = wire.bridge,
             guestVisible = wire.guestVisible,
-            guestJoinable = wire.guestJoinable,
             hasExternalRelation = wire.hasExternalRelation,
             activityMuted = wire.activityMuted,
             muteFromSeq = wire.muteFromSeq,
@@ -493,7 +480,6 @@ internal fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt?.takeIf { it.isNotBlank() },
         bridgeProvider = bridge.normalizedBridgeProviderOrNull(),
         guestVisible = guestVisible,
-        guestJoinable = guestJoinable,
         hasExternalRelation = hasExternalRelation,
         activityNotificationPreference =
             ChannelActivityNotificationPreference(
