@@ -5153,8 +5153,18 @@ class SharedActivityStore internal constructor(
                 snapshot.items.filter { item ->
                     item.showsUnread && item.readReceiptChannelId() == prediction.channelId
                 }
+            // Web inboxStore clearReadForChannel (conversationReadInboxItem, slock #14805): the read
+            // covers every mention up to it, also one the unread does not count (a task lifecycle
+            // line), so a listed row with an @ and no unread loses the @ and its jump target too. A
+            // mention-only row (its first unread is the @) keeps it, as the server does until Done.
+            val uncountedMentionKeys =
+                snapshot.items
+                    .filter { item ->
+                        !item.showsUnread && item.hasUncountedMention &&
+                            item.readReceiptChannelId() == prediction.channelId && current.keepsReadRow(item.key)
+                    }.mapTo(mutableSetOf(), InboxItem::key)
             readPredictionRevisions = readPredictionRevisions + (prediction.channelId to prediction.revision)
-            if (matchingUnread.isEmpty()) return@synchronized
+            if (matchingUnread.isEmpty() && uncountedMentionKeys.isEmpty()) return@synchronized
             // Pending until the coordinator reports this channel's write result
             // (handleReadReceiptResult); the hold starts at server confirmation.
             val generations = rememberUnreadCleared(overlayOwner(current), matchingUnread)
@@ -5167,6 +5177,7 @@ class SharedActivityStore internal constructor(
             val updatedItems =
                 snapshot.items.mapNotNull { item ->
                     when {
+                        item.key in uncountedMentionKeys -> item.copy(hasMention = false, firstMentionMessageId = null)
                         item.key !in matchingKeys -> item
                         current.keepsReadRow(item.key) ->
                             item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false, markedUnread = false)
@@ -6547,6 +6558,15 @@ data class SharedActivitySenderProfile(
 
 internal fun InboxItem.readReceiptChannelId(): ChannelId? =
     if (kind == InboxItemKind.Thread) threadChannelId else channelId
+
+/**
+ * An @ on a message the unread does not count (web `conversationReadInboxItem` `uncountedMention`): a
+ * task conversation's lifecycle line, a thread line the person caused. A conversation row only.
+ */
+private val InboxItem.hasUncountedMention: Boolean
+    get() =
+        hasMention && firstUnreadMessageId == null &&
+            kind != InboxItemKind.MentionAction && kind != InboxItemKind.Object
 
 private fun InboxItem.activityUnreadAnchor(): MessageId? =
     firstUnreadMessageId ?: latestActivityMessageId ?: lastMessageId ?: parentMessageId
