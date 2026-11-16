@@ -19,6 +19,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Search in this thread (web `useThreadSearch` + `ThreadSearchBar`, slock staging e4c09353f), on virtual time. */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class SharedThreadFindStoreTest {
     @Test
     fun countsTheLoadedMatchesAndWrapsBothWays() = runTest {
@@ -107,7 +108,7 @@ class SharedThreadFindStoreTest {
         assertEquals(3, source.calls.size)
         // A reply that came since is counted too.
         store.dispatch(ThreadFindIntent.Query("launch"))
-        store.dispatch(ThreadFindIntent.Window(window(replies = (200L..252L).map { msg("m$it", it, if (it == 210L || it == 252L) "launch" else "x") }, hasOlder = true)))
+        store.dispatch(ThreadFindIntent.Window(window(replies = (200L..252L).map { msg("m$it", it, if (it == 210L || it == 251L || it == 252L) "launch" else "x") }, hasOlder = true)))
         assertEquals(listOf("m70", "m150", "m210", "m251", "m252"), store.state.value.matches)
     }
 
