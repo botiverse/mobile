@@ -54,8 +54,14 @@ internal data class ActivityUnreadScope(
     val readOnArrival: Boolean = false,
 )
 
-/** Web `ActivityUnreadVerdict`: [counts] null = cannot be judged from the event (re-read the row). */
-internal data class ActivityUnreadVerdict(val counts: Boolean?, val mention: Boolean)
+/**
+ * Web `ActivityUnreadVerdict`: [counts] null = cannot be judged from the event (re-read the row).
+ * [moves]: it becomes the row's latest activity (position, preview, order). False for every message
+ * past a channel or DM mute, a mention included (slock #15111): RisingWave keeps that row at its last
+ * message before the mute. The position rule then leaves the row as it is, except that a mention
+ * lights its @ (and moves a mention-only row, whose position is its highest mention).
+ */
+internal data class ActivityUnreadVerdict(val counts: Boolean?, val mention: Boolean, val moves: Boolean = true)
 
 /** Web `activityLiveUnread`. */
 internal fun activityLiveUnread(
@@ -64,14 +70,20 @@ internal fun activityLiveUnread(
     scope: ActivityUnreadScope,
 ): ActivityUnreadVerdict {
     val own = message.senderType == viewer.type && message.senderId == viewer.id
-    if (own || scope.readOnArrival) return ActivityUnreadVerdict(counts = false, mention = false)
     val isThreadRow = scope.rowKind == ActivityUnreadRowKind.Thread || scope.rowKind == ActivityUnreadRowKind.Task
+    // The mute decides whether the row moves, whoever sent it and whether it is read.
+    val moves = isThreadRow || !scope.activityMuted
+    if (own || scope.readOnArrival) return ActivityUnreadVerdict(counts = false, mention = false, moves = moves)
     // An unfollowed thread row: no count and no @, even for a mention of the viewer. Correct only because
     // a mention makes the server follow the thread for them and send the change that makes the client
     // re-read the row; mentions in unfollowed threads are not dropped.
-    if (isThreadRow && !scope.threadFollowed) return ActivityUnreadVerdict(counts = false, mention = false)
+    if (isThreadRow && !scope.threadFollowed) return ActivityUnreadVerdict(counts = false, mention = false, moves = moves)
     val mention = message.mentions.any { it.type == viewer.type && it.id == viewer.id }
-    return ActivityUnreadVerdict(counts = countsForViewer(message, viewer, scope), mention = mention)
+    return ActivityUnreadVerdict(
+        counts = countsForViewer(message, viewer, scope),
+        mention = mention,
+        moves = moves,
+    )
 }
 
 private fun countsForViewer(message: ActivityUnreadMessage, viewer: ActivityUnreadViewer, scope: ActivityUnreadScope): Boolean? {

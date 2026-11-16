@@ -21,7 +21,9 @@ class InboxFetchReasonHeaderTest {
                 // Mobile-only until the server lists it (`mobile_inbox_inplace_v0` reconcile).
                 "inplace_reconcile",
                 // `inbox_row_position_v1`: not a list read, the rows' own (`?ids=`, server ACTIVITY_ROW_FETCH_REASONS).
-                "position_reread"
+                "position_reread",
+                // `inbox_row_position_v1`: the sampled audit read of one row (web `position_audit`).
+                "position_audit"
             ),
             InboxFetchReason.entries.map { it.wireValue }
         )

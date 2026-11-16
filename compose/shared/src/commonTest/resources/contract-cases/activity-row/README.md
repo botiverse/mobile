@@ -100,7 +100,9 @@ The rule, in full (design doc "Fact 1"):
 4. A row with `position: null`: every live message re-reads it.
 5. An answer at `Pa < P`: keep the row. Otherwise take the answer and apply
    again the seqs applied above `Pa`; those at or below `Pa` are trusted as
-   counted in it, unless an inversion was seen: then re-read the row.
+   counted in it, unless an inversion was seen: then re-read the row. An
+   older answer is kept out whether or not a live message came first
+   (`older_answer_kept`, `older_answer_kept_no_live`).
 6. A mention-only row: a counted message above it, a counted mention
    included, makes it a normal unread row; a mention that does not count (a
    muted conversation) lights the @ and keeps it mention-only.
@@ -108,6 +110,22 @@ The rule, in full (design doc "Fact 1"):
    it, on a mention-only row, or on a row without a position, re-reads the row.
    Either way the applied seqs at or below the read no longer count, so an
    answer below them does not count them again (`read_then_answer_below_applied`).
+   A read covers only what is at or below it: an answer with a message past
+   the read keeps its unread (`read_covers_only_its_activity`, #15049).
+
+8. A live message with `moves: false` (past a channel or DM mute) does not
+   move the row: RisingWave keeps it at its last message before the mute.
+   Without a mention of the viewer it changes nothing and re-reads nothing
+   (`muted_message_leaves_row`). A mention lights the @ and is applied
+   without becoming the shown position, so an answer behind it keeps the @
+   and a read past it clears it (`muted_mention_lights_without_moving`); on a
+   mention-only row it moves the row as rule 6 says. `moves` is absent (true)
+   on every other step.
+
+The rule has no clock: a row is kept by its positions alone, never by how long
+ago something happened. A client that holds a row read for a while (a local
+read hold) must not depend on that hold to keep a late, older answer out
+(`older_answer_kept_without_hold`).
 
 ### Predicate inputs
 
@@ -128,8 +146,11 @@ arrives: open at the bottom with the read saved, a queued read, a read hold).
 - `reread`: some step since the case started asked to re-read this one row.
   It does not say which request (agreed with the app): a client asserts that
   it asked for a single-row re-read of the case's row, not the list.
-- `verdict`: `{counts, mention}`. `counts: null` = cannot be judged from the
-  event; the row is re-read.
+- `verdict`: `{counts, mention, moves}`. `counts: null` = cannot be judged
+  from the event; the row is re-read. `moves: false` = the message does not
+  become the row's latest activity (past a channel or DM mute, a mention
+  included): the client passes it to the position rule as the step's `moves`
+  (rule 8).
 
 ## Pending product decisions
 
@@ -157,6 +178,7 @@ while the flag is off) differs, web's loader lists the case in its own
 | 2026-11-14 | Tenny | #14988 review | `predicate_muted_channel_message` | A new message in a muted conversation does not count (RisingWave muted prefix). | web flag-off live patch (no mute input) |
 | 2026-11-14 | Tenny | #14993 review | `read_then_answer_below_applied` | A read covers the live seqs applied at or below it: an answer below them does not count them again (shared `applyRead`). | none (shared reducer since #14993) |
 | 2026-11-14 | Tenny | #14988 review | `predicate_muted_channel_mention` | A mention in a muted conversation lights the @ and does not count (RisingWave). | web flag-off live patch |
+| 2026-11-16 | Tenny | #triage:#244 | `predicate_muted_channel_message`, `predicate_muted_channel_mention`, `muted_message_leaves_row`, `muted_mention_lights_without_moving` | Follow RisingWave: past a mute no message moves a row with a pre-mute message (`moves: false`); a mention lights its @; a mention-only row still moves. Judged in place, no list re-read. | web flag-off live patch (re-reads the list on a mention); the canonical Postgres read moves the row to a muted mention (aligned in a separate server PR) |
 
 Web's gaps closed in step 2 for the flag-on path (`inbox_row_position_v1`);
 the server's pure inbox model (`inboxPolicyModel.ts`) follows all four rows

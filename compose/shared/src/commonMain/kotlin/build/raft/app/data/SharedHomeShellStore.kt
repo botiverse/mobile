@@ -201,12 +201,15 @@ class SharedHomeShellStore(
                     activityMuted = current.home.isPastActivityMute(event)
                 )
             )
-        } else if (event is PerReceiverReadStateChanged || current.primarySurfaceVisible) {
+        } else {
+            // Off the primary surface too: a list that owns the badge (`inbox_row_position_v1`)
+            // counts it; any other drops it there, as before (the store reads primarySurfaceVisible).
             acceptActivityRealtime(
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(
                     event = event,
                     activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() },
-                    activityMuted = current.home.isPastActivityMute(event)
+                    activityMuted = current.home.isPastActivityMute(event),
+                    primarySurfaceVisible = event is PerReceiverReadStateChanged || current.primarySurfaceVisible
                 )
             )
         }
@@ -282,12 +285,13 @@ class SharedHomeShellStore(
                     activityMuted = current.home.isPastActivityMute(event)
                 )
             )
-        } else if (event is PerReceiverReadStateChanged || current.primarySurfaceVisible) {
+        } else {
             dispatchActivity(
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(
                     event = event,
                     activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() },
-                    activityMuted = current.home.isPastActivityMute(event)
+                    activityMuted = current.home.isPastActivityMute(event),
+                    primarySurfaceVisible = event is PerReceiverReadStateChanged || current.primarySurfaceVisible
                 )
             )
         }

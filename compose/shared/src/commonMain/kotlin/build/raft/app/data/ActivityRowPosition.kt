@@ -24,8 +24,12 @@ package build.raft.app.data
  * exactly (`messages.seq` is a 64-bit bigserial; contract case `seq_above_2_53`).
  */
 
-/** A seq applied to the row by a live message since its last answer, with its verdict (re-applied on a merge). Web `ActivityRowAppliedSeq`. */
-internal data class ActivityRowAppliedSeq(val seq: String, val counts: Boolean, val mention: Boolean)
+/**
+ * A seq applied to the row by a live message since its last answer, with its verdict (re-applied on a
+ * merge). Web `ActivityRowAppliedSeq`. [moves] false: a mention past a mute on a row with a pre-mute
+ * message: it lights the @ but is not the row's shown position.
+ */
+internal data class ActivityRowAppliedSeq(val seq: String, val counts: Boolean, val mention: Boolean, val moves: Boolean = true)
 
 /** Web `ActivityRowState`. */
 internal data class ActivityRowState(
@@ -51,8 +55,12 @@ internal data class ActivityRowAnswer(
 
 /** Web `ActivityRowEvent`. */
 internal sealed interface ActivityRowEvent {
-    /** [counts]: the unread predicate's verdict; null = cannot be judged (re-read the row). */
-    data class Live(val seq: String, val counts: Boolean?, val mentionsViewer: Boolean) : ActivityRowEvent
+    /**
+     * [counts]: the unread predicate's verdict; null = cannot be judged (re-read the row). [moves]: the
+     * predicate's `moves`. False (past a mute): no mention leaves the row as it is; a mention lights the
+     * @ and moves only a mention-only row.
+     */
+    data class Live(val seq: String, val counts: Boolean?, val mentionsViewer: Boolean, val moves: Boolean = true) : ActivityRowEvent
 
     data class Answer(val row: ActivityRowAnswer) : ActivityRowEvent
 
@@ -82,7 +90,7 @@ internal fun activityRowFromAnswer(answer: ActivityRowAnswer): ActivityRowState 
     )
 
 /** The position the row shows (its `latestActivitySeq` on screen): the delivered one or the highest applied above it. Web `activityRowDisplayPosition`. */
-internal fun activityRowDisplayPosition(row: ActivityRowState): String? = row.applied.lastOrNull()?.seq ?: row.position
+internal fun activityRowDisplayPosition(row: ActivityRowState): String? = row.applied.lastOrNull { it.moves }?.seq ?: row.position
 
 /** Web `reduceActivityRow`. */
 internal fun reduceActivityRow(row: ActivityRowState, event: ActivityRowEvent): ActivityRowResult =
@@ -116,14 +124,19 @@ private fun ActivityRowState.withVerdict(counts: Boolean, mention: Boolean): Act
 }
 
 private fun applyLive(row: ActivityRowState, event: ActivityRowEvent.Live): ActivityRowResult {
+    // Past a mute (RisingWave's muted prefix, #triage:#244): the server's row stays at its last message
+    // before the mute. A message that does not mention the viewer changes nothing; a mention lights the
+    // @, and moves only a mention-only row (its position is its highest mention).
+    if (!event.moves && !event.mentionsViewer) return keep(row)
+    val stays = !event.moves && !row.mentionOnly
     val position = row.position ?: return reread(row, ActivityRowRereadReason.NullPosition)
     if (!event.seq.isCanonicalSeq()) return reread(row, ActivityRowRereadReason.Unjudged)
     if (compareActivityRowSeq(event.seq, position) <= 0) return reread(row, ActivityRowRereadReason.AmbiguousSeq)
     if (row.applied.any { it.seq == event.seq }) return keep(row)
     val counts = event.counts ?: return reread(row, ActivityRowRereadReason.Unjudged)
-    val highest = activityRowDisplayPosition(row)!!
+    val highest = row.applied.lastOrNull()?.seq ?: position
     val inversion = compareActivityRowSeq(event.seq, highest) < 0
-    val entry = ActivityRowAppliedSeq(event.seq, counts = counts, mention = event.mentionsViewer)
+    val entry = ActivityRowAppliedSeq(event.seq, counts = counts, mention = event.mentionsViewer, moves = !stays)
     val applied = (row.applied + entry).sortedWith { a, b -> compareActivityRowSeq(a.seq, b.seq) }
     return keep(
         row.withVerdict(entry.counts, entry.mention).copy(applied = applied, inversionObserved = row.inversionObserved || inversion)

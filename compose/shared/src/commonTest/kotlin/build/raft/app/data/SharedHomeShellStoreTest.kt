@@ -264,9 +264,13 @@ class SharedHomeShellStoreTest {
             ),
             fixture.homeIntents
         )
+        // Off the primary surface the event still goes, marked so (`inbox_row_position_v1`: a list that
+        // owns the badge counts it; any other store drops it, as when the shell did not send it).
         assertEquals(
             listOf<SharedActivityIntent>(
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null, primarySurfaceVisible = false),
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null),
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null, primarySurfaceVisible = false),
                 SharedActivityIntent.Refresh,
                 SharedActivityIntent.ApplyRealtimeEvent(event)
             ),

@@ -59,6 +59,16 @@ private suspend fun RaftNetworkClient.inboxRows(
         serverIdOverride = serverId
     )
 
+/** `X-Raft-Inbox-Backend` (shared `INBOX_BACKEND_HEADER`): which read source answered, unchanged; null when absent. */
+internal const val RaftInboxBackendHeader = "X-Raft-Inbox-Backend"
+
+internal fun HomeNetworkResponse.raftInboxBackend(): String? =
+    responseHeaders.entries
+        .firstOrNull { (name, _) -> name.equals(RaftInboxBackendHeader, ignoreCase = true) }
+        ?.value
+        ?.firstOrNull()
+        ?.takeIf { it.isNotEmpty() }
+
 internal fun inboxRowsRequestQuery(rowIds: List<String>): List<Pair<String, String>> =
     listOf("ids" to rowIds.distinct().take(ActivityRowRereadIdsMax).joinToString(","))
 
@@ -244,6 +254,7 @@ class RealInboxRepository(
             errorTextDecoder = HomeNetworkResponse::inboxRouteErrorTextOrNull,
             source = "inbox_rows",
             mapOnDefault = false,
+            annotate = { snapshot, response -> snapshot.copy(inboxBackend = response.raftInboxBackend()) },
             diagnosticsLogger = logger,
             warningLogger = warningLogger,
             mapper = { bodyText ->
@@ -278,6 +289,7 @@ class RealInboxRepository(
             markStale = { snapshot, reason, retryAfter ->
                 snapshot.copy(staleReason = reason, staleRetryAfterMillis = retryAfter)
             },
+            annotate = { snapshot, response -> snapshot.copy(inboxBackend = response.raftInboxBackend()) },
             mapper = { bodyText ->
                 val parsed = parseSharedInboxSnapshot(bodyText)
                     ?: throw IllegalStateException("Inbox response missing items")
@@ -589,6 +601,8 @@ private suspend fun <T> executeInboxLike(
      * replacing it with "nothing".
      */
     markStale: ((T, RaftStaleReason, Long?) -> T)? = null,
+    /** What the answer's headers add to it (the `X-Raft-Inbox-Backend` of an Activity read). */
+    annotate: ((T, HomeNetworkResponse) -> T)? = null,
     mapper: (String) -> T
 ): DataResult<T> {
     var statusCode: Int? = null
@@ -609,7 +623,7 @@ private suspend fun <T> executeInboxLike(
                 diagnosticsLogger = diagnosticsLogger,
                 resultLabel = { parsed -> if (emptyWhen(parsed)) "empty" else "content" },
                 parser = { mapper(body) }
-            )
+            ).let { parsed -> annotate?.invoke(parsed, response) ?: parsed }
         val staleReason = markStale?.let { response.raftStaleReason() }
         when {
             staleReason != null -> DataResult.Content(markStale(result, staleReason, response.raftRetryAfterMillis()))

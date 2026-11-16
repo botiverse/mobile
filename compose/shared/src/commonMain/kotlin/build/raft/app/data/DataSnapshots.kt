@@ -1292,6 +1292,12 @@ data class InboxSnapshot(
     @Transient
     val staleRetryAfterMillis: Long? = null,
     /**
+     * The answer's `X-Raft-Inbox-Backend` (`risingwave` / `postgres`), unchanged; web copies it into
+     * its drift check (`inbox.inplace.backend`). Null when the server sent none. Never persisted.
+     */
+    @Transient
+    val inboxBackend: String? = null,
+    /**
      * Workspace Artifacts (slock `activityObjectsContract.ts` `ObjectInboxFields`): the object rows'
      * own counts, apart from [totalCount] / [totalUnreadCount], which count no object rows. Null when
      * the server sent none (every object app off).
