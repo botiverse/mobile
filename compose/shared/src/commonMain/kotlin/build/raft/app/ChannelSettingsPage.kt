@@ -325,7 +325,6 @@ internal data class ChannelSettingsPermissions(
     val changeVisibility: Boolean = false,
     val archive: Boolean = false,
     val delete: Boolean = false,
-    val manageGuestAccess: Boolean = false,
     val federate: Boolean = false,
 ) {
     /** Web `canEditChannel`. */
@@ -339,7 +338,6 @@ internal fun channelSettingsPermissions(channel: HomeChannelRow, canManage: Bool
         changeVisibility = canManage,
         archive = canManage,
         delete = canManage,
-        manageGuestAccess = canManage,
         federate = canManage,
     )
     return ChannelSettingsPermissions(
@@ -347,7 +345,6 @@ internal fun channelSettingsPermissions(channel: HomeChannelRow, canManage: Bool
         changeVisibility = capabilities.changeChannelVisibility == true,
         archive = capabilities.archiveChannels == true,
         delete = capabilities.deleteChannels == true,
-        manageGuestAccess = capabilities.manageGuestAccess == true,
         federate = capabilities.federateChannels == true,
     )
 }
@@ -395,17 +392,6 @@ internal fun channelSettingsSlackBridgeApplies(channel: HomeChannelRow, permissi
 /** Web `currentVisibility` for Slack channel privacy matching. */
 internal fun channelSettingsSlackVisibility(channel: HomeChannelRow): String =
     if (channel.channelType.equals("private", ignoreCase = true)) "private" else "public"
-
-/**
- * Web `canManageGuestAccess` without the flag and capability: a regular channel with a guest
- * policy. A private channel has none (the server forces both flags off), except `#all`, whose
- * hidden state is `type: "private"` and keeps its guest-visible switch.
- */
-internal fun channelSettingsGuestPolicyApplies(channel: HomeChannelRow): Boolean {
-    if (channelSettingsIsJoint(channel)) return false
-    val type = channel.channelType?.lowercase() ?: "channel"
-    return type == "channel" || (type == "private" && channelSettingsIsAllChannel(channel))
-}
 
 /**
  * The settings store of one channel as the settings page and the conversation's settings drawer
@@ -674,7 +660,6 @@ private fun ChannelSettingsPageScreen() {
                                 writeActionsEnabled = settingsState.writeActionsEnabled && authorityAccepted,
                                 canStopAllAgents =
                                     channelSettingsCanStopAllAgents(channel, viewerServerRole) && authorityAccepted,
-                                showGuestAccess = settingsState.showsGuestAccess(),
                                 actionInFlight = settingsState.actionInFlight,
                                 profileStatus = settingsState.profileStatus,
                                 profileErrorCode = settingsState.profileErrorCode,
@@ -743,8 +728,6 @@ private fun ChannelSettingsPageScreen() {
                                     settingsStore.dispatch(ChannelSettingsIntent.UpdateProfile(name, description, slackBridge))
                                 },
                                 onClearProfileStatus = { settingsStore.dispatch(ChannelSettingsIntent.ClearProfileStatus) },
-                                onSetGuestVisible = { settingsStore.dispatch(ChannelSettingsIntent.SetGuestVisible(it)) },
-                                onSetGuestJoinable = { settingsStore.dispatch(ChannelSettingsIntent.SetGuestJoinable(it)) },
                                 onConfirm = { confirm = it },
                                 onUnarchive = { settingsStore.dispatch(ChannelSettingsIntent.Unarchive) },
                                 onStopAllAgents = {
@@ -843,7 +826,6 @@ internal data class ChannelSettingsUiModel(
     val permissions: ChannelSettingsPermissions,
     val writeActionsEnabled: Boolean,
     val canStopAllAgents: Boolean,
-    val showGuestAccess: Boolean,
     val actionInFlight: ChannelSettingsAction? = null,
     val profileStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val profileErrorCode: String? = null,
@@ -872,8 +854,6 @@ internal class ChannelSettingsCallbacks(
     val onTogglePin: () -> Unit = {},
     val onSaveProfile: (name: String, description: String, slackBridge: ChannelSlackBridgeSelection?) -> Unit = { _, _, _ -> },
     val onClearProfileStatus: () -> Unit = {},
-    val onSetGuestVisible: (Boolean) -> Unit = {},
-    val onSetGuestJoinable: (Boolean) -> Unit = {},
     val onConfirm: (ChannelSettingsConfirm) -> Unit = {},
     val onUnarchive: () -> Unit = {},
     val onStopAllAgents: () -> Unit = {},
@@ -909,7 +889,6 @@ internal data class ChannelSettingsFailureLabels(
     val unarchive: String,
     val delete: String,
     val disconnect: String,
-    val guestAccess: String,
 )
 
 @Composable
@@ -921,7 +900,6 @@ internal fun channelSettingsFailureLabels(): ChannelSettingsFailureLabels =
         unarchive = stringResource(Res.string.channel_settings_unarchive_failed),
         delete = stringResource(Res.string.thread_error_delete_channel),
         disconnect = stringResource(Res.string.joint_disconnect_failed),
-        guestAccess = stringResource(Res.string.channel_settings_guest_failed),
     )
 
 /**
@@ -940,14 +918,12 @@ internal fun channelSettingsFailureMessage(
             ChannelSettingsAction.Unarchive -> labels.unarchive
             ChannelSettingsAction.Delete -> labels.delete
             ChannelSettingsAction.Disconnect -> labels.disconnect
-            ChannelSettingsAction.GuestAccess -> labels.guestAccess
             else -> labels.update
         }
     return when (failure.action) {
         ChannelSettingsAction.Disconnect,
         ChannelSettingsAction.Visibility,
         ChannelSettingsAction.Unarchive,
-        ChannelSettingsAction.GuestAccess,
         ChannelSettingsAction.Leave -> channelSettingsDisconnectFailureMessage(failure, strings, fallback)
         else -> fallback
     }
@@ -1007,7 +983,7 @@ private fun channelDetailsSurfaceInset(): Dp =
  * channel.md), the same on a phone and on the wide layout, in the web order: the channel's icon,
  * name, tag and description (Edit turns them into fields in place), the members card, the
  * announcement, the connected servers, Channel settings (Public or Private with Make private or
- * Make public, Visible to visitors, Slack), Your preferences (Notifications or Mute, Sidebar
+ * Make public, Slack), Your preferences (Notifications or Mute, Sidebar
  * section, Collapse long messages), then the actions as rows colored by their risk. The body sits
  * on the surface inset, `py-4`, 24 between sections.
  */
@@ -1139,10 +1115,9 @@ internal fun channelSettingsActionRows(model: ChannelSettingsUiModel): List<Chan
 internal fun channelSettingsIsVisibilityAction(row: ChannelSettingsActionRow): Boolean =
     row == ChannelSettingsActionRow.MakePrivate || row == ChannelSettingsActionRow.MakePublic
 
-/** Whether the Channel settings group has a row: the visibility row, Visible to visitors or Slack. */
+/** Whether the Channel settings group has a row: the visibility row or Slack. */
 internal fun channelDetailsHasChannelSettings(model: ChannelSettingsUiModel): Boolean =
     channelSettingsActionRows(model).any(::channelSettingsIsVisibilityAction) ||
-        model.showGuestAccess ||
         (model.slackBridge != null && channelSettingsSlackBridgeApplies(model.channel, model.permissions))
 
 /**
@@ -1668,7 +1643,7 @@ private const val ChannelSettingsDescriptionLimit = 500
 /**
  * Channel settings (web EditChannelDialog `channelSettingsSection`): the same for everyone in the
  * channel, for who can manage it. Public or Private with Make private or Make public at its end
- * (it keeps its confirmation), Visible to visitors, then Slack with Connect or Change, which opens
+ * (it keeps its confirmation), then Slack with Connect or Change, which opens
  * a dialog of its own. Its heading carries no hint: its name says whom it reaches.
  */
 @Composable
@@ -1714,19 +1689,6 @@ private fun ChannelDetailsChannelSettingsSection(model: ChannelSettingsUiModel, 
                         enabled = model.writeActionsEnabled && model.actionInFlight == null,
                     )
                 },
-            )
-            rowAfterFirst = true
-        }
-        if (model.showGuestAccess) {
-            // Web ChannelVisitorVisibleField: the channel on the server's public page for signed-out
-            // visitors (`guestVisible`, the server's name for it before `visitorVisible`).
-            ChannelPreferenceRow(
-                title = stringResource(Res.string.channel_details_visitor_visible),
-                detail = stringResource(Res.string.channel_details_visitor_visible_detail),
-                checked = channel.guestVisible,
-                enabled = model.writeActionsEnabled && model.actionInFlight != ChannelSettingsAction.GuestAccess,
-                divider = rowAfterFirst,
-                onToggle = { callbacks.onSetGuestVisible(!channel.guestVisible) },
             )
             rowAfterFirst = true
         }

@@ -837,13 +837,6 @@
     <string name="channel_settings_leave_delete_title">Sair e excluir o canal?</string>
     <string name="channel_settings_leave_delete_message">Você é o último membro deste canal privado. Ao sair, o canal e as mensagens serão excluídos e não poderão ser recuperados.</string>
     <string name="channel_settings_leave_delete_action">Sair e excluir</string>
-    <string name="channel_settings_guest_title">Acesso de convidados</string>
-    <string name="channel_settings_guest_detail">Escolha se convidados podem descobrir este canal e entrar nele por conta própria.</string>
-    <string name="channel_settings_guest_visible">Visível para convidados</string>
-    <string name="channel_settings_guest_visible_detail">Convidados podem ler este canal sem entrar nele. Se este servidor for público, o canal também aparece na página pública.</string>
-    <string name="channel_settings_guest_joinable">Permitir que convidados entrem</string>
-    <string name="channel_settings_guest_joinable_detail">Convidados podem entrar neste canal por conta própria. Depois disso, o canal fica na barra lateral deles, as novas mensagens aparecem como não lidas e eles aparecem na lista de membros do canal.</string>
-    <string name="channel_settings_guest_failed">Não foi possível atualizar o acesso de convidados</string>
     <string name="channel_settings_unavailable">Configurações do canal indisponíveis</string>
     <string name="channel_settings_unavailable_detail">O canal pode ter sido excluído, ou não foi possível carregar as configurações dele.</string>
     <string name="channel_settings_invalid_route">Esta página não tem uma identificação válida de servidor ou canal.</string>
@@ -860,8 +853,6 @@
     <string name="channel_details_shown_to_server">Visível para todos em %1$s.</string>
     <string name="channel_details_shown_to_members">Visível para os membros do canal.</string>
     <string name="channel_details_shown_external">Nome e descrição exibidos em todos os servidores deste canal.</string>
-    <string name="channel_details_visitor_visible">Visível para visitantes</string>
-    <string name="channel_details_visitor_visible_detail">Qualquer pessoa pode ler as mensagens e respostas dele na página pública deste servidor, sem fazer login.</string>
     <string name="channel_details_slack_title">Slack</string>
     <string name="channel_details_slack_not_connected">Não conectado</string>
     <string name="channel_details_slack_connected">#%1$s · Sincronizado</string>
@@ -3505,8 +3496,6 @@
     <string name="settings_public_visibility_description">Qualquer pessoa pode ler os canais listados abaixo, sem fazer login nem receber convite.</string>
     <string name="settings_public_visibility_public_url">Página pública</string>
     <string name="settings_public_visibility_copy_url">Copiar</string>
-    <string name="settings_public_visibility_allow_guest_join">Permitir que visitantes entrem como convidados</string>
-    <string name="settings_public_visibility_allow_guest_join_description">Visitantes que fizeram login podem entrar no servidor como convidados com acesso somente leitura, seguir canais abertos a convidados e receber convites para outros canais.</string>
     <string name="settings_public_visibility_allow_search">Permitir mecanismos de busca</string>
     <string name="settings_public_visibility_allow_search_description">Mecanismos de busca podem mostrar nos resultados os canais visíveis para qualquer pessoa e as threads deles. Ao desativar, isso deixa de acontecer, mas resultados já indexados podem levar um tempo para sumir. Os canais continuam públicos.</string>
     <string name="settings_public_visibility_channel_list_label">Canais visíveis para qualquer pessoa</string>
@@ -3518,7 +3507,6 @@
     <string name="settings_public_visibility_confirm_saving">Tornando público…</string>
     <string name="settings_public_visibility_failed_load">Não foi possível carregar as configurações de acesso público</string>
     <string name="settings_public_visibility_failed_update">Não foi possível atualizar o acesso público</string>
-    <string name="settings_public_visibility_failed_guest_join_update">Não foi possível atualizar a entrada de convidados</string>
     <string name="settings_public_visibility_failed_search_update">Não foi possível atualizar o acesso de mecanismos de busca</string>
     <string name="channel_public_page_readable">Qualquer pessoa pode ler este canal na página pública</string>
     <string name="channel_external_members">Canal externo</string>

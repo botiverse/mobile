@@ -18,9 +18,6 @@ private val serverPublicVisibilityJson = Json {
     encodeDefaults = true
 }
 
-/** Upstream `SERVER_GUEST_FEATURE_FLAG_KEY` (packages/shared/src/featureFlags.ts:12). */
-const val SERVER_GUEST_FEATURE_FLAG_KEY: String = "server_guest_v0"
-
 /**
  * `GET /api/servers/:id/public-visibility` (servers.ts:4535-4587).
  * `exposedChannels` is the exact set that becomes world-readable: non-deleted, non-archived
@@ -29,7 +26,6 @@ const val SERVER_GUEST_FEATURE_FLAG_KEY: String = "server_guest_v0"
 @Serializable
 data class ServerPublicVisibilityWireDto(
     val publiclyVisible: Boolean,
-    val publicGuestJoinEnabled: Boolean,
     val publicSearchEnabled: Boolean,
     val slug: String,
     val exposedChannels: List<ServerPublicExposedChannelWireDto> = emptyList(),
@@ -44,14 +40,13 @@ data class ServerPublicExposedChannelWireDto(
 )
 
 /**
- * `PATCH /api/servers/:id/public-visibility` response (servers.ts:4589-4640): the updated
- * `{ publiclyVisible, publicGuestJoinEnabled, publicSearchEnabled }`. Turning visibility off
- * also clears `publicGuestJoinEnabled` in the same update.
+ * `PATCH /api/servers/:id/public-visibility` response: the updated
+ * `{ publiclyVisible, publicSearchEnabled }`. Public Guest join was retired (botiverse/slock
+ * #13829): the server no longer sends `publicGuestJoinEnabled`.
  */
 @Serializable
 data class ServerPublicVisibilityUpdateWireDto(
     val publiclyVisible: Boolean,
-    val publicGuestJoinEnabled: Boolean,
     val publicSearchEnabled: Boolean? = null,
 )
 
@@ -61,16 +56,6 @@ data class ServerPublicSearchUpdateWireDto(
     val publicSearchEnabled: Boolean,
 )
 
-/**
- * `PATCH /api/servers/:id/public-guest-join` response `{ publicGuestJoinEnabled }`
- * (servers.ts:4693-4740). 404 when `server_guest_v0` or `public_server_v0` is off; 409 when
- * enabling while the server is not public.
- */
-@Serializable
-data class ServerPublicGuestJoinUpdateWireDto(
-    val publicGuestJoinEnabled: Boolean,
-)
-
 /** Request body for `PATCH /servers/:id/public-visibility` (`publiclyVisible` must be a boolean). */
 @Serializable
 data class ServerPublicVisibilityPatchBody(val publiclyVisible: Boolean)
@@ -78,36 +63,6 @@ data class ServerPublicVisibilityPatchBody(val publiclyVisible: Boolean)
 /** Request body for `PATCH /servers/:id/public-search`. */
 @Serializable
 data class ServerPublicSearchPatchBody(val publicSearchEnabled: Boolean)
-
-/** Request body for `PATCH /servers/:id/public-guest-join`. */
-@Serializable
-data class ServerPublicGuestJoinPatchBody(val publicGuestJoinEnabled: Boolean)
-
-/**
- * `POST /api/feature-flags/evaluate` body used only to decide whether the Guest-join switch is
- * applicable. It evaluates `server_guest_v0` exactly as `PATCH public-guest-join` gates it
- * (servers.ts:4700-4703: `{ key, serverId, userId, platform: "web" }`, no client facts), so the
- * switch is shown iff the server would accept the write. Contract:
- * packages/server/src/routes/featureFlags.ts:28-75 (`{ serverId, keys, platform }` →
- * `{ evaluations: [{ key, enabled }] }`).
- */
-@Serializable
-data class ServerPublicGuestGateEvaluateBody(
-    val serverId: String,
-    val keys: List<String> = listOf(SERVER_GUEST_FEATURE_FLAG_KEY),
-    val platform: String = "web",
-)
-
-@Serializable
-private data class ServerPublicGuestGateEvaluateResponse(
-    val evaluations: List<ServerPublicGuestGateEvaluation> = emptyList(),
-)
-
-@Serializable
-private data class ServerPublicGuestGateEvaluation(
-    val key: String,
-    val enabled: Boolean = false,
-)
 
 @Serializable
 private data class ServerPublicVisibilityErrorBody(val error: String? = null)
@@ -120,7 +75,6 @@ data class ServerPublicExposedChannel(
 
 data class ServerPublicVisibilityReadback(
     val publiclyVisible: Boolean,
-    val publicGuestJoinEnabled: Boolean,
     val publicSearchEnabled: Boolean,
     val slug: String,
     val exposedChannels: List<ServerPublicExposedChannel>,
@@ -128,7 +82,6 @@ data class ServerPublicVisibilityReadback(
 
 data class ServerPublicVisibilityUpdate(
     val publiclyVisible: Boolean,
-    val publicGuestJoinEnabled: Boolean,
     val publicSearchEnabled: Boolean?,
 )
 
@@ -144,24 +97,11 @@ fun encodeServerPublicSearchPatchBody(publicSearchEnabled: Boolean): String =
         ServerPublicSearchPatchBody(publicSearchEnabled),
     )
 
-fun encodeServerPublicGuestJoinPatchBody(publicGuestJoinEnabled: Boolean): String =
-    serverPublicVisibilityJson.encodeToString(
-        ServerPublicGuestJoinPatchBody.serializer(),
-        ServerPublicGuestJoinPatchBody(publicGuestJoinEnabled),
-    )
-
-fun encodeServerPublicGuestGateEvaluateBody(serverId: ServerId): String =
-    serverPublicVisibilityJson.encodeToString(
-        ServerPublicGuestGateEvaluateBody.serializer(),
-        ServerPublicGuestGateEvaluateBody(serverId = serverId.value),
-    )
-
 fun parseSharedServerPublicVisibility(bodyText: String): ServerPublicVisibilityReadback? =
     runCatching {
         val wire = serverPublicVisibilityJson.decodeFromString(ServerPublicVisibilityWireDto.serializer(), bodyText)
         ServerPublicVisibilityReadback(
             publiclyVisible = wire.publiclyVisible,
-            publicGuestJoinEnabled = wire.publicGuestJoinEnabled,
             publicSearchEnabled = wire.publicSearchEnabled,
             slug = wire.slug,
             exposedChannels =
@@ -180,7 +120,6 @@ fun parseSharedServerPublicVisibilityUpdate(bodyText: String): ServerPublicVisib
         val wire = serverPublicVisibilityJson.decodeFromString(ServerPublicVisibilityUpdateWireDto.serializer(), bodyText)
         ServerPublicVisibilityUpdate(
             publiclyVisible = wire.publiclyVisible,
-            publicGuestJoinEnabled = wire.publicGuestJoinEnabled,
             publicSearchEnabled = wire.publicSearchEnabled,
         )
     }.getOrNull()
@@ -189,20 +128,6 @@ fun parseSharedServerPublicSearchUpdate(bodyText: String): Boolean? =
     runCatching {
         serverPublicVisibilityJson.decodeFromString(ServerPublicSearchUpdateWireDto.serializer(), bodyText).publicSearchEnabled
     }.getOrNull()
-
-fun parseSharedServerPublicGuestJoinUpdate(bodyText: String): Boolean? =
-    runCatching {
-        serverPublicVisibilityJson.decodeFromString(ServerPublicGuestJoinUpdateWireDto.serializer(), bodyText).publicGuestJoinEnabled
-    }.getOrNull()
-
-/** `true` only when the evaluation for `server_guest_v0` is present and enabled (defaults off). */
-fun parseSharedServerGuestGateEnabled(bodyText: String): Boolean =
-    runCatching {
-        serverPublicVisibilityJson.decodeFromString(ServerPublicGuestGateEvaluateResponse.serializer(), bodyText)
-            .evaluations
-            .firstOrNull { it.key == SERVER_GUEST_FEATURE_FLAG_KEY }
-            ?.enabled == true
-    }.getOrDefault(false)
 
 /** The server's `{ error }` text, which web shows in preference to its localized fallback. */
 fun parseSharedServerPublicVisibilityErrorText(bodyText: String?): String? =
@@ -217,10 +142,7 @@ fun parseSharedServerPublicVisibilityErrorText(bodyText: String?): String? =
         ?.takeIf { it.isNotEmpty() }
 
 sealed interface ServerPublicVisibilityLoadResult {
-    data class Loaded(
-        val readback: ServerPublicVisibilityReadback,
-        val guestJoinApplicable: Boolean,
-    ) : ServerPublicVisibilityLoadResult
+    data class Loaded(val readback: ServerPublicVisibilityReadback) : ServerPublicVisibilityLoadResult
 
     /**
      * 404 (`public_server_v0` off for this server) or 403 (caller is not the owner): the section
@@ -243,8 +165,6 @@ interface ServerPublicVisibilityRepository {
     suspend fun setPubliclyVisible(serverId: ServerId, publiclyVisible: Boolean): ServerPublicMutationResult<ServerPublicVisibilityUpdate>
 
     suspend fun setPublicSearchEnabled(serverId: ServerId, publicSearchEnabled: Boolean): ServerPublicMutationResult<Boolean>
-
-    suspend fun setPublicGuestJoinEnabled(serverId: ServerId, publicGuestJoinEnabled: Boolean): ServerPublicMutationResult<Boolean>
 }
 
 class NetworkServerPublicVisibilityRepository(
@@ -266,10 +186,7 @@ class NetworkServerPublicVisibilityRepository(
         val readback =
             response.bodyText?.let(::parseSharedServerPublicVisibility)
                 ?: return ServerPublicVisibilityLoadResult.Failed(serverMessage = null)
-        return ServerPublicVisibilityLoadResult.Loaded(
-            readback = readback,
-            guestJoinApplicable = guestJoinGateEnabled(serverId),
-        )
+        return ServerPublicVisibilityLoadResult.Loaded(readback)
     }
 
     override suspend fun setPubliclyVisible(
@@ -293,38 +210,6 @@ class NetworkServerPublicVisibilityRepository(
             bodyText = encodeServerPublicSearchPatchBody(publicSearchEnabled),
             parse = ::parseSharedServerPublicSearchUpdate,
         )
-
-    override suspend fun setPublicGuestJoinEnabled(
-        serverId: ServerId,
-        publicGuestJoinEnabled: Boolean,
-    ): ServerPublicMutationResult<Boolean> =
-        patch(
-            serverId = serverId,
-            path = "servers/${serverId.value}/public-guest-join",
-            bodyText = encodeServerPublicGuestJoinPatchBody(publicGuestJoinEnabled),
-            parse = ::parseSharedServerPublicGuestJoinUpdate,
-        )
-
-    /**
-     * Web shows the Guest-join switch iff `useServerFeatureFlag(SERVER_GUEST_FEATURE_FLAG_KEY)`
-     * (SettingsPanel.tsx:2165, 2354), evaluated with platform "web". The mobile flag store reports
-     * platform "mobile", which can disagree with the server's own gate, so evaluate the one key
-     * with platform "web" here. Any failure keeps the switch hidden (flags default off).
-     */
-    private suspend fun guestJoinGateEnabled(serverId: ServerId): Boolean {
-        val response =
-            runCatchingPreservingCancellation {
-                networkClient.request(
-                    priority = DataRequestPriority.Visible,
-                    path = "feature-flags/evaluate",
-                    method = "POST",
-                    serverIdOverride = serverId,
-                    bodyText = encodeServerPublicGuestGateEvaluateBody(serverId),
-                )
-            }.getOrNull() ?: return false
-        if (!response.isSuccessful) return false
-        return response.bodyText?.let(::parseSharedServerGuestGateEnabled) == true
-    }
 
     private suspend fun <T> patch(
         serverId: ServerId,

@@ -8,7 +8,6 @@ import build.raft.app.data.AuthenticatedRouteAuthorityGateway
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.AuthenticatedRouteOperationRunner
 import build.raft.app.data.ChannelActivityMuteSettings
-import build.raft.app.data.ChannelGuestPolicyUpdate
 import build.raft.app.data.ChannelProfileUpdateRequest
 import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.ChannelVisibility
@@ -27,8 +26,6 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerChannelMembersHandoff
 import build.raft.app.data.SharedServerMembersLoadStatus
-import build.raft.app.data.encodeServerPublicGuestGateEvaluateBody
-import build.raft.app.data.parseSharedServerGuestGateEnabled
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftOfflineEmission
 import build.raft.app.data.RaftOfflineResource
@@ -58,14 +55,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlin.concurrent.Volatile
-
-/** Web `handleGuestVisibleChange`: `{ guestVisible: true }` or `{ guestVisible: false, guestJoinable: false }`. */
-internal fun channelSettingsGuestVisibleUpdate(visible: Boolean): ChannelGuestPolicyUpdate =
-    if (visible) ChannelGuestPolicyUpdate(guestVisible = true) else ChannelGuestPolicyUpdate(guestVisible = false, guestJoinable = false)
-
-/** Web `handleGuestJoinableChange`: `{ guestVisible: true, guestJoinable: true }` or `{ guestJoinable: false }`. */
-internal fun channelSettingsGuestJoinableUpdate(joinable: Boolean): ChannelGuestPolicyUpdate =
-    if (joinable) ChannelGuestPolicyUpdate(guestVisible = true, guestJoinable = true) else ChannelGuestPolicyUpdate(guestJoinable = false)
 
 /** A Slack channel pick to apply on Save; [slackChannelId] null disconnects. */
 internal data class ChannelSlackBridgeSelection(val slackChannelId: String?)
@@ -105,8 +94,6 @@ internal enum class ChannelSettingsAction {
     Leave,
     /** `POST channels/:id/unarchive` (web EditChannelDialog `handleUnarchive`). */
     Unarchive,
-    /** `PATCH channels/:id` `{ guestVisible?, guestJoinable? }` (web EditChannelDialog `updateGuestPolicy`). */
-    GuestAccess,
 }
 
 internal sealed interface ChannelSettingsEffect {
@@ -134,8 +121,6 @@ internal data class ChannelSettingsSnapshot(
     val sidebarOrder: SettingsServerSidebarOrderSnapshot,
     val canManage: Boolean,
     val memberSlice: SharedServerChannelMembersSlice,
-    /** `server_guest_v0` for this server (web `serverGuestEnabled`); off until evaluated. */
-    val guestAccessEnabled: Boolean = false,
     /** The Slack channel pick when the Slack Bridge is on and at `health`; null otherwise. */
     val slackBridge: ChannelSlackBridgeState? = null,
 )
@@ -216,7 +201,6 @@ internal data class ChannelSettingsRecord(
     val channel: HomeChannelRow,
     val sidebarOrder: SettingsServerSidebarOrderSnapshot,
     val canManage: Boolean,
-    val guestAccessEnabled: Boolean = false,
 )
 
 internal val ChannelSettingsResourceSpec: RaftOfflineResourceSpec<String, ChannelSettingsRecord> =
@@ -298,7 +282,6 @@ internal data class ChannelSettingsState(
     val channel: HomeChannelRow? = null,
     val sidebarOrder: SettingsServerSidebarOrderSnapshot? = null,
     val canManage: Boolean = false,
-    val guestAccessEnabled: Boolean = false,
     val slackBridge: ChannelSlackBridgeState? = null,
     val memberSlice: SharedServerChannelMembersSlice = SharedServerChannelMembersSlice(channelId = ""),
     val refreshing: Boolean = false,
@@ -332,15 +315,6 @@ internal data class ChannelSettingsState(
     fun permissions(): ChannelSettingsPermissions =
         channel?.let { channelSettingsPermissions(it, canManage) } ?: ChannelSettingsPermissions()
 
-    /** Web `canManageGuestAccess`: the flag, the capability, a live regular channel with a guest policy. */
-    fun showsGuestAccess(): Boolean {
-        val current = channel ?: return false
-        return guestAccessEnabled &&
-            permissions().manageGuestAccess &&
-            !current.archived &&
-            channelSettingsGuestPolicyApplies(current)
-    }
-
     fun isPinned(channelId: String): Boolean =
         sidebarOrder?.typedPinnedOrLegacy()?.any {
             it.kind == "channel" && it.id == channelId
@@ -372,10 +346,6 @@ internal sealed interface ChannelSettingsIntent {
     data object MakePublic : ChannelSettingsIntent
     data object Leave : ChannelSettingsIntent
     data object Unarchive : ChannelSettingsIntent
-    /** Web `handleGuestVisibleChange`: off also turns guest joining off. */
-    data class SetGuestVisible(val visible: Boolean) : ChannelSettingsIntent
-    /** Web `handleGuestJoinableChange`: on also makes the channel guest-visible. */
-    data class SetGuestJoinable(val joinable: Boolean) : ChannelSettingsIntent
     data object Archive : ChannelSettingsIntent
     data object Delete : ChannelSettingsIntent
     data object Disconnect : ChannelSettingsIntent
@@ -401,7 +371,6 @@ internal interface ChannelSettingsDataSource {
     suspend fun unarchive(): DataResult<HomeChannelRow>
     /** `POST channels/:id/unarchive` for the archived channel holding a refused name (not this one). */
     suspend fun unarchiveChannel(channelId: ChannelId): DataResult<HomeChannelRow>
-    suspend fun updateGuestPolicy(update: ChannelGuestPolicyUpdate): DataResult<HomeChannelRow>
     suspend fun archive(): DataResult<Unit>
     suspend fun delete(): DataResult<Unit>
     suspend fun disconnect(): DataResult<Unit>
@@ -443,10 +412,6 @@ internal class RealChannelSettingsDataSource(
                 channelId = route.channelId,
             )
             val permissions = channelSettingsPermissions(channel, receipt.canManageSettings)
-            val guestAccessEnabled =
-                permissions.manageGuestAccess &&
-                    channelSettingsGuestPolicyApplies(channel) &&
-                    serverGuestFeatureEnabled(networkClient)
             val slackBridge =
                 if (channelSettingsSlackBridgeApplies(channel, permissions)) {
                     SlackBridgeChannelPairingRepository(networkClient, route.serverId)
@@ -460,7 +425,6 @@ internal class RealChannelSettingsDataSource(
                     sidebarOrder = sidebarOrder,
                     canManage = receipt.canManageSettings,
                     memberSlice = memberResult.toChannelSettingsMemberSlice(route),
-                    guestAccessEnabled = guestAccessEnabled,
                     slackBridge = slackBridge,
                 )
             )
@@ -535,11 +499,6 @@ internal class RealChannelSettingsDataSource(
             channelRepository(networkClient).unarchiveChannel(channelId)
         }
 
-    override suspend fun updateGuestPolicy(update: ChannelGuestPolicyUpdate): DataResult<HomeChannelRow> =
-        runner.run { _, networkClient ->
-            channelRepository(networkClient).updateChannelGuestPolicy(route.channelId, update)
-        }
-
     override suspend fun archive(): DataResult<Unit> =
         runner.run { _, networkClient ->
             channelRepository(networkClient).archiveChannel(route.channelId).map { Unit }
@@ -555,26 +514,6 @@ internal class RealChannelSettingsDataSource(
             build.raft.app.data.RealJointChannelRepository(networkClient) { logger("joint $it") }
                 .disconnect(route.channelId)
         }
-
-    /** `server_guest_v0` evaluated like Settings › Server public page does (platform "web"); failures read as off. */
-    private suspend fun serverGuestFeatureEnabled(networkClient: build.raft.app.data.RaftNetworkClient): Boolean {
-        val response =
-            try {
-                networkClient.request(
-                    priority = DataRequestPriority.Visible,
-                    path = "feature-flags/evaluate",
-                    method = "POST",
-                    serverIdOverride = route.serverId,
-                    bodyText = encodeServerPublicGuestGateEvaluateBody(route.serverId),
-                )
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                return false
-            }
-        if (!response.isSuccessful) return false
-        return response.bodyText?.let(::parseSharedServerGuestGateEnabled) == true
-    }
 
     private fun channelRepository(networkClient: build.raft.app.data.RaftNetworkClient): RealChannelRepository =
         RealChannelRepository(
@@ -722,21 +661,6 @@ internal class ChannelSettingsStore(
                 if (channel.archived && channelSettingsShowsArchiveAction(channel, mutableState.value.permissions())) {
                     launchAction(ChannelSettingsAction.Unarchive, call = dataSource::unarchive)
                 }
-            }
-            is ChannelSettingsIntent.SetGuestVisible -> {
-                if (!mutableState.value.writeActionsEnabled || !mutableState.value.showsGuestAccess()) return
-                val channel = mutableState.value.channel ?: return
-                if (channel.guestVisible == intent.visible) return
-                val update = channelSettingsGuestVisibleUpdate(intent.visible)
-                launchAction(ChannelSettingsAction.GuestAccess) { dataSource.updateGuestPolicy(update) }
-            }
-            is ChannelSettingsIntent.SetGuestJoinable -> {
-                if (!mutableState.value.writeActionsEnabled || !mutableState.value.showsGuestAccess()) return
-                val channel = mutableState.value.channel ?: return
-                if (channelSettingsIsAllChannel(channel)) return
-                if (channel.guestJoinable == intent.joinable) return
-                val update = channelSettingsGuestJoinableUpdate(intent.joinable)
-                launchAction(ChannelSettingsAction.GuestAccess) { dataSource.updateGuestPolicy(update) }
             }
             ChannelSettingsIntent.Delete -> {
                 if (!mutableState.value.writeActionsEnabled) return
@@ -898,7 +822,6 @@ internal class ChannelSettingsStore(
             channel = channel,
             sidebarOrder = sidebarOrder,
             canManage = canManage,
-            guestAccessEnabled = guestAccessEnabled,
         )
 
     /** The stored record as the page's snapshot; members and the Slack pick stay what the page holds. */
@@ -908,7 +831,6 @@ internal class ChannelSettingsStore(
             sidebarOrder = sidebarOrder,
             canManage = canManage,
             memberSlice = mutableState.value.memberSlice,
-            guestAccessEnabled = guestAccessEnabled,
             slackBridge = mutableState.value.slackBridge,
         )
 
@@ -918,7 +840,6 @@ internal class ChannelSettingsStore(
             channel = channel,
             sidebarOrder = sidebarOrder,
             canManage = canManage,
-            guestAccessEnabled = guestAccessEnabled,
             refreshing = true,
             writeActionsEnabled = false,
             errorCode = null,
@@ -930,7 +851,6 @@ internal class ChannelSettingsStore(
             channel = channel,
             sidebarOrder = sidebarOrder,
             canManage = canManage,
-            guestAccessEnabled = guestAccessEnabled,
             slackBridge = slackBridge,
             memberSlice = memberSlice,
             writeActionsEnabled = false,
@@ -942,7 +862,6 @@ internal class ChannelSettingsStore(
             channel = channel,
             sidebarOrder = sidebarOrder,
             canManage = canManage,
-            guestAccessEnabled = guestAccessEnabled,
             slackBridge = slackBridge,
             memberSlice = memberSlice,
             writeActionsEnabled = true,
@@ -1169,18 +1088,6 @@ internal class ChannelSettingsStore(
                         actionInFlight = null,
                         effect = ChannelSettingsEffect.Updated(action),
                     )
-                ChannelSettingsAction.GuestAccess -> {
-                    val updated = value as HomeChannelRow
-                    current.copy(
-                        channel =
-                            current.channel?.copy(
-                                guestVisible = updated.guestVisible,
-                                guestJoinable = updated.guestJoinable,
-                            ),
-                        actionInFlight = null,
-                        effect = ChannelSettingsEffect.Updated(action),
-                    )
-                }
                 ChannelSettingsAction.Delete,
                 ChannelSettingsAction.Disconnect,
                 ChannelSettingsAction.Leave ->
@@ -1242,7 +1149,6 @@ internal class ChannelSettingsStore(
             sidebarOrder = currentSidebarOrder,
             canManage = canManage,
             memberSlice = memberSlice,
-            guestAccessEnabled = guestAccessEnabled,
             slackBridge = slackBridge,
         )
     }
@@ -1369,7 +1275,6 @@ private fun build.raft.app.model.ConversationSummary.withConfirmedSettings(
         ChannelSettingsAction.Mute -> copy(activityNotificationPreference = channel.activityNotificationPreference)
         ChannelSettingsAction.Profile -> copy(name = channel.name, subtitle = channel.subtitle)
         ChannelSettingsAction.Visibility -> copy(channelType = channel.channelType)
-        ChannelSettingsAction.GuestAccess -> copy(guestVisible = channel.guestVisible, guestJoinable = channel.guestJoinable)
         ChannelSettingsAction.Archive -> copy(archived = true)
         ChannelSettingsAction.Unarchive -> copy(archived = false)
         ChannelSettingsAction.Pin,

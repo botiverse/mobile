@@ -837,13 +837,6 @@
     <string name="channel_settings_leave_delete_title">Выйти и удалить канал?</string>
     <string name="channel_settings_leave_delete_message">Вы последний участник этого закрытого канала. После вашего выхода канал и все его сообщения будут удалены без возможности восстановления.</string>
     <string name="channel_settings_leave_delete_action">Выйти и удалить</string>
-    <string name="channel_settings_guest_title">Гостевой доступ</string>
-    <string name="channel_settings_guest_detail">Выберите, могут ли гости находить этот канал и присоединяться к нему самостоятельно.</string>
-    <string name="channel_settings_guest_visible">Виден гостям</string>
-    <string name="channel_settings_guest_visible_detail">Гости могут читать этот канал, не присоединяясь к нему. Если сервер публичный, канал также появится на публичной странице.</string>
-    <string name="channel_settings_guest_joinable">Разрешить гостям присоединяться</string>
-    <string name="channel_settings_guest_joinable_detail">Гости смогут сами присоединиться к этому каналу. После этого канал останется у них на боковой панели, новые сообщения будут отмечаться как непрочитанные, а сами гости появятся в списке участников.</string>
-    <string name="channel_settings_guest_failed">Не удалось обновить гостевой доступ</string>
     <string name="channel_settings_unavailable">Настройки канала недоступны</string>
     <string name="channel_settings_unavailable_detail">Возможно, канал удалён или не удалось загрузить его настройки.</string>
     <string name="channel_settings_invalid_route">На этой странице нет корректного идентификатора сервера или канала.</string>
@@ -860,8 +853,6 @@
     <string name="channel_details_shown_to_server">Видно всем в %1$s.</string>
     <string name="channel_details_shown_to_members">Видно участникам канала.</string>
     <string name="channel_details_shown_external">Название и описание видны на всех серверах в этом канале.</string>
-    <string name="channel_details_visitor_visible">Виден посетителям</string>
-    <string name="channel_details_visitor_visible_detail">Кто угодно может читать его сообщения и ответы на публичной странице этого сервера без входа в аккаунт.</string>
     <string name="channel_details_slack_title">Slack</string>
     <string name="channel_details_slack_not_connected">Не подключён</string>
     <string name="channel_details_slack_connected">#%1$s · Синхронизирован</string>
@@ -3502,8 +3493,6 @@
     <string name="settings_public_visibility_description">Каналы из списка ниже может читать кто угодно — без входа в аккаунт и приглашения.</string>
     <string name="settings_public_visibility_public_url">Публичная страница</string>
     <string name="settings_public_visibility_copy_url">Копировать</string>
-    <string name="settings_public_visibility_allow_guest_join">Разрешить посетителям присоединяться в роли гостя</string>
-    <string name="settings_public_visibility_allow_guest_join_description">Посетители, вошедшие в аккаунт, смогут присоединиться к серверу как гости с доступом только для чтения, подписываться на открытые для гостей каналы и получать приглашения в другие каналы.</string>
     <string name="settings_public_visibility_allow_search">Разрешить индексацию поисковиками</string>
     <string name="settings_public_visibility_allow_search_description">Поисковые системы смогут показывать в результатах поиска общедоступные каналы и их ветки. Если отключить эту настройку, индексация прекратится, но уже попавшие в выдачу страницы исчезнут из неё не сразу. Каналы останутся публичными.</string>
     <string name="settings_public_visibility_channel_list_label">Каналы, видимые всем</string>
@@ -3515,7 +3504,6 @@
     <string name="settings_public_visibility_confirm_saving">Открытие доступа…</string>
     <string name="settings_public_visibility_failed_load">Не удалось загрузить настройки публичного доступа</string>
     <string name="settings_public_visibility_failed_update">Не удалось изменить публичный доступ</string>
-    <string name="settings_public_visibility_failed_guest_join_update">Не удалось изменить настройку присоединения гостей</string>
     <string name="settings_public_visibility_failed_search_update">Не удалось изменить доступ для поисковых систем</string>
     <string name="channel_public_page_readable">Этот канал может читать кто угодно на публичной странице</string>
     <string name="channel_external_members">Внешний канал</string>

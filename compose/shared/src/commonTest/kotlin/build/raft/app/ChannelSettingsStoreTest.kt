@@ -6,7 +6,6 @@ import build.raft.app.data.AuthenticatedRouteAuthorityGateway
 import build.raft.app.data.AuthenticatedRouteAuthorityReceipt
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.ChannelActivityMuteSettings
-import build.raft.app.data.ChannelGuestPolicyUpdate
 import build.raft.app.data.ChannelSlackBridgeOption
 import build.raft.app.data.ChannelSlackBridgeState
 import build.raft.app.data.ChannelProfileUpdateResult
@@ -850,56 +849,6 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
-    fun guestSwitchesSendTheWebPolicyPairsAndApplyTheServerRow() = runTest {
-        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot().copy(guestAccessEnabled = true)))
-        val store = store(dataSource)
-        store.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-
-        store.dispatch(ChannelSettingsIntent.SetGuestJoinable(true))
-        runCurrent()
-        assertEquals(ChannelGuestPolicyUpdate(guestVisible = true, guestJoinable = true), dataSource.guestUpdates.last())
-        assertTrue(store.state.value.channel!!.guestVisible)
-        assertTrue(store.state.value.channel!!.guestJoinable)
-
-        store.dispatch(ChannelSettingsIntent.SetGuestVisible(false))
-        runCurrent()
-        assertEquals(ChannelGuestPolicyUpdate(guestVisible = false, guestJoinable = false), dataSource.guestUpdates.last())
-        assertFalse(store.state.value.channel!!.guestVisible)
-        assertFalse(store.state.value.channel!!.guestJoinable)
-
-        // No-op when the switch already shows the value.
-        store.dispatch(ChannelSettingsIntent.SetGuestVisible(false))
-        runCurrent()
-        assertEquals(2, dataSource.guestUpdates.size)
-        store.clear()
-    }
-
-    @Test
-    fun guestPolicyLimitFailureKeepsTheChannelAndReportsTheServerCode() = runTest {
-        val dataSource =
-            FakeChannelSettingsDataSource(
-                loadResult = DataResult.Content(snapshot().copy(guestAccessEnabled = true)),
-                guestPolicyResult = {
-                    DataResult.Error(ScreenError(code = "guest_joinable_channel_limit_reached", retryable = false))
-                },
-            )
-        val store = store(dataSource)
-        store.dispatch(ChannelSettingsIntent.Load)
-        runCurrent()
-
-        store.dispatch(ChannelSettingsIntent.SetGuestJoinable(true))
-        runCurrent()
-
-        assertFalse(store.state.value.channel!!.guestJoinable)
-        assertEquals(
-            ChannelSettingsEffect.Failure(ChannelSettingsAction.GuestAccess, "guest_joinable_channel_limit_reached"),
-            store.state.value.effect,
-        )
-        store.clear()
-    }
-
-    @Test
     fun jointChannelRejectsUnsupportedVisibilityAndDeleteBeforeDataSource() = runBlocking {
         val jointSnapshot =
             snapshot().copy(
@@ -1023,7 +972,8 @@ class ChannelSettingsStoreTest {
 
         val loaded = assertIs<DataResult.Content<ChannelSettingsSnapshot>>(dataSource.load()).data
         assertEquals("canonical", loaded.channel.name)
-        // The guest-access and Slack Bridge flags are evaluated for a manager; both read as off here.
+        // The Slack Bridge flag is evaluated for a manager; it reads as off here. Nothing asks for the
+        // retired server_guest_v0 (botiverse/slock #15078).
         assertEquals(
             listOf(
                 "channels/channel-1",
@@ -1031,11 +981,9 @@ class ChannelSettingsStoreTest {
                 "channels/channel-1/members",
                 "channels/channel-1",
                 "feature-flags/evaluate",
-                "feature-flags/evaluate",
             ),
             network.paths,
         )
-        assertFalse(loaded.guestAccessEnabled)
         assertNull(loaded.slackBridge)
         assertTrue(network.paths.none { it == "home" || it.endsWith("/home") })
 
@@ -1158,24 +1106,12 @@ private class FakeChannelSettingsDataSource(
     private val loadGate: CompletableDeferred<DataResult<ChannelSettingsSnapshot>>? = null,
     private val pinResult: CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>? = null,
     private val disconnectResult: DataResult<Unit> = DataResult.Content(Unit),
-    private val guestPolicyResult: (ChannelGuestPolicyUpdate) -> DataResult<HomeChannelRow> = { update ->
-        DataResult.Content(
-            HomeChannelRow(
-                threadId = ThreadId("channel-1"),
-                channelId = ChannelId("channel-1"),
-                name = "#canonical",
-                guestVisible = update.guestVisible ?: false,
-                guestJoinable = update.guestJoinable ?: false,
-            )
-        )
-    },
 ) : ChannelSettingsDataSource {
     var makePublicCalls = 0
     val slackApplies = mutableListOf<String?>()
     var slackResult: DataResult<ChannelSlackBridgeState?> = DataResult.Content(null)
     var leaveCalls = 0
     var unarchiveCalls = 0
-    val guestUpdates = mutableListOf<ChannelGuestPolicyUpdate>()
     var loadCalls = 0
     var muteCalls = 0
     var pinCalls = 0
@@ -1252,11 +1188,6 @@ private class FakeChannelSettingsDataSource(
         return DataResult.Content(
             HomeChannelRow(threadId = ThreadId("channel-1"), channelId = ChannelId("channel-1"), name = "#canonical")
         )
-    }
-
-    override suspend fun updateGuestPolicy(update: ChannelGuestPolicyUpdate): DataResult<HomeChannelRow> {
-        guestUpdates += update
-        return guestPolicyResult(update)
     }
 
     override suspend fun archive(): DataResult<Unit> {

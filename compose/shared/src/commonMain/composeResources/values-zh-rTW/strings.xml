@@ -837,13 +837,6 @@
     <string name="channel_settings_leave_delete_title">離開並刪除頻道？</string>
     <string name="channel_settings_leave_delete_message">你是這個私人頻道的最後一位成員。離開後，頻道和裡面的訊息會被刪除，無法復原。</string>
     <string name="channel_settings_leave_delete_action">離開並刪除</string>
-    <string name="channel_settings_guest_title">訪客存取權</string>
-    <string name="channel_settings_guest_detail">選擇訪客是否能發現此頻道，以及能否自行加入。</string>
-    <string name="channel_settings_guest_visible">訪客可見</string>
-    <string name="channel_settings_guest_visible_detail">訪客不需加入即可閱讀此頻道。如果此伺服器是公開的，此頻道也會顯示在公開頁面上。</string>
-    <string name="channel_settings_guest_joinable">允許訪客加入</string>
-    <string name="channel_settings_guest_joinable_detail">訪客可以自行加入此頻道。加入後，此頻道會保留在他們的側邊欄，新訊息會顯示為未讀，他們也會出現在頻道的成員清單中。</string>
-    <string name="channel_settings_guest_failed">無法更新訪客存取權</string>
     <string name="channel_settings_unavailable">無法使用頻道設定</string>
     <string name="channel_settings_unavailable_detail">頻道可能已被刪除，或無法載入其設定。</string>
     <string name="channel_settings_invalid_route">此頁面缺少有效的伺服器或頻道識別資訊。</string>
@@ -860,8 +853,6 @@
     <string name="channel_details_shown_to_server">%1$s 的所有人都看得到。</string>
     <string name="channel_details_shown_to_members">頻道成員看得到。</string>
     <string name="channel_details_shown_external">名稱和說明會顯示在這個頻道所在的每個伺服器上。</string>
-    <string name="channel_details_visitor_visible">遊客可見</string>
-    <string name="channel_details_visitor_visible_detail">任何人無須登入，就能在此伺服器的公開頁面上閱讀這個頻道的訊息和回覆。</string>
     <string name="channel_details_slack_title">Slack</string>
     <string name="channel_details_slack_not_connected">未連結</string>
     <string name="channel_details_slack_connected">#%1$s · 已同步</string>
@@ -3505,8 +3496,6 @@
     <string name="settings_public_visibility_description">任何人都能閱讀下列頻道，無須登入或受邀。</string>
     <string name="settings_public_visibility_public_url">公開頁面</string>
     <string name="settings_public_visibility_copy_url">複製</string>
-    <string name="settings_public_visibility_allow_guest_join">允許訪客以訪客身分加入</string>
-    <string name="settings_public_visibility_allow_guest_join_description">已登入的瀏覽者可以唯讀訪客身分加入伺服器、追蹤對訪客開放的頻道，也能受邀加入其他頻道。</string>
     <string name="settings_public_visibility_allow_search">允許搜尋引擎索引</string>
     <string name="settings_public_visibility_allow_search_description">搜尋引擎可在搜尋結果中顯示任何人皆可見的頻道及其討論串。關閉後即停止，但已列出的結果可能需要一段時間才會消失。頻道仍會保持公開。</string>
     <string name="settings_public_visibility_channel_list_label">任何人皆可見的頻道</string>
@@ -3518,7 +3507,6 @@
     <string name="settings_public_visibility_confirm_saving">正在設為公開…</string>
     <string name="settings_public_visibility_failed_load">無法載入公開存取設定</string>
     <string name="settings_public_visibility_failed_update">無法更新公開存取設定</string>
-    <string name="settings_public_visibility_failed_guest_join_update">無法更新訪客加入設定</string>
     <string name="settings_public_visibility_failed_search_update">無法更新搜尋引擎存取設定</string>
     <string name="channel_public_page_readable">任何人都能在公開頁面閱讀這個頻道</string>
     <string name="channel_external_members">外部頻道</string>

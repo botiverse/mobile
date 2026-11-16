@@ -847,13 +847,6 @@
     <string name="channel_settings_leave_delete_title">离开并删除频道？</string>
     <string name="channel_settings_leave_delete_message">你是这个私有频道的最后一位成员。离开后，频道和里面的消息会被删除，无法恢复。</string>
     <string name="channel_settings_leave_delete_action">离开并删除</string>
-    <string name="channel_settings_guest_title">访客访问</string>
-    <string name="channel_settings_guest_detail">设置访客是否能发现此频道，以及是否能自行加入。</string>
-    <string name="channel_settings_guest_visible">对访客可见</string>
-    <string name="channel_settings_guest_visible_detail">访客无需加入即可阅读此频道。服务器公开时，它也会出现在公开页上。</string>
-    <string name="channel_settings_guest_joinable">允许访客加入</string>
-    <string name="channel_settings_guest_joinable_detail">访客可以自行加入此频道。加入后频道会留在他们的侧栏，新消息显示为未读，他们也会出现在频道成员里。</string>
-    <string name="channel_settings_guest_failed">更新访客访问权限失败</string>
     <string name="channel_settings_unavailable">频道设置不可用</string>
     <string name="channel_settings_unavailable_detail">频道可能已被删除，或暂时无法加载设置。</string>
     <string name="channel_settings_invalid_route">页面缺少有效的服务器或频道标识。</string>
@@ -870,8 +863,6 @@
     <string name="channel_details_shown_to_server">%1$s 里的所有人都能看到。</string>
     <string name="channel_details_shown_to_members">频道成员能看到。</string>
     <string name="channel_details_shown_external">名称和描述会显示在这个频道所在的每个服务器上。</string>
-    <string name="channel_details_visitor_visible">游客可见</string>
-    <string name="channel_details_visitor_visible_detail">任何人无需登录，就能在此服务器的公开页面上阅读这个频道的消息和回复。</string>
     <string name="channel_details_slack_title">Slack</string>
     <string name="channel_details_slack_not_connected">未连接</string>
     <string name="channel_details_slack_connected">#%1$s · 已同步</string>
@@ -3673,8 +3664,6 @@
     <string name="settings_public_visibility_description">下面列出的频道，任何人都可以阅读，无需登录，也无需被邀请。</string>
     <string name="settings_public_visibility_public_url">公开页面</string>
     <string name="settings_public_visibility_copy_url">复制</string>
-    <string name="settings_public_visibility_allow_guest_join">允许已登录的用户以访客身份加入</string>
-    <string name="settings_public_visibility_allow_guest_join_description">已登录的用户可以以只读访客身份加入服务器，关注对访客开放的频道，也可以被邀请进其他频道。</string>
     <string name="settings_public_visibility_allow_search">允许搜索引擎收录</string>
     <string name="settings_public_visibility_allow_search_description">搜索引擎可以在搜索结果中展示任何人可见的频道及其消息列。关闭后会停止收录，已出现的搜索结果可能需要一段时间才会消失；频道仍然公开。</string>
     <string name="settings_public_visibility_channel_list_label">任何人可见的频道</string>
@@ -3686,7 +3675,6 @@
     <string name="settings_public_visibility_confirm_saving">正在设为公开…</string>
     <string name="settings_public_visibility_failed_load">无法加载公开访问设置</string>
     <string name="settings_public_visibility_failed_update">无法更新公开访问设置</string>
-    <string name="settings_public_visibility_failed_guest_join_update">无法更新访客加入设置</string>
     <string name="settings_public_visibility_failed_search_update">无法更新搜索引擎收录设置</string>
     <string name="channel_public_page_readable">任何人都能在公开页阅读这个频道</string>
     <string name="channel_external_members">外部频道</string>

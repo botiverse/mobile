@@ -790,16 +790,6 @@ private fun SettingsServerPublicAccessCard(
                 }
             }
         }
-        if (state.guestJoinApplicable) {
-            SettingsPublicAccessSwitchRow(
-                title = stringResource(Res.string.settings_public_visibility_allow_guest_join),
-                detail = stringResource(Res.string.settings_public_visibility_allow_guest_join_description),
-                checked = state.guestJoinChecked,
-                enabled = state.subSwitchesEnabled,
-                nested = true,
-                onToggle = { onIntent(ServerPublicVisibilityIntent.GuestJoinToggled(!state.guestJoinChecked)) }
-            )
-        }
         SettingsPublicAccessSwitchRow(
             title = stringResource(Res.string.settings_public_visibility_allow_search),
             detail = stringResource(Res.string.settings_public_visibility_allow_search_description),
@@ -873,7 +863,6 @@ private fun ServerPublicVisibilityErrorKind.fallbackMessage(): StringResource =
     when (this) {
         ServerPublicVisibilityErrorKind.Load -> Res.string.settings_public_visibility_failed_load
         ServerPublicVisibilityErrorKind.Update -> Res.string.settings_public_visibility_failed_update
-        ServerPublicVisibilityErrorKind.GuestJoinUpdate -> Res.string.settings_public_visibility_failed_guest_join_update
         ServerPublicVisibilityErrorKind.SearchUpdate -> Res.string.settings_public_visibility_failed_search_update
     }
 

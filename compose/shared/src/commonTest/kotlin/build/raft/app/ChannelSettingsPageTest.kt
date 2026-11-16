@@ -252,7 +252,6 @@ class ChannelSettingsPageTest {
                 permissions = channelSettingsPermissions(channel, canManage),
                 writeActionsEnabled = true,
                 canStopAllAgents = stopAgents,
-                showGuestAccess = false,
                 externalChannelsEnabled = externalChannels,
             )
         )
@@ -333,14 +332,6 @@ class ChannelSettingsPageTest {
         assertFalse(permissions.editMetadata)
         assertTrue(permissions.canEditChannel)
         assertFalse(channelSettingsPermissions(row(capabilities = ChannelCapabilities()), canManage = true).canEditChannel)
-    }
-
-    @Test
-    fun guestPolicyAppliesToPublicChannelsAndHiddenAll() {
-        assertTrue(channelSettingsGuestPolicyApplies(row()))
-        assertFalse(channelSettingsGuestPolicyApplies(row(type = "private")))
-        assertTrue(channelSettingsGuestPolicyApplies(row(name = "all", type = "private")))
-        assertFalse(channelSettingsGuestPolicyApplies(row(type = "joint")))
     }
 
     @Test

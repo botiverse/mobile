@@ -847,13 +847,6 @@
     <string name="channel_settings_leave_delete_title">Leave and Delete Channel?</string>
     <string name="channel_settings_leave_delete_message">You are the last member of this private channel. When you leave, the channel and its messages are deleted and cannot be recovered.</string>
     <string name="channel_settings_leave_delete_action">Leave and Delete</string>
-    <string name="channel_settings_guest_title">Guest access</string>
-    <string name="channel_settings_guest_detail">Choose whether Guests can discover this channel and join it themselves.</string>
-    <string name="channel_settings_guest_visible">Visible to Guests</string>
-    <string name="channel_settings_guest_visible_detail">Guests can read this channel without joining. If this server is public, it also appears on the public page.</string>
-    <string name="channel_settings_guest_joinable">Allow Guests to join</string>
-    <string name="channel_settings_guest_joinable_detail">Guests can join this channel themselves. It then stays in their sidebar, new messages show as unread, and they appear in its member list.</string>
-    <string name="channel_settings_guest_failed">Failed to update Guest access</string>
     <string name="channel_settings_unavailable">Channel settings unavailable</string>
     <string name="channel_settings_unavailable_detail">The channel may have been removed, or its settings could not be loaded.</string>
     <string name="channel_settings_invalid_route">This page is missing a valid server or channel identity.</string>
@@ -870,8 +863,6 @@
     <string name="channel_details_shown_to_server">Shown to everyone in %1$s.</string>
     <string name="channel_details_shown_to_members">Shown to the channel's members.</string>
     <string name="channel_details_shown_external">Name and description show on every server in this channel.</string>
-    <string name="channel_details_visitor_visible">Visible to visitors</string>
-    <string name="channel_details_visitor_visible_detail">Anyone can read its messages and replies on this server's public page, without signing in.</string>
     <string name="channel_details_slack_title">Slack</string>
     <string name="channel_details_slack_not_connected">Not connected</string>
     <string name="channel_details_slack_connected">#%1$s · Synced</string>
@@ -3673,8 +3664,6 @@
     <string name="settings_public_visibility_description">Anyone can read the channels listed below, without signing in or being invited.</string>
     <string name="settings_public_visibility_public_url">Public page</string>
     <string name="settings_public_visibility_copy_url">Copy</string>
-    <string name="settings_public_visibility_allow_guest_join">Allow visitors to join as Guest</string>
-    <string name="settings_public_visibility_allow_guest_join_description">Signed-in visitors can join the server as read-only Guests, follow channels open to Guests, and be invited into other channels.</string>
     <string name="settings_public_visibility_allow_search">Allow search engines</string>
     <string name="settings_public_visibility_allow_search_description">Search engines can show the channels visible to anyone, and their threads, in search results. Turning it off stops this, though results already listed can take a while to drop out. The channels stay public.</string>
     <string name="settings_public_visibility_channel_list_label">Channels visible to anyone</string>
@@ -3686,7 +3675,6 @@
     <string name="settings_public_visibility_confirm_saving">Making public…</string>
     <string name="settings_public_visibility_failed_load">Failed to load public access settings</string>
     <string name="settings_public_visibility_failed_update">Failed to update public access</string>
-    <string name="settings_public_visibility_failed_guest_join_update">Failed to update Guest joining</string>
     <string name="settings_public_visibility_failed_search_update">Failed to update search engine access</string>
     <string name="channel_public_page_readable">Anyone can read this channel on the public page</string>
     <string name="channel_external_members">External channel</string>
