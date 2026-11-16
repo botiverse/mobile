@@ -546,6 +546,17 @@ interface MemberRepository {
         priority: DataRequestPriority,
         request: RemoveChannelMemberRequest
     ): DataResult<ChannelMemberActionResult>
+
+    /**
+     * Make a member a channel admin or a plain member again (web `useChannelMembers.changeMemberRole`,
+     * `PATCH /channels/:id/members/:user|agent/:memberId/role` `{ role }`). Default implementation is
+     * unsupported so existing fakes keep compiling; RealMemberRepository overrides it.
+     */
+    suspend fun changeChannelMemberRole(
+        priority: DataRequestPriority,
+        request: ChangeChannelMemberRoleRequest
+    ): DataResult<ChannelMemberRoleChangeResult> =
+        DataResult.Error(ScreenError(code = "channel_member_role_unsupported"))
 }
 
 interface ChannelRepository {
@@ -1073,6 +1084,35 @@ data class RemoveChannelMemberRequest(
     val channelId: ChannelId,
     val memberId: MemberId,
     val kind: MemberKind
+)
+
+/** A channel role a member can be given (slock `ChannelRole`): the wire value is the `role` body field. */
+enum class ChannelMemberRole(val wireValue: String) {
+    Admin("admin"),
+    Member("member"),
+}
+
+/**
+ * `PATCH /channels/:id/members/:targetType/:memberId/role` (botiverse/slock
+ * packages/server/src/routes/channels.ts): [kind] picks the `user` / `agent` path segment,
+ * [role] is the body's `role`.
+ */
+data class ChangeChannelMemberRoleRequest(
+    val channelId: ChannelId,
+    val memberId: MemberId,
+    val kind: MemberKind,
+    val role: ChannelMemberRole,
+)
+
+/**
+ * The answer of a role change (slock `changeChannelMembershipRole`): [changed] is false when the
+ * member already held [channelRole]; both are successes.
+ */
+data class ChannelMemberRoleChangeResult(
+    val channelId: ChannelId,
+    val memberId: MemberId,
+    val changed: Boolean,
+    val channelRole: String?,
 )
 
 data class AgentProfileUpdateRequest(

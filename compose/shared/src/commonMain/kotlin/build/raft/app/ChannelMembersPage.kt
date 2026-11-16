@@ -153,6 +153,8 @@ internal fun ChannelMembersRow(
     titleBadge: (@Composable () -> Unit)? = null,
     /** Someone from another server: the first one's tile on the avatar's top-left corner. */
     avatarOriginServers: List<MemberServerRef> = emptyList(),
+    /** A ⋯ menu between the tags and Remove (the channel role action, web `MemberRoleActions`). */
+    moreActions: (@Composable () -> Unit)? = null,
 ) {
     RaftListRow(
         title = title,
@@ -183,7 +185,7 @@ internal fun ChannelMembersRow(
             }
         },
         trailing =
-            if (badges.isNotEmpty() || onRemove != null || removing) {
+            if (badges.isNotEmpty() || onRemove != null || removing || moreActions != null) {
                 {
                     badges.forEach { badge ->
                         RaftBadge(
@@ -195,6 +197,7 @@ internal fun ChannelMembersRow(
                                 if (badge.kind == ChannelMemberBadgeKind.External) RaftBadgeVariant.Information else RaftBadgeVariant.Default,
                         )
                     }
+                    moreActions?.invoke()
                     if ((onRemove != null || removing) && removeLabel != null) {
                         RaftIconButton(
                             onClick = { onRemove?.invoke() },

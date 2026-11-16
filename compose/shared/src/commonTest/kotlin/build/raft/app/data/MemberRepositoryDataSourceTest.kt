@@ -101,6 +101,89 @@ class MemberRepositoryDataSourceTest {
     }
 
     @Test
+    fun roleCapabilityComesFromTheChannelAndOnlyOnAChannelWhoseRolesCanChange() = runBlocking {
+        // botiverse/slock bb8b13a1a3: GET /channels/:id `channelCapabilities.changeChannelMemberRoles`;
+        // web MemberRoleActions offers nothing on an archived channel or #all.
+        val roster = HomeNetworkResponse(
+            200,
+            """{"humans":[{"id":"user-2","name":"ada","role":"member","effectiveChannelRole":"member","canChangeChannelRole":true}],"agents":[]}""",
+        )
+        val cases = listOf(
+            """{"id":"channel-empty","name":"design","type":"channel","channelCapabilities":{"changeChannelMemberRoles":true}}""" to true,
+            """{"id":"channel-empty","name":"design","type":"channel","channelCapabilities":{"changeChannelMemberRoles":false}}""" to false,
+            """{"id":"channel-empty","name":"design","type":"channel"}""" to false,
+            """{"id":"channel-empty","name":"all","type":"channel","channelCapabilities":{"changeChannelMemberRoles":true}}""" to false,
+            """{"id":"channel-empty","name":"design","type":"channel","archivedAt":"2026-09-30T00:00:00Z","channelCapabilities":{"changeChannelMemberRoles":true}}""" to false,
+        )
+        for ((detail, expected) in cases) {
+            val network = FakeMemberNetworkClient().apply {
+                channelMembersResponse = roster
+                channelDetailResponse = HomeNetworkResponse(200, detail)
+            }
+            val result = assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+                RealMemberRepository(sampleStore(), network).getChannelMembers(DataRequestPriority.Visible, ChannelId("channel-empty")))
+            assertEquals(expected, result.data.canChangeMemberRoles, detail)
+            assertEquals(true, result.data.members.single().canChangeChannelRole)
+        }
+    }
+
+    @Test
+    fun roleChangePatchesTheMembersRolePathWithTheRoleBody() = runBlocking {
+        // botiverse/slock bb8b13a1a3 routes/channels.ts PATCH /:id/members/:targetType/:memberId/role
+        // (`role` member|admin; targetType user|agent) and web useChannelMembers.changeMemberRole.
+        val network = FakeMemberNetworkClient().apply {
+            channelRoleResponse = HomeNetworkResponse(
+                200,
+                """{"changed":true,"channelId":"channel-empty","targetType":"user","targetId":"user-2","channelRole":"admin","authorityRevision":2,"eventId":"evt-1"}""",
+            )
+        }
+        val repository = RealMemberRepository(sampleStore(), network)
+
+        val promoted = assertIs<DataResult.Content<ChannelMemberRoleChangeResult>>(
+            repository.changeChannelMemberRole(
+                DataRequestPriority.Foreground,
+                ChangeChannelMemberRoleRequest(ChannelId("channel-empty"), MemberId("user-2"), build.raft.app.model.MemberKind.Human, ChannelMemberRole.Admin),
+            )
+        ).data
+        val promote = network.requests.last()
+        assertEquals("PATCH", promote.method)
+        assertEquals("channels/channel-empty/members/user/user-2/role", promote.path)
+        assertEquals("""{"role":"admin"}""", promote.bodyText)
+        assertTrue(promoted.changed)
+        assertEquals("admin", promoted.channelRole)
+
+        network.channelRoleResponse = HomeNetworkResponse(
+            200,
+            """{"changed":false,"channelId":"channel-empty","targetType":"agent","targetId":"agent-1","channelRole":"member","authorityRevision":1,"eventId":null}""",
+        )
+        val demoted = assertIs<DataResult.Content<ChannelMemberRoleChangeResult>>(
+            repository.changeChannelMemberRole(
+                DataRequestPriority.Foreground,
+                ChangeChannelMemberRoleRequest(ChannelId("channel-empty"), MemberId("agent-1"), build.raft.app.model.MemberKind.Agent, ChannelMemberRole.Member),
+            )
+        ).data
+        val demote = network.requests.last()
+        assertEquals("channels/channel-empty/members/agent/agent-1/role", demote.path)
+        assertEquals("""{"role":"member"}""", demote.bodyText)
+        assertFalse(demoted.changed)
+    }
+
+    @Test
+    fun aRefusedRoleChangeIsAnErrorNotContent() = runBlocking {
+        val network = FakeMemberNetworkClient().apply {
+            channelRoleResponse = HomeNetworkResponse(
+                403,
+                """{"error":"Server owners and admins cannot be changed from channel role management","code":"protected_server_role"}""",
+            )
+        }
+        val result = RealMemberRepository(sampleStore(), network).changeChannelMemberRole(
+            DataRequestPriority.Foreground,
+            ChangeChannelMemberRoleRequest(ChannelId("channel-empty"), MemberId("user-2"), build.raft.app.model.MemberKind.Human, ChannelMemberRole.Member),
+        )
+        assertFalse(result is DataResult.Content)
+    }
+
+    @Test
     fun explicitServerMembersLoadDoesNotRequireSelectedServerToAlreadySwitch() = runBlocking {
         val session =
             sampleSession().copy(
@@ -554,6 +637,7 @@ class MemberRepositoryDataSourceTest {
         var channelMembersResponse: HomeNetworkResponse? = null
         var channelDetailResponse: HomeNetworkResponse = HomeNetworkResponse(403, "{}")
         var memberProfileResponse: HomeNetworkResponse = HomeNetworkResponse(404, """{"error":"User not found"}""")
+        var channelRoleResponse: HomeNetworkResponse = HomeNetworkResponse(500, "{}")
         var startBlocker: CompletableDeferred<Unit>? = null
         var patchConfigApply: String? = null
 
@@ -699,6 +783,8 @@ class MemberRepositoryDataSourceTest {
                     ok("""{"ok":true}""")
                 }
                 normalized == "channels/channel-empty" && method == "GET" -> channelDetailResponse
+                normalized.startsWith("channels/channel-empty/members/") && normalized.endsWith("/role") && method == "PATCH" ->
+                    channelRoleResponse
                 normalized == "servers/server-1/members/user-remote/profile" && method == "GET" -> memberProfileResponse
                 normalized == "channels/channel-empty/members" && method == "GET" ->
                     channelMembersResponse ?: error("Missing channel members response")

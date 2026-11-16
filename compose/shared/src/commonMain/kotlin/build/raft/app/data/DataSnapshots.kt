@@ -1260,6 +1260,11 @@ data class ChannelMemberSnapshot(
     val members: List<MemberProfile>,
     val canAddMembers: Boolean = false,
     val canRemoveMembers: Boolean = false,
+    /**
+     * The channel's `channelCapabilities.changeChannelMemberRoles` on a channel whose roles can
+     * change (not archived, not #all): gates the members page's role menu (web `MemberRoleActions`).
+     */
+    val canChangeMemberRoles: Boolean = false,
     /** Slack-bridge (or other provider) participants — display-only roster rows
      *  (web `channelExternalMembers`). Never selectable/removable. */
     val externalMembers: List<ChannelExternalMemberProfile> = emptyList(),

@@ -185,6 +185,7 @@ import build.raft.app.data.RealForwardMessageTargetRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealSavedRepository
 import build.raft.app.data.RemoveChannelMemberRequest
+import build.raft.app.data.ChangeChannelMemberRoleRequest
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.RaftEventBus
@@ -3922,6 +3923,8 @@ internal data class RaftThreadMemberItem(
     val sourceServerLabel: String? = null,
     val canRemove: Boolean = true,
     val effectiveChannelRole: String? = null,
+    /** The row's channel role action ([channelMemberRoleAction]); null offers none. */
+    val roleAction: ChannelMemberRoleAction? = null,
     /**
      * Someone from another server ([memberOrigin], web `jointMemberOrigin`): every server they are
      * from, the viewed one left out. Their row carries the first one's tile on the avatar and the
@@ -5545,11 +5548,20 @@ private fun ThreadMembersPageScreen() {
             }
         }
     }
-    val members = remember(channelMembersSlice.members, channelMembersSlice.canRemoveMembers, route.serverId) {
+    // The signed-in person's id: the role menu never explains a demote of oneself (web `currentUserId`).
+    var viewerUserId by remember(routeOwner) { mutableStateOf<String?>(null) }
+    val canChangeMemberRoles =
+        liveOwner == routeOwner && channelMembersSlice.canChangeMemberRoles && !channelMembersSlice.storedStandIn
+    val members = remember(
+        channelMembersSlice.members, channelMembersSlice.canRemoveMembers, canChangeMemberRoles, viewerUserId, route.serverId
+    ) {
         channelMembersSlice.members
             .distinctBy { it.threadMemberKey }
-            .map { it.toRaftThreadMemberItem(route.serverId).let { row ->
-                row.copy(canRemove = row.canRemove && channelMembersSlice.canRemoveMembers)
+            .map { profile -> profile.toRaftThreadMemberItem(route.serverId).let { row ->
+                row.copy(
+                    canRemove = row.canRemove && channelMembersSlice.canRemoveMembers,
+                    roleAction = channelMemberRoleAction(profile, canChangeMemberRoles, viewerUserId),
+                )
             } }
     }
     // The roster's own-server agents get detailed activity while this page is open (at most 200).
@@ -5611,6 +5623,7 @@ private fun ThreadMembersPageScreen() {
             serverPlan = server?.plan
             viewerServerRole = stored?.role
             viewerServerName = stored?.name.orEmpty()
+            viewerUserId = session?.user?.id?.trim()?.takeIf { it.isNotEmpty() }
         } else createAgentName = null
     }
     var addDialogVisible by remember { mutableStateOf(false) }
@@ -5840,6 +5853,48 @@ private fun ThreadMembersPageScreen() {
         }
     }
 
+    // Web `MemberRoleActions` / `useChannelMembers.changeMemberRole`: Make admin / Demote send at
+    // once (no confirmation), the roster reads again on success; a server owner / admin's Demote
+    // only explains. One change at a time; a failure shows the page's warning until the next try.
+    var roleChange by remember(route.serverId, route.channelId) { mutableStateOf(ChannelMemberRoleChangeState()) }
+    fun requestRoleAction(member: RaftThreadMemberItem) {
+        val action = member.roleAction ?: return
+        if (authorityRejected || roleChange.changingKey != null) return
+        val nextRole = action.nextRole
+        if (nextRole == null) {
+            roleChange = roleChange.copy(protectedDemoteName = member.displayName.ifBlank { member.handle })
+            return
+        }
+        val kind = member.kind.parsedMemberKindOrNull() ?: return
+        val key = member.memberKey
+        roleChange = roleChange.copy(changingKey = key, failed = false, failureTraceId = null)
+        bridge.log(
+            "thread_member_role_change memberId=${member.id} kind=${kind.name} role=${nextRole.wireValue} " +
+                "channelId=${route.channelId.value}"
+        )
+        memberScope.launch {
+            val result =
+                serverMembersStore.changeChannelMemberRole(
+                    owner = routeOwner,
+                    request = ChangeChannelMemberRoleRequest(route.channelId, MemberId(member.id), kind, nextRole),
+                    priority = DataRequestPriority.Foreground,
+                )
+            val failureTraceId =
+                when (result) {
+                    is DataResult.Content -> null
+                    is DataResult.Error -> result.error.traceId
+                    is DataResult.NoPermission -> result.blocker.traceId
+                    is DataResult.Empty -> null
+                }
+            roleChange =
+                roleChange.copy(
+                    changingKey = roleChange.changingKey.takeUnless { it == key },
+                    failed = result !is DataResult.Content,
+                    failureTraceId = failureTraceId,
+                )
+        }
+    }
+
     // botiverse/slock #11273: App Bots in the roster and the Add Members panel carry the Bot
     // badge and no presence line.
     val memberAppBotResolver = remember(serverMembersStore, route.serverId) {
@@ -5868,6 +5923,7 @@ private fun ThreadMembersPageScreen() {
                 if (externalInviteManagementOn) externalInvitesStore.dispatch(ExternalInvitesIntent.Load)
             },
             onOpenMember = ::openMember, onRemoveMember = ::requestRemoveMember,
+            roleChange = roleChange, onRoleAction = ::requestRoleAction,
             canCreateAgents = canCreateAgents,
             localServerId = route.serverId.value,
             channelName = channelName,
@@ -5998,6 +6054,14 @@ private fun ThreadMembersPageScreen() {
                 onUpgrade = { pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitAgentCreate, storeScope) },
             )
         }
+        roleChange.protectedDemoteName?.let { name ->
+            RaftDesignSystemTheme {
+                ChannelMemberProtectedDemoteDialog(
+                    name = name,
+                    onDismiss = { roleChange = roleChange.copy(protectedDemoteName = null) },
+                )
+            }
+        }
         removalGate.pending?.let { confirmation ->
             ThreadRemoveMemberConfirmationDialog(
                 confirmation = confirmation,
@@ -6065,6 +6129,8 @@ internal fun ThreadMembersPageContent(
     localServerId: String? = null,
     channelName: String = "",
     externalInvites: ExternalInvitesSection? = null,
+    roleChange: ChannelMemberRoleChangeState = ChannelMemberRoleChangeState(),
+    onRoleAction: (RaftThreadMemberItem) -> Unit = {},
 ) {
     val rosterListState = rememberLazyListState()
     // artin task #22: a pulled refresh shows the pull indicator only, not the header spinner too.
@@ -6123,6 +6189,7 @@ internal fun ThreadMembersPageContent(
                 }
             )
         }
+        if (roleChange.failed) ChannelMemberRoleErrorBanner(roleChange.failureTraceId)
         // Pull-to-refresh reloads the roster through the same path as the error state's Retry.
         RaftStorePullToRefreshBox(
             refreshing = refreshing,
@@ -6212,7 +6279,9 @@ internal fun ThreadMembersPageContent(
                             memberAvatarResolver = memberAvatarResolver,
                             removing = removalGate.inFlight && removalGate.pending?.memberRowId == humans[index].id,
                             onOpen = onOpenMember,
-                            onRemove = onRemoveMember
+                            onRemove = onRemoveMember,
+                            roleChanging = roleChange.changingKey == humans[index].memberKey,
+                            onRoleAction = onRoleAction,
                         )
                     }
                 }
@@ -6232,7 +6301,9 @@ internal fun ThreadMembersPageContent(
                             memberAvatarResolver = memberAvatarResolver,
                             removing = removalGate.inFlight && removalGate.pending?.memberRowId == agents[index].id,
                             onOpen = onOpenMember,
-                            onRemove = onRemoveMember
+                            onRemove = onRemoveMember,
+                            roleChanging = roleChange.changingKey == agents[index].memberKey,
+                            onRoleAction = onRoleAction,
                         )
                     }
                 }
@@ -40236,7 +40307,9 @@ internal fun ThreadMembersPagerRow(
     memberAvatarResolver: RaftMemberAvatarResolver,
     removing: Boolean,
     onOpen: (RaftThreadMemberItem) -> Unit,
-    onRemove: (RaftThreadMemberItem) -> Unit
+    onRemove: (RaftThreadMemberItem) -> Unit,
+    roleChanging: Boolean = false,
+    onRoleAction: (RaftThreadMemberItem) -> Unit = {},
 ) {
     // web `ChannelMemberRow` / `AgentActivityInfo`: an App Bot has no presence (it would read
     // "Offline" forever); the Bot badge follows its name instead.
@@ -40295,6 +40368,18 @@ internal fun ThreadMembersPagerRow(
         removeLabel = stringResource(Res.string.thread_members_remove_name, member.displayName),
         onRemove = if (member.canRemove && !removing) ({ onRemove(member) }) else null,
         onClick = { onOpen(member) },
+        moreActions =
+            member.roleAction?.let { action ->
+                {
+                    ChannelMemberRoleMenuButton(
+                        action = action,
+                        // Web `formatMessage(..., { name: member.name })`: the handle.
+                        memberName = member.handle.ifBlank { member.displayName },
+                        busy = roleChanging,
+                        onAction = { onRoleAction(member) },
+                    )
+                }
+            },
     )
 }
 

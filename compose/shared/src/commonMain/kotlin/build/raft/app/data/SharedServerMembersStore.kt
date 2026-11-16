@@ -131,6 +131,8 @@ data class SharedServerChannelMembersSlice(
     val externalMembers: List<ChannelExternalMemberProfile> = emptyList(),
     val canAddMembers: Boolean = false,
     val canRemoveMembers: Boolean = false,
+    /** [ChannelMemberSnapshot.canChangeMemberRoles]; false on a stored stand-in. */
+    val canChangeMemberRoles: Boolean = false,
     val canAddMembersKnown: Boolean = false,
     val status: SharedServerMembersLoadStatus = SharedServerMembersLoadStatus.Idle,
     val errorCode: String? = null,
@@ -156,6 +158,7 @@ data class SharedServerChannelMembersSlice(
                 externalMembers = externalMembers,
                 canAddMembers = canAddMembers,
                 canRemoveMembers = canRemoveMembers,
+                canChangeMemberRoles = canChangeMemberRoles,
                 liveActivityAgentIds = liveActivityAgentIds
             )
         }
@@ -2263,6 +2266,49 @@ class SharedServerMembersStore internal constructor(
         return result
     }
 
+    /**
+     * Web `useChannelMembers.changeMemberRole`: the role write, then (on success) the channel's
+     * roster read again so the row's tag and its next action follow the server's answer. A refused
+     * write leaves the slice as it was.
+     */
+    internal suspend fun changeChannelMemberRole(
+        owner: AuthenticatedRouteOwner,
+        request: ChangeChannelMemberRoleRequest,
+        priority: DataRequestPriority = DataRequestPriority.Foreground
+    ): DataResult<ChannelMemberRoleChangeResult> {
+        val normalizedOwner = owner.normalizedOrNull() ?: return staleChannelMembersOwnerResult()
+        val serverKey = normalizedOwner.serverId
+        val channelKey = request.channelId.value.trim()
+        val binding = currentChannelMembersOwner(ServerId(serverKey)) ?: return authSessionRequiredResult()
+        if (!binding.matches(normalizedOwner)) return staleChannelMembersOwnerResult()
+        if (!_state.value.channelMemberSlice(binding, ChannelId(channelKey)).canChangeMemberRoles) {
+            return DataResult.NoPermission(PermissionBlocker(
+                code = "channel_member_role_not_allowed",
+                requiredCapability = "change_channel_member_roles",
+            ))
+        }
+        val result =
+            try {
+                memberRepository.changeChannelMemberRole(priority, request)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                logger(
+                    "shared_server_channel_member_role_result serverId=$serverKey channelId=$channelKey " +
+                        "memberId=${request.memberId.value} result=exception type=${throwable::class.simpleName}"
+                )
+                return DataResult.Error(ScreenError(code = "channel_member_role_exception", retryable = true))
+            }
+        logger(
+            "shared_server_channel_member_role_result serverId=$serverKey channelId=$channelKey " +
+                "memberId=${request.memberId.value} role=${request.role.wireValue} result=${result::class.simpleName}"
+        )
+        if (result is DataResult.Content && currentChannelMembersOwner(ServerId(serverKey)) == binding) {
+            loadChannelMembers(owner = normalizedOwner, channelId = request.channelId, priority = priority, force = true)
+        }
+        return result
+    }
+
     fun applyPresence(serverId: ServerId, event: MemberPresenceUpdated) {
         // task #136: presence facts go ONLY to the process registry (the SSOT)
         // under this server's owner partition; readers combine the registry.
@@ -3154,6 +3200,7 @@ class SharedServerMembersStore internal constructor(
                             externalMembers = result.data.externalMembers,
                             canAddMembers = result.data.canAddMembers,
                             canRemoveMembers = result.data.canRemoveMembers,
+                            canChangeMemberRoles = result.data.canChangeMemberRoles,
                             canAddMembersKnown = true,
                             status = SharedServerMembersLoadStatus.Loaded,
                             errorCode = null,
@@ -3181,6 +3228,7 @@ class SharedServerMembersStore internal constructor(
                             externalMembers = result.data.externalMembers,
                             canAddMembers = result.data.canAddMembers,
                             canRemoveMembers = result.data.canRemoveMembers,
+                            canChangeMemberRoles = result.data.canChangeMemberRoles,
                             liveActivityAgentIds = result.data.liveActivityAgentIds
                         )
                     )
