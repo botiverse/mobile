@@ -54,7 +54,7 @@ class SharedTasksPageTest {
     @Test
     fun taskMenusOpenOnlyWhereTheReaderMayWriteTheChannel() {
         // Web canWriteTasksInChannel (slock #15155): status, Backlog reason and assignee menus.
-        val task = TaskSummary(id = TaskId("task-1"), title = "Ship it", status = TaskStatus.Todo, channelId = ChannelId("ch-reader"))
+        val task = TaskSummary(id = TaskId("task-1"), title = "Ship it", status = TaskStatus.Todo, updatedAtLabel = "", channelId = ChannelId("ch-reader"))
         val reader: (ChannelId?) -> Boolean = { it != ChannelId("ch-reader") }
         assertEquals(true, task.opensTaskMutationMenus(standIn = false) { true })
         assertEquals(false, task.opensTaskMutationMenus(standIn = false, canWriteTaskChannel = reader))
