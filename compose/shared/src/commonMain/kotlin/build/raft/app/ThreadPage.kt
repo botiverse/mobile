@@ -5656,6 +5656,16 @@ private fun ThreadMembersPageScreen() {
     }
     LaunchedEffect(externalInvitesState.effects) {
         externalInvitesState.effects.forEach { effect ->
+            if (effect == ExternalInvitesEffect.FreeLimitUpgrade) {
+                externalInvitesStore.dispatch(ExternalInvitesIntent.ConsumeEffect(effect))
+                // Web openExternalLimitUpgrade (surface external_invite_dialog); iOS view-only Billing: the plan page.
+                if (settingsBillingOffersUpgrade()) {
+                    pager.openRaftUpgradeDialog(RaftUpgradeGate.ExternalChannelFreeLimit, storeScope)
+                } else {
+                    pager.openSettingsBillingPage(storeScope)
+                }
+                return@forEach
+            }
             val title = externalInviteEffectDesc(effect, externalInviteJoint).resolve()
             // Web toastServerOutcomes: a refused server's toast says why under its title.
             val text =
@@ -5894,7 +5904,12 @@ private fun ThreadMembersPageScreen() {
                         if (externalInviteAccessOn) {
                             // Web: the invite dialog takes over from Add Member, which closes behind it.
                             if (addMemberStatus != "adding") addDialogVisible = false
-                            externalInvitesStore.dispatch(ExternalInvitesIntent.OpenDialog(joint = externalInviteJoint))
+                            externalInvitesStore.dispatch(
+                                ExternalInvitesIntent.RequestOpen(
+                                    joint = externalInviteJoint,
+                                    gated = externalInviteEntryGated(serverPlan, externalInviteChannel),
+                                )
+                            )
                         }
                     },
                 ),

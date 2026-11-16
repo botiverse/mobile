@@ -315,7 +315,21 @@ internal sealed interface ExternalInvitesEffect {
 
     /** Connecting the servers failed as a whole after the invites went out (web `serversFailed`): one toast. */
     data class ServersNotConnected(val traceId: String?) : ExternalInvitesEffect
+
+    /** The entry met the Free plan's one external channel, taken: the upgrade dialog, not the invite (web `openExternalLimitUpgrade`). */
+    data object FreeLimitUpgrade : ExternalInvitesEffect
 }
+
+/**
+ * Web `holdsExternalSlot` for the members page's channel: a Guest or an open external invite
+ * (`hasExternalRelation`), or a joint channel (its servers aren't on the row: taken to be).
+ */
+internal fun ExternalInviteChannel.holdsExternalSlot(): Boolean =
+    !archived && (type == "joint" || (hasExternalRelation && (type == "channel" || type == "private")))
+
+/** Web `useExternalLimitGate`'s `active`: on a Free server (plan unknown: not gated), for a channel not holding the slot. */
+internal fun externalInviteEntryGated(serverPlan: String?, channel: ExternalInviteChannel?): Boolean =
+    serverPlan == "free" && channel != null && !channel.holdsExternalSlot()
 
 /** Why a chosen server wasn't connected, as web `toastServerOutcomes` words it. */
 internal sealed interface ExternalInviteServerRefusal {
@@ -387,6 +401,14 @@ internal sealed interface ExternalInvitesIntent {
     /** [joint]: a joint channel this server hosts, whose connected servers aren't offered. */
     data class OpenDialog(val joint: Boolean = false) : ExternalInvitesIntent
 
+    /**
+     * Web `useAddExternalMemberEntry`: the entry tapped. [gated] (a Free server, a channel that
+     * doesn't hold its one external channel): the slot is read first, and when it is taken the
+     * upgrade dialog opens instead ([ExternalInvitesEffect.FreeLimitUpgrade]). Not gated, or a
+     * failed read: the dialog.
+     */
+    data class RequestOpen(val joint: Boolean, val gated: Boolean) : ExternalInvitesIntent
+
     data object CloseDialog : ExternalInvitesIntent
 
     data class SetText(val text: String) : ExternalInvitesIntent
@@ -430,6 +452,9 @@ internal interface ExternalInvitesDataSource {
     suspend fun connectedServerIds(): Set<String>?
 
     suspend fun connectOwnServers(serverIds: List<String>, makePrivate: Boolean): DataResult<ExternalInviteAnswer<List<ServerConnectOutcome>>>
+
+    /** `GET channels/external-availability`'s `freeLimitReached`; null when it couldn't be read. */
+    suspend fun freeLimitReached(): Boolean?
 }
 
 /** The members page's data source: every call under the route's authority (a switched account reads nothing). */
@@ -467,6 +492,9 @@ internal class RealExternalInvitesDataSource(
 
     override suspend fun connectOwnServers(serverIds: List<String>, makePrivate: Boolean) =
         api { it.connectOwnServers(channelId, serverIds, makePrivate) }
+
+    override suspend fun freeLimitReached(): Boolean? =
+        ((api { it.externalAvailability() } as? DataResult.Content)?.data as? ExternalInviteAnswer.Ok)?.value?.freeLimitReached
 }
 
 /**
@@ -483,11 +511,14 @@ internal class ExternalInvitesStore(
     private var generation = 0
     /** Each opening of the dialog: an older opening's "Your servers" answer is dropped. */
     private var dialogGeneration = 0
+    /** A gated entry's slot read under way: taps meanwhile do nothing. */
+    private var entryReading = false
 
     fun dispatch(intent: ExternalInvitesIntent) {
         when (intent) {
             ExternalInvitesIntent.Load -> load()
             is ExternalInvitesIntent.OpenDialog -> openDialog(intent.joint)
+            is ExternalInvitesIntent.RequestOpen -> requestOpen(intent.joint, intent.gated)
             ExternalInvitesIntent.CloseDialog ->
                 mutableState.update { if (it.dialog?.busy == true) it else it.copy(dialog = null) }
             is ExternalInvitesIntent.SetText -> updateDialog { it.copy(text = intent.text, failure = null) }
@@ -547,6 +578,20 @@ internal class ExternalInvitesStore(
             if (mine != dialogGeneration) return@launch
             val offered = externalInviteOfferedServers(own, connected)
             updateDialog { it.copy(servers = offered) }
+        }
+    }
+
+    private fun requestOpen(joint: Boolean, gated: Boolean) {
+        if (!gated) {
+            openDialog(joint)
+            return
+        }
+        if (entryReading || mutableState.value.dialog != null) return
+        entryReading = true
+        scope.launch {
+            val reached = dataSource.freeLimitReached()
+            entryReading = false
+            if (reached == true) emit(ExternalInvitesEffect.FreeLimitUpgrade) else openDialog(joint)
         }
     }
 

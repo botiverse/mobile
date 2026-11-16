@@ -622,6 +622,8 @@ internal fun externalInviteEffectDesc(effect: ExternalInvitesEffect, joint: Bool
                 .format(effect.count)
         is ExternalInvitesEffect.ServerRefused -> Res.string.channel_external_invite_server_refused.format(effect.serverName)
         is ExternalInvitesEffect.ServersNotConnected -> Res.string.channel_external_invite_servers_not_connected.desc()
+        // Not a toast: the page opens the upgrade dialog.
+        ExternalInvitesEffect.FreeLimitUpgrade -> Res.string.channel_external_invite_error_free_limit.desc()
     }
 
 /** Whether the effect is an error toast (with the answer's trace ID), as the web's `type: "error"`. */

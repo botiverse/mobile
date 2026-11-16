@@ -220,4 +220,14 @@ class ExternalInvitesApiTest {
         )
         assertEquals("invalid_input", assertIs<ExternalInviteAnswer.Refused>(answer.data).refusal.code)
     }
+
+    /** `GET channels/external-availability` → `{ freeLimitReached }` (staging 97a3e293d71a). */
+    @Test
+    fun theAvailabilityIsReadFromTheChannelsRoute() = runTest {
+        val client = RecordingClient(HomeNetworkResponse(200, """{"freeLimitReached":true}"""))
+        val answer = assertIs<DataResult.Content<ExternalInviteAnswer<ExternalChannelAvailability>>>(ExternalInvitesApi(client).externalAvailability())
+        assertEquals(true, assertIs<ExternalInviteAnswer.Ok<ExternalChannelAvailability>>(answer.data).value.freeLimitReached)
+        assertEquals("channels/external-availability", client.calls.single().path)
+        assertEquals("GET", client.calls.single().method)
+    }
 }

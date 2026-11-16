@@ -33,6 +33,9 @@ import kotlinx.serialization.json.Json
  *    the host owner/admin connects those servers now, no email, no approval →
  *    `{ servers: ServerConnectOutcome[] }`, one per chosen server (see [ServerConnectOutcome]); the
  *    whole request refused is `{ error, code }` as the routes below (400 `invalid_input` for the list).
+ *  - `GET channels/external-availability` (same SHA, `externalInviteService.getExternalChannelAvailability`)
+ *    → `{ freeLimitReached: boolean }`: the current server's one Free external channel is taken.
+ *    Host owner/admin only; 404 while `external_channels_v1` is off.
  *  - Preview, send and resend answer 404 `{ error: "Not found" }` while `external_channels_v1` is
  *    off for the host server; list and revoke are not gated. A refusal is `{ error, code }`
  *    (`EXTERNAL_INVITE_ERROR_STATUS`: not_found 404, forbidden 403, channel_membership_required
@@ -108,6 +111,13 @@ data class ChannelExternalInviteList(
     /** How many more people the channel can be invited; absent from an older server. */
     val slotsLeft: Int? = null,
 )
+
+/** `GET channels/external-availability`. */
+@Serializable
+data class ExternalChannelAvailability(val freeLimitReached: Boolean = false)
+
+internal fun parseSharedExternalChannelAvailability(bodyText: String): ExternalChannelAvailability? =
+    runCatching { externalInvitesJson.decodeFromString(ExternalChannelAvailability.serializer(), bodyText) }.getOrNull()
 
 /** "Your servers" (`GET channels/external-connect-servers`). */
 @Serializable
@@ -247,6 +257,17 @@ internal class ExternalInvitesApi(
 
     suspend fun revoke(channelId: ChannelId, inviteId: String): DataResult<ExternalInviteAnswer<Unit>> =
         call("revoke", DataRequestPriority.Foreground, "${base(channelId)}/${inviteId.encodePathSegment()}", "DELETE", null) { Unit }
+
+    /** Whether the current server's one Free external channel is taken (Foreground: read on a tap). */
+    suspend fun externalAvailability(): DataResult<ExternalInviteAnswer<ExternalChannelAvailability>> =
+        call(
+            "availability",
+            DataRequestPriority.Foreground,
+            "channels/external-availability",
+            "GET",
+            null,
+            ::parseSharedExternalChannelAvailability,
+        )
 
     /** "Your servers": not read against a channel (the caller leaves out a joint channel's own). */
     suspend fun ownConnectableServers(): DataResult<ExternalInviteAnswer<OwnConnectableServers>> =

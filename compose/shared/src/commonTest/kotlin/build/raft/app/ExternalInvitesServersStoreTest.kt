@@ -190,4 +190,44 @@ class ExternalInvitesServersStoreTest {
         assertEquals(ExternalInviteServerRefusal.Invitee(InviteeMessage.TooManyAttempts), refused(null, status = 429))
         assertEquals(ExternalInviteServerRefusal.Invitee(InviteeMessage.Generic), refused("internal_error", status = 500))
     }
+
+    @Test
+    fun aGatedEntryOpensTheUpgradeWhenTheFreeExternalChannelIsTaken() = runTest {
+        val taken = FakeExternalInvitesDataSource().apply { freeLimitAnswer = true }
+        val store = ExternalInvitesStore(this, taken)
+        store.dispatch(ExternalInvitesIntent.RequestOpen(joint = false, gated = true))
+        runCurrent()
+        assertNull(store.state.value.dialog)
+        assertEquals(listOf<ExternalInvitesEffect>(ExternalInvitesEffect.FreeLimitUpgrade), store.state.value.effects)
+
+        // Free, or a failed read: the dialog.
+        for (answer in listOf(false, null)) {
+            val source = FakeExternalInvitesDataSource().apply { freeLimitAnswer = answer }
+            val open = ExternalInvitesStore(this, source)
+            open.dispatch(ExternalInvitesIntent.RequestOpen(joint = false, gated = true))
+            runCurrent()
+            assertNotNull(open.state.value.dialog)
+            assertEquals(1, source.freeLimitCalls)
+        }
+
+        // Not gated: no read.
+        val ungated = FakeExternalInvitesDataSource().apply { freeLimitAnswer = true }
+        val direct = ExternalInvitesStore(this, ungated)
+        direct.dispatch(ExternalInvitesIntent.RequestOpen(joint = false, gated = false))
+        runCurrent()
+        assertNotNull(direct.state.value.dialog)
+        assertEquals(0, ungated.freeLimitCalls)
+    }
+
+    @Test
+    fun onlyAFreeServersChannelNotHoldingTheSlotIsGated() {
+        fun channel(type: String, external: Boolean = false) =
+            ExternalInviteChannel(type = type, name = "c", archived = false, jointRole = "host", hasExternalRelation = external)
+        assertTrue(externalInviteEntryGated("free", channel("private")))
+        assertTrue(externalInviteEntryGated("free", channel("channel")))
+        assertFalse(externalInviteEntryGated("free", channel("private", external = true)))
+        assertFalse(externalInviteEntryGated("free", channel("joint")))
+        assertFalse(externalInviteEntryGated("pro", channel("private")))
+        assertFalse(externalInviteEntryGated(null, channel("private")))
+    }
 }

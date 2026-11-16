@@ -69,6 +69,11 @@ internal class FakeExternalInvitesDataSource : ExternalInvitesDataSource {
 
     override suspend fun connectOwnServers(serverIds: List<String>, makePrivate: Boolean) =
         connectAnswer.also { connectCalls += serverIds to makePrivate }
+
+    var freeLimitAnswer: Boolean? = false
+    var freeLimitCalls = 0
+
+    override suspend fun freeLimitReached() = freeLimitAnswer.also { freeLimitCalls++ }
 }
 
 internal fun externalTestInvite(
