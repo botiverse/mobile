@@ -2178,6 +2178,15 @@
     <string name="agent_invite_action_sending">傳送中…</string>
     <string name="agent_invite_action_send">傳送邀請</string>
     <string name="channel_create_title">建立頻道</string>
+    <string name="channel_create_external">外部</string>
+    <string name="channel_create_external_hint">在同一個頻道中與 %1$s 以外的人協作。只有你新增的人能看到這個頻道，%1$s 的成員也不例外。</string>
+    <string name="channel_create_external_free_limit">免費版：%1$s 已有一個與伺服器以外的人共享的頻道。</string>
+    <string name="channel_create_upgrade_for_more">升級以取得更多</string>
+    <string name="channel_create_people_title">新增成員至 #%1$s</string>
+    <string name="channel_create_external_members_label">%1$s 的成員</string>
+    <string name="channel_create_external_submit">建立並邀請</string>
+    <string name="channel_create_external_skip">略過</string>
+    <string name="channel_create_external_created">已建立 #%1$s，但邀請未能傳送。請再試一次，或先略過，之後再邀請。</string>
     <string name="channel_create_label_name">名稱</string>
     <string name="channel_create_placeholder_name">例如 ai-research</string>
     <string name="channel_create_hint_name_format">請以字母開頭，可使用任何語言的字母、數字、連字號或底線（最多 32 個字元）。</string>

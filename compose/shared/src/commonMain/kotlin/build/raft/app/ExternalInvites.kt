@@ -156,6 +156,9 @@ private fun DataResult<*>.toFailure(): ExternalInviteFailure =
         else -> ExternalInviteFailure(ExternalInviteError.Generic)
     }
 
+/** [toFailure] for the create flow's store. */
+internal fun DataResult<*>.externalInviteFailureOf(): ExternalInviteFailure = toFailure()
+
 /** How a review row reads (web `reviewRows` statuses). */
 internal enum class ExternalInviteReviewStatus {
     WillInvite,

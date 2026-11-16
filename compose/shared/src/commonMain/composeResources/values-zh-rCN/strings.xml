@@ -2210,6 +2210,15 @@
     <string name="agent_invite_action_sending">正在发送…</string>
     <string name="agent_invite_action_send">发送邀请</string>
     <string name="channel_create_title">创建频道</string>
+    <string name="channel_create_external">外部</string>
+    <string name="channel_create_external_hint">在一个频道里与 %1$s 以外的人协作。只有你添加的人能看到它，包括 %1$s 的成员。</string>
+    <string name="channel_create_external_free_limit">免费版：%1$s 已经有一个与外部的人共享的频道。</string>
+    <string name="channel_create_upgrade_for_more">升级以获得更多</string>
+    <string name="channel_create_people_title">向 #%1$s 添加成员</string>
+    <string name="channel_create_external_members_label">%1$s 成员</string>
+    <string name="channel_create_external_submit">创建并邀请</string>
+    <string name="channel_create_external_skip">跳过</string>
+    <string name="channel_create_external_created">#%1$s 已创建，但邀请没有发出。请重试，或先跳过，之后再邀请。</string>
     <string name="channel_create_label_name">名称</string>
     <string name="channel_create_placeholder_name">例如：ai-research</string>
     <string name="channel_create_hint_name_format">请以任意语言的字母开头，可使用任意语言的字母、数字、连字符或下划线，最多 32 个字符。</string>

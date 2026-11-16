@@ -2178,6 +2178,15 @@
     <string name="agent_invite_action_sending">Enviando…</string>
     <string name="agent_invite_action_send">Enviar convites</string>
     <string name="channel_create_title">Criar canal</string>
+    <string name="channel_create_external">Externo</string>
+    <string name="channel_create_external_hint">Trabalhe com pessoas de fora de %1$s em um só canal. Só as pessoas que você adicionar podem vê-lo, inclusive os membros de %1$s.</string>
+    <string name="channel_create_external_free_limit">Plano gratuito: %1$s já tem um canal compartilhado com pessoas de fora.</string>
+    <string name="channel_create_upgrade_for_more">Fazer upgrade para ter mais</string>
+    <string name="channel_create_people_title">Adicionar pessoas a #%1$s</string>
+    <string name="channel_create_external_members_label">Membros de %1$s</string>
+    <string name="channel_create_external_submit">Criar e convidar</string>
+    <string name="channel_create_external_skip">Pular</string>
+    <string name="channel_create_external_created">#%1$s foi criado, mas os convites não foram enviados. Tente novamente ou pule esta etapa e convide pessoas depois.</string>
     <string name="channel_create_label_name">Nome</string>
     <string name="channel_create_placeholder_name">ex.: ai-research</string>
     <string name="channel_create_hint_name_format">Comece com uma letra. Use letras de qualquer idioma, números, hifens ou sublinhados (máximo de 32 caracteres).</string>

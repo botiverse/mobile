@@ -24,6 +24,7 @@ import build.raft.designsystem.components.RaftTextarea
 import androidx.compose.foundation.text.KeyboardActions
 import build.raft.designsystem.components.RaftMobileNavServerPopoverItem
 import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftButton
@@ -173,6 +174,8 @@ import build.raft.app.data.displayRowHints
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.rememberServerFeatureLatched
+import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
 import build.raft.app.data.HomeParentThreadUnread
 import build.raft.app.data.DRAFTS_SECTION_FEATURE_FLAG_KEY
 import build.raft.app.data.agentLoungeEnabled
@@ -240,6 +243,8 @@ import build.raft.app.data.parseRaftHome
 import build.raft.app.data.CreateChannelRequest
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.ExternalInvitesApi
+import build.raft.app.data.ExternalInviteAnswer
 import build.raft.app.data.MemberRepository
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
@@ -2857,6 +2862,8 @@ private fun RaftAppShellReadyContent(
     val serverDrawerProgrammaticCloseFenceState = remember { mutableStateOf<((String) -> Unit)?>(null) }
     var serverDrawerProgrammaticCloseFence by serverDrawerProgrammaticCloseFenceState
     var createChannelDialogOpen by remember { mutableStateOf(false) }
+    // Web SidebarDialogs: the External section's "+" opens Create Channel with External chosen.
+    var createChannelExternalChosen by remember { mutableStateOf(false) }
     var createJointChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
     // task #226: global announcement modal. The API client already exists (the
@@ -3013,6 +3020,9 @@ private fun RaftAppShellReadyContent(
                 ?.takeIf { authGateState == SharedAuthGateState.Restoring }
                 ?.let { SharedAuthReadyPhase.CachedRestorePending }
     val readyServerId = selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: readySession?.currentServerId
+    // Web Create Channel `twoStep` and the External section's entries: external_channels_v1 for this server.
+    val externalChannelsOn =
+        rememberServerFeatureLatched(sharedStores.serverFeatureFlags, readyServerId?.let(::ServerId), EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)
     val serverLastConversationRepository = ServerLastConversationRepository.App
     val serverLastConversationOwnerKey =
         messageBodyFontSizeOwnerKey(sharedStores.apiEnvironmentStore.current().apiBaseUrl, readySession?.user?.id.orEmpty())
@@ -4975,18 +4985,89 @@ private fun RaftAppShellReadyContent(
         }
     }
 
+    // Web useExternalLimitGate (surface sidebar): on a Free server whose one external channel is
+    // taken, the External section's "+" opens the upgrade dialog instead of Create Channel. Not
+    // Free (or not known), or a failed read: Create Channel with External chosen.
+    var externalCreateGateReading by remember { mutableStateOf(false) }
+    fun openExternalCreateChannelGated() {
+        val plan = (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.plan
+        if (plan != "free") {
+            openCreateChannelDialog(external = true)
+            return
+        }
+        if (externalCreateGateReading) return
+        externalCreateGateReading = true
+        appShellCoroutineScope.launch {
+            val reached =
+                try {
+                    ((ExternalInvitesApi(appShellNetworkClient).externalAvailability() as? DataResult.Content)?.data as? ExternalInviteAnswer.Ok)
+                        ?.value
+                        ?.freeLimitReached == true
+                } finally {
+                    externalCreateGateReading = false
+                }
+            if (!reached) {
+                openCreateChannelDialog(external = true)
+            } else if (settingsBillingOffersUpgrade()) {
+                pager.openRaftUpgradeDialog(RaftUpgradeGate.ExternalChannelFreeLimit, storeScope)
+            } else {
+                pager.openSettingsBillingPage(storeScope)
+            }
+        }
+    }
+
     fun openCreateJointChannelDialog() {
         createJointChannelDialogOpen = true
         createChannelMembers = emptyList()
         loadCreateChannelMembers()
     }
 
-    fun openCreateChannelDialog() {
+    fun openCreateChannelDialog(external: Boolean = false) {
+        createChannelExternalChosen = external
         createChannelDialogOpen = true
         createChannelError = null
         createChannelCollision = null
         createChannelMembers = emptyList()
         loadCreateChannelMembers()
+    }
+
+    // A created channel: the dialog closes onto it (tygg 11-06: land in the new channel, as the
+    // archived-name Open and Unarchive do). [toast]: the plain create's "created" line; the
+    // External flow says what its invites came to instead.
+    fun landInCreatedChannel(channel: HomeChannelRow, toast: Boolean = true) {
+        selectAppShellTab("home")
+        retainedAppShellTabs = retainedAppShellTabs + "home"
+        homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(channel.threadId.value))
+        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.ChannelCreated(channel)))
+        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
+        createChannelDialogOpen = false
+        createChannelError = null
+        if (toast) bridge.toast(channelCreatedMessage)
+        openHomeConversation(channel.toThreadLaunchConversationIdentity(), "create_channel")
+    }
+
+    fun showCreateChannelRefusal(result: DataResult<*>) {
+        when (result) {
+            is DataResult.Content -> Unit
+            is DataResult.Empty -> {
+                createChannelError = channelNotCreatedMessage
+            }
+            is DataResult.Error -> {
+                // An archived channel the user can see holds the name: say so and offer
+                // Open Channel / Unarchive / Change Name (web, slock #12614). Any other
+                // refusal, including the plain "already taken", keeps the error line.
+                val collision = result.error.archivedNameCollisionOrNull()
+                if (collision != null) {
+                    createChannelCollision = collision
+                } else {
+                    createChannelError = result.error.code
+                }
+            }
+            is DataResult.NoPermission -> {
+                createChannelError = result.blocker.code
+            }
+        }
     }
 
     fun submitCreateChannel(
@@ -5017,37 +5098,8 @@ private fun RaftAppShellReadyContent(
                             )
                         )
                 ) {
-                    is DataResult.Content -> {
-                        val channel = result.data.channel
-                        selectAppShellTab("home")
-                        retainedAppShellTabs = retainedAppShellTabs + "home"
-                        homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
-                        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(channel.threadId.value))
-                        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.ChannelCreated(channel)))
-                        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
-                        createChannelDialogOpen = false
-                        createChannelError = null
-                        bridge.toast(channelCreatedMessage)
-                        // tygg 11-06: land in the new channel, as the archived-name Open and Unarchive do.
-                        openHomeConversation(channel.toThreadLaunchConversationIdentity(), "create_channel")
-                    }
-                    is DataResult.Empty -> {
-                        createChannelError = channelNotCreatedMessage
-                    }
-                    is DataResult.Error -> {
-                        // An archived channel the user can see holds the name: say so and offer
-                        // Open Channel / Unarchive / Change Name (web, slock #12614). Any other
-                        // refusal, including the plain "already taken", keeps the error line.
-                        val collision = result.error.archivedNameCollisionOrNull()
-                        if (collision != null) {
-                            createChannelCollision = collision
-                        } else {
-                            createChannelError = result.error.code
-                        }
-                    }
-                    is DataResult.NoPermission -> {
-                        createChannelError = result.blocker.code
-                    }
+                    is DataResult.Content -> landInCreatedChannel(result.data.channel)
+                    else -> showCreateChannelRefusal(result)
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -7695,7 +7747,12 @@ private fun RaftAppShellReadyContent(
                                 },
                                 onInviteHuman = { serverId -> serverSwitcherInviteServerId = serverId },
                                 onCreateChannel = { openCreateChannelDialog() },
-                                onCreateJointChannel = { openCreateJointChannelDialog() },
+                                // Web SidebarDialogs: with external_channels_v1 on, Create Channel with External
+                                // chosen (the Free limit gate inside it); off, the Joint Channel dialog.
+                                onCreateJointChannel = {
+                                    if (externalChannelsOn) openExternalCreateChannelGated() else openCreateJointChannelDialog()
+                                },
+                                externalChannelsOn = externalChannelsOn,
                                 onOpenConversation = { conversationIdentity ->
                                     openHomeConversation(conversationIdentity, "home")
                                 },
@@ -8311,7 +8368,69 @@ private fun RaftAppShellReadyContent(
                     )
                 }
                 if (createChannelDialogOpen) {
+                    val createServer = (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server
+                    val createExternalAccess = externalChannelCreateAccess(externalChannelsOn, createServer?.role)
+                    val createExternalStore =
+                        remember(createExternalAccess, createServer?.id) {
+                            if (!createExternalAccess) {
+                                null
+                            } else {
+                                CreateExternalChannelStore(
+                                    appShellCoroutineScope,
+                                    RealCreateExternalChannelDataSource(
+                                        appShellNetworkClient,
+                                        channelRepository,
+                                        raftLogger("SlockCreateExternalChannel", "create_external_channel", RaftLogLevel.Warn),
+                                    ),
+                                )
+                            }
+                        }
+                    val createExternalState = createExternalStore?.state?.collectAsState()?.value
+                    val createServerName = createServer?.name.orEmpty()
+                    val createChannelNameForToasts = createExternalState?.created?.channel?.name?.removePrefix("#").orEmpty()
+                    LaunchedEffect(createExternalState?.effects) {
+                        val store = createExternalStore ?: return@LaunchedEffect
+                        createExternalState?.effects.orEmpty().forEach { effect ->
+                            store.dispatch(CreateExternalChannelIntent.ConsumeEffect(effect))
+                            when (effect) {
+                                is CreateExternalChannelEffect.CreateFailed -> showCreateChannelRefusal(effect.result)
+                                is CreateExternalChannelEffect.Finished -> landInCreatedChannel(effect.channel.channel, toast = false)
+                                is CreateExternalChannelEffect.Toast -> {
+                                    val toast = effect.effect
+                                    val title = externalInviteEffectDesc(toast).resolve()
+                                    val text =
+                                        if (toast is ExternalInvitesEffect.ServerRefused) {
+                                            val reason =
+                                                externalInviteServerRefusalDesc(
+                                                    toast.reason,
+                                                    target = toast.serverName,
+                                                    channel = "#$createChannelNameForToasts",
+                                                    host = createServerName,
+                                                )
+                                            "$title\n${reason.resolve()}"
+                                        } else {
+                                            title
+                                        }
+                                    if (toast.isError) bridge.errorToast(text, toast.traceId) else bridge.toast(text)
+                                }
+                            }
+                        }
+                    }
                     SharedCreateChannelDialog(
+                        twoStep = externalChannelsOn,
+                        externalStore = createExternalStore,
+                        serverName = createServerName,
+                        initialVisibility =
+                            if (createChannelExternalChosen) SharedCreateChannelVisibility.External else SharedCreateChannelVisibility.Public,
+                        onExternalUpgrade = {
+                            createChannelDialogOpen = false
+                            // Web openUpgradeDialog("external_channel_free_limit", { surface: "create_channel" }).
+                            if (settingsBillingOffersUpgrade()) {
+                                pager.openRaftUpgradeDialog(RaftUpgradeGate.ExternalChannelFreeLimit, storeScope)
+                            } else {
+                                pager.openSettingsBillingPage(storeScope)
+                            }
+                        },
                         submitting = createChannelSubmitting,
                         membersLoading = createChannelMembersLoading,
                         members = createChannelMembers,
@@ -12913,6 +13032,8 @@ private fun SharedHomeScreen(
     onCreateChannel: () -> Unit,
     /** Joint Channels section "+"; shown only with federateChannels (owner/admin), as web gates it. */
     onCreateJointChannel: (() -> Unit)? = null,
+    /** external_channels_v1: the "+" is for those Create Channel offers External to (owners and admins). */
+    externalChannelsOn: Boolean = false,
     onOpenConversation: (ThreadLaunchConversationIdentity) -> Unit,
     serverMembersStore: SharedServerMembersStore? = null,
     channelRepository: ChannelRepository? = null,
@@ -13407,7 +13528,15 @@ private fun SharedHomeScreen(
                         onIntent(SharedHomeIntent.DismissServerSwitcher)
                     },
                 onCreateChannelClick = onCreateChannel,
-                onCreateJointChannelClick = onCreateJointChannel?.takeIf { snapshot.server.permissions.canManageSettings },
+                // Web useSidebarViewState `canCreateJointChannel`.
+                onCreateJointChannelClick =
+                    onCreateJointChannel?.takeIf {
+                        if (externalChannelsOn) {
+                            externalChannelCreateAccess(true, snapshot.server.role)
+                        } else {
+                            snapshot.server.permissions.canManageSettings
+                        }
+                    },
                 onSearchClick = {
                     onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Search))
                     onOpenSearch()
@@ -13624,12 +13753,39 @@ private fun SharedCreateChannelDialog(
     initialSelectedMemberKeys: Set<RaftMemberPickerKey> = emptySet(),
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     fixtureStatusFallbackEnabled: Boolean = false,
+    /** Web `twoStep` (external_channels_v1 on): step 1 names it, step 2 adds people. */
+    twoStep: Boolean = false,
+    /** Web `useExternalChannelCreateAccess`: External is offered ([externalStore] reads the rest). */
+    externalStore: CreateExternalChannelStore? = null,
+    serverName: String = "",
+    /** At the Free plan's one external channel: Upgrade for more. */
+    onExternalUpgrade: () -> Unit = {},
     onDismiss: () -> Unit,
     onSubmit: (String, String?, String, List<String>, List<String>) -> Unit
 ) {
     var name by remember(initialName) { mutableStateOf(initialName) }
     var description by remember(initialDescription) { mutableStateOf(initialDescription) }
-    var visibility by remember(initialVisibility) { mutableStateOf(initialVisibility) }
+    // Web: External asked for by a viewer without it falls back to Private.
+    var visibility by remember(initialVisibility) {
+        mutableStateOf(
+            if (initialVisibility == SharedCreateChannelVisibility.External && externalStore == null) {
+                SharedCreateChannelVisibility.Private
+            } else {
+                initialVisibility
+            }
+        )
+    }
+    var step by remember { mutableStateOf(SharedCreateChannelStep.Details) }
+    val externalState = externalStore?.state?.collectAsState()?.value
+    val externalAvailability = externalState?.availability
+    // Web `external` / `externalAtLimit`: External chosen and open, or chosen at the Free limit.
+    val external = visibility == SharedCreateChannelVisibility.External && externalAvailability == ExternalChannelCreateAvailability.Open
+    val externalAtLimit = visibility == SharedCreateChannelVisibility.External && externalAvailability == ExternalChannelCreateAvailability.FreeLimit
+    val externalLoading = visibility == SharedCreateChannelVisibility.External && externalAvailability == ExternalChannelCreateAvailability.Loading
+    LaunchedEffect(externalStore) { externalStore?.dispatch(CreateExternalChannelIntent.Start) }
+    LaunchedEffect(externalStore, external) { if (external) externalStore?.dispatch(CreateExternalChannelIntent.LoadServers) }
+    // Web handleCreateError: an archived-name collision goes back to step 1, where the name is.
+    LaunchedEffect(archivedCollision) { if (archivedCollision != null) step = SharedCreateChannelStep.Details }
     // Caller-local TextFieldValue owns the member-search editor for this
     // dialog's mount; filtering reads the String projection (task #130 Phase D).
     var memberSearch by remember { mutableStateOf(TextFieldValue()) }
@@ -13648,7 +13804,14 @@ private fun SharedCreateChannelDialog(
     var memberSearchFocused by remember { mutableStateOf(false) }
     // The member picker's item in the list below: after name, description and visibility, and
     // after the archived-name warning when one is shown above them.
-    val memberPickerItemIndex = if (archivedCollision != null) 4 else 3
+    // On step 2 it follows the emails and "Your servers" of an External channel.
+    val memberPickerItemIndex =
+        when {
+            twoStep && step == SharedCreateChannelStep.People ->
+                if (visibility == SharedCreateChannelVisibility.External && externalAvailability == ExternalChannelCreateAvailability.Open) 2 else 0
+            archivedCollision != null -> 4
+            else -> 3
+        }
 
     fun scrollToMemberPicker() {
         val requestGeneration = createChannelScrollCoordinator.begin()
@@ -13678,26 +13841,76 @@ private fun SharedCreateChannelDialog(
         }
     val canSubmit = trimmedName.isSubmittableChannelName() && !submitting
     val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
+    val onDetails = !twoStep || step == SharedCreateChannelStep.Details
+    val externalBusy = externalState?.invite?.busy == true
     // The one commit: the footer's Create on a wide window, the phone sheet's head button.
     val commitLabel =
-        if (submitting) {
-            stringResource(Res.string.channel_create_action_creating)
-        } else {
-            stringResource(Res.string.channel_create_action_create)
+        when {
+            twoStep && step == SharedCreateChannelStep.Details -> stringResource(Res.string.channel_external_invite_next)
+            external && externalBusy -> stringResource(Res.string.channel_external_invite_checking)
+            external -> stringResource(Res.string.channel_create_external_submit)
+            submitting -> stringResource(Res.string.channel_create_action_creating)
+            else -> stringResource(Res.string.channel_create_action_create)
         }
+    fun selectedMembers() = selectableMembers.filter { it.memberPickerKey in selectedMemberKeys }
     val commit: () -> Unit = {
-        val selectedMembers =
-            selectableMembers.filter { it.memberPickerKey in selectedMemberKeys }
-        onSubmit(
-            name,
-            description.text,
-            visibility.wireValue,
-            selectedMembers.filter { it.kind == MemberKind.Agent }.map { it.id.value },
-            selectedMembers.filter { it.kind == MemberKind.Human }.map { it.id.value }
+        when {
+            // Step 1's Next: the name is checked here so step 2 only creates.
+            twoStep && step == SharedCreateChannelStep.Details -> step = SharedCreateChannelStep.People
+            // The review first (design E1): nothing is created until it is confirmed.
+            external -> externalStore?.dispatch(CreateExternalChannelIntent.Review)
+            else -> {
+                val chosen = selectedMembers()
+                onSubmit(
+                    name,
+                    description.text,
+                    if (visibility == SharedCreateChannelVisibility.External) "private" else visibility.wireValue,
+                    chosen.filter { it.kind == MemberKind.Agent }.map { it.id.value },
+                    chosen.filter { it.kind == MemberKind.Human }.map { it.id.value }
+                )
+            }
+        }
+    }
+    val commitEnabled =
+        when {
+            twoStep && step == SharedCreateChannelStep.Details ->
+                trimmedName.isSubmittableChannelName() && !submitting && !externalAtLimit && !externalLoading
+            external -> canSubmit && externalState?.canReview == true
+            else -> canSubmit
+        }
+    val reviewInvite = externalState?.invite?.takeIf { external && step == SharedCreateChannelStep.People && it.preview != null }
+    if (reviewInvite != null && externalStore != null) {
+        SharedCreateExternalChannelReview(
+            state = externalState,
+            serverName = serverName,
+            onCommit = {
+                val chosen = selectedMembers()
+                externalStore.dispatch(
+                    CreateExternalChannelIntent.Commit(
+                        CreateExternalChannelDraft(
+                            name = trimmedName,
+                            description = description.text,
+                            agentIds = chosen.filter { it.kind == MemberKind.Agent }.map { it.id.value },
+                            userIds = chosen.filter { it.kind == MemberKind.Human }.map { it.id.value },
+                        )
+                    )
+                )
+            },
+            onBack = { externalStore.dispatch(CreateExternalChannelIntent.BackToPeople) },
+            onLeave = {
+                if (externalState.created != null) externalStore.dispatch(CreateExternalChannelIntent.Leave) else onDismiss()
+            },
+            onUpgrade = onExternalUpgrade,
         )
+        return
     }
     RaftUnifiedDialog(
-        title = stringResource(Res.string.channel_create_title),
+        title =
+            if (onDetails) {
+                stringResource(Res.string.channel_create_title)
+            } else {
+                stringResource(Res.string.channel_create_people_title, trimmedName)
+            },
         dismissEnabled = !submitting,
         dismissOnOutsideTap = false,
         keyboardAvoidanceEnabled = true,
@@ -13705,7 +13918,7 @@ private fun SharedCreateChannelDialog(
         presentation = RaftDialogPresentation.Sheet,
         commitLabel = commitLabel,
         onCommit = commit,
-        commitEnabled = canSubmit
+        commitEnabled = commitEnabled
     ) {
         val focusedEditorBounds = rememberRaftFocusedInputBoundsResolver()
         val dialogKeyboardHeightChange = LocalRaftDialogKeyboardHeightChange.current
@@ -13772,6 +13985,7 @@ private fun SharedCreateChannelDialog(
                         .onGloballyPositioned { createChannelViewport = it.boundsInRoot() },
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+            if (!twoStep || step == SharedCreateChannelStep.Details) {
             // Web CreateChannelDialog: the archived-name warning sits above the name it is about.
             archivedCollision?.let { collision ->
                 item(key = "archived-name-collision") {
@@ -13850,11 +14064,52 @@ private fun SharedCreateChannelDialog(
                 SharedCreateChannelVisibilityControl(
                     selected = visibility,
                     enabled = !submitting,
-                    onSelected = { visibility = it }
+                    externalOffered = externalStore != null,
+                    // Web: External while it is still being checked is ignored.
+                    onSelected = { chosen ->
+                        if (chosen != SharedCreateChannelVisibility.External || externalAvailability != ExternalChannelCreateAvailability.Loading) {
+                            visibility = chosen
+                        }
+                    },
+                    hint =
+                        when {
+                            external -> stringResource(Res.string.channel_create_external_hint, serverName)
+                            else -> null
+                        },
+                    freeLimitServerName = serverName.takeIf { externalAtLimit },
+                    onUpgrade = onExternalUpgrade,
                 )
             }
-            item {
+            }
+            if (twoStep && step == SharedCreateChannelStep.People && external) {
+                val invite = externalState?.invite ?: ExternalInviteDialogState()
+                item(key = "external-emails") {
+                    ExternalInviteEmailsField(
+                        text = invite.text,
+                        onTextChange = { externalStore?.dispatch(CreateExternalChannelIntent.SetText(it)) },
+                        overBy = invite.overBy,
+                        enabled = !invite.busy,
+                    )
+                }
+                item(key = "external-servers") {
+                    ExternalInviteServersField(
+                        servers = invite.servers,
+                        values = invite.serverIds,
+                        onValuesChange = { externalStore?.dispatch(CreateExternalChannelIntent.SetServers(it)) },
+                        enabled = !invite.busy,
+                        // A new channel has no earlier messages.
+                        historyHint = false,
+                    )
+                }
+                invite.failure?.let { failure ->
+                    // Web: step 2 says the refusal as its error line (no Upgrade there).
+                    item(key = "external-error") { ExternalInviteFailureBanner(failure.copy(upgrade = false), onUpgrade = {}) }
+                }
+            }
+            if (!twoStep || step == SharedCreateChannelStep.People) item {
                 SharedCreateChannelMemberPicker(
+                    label =
+                        if (external) stringResource(Res.string.channel_create_external_members_label, serverName) else null,
                     loading = membersLoading,
                     members = selectableMembers,
                     query = memberSearch,
@@ -13894,16 +14149,27 @@ private fun SharedCreateChannelDialog(
         }
         }
         RaftDialogFooter {
-            RaftButton(
-                text = stringResource(Res.string.common_cancel),
-                enabled = !submitting,
-                onClick = onDismiss,
-                variant = RaftButtonVariant.Ghost,
-                size = RaftButtonSize.Lg
-            )
+            if (onDetails) {
+                RaftButton(
+                    text = stringResource(Res.string.common_cancel),
+                    enabled = !submitting,
+                    onClick = onDismiss,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg
+                )
+            } else {
+                // Back keeps everything filled in on both steps (web v4.9#1).
+                RaftButton(
+                    text = stringResource(Res.string.channel_external_invite_back),
+                    enabled = !submitting && !externalBusy,
+                    onClick = { step = SharedCreateChannelStep.Details },
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg
+                )
+            }
             RaftButton(
                 text = commitLabel,
-                enabled = canSubmit,
+                enabled = commitEnabled,
                 modifier = Modifier.widthIn(min = 126.dp),
                 variant = RaftButtonVariant.Primary,
                 size = RaftButtonSize.Lg,
@@ -13913,13 +14179,18 @@ private fun SharedCreateChannelDialog(
     }
 }
 
+/** Web `Step` "details" / "people" (the External review is [SharedCreateExternalChannelReview]). */
+private enum class SharedCreateChannelStep { Details, People }
+
 private enum class SharedCreateChannelVisibility(
     val wireValue: String,
     val label: String,
     val iconName: RaftLucideIconName
 ) {
     Public("public", "Public", RaftLucideIconName.Hash),
-    Private("private", "Private", RaftLucideIconName.Lock);
+    Private("private", "Private", RaftLucideIconName.Lock),
+    /** Web Create Channel's External: created private, then the invites (CreateExternalChannel.kt). */
+    External("external", "External", RaftLucideIconName.ExternalChannel);
 
     companion object {
         fun fromWireValue(value: String?): SharedCreateChannelVisibility =
@@ -13931,20 +14202,26 @@ private enum class SharedCreateChannelVisibility(
 private fun SharedCreateChannelVisibilityControl(
     selected: SharedCreateChannelVisibility,
     enabled: Boolean,
-    onSelected: (SharedCreateChannelVisibility) -> Unit
+    onSelected: (SharedCreateChannelVisibility) -> Unit,
+    externalOffered: Boolean = false,
+    hint: String? = null,
+    /** External chosen at the Free plan's one external channel: its line and Upgrade for more. */
+    freeLimitServerName: String? = null,
+    onUpgrade: () -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         RaftFieldLabel(text = stringResource(Res.string.channel_create_label_visibility))
         SegmentedControl(
             selectedValue = selected.name,
             options =
-                SharedCreateChannelVisibility.values().map { option ->
+                SharedCreateChannelVisibility.values().filter { it != SharedCreateChannelVisibility.External || externalOffered }.map { option ->
                     SegmentedControlOption(
                         value = option.name,
                         label =
                             when (option) {
                                 SharedCreateChannelVisibility.Public -> stringResource(Res.string.channel_create_visibility_public)
                                 SharedCreateChannelVisibility.Private -> stringResource(Res.string.channel_create_visibility_private)
+                                SharedCreateChannelVisibility.External -> stringResource(Res.string.channel_create_external)
                             },
                         iconName = option.iconName
                     )
@@ -13956,12 +14233,34 @@ private fun SharedCreateChannelVisibilityControl(
                     ?.let(onSelected)
             }
         )
+        if (freeLimitServerName != null) {
+            // Web `create-channel-external-free-limit`: the limit line with its Upgrade for more.
+            Column(Modifier.testTag(CreateChannelExternalFreeLimitTag), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                RaftText(
+                    stringResource(Res.string.channel_create_external_free_limit, freeLimitServerName),
+                    style = RaftTheme.typography.footnote,
+                    color = RaftTheme.colors.foregroundMuted,
+                )
+                RaftTextLink(
+                    text = stringResource(Res.string.channel_create_upgrade_for_more),
+                    onClick = onUpgrade,
+                    variant = RaftTextLinkVariant.Strong,
+                    style = RaftTheme.typography.footnote,
+                )
+            }
+        } else if (hint != null) {
+            RaftText(hint, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
+        }
     }
 }
+
+internal const val CreateChannelExternalFreeLimitTag = "create-channel-external-free-limit"
 
 /** Create channel's Members field: its label over the shared [RaftMemberPicker]. */
 @Composable
 internal fun SharedCreateChannelMemberPicker(
+    /** Web `externalMembersLabel` ("{server} members") for an External channel; null: Members. */
+    label: String? = null,
     loading: Boolean,
     members: List<MemberProfile>,
     query: TextFieldValue,
@@ -13975,7 +14274,7 @@ internal fun SharedCreateChannelMemberPicker(
     onBlur: () -> Unit = {}
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        RaftFieldLabel(text = stringResource(Res.string.channel_create_label_members), optional = true)
+        RaftFieldLabel(text = label ?: stringResource(Res.string.channel_create_label_members), optional = true)
         RaftMemberPicker(
             members = members,
             query = query,

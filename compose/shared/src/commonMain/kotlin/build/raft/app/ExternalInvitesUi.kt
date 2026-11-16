@@ -417,55 +417,16 @@ internal fun ExternalInviteSheetBody(
                 modifier = Modifier.fillMaxWidth().testTag(ExternalInvitePrivateWarningTag),
             )
         }
-        dialog.failure?.let { failure ->
-            Column(Modifier.fillMaxWidth().testTag(ExternalInviteErrorTag), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                RaftBanner(
-                    description = externalInviteErrorText(failure.error, joint),
-                    status = RaftBannerStatus.Warning,
-                    size = RaftBannerSize.Sm,
-                    modifier = Modifier.fillMaxWidth(),
-                    action =
-                        if (failure.upgrade) {
-                            {
-                                RaftButton(
-                                    text = stringResource(Res.string.channel_external_invite_upgrade),
-                                    onClick = onUpgrade,
-                                    variant = RaftButtonVariant.Default,
-                                    size = RaftButtonSize.Md,
-                                    modifier = Modifier.testTag(ExternalInviteUpgradeTag),
-                                )
-                            }
-                        } else {
-                            null
-                        },
-                )
-                RaftTraceIdNote(failure.traceId)
-            }
-        }
+        dialog.failure?.let { failure -> ExternalInviteFailureBanner(failure, joint, onUpgrade) }
         if (preview == null) {
-            val overBy = dialog.overBy
-            val slots = externalInviteTypedSlotsLine(channelSlotsLeft, dialog.entries.size, dialog.chosenServers.size)
-            val hint =
-                listOfNotNull(
-                    stringResource(Res.string.channel_external_invite_emails_hint, EXTERNAL_INVITE_MAX_EMAILS),
-                    if (serversHistoryHint) stringResource(Res.string.channel_external_invite_emails_see_history) else null,
-                    slots?.let { externalInviteSlotsText(it, joint) },
-                ).joinToString("\n")
-            RaftField(
-                label = stringResource(Res.string.channel_external_invite_emails_label),
-                description = hint,
-                error =
-                    if (overBy > 0) stringResource(Res.string.channel_external_invite_too_many, EXTERNAL_INVITE_MAX_EMAILS, overBy) else null,
-            ) {
-                RaftTextarea(
-                    value = dialog.text,
-                    onValueChange = onTextChange,
-                    modifier = Modifier.fillMaxWidth().testTag(ExternalInviteEmailsTag),
-                    placeholder = stringResource(Res.string.channel_external_invite_emails_placeholder),
-                    enabled = !dialog.busy,
-                    invalid = overBy > 0,
-                )
-            }
+            ExternalInviteEmailsField(
+                text = dialog.text,
+                onTextChange = onTextChange,
+                overBy = dialog.overBy,
+                enabled = !dialog.busy,
+                historyHint = serversHistoryHint,
+                slotsText = externalInviteTypedSlotsLine(channelSlotsLeft, dialog.entries.size, dialog.chosenServers.size)?.let { externalInviteSlotsText(it, joint) },
+            )
             ExternalInviteServersField(
                 servers = dialog.servers,
                 values = dialog.serverIds,
@@ -535,6 +496,69 @@ internal fun ExternalInviteSheetBody(
                 }
             }
         }
+    }
+}
+
+/** Web `errorBanner`: a refusal as a warning with its trace ID; the Free plan's limit offers Upgrade. */
+@Composable
+internal fun ExternalInviteFailureBanner(failure: ExternalInviteFailure, joint: Boolean = false, onUpgrade: () -> Unit) {
+    Column(Modifier.fillMaxWidth().testTag(ExternalInviteErrorTag), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftBanner(
+            description = externalInviteErrorText(failure.error, joint),
+            status = RaftBannerStatus.Warning,
+            size = RaftBannerSize.Sm,
+            modifier = Modifier.fillMaxWidth(),
+            action =
+                if (failure.upgrade) {
+                    {
+                        RaftButton(
+                            text = stringResource(Res.string.channel_external_invite_upgrade),
+                            onClick = onUpgrade,
+                            variant = RaftButtonVariant.Default,
+                            size = RaftButtonSize.Md,
+                            modifier = Modifier.testTag(ExternalInviteUpgradeTag),
+                        )
+                    }
+                } else {
+                    null
+                },
+        )
+        RaftTraceIdNote(failure.traceId)
+    }
+}
+
+/**
+ * Web `ExternalInviteEmailsField`: Invite by email, its hint (with the history line and the
+ * channel's slots as typed, when given) and the over-the-limit error.
+ */
+@Composable
+internal fun ExternalInviteEmailsField(
+    text: String,
+    onTextChange: (String) -> Unit,
+    overBy: Int,
+    enabled: Boolean,
+    historyHint: Boolean = false,
+    slotsText: String? = null,
+) {
+    val hint =
+        listOfNotNull(
+            stringResource(Res.string.channel_external_invite_emails_hint, EXTERNAL_INVITE_MAX_EMAILS),
+            if (historyHint) stringResource(Res.string.channel_external_invite_emails_see_history) else null,
+            slotsText,
+        ).joinToString("\n")
+    RaftField(
+        label = stringResource(Res.string.channel_external_invite_emails_label),
+        description = hint,
+        error = if (overBy > 0) stringResource(Res.string.channel_external_invite_too_many, EXTERNAL_INVITE_MAX_EMAILS, overBy) else null,
+    ) {
+        RaftTextarea(
+            value = text,
+            onValueChange = onTextChange,
+            modifier = Modifier.fillMaxWidth().testTag(ExternalInviteEmailsTag),
+            placeholder = stringResource(Res.string.channel_external_invite_emails_placeholder),
+            enabled = enabled,
+            invalid = overBy > 0,
+        )
     }
 }
 
