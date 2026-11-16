@@ -795,7 +795,8 @@ internal data class BackgroundDropBatch(val id: String, val entries: List<Backgr
  *
  * Limits (best effort):
  * - A restored batch whose first attempt was stored is sent again (same id) with another report;
- *   it is counted twice until Hands dedupes by batch id ([restore]).
+ *   any total that does not dedupe by batch id may count it twice ([restore]). Hands only stores
+ *   the lists today and does not total them.
  * - More than [MaxPending] pending batches: the oldest is merged into [accumulating] and later
  *   goes out under a new id, which a future dedupe by the original id cannot catch either.
  * - More than [MaxEntries] distinct (version, day, category, status) entries in [accumulating]:
@@ -848,7 +849,7 @@ internal data class BackgroundDropLedger(
      * A restored batch can reach Hands twice even without overflow: when the evicted report's first
      * attempt was accepted but its response was lost, the same batch goes out again with another
      * report. Keeping its id lets a batch-level dedupe on the Hands side catch that; Hands does
-     * not dedupe by batch yet, so such counts may currently be counted twice.
+     * not dedupe by batch yet, so a total built from the stored lists may count it twice.
      *
      * Over [MaxPending], the oldest pending batch is merged into [accumulating] and later goes
      * out under a new id. That adds a second risk: once its id has changed, even a future dedupe
