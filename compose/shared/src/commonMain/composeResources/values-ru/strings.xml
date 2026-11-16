@@ -2251,6 +2251,7 @@
     <string name="app_update_installing">Установка…</string>
     <string name="app_update_install">Установить</string>
     <string name="app_update_installed">Установлено</string>
+    <string name="app_update_update">Обновить</string>
     <string name="app_update_unavailable">Информация об обновлениях временно недоступна.</string>
     <string name="app_update_detail_available_with_size">Доступно обновление Raft (APK, %1$s).</string>
     <string name="app_update_detail_available_with_patch_size">Патч: %1$s.</string>

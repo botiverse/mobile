@@ -365,7 +365,8 @@ internal fun AppUpdateSummary(
             downloadingLabel = stringResource(Res.string.app_update_downloading),
             installingLabel = stringResource(Res.string.app_update_installing),
             installLabel = stringResource(Res.string.app_update_install),
-            installedLabel = stringResource(Res.string.app_update_installed)
+            installedLabel = stringResource(Res.string.app_update_installed),
+            updateLabel = stringResource(Res.string.app_update_update)
         )
     Column(
         modifier =
@@ -562,9 +563,13 @@ internal fun appUpdatePrimaryActionLabel(
     downloadingLabel: String = "Downloading",
     installingLabel: String = "Installing",
     installLabel: String = "Install",
-    installedLabel: String = "Installed"
+    installedLabel: String = "Installed",
+    updateLabel: String = "Update"
 ): String =
     when {
+        // A store install's update opens the store page: nothing downloads here.
+        snapshot != null && snapshot.storeChannel.isNotBlank() && snapshot.updateAvailable ->
+            if (actionRunning) workingLabel else updateLabel
         actionRunning && snapshot.isDownloadAction() -> downloadingLabel
         actionRunning -> workingLabel
         snapshot == null -> retryLabel

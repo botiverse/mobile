@@ -9,6 +9,7 @@ import io.ktor.http.encodeURLParameter
 import io.ktor.http.isSuccess
 import kotlin.concurrent.Volatile
 import platform.Foundation.NSBundle
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSLocale
 import platform.Foundation.countryCode
 import platform.Foundation.currentLocale
@@ -28,6 +29,13 @@ internal object RaftAppStoreInstallChannel : RaftInstallChannelUpdates {
 
     @Volatile
     private var lastPage: String? = null
+
+    /**
+     * Only an App Store install shows the new-version notice. Its receipt is named `receipt`;
+     * TestFlight's is `sandboxReceipt`, and Xcode / simulator builds have none, so those never
+     * show it (the minimum build gate still asks the App Store for every build).
+     */
+    override val offersStoreUpdateNotice: Boolean by lazy { raftIsAppStoreInstall() }
 
     override suspend fun latest(): RaftInstallChannelLatest {
         val bundleId = NSBundle.mainBundle.bundleIdentifier?.takeIf { it.isNotBlank() } ?: return RaftInstallChannelLatest.Unknown
@@ -50,3 +58,11 @@ internal object RaftAppStoreInstallChannel : RaftInstallChannelUpdates {
         return parseRaftAppStoreLookup(response.bodyAsText(), bundleId)
     }
 }
+
+@Suppress("DEPRECATION")
+private fun raftIsAppStoreInstall(): Boolean =
+    runCatching {
+        val receipt = NSBundle.mainBundle.appStoreReceiptURL ?: return@runCatching false
+        val path = receipt.path ?: return@runCatching false
+        receipt.lastPathComponent == "receipt" && NSFileManager.defaultManager.fileExistsAtPath(path)
+    }.getOrDefault(false)

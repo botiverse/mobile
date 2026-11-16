@@ -26,8 +26,8 @@ import build.raft.app.data.toSharedHomeAppUpdateNotification
  * status as part of its notifications; with no session there is no Home, so someone on an old
  * build who cannot sign in would never hear of the build that fixes it. The Hands check needs no
  * account, so the signed-out pages ask the same host action and build the same notice. A host
- * with no in-app update (iOS, Google Play builds) answers unsupported or with an error, and there
- * is no notice.
+ * with no in-app update (iOS, Google Play builds) answers unsupported; a store install then gets
+ * the store's answer instead (RaftStoreUpdateChecker), anything else has no notice.
  */
 internal suspend fun loadSignedOutAppUpdateNotification(
     skippedVersionCode: Long = skippedAppUpdateVersionCode(),

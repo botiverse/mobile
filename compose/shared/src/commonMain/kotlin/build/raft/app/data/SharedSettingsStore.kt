@@ -257,7 +257,13 @@ data class SharedSettingsUpdateCheckSnapshot(
     val patchDownloadSizeBytes: Long = 0L,
     val checkedAtLabel: String = "",
     val errorCode: String = "",
-    val screenError: ScreenError? = null
+    val screenError: ScreenError? = null,
+    /**
+     * The store this answer came from (`play`, `app_store`) when the host has no in-app update
+     * and the install channel answered instead ([raftStoreUpdateCheckSnapshot]); blank for Hands.
+     * A store update opens the store page ([downloadUrl]) instead of downloading.
+     */
+    val storeChannel: String = ""
 )
 
 enum class SharedSettingsUpdateTransactionState(val wireValue: String) {
