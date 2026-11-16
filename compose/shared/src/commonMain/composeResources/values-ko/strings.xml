@@ -2953,6 +2953,8 @@
     <string name="settings_computers_rack_no_match_title">일치하는 Computer가 없습니다</string>
     <string name="settings_computers_rack_no_match_description">다른 검색어를 쓰거나 필터를 지우세요.</string>
     <string name="settings_computers_disk_low">디스크 부족</string>
+    <string name="settings_computers_disk_low_detail">%2$s 중 %1$s 남음</string>
+    <string name="settings_computers_rack_resource_detail">%2$s 중 %1$s 남음</string>
     <string name="settings_computers_workspace_status_active">활성</string>
     <string name="settings_computers_workspace_status_orphan">고립됨</string>
     <string name="settings_computers_cannot_delete_message_one">이 컴퓨터에 할당된 에이전트가 %1$d개 있어요. 컴퓨터를 삭제하기 전에 에이전트를 모두 제거하세요.</string>
@@ -3965,7 +3967,11 @@
     <string name="agent_migration_hosted_step_switch">클라우드로 전환</string>
     <string name="agent_migration_hosted_step_complete">클라우드에서 실행 중</string>
     <string name="agent_migration_detail_migration_stopping_source">워크스페이스를 패키징할 수 있도록 %1$s에서 에이전트를 중지하는 중이에요.</string>
+    <string name="agent_migration_detail_migration_waiting_for_agent_one">%1$s에서 에이전트가 현재 작업을 마칠 때까지 기다리는 중이에요 (최대 %2$d분 남음). 그다음 에이전트를 중지하고 워크스페이스를 패키징해요. 지금 바로 계속하려면 에이전트를 중지하세요.</string>
+    <string name="agent_migration_detail_migration_waiting_for_agent_other">%1$s에서 에이전트가 현재 작업을 마칠 때까지 기다리는 중이에요 (최대 %2$d분 남음). 그다음 에이전트를 중지하고 워크스페이스를 패키징해요. 지금 바로 계속하려면 에이전트를 중지하세요.</string>
     <string name="agent_migration_detail_migration_packing">%1$s에서 워크스페이스를 패키징하는 중이에요. 워크스페이스가 크면 최대 30분까지 걸릴 수 있어요.</string>
+    <string name="agent_migration_detail_migration_packing_elapsed_one">%1$s에서 워크스페이스를 패키징하는 중이에요 (%2$d분 경과). 워크스페이스가 크면 최대 30분까지 걸릴 수 있어요.</string>
+    <string name="agent_migration_detail_migration_packing_elapsed_other">%1$s에서 워크스페이스를 패키징하는 중이에요 (%2$d분 경과). 워크스페이스가 크면 최대 30분까지 걸릴 수 있어요.</string>
     <string name="agent_migration_detail_migration_uploading">%2$s에 보낼 워크스페이스를 %1$s에서 업로드하는 중이에요.</string>
     <string name="agent_migration_hosted_uploading">%1$s에서 클라우드로 워크스페이스를 업로드하고 있어요.</string>
     <string name="agent_migration_detail_migration_ready">워크스페이스 업로드를 마쳤어요. %2$s에서 내려받는 중이에요.</string>

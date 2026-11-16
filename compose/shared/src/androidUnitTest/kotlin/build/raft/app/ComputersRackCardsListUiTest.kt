@@ -10,6 +10,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.performTouchInput
 import build.raft.app.data.ComputersRackSort
 import build.raft.app.data.ComputersRackSortDirection
 import build.raft.app.data.ComputersRackSortKey
@@ -107,8 +110,8 @@ class ComputersRackCardsListUiTest {
         )
     }
 
-    private fun ComposeUiTest.show(view: ComputersRackView, sort: ComputersRackSort? = null) {
-        val model = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = fleet)))
+    private fun ComposeUiTest.show(view: ComputersRackView, sort: ComputersRackSort? = null, computers: List<SettingsComputerSnapshot> = fleet) {
+        val model = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = computers)))
         val time = RaftTimeContext(localOffsetMinutes = 0, nowEpochMillis = now)
         setContent {
             RaftTheme(appearance = RaftAppearance.Light) {
@@ -185,5 +188,38 @@ class ComputersRackCardsListUiTest {
         onNodeWithTag("rack-row-m-laptop").assertIsDisplayed()
         assertTrue(onAllNodes(hasTestTag("rack-metrics-m-laptop"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty(), "an offline computer reads no usage")
         assertTrue(onAllNodes(hasText("Last seen", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+    }
+
+    // Free of total (botiverse/slock staging 7a631c0ffe, #14306 RackResource / machine.diskLow.chipTitle):
+    // a disk in decimal units (310 GiB = 332.9 GB of 994 GiB = 1067.3 GB), memory in binary ones.
+
+    @Test
+    fun aCardsMetersSayWhatIsFreeOfTheWholeDiskInDecimalUnits() = runRobolectricComposeUiTest {
+        show(ComputersRackView.Cards)
+        onNode(hasContentDescription("Disk 69% used, 332.9 GB free of 1067.3 GB"), useUnmergedTree = true).assertExists()
+        onNode(hasContentDescription("Memory 72% used, 18.0 GB free of 64.0 GB"), useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun aLongPressOnTheDiskLineShowsWhatIsFree() = runRobolectricComposeUiTest {
+        show(ComputersRackView.Cards)
+        onNode(hasContentDescription("Disk 69% used, 332.9 GB free of 1067.3 GB"), useUnmergedTree = true).performTouchInput { longClick() }
+        waitForIdle()
+        onNodeWithText("332.9 GB free of 1067.3 GB", useUnmergedTree = true).assertExists()
+    }
+
+    // 6 GB free of 500 GB (decimal bytes): under 10% and under 20 GiB, so Low disk.
+    private val lowDisk = fleet.first().copy(diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 6e9, totalBytes = 500e9))
+
+    @Test
+    fun aCardsLowDiskBadgeSaysWhatIsFreeInDecimalUnits() = runRobolectricComposeUiTest {
+        show(ComputersRackView.Cards, computers = listOf(lowDisk))
+        onNode(hasContentDescription("Low disk, 6.0 GB free of 500.0 GB"), useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun aListBlocksLowDiskBadgeSaysWhatIsFreeInDecimalUnits() = runRobolectricComposeUiTest {
+        show(ComputersRackView.List, computers = listOf(lowDisk))
+        onNode(hasContentDescription("Low disk, 6.0 GB free of 500.0 GB"), useUnmergedTree = true).assertExists()
     }
 }

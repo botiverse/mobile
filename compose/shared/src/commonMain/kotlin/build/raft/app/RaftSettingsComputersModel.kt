@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.format.RaftFormat
 import build.raft.app.data.COMPUTER_ACTION_DELETE
 import build.raft.app.data.ComputerLoginStep
 import build.raft.app.data.ComputerLoginStepAction
@@ -20,6 +19,7 @@ import build.raft.app.data.SettingsSectionErrorSnapshot
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsState
+import build.raft.app.format.RaftFormat
 import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MillisPerDay
@@ -105,16 +105,35 @@ internal data class RaftComputerRowModel(
 /**
  * A disk or memory on a card (web `RackResource`): "62% used" over a bar. A Progress, not a Meter
  * (web: a disk or memory is not an allowance that resets): the disk warns by the low-disk rule,
- * memory never does.
+ * memory never does. [availableBytes] and [totalBytes] are the report, for the line's
+ * "free of total" (web `agent.migration.target.diskDetail` in its tooltip).
  */
-internal data class RaftComputerResourceMeter(val percentUsed: Int, val warn: Boolean)
+internal data class RaftComputerResourceMeter(
+    val percentUsed: Int,
+    val warn: Boolean,
+    val availableBytes: Double,
+    val totalBytes: Double,
+)
 
 /** Web `resourceUsedPercent` of a reported size; null when there is no readable report. */
 internal fun SettingsComputerSizeStatusSnapshot.toRaftComputerResourceMeter(warn: Boolean): RaftComputerResourceMeter? {
     if (totalBytes <= 0.0) return null
     val percent = kotlin.math.floor((1.0 - availableBytes / totalBytes) * 100.0 + 0.5).toInt().coerceIn(0, 100)
-    return RaftComputerResourceMeter(percentUsed = percent, warn = warn)
+    return RaftComputerResourceMeter(percentUsed = percent, warn = warn, availableBytes = availableBytes, totalBytes = totalBytes)
 }
+
+/**
+ * A disk's "free of total" in decimal units (web `formatDiskSizeBytes`, botiverse/slock #14306: as
+ * macOS Finder says them), a memory's in binary ones (web `formatFileSizeBytes`): the two sizes for
+ * `settings_computers_rack_resource_detail` / `settings_computers_disk_low_detail`.
+ */
+internal enum class RaftComputerResourceKind { Disk, Memory }
+
+internal fun RaftComputerResourceMeter.freeAndTotal(kind: RaftComputerResourceKind): Pair<String, String> =
+    when (kind) {
+        RaftComputerResourceKind.Disk -> RaftFormat.diskBytes(availableBytes) to RaftFormat.diskBytes(totalBytes)
+        RaftComputerResourceKind.Memory -> RaftFormat.bytes(availableBytes) to RaftFormat.bytes(totalBytes)
+    }
 
 /**
  * What follows the version on the facts line (raft-design patterns/status.md, one word for each

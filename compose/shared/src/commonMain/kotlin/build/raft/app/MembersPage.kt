@@ -7812,6 +7812,7 @@ private fun MembersDetailContent(
                                 migrationState.agentId == member.id
                             ) {
                                 item(key = "member-detail-${member.id.value}-migration") {
+                                    val liveTime = currentRaftTimeContextProvider
                                     AgentMigrationSection(
                                         state = migrationState,
                                         inputs =
@@ -7838,6 +7839,14 @@ private fun MembersDetailContent(
                                                 agentName = member.displayName.ifBlank { member.handle },
                                                 viewerUserId = currentUserId,
                                                 formatClock = { value -> formatThreadTimeRevealLabel(value, timeContext).takeIf { it.isNotBlank() } },
+                                                // Reading the live time context re-reads the lines that count minutes
+                                                // ("at most N more minutes", "N minutes so far") as it ticks, once a
+                                                // minute, between status reads that change nothing; the minutes come
+                                                // from the wall clock, as the web's `currentTimeMs()`.
+                                                nowMillis = {
+                                                    liveTime?.current
+                                                    defaultNowMillis()
+                                                },
                                                 computerAgents = migrationBinding.computerAgents
                                             ),
                                         // The list's own item spacing is the web section's `py-4` bottom.

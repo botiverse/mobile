@@ -609,12 +609,13 @@ private fun agentMigrationNoticeCopy(notice: AgentMigrationNotice, inputs: Agent
                         } else {
                             stringResource(Res.string.agent_migration_detail_migration_uploading, source, target)
                         }
-                    // What the source waits for before it stops the agent (#14230), when it said.
+                    // What the source waits for before it stops the agent (#14230), when it said;
+                    // else how long it may still wait (`sourceDrainUntil`).
                     notice.sourceQuiescedAt == null ->
                         notice.sourceDrain?.let { agentMigrationSourceDrainMessage(it, inputs) }
-                            ?: stringResource(Res.string.agent_migration_detail_migration_stopping_source, source)
-                    // What the source has packed so far, once it reported any.
-                    else -> agentMigrationPackingMessage(notice, source)
+                            ?: agentMigrationStoppingMessage(notice, source, inputs.nowMillis())
+                    // What the source has packed so far once it reported any, else how long it has packed.
+                    else -> agentMigrationPackingMessage(notice, source, inputs.nowMillis())
                 }
             )
         "prep" -> status(stringResource(Res.string.agent_migration_detail_migration_packing, source))

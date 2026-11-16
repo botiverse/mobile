@@ -2953,6 +2953,8 @@
     <string name="settings_computers_rack_no_match_title">Ninguna computadora coincide</string>
     <string name="settings_computers_rack_no_match_description">Prueba otra búsqueda o quita los filtros.</string>
     <string name="settings_computers_disk_low">Poco espacio</string>
+    <string name="settings_computers_disk_low_detail">%1$s libres de %2$s</string>
+    <string name="settings_computers_rack_resource_detail">%1$s libres de %2$s</string>
     <string name="settings_computers_workspace_status_active">Activa</string>
     <string name="settings_computers_workspace_status_orphan">Huérfano</string>
     <string name="settings_computers_cannot_delete_message_one">Esta computadora tiene %1$d agente asignado. Quita todos los agentes antes de eliminar la computadora.</string>
@@ -3965,7 +3967,11 @@
     <string name="agent_migration_hosted_step_switch">Pasar a la nube</string>
     <string name="agent_migration_hosted_step_complete">En ejecución en la nube</string>
     <string name="agent_migration_detail_migration_stopping_source">Deteniendo el agente en %1$s para empaquetar su espacio de trabajo.</string>
+    <string name="agent_migration_detail_migration_waiting_for_agent_one">Esperando a que el agente termine su trabajo actual en %1$s (como máximo %2$d minuto más). Después se detiene y se empaqueta su espacio de trabajo. Detén el agente para continuar ahora.</string>
+    <string name="agent_migration_detail_migration_waiting_for_agent_other">Esperando a que el agente termine su trabajo actual en %1$s (como máximo %2$d minutos más). Después se detiene y se empaqueta su espacio de trabajo. Detén el agente para continuar ahora.</string>
     <string name="agent_migration_detail_migration_packing">Empaquetando el espacio de trabajo en %1$s. Los espacios de trabajo grandes pueden tardar hasta 30 minutos.</string>
+    <string name="agent_migration_detail_migration_packing_elapsed_one">Empaquetando el espacio de trabajo en %1$s (%2$d minuto hasta ahora). Los espacios de trabajo grandes pueden tardar hasta 30 minutos.</string>
+    <string name="agent_migration_detail_migration_packing_elapsed_other">Empaquetando el espacio de trabajo en %1$s (%2$d minutos hasta ahora). Los espacios de trabajo grandes pueden tardar hasta 30 minutos.</string>
     <string name="agent_migration_detail_migration_uploading">Subiendo el espacio de trabajo desde %1$s para enviarlo a %2$s.</string>
     <string name="agent_migration_hosted_uploading">Subiendo el espacio de trabajo de %1$s a la nube.</string>
     <string name="agent_migration_detail_migration_ready">El espacio de trabajo ya está subido. %2$s lo está descargando.</string>

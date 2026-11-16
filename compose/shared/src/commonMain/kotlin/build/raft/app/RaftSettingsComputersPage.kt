@@ -26,6 +26,7 @@ import build.raft.app.data.RuntimeAccountUsageProvider
 import build.raft.app.data.RaftComputersRackUsageSession
 import build.raft.app.data.raftComputersRackUsageKeys
 import build.raft.designsystem.components.RaftTextFieldDefaults
+import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.RaftMeter
 import build.raft.designsystem.components.RaftMeterSize
 import build.raft.designsystem.components.RaftProgressBar
@@ -1254,11 +1255,7 @@ private fun RaftComputerRackCard(
                 )
                 if (row.diskLow) {
                     Spacer(Modifier.size(8.dp))
-                    RaftBadge(
-                        stringResource(Res.string.settings_computers_disk_low),
-                        appearance = RaftBadgeAppearance.Soft,
-                        variant = RaftBadgeVariant.Warning,
-                    )
+                    RaftComputerDiskLowBadge(row.disk)
                 }
             }
             if (menu != null) {
@@ -1658,13 +1655,7 @@ private fun RaftComputerRackBlock(
                         )
                         // The phone list has no header total: each block keeps its count.
                         RaftText(agents.size.toString(), style = RaftTheme.typography.monoMeta, color = hint, maxLines = 1)
-                        if (row.diskLow) {
-                            RaftBadge(
-                                stringResource(Res.string.settings_computers_disk_low),
-                                appearance = RaftBadgeAppearance.Soft,
-                                variant = RaftBadgeVariant.Warning,
-                            )
-                        }
+                        if (row.diskLow) RaftComputerDiskLowBadge(row.disk)
                     }
                 },
                 trail = {
@@ -1837,9 +1828,11 @@ private class RaftRackLine(
     val model: RaftRackModelLineUi? = null,
     /** A usage line being read: placeholders instead of its bar and value (web `PendingUsageCell`); null when answered. */
     val pending: RaftRackLinePending? = null,
+    /** A disk or memory line's "free of total", in a tooltip on a long press or hover (web `RackResource`'s `Tooltip`). */
+    val tooltip: String? = null,
 ) {
     fun emphasize(): RaftRackLine =
-        RaftRackLine(label, runtimeMark, bar, value, warn, attention, dimmed, semantics, onClick, usageCard, emphasized = true, model = model, pending = pending)
+        RaftRackLine(label, runtimeMark, bar, value, warn, attention, dimmed, semantics, onClick, usageCard, emphasized = true, model = model, pending = pending, tooltip = tooltip)
 }
 
 /** A pending usage line's shape: two lines when it last had a model line; whether its placeholders pulse. */
@@ -1894,8 +1887,8 @@ private fun RaftComputerRackMeters(
 ) {
     val diskLabel = stringResource(Res.string.agent_migration_target_disk)
     val memoryLabel = stringResource(Res.string.agent_migration_target_memory)
-    val disk = raftRackResourceLine(diskLabel, row.disk).let { if (sortKey == ComputersRackSortKey.Disk) it.emphasize() else it }
-    val memory = raftRackResourceLine(memoryLabel, row.memory).let { if (sortKey == ComputersRackSortKey.Memory) it.emphasize() else it }
+    val disk = raftRackResourceLine(diskLabel, row.disk, RaftComputerResourceKind.Disk).let { if (sortKey == ComputersRackSortKey.Disk) it.emphasize() else it }
+    val memory = raftRackResourceLine(memoryLabel, row.memory, RaftComputerResourceKind.Memory).let { if (sortKey == ComputersRackSortKey.Memory) it.emphasize() else it }
     val leadProvider = (sortKey as? ComputersRackSortKey.Remaining)?.provider
     val usage =
         columns.usage.filter { !usageLoads[it.provider].unsupportedRead }.map { column ->
@@ -1933,8 +1926,11 @@ private fun RaftComputerRackMeters(
 @Composable
 private fun RaftRackLineRow(line: RaftRackLine, valueWidth: Dp) {
     val card = line.usageCard
+    val tooltip = line.tooltip
     if (card != null) {
         card { RaftRackLineRowContent(line, valueWidth, click = null) }
+    } else if (tooltip != null) {
+        RaftTooltip(tooltip) { RaftRackLineRowContent(line, valueWidth, click = line.onClick) }
     } else {
         RaftRackLineRowContent(line, valueWidth, click = line.onClick)
     }
@@ -2061,11 +2057,17 @@ private fun RaftRackLineLabel(line: RaftRackLine) {
     }
 }
 
-/** Web `RackResource` as a card line: a Progress (orange when it warns), or "—" when not reported. */
+/**
+ * Web `RackResource` as a card line: a Progress (orange when it warns), or "—" when not reported.
+ * Its free of total (a disk in decimal units, memory in binary ones; botiverse/slock #14306) is the
+ * web's hover tooltip: here a long press or a hover, and read out after the value.
+ */
 @Composable
-private fun raftRackResourceLine(label: String, meter: RaftComputerResourceMeter?): RaftRackLine {
+private fun raftRackResourceLine(label: String, meter: RaftComputerResourceMeter?, kind: RaftComputerResourceKind): RaftRackLine {
     if (meter == null) return RaftRackLine(label = label, bar = null, value = "—", warn = false, semantics = "$label —")
     val value = stringResource(Res.string.settings_computers_rack_percent_used, "${meter.percentUsed}%")
+    val (free, total) = meter.freeAndTotal(kind)
+    val detail = stringResource(Res.string.settings_computers_rack_resource_detail, free, total)
     return RaftRackLine(
         label = label,
         bar = {
@@ -2078,8 +2080,28 @@ private fun raftRackResourceLine(label: String, meter: RaftComputerResourceMeter
         },
         value = value,
         warn = meter.warn,
-        semantics = "$label $value",
+        semantics = "$label $value, $detail",
+        tooltip = detail,
     )
+}
+
+/**
+ * Web `machine.diskLow.chip` with its `title` (`machine.diskLow.chipTitle`, what is free of the
+ * whole in decimal units, #14306): the title opens on a long press or a hover.
+ */
+@Composable
+private fun RaftComputerDiskLowBadge(disk: RaftComputerResourceMeter?) {
+    val label = stringResource(Res.string.settings_computers_disk_low)
+    val badge: @Composable () -> Unit = {
+        RaftBadge(label, appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Warning)
+    }
+    if (disk == null) {
+        badge()
+        return
+    }
+    val (free, total) = disk.freeAndTotal(RaftComputerResourceKind.Disk)
+    val detail = stringResource(Res.string.settings_computers_disk_low_detail, free, total)
+    RaftTooltip(detail, modifier = Modifier.clearAndSetSemantics { contentDescription = "$label, $detail" }) { badge() }
 }
 
 /**
