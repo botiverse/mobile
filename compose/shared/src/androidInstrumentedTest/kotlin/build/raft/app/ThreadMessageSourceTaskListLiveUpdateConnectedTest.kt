@@ -41,13 +41,17 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Crash c41fd092 on a device: the tasks under a message ([ThreadMessageSourceTaskList], one
- * `RaftTaskCompactRow` per task, the composable the channel/thread page puts under a message) in
- * the message `LazyColumn`, getting live status and assignee updates while rows are reused.
- * Before #4798 the row read its groups' `FirstBaseline` while measuring, which Compose 1.12
- * mishandles for reused lazy items (RectManager "LayoutNode not found in RectList", androidx
- * fd550bed79). The desktop `RaftTaskCompactRowReuseTest` proves the cause on the JVM; this runs
- * the scenario on Android's own Compose runtime (RectManager, lazy prefetch, real frames).
+ * Suspected scenario of crash c41fd092 (an emulator, 1.24.0 release build): the tasks under a
+ * message ([ThreadMessageSourceTaskList], one `RaftTaskCompactRow` per task, the composable the
+ * channel/thread page puts under a message) in the message `LazyColumn`, getting live status and
+ * assignee updates while rows are reused. That trigger is inferred from a concurrent timeline (another
+ * client changed the task 2 s before the crash); it is not proven. Before #4798 the row read its
+ * groups' `FirstBaseline` while measuring, which Compose 1.12 mishandles for reused lazy items
+ * (RectManager "LayoutNode not found in RectList", androidx fd550bed79). The desktop
+ * `RaftTaskCompactRowReuseTest` only shows that measure-time condition on the JVM; it did not
+ * reproduce the device crash. This runs the suspected scenario on Android's own Compose runtime
+ * (RectManager, lazy prefetch, real frames); whether it reproduces the original crash is decided
+ * only by running it with #4798 reverted.
  *
  * Everything is in memory: typed [ThreadMessageSourceTaskItem]s in a snapshot list, an empty
  * avatar resolver (no URLs) and in-memory agent presence flows. No network, server or sign-in.
