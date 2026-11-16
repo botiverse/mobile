@@ -289,6 +289,9 @@ import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.typedPinnedOrLegacy
 import build.raft.app.data.SharedHomeSavedPanelState
 import build.raft.app.data.SharedHomeSearchPanelState
+import build.raft.app.data.SearchArtifactHit
+import build.raft.app.data.SearchArtifactsIntent
+import build.raft.app.data.SearchArtifactsState
 import build.raft.app.data.SharedHomeSearchSavedIntent
 import build.raft.app.data.SharedHomeSearchSavedViewModel
 import build.raft.app.data.hasMessageSearchIntent
@@ -14434,8 +14437,21 @@ internal fun SharedHomeSearchPanel(
     modifier: Modifier = Modifier.fillMaxSize(),
     // The wide layout's search panel over the page (web SearchOverlay); null: the page or column.
     overlay: HomeSearchOverlayChrome? = null,
+    // The Artifacts group of core's search (web AppSearchGroupSection); null: off (the flag, a
+    // conversation's own search).
+    artifacts: SearchArtifactsState? = null,
+    onArtifactsIntent: (SearchArtifactsIntent) -> Unit = {},
+    onOpenArtifact: (SearchArtifactHit) -> Unit = {},
 ) {
     val channelFilters = remember(homeState) { homeSearchChannelFilters(homeState) }
+    val artifactsContext =
+        HomeSearchArtifactsContext(
+            query = artifacts?.query.orEmpty(),
+            serverName = (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.name,
+            timeContext = timeContext,
+        )
+    val artifactHits = artifacts?.hits.orEmpty()
+    val artifactsShown = artifacts?.shown == true
     val channelEntityLabel = stringResource(Res.string.search_entity_channel)
     val dmEntityLabel = stringResource(Res.string.search_entity_dm)
     val agentEntityLabel = stringResource(Res.string.search_entity_agent)
@@ -14814,6 +14830,10 @@ internal fun SharedHomeSearchPanel(
                     historyWindowDays = historyWindowDays,
                     incompleteNote = incompleteNote,
                     onHistoryUpgrade = onHistoryUpgrade,
+                    artifacts = artifacts,
+                    artifactsContext = artifactsContext,
+                    onArtifactsIntent = onArtifactsIntent,
+                    onOpenArtifact = onOpenArtifact,
                 )
             }
         }
@@ -14869,7 +14889,8 @@ internal fun SharedHomeSearchPanel(
                     item {
                         // One column: the history notice stacks above what the item shows.
                         Column(Modifier.fillMaxWidth()) {
-                        val hasSearchRows = projectedItems.isNotEmpty() || entityResults.isNotEmpty()
+                        // web `totalResults`: destinations, app hits and messages.
+                        val hasSearchRows = projectedItems.isNotEmpty() || entityResults.isNotEmpty() || artifactHits.isNotEmpty()
                         // web `historyNotice`: on every search, before anything is typed too; not beside
                         // a failed search's own error.
                         val searchFailed =
@@ -14914,7 +14935,7 @@ internal fun SharedHomeSearchPanel(
                                     }
                                 }
                             )
-                        } else if (!state.searched && projectedItems.isEmpty() && entityResults.isEmpty()) {
+                        } else if (!state.searched && projectedItems.isEmpty() && entityResults.isEmpty() && !artifactsShown) {
                             historyNotice()
                             SharedHomeSearchEmptyState(
                                 title = stringResource(Res.string.search_empty_title),
@@ -14924,6 +14945,7 @@ internal fun SharedHomeSearchPanel(
                             (state.empty || state.searched) &&
                                 projectedItems.isEmpty() &&
                                 entityResults.isEmpty() &&
+                                !artifactsShown &&
                                 incompleteNote != null
                         ) {
                             // web SearchNoResultsState `searchIncomplete`: not "no results" yet.
@@ -14936,7 +14958,9 @@ internal fun SharedHomeSearchPanel(
                         } else if (
                             (state.empty || state.searched) &&
                                 projectedItems.isEmpty() &&
-                                entityResults.isEmpty()
+                                entityResults.isEmpty() &&
+                                // web `showNoResults`: not while an app group waits, failed or has hits.
+                                !artifactsShown
                         ) {
                             val trimmedQuery = state.query.trim()
                             historyNotice()
@@ -14959,7 +14983,7 @@ internal fun SharedHomeSearchPanel(
                             )
                         } else {
                             SharedHomeSearchResultsCount(
-                                totalResults = state.totalCount + entityResults.size,
+                                totalResults = state.totalCount + entityResults.size + artifactHits.size,
                                 searching = state.querySearchPending || state.loading || state.refreshing
                             )
                             historyNotice()
@@ -15100,6 +15124,23 @@ internal fun SharedHomeSearchPanel(
                             }
                         }
                         item(key = "search-entities-end") { RaftSearchListEnd() }
+                    }
+                    // web MessageSearchPage: the app groups between the destinations and the messages.
+                    if (!showSearchHome) {
+                        homeSearchArtifactsItems(
+                            state = artifacts,
+                            context = artifactsContext,
+                            // The viewer opens over the list: no row stays selected beside it.
+                            selectedKey = null,
+                            onIntent = onArtifactsIntent,
+                            onOpen = { hit ->
+                                searchInputFocus.release()
+                                val key = homeSearchArtifactKey(hit)
+                                returnHighlight.markOpened(key)
+                                onOpenArtifact(hit)
+                            },
+                            rowModifier = { key -> Modifier.homeSearchReturnHighlight(returnHighlight, key) },
+                        )
                     }
                     if (groupedResults.isNotEmpty()) {
                         item {
@@ -16568,7 +16609,7 @@ internal fun TextStyle.withHomeSearchVisualTextScale(scale: Float): TextStyle {
 }
 
 @Composable
-private fun SharedHomeSearchSectionLabel(
+internal fun SharedHomeSearchSectionLabel(
     label: String,
     visualTextScale: Float = 1f,
     count: Int? = null,

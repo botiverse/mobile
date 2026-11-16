@@ -17,6 +17,10 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import build.raft.app.components.SharedHomeSearchEditorOwner
 import build.raft.app.data.InboxItem
+import build.raft.app.data.SearchArtifactHit
+import build.raft.app.data.SearchArtifactsIntent
+import build.raft.app.data.SearchArtifactsState
+import build.raft.app.data.SearchArtifactsStatus
 import build.raft.app.data.SharedHomeSearchPanelState
 import build.raft.app.data.SharedHomeSearchSavedIntent
 import build.raft.app.data.SharedHomeState
@@ -92,8 +96,17 @@ internal class HomeSearchOverlayContent(
     val historyWindowDays: Int? = null,
     /** Where a search the server stopped part way got to (web `incompleteSearchNote`), or null. */
     val incompleteNote: String? = null,
+    /** The Artifacts group (web app group, previewed like the messages), or null: off. */
+    val artifacts: SearchArtifactsState? = null,
 ) {
     val shownEntities: List<SearchEntityResult> = entities.homeSearchShownEntities(entitiesExpanded)
+
+    /** The Artifacts the panel previews (the store asks for 5; web `appGroupPreviewLimit`). */
+    val shownArtifacts: List<SearchArtifactHit> =
+        artifacts?.takeIf { it.status == SearchArtifactsStatus.Ok }?.hits.orEmpty().take(HomeSearchOverlayMessagePreviewCount)
+
+    /** The group's section shows: waiting, failed, or with hits. */
+    val artifactsShown: Boolean = artifacts?.shown == true
 
     val rows: List<HomeSearchOverlayRow> =
         homeSearchOverlayRows(
@@ -101,6 +114,7 @@ internal class HomeSearchOverlayContent(
             exactKey = exact?.key?.takeIf { typed },
             searchFor = typed,
             entityKeys = if (typed) shownEntities.map { it.key } else emptyList(),
+            artifactKeys = if (typed) shownArtifacts.map(::homeSearchArtifactKey) else emptyList(),
             messageKeys = if (typed) messages.map { it.overlayKey } else emptyList(),
         )
 }
@@ -131,6 +145,10 @@ internal sealed class HomeSearchOverlayEntry(val itemKey: String, val rowKey: St
     class EntitiesHeading(val count: Int) : HomeSearchOverlayEntry("entities-heading")
     class Entity(val result: SearchEntityResult) : HomeSearchOverlayEntry("entity:${result.key}", result.key)
     class ShowAll(val count: Int, val expanded: Boolean) : HomeSearchOverlayEntry("entities-show-all")
+    class ArtifactsHeading(val state: SearchArtifactsState) : HomeSearchOverlayEntry("artifacts-heading")
+    object ArtifactsLoading : HomeSearchOverlayEntry("artifacts-loading")
+    class ArtifactsFailed(val state: SearchArtifactsState) : HomeSearchOverlayEntry("artifacts-failed")
+    class Artifact(val hit: SearchArtifactHit) : HomeSearchOverlayEntry("artifact:${hit.id}", homeSearchArtifactKey(hit))
     class MessagesHeading(val count: Int?) : HomeSearchOverlayEntry("messages-heading")
     class Message(val group: HomeSearchResultGroup, val index: Int) : HomeSearchOverlayEntry("message:${group.overlayKey}", group.overlayKey)
     object Loading : HomeSearchOverlayEntry("loading")
@@ -161,13 +179,23 @@ internal fun HomeSearchOverlayContent.entries(): List<HomeSearchOverlayEntry> =
                 add(HomeSearchOverlayEntry.ShowAll(entities.size, entitiesExpanded))
             }
         }
+        // web MessageSearchPage: the app groups between the destinations and the messages.
+        artifacts?.takeIf { artifactsShown }?.let { group ->
+            add(HomeSearchOverlayEntry.ArtifactsHeading(group))
+            when (group.status) {
+                SearchArtifactsStatus.Loading -> add(HomeSearchOverlayEntry.ArtifactsLoading)
+                SearchArtifactsStatus.Failed -> add(HomeSearchOverlayEntry.ArtifactsFailed(group))
+                else -> shownArtifacts.forEach { add(HomeSearchOverlayEntry.Artifact(it)) }
+            }
+        }
         when {
             messages.isNotEmpty() -> {
                 add(HomeSearchOverlayEntry.MessagesHeading(messageCount))
                 messages.forEachIndexed { index, group -> add(HomeSearchOverlayEntry.Message(group, index)) }
             }
-            loading && entities.isEmpty() && exact == null -> add(HomeSearchOverlayEntry.Loading)
-            searched && entities.isEmpty() && exact == null ->
+            loading && entities.isEmpty() && exact == null && shownArtifacts.isEmpty() -> add(HomeSearchOverlayEntry.Loading)
+            // web `showNoResults`: not while an app group waits, failed or has hits.
+            searched && entities.isEmpty() && exact == null && !artifactsShown ->
                 // web SearchNoResultsState `searchIncomplete`: not "no results" while the server
                 // has more to read.
                 add(incompleteNote?.let(HomeSearchOverlayEntry::NoMatchesYet) ?: HomeSearchOverlayEntry.NoResults)
@@ -198,6 +226,9 @@ internal fun HomeSearchOverlayBody(
     loadingMore: Boolean = false,
     onContinueSearching: () -> Unit = {},
     onHistoryUpgrade: (() -> Unit)? = null,
+    artifactsContext: HomeSearchArtifactsContext = HomeSearchArtifactsContext(query, null, timeContext),
+    onArtifactsIntent: (SearchArtifactsIntent) -> Unit = {},
+    onOpenArtifact: (SearchArtifactHit) -> Unit = {},
 ) {
     val entries = remember(content) { content.entries() }
     LazyColumn(state = listState, modifier = modifier.fillMaxWidth()) {
@@ -243,6 +274,12 @@ internal fun HomeSearchOverlayBody(
                             },
                         onClick = onToggleEntities,
                     )
+                is HomeSearchOverlayEntry.ArtifactsHeading -> HomeSearchArtifactsHeading(entry.state, overlay = true)
+                HomeSearchOverlayEntry.ArtifactsLoading -> HomeSearchArtifactsSkeleton()
+                is HomeSearchOverlayEntry.ArtifactsFailed ->
+                    HomeSearchArtifactsFailed(entry.state) { onArtifactsIntent(SearchArtifactsIntent.Retry) }
+                is HomeSearchOverlayEntry.Artifact ->
+                    HomeSearchArtifactHitRow(entry.hit, artifactsContext, selected = selected, onOpen = { onOpenArtifact(entry.hit) })
                 is HomeSearchOverlayEntry.MessagesHeading ->
                     RaftSearchSectionHeader(stringResource(Res.string.search_section_messages), count = entry.count)
                 is HomeSearchOverlayEntry.Message ->
@@ -349,6 +386,10 @@ internal fun HomeSearchOverlayPanel(
     historyWindowDays: Int? = null,
     incompleteNote: String? = null,
     onHistoryUpgrade: (() -> Unit)? = null,
+    artifacts: SearchArtifactsState? = null,
+    artifactsContext: HomeSearchArtifactsContext = HomeSearchArtifactsContext(state.query, null, timeContext),
+    onArtifactsIntent: (SearchArtifactsIntent) -> Unit = {},
+    onOpenArtifact: (SearchArtifactHit) -> Unit = {},
 ) {
     val typed = state.query.isNotBlank()
     val channelLabel = stringResource(Res.string.search_entity_channel)
@@ -400,6 +441,7 @@ internal fun HomeSearchOverlayPanel(
             loading = state.loading || state.querySearchPending,
             historyWindowDays = historyWindowDays,
             incompleteNote = incompleteNote,
+            artifacts = artifacts,
         )
     val rows = content.rows
     var cursor by remember { mutableStateOf(HomeSearchOverlayCursor()) }
@@ -415,6 +457,12 @@ internal fun HomeSearchOverlayPanel(
         onOpenItem(item)
         overlay.onDismiss()
     }
+    // web #12764: the panel has no detail area, so an Artifact opens on the full search page (the
+    // panel hands its words over, as "Search for" does), its viewer over it.
+    val openArtifact: (SearchArtifactHit) -> Unit = { hit ->
+        overlay.onOpenFullResults(state.query)
+        onOpenArtifact(hit)
+    }
     val openRow: (HomeSearchOverlayRow) -> Unit = { row ->
         when (row.section) {
             HomeSearchOverlaySection.Recent ->
@@ -422,6 +470,8 @@ internal fun HomeSearchOverlayPanel(
             HomeSearchOverlaySection.Exact, HomeSearchOverlaySection.Entities ->
                 entityResults.firstOrNull { it.key == row.key }?.let(openEntity)
             HomeSearchOverlaySection.SearchFor -> overlay.onOpenFullResults(state.query)
+            HomeSearchOverlaySection.Artifacts ->
+                content.shownArtifacts.firstOrNull { homeSearchArtifactKey(it) == row.key }?.let(openArtifact)
             HomeSearchOverlaySection.Messages ->
                 content.messages.firstOrNull { it.overlayKey == row.key }?.firstItem?.let(openItem)
         }
@@ -498,6 +548,9 @@ internal fun HomeSearchOverlayPanel(
                             upgrade()
                         }
                     },
+                artifactsContext = artifactsContext,
+                onArtifactsIntent = onArtifactsIntent,
+                onOpenArtifact = openArtifact,
             )
         }
         popups()

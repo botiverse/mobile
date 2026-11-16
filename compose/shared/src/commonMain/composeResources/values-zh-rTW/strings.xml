@@ -2396,6 +2396,10 @@
     <string name="search_overlay_footer_select">選取</string>
     <string name="search_overlay_footer_open">開啟</string>
     <string name="search_show_all_entities">顯示全部 %1$d 項</string>
+    <string name="search_app_group_artifacts">Artifacts</string>
+    <string name="search_app_group_timed_out">搜尋 %1$s 逾時。</string>
+    <string name="search_app_group_failed">無法搜尋 %1$s。</string>
+    <string name="search_app_group_more_failed">無法從 %1$s 載入更多。</string>
     <string name="search_show_fewer_entities">收合</string>
     <string name="search_history_limited">免費版只能搜尋最近 %1$d 天的訊息。</string>
     <string name="search_incomplete_no_matches_yet">目前還沒有相符的結果</string>

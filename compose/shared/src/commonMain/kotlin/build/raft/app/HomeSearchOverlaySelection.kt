@@ -9,9 +9,9 @@ import androidx.compose.ui.input.key.Key
  *
  * The rows run in the order they are drawn: recent conversations (nothing typed), then, once
  * something is typed, an exact destination, the "Search for" row, the shown destinations, the
- * shown messages. "Show all" is a button, not a row.
+ * Artifacts found (web app hits), the shown messages. "Show all" is a button, not a row.
  */
-internal enum class HomeSearchOverlaySection { Recent, Exact, SearchFor, Entities, Messages }
+internal enum class HomeSearchOverlaySection { Recent, Exact, SearchFor, Entities, Artifacts, Messages }
 
 /** One row the cursor can rest on: its [key] (stable across result waves) and [section]. */
 internal data class HomeSearchOverlayRow(val key: String, val section: HomeSearchOverlaySection)
@@ -50,6 +50,7 @@ internal fun homeSearchOverlayRows(
     exactKey: String? = null,
     searchFor: Boolean = false,
     entityKeys: List<String> = emptyList(),
+    artifactKeys: List<String> = emptyList(),
     messageKeys: List<String> = emptyList(),
 ): List<HomeSearchOverlayRow> =
     buildList {
@@ -57,6 +58,7 @@ internal fun homeSearchOverlayRows(
         exactKey?.let { add(HomeSearchOverlayRow(it, HomeSearchOverlaySection.Exact)) }
         if (searchFor) add(HomeSearchOverlayRow(HomeSearchOverlaySearchForKey, HomeSearchOverlaySection.SearchFor))
         entityKeys.forEach { add(HomeSearchOverlayRow(it, HomeSearchOverlaySection.Entities)) }
+        artifactKeys.forEach { add(HomeSearchOverlayRow(it, HomeSearchOverlaySection.Artifacts)) }
         messageKeys.forEach { add(HomeSearchOverlayRow(it, HomeSearchOverlaySection.Messages)) }
     }
 
