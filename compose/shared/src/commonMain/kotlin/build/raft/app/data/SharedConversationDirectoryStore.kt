@@ -76,7 +76,9 @@ internal data class SharedConversationDirectoryProjection(
     /** A joint channel's `jointRole` (`host`, ...) from the Home channel row; only channels carry one. */
     val jointRole: String? = null,
     /** Agent Lounge v0: the agent this channel is the Lounge of (from its canonical row). */
-    val loungeAgentId: String? = null
+    val loungeAgentId: String? = null,
+    /** The row names a last message (web `channelActivity[channelId]`): the channel has messages. */
+    val hasMessages: Boolean = false
 ) {
     val activityMuted: Boolean
         get() = activityNotificationPreference.activityMuted
@@ -644,7 +646,8 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         guestVisible = kind != ConversationKind.Thread && guestVisible,
         hasExternalRelation = kind != ConversationKind.Thread && kind != ConversationKind.DirectMessage && hasExternalRelation,
         jointRole = if (kind == ConversationKind.Thread || kind == ConversationKind.DirectMessage) null else jointRole?.takeIf(String::isNotBlank),
-        loungeAgentId = if (kind == ConversationKind.Channel) loungeAgentId?.takeIf { it.isNotBlank() } else null
+        loungeAgentId = if (kind == ConversationKind.Channel) loungeAgentId?.takeIf { it.isNotBlank() } else null,
+        hasMessages = !lastMessageAt.isNullOrBlank() || lastMessageId != null
     )
 }
 

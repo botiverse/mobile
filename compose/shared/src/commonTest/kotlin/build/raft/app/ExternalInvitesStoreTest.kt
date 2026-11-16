@@ -7,6 +7,8 @@ import build.raft.app.data.ExternalInviteAnswer
 import build.raft.app.data.ExternalInviteGuestElsewhere
 import build.raft.app.data.ExternalInvitePreview
 import build.raft.app.data.ExternalInviteRefusal
+import build.raft.app.data.OwnConnectableServers
+import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SendExternalInvitesResult
 import build.raft.app.data.SentExternalInvite
@@ -51,6 +53,27 @@ internal class FakeExternalInvitesDataSource : ExternalInvitesDataSource {
     override suspend fun resend(inviteId: String) = resendAnswer.also { resendCalls += inviteId }
 
     override suspend fun revoke(inviteId: String) = revokeAnswer.also { revokeCalls += inviteId }
+
+    var ownServersAnswer: DataResult<ExternalInviteAnswer<OwnConnectableServers>> =
+        DataResult.Content(ExternalInviteAnswer.Ok(OwnConnectableServers()))
+    var connectedIds: Set<String>? = null
+    var connectAnswer: DataResult<ExternalInviteAnswer<List<ServerConnectOutcome>>> =
+        DataResult.Content(ExternalInviteAnswer.Ok(emptyList()))
+    var ownServersCalls = 0
+    var connectedIdsCalls = 0
+    val connectCalls = mutableListOf<Pair<List<String>, Boolean>>()
+
+    override suspend fun ownConnectableServers() = ownServersAnswer.also { ownServersCalls++ }
+
+    override suspend fun connectedServerIds() = connectedIds.also { connectedIdsCalls++ }
+
+    override suspend fun connectOwnServers(serverIds: List<String>, makePrivate: Boolean) =
+        connectAnswer.also { connectCalls += serverIds to makePrivate }
+
+    var freeLimitAnswer: Boolean? = false
+    var freeLimitCalls = 0
+
+    override suspend fun freeLimitReached() = freeLimitAnswer.also { freeLimitCalls++ }
 }
 
 internal fun externalTestInvite(
@@ -181,7 +204,7 @@ class ExternalInvitesStoreTest {
                 )
             )
         val store = ExternalInvitesStore(this, source)
-        store.dispatch(ExternalInvitesIntent.OpenDialog)
+        store.dispatch(ExternalInvitesIntent.OpenDialog())
         // Nothing typed: Next does nothing.
         store.dispatch(ExternalInvitesIntent.Next)
         assertEquals(emptyList(), source.previewCalls)
@@ -207,7 +230,7 @@ class ExternalInvitesStoreTest {
     fun moreThanTwentyEntriesCannotBeChecked() = runTest {
         val source = FakeExternalInvitesDataSource()
         val store = ExternalInvitesStore(this, source)
-        store.dispatch(ExternalInvitesIntent.OpenDialog)
+        store.dispatch(ExternalInvitesIntent.OpenDialog())
         store.dispatch(ExternalInvitesIntent.SetText((1..21).joinToString(" ") { "p$it@example.com" }))
         assertEquals(1, store.state.value.dialog?.overBy)
         store.dispatch(ExternalInvitesIntent.Next)
@@ -223,7 +246,7 @@ class ExternalInvitesStoreTest {
                 ExternalInviteAnswer.Refused(ExternalInviteRefusal(409, "free_external_limit", "limit", limitSide = "host", traceId = TraceId))
             )
         val store = ExternalInvitesStore(this, source)
-        store.dispatch(ExternalInvitesIntent.OpenDialog)
+        store.dispatch(ExternalInvitesIntent.OpenDialog())
         store.dispatch(ExternalInvitesIntent.SetText("new@example.com"))
         store.dispatch(ExternalInvitesIntent.Next)
         runCurrent()
@@ -246,7 +269,7 @@ class ExternalInvitesStoreTest {
         source.previewAnswer =
             DataResult.Content(ExternalInviteAnswer.Ok(ExternalInvitePreview(valid = listOf("a@example.com", "b@example.com"), slotsLeft = 1)))
         val store = ExternalInvitesStore(this, source)
-        store.dispatch(ExternalInvitesIntent.OpenDialog)
+        store.dispatch(ExternalInvitesIntent.OpenDialog())
         store.dispatch(ExternalInvitesIntent.SetText("a@example.com b@example.com"))
         store.dispatch(ExternalInvitesIntent.Next)
         runCurrent()

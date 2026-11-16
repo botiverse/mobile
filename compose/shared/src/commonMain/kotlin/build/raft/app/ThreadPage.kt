@@ -5669,8 +5669,27 @@ private fun ThreadMembersPageScreen() {
     }
     LaunchedEffect(externalInvitesState.effects) {
         externalInvitesState.effects.forEach { effect ->
-            val text = externalInviteEffectDesc(effect, externalInviteJoint).resolve()
-            if (effect is ExternalInvitesEffect.Failed) bridge.errorToast(text, effect.failure.traceId) else bridge.toast(text)
+            if (effect == ExternalInvitesEffect.FreeLimitUpgrade) {
+                externalInvitesStore.dispatch(ExternalInvitesIntent.ConsumeEffect(effect))
+                // Web openExternalLimitUpgrade (surface external_invite_dialog); iOS view-only Billing: the plan page.
+                if (settingsBillingOffersUpgrade()) {
+                    pager.openRaftUpgradeDialog(RaftUpgradeGate.ExternalChannelFreeLimit, storeScope)
+                } else {
+                    pager.openSettingsBillingPage(storeScope)
+                }
+                return@forEach
+            }
+            val title = externalInviteEffectDesc(effect, externalInviteJoint).resolve()
+            // Web toastServerOutcomes: a refused server's toast says why under its title.
+            val text =
+                if (effect is ExternalInvitesEffect.ServerRefused) {
+                    val reason =
+                        externalInviteServerRefusalDesc(effect.reason, target = effect.serverName, channel = "#$channelName", host = viewerServerName)
+                    "$title\n${reason.resolve()}"
+                } else {
+                    title
+                }
+            if (effect.isError) bridge.errorToast(text, effect.traceId) else bridge.toast(text)
             externalInvitesStore.dispatch(ExternalInvitesIntent.ConsumeEffect(effect))
         }
     }
@@ -5941,7 +5960,12 @@ private fun ThreadMembersPageScreen() {
                         if (externalInviteAccessOn) {
                             // Web: the invite dialog takes over from Add Member, which closes behind it.
                             if (addMemberStatus != "adding") addDialogVisible = false
-                            externalInvitesStore.dispatch(ExternalInvitesIntent.OpenDialog)
+                            externalInvitesStore.dispatch(
+                                ExternalInvitesIntent.RequestOpen(
+                                    joint = externalInviteJoint,
+                                    gated = externalInviteEntryGated(serverPlan, externalInviteChannel),
+                                )
+                            )
                         }
                     },
                 ),
@@ -6006,8 +6030,11 @@ private fun ThreadMembersPageScreen() {
                 willBecomePrivate = externalInviteChannel?.type == "channel",
                 joint = externalInviteJoint,
                 channelSlotsLeft = externalInvitesState.slotsLeft,
+                // Web AddExternalMemberDialog `serversHistoryHint`: a channel not joint yet that has messages.
+                serversHistoryHint = !externalInviteJoint && channelProjections[route.channelId.value]?.hasMessages == true,
                 onDismiss = { externalInvitesStore.dispatch(ExternalInvitesIntent.CloseDialog) },
                 onTextChange = { externalInvitesStore.dispatch(ExternalInvitesIntent.SetText(it)) },
+                onServersChange = { externalInvitesStore.dispatch(ExternalInvitesIntent.SetServers(it)) },
                 onNext = { externalInvitesStore.dispatch(ExternalInvitesIntent.Next) },
                 onBack = { externalInvitesStore.dispatch(ExternalInvitesIntent.Back) },
                 onSend = { externalInvitesStore.dispatch(ExternalInvitesIntent.Send(makePrivate = externalInviteChannel?.type == "channel")) },

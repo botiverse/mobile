@@ -14,6 +14,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.AnnotatedString
+import build.raft.app.data.InviteConnectableServer
+import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
+import build.raft.designsystem.components.RaftChoiceListItem
+import build.raft.designsystem.components.RaftMultiChoiceList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -68,6 +77,8 @@ internal const val ExternalInviteResendTag = "external-invite-resend"
 internal const val ExternalInviteWithdrawTag = "external-invite-withdraw"
 internal const val ExternalInviteWithdrawConfirmTag = "external-invite-withdraw-confirm"
 internal const val ExternalInvitesLoadFailedTag = "external-invites-load-failed"
+internal const val ExternalInviteServersTag = "external-invite-servers"
+internal const val ExternalInviteReviewServerTag = "external-invite-review-server"
 
 /** The text of a failure (web `ERROR_MESSAGE_IDS`); a full joint channel also offers disconnecting a server. */
 internal fun externalInviteErrorDesc(error: ExternalInviteError, joint: Boolean = false): StringDesc =
@@ -331,8 +342,11 @@ internal fun ExternalInviteSheet(
     willBecomePrivate: Boolean,
     joint: Boolean,
     channelSlotsLeft: Int?,
+    /** Web `serversHistoryHint`: a channel not joint yet with messages; a server connected sees them. */
+    serversHistoryHint: Boolean = false,
     onDismiss: () -> Unit,
     onTextChange: (String) -> Unit,
+    onServersChange: (Set<String>) -> Unit = {},
     onNext: () -> Unit,
     onBack: () -> Unit,
     onSend: () -> Unit,
@@ -360,7 +374,17 @@ internal fun ExternalInviteSheet(
             backLabel = stringResource(Res.string.channel_external_invite_back),
             modifier = Modifier.testTag(ExternalInviteSheetTag),
         ) {
-            ExternalInviteSheetBody(dialog, serverName, willBecomePrivate, joint, channelSlotsLeft, onTextChange, onUpgrade)
+            ExternalInviteSheetBody(
+                dialog,
+                serverName,
+                willBecomePrivate,
+                joint,
+                channelSlotsLeft,
+                onTextChange,
+                onUpgrade,
+                serversHistoryHint = serversHistoryHint,
+                onServersChange = onServersChange,
+            )
         }
     }
 }
@@ -375,6 +399,8 @@ internal fun ExternalInviteSheetBody(
     channelSlotsLeft: Int?,
     onTextChange: (String) -> Unit,
     onUpgrade: () -> Unit,
+    serversHistoryHint: Boolean = false,
+    onServersChange: (Set<String>) -> Unit = {},
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -418,11 +444,16 @@ internal fun ExternalInviteSheetBody(
         }
         if (preview == null) {
             val overBy = dialog.overBy
-            val slots = externalInviteTypedSlotsLine(channelSlotsLeft, dialog.entries.size)
-            val hint = stringResource(Res.string.channel_external_invite_emails_hint, EXTERNAL_INVITE_MAX_EMAILS)
+            val slots = externalInviteTypedSlotsLine(channelSlotsLeft, dialog.entries.size, dialog.chosenServers.size)
+            val hint =
+                listOfNotNull(
+                    stringResource(Res.string.channel_external_invite_emails_hint, EXTERNAL_INVITE_MAX_EMAILS),
+                    if (serversHistoryHint) stringResource(Res.string.channel_external_invite_emails_see_history) else null,
+                    slots?.let { externalInviteSlotsText(it, joint) },
+                ).joinToString("\n")
             RaftField(
                 label = stringResource(Res.string.channel_external_invite_emails_label),
-                description = slots?.let { "$hint\n${externalInviteSlotsText(it, joint)}" } ?: hint,
+                description = hint,
                 error =
                     if (overBy > 0) stringResource(Res.string.channel_external_invite_too_many, EXTERNAL_INVITE_MAX_EMAILS, overBy) else null,
             ) {
@@ -435,6 +466,13 @@ internal fun ExternalInviteSheetBody(
                     invalid = overBy > 0,
                 )
             }
+            ExternalInviteServersField(
+                servers = dialog.servers,
+                values = dialog.serverIds,
+                onValuesChange = onServersChange,
+                enabled = !dialog.busy,
+                historyHint = serversHistoryHint,
+            )
         } else {
             val rows = externalInviteReviewRows(preview)
             if (rows.isNotEmpty()) {
@@ -458,6 +496,23 @@ internal fun ExternalInviteSheetBody(
                     }
                 }
             }
+            val chosen = dialog.chosenServers
+            if (chosen.isNotEmpty()) {
+                Column(
+                    Modifier.fillMaxWidth().background(colors.layerCard, RoundedCornerShape(RaftRadius.Container)),
+                ) {
+                    chosen.forEachIndexed { index, server ->
+                        RaftListRow(
+                            title = server.name,
+                            modifier = Modifier.testTag(ExternalInviteReviewServerTag),
+                            divider = index > 0,
+                            description = stringResource(Res.string.channel_external_invite_status_will_connect, server.name),
+                            wrapDescription = true,
+                            leading = { RaftServerListRowAvatar(server.id, server.name, server.avatarUrl) },
+                        )
+                    }
+                }
+            }
             if (dialog.actionCount == 0) {
                 RaftText(
                     stringResource(Res.string.channel_external_invite_nothing_to_send),
@@ -466,7 +521,7 @@ internal fun ExternalInviteSheetBody(
                     color = colors.foregroundMuted,
                 )
             }
-            externalInviteSlotsLine(preview.slotsLeft, dialog.inviteCount)?.let { line ->
+            externalInviteSlotsLine(preview.slotsLeft, dialog.inviteCount + chosen.size)?.let { line ->
                 val text = externalInviteSlotsText(line, joint)
                 if (line is ExternalInviteSlotsLine.Full || line is ExternalInviteSlotsLine.Over) {
                     RaftBanner(
@@ -480,6 +535,54 @@ internal fun ExternalInviteSheetBody(
                 }
             }
         }
+    }
+}
+
+/**
+ * Web `ExternalInviteServersField`: "Connect your servers", the viewer's other servers they own or
+ * administer as a searchable checkbox list (DS ChoiceList, multiple). Each one checked connects
+ * when the review is confirmed, with no email and no approval. One at the Free plan's external
+ * channel limit is listed, not chosen. Not drawn without any.
+ */
+@Composable
+internal fun ExternalInviteServersField(
+    servers: List<InviteConnectableServer>,
+    values: Set<String>,
+    onValuesChange: (Set<String>) -> Unit,
+    enabled: Boolean,
+    historyHint: Boolean,
+) {
+    if (servers.isEmpty()) return
+    var query by remember { mutableStateOf("") }
+    val atLimit = stringResource(Res.string.external_invite_connect_at_limit)
+    val items =
+        servers.map { server ->
+            RaftChoiceListItem(
+                value = server.id,
+                label = server.name,
+                descriptions = if (server.atLimit) listOf(AnnotatedString(atLimit)) else emptyList(),
+                enabled = !server.atLimit,
+                searchText = "${server.name} ${server.slug.orEmpty()}",
+                media = { RaftServerListRowAvatar(server.id, server.name, server.avatarUrl) },
+            )
+        }
+    RaftField(
+        label = stringResource(Res.string.channel_external_invite_servers_label),
+        modifier = Modifier.fillMaxWidth().testTag(ExternalInviteServersTag),
+        description = if (historyHint) stringResource(Res.string.channel_external_invite_servers_see_history) else null,
+    ) {
+        RaftMultiChoiceList(
+            items = items,
+            values = values,
+            onValuesChange = onValuesChange,
+            query = query,
+            onQueryChange = { query = it },
+            searchPlaceholder = stringResource(Res.string.channel_external_invite_servers_search),
+            clearSearchLabel = stringResource(Res.string.channel_external_invite_servers_clear_search),
+            noMatchLabel = stringResource(Res.string.channel_external_invite_servers_no_match),
+            emptyLabel = stringResource(Res.string.channel_external_invite_servers_no_match),
+            enabled = enabled,
+        )
     }
 }
 
@@ -511,6 +614,44 @@ internal fun externalInviteEffectDesc(effect: ExternalInvitesEffect, joint: Bool
         is ExternalInvitesEffect.Resent -> Res.string.channel_external_invite_resent.format(effect.email)
         is ExternalInvitesEffect.Withdrawn -> Res.string.channel_external_invite_withdrawn.format(effect.email)
         is ExternalInvitesEffect.Failed -> externalInviteErrorDesc(effect.failure.error, joint)
+        is ExternalInvitesEffect.ServersConnected ->
+            (if (effect.count == 1) Res.string.channel_external_invite_servers_connected_one else Res.string.channel_external_invite_servers_connected_other)
+                .format(effect.count)
+        is ExternalInvitesEffect.ServersConnecting ->
+            (if (effect.count == 1) Res.string.channel_external_invite_servers_connecting_one else Res.string.channel_external_invite_servers_connecting_other)
+                .format(effect.count)
+        is ExternalInvitesEffect.ServerRefused -> Res.string.channel_external_invite_server_refused.format(effect.serverName)
+        is ExternalInvitesEffect.ServersNotConnected -> Res.string.channel_external_invite_servers_not_connected.desc()
+        // Not a toast: the page opens the upgrade dialog.
+        ExternalInvitesEffect.FreeLimitUpgrade -> Res.string.channel_external_invite_error_free_limit.desc()
+    }
+
+/** Whether the effect is an error toast (with the answer's trace ID), as the web's `type: "error"`. */
+internal val ExternalInvitesEffect.isError: Boolean
+    get() =
+        this is ExternalInvitesEffect.Failed ||
+            this is ExternalInvitesEffect.ServerRefused ||
+            this is ExternalInvitesEffect.ServersNotConnected
+
+/** The trace ID an error effect shows. */
+internal val ExternalInvitesEffect.traceId: String?
+    get() =
+        when (this) {
+            is ExternalInvitesEffect.Failed -> failure.traceId
+            is ExternalInvitesEffect.ServerRefused -> traceId
+            is ExternalInvitesEffect.ServersNotConnected -> traceId
+            else -> null
+        }
+
+/**
+ * A refused server's reason, the toast's second line (web `toastServerOutcomes`): values {target}
+ * the server, {channel} with its #, {server} the host, {inviter} empty.
+ */
+internal fun externalInviteServerRefusalDesc(reason: ExternalInviteServerRefusal, target: String, channel: String, host: String): StringDesc =
+    when (reason) {
+        ExternalInviteServerRefusal.HostFreeLimit -> Res.string.channel_external_invite_error_free_limit.desc()
+        ExternalInviteServerRefusal.PartyLimit -> Res.string.channel_external_invite_server_refused_party_limit.format(channel, JOINT_CHANNEL_MAX_SERVERS)
+        is ExternalInviteServerRefusal.Invitee -> inviteeMessageDesc(reason.message, target = target, channel = channel, server = host, inviter = "")
     }
 
 /**

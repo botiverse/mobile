@@ -1,12 +1,16 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ServerId
 import kotlin.test.Test
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -116,5 +120,114 @@ class ExternalInvitesApiTest {
             parseExternalInviteEmailEntries(" a@example.com, b@example.com;c\n\nd@example.com  "),
         )
         assertEquals(emptyList(), parseExternalInviteEmailEntries("  ,; \n"))
+    }
+
+    private class Recorded(val path: String, val method: String, val body: String?)
+
+    private class RecordingClient(private val answer: HomeNetworkResponse) : RaftNetworkClient {
+        val calls = mutableListOf<Recorded>()
+
+        override suspend fun request(
+            priority: DataRequestPriority,
+            path: String,
+            method: String,
+            query: List<Pair<String, String>>,
+            serverIdOverride: ServerId?,
+            bodyText: String?,
+        ): HomeNetworkResponse {
+            calls += Recorded(path, method, bodyText)
+            return answer
+        }
+    }
+
+    /**
+     * "Your servers" (botiverse/slock staging 97a3e293d71a, `routes/channels.ts`
+     * `GET /external-connect-servers`, `externalInviteMultiConnect.api.test.ts` `ownServers`).
+     */
+    @Test
+    fun yourServersAreReadFromTheChannelsRouteNotAChannel() = runTest {
+        val client =
+            RecordingClient(
+                HomeNetworkResponse(
+                    200,
+                    """
+                    {"servers":[
+                      {"id":"s2","name":"Beta","slug":"beta","avatarUrl":null,"canConnectDirectly":true,"needsApproval":false,"approvers":[],"atLimit":false},
+                      {"id":"s3","name":"Gamma","slug":"gamma","avatarUrl":"https://x/g.png","canConnectDirectly":true,"needsApproval":false,"approvers":[],"atLimit":true,"canUpgrade":true},
+                      {"id":"","name":"Blank"}
+                    ]}
+                    """.trimIndent(),
+                ),
+            )
+        val answer = assertIs<DataResult.Content<ExternalInviteAnswer<OwnConnectableServers>>>(ExternalInvitesApi(client).ownConnectableServers())
+        val servers = assertIs<ExternalInviteAnswer.Ok<OwnConnectableServers>>(answer.data).value.servers
+        assertEquals(listOf("s2", "s3"), servers.map { it.id })
+        assertEquals(listOf(false, true), servers.map { it.atLimit })
+        assertEquals("https://x/g.png", servers[1].avatarUrl)
+        assertEquals("channels/external-connect-servers", client.calls.single().path)
+        assertEquals("GET", client.calls.single().method)
+        assertNull(client.calls.single().body)
+    }
+
+    /** `POST channels/:id/external-connect-servers` `{ serverIds, makePrivate? }` → `{ servers: ServerConnectOutcome[] }`. */
+    @Test
+    fun connectingYourServersPostsTheirIdsAndReadsEachOutcome() = runTest {
+        val client =
+            RecordingClient(
+                HomeNetworkResponse(
+                    200,
+                    """
+                    {"servers":[
+                      {"serverId":"s2","state":"connected","channelId":"c2"},
+                      {"serverId":"s3","state":"connecting"},
+                      {"serverId":"s4","state":"refused","status":409,"error":"limit","code":"free_external_limit","limitSide":"connecting","limitServerId":"s4"}
+                    ]}
+                    """.trimIndent(),
+                    responseHeaders = mapOf("X-Trace-Id" to listOf("0123456789abcdef0123456789abcdef")),
+                ),
+            )
+        val api = ExternalInvitesApi(client)
+        val answer = assertIs<DataResult.Content<ExternalInviteAnswer<List<ServerConnectOutcome>>>>(
+            api.connectOwnServers(ChannelId("c1"), listOf("s2", "s3", "s4"), makePrivate = true)
+        )
+        val ok = assertIs<ExternalInviteAnswer.Ok<List<ServerConnectOutcome>>>(answer.data)
+        assertIs<ServerConnectOutcome.Connected>(ok.value[0])
+        assertIs<ServerConnectOutcome.Connecting>(ok.value[1])
+        val refused = assertIs<ServerConnectOutcome.Refused>(ok.value[2])
+        assertEquals("free_external_limit", refused.code)
+        assertEquals("s4", refused.limitServerId)
+        assertEquals("0123456789abcdef0123456789abcdef", ok.traceId)
+
+        val call = client.calls.single()
+        assertEquals("channels/c1/external-connect-servers", call.path)
+        assertEquals("POST", call.method)
+        val body = Json.parseToJsonElement(call.body!!).jsonObject
+        assertEquals(listOf("s2", "s3", "s4"), body.getValue("serverIds").jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(true, body.getValue("makePrivate").jsonPrimitive.boolean)
+    }
+
+    @Test
+    fun theConnectBodyNamesMakePrivateOnlyWhenSet() {
+        val plain = Json.parseToJsonElement(buildSharedExternalConnectServersBody(listOf("s2"))).jsonObject
+        assertEquals(setOf("serverIds"), plain.keys)
+    }
+
+    @Test
+    fun aRefusedConnectAsAWholeIsARefusalWithItsCode() = runTest {
+        val client = RecordingClient(HomeNetworkResponse(400, """{"error":"serverIds must be a list of 1 to 29 servers","code":"invalid_input"}"""))
+        val answer = assertIs<DataResult.Content<ExternalInviteAnswer<List<ServerConnectOutcome>>>>(
+            ExternalInvitesApi(client).connectOwnServers(ChannelId("c1"), emptyList(), makePrivate = false)
+        )
+        assertEquals("invalid_input", assertIs<ExternalInviteAnswer.Refused>(answer.data).refusal.code)
+    }
+
+    /** `GET channels/external-availability` → `{ freeLimitReached }` (staging 97a3e293d71a). */
+    @Test
+    fun theAvailabilityIsReadFromTheChannelsRoute() = runTest {
+        val client = RecordingClient(HomeNetworkResponse(200, """{"freeLimitReached":true}"""))
+        val answer = assertIs<DataResult.Content<ExternalInviteAnswer<ExternalChannelAvailability>>>(ExternalInvitesApi(client).externalAvailability())
+        assertEquals(true, assertIs<ExternalInviteAnswer.Ok<ExternalChannelAvailability>>(answer.data).value.freeLimitReached)
+        assertEquals("channels/external-availability", client.calls.single().path)
+        assertEquals("GET", client.calls.single().method)
     }
 }

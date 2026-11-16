@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
+import build.raft.app.reportProjectionRowDropped
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -22,6 +23,19 @@ import kotlinx.serialization.json.Json
  *    connectPhase, revocable, invitedBy: { id, name } | null, createdAt, expiresAt }], slotsLeft }`.
  *  - `POST channels/:id/external-invites/:inviteId/resend` → `{ id, email, expiresAt }`.
  *  - `DELETE channels/:id/external-invites/:inviteId` → `{ ok: true }`.
+ *  - `GET channels/external-connect-servers` ("Your servers", botiverse/slock `staging` @
+ *    97a3e293d71a924eb9910929f1f2e0ed696d26b8, `externalInviteService.listOwnConnectableServers`):
+ *    the servers the host's owner/admin owns or administers that could connect to one of its
+ *    channels → `{ servers: ConnectableServer[] }` (`{ id, name, slug, avatarUrl,
+ *    canConnectDirectly, needsApproval, approvers, atLimit, canUpgrade }`, the invite page's shape).
+ *    Not read against a channel; 404 while `external_channels_v1` is off.
+ *  - `POST channels/:id/external-connect-servers` `{ serverIds: string[], makePrivate? }` (same SHA):
+ *    the host owner/admin connects those servers now, no email, no approval →
+ *    `{ servers: ServerConnectOutcome[] }`, one per chosen server (see [ServerConnectOutcome]); the
+ *    whole request refused is `{ error, code }` as the routes below (400 `invalid_input` for the list).
+ *  - `GET channels/external-availability` (same SHA, `externalInviteService.getExternalChannelAvailability`)
+ *    → `{ freeLimitReached: boolean }`: the current server's one Free external channel is taken.
+ *    Host owner/admin only; 404 while `external_channels_v1` is off.
  *  - Preview, send and resend answer 404 `{ error: "Not found" }` while `external_channels_v1` is
  *    off for the host server; list and revoke are not gated. A refusal is `{ error, code }`
  *    (`EXTERNAL_INVITE_ERROR_STATUS`: not_found 404, forbidden 403, channel_membership_required
@@ -98,6 +112,41 @@ data class ChannelExternalInviteList(
     val slotsLeft: Int? = null,
 )
 
+/** `GET channels/external-availability`. */
+@Serializable
+data class ExternalChannelAvailability(val freeLimitReached: Boolean = false)
+
+internal fun parseSharedExternalChannelAvailability(bodyText: String): ExternalChannelAvailability? =
+    runCatching { externalInvitesJson.decodeFromString(ExternalChannelAvailability.serializer(), bodyText) }.getOrNull()
+
+/** "Your servers" (`GET channels/external-connect-servers`). */
+@Serializable
+data class OwnConnectableServers(val servers: List<InviteConnectableServer> = emptyList())
+
+@Serializable
+internal data class ExternalConnectServersBody(val serverIds: List<String>, val makePrivate: Boolean? = null)
+
+internal fun buildSharedExternalConnectServersBody(serverIds: List<String>, makePrivate: Boolean = false): String =
+    externalInvitesJson.encodeToString(
+        ExternalConnectServersBody.serializer(),
+        ExternalConnectServersBody(serverIds, makePrivate.takeIf { it }),
+    )
+
+/** Rows without an id are dropped and logged (they could not be chosen or connected). */
+internal fun parseSharedOwnConnectableServers(bodyText: String): OwnConnectableServers? =
+    runCatching { externalInvitesJson.decodeFromString(OwnConnectableServers.serializer(), bodyText) }
+        .getOrNull()
+        ?.let { list ->
+            list.copy(
+                servers =
+                    list.servers.filter { server ->
+                        server.id.isNotBlank().also { kept ->
+                            if (!kept) reportProjectionRowDropped("external_connect_servers", "server_id_blank")
+                        }
+                    }
+            )
+        }
+
 @Serializable
 internal data class ExternalInviteEmailsBody(val emails: List<String>, val makePrivate: Boolean? = null)
 
@@ -120,7 +169,8 @@ data class ExternalInviteRefusal(
 
 /** What an external-invite route answered: its body, or a refusal (any non-2xx other than 401). */
 sealed interface ExternalInviteAnswer<out T> {
-    data class Ok<T>(val value: T) : ExternalInviteAnswer<T>
+    /** [traceId]: the answer's, for a refusal shown from inside it (a refused server of connect-servers). */
+    data class Ok<T>(val value: T, val traceId: String? = null) : ExternalInviteAnswer<T>
 
     data class Refused(val refusal: ExternalInviteRefusal) : ExternalInviteAnswer<Nothing>
 }
@@ -208,6 +258,36 @@ internal class ExternalInvitesApi(
     suspend fun revoke(channelId: ChannelId, inviteId: String): DataResult<ExternalInviteAnswer<Unit>> =
         call("revoke", DataRequestPriority.Foreground, "${base(channelId)}/${inviteId.encodePathSegment()}", "DELETE", null) { Unit }
 
+    /** Whether the current server's one Free external channel is taken (Foreground: read on a tap). */
+    suspend fun externalAvailability(): DataResult<ExternalInviteAnswer<ExternalChannelAvailability>> =
+        call(
+            "availability",
+            DataRequestPriority.Foreground,
+            "channels/external-availability",
+            "GET",
+            null,
+            ::parseSharedExternalChannelAvailability,
+        )
+
+    /** "Your servers": not read against a channel (the caller leaves out a joint channel's own). */
+    suspend fun ownConnectableServers(): DataResult<ExternalInviteAnswer<OwnConnectableServers>> =
+        call("own_servers", DataRequestPriority.Visible, "channels/external-connect-servers", "GET", null, ::parseSharedOwnConnectableServers)
+
+    /** Connects the host owner/admin's own [serverIds] to the channel now: each server's outcome. */
+    suspend fun connectOwnServers(
+        channelId: ChannelId,
+        serverIds: List<String>,
+        makePrivate: Boolean,
+    ): DataResult<ExternalInviteAnswer<List<ServerConnectOutcome>>> =
+        call(
+            "connect_servers",
+            DataRequestPriority.Foreground,
+            "channels/${channelId.value.encodePathSegment()}/external-connect-servers",
+            "POST",
+            buildSharedExternalConnectServersBody(serverIds, makePrivate),
+            ::parseSharedMemberConnectOutcomes,
+        )
+
     private fun base(channelId: ChannelId): String = "channels/${channelId.value.encodePathSegment()}/external-invites"
 
     private suspend fun <T> call(
@@ -235,7 +315,7 @@ internal class ExternalInvitesApi(
                     ExternalInviteAnswer.Refused(ExternalInviteRefusal(response.code, code = null, error = null, traceId = response.traceId))
                 )
             }
-            return DataResult.Content(ExternalInviteAnswer.Ok(parsed))
+            return DataResult.Content(ExternalInviteAnswer.Ok(parsed, response.traceId))
         }
         val refusal = parseSharedExternalInviteRefusal(response.code, response.bodyText ?: response.errorBodyText, response.traceId)
         if (response.code == 401) return authSessionRequiredResult(refusal.error)

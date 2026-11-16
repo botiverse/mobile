@@ -265,11 +265,14 @@ internal fun JointMemberConnectSheet(
     }
 }
 
+@Composable
+private fun JointMemberConnectServerAvatar(server: MemberConnectServer) = RaftServerListRowAvatar(server.id, server.name, server.avatarUrl)
+
 /** Web `AvatarSlot context="list-row" type="server"`: the server's image, else its initial. */
 @Composable
-private fun JointMemberConnectServerAvatar(server: MemberConnectServer) {
-    val initial = server.name.trim().take(1).uppercase().ifBlank { "S" }
-    val source = server.avatarUrl?.takeIf { it.isNotBlank() }
+internal fun RaftServerListRowAvatar(serverId: String, name: String, avatarUrl: String?) {
+    val initial = name.trim().take(1).uppercase().ifBlank { "S" }
+    val source = avatarUrl?.takeIf { it.isNotBlank() }
     RaftAvatar(
         type = RaftAvatarType.Server,
         size = RaftAvatarSize.Md,
@@ -280,9 +283,9 @@ private fun JointMemberConnectServerAvatar(server: MemberConnectServer) {
                     RaftAvatarHttpImage(
                         source = url,
                         modifier = Modifier.fillMaxSize(),
-                        cacheSubject = RaftAvatarCacheSubject.Server(server.id),
-                        cacheServerId = server.id,
-                        serverDiagnosticsId = server.id,
+                        cacheSubject = RaftAvatarCacheSubject.Server(serverId),
+                        cacheServerId = serverId,
+                        serverDiagnosticsId = serverId,
                         fallback = { RaftAvatar(type = RaftAvatarType.Server, size = RaftAvatarSize.Md, initials = initial) },
                         placeholder = { RaftAvatar(type = RaftAvatarType.Server, size = RaftAvatarSize.Md, initials = initial) },
                     )
