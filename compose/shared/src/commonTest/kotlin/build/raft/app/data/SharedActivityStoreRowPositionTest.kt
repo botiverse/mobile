@@ -252,6 +252,45 @@ class SharedActivityStoreRowPositionTest {
     }
 
     @Test
+    fun aLocalReadClearsAnAtOnAnUncountedMessageAndAMentionOnlyRowKeepsIt() = runTest {
+        // Web #14805: a task conversation counts chat replies only, while the server's @ is any mention
+        // past the read cursor, so a lifecycle line mentioning the reader lists the row with an @ and no
+        // unread. Reading the conversation here takes the @ and its jump target. A mention-only row
+        // (no count, its first unread is the @) keeps its @, as the server does.
+        val uncounted = channelRow.copy(hasMention = true, firstMentionMessageId = MessageId("line-1"))
+        val mentionOnly =
+            otherRow.copy(hasMention = true, firstUnreadMessageId = MessageId("m-5"), firstMentionMessageId = MessageId("m-5"))
+        val owner = ReadReceiptOwner("production", "user-1", "server-1")
+        for (rowPosition in listOf(false, true)) {
+            val f = loadedStore(listOf(snapshot(listOf(uncounted, mentionOnly))), rowPosition)
+            listOf("channel-1", "channel-2").forEachIndexed { index, channelId ->
+                f.store.dispatch(
+                    SharedActivityIntent.ApplyReadReceiptPrediction(
+                        ReadReceiptPrediction(owner, ChannelId(channelId), index + 1L, ReadReceiptTarget.All)
+                    )
+                )
+            }
+            runCurrent()
+            val label = "inbox_row_position_v1=$rowPosition"
+            assertEquals(
+                listOf(Triple(0, false, null), Triple(0, true, MessageId("m-5"))),
+                listOf(f.row(uncounted.key), f.row(mentionOnly.key)).map { Triple(it.unreadCount, it.hasMention, it.firstMentionMessageId) },
+                label
+            )
+            if (!rowPosition) continue
+
+            // Flag on: the persisted reads leave the cleared row as the read made it (nothing to
+            // re-read); the mention-only row still re-reads, its @ being the server's to answer.
+            f.store.dispatch(readState("channel-1", maxReadSeq = 10L))
+            f.store.dispatch(readState("channel-2", maxReadSeq = 5L))
+            advanceTimeBy(ActivityRowRereadDelayMillis + 1L)
+            runCurrent()
+            assertEquals(false, f.row(uncounted.key).hasMention, label)
+            assertEquals(listOf(listOf("channel-2")), f.inbox.rowReads.map { it.rowIds }, label)
+        }
+    }
+
+    @Test
     fun aServerSwitchDropsTheRowState() = runTest {
         val f = loadedStore(listOf(snapshot(listOf(channelRow))))
         f.store.dispatch(live("m-11", "channel-1", seq = 11L))
