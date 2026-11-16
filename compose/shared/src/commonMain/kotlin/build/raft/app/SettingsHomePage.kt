@@ -20127,7 +20127,8 @@ private val homeCreateChannelVisualMembers = listOf(
 // (fixtureData.locale: 2026-06-19T12:30Z, Asia/Shanghai) the way react renders it:
 // 2026-06-22T02:30Z / 01:40Z -> "in 3 days", 2026-06-21T09:12Z -> "in 2 days". A display label
 // such as "in 3 days" is not a timestamp: under the page's live clock it reads "unknown time".
-private val homeSavedVisualTimeContext =
+// The Activity fixtures share this clock.
+internal val homeVisualFixtureTimeContext =
     AppShellThreadTimeContext(
         // VisualFixtureData.Locale (visualFixtureData is not on this source set's path).
         localOffsetMinutes = 480,
@@ -20192,11 +20193,13 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
 // Canonical activity-inbox rows (task #370): ported verbatim from
 // packages/visual-testing/shared/activityResultsFixture.json in the slock repo
 // (thread card in #design with 5 replies / @you / 2 new, #android-artifacts
-// channel card with 1 new, @Cindy dm card). Relative time labels match what
-// react renders for the fixture ISO stamps at the fixture instant
-// (fixtureData.locale.nowEpochMillis = 2026-06-19T12:30Z): the thread's
-// 2026-06-22T02:35Z reply is "in 3 days", the 2026-06-19T12:24Z rows are
-// "6 minutes ago". No task and no draft: the React fixture has neither.
+// channel card with 1 new, @Cindy dm card). Each row carries the fixture's own
+// ISO stamp (thread lastActivityAt 2026-06-22T02:35Z, the channel and dm
+// lastMessageAt 2026-06-19T12:24Z), rendered against the fixture clock
+// (homeVisualFixtureTimeContext: 2026-06-19T12:30Z, Asia/Shanghai) as react
+// renders them. A display label such as "6 minutes ago" is not a timestamp:
+// under the page's live clock it reads "unknown time". No task and no draft:
+// the React fixture has neither.
 private val homeActivityVisualSnapshot = InboxSnapshot(
     server = homeSearchVisualServer,
     items =
@@ -20219,7 +20222,7 @@ private val homeActivityVisualSnapshot = InboxSnapshot(
                 parentMessageSenderKind = MemberKind.Agent,
                 latestActivityMessageId = MessageId("msg-visual-activity-reply"),
                 latestActivityPreview = "Review the Android composer crop before release.",
-                latestActivityAt = "in 3 days",
+                latestActivityAt = "2026-06-22T02:35:00.000Z",
                 latestActivitySenderName = "artin",
                 latestActivitySenderId = "visual-user",
                 latestActivitySenderKind = MemberKind.Human,
@@ -20234,7 +20237,7 @@ private val homeActivityVisualSnapshot = InboxSnapshot(
                 firstUnreadMessageId = MessageId("msg-visual-activity-android"),
                 lastMessageId = MessageId("msg-visual-activity-android"),
                 lastMessagePreview = "Captured the previous visual baseline before leaving the workspace.",
-                lastMessageAt = "6 minutes ago",
+                lastMessageAt = "2026-06-19T12:24:00.000Z",
                 lastMessageSenderName = "Cindy",
                 lastMessageSenderId = "agent-cindy",
                 lastMessageSenderKind = MemberKind.Agent
@@ -20246,7 +20249,7 @@ private val homeActivityVisualSnapshot = InboxSnapshot(
                 channelName = "Cindy",
                 lastMessageId = MessageId("msg-visual-activity-dm"),
                 lastMessagePreview = "201继续推进",
-                lastMessageAt = "6 minutes ago",
+                lastMessageAt = "2026-06-19T12:24:00.000Z",
                 lastMessageSenderName = "Cindy",
                 lastMessageSenderId = "agent-cindy",
                 lastMessageSenderKind = MemberKind.Agent
@@ -20299,7 +20302,7 @@ internal fun HomeSavedVisualContent(
             onOpenItem = {},
             bottomContentPadding = 12.dp,
             includeTopSafeArea = protoOnBack != null || params.optBoolean("task797IncludeTopSafeArea", false),
-            timeContext = homeSavedVisualTimeContext
+            timeContext = homeVisualFixtureTimeContext
         )
     }
 }
@@ -20315,6 +20318,7 @@ internal fun HomeActivityVisualContent() {
             onClose = {},
             includeTopSafeArea = params.optBoolean("task797IncludeTopSafeArea", false),
             pullRefreshing = params.optBoolean("task797Refreshing", false),
+            timeContext = homeVisualFixtureTimeContext,
             activityTaskStatusBadgesEnabled = true,
             foregroundEpoch = 0L,
             modifier = Modifier.fillMaxSize()
@@ -20359,6 +20363,7 @@ internal fun RaftActivityTabVisualContent(
                 onOpenItem = {},
                 onClose = null,
                 includeTopSafeArea = protoFullScreen,
+                timeContext = homeVisualFixtureTimeContext,
                 activityTaskStatusBadgesEnabled = true,
                 draftProjection = homeActivityVisualDraftProjection,
                 foregroundEpoch = 0L,
