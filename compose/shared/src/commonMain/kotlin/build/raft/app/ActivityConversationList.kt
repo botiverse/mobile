@@ -72,6 +72,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.ResolvedActor
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
@@ -159,6 +160,11 @@ internal data class ActivityConversationListContext(
      * with the agent's face and the Lounge mark, never `#<agent>-lounge`.
      */
     val loungesByChannelId: Map<String, ActivityConversationLounge> = emptyMap(),
+    /**
+     * Home's joint channels by id. An object row carries only its home's channel id, so this is how
+     * it knows its actor may be the other server's and must be resolved through `POST /api/actors/resolve`.
+     */
+    val jointChannelIds: Set<String> = emptySet(),
 ) {
     companion object {
         val Empty = ActivityConversationListContext()
@@ -203,8 +209,13 @@ internal fun HomeSnapshot?.toActivityConversationListContext(activityServerId: S
         currentMemberId = snapshot.currentMember.id.value.takeIf { it.isNotBlank() },
         channelSymbolsByChannelId = snapshot.activityChannelSymbolsByChannelId(),
         loungesByChannelId = snapshot.activityLoungesByChannelId(),
+        jointChannelIds = snapshot.activityJointChannelIds(),
     )
 }
+
+/** The ids of this server's joint channels on Home ([channelSettingsIsJoint]). */
+internal fun HomeSnapshot.activityJointChannelIds(): Set<String> =
+    channels.filter(::channelSettingsIsJoint).mapTo(mutableSetOf()) { it.channelId.value }
 
 /** An agent's Lounge as an Activity row draws it. */
 internal data class ActivityConversationLounge(
@@ -332,7 +343,21 @@ internal data class ActivityObjectLine(
     val version: Int?,
     val home: String?,
     val avatar: ActivitySenderAvatarIdentity?,
+    /** [actorName] is this server's own (a sender profile), never replaced by a joint actor's name. */
+    val actorNameKnownLocally: Boolean = false,
 )
+
+/**
+ * The name an object row's sentence shows (web `ObjectInboxRow`, slock #15104): this server's roster
+ * first, then the joint actor `POST /api/actors/resolve` answered for an actor no roster has (another
+ * server's agent in a joint channel), then the handle the row carries.
+ */
+internal fun ActivityObjectLine.displayActorName(jointActor: ResolvedActor?): String? {
+    if (actorNameKnownLocally) return actorName
+    return jointActor?.displayName?.takeIf { it.isNotBlank() }
+        ?: jointActor?.name?.takeIf { it.isNotBlank() }
+        ?: actorName
+}
 
 /** Who spoke last, before the preview. */
 internal sealed interface ActivityConversationSender {
@@ -500,7 +525,7 @@ internal fun InboxItem.activityConversationRowModel(
     dmPeerNames: Map<String, String> = emptyMap(),
     activityTaskStatusBadgesEnabled: Boolean = true,
 ): ActivityConversationRowModel {
-    if (kind == InboxItemKind.Object) return activityObjectRowModel(selectedFilter, senderProfiles)
+    if (kind == InboxItemKind.Object) return activityObjectRowModel(selectedFilter, senderProfiles, context.jointChannelIds)
     val directMessage = isActivityDirectMessageConversation()
     val leadingKind =
         when {
@@ -620,10 +645,12 @@ internal fun InboxItem.activityConversationRowModel(
 internal fun InboxItem.activityObjectRowModel(
     selectedFilter: InboxFilter,
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
+    jointChannelIds: Set<String> = emptySet(),
 ): ActivityConversationRowModel {
     val row = activityObject ?: ActivityObjectRow()
     val unread = unreadCount.coerceAtLeast(0)
-    val actorName = senderProfiles[row.actorId]?.displayName?.takeIf { it.isNotBlank() } ?: row.actorName?.takeIf { it.isNotBlank() }
+    val localActorName = senderProfiles[row.actorId]?.displayName?.takeIf { it.isNotBlank() }
+    val actorName = localActorName ?: row.actorName?.takeIf { it.isNotBlank() }
     val actorKind = if (row.actorType == "agent") MemberKind.Agent else MemberKind.Human
     val (verb, version) = row.eventVerb()
     return ActivityConversationRowModel(
@@ -653,7 +680,11 @@ internal fun InboxItem.activityObjectRowModel(
                         avatarWireValue = null,
                         label = actorName.orEmpty(),
                         senderId = row.actorId.takeIf { it.isNotBlank() },
+                        // An object in a joint channel may be the other server's agent's or person's,
+                        // in neither of this server's rosters: resolve them as its conversation rows do.
+                        jointSurface = row.homeChannelId?.let { it in jointChannelIds } == true,
                     ),
+                actorNameKnownLocally = localActorName != null,
             ),
         objectIcon = ArtifactKind.fromWire(row.artifactKind).lucideIcon(),
     )
@@ -662,7 +693,15 @@ internal fun InboxItem.activityObjectRowModel(
 /** The object row's sentence with its actor in the sender's style (raft-ui `InboxItemSender`). */
 @Composable
 internal fun activityObjectBodyText(line: ActivityObjectLine, senderStyle: SpanStyle): AnnotatedString {
-    val name = line.actorName ?: stringResource(Res.string.artifacts_activity_someone)
+    // The same joint actor the face reads ([ActivityMemberFace]); null while a roster knows them.
+    val jointActor =
+        rememberRaftJointActor(
+            memberAvatarResolver = LocalActivityAvatarSource.current.memberAvatarResolver,
+            kind = line.avatar?.senderKind,
+            memberId = line.avatar?.senderId,
+            enabled = line.avatar?.jointSurface == true && !line.actorNameKnownLocally,
+        )
+    val name = line.displayActorName(jointActor) ?: stringResource(Res.string.artifacts_activity_someone)
     val sentence =
         when (line.verb) {
             ActivityObjectEventVerb.MentionedYou -> stringResource(Res.string.artifacts_activity_mentioned_you, ActivityObjectNameMark)

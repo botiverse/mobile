@@ -2,14 +2,18 @@ package build.raft.app
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import build.raft.app.data.ActivityObjectEventVerb
+import build.raft.app.data.ActivityObjectRow
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
+import build.raft.app.data.ResolvedActor
 import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.activityObjectRowKey
 import build.raft.app.data.session
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
@@ -502,6 +506,88 @@ class ActivityConversationListTest {
         // Another server's Home snapshot is never a candidate for this Activity.
         assertEquals(ActivityConversationListContext.Empty, snapshot.toActivityConversationListContext("server-2"))
         assertEquals(ActivityConversationListContext.Empty, (null as HomeSnapshot?).toActivityConversationListContext("server-1"))
+    }
+
+    @Test
+    fun objectRowInAJointChannelResolvesItsActorAsTheOtherServers() {
+        val home =
+            homeSnapshot().let { snapshot ->
+                snapshot.copy(
+                    channels =
+                        listOf(
+                            HomeChannelRow(threadId = ThreadId("general"), channelId = ChannelId("general"), name = "general", channelType = "channel"),
+                            HomeChannelRow(
+                                threadId = ThreadId("joint-stamp"),
+                                channelId = ChannelId("joint-stamp"),
+                                name = "joint-stamp",
+                                channelType = "channel",
+                                kind = ConversationKind.Joint,
+                            ),
+                            HomeChannelRow(threadId = ThreadId("legacy-joint"), channelId = ChannelId("legacy-joint"), name = "legacy-joint", channelType = "joint"),
+                        ),
+                )
+            }
+        val context = home.toActivityConversationListContext("server-1")
+        assertEquals(setOf("joint-stamp", "legacy-joint"), context.jointChannelIds)
+
+        fun objectRowIn(homeKind: String, homeChannelId: String?) =
+            InboxItem(
+                key = activityObjectRowKey("artifact", "artifact-1"),
+                kind = InboxItemKind.Object,
+                channelId = ChannelId("object:artifact-1"),
+                channelName = "Plan",
+                activityObject =
+                    ActivityObjectRow(
+                        objectKind = "artifact",
+                        objectId = "artifact-1",
+                        title = "Plan",
+                        homeKind = homeKind,
+                        homeLabel = homeChannelId,
+                        homeChannelId = homeChannelId,
+                        eventKind = "version",
+                        actorType = "agent",
+                        actorId = "agent-cachet",
+                        actorName = "Cachet",
+                    ),
+            )
+
+        fun avatarOf(item: InboxItem) = item.activityConversationRowModel(context, InboxFilter.All).objectLine?.avatar
+
+        val joint = avatarOf(objectRowIn("channel", "joint-stamp"))
+        assertEquals(MemberKind.Agent, joint?.senderKind)
+        assertEquals("agent-cachet", joint?.senderId)
+        assertTrue(joint?.jointSurface == true)
+        assertTrue(avatarOf(objectRowIn("channel", "legacy-joint"))?.jointSurface == true)
+        // A home channel that is not joint, a DM, or no home at all: the local directory only.
+        assertFalse(avatarOf(objectRowIn("channel", "general"))?.jointSurface ?: true)
+        assertFalse(avatarOf(objectRowIn("dm", "dm-fable"))?.jointSurface ?: true)
+        assertFalse(avatarOf(objectRowIn("server", null))?.jointSurface ?: true)
+    }
+
+    @Test
+    fun objectRowNamesAnActorNoRosterHasAsTheJointActorResolveAnswered() {
+        val cachet =
+            ResolvedActor(
+                kind = MemberKind.Agent,
+                id = "agent-cachet",
+                homeServerId = "server-2",
+                name = "cachet",
+                displayName = "Cachet",
+                avatarUrl = "https://example.test/cachet.png",
+                gravatarHash = null,
+            )
+        val line = ActivityObjectLine(actorName = "cachet", verb = ActivityObjectEventVerb.Published, version = null, home = "#joint-stamp", avatar = null)
+        assertEquals("Cachet", line.displayActorName(cachet))
+        assertEquals("cachet", line.displayActorName(cachet.copy(displayName = " ")))
+        // Not resolved (yet): the handle the row carries.
+        assertEquals("cachet", line.displayActorName(null))
+        // This server's roster always wins.
+        assertEquals("Fable", line.copy(actorName = "Fable", actorNameKnownLocally = true).displayActorName(cachet))
+        assertEquals(
+            "Cachet",
+            ResolvedActor(MemberKind.Agent, "agent-cachet", "server-2", name = "Cachet", displayName = null, avatarUrl = null, gravatarHash = null)
+                .let { line.copy(actorName = null).displayActorName(it) },
+        )
     }
 
     @Test
