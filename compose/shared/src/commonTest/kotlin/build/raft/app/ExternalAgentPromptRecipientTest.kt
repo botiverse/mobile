@@ -12,7 +12,7 @@ class ExternalAgentPromptRecipientTest {
         MemberProfile(id = MemberId("id-$handle-$kind"), displayName = handle, handle = handle, kind = kind)
 
     @Test
-    fun `recipient is the viewer's handle, pinned to the human when an agent has the same name`() {
+    fun `recipient is the viewer handle and pinned to the human when an agent has the same name`() {
         data class Case(val viewer: String?, val members: List<MemberProfile>, val expected: String?)
         listOf(
             Case(viewer = null, members = emptyList(), expected = null),
