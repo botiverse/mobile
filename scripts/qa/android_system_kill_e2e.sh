@@ -62,6 +62,27 @@ adb logcat -c
 adb logcat -v threadtime -v UTC > "$OUT/logcat.txt" 2>&1 &
 LOGCAT_PID=$!
 
+if [ "${CASES:-all}" = "D-pid" ]; then
+  # D only, crashing the main process by pid: `am crash <package>` also crashes the WebView sandbox
+  # process (it runs under the app's package), which makes WebView SIGTRAP the main process (native).
+  log "baseline launch"
+  launch
+  sleep 30
+  pid="$(app_pid)"
+  log "Dpid start pid=$pid"
+  adb shell am crash "$pid" || log "Dpid am crash failed"
+  sleep 3
+  log "Dpid pid after crash=$(app_pid)"
+  relaunch_and_upload Dpid
+  log "Dpid second relaunch"
+  adb shell am force-stop "$PKG"; sleep 2
+  relaunch_and_upload Dpid2
+  kill "$LOGCAT_PID" 2>/dev/null || true
+  grep -E "SlockAndroidProcessExit|HandsCrash|HandsFeedback|Hands" "$OUT/logcat.txt" > "$OUT/logcat-hands.txt" || true
+  log "done"
+  exit 0
+fi
+
 log "baseline launch"
 launch
 sleep 40

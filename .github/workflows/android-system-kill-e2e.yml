@@ -22,6 +22,11 @@ on:
         required: true
         type: string
         default: raft-android-jointtest
+      cases:
+        description: "all, or D-pid (am crash on the main pid only)"
+        required: false
+        type: string
+        default: all
       hands_client_key:
         description: "The test app's public client key (masked)"
         required: true
@@ -108,6 +113,8 @@ jobs:
 
       - name: Run cases A-E on the emulator
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          CASES: ${{ inputs.cases }}
         with:
           api-level: 34
           arch: x86_64
@@ -127,7 +134,7 @@ jobs:
           set -euo pipefail
           [ -d "$EVIDENCE" ] || exit 0
           key="$(cat "$RUNNER_TEMP/hands-client-key")"
-          grep -rlI -F "$key" "$EVIDENCE" | while read -r f; do sed -i "s/$key/<hands-client-key>/g" "$f"; done
+          for f in $(grep -rlI -F "$key" "$EVIDENCE" || true); do sed -i "s/$key/<hands-client-key>/g" "$f"; done
           if grep -rl -F "$key" "$EVIDENCE"; then echo "::error::client key still in evidence"; rm -rf "$EVIDENCE"; exit 1; fi
           echo "source_sha=${{ steps.source.outputs.sha }}" > "$EVIDENCE/source.txt"
 
