@@ -19,7 +19,9 @@ class InboxFetchReasonHeaderTest {
                 "initial", "reconnect", "visibility", "sync_reset",
                 "realtime_fallback", "manual", "legacy_no_fields", "sync_unpatchable",
                 // Mobile-only until the server lists it (`mobile_inbox_inplace_v0` reconcile).
-                "inplace_reconcile"
+                "inplace_reconcile",
+                // `inbox_row_position_v1`: not a list read, the rows' own (`?ids=`, server ACTIVITY_ROW_FETCH_REASONS).
+                "position_reread"
             ),
             InboxFetchReason.entries.map { it.wireValue }
         )

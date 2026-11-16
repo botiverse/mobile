@@ -650,6 +650,15 @@ interface InboxRepository {
         channelId: ChannelId,
         frontier: InboxDoneFrontier = InboxDoneFrontier.Legacy
     ): DataResult<InboxDoneResult>
+
+    /**
+     * `inbox_row_position_v1`: re-reads only these Activity rows (`GET /channels/inbox?ids=`, at most
+     * [ActivityRowRereadIdsMax]; a channel/DM row's channel id, a thread/task row's thread channel id).
+     * The answer is `{ items }` only: the rows that still qualify for the All list, no totals. A
+     * repository without it answers an error and the store re-reads the list instead.
+     */
+    suspend fun loadRows(serverId: ServerId, rowIds: List<String>): DataResult<InboxSnapshot> =
+        DataResult.Error(ScreenError(code = "inbox_rows_unsupported"))
 }
 
 interface SavedRepository {

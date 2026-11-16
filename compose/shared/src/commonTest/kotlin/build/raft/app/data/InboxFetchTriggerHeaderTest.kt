@@ -45,7 +45,10 @@ class InboxFetchTriggerHeaderTest {
         assertEquals(
             listOf(
                 "message_new", "message_echo", "thread_reply", "thread_reply_rebaseline",
-                "activity_changed", "dm_new", "read_persisted", "catch_up_retry", "other"
+                "activity_changed", "dm_new", "read_persisted", "catch_up_retry", "other",
+                // `inbox_row_position_v1`: a row re-read's triggers, then the list read for a row it left out.
+                "ambiguous_seq", "row_inversion", "row_null_position", "row_unjudged", "row_partial_read",
+                "row_missing"
             ),
             InboxRefreshTrigger.entries.map { it.wireValue }
         )
@@ -60,13 +63,24 @@ class InboxFetchTriggerHeaderTest {
             fallback("dm_new", 3),
             inboxFetchReasonHeaders(InboxFetchReasonContext(InboxFetchReason.RealtimeFallback, trigger))
         )
-        InboxFetchReason.entries.filter { it != InboxFetchReason.RealtimeFallback }.forEach { reason ->
-            assertEquals(
-                mapOf("X-Raft-Fetch-Reason" to reason.wireValue),
-                inboxFetchReasonHeaders(InboxFetchReasonContext(reason, trigger)),
-                reason.name
-            )
-        }
+        // A row re-read (`position_reread`) says why too, as web's `flushRowRereads` does.
+        assertEquals(
+            mapOf(
+                "X-Raft-Fetch-Reason" to "position_reread",
+                "X-Raft-Fetch-Trigger" to "dm_new",
+                "X-Raft-Fetch-Coalesced" to "3",
+            ),
+            inboxFetchReasonHeaders(InboxFetchReasonContext(InboxFetchReason.PositionReread, trigger))
+        )
+        InboxFetchReason.entries
+            .filter { it != InboxFetchReason.RealtimeFallback && it != InboxFetchReason.PositionReread }
+            .forEach { reason ->
+                assertEquals(
+                    mapOf("X-Raft-Fetch-Reason" to reason.wireValue),
+                    inboxFetchReasonHeaders(InboxFetchReasonContext(reason, trigger)),
+                    reason.name
+                )
+            }
         assertEquals(
             mapOf("X-Raft-Fetch-Reason" to "realtime_fallback"),
             inboxFetchReasonHeaders(InboxFetchReasonContext(InboxFetchReason.RealtimeFallback))

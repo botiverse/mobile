@@ -48,49 +48,12 @@ import kotlinx.serialization.json.JsonPrimitive
  * An agreed case the app currently disagrees with: skipped with the reason (this loader does not
  * change product behaviour). The runner still drives it and reports whether it still differs, so a
  * gap the product closes is noticed.
+ *
+ * Empty since `inbox_row_position_v1` (#triage:#244, PR B): the store, with the flag on as the
+ * harness runs it, keeps each row by the shared rule and passes every agreed case. The flag-off path
+ * is today's and still differs from the position and system-line cases; SharedActivityStoreTest pins it.
  */
-internal val AppActivityRowKnownGaps: Map<String, String> =
-    mapOf(
-        // ---- position: SharedActivityStore applyChannelMessageNewPatch / reconcileRealtimeChannelRow ----
-        "duplicate_covered_by_answer_rereads" to
-            "a live seq at or below the row's position is ignored (RealtimeRowPatch.Unchanged), never re-read: " +
-            "the app keeps no applied set per answer, so a copy of a seq the answer covered is a no-op",
-        "reverse_commit_live_after_answer" to
-            "a live seq below the served position is ignored (Unchanged) instead of re-reading the row, so the " +
-            "lower seq that committed after the answer is never asked for (the next list read brings it)",
-        "reverse_commit_live_before_answer" to
-            "a live seq below one already applied is ignored (Unchanged): it is neither counted nor treated as " +
-            "an inversion, so the row shows 1 instead of 2 and the answer is not followed by a re-read",
-        "unjudged_live_rereads" to
-            "the app has no 'cannot judge' verdict on a channel/DM row: a system line without provenance counts " +
-            "in place (InPlaceUnreadContext.unreadFor) and the row is not re-read",
-        "mention_only_stays_on_mention" to
-            "a mention past the conversation's Activity mute is not applied in place: the shell passes " +
-            "allowLocalPatch = false (SharedHomeShellStore.allowsLocalActivityPatch), so the row is re-read " +
-            "instead of moving to the mention's seq",
-        // ---- predicate: SharedActivityStore InPlaceUnreadContext.unreadFor / threadSystemMessageCounts ----
-        "predicate_channel_own_caused_system" to
-            "the system-line rule (threadSystemMessageCounts) applies on thread rows only, so a system line the " +
-            "viewer caused counts on a channel row",
-        "predicate_dm_own_caused_system" to
-            "the system-line rule (threadSystemMessageCounts) applies on thread rows only, so a system line the " +
-            "viewer caused counts on a DM row",
-        "predicate_channel_self_unfollow_subtype" to
-            "UncountedThreadSystemSubtypes applies on thread rows only, so channel.self_unfollow_thread counts " +
-            "on a channel row",
-        "predicate_channel_uncounted_subtype" to
-            "UncountedThreadSystemSubtypes applies on thread rows only, so task.deleted_summary counts on a " +
-            "channel row",
-        "predicate_muted_channel_message" to
-            "a message past the Activity mute is not judged in place (allowLocalPatch = false): the row is " +
-            "re-read and the server's answer decides (verdict null, not false)",
-        "predicate_muted_channel_mention" to
-            "a mention past the Activity mute is not judged in place (allowLocalPatch = false): the @ is not " +
-            "lit live; the row is re-read and the server's answer decides",
-        "predicate_thread_system_without_provenance" to
-            "a thread system line without provenance is judged 'does not count' and patched in place " +
-            "(threadSystemMessageCounts returns false for null provenance), not 'cannot judge' with a re-read",
-    )
+internal val AppActivityRowKnownGaps: Map<String, String> = emptyMap()
 
 /** One way the app can run a case: [decline] says why it cannot (null = it can). */
 internal class ActivityRowCaseDriver(
@@ -144,13 +107,14 @@ private const val ServerIdValue = "server-1"
 /**
  * The inbox the store reads. The first read (the entry load) answers with the given row; every later
  * read waits for the case's next `answer`. A read the store starts on its own (not the harness's
- * `Refresh` for an answer, not the once-a-minute in-place reconcile) is the case's re-read: the app
- * re-reads the first window, which covers the case's one row.
+ * `Refresh` for an answer, not the once-a-minute in-place reconcile) is the case's re-read: with
+ * `inbox_row_position_v1` the row's own re-read (`?ids=`, [loadRows]), else a list read of the first
+ * window, which covers the case's one row.
  */
 private class ScriptedInbox(
     private val first: InboxSnapshot,
 ) : InboxRepository by FakeInboxRepository(initialSnapshots = listOf(first)) {
-    data class Read(val reason: InboxFetchReason?, val byHarness: Boolean)
+    data class Read(val reason: InboxFetchReason?, val byHarness: Boolean, val rowIds: List<String>? = null)
 
     val reads = mutableListOf<Read>()
     var harnessAsking = false
@@ -165,6 +129,15 @@ private class ScriptedInbox(
         reads += Read(reason, byHarness = harnessAsking)
         harnessAsking = false
         if (reads.size == 1) return DataResult.Content(first)
+        return awaitAnswer()
+    }
+
+    override suspend fun loadRows(serverId: ServerId, rowIds: List<String>): DataResult<InboxSnapshot> {
+        reads += Read(currentCoroutineContext()[InboxFetchReasonContext]?.reason, byHarness = false, rowIds = rowIds)
+        return awaitAnswer()
+    }
+
+    private suspend fun awaitAnswer(): DataResult<InboxSnapshot> {
         val answer = CompletableDeferred<InboxSnapshot>()
         pending = answer
         try {
@@ -199,6 +172,7 @@ private fun TestScope.loadedHarness(row: InboxItem): ActivityRowHarness {
             realtimeBackgroundRefreshIntervalMillis = ActivityRealtimeBackgroundRefreshIntervalMillis,
             nowMillis = { testScheduler.currentTime },
             inboxInPlaceEnabled = { true },
+            inboxRowPositionEnabled = { true },
         )
     store.dispatch(SharedActivityIntent.LoadInitial)
     runCurrent()
@@ -235,8 +209,8 @@ private fun ActivityRowServed.toChannelRow(): InboxItem =
  * The live message the app judges the way the step's verdict says (the predicate's own inputs):
  * counts → another member's message (@ the viewer when [ActivityRowStep.LiveMessage.mentionsViewer]);
  * does not count, no @ → the viewer's own; does not count, @ → a mention past the Activity mute (the
- * README's example, delivered with `allowLocalPatch = false` as the shell does); cannot judge → a
- * system line without its provenance.
+ * README's example, delivered as the shell does: `allowLocalPatch = false`, `activityMuted = true`);
+ * cannot judge → a system line without its provenance.
  */
 private fun ActivityRowStep.LiveMessage.toIntent(seq: Long): SharedActivityIntent.ApplyRealtimeEvent {
     val id = "m-${this.seq}"
@@ -251,6 +225,7 @@ private fun ActivityRowStep.LiveMessage.toIntent(seq: Long): SharedActivityInten
                 SharedActivityIntent.ApplyRealtimeEvent(
                     MessageNew(message(id, channelId = PositionChannel, seq = seq).copy(mentions = mentions)),
                     allowLocalPatch = false,
+                    activityMuted = true,
                 )
             } else {
                 SharedActivityIntent.ApplyRealtimeEvent(
@@ -444,6 +419,7 @@ private fun TestScope.runPredicateCase(case: ActivityRowContractCase): List<Stri
             message.toMessageNew(row.streamChannelId),
             allowLocalPatch = scope.activityMuted != true,
             activeConversationId = if (scope.readOnArrival == true) row.streamChannelId else null,
+            activityMuted = scope.activityMuted == true,
         )
     )
     settle()

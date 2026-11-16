@@ -42,6 +42,27 @@ private suspend fun RaftNetworkClient.inbox(
     )
 
 /**
+ * `GET /channels/inbox?ids=` (botiverse/slock routes/channels.ts `parseInboxRowIdsParam`): only these
+ * rows, with no other query (the route rejects `ids` combined with a filter, scope or offset). Web
+ * `flushRowRereads`: `X-Raft-Fetch-Reason: position_reread` with its trigger and count.
+ */
+private suspend fun RaftNetworkClient.inboxRows(
+    priority: DataRequestPriority,
+    rowIds: List<String>,
+    serverId: ServerId
+): HomeNetworkResponse =
+    requestWithHeaders(
+        priority,
+        "channels/inbox",
+        headers = currentInboxFetchReasonHeaders(),
+        query = inboxRowsRequestQuery(rowIds),
+        serverIdOverride = serverId
+    )
+
+internal fun inboxRowsRequestQuery(rowIds: List<String>): List<Pair<String, String>> =
+    listOf("ids" to rowIds.distinct().take(ActivityRowRereadIdsMax).joinToString(","))
+
+/**
  * `GET /channels/inbox` query (botiverse/slock routes/channels.ts `channelRouter.get("/inbox")`):
  * `filter`, `limit`, `offset`, and `scope` for a scoped filter (Pinned: `scope=pinned`, Saved: `scope=saved`,
  * Artifacts: `scope=artifacts`).
@@ -212,6 +233,25 @@ class RealInboxRepository(
             source = "inbox_mark_done",
             warningLogger = warningLogger,
             mapper = { InboxDoneResult(channelId) }
+        )
+    }
+
+    override suspend fun loadRows(serverId: ServerId, rowIds: List<String>): DataResult<InboxSnapshot> {
+        val context = sessionStore.serverContext(serverId) ?: return authRequired()
+        return executeInboxLike(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = { networkClient.inboxRows(DataRequestPriority.Visible, rowIds, serverId) },
+            errorTextDecoder = HomeNetworkResponse::inboxRouteErrorTextOrNull,
+            source = "inbox_rows",
+            mapOnDefault = false,
+            diagnosticsLogger = logger,
+            warningLogger = warningLogger,
+            mapper = { bodyText ->
+                val parsed = parseSharedInboxSnapshot(bodyText)
+                    ?: throw IllegalStateException("Inbox rows response missing items")
+                // `{ items }` only: the rows asked for that still qualify. No totals, no paging.
+                InboxSnapshot(server = context.server, items = parsed.items, hasMore = false)
+            }
         )
     }
 

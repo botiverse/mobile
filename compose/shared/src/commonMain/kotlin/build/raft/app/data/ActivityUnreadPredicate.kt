@@ -5,9 +5,9 @@ package build.raft.app.data
  * of slock `packages/shared/src/activityUnreadPredicate.ts` (`activityLiveUnread`), the rule web and the
  * server agree on, pinned by the `predicate_*` contract cases in
  * `src/commonTest/resources/contract-cases/activity-row/`. Its verdict is the `counts` / `mentionsViewer`
- * input of [reduceActivityRow]'s live event. Nothing in the app calls it yet: SharedActivityStore still
- * judges live messages with its own `InPlaceUnreadContext.unreadFor` (thread-row-only system rule, no
- * mute input); a later PR switches it over.
+ * input of [reduceActivityRow]'s live event. SharedActivityStore judges live messages with it when
+ * `inbox_row_position_v1` is on ([activityRowLiveVerdict]); off, it keeps its own
+ * `InPlaceUnreadContext.unreadFor` (thread-row-only system rule, no mute input).
  *
  * Derived from the rules that serve the count (slock RisingWave `unread_count`, 075/070/078): not the
  * viewer's own message, not a system message the viewer caused, not a noise subtype; a muted

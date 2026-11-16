@@ -51,6 +51,12 @@ enum class InboxFetchReason(val wireValue: String) {
      * now: a server without it in `ACTIVITY_LIST_FETCH_REASONS` files it under `other`.
      */
     InPlaceReconcile("inplace_reconcile"),
+    /**
+     * `inbox_row_position_v1`: not a list read. The per-row position rule re-reads only the rows it
+     * cannot judge (`GET /channels/inbox?ids=`), web `position_reread` (server
+     * `ACTIVITY_ROW_FETCH_REASONS`); its trigger says why ([InboxRefreshTrigger.AmbiguousSeq]...).
+     */
+    PositionReread("position_reread"),
 }
 
 /**
@@ -82,6 +88,21 @@ enum class InboxRefreshTrigger(val wireValue: String) {
     CatchUpRetry("catch_up_retry"),
     /** An app re-read none of the shared values describes. */
     Other("other"),
+    // `inbox_row_position_v1`: why a row re-read ([InboxFetchReason.PositionReread]) was asked for
+    // (shared `INBOX_REFRESH_TRIGGERS`, same wire values); [RowMissing] is the list read that follows
+    // a row re-read whose answer left out a listed row.
+    /** A live message at or below its row's delivered position that this client had not applied. */
+    AmbiguousSeq("ambiguous_seq"),
+    /** An answer arrived after a commit-order inversion on the row. */
+    RowInversion("row_inversion"),
+    /** An event for a row without a position. */
+    RowNullPosition("row_null_position"),
+    /** A live message the unread predicate cannot judge (a system line without its provenance, no seq). */
+    RowUnjudged("row_unjudged"),
+    /** A read below the row's shown position, or of a mention-only row: it cannot be split here. */
+    RowPartialRead("row_partial_read"),
+    /** A row re-read's answer left out a listed row: the list is re-read (`realtime_fallback`). */
+    RowMissing("row_missing"),
 }
 
 /** The trigger a realtime event gives the Activity re-read it asks for. */
@@ -142,7 +163,10 @@ internal suspend fun currentInboxFetchReasonHeaders(): Map<String, String> =
     coroutineContext[InboxFetchReasonContext]?.let(::inboxFetchReasonHeaders).orEmpty()
 
 internal fun inboxFetchReasonHeaders(context: InboxFetchReasonContext): Map<String, String> {
-    val trigger = context.trigger?.takeIf { context.reason == InboxFetchReason.RealtimeFallback }
+    val trigger =
+        context.trigger?.takeIf {
+            context.reason == InboxFetchReason.RealtimeFallback || context.reason == InboxFetchReason.PositionReread
+        }
         ?: return mapOf(RaftFetchReasonHeader to context.reason.wireValue)
     return mapOf(
         RaftFetchReasonHeader to context.reason.wireValue,
