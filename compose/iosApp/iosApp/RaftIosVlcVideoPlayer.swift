@@ -39,7 +39,8 @@ private final class RaftIosVlcKitPlayer: NSObject, RaftIosVlcVideoPlayer {
     private var failed = false
 
     init(url: String, labels: RaftIosVlcVideoLabels) {
-        chrome = RaftIosVlcPlayerChrome(labels: labels)
+        let chrome = RaftIosVlcPlayerChrome(labels: labels)
+        self.chrome = chrome
         engine = URL(string: url).map { RaftIosVlcEngine(url: $0, drawable: chrome.videoView) }
         super.init()
         hostView.backgroundColor = .black
