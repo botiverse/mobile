@@ -414,10 +414,21 @@ class AndroidSystemKillReportTest {
         val telemetry: MemoryTelemetrySnapshot? = null,
         val packageUpdatedMillis: Long? = 50_000L,
         val exitAt: Long = 100_000L,
+        val isolated: Boolean? = null,
+        /** [ApplicationExitInfo.getPackageUid] / [ApplicationExitInfo.getDefiningUid]; null when unavailable. */
+        val packageUid: Int? = ownUid,
+        val definingUid: Int? = ownUid,
+        /** Expected crash_defining_uid_foreign; null when it is omitted. */
+        val expectedDefiningUidForeign: Boolean? = false,
         val expectedSource: String,
         /** Expected fallback_version_code; null when none is sent. */
         val expectedFallbackCode: Long? = null,
     )
+
+    private companion object {
+        const val ownUid = 10_123
+        const val providerUid = 10_456
+    }
 
     private val reporter = SystemKillReporterBuild("1.26.0", 12600002L, packageUpdatedMillis = null, nowMillis = 200_000L)
     /** A record from an older install (1.23.0) than this one; its own record is what counts. */
@@ -439,11 +450,26 @@ class AndroidSystemKillReportTest {
             VersionCase("negative update time", packageUpdatedMillis = -1L, expectedSource = "unknown"),
             VersionCase("update and exit in the future", packageUpdatedMillis = 250_000L, exitAt = 300_000L, expectedSource = "unknown"),
             VersionCase("exit in the future", exitAt = 250_000L, expectedSource = "unknown"),
+            // An external service's process runs the provider package's code, not our build.
+            VersionCase("foreign defining uid, updated before exit", isolated = true, definingUid = providerUid, expectedDefiningUidForeign = true, expectedSource = "unknown"),
+            // Our own isolated process runs our APK.
+            VersionCase("own isolated process, updated before exit", isolated = true, expectedSource = "installed_before_exit", expectedFallbackCode = 12600002L),
+            // A missing or invalid uid can't rule out a foreign defining uid.
+            VersionCase("no defining uid", definingUid = null, expectedDefiningUidForeign = null, expectedSource = "unknown"),
+            VersionCase("no package uid", packageUid = null, expectedDefiningUidForeign = null, expectedSource = "unknown"),
+            VersionCase("zero defining uid", definingUid = 0, expectedDefiningUidForeign = null, expectedSource = "unknown"),
+            VersionCase("negative package uid", packageUid = -1, expectedDefiningUidForeign = null, expectedSource = "unknown"),
+            VersionCase("zero defining and package uid", definingUid = 0, packageUid = 0, expectedDefiningUidForeign = null, expectedSource = "unknown"),
         )
 
     private fun extrasFor(case: VersionCase): Map<String, Any?> =
         systemKillExtras(
-            exit(pid = 7, at = case.exitAt).copy(build = if (case.stamped) stamp else null),
+            exit(pid = 7, at = case.exitAt).copy(
+                build = if (case.stamped) stamp else null,
+                isolatedProcess = case.isolated,
+                packageUid = case.packageUid,
+                definingUid = case.definingUid,
+            ),
             case.telemetry,
             reporter = reporter.copy(packageUpdatedMillis = case.packageUpdatedMillis),
         )
@@ -489,6 +515,15 @@ class AndroidSystemKillReportTest {
 
             assertEquals("$isolated", isolated, extras["crash_process_isolated"])
             assertEquals("$isolated", isolated != null, extras.containsKey("crash_process_isolated"))
+        }
+    }
+
+    @Test
+    fun extrasMarkAForeignDefiningUidOnlyWhenBothUidsAreValid() {
+        for (case in versionCases) {
+            val extras = extrasFor(case)
+            assertEquals(case.name, case.expectedDefiningUidForeign, extras["crash_defining_uid_foreign"])
+            assertEquals(case.name, case.expectedDefiningUidForeign != null, extras.containsKey("crash_defining_uid_foreign"))
         }
     }
 

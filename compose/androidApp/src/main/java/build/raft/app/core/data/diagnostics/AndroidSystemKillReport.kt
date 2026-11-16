@@ -269,7 +269,27 @@ internal data class SystemKillExit(
      * [ApplicationExitInfo.getPackageUid]); null when unknown.
      */
     val isolatedProcess: Boolean? = null,
+    /** [ApplicationExitInfo.getPackageUid]: the uid assigned at install; null when unavailable. */
+    val packageUid: Int? = null,
+    /**
+     * [ApplicationExitInfo.getDefiningUid]; null when unavailable. The docs say it differs from the
+     * real and package uids "if an external service has the `useAppZygote` set to `true` and was
+     * bound with the flag `BIND_EXTERNAL_SERVICE`", and is then "the kernel user identifier of the
+     * external service provider": the process hosted another package's code.
+     */
+    val definingUid: Int? = null,
 ) {
+    /**
+     * Whether the defining uid is another package's ([definingUid] != [packageUid]); null when
+     * either is missing or not a valid app uid (<= 0).
+     */
+    val definingUidForeign: Boolean?
+        get() {
+            val defining = definingUid?.takeIf { it > 0 } ?: return null
+            val pkg = packageUid?.takeIf { it > 0 } ?: return null
+            return defining != pkg
+        }
+
     fun toSnapshot(): HistoricalProcessExitSnapshot =
         HistoricalProcessExitSnapshot(
             timestampMillis = timestampMillis,
@@ -995,12 +1015,14 @@ internal data class SystemKillReporterBuild(
 )
 
 /**
- * Whether [exit] ran the build [reporter] is: the package was last updated strictly before the
- * exit (an update kills the app's processes and moves `lastUpdateTime`, so nothing older can have
- * exited after it). A missing, zero or negative update time, an update at or after the exit, and an
- * update time or exit in the future all leave it unknown.
+ * Whether the installed build ([reporter]) can be inferred as the host app's version at [exit]:
+ * the package was last updated strictly before the exit (an update kills the app's processes and
+ * moves `lastUpdateTime`, so an older build should not have exited after it). This is an inference
+ * from wall-clock times, never a record of what the process ran: a device clock changed after the
+ * exit can make it wrong. A missing, zero or negative update time, an update at or after the exit,
+ * and an update time or exit in the future all leave it uninferred.
  */
-internal fun exitRanReporterBuild(exit: SystemKillExit, reporter: SystemKillReporterBuild): Boolean {
+internal fun installedBuildInferredForExit(exit: SystemKillExit, reporter: SystemKillReporterBuild): Boolean {
     val updated = reporter.packageUpdatedMillis ?: return false
     val exitAt = exit.timestampMillis
     return updated > 0L && exitAt > 0L && updated <= reporter.nowMillis && exitAt <= reporter.nowMillis && updated < exitAt
@@ -1034,9 +1056,15 @@ internal fun systemKillExtras(
                 put("fallback_version_name", fallbackVersion.versionName)
                 put("crash_version_source", "last_process_state")
             }
-            // Neither: the installed build, when the package has not been updated since before
-            // the exit. Inferred, not recorded by the process; crash_version_inferred says so.
-            reporter != null && exitRanReporterBuild(exit, reporter) -> {
+            // Neither: the host app's installed version, inferred when the package has not been
+            // updated since before the exit. Not recorded by the process, and wall-clock based (a
+            // clock changed after the exit can defeat it); crash_version_inferred says so.
+            // Only when the defining uid is known to be ours: per ApplicationExitInfo.getDefiningUid
+            // a foreign one means the process hosted an external service provider's code, so our
+            // installed version says nothing about it; a missing or invalid uid can't rule that out.
+            // Our own isolated or app-zygote processes (getRealUid differs from getPackageUid,
+            // getDefiningUid does not) run our APK, so the inference still applies to them.
+            reporter != null && exit.definingUidForeign == false && installedBuildInferredForExit(exit, reporter) -> {
                 put("fallback_version_code", reporter.versionCode)
                 put("fallback_version_name", reporter.versionName)
                 put("crash_version_source", "installed_before_exit")
@@ -1064,7 +1092,10 @@ internal fun systemKillExtras(
         put("crash_exit_timestamp", exit.timestampMillis)
         put("crash_foreground", exitImportanceForeground(exit.importance))
         put("crash_process_name", exit.processName)
+        // The uid facts say what kind of process exited (isolated, or hosting another package's
+        // code), not why it was killed.
         exit.isolatedProcess?.let { put("crash_process_isolated", it) }
+        exit.definingUidForeign?.let { put("crash_defining_uid_foreign", it) }
         exit.description?.trim()?.takeIf(String::isNotEmpty)?.let {
             put("crash_exit_description", it.take(MaxExitDescriptionChars))
         }
@@ -1383,8 +1414,10 @@ internal object AndroidSystemKillReporter {
             build = RaftBuildStamp.decodeStamp(processStateSummary),
             processName = processName.orEmpty(),
             description = description,
-            // realUid/packageUid are API 30, like the reporter (start() returns below R).
+            // realUid/packageUid/definingUid are API 30, like the reporter (start() returns below R).
             isolatedProcess = realUid != packageUid,
+            packageUid = packageUid,
+            definingUid = definingUid,
         )
 }
 
