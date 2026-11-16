@@ -1,8 +1,10 @@
 package build.raft.app.data
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -193,7 +195,9 @@ class SharedSearchArtifactsStoreTest {
     }
 
     private fun TestScope.store(source: FakeSource, limit: Int? = null) =
-        SharedSearchArtifactsStore(source, backgroundScope, limit = limit)
+        // Not backgroundScope: advanceUntilIdle runs only foreground work. A scope of no job on the test's
+        // scheduler runs with the test's clock and is never waited for when the test ends.
+        SharedSearchArtifactsStore(source, CoroutineScope(StandardTestDispatcher(testScheduler)), limit = limit)
 
     private data class Call(val serverId: String, val q: String, val cursor: String?, val limit: Int?, val priority: DataRequestPriority)
 
