@@ -77,7 +77,8 @@ internal fun agentMigrationDownloadMessage(notice: AgentMigrationNotice, source:
             stringResource(
                 Res.string.agent_migration_detail_migration_downloading,
                 target,
-                line.percent.toString(),
+                // The sign rides with the number: catalogs hold no literal percent (ComposeResourcesCatalogParityTest).
+                "${line.percent}%",
                 formatAgentMigrationSize(line.receivedBytes),
                 formatAgentMigrationSize(line.totalBytes),
             )

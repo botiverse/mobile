@@ -4089,7 +4089,7 @@
     <string name="agent_migration_hosted_uploading">%1$s からクラウドにワークスペースをアップロードしています。</string>
     <string name="agent_migration_detail_migration_ready">ワークスペースをアップロードしました。%2$s がダウンロードしています。</string>
     <string name="agent_migration_detail_migration_packing_progress">%1$s でワークスペースをパッケージ化しています（これまでに %2$s 件のファイル、%3$s）。</string>
-    <string name="agent_migration_detail_migration_downloading">%1$s がワークスペースをダウンロードしています：%2$s%（%3$s / %4$s、圧縮後）。</string>
+    <string name="agent_migration_detail_migration_downloading">%1$s がワークスペースをダウンロードしています：%2$s（%3$s / %4$s、圧縮後）。</string>
     <string name="agent_migration_detail_migration_unpacking">ダウンロードが完了しました。%2$s でワークスペースを展開しています。</string>
     <string name="agent_migration_detail_migration_arriving">%2$s でワークスペースをセットアップしています。</string>
     <string name="agent_migration_detail_migration_starting">%2$s でエージェントを起動しています。</string>
