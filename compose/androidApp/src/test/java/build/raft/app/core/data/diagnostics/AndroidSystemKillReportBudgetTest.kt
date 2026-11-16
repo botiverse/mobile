@@ -273,7 +273,7 @@ class AndroidSystemKillReportBudgetTest {
         assertEquals("batch-1", batch?.id)
         assertEquals(first.accumulating, batch?.entries)
         // The batch now belongs to the report that took it: no other report can attach it.
-        assertNull(attached.pending)
+        assertTrue(attached.pending.isEmpty())
         assertTrue(attached.accumulating.isEmpty())
 
         // Drops recorded meanwhile go to a later batch.
@@ -284,15 +284,41 @@ class AndroidSystemKillReportBudgetTest {
 
         // Handed back by an evicted report: the next first upload takes it, same id.
         val restored = BackgroundDropLedger.decode(afterNext.restore(batch, keepId = true).encode())
-        assertEquals(batch, restored.pending)
+        assertEquals(listOf(batch), restored.pending)
         assertEquals(batch, restored.attach { "unused" }.second)
-        // A second one handed back while one waits, or one of a rejected report, joins the counts.
-        val both = restored.restore(next, keepId = true)
-        assertEquals(batch, both.pending)
-        assertEquals(next!!.entries, both.accumulating)
+        // A second one handed back while one waits keeps its id too, behind the first.
+        val both = BackgroundDropLedger.decode(restored.restore(next, keepId = true).encode())
+        assertEquals(listOf(batch, next), both.pending)
+        assertTrue(both.accumulating.isEmpty())
+        val (afterFirst, firstOut) = both.attach { "unused" }
+        assertEquals(batch, firstOut)
+        assertEquals(next, afterFirst.attach { "unused" }.second)
+        // One of a rejected report joins the counts.
         val rejected = afterNext.record(12600001L, now - 500L).restore(next, keepId = false)
-        assertNull(rejected.pending)
+        assertTrue(rejected.pending.isEmpty())
         assertEquals(2, rejected.accumulating.single().count)
+
+        // Over the cap, the oldest pending batch joins the counts (the one double-count path left).
+        val batches = (1..BackgroundDropLedger.MaxPending + 1).map { BackgroundDropBatch("b$it", listOf(BackgroundDropEntry(12600001L, "2026-11-15", it))) }
+        val full = batches.fold(BackgroundDropLedger()) { ledger, it -> ledger.restore(it, keepId = true) }
+        assertEquals(batches.drop(1), full.pending)
+        assertEquals(batches.first().entries, full.accumulating)
+
+        // A merged batch past MaxEntries distinct entries loses the oldest days with their counts:
+        // the known undercount, nothing records the dropped amount.
+        val crowded =
+            (1..BackgroundDropLedger.MaxEntries).fold(BackgroundDropLedger()) { ledger, it ->
+                ledger.record(12600000L + it, 20_000L * day + 1_000L) // 2024-10-04, distinct versions
+            }
+        val oldDay = BackgroundDropBatch("old", listOf(BackgroundDropEntry(12600001L, "2024-10-03", 5)))
+        val overflowed = crowded.restore(oldDay, keepId = false)
+        assertEquals(crowded.accumulating, overflowed.accumulating)
+        assertEquals(BackgroundDropLedger.MaxEntries, overflowed.accumulating.sumOf { it.count })
+        // A newer day pushes out the oldest of the same day instead (lowest version first).
+        val newDay = crowded.record(12600001L, 20_000L * day + day + 1_000L)
+        assertEquals(BackgroundDropLedger.MaxEntries, newDay.accumulating.size)
+        assertFalse(newDay.accumulating.any { it.versionCode == 12600001L && it.exitDayUtc == "2024-10-04" })
+        assertEquals("2024-10-05", newDay.accumulating.last().exitDayUtc)
 
         // Nothing dropped: nothing attached.
         val empty = BackgroundDropLedger()
