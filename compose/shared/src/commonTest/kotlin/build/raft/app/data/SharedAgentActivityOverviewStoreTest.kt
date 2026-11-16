@@ -509,7 +509,7 @@ class SharedAgentActivityOverviewStoreTest {
         runCurrent()
         repository.calls.last().result.complete(page(turn("t3", 500)))
         runCurrent()
-        assertEquals(listOf(1_000, null), repository.operatorEventCalls)
+        assertEquals(listOf<Long?>(1_000, null), repository.operatorEventCalls)
         assertEquals(listOf("e2", "e1"), store.state.value.operatorEvents.map { it.id })
 
         // A Stop that started no turn shows on the next reload of the turns too.
