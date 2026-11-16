@@ -59,6 +59,24 @@ class ChannelMembersPageScreenshotTest {
     fun channelMembersJointLight() =
         capture("channel.members.joint", RaftAppAppearance.Light) { ChannelMembersVisualContent(jointVisualRoster()) }
 
+    // Channel role actions (web MemberRoleActions, #triage:#398): a ⋯ on every row the viewer may
+    // change (Make admin / Demote, or the server admin's cannot-demote note), none on the viewer's
+    // own row, and the warning a refused change leaves above the roster.
+    @Test
+    fun channelMembersRoleActionsLight() =
+        capture("channel.members.role-actions", RaftAppAppearance.Light) {
+            ChannelMembersVisualContent(
+                roleActionVisualRoster(),
+                roleChange = ChannelMemberRoleChangeState(failed = true),
+            )
+        }
+
+    @Test
+    fun channelMembersRoleActionsDark() =
+        capture("channel.members.role-actions.dark", RaftAppAppearance.Dark) {
+            ChannelMembersVisualContent(roleActionVisualRoster())
+        }
+
     // Add Member (web ChannelMembers add view): nothing selected yet, as artin's web capture.
     @Test
     fun channelMembersAddLight() = capture("channel.members.add", RaftAppAppearance.Light) { ChannelAddMemberPanelVisualScreen() }
@@ -96,7 +114,10 @@ class ChannelMembersPageScreenshotTest {
 
 /** Fixed roster and agent activity, so the capture is deterministic. */
 @Composable
-private fun ChannelMembersVisualContent(roster: List<RaftThreadMemberItem>? = null) {
+private fun ChannelMembersVisualContent(
+    roster: List<RaftThreadMemberItem>? = null,
+    roleChange: ChannelMemberRoleChangeState = ChannelMemberRoleChangeState(),
+) {
     val members =
         remember {
             roster ?: listOf(
@@ -160,9 +181,30 @@ private fun ChannelMembersVisualContent(roster: List<RaftThreadMemberItem>? = nu
             onOpenMember = {},
             onRemoveMember = {},
             onSubmit = {},
+            roleChange = roleChange,
         )
     }
 }
+
+/** The roster a channel admin sees: their own row bare, everyone they may change with a ⋯. */
+private fun roleActionVisualRoster(): List<RaftThreadMemberItem> =
+    listOf(
+        RaftThreadMemberItem("human-artea", "Artea", handle = "artea", effectiveChannelRole = "admin"),
+        RaftThreadMemberItem(
+            "human-artin", "artin", handle = "artin", description = "产品负责人", effectiveChannelRole = "owner",
+            roleAction = ChannelMemberRoleAction.ExplainProtectedDemote,
+        ),
+        RaftThreadMemberItem(
+            "human-cindyz", "cindyz", handle = "cindyz", effectiveChannelRole = "admin",
+            roleAction = ChannelMemberRoleAction.RemoveAdmin,
+        ),
+        RaftThreadMemberItem("human-xxchan", "xxchan", handle = "xxchan", description = "我是笑笑", roleAction = ChannelMemberRoleAction.MakeAdmin),
+        RaftThreadMemberItem("agent-tenny", "Tenny", handle = "tenny", kind = "agent", roleAction = ChannelMemberRoleAction.MakeAdmin),
+        RaftThreadMemberItem(
+            "agent-lagoon", "Lagoon", handle = "lagoon", kind = "agent", effectiveChannelRole = "admin",
+            roleAction = ChannelMemberRoleAction.RemoveAdmin,
+        ),
+    )
 
 /** The members page header over the add view with Cindy and Designer ticked. */
 @Composable

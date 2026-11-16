@@ -583,6 +583,17 @@ private suspend fun RaftNetworkClient.removeChannelMember(
 ): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}/members/${kind.channelMemberPathSegment}/${memberId.value}", method = "DELETE")
 
+private suspend fun RaftNetworkClient.changeChannelMemberRole(
+    priority: DataRequestPriority,
+    request: ChangeChannelMemberRoleRequest
+): HomeNetworkResponse =
+    request(
+        priority,
+        changeChannelMemberRolePath(request),
+        method = "PATCH",
+        bodyText = buildSharedChangeChannelMemberRoleBody(request)
+    )
+
 class RealMemberRepository(
     private val sessionStore: RaftAuthSessionStore,
     private val networkClient: RaftNetworkClient,
@@ -1198,6 +1209,7 @@ class RealMemberRepository(
         return DataResult.Content(result.data.copy(
             canAddMembers = mutable && channel?.channelCapabilities?.addChannelMembers == true,
             canRemoveMembers = mutable && channel?.channelCapabilities?.removeChannelMembers == true,
+            canChangeMemberRoles = mutable && channel?.channelCapabilities?.changeChannelMemberRoles == true,
         ))
     }
 
@@ -1248,6 +1260,25 @@ class RealMemberRepository(
             mapper = { bodyText ->
                 parseSharedChannelMemberActionResult(bodyText, request.channelId, request.memberId, added = false)
                     ?: throw IllegalStateException("Channel member remove response missing ok")
+            }
+        )
+    }
+
+    override suspend fun changeChannelMemberRole(
+        priority: DataRequestPriority,
+        request: ChangeChannelMemberRoleRequest
+    ): DataResult<ChannelMemberRoleChangeResult> {
+        currentContext() ?: return authRequired()
+        if (request.kind != MemberKind.Human && request.kind != MemberKind.Agent) {
+            return DataResult.Error(ScreenError(code = "channel_member_role_unsupported_kind", retryable = false))
+        }
+        return executeMember(
+            emptyReason = EmptyReason.NoMembers,
+            block = { networkClient.changeChannelMemberRole(priority, request) },
+            source = "channel_member_role",
+            mapper = { bodyText ->
+                parseSharedChannelMemberRoleChangeResult(bodyText, request)
+                    ?: throw IllegalStateException("Channel member role response missing changed")
             }
         )
     }
@@ -1451,6 +1482,39 @@ private data class AddChannelMembersBatchIds(
     val userIds: List<String> = emptyList(),
     val agentIds: List<String> = emptyList()
 )
+
+/** `PATCH /channels/:id/members/:targetType/:memberId/role` body (slock routes/channels.ts). */
+@Serializable
+private data class ChangeChannelMemberRoleRequestBody(val role: String)
+
+/**
+ * The answer of `PATCH .../role` (slock services/channelService.ts `changeChannelMembershipRole`):
+ * `{ changed, channelId, targetType, targetId, channelRole, authorityRevision, eventId }`.
+ */
+@Serializable
+private data class ChangeChannelMemberRoleResponseBody(
+    val changed: Boolean,
+    val channelRole: String? = null,
+)
+
+internal fun changeChannelMemberRolePath(request: ChangeChannelMemberRoleRequest): String =
+    "channels/${request.channelId.value}/members/${request.kind.channelMemberPathSegment}/${request.memberId.value}/role"
+
+internal fun buildSharedChangeChannelMemberRoleBody(request: ChangeChannelMemberRoleRequest): String =
+    memberRepositoryJson.encodeToString(ChangeChannelMemberRoleRequestBody(request.role.wireValue))
+
+internal fun parseSharedChannelMemberRoleChangeResult(
+    bodyText: String,
+    request: ChangeChannelMemberRoleRequest,
+): ChannelMemberRoleChangeResult? = runCatching {
+    val decoded = memberRepositoryJson.decodeFromString(ChangeChannelMemberRoleResponseBody.serializer(), bodyText)
+    ChannelMemberRoleChangeResult(
+        channelId = request.channelId,
+        memberId = request.memberId,
+        changed = decoded.changed,
+        channelRole = decoded.channelRole?.takeIf { it.isNotBlank() },
+    )
+}.getOrNull()
 
 private fun AddChannelMemberRequest.toBodyText(): String =
     when (kind) {
