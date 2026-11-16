@@ -35,8 +35,12 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
+import build.raft.designsystem.components.RaftCheckboxIndicator
+import build.raft.designsystem.components.raftClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -838,23 +842,33 @@ internal fun AuthTermsAgreement(
     val toggleConsent = { onCheckedChange(!checked) }
     Row(
         modifier = Modifier.fillMaxWidth().then(
-            if (hasPolicyLinks) Modifier else Modifier.clickable(onClick = toggleConsent)
+            if (hasPolicyLinks) {
+                Modifier
+            } else {
+                Modifier
+                    .raftClickable(onClick = toggleConsent, role = Role.Checkbox)
+                    .semantics { toggleableState = ToggleableState(checked) }
+            }
         ),
         verticalAlignment = Alignment.Top
     ) {
-        Box(
+        // raft-ui Checkbox. With policy links in the text, only the box toggles (the links open).
+        RaftCheckboxIndicator(
+            checked = checked,
             modifier = Modifier
-                .then(if (hasPolicyLinks) Modifier.clickable(onClick = toggleConsent) else Modifier)
                 .padding(top = 2.dp)
-                .size(18.dp)
-                // raft-ui Checkbox: sticker radius, 1.5dp ink edge; checked fills with
-                // foreground and an inverse check.
-                .background(if (checked) RaftColor.TextBlack else RaftColor.Card, RoundedCornerShape(RaftAppRadius.Sticker))
-                .border(RaftAppStroke.Control, if (checked) RaftColor.TextBlack else RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Sticker)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (checked) RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(13.dp), color = raftArgbHex(RaftColor.ForegroundInverse))
-        }
+                .then(
+                    if (hasPolicyLinks) {
+                        Modifier.raftClickable(
+                            onClick = toggleConsent,
+                            role = Role.Checkbox,
+                            shape = RoundedCornerShape(RaftAppRadius.Sticker),
+                        ).semantics { toggleableState = ToggleableState(checked) }
+                    } else {
+                        Modifier
+                    }
+                ),
+        )
         Spacer(Modifier.width(10.dp))
         Text(
             text = agreementText,

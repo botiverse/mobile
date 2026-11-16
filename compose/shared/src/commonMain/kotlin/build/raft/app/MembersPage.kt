@@ -42,7 +42,7 @@ import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftCard
 import build.raft.app.data.MembersAgentsGrouping
 import build.raft.designsystem.components.RaftCardVariant
-import build.raft.designsystem.components.RaftCheckbox
+import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
@@ -259,6 +259,8 @@ import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
@@ -14971,16 +14973,14 @@ private fun PermissionsGroupBox(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = canManage) { onToggle(row.scope) }
+                    // One target: the row toggles and carries the checked state; the box only shows it.
+                    .raftClickable(onClick = { onToggle(row.scope) }, enabled = canManage, role = Role.Checkbox)
+                    .semantics { toggleableState = ToggleableState(row.scope in draft) }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                RaftCheckbox(
-                    checked = row.scope in draft,
-                    onCheckedChange = { onToggle(row.scope) },
-                    enabled = canManage
-                )
+                RaftCheckboxIndicator(checked = row.scope in draft, enabled = canManage)
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
