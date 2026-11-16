@@ -56,26 +56,34 @@ internal fun SharedCreateExternalChannelReview(
             backLabel = stringResource(Res.string.channel_external_invite_back),
             modifier = Modifier.testTag(CreateExternalChannelReviewTag),
         ) {
-            Column(Modifier.fillMaxSize()) {
-                if (created != null) {
-                    RaftBanner(
-                        description = stringResource(Res.string.channel_create_external_created, created.channel.name.removePrefix("#")),
-                        status = RaftBannerStatus.Success,
-                        size = RaftBannerSize.Sm,
-                        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp).testTag(CreateExternalChannelCreatedTag),
-                    )
-                }
-                // A new channel is created private: no "becomes private" line, no slots before it exists.
-                ExternalInviteSheetBody(
-                    dialog = invite,
-                    serverName = serverName,
-                    willBecomePrivate = false,
-                    joint = false,
-                    channelSlotsLeft = null,
-                    onTextChange = {},
-                    onUpgrade = onUpgrade,
-                )
-            }
+            SharedCreateExternalChannelReviewBody(state, serverName, onUpgrade)
         }
+    }
+}
+
+/** The review's content, for [SharedCreateExternalChannelReview] and the screenshot tests' window-free surface. */
+@Composable
+internal fun SharedCreateExternalChannelReviewBody(state: CreateExternalChannelState, serverName: String, onUpgrade: () -> Unit) {
+    val invite = state.invite
+    val created = state.created
+    Column(Modifier.fillMaxSize()) {
+        if (created != null) {
+            RaftBanner(
+                description = stringResource(Res.string.channel_create_external_created, created.channel.name.removePrefix("#")),
+                status = RaftBannerStatus.Success,
+                size = RaftBannerSize.Sm,
+                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp).testTag(CreateExternalChannelCreatedTag),
+            )
+        }
+        // A new channel is created private: no "becomes private" line, no slots before it exists.
+        ExternalInviteSheetBody(
+            dialog = invite,
+            serverName = serverName,
+            willBecomePrivate = false,
+            joint = false,
+            channelSlotsLeft = null,
+            onTextChange = {},
+            onUpgrade = onUpgrade,
+        )
     }
 }

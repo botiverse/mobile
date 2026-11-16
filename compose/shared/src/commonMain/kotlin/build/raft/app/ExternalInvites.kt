@@ -585,11 +585,13 @@ internal class ExternalInvitesStore(
     }
 
     private fun requestOpen(joint: Boolean, gated: Boolean) {
+        // A second tap never resets the open dialog (its emails, servers, review).
+        if (mutableState.value.dialog != null) return
         if (!gated) {
             openDialog(joint)
             return
         }
-        if (entryReading || mutableState.value.dialog != null) return
+        if (entryReading) return
         entryReading = true
         scope.launch {
             val reached = dataSource.freeLimitReached()

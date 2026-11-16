@@ -2864,6 +2864,8 @@ private fun RaftAppShellReadyContent(
     var createChannelDialogOpen by remember { mutableStateOf(false) }
     // Web SidebarDialogs: the External section's "+" opens Create Channel with External chosen.
     var createChannelExternalChosen by remember { mutableStateOf(false) }
+    // Each opening of Create Channel: its External store lives for that whole opening.
+    var createChannelSession by remember { mutableStateOf(0) }
     var createJointChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
     // task #226: global announcement modal. The API client already exists (the
@@ -2876,6 +2878,8 @@ private fun RaftAppShellReadyContent(
             RaftAnnouncementsRemindersApiClient(NetworkRaftAnnouncementsRemindersApi(appShellNetworkClient))
         }
     var createChannelError by remember { mutableStateOf<String?>(null) }
+    // The refused create's trace ID, shown under [createChannelError] (AGENTS.md "Errors carry the trace ID").
+    var createChannelErrorTraceId by remember { mutableStateOf<String?>(null) }
     // Web ArchivedNameCollisionBanner (slock #12614): an archived channel holds the name.
     var createChannelCollision by remember { mutableStateOf<ArchivedNameCollision?>(null) }
     var createChannelMembersLoading by remember { mutableStateOf(false) }
@@ -4750,6 +4754,7 @@ private fun RaftAppShellReadyContent(
         if (createChannelDialogOpen) {
             createChannelDialogOpen = false
             createChannelError = null
+            createChannelErrorTraceId = null
             createChannelCollision = null
             return true
         }
@@ -4993,8 +4998,10 @@ private fun RaftAppShellReadyContent(
 
     fun openCreateChannelDialog(external: Boolean = false) {
         createChannelExternalChosen = external
+        createChannelSession += 1
         createChannelDialogOpen = true
         createChannelError = null
+        createChannelErrorTraceId = null
         createChannelCollision = null
         createChannelMembers = emptyList()
         loadCreateChannelMembers()
@@ -5043,6 +5050,7 @@ private fun RaftAppShellReadyContent(
         homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
         createChannelDialogOpen = false
         createChannelError = null
+        createChannelErrorTraceId = null
         if (toast) bridge.toast(channelCreatedMessage)
         openHomeConversation(channel.toThreadLaunchConversationIdentity(), "create_channel")
     }
@@ -5062,10 +5070,12 @@ private fun RaftAppShellReadyContent(
                     createChannelCollision = collision
                 } else {
                     createChannelError = result.error.code
+                    createChannelErrorTraceId = result.error.traceId
                 }
             }
             is DataResult.NoPermission -> {
                 createChannelError = result.blocker.code
+                createChannelErrorTraceId = result.blocker.traceId
             }
         }
     }
@@ -5083,6 +5093,7 @@ private fun RaftAppShellReadyContent(
         }
         createChannelSubmitting = true
         createChannelError = null
+        createChannelErrorTraceId = null
         createChannelCollision = null
         appShellCoroutineScope.launch {
             try {
@@ -5117,6 +5128,7 @@ private fun RaftAppShellReadyContent(
         if (createChannelSubmitting) return
         createChannelDialogOpen = false
         createChannelError = null
+        createChannelErrorTraceId = null
         createChannelCollision = null
         openHomeConversation(
             buildThreadLaunchConversationIdentity(
@@ -5134,6 +5146,7 @@ private fun RaftAppShellReadyContent(
         if (createChannelSubmitting || !collision.canUnarchive) return
         createChannelSubmitting = true
         createChannelError = null
+        createChannelErrorTraceId = null
         appShellCoroutineScope.launch {
             try {
                 when (val result = channelRepository.unarchiveChannel(collision.archivedChannelId)) {
@@ -5145,9 +5158,11 @@ private fun RaftAppShellReadyContent(
                     }
                     is DataResult.Error -> {
                         createChannelError = result.error.serverMessage ?: channelUnarchiveFailedMessage
+                        createChannelErrorTraceId = result.error.traceId
                     }
                     is DataResult.NoPermission -> {
                         createChannelError = result.blocker.serverMessage ?: channelUnarchiveFailedMessage
+                        createChannelErrorTraceId = result.blocker.traceId
                     }
                     is DataResult.Empty -> {
                         createChannelError = channelUnarchiveFailedMessage
@@ -8368,13 +8383,18 @@ private fun RaftAppShellReadyContent(
                     )
                 }
                 if (createChannelDialogOpen) {
-                    val createServer = (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server
-                    val createExternalAccess = externalChannelCreateAccess(externalChannelsOn, createServer?.role)
-                    val createExternalStore =
-                        remember(createExternalAccess, createServer?.id) {
-                            if (!createExternalAccess) {
-                                null
-                            } else {
+                    // The server as Home last had it: a moment without Home content (a refresh)
+                    // neither drops the External store nor takes External away.
+                    val createServerNow = (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server
+                    var createServerLast by remember(createChannelSession) { mutableStateOf(createServerNow) }
+                    if (createServerNow != null && createServerNow != createServerLast) {
+                        SideEffect { createServerLast = createServerNow }
+                    }
+                    val createServer = createServerNow ?: createServerLast
+                    // One store for the whole opening (its emails, servers and created channel),
+                    // rebuilt only for another opening or another server.
+                    val createExternalStoreForOpening =
+                        remember(createChannelSession, createServer?.id) {
                                 CreateExternalChannelStore(
                                     appShellCoroutineScope,
                                     RealCreateExternalChannelDataSource(
@@ -8383,9 +8403,14 @@ private fun RaftAppShellReadyContent(
                                         raftLogger("SlockCreateExternalChannel", "create_external_channel", RaftLogLevel.Warn),
                                     ),
                                 )
-                            }
                         }
-                    val createExternalState = createExternalStore?.state?.collectAsState()?.value
+                    val createExternalStoreState by createExternalStoreForOpening.state.collectAsState()
+                    // Offered while the viewer may create external channels; once the channel exists,
+                    // its invite steps go on whatever happens to the role.
+                    val createExternalAccess =
+                        externalChannelCreateAccess(externalChannelsOn, createServer?.role) || createExternalStoreState.created != null
+                    val createExternalStore = createExternalStoreForOpening.takeIf { createExternalAccess }
+                    val createExternalState = createExternalStore?.let { createExternalStoreState }
                     val createServerName = createServer?.name.orEmpty()
                     val createChannelNameForToasts = createExternalState?.created?.channel?.name?.removePrefix("#").orEmpty()
                     LaunchedEffect(createExternalState?.effects) {
@@ -8435,6 +8460,13 @@ private fun RaftAppShellReadyContent(
                         membersLoading = createChannelMembersLoading,
                         members = createChannelMembers,
                         errorMessage = createChannelError,
+                        errorTraceId = createChannelErrorTraceId,
+                        onExternalCommitStart = {
+                            // As the plain create: a new attempt clears the last refusal.
+                            createChannelError = null
+                            createChannelErrorTraceId = null
+                            createChannelCollision = null
+                        },
                         archivedCollision = createChannelCollision,
                         onOpenArchivedCollision = { openCreateChannelCollision() },
                         onUnarchiveArchivedCollision = { unarchiveCreateChannelCollision() },
@@ -8444,6 +8476,7 @@ private fun RaftAppShellReadyContent(
                             if (!createChannelSubmitting) {
                                 createChannelDialogOpen = false
                                 createChannelError = null
+                                createChannelErrorTraceId = null
                                 createChannelCollision = null
                             }
                         },
@@ -13743,6 +13776,8 @@ private fun SharedCreateChannelDialog(
     membersLoading: Boolean,
     members: List<MemberProfile>,
     errorMessage: String?,
+    errorTraceId: String? = null,
+    onExternalCommitStart: () -> Unit = {},
     archivedCollision: ArchivedNameCollision? = null,
     onOpenArchivedCollision: () -> Unit = {},
     onUnarchiveArchivedCollision: () -> Unit = {},
@@ -13783,6 +13818,14 @@ private fun SharedCreateChannelDialog(
     val externalAtLimit = visibility == SharedCreateChannelVisibility.External && externalAvailability == ExternalChannelCreateAvailability.FreeLimit
     val externalLoading = visibility == SharedCreateChannelVisibility.External && externalAvailability == ExternalChannelCreateAvailability.Loading
     LaunchedEffect(externalStore) { externalStore?.dispatch(CreateExternalChannelIntent.Start) }
+    // External taken away while chosen (the viewer is no longer an owner or admin): Private,
+    // said on the control, never a silent plain create behind an External label.
+    LaunchedEffect(externalStore == null) {
+        if (externalStore == null && visibility == SharedCreateChannelVisibility.External) {
+            visibility = SharedCreateChannelVisibility.Private
+            if (step == SharedCreateChannelStep.People) step = SharedCreateChannelStep.Details
+        }
+    }
     LaunchedEffect(externalStore, external) { if (external) externalStore?.dispatch(CreateExternalChannelIntent.LoadServers) }
     // Web handleCreateError: an archived-name collision goes back to step 1, where the name is.
     LaunchedEffect(archivedCollision) { if (archivedCollision != null) step = SharedCreateChannelStep.Details }
@@ -13885,6 +13928,7 @@ private fun SharedCreateChannelDialog(
             serverName = serverName,
             onCommit = {
                 val chosen = selectedMembers()
+                onExternalCommitStart()
                 externalStore.dispatch(
                     CreateExternalChannelIntent.Commit(
                         CreateExternalChannelDraft(
@@ -14139,11 +14183,14 @@ private fun SharedCreateChannelDialog(
                         } else {
                             errorMessage
                         }
-                    Text(
-                        text = Res.string.channel_create_error.format(listOf(localizedError)).localized(),
-                        style = RaftType.Caption,
-                        color = RaftColor.AccentRed
-                    )
+                    Column {
+                        Text(
+                            text = Res.string.channel_create_error.format(listOf(localizedError)).localized(),
+                            style = RaftType.Caption,
+                            color = RaftColor.AccentRed
+                        )
+                        RaftTraceIdNote(errorTraceId)
+                    }
                 }
             }
         }
@@ -14182,7 +14229,7 @@ private fun SharedCreateChannelDialog(
 /** Web `Step` "details" / "people" (the External review is [SharedCreateExternalChannelReview]). */
 private enum class SharedCreateChannelStep { Details, People }
 
-private enum class SharedCreateChannelVisibility(
+internal enum class SharedCreateChannelVisibility(
     val wireValue: String,
     val label: String,
     val iconName: RaftLucideIconName
@@ -14199,7 +14246,7 @@ private enum class SharedCreateChannelVisibility(
 }
 
 @Composable
-private fun SharedCreateChannelVisibilityControl(
+internal fun SharedCreateChannelVisibilityControl(
     selected: SharedCreateChannelVisibility,
     enabled: Boolean,
     onSelected: (SharedCreateChannelVisibility) -> Unit,
