@@ -14971,7 +14971,7 @@ private fun PermissionsGroupBox(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(enabled = canManage) { onToggle(row.scope) }
+                    .raftClickable(onClick = { onToggle(row.scope) }, enabled = canManage, role = Role.Checkbox)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
