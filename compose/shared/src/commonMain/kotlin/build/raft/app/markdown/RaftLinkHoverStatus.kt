@@ -86,7 +86,8 @@ internal fun raftLinkHoverLabel(
     // A Raft Desktop link stays with Raft even where it is not a message (the app's own scheme).
     val scheme = raw.substringBefore("://", missingDelimiterValue = "").lowercase()
     val raftScheme = scheme == "raft" || scheme.startsWith("raft-")
-    if (open.target == null) return RaftLinkHoverLabel(text = open.url, external = !raftScheme)
+    // A conversation link without a message (or one the shell resolves) opens in the app too.
+    if (open.target == null) return RaftLinkHoverLabel(text = open.url, external = !raftScheme && open.conversationLink == null)
     val permalink = open.url.toParsedRaftPermalink(configuredWebUrl = webUrl)
     val name =
         permalink?.let(conversationName)

@@ -157,7 +157,7 @@ private fun artifactLinkParts(link: String): ArtifactLinkParts? {
     // `user@host`: the host is after the last `@` (a URL parser's hostname), never before it.
     val hostAndPort = authority.substringAfterLast('@')
     if (hostAndPort.startsWith("[")) return null
-    val host = hostAndPort.substringBefore(':').lowercase().removeSuffix(".")
+    val host = hostAndPort.substringBefore(':').lowercase().trimEnd('.')
     if (host.isEmpty()) return null
     val afterAuthority = rest.substring(authorityEnd).substringBefore('#')
     return ArtifactLinkParts(host, afterAuthority.substringBefore('?'), afterAuthority.substringAfter('?', ""))
@@ -165,7 +165,7 @@ private fun artifactLinkParts(link: String): ArtifactLinkParts? {
 
 /** Whether [host] is one of [this] app hosts, compared whole. */
 private fun Collection<String>.hasArtifactAppHost(host: String): Boolean =
-    any { it.trim().lowercase().removeSuffix(".") == host }
+    any { it.trim().lowercase().trimEnd('.') == host }
 
 /** An id, then an optional `v/<n>`; anything after that (a file path, `raw`) is ignored. */
 private fun artifactIdWithVersion(segments: List<String>): ArtifactLinkTarget? {

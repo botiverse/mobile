@@ -263,7 +263,9 @@ internal fun HomeNetworkResponse?.linkOutcome(): RaftLinkProbeOutcome =
 /**
  * The route kind the channel's own `type` confirms: `/dm/` only for a DM, `/channel/` for any
  * other conversation (a joint channel opens as one). Null when the link names the wrong kind, or a
- * thread's own channel id.
+ * thread's own channel id. A task's own conversation (`type = 'task'`; a task message's Copy link,
+ * the app's and Saved's) opens as the task, never as a bare channel page with a Join the server
+ * refuses (slock #14960 `useTaskConversationRedirect`).
  */
 private fun ConversationKind.confirmedBy(type: String): ConversationKind? =
     when (this) {
@@ -272,6 +274,7 @@ private fun ConversationKind.confirmedBy(type: String): ConversationKind? =
             when (type) {
                 "dm", "thread" -> null
                 "joint" -> ConversationKind.Joint
+                RaftTaskConversationChannelKind -> ConversationKind.Task
                 else -> ConversationKind.Channel
             }
     }

@@ -507,7 +507,7 @@ internal class RaftAndroidSandboxWebView(
                     if (destroyed) return true
                     val target = request?.url?.toString()
                     return if (request?.isForMainFrame == true) {
-                        shouldBlockMainFrameNavigation(target)
+                        shouldRouteMainFrameNavigation(target) || shouldBlockMainFrameNavigation(target)
                     } else {
                         shouldSilentlyBlockSubframeNavigation(target)
                     }
@@ -838,6 +838,20 @@ internal class RaftAndroidSandboxWebView(
             diagnosticsInfo("load_src bootstrap=false url=${documentUrl.raftRedactedUrlForLog()}")
             webView.loadUrl(documentUrl)
         }
+    }
+
+    /**
+     * A new document the host routes as a link ([RaftWebViewEvents.routesMainFrameNavigation]): the
+     * page asked for it (`window.open` loads in place here, multiple windows being off), so it is
+     * handed over as a blocked navigation and the page stays as it is.
+     */
+    private fun shouldRouteMainFrameNavigation(url: String?): Boolean {
+        val target = url ?: return false
+        if (wouldBlockMainFrameNavigation(target)) return false
+        if (events.routesMainFrameNavigation?.invoke(target) != true) return false
+        diagnosticsInfo("navigation_routed_as_link url=${target.raftRedactedUrlForLog()}")
+        handleBlockedMainFrameNavigation(target)
+        return true
     }
 
     private fun shouldBlockMainFrameNavigation(url: String?): Boolean {

@@ -468,6 +468,10 @@ class MarkdownContentIntegrityTest {
                 "see https://x.test/a. now" to listOf("https://x.test/a"),
                 "see https://x.test/a, now" to listOf("https://x.test/a"),
                 "see https://x.test/a! now" to listOf("https://x.test/a"),
+                // A Raft link ending a sentence (#proj-workspace:#290): the link, not its full stop, comma or paren.
+                "see https://app.raft.build/s/acme/channel/c1?msg=m1. now" to listOf("https://app.raft.build/s/acme/channel/c1?msg=m1"),
+                "see https://app.raft.build/s/acme/channel/c1, now" to listOf("https://app.raft.build/s/acme/channel/c1"),
+                "(see https://app.raft.build/s/acme/tasks) now" to listOf("https://app.raft.build/s/acme/tasks"),
             )
         for ((source, expectedUrls) in cases) {
             val rendered = renderTopParagraphsWithLinks(source).single()

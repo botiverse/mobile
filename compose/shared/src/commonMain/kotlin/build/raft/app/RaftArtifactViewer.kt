@@ -6,6 +6,7 @@ import build.raft.app.data.artifactCanonicalId
 import build.raft.app.data.artifactIdOrNull
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.AuthenticatedRouteOwner
+import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.isArtifactContentHost
 import kotlinx.serialization.builtins.serializer
@@ -241,7 +242,7 @@ internal fun raftWebOriginOf(url: String): String? {
     val rest = value.substring(schemeEnd + 3)
     val authority = rest.substring(0, rest.indexOfFirst { it == '/' || it == '?' || it == '#' }.let { if (it < 0) rest.length else it })
     if (authority.isEmpty() || '@' in authority || authority.startsWith("[")) return null
-    val host = authority.substringBefore(':').lowercase().removeSuffix(".")
+    val host = authority.substringBefore(':').lowercase().trimEnd('.')
     if (host.isEmpty() || host.any { !(it.isLetterOrDigit() || it == '.' || it == '-') }) return null
     val portText = authority.substringAfter(':', "")
     val port =
@@ -525,7 +526,11 @@ internal sealed interface RaftArtifactViewerBlockedTarget {
     /** A file the page saves, which the WebView cannot save. */
     data object Download : RaftArtifactViewerBlockedTarget
 
-    /** A Raft message: opened natively. */
+    /**
+     * A Raft link the app opens itself, over the viewer, which stays (the web opens a page's link in
+     * a new tab, its viewer still there): a conversation, message or task link, a join or invite link,
+     * on any of Raft's own origins ([raftOwnLinkRoute]). Through [RaftMessageLinkIngress], as from outside.
+     */
     data class OpenMessage(val url: String) : RaftArtifactViewerBlockedTarget
 
     /** Another Artifact's page: opened in the in-app viewer. */
@@ -544,19 +549,68 @@ internal sealed interface RaftArtifactViewerBlockedTarget {
  * save through a `blob:` link), which the WebView cannot save. Anything else (blank, other schemes)
  * is dropped.
  */
-internal fun raftArtifactViewerBlockedNavigationTarget(url: String, webOrigin: String, artifactId: String): RaftArtifactViewerBlockedTarget {
+internal fun raftArtifactViewerBlockedNavigationTarget(
+    url: String,
+    webOrigin: String,
+    artifactId: String,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): RaftArtifactViewerBlockedTarget {
     if (url.trim().startsWith("blob:", ignoreCase = true)) return RaftArtifactViewerBlockedTarget.Download
     val origin = raftWebOriginOf(url) ?: return RaftArtifactViewerBlockedTarget.Ignore
-    if (origin != raftWebOriginOf(webOrigin)) return RaftArtifactViewerBlockedTarget.SystemBrowser(url)
+    if (origin != raftWebOriginOf(webOrigin)) {
+        // Another of Raft's own origins (production's other host, the client config's `appHosts`):
+        // still a Raft link, opened in the app as on the web origin. Any other origin: the browser.
+        return when (val route = raftOwnLinkRoute(url, webOrigin, appHosts)) {
+            is RaftOwnLinkRoute.Conversation,
+            is RaftOwnLinkRoute.ServerJoin,
+            is RaftOwnLinkRoute.ExternalInvite -> RaftArtifactViewerBlockedTarget.OpenMessage(url)
+            is RaftOwnLinkRoute.Artifact ->
+                if (artifactCanonicalId(route.target.id) == artifactCanonicalId(artifactId)) {
+                    RaftArtifactViewerBlockedTarget.Ignore
+                } else {
+                    RaftArtifactViewerBlockedTarget.OpenArtifact(route.target)
+                }
+            is RaftOwnLinkRoute.WebPage, null -> RaftArtifactViewerBlockedTarget.SystemBrowser(url)
+        }
+    }
     val path = url.substringAfter("://").let { rest -> rest.indexOf('/').let { if (it < 0) "/" else rest.substring(it) } }
     if (path.startsWith("/api/")) return RaftArtifactViewerBlockedTarget.Download
-    return when (val navigation = raftArtifactViewerNavigation(url, webOrigin, artifactId)) {
+    // The web's task panel (`task=`): its web page, as a tap in a message opens it.
+    if (raftOwnLinkRoute(url, webOrigin, appHosts) == RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.TaskPanel)) {
+        return RaftArtifactViewerBlockedTarget.SystemBrowser(url)
+    }
+    return when (val navigation = raftArtifactViewerNavigation(url, webOrigin, artifactId, appHosts)) {
         is RaftArtifactViewerNavigation.Stay -> RaftArtifactViewerBlockedTarget.Ignore
         is RaftArtifactViewerNavigation.OpenMessage -> RaftArtifactViewerBlockedTarget.OpenMessage(navigation.url)
         is RaftArtifactViewerNavigation.OpenArtifact -> RaftArtifactViewerBlockedTarget.OpenArtifact(navigation.target)
         else -> RaftArtifactViewerBlockedTarget.SystemBrowser(url)
     }
 }
+
+/**
+ * Whether a new top-level document of the viewer's WebView (a full load the page started, never its
+ * own client-side routing) is a link to route instead of loading it in the viewer: a Raft link the app
+ * opens itself ([RaftArtifactViewerBlockedTarget.OpenMessage]), or a page of a server (`/s/<slug>/<page>`)
+ * the app has no screen for (its web page, in the browser). Android's WebView, with one window, loads
+ * the page's `window.open(link)` (an Artifact's own link, Porthole `openLink`) over the Artifact; routed
+ * here, the viewer stays, as it does on the web (the link opens in a new tab) and on iOS (a new window
+ * is a blocked navigation). The sign-in pages (`/`, `/login`: the page signing itself out), the Artifact,
+ * another Artifact and the server's own page (`/s/<slug>`) load as before.
+ */
+internal fun raftArtifactViewerRoutesDocumentAsLink(
+    url: String,
+    webOrigin: String,
+    artifactId: String,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): Boolean =
+    when (val routed = raftArtifactViewerBlockedNavigationTarget(url, webOrigin, artifactId, appHosts)) {
+        is RaftArtifactViewerBlockedTarget.OpenMessage -> true
+        is RaftArtifactViewerBlockedTarget.SystemBrowser ->
+            raftOwnLinkRoute(routed.url, webOrigin, appHosts) is RaftOwnLinkRoute.WebPage &&
+                raftOwnWebLinkPath(routed.url, webOrigin, appHosts)?.path.orEmpty()
+                    .split('/').filter(String::isNotEmpty).let { it.size >= 3 && it[0] == "s" }
+        else -> false
+    }
 
 /**
  * Where a top-level address of the viewer's WebView takes the viewer. Under the embed contract the
@@ -572,7 +626,10 @@ internal sealed interface RaftArtifactViewerNavigation {
      */
     data class Stay(val version: Int?, val shown: Int? = null) : RaftArtifactViewerNavigation
 
-    /** A Raft message (the Artifact's original message): close the viewer, open it natively. */
+    /**
+     * A Raft link the app opens itself (the Artifact's original message; a conversation, join or invite
+     * link the page opened in place): close the viewer, open it natively.
+     */
     data class OpenMessage(val url: String) : RaftArtifactViewerNavigation
 
     /** Off the web origin: the system browser (never in the signed-in WebView). */
@@ -592,7 +649,12 @@ internal sealed interface RaftArtifactViewerNavigation {
  * [url] (a top-level address of the viewer's WebView showing [artifactId]) as a
  * [RaftArtifactViewerNavigation]. A message link is one [parseRaftMessageLink] takes on [webOrigin].
  */
-internal fun raftArtifactViewerNavigation(url: String, webOrigin: String, artifactId: String): RaftArtifactViewerNavigation {
+internal fun raftArtifactViewerNavigation(
+    url: String,
+    webOrigin: String,
+    artifactId: String,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): RaftArtifactViewerNavigation {
     val origin = raftWebOriginOf(url) ?: return RaftArtifactViewerNavigation.Ignore
     if (origin != raftWebOriginOf(webOrigin)) return RaftArtifactViewerNavigation.SystemBrowser(url)
     // The page's own Back (`back=host`): it asks the App to close the viewer.
@@ -622,7 +684,12 @@ internal fun raftArtifactViewerNavigation(url: String, webOrigin: String, artifa
             4 -> if (artifact[2] == "v") artifact[3].toIntOrNull()?.takeIf { it > 0 }?.let { return RaftArtifactViewerNavigation.OpenArtifact(ArtifactLinkTarget(otherId, it)) }
         }
     }
-    if (parseRaftMessageLink(url, configuredWebUrl = webOrigin) != null) return RaftArtifactViewerNavigation.OpenMessage(url)
+    if (parseRaftMessageLink(url, configuredWebUrl = webOrigin, appHosts = appHosts) != null) return RaftArtifactViewerNavigation.OpenMessage(url)
+    // A join or invite link the page opened in place: its page in the app, never lost with the viewer.
+    when (raftOwnLinkRoute(url, webOrigin, appHosts)) {
+        is RaftOwnLinkRoute.ServerJoin, is RaftOwnLinkRoute.ExternalInvite -> return RaftArtifactViewerNavigation.OpenMessage(url)
+        else -> Unit
+    }
     return RaftArtifactViewerNavigation.Close
 }
 

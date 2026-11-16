@@ -64,8 +64,9 @@ internal fun threadMessageLinkMenuActions(isRaftLink: Boolean): List<ThreadMessa
  * Artifact's address or share link ([parseRaftArtifactDeepLink]: built-in hosts, [appHosts], [webUrl]).
  */
 internal fun threadMessageLinkIsRaft(url: String, webUrl: String?, appHosts: Collection<String>): Boolean {
-    val open = raftMarkdownUrlOpen(url, webUrl)
+    val open = raftMarkdownUrlOpen(url, webUrl, appHosts.toSet())
     return open.target != null ||
+        open.conversationLink != null ||
         open.url.toParsedRaftPermalink(configuredWebUrl = webUrl, appHosts = appHosts) != null ||
         parseRaftArtifactDeepLink(open.url, webUrl, appHosts.toSet()) != null
 }

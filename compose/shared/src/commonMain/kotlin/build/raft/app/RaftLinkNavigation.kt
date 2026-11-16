@@ -47,6 +47,12 @@ internal enum class RaftLinkOpenTarget {
 
     /** Raft's own server join page ([RaftLinkNavigator]'s join link); never a decision of [resolveRaftLinkOpenDecision]. */
     ServerJoinPage,
+
+    /**
+     * Another of the app's own screens for a Raft link ([RaftLinkNavigator]'s own-link opener, [RaftOwnLinkRoute]:
+     * a conversation, a task, an invite), opened by the app shell; never a decision of [resolveRaftLinkOpenDecision].
+     */
+    InAppDestination,
 }
 
 internal enum class RaftLinkRejectReason {
@@ -202,6 +208,16 @@ internal class RaftLinkNavigator(
      * it; false leaves it to the link setting as any link.
      */
     private val openServerJoinLink: (String) -> Boolean = { false },
+    /**
+     * An ordinary link to another Raft page the app has a screen for ([raftOwnLinkShellOpener]: a
+     * conversation, message, thread or task link, an external invite): true when the app shell takes it.
+     */
+    private val openOwnLink: (String) -> Boolean = { false },
+    /**
+     * Whether an ordinary link is a Raft page the app has no screen for ([raftOwnLinkIsWebPage]): it
+     * opens as [RaftLinkOpenIntent.RaftWebPage], a real browser in "Default browser" mode.
+     */
+    private val isRaftWebPage: (String) -> Boolean = { false },
 ) {
     fun open(
         rawUrl: String,
@@ -215,6 +231,14 @@ internal class RaftLinkNavigator(
         // A server join link opens the app's join page (the shell's, through the join link inbox).
         if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && openServerJoinLink(decision.url)) {
             return RaftLinkOpenDecision(RaftLinkOpenTarget.ServerJoinPage, decision.url)
+        }
+        // Any other Raft page the app has a screen for: that screen (the web opens a Raft page in Raft, not a tab).
+        if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && openOwnLink(decision.url)) {
+            return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, decision.url)
+        }
+        // A Raft page it has none for: the web page, in a real browser when that is the setting.
+        if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && isRaftWebPage(decision.url)) {
+            return open(decision.url, RaftLinkOpenIntent.RaftWebPage)
         }
         return when (decision.target) {
             RaftLinkOpenTarget.InAppBrowser -> {
@@ -238,7 +262,8 @@ internal class RaftLinkNavigator(
                 decision
             }
             RaftLinkOpenTarget.ArtifactViewer,
-            RaftLinkOpenTarget.ServerJoinPage -> decision
+            RaftLinkOpenTarget.ServerJoinPage,
+            RaftLinkOpenTarget.InAppDestination -> decision
         }
     }
 }
@@ -340,6 +365,12 @@ internal fun rememberRaftLinkNavigator(
                     webUrl = { RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current().webUrl },
                     log = { bridge.log(it) },
                 ),
+            openOwnLink =
+                raftOwnLinkShellOpener(
+                    webUrl = { RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current().webUrl },
+                    log = { bridge.log(it) },
+                ),
+            isRaftWebPage = { url -> raftOwnLinkIsWebPage(url, RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current().webUrl) },
         )
     }
 }
