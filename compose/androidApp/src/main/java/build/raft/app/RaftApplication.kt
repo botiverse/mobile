@@ -9,6 +9,7 @@ import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
 import build.raft.app.core.data.diagnostics.AndroidSystemKillReporter
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
+import build.raft.app.core.data.diagnostics.RaftWebViewRendererGoneReporter
 import build.raft.app.data.raftClearLegacyFontPreference
 import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
@@ -153,6 +154,15 @@ class RaftApplication : Application() {
         // System kills (low memory, freezer, OEM `reason=other`) leave no crash for HandsCrash to
         // catch; report the ones the user saw as crash tickets (ANRs stay with HandsCrash).
         AndroidSystemKillReporter.start(
+            context = this,
+            baseUrl = BuildConfig.HANDS_BASE_URL,
+            appSlug = BuildConfig.HANDS_APP_SLUG,
+            channel = BuildConfig.HANDS_CHANNEL,
+            clientKey = BuildConfig.HANDS_CLIENT_KEY,
+        )
+        // A WebView renderer death the app survived (every WebView handles onRenderProcessGone):
+        // a non-fatal ticket for a crash, at most one a minute and a few a day.
+        RaftWebViewRendererGoneReporter.install(
             context = this,
             baseUrl = BuildConfig.HANDS_BASE_URL,
             appSlug = BuildConfig.HANDS_APP_SLUG,

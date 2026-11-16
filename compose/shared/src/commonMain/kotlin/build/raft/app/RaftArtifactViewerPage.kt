@@ -115,7 +115,11 @@ internal fun raftArtifactViewerWebViewConfig(
         mainFrameOrigin = scope.webOrigin,
         frameHosts = setOf(ARTIFACT_CONTENT_DOMAIN),
         keepAliveKey = scope.keepAliveKey,
+        diagnosticsSurface = RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE,
     )
+
+/** [RaftWebViewConfig.diagnosticsSurface] of the Artifact viewer (its prewarmed view too). */
+internal const val RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE = "artifact_viewer"
 
 /** The session writes (rule 1: guarded to a top-level document of the web origin). */
 internal fun raftArtifactViewerSessionScript(
@@ -1057,6 +1061,7 @@ private fun RaftArtifactViewerWebBody(
             // The content frame (desktop declares it; see RaftWebViewConfig.frameHosts).
             frameHosts = setOf(ARTIFACT_CONTENT_DOMAIN),
             keepAliveKey = scope.keepAliveKey,
+            diagnosticsSurface = RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE,
             loadWatchdog = loadWatchdog,
             onLoadCommit = {
                 // A new document: it holds the token its injected session wrote.

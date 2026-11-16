@@ -50,7 +50,14 @@ internal data class RaftWebViewConfig(
      * the start.
      */
     val backgroundArgb: Int = 0,
+    /**
+     * Which product surface this WebView is (`artifact_viewer`, `in_app_browser`, ...), for
+     * diagnostics only: renderer-death logs and tickets name it (Android `RaftWebViewRendererGone`).
+     */
+    val diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT,
 )
+
+internal const val RAFT_WEBVIEW_SURFACE_DEFAULT = "web_view"
 
 /**
  * Events of the sandbox WebView (formerly the Kuikly view events). Platform views read these

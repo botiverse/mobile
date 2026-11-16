@@ -48,6 +48,10 @@ androidInstrumentedTest RaftComposedCharacterBoundaryRuntimeTest to the same
 job (`scripts/ci/run-first-character-emulator-suite.sh`, every run of the
 device suite).
 
+`RaftWebViewRendererGoneRuntimeTest` (shared androidInstrumentedTest; kills the
+real WebView renderer with `chrome://crash` and `WebViewRenderProcess.terminate()`)
+runs in the same job as `webview-renderer-gone`.
+
 ## On HOLD for a production fix (do not promote, do not "fix" the test)
 
 **AndroidShellTaskReuseConnectedTest** — its first-ever CI run (task #19)

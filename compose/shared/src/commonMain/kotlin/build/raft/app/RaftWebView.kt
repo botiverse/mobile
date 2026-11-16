@@ -151,6 +151,8 @@ internal fun RaftSandboxWebView(
     onDownloadRequested: ((String) -> Unit)? = null,
     /** A new top-level document routed as a link (see [RaftWebViewEvents.routesMainFrameNavigation]); null: loaded. */
     routesMainFrameNavigation: ((String) -> Boolean)? = null,
+    /** [RaftWebViewConfig.diagnosticsSurface]. */
+    diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT,
 ) {
     val events = remember { RaftWebViewEvents() }
     events.routesMainFrameNavigation = routesMainFrameNavigation
@@ -185,7 +187,8 @@ internal fun RaftSandboxWebView(
             mainFrameOrigin,
             frameHosts,
             keepAliveKey,
-            backgroundArgb
+            backgroundArgb,
+            diagnosticsSurface
         ) {
             RaftWebViewConfig(
                 url = url,
@@ -202,7 +205,8 @@ internal fun RaftSandboxWebView(
                 mainFrameOrigin = mainFrameOrigin,
                 frameHosts = frameHosts,
                 keepAliveKey = keepAliveKey,
-                backgroundArgb = backgroundArgb
+                backgroundArgb = backgroundArgb,
+                diagnosticsSurface = diagnosticsSurface
             )
         }
     RaftSandboxWebViewHost(config = config, events = events, controller = controller, modifier = modifier)
@@ -273,6 +277,8 @@ internal fun RaftWebView(
     onNavigationStateChange: (RaftWebViewNavigationState) -> Unit = {},
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
     loadWatchdog: RaftWebViewLoadWatchdog? = null,
+    /** [RaftWebViewConfig.diagnosticsSurface]. */
+    diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT,
 ) {
     RaftSandboxWebView(
         url = url,
@@ -293,7 +299,8 @@ internal fun RaftWebView(
         controller = controller,
         allowedNavigationSchemes = allowedNavigationSchemes,
         onNavigationStateChange = onNavigationStateChange,
-        onHostMessage = onHostMessage
+        onHostMessage = onHostMessage,
+        diagnosticsSurface = diagnosticsSurface
     )
 }
 

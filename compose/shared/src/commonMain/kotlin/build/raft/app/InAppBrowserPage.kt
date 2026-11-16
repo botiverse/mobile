@@ -171,6 +171,7 @@ private fun RaftInAppBrowserScreen() {
                         cacheEnabled = true,
                         ephemeral = false,
                         injectedJavaScript = "",
+                        diagnosticsSurface = "in_app_browser",
                         onLoadSuccess = { loadError = null },
                         onLoadFailure = { reason ->
                             loadError = reason.ifBlank { "webview_load_failed" }
