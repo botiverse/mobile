@@ -17162,7 +17162,7 @@ internal fun homeSearchEntityResults(
                 )
             }
     // web MAX_ENTITY_RESULTS: every reasonable match up to 50; the list shows 5, then "Show all N".
-    return rankThreadComposerSuggestionEntries(query = trimmedQuery, entries = entries)
+    return rankThreadComposerSuggestionEntries(query = trimmedQuery, entries = entries, limit = HomeSearchEntityResultLimit)
         .distinctBy { it.key }
         .take(HomeSearchEntityResultLimit)
 }

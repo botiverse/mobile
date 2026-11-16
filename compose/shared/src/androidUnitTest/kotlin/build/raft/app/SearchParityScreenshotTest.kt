@@ -12,6 +12,10 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onAllNodes
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
@@ -23,6 +27,7 @@ import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxItem
 import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.SearchSort
 import build.raft.app.data.SharedHomeSearchPanelState
 import build.raft.app.data.SharedHomeSearchSavedIntent
 import build.raft.app.data.SharedHomeState
@@ -124,6 +129,13 @@ class SearchParityScreenshotTest {
             waitForIdle()
             onAllNodesWithText("eng-0", substring = true, useUnmergedTree = true).assertCountEquals(7)
 
+            // Seven rows push Show fewer below the fold of the lazy list: scroll the list to it.
+            val scrollables = onAllNodes(hasScrollToNodeAction())
+            val reached =
+                (0 until scrollables.fetchSemanticsNodes().size).any { index ->
+                    runCatching { scrollables[index].performScrollToNode(hasText("Show fewer")) }.isSuccess
+                }
+            assertEquals(true, reached, "Show fewer is in the results list")
             onNodeWithText("Show fewer").performClick()
             waitForIdle()
             onAllNodesWithText("eng-0", substring = true, useUnmergedTree = true).assertCountEquals(5)
@@ -176,6 +188,8 @@ class SearchParityScreenshotTest {
                 SharedHomeSearchPanelState(
                     serverId = "server-1",
                     query = "release",
+                    // The server walk (and so an incomplete search) is the newest-first sort's.
+                    sort = SearchSort.Recent,
                     searched = true,
                     empty = true,
                     hasMore = true,

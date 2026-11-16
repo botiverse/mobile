@@ -19,7 +19,7 @@ import kotlinx.coroutines.SupervisorJob
  * The DM opens outlive the Search that started them: the wide panel closes as a row opens.
  * Immediate, so a DM Home already lists opens in the same frame as the tap.
  */
-internal val homeSearchMemberOpenScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+internal val homeSearchMemberOpenScope: CoroutineScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
 
 /** What a person or agent result opened. */
 internal enum class HomeSearchMemberOpenOutcome {
