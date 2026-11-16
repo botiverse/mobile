@@ -501,6 +501,16 @@ interface AgentActivityOverviewRepository {
     ): DataResult<AgentActivityTurnPage>
 
     suspend fun loadReply(priority: DataRequestPriority, messageId: MessageId): AgentActivityTurnReply
+
+    /**
+     * `GET /agents/:id/operator-events` from [sinceEpochMillis] (all of them when null), newest
+     * first (AgentOperatorEvents.kt).
+     */
+    suspend fun loadOperatorEvents(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        sinceEpochMillis: Long?,
+    ): DataResult<AgentOperatorEventsPage>
 }
 
 class RealAgentActivityOverviewRepository(
@@ -534,6 +544,29 @@ class RealAgentActivityOverviewRepository(
         val page = response.bodyText?.let { body ->
             parseSharedAgentActivityTurnPage(body) { message -> logger("agent_activity_overview $message") }
         } ?: return DataResult.Error(ScreenError("activity_summaries_contract_mismatch", retryable = false))
+        return DataResult.Content(page)
+    }
+
+    override suspend fun loadOperatorEvents(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        sinceEpochMillis: Long?,
+    ): DataResult<AgentOperatorEventsPage> {
+        val response = networkClient.request(
+            priority = priority,
+            path = "agents/${agentId.value}/operator-events",
+            query = listOfNotNull(sinceEpochMillis?.let { "since" to it.toString() }),
+        )
+        if (response.code == 401 || response.code == 403) {
+            return DataResult.NoPermission(PermissionBlocker(code = "operator_events_${response.code}"))
+        }
+        if (!response.isSuccessful) {
+            return DataResult.Error(
+                ScreenError(code = "operator_events_${response.code}", retryable = response.code == 0 || response.code >= 500)
+            )
+        }
+        val page = response.bodyText?.let { parseSharedAgentOperatorEventsPage(it) }
+            ?: return DataResult.Error(ScreenError("operator_events_contract_mismatch", retryable = false))
         return DataResult.Content(page)
     }
 
