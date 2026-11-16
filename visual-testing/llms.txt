@@ -1,10 +1,10 @@
 # Raft Visual Testing
 
-Generated: 2026-11-14 18:08:39 UTC
-Latest run: a489a2e6-20261114180622
-Latest commit: a489a2e6-20261114180622
-Commit subject: test(visual): fix the 4 Android capture preconditions that broke the full round (#4792)
-Providers: react vs android, react vs ios, android vs ios
+Generated: 2026-11-16 04:50:52 UTC
+Latest run: 9c40cb4b-20261116044956
+Latest commit: 9c40cb4b-20261116044956
+Commit subject: test(visual): search pin-menu cases press the entity row after filters went one line (#4855)
+Providers: react vs android
 Summary: total 133, same 0, pass 1, basic-pass 8, different 74, missing 50
 AI analysis: ready 30 / total 133, pending 103
 Visual coverage matrix: active 142 / total 162, pending 17, skipped 3
@@ -13,8 +13,6 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 ## Comparisons
 
 - react__android: total 133, same 0, pass 1, basic-pass 8, different 74, missing 50
-- react__ios: total 133, same 0, pass 9, basic-pass 15, different 44, missing 65
-- android__ios: total 133, same 0, pass 12, basic-pass 26, different 32, missing 63
 
 ## Capture Type Coverage
 
@@ -116,6 +114,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 9c40cb4b-20261116044956: react vs android, total 133, pass 1, basic-pass 8, different 74, matrix runs/9c40cb4b-20261116044956/component-matrix.json, page runs/9c40cb4b-20261116044956/
 - a489a2e6-20261114180622: react vs android, total 133, pass 1, basic-pass 8, different 74, matrix runs/a489a2e6-20261114180622/component-matrix.json, page runs/a489a2e6-20261114180622/
 - 41a40027-20261109220201: react vs android, total 122, pass 1, basic-pass 8, different 76, matrix runs/41a40027-20261109220201/component-matrix.json, page runs/41a40027-20261109220201/
 - 590aade5-20261108215926: react vs android, total 122, pass 1, basic-pass 8, different 76, matrix runs/590aade5-20261108215926/component-matrix.json, page runs/590aade5-20261108215926/
