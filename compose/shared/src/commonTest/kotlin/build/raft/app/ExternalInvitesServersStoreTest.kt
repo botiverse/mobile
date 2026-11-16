@@ -217,6 +217,13 @@ class ExternalInvitesServersStoreTest {
         runCurrent()
         assertNotNull(direct.state.value.dialog)
         assertEquals(0, ungated.freeLimitCalls)
+        // A second tap keeps what the open dialog holds.
+        direct.dispatch(ExternalInvitesIntent.SetText("kept@example.com"))
+        direct.dispatch(ExternalInvitesIntent.RequestOpen(joint = false, gated = false))
+        direct.dispatch(ExternalInvitesIntent.RequestOpen(joint = false, gated = true))
+        runCurrent()
+        assertEquals("kept@example.com", direct.state.value.dialog?.text)
+        assertEquals(0, ungated.freeLimitCalls)
     }
 
     @Test

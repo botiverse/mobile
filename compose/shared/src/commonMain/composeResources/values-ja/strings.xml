@@ -2212,6 +2212,15 @@
     <string name="agent_invite_action_sending">送信中...</string>
     <string name="agent_invite_action_send">招待を送信</string>
     <string name="channel_create_title">チャンネルを作成</string>
+    <string name="channel_create_external">外部</string>
+    <string name="channel_create_external_hint">%1$s の外部の人と 1 つのチャンネルで一緒に作業できます。閲覧できるのは、%1$s のメンバーも含め、追加した人だけです。</string>
+    <string name="channel_create_external_free_limit">無料プラン：%1$s にはすでにサーバーの外部の人と共有しているチャンネルがあります。</string>
+    <string name="channel_create_upgrade_for_more">アップグレードして追加</string>
+    <string name="channel_create_people_title">#%1$s にメンバーを追加</string>
+    <string name="channel_create_external_members_label">%1$s のメンバー</string>
+    <string name="channel_create_external_submit">作成して招待</string>
+    <string name="channel_create_external_skip">スキップ</string>
+    <string name="channel_create_external_created">#%1$s を作成しましたが、招待は送信されませんでした。もう一度試すか、スキップして後で招待してください。</string>
     <string name="channel_create_label_name">名前</string>
     <string name="channel_create_placeholder_name">例: ai-research</string>
     <string name="channel_create_hint_name_format">先頭は文字にしてください。任意の言語の文字、数字、ハイフン、アンダースコアが使用できます（最大 32 文字）。</string>

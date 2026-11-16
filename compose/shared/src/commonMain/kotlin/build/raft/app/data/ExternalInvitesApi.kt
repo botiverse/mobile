@@ -16,6 +16,8 @@ import kotlinx.serialization.json.Json
  *  - `POST channels/:id/external-invites/preview` `{ emails: string[] }` (1 to 20) →
  *    `{ valid, duplicates, invalid, alreadyPending, alreadyMembers, alreadyInChannel,
  *    guestsElsewhere: [{ email, channelName | null }], slotsLeft }`.
+ *  - `POST channels/external-invites/preview` `{ emails }` (staging 97a3e293d71a, Create
+ *    Channel's External): the same answer for the current server, before the channel exists.
  *  - `POST channels/:id/external-invites` `{ emails, makePrivate? }` →
  *    `{ sent: [{ id, email, expiresAt }], added: string[], skipped: { duplicates, invalid,
  *    alreadyPending, alreadyMembers, alreadyInChannel, guestsElsewhere } }`.
@@ -226,6 +228,17 @@ internal class ExternalInvitesApi(
             "preview",
             DataRequestPriority.Foreground,
             "${base(channelId)}/preview",
+            "POST",
+            buildSharedExternalInviteEmailsBody(emails),
+            ::parseSharedExternalInvitePreview,
+        )
+
+    /** Create Channel's External review: the current server's, before the channel exists. */
+    suspend fun previewForNewChannel(emails: List<String>): DataResult<ExternalInviteAnswer<ExternalInvitePreview>> =
+        call(
+            "preview_new",
+            DataRequestPriority.Foreground,
+            "channels/external-invites/preview",
             "POST",
             buildSharedExternalInviteEmailsBody(emails),
             ::parseSharedExternalInvitePreview,

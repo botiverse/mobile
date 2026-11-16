@@ -2212,6 +2212,15 @@
     <string name="agent_invite_action_sending">Sending...</string>
     <string name="agent_invite_action_send">Send invites</string>
     <string name="channel_create_title">Create Channel</string>
+    <string name="channel_create_external">External</string>
+    <string name="channel_create_external_hint">Work with people outside %1$s in one channel. Only people you add can see it, including %1$s members.</string>
+    <string name="channel_create_external_free_limit">Free plan: %1$s already has a channel with people outside it.</string>
+    <string name="channel_create_upgrade_for_more">Upgrade for more</string>
+    <string name="channel_create_people_title">Add people to #%1$s</string>
+    <string name="channel_create_external_members_label">%1$s members</string>
+    <string name="channel_create_external_submit">Create and invite</string>
+    <string name="channel_create_external_skip">Skip</string>
+    <string name="channel_create_external_created">#%1$s was created, but the invites weren't sent. Try again, or skip and invite people later.</string>
     <string name="channel_create_label_name">Name</string>
     <string name="channel_create_placeholder_name">e.g. ai-research</string>
     <string name="channel_create_hint_name_format">Start with a letter. Use letters from any language, numbers, hyphens, or underscores (32 characters max).</string>

@@ -230,4 +230,16 @@ class ExternalInvitesApiTest {
         assertEquals("channels/external-availability", client.calls.single().path)
         assertEquals("GET", client.calls.single().method)
     }
+
+    /** Create Channel's External review: `POST channels/external-invites/preview` `{ emails }`, no channel id. */
+    @Test
+    fun theNewChannelPreviewPostsTheEmailsToTheChannelsRoute() = runTest {
+        val client = RecordingClient(HomeNetworkResponse(200, """{"valid":["a@example.com"],"duplicates":[],"invalid":[],"alreadyPending":[],"alreadyMembers":[]}"""))
+        val answer = assertIs<DataResult.Content<ExternalInviteAnswer<ExternalInvitePreview>>>(ExternalInvitesApi(client).previewForNewChannel(listOf("a@example.com")))
+        assertEquals(listOf("a@example.com"), assertIs<ExternalInviteAnswer.Ok<ExternalInvitePreview>>(answer.data).value.valid)
+        val call = client.calls.single()
+        assertEquals("channels/external-invites/preview", call.path)
+        assertEquals("POST", call.method)
+        assertEquals(setOf("emails"), Json.parseToJsonElement(call.body!!).jsonObject.keys)
+    }
 }

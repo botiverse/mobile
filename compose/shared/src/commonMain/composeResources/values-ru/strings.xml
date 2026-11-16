@@ -2175,6 +2175,15 @@
     <string name="agent_invite_action_sending">Отправка…</string>
     <string name="agent_invite_action_send">Отправить приглашения</string>
     <string name="channel_create_title">Создать канал</string>
+    <string name="channel_create_external">Внешний</string>
+    <string name="channel_create_external_hint">Работайте в одном канале с людьми, которых нет на сервере %1$s. Канал увидят только те, кого вы добавите, — это касается и участников сервера %1$s.</string>
+    <string name="channel_create_external_free_limit">Тариф Free: на сервере %1$s уже есть канал с внешними участниками.</string>
+    <string name="channel_create_upgrade_for_more">Повысить тариф</string>
+    <string name="channel_create_people_title">Добавить людей в канал #%1$s</string>
+    <string name="channel_create_external_members_label">Участники сервера %1$s</string>
+    <string name="channel_create_external_submit">Создать и пригласить</string>
+    <string name="channel_create_external_skip">Пропустить</string>
+    <string name="channel_create_external_created">Канал #%1$s создан, но приглашения не отправлены. Попробуйте ещё раз или пропустите этот шаг и пригласите людей позже.</string>
     <string name="channel_create_label_name">Название</string>
     <string name="channel_create_placeholder_name">например, ai-research</string>
     <string name="channel_create_hint_name_format">Начните с буквы. Можно использовать буквы любого алфавита, цифры, дефисы и подчёркивания (не более 32 символов).</string>
