@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 /**
  * #triage:#442: a video the platform's player cannot play (WebM, MKV, TS/PS, FLV on iOS AVPlayer
  * and the macOS desktop player) opens the file page's download card, which now says why and
- * points at Download / Open with. Android's Media3 plays it, so Android never shows the note.
+ * offers Download and Open in another app. Android's Media3 plays it, so Android never shows the note.
  */
 class RaftFilePreviewUnplayableVideoNoteTest {
 
@@ -34,6 +34,28 @@ class RaftFilePreviewUnplayableVideoNoteTest {
         assertEquals(
             Res.string.file_preview_download_to_open.desc(),
             raftFilePreviewUnsupportedFileMessage(webm, downloadable = true, videoProfile = RaftVideoPlayerFormatProfile.AndroidMedia3)
+        )
+    }
+
+    @Test
+    fun anUnplayableVideoOffersOpenInAnotherAppUntilItIsDownloaded() {
+        val webm = attachment("screen-recording.webm", "video/webm")
+        val ios = RaftVideoPlayerFormatProfile.IosAvPlayer
+
+        assertTrue(raftFilePreviewUnplayableVideoOffersOpenInOtherApp(webm, RaftFilePreviewDownloadUiState.NotDownloaded, ios))
+        assertTrue(raftFilePreviewUnplayableVideoOffersOpenInOtherApp(webm, RaftFilePreviewDownloadUiState.Downloading, ios))
+        // Downloaded: the card's own Open and Share take over.
+        assertFalse(raftFilePreviewUnplayableVideoOffersOpenInOtherApp(webm, RaftFilePreviewDownloadUiState.Downloaded, ios))
+        // Android plays it; a playable MP4 never reaches the card.
+        assertFalse(
+            raftFilePreviewUnplayableVideoOffersOpenInOtherApp(
+                webm,
+                RaftFilePreviewDownloadUiState.NotDownloaded,
+                RaftVideoPlayerFormatProfile.AndroidMedia3
+            )
+        )
+        assertFalse(
+            raftFilePreviewUnplayableVideoOffersOpenInOtherApp(attachment("clip.mp4", "video/mp4"), RaftFilePreviewDownloadUiState.NotDownloaded, ios)
         )
     }
 

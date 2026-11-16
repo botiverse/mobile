@@ -36,7 +36,7 @@ class FilePreviewNoPreviewScreenshotTest {
     @Test
     fun tooLargeDark() = capture("file.preview.no-preview.too-large.dark", RaftAppAppearance.Dark, tooLargePayload)
 
-    /** #triage:#442: a WebM on iOS (AVPlayer cannot play it) says why, next to Download. */
+    /** #triage:#442: a WebM on iOS (AVPlayer cannot play it) says why, with Download and Open in another app. */
     @Test
     fun unplayableVideoIosLight() =
         capture("file.preview.no-preview.video-format-ios", RaftAppAppearance.Light, webmPayload, RaftVideoPlayerFormatProfile.IosAvPlayer)
@@ -114,6 +114,7 @@ private fun NoPreviewPage(payload: RaftFilePreviewPayload, videoProfile: RaftVid
             onDownload = {},
             onExternalBrowserOpen = {},
             onRetryLoad = if (payload.canRetryPreviewLoad()) ({}) else null,
+            onPdfOpenInOtherApp = {},
             videoProfile = videoProfile,
             modifier = Modifier.fillMaxSize()
         )
