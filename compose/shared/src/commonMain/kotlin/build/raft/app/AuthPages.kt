@@ -36,6 +36,9 @@ import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import androidx.compose.foundation.background
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.raftClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -839,7 +842,13 @@ internal fun AuthTermsAgreement(
     val toggleConsent = { onCheckedChange(!checked) }
     Row(
         modifier = Modifier.fillMaxWidth().then(
-            if (hasPolicyLinks) Modifier else Modifier.raftClickable(onClick = toggleConsent, role = Role.Checkbox)
+            if (hasPolicyLinks) {
+                Modifier
+            } else {
+                Modifier
+                    .raftClickable(onClick = toggleConsent, role = Role.Checkbox)
+                    .semantics { toggleableState = ToggleableState(checked) }
+            }
         ),
         verticalAlignment = Alignment.Top
     ) {
@@ -854,7 +863,7 @@ internal fun AuthTermsAgreement(
                             onClick = toggleConsent,
                             role = Role.Checkbox,
                             shape = RoundedCornerShape(RaftAppRadius.Sticker),
-                        )
+                        ).semantics { toggleableState = ToggleableState(checked) }
                     } else {
                         Modifier
                     }
