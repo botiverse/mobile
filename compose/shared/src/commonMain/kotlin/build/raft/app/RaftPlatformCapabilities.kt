@@ -179,6 +179,13 @@ internal expect fun raftPlatformSupportsVideoAttachmentContainer(
     container: RaftPreviewableVideoContainer
 ): Boolean
 
+/**
+ * The video player profile this platform plays attachments with, or null when it has no video
+ * player (desktop without its native bridge). Picks the note a recognised but unplayable video
+ * shows on its file page ([raftFilePreviewUnplayableVideoNote]).
+ */
+internal expect fun raftPlatformVideoPlayerFormatProfile(): RaftVideoPlayerFormatProfile?
+
 internal expect fun raftPlatformSupportsPushPreviewPrivacySetting(): Boolean
 
 // Each host owns its system gallery implementation: Android MediaStore Images and iOS PhotoKit

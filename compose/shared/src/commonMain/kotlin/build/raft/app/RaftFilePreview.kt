@@ -8797,10 +8797,15 @@ internal fun RaftFilePreviewPayloadContent(
     onPdfRetry: (() -> Unit)? = null,
     /** The full image failed to load and the thumbnail is shown: the banner's Retry. */
     onImageRetry: (() -> Unit)? = null,
-    /** PDF failure fallback: hand the file to another app (the Open with action). */
+    /**
+     * Hand the file to another app (the Open with action): the PDF failure fallback, and the
+     * download card of a video this platform cannot play.
+     */
     onPdfOpenInOtherApp: (() -> Unit)? = null,
     /** A load error (network, expired link, file gone): Retry loads the preview again. */
     onRetryLoad: (() -> Unit)? = null,
+    /** The player profile whose unplayable videos get a note on the download card (tests pin it). */
+    videoProfile: RaftVideoPlayerFormatProfile? = raftPlatformVideoPlayerFormatProfile(),
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
@@ -9107,27 +9112,39 @@ internal fun RaftFilePreviewPayloadContent(
                 onAction = onRetryLoad,
                 modifier = modifier.fillMaxWidth().padding(RaftAppSpacing.Md)
             )
-        else ->
+        else -> {
+            // An unplayable video (WebM on iPhone) offers Download and Open in another app (the
+            // system share sheet / open-in), not Open in browser: the browser cannot play it either.
+            val opensUnplayableVideoInOtherApp =
+                onPdfOpenInOtherApp != null &&
+                    savedFileActions == null &&
+                    raftFilePreviewUnplayableVideoOffersOpenInOtherApp(payload, downloadState, videoProfile)
             RaftFilePreviewGenericCard(
                 iconName = raftFilePreviewFileIconName(payload),
                 name = payload.name.ifBlank { payload.path.ifBlank { fallbackFile } },
                 meta = payload.meta,
                 message =
                     if (savedFileActions != null && !downloadInProgress) {
-                        savedFileActions.message ?: raftFilePreviewUnsupportedFileMessage(payload, downloadable = true).localized()
+                        savedFileActions.message ?: raftFilePreviewUnsupportedFileMessage(payload, downloadable = true, videoProfile = videoProfile).localized()
                     } else if (downloadState == RaftFilePreviewDownloadUiState.Downloaded && onDownload != null) {
-                        stringResource(Res.string.file_preview_download_completed_hint)
+                        // An unplayable video keeps its note: Open / Share hand it to another app.
+                        raftFilePreviewUnplayableVideoNote(payload, videoProfile)?.localized()
+                            ?: stringResource(Res.string.file_preview_download_completed_hint)
                     } else {
-                        raftFilePreviewUnsupportedFileMessage(payload, downloadable = onDownload != null).localized()
+                        raftFilePreviewUnsupportedFileMessage(payload, downloadable = onDownload != null, videoProfile = videoProfile).localized()
                     },
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 downloadView = downloadView,
                 secondaryActionLabel =
-                    onExternalBrowserOpen?.let { stringResource(Res.string.file_preview_action_open_in_browser) },
+                    if (opensUnplayableVideoInOtherApp) {
+                        stringResource(Res.string.file_preview_action_open_in_other_app)
+                    } else {
+                        onExternalBrowserOpen?.let { stringResource(Res.string.file_preview_action_open_in_browser) }
+                    },
                 secondaryActionIcon = RaftLucideIconName.ExternalLink,
-                secondaryActionEnabled = !downloadInProgress,
-                onSecondaryAction = onExternalBrowserOpen,
+                secondaryActionEnabled = !downloadInProgress && (!opensUnplayableVideoInOtherApp || primaryActionEnabled),
+                onSecondaryAction = if (opensUnplayableVideoInOtherApp) onPdfOpenInOtherApp else onExternalBrowserOpen,
                 actionLabel =
                     savedFileActions?.revealLabel?.takeIf { !downloadInProgress }
                         ?: onDownload
@@ -9149,6 +9166,7 @@ internal fun RaftFilePreviewPayloadContent(
                 onStopDownload = onStopDownload,
                 modifier = modifier.fillMaxSize().padding(RaftAppSpacing.Md)
             )
+        }
     }
 }
 
@@ -10845,8 +10863,49 @@ internal fun raftFilePreviewPrimaryAction(
         null -> null
     }
 
-internal fun raftFilePreviewUnsupportedFileMessage(payload: RaftFilePreviewPayload, downloadable: Boolean): StringDesc =
-    when {
+/**
+ * The file page's note for a video this platform's player cannot play (#triage:#442): WebM, MKV,
+ * TS/PS or FLV on iOS's AVPlayer and the macOS desktop player. It says why the file shows as a
+ * download card and points at Download / Open with. Null for a playable video, for anything that
+ * is not a recognised video container, and where there is no player ([profile] null). Android's
+ * Media3 plays every recognised container, so it never shows.
+ */
+internal fun raftFilePreviewUnplayableVideoNote(
+    payload: RaftFilePreviewPayload,
+    profile: RaftVideoPlayerFormatProfile? = raftPlatformVideoPlayerFormatProfile()
+): StringDesc? {
+    if (profile == null || payload.audioOnly) return null
+    val container =
+        raftFilePreviewVideoContainer(
+            fileName = payload.externalFileName.ifBlank { payload.name.ifBlank { payload.path } },
+            mimeType = payload.externalMimeType
+        ) ?: return null
+    if (raftVideoPlayerFormatProfileSupports(profile, container)) return null
+    return when (profile) {
+        RaftVideoPlayerFormatProfile.AndroidMedia3 -> null
+        RaftVideoPlayerFormatProfile.IosAvPlayer -> Res.string.file_preview_video_format_unplayable_ios.desc()
+        RaftVideoPlayerFormatProfile.DesktopMacAvFoundation -> Res.string.file_preview_video_format_unplayable_mac.desc()
+    }
+}
+
+/**
+ * Whether the download card of an unplayable video offers Open in another app next to Download.
+ * Once the file is downloaded the card's own Open and Share take over.
+ */
+internal fun raftFilePreviewUnplayableVideoOffersOpenInOtherApp(
+    payload: RaftFilePreviewPayload,
+    downloadState: RaftFilePreviewDownloadUiState?,
+    profile: RaftVideoPlayerFormatProfile? = raftPlatformVideoPlayerFormatProfile()
+): Boolean =
+    downloadState != RaftFilePreviewDownloadUiState.Downloaded &&
+        raftFilePreviewUnplayableVideoNote(payload, profile) != null
+
+internal fun raftFilePreviewUnsupportedFileMessage(
+    payload: RaftFilePreviewPayload,
+    downloadable: Boolean,
+    videoProfile: RaftVideoPlayerFormatProfile? = raftPlatformVideoPlayerFormatProfile()
+): StringDesc =
+    raftFilePreviewUnplayableVideoNote(payload, videoProfile) ?: when {
         downloadable && payload.noPreviewReason == RaftFilePreviewNoPreviewReasonTooLarge ->
             Res.string.file_preview_no_preview_too_large_download.desc()
         downloadable && payload.noPreviewReason == RaftFilePreviewNoPreviewReasonUnavailable ->

@@ -78,6 +78,9 @@ internal actual fun raftPlatformSupportsVideoAttachmentContainer(
         container = container
     )
 
+internal actual fun raftPlatformVideoPlayerFormatProfile(): RaftVideoPlayerFormatProfile? =
+    RaftVideoPlayerFormatProfile.AndroidMedia3
+
 // Android reports previewMode in its FCM registration and redacts in AndroidUnreadNotificationPoster,
 // which also covers the no-GMS realtime path.
 internal actual fun raftPlatformSupportsPushPreviewPrivacySetting(): Boolean = true
