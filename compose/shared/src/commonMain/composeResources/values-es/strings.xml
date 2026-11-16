@@ -1207,7 +1207,13 @@
     <string name="thread_files_download_file">Descargar archivo</string>
     <string name="thread_state_note">NOTA</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
-    <string name="thread_placeholder_search">Buscar en este hilo…</string>
+    <string name="thread_placeholder_search">Buscar en este hilo</string>
+    <string name="thread_placeholder_search_task">Buscar en esta tarea</string>
+    <string name="thread_find_previous_match">Coincidencia anterior</string>
+    <string name="thread_find_next_match">Coincidencia siguiente</string>
+    <string name="thread_find_close">Cerrar búsqueda en el hilo</string>
+    <string name="thread_find_loading">Cargando</string>
+    <string name="thread_find_load_failed">No se pudo cargar este hilo</string>
     <string name="thread_long_message_show_more">Mostrar más</string>
     <string name="thread_long_message_show_less">Mostrar menos</string>
     <string name="composer_placeholder_message_design">Enviar mensaje a design</string>

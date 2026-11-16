@@ -1207,7 +1207,13 @@
     <string name="thread_files_download_file">파일 다운로드</string>
     <string name="thread_state_note">메모</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
-    <string name="thread_placeholder_search">이 스레드 검색…</string>
+    <string name="thread_placeholder_search">이 스레드 검색</string>
+    <string name="thread_placeholder_search_task">이 작업 검색</string>
+    <string name="thread_find_previous_match">이전 결과</string>
+    <string name="thread_find_next_match">다음 결과</string>
+    <string name="thread_find_close">스레드 검색 닫기</string>
+    <string name="thread_find_loading">불러오는 중</string>
+    <string name="thread_find_load_failed">이 스레드를 불러오지 못했어요</string>
     <string name="thread_long_message_show_more">더 보기</string>
     <string name="thread_long_message_show_less">접기</string>
     <string name="composer_placeholder_message_design">design에 메시지 보내기</string>

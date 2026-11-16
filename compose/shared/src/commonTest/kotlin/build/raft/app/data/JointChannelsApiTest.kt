@@ -370,6 +370,7 @@ internal class RecordingJointNetworkClient(
         val method: String,
         val serverIdOverride: ServerId?,
         val body: String?,
+        val query: List<Pair<String, String>> = emptyList(),
     )
 
     val calls = mutableListOf<Call>()
@@ -382,7 +383,7 @@ internal class RecordingJointNetworkClient(
         serverIdOverride: ServerId?,
         bodyText: String?,
     ): HomeNetworkResponse {
-        calls += Call(priority, path, method, serverIdOverride, bodyText)
+        calls += Call(priority, path, method, serverIdOverride, bodyText, query)
         return respond(path, method)
     }
 }

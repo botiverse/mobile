@@ -97,6 +97,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import build.raft.app.data.threadFindMatches
+import build.raft.app.data.threadFindSearchable
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
@@ -1686,46 +1688,46 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadInlineSearchMatchesOriginAndRepliesInListOrder() {
+    fun threadFindMatchesOriginAndRepliesInListOrder() {
         val payload =
             RaftThreadScreenPayload(
+                sourceThreadId = "thread-1",
                 originStatus = "content",
                 originMessage = testThreadMessage("origin").copy(body = "The launch decision"),
                 messages =
                     listOf(
-                        testThreadMessage("reply-0").copy(body = "unrelated"),
-                        testThreadMessage("reply-1").copy(body = "Launch follow-up"),
-                        testThreadMessage("reply-2").copy(body = "other")
+                        testThreadMessage("reply-0").copy(body = "unrelated", seq = 1),
+                        testThreadMessage("reply-1").copy(body = "Launch follow-up", seq = 2),
+                        testThreadMessage("reply-2").copy(body = "other", seq = 3)
                     )
             )
-        val matches = payload.toThreadTimelineSlice().threadInlineSearchMatches("launch")
+        val slice = payload.toThreadTimelineSlice()
+        val window = assertNotNull(slice.threadFindWindow())
+        val matches = threadFindMatches(threadFindSearchable(window, corpus = emptyList()), "launch")
 
-        assertEquals(
-            listOf(
-                ThreadInlineSearchMatch(messageId = "origin", listItemIndex = 0),
-                ThreadInlineSearchMatch(messageId = "reply-1", listItemIndex = 3)
-            ),
-            matches
-        )
+        assertEquals("thread-1", window.threadChannelId)
+        assertEquals(listOf("origin", "reply-1"), matches)
+        // The page lands on a match by its list row: the origin card first, then the replies.
+        assertEquals(listOf(0, 3), matches.map(slice::threadMessageListItemIndex))
     }
 
     @Test
-    fun threadInlineSearchMatchesAuthorFieldsAndIgnoresBlankQuery() {
+    fun threadFindMatchesSenderNameAndTextOnlyAndIgnoresBlankQuery() {
         val payload =
             RaftThreadScreenPayload(
+                sourceThreadId = "thread-1",
                 messages =
                     listOf(
                         testThreadMessage("reply-0").copy(authorName = "Artin", body = "hello"),
                         testThreadMessage("reply-1").copy(authorHandle = "Android-Developer-2", body = "ship it")
                     )
             )
-        val timeline = payload.toThreadTimelineSlice()
+        val searchable = threadFindSearchable(assertNotNull(payload.toThreadTimelineSlice().threadFindWindow()), corpus = emptyList())
 
-        assertEquals(emptyList<ThreadInlineSearchMatch>(), timeline.threadInlineSearchMatches("   "))
-        assertEquals(
-            listOf(ThreadInlineSearchMatch(messageId = "reply-1", listItemIndex = 2)),
-            timeline.threadInlineSearchMatches("developer-2")
-        )
+        assertEquals(emptyList(), threadFindMatches(searchable, "   "))
+        // web buildThreadSearchMatches: the sender's name and the text, any case; not the handle.
+        assertEquals(listOf("reply-0"), threadFindMatches(searchable, " ARTIN "))
+        assertEquals(emptyList(), threadFindMatches(searchable, "developer-2"))
     }
 
     @Test
