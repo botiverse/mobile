@@ -96,6 +96,14 @@ internal class RaftArtifactViewerCache(
      */
     private var keptSessionMark: Int? = null
 
+    /**
+     * The conversation the kept document was booted with (`hostConversation` in its first address,
+     * [raftArtifactViewerHostConversationOrNull]; null: none). The web latches its embed mode once
+     * per document (slock `embed.ts` `getEmbedMode`), so routing a kept document to an address with
+     * another conversation would not change the one its title lists ([keptDocumentUsable]).
+     */
+    private var keptConversation: String? = null
+
     fun header(scope: RaftArtifactViewerScope?, id: String): RaftArtifactViewerHeader? =
         if (scope == null || scope != this.scope) null else headers[id]
 
@@ -129,12 +137,22 @@ internal class RaftArtifactViewerCache(
         return true
     }
 
-    /** A WebView was prewarmed for [scope] on the viewer's route with no Artifact, signed in with [accessToken]. */
-    fun markKeptWarm(scope: RaftArtifactViewerScope?, accessToken: String) {
+    /**
+     * A WebView was prewarmed for [scope] on the viewer's route with no Artifact, signed in with
+     * [accessToken], for the conversation on screen ([conversationId], in its first address).
+     */
+    fun markKeptWarm(scope: RaftArtifactViewerScope?, accessToken: String, conversationId: String? = null) {
         if (scope == null) return
         adopt(scope)
         keptDocument = null
         keptSessionMark = raftArtifactViewerSessionMark(accessToken)
+        keptConversation = raftArtifactViewerHostConversationOrNull(conversationId)
+    }
+
+    /** A new document was loaded for [scope] with [conversationId] in its first address (what it latched). */
+    fun noteKeptBoot(scope: RaftArtifactViewerScope?, conversationId: String?) {
+        if (scope == null || scope != this.scope) return
+        keptConversation = raftArtifactViewerHostConversationOrNull(conversationId)
     }
 
     /** The shown viewer's document got [accessToken] (a rotation synced while it is on screen). */
@@ -151,11 +169,14 @@ internal class RaftArtifactViewerCache(
      * Whether a kept document of [scope] may be shown again (as it is, or routed to another
      * Artifact): only with the session it was parked with. After a token refresh while it was
      * parked, its web app may have lost its session (requests got 401) and route itself to `/`
-     * on reuse (Hands dd109a01), so a new document loads instead.
+     * on reuse (Hands dd109a01), so a new document loads instead. And only for the conversation it
+     * was booted with ([conversationId], [noteKeptBoot]): the page latched that one, so an open
+     * from another conversation (or from none) loads a new document.
      */
-    fun keptDocumentUsable(scope: RaftArtifactViewerScope?, accessToken: String): Boolean =
+    fun keptDocumentUsable(scope: RaftArtifactViewerScope?, accessToken: String, conversationId: String? = null): Boolean =
         scope != null && scope == this.scope && keptSessionMark != null &&
-            keptSessionMark == raftArtifactViewerSessionMark(accessToken)
+            keptSessionMark == raftArtifactViewerSessionMark(accessToken) &&
+            keptConversation == raftArtifactViewerHostConversationOrNull(conversationId)
 
     /** 403/404 (the Artifact is gone or not theirs): its header and any kept document showing it go. */
     fun evict(scope: RaftArtifactViewerScope?, id: String) {
@@ -191,6 +212,7 @@ internal class RaftArtifactViewerCache(
     private fun dropKeptDocument() {
         keptDocument = null
         keptSessionMark = null
+        keptConversation = null
         // Always tell the host: a WebView may be kept (prewarmed) with no document recorded yet.
         onKeptDocumentDropped()
     }
@@ -276,6 +298,22 @@ internal val RaftArtifactViewerEmbedQuery: String =
 internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU_PARAM = "hostMenu"
 internal const val RAFT_ARTIFACT_VIEWER_HOST_DESKTOP_PARAM = "hostDesktop"
 internal const val RAFT_ARTIFACT_VIEWER_HOST_TOOLBAR_PARAM = "hostToolbar"
+
+/**
+ * The conversation the Artifact was opened from (botiverse/slock #15103, #proj-workspace:#309):
+ * `hostConversation=<id>`, with the host shell and `hostMenu`, makes the page's title the menu of
+ * the Artifacts this person recently opened there (kept in the WebView's storage). Picking one moves
+ * the page to `/artifacts/<id>` in place (the web's keeper keeps the App's params), without a new
+ * `hostLoaded=1` ([raftArtifactViewerSwitchesInPlace]). Set only where the App opens an Artifact from
+ * a conversation (its messages, its Files); for a thread or a task conversation it is the channel it
+ * belongs to, as the web records one opened from a thread beside its channel. The web latches it per
+ * document, as the rest of the embed contract ([RaftArtifactViewerCache.keptDocumentUsable]).
+ */
+internal const val RAFT_ARTIFACT_VIEWER_HOST_CONVERSATION_PARAM = "hostConversation"
+
+/** [conversationId] as the web takes it (slock `embed.ts`: `[A-Za-z0-9_-]{1,64}`), else null (none is sent). */
+internal fun raftArtifactViewerHostConversationOrNull(conversationId: String?): String? =
+    conversationId?.trim()?.takeIf { id -> id.length in 1..64 && id.all { it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it == '_' || it == '-' } }
 
 /**
  * The page's hand-over signal (#proj-workspace:#302, botiverse/slock #15036 `markHostPageShown`):
@@ -384,13 +422,20 @@ private val RaftArtifactViewerEmbedKeys =
         RAFT_ARTIFACT_VIEWER_HOST_MENU_PARAM,
         RAFT_ARTIFACT_VIEWER_HOST_TOOLBAR_PARAM,
         RAFT_ARTIFACT_VIEWER_HOST_LOADED_PARAM,
+        RAFT_ARTIFACT_VIEWER_HOST_CONVERSATION_PARAM,
     )
+
+/** The embed contract's query, with `hostConversation` when [conversationId] is one ([raftArtifactViewerHostConversationOrNull]). */
+internal fun raftArtifactViewerEmbedQuery(conversationId: String? = null): String =
+    RaftArtifactViewerEmbedQuery +
+        (raftArtifactViewerHostConversationOrNull(conversationId)?.let { "&$RAFT_ARTIFACT_VIEWER_HOST_CONVERSATION_PARAM=$it" } ?: "")
 
 /**
  * [url] with the embed contract in its query: any `embed`/`shell` already there is replaced and a `chrome` dropped, every
- * other parameter, the path (a pinned `/v/<n>` too) and the fragment stay as they are.
+ * other parameter, the path (a pinned `/v/<n>` too) and the fragment stay as they are. `hostConversation` is
+ * [conversationId]'s alone (one already there is dropped; none without a conversation).
  */
-internal fun raftArtifactViewerEmbeddedUrl(url: String): String {
+internal fun raftArtifactViewerEmbeddedUrl(url: String, conversationId: String? = null): String {
     val fragment = url.indexOf('#').let { if (it < 0) "" else url.substring(it) }
     val beforeFragment = url.removeSuffix(fragment)
     val path = beforeFragment.substringBefore('?')
@@ -398,12 +443,15 @@ internal fun raftArtifactViewerEmbeddedUrl(url: String): String {
         beforeFragment.substringAfter('?', missingDelimiterValue = "")
             .split('&')
             .filter { it.isNotEmpty() && it.substringBefore('=') !in RaftArtifactViewerEmbedKeys }
-    return path + "?" + (kept + RaftArtifactViewerEmbedQuery).joinToString("&") + fragment
+    return path + "?" + (kept + raftArtifactViewerEmbedQuery(conversationId)).joinToString("&") + fragment
 }
 
-/** What the viewer's WebView loads: [raftArtifactViewerPageUrl] under the App's title bar. */
-internal fun raftArtifactViewerEmbeddedPageUrl(webBaseUrl: String, target: ArtifactLinkTarget): String =
-    raftArtifactViewerEmbeddedUrl(raftArtifactViewerPageUrl(webBaseUrl, target))
+/**
+ * What the viewer's WebView loads: [raftArtifactViewerPageUrl] under the App's title bar, naming the
+ * conversation it was opened from ([conversationId]; null: none, e.g. Artifacts home or a link from outside).
+ */
+internal fun raftArtifactViewerEmbeddedPageUrl(webBaseUrl: String, target: ArtifactLinkTarget, conversationId: String? = null): String =
+    raftArtifactViewerEmbeddedUrl(raftArtifactViewerPageUrl(webBaseUrl, target), conversationId)
 
 /**
  * The page a prewarmed WebView boots: the canonical link's route with no Artifact (an address the
@@ -412,8 +460,8 @@ internal fun raftArtifactViewerEmbeddedPageUrl(webBaseUrl: String, target: Artif
  * the embed contract: the web latches it from this first address, so the Artifact this document
  * later routes to is drawn without its own header too.
  */
-internal fun raftArtifactViewerWarmUrl(webBaseUrl: String): String =
-    raftArtifactViewerEmbeddedUrl(webBaseUrl.trim().trimEnd('/') + "/artifacts/" + RAFT_ARTIFACT_VIEWER_WARM_SEGMENT)
+internal fun raftArtifactViewerWarmUrl(webBaseUrl: String, conversationId: String? = null): String =
+    raftArtifactViewerEmbeddedUrl(webBaseUrl.trim().trimEnd('/') + "/artifacts/" + RAFT_ARTIFACT_VIEWER_WARM_SEGMENT, conversationId)
 
 internal const val RAFT_ARTIFACT_VIEWER_WARM_SEGMENT = "raft-app-warm"
 
@@ -438,10 +486,17 @@ internal fun raftArtifactViewerGuardedScript(webOrigin: String, body: String): S
  * routes with React Router's BrowserRouter, which follows `popstate`. The session is written again
  * first (the kept document may have been booted with an older access token).
  */
-internal fun raftArtifactViewerNavigateScript(webOrigin: String, sessionWrites: String, target: ArtifactLinkTarget): String {
+internal fun raftArtifactViewerNavigateScript(
+    webOrigin: String,
+    sessionWrites: String,
+    target: ArtifactLinkTarget,
+    conversationId: String? = null,
+): String {
     val path = Json.encodeToString(String.serializer(), raftArtifactViewerPagePath(target))
-    // The address keeps the embed contract (the web's keeper would put it back; this saves a write).
-    val address = Json.encodeToString(String.serializer(), raftArtifactViewerPagePath(target) + "?" + RaftArtifactViewerEmbedQuery)
+    // The address keeps the embed contract (the web's keeper would put it back; this saves a write). The kept
+    // document latched its conversation when it booted: only one booted with [conversationId] is routed
+    // ([RaftArtifactViewerCache.keptDocumentUsable]), so the address names the same one.
+    val address = Json.encodeToString(String.serializer(), raftArtifactViewerPagePath(target) + "?" + raftArtifactViewerEmbedQuery(conversationId))
     return raftArtifactViewerGuardedScript(
         webOrigin,
         """
@@ -568,6 +623,18 @@ internal fun raftArtifactViewerNavigation(url: String, webOrigin: String, artifa
 /** Whether [url] carries the page's own Back (`#host=close`, [RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT]). */
 internal fun raftArtifactViewerAsksHostClose(url: String): Boolean =
     url.substringAfter('#', "") == RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT.removePrefix("#")
+
+/**
+ * The Artifact the page moved to in place, which the viewer then shows (its title, Open in Browser,
+ * the kept document), or null when [navigation] is handled as before. Opened from a conversation
+ * ([conversationId], `hostConversation`), the page's title lists the Artifacts recently opened there
+ * and picking one moves the page to `/artifacts/<id>` (botiverse/slock #15103): the viewer stays,
+ * on the same document, and waits for nothing (the page writes no `hostLoaded=1` after such a move).
+ * Its Back still closes the viewer in one step (the App's Back closes the page; the page's own is
+ * `#host=close`). Without a conversation another Artifact's address opens its own viewer, as before.
+ */
+internal fun raftArtifactViewerSwitchesInPlace(navigation: RaftArtifactViewerNavigation, conversationId: String?): ArtifactLinkTarget? =
+    (navigation as? RaftArtifactViewerNavigation.OpenArtifact)?.target?.takeIf { raftArtifactViewerHostConversationOrNull(conversationId) != null }
 
 /** What the viewer does when its page's address leaves the Artifact. */
 internal enum class RaftArtifactViewerLeaveAction {

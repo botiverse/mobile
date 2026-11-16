@@ -287,11 +287,16 @@ internal fun raftServerJoinLinkOpener(
     }
 }
 
+/**
+ * [artifactConversationId]: the conversation an Artifact link tapped here is opened from
+ * (`hostConversation`, [LocalRaftArtifactOpenConversation]); null where links are not a conversation's.
+ */
 @Composable
 internal fun rememberRaftLinkNavigator(
     pager: Pager,
     bridge: BridgeModule,
     routeScope: RaftInAppBrowserRouteScope = RaftInAppBrowserRouteScope.InheritShell,
+    artifactConversationId: String? = null,
 ): RaftLinkNavigator {
     // Lazy: every page has a navigator (ProvideRaftLinkOpening), few of them open a link.
     val preferenceRepository =
@@ -305,7 +310,8 @@ internal fun rememberRaftLinkNavigator(
     val rejectedMessage = stringResource(Res.string.in_app_browser_unable_to_open_link)
     // An app-shell tab's page has no scope of its own: the viewer opens with the tab's ([LocalRaftArtifactOpenStoreScope]).
     val artifactStoreScope = LocalRaftArtifactOpenStoreScope.current
-    return remember(pager, bridge, preferenceRepository, routeScope, rejectedMessage, artifactStoreScope) {
+    val artifactConversation = raftArtifactViewerHostConversationOrNull(artifactConversationId)
+    return remember(pager, bridge, preferenceRepository, routeScope, rejectedMessage, artifactStoreScope, artifactConversation) {
         RaftLinkNavigator(
             modeProvider = { effectiveLinkOpenMode(preferenceRepository.value.getLinkOpenModeSync()) },
             openInAppBrowser = { url ->
@@ -325,7 +331,7 @@ internal fun rememberRaftLinkNavigator(
                     // Read at the tap (AGENTS.md "Environment Web Link URL Rule"): the active Developer environment's web.
                     webUrl = { RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current().webUrl },
                 ) { target ->
-                    pager.openRaftArtifactViewerPage(target, artifactStoreScope).also { opened ->
+                    pager.openRaftArtifactViewerPage(target, artifactStoreScope, artifactConversation).also { opened ->
                         if (!opened) RaftArtifactOpenTrace.mark("browser_fallback", "reason=no_page_scope")
                     }
                 },

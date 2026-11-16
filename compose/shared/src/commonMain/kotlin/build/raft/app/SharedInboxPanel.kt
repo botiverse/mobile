@@ -1836,11 +1836,11 @@ internal fun SharedActivityList(
     val activityObjectWebBaseUrl =
         remember { RaftSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.webUrl.orEmpty() }
     // Workspace Artifacts: an object row opens the in-app viewer; the web page in the browser only
-    // when no page can open from here.
+    // when no page can open from here. Activity is no conversation: no `hostConversation`.
     val activityArtifactOpener =
-        rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(activityObjectWebBaseUrl, it)) }
+        rememberRaftArtifactOpener(conversationId = null) { openArtifactWebPage(artifactWebUrl(activityObjectWebBaseUrl, it)) }
     // An Artifact row on screen: boot the in-app viewer's web page ahead of a tap.
-    RaftArtifactViewerPrewarm(enabled = presentedItemsState.value.any { it.kind == InboxItemKind.Object })
+    RaftArtifactViewerPrewarm(enabled = presentedItemsState.value.any { it.kind == InboxItemKind.Object }, conversationId = null)
     var swipeEndUndo by remember { mutableStateOf(ActivitySwipeEndUndoState()) }
     // raft-design #785: one row's swipe buttons open at a time; a tap elsewhere, a scroll, Back, the
     // long-press menu or opening another row closes it (ActivityConversationSwipe.kt).
