@@ -297,6 +297,48 @@ static NSString *RaftBridgeGitCommit(void) {
     return RaftBridgeString(RAFT_IOS_GIT_COMMIT);
 }
 
+/// Settings > About > Open Source Licenses on iOS: the native frameworks bundled into the app
+/// (Podfile.lock). Keep in step with the Podfile and THIRD_PARTY_NOTICES.md. MobileVLCKit (VLCKit
+/// and libVLC) is LGPL-2.1-or-later and ships as its own dynamic framework.
+static NSDictionary *RaftIosOpenSourceLicensesResult(void) {
+    NSDictionary *(^item)(NSString *, NSString *, NSString *, NSString *, NSString *, NSString *) =
+        ^NSDictionary *(NSString *name, NSString *displayName, NSString *version, NSString *licenseName,
+                        NSString *licenseUrl, NSString *sourceUrl) {
+            return @{
+                @"id" : [NSString stringWithFormat:@"cocoapods:%@:%@", name, version],
+                @"group" : @"cocoapods",
+                @"name" : name,
+                @"version" : version,
+                @"displayName" : displayName,
+                @"licenseName" : licenseName,
+                @"licenseUrl" : licenseUrl,
+                @"sourceUrl" : sourceUrl,
+            };
+        };
+    NSArray<NSDictionary *> *items = @[
+        item(@"Hands", @"Hands", @"0.2.2", @"MIT License",
+             @"https://github.com/oranix-io/hands/blob/main/LICENSE", @"https://github.com/oranix-io/hands"),
+        item(@"MMKV", @"MMKV / MMKVCore", @"2.4.3", @"BSD 3-Clause License",
+             @"https://github.com/Tencent/MMKV/blob/master/LICENSE.TXT", @"https://github.com/Tencent/MMKV"),
+        item(@"MobileVLCKit", @"MobileVLCKit (VLCKit and libVLC, video playback)", @"3.7.5",
+             @"GNU Lesser General Public License v2.1 or later (LGPL-2.1-or-later)",
+             @"https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html", @"https://code.videolan.org/videolan/VLCKit"),
+        item(@"SDWebImage", @"SDWebImage", @"5.21.7", @"MIT License",
+             @"https://github.com/SDWebImage/SDWebImage/blob/master/LICENSE", @"https://github.com/SDWebImage/SDWebImage"),
+        item(@"SDWebImageSVGCoder", @"SDWebImageSVGCoder", @"1.8.0", @"MIT License",
+             @"https://github.com/SDWebImage/SDWebImageSVGCoder/blob/master/LICENSE",
+             @"https://github.com/SDWebImage/SDWebImageSVGCoder"),
+    ];
+    return @{
+        @"status" : @"ok",
+        @"schemaVersion" : @1,
+        @"variant" : @"ios",
+        // Empty: the page names the source in the app language ("Raft release runtime").
+        @"sourceConfiguration" : @"",
+        @"items" : items,
+    };
+}
+
 static NSDictionary *RaftDiagnosticsCurrentEnvironmentAbout(void) {
     __block NSDictionary *about = nil;
     dispatch_block_t collect = ^{
@@ -6327,6 +6369,9 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         NSMutableDictionary *about = [RaftDiagnosticsCurrentEnvironmentAbout() mutableCopy];
         about[@"status"] = @"ok";
         return about;
+    }
+    if ([action isEqualToString:@"loadOpenSourceLicenses"]) {
+        return RaftIosOpenSourceLicensesResult();
     }
     if ([action isEqualToString:@"loadDeveloper"]) {
         return [self raft_developerCapabilityResultWithFeedback:nil];

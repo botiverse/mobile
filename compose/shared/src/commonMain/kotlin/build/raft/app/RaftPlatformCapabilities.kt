@@ -186,6 +186,13 @@ internal expect fun raftPlatformSupportsVideoAttachmentContainer(
  */
 internal expect fun raftPlatformVideoPlayerFormatProfile(): RaftVideoPlayerFormatProfile?
 
+/**
+ * Whether this platform can play a recognised container its own player cannot demux through
+ * VLC (MobileVLCKit). Only iOS has it, once the app host registered its player
+ * (`RaftIosVlcVideoHost.factory`); see [raftVideoPlaybackEngineFor].
+ */
+internal expect fun raftPlatformVlcVideoEngineAvailable(): Boolean
+
 internal expect fun raftPlatformSupportsPushPreviewPrivacySetting(): Boolean
 
 // Each host owns its system gallery implementation: Android MediaStore Images and iOS PhotoKit

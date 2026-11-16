@@ -3,6 +3,7 @@ PODS:
   - MMKV (2.4.3):
     - MMKVCore (~> 2.4.3)
   - MMKVCore (2.4.3)
+  - MobileVLCKit (3.7.5)
   - SDWebImage (5.21.7):
     - SDWebImage/Core (= 5.21.7)
   - SDWebImage/Core (5.21.7)
@@ -13,6 +14,7 @@ PODS:
 DEPENDENCIES:
   - Hands (from `https://github.com/oranix-io/hands.git`, tag `ios-v0.2.2`)
   - MMKV (~> 2.4.3)
+  - MobileVLCKit (= 3.7.5)
   - SDWebImage
   - SDWebImageSVGCoder
   - shared (from `../shared`)
@@ -21,6 +23,7 @@ SPEC REPOS:
   trunk:
     - MMKV
     - MMKVCore
+    - MobileVLCKit
     - SDWebImage
     - SDWebImageSVGCoder
 
@@ -40,10 +43,11 @@ SPEC CHECKSUMS:
   Hands: 1f35d80a99c9b752f816ed1100a7c4410281134d
   MMKV: 86859fdfa2b0b21db1fd6e48788474a6416a2c77
   MMKVCore: 3d16ce9f7d411e135020915fde98a056859a1efa
+  MobileVLCKit: 9fb4475cd820b2d271ac394d5d7ba18c525332ab
   SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
   SDWebImageSVGCoder: 8e10c8f6cc879c7dfb317b284e13dd589379f01c
   shared: c209f5e12424a76e5b96d7f2b744fe1ca11df64e
 
-PODFILE CHECKSUM: 573cf7dd54cc600cd31230dc43cfc893ba3fee24
+PODFILE CHECKSUM: 78ebeb4ddc5a1f3d2da7341407007d907a71ade0
 
 COCOAPODS: 1.17.0

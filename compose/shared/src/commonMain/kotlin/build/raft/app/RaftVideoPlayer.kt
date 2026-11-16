@@ -12,7 +12,8 @@ import build.raft.app.compat.ui.VideoPlayControl
  * Android: Media3 ExoPlayer inside a `PlayerView` (system controller, fullscreen), ported from the
  * former Kuikly adapter `androidApp/.../SlockKRVideoViewAdapter.kt`.
  * iOS: AVPlayer inside an embedded `AVPlayerViewController` (system controller), ported from the
- * former Kuikly handler `iosApp/.../SlockKRVideoViewHandler.m`.
+ * former Kuikly handler `iosApp/.../SlockKRVideoViewHandler.m`; containers AVPlayer cannot demux
+ * (WebM, MKV, ...) play through MobileVLCKit ([LocalRaftVideoPlaybackEngine]).
  *
  * The control surface mirrors the Kuikly attrs/events the pages used:
  * - [playControl] is applied only when it changes (Kuikly diffed the attr the same way);
@@ -44,6 +45,14 @@ internal expect fun RaftVideoPlayer(
  * it to their "not available" state before creating a player.
  */
 internal val LocalRaftVideoPlayerAudioOnly = staticCompositionLocalOf { false }
+
+/**
+ * The engine a [RaftVideoPlayer] plays its source with ([raftVideoPlaybackEngineFor] of the
+ * attachment's container). Only iOS reads it: [RaftVideoPlaybackEngine.Vlc] plays through the app's
+ * MobileVLCKit player (its own controls and full screen), the rest through AVPlayer. The source is
+ * a signed link with no file name, so the caller, which knows the attachment, provides it.
+ */
+internal val LocalRaftVideoPlaybackEngine = staticCompositionLocalOf { RaftVideoPlaybackEngine.Platform }
 
 /**
  * Whether the preview's video panel hands its controls to the platform host. An audio-only file on

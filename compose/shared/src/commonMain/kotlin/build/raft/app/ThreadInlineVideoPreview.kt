@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -181,13 +182,21 @@ internal fun ThreadInlineVideoAttachmentCard(
                     .background(RaftUiPalette.black),
             contentAlignment = Alignment.Center
         ) {
-            ThreadInlineVideoSurface(
-                attachment = attachment,
-                previewState = previewState,
-                previewEnabled = host != null,
-                onRetry = { host?.requestPreview?.invoke(attachment.id, true) },
-                onDownload = onDownload
-            )
+            // iOS: WebM / MKV / ... play through VLC (the link has no file name to tell).
+            val engine =
+                remember(attachment.name, attachment.mimeType) {
+                    raftFilePreviewVideoPlaybackEngine(fileName = attachment.name, mimeType = attachment.mimeType)
+                        ?: RaftVideoPlaybackEngine.Platform
+                }
+            CompositionLocalProvider(LocalRaftVideoPlaybackEngine provides engine) {
+                ThreadInlineVideoSurface(
+                    attachment = attachment,
+                    previewState = previewState,
+                    previewEnabled = host != null,
+                    onRetry = { host?.requestPreview?.invoke(attachment.id, true) },
+                    onDownload = onDownload
+                )
+            }
             if (onOpenPreview != null) {
                 RaftEmbeddedControls {
                     RaftIconButton(

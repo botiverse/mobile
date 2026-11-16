@@ -15,6 +15,11 @@ target 'iosApp' do
   # Raft Coil loader (coil-svg for SVG).
   pod 'SDWebImageSVGCoder'
   pod 'MMKV', '~> 2.4.3'
+  # In-app playback of the video containers AVPlayer cannot demux (WebM, MKV, MPEG-TS/PS, FLV):
+  # RaftIosVlcEngine.m / RaftIosVlcVideoPlayer.swift. libVLC + VLCKit are LGPL-2.1-or-later and ship
+  # as a dynamic framework (listed in THIRD_PARTY_NOTICES.md and Settings > About > Open Source
+  # Licenses). Pinned exactly; the trunk spec pins the binary's sha256.
+  pod 'MobileVLCKit', '3.7.5'
 
   # Hosted tests resolve production symbols through TEST_HOST. Inherit the
   # same pod search paths for compile-time signatures, but do not link the
