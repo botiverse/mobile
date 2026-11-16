@@ -113,6 +113,30 @@ class RaftMessageLinkResolverTest {
     }
 
     @Test
+    fun linkToATaskConversationOpensTheTaskNotAChannelPage() = runTest {
+        // slock #14960: `/channel/<task conversation>?msg=<id>` (a task message's Copy link) opens the
+        // task at the message; without `msg`, the task's conversation. The row says it is a task's.
+        for (msg in listOf(mid, null)) {
+            val network =
+                FakeMessageLinkNetwork(
+                    channel = HomeNetworkResponse(200, channelBody(RaftTaskConversationChannelKind)),
+                    context = HomeNetworkResponse(200, contextBody(mid)),
+                )
+            val open = assertIs<RaftMessageLinkResolution.Open>(RaftMessageLinkResolver(network).resolve(link(msg = msg), servers))
+            assertEquals(ConversationKind.Task, open.sourceIdentity.conversationKind, "msg=$msg")
+            val request = openThroughCoordinator(open)
+            assertEquals(ConversationKind.Task, request.conversationIdentity.kind, "msg=$msg")
+            assertEquals(cid, request.conversationIdentity.channelId?.value, "msg=$msg")
+            assertEquals(msg, request.anchorMessageId, "msg=$msg")
+        }
+        // A task conversation is never a DM.
+        val underDmRoute = FakeMessageLinkNetwork(channel = HomeNetworkResponse(200, channelBody(RaftTaskConversationChannelKind)))
+        assertIs<RaftMessageLinkResolution.NotFound>(
+            RaftMessageLinkResolver(underDmRoute).resolve(link(kind = ConversationKind.DirectMessage), servers)
+        )
+    }
+
+    @Test
     fun dmLinkMustNameADirectMessage() = runTest {
         val dm = FakeMessageLinkNetwork(channel = HomeNetworkResponse(200, channelBody("dm")))
         val open = assertIs<RaftMessageLinkResolution.Open>(

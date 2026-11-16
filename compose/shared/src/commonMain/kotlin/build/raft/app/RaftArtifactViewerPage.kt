@@ -1088,6 +1088,9 @@ private fun RaftArtifactViewerWebBody(
             },
             // A file the page saves (Android DownloadListener, an iOS attachment response): the browser can.
             onDownloadRequested = { currentOnDownload() },
+            // A Raft link the page opened in place (Android: `window.open` loads in this one window): routed
+            // as the blocked navigation above, the viewer staying, as on the web and iOS.
+            routesMainFrameNavigation = { url -> raftArtifactViewerRoutesDocumentAsLink(url, scope.webOrigin, shownTarget.id) },
         )
         SettingsWebViewAccessTokenSyncEffect(
             snapshot = snapshot,

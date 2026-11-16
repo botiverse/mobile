@@ -149,8 +149,11 @@ internal fun RaftSandboxWebView(
     loadWatchdog: RaftWebViewLoadWatchdog? = null,
     /** A file the page saves (see [RaftWebViewEvents.onDownloadRequested]); null: as a blocked navigation. */
     onDownloadRequested: ((String) -> Unit)? = null,
+    /** A new top-level document routed as a link (see [RaftWebViewEvents.routesMainFrameNavigation]); null: loaded. */
+    routesMainFrameNavigation: ((String) -> Boolean)? = null,
 ) {
     val events = remember { RaftWebViewEvents() }
+    events.routesMainFrameNavigation = routesMainFrameNavigation
     events.onLoadCommit = onLoadCommit
     events.onLoadSuccess =
         if (loadWatchdog == null) onLoadSuccess else { { loadWatchdog.onLoadFinished(); onLoadSuccess() } }

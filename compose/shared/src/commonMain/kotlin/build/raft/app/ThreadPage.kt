@@ -14962,10 +14962,13 @@ private fun SharedThreadRouteContentContent(
                 }
                 action == "openMarkdownUrl" && !itemId.isNullOrBlank() -> {
                     val open = raftMarkdownUrlOpen(itemId, sharedStores.apiEnvironmentStore.current().webUrl)
-                    if (open.target == null) {
-                        linkNavigator.open(open.url)
-                    } else {
+                    val serverId = currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+                    if (open.target != null && open.opensOnThisPage { channelId -> serverId?.let { conversationIdentityProvider?.resolveProjection(it, channelId) } != null }) {
                         openThreadWebLinkTargetInApp(open.target)
+                    } else {
+                        // Any other Raft link (a conversation the shell resolves, a page without a
+                        // route here) or an outside one: the link navigator's rule.
+                        linkNavigator.open(open.url)
                     }
                 }
                 // A4: a spec card's navigate to a channel, as a channel link opens it.
@@ -16441,22 +16444,50 @@ internal fun raftThreadAttachmentSavedMessage(
     fallbackMessage: String
 ): String = nativeMessage.trim().ifBlank { fallbackMessage }
 
-/** A tapped message-body link: the [url] to open and, when it is a message link, its in-app [target]. */
+/**
+ * A tapped message-body link: the [url] to open and, when it is a message link, its in-app [target].
+ * [conversationLink]: the conversation it names on one of Raft's origins ([RaftOwnLinkRoute.Conversation]:
+ * with or without a message, a task's own conversation, another server's), which the app shell can
+ * resolve when the conversation is not one this page already knows.
+ */
 internal data class RaftMarkdownUrlOpen(
     val url: String,
     val target: RaftThreadWebLinkTarget?,
+    val conversationLink: RaftMessageLink? = null,
 )
 
 /**
  * How a tapped message-body link opens. A Raft Desktop link (`raft:///s/…`, `raft://s/…`) is first
  * turned into its web link on [webUrl], the Developer environment's web URL (AGENTS.md
- * "Environment Web Link URL Rule"), and then opens exactly as that web link does: a channel/dm
- * message link in-app, any other `/s/` page in the browser. Every other link is unchanged.
+ * "Environment Web Link URL Rule"), and then opens exactly as that web link does: a conversation
+ * link in-app ([raftOwnLinkRoute]), any other Raft page as [RaftLinkNavigator] opens it. Every other
+ * link is unchanged.
  */
-internal fun raftMarkdownUrlOpen(rawUrl: String, webUrl: String?): RaftMarkdownUrlOpen {
+internal fun raftMarkdownUrlOpen(
+    rawUrl: String,
+    webUrl: String?,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): RaftMarkdownUrlOpen {
     val webLink = raftSchemeLinkToWebLink(rawUrl, webUrl)
-        ?: return RaftMarkdownUrlOpen(rawUrl, rawUrl.toRaftThreadWebLinkTarget())
-    return RaftMarkdownUrlOpen(webLink, webLink.toRaftThreadWebLinkTarget(configuredWebUrl = webUrl))
+    val url = webLink ?: rawUrl
+    val route = raftOwnLinkRoute(url, webUrl, appHosts)
+    // The web's task panel (`task=`): its web page, never the bare channel under it.
+    if (route == RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.TaskPanel)) return RaftMarkdownUrlOpen(url, target = null)
+    val target = if (webLink == null) rawUrl.toRaftThreadWebLinkTarget() else webLink.toRaftThreadWebLinkTarget(configuredWebUrl = webUrl)
+    return RaftMarkdownUrlOpen(url, target, (route as? RaftOwnLinkRoute.Conversation)?.link)
+}
+
+/**
+ * Whether a tapped conversation link opens on this page's own path ([RaftThreadWebLinkTarget],
+ * the conversation directory) rather than through the app shell: a legacy link with no server
+ * ([RaftMarkdownUrlOpen.conversationLink] null), or one whose conversation this server's directory
+ * already has ([knownHere]: a channel or DM of this server; a task's conversation, another server's
+ * channel and one not loaded yet are not in it). The shell reads the conversation first, as the web's
+ * channel route does, so a task's conversation opens as the task (slock #14960).
+ */
+internal fun RaftMarkdownUrlOpen.opensOnThisPage(knownHere: (channelId: String) -> Boolean): Boolean {
+    val local = target ?: return false
+    return conversationLink == null || knownHere(local.channelId)
 }
 
 internal fun String.toRaftThreadWebLinkTarget(configuredWebUrl: String? = null): RaftThreadWebLinkTarget? {
@@ -16484,7 +16515,7 @@ internal fun String.toRaftThreadWebLinkTarget(configuredWebUrl: String? = null):
     val withoutScheme = trimmed.substring(schemeEnd + 3)
     val pathStart = withoutScheme.indexOf('/')
     val host = if (pathStart >= 0) withoutScheme.substring(0, pathStart) else withoutScheme
-    if (host.substringBefore(':').lowercase() !in setOf("app.slock.ai", "staging.slock.ai", "app.raft.build")) return null
+    if (host.substringBefore(':').lowercase().trimEnd('.') !in setOf("app.slock.ai", "staging.slock.ai", "app.raft.build")) return null
     val pathAndQuery = if (pathStart >= 0) withoutScheme.substring(pathStart) else ""
     val path = pathAndQuery.substringBefore('?')
     val query = pathAndQuery.substringAfter('?', missingDelimiterValue = "")

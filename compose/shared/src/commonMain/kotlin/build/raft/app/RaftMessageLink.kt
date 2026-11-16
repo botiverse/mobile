@@ -10,6 +10,7 @@ import build.raft.app.data.parseArtifactOpenAddress
 import build.raft.app.links.isRaftPermalinkChannelId
 import build.raft.app.links.isRaftPermalinkMessageId
 import build.raft.app.links.parseRaftConversationLink
+import build.raft.app.links.raftComparableHostname
 import build.raft.app.model.ConversationKind
 import kotlin.time.Clock
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -279,7 +280,8 @@ private fun String.toRaftLinkUrl(): RaftLinkUrl? {
     val authorityEnd = rest.indexOfFirst { it == '/' || it == '?' }.let { if (it < 0) rest.length else it }
     val authority = rest.substring(0, authorityEnd)
     if (authority.isEmpty() || '@' in authority) return null
-    val host = authority.substringBefore(':').lowercase().takeIf(String::isNotEmpty) ?: return null
+    // A fully-qualified host (`app.raft.build.`) is the same host (slock #14798).
+    val host = raftComparableHostname(authority.substringBefore(':')).takeIf(String::isNotEmpty) ?: return null
     val port =
         if (':' in authority) {
             authority.substringAfter(':').toIntOrNull() ?: return null
@@ -298,7 +300,7 @@ private fun String.toRaftLinkUrl(): RaftLinkUrl? {
 
 private fun RaftLinkUrl.isAllowedMessageLinkOrigin(configured: RaftLinkUrl?, appHosts: Set<String>): Boolean {
     if (scheme == "https" && host in RaftMessageLinkProductionHosts && (port == null || port == 443)) return true
-    if (scheme == "https" && host in appHosts && (port == null || port == 443)) return true
+    if (scheme == "https" && appHosts.any { raftComparableHostname(it.trim()) == host } && (port == null || port == 443)) return true
     return configured != null &&
         configured.host == host &&
         configured.scheme == scheme &&

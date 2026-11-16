@@ -94,6 +94,13 @@ internal fun parseRaftHttpUrl(value: String): RaftHttpUrl? {
     return RaftHttpUrl(scheme, userInfo, host, port?.takeUnless { it == defaultPort }, path, query, fragment)
 }
 
+/**
+ * A host name as Raft's links compare it (web `raftPermalinks.ts` `comparableHostname`, slock #14798):
+ * lower case, without the trailing dots of a fully-qualified name. `app.raft.build.` reaches the same
+ * server as `app.raft.build`, so a link written with the dot is Raft's, not an outside address.
+ */
+internal fun raftComparableHostname(host: String): String = host.lowercase().trimEnd('.')
+
 /** web `messageLinkKey`: the key a link's card is looked up by, its WHATWG href. Null when it isn't an http(s) URL. */
 internal fun raftMessageLinkKey(href: String): String? = parseRaftHttpUrl(href)?.href
 
@@ -331,8 +338,8 @@ private val LeadingMessageId =
 internal fun raftPermalinkHostnames(appHosts: Collection<String>, configuredWebUrl: String? = null): Set<String> =
     buildSet {
         addAll(DefaultPermalinkHostnames)
-        appHosts.forEach { host -> host.trim().lowercase().removeSuffix(".").takeIf(String::isNotEmpty)?.let(::add) }
-        configuredWebUrl?.let(::parseRaftHttpUrl)?.host?.let(::add)
+        appHosts.forEach { host -> raftComparableHostname(host.trim()).takeIf(String::isNotEmpty)?.let(::add) }
+        configuredWebUrl?.let(::parseRaftHttpUrl)?.host?.let(::raftComparableHostname)?.let(::add)
     }
 
 /**
@@ -355,7 +362,7 @@ internal data class ParsedRaftConversationLink(
 /** web `parseRaftPermalink`'s grammar, with the exact-hostname allow-list passed in as [hostnames]. */
 internal fun parseRaftConversationLink(href: String, hostnames: Set<String>): ParsedRaftConversationLink? {
     val url = parseRaftHttpUrl(href) ?: return null
-    if (url.host !in hostnames) return null
+    if (raftComparableHostname(url.host) !in hostnames) return null
     val match = PermalinkPath.matchEntire(url.path) ?: return null
     val params = queryParams(url.query)
 

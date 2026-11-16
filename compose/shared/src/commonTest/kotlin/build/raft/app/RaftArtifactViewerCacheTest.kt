@@ -174,6 +174,52 @@ class RaftArtifactViewerCacheTest {
     }
 
     @Test
+    fun raftLinksInThePageOpenInTheAppAndTheViewerStays() {
+        // The web opens a page's link in a new tab, its viewer still there; here the app opens it over the viewer.
+        val cid = "c0c0c0c0-0000-4000-8000-000000000001"
+        val mid = "a0a0a0a0-0000-4000-8000-000000000009"
+        val inApp =
+            listOf(
+                // A conversation, a channel alone, a task's conversation (the shell reads it as the task), a thread.
+                "$web/s/acme/channel/$cid?msg=$mid",
+                "$web/s/acme/channel/$cid",
+                "$web/s/acme/dm/$cid?thread=$cid%3A$mid",
+                // On another of Raft's own origins (production's hosts; one written with its dot): before, the browser.
+                "https://app.raft.build/s/acme/channel/$cid?msg=$mid",
+                "https://open.raft.build/s/acme/channel/$cid",
+                "https://app.raft.build./s/acme/channel/$cid",
+                // Join and invite links: their pages in the app.
+                "$web/join/tok-1",
+                "https://app.raft.build/external-invite/inv-1",
+            )
+        for (url in inApp) {
+            assertEquals(RaftArtifactViewerBlockedTarget.OpenMessage(url), raftArtifactViewerBlockedNavigationTarget(url, web, target.id, emptySet()), url)
+            assertTrue(raftArtifactViewerRoutesDocumentAsLink(url, web, target.id, emptySet()), url)
+        }
+        // Another Artifact on another Raft origin: the viewer; this one: nothing.
+        val other = "pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21"
+        assertEquals(
+            RaftArtifactViewerBlockedTarget.OpenArtifact(ArtifactLinkTarget(other)),
+            raftArtifactViewerBlockedNavigationTarget("https://app.raft.build/artifacts/$other", web, target.id, emptySet()),
+        )
+        assertEquals(
+            RaftArtifactViewerBlockedTarget.Ignore,
+            raftArtifactViewerBlockedNavigationTarget("https://app.raft.build/artifacts/${target.id}", web, target.id, emptySet()),
+        )
+        // A Raft page without a screen here, and the web's task panel: the browser (Android routes the page's
+        // load of one, under a server, instead of loading it over the Artifact).
+        for (url in listOf("$web/s/acme/tasks", "$web/s/acme/settings/theme", "$web/s/acme/channel/$cid?task=$cid%3Atask%3Ab1", "https://app.raft.build/s/acme/agent/a1")) {
+            assertEquals(RaftArtifactViewerBlockedTarget.SystemBrowser(url), raftArtifactViewerBlockedNavigationTarget(url, web, target.id, emptySet()), url)
+            assertTrue(raftArtifactViewerRoutesDocumentAsLink(url, web, target.id, emptySet()), url)
+        }
+        // What the viewer's own document loads stays its own: this Artifact, another one (its viewer), the
+        // page signing itself out (`/`, `/login`), the server after a Delete, and anything off Raft.
+        for (url in listOf("$web/artifacts/${target.id}", "$web/artifacts/$other", "$web/", "$web/login", "$web/s/acme", "https://example.com/a")) {
+            assertFalse(raftArtifactViewerRoutesDocumentAsLink(url, web, target.id, emptySet()), url)
+        }
+    }
+
+    @Test
     fun webOrigins() {
         assertEquals(web, raftWebOriginOf("$web/artifacts/pt_x?a=1#b"))
         assertEquals(web, raftWebOriginOf("HTTPS://Raft-App-Staging.Botiverse.dev:443/"))
