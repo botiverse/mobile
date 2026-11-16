@@ -205,7 +205,8 @@ class SharedHomeShellStore(
             acceptActivityRealtime(
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(
                     event = event,
-                    activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() }
+                    activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() },
+                    activityMuted = current.home.isPastActivityMute(event)
                 )
             )
         }
@@ -285,7 +286,8 @@ class SharedHomeShellStore(
             dispatchActivity(
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(
                     event = event,
-                    activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() }
+                    activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() },
+                    activityMuted = current.home.isPastActivityMute(event)
                 )
             )
         }

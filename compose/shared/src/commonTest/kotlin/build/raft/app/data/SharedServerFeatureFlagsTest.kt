@@ -229,6 +229,37 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
+    fun activityFlagsKeepTheirLastValueForAColdStart() = runTest {
+        // #triage:#244: the Activity list and badge must not run the off path on a cold start until the
+        // evaluation lands (or offline, at all) when the last session had the flags on.
+        assertEquals("inbox_row_position_v1", INBOX_ROW_POSITION_FEATURE_FLAG_KEY)
+        val keys = listOf(MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY, INBOX_ROW_POSITION_FEATURE_FLAG_KEY)
+        keys.forEach { key ->
+            assertTrue(key in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS, key)
+            assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)
+        }
+        val disk = InMemoryRaftKeyValueStore()
+        val binding = ServerFeatureFlagLastKnownBinding("https://api.example", "user-a")
+        fun process(api: RaftFeatureFlagsApi) =
+            SharedServerFeatureFlags(
+                api = api,
+                lastKnown = ServerFeatureFlagLastKnownStore(store = disk, currentBinding = { binding }),
+            )
+        val evaluations = keys.joinToString(",") { """{"key":"$it","enabled":true}""" }
+        process(FakeApi(ok("""{"evaluations":[$evaluations]}"""))).prefetch(server)
+
+        val coldStart = process(FakeApi(HomeNetworkResponse(code = 0, bodyText = null)))
+        keys.forEach { key -> assertTrue(coldStart.isEnabled(server, key), "before the evaluation: $key") }
+        coldStart.prefetch(server)
+        keys.forEach { key -> assertTrue(coldStart.isEnabled(server, key), "a failed evaluation keeps it: $key") }
+
+        // A server-side kill is followed on the next evaluation, and remembered.
+        process(FakeApi(ok("""{"evaluations":[${evaluations.replace("true", "false")}]}"""))).prefetch(server)
+        val afterKill = process(FakeApi(HomeNetworkResponse(code = 0, bodyText = null)))
+        keys.forEach { key -> assertFalse(afterKill.isEnabled(server, key), "after the kill: $key") }
+    }
+
+    @Test
     fun decisionStaysPendingUntilAnEvaluationSettlesOrALastKnownValueExists() = runTest {
         // A default-off flag; the cold-start part below keeps it on disk explicitly.
         val key = DRAFTS_SECTION_FEATURE_FLAG_KEY

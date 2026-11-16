@@ -12,11 +12,20 @@ const val SERVER_FEATURE_FLAG_LAST_KNOWN_STORAGE_KEY: String = "serverFeatureFla
 
 /**
  * Flags whose last server evaluation is kept on disk so a cold start WITHOUT network still gates the
- * same way the last online session did (task #1133). `mobile_server_setup_v1` is the one member: a cold
- * start reads its last value until the evaluation lands (offline, the setup check then fails open to
- * Home). Every other flag keeps the defaults-off-until-evaluated contract.
+ * same way the last online session did (task #1133). A cold start reads their last value until the
+ * evaluation lands (or fails); every other flag keeps the defaults-off-until-evaluated contract.
+ * - `mobile_server_setup_v1`: offline, the setup check then fails open to Home.
+ * - `mobile_inbox_inplace_v0` and `inbox_row_position_v1` (#triage:#244): the Activity list and its
+ *   badge read by one rule from the first frame, not by today's off path until the evaluation lands
+ *   and then by the flag's (the first load's rows and badge counted one way, the live patches after
+ *   it the other).
  */
-val SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS: Set<String> = setOf(MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY)
+val SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS: Set<String> =
+    setOf(
+        MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
+        MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY,
+        INBOX_ROW_POSITION_FEATURE_FLAG_KEY,
+    )
 
 /** The auth binding a last-known value belongs to. Token rotation does not change it. */
 data class ServerFeatureFlagLastKnownBinding(
