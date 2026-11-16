@@ -420,6 +420,8 @@ internal fun TaskOpenSurfaceHost(
     /** The task's conversation appeared (someone wrote first, `task:updated`): the caller opens it. */
     onConversationArrived: (TaskSummary) -> Unit = {},
     taskV2Enabled: Boolean = true,
+    /** Whether the reader may write the task's channel (web canWriteTasksInChannel); unknown: yes. */
+    canWriteTaskChannel: (ChannelId?) -> Boolean = { true },
 ) {
     when (val surface = flow.surface) {
         is TaskOpenSurface.Pending -> {
@@ -454,6 +456,8 @@ internal fun TaskOpenSurfaceHost(
                     members = rememberTaskChannelMembers(membersStore, serverId, task.channelId),
                     timeContext = timeContext,
                     editable = edits != null && channelTasksState?.standIn != true,
+                    // Web canWriteTasksInChannel: the host says whether the reader may write the task's channel.
+                    canWriteChannel = canWriteTaskChannel(task.channelId),
                     statusUpdating = channelTasksState?.statusUpdatingTaskId == task.id.value,
                     sending = flow.sending || flow.handingOff,
                     errorText = flow.errorText,
@@ -611,6 +615,8 @@ internal fun TaskPendingConversationPage(
     onMoveToBacklog: ((reason: String?) -> Unit)? = null,
     /** Saves an edit of the title or description ([TaskConversationHeadRoute]); null: plain text. */
     onAmend: (suspend (TaskAmendPatch, Long?) -> TaskAmendResult)? = null,
+    /** False: the reader may not write the task's channel; status, assignee and text are plain ([TaskConversationHeadRoute]). */
+    canWriteChannel: Boolean = true,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -664,6 +670,7 @@ internal fun TaskPendingConversationPage(
                 keyboardUp = keyboardUp,
                 onRetryHistory = details.retryHistory,
                 editable = editable,
+                canWriteChannel = canWriteChannel,
                 placement = placement,
                 serverId = serverId,
             )

@@ -10,6 +10,8 @@ import build.raft.app.data.AttachmentUploadCapabilitiesCache
 import build.raft.app.data.DataResult
 import build.raft.app.data.rwRetryAfterMillis
 import build.raft.app.data.RaftAgentLounges
+import build.raft.app.data.channelTaskSurfacesShown
+import build.raft.app.data.channelTaskWritesAllowed
 import build.raft.app.data.RaftStaleReadRecovery
 import build.raft.app.data.RaftJsonParseDispatcher
 import build.raft.app.data.isOlderMessageCardRevision
@@ -17807,10 +17809,13 @@ private fun ThreadSnapshot.toRaftThreadPayload(
             base.composer
         }
     // Joint channels have task surfaces like any channel (server task surface mapping).
-    val supportsChannelTasks = conversation.permissions.canCreateTask
+    val supportsChannelTasks = conversation.channelTaskSurfacesShown()
+    // Task writes (send as task, the message menu's task items) only where the reader may write
+    // the channel's tasks (web canWriteTasksInChannel).
+    val writesChannelTasks = conversation.channelTaskWritesAllowed()
     val resolvedCapabilityComposer =
         resolvedComposer.copy(
-            showAsTaskToggle = resolvedComposer.showAsTaskToggle && supportsChannelTasks
+            showAsTaskToggle = resolvedComposer.showAsTaskToggle && writesChannelTasks
         )
     return base.copy(
         title = headerContext.title,
@@ -17864,7 +17869,7 @@ private fun ThreadSnapshot.toRaftThreadPayload(
             },
         composer = resolvedCapabilityComposer,
         showTaskOpenActions = base.showTaskOpenActions && supportsChannelTasks,
-        showTaskStatusActions = base.showTaskStatusActions && supportsChannelTasks,
+        showTaskStatusActions = base.showTaskStatusActions && writesChannelTasks,
         tasks = tasks.map { task -> task.toRaftThreadTaskItem() },
         canLoadMoreBefore = canLoadMoreBefore,
         canLoadMoreAfter = canLoadMoreAfter,

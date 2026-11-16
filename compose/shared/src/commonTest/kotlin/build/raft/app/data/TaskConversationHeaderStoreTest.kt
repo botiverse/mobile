@@ -68,6 +68,20 @@ class TaskConversationHeaderStoreTest {
     }
 
     @Test
+    fun aReaderWhoMayNotWriteTheChannelGetsNoStatusOrAssigneeEdit() {
+        // Web canWriteTasksInChannel (slock #15155): not joined, or archived -> the server refuses (403 / 409).
+        val task = task(status = TaskStatus.InProgress)
+        assertFalse(task.canEditStatus(canWriteChannel = false))
+        assertFalse(task.canEditAssignee(canWriteChannel = false))
+        val bar = task.taskConversationHeaderBarModel(TaskConversationHeaderState(ChannelId("conv-1")), statusUpdating = false, canWriteChannel = false)
+        assertTrue(bar.statusOptions.isEmpty(), "no status menu")
+        assertFalse(bar.statusEditable)
+        assertFalse(bar.assigneeEditable, "no assignee picker")
+        val writable = task.taskConversationHeaderBarModel(TaskConversationHeaderState(ChannelId("conv-1")), statusUpdating = false)
+        assertTrue(writable.statusEditable && writable.assigneeEditable)
+    }
+
+    @Test
     fun headerStateResolvesTheTaskAndClosesOnlyForItsOwnDeletion() {
         val start = TaskConversationHeaderState(ChannelId("conv-1"))
         val ref = TaskConversationChannelRef(ChannelId("conv-1"), ChannelId("channel-1"), TaskId("task-1"))

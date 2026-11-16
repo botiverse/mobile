@@ -19,6 +19,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.InMemoryRaftKeyValueStore
+import build.raft.app.data.LocalTaskChannelWriteCheck
 import build.raft.app.data.RaftLocalPreferenceStore
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.ScreenLoadState
@@ -76,6 +77,7 @@ class SharedTasksFitToolbarUiTest {
     private fun ComposeUiTest.show(
         channelMode: Boolean,
         initial: TasksPresentationState = TasksPresentationState.Default.copy(selectedMode = TasksViewMode.List),
+        canWriteTaskChannel: (ChannelId?) -> Boolean = { true },
     ): Back {
         var dispatcher: OnBackPressedDispatcher? = null
         var pageBacks = 0
@@ -83,7 +85,10 @@ class SharedTasksFitToolbarUiTest {
             dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
             RaftBackHandler(enabled = true, label = "test_page") { pageBacks++ }
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalTaskChannelWriteCheck provides canWriteTaskChannel,
+            ) {
                 RaftDesignSystemTheme {
                     SharedTasksPanel(
                         state = TasksUiState(loadState = ScreenLoadState.Content(TasksContent(summaryCounts = tasks.summaryCounts(), tasks = tasks))),
@@ -137,6 +142,16 @@ class SharedTasksFitToolbarUiTest {
         assertTrue(left(board) < left(list), "Board first in a channel")
         assertTrue(has(SharedTasksToolbarTags.NewTask))
         assertTrue(left(list) < left(SharedTasksToolbarTags.NewTask), "New Task ends the line")
+    }
+
+    @Test
+    fun aChannelTheReaderMayNotWriteHasNoNewTask() = runRobolectricComposeUiTest {
+        // Web canWriteTasksInChannel (slock #15155): a public channel read without joining it, or an
+        // archived one; the filters and views stay.
+        show(channelMode = true, canWriteTaskChannel = { it != ChannelId("ch-ship-mobile") })
+        assertFalse(has(SharedTasksToolbarTags.NewTask))
+        assertTrue(has(SharedTasksToolbarTags.Creator) && has(SharedTasksToolbarTags.Assignee))
+        assertTrue(has("${SharedTasksToolbarTags.View}-board"))
     }
 
     @Test

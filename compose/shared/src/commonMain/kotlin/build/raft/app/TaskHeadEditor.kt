@@ -186,11 +186,12 @@ private fun TaskSummary.fieldValue(field: TaskHeadEditField): String =
     if (field == TaskHeadEditField.Title) title.trim() else description.orEmpty().trim()
 
 /**
- * Who may edit the title and description (web TaskModalHead `canEdit`): the shared amend rule with
- * channel access assumed, the head only showing to readers of the task; the server answers a
- * refusal with its sentence. Never a legacy card, never a read-only (historical joint) task.
+ * Who may edit the title and description (web TaskModalHead `canEdit`): the shared amend rule, for
+ * a reader who may write the task's channel ([canWriteChannel], [build.raft.app.data.canWriteTasksInChannel]);
+ * the server answers a refusal with its sentence. Never a legacy card, never a read-only
+ * (historical joint) task.
  */
-internal fun TaskSummary.canAmendText(): Boolean = !isLegacy && readOnlyReason == null
+internal fun TaskSummary.canAmendText(canWriteChannel: Boolean = true): Boolean = canWriteChannel && !isLegacy && readOnlyReason == null
 
 internal const val TaskHeadTitleEditTestTag = "task-head-title-edit"
 internal const val TaskHeadDescriptionEditTestTag = "task-head-description-edit"
@@ -312,11 +313,13 @@ internal fun TaskHeadFieldEditor(editing: TaskHeadEditing) {
 /**
  * Who may delete a task (web `useCanDeleteTask`, the server's DELETE /tasks/:id rule): the person
  * who created it, or someone holding `deleteAnyTask` (a server owner or admin, slock
- * `serverPermissions.ts`). Never a read-only (historical joint) task. The server still decides: a
+ * `serverPermissions.ts`), in a channel they may write ([canWriteChannel]). Never a read-only
+ * (historical joint) task. The server still decides: a
  * refusal comes back in its words.
  */
-internal fun TaskSummary.canBeDeletedBy(viewerUserId: String?, serverRole: String?): Boolean {
-    if (readOnlyReason != null) return false
+internal fun TaskSummary.canBeDeletedBy(viewerUserId: String?, serverRole: String?, canWriteChannel: Boolean = true): Boolean {
+    // Web useCanDeleteTask: only where the reader may write the task's channel.
+    if (readOnlyReason != null || !canWriteChannel) return false
     val viewer = viewerUserId?.trim()?.takeIf { it.isNotEmpty() }
     val isCreator = viewer != null && creator?.kind == build.raft.app.model.MemberKind.Human && creator.id.value == viewer
     return isCreator || serverRole == "owner" || serverRole == "admin"

@@ -55,16 +55,19 @@ internal fun taskStatusPickAsksBacklogReason(current: TaskStatus, next: TaskStat
     next == TaskStatus.Backlog && current != TaskStatus.Backlog
 
 /**
- * Web `canEditTaskStatus`: anyone who can see the task, unless it is read-only (historical joint).
- * A guest sees only its own channel's tasks and moves them like a member (slock task matrix §1).
+ * Web `canEditTaskStatus`: anyone who may write the task's channel ([canWriteChannel],
+ * [canWriteTasksInChannel]), unless the task is read-only (historical joint). A guest sees only its
+ * own channel's tasks and moves them like a member (slock task matrix §1).
  */
-internal fun TaskSummary.canEditStatus(): Boolean = readOnlyReason == null
+internal fun TaskSummary.canEditStatus(canWriteChannel: Boolean = true): Boolean = readOnlyReason == null && canWriteChannel
 
 /**
- * Web TaskProperties `canEditAssignee` (`authorizeTaskAction({action: "assign"})`): not read-only and
- * not done (the server freezes a completed task's assignee). A guest assigns in its channel like a member.
+ * Web TaskProperties `canEditAssignee` (`authorizeTaskAction({action: "assign"})`): the reader may
+ * write the task's channel ([canWriteChannel]), the task is not read-only and not done (the server
+ * freezes a completed task's assignee). A guest assigns in its channel like a member.
  */
-internal fun TaskSummary.canEditAssignee(): Boolean = status != TaskStatus.Done && readOnlyReason == null
+internal fun TaskSummary.canEditAssignee(canWriteChannel: Boolean = true): Boolean =
+    canWriteChannel && status != TaskStatus.Done && readOnlyReason == null
 
 internal enum class TaskConversationRefStatus {
     Loading,

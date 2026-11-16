@@ -56,6 +56,26 @@ class ThreadArchivedChannelTest {
     }
 
     @Test
+    fun anArchivedChannelKeepsItsTasksButOffersNoTaskWrites() = runTest {
+        // Web canWriteTasksInChannel (slock #15155): the server refuses task writes in an archived
+        // channel (409), so the message menu's task items and Send as task go; the Tasks tab stays.
+        val archived = loadedChannelPage(archivedMessagesResponse(channelArchived = true))
+        assertFalse(archived.showTaskStatusActions)
+        assertFalse(archived.canConvertMessagesToTasks())
+        assertFalse(archived.composer.showAsTaskToggle)
+        assertTrue(archived.showTaskOpenActions)
+        assertTrue(archived.supportsChannelTasks(), "the Tasks tab")
+
+        val live = loadedChannelPage(archivedMessagesResponse(channelArchived = false))
+        assertTrue(live.showTaskStatusActions)
+        assertTrue(live.canConvertMessagesToTasks())
+
+        // The archived row itself: no task writes, still a member who reads them.
+        val summary = assertNotNull(parseRaftChannelDetail(ARCHIVED_CHANNEL_DETAIL_JSON)).toConversationSummary()
+        assertFalse(summary.permissions.canCreateTask)
+    }
+
+    @Test
     fun aReloadedPageFollowsAnUnarchive() {
         val archived = basePayload().copy(status = "content", channelArchived = true, channelCanUnarchive = true)
         val reloaded = basePayload().copy(status = "content", channelArchived = false, channelCanUnarchive = true)
