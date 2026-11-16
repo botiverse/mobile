@@ -391,8 +391,12 @@ internal data class RaftArtifactViewerOpenState(
     /** The WebView shows a document (committed, or a kept one shown again). */
     val documentShown: Boolean,
     /**
-     * A kept document is reused (it shows this Artifact already, or the web app routes to it): no
-     * native cover, the page's own splash shows (slock #15036 sends no `hostLoaded` on in-page reuse).
+     * A kept document is reused that has drawn its own bar before (its address keeps `hostToolbar=1`,
+     * [raftArtifactViewerKeptPageDrewBar]): it showed an Artifact already, so it sends no `hostLoaded`
+     * now (once per document, slock #15036) and draws the only bar from the start: no native cover,
+     * the page's own splash shows. A kept document only booted (prewarm, the warm route) has shown
+     * nothing: it says `hostLoaded=1` for its first Artifact and is covered as a fresh load is, so
+     * its loading toolbar row (Back alone, `back=host`) never shows under the App's bar (#301).
      */
     val reusesKeptPage: Boolean,
     /** The load watchdog shows its error screen (with Retry). */
@@ -420,8 +424,8 @@ internal const val RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS = 4_000L
  * One loader at a time (#301): on a fresh load the App's splash covers the page until the page
  * says its loading is over (`hostLoaded=1`, slock #15036: the moment its own splash would start its
  * ending, or 150 ms after a failure left no splash on screen), plays its ending, then the page
- * alone. A kept page reused for this Artifact is never covered (it sends no signal): its own splash
- * shows. A page that never says so (an older web) is shown at
+ * alone. A kept page reused that showed an Artifact before is never covered (it sends no signal):
+ * its own splash shows, under its own bar. A kept page only booted is covered as a fresh load. A page that never says so (an older web) is shown at
  * [RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS]. Before, the App showed its generic "Loading" (a small
  * spinner and a line) until the WebView committed a document, and the page then its own pixel
  * splash: two different loaders in a row on a cold open, one on a warm one. Now the App's splash is
@@ -431,7 +435,8 @@ internal fun raftArtifactViewerLoadingIndicator(state: RaftArtifactViewerOpenSta
     when {
         state.reloading || !state.sessionRead -> RaftArtifactViewerLoadingIndicator.AppSplash
         state.loadError -> RaftArtifactViewerLoadingIndicator.None
-        // In-page reuse gets no hand-over signal: the page's own splash, never the App's over it.
+        // In-page reuse of a document that showed an Artifact gets no hand-over signal: the page's own
+        // splash (under its own bar), never the App's over it.
         state.reusesKeptPage -> RaftArtifactViewerLoadingIndicator.None
         // Loaded: the App's splash plays its ending over the page, then the page alone.
         state.pageLoaded -> if (state.splashEnded) RaftArtifactViewerLoadingIndicator.None else RaftArtifactViewerLoadingIndicator.AppSplash
@@ -439,6 +444,25 @@ internal fun raftArtifactViewerLoadingIndicator(state: RaftArtifactViewerOpenSta
             RaftArtifactViewerLoadingIndicator.None
         else -> RaftArtifactViewerLoadingIndicator.AppSplash
     }
+
+/**
+ * Whether a kept document has drawn its own bar before: its address keeps `hostToolbar=1` (the web's
+ * keeper keeps it once written, slock embed.ts), so it has shown an Artifact. Null address: nothing kept.
+ */
+internal fun raftArtifactViewerKeptPageDrewBar(keptUrl: String?): Boolean =
+    keptUrl != null && raftArtifactViewerPageDrawsHostBar(keptUrl)
+
+/**
+ * The top of the App's splash cover, from the viewer body's top (#301, one bar): while the App's bar is
+ * up it covers the whole body, the page's own loading toolbar row too (so no second bar shows under the
+ * App's); once the page draws the only bar (`hostToolbar=1`) the App's bar is gone and the body starts
+ * under the status bar, so the cover leaves the page's bar uncovered, [barHeight] (the App's head, which
+ * the page's matches: raft-ui `header-height`, 56 on a touch screen, 44 with a mouse): the splash stays
+ * where it was and the page's bar takes the App's place. In Desktop Mode the page's bar is fitted as
+ * its splash is ([scale]).
+ */
+internal fun raftArtifactViewerSplashCoverTop(pageDrawsBar: Boolean, barHeight: Dp, scale: Float = 1f): Dp =
+    if (pageDrawsBar) barHeight * scale else 0.dp
 
 /** Desktop Mode fits a page laid out [RaftFilePreviewDesktopViewportWidth] wide into [widthDp]: its splash is that much smaller. */
 internal fun raftArtifactViewerSplashScale(desktopMode: Boolean, widthDp: Float): Float =

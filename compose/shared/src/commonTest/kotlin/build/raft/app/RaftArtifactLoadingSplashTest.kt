@@ -1,9 +1,11 @@
 package build.raft.app
 
+import androidx.compose.ui.unit.dp
 import build.raft.app.data.ArtifactKind
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
@@ -149,10 +151,12 @@ class RaftArtifactLoadingSplashTest {
         // An older web never says so: shown at the fallback (it drew its bar by then), not before.
         assertEquals(app, state(documentShown = true, sinceDocumentReadyMs = RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS - 1))
         assertEquals(none, state(documentShown = true, sinceDocumentReadyMs = RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS))
-        // Warm: a kept page reused (already showing it, or routed to it): nothing of the App's, it sends no
-        // `hostLoaded` then (slock #15036), and its own splash shows.
+        // Warm: a kept page reused that showed an Artifact before (it drew its bar, `hostToolbar=1`): nothing of
+        // the App's, it sends no `hostLoaded` then (slock #15036), and its own splash shows under its own bar.
         assertEquals(none, state(documentShown = true, reusesKeptPage = true))
         assertEquals(none, state(documentShown = false, reusesKeptPage = true))
+        // A kept page only booted (prewarm) is covered as a fresh load: its loading row never shows under the App's bar.
+        assertEquals(app, state(documentShown = true, reusesKeptPage = false))
         // A fresh reload or a session recovery, between WebViews: the App's splash.
         assertEquals(app, state(reloading = true))
         assertEquals(app, state(reloading = true, documentShown = true, pageLoaded = true, splashEnded = true))
@@ -164,6 +168,33 @@ class RaftArtifactLoadingSplashTest {
             assertTrue(result == app || result == none)
             if (!shown && !error && !kept) assertEquals(app, result, "a fresh load with nothing shown yet: the App's splash, never a blank page")
         }
+    }
+
+    @Test
+    fun onlyAKeptPageThatDrewItsBarIsReusedUncovered() {
+        // #301, the double bar: the prewarmed document on the warm route has drawn no bar and shown nothing.
+        assertFalse(raftArtifactViewerKeptPageDrewBar(null))
+        assertFalse(
+            raftArtifactViewerKeptPageDrewBar(
+                "https://raft.build/artifacts/raft-app-warm?embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser",
+            )
+        )
+        // One that showed an Artifact keeps `hostToolbar=1` in its address (the web's keeper keeps it).
+        assertTrue(
+            raftArtifactViewerKeptPageDrewBar(
+                "https://raft.build/artifacts/pt_a1?embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser&hostToolbar=1#panel=none",
+            )
+        )
+    }
+
+    @Test
+    fun theCoverHidesTheWholeBodyUnderTheAppsBarAndLeavesThePagesBarOnceItDrawsIt() {
+        // Under the App's bar: the page's own loading toolbar row is covered too (no second bar).
+        assertEquals(0.dp, raftArtifactViewerSplashCoverTop(pageDrawsBar = false, barHeight = 56.dp))
+        // The page draws the only bar: its bar shows, where the App's was (the splash does not move).
+        assertEquals(56.dp, raftArtifactViewerSplashCoverTop(pageDrawsBar = true, barHeight = 56.dp))
+        // Desktop Mode: the page is fitted, its bar too.
+        assertEquals(28.dp, raftArtifactViewerSplashCoverTop(pageDrawsBar = true, barHeight = 56.dp, scale = 0.5f))
     }
 
     @Test
