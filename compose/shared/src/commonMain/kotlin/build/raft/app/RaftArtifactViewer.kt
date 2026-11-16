@@ -327,16 +327,21 @@ internal fun raftArtifactViewerHostConversationOrNull(conversationId: String?): 
  */
 internal const val RAFT_ARTIFACT_VIEWER_HOST_LOADED_PARAM = "hostLoaded"
 
-/** The `#host=<name>` actions the App offers the page's ⋯. */
+/**
+ * The `#host=<name>` actions the App offers the page's ⋯. [CopyLink] is no item of its own: a page
+ * that sees it declared routes its own Copy link here (the WebView's `navigator.clipboard` write fails
+ * silently on some Android devices, Hands d292d99f), and the App copies the canonical link itself.
+ */
 internal enum class RaftArtifactViewerHostAction(val wireName: String) {
     DesktopMode("desktop-mode"),
     OpenInBrowser("open-in-browser"),
+    CopyLink("copy-link"),
 }
 
 /** Every [RaftArtifactViewerHostAction], comma-separated (a const: [RaftArtifactViewerEmbedQuery] is read before it). */
-internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU = "desktop-mode,open-in-browser"
+internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU = "desktop-mode,open-in-browser,copy-link"
 
-/** The App action [url]'s fragment asks for (`#host=desktop-mode`, `#host=open-in-browser`); null for any other. */
+/** The App action [url]'s fragment asks for (`#host=desktop-mode`, `#host=open-in-browser`, `#host=copy-link`); null for any other. */
 internal fun raftArtifactViewerHostAction(url: String): RaftArtifactViewerHostAction? {
     val fragment = url.substringAfter('#', "")
     if (!fragment.startsWith("host=")) return null
