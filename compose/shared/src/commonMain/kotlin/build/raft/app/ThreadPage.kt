@@ -4530,6 +4530,55 @@ internal fun RaftThreadScreenPayload.markdownTaskContextChannelId(
     }
 
 /**
+ * The conversation an Artifact opened here is opened from (`hostConversation`, botiverse/slock
+ * #15103): the channel or DM itself; for a reply thread, its parent channel (the web records an
+ * Artifact opened from a thread beside its channel: only a channel's own side card lists them). None
+ * for a task conversation: the web's task dialog keeps the plain title and records nothing.
+ */
+internal fun RaftThreadScreenPayload.artifactOpenConversationId(): String? =
+    if (channelKind == RaftTaskConversationChannelKind) {
+        null
+    } else {
+        val route = resolveThreadRouteIdentity()
+        if (route.surfaceKind == RaftThreadSurfaceKind.ReplyThread) parentChannelId.nonBlank() else route.timelineChannelId
+    }
+
+/** The Files tab's view model, where the page mounts it (its own function: see [rememberThreadLinkNavigator]). */
+@Composable
+private fun rememberThreadFilesViewModel(
+    mount: Boolean,
+    threadInstanceKey: String,
+    dataSource: SharedThreadDataSource,
+    bridge: build.raft.app.base.BridgeModule,
+    sharedStores: build.raft.app.data.RaftSharedStoreProvider,
+): SharedThreadFilesViewModel? =
+    if (mount) {
+        viewModel(key = "shared-thread-files-$threadInstanceKey") {
+            SharedThreadFilesViewModel(
+                dataSource,
+                diagnosticsLogger = { bridge.log(it) },
+                // The conversation's Artifacts lead its files (workspace_artifacts_v0, read in the tab).
+                artifactsApi = NetworkRaftConversationArtifactsApi(sharedStores.networkClient)
+            )
+        }
+    } else {
+        null
+    }
+
+/**
+ * The conversation page's link navigator: an Artifact link tapped in a message opens with this
+ * conversation (`hostConversation`, [artifactOpenConversationId]), as its cards do. Its own function:
+ * SharedThreadRouteContentContent is at its JVM method-size ceiling.
+ */
+@Composable
+private fun rememberThreadLinkNavigator(
+    pager: Pager,
+    bridge: build.raft.app.base.BridgeModule,
+    payload: RaftThreadScreenPayload,
+): RaftLinkNavigator =
+    rememberRaftLinkNavigator(pager, bridge, artifactConversationId = payload.artifactOpenConversationId())
+
+/**
  * Load [contextChannelId]'s tasks for this conversation's task refs only when nothing else does: the
  * write-gated [taskChannelId] load covers the same channel, and a task conversation's host channel
  * is loaded by its header's tasks store.
@@ -7210,7 +7259,6 @@ private fun SharedThreadRouteContentContent(
     val onOpenMembersPager = callbacks.onOpenMembersPager
     val onOpenChannelSettings = callbacks.onOpenChannelSettings
     val pager = LocalActivity.current.getPager() as Pager
-    val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
     val externalAuthorHintTemplate =
         stringResource(Res.string.thread_external_author_hint, ThreadLocalizedFeedbackPlaceholder)
     val externalAuthorGenericHint = stringResource(Res.string.message_author_external_fallback)
@@ -9451,6 +9499,7 @@ private fun SharedThreadRouteContentContent(
                 .withFirstFrameKnownMarkdownChannelNames(firstFrameHomeSnapshot)
         }
     val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
+    val linkNavigator = rememberThreadLinkNavigator(pager, bridge, renderedThread)
     val threadViewerIsGuest = currentSession.threadViewerIsGuest(headerProjectionServerId?.value)
     val threadForwardSourceAvailable = renderedPayload.threadForwardSourceChannelId() != null
     val renderedTimelineSlice =
@@ -9503,19 +9552,7 @@ private fun SharedThreadRouteContentContent(
             ?.distinctUntilChanged()
             ?: emptyChannelSuggestionsFlow
     }
-    val filesViewModel: SharedThreadFilesViewModel? =
-        if (featureOwnerMountPlan.mountFilesOwner) {
-            viewModel(key = "shared-thread-files-$threadInstanceKey") {
-                SharedThreadFilesViewModel(
-                    dataSource,
-                    diagnosticsLogger = { bridge.log(it) },
-                    // The conversation's Artifacts lead its files (workspace_artifacts_v0, read in the tab).
-                    artifactsApi = NetworkRaftConversationArtifactsApi(sharedStores.networkClient)
-                )
-            }
-        } else {
-            null
-        }
+    val filesViewModel = rememberThreadFilesViewModel(featureOwnerMountPlan.mountFilesOwner, threadInstanceKey, dataSource, bridge, sharedStores)
     val composerDraftViewModel: SharedThreadComposerDraftViewModel =
         viewModel(key = "shared-thread-composer-$threadInstanceKey") {
             SharedThreadComposerDraftViewModel(persistSlices = listOf(composerDraftPersistSlice))
@@ -13213,6 +13250,9 @@ private fun SharedThreadRouteContentContent(
                 LocalRaftChannelKinds provides rememberRaftChannelKindsState(sharedHomeStore.homeStateForPage()),
                 LocalRaftMemberPreviewCardSource provides memberPreviewCardSource,
                 LocalThreadAppLinkPreviewHost provides appLinkPreviewHost,
+                // The conversation its Artifacts (cards, links, Files) are opened from (`hostConversation`).
+                // From values this lambda already captures (see the JVM-limit note below).
+                LocalRaftArtifactOpenConversation provides renderedThread.artifactOpenConversationId(),
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
                 LocalThreadPeerReadReceipts provides peerReadReceipts,
                 LocalThreadAgentTyping provides agentTyping,
