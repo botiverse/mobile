@@ -243,7 +243,7 @@ class SearchParityScreenshotTest {
                 lastMessageSenderName = "Friday",
                 lastMessageSenderKind = MemberKind.Agent,
                 lastMessagePreview = preview,
-                lastMessageAt = "2026-11-10T09:00:00Z",
+                lastMessageAt = "2026-10-23T16:31:00Z",
             )
     }
 }
