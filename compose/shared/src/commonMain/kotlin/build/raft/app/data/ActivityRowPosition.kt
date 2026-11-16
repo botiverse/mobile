@@ -5,7 +5,7 @@ package build.raft.app.data
  * reducer: a line-for-line port of slock `packages/shared/src/activityRowPosition.ts`
  * (`reduceActivityRow`), pinned by the vendored contract cases in
  * `src/commonTest/resources/contract-cases/activity-row/` (README there). No clock, no I/O, no store:
- * nothing in the app calls it yet (SharedActivityStore adopts it in a later PR).
+ * SharedActivityStore runs it with `inbox_row_position_v1` on (ActivityRowPositionLedger.kt).
  *
  * A served row says what it has counted up to: its `latestActivitySeq` (P), the highest seq committed
  * and counted in that answer. It does not say that every lower seq is counted (rows commit out of seq

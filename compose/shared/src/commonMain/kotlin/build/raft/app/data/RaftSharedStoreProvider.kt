@@ -1564,6 +1564,10 @@ internal class RaftSharedStoreProvider private constructor(
     private fun inboxInPlaceEnabled(serverId: String): Boolean =
         serverFeatureFlags.isEnabled(ServerId(serverId), MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY)
 
+    /** `inbox_row_position_v1` (#triage:#244, inbox redesign step 2) for [serverId]; default off. */
+    private fun inboxRowPositionEnabled(serverId: String): Boolean =
+        serverFeatureFlags.isEnabled(ServerId(serverId), INBOX_ROW_POSITION_FEATURE_FLAG_KEY)
+
     init {
         // Minimum supported build: back in the foreground, read the gate flag again.
         RaftMinBuildGate.flagRefetch = { serverId -> serverFeatureFlagChangeRefresher.onForeground(serverId) }
@@ -2773,6 +2777,7 @@ internal class RaftSharedStoreProvider private constructor(
                 syncReloads = syncReloadLedger,
                 inboxInPlaceEnabled = ::inboxInPlaceEnabled,
                 inPlaceCheckSink = RaftClientTraceEvents::emitInPlaceCheck,
+                inboxRowPositionEnabled = ::inboxRowPositionEnabled,
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
                         if (scope == RaftShellStoreScope.Legacy) homeActivityStoreScope else RaftStoreThreading.newScope()

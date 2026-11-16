@@ -437,7 +437,9 @@ class SharedHomeShellStoreTest {
         assertEquals(
             SharedActivityIntent.ApplyRealtimeEvent(
                 event = event,
-                allowLocalPatch = false
+                allowLocalPatch = false,
+                // `inbox_row_position_v1` reads it (the per-row rule judges a muted message in place).
+                activityMuted = true
             ),
             fixture.activityIntents.last()
         )

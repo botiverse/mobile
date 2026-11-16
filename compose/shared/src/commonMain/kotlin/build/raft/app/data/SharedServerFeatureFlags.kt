@@ -125,6 +125,15 @@ const val TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY: String = "task_v2_conversation
 const val MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY: String = "mobile_inbox_inplace_v0"
 
 /**
+ * Inbox redesign step 2 (#triage:#244; slock web `INBOX_ROW_POSITION_FLAG_KEY`, shared with web): with
+ * [MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY] on too, each listed Activity row is kept by the shared per-row
+ * position rule (`reduceActivityRow`, `activityLiveUnread`): a late older answer never regresses a row,
+ * a live message the rule cannot judge re-reads only its row (`GET /channels/inbox?ids=`), and the
+ * loaded All list is the badge's only writer. Per server, default OFF: off, every path is as before.
+ */
+const val INBOX_ROW_POSITION_FEATURE_FLAG_KEY: String = "inbox_row_position_v1"
+
+/**
  * Personal assistant (botiverse/slock `PERSONAL_ASSISTANT_FEATURE_FLAG_KEY` in
  * `packages/server/src/services/featureFlagService.ts`, web `PERSONAL_ASSISTANT_FLAG_KEY`): per
  * server, default off. A pre-check before asking `GET servers/:id/assistant`, whose `enabled` then
@@ -216,6 +225,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY,
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
     MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY,
+    INBOX_ROW_POSITION_FEATURE_FLAG_KEY,
     TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY,
     PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
     DRAFTS_SECTION_FEATURE_FLAG_KEY,

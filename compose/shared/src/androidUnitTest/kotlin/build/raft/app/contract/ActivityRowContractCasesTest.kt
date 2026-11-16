@@ -14,7 +14,8 @@ import org.junit.runners.Parameterized
 /**
  * Runs botiverse/slock's Activity row contract cases (#triage:#244) against the app: one JUnit case
  * per vendored file, named `<id>`. A case either runs through a driver in [ActivityRowCaseDrivers]
- * (the real SharedActivityStore with the in-place flag on) and passes or fails on what it asserts, or
+ * (the real SharedActivityStore with `mobile_inbox_inplace_v0` and `inbox_row_position_v1` on) and
+ * passes or fails on what it asserts, or
  * is reported as skipped (JUnit assumption) with its reason: pending decision, app gap
  * ([AppActivityRowKnownGaps] or the case's own `knownGaps`), or a case this loader cannot read.
  * Nothing passes unchecked.

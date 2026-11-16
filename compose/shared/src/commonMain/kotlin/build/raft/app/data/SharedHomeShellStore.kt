@@ -197,7 +197,8 @@ class SharedHomeShellStore(
                 SharedActivityIntent.ApplyRealtimeEvent(
                     event = event,
                     allowLocalPatch = current.home.allowsLocalActivityPatch(event),
-                    activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() }
+                    activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() },
+                    activityMuted = current.home.isPastActivityMute(event)
                 )
             )
         } else if (event is PerReceiverReadStateChanged || current.primarySurfaceVisible) {
@@ -276,7 +277,8 @@ class SharedHomeShellStore(
                 SharedActivityIntent.ApplyRealtimeEvent(
                     event = event,
                     allowLocalPatch = current.home.allowsLocalActivityPatch(event),
-                    activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() }
+                    activeConversationId = current.selectedConversationId?.takeIf { selectedConversationSeen() },
+                    activityMuted = current.home.isPastActivityMute(event)
                 )
             )
         } else if (event is PerReceiverReadStateChanged || current.primarySurfaceVisible) {
@@ -337,22 +339,38 @@ private fun SharedHomeState.allowsLocalActivityPatch(event: RealtimeEvent): Bool
     }
 
 private fun SharedHomeState.allowsLocalActivityPatch(message: Message): Boolean {
-    val snapshot = (content as? SharedHomeContentState.Content)?.snapshot ?: return false
-    val sourceChannelId =
-        message.conversationContext?.parentChannelId?.value
-            ?: message.channelId?.value
-            ?: return false
-    val conversation =
-        (snapshot.channels.asSequence() + snapshot.directMessages.asSequence())
-            .firstOrNull { row ->
-                row.channelId?.value == sourceChannelId || row.threadId.value == sourceChannelId
-            }
-            ?: return false
+    val conversation = activityConversationOf(message) ?: return false
     if (!conversation.activityMuted) return true
     val muteFromSeq = conversation.muteFromSeq ?: return false
     val messageSeq = message.seq ?: return false
     return messageSeq < muteFromSeq
 }
+
+/**
+ * The message is known to be past its conversation's Activity mute (web `isMessageInMutedActivityRange`):
+ * muted with no start seq, or at or after it. Unknown (no Home list, conversation not listed, no seq
+ * to place it) is not muted: [allowsLocalActivityPatch] is then false and the list is re-read.
+ */
+private fun SharedHomeState.isPastActivityMute(event: RealtimeEvent): Boolean {
+    val message = (event as? MessageNew)?.message ?: return false
+    val conversation = activityConversationOf(message) ?: return false
+    if (!conversation.activityMuted) return false
+    val muteFromSeq = conversation.muteFromSeq ?: return true
+    val messageSeq = message.seq ?: return false
+    return messageSeq >= muteFromSeq
+}
+
+private fun SharedHomeState.activityConversationOf(message: Message) =
+    (content as? SharedHomeContentState.Content)?.snapshot?.let { snapshot ->
+        val sourceChannelId =
+            message.conversationContext?.parentChannelId?.value
+                ?: message.channelId?.value
+                ?: return@let null
+        (snapshot.channels.asSequence() + snapshot.directMessages.asSequence())
+            .firstOrNull { row ->
+                row.channelId?.value == sourceChannelId || row.threadId.value == sourceChannelId
+            }
+    }
 
 private fun SharedHomeShellIntent.toSharedHomeShellIntentDiagnosticsLabel(): String =
     when (this) {

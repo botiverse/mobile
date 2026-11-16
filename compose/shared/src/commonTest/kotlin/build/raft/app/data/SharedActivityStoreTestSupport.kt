@@ -115,7 +115,9 @@ internal fun activityStore(
     appForeground: kotlinx.coroutines.flow.StateFlow<Boolean> = kotlinx.coroutines.flow.MutableStateFlow(true),
     inboxInPlaceEnabled: (serverId: String) -> Boolean = { false },
     inPlaceReconcileIntervalMillis: Long = ActivityInPlaceReconcileIntervalMillis,
-    inPlaceCheckSink: (serverId: String, check: ActivityInPlaceCheck) -> Unit = { _, _ -> }
+    inPlaceCheckSink: (serverId: String, check: ActivityInPlaceCheck) -> Unit = { _, _ -> },
+    inboxRowPositionEnabled: (serverId: String) -> Boolean = { false },
+    rowRereadDelayMillis: Long = ActivityRowRereadDelayMillis
 ): SharedActivityStore =
     SharedActivityStore(
         authStore = authStore,
@@ -154,6 +156,8 @@ internal fun activityStore(
         appForeground = appForeground,
         diagnosticsLogger = diagnosticsLogger,
         inboxInPlaceEnabled = inboxInPlaceEnabled,
+        inboxRowPositionEnabled = inboxRowPositionEnabled,
+        rowRereadDelayMillis = rowRereadDelayMillis,
         inPlaceReconcileIntervalMillis = inPlaceReconcileIntervalMillis,
         inPlaceCheckSink = inPlaceCheckSink
     )

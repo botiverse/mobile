@@ -112,6 +112,8 @@ private enum class RealtimeRowPatch {
     Unchanged,
     /** The row exists but this frame cannot be applied in place (no seq to order it): re-read. */
     NeedsRead,
+    /** `inbox_row_position_v1`: the row cannot be judged here; that one row is re-read (`?ids=`), not the list. */
+    RowReread,
 }
 
 /**
@@ -396,7 +398,17 @@ class SharedActivityStore internal constructor(
      * `emitStateTransitionTrace`; [RaftClientTraceEvents.emitInPlaceCheck] in the app). Called under
      * the realtime owner lock: it must only queue.
      */
-    private val inPlaceCheckSink: (serverId: String, check: ActivityInPlaceCheck) -> Unit = { _, _ -> }
+    private val inPlaceCheckSink: (serverId: String, check: ActivityInPlaceCheck) -> Unit = { _, _ -> },
+    /**
+     * `inbox_row_position_v1` for the server the store is bound to (#triage:#244, inbox redesign step
+     * 2, web `rowPositionOn`). Read only where `mobile_inbox_inplace_v0` is on too: each listed row is
+     * then kept by the shared per-row position rule ([reduceActivityRow]) instead of the timed
+     * realtime hold, and a row it cannot judge is re-read alone (`?ids=`). Off (the default): every
+     * path is today's.
+     */
+    private val inboxRowPositionEnabled: (serverId: String) -> Boolean = { false },
+    /** See [ActivityRowRereadDelayMillis]; injectable for virtual time. */
+    private val rowRereadDelayMillis: Long = ActivityRowRereadDelayMillis
 ) {
     private val _state = raftStoreState(SharedActivityState(), "SharedActivityStore")
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
@@ -544,6 +556,23 @@ class SharedActivityStore internal constructor(
      * absent) by a live message, judged against the next first-window All answer.
      */
     private val inPlaceDriftCheck = ActivityInPlaceDriftCheck(nowMillis)
+    /** `inbox_row_position_v1`: what the position rule keeps per row beyond the row shown. */
+    private val rowPositions = ActivityRowPositionLedger()
+    /**
+     * `inbox_row_position_v1` (guarded by realtimeOwnerLock): rows waiting for their re-read (`?ids=`,
+     * by scope id: the first trigger each was asked for with, and how many asks it stands for), the
+     * rows of the read in flight, and the one pending flush (web `pendingRows` / `inFlightRows`).
+     */
+    private val rowRereadPending = LinkedHashMap<String, InboxRefreshTriggerCount>()
+    private val rowRereadInFlight = mutableSetOf<String>()
+    private var rowRereadFlushJob: Job? = null
+    /** Bumped by every read this list projects: a row answer sent before one may predate it (web `getActivityReadStateRevision`). */
+    private var rowReadRevision = 0L
+    /** Bumped when the row state goes (server switch, reset): an answer from before is dropped. */
+    private var rowRereadGeneration = 0L
+
+    /** Test hook: the position state kept for a row's conversation. */
+    internal fun rowPositionStateForTest(scopeId: String): ActivityRowClientState? = rowPositions.keptForTest(scopeId)
 
     init {
         scope.launch {
@@ -1469,8 +1498,24 @@ class SharedActivityStore internal constructor(
                 // Inbox refresh step 4: a row the list shows takes the message in place (preview,
                 // unread, mention) and is not re-read; only a row it lacks, or a frame it cannot
                 // order, asks for the throttled re-read below.
-                val patch =
+                // `inbox_row_position_v1`: a listed row is kept by the per-row rule first.
+                val byPosition =
                     when (event) {
+                        is MessageNew ->
+                            applyLiveByPositionLocked(
+                                event.message,
+                                event.systemProvenance,
+                                intent,
+                                inPlace,
+                                InboxRefreshTrigger.MessageNew
+                            )
+                        is ThreadUpdated -> applyThreadUpdatedByPositionLocked(event, intent, inPlace)
+                        else -> null
+                    }
+                // A message past the mute the rule did not take: no local patch, as with the flag off.
+                if (byPosition == null && !intent.allowLocalPatch) return scheduleRealtimeBackgroundReconcileLocked(trigger)
+                val patch =
+                    byPosition ?: when (event) {
                         is MessageNew -> applyMessageNewPatch(event.message, intent, inPlace)
                         is ThreadUpdated -> applyThreadUpdatedInPlace(event, intent, inPlace)
                         else -> RealtimeRowPatch.NeedsRead
@@ -1483,7 +1528,8 @@ class SharedActivityStore internal constructor(
                         armInPlaceReconcileLocked()
                         null
                     }
-                    RealtimeRowPatch.Unchanged -> null
+                    RealtimeRowPatch.Unchanged,
+                    RealtimeRowPatch.RowReread -> null
                     RealtimeRowPatch.Absent -> {
                         noteInPlaceAbsentLocked(event)
                         scheduleRealtimeBackgroundReconcileLocked(trigger)
@@ -1626,7 +1672,15 @@ class SharedActivityStore internal constructor(
                 lastMessageSenderKind = message.author.kind,
                 lastMessageSenderAvatarWireValue = message.author.avatar?.wireValue,
                 latestDelegatedBy = message.delegatedBy,
-                latestActivitySeq = incomingSeq
+                latestActivitySeq = incomingSeq,
+                // `inbox_row_position_v1`: the read/Done marker follows the message like a thread
+                // row's (patchThreadRowWithMessage), so a read of the patched row covers it.
+                readStateLatestActivitySeq =
+                    if (rowPositionOnLocked()) {
+                        existing.advancedActivityFrontier(message.seq)
+                    } else {
+                        existing.readStateLatestActivitySeq
+                    }
             ).withLiveUnread(unread, message.id)
         realtimeHighWater[patched.key] =
             ActivityRealtimeHighWater(
@@ -1716,7 +1770,9 @@ class SharedActivityStore internal constructor(
     /** True when the row's reply count or time moved. */
     private fun applyThreadUpdatedPatch(
         event: ThreadUpdated,
-        intent: SharedActivityIntent.ApplyRealtimeEvent
+        intent: SharedActivityIntent.ApplyRealtimeEvent,
+        /** False under `inbox_row_position_v1`: the row's position, not a timed hold, keeps it. */
+        rememberHighWater: Boolean = true
     ): Boolean {
         val current = _state.value
         val snapshot = current.snapshot ?: return false
@@ -1746,7 +1802,7 @@ class SharedActivityStore internal constructor(
             ).withActivityFollowStateProjection()
         if (patched == existing) return false
         advanceReplyThreadContent(existing, patched, realtimeMessageId = event.latestReply?.messageId)
-        rememberRealtimeHighWater(patched)
+        if (rememberHighWater) rememberRealtimeHighWater(patched)
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
         return true
     }
@@ -1946,7 +2002,8 @@ class SharedActivityStore internal constructor(
      */
     private fun inPlaceUnreadContextLocked(intent: SharedActivityIntent.ApplyRealtimeEvent): InPlaceUnreadContext? {
         if (intent.event !is MessageNew && intent.event !is ThreadUpdated) return null
-        if (!intent.allowLocalPatch) return null
+        // `inbox_row_position_v1`: a message past the Activity mute is judged in place by the per-row rule.
+        if (!intent.allowLocalPatch && !(intent.activityMuted && rowPositionOnLocked())) return null
         val current = _state.value
         if (current.selectedFilter != InboxFilter.All || current.snapshot == null) return null
         if (!inboxInPlaceOnLocked()) return null
@@ -1996,6 +2053,500 @@ class SharedActivityStore internal constructor(
         inPlaceReconcileJob = null
         inPlaceReconcileMark = null
         inPlaceDriftCheck.clear()
+        resetRowPositionLocked()
+    }
+
+    // ---- `inbox_row_position_v1` (#triage:#244, web inboxRowPosition.ts) ---------------------------
+
+    /** The position rule keeps the rows of the list shown: both flags on for its server, All, rows read. */
+    private fun rowPositionOnLocked(): Boolean {
+        val current = _state.value
+        val serverId = current.ownerServerId ?: return false
+        return current.selectedFilter == InboxFilter.All &&
+            inboxInPlaceEnabled(serverId) &&
+            inboxRowPositionEnabled(serverId)
+    }
+
+    private fun resetRowPositionLocked() {
+        rowRereadGeneration += 1L
+        rowPositions.clear()
+        rowRereadPending.clear()
+        rowRereadInFlight.clear()
+        rowRereadFlushJob?.cancel()
+        rowRereadFlushJob = null
+    }
+
+    /**
+     * Flag on: a live message for a listed row, by the per-row rule (web `receiveLiveByPosition`).
+     * Non-null: taken (applied, a repeat, or its row re-read), no list re-read. Null: not this path's
+     * (no row listed, a joint row, the reader's own message with mentions: it may add a mention row);
+     * the caller goes on as before. [reply] is a `thread:updated` frame's latest reply.
+     */
+    private fun applyLiveByPositionLocked(
+        message: Message,
+        provenance: MessageSystemProvenance?,
+        intent: SharedActivityIntent.ApplyRealtimeEvent,
+        inPlace: InPlaceUnreadContext,
+        trigger: InboxRefreshTrigger
+    ): RealtimeRowPatch? {
+        if (!rowPositionOnLocked()) return null
+        val current = _state.value
+        val snapshot = current.snapshot ?: return null
+        val streamChannelId = message.channelId ?: message.threadChannelId ?: return null
+        val threadIndex = snapshot.threadRowIndex(streamChannelId)
+        val index =
+            if (threadIndex >= 0) {
+                threadIndex
+            } else {
+                snapshot.items.indexOfFirst { item -> item.isChannelOrDmRow() && item.channelId == message.channelId }
+            }
+        if (index < 0) return null
+        val existing = snapshot.items[index]
+        if (!existing.isActivityPositionRow()) return null
+        val scopeId = existing.activityRowScopeId() ?: return null
+        val own = message.author.kind == MemberKind.Human && message.author.id.value == inPlace.principalId
+        if (own && message.mentions.isNotEmpty()) return null
+        val verdict =
+            activityRowLiveVerdict(
+                row = existing,
+                message = message,
+                provenance = provenance,
+                principalId = inPlace.principalId,
+                activityMuted = intent.activityMuted,
+                readOnArrival = isActiveActivityConversation(streamChannelId.value, inPlace.activeConversationId, snapshot)
+            )
+        val seq = message.seq?.takeIf { it >= 0L }?.toString()
+        val before = rowPositions.stateOf(existing)
+        val live = reduceActivityRow(before, ActivityRowEvent.Live(seq.orEmpty(), verdict.counts, verdict.mention))
+        if (live.reread) {
+            diagnosticsLogger(
+                "activity_row_position event=live scopeId=$scopeId seq=${seq ?: "-"} " +
+                    "result=reread reason=${live.rereadReason?.name?.lowercase()}"
+            )
+            requestRowRereadLocked(scopeId, live.rereadReason.rereadTrigger())
+            return RealtimeRowPatch.RowReread
+        }
+        var after = live.row
+        // The reader's own send reads the conversation on the server, and no read state comes to say so.
+        if (seq != null && own && (after.unreadCount > 0 || after.hasMention)) {
+            val read = reduceActivityRow(after, ActivityRowEvent.Read(seq))
+            if (read.reread) requestRowRereadLocked(scopeId, read.rereadReason.rereadTrigger()) else after = read.row
+        }
+        if (after == before) return RealtimeRowPatch.Unchanged
+        rowPositions.keep(scopeId, after)
+        val shown = existing.latestActivitySeq
+        val advances = seq != null && (shown == null || !isCanonicalActivitySeq(shown) || compareActivitySeq(seq, shown) > 0)
+        val moved = if (advances) existing.advancedTo(message, seq!!) else existing
+        val patched = moved.withActivityRowUnread(after, message.id).withActivityFollowStateProjection()
+        diagnosticsLogger(
+            "activity_row_position event=live scopeId=$scopeId seq=${seq ?: "-"} result=applied " +
+                "advances=$advances unread=${patched.unreadCount} mention=${patched.hasMention}"
+        )
+        if (advances) {
+            if (existing.kind == InboxItemKind.Thread) {
+                advanceReplyThreadContent(existing, patched, realtimeMessageId = message.id.value)
+            }
+            applyPatchedActivityItem(patched, index, current, snapshot, intent)
+        } else {
+            replaceActivityItemInPlace(patched, index, current, snapshot, intent)
+        }
+        inPlaceDriftCheck.notePatched(patched, trigger)
+        return RealtimeRowPatch.Patched
+    }
+
+    /** The row at a newer message: its preview, sender and seq, not its unread (web `advancedRow` + `movedFrontiers`). */
+    private fun InboxItem.advancedTo(message: Message, seq: String): InboxItem {
+        val frontiers = withActivityFrontiersMovedTo(seq)
+        return if (kind == InboxItemKind.Thread) {
+            frontiers.copy(
+                latestActivityMessageId = message.id,
+                latestActivityPreview = message.body,
+                latestActivityAt = message.timestampLabel,
+                latestActivitySenderName = message.shownAuthorName(),
+                latestActivitySenderId = message.author.id.value,
+                latestActivitySenderKind = message.author.kind,
+                latestActivitySenderAvatarWireValue = message.author.avatar?.wireValue,
+                latestDelegatedBy = message.delegatedBy,
+                replyCount = replyCount + 1,
+                latestActivitySeq = seq
+            )
+        } else {
+            frontiers.copy(
+                lastMessageId = message.id,
+                lastMessagePreview = message.body,
+                lastMessageAt = message.timestampLabel,
+                lastMessageSenderName = message.shownAuthorName(),
+                lastMessageSenderId = message.author.id.value,
+                lastMessageSenderKind = message.author.kind,
+                lastMessageSenderAvatarWireValue = message.author.avatar?.wireValue,
+                latestDelegatedBy = message.delegatedBy,
+                latestActivitySeq = seq
+            )
+        }
+    }
+
+    /** A row changed where it is (its unread or @ only): no move to the top. */
+    private fun replaceActivityItemInPlace(
+        patched: InboxItem,
+        index: Int,
+        current: SharedActivityState,
+        snapshot: InboxSnapshot,
+        intent: SharedActivityIntent
+    ) {
+        val previous = snapshot.items[index]
+        val items = snapshot.items.toMutableList().apply { set(index, patched) }
+        reduceState(
+            intent,
+            current.copy(
+                snapshot =
+                    snapshot.copy(
+                        items = items,
+                        totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + patched.unreadCount - previous.unreadCount)
+                    ),
+                errorCode = null
+            )
+        )
+    }
+
+    /**
+     * Flag on: `thread:updated` for a listed thread row (web socketBridge threadUpdated:
+     * `receiveThreadReply(latestReply)` then `updateThreadActivityMeta`). The frame's latest reply goes
+     * through the per-row rule like its `message:new` (whichever comes second is a repeat); then the
+     * reply count and time move, with no realtime hold. A frame without its reply cannot be judged:
+     * the row is re-read. Null: not this path's.
+     */
+    private fun applyThreadUpdatedByPositionLocked(
+        event: ThreadUpdated,
+        intent: SharedActivityIntent.ApplyRealtimeEvent,
+        inPlace: InPlaceUnreadContext
+    ): RealtimeRowPatch? {
+        if (!rowPositionOnLocked()) return null
+        val snapshot = _state.value.snapshot ?: return null
+        val index = snapshot.threadRowIndex(event.threadChannelId)
+        if (index < 0) return null
+        val existing = snapshot.items[index]
+        if (!existing.isActivityPositionRow()) return null
+        val scopeId = existing.activityRowScopeId() ?: return null
+        val reply = event.latestReply?.toActivityLiveMessage(event)
+        val replyPatch =
+            if (reply == null) {
+                requestRowRereadLocked(scopeId, InboxRefreshTrigger.RowUnjudged)
+                RealtimeRowPatch.RowReread
+            } else {
+                // A reply frame carries no system provenance: a system reply cannot be judged.
+                applyLiveByPositionLocked(reply, provenance = null, intent, inPlace, InboxRefreshTrigger.ThreadReply)
+                    ?: return null
+            }
+        val metaPatched = applyThreadUpdatedPatch(event, intent, rememberHighWater = false)
+        return if (replyPatch == RealtimeRowPatch.Unchanged && metaPatched) RealtimeRowPatch.Patched else replyPatch
+    }
+
+    /**
+     * Re-read this one row (`?ids=`), never the list: batched with the rows waiting, never twice in
+     * flight (web `requestRowReread`). Each waits [rowRereadDelayMillis] first, so a row the view is a
+     * moment behind on comes back with the message, and the two deliveries of one reply ask once.
+     */
+    private fun requestRowRereadLocked(scopeId: String, trigger: InboxRefreshTrigger) {
+        rowRereadPending[scopeId] = rowRereadPending[scopeId].foldWith(trigger)
+        scheduleRowRereadFlushLocked()
+    }
+
+    private fun scheduleRowRereadFlushLocked() {
+        if (rowRereadFlushJob != null) return
+        val generation = rowRereadGeneration
+        rowRereadFlushJob =
+            scope.launch {
+                delay(rowRereadDelayMillis)
+                flushRowRereads(generation)
+            }
+    }
+
+    private suspend fun flushRowRereads(generation: Long) {
+        val jobs = mutableListOf<Job>()
+        var request: Triple<String, List<String>, InboxRefreshTriggerCount>? = null
+        var revision = 0L
+        synchronized(realtimeOwnerLock) {
+            if (generation != rowRereadGeneration) return
+            rowRereadFlushJob = null
+            val ready = rowRereadPending.entries.filter { it.key !in rowRereadInFlight }.take(ActivityRowRereadIdsMax)
+            if (ready.isEmpty()) return
+            val ids = ready.map { it.key }
+            val trigger = ready.map { it.value }.reduce { folded, next -> folded.foldWith(next)!! }
+            ids.forEach(rowRereadPending::remove)
+            if (rowRereadPending.keys.any { it !in rowRereadInFlight }) scheduleRowRereadFlushLocked()
+            val serverId = _state.value.ownerServerId
+            if (serverId == null || !rowPositionOnLocked()) return
+            // Nobody sees the list (another tab, a pushed conversation, the background): the list read
+            // it owes on show stands for these rows.
+            if (!appForeground.value || activitySurfaceHidden) {
+                jobs += scheduleRealtimeBackgroundReconcileLocked(trigger.trigger)
+            } else {
+                rowRereadInFlight += ids
+                revision = rowReadRevision
+                request = Triple(serverId, ids, trigger)
+            }
+        }
+        jobs.forEach(Job::start)
+        val (serverId, ids, trigger) = request ?: return
+        diagnosticsLogger(
+            "activity_row_reread phase=start ids=${ids.size} trigger=${trigger.trigger.wireValue} asks=${trigger.coalesced}"
+        )
+        val result =
+            try {
+                withInboxFetchReason(InboxFetchReason.PositionReread, trigger) {
+                    inboxRepository.loadRows(ServerId(serverId), ids)
+                }
+            } catch (cancelled: CancellationException) {
+                synchronized(realtimeOwnerLock) { if (generation == rowRereadGeneration) rowRereadInFlight -= ids.toSet() }
+                throw cancelled
+            }
+        synchronized(realtimeOwnerLock) {
+            if (generation != rowRereadGeneration || _state.value.ownerServerId != serverId) return
+            rowRereadInFlight -= ids.toSet()
+            diagnosticsLogger("activity_row_reread phase=finish ids=${ids.size} result=${result.activityDiagnosticsResult()}")
+            when {
+                !rowPositionOnLocked() -> Unit
+                // A read changed under it: the answer may predate it; ask again.
+                revision != rowReadRevision -> ids.forEach { requestRowRereadLocked(it, trigger.trigger) }
+                result is DataResult.Content -> applyRowAnswerLocked(ids, result.data.items)?.let(jobs::add)
+                result is DataResult.Empty -> applyRowAnswerLocked(ids, emptyList())?.let(jobs::add)
+                // A failed row read falls back to the list read.
+                else -> jobs += scheduleRealtimeBackgroundReconcileLocked(trigger.trigger)
+            }
+            if (rowRereadPending.isNotEmpty()) scheduleRowRereadFlushLocked()
+        }
+        jobs.forEach(Job::start)
+    }
+
+    /**
+     * A row re-read's answer (web `applyRowAnswer`): each row still listed merges by the per-row rule
+     * (never added, never moved off the list). The route answers only the rows that still qualify for
+     * the All list, so an asked-for row the answer leaves out is one the list no longer has: the list
+     * is re-read ([InboxRefreshTrigger.RowMissing]).
+     */
+    private fun applyRowAnswerLocked(asked: List<String>, answered: List<InboxItem>): Job? {
+        val current = _state.value
+        val snapshot = current.snapshot ?: return null
+        val serverId = current.ownerServerId ?: return null
+        val owner = overlayOwner(current)
+        val served =
+            answered
+                .filter { it.isActivityPositionRow() }
+                .withActivityThreadTaskProjection(serverId, tasksDataStore)
+                .reconcileLocallyClearedUnreadItems(current.selectedFilter, owner)
+                .reconcileLocallyDoneItems(owner)
+                .items
+        val returned = answered.mapNotNullTo(mutableSetOf()) { it.activityRowScopeId() }
+        val listed = snapshot.items.mapNotNullTo(mutableSetOf()) { it.activityRowScopeId() }
+        val missing = asked.any { it !in returned && it in listed }
+        val servedByKey = served.associateBy(InboxItem::key)
+        var delta = 0
+        val moved = mutableSetOf<String>()
+        val items =
+            snapshot.items.map { item ->
+                val row = servedByKey[item.key]
+                if (row == null || !item.isActivityPositionRow()) return@map item
+                val next = mergeServedRowLocked(item, row, base = row)
+                delta += next.row.unreadCount - item.unreadCount
+                // A served row at a newer message than shown moves to its place by time.
+                if (!next.kept && next.row.activityRowTimeValue() != item.activityRowTimeValue()) moved += next.row.key
+                next.row
+            }
+        if (items != snapshot.items) {
+            val ordered =
+                if (moved.isEmpty()) {
+                    items
+                } else {
+                    activityRowsWithHeldRowsAtTheirTime(
+                        served = items.filterNot { it.key in moved },
+                        held = items.filter { it.key in moved }
+                    )
+                }
+            reduceState(
+                SharedActivityIntent.Refresh,
+                current.copy(
+                    snapshot =
+                        snapshot.copy(
+                            items = ordered,
+                            totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + delta)
+                        )
+                ),
+                summarySource = "activity_row_reread"
+            )
+        }
+        return if (missing) scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.RowMissing) else null
+    }
+
+    private data class ActivityRowMerge(val row: InboxItem, val kept: Boolean)
+
+    /**
+     * One answered row ([served], after the store's read and Done holds) against the row shown
+     * ([current]), by the reducer's merge (web `mergeServedRow`): the row to show. The answer's
+     * position is [served]'s own `latestActivitySeq`. An answer older than the row's delivered
+     * position keeps [current] whole; a row shown at a newer message than the answer keeps what it
+     * shows ([kept]) with the merged unread; otherwise [base] (the served row as the list fold left
+     * it) with the merged unread.
+     */
+    private fun mergeServedRowLocked(current: InboxItem, served: InboxItem, base: InboxItem): ActivityRowMerge {
+        val scopeId = current.activityRowScopeId() ?: return ActivityRowMerge(base, kept = false)
+        val pa = served.latestActivitySeq?.takeIf(::isCanonicalActivitySeq)
+        val state = rowPositions.stateOf(current)
+        // A local read hold on the row: the applied seqs it covers do not count again (web `withReadApplied`).
+        val owner = overlayOwner()
+        val before = if (owner != null && readOverlay.contains(owner, current.key)) state.withAllAppliedRead() else state
+        val answer =
+            ActivityRowAnswer(
+                unreadCount = served.unreadCount,
+                hasMention = served.hasMention,
+                position = pa,
+                mentionOnly = served.unreadCount == 0 && served.hasMention
+            )
+        val result = reduceActivityRow(before, ActivityRowEvent.Answer(answer))
+        if (result.reread) requestRowRereadLocked(scopeId, result.rereadReason.rereadTrigger())
+        // The reducer hands the row back as it was only when the answer is older than its position
+        // (identity, as web's `result.row === before`: an answer equal to it is still taken).
+        if (result.row === before) {
+            diagnosticsLogger("activity_row_position event=answer scopeId=$scopeId pa=${pa ?: "-"} result=kept")
+            return ActivityRowMerge(current, kept = true)
+        }
+        rowPositions.keep(scopeId, result.row)
+        val shown = current.latestActivitySeq?.takeIf(::isCanonicalActivitySeq)
+        val newer = shown != null && pa != null && compareActivitySeq(shown, pa) > 0
+        val from = if (newer) current else base
+        val extra = result.row.unreadCount != served.unreadCount || result.row.hasMention != served.hasMention
+        val merged =
+            from.copy(
+                unreadCount = result.row.unreadCount,
+                hasMention = result.row.hasMention,
+                firstUnreadMessageId =
+                    when {
+                        result.row.unreadCount == 0 -> null
+                        extra -> served.firstUnreadMessageId ?: current.firstUnreadMessageId
+                        else -> served.firstUnreadMessageId
+                    },
+                firstMentionMessageId =
+                    when {
+                        !result.row.hasMention -> null
+                        extra -> served.firstMentionMessageId ?: current.firstMentionMessageId
+                        else -> served.firstMentionMessageId
+                    }
+            )
+        diagnosticsLogger(
+            "activity_row_position event=answer scopeId=$scopeId pa=${pa ?: "-"} result=merged " +
+                "newer=$newer unread=${merged.unreadCount} mention=${merged.hasMention} reread=${result.reread}"
+        )
+        return ActivityRowMerge(merged, kept = newer)
+    }
+
+    /**
+     * Flag on: a list answer's rows ([folded]: after the store's holds and the realtime fold), each
+     * answered row that is listed ([shown]) merged by the per-row rule; one first listed by this
+     * answer starts its state (web `mergeAnswerByPosition`). [served]: the answer's rows after the
+     * read and Done holds, for each row's delivered position and counts. Returns the rows and the
+     * unread they add over [served].
+     */
+    private fun mergeAnswerByPositionLocked(
+        folded: List<InboxItem>,
+        served: List<InboxItem>,
+        shown: List<InboxItem>,
+        /** A later page: a row it repeats stays as shown (the list keeps the shown copy). */
+        append: Boolean
+    ): Pair<List<InboxItem>, Int> {
+        val servedByKey = served.filter { it.isActivityPositionRow() }.associateBy(InboxItem::key)
+        val shownByKey = shown.filter { it.isActivityPositionRow() }.associateBy(InboxItem::key)
+        var delta = 0
+        val kept = mutableSetOf<String>()
+        val items =
+            folded.map { item ->
+                val answered = servedByKey[item.key] ?: return@map item
+                val scopeId = answered.activityRowScopeId() ?: return@map item
+                val before = shownByKey[item.key]
+                if (before == null) {
+                    rowPositions.start(scopeId, answered.latestActivitySeq)
+                    return@map item
+                }
+                if (append) return@map item
+                // The realtime hold does not judge these rows: the merged unread replaces what it kept.
+                realtimeHighWater.remove(item.key)
+                val next = mergeServedRowLocked(before, answered, base = answered)
+                delta += next.row.unreadCount - answered.unreadCount
+                if (next.kept) kept += next.row.key
+                next.row
+            }
+        if (kept.isEmpty()) return items to delta
+        // Rows kept at a newer message than the answer go back to their place by time.
+        val shownOrder = shown.withIndex().associate { (index, item) -> item.key to index }
+        return activityRowsWithHeldRowsAtTheirTime(
+            served = items.filterNot { it.key in kept },
+            held = items.filter { it.key in kept }.sortedBy { shownOrder[it.key] ?: Int.MAX_VALUE }
+        ) to delta
+    }
+
+    /**
+     * Flag on: a persisted read of the listed rows of [channelId] (web `readPersistedByPosition`): the
+     * reducer clears a row the read covers, or re-reads the row when the read cannot be split here (a
+     * read below the row's shown position, a mention-only row). Returns the rows the read cleared (for
+     * the read hold), or null when no row is the position rule's (the caller goes on as before).
+     */
+    private fun projectRemoteReadByPositionLocked(
+        channelId: String,
+        maxReadSeq: Long,
+        intent: SharedActivityIntent
+    ): List<InboxItem>? {
+        if (!rowPositionOnLocked()) return null
+        val current = _state.value
+        val snapshot = current.snapshot ?: return null
+        val rows = snapshot.items.filter { it.activityRowScopeId() == channelId && it.isActivityPositionRow() }
+        if (rows.isEmpty()) return null
+        rowReadRevision += 1L
+        val seq = maxReadSeq.takeIf { it >= 0L }?.toString().orEmpty()
+        val cleared = mutableListOf<InboxItem>()
+        val replaced = mutableMapOf<String, InboxItem>()
+        val owner = overlayOwner(current)
+        rows.forEach { row ->
+            val state = rowPositions.stateOf(row)
+            val before = if (owner != null && readOverlay.contains(owner, row.key)) state.withAllAppliedRead() else state
+            val result = reduceActivityRow(before, ActivityRowEvent.Read(seq))
+            diagnosticsLogger(
+                "activity_row_position event=read scopeId=$channelId seq=$seq " +
+                    "result=${if (result.reread) "reread" else "applied"}"
+            )
+            if (result.reread) {
+                requestRowRereadLocked(channelId, result.rereadReason.rereadTrigger())
+                return@forEach
+            }
+            rowPositions.keep(channelId, result.row)
+            if (result.row.unreadCount == row.unreadCount && result.row.hasMention == row.hasMention) return@forEach
+            if (row.unreadCount > 0) cleared += row
+            replaced[row.key] = row.withActivityRowUnread(result.row, messageId = null)
+        }
+        if (replaced.isNotEmpty()) {
+            val dropsRead = !current.selectedFilter.keepsReadActivityRows()
+            var removed = 0
+            val items =
+                snapshot.items.mapNotNull { item ->
+                    val next = replaced[item.key] ?: return@mapNotNull item
+                    if (dropsRead && next.unreadCount <= 0 && !next.markedUnread && !current.keepsReadRow(item.key)) {
+                        removed += 1
+                        null
+                    } else {
+                        next
+                    }
+                }
+            val delta = replaced.entries.sumOf { (key, next) -> next.unreadCount - (snapshot.items.first { it.key == key }.unreadCount) }
+            reduceState(
+                intent,
+                current.copy(
+                    snapshot =
+                        snapshot.copy(
+                            items = items,
+                            totalCount = maxOf(0, snapshot.totalCount - removed),
+                            totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + delta)
+                        )
+                )
+            )
+        }
+        return cleared
     }
 
     /** The trigger of a row a live message patched in place (web `InPlaceTrigger`). */
@@ -2174,6 +2725,12 @@ class SharedActivityStore internal constructor(
         maxReadSeq: Long,
         intent: SharedActivityIntent
     ): Job? {
+        projectRemoteReadByPositionLocked(channelId, maxReadSeq, intent)?.let { cleared ->
+            // The read is persisted: the hold keeps a lagging answer from bringing the rows back.
+            val remoteReadOwner = overlayOwner()
+            readOverlay.confirmAll(remoteReadOwner, rememberUnreadCleared(remoteReadOwner, cleared))
+            return null
+        }
         val current = _state.value
         val snapshot = current.snapshot ?: return null
         val matching =
@@ -3203,11 +3760,23 @@ class SharedActivityStore internal constructor(
                             // high-water waits for the page that serves them.
                             pruneUnlisted = !keepUnfetchedTail
                         )
+                    // `inbox_row_position_v1`: each answered row the list shows merges by the per-row rule.
+                    val (answerItems, positionUnreadDelta) =
+                        if (rowPositionOnLocked() && result.data.staleReason == null) {
+                            mergeAnswerByPositionLocked(
+                                folded = realtimeReconcile.items,
+                                served = pageItems.items,
+                                shown = current.items,
+                                append = append
+                            )
+                        } else {
+                            realtimeReconcile.items to 0
+                        }
                     val fetchedItems =
                         if (append) {
-                            (current.items + realtimeReconcile.items).dedupeActivityItems()
+                            (current.items + answerItems).dedupeActivityItems()
                         } else {
-                            realtimeReconcile.items.withRetainedReadRows(current).dedupeActivityItems()
+                            answerItems.withRetainedReadRows(current).dedupeActivityItems()
                         }
                     // Hands f6c3f3a6: a refresh shown page by page keeps the rows it has not read
                     // yet below the fetched ones, in their shown order; a fetched row is listed
@@ -3229,7 +3798,8 @@ class SharedActivityStore internal constructor(
                             0,
                             projectedData.totalUnreadCount -
                                 pageItems.suppressedUnreadCount -
-                                pageItems.suppressedDoneUnreadCount
+                                pageItems.suppressedDoneUnreadCount +
+                                positionUnreadDelta
                         )
                     val canonicalUnreadCount =
                         if (realtimeReconcile.preserveTotalUnreadFloor) {
@@ -5139,7 +5709,13 @@ sealed interface SharedActivityIntent {
          * The conversation open on screen (the shell's seen selection): with
          * `mobile_inbox_inplace_v0` a live message there patches its row without one more unread.
          */
-        val activeConversationId: String? = null
+        val activeConversationId: String? = null,
+        /**
+         * The message is past its conversation's Activity mute (the shell knows the mute; then
+         * [allowLocalPatch] is false). Read only with `inbox_row_position_v1` on: the per-row rule
+         * judges it in place (it does not count; a mention of the reader still lights the @).
+         */
+        val activityMuted: Boolean = false
     ) : SharedActivityIntent
     data class ApplyRealtimeSummaryEvent(
         val event: RealtimeEvent,
