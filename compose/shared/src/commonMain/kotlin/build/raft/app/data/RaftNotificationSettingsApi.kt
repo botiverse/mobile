@@ -434,6 +434,11 @@ object RaftNotificationCapability {
         mutableByServer.update { it + (serverId to supported) }
     }
 
+    /** Puts [serverId]'s answer back to [supported] (null: not asked), as a fixture found it. */
+    internal fun restoreServer(serverId: String, supported: Boolean?) {
+        mutableByServer.update { if (supported == null) it - serverId else it + (serverId to supported) }
+    }
+
     internal fun recordAccount(supported: Boolean) {
         val before = accountSupported()
         restored = true

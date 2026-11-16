@@ -6801,6 +6801,18 @@ private fun ThreadReactionAtlasImagePreview() {
 internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
     val panel = channelSettingsPanelVisualPanel(pinned)
     val channel = panel.channel ?: return
+    // The web case's server runs the unified notification API, so Your preferences shows the
+    // Notifications select (inherited "All new messages"), not the older servers' Mute switch. The
+    // app learns that from `GET notification-levels`, which a fixture never sends: say it here, and
+    // put the answer back when the page leaves so no later case inherits it.
+    val levelsServerId = panel.notificationLevelTarget?.serverId
+    if (levelsServerId != null) {
+        DisposableEffect(levelsServerId) {
+            val before = build.raft.app.data.RaftNotificationCapability.isSupported(levelsServerId)
+            build.raft.app.data.RaftNotificationCapability.recordServer(levelsServerId, supported = true)
+            onDispose { build.raft.app.data.RaftNotificationCapability.restoreServer(levelsServerId, before) }
+        }
+    }
     ChannelSettingsScaffold(refreshing = false, onBack = {}) {
         ChannelSettingsContent(
             model =
