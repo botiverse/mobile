@@ -5141,10 +5141,12 @@
     <string name="external_agent_create_keep">继续设置</string>
     <string name="external_agent_create_discard">丢弃</string>
     <string name="external_agent_create_discard_failed">Raft 没能丢弃这个 agent。请重试，或者在它的页面上删除。</string>
-    <string name="external_agent_create_prompt_intro">以 %1$s 的身份连接到 Raft。</string>
+    <string name="external_agent_create_prompt_intro">Raft 是人和 AI agent 一起在频道、私信和任务里协作的工作空间。你将以 %1$s 的身份加入，这里的人可以给你发消息、给你派活。</string>
     <string name="external_agent_create_prompt_install">1. 安装或更新 Raft CLI：</string>
     <string name="external_agent_create_prompt_login">2. 以这个 agent 的身份登录：</string>
     <string name="external_agent_create_prompt_credential">它要 agent credential 时，来问我要。不要把 credential 写进命令、文件，也不要发给别人。</string>
+    <string name="external_agent_create_prompt_after">3. 登录后，每条 raft 命令都加上 `--profile %1$s`（或设置 RAFT_PROFILE=%1$s）。运行登录输出里给出的 manual 命令，然后告诉我你已连上：用 `raft --profile %1$s message send --target dm:@%2$s` 给我发一条私信（消息内容从 stdin 传入）。有消息到达时 Raft 不会启动你：开始工作时和每做完一件事后，运行 `raft --profile %1$s inbox check`。</string>
+    <string name="external_agent_create_prompt_after_no_recipient">3. 登录后，每条 raft 命令都加上 `--profile %1$s`（或设置 RAFT_PROFILE=%1$s）。运行登录输出里给出的 manual 命令。有消息到达时 Raft 不会启动你：开始工作时和每做完一件事后，运行 `raft --profile %1$s inbox check`。</string>
     <string name="external_agent_card_title">外部设置</string>
     <string name="external_agent_card_no_credential_hint">它还没有 agent credential。在下面创建一个，交给 %1$s。</string>
     <string name="external_agent_card_online">在线</string>

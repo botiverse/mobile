@@ -19,6 +19,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -42,9 +43,12 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SecondFactorStepUpCoordinator
 import build.raft.app.data.SecondFactorStepUpOutcome
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.StoredAuthSession
 import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftButton
@@ -71,6 +75,8 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 // An external agent's setup (web CreateExternalAgentDialog / ExternalAgentConnectionCard,
@@ -127,14 +133,51 @@ internal fun raftSdkStarterCode(serverUrl: String): String =
         "await raft.agent.context(); // now connected",
     ).joinToString("\n")
 
-/** The prompt an existing agent is given: install the CLI, sign in as this agent, ask for the credential. */
+/**
+ * The person pasting the prompt, as the agent names them in `dm:@…` (web `usePromptRecipientHandle`,
+ * botiverse/slock #15096): the viewer's handle, `name~human` when an agent here has the same name.
+ * Null while unknown: the prompt then leaves out "tell me you are connected".
+ */
+internal fun externalPromptRecipientHandle(viewerName: String?, members: List<MemberProfile>): String? {
+    val name = viewerName?.takeIf { it.isNotBlank() } ?: return null
+    val agentHasName = members.any { it.kind == MemberKind.Agent && it.handle == name }
+    return if (agentHasName) "$name~human" else name
+}
+
+/** The signed-in viewer's [externalPromptRecipientHandle] on their current server; null while unknown. */
+@Composable
+private fun rememberExternalPromptRecipient(): String? {
+    val stores = remember { RaftSharedStoreRegistry.currentOrNull() }
+    val session by produceState<StoredAuthSession?>(null, stores) { value = stores?.authStore?.readSession() }
+    val serverId = session?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+    val membersFlow =
+        remember(stores, serverId) {
+            if (stores == null || serverId == null) flowOf(emptyList())
+            else stores.serverMembersStore.serverMembersEntryFlow(serverId).map { it.members }
+        }
+    val members by membersFlow.collectAsState(emptyList())
+    val viewerName = session?.user?.name
+    return remember(viewerName, members) { externalPromptRecipientHandle(viewerName, members) }
+}
+
+/**
+ * The prompt an existing agent is given (web `existingAgentPrompt`, botiverse/slock #15096): what Raft
+ * is, install the CLI, sign in as this agent, ask for the credential, then use its profile, read the
+ * manual the login names, say it is connected, and check its inbox (Raft does not start an external
+ * agent when a message arrives).
+ */
 @Composable
 internal fun rememberExternalAgentPrompt(agentId: String, name: String, serverUrl: String): String {
+    val slug = externalProfileSlug(name, agentId)
+    val me = rememberExternalPromptRecipient()
     val intro = stringResource(Res.string.external_agent_create_prompt_intro, name)
     val install = stringResource(Res.string.external_agent_create_prompt_install)
     val login = stringResource(Res.string.external_agent_create_prompt_login)
     val credential = stringResource(Res.string.external_agent_create_prompt_credential)
-    return remember(intro, install, login, credential, agentId, name, serverUrl) {
+    val after =
+        if (me != null) stringResource(Res.string.external_agent_create_prompt_after, slug, me)
+        else stringResource(Res.string.external_agent_create_prompt_after_no_recipient, slug)
+    return remember(intro, install, login, credential, after, agentId, name, serverUrl) {
         listOf(
             intro,
             "",
@@ -143,8 +186,9 @@ internal fun rememberExternalAgentPrompt(agentId: String, name: String, serverUr
             "",
             login,
             externalAgentLoginCommand(serverUrl, agentId, name),
-            "",
             credential,
+            "",
+            after,
         ).joinToString("\n")
     }
 }
