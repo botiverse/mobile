@@ -75,6 +75,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import build.raft.app.data.AgentActivityAppEvent
+import build.raft.app.data.AgentActivityOverviewSegment
+import build.raft.app.data.agentActivityOverviewTimeline
 import build.raft.app.data.agentMemoryLimitExit
 import build.raft.app.data.isAgentBackgroundOomActivityTitle
 import build.raft.app.data.openableMessage
@@ -223,9 +225,23 @@ internal fun MembersAgentActivityOverview(
     // The API pages newest first; the overview reads in time order like the log: earlier turns
     // above, then the running turn, then what the agent is doing now at the bottom (web).
     val chronological = remember(finished) { finished.asReversed() }
+    // What people did to the agent, between the turns in time order (web operator events).
+    val runningStart = running?.startedAtEpochMillis
+    val timeline = remember(chronological, state.operatorEvents, runningStart) {
+        agentActivityOverviewTimeline(chronological, state.operatorEvents, runningStart)
+    }
     val showTurns = loaded && (finished.isNotEmpty() || running != null)
     val listState = remember(state.agentId) { LazyListState() }
-    val lastIndex = (if (state.next != null) 1 else 0) + chronological.size + (if (running != null) 1 else 0)
+    val lastIndex = (if (state.next != null) 1 else 0) +
+        timeline.segments.sumOf { segment ->
+            when (segment) {
+                is AgentActivityOverviewSegment.Turns -> segment.turns.size
+                is AgentActivityOverviewSegment.Events -> 1
+            }
+        } +
+        (if (timeline.eventsBeforeRunning.isNotEmpty()) 1 else 0) +
+        (if (running != null) 1 else 0) +
+        (if (timeline.eventsDuringRunning.isNotEmpty()) 1 else 0)
     val latestTurnKey = running?.key ?: finished.firstOrNull()?.key
     // Parked bottom feed (docs/programmatic-scroll-ownership-contract.md, "Members Agent Activity
     // tail"): it follows new turns while the reader is at the bottom; leaving the tail retires that,
@@ -252,7 +268,7 @@ internal fun MembersAgentActivityOverview(
         }
         // Replies and sent messages load after the first paint and grow their cards: keep a
         // reader who follows the bottom there.
-        LaunchedEffect(state.agentId, state.replies.size) {
+        LaunchedEffect(state.agentId, state.replies.size, state.operatorEvents.size) {
             if (placed && followingBottom && !listState.isScrollInProgress) listState.scrollToItem(lastIndex)
         }
     }
@@ -327,15 +343,29 @@ internal fun MembersAgentActivityOverview(
                         }
                     }
                 }
-                items(chronological, key = { "activity-overview-turn-${it.key}" }) { turn ->
-                    MembersAgentActivityTurnSection(
-                        turn = turn,
-                        replies = state.replies,
-                        timeContext = timeContext,
-                        onIntent = binding.onIntent,
-                        onOpenUrl = onOpenUrl,
-                        onOpenMessage = onOpenMessage,
-                    )
+                timeline.segments.forEach { segment ->
+                    when (segment) {
+                        is AgentActivityOverviewSegment.Turns ->
+                            items(segment.turns, key = { "activity-overview-turn-${it.key}" }) { turn ->
+                                MembersAgentActivityTurnSection(
+                                    turn = turn,
+                                    replies = state.replies,
+                                    timeContext = timeContext,
+                                    onIntent = binding.onIntent,
+                                    onOpenUrl = onOpenUrl,
+                                    onOpenMessage = onOpenMessage,
+                                )
+                            }
+                        is AgentActivityOverviewSegment.Events ->
+                            item(key = "activity-overview-operator-${segment.events.first().id}") {
+                                MembersAgentActivityOperatorEvents(segment.events, timeContext)
+                            }
+                    }
+                }
+                if (timeline.eventsBeforeRunning.isNotEmpty()) {
+                    item(key = "activity-overview-operator-${timeline.eventsBeforeRunning.first().id}") {
+                        MembersAgentActivityOperatorEvents(timeline.eventsBeforeRunning, timeContext)
+                    }
                 }
                 running?.let { turn ->
                     item(key = "activity-overview-turn-${turn.key}") {
@@ -347,6 +377,11 @@ internal fun MembersAgentActivityOverview(
                             onOpenUrl = onOpenUrl,
                             onOpenMessage = onOpenMessage,
                         )
+                    }
+                }
+                if (timeline.eventsDuringRunning.isNotEmpty()) {
+                    item(key = "activity-overview-operator-${timeline.eventsDuringRunning.first().id}") {
+                        MembersAgentActivityOperatorEvents(timeline.eventsDuringRunning, timeContext)
                     }
                 }
                 item(key = "activity-overview-now") {

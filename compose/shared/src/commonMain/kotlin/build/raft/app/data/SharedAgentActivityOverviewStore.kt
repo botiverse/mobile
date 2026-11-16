@@ -46,6 +46,12 @@ data class AgentActivityOverviewState(
     val refreshing: Boolean = false,
     /** The turn still running (the newest page's `current`); null when none is or the server is older. */
     val running: AgentActivityTurn? = null,
+    /**
+     * What people did to the agent (and Raft's own restarts), newest first, as far back as the held
+     * turns reach (all of them once no earlier page is left). Asked again after every load of the
+     * turns; a failed ask keeps what was shown (an older server has no such route).
+     */
+    val operatorEvents: List<AgentOperatorEvent> = emptyList(),
 ) {
     /**
      * Finished turns to show, newest first. The empty wake a running turn took over (same row id)
@@ -118,6 +124,9 @@ class SharedAgentActivityOverviewStore(
 
     /** Last live activity observed for the current agent; null until the first observation. */
     private var lastLiveActivity: String? = null
+
+    /** Bumped per operator-events request: only the latest answer applies (web effect cleanup). */
+    private var operatorEventsToken = 0L
 
     fun dispatch(intent: AgentActivityOverviewIntent) {
         when (intent) {
@@ -215,6 +224,7 @@ class SharedAgentActivityOverviewStore(
             }
             if (requestGeneration != generation) return@launch
             applyLatest(result)
+            if (result is DataResult.Content || result is DataResult.Empty) loadOperatorEvents(priority)
             if (!latestPending) _state.update { if (it.refreshing) it.copy(refreshing = false) else it }
             if (latestPending) {
                 latestPending = false
@@ -298,6 +308,33 @@ class SharedAgentActivityOverviewStore(
                     // Web drops a failed "load earlier" silently; the button stays for another try.
                     is DataResult.Error, is DataResult.NoPermission -> state.copy(loadingMore = false)
                 }
+            }
+            // The held turns reach further back now: so do the events.
+            if (result is DataResult.Content || result is DataResult.Empty) loadOperatorEvents(DataRequestPriority.Visible)
+        }
+    }
+
+    /**
+     * Web `AgentActivityOverview`: the events since the oldest held turn's start while an earlier
+     * page is left, all of them otherwise; reloaded with the turns, so a Stop or Restart that started
+     * no turn shows too.
+     */
+    private fun loadOperatorEvents(priority: DataRequestPriority) {
+        val current = _state.value
+        val agentId = current.agentId ?: return
+        val since = if (current.next != null) current.turns.minOfOrNull { it.startedAtEpochMillis } else null
+        val token = ++operatorEventsToken
+        val requestGeneration = generation
+        scope.launch {
+            val result = repository.loadOperatorEvents(priority, agentId, since)
+            if (requestGeneration != generation || token != operatorEventsToken) return@launch
+            when (result) {
+                is DataResult.Content -> _state.update {
+                    if (it.operatorEvents == result.data.events) it else it.copy(operatorEvents = result.data.events)
+                }
+                is DataResult.Empty -> Unit
+                is DataResult.Error -> logger("agent_activity_overview_operator_events_failed code=${result.error.code}")
+                is DataResult.NoPermission -> logger("agent_activity_overview_operator_events_failed code=${result.blocker.code}")
             }
         }
     }

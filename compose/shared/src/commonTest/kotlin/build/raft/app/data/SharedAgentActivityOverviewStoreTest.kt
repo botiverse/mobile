@@ -50,6 +50,25 @@ class SharedAgentActivityOverviewStoreTest {
             return call.result.await()
         }
 
+        /** `since` per operator-events request, in order. */
+        val operatorEventCalls = mutableListOf<Long?>()
+
+        /** Answers per operator-events request, in order; the last one repeats. None: an older server (404). */
+        val operatorEventAnswers = ArrayDeque<DataResult<AgentOperatorEventsPage>>()
+
+        override suspend fun loadOperatorEvents(
+            priority: DataRequestPriority,
+            agentId: MemberId,
+            sinceEpochMillis: Long?,
+        ): DataResult<AgentOperatorEventsPage> {
+            operatorEventCalls += sinceEpochMillis
+            return when {
+                operatorEventAnswers.size > 1 -> operatorEventAnswers.removeFirst()
+                operatorEventAnswers.isNotEmpty() -> operatorEventAnswers.first()
+                else -> DataResult.Error(ScreenError("operator_events_404", retryable = false))
+            }
+        }
+
         override suspend fun loadReply(priority: DataRequestPriority, messageId: MessageId): AgentActivityTurnReply {
             replyCalls += priority to messageId
             val answers = replies[messageId] ?: return AgentActivityTurnReply.Unavailable
@@ -466,5 +485,65 @@ class SharedAgentActivityOverviewStoreTest {
         runCurrent()
         assertEquals(null, store.state.value.running)
         assertEquals(listOf("wake", "t1", "t0"), store.state.value.finishedTurns.map { it.key })
+    }
+
+    private fun operatorEvent(id: String, at: Long, kind: AgentOperatorEventKind = AgentOperatorEventKind.Stop) =
+        AgentOperatorEvent(id = id, atEpochMillis = at, kind = kind, actor = AgentOperatorEventActor.User("Artin"))
+
+    private fun events(vararg events: AgentOperatorEvent) =
+        DataResult.Content(AgentOperatorEventsPage(events.toList(), truncated = false))
+
+    @Test
+    fun operatorEventsFollowEveryLoadOfTheTurnsAndReachAsFarBackAsTheHeldTurns() = runTest {
+        val repository = FakeRepository()
+        repository.operatorEventAnswers += events(operatorEvent("e1", 150))
+        // turn(id, endedAt) starts 1_000 before it ends.
+        val store = openLoaded(repository, page(turn("t1", 3_000), turn("t2", 2_000), next = "2000:t2"))
+        assertEquals(listOf<Long?>(1_000), repository.operatorEventCalls, "an earlier page is left: since the oldest held start")
+        assertEquals(listOf("e1"), store.state.value.operatorEvents.map { it.id })
+
+        // The last page: every event, with no lower bound.
+        repository.operatorEventAnswers.clear()
+        repository.operatorEventAnswers += events(operatorEvent("e2", 1_500), operatorEvent("e1", 150))
+        store.dispatch(AgentActivityOverviewIntent.LoadMore)
+        runCurrent()
+        repository.calls.last().result.complete(page(turn("t3", 500)))
+        runCurrent()
+        assertEquals(listOf(1_000, null), repository.operatorEventCalls)
+        assertEquals(listOf("e2", "e1"), store.state.value.operatorEvents.map { it.id })
+
+        // A Stop that started no turn shows on the next reload of the turns too.
+        repository.operatorEventAnswers.clear()
+        repository.operatorEventAnswers += events(operatorEvent("e3", 3_500), operatorEvent("e2", 1_500), operatorEvent("e1", 150))
+        store.dispatch(AgentActivityOverviewIntent.Refresh)
+        runCurrent()
+        repository.calls.last().result.complete(page(turn("t1", 3_000), turn("t2", 2_000), next = "2000:t2"))
+        runCurrent()
+        assertEquals(3, repository.operatorEventCalls.size)
+        assertEquals(listOf("e3", "e2", "e1"), store.state.value.operatorEvents.map { it.id })
+    }
+
+    @Test
+    fun aFailedOperatorEventsRequestKeepsWhatIsShownAndNeverFailsTheOverview() = runTest {
+        val repository = FakeRepository()
+        val store = openLoaded(repository, page(turn("t1", 3_000)))
+        // An older server without the route: the overview shows the turns alone.
+        assertEquals(1, repository.operatorEventCalls.size)
+        assertEquals(emptyList(), store.state.value.operatorEvents)
+        assertEquals(AgentActivityOverviewStatus.Loaded, store.state.value.status)
+
+        repository.operatorEventAnswers += events(operatorEvent("e1", 2_500))
+        repository.operatorEventAnswers += DataResult.Error(ScreenError("operator_events_500"))
+        store.dispatch(AgentActivityOverviewIntent.Refresh)
+        runCurrent()
+        repository.calls.last().result.complete(page(turn("t1", 3_000)))
+        runCurrent()
+        assertEquals(listOf("e1"), store.state.value.operatorEvents.map { it.id })
+
+        store.dispatch(AgentActivityOverviewIntent.Refresh)
+        runCurrent()
+        repository.calls.last().result.complete(page(turn("t1", 3_000)))
+        runCurrent()
+        assertEquals(listOf("e1"), store.state.value.operatorEvents.map { it.id }, "a failed reload keeps the events shown")
     }
 }
