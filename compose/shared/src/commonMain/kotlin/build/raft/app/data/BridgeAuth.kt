@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.flushRaftPlatformDiagnosticsDownstream
 import build.raft.app.flushRaftPlatformLogs
 import build.raft.app.host.HostCapabilities
+import build.raft.app.network.RaftAppIdentityRegistry
 import build.raft.app.optBoolean
 import build.raft.app.optInt
 import build.raft.app.optJsonArray
@@ -63,7 +64,11 @@ internal class BridgeSettingsPlatformCapabilities(
     private val bridgeCallContext: CoroutineContext = EmptyCoroutineContext,
     private val feedbackVisualSubmission: SettingsHandsFeedbackSubmission? = null,
     private val openUrlHandler: ((String) -> Unit)? = null,
-    private val diagnosticsFlush: suspend () -> Boolean = { flushRaftPlatformDiagnosticsDownstream() }
+    private val diagnosticsFlush: suspend () -> Boolean = { flushRaftPlatformDiagnosticsDownstream() },
+    /** Store installs' update check, used when the host has no in-app update (Play, App Store). */
+    private val storeUpdates: () -> RaftStoreUpdateChecker? = { RaftStoreUpdates.checker },
+    /** True while the minimum build gate blocks the app: no new-version notice next to it. */
+    private val minBuildGateBlocking: () -> Boolean = { RaftMinBuildGate.decision.value is RaftMinBuildGateDecision.Block },
 ) : SharedSettingsPlatformCapabilities {
     override val supportsConversationForwardGesture: Boolean
         get() = raftPlatformSupportsConversationForwardGesture()
@@ -265,14 +270,57 @@ internal class BridgeSettingsPlatformCapabilities(
 
     override suspend fun checkHandsUpdate(): DataResult<SharedSettingsDeveloperSnapshot> {
         val response = settingsCapability(buildJsonObject { put("action", "handsUpdateCheck") })
+        val handsSupported =
+            response != null && response.optString("status") == "ok" && response.optBoolean("updateCheckSupported", false)
+        if (!handsSupported) {
+            // A store install: the person asked, so ask the store now and open it when it has a newer build.
+            val store = openStoreUpdate(force = true)
+            if (store != null) {
+                val developer = loadDeveloper()
+                if (developer is DataResult.Content) return DataResult.Content(developer.data.copy(updateCheck = store))
+            }
+        }
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_hands_update_check_failed" }))
         }
         return DataResult.Content(response.toDeveloperSnapshot())
     }
 
-    override suspend fun checkHandsUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> =
-        handsUpdateAction("handsUpdateStatus")
+    override suspend fun checkHandsUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> {
+        val hands = handsUpdateAction("handsUpdateStatus")
+        if (hands.isHandsUpdateSupported()) return hands
+        return storeUpdateSnapshot(force = false)?.let { DataResult.Content(it) } ?: hands
+    }
+
+    /**
+     * The store's answer as an update snapshot, or null when this install has no store channel
+     * (Hands builds, sideloaded and TestFlight builds, desktop).
+     */
+    private suspend fun storeUpdateSnapshot(force: Boolean): SharedSettingsUpdateCheckSnapshot? {
+        val checker = storeUpdates() ?: return null
+        val answer = runCatchingPreservingCancellation { checker.answer(force) }.getOrNull() ?: return null
+        val identity = RaftAppIdentityRegistry.current()
+        return raftStoreUpdateCheckSnapshot(
+            answer = answer,
+            currentBuild = parseRaftBuildNumber(identity?.buildNumber),
+            currentVersionLabel = identity?.version.orEmpty(),
+            minBuildGateBlocking = runCatching { minBuildGateBlocking() }.getOrDefault(false),
+            copy = raftStoreUpdateLocalizedCopy(),
+        )
+    }
+
+    /** Update on a store install: open the store page when it has a newer build. */
+    private suspend fun openStoreUpdate(force: Boolean): SharedSettingsUpdateCheckSnapshot? {
+        val snapshot = storeUpdateSnapshot(force) ?: return null
+        if (snapshot.updateAvailable && snapshot.downloadUrl.isNotBlank()) {
+            logBridge("store_update_open channel=${snapshot.storeChannel} latest=${snapshot.latestVersionCode}")
+            openExternalUrl(snapshot.downloadUrl)
+        }
+        return snapshot
+    }
+
+    private fun DataResult<SharedSettingsUpdateCheckSnapshot>.isHandsUpdateSupported(): Boolean =
+        this is DataResult.Content && data.supported
 
     override suspend fun readHandsDownloadProgress(token: String): SharedUpdateDownloadProgress? {
         val response = settingsCapability(buildJsonObject {
@@ -283,10 +331,13 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun installHandsUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
-        handsUpdateAction("handsUpdateInstall")
+        installHandsUpdateForToken("")
 
-    override suspend fun installHandsUpdateForToken(token: String): DataResult<SharedSettingsUpdateCheckSnapshot> =
-        handsUpdateAction("handsUpdateInstall", token)
+    override suspend fun installHandsUpdateForToken(token: String): DataResult<SharedSettingsUpdateCheckSnapshot> {
+        val hands = handsUpdateAction("handsUpdateInstall", token)
+        if (hands.isHandsUpdateSupported()) return hands
+        return openStoreUpdate(force = false)?.let { DataResult.Content(it) } ?: hands
+    }
 
     override suspend fun prefetchReleaseNotes(url: String): DataResult<Unit> {
         if (url.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)

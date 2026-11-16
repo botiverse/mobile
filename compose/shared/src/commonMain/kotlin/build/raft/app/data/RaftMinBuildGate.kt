@@ -101,6 +101,14 @@ interface RaftInstallChannelUpdates {
 
     /** Where to send the person when the channel could not be asked (store page), or null. */
     fun fallbackUpdateUrl(): String? = null
+
+    /**
+     * True when this install came from a store (Google Play, App Store) and its newer build is
+     * shown as the gentle new-version notice ([RaftStoreUpdateChecker]). Hands builds get theirs
+     * from the host's own update check, so the Hands channel keeps false.
+     */
+    val offersStoreUpdateNotice: Boolean
+        get() = false
 }
 
 /** Where the host installs its [RaftInstallChannelUpdates]. */

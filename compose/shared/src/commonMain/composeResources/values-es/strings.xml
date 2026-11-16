@@ -2254,6 +2254,7 @@
     <string name="app_update_installing">Instalando</string>
     <string name="app_update_install">Instalar</string>
     <string name="app_update_installed">Instalada</string>
+    <string name="app_update_update">Actualizar</string>
     <string name="app_update_unavailable">La información de actualización no está disponible temporalmente.</string>
     <string name="app_update_detail_available_with_size">Hay una actualización de Raft (APK de %1$s).</string>
     <string name="app_update_detail_available_with_patch_size">Parche de %1$s.</string>

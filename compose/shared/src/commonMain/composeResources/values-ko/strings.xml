@@ -2254,6 +2254,7 @@
     <string name="app_update_installing">설치 중</string>
     <string name="app_update_install">설치</string>
     <string name="app_update_installed">설치됨</string>
+    <string name="app_update_update">업데이트</string>
     <string name="app_update_unavailable">지금은 업데이트 정보를 확인할 수 없어요.</string>
     <string name="app_update_detail_available_with_size">Raft 업데이트가 있어요 (%1$s APK).</string>
     <string name="app_update_detail_available_with_patch_size">패치 %1$s.</string>

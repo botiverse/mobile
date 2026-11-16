@@ -2254,6 +2254,7 @@
     <string name="app_update_installing">安裝中</string>
     <string name="app_update_install">安裝</string>
     <string name="app_update_installed">已安裝</string>
+    <string name="app_update_update">更新</string>
     <string name="app_update_unavailable">暫時無法取得更新資訊。</string>
     <string name="app_update_detail_available_with_size">Raft 有可用更新（%1$s APK）。</string>
     <string name="app_update_detail_available_with_patch_size">增量更新 %1$s。</string>

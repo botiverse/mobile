@@ -95,6 +95,13 @@ internal object RaftAndroidInstallReferrer {
             info.firstInstallTime == info.lastUpdateTime
         }.getOrNull()
 
+    /**
+     * True when Google Play installed this package (installer `com.android.vending`). A `play`
+     * build sideloaded or installed through Hands has another (or no) installer, and the Play
+     * update check does not apply to it.
+     */
+    fun installedFromGooglePlay(context: Context): Boolean = installerPackage(context.applicationContext) == PlayStorePackage
+
     private fun installerPackage(app: Context): String? =
         runCatching {
             val packageManager = app.packageManager

@@ -9,15 +9,25 @@ import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
- * Google Play, the `play` build's install channel for the minimum build gate: the Play In-App
- * Update API's answer for this install (`availableVersionCode` when an update is available).
- * Update opens the app's Play listing. Every other build type compiles a copy that returns null.
+ * Google Play, the `play` build's install channel for the minimum build gate and the gentle
+ * new-version notice: the Play In-App Update API's answer for this install (`availableVersionCode`
+ * when an update is available). Update opens the app's Play listing. Every other build type
+ * compiles a copy that returns null.
  */
 internal object RaftAndroidPlayInstallChannel {
     fun create(application: Application): RaftInstallChannelUpdates = PlayChannel(application)
 
     private class PlayChannel(private val application: Application) : RaftInstallChannelUpdates {
         override val name: String = "play"
+
+        /**
+         * Only an install Google Play made gets the new-version notice: a `play` build installed
+         * any other way (Hands, sideload) has no Play update to offer. Read once per process.
+         */
+        private val installedFromPlay: Boolean by lazy { RaftAndroidInstallReferrer.installedFromGooglePlay(application) }
+
+        override val offersStoreUpdateNotice: Boolean
+            get() = installedFromPlay
 
         private val listingUrl: String
             get() = "https://play.google.com/store/apps/details?id=${application.packageName}"

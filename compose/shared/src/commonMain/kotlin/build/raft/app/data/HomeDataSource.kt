@@ -455,17 +455,19 @@ internal fun SharedSettingsUpdateCheckSnapshot.toSharedHomeAppUpdateNotification
     val sameVersionName = currentVersionLabel.isNotBlank() && currentVersionLabel.trim() == latestVersionLabel.trim()
     val currentBuildSuffix = if (sameVersionName && currentVersionCode > 0L) " ($currentVersionCode)" else ""
     val currentVersion = currentVersionLabel.ifBlank { "current build" } + currentBuildSuffix
+    // A store lists a version name, not a build: name the build only when the names match.
+    val nameOnly = storeChannel.isNotBlank() && !sameVersionName
     val latestVersion =
         latestVersionLabel
             .takeIf { it.isNotBlank() }
-            ?.let { "$it ($latestVersionCode)" }
+            ?.let { if (nameOnly) it else "$it ($latestVersionCode)" }
             ?: "version code $latestVersionCode"
     val localizedCurrentVersion =
         currentVersionLabel.ifBlank { currentVersionCode.takeIf { it > 0L }?.toString() ?: "—" } + currentBuildSuffix
     val localizedLatestVersion =
         latestVersionLabel
             .takeIf { it.isNotBlank() }
-            ?.let { "$it ($latestVersionCode)" }
+            ?.let { if (nameOnly) it else "$it ($latestVersionCode)" }
             ?: latestVersionCode.toString()
     return SharedHomeNotification(
         id = APP_UPDATE_HOME_NOTIFICATION_ID,
@@ -482,7 +484,7 @@ internal fun SharedSettingsUpdateCheckSnapshot.toSharedHomeAppUpdateNotification
 }
 
 private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionLabel(): String =
-    when (transactionState) {
+    if (storeChannel.isNotBlank()) "Update" else when (transactionState) {
         SharedSettingsUpdateTransactionState.Checking,
         SharedSettingsUpdateTransactionState.Patching,
         SharedSettingsUpdateTransactionState.Downloading -> "Downloading"
@@ -506,6 +508,7 @@ private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionDesc():
         when (action) {
             "downloading" -> Res.string.home_notification_action_downloading.desc()
             "install" -> Res.string.home_notification_action_install.desc()
+            "update" -> Res.string.app_update_update.desc()
             "download", "" -> Res.string.home_notification_action_download.desc()
             else -> null
         }
