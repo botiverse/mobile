@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftMobileNavServerPopoverItem
+import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
 import build.raft.designsystem.components.RaftSideAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.testTag
@@ -3988,11 +3990,24 @@ private fun RaftHomePreviewBottomTabBar(
             serverTabAccessibilityLabel = serverTabAccessibilityLabel,
         )
     }
+    // The shell draws the server tab with the server's avatar tile (not the plain glyph);
+    // the stand-in does the same, as BottomTabBarVisualContent does.
+    val serverPopoverState = rememberRaftMobileNavServerPopoverState()
     RaftAppBottomTabBarHost(
         items = items,
         onSelect = onSelect,
         modifier = modifier,
-        bottomSafeArea = bottomSafeArea
+        bottomSafeArea = bottomSafeArea,
+        serverTab = { tabModifier ->
+            val server = serverTab.currentServer
+            RaftMobileNavServerPopoverItem(
+                label = server.name,
+                state = serverPopoverState,
+                avatar = { size -> ServerSwitcherAvatarTile(server, size = size) },
+                modifier = tabModifier,
+                contentDescription = serverTabAccessibilityLabel,
+            )
+        },
     )
 }
 
