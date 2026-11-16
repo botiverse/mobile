@@ -445,6 +445,11 @@ internal fun advanceSystemKillWatermark(
  * A captured report waiting to be sent, fully built when its exit was first read (message and
  * metadata with the evidence already resolved), so it is sent as classified even after the exit
  * left the system's exit list or its telemetry left the snapshot ring.
+ *
+ * Hands answers a resend with the same `crash_exit_event_id` with the first attempt's ticket and
+ * stores nothing from the resend (botiverse/hands#955), so every attempt must carry what the first
+ * one did: [attempted] and [sentBatch] (the drop counts bound to this report, none when null) are
+ * committed before the first upload, and every later attempt sends [extras] plus [sentBatch] as is.
  */
 internal data class QueuedSystemKillReport(
     val key: SystemKillExitKey,
@@ -453,7 +458,14 @@ internal data class QueuedSystemKillReport(
     val message: String,
     /** JSON-safe values only: strings, numbers, booleans, null. */
     val extras: Map<String, Any?>,
+    /** True once an upload was started; entries stored before this field existed load as false. */
+    val attempted: Boolean = false,
+    /** The drop counts bound to this report at its first attempt; only this report ever sends them. */
+    val sentBatch: BackgroundDropBatch? = null,
 ) {
+    /** What every attempt of this report uploads. */
+    fun uploadExtras(): Map<String, Any?> = extras + sentBatch?.extras().orEmpty()
+
     fun toJson(): JSONObject =
         JSONObject()
             .put("pid", key.pid)
@@ -462,6 +474,8 @@ internal data class QueuedSystemKillReport(
             .put("version_code", versionCode)
             .put("message", message)
             .put("extras", JSONObject().apply { extras.forEach { (k, v) -> put(k, v ?: JSONObject.NULL) } })
+            .put("attempted", attempted)
+            .apply { sentBatch?.let { put("sent_batch_id", it.id).put("sent_batch", it.allToJson()) } }
 
     companion object {
         fun fromJson(json: JSONObject): QueuedSystemKillReport? {
@@ -474,6 +488,11 @@ internal data class QueuedSystemKillReport(
                 versionCode = json.optLong("version_code", -1L),
                 message = json.optString("message"),
                 extras = extras,
+                attempted = json.optBoolean("attempted", false),
+                sentBatch =
+                    json.optString("sent_batch_id", "").takeIf(String::isNotEmpty)?.let {
+                        BackgroundDropBatch(it, BackgroundDropLedger.entries(json.optJSONArray("sent_batch")))
+                    },
             )
         }
 
@@ -534,7 +553,8 @@ internal data class SystemKillProgress(
     /**
      * Adds [report]; over [cap] the oldest background report is evicted first, then the oldest
      * review one, the oldest visible one only when neither is left. Each eviction is counted: a
-     * background one with the background drops, a visible / review one in its own category.
+     * background one with the background drops, a visible / review one in its own category. An
+     * evicted report's bound batch goes back to the ledger ([BackgroundDropLedger.restore]).
      */
     fun enqueue(report: QueuedSystemKillReport, cap: Int = MaxQueuedSystemKillReports): SystemKillProgress {
         var nextQueue = queue + report
@@ -545,6 +565,7 @@ internal data class SystemKillProgress(
                     ?: nextQueue.filter { it.budget == SystemKillBudget.Review }.minByOrNull { it.key.timestampMillis }
                     ?: nextQueue.minBy { it.key.timestampMillis }
             nextQueue = nextQueue - victim
+            victim.sentBatch?.let { nextLedger = nextLedger.restore(it, keepId = true) }
             val category =
                 if (victim.budget == SystemKillBudget.Background) BackgroundDropEntry.EvictedBackground else victim.budget.label
             nextLedger = nextLedger.record(victim.versionCode, victim.key.timestampMillis, category = category)
@@ -574,9 +595,12 @@ internal interface SystemKillProgressStore {
  *    upload error stops sending for this launch and keeps everything queued; Hands rejecting a
  *    ticket for good ([isPermanentHandsRejection]) removes it.
  *
- * Every upload carries the never-sent counts ([BackgroundDropBatch.extras]), frozen under their id
- * and committed before the upload, so a retry resends the same id and entries; only an accepted
- * upload clears them.
+ * A report's first upload carries the never-sent counts ([BackgroundDropBatch.extras]), frozen
+ * under their id and bound to that report ([QueuedSystemKillReport.sentBatch]) in a commit before
+ * the upload. Every resend sends exactly that (no counts included), never counts recorded since:
+ * Hands answers a resend of a stored report with its first ticket and keeps nothing new from it.
+ * A batch is bound to one report only, so no other report sends it; it leaves the device with
+ * that report's accepted upload and returns to the ledger if the report is rejected or evicted.
  */
 internal suspend fun runSystemKillReports(
     store: SystemKillProgressStore,
@@ -631,16 +655,19 @@ internal suspend fun runSystemKillReports(
         val limit = limits.getValue(budget)
         return sentNow.getValue(budget) < limit.perLaunch && progress.recent(budget, nowMillis).size < limit.perDay
     }
-    for (queued in progress.queue.sortedWith(compareBy<QueuedSystemKillReport>({ it.budget.ordinal }, { it.key.timestampMillis }))) {
-        if (!hasRoom(queued.budget)) continue
-        val (ledger, dropped) = progress.ledger.attach(newBatchId)
-        if (ledger != progress.ledger) {
-            val frozen = progress.copy(ledger = ledger)
-            // The batch id must be on disk before it is sent, or a retry could send it under another.
+    for (candidate in progress.queue.sortedWith(compareBy<QueuedSystemKillReport>({ it.budget.ordinal }, { it.key.timestampMillis }))) {
+        if (!hasRoom(candidate.budget)) continue
+        var queued = progress.queue.firstOrNull { it.key == candidate.key } ?: continue
+        if (!queued.attempted) {
+            val (ledger, dropped) = progress.ledger.attach(newBatchId)
+            val bound = queued.copy(attempted = true, sentBatch = dropped)
+            val frozen = progress.copy(ledger = ledger, queue = progress.queue.map { if (it.key == bound.key) bound else it })
+            // What the first attempt sends must be on disk before it is sent: every resend sends the same.
             if (!store.commit(frozen)) return
             progress = frozen
+            queued = bound
         }
-        val result = runCatching { submit(queued.message, queued.extras + dropped?.extras().orEmpty()) }
+        val result = runCatching { submit(queued.message, queued.uploadExtras()) }
         val error = result.exceptionOrNull()
         if (error != null && !isPermanentHandsRejection(error)) {
             // Network, server, auth or configuration: everything stays queued, no budget is used.
@@ -649,19 +676,20 @@ internal suspend fun runSystemKillReports(
         }
         val next =
             if (error == null) {
-                progress.copy(ledger = progress.ledger.uploaded(dropped?.id), queue = progress.queue - queued)
+                progress.copy(queue = progress.queue.filterNot { it.key == queued.key })
                     .withReport(queued.budget, nowMillis)
             } else {
-                // Rejected for good (malformed): given up, counted with its status, no budget used.
+                // Rejected for good (malformed): given up, counted with its status, no budget used;
+                // its counts never reached Hands, so a later report carries them.
                 progress.copy(
                     ledger =
-                        progress.ledger.record(
+                        progress.ledger.restore(queued.sentBatch, keepId = false).record(
                             queued.versionCode,
                             queued.key.timestampMillis,
                             category = BackgroundDropEntry.Rejected,
                             httpStatus = (error as? HandsFeedbackException)?.code ?: 0,
                         ),
-                    queue = progress.queue - queued,
+                    queue = progress.queue.filterNot { it.key == queued.key },
                 )
             }
         if (!store.commit(next)) return
@@ -759,10 +787,11 @@ internal data class BackgroundDropBatch(val id: String, val entries: List<Backgr
  * Background reports dropped over their budget, kept on the device until a later system-kill
  * report carries them (best effort; they stay here if no later report is ever sent).
  *
- * New drops go to [accumulating]. The next upload freezes them into [pending] under a fresh id
- * ([attach]); a failed upload leaves [pending] as it was, so the retry sends the same id and
- * entries, and only a successful one clears it ([uploaded]). At most [MaxEntries] per list; the
- * oldest days go first.
+ * New drops go to [accumulating]. A report's first upload takes them, frozen under a fresh id
+ * ([attach]), and keeps them as its own ([QueuedSystemKillReport.sentBatch]) until it is accepted.
+ * [pending] holds a batch no report owns: one written by an earlier version of this reporter, or
+ * one handed back by an evicted report ([restore]); the next first upload takes it first, under
+ * its id. At most [MaxEntries] per list; the oldest days go first.
  */
 internal data class BackgroundDropLedger(
     val pending: BackgroundDropBatch? = null,
@@ -785,24 +814,43 @@ internal data class BackgroundDropLedger(
             } else {
                 accumulating + BackgroundDropEntry(versionCode, day, 1, category, httpStatus)
             }
-        return copy(
-            accumulating =
-                next.sortedWith(
-                    compareBy<BackgroundDropEntry>({ it.exitDayUtc }, { it.category }, { it.httpStatus }, { it.versionCode }),
-                ).takeLast(MaxEntries),
-        )
+        return copy(accumulating = bounded(next))
     }
 
-    /** The batch the next upload carries (null when nothing was dropped), and the ledger after. */
+    /**
+     * The batch a report's first upload carries (null when nothing was dropped), and the ledger
+     * without it: the batch now belongs to that report alone.
+     */
     fun attach(newId: () -> String): Pair<BackgroundDropLedger, BackgroundDropBatch?> =
         when {
-            pending != null -> this to pending
+            pending != null -> copy(pending = null) to pending
             accumulating.isEmpty() -> this to null
-            else -> BackgroundDropBatch(newId(), accumulating).let { BackgroundDropLedger(it, emptyList()) to it }
+            else -> BackgroundDropBatch(newId(), accumulating).let { copy(accumulating = emptyList()) to it }
         }
 
-    fun uploaded(batchId: String?): BackgroundDropLedger =
-        if (batchId != null && pending?.id == batchId) copy(pending = null) else this
+    /**
+     * Takes back [batch] of a report that will never be accepted. With [keepId] (evicted: its
+     * first attempt may have reached Hands, so a repeat must keep the id Hands can dedupe on) as
+     * [pending] when that is free; otherwise (rejected: Hands never stored it) its counts are
+     * added to [accumulating] and go out with the next batch.
+     */
+    fun restore(batch: BackgroundDropBatch?, keepId: Boolean): BackgroundDropLedger =
+        when {
+            batch == null || batch.entries.isEmpty() -> this
+            keepId && pending == null -> copy(pending = batch)
+            else -> {
+                val merged =
+                    (accumulating + batch.entries)
+                        .groupBy { listOf(it.versionCode, it.exitDayUtc, it.category, it.httpStatus) }
+                        .values.map { same -> same.first().copy(count = same.sumOf { it.count }) }
+                copy(accumulating = bounded(merged))
+            }
+        }
+
+    private fun bounded(entries: List<BackgroundDropEntry>): List<BackgroundDropEntry> =
+        entries.sortedWith(
+            compareBy<BackgroundDropEntry>({ it.exitDayUtc }, { it.category }, { it.httpStatus }, { it.versionCode }),
+        ).takeLast(MaxEntries)
 
     fun encode(): String =
         JSONObject().apply {
@@ -825,7 +873,7 @@ internal data class BackgroundDropLedger(
             }.getOrDefault(BackgroundDropLedger())
         }
 
-        private fun entries(array: JSONArray?): List<BackgroundDropEntry> =
+        internal fun entries(array: JSONArray?): List<BackgroundDropEntry> =
             (0 until (array?.length() ?: 0)).mapNotNull { index ->
                 val entry = array?.optJSONObject(index) ?: return@mapNotNull null
                 BackgroundDropEntry(
