@@ -7060,6 +7060,9 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem, size: Dp =
         modifier =
             Modifier
                 .size(size)
+                // web AvatarSlot type="server" is raft-ui's Avatar, so the workspace tile keeps the
+                // sticker's die-cut edge outside its ink edge (visible in dark), image or initial.
+                .raftAppStickerDieCutEdge(RaftColor.StickerEdge)
                 // raft-ui square avatar: sticker radius (4dp), ink tile.
                 .clip(RoundedCornerShape(RaftAppRadius.Sticker))
                 // No ink fill behind an uploaded image: a transparent server avatar must show the
@@ -8354,6 +8357,28 @@ internal fun RaftAppAvatarSticker(
 }
 
 /**
+ * raft-ui Avatar's die-cut edge, `shadow-[0_0_0_1.5px_var(--sticker-edge)]`: a 1.5dp band of
+ * [color] outside the box whose corners follow the sticker radius (transparent in light, the
+ * paper edge in dark). It takes no layout space; chain it before any clip.
+ */
+internal fun Modifier.raftAppStickerDieCutEdge(color: Color): Modifier =
+    if (color.alpha > 0f) {
+        drawBehind {
+            val ring = RaftAppStroke.Control.toPx()
+            val outset = ring / 2f
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(-outset, -outset),
+                size = Size(size.width + outset * 2f, size.height + outset * 2f),
+                cornerRadius = CornerRadius(RaftAppRadius.Sticker.toPx() + outset),
+                style = Stroke(width = ring)
+            )
+        }
+    } else {
+        this
+    }
+
+/**
  * raft-ui Avatar root + image slot: an [avatarSize] square sticker (`rounded-sticker`, 4dp)
  * on [fill], with a [borderWidth] `sticker-ink` edge and, outside it, the 1.5dp
  * `sticker-edge` ring (transparent in light, the die-cut edge in dark; it takes no layout
@@ -8374,25 +8399,7 @@ internal fun RaftAppAvatarFrame(
     Box(
         modifier =
             modifier
-                .then(
-                    if (ringColor.alpha > 0f) {
-                        Modifier.drawBehind {
-                            // `shadow-[0_0_0_1.5px_var(--sticker-edge)]`: a band outside the
-                            // box whose corners follow the sticker radius.
-                            val ring = RaftAppStroke.Control.toPx()
-                            val outset = ring / 2f
-                            drawRoundRect(
-                                color = ringColor,
-                                topLeft = Offset(-outset, -outset),
-                                size = Size(size.width + outset * 2f, size.height + outset * 2f),
-                                cornerRadius = CornerRadius(RaftAppRadius.Sticker.toPx() + outset),
-                                style = Stroke(width = ring)
-                            )
-                        }
-                    } else {
-                        Modifier
-                    }
-                )
+                .raftAppStickerDieCutEdge(ringColor)
                 .size(width = avatarSize, height = avatarSize)
                 .clip(RaftAvatarStickerShape)
                 .background(fill)
