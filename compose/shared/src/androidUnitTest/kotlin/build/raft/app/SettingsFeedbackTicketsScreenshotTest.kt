@@ -31,7 +31,8 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Settings › Feedback on a 390dp phone. The ticket list with the agent tip at its top (web
  * FeedbackAgentHint), and a ticket filed on another client (design settings.md "Feedback", slock
- * #14722): an outline muted badge with the client's icon and name after the first message's time.
+ * #14722): an outline muted badge with the client's icon and name after the first message's time,
+ * and the list's rows of tickets filed on other clients ending their metadata with it (option G).
  *
  * The ticket list on a 390dp phone with the agent tip at its top (web
  * FeedbackAgentHint, botiverse/slock 0d4ec9fd4f58 #14053): a small info Banner, one line with a bold
@@ -57,6 +58,13 @@ class SettingsFeedbackTicketsScreenshotTest {
 
     @Test
     fun filedFromDark() = captureFeedbackFiledFrom("settings.feedback-tickets.filed-from.dark", RaftAppAppearance.Dark, activities)
+
+    /** The list in the Android app: Desktop and iOS rows name their client, the Android row does not. */
+    @Test
+    fun listFiledFromLight() = captureFeedbackListFiledFrom("settings.feedback-tickets.list-filed-from", RaftAppAppearance.Light, activities)
+
+    @Test
+    fun listFiledFromDark() = captureFeedbackListFiledFrom("settings.feedback-tickets.list-filed-from.dark", RaftAppAppearance.Dark, activities)
 }
 
 @RunWith(RobolectricTestRunner::class)
@@ -71,6 +79,9 @@ class SettingsFeedbackTicketsZhCnScreenshotTest {
 
     @Test
     fun filedFrom() = captureFeedbackFiledFrom("settings.feedback-tickets.filed-from.zh-CN", RaftAppAppearance.Light, activities)
+
+    @Test
+    fun listFiledFrom() = captureFeedbackListFiledFrom("settings.feedback-tickets.list-filed-from.zh-CN", RaftAppAppearance.Light, activities)
 }
 
 private const val Now = 1_762_700_000_000L
@@ -155,5 +166,69 @@ private fun FiledFromTicket() {
         actions = SettingsFeedbackTicketsActions(),
         ownClient = FeedbackClient.Android,
         replyComposer = { _, _, _, _, _, _ -> },
+    )
+}
+
+private fun captureFeedbackListFiledFrom(name: String, appearance: RaftAppAppearance, activities: RobolectricComposeActivityRule) =
+    RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
+        val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
+        CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            RaftDesignSystemTheme { FiledFromList() }
+        }
+    }
+
+@Composable
+private fun FiledFromList() {
+    val desktop =
+        FeedbackTicket(
+            id = "11111111-2222-4333-8444-555555555555",
+            kind = FeedbackTicketKind.Bug,
+            status = FeedbackTicketStatus.InProgress,
+            closureReason = null,
+            message = "Search is slow\nIt takes seconds to show results",
+            createdAt = Now - 3_600_000L,
+            updatedAt = Now - 600_000L,
+            unread = true,
+            unreadCount = 1,
+            attachmentCount = 0,
+            commentCount = 2,
+            latestComment = FeedbackLatestComment(FeedbackAuthorType.Staff, "Looking into it", Now - 600_000L),
+            source = "web",
+            client = FeedbackClient.Desktop,
+        )
+    val ios =
+        desktop.copy(
+            id = "22222222-2222-4333-8444-555555555555",
+            kind = FeedbackTicketKind.Feedback,
+            status = FeedbackTicketStatus.Open,
+            message = "Pin a channel to the top",
+            updatedAt = Now - 7_200_000L,
+            unread = false,
+            unreadCount = 0,
+            commentCount = 0,
+            latestComment = null,
+            source = "ios",
+            client = FeedbackClient.Ios,
+        )
+    val android =
+        ios.copy(
+            id = "33333333-2222-4333-8444-555555555555",
+            kind = FeedbackTicketKind.Bug,
+            status = FeedbackTicketStatus.Resolved,
+            message = "Notifications arrive twice",
+            updatedAt = Now - 86_400_000L,
+            commentCount = 1,
+            latestComment = FeedbackLatestComment(FeedbackAuthorType.Staff, "Fixed in 1.25.0", Now - 86_400_000L),
+            source = "android",
+            client = FeedbackClient.Android,
+        )
+    SettingsFeedbackTicketsScreen(
+        state =
+            SettingsFeedbackTicketsState(
+                list = FeedbackTicketsListState(phase = FeedbackTicketsListPhase.Ready, tickets = listOf(desktop, ios, android)),
+            ),
+        timeContext = RaftTimeContext(localOffsetMinutes = 0, todayEpochDay = Now / 86_400_000L, nowEpochMillis = Now),
+        actions = SettingsFeedbackTicketsActions(),
+        ownClient = FeedbackClient.Android,
     )
 }

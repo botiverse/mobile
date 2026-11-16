@@ -10,12 +10,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -235,10 +237,11 @@ class SettingsFeedbackTicketsPageUiTest {
         }
 
     @Test
-    fun aTicketFiledOnAnotherClientNamesItOnTheFirstMessageAndTheListDoesNot() =
+    fun aTicketFiledOnAnotherClientNamesItOnItsRowAndTheFirstMessage() =
         runRobolectricComposeUiTest {
-            // Design settings.md "Feedback" (option F): no client on list rows; in the ticket, an
-            // outline badge after the first message's time, only when filed on another client.
+            // Design settings.md "Feedback" (option G, Hands feedback-react 0.5.6): a row filed on another
+            // client ends its metadata with an outline badge and its label with "Filed on …"; in the
+            // ticket, the same badge after the first message's time. Filed here: nothing on either.
             val fromDesktop = crash.copy(source = "web", client = FeedbackClient.Desktop)
             val fromHere = idea.copy(source = "android", client = FeedbackClient.Android)
             val repository =
@@ -252,12 +255,22 @@ class SettingsFeedbackTicketsPageUiTest {
             setContent { Page(repository) }
             waitForIdle()
             onNodeWithText("Crash on launch").assertIsDisplayed()
-            onNodeWithText("Desktop").assertDoesNotExist()
-            onNodeWithTag(SettingsFeedbackTicketFiledFromTag).assertDoesNotExist()
+            // One row badge, on the Desktop row, after its state, replies and new count.
+            onAllNodesWithTag(SettingsFeedbackTicketRowFiledFromTag, useUnmergedTree = true).assertCountEquals(1)
+            onNode(
+                hasTestTag(SettingsFeedbackTicketRowFiledFromTag) and hasAnyAncestor(hasContentDescription("Crash on launch, 1 unread, Filed on Desktop")),
+                useUnmergedTree = true,
+            ).assertIsDisplayed()
+            onNodeWithText("Desktop", useUnmergedTree = true).assertIsDisplayed()
+            // The ticket filed here: no badge, the label is its title.
+            onNode(hasContentDescription("Dark mode for the composer")).assertIsDisplayed()
+            onNodeWithText("Android", useUnmergedTree = true).assertDoesNotExist()
+            onNodeWithTag(SettingsFeedbackTicketFiledFromTag, useUnmergedTree = true).assertDoesNotExist()
 
             onNodeWithText("Crash on launch").performClick()
             waitForIdle()
             onNodeWithTag(SettingsFeedbackTicketFiledFromTag, useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithTag(SettingsFeedbackTicketRowFiledFromTag, useUnmergedTree = true).assertDoesNotExist()
             onNodeWithText("Desktop", useUnmergedTree = true).assertIsDisplayed()
 
             onNode(hasContentDescription("Back")).performClick()
@@ -268,6 +281,28 @@ class SettingsFeedbackTicketsPageUiTest {
             onNodeWithText("You", useUnmergedTree = true).assertExists()
             onNodeWithTag(SettingsFeedbackTicketFiledFromTag, useUnmergedTree = true).assertDoesNotExist()
             onNodeWithText("Android", useUnmergedTree = true).assertDoesNotExist()
+        }
+
+    @Test
+    fun whichRowsNameAClientFollowsTheClientThisAppFilesAs() =
+        runRobolectricComposeUiTest {
+            // The row decides "filed here" as the ticket does (feedbackForeignClient against ownClient):
+            // in the iOS app an Android ticket is named and an iOS one is not; no client named, no badge.
+            val fromAndroid = crash.copy(source = "android", client = FeedbackClient.Android)
+            val fromIos = idea.copy(source = "ios", client = FeedbackClient.Ios)
+            val unnamed = idea.copy(id = "33333333-2222-4333-8444-555555555555", message = "No client named", source = null, client = null)
+            val fromHarmony = idea.copy(id = "44444444-2222-4333-8444-555555555555", message = "From the HarmonyOS app", source = "ohos", client = FeedbackClient.Ohos)
+            val repository = FakeRepository(pageOf(fromAndroid, fromIos, unnamed, fromHarmony))
+            setContent { Page(repository, ownClient = FeedbackClient.Ios) }
+            waitForIdle()
+            onAllNodesWithTag(SettingsFeedbackTicketRowFiledFromTag, useUnmergedTree = true).assertCountEquals(2)
+            onNode(hasContentDescription("Crash on launch, 1 unread, Filed on Android")).assertIsDisplayed()
+            onNode(hasContentDescription("From the HarmonyOS app, Filed on HarmonyOS")).assertIsDisplayed()
+            onNode(hasContentDescription("Dark mode for the composer")).assertIsDisplayed()
+            onNode(hasContentDescription("No client named")).assertIsDisplayed()
+            onNodeWithText("Android", useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithText("HarmonyOS", useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithText("iOS", useUnmergedTree = true).assertDoesNotExist()
         }
 
     @Test
