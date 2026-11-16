@@ -348,6 +348,11 @@ class SharedActivityStore internal constructor(
     onThreadUnfollowProjection: (SharedHomeIntent.ProjectThreadUnfollow) -> Unit = {},
     onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = {},
     onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
+    /**
+     * `inbox_row_position_v1`: the list stopped owning the badge (a reset read of it failed or
+     * answered a remembered page): the summary reads it again ([ProcessActivityUnreadStore.refresh]).
+     */
+    private val onBadgeReleased: (serverId: String) -> Unit = {},
     private val scope: CoroutineScope,
     private var diagnosticsLogger: (String) -> Unit = {},
     /** Realtime-triggered refetch throttle window (leading + trailing); user loads are never throttled. */
@@ -588,7 +593,15 @@ class SharedActivityStore internal constructor(
      * Only such a list can own the badge ([ownsBadgeFor]).
      */
     @Volatile
-    private var freshListServerId: String? = null
+    private var freshListOwner: Pair<String, String?>? = null
+    /**
+     * `inbox_row_position_v1`: the Activity panel is active (shown), from its mount and its
+     * Entered / Left edges ([SharedActivityIntent.SurfaceActive]); null until a panel says. Unlike
+     * [activitySurfaceHidden], a load the panel asks for (its mount-time LoadInitial, a lifecycle
+     * resume Refresh) does not set it.
+     */
+    @Volatile
+    private var panelActive: Boolean? = null
     /** Why the load in flight reads (for `activity:list_row_lowered`'s fetch reason / trigger). */
     private var loadFetchLabel: Pair<InboxFetchReason?, InboxRefreshTriggerCount?> = null to null
     /** Bumped when the row state goes (server switch, reset): an answer from before is dropped. */
@@ -597,20 +610,30 @@ class SharedActivityStore internal constructor(
     /**
      * `inbox_row_position_v1`: this list is [owner]'s badge's only writer (Tenny, #triage:#244), shown
      * or hidden: it counts the badge ([derivesBadgeFor]) and a fresh answer loaded it in this session
-     * ([freshListServerId]; a cache-restored page, or one whose read failed, does not own it). It
+     * ([freshListOwner]; a cache-restored page, or one whose read failed, does not own it). It
      * keeps itself current for that: the shell hands it every live event while Activity is not shown
      * (the hidden +1 path), an event it cannot count re-reads it, and every return to the foreground
      * re-reads it ([onAppForegroundReturned]). In the background the summary store reads nothing
      * anyway (it defers to the return), so owning the badge there suppresses no read.
      */
     internal fun ownsBadgeFor(owner: ProcessActivityUnreadOwner): Boolean =
-        freshListServerId == owner.serverId && _state.value.derivesBadgeFor(owner)
+        freshListOwner == (owner.serverId to owner.accountId) && _state.value.derivesBadgeFor(owner)
 
     /** [ownsBadgeFor] for the list's own server, with both flags on (caller holds realtimeOwnerLock). */
     private fun listOwnsBadgeLocked(): Boolean {
         val current = _state.value
         val serverId = current.ownerServerId ?: return false
-        return rowPositionOnLocked() && freshListServerId == serverId && current.snapshot != null
+        return rowPositionOnLocked() && current.snapshot != null &&
+            freshListOwner == (serverId to current.ownerUserId) && !current.ownerUserId.isNullOrBlank()
+    }
+
+    /**
+     * Nobody sees the list. With `inbox_row_position_v1` on, the panel's own active state when it has
+     * said ([panelActive]); otherwise (and flag off) [activitySurfaceHidden], as before.
+     */
+    private fun surfaceHiddenLocked(): Boolean {
+        val active = panelActive
+        return if (active != null && rowPositionOnLocked()) !active else activitySurfaceHidden
     }
 
     /** Test hook: the position state kept for a row's conversation. */
@@ -749,6 +772,7 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.PrewarmActivityTail -> prewarmActivityTail(intent.orderedMarkers)
             SharedActivityIntent.DetachPrewarmViewport -> prewarmVisibleReplyThreads(emptySet())
             SharedActivityIntent.SurfaceHidden -> onSurfaceHidden()
+            is SharedActivityIntent.SurfaceActive -> panelActive = intent.active
             is SharedActivityIntent.RowOpened -> onRowOpened(intent)
             is SharedActivityIntent.ChannelAccessLost -> dropRetainedRows(intent) { item ->
                 item.touchesChannel(intent.channelIds)
@@ -1925,7 +1949,7 @@ class SharedActivityStore internal constructor(
             realtimeReconcileOwedOnForeground = true
             return realtimeBackgroundReconcileJob ?: Job().apply { complete() }
         }
-        if (activitySurfaceHidden && inboxInPlaceOnLocked() && !listOwnsBadgeLocked()) {
+        if (surfaceHiddenLocked() && inboxInPlaceOnLocked() && !listOwnsBadgeLocked()) {
             // Inbox refresh step 4, rule 3: nobody sees the list, so nothing reads it; the Refresh
             // that shows it again reads it once (`visibility`). A list that owns the badge
             // (`inbox_row_position_v1`) keeps reading, throttled: the badge is its count.
@@ -1936,7 +1960,7 @@ class SharedActivityStore internal constructor(
         if (trigger != null) realtimeBackgroundReconcileTrigger = realtimeBackgroundReconcileTrigger.foldWith(trigger)
         // Only with a hidden window configured: without one the store behaves exactly as before.
         hiddenFoldLoads =
-            if (activitySurfaceHidden && hiddenRealtimeBackgroundRefreshIntervalMillis != null) resetLoadsStarted else null
+            if (surfaceHiddenLocked() && hiddenRealtimeBackgroundRefreshIntervalMillis != null) resetLoadsStarted else null
         realtimeBackgroundReconcileJob?.let { return it }
         // Leading + trailing throttle (web requestInboxBackgroundRefresh): the
         // first request after a quiet window fetches immediately; requests inside
@@ -1989,7 +2013,7 @@ class SharedActivityStore internal constructor(
                                     ReconcileStep.Stop
                                 }
                                 // Step 4: hidden while waiting; the Refresh that shows it reads.
-                                activitySurfaceHidden && inboxInPlaceOnLocked() && !listOwnsBadgeLocked() -> {
+                                surfaceHiddenLocked() && inboxInPlaceOnLocked() && !listOwnsBadgeLocked() -> {
                                     realtimeBackgroundReconcileDirty = false
                                     realtimeBackgroundReconcileTrigger = null
                                     realtimeBackgroundReconcileJob = null
@@ -2141,7 +2165,7 @@ class SharedActivityStore internal constructor(
         rowReadRevisions.clear()
         rowRereadFlushJob?.cancel()
         rowRereadFlushJob = null
-        freshListServerId = null
+        freshListOwner = null
     }
 
     /** One `activity:inplace_check` to [serverId]'s trace stream (web `emitStateTransitionTrace`). */
@@ -2242,7 +2266,7 @@ class SharedActivityStore internal constructor(
         } else {
             replaceActivityItemInPlace(patched, index, current, snapshot, intent)
         }
-        inPlaceDriftCheck.notePatched(patched, trigger, ActivityInPlaceRereadPosition)
+        inPlaceDriftCheck.notePatched(patched, trigger, ActivityInPlaceRereadPosition, existing.inPlaceCauseDetail(message, own))
         if (!rereadAsked) auditLiveAppliedLocked(scopeId, patched)
         return RealtimeRowPatch.Patched
     }
@@ -2266,6 +2290,16 @@ class SharedActivityStore internal constructor(
             )
         diagnosticsLogger("activity_row_position event=audit scopeId=$scopeId applied=$liveAppliedCount")
         scheduleRowRereadFlushLocked()
+    }
+
+    /**
+     * Web `causeDetail`: the event, for classifying a drift: `own`, `sender_type`, `message_type`, and on
+     * a thread row `following` (1 / 0).
+     */
+    private fun InboxItem.inPlaceCauseDetail(message: Message, own: Boolean): String {
+        val following = if (kind != InboxItemKind.Thread) "" else ";following=${if (isUnfollowedActivityThread) 0 else 1}"
+        val messageType = if (message.messageType == MessageType.System) "system" else "chat"
+        return ";own=${if (own) 1 else 0};sender_type=${message.author.kind.activitySenderType()};message_type=$messageType$following"
     }
 
     /** The row at a newer message: its preview, sender and seq, not its unread (web `advancedRow` + `movedFrontiers`). */
@@ -2427,7 +2461,8 @@ class SharedActivityStore internal constructor(
             // Nobody can see the list (the background, or a hidden list that does not own the badge):
             // the list read it owes on the return or the show stands for these rows; an audit is not
             // judged (web: a hidden page reads nothing).
-            if (!appForeground.value || (activitySurfaceHidden && !listOwnsBadgeLocked())) {
+            val hidden = surfaceHiddenLocked()
+            if (!appForeground.value || (hidden && (audit || !listOwnsBadgeLocked()))) {
                 if (audit) {
                     ready.forEach { (_, entry) -> recordAuditNotJudgedLocked(entry, ActivityAuditNotJudgedCause.PageHidden) }
                 } else {
@@ -2462,6 +2497,12 @@ class SharedActivityStore internal constructor(
                 ) {
                     inboxRepository.loadRows(ServerId(read.serverId), read.ids)
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                // A thrown read is a failed one: the audits in it are not judged, a re-read falls back.
+                diagnosticsLogger("activity_row_reread phase=finish result=exception type=${failure::class.simpleName}")
+                DataResult.Error(ScreenError(code = "inbox_rows_exception", retryable = true))
             } finally {
                 synchronized(realtimeOwnerLock) {
                     if (generation == rowRereadGeneration) rowRereadInFlight -= read.ids.toSet()
@@ -2906,7 +2947,7 @@ class SharedActivityStore internal constructor(
     private fun realtimeBackgroundRefreshWaitMillisLocked(): Long {
         val lastStartedAt = lastResetLoadStartedAtMillis ?: return 0L
         val interval =
-            if (activitySurfaceHidden) {
+            if (surfaceHiddenLocked()) {
                 hiddenRealtimeBackgroundRefreshIntervalMillis ?: realtimeBackgroundRefreshIntervalMillis
             } else {
                 realtimeBackgroundRefreshIntervalMillis
@@ -2995,6 +3036,8 @@ class SharedActivityStore internal constructor(
         val memberId = session.user.id.trim().takeIf { it.isNotBlank() }?.let(::MemberId) ?: return
         var acceptedHere = false
         val reconcileJobs = mutableListOf<Job>()
+        // Web noteInPlaceReadState: the next drift check of these rows says a read state came.
+        synchronized(realtimeOwnerLock) { event.scopes.forEach { inPlaceDriftCheck.noteReadState(it.scopeId.value) } }
         event.scopes.forEach { readScope ->
             val productionOwner =
                 readReceiptOwnerFactory
@@ -3925,7 +3968,18 @@ class SharedActivityStore internal constructor(
         if (!append && freshAnswer && current.selectedFilter == InboxFilter.All &&
             (result is DataResult.Content || result is DataResult.Empty)
         ) {
-            freshListServerId = current.ownerServerId
+            freshListOwner = current.ownerServerId?.let { it to current.ownerUserId }
+        } else if (!append && current.selectedFilter == InboxFilter.All && freshListOwner != null &&
+            freshListOwner?.first == current.ownerServerId &&
+            (keepShownOverStale || !freshAnswer || result is DataResult.Error || result is DataResult.NoPermission)
+        ) {
+            // The list's own reset read failed or answered a remembered page: it no longer owns the
+            // badge, and the summary reads it (it was suppressed while the list owned it).
+            freshListOwner = null
+            current.ownerServerId?.let { serverId ->
+                diagnosticsLogger("activity_badge_owner result=released serverId=$serverId")
+                onBadgeReleased(serverId)
+            }
         }
         reduceState(
             intent = intent,
@@ -4120,7 +4174,7 @@ class SharedActivityStore internal constructor(
                         }
                     if (!append && rowPositionOnLocked() && result.data.staleReason == null) {
                         reportListRowsLoweredLocked(
-                            served = projectedData.items,
+                            served = result.data.items,
                             before = current.items,
                             stages =
                                 listOf(
@@ -6039,6 +6093,13 @@ sealed interface SharedActivityIntent {
     data object SurfaceHidden : SharedActivityIntent
 
     /**
+     * The Activity panel is active (shown) or not: sent on its mount and on every Entered / Left edge.
+     * Read with `inbox_row_position_v1` on (which list reads, at which window, run while hidden); off,
+     * nothing changes.
+     */
+    data class SurfaceActive(val active: Boolean) : SharedActivityIntent
+
+    /**
      * The user opened [item] (a row pick, or the wide layout reopening it beside the list). In a
      * filter that drops read rows, an unread [item] joins the rows retained for this visit, so
      * reading it keeps it in place; rows retained earlier stay.
@@ -6128,6 +6189,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.PrewarmActivityTail -> "prewarm_tail"
         SharedActivityIntent.DetachPrewarmViewport -> "prewarm_detach"
         SharedActivityIntent.SurfaceHidden -> "surface_hidden"
+        is SharedActivityIntent.SurfaceActive -> "surface_active"
         is SharedActivityIntent.RowOpened -> "row_opened"
         is SharedActivityIntent.ChannelAccessLost -> "channel_access_lost"
         is SharedActivityIntent.UndoObjectDone -> "undo_object_done"
@@ -6177,6 +6239,7 @@ internal fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.PrewarmActivityTail,
         SharedActivityIntent.DetachPrewarmViewport,
         SharedActivityIntent.SurfaceHidden,
+        is SharedActivityIntent.SurfaceActive,
         is SharedActivityIntent.RowOpened,
         is SharedActivityIntent.ChannelAccessLost -> false
     }
@@ -6346,16 +6409,25 @@ private fun RealtimeEvent.activitySummaryUnreadIncrement(
                     snapshot.unreadIncrementForMessage(message, activeConversationId, currentUserId, sharedRule, markCounted)
                 }
         is ThreadUpdated ->
-            unreadCount
-                ?.takeIf {
-                    it > 0 &&
-                        !isActiveActivityConversation(threadChannelId.value, activeConversationId, snapshot) &&
-                        snapshot.items.none {
-                            it.isUnfollowedActivityThread &&
-                                (it.threadChannelId == threadChannelId || it.channelId == threadChannelId)
-                        }
-                }
-                ?: 0
+            if (sharedRule != null) {
+                // `inbox_row_position_v1`: the frame's reply judged as a message (deduped by its seq with
+                // the reply's own `message:new`); its `unreadCount` is the thread's total, not one more.
+                latestReply
+                    ?.toActivityLiveMessage(this)
+                    ?.let { reply -> snapshot.unreadIncrementForMessage(reply, activeConversationId, currentUserId, sharedRule, markCounted) }
+                    ?: 0
+            } else {
+                unreadCount
+                    ?.takeIf {
+                        it > 0 &&
+                            !isActiveActivityConversation(threadChannelId.value, activeConversationId, snapshot) &&
+                            snapshot.items.none {
+                                it.isUnfollowedActivityThread &&
+                                    (it.threadChannelId == threadChannelId || it.channelId == threadChannelId)
+                            }
+                    }
+                    ?: 0
+            }
         else -> 0
     }
 

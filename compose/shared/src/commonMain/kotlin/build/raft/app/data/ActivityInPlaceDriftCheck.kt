@@ -144,6 +144,10 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
         val reread: String? = null,
         /** When the event came (`;age_ms=` at the check). */
         val at: Long = 0L,
+        /** Web `causeDetail` (`;own=…;sender_type=…;message_type=…[;following=…]`); empty when not known. */
+        val cause: String = "",
+        /** A read state for the scope arrived after the event (web `read_state=1`). */
+        var readState: Boolean = false,
     )
 
     private val expectations = LinkedHashMap<String, Expectation>()
@@ -158,9 +162,14 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
     }
 
     /** A row patched in place by a live message. */
-    fun notePatched(row: InboxItem, trigger: InboxRefreshTrigger, reread: String? = null) {
+    fun notePatched(row: InboxItem, trigger: InboxRefreshTrigger, reread: String? = null, cause: String = "") {
         val scopeId = row.inPlaceScopeId() ?: return
-        remember(scopeId, Expectation(trigger, existed = true, seq = row.latestActivitySeq, until = 0L, reread = reread))
+        remember(scopeId, Expectation(trigger, existed = true, seq = row.latestActivitySeq, until = 0L, reread = reread, cause = cause))
+    }
+
+    /** Web `noteInPlaceReadState`: a read state for [scopeId] arrived; the next check says so. */
+    fun noteReadState(scopeId: String) {
+        expectations[scopeId]?.readState = true
     }
 
     /** A live message for a row the list does not show: the re-read brings it; note whether it came. */
@@ -179,7 +188,8 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
                 expected.seq,
                 until = now + ActivityInPlaceCheckTtlMillis,
                 reread = expected.reread,
-                at = now
+                at = now,
+                cause = expected.cause
             )
         if (expectations.size <= ActivityInPlaceExpectationsCap) return
         expectations.entries.removeAll { (_, known) -> now > known.until }
@@ -284,9 +294,14 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
         return checks
     }
 
-    /** Web `outcomeDetail` past the result: `;reread=`, `;age_ms=` (and `;read_behind=0` for an expired check). */
+    /**
+     * Web `outcomeDetail` past the result: `;reread=`, the event's cause, `;age_ms=`, `;read_state=`
+     * (and `;read_behind=0` for an expired check).
+     */
     private fun webListSuffix(expected: Expectation, now: Long, readBehind: Boolean): String =
-        (expected.reread?.let { ";reread=$it" } ?: "") + ";age_ms=${now - expected.at}" + if (readBehind) ";read_behind=0" else ""
+        (expected.reread?.let { ";reread=$it" } ?: "") + expected.cause +
+            ";age_ms=${now - expected.at};read_state=${if (expected.readState) 1 else 0}" +
+            if (readBehind) ";read_behind=0" else ""
 
     /**
      * Web `emitExpired`: a note no answer judged within the stale-list bound, `result=expired`,
