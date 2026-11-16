@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-16 06:43:20 UTC
+Generated: 2026-11-16 07:06:08 UTC
 Latest run: 381dcbdf-20261116064230
 Latest commit: 381dcbdf-20261116064230
 Commit subject: feat(activity): keep Activity rows by the per-row position rule (inbox_row_position_v1, B1) (#4857)
 Providers: react vs android
 Summary: total 133, same 0, pass 1, basic-pass 8, different 74, missing 50
-AI analysis: ready 39 / total 133, pending 94
+AI analysis: ready 41 / total 133, pending 92
 Visual coverage matrix: active 142 / total 162, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

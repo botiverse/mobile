@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-16T06:43:20.936Z",
+  "generatedAt": "2026-11-16T07:06:08.892Z",
   "runId": "381dcbdf-20261116064230",
   "commit": "381dcbdf-20261116064230",
   "commitSubject": "feat(activity): keep Activity rows by the per-row position rule (inbox_row_position_v1, B1) (#4857)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 133,
-        "ready": 39,
-        "pending": 94
+        "ready": 41,
+        "pending": 92
       }
     }
   ],
@@ -42,8 +42,8 @@
   },
   "analysisSummary": {
     "total": 133,
-    "ready": 39,
-    "pending": 94
+    "ready": 41,
+    "pending": 92
   },
   "componentMatrixSummary": {
     "total": 162,
