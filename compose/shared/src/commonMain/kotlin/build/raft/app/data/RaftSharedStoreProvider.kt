@@ -1583,7 +1583,11 @@ internal class RaftSharedStoreProvider private constructor(
             owns = { owner ->
                 inboxInPlaceEnabled(owner.serverId) &&
                     inboxRowPositionEnabled(owner.serverId) &&
-                    homeActivityStores.entries().any { (_, store) -> store.ownsBadgeFor(owner) }
+                    activityListOwnsBadge(
+                        owner = owner,
+                        stores = homeActivityStores.entries(),
+                        liveScopes = liveActivityRealtimeScopes(owner.serverId)
+                    )
             }
         )
         // Message storage Phase 0a: the V1 shadow writers are gone and nothing ever read their rows, so drop
@@ -2014,6 +2018,15 @@ internal class RaftSharedStoreProvider private constructor(
                     prefetching.cancel()
                 }
             }
+        }
+
+    /**
+     * The shell scopes showing [serverId] whose AppShell has its realtime sinks registered (a mounted,
+     * ready window): only their Activity list gets the live events that keep a hidden list's badge.
+     */
+    private fun liveActivityRealtimeScopes(serverId: String): Set<RaftShellStoreScope> =
+        scopesForServer(serverId).filterTo(mutableSetOf()) { scope ->
+            shellRealtimeDomainEventOwners.get(scope)?.hasGuardedSinks == true
         }
 
     fun scopesForServer(serverId: String): List<RaftShellStoreScope> {
@@ -2781,6 +2794,9 @@ internal class RaftSharedStoreProvider private constructor(
                 onThreadUnfollowProjection = { intent -> homeStores.get(scope)?.dispatch(intent) },
                 onSummaryFact = activityUnreadSummaryStore::submitFact,
                 onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
+                onBadgeReleased = { serverId ->
+                    activityUnreadSummaryStore.refresh(ServerId(serverId), reason = ActivityBadgeReleasedSummaryReason)
+                },
                 activityObjectsRepository = NetworkActivityObjectsRepository(networkClient),
                 hiddenRealtimeBackgroundRefreshIntervalMillis = ActivityHiddenRealtimeBackgroundRefreshIntervalMillis,
                 syncReloads = syncReloadLedger,
@@ -5198,3 +5214,18 @@ private fun jointActorResolve(
 /** The composer-draft owner of this auth binding (environment + account); null when unbound. */
 private fun ProcessPresenceAuthContext.toComposerDraftAccount(): SharedThreadComposerDraftAccount? =
     SharedThreadComposerDraftAccount.of(environmentId = environmentId, accountId = accountId)
+
+/** The summary read made when the list stops owning the badge (SharedActivityStore `onBadgeReleased`). */
+internal const val ActivityBadgeReleasedSummaryReason = "activity_badge_released"
+
+/**
+ * `inbox_row_position_v1`: an Activity list owns [owner]'s badge only in a window that gets the live
+ * events ([liveScopes]: the server is selected there, not disposed, and its realtime sinks are
+ * registered). A list in a closed window, or one whose shell has no sinks, gets no +1s, so it must
+ * not suppress the summary read.
+ */
+internal fun activityListOwnsBadge(
+    owner: ProcessActivityUnreadOwner,
+    stores: List<Pair<RaftShellStoreScope, SharedActivityStore>>,
+    liveScopes: Set<RaftShellStoreScope>
+): Boolean = stores.any { (scope, store) -> scope in liveScopes && store.ownsBadgeFor(owner) }

@@ -535,6 +535,11 @@ internal fun SharedHomeActivityScreen(
     // the pageDidAppear tick may dispatch in the same frame: the store joins those into one load
     // (ActivityRefreshCoalesceWindowMillis) and supersedes a stale one instead of swallowing it.
     val entryRefreshEdge = remember { ActivityTabEntryRefreshEdge(initiallyActive = active) }
+    // `inbox_row_position_v1`: the store's shown state comes from here (the mount and every edge),
+    // not from the loads the panel asks for (its mount-time LoadInitial runs while composed hidden).
+    LaunchedEffect(activityStore, active) {
+        activityStore.dispatch(SharedActivityIntent.SurfaceActive(active))
+    }
     LaunchedEffect(active) {
         when (entryRefreshEdge.onActiveChanged(active)) {
             ActivityTabActiveEdge.Entered -> {

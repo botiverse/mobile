@@ -338,7 +338,7 @@ class SharedActivityStorePositionAuditTest {
         assertEquals("expired" to ActivityInPlaceCheckOutcome.Noop, check.result to check.outcome)
         assertEquals("list" to "position", check.scope to check.reread)
         assertEquals(1, check.sampleRate)
-        assertTrue(check.outcomeDetail.startsWith("trigger=message_new;existed=1;result=expired;reread=position;age_ms="), check.outcomeDetail)
+        assertTrue(check.outcomeDetail.startsWith("trigger=message_new;existed=1;result=expired;reread=position;own=0;sender_type=user;message_type=chat;age_ms="), check.outcomeDetail)
         assertTrue(check.outcomeDetail.endsWith(";read_behind=0"), check.outcomeDetail)
         // Flag off: the note lapses silently, as before (the minute reconcile judged it first anyway).
         assertTrue(expiredAfter(rowPosition = false).none { it.result == "expired" })
