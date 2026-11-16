@@ -93,6 +93,13 @@ data class InboxItem(
      */
     val readStateLatestActivitySeq: String? = null,
     /**
+     * Wire `readState.readStateVersion` / `readState.maxReadSeq` when `readState.kind == "present"`,
+     * else null: the read state this answer served for the row. Only diagnostics read them
+     * (`activity:list_row_lowered` / `activity:list_row_corrected`, web `reportListRowsLowered`).
+     */
+    val readStateVersion: Long? = null,
+    val readStateMaxReadSeq: String? = null,
+    /**
      * Wire `readState.markedUnread` (botiverse/slock #11795): the person marked this conversation
      * unread and nothing countable is unread. With [unreadCount] 0 the row shows unread with a dot
      * and no number (and the Unread filter lists it); counts never include it.

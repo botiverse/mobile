@@ -57,6 +57,25 @@ class InboxParserReadStateTest {
     }
 
     @Test
+    fun aPresentFrontierCarriesTheServedReadVersionAndSeq() {
+        // (case, readState JSON, expected readStateVersion to readStateMaxReadSeq)
+        val cases =
+            listOf(
+                Triple("present", present("""{"messageId":"m-1","seq":"12"}"""), 3L to "41"),
+                Triple("present, no latestActivity", present("null"), 3L to "41"),
+                Triple("absent", """{"kind":"absent"}""", null to null),
+                Triple("string version", """{"kind":"present","readStateVersion":"3","maxReadSeq":"41","latestActivity":null}""", null to "41"),
+                Triple("numeric maxReadSeq", """{"kind":"present","readStateVersion":3,"maxReadSeq":41,"latestActivity":null}""", 3L to null),
+            )
+        cases.forEach { (name, readState, expected) ->
+            val item = parseSharedInboxSnapshot(body(channelRow("c-1", readState)))?.items?.singleOrNull() ?: error("row dropped for case=$name")
+            assertEquals(expected, item.readStateVersion to item.readStateMaxReadSeq, name)
+        }
+        val thread = parseSharedInboxSnapshot(body(threadRow(present("""{"messageId":"r-1","seq":"7"}"""))))?.items?.single()
+        assertEquals(3L to "41", thread?.readStateVersion to thread?.readStateMaxReadSeq)
+    }
+
+    @Test
     fun rowsKeepTheirWireChannelTypeThatTheKindFolds() {
         // channelType / parentChannelType: "channel" | "private" | "joint" | "dm" (slock web
         // inboxStore.ts @ 7a5a03a5a). channelKind folds private into Channel; the raw type keeps it.

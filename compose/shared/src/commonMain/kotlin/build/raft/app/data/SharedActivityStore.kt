@@ -405,7 +405,7 @@ class SharedActivityStore internal constructor(
      */
     private val inPlaceCheckSink: (serverId: String, check: ActivityInPlaceCheck) -> Unit = { _, _ -> },
     /**
-     * `inbox_row_position_v1`: where each `activity:list_row_lowered` goes (web
+     * `inbox_row_position_v1`: where each `activity:list_row_lowered` / `list_row_corrected` goes (web
      * `reportListRowsLowered`; [RaftClientTraceEvents.emitListRowLowered] in the app). Called under the
      * realtime owner lock: it must only queue.
      */
@@ -2918,11 +2918,13 @@ class SharedActivityStore internal constructor(
     /**
      * `inbox_row_position_v1`, web `reportListRowsLowered` (inboxListRowLowered.ts, #triage:#244): a
      * list answer that leaves a row's unread below what the answer served for it sends one
-     * `activity:list_row_lowered` naming the first step of the answer's application that lowered it.
+     * `activity:list_row_lowered` naming the first step of the answer's application that lowered it
+     * (`activity:list_row_corrected` when the ledger step did it with a newer read that covers it).
      */
     private fun reportListRowsLoweredLocked(
         served: List<InboxItem>,
         before: List<InboxItem>,
+        ledgerOf: (scopeId: String) -> ActivityLedgerReadState?,
         stages: List<Pair<ActivityListRowStep, List<InboxItem>>>
     ) {
         val serverId = _state.value.ownerServerId ?: return
@@ -2934,13 +2936,31 @@ class SharedActivityStore internal constructor(
             reason = reason?.wireValue,
             trigger = trigger?.trigger?.wireValue,
             rowPosition = true,
-            nowMillis = nowEpochMillis()
+            nowMillis = nowEpochMillis(),
+            ledgerOf = ledgerOf
         ).forEach { lowered ->
             diagnosticsLogger(
-                "activity_list_row_lowered step=${lowered.step.wireValue} before=${lowered.before} " +
-                    "served=${lowered.served} after=${lowered.after}"
+                "activity_list_row_${if (lowered.corrected) "corrected" else "lowered"} step=${lowered.step.wireValue} " +
+                    "before=${lowered.before} served=${lowered.served} after=${lowered.after}"
             )
             listRowLoweredSink(serverId, lowered)
+        }
+    }
+
+    /**
+     * Web `getAcceptedReadState`: this account's accepted read state per scope (the per-receiver
+     * read checkpoint), null where none was accepted. Read once per scope for one answer.
+     */
+    private fun acceptedReadStateLookupLocked(current: SharedActivityState): (String) -> ActivityLedgerReadState? {
+        val serverId = current.ownerServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return { null }
+        val memberId = current.ownerUserId?.takeIf { it.isNotBlank() }?.let(::MemberId) ?: return { null }
+        val read = mutableMapOf<String, ActivityLedgerReadState?>()
+        return { scopeId ->
+            read.getOrPut(scopeId) {
+                perReceiverStateVersionStore.readReadStateCheckpoint(serverId, memberId, ChannelId(scopeId))
+                    .takeIf { it.version > 0L }
+                    ?.let { ActivityLedgerReadState(maxReadSeq = it.maxReadSeq, readStateVersion = it.version) }
+            }
         }
     }
 
@@ -4173,11 +4193,14 @@ class SharedActivityStore internal constructor(
                             realtimeReconcile.items to 0
                         }
                     if (!append && rowPositionOnLocked() && result.data.staleReason == null) {
+                        val ledgerOf = acceptedReadStateLookupLocked(current)
                         reportListRowsLoweredLocked(
                             served = result.data.items,
                             before = current.items,
+                            ledgerOf = ledgerOf,
                             stages =
                                 listOf(
+                                    ActivityListRowStep.Ledger to ledgerAdjudicated(result.data.items, ledgerOf),
                                     ActivityListRowStep.LocalRead to locallyRead.items,
                                     ActivityListRowStep.Done to pageItems.items,
                                     ActivityListRowStep.Merge to answerItems
