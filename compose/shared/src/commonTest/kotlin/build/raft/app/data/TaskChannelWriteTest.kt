@@ -101,15 +101,10 @@ class TaskChannelWriteTest {
         assertTrue(member.channelTaskSurfacesShown())
         assertTrue(member.channelTaskWritesAllowed())
 
-        // Archived after the row was read (the page's own load says so): read, never write.
-        val archivedLater = member.copy(archived = true)
-        assertTrue(archivedLater.channelTaskSurfacesShown())
-        assertFalse(archivedLater.channelTaskWritesAllowed())
-
-        // A joined archived row (its task permission already off): the Tasks tab stays.
+        // Archived: the Tasks tab stays; the page drops the writes from its live channelArchived
+        // (ThreadArchivedChannelTest), so an unarchive on the open page brings them back.
         val archivedRow = conversation(joined = true, canCreateTask = false, archived = true)
         assertTrue(archivedRow.channelTaskSurfacesShown())
-        assertFalse(archivedRow.channelTaskWritesAllowed())
 
         val reader = conversation(joined = false, canCreateTask = false)
         assertFalse(reader.channelTaskSurfacesShown())

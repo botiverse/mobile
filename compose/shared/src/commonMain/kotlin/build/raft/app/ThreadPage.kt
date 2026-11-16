@@ -4456,8 +4456,17 @@ internal fun RaftThreadScreenPayload.taskThreadLaunchPayload(
     return launchPayload.toInitialPayloadOrNull(launchPayload.instanceId)
 }
 
+/**
+ * The page offers task writes (the message menu's task items, a task card's status actions, New
+ * task in the Tasks tab): its conversation allows them, and the channel is not archived as the
+ * page's own load knows it (archive / unarchive flip [RaftThreadScreenPayload.channelArchived] on a
+ * loaded page; the server refuses task writes there with 409). Web canWriteTasksInChannel.
+ */
+internal fun RaftThreadScreenPayload.channelTaskWritesShown(): Boolean =
+    showTaskStatusActions && !channelArchived
+
 internal fun RaftThreadScreenPayload.canConvertMessagesToTasks(): Boolean =
-    showTaskStatusActions &&
+    channelTaskWritesShown() &&
         !surfaceKind.equals(RaftThreadSurfaceKind.ReplyThread, ignoreCase = true) &&
         parentMessageId.isNullOrBlank() &&
         originParentMessageId.isNullOrBlank()
@@ -13000,7 +13009,7 @@ private fun SharedThreadRouteContentContent(
             renderedThread.surfaceKind != RaftThreadSurfaceKind.Channel ||
                 channelId == null ||
                 channelId != renderedThread.joinChannelTargetId() ||
-                renderedThread.showTaskStatusActions
+                renderedThread.channelTaskWritesShown()
         },
         // Known for the channel this page shows (web ThreadPanel `parentJoined`); else not known here.
         joined = { task ->
@@ -18614,7 +18623,7 @@ private fun ThreadPageContentContent(
                         openTaskEnabled = payload.showTaskOpenActions,
                         // Web canWriteTasksInChannel: New task, status and assignee only where the reader may
                         // write this channel's tasks (the message menu's own gate).
-                        taskWritesEnabled = payload.showTaskStatusActions,
+                        taskWritesEnabled = payload.channelTaskWritesShown(),
                         draftProjection = draftProjection,
                         timeContext = payload.toRaftTimeCapabilities().staticContext(),
                         taskV2Enabled = linkedTasksProjection.taskV2Enabled,
@@ -26355,7 +26364,7 @@ private fun ThreadMessagesListContent(
                                     markdownTagContextSignature = markdownTagContextSignature,
                                     activeMarkdownTagKey = activeMarkdownTagKey,
                                     taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
-                                    taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
+                                    taskStatusActionsEnabled = renderPayload.channelTaskWritesShown() && isRichContentEnabled,
                                     isMarkdownTagValid = isMarkdownTagValid,
                                     onShowActions = { anchor ->
                                         if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {

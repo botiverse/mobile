@@ -60,15 +60,19 @@ class ThreadArchivedChannelTest {
         // Web canWriteTasksInChannel (slock #15155): the server refuses task writes in an archived
         // channel (409), so the message menu's task items and Send as task go; the Tasks tab stays.
         val archived = loadedChannelPage(archivedMessagesResponse(channelArchived = true))
-        assertFalse(archived.showTaskStatusActions)
-        assertFalse(archived.canConvertMessagesToTasks())
-        assertFalse(archived.composer.showAsTaskToggle)
-        assertTrue(archived.showTaskOpenActions)
+        assertTrue(archived.channelArchived)
+        assertFalse(archived.channelTaskWritesShown(), "no task card status actions, no New task")
+        assertFalse(archived.canConvertMessagesToTasks(), "no Create / Convert to task")
+        assertTrue(archived.showTaskOpenActions, "its tasks still open")
         assertTrue(archived.supportsChannelTasks(), "the Tasks tab")
 
         val live = loadedChannelPage(archivedMessagesResponse(channelArchived = false))
-        assertTrue(live.showTaskStatusActions)
+        assertTrue(live.channelTaskWritesShown())
         assertTrue(live.canConvertMessagesToTasks())
+
+        // Unarchived on a loaded page: the writes come back with it.
+        assertTrue(archived.copy(channelArchived = false).channelTaskWritesShown())
+        assertFalse(live.copy(channelArchived = true).channelTaskWritesShown())
 
         // The archived row itself: no task writes, still a member who reads them.
         val summary = assertNotNull(parseRaftChannelDetail(ARCHIVED_CHANNEL_DETAIL_JSON)).toConversationSummary()

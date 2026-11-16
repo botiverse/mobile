@@ -77,11 +77,13 @@ internal fun ConversationSummary.taskChannelWriteFacts(loungeCanPost: Boolean? =
 internal fun ConversationSummary.channelTaskSurfacesShown(): Boolean = permissions.canCreateTask || (joined && archived)
 
 /**
- * A conversation offers task writes (send as task, the message menu's task items): its access
- * allows them and [canWriteTasksInChannel] does too, from its current membership and archive state.
+ * A conversation offers task writes (send as task, the message menu's task items) as far as its
+ * membership goes: [canWriteTasksInChannel] without the archive, which the page applies itself
+ * from its live `channelArchived` (`RaftThreadScreenPayload.channelTaskWritesShown`), so an
+ * archive or unarchive on an open page takes effect without reopening it.
  */
 internal fun ConversationSummary.channelTaskWritesAllowed(): Boolean =
-    permissions.canCreateTask && canWriteTasksInChannel(taskChannelWriteFacts())
+    channelTaskSurfacesShown() && canWriteTasksInChannel(taskChannelWriteFacts().copy(archived = false))
 
 internal fun SharedConversationDirectoryProjection.taskChannelWriteFacts(loungeCanPost: Boolean? = null): TaskChannelWriteFacts =
     TaskChannelWriteFacts(
