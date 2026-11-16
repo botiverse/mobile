@@ -4544,6 +4544,28 @@ internal fun RaftThreadScreenPayload.artifactOpenConversationId(taskConversation
         if (route.surfaceKind == RaftThreadSurfaceKind.ReplyThread) parentChannelId.nonBlank() else route.timelineChannelId
     }
 
+/** The Files tab's view model, where the page mounts it (its own function: see [rememberThreadLinkNavigator]). */
+@Composable
+private fun rememberThreadFilesViewModel(
+    mount: Boolean,
+    threadInstanceKey: String,
+    dataSource: SharedThreadDataSource,
+    bridge: build.raft.app.base.BridgeModule,
+    sharedStores: build.raft.app.data.RaftSharedStoreProvider,
+): SharedThreadFilesViewModel? =
+    if (mount) {
+        viewModel(key = "shared-thread-files-$threadInstanceKey") {
+            SharedThreadFilesViewModel(
+                dataSource,
+                diagnosticsLogger = { bridge.log(it) },
+                // The conversation's Artifacts lead its files (workspace_artifacts_v0, read in the tab).
+                artifactsApi = NetworkRaftConversationArtifactsApi(sharedStores.networkClient)
+            )
+        }
+    } else {
+        null
+    }
+
 /**
  * The conversation page's link navigator: an Artifact link tapped in a message opens with this
  * conversation (`hostConversation`, [artifactOpenConversationId]), as its cards do. Its own function:
@@ -9537,19 +9559,7 @@ private fun SharedThreadRouteContentContent(
             ?.distinctUntilChanged()
             ?: emptyChannelSuggestionsFlow
     }
-    val filesViewModel: SharedThreadFilesViewModel? =
-        if (featureOwnerMountPlan.mountFilesOwner) {
-            viewModel(key = "shared-thread-files-$threadInstanceKey") {
-                SharedThreadFilesViewModel(
-                    dataSource,
-                    diagnosticsLogger = { bridge.log(it) },
-                    // The conversation's Artifacts lead its files (workspace_artifacts_v0, read in the tab).
-                    artifactsApi = NetworkRaftConversationArtifactsApi(sharedStores.networkClient)
-                )
-            }
-        } else {
-            null
-        }
+    val filesViewModel = rememberThreadFilesViewModel(featureOwnerMountPlan.mountFilesOwner, threadInstanceKey, dataSource, bridge, sharedStores)
     val composerDraftViewModel: SharedThreadComposerDraftViewModel =
         viewModel(key = "shared-thread-composer-$threadInstanceKey") {
             SharedThreadComposerDraftViewModel(persistSlices = listOf(composerDraftPersistSlice))
