@@ -128,6 +128,9 @@ internal actual fun raftPlatformSupportsVideoAttachmentContainer(
         container = container
     )
 
+internal actual fun raftPlatformVideoPlayerFormatProfile(): RaftVideoPlayerFormatProfile? =
+    RaftVideoPlayerFormatProfile.IosAvPlayer
+
 internal actual fun raftPlatformSupportsPushPreviewPrivacySetting(): Boolean = true
 
 internal actual fun raftPlatformSupportsSaveImageToPhotos(): Boolean = true

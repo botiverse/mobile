@@ -36,19 +36,33 @@ class FilePreviewNoPreviewScreenshotTest {
     @Test
     fun tooLargeDark() = capture("file.preview.no-preview.too-large.dark", RaftAppAppearance.Dark, tooLargePayload)
 
+    /** #triage:#442: a WebM on iOS (AVPlayer cannot play it) says why, next to Download. */
+    @Test
+    fun unplayableVideoIosLight() =
+        capture("file.preview.no-preview.video-format-ios", RaftAppAppearance.Light, webmPayload, RaftVideoPlayerFormatProfile.IosAvPlayer)
+
+    @Test
+    fun unplayableVideoIosDark() =
+        capture("file.preview.no-preview.video-format-ios.dark", RaftAppAppearance.Dark, webmPayload, RaftVideoPlayerFormatProfile.IosAvPlayer)
+
     @Test
     fun loadErrorLight() = capture("file.preview.load-error.retry", RaftAppAppearance.Light, loadErrorPayload)
 
     @Test
     fun loadErrorDark() = capture("file.preview.load-error.retry.dark", RaftAppAppearance.Dark, loadErrorPayload)
 
-    private fun capture(name: String, appearance: RaftAppAppearance, payload: RaftFilePreviewPayload) =
+    private fun capture(
+        name: String,
+        appearance: RaftAppAppearance,
+        payload: RaftFilePreviewPayload,
+        videoProfile: RaftVideoPlayerFormatProfile? = RaftVideoPlayerFormatProfile.AndroidMedia3
+    ) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
                 remember {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { NoPreviewPage(payload) }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { NoPreviewPage(payload, videoProfile) }
         }
 }
 
@@ -66,6 +80,11 @@ private val spreadsheet =
 
 private val tooLargePayload = spreadsheet.withNoPreviewDownload(RaftFilePreviewNoPreviewReasonTooLarge)
 
+private val webmPayload =
+    RaftThreadAttachmentItem(id = "att-webm", name = "screen-recording.webm", mimeType = "video/webm", sizeBytes = 18_400_000L)
+        .toThreadAttachmentLazyPreviewPayload(kind = RaftThreadAttachmentFileDetailKind)
+        .withNoPreviewDownload()
+
 private val loadErrorPayload =
     spreadsheet.copy(
         requestedKind = "text",
@@ -81,7 +100,7 @@ private val loadErrorPayload =
     )
 
 @Composable
-private fun NoPreviewPage(payload: RaftFilePreviewPayload) {
+private fun NoPreviewPage(payload: RaftFilePreviewPayload, videoProfile: RaftVideoPlayerFormatProfile?) {
     RaftFilePreviewPageScaffold(
         title = payload.previewHeaderTitle(),
         subtitle = payload.previewHeaderSubtitle(),
@@ -95,6 +114,7 @@ private fun NoPreviewPage(payload: RaftFilePreviewPayload) {
             onDownload = {},
             onExternalBrowserOpen = {},
             onRetryLoad = if (payload.canRetryPreviewLoad()) ({}) else null,
+            videoProfile = videoProfile,
             modifier = Modifier.fillMaxSize()
         )
     }

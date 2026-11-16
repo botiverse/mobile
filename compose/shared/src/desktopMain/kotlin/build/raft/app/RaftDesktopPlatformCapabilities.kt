@@ -79,6 +79,10 @@ internal actual fun raftPlatformPlaysAudioOnlyMedia(): Boolean = false
 internal actual fun raftPlatformSupportsVideoAttachmentContainer(container: RaftPreviewableVideoContainer): Boolean =
     RaftDesktopVideoSupport.supportsContainer(container, RaftDesktopVideoSupport.available)
 
+// No profile where the player does not run: every video there is a plain download card.
+internal actual fun raftPlatformVideoPlayerFormatProfile(): RaftVideoPlayerFormatProfile? =
+    RaftVideoPlayerFormatProfile.DesktopMacAvFoundation.takeIf { RaftDesktopVideoSupport.available }
+
 internal actual fun raftPlatformSupportsPushPreviewPrivacySetting(): Boolean = false
 
 internal actual fun raftPlatformSupportsSaveImageToPhotos(): Boolean = false
