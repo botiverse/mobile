@@ -601,6 +601,12 @@ private fun RaftArtifactViewerScreen() {
         host.bridge.log("artifact_viewer_open_in_browser from=$from")
         host.bridge.openUrl(url, inBrowser = true)
     }
+    val copiedMessage = stringResource(Res.string.common_copied)
+    fun copyLink(url: String) {
+        host.bridge.log("artifact_viewer_copy_link from=page")
+        host.bridge.copyToPasteboard(url)
+        host.bridge.toast(copiedMessage)
+    }
     val viewing = bodyState == RaftArtifactViewerBodyState.Viewing
     // One bar where the page draws it (`hostToolbar=1`, artin "双栏"): its toolbar has Back, the
     // title and this bar's ⋮ items in its own ⋯. Otherwise (a web that does not, while loading, a
@@ -670,6 +676,10 @@ private fun RaftArtifactViewerScreen() {
                                     // The version the page shows, from the address that asked (the web sends no payload).
                                     RaftArtifactViewerHostAction.OpenInBrowser ->
                                         openInBrowser("page", raftArtifactViewerPageUrl(webBaseUrl, ArtifactLinkTarget(shown.id, version)))
+                                    // Copied by the App: the link built from this Artifact's id and the address's
+                                    // version on the viewer's own web base (never anything the page sends).
+                                    RaftArtifactViewerHostAction.CopyLink ->
+                                        copyLink(raftArtifactViewerPageUrl(webBaseUrl, ArtifactLinkTarget(shown.id, version)))
                                 }
                             },
                             onPageDrawsBar = { pageDrawsBar = it },
