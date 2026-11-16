@@ -74,7 +74,6 @@ import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftMenuItem
-import build.raft.designsystem.components.RaftRiskTone
 import build.raft.designsystem.components.RaftMenuLabel
 import build.raft.designsystem.components.RaftMenuSearchField
 import build.raft.designsystem.components.RaftMenuSeparator
@@ -846,24 +845,6 @@ class InteractiveComponentScreenshotTest {
                             }
                         }
                     }
-                }
-            }
-        }
-
-    /** Mobile only (README "Differences from raft-ui"): a menu item's risk ink, at rest, highlighted and disabled. */
-    @Test
-    fun menuRisk() =
-        capture("menu_risk") {
-            Column(Modifier.width(260.dp).padding(bottom = 24.dp)) {
-                Caption("Menu item risk: danger, warning, danger highlighted, disabled", Modifier.padding(bottom = 8.dp))
-                RaftMenuSurface(Modifier.fillMaxWidth()) {
-                    RaftMenuItem("Make Admin", {}, leadingIcon = { RaftGlyphIcon(RaftGlyph.Check) })
-                    RaftMenuItem("Remove from Channel", {}, leadingIcon = { RaftGlyphIcon(RaftGlyph.Minus) }, risk = RaftRiskTone.Danger)
-                    RaftMenuItem("Leave Channel", {}, leadingIcon = { RaftGlyphIcon(RaftGlyph.ArrowRight) }, risk = RaftRiskTone.Warning)
-                    StateCell(pressed = true) {
-                        RaftMenuItem("Delete Message", {}, leadingIcon = { RaftGlyphIcon(RaftGlyph.Minus) }, risk = RaftRiskTone.Danger)
-                    }
-                    RaftMenuItem("Delete Channel", {}, leadingIcon = { RaftGlyphIcon(RaftGlyph.Minus) }, enabled = false, risk = RaftRiskTone.Danger)
                 }
             }
         }

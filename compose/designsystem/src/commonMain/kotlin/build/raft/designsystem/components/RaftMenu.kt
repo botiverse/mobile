@@ -171,10 +171,6 @@ internal val LocalRaftMenuFieldType = staticCompositionLocalOf { false }
  *   `border-t` on a border-box row, as the web's menu rows that start a section inside a
  *   flush card): the row stays 36dp and its content centres in the 35dp under the line.
  *   Between the groups of a popup use [RaftMenuSeparator] instead.
- * - [risk]: an action's risk ([RaftRiskTone], as ListRow `tone`): the label and the leading
- *   icon in `warning-strong` / `danger-strong`; the highlight, description and shortcut stay as
- *   on any row, and a disabled item ignores it. Mobile only: raft-ui leaves every menu item
- *   uncoloured (README "Differences from raft-ui").
  *
  * In a [RaftDropdownMenu] the rows take part in its keyboard navigation (arrows, Home /
  * End, the first letter of a row).
@@ -192,7 +188,6 @@ fun RaftMenuItem(
     interactionSource: MutableInteractionSource? = null,
     trailingIcon: (@Composable () -> Unit)? = null,
     description: String? = null,
-    risk: RaftRiskTone? = null,
 ) {
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -200,14 +195,8 @@ fun RaftMenuItem(
     val isHovered = raftIsHovered(source)
     // `hover:bg-brand-soft data-highlighted:bg-brand-soft`: pointer, press and keyboard alike.
     val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Highlight, enabled = enabled, highlighted = isFocused)
-    val riskInk =
-        when (risk.takeIf { enabled }) {
-            RaftRiskTone.Warning -> colors.warningStrong
-            RaftRiskTone.Danger -> colors.dangerStrong
-            null -> null
-        }
-    val ink = riskInk ?: if (enabled) colors.foreground else colors.foregroundDisabled
-    val iconInk = riskInk ?: if (enabled) colors.foregroundMuted else colors.foregroundDisabled
+    val ink = if (enabled) colors.foreground else colors.foregroundDisabled
+    val iconInk = if (enabled) colors.foregroundMuted else colors.foregroundDisabled
     // raft-ui 0.20: an item embedded in the popup's frame wears radius-chip (6dp).
     val shape = RoundedCornerShape(RaftMenuMetrics.ItemRadius)
     val nav = LocalRaftMenuNav.current

@@ -23,7 +23,6 @@ import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftMenuItem
-import build.raft.designsystem.components.RaftRiskTone
 
 /*
  * The channel members page's role action (web `MemberRoleActions`, botiverse/slock
@@ -127,8 +126,9 @@ internal fun channelMemberRowMenu(roleAction: ChannelMemberRoleAction?, canRemov
 
 /**
  * The row's one ⋯ with its menu: the role item, the web button's label ("Make admin" / "Demote"),
- * read as its full sentence ("Make ada a channel admin"); then "Remove from channel" in the danger
- * ink, read as [removeLabel] ("Remove ada"), which opens the page's confirmation. [busy] (a role
+ * read as its full sentence ("Make ada a channel admin"); then "Remove from channel", read as
+ * [removeLabel] ("Remove ada"), which opens the page's confirmation. Like every raft-ui menu item
+ * it is not coloured: the confirmation's danger button carries the consequence. [busy] (a role
  * change or a removal of this row in flight) turns the ⋯ into its spinner.
  */
 @Composable
@@ -181,7 +181,6 @@ internal fun ChannelMemberRowMenuButton(
                     text = stringResource(Res.string.channel_members_remove_from_channel_short),
                     modifier = Modifier.testTag(ChannelMemberRemoveActionTestTag).semantics { contentDescription = removeLabel },
                     leadingIcon = { MembersMenuIcon(RaftLucideIconName.UserMinus) },
-                    risk = RaftRiskTone.Danger,
                     onClick = {
                         open = false
                         onRemove()
