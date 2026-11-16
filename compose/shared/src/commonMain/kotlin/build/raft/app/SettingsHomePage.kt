@@ -451,6 +451,7 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.RaftWindowDialogProperties
 import build.raft.designsystem.components.RaftWindowDialog
 import build.raft.designsystem.components.RaftKeyGlyph
+import build.raft.designsystem.components.RaftSearchShowAll
 import androidx.compose.material3.Text
 import build.raft.app.components.RaftPullToRefreshBox
 import build.raft.app.components.raftHeaderRefreshIndicatorVisible
@@ -14412,6 +14413,8 @@ internal fun SharedHomeSearchPanel(
     onRefreshComputers: () -> Unit = {},
     pinnedItems: List<SettingsServerSidebarPinnedItem> = emptyList(),
     onTogglePin: ((SearchEntityPinTarget) -> Unit)? = null,
+    // The history notice's Upgrade to Pro / View your plan (web HistoryWindowBanner); null: no link.
+    onHistoryUpgrade: (() -> Unit)? = null,
     bottomContentPadding: Dp,
     timeContext: AppShellThreadTimeContext? = null,
     shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
@@ -14453,6 +14456,14 @@ internal fun SharedHomeSearchPanel(
             computerDirectory = computerDirectory
         )
     }
+    // web MessageSearchPage `historyWindowed`: a Free server's search reaches back only 30 days.
+    val historyWindowDays = remember(homeState) { homeState.homeSearchHistoryWindowDays() }
+    // web `searchIncomplete` / `incompleteSearchNote`: the server stopped at its scan budget.
+    val incompleteNote = if (state.searchIncomplete) homeSearchIncompleteNote(state.searchedThrough, timeContext) else null
+    val continueSearching = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSearch) }
+    // web useSearchKeyboardSelection `entityListExpanded`: collapsed again for each server and query.
+    var entitiesExpanded by remember(state.serverId, state.query.trim()) { mutableStateOf(false) }
+    val shownEntityResults = remember(entityResults, entitiesExpanded) { entityResults.homeSearchShownEntities(entitiesExpanded) }
     val computerSearchEligible = state.query.trim().firstOrNull() !in setOf('#', '@') && state.query.trim().isNotBlank()
     val frequentEntityResults = remember(
         state.frequentEntityRanks,
@@ -14788,6 +14799,9 @@ internal fun SharedHomeSearchPanel(
                     onIntent = onIntent,
                     onOpenItem = onOpenItem,
                     onOpenEntity = onOpenEntity,
+                    historyWindowDays = historyWindowDays,
+                    incompleteNote = incompleteNote,
+                    onHistoryUpgrade = onHistoryUpgrade,
                 )
             }
         }
@@ -14841,16 +14855,36 @@ internal fun SharedHomeSearchPanel(
                     verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
                     item {
+                        // One column: the history notice stacks above what the item shows.
+                        Column(Modifier.fillMaxWidth()) {
                         val hasSearchRows = projectedItems.isNotEmpty() || entityResults.isNotEmpty()
+                        // web `historyNotice`: on every search, before anything is typed too; not beside
+                        // a failed search's own error.
+                        val searchFailed =
+                            !showSearchHome &&
+                                (
+                                    state.noPermissionCode != null ||
+                                        (state.errorCode != null && !hasSearchRows) ||
+                                        (computerSearchEligible && computerDirectory.initialLoadError != null && !hasSearchRows)
+                                    )
+                        val historyNotice: @Composable () -> Unit = {
+                            if (historyWindowDays != null && !searchFailed) {
+                                HomeSearchHistoryWindowBanner(days = historyWindowDays, onUpgrade = onHistoryUpgrade)
+                            }
+                        }
                         if (showSearchHome && (!state.personalizationLoaded || !hasSearchHomeContent)) {
+                            historyNotice()
                             SharedHomeSearchEmptyState(
                                 title = stringResource(Res.string.search_empty_title),
                                 detail = stringResource(Res.string.search_empty_detail)
                             )
                         } else if (showSearchHome) {
-                            Unit
+                            historyNotice()
                         } else if ((state.loading || (computerSearchEligible && computerDirectory.initialLoadInFlight)) && !hasSearchRows) {
-                            RaftCenteredLoading(modifier = Modifier.fillParentMaxSize())
+                            Column(Modifier.fillParentMaxSize()) {
+                                historyNotice()
+                                RaftCenteredLoading(modifier = Modifier.fillMaxWidth().weight(1f))
+                            }
                         } else if (
                             state.noPermissionCode != null ||
                                 (state.errorCode != null && !hasSearchRows) ||
@@ -14869,6 +14903,7 @@ internal fun SharedHomeSearchPanel(
                                 }
                             )
                         } else if (!state.searched && projectedItems.isEmpty() && entityResults.isEmpty()) {
+                            historyNotice()
                             SharedHomeSearchEmptyState(
                                 title = stringResource(Res.string.search_empty_title),
                                 detail = stringResource(Res.string.search_empty_detail)
@@ -14876,9 +14911,23 @@ internal fun SharedHomeSearchPanel(
                         } else if (
                             (state.empty || state.searched) &&
                                 projectedItems.isEmpty() &&
+                                entityResults.isEmpty() &&
+                                incompleteNote != null
+                        ) {
+                            // web SearchNoResultsState `searchIncomplete`: not "no results" yet.
+                            historyNotice()
+                            HomeSearchIncompleteEmptyState(
+                                note = incompleteNote,
+                                loadingMore = state.loadingMore,
+                                onContinueSearching = continueSearching,
+                            )
+                        } else if (
+                            (state.empty || state.searched) &&
+                                projectedItems.isEmpty() &&
                                 entityResults.isEmpty()
                         ) {
                             val trimmedQuery = state.query.trim()
+                            historyNotice()
                             SharedHomeSearchEmptyState(
                                 title =
                                     if (trimmedQuery.isNotBlank()) {
@@ -14901,6 +14950,8 @@ internal fun SharedHomeSearchPanel(
                                 totalResults = state.totalCount + entityResults.size,
                                 searching = state.querySearchPending || state.loading || state.refreshing
                             )
+                            historyNotice()
+                        }
                         }
                     }
                     if (showSearchHome && state.personalizationLoaded && state.history.isNotEmpty()) {
@@ -14986,39 +15037,54 @@ internal fun SharedHomeSearchPanel(
                             // web SearchEntityResultsSection: "Server entities" and their count.
                             SharedHomeSearchSectionLabel(stringResource(Res.string.search_section_entities), count = entityResults.size)
                         }
-                        items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
+                        items(shownEntityResults.size, key = { index -> shownEntityResults[index].key }) { index ->
                             Box(
                                 Modifier
-                                    .raftInlineListSelected(inlineListSelection?.selectedRowKey == entityResults[index].key)
-                                    .homeSearchReturnHighlight(returnHighlight, entityResults[index].key)
+                                    .raftInlineListSelected(inlineListSelection?.selectedRowKey == shownEntityResults[index].key)
+                                    .homeSearchReturnHighlight(returnHighlight, shownEntityResults[index].key)
                             ) {
                             SharedHomeSearchEntityRow(
-                                result = entityResults[index],
+                                result = shownEntityResults[index],
                                 query = state.query,
                                 showSeparator = index > 0,
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
-                                isPinned = entityResults[index].isPinnedBy(pinnedItems),
+                                isPinned = shownEntityResults[index].isPinnedBy(pinnedItems),
                                 onOpen = {
                                     searchInputFocus.release()
-                                    returnHighlight.markOpened(entityResults[index].key)
-                                    inlineListSelection.opening(entityResults[index].key) { onOpenEntity(entityResults[index]) }
+                                    returnHighlight.markOpened(shownEntityResults[index].key)
+                                    inlineListSelection.opening(shownEntityResults[index].key) { onOpenEntity(shownEntityResults[index]) }
                                 },
                                 onContextMenu =
-                                    searchEntityPinTarget(entityResults[index])
+                                    searchEntityPinTarget(shownEntityResults[index])
                                         ?.takeIf { onTogglePin != null }
                                         ?.let { target ->
                                             { anchor ->
                                                 activePinMenu =
                                                     SharedHomeSearchPinMenuState(
-                                                        resultKey = entityResults[index].key,
+                                                        resultKey = shownEntityResults[index].key,
                                                         target = target,
-                                                        isPinned = entityResults[index].isPinnedBy(pinnedItems),
+                                                        isPinned = shownEntityResults[index].isPinnedBy(pinnedItems),
                                                         anchor = anchor
                                                     )
                                             }
                                         }
                             )
+                            }
+                        }
+                        if (homeSearchEntitiesCollapsible(entityResults.size)) {
+                            item(key = "search-entities-show-all") {
+                                // web SearchEntityResultsSection ShowMoreToggle: "Show all N" / "Show fewer".
+                                RaftSearchShowAll(
+                                    label =
+                                        if (entitiesExpanded) {
+                                            stringResource(Res.string.search_show_fewer_entities)
+                                        } else {
+                                            Res.string.search_show_all_entities.format(listOf(entityResults.size)).localized()
+                                        },
+                                    onClick = { entitiesExpanded = !entitiesExpanded },
+                                    modifier = Modifier.raftSafeAreaHorizontalPadding(),
+                                )
                             }
                         }
                         item(key = "search-entities-end") { RaftSearchListEnd() }
@@ -15100,7 +15166,17 @@ internal fun SharedHomeSearchPanel(
                     if (groupedResults.isNotEmpty()) {
                         item(key = "search-messages-end") { RaftSearchListEnd() }
                     }
-                    if (state.hasMore) {
+                    if (incompleteNote != null && (projectedItems.isNotEmpty() || entityResults.isNotEmpty())) {
+                        // web SearchLoadMoreFooter `searchIncomplete`: where the search got to, and
+                        // Continue searching in place of Load more.
+                        item(key = "search-continue") {
+                            HomeSearchContinueFooter(
+                                note = incompleteNote,
+                                loadingMore = state.loadingMore,
+                                onContinueSearching = continueSearching,
+                            )
+                        }
+                    } else if (state.hasMore && incompleteNote == null) {
                         item {
                             SharedHomeLoadMoreRow(
                                 loading = state.loadingMore,
@@ -16935,14 +17011,26 @@ internal fun SharedHomeSearchMessageResultRow(
                     )
                 }
             }
-            RaftSearchHitText(
-                text = preview,
-                query = query,
-                style = RaftTheme.typography.callout,
-                color = RaftColor.TextMuted,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (item.latestRetracted) {
+                // RFC 077 (web MessageHitRow `search-hit-retracted`): a retracted message shows the
+                // muted retracted line, never its text.
+                RaftText(
+                    text = stringResource(Res.string.message_delegated_retracted),
+                    style = RaftTheme.typography.callout,
+                    color = RaftColor.ForegroundHint,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } else {
+                RaftSearchHitText(
+                    text = preview,
+                    query = query,
+                    style = RaftTheme.typography.callout,
+                    color = RaftColor.TextMuted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -17419,9 +17507,10 @@ internal fun homeSearchEntityResults(
                     tier = candidate.tier,
                 )
             }
-    return rankThreadComposerSuggestionEntries(query = trimmedQuery, entries = entries)
+    // web MAX_ENTITY_RESULTS: every reasonable match up to 50; the list shows 5, then "Show all N".
+    return rankThreadComposerSuggestionEntries(query = trimmedQuery, entries = entries, limit = HomeSearchEntityResultLimit)
         .distinctBy { it.key }
-        .take(5)
+        .take(HomeSearchEntityResultLimit)
 }
 
 internal data class HomeSearchEntityCandidate(

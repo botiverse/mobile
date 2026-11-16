@@ -240,11 +240,14 @@ internal fun rankThreadComposerChannelSuggestionEntries(
 
 internal fun <T> rankThreadComposerSuggestionEntries(
     query: String,
-    entries: List<ThreadComposerSuggestionSearchEntry<T>>
+    entries: List<ThreadComposerSuggestionSearchEntry<T>>,
+    // The composer keeps 30; Search's destinations keep up to 50 (web MAX_ENTITY_RESULTS).
+    limit: Int = ThreadComposerSuggestionMaxResults,
 ): List<T> =
     rankThreadComposerSuggestions(
         query = query,
-        entries = entries
+        entries = entries,
+        limit = limit,
     )
 
 internal suspend fun rankThreadComposerChannelSuggestionEntriesCancellable(
@@ -275,10 +278,11 @@ internal data class ThreadComposerSuggestionSearchEntry<T>(
 private fun <T> rankThreadComposerSuggestions(
     query: String,
     entries: List<ThreadComposerSuggestionSearchEntry<T>>,
-    cancellationCheckpoint: (() -> Unit)? = null
+    cancellationCheckpoint: (() -> Unit)? = null,
+    limit: Int = ThreadComposerSuggestionMaxResults,
 ): List<T> {
     val queryKey = ThreadComposerSuggestionQueryKey.from(query)
-    if (queryKey.isBlank) return entries.take(ThreadComposerSuggestionMaxResults).map { it.suggestion }
+    if (queryKey.isBlank) return entries.take(limit).map { it.suggestion }
     val topSuggestions = mutableListOf<ThreadComposerRankedSuggestion<T>>()
     entries.forEachIndexed { offset, entry ->
         if (offset % 64 == 0) cancellationCheckpoint?.invoke()
@@ -292,9 +296,9 @@ private fun <T> rankThreadComposerSuggestions(
         val insertionIndex =
             topSuggestions.binarySearch { current -> ThreadComposerRankedSuggestionComparator.compare(current, ranked) }
                 .let { index -> if (index >= 0) index else -index - 1 }
-        if (insertionIndex < ThreadComposerSuggestionMaxResults) {
+        if (insertionIndex < limit) {
             topSuggestions.add(insertionIndex, ranked)
-            if (topSuggestions.size > ThreadComposerSuggestionMaxResults) {
+            if (topSuggestions.size > limit) {
                 topSuggestions.removeAt(topSuggestions.lastIndex)
             }
         }

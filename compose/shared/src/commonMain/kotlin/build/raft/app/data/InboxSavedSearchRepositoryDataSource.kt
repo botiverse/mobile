@@ -504,8 +504,9 @@ class RealSearchRepository(
                     serverId
                 )
             },
-            // A too-broad empty page stays Content so its explanation reaches the empty state.
-            emptyWhen = { it.items.isEmpty() && !it.tooBroad },
+            // A too-broad or not fully scanned empty page stays Content so its explanation (and the
+            // cursor to continue from) reaches the empty state.
+            emptyWhen = { it.items.isEmpty() && !it.tooBroad && !it.incomplete },
             errorTextDecoder = HomeNetworkResponse::searchRouteErrorTextOrNull,
             errorCodeDecoder = HomeNetworkResponse::searchRouteErrorCodeOrNull,
             source = "search_messages",
@@ -529,7 +530,10 @@ class RealSearchRepository(
                         },
                     nextCursor = parsed.nextCursor?.takeIf { searchWalkCursorApplies(trimmedQuery, options.sort) },
                     tooBroad = parsed.tooBroad,
-                    relevanceFallback = parsed.relevanceFallback
+                    relevanceFallback = parsed.relevanceFallback,
+                    // Only a walk that can continue from its own cursor is incomplete here.
+                    incomplete = parsed.incomplete && searchWalkCursorApplies(trimmedQuery, options.sort),
+                    searchedThrough = parsed.searchedThrough.takeIf { parsed.incomplete },
                 )
             }
         )

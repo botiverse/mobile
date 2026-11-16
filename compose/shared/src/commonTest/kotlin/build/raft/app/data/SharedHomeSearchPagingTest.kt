@@ -91,6 +91,39 @@ class SharedHomeSearchPagingTest {
         assertEquals(false, after.hasMore)
     }
 
+    @Test
+    fun anIncompleteWalkSaysWhereItGotToAndContinuesFromItsCursor() = runTest {
+        // web MessageSearchPage `searchIncomplete`: the walk stopped at its scan budget with no hit
+        // yet; Continue searching reads on from the cursor, and a complete page clears the note.
+        val search = IncompleteThenCompleteSearchRepository()
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemoryRaftAuthSessionStore(authSessionFixture()),
+                savedRepository = EmptySavedRepository,
+                searchRepository = search,
+                scope = backgroundScope,
+                searchDebounceMillis = 0L
+            )
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Recent))
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
+        runCurrent()
+        val incomplete = store.state.value.search
+        assertEquals(
+            listOf(true, true, true),
+            listOf(incomplete.searched, incomplete.searchIncomplete, incomplete.hasMore),
+        )
+        assertEquals("2026-09-30T08:00:00.000Z" to "cursor-1", incomplete.searchedThrough to incomplete.nextCursor)
+        assertEquals(emptyList(), incomplete.items)
+
+        store.dispatch(SharedHomeSearchSavedIntent.LoadMoreSearch)
+        runCurrent()
+
+        assertEquals(listOf(SearchPageStart(0, null), SearchPageStart(0, "cursor-1")), search.pages)
+        val after = store.state.value.search
+        assertEquals(listOf("message-9"), after.items.map { it.key })
+        assertEquals(false to null, after.searchIncomplete to after.searchedThrough)
+    }
+
     /** Serves `message-0 until total` by offset/limit and records each (offset, limit) call. */
     private class PagedSearchRepository(
         private val total: Int,
@@ -117,6 +150,43 @@ class SharedHomeSearchPagingTest {
                     hasMore = end < total,
                     nextOffset = end
                 )
+            )
+        }
+    }
+
+    /** An empty first page the walk stopped part way through, then one hit and the end. */
+    private class IncompleteThenCompleteSearchRepository : SearchRepository {
+        val pages = mutableListOf<SearchPageStart>()
+
+        override suspend fun search(
+            serverId: ServerId,
+            query: String,
+            offset: Int,
+            limit: Int,
+            options: SearchQueryOptions,
+            cursor: String?
+        ): DataResult<SearchSnapshot> {
+            pages += SearchPageStart(offset, cursor)
+            return DataResult.Content(
+                if (cursor == null) {
+                    SearchSnapshot(
+                        server = searchTestServer(serverId),
+                        query = query,
+                        items = emptyList(),
+                        hasMore = true,
+                        nextOffset = null,
+                        nextCursor = "cursor-1",
+                        incomplete = true,
+                        searchedThrough = "2026-09-30T08:00:00.000Z",
+                    )
+                } else {
+                    SearchSnapshot(
+                        server = searchTestServer(serverId),
+                        query = query,
+                        items = listOf(searchHitRow("message-9")),
+                        hasMore = false,
+                    )
+                }
             )
         }
     }
