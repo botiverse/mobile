@@ -110,7 +110,13 @@ internal sealed interface ActivityRowStep {
     /** [counts] null: the predicate cannot judge it (re-read the row). */
     @Serializable
     @SerialName("liveMessage")
-    data class LiveMessage(val seq: String, val counts: Boolean?, val mentionsViewer: Boolean) : ActivityRowStep
+    data class LiveMessage(
+        val seq: String,
+        val counts: Boolean?,
+        val mentionsViewer: Boolean,
+        /** The predicate's `moves` (absent = true); false: past a channel or DM mute. */
+        val moves: Boolean = true,
+    ) : ActivityRowStep
 
     @Serializable
     @SerialName("answer")
@@ -136,7 +142,12 @@ internal data class ActivityRowExpectation(
 internal data class ActivityRowCheckpoint(val afterStep: Int, val row: JsonObject? = null, val reread: Boolean? = null)
 
 @Serializable
-internal data class ActivityRowVerdict(val counts: Boolean?, val mention: Boolean)
+internal data class ActivityRowVerdict(
+    val counts: Boolean?,
+    val mention: Boolean,
+    /** It becomes the row's latest activity (false past a channel or DM mute, slock #15111); null: not stated. */
+    val moves: Boolean? = null,
+)
 
 @Serializable
 internal data class ActivityRowDecision(val question: String, val owner: String, val candidates: JsonArray)

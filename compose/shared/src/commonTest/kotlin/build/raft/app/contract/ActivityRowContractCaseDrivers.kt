@@ -124,6 +124,10 @@ private class ScriptedInbox(
     val rereadAsked: Boolean
         get() = reads.drop(1).any { !it.byHarness && it.reason != InboxFetchReason.InPlaceReconcile }
 
+    /** A row re-read (`?ids=`) was asked: the store could not judge the message in place. */
+    val rowRereadAsked: Boolean
+        get() = reads.any { it.rowIds != null }
+
     override suspend fun loadInitial(serverId: ServerId, filter: InboxFilter, limit: Int): DataResult<InboxSnapshot> {
         val reason = currentCoroutineContext()[InboxFetchReasonContext]?.reason
         reads += Read(reason, byHarness = harnessAsking)
@@ -215,6 +219,14 @@ private fun ActivityRowServed.toChannelRow(): InboxItem =
 private fun ActivityRowStep.LiveMessage.toIntent(seq: Long): SharedActivityIntent.ApplyRealtimeEvent {
     val id = "m-${this.seq}"
     val mentions = if (mentionsViewer) listOf(MessageMention(type = "user", id = ViewerId)) else emptyList()
+    // `moves: false`: a message past the Activity mute, as the shell delivers it.
+    if (!moves) {
+        return SharedActivityIntent.ApplyRealtimeEvent(
+            MessageNew(message(id, channelId = PositionChannel, seq = seq).copy(mentions = mentions)),
+            allowLocalPatch = false,
+            activityMuted = true,
+        )
+    }
     return when (counts) {
         true ->
             SharedActivityIntent.ApplyRealtimeEvent(
@@ -394,7 +406,8 @@ private fun predicateDriver() =
  * The verdict as the app's live patch reaches it: the message arrives on a read row the list shows
  * and the store judges it in place (SharedActivityStore `InPlaceUnreadContext.unreadFor`). `counts`
  * is the unread it added; a message the store does not apply in place and re-reads the row for is
- * `counts: null` (cannot judge here). `mention` is the @ it lit.
+ * `counts: null` (cannot judge here). `mention` is the @ it lit. `moves`: the row did not stay where it
+ * was past the mute (a message it re-reads is judged on the answer, not here).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 private fun TestScope.runPredicateCase(case: ActivityRowContractCase): List<String> {
@@ -426,17 +439,22 @@ private fun TestScope.runPredicateCase(case: ActivityRowContractCase): List<Stri
 
     val after = h.row() ?: return listOf("the row left the list")
     val applied = after.latestActivitySeq == (PredicateRowSeq + 1).toString()
+    // The row's own re-read: the store could not judge it in place. (A list read that follows a
+    // message the position rule does not take, the reader's own with mentions, judges nothing here.)
+    val rowReread = h.inbox.rowRereadAsked
+    // A message past the mute on a row with a pre-mute message is judged without moving the row.
+    val stayedMuted = !applied && !rowReread && scope.activityMuted == true
     val counts: Boolean? =
         when {
-            applied && !h.inbox.rereadAsked -> after.unreadCount > 0
-            !applied && h.inbox.rereadAsked -> null
+            (applied || stayedMuted) && !rowReread -> after.unreadCount > 0
+            !applied && rowReread -> null
             else ->
                 return listOf(
-                    "no verdict: applied=$applied rereadAsked=${h.inbox.rereadAsked} " +
+                    "no verdict: applied=$applied rowReread=$rowReread " +
                         "(row seq ${after.latestActivitySeq}, unread ${after.unreadCount})"
                 )
         }
-    val actual = ActivityRowVerdict(counts = counts, mention = after.hasMention)
     val expected = case.expect!!.verdict!!
+    val actual = ActivityRowVerdict(counts = counts, mention = after.hasMention, moves = (!stayedMuted).takeIf { expected.moves != null })
     return if (actual == expected) emptyList() else listOf("verdict: expected $expected, got $actual")
 }

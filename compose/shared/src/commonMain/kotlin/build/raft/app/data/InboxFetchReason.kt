@@ -57,6 +57,12 @@ enum class InboxFetchReason(val wireValue: String) {
      * `ACTIVITY_ROW_FETCH_REASONS`); its trigger says why ([InboxRefreshTrigger.AmbiguousSeq]...).
      */
     PositionReread("position_reread"),
+    /**
+     * `inbox_row_position_v1`: not a list read. One live message in [ActivityPositionAuditEvery]
+     * applied in place with no re-read has its row read once (`?ids=`), and the answer judges it
+     * (web `position_audit`, slock inboxRowPosition.ts `flushRowRereads`); trigger `position_audit`.
+     */
+    PositionAudit("position_audit"),
 }
 
 /**
@@ -103,6 +109,12 @@ enum class InboxRefreshTrigger(val wireValue: String) {
     RowPartialRead("row_partial_read"),
     /** A row re-read's answer left out a listed row: the list is re-read (`realtime_fallback`). */
     RowMissing("row_missing"),
+    /** `thread:updated` whose `replyCount` is more than one past the listed thread row's (web `reply_gap`; a list read, not sent today). */
+    ReplyGap("reply_gap"),
+    /** `inbox_row_position_v1`: `thread:updated` said the listed thread row missed replies; that row only is re-read. */
+    RowReplyGap("row_reply_gap"),
+    /** `inbox_row_position_v1`: the sampled audit read of a row a live message was applied to ([InboxFetchReason.PositionAudit]). */
+    PositionAudit("position_audit"),
 }
 
 /** The trigger a realtime event gives the Activity re-read it asks for. */
@@ -165,7 +177,9 @@ internal suspend fun currentInboxFetchReasonHeaders(): Map<String, String> =
 internal fun inboxFetchReasonHeaders(context: InboxFetchReasonContext): Map<String, String> {
     val trigger =
         context.trigger?.takeIf {
-            context.reason == InboxFetchReason.RealtimeFallback || context.reason == InboxFetchReason.PositionReread
+            context.reason == InboxFetchReason.RealtimeFallback ||
+                context.reason == InboxFetchReason.PositionReread ||
+                context.reason == InboxFetchReason.PositionAudit
         }
         ?: return mapOf(RaftFetchReasonHeader to context.reason.wireValue)
     return mapOf(

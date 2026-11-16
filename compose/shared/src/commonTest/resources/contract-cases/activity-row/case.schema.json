@@ -190,7 +190,8 @@
             "act": { "const": "liveMessage" },
             "seq": { "$ref": "#/$defs/seq" },
             "counts": { "description": "The predicate's verdict. null: cannot be judged (re-read).", "type": ["boolean", "null"] },
-            "mentionsViewer": { "type": "boolean" }
+            "mentionsViewer": { "type": "boolean" },
+            "moves": { "description": "The predicate's moves (absent = true). false: not the row's activity (past a channel or DM mute, no mention of the viewer); the row stays as it is.", "type": "boolean" }
           }
         },
         {
@@ -249,10 +250,11 @@
       "description": "The unread predicate's answer.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["counts", "mention"],
+      "required": ["counts", "mention", "moves"],
       "properties": {
         "counts": { "description": "One more unread on the row. null: cannot be judged from the event (the row is re-read).", "type": ["boolean", "null"] },
-        "mention": { "description": "It @-mentions the viewer: the row's @ lights.", "type": "boolean" }
+        "mention": { "description": "It @-mentions the viewer: the row's @ lights.", "type": "boolean" },
+        "moves": { "description": "It becomes the row's latest activity (position, preview, order). false only past a channel or DM mute without a mention of the viewer: the server keeps the row at its last message before the mute.", "type": "boolean" }
       }
     },
     "checkpoint": {

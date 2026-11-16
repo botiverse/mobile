@@ -65,7 +65,7 @@ private fun runPredicateOnReducer(case: ActivityRowContractCase, expect: Activit
                 readOnArrival = scope.readOnArrival ?: false,
             ),
         )
-    val actual = ActivityRowVerdict(counts = verdict.counts, mention = verdict.mention)
+    val actual = ActivityRowVerdict(counts = verdict.counts, mention = verdict.mention, moves = verdict.moves.takeIf { expected.moves != null })
     return if (actual == expected) emptyList() else listOf("verdict: expected $expected, got $actual")
 }
 
@@ -73,7 +73,7 @@ private fun ActivityRowServed.toAnswer() = ActivityRowAnswer(unreadCount, hasMen
 
 private fun ActivityRowStep.toEvent(): ActivityRowEvent =
     when (this) {
-        is ActivityRowStep.LiveMessage -> ActivityRowEvent.Live(seq, counts, mentionsViewer)
+        is ActivityRowStep.LiveMessage -> ActivityRowEvent.Live(seq, counts, mentionsViewer, moves)
         is ActivityRowStep.Answer -> ActivityRowEvent.Answer(row.toAnswer())
         is ActivityRowStep.Read -> ActivityRowEvent.Read(seq)
     }

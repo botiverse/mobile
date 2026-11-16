@@ -48,7 +48,8 @@ class InboxFetchTriggerHeaderTest {
                 "activity_changed", "dm_new", "read_persisted", "catch_up_retry", "other",
                 // `inbox_row_position_v1`: a row re-read's triggers, then the list read for a row it left out.
                 "ambiguous_seq", "row_inversion", "row_null_position", "row_unjudged", "row_partial_read",
-                "row_missing"
+                "row_missing",
+                "reply_gap", "row_reply_gap", "position_audit"
             ),
             InboxRefreshTrigger.entries.map { it.wireValue }
         )
@@ -72,8 +73,23 @@ class InboxFetchTriggerHeaderTest {
             ),
             inboxFetchReasonHeaders(InboxFetchReasonContext(InboxFetchReason.PositionReread, trigger))
         )
+        // An audit read (`position_audit`) too.
+        assertEquals(
+            mapOf(
+                "X-Raft-Fetch-Reason" to "position_audit",
+                "X-Raft-Fetch-Trigger" to "position_audit",
+                "X-Raft-Fetch-Coalesced" to "1",
+            ),
+            inboxFetchReasonHeaders(
+                InboxFetchReasonContext(InboxFetchReason.PositionAudit, InboxRefreshTriggerCount(InboxRefreshTrigger.PositionAudit))
+            )
+        )
         InboxFetchReason.entries
-            .filter { it != InboxFetchReason.RealtimeFallback && it != InboxFetchReason.PositionReread }
+            .filter {
+                it != InboxFetchReason.RealtimeFallback &&
+                    it != InboxFetchReason.PositionReread &&
+                    it != InboxFetchReason.PositionAudit
+            }
             .forEach { reason ->
                 assertEquals(
                     mapOf("X-Raft-Fetch-Reason" to reason.wireValue),

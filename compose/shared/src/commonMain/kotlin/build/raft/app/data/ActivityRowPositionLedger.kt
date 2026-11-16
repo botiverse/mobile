@@ -21,6 +21,12 @@ import kotlinx.atomicfu.locks.synchronized
 /** How long a row asked for waits before its read (web `ROW_REREAD_DELAY_MS`): the view lags the write by ~1-2 s. */
 internal const val ActivityRowRereadDelayMillis: Long = 1_500L
 
+/** One live message in this many applied in place with no re-read is audited (web `POSITION_AUDIT_EVERY`, a counter). */
+internal const val ActivityPositionAuditEvery: Int = 20
+
+/** An audit whose answer was behind its row is read once more this long after that answer (web `AUDIT_FOLLOWUP_DELAY_MS`). */
+internal const val ActivityAuditFollowupDelayMillis: Long = 5_000L
+
 /** The route's `ids` limit (server `INBOX_ROW_IDS_MAX`). */
 internal const val ActivityRowRereadIdsMax: Int = 50
 
@@ -32,7 +38,10 @@ internal data class ActivityRowClientState(
     val position: String?,
     val applied: List<ActivityRowAppliedSeq>,
     val inversionObserved: Boolean,
-)
+) {
+    /** The position the row shows with this state ([activityRowDisplayPosition]). */
+    fun displayPosition(): String? = applied.lastOrNull { it.moves }?.seq ?: position
+}
 
 /**
  * Per row (by its conversation: the channel, DM, thread or task conversation id) the position its
@@ -49,7 +58,7 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
         val scopeId = row.activityRowScopeId()
         val kept = scopeId?.let { synchronized(lock) { states[it] } }
         val shown = row.latestActivitySeq
-        val valid = kept != null && (kept.applied.lastOrNull()?.seq ?: kept.position) == shown
+        val valid = kept != null && kept.displayPosition() == shown
         return ActivityRowState(
             unreadCount = row.unreadCount,
             hasMention = row.hasMention,
@@ -58,6 +67,12 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
             applied = if (valid) kept!!.applied else emptyList(),
             inversionObserved = if (valid) kept!!.inversionObserved else false,
         )
+    }
+
+    /** The state kept for [row] is the one [stateOf] uses (web `kept_state=1`). */
+    fun keptStateValid(row: InboxItem): Boolean {
+        val kept = row.activityRowScopeId()?.let { synchronized(lock) { states[it] } } ?: return false
+        return kept.displayPosition() == row.latestActivitySeq
     }
 
     fun keep(scopeId: String, row: ActivityRowState) {
@@ -210,3 +225,18 @@ internal fun InboxItem.withActivityFrontiersMovedTo(seq: String): InboxItem {
         doneFrontierSeq = if (doneFrontierSeqPresent) seq else doneFrontierSeq,
     )
 }
+
+/**
+ * A row waiting for its re-read (web `PendingRow`): the first trigger it was asked for with and how
+ * many asks it stands for; for an audit, the row as the patch left it ([audit]) and whether it is the
+ * follow-up read. [serverId]: the server it was asked on (where a not-judged audit is reported).
+ */
+internal data class ActivityRowRereadPending(
+    val trigger: InboxRefreshTriggerCount,
+    val audit: InboxItem? = null,
+    val followup: Boolean = false,
+    val serverId: String? = null,
+)
+
+/** A follow-up audit waiting for its delay (web `followupTimers`). */
+internal class ActivityAuditFollowup(val job: kotlinx.coroutines.Job, val row: InboxItem, val serverId: String?)

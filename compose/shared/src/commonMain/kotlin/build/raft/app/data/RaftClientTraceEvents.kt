@@ -218,6 +218,11 @@ object RaftClientTraceEvents {
     internal fun emitInPlaceCheck(serverId: String, check: ActivityInPlaceCheck) {
         sender.emit(serverId, RaftStateTransitionTraceName, check.stateTransitionTraceAttrs())
     }
+
+    /** `inbox_row_position_v1`: one `activity:list_row_lowered` (web `reportListRowsLowered`). */
+    internal fun emitListRowLowered(serverId: String, lowered: ActivityListRowLowered) {
+        sender.emit(serverId, RaftStateTransitionTraceName, lowered.stateTransitionTraceAttrs())
+    }
 }
 
 /** `clientPlatform` as `X-Raft-Client-Platform` names the app, and its `appVersion`. */

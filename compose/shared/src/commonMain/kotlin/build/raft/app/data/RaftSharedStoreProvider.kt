@@ -2786,6 +2786,7 @@ internal class RaftSharedStoreProvider private constructor(
                 syncReloads = syncReloadLedger,
                 inboxInPlaceEnabled = ::inboxInPlaceEnabled,
                 inPlaceCheckSink = RaftClientTraceEvents::emitInPlaceCheck,
+                listRowLoweredSink = RaftClientTraceEvents::emitListRowLowered,
                 inboxRowPositionEnabled = ::inboxRowPositionEnabled,
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {

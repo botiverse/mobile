@@ -116,6 +116,7 @@ internal fun activityStore(
     inboxInPlaceEnabled: (serverId: String) -> Boolean = { false },
     inPlaceReconcileIntervalMillis: Long = ActivityInPlaceReconcileIntervalMillis,
     inPlaceCheckSink: (serverId: String, check: ActivityInPlaceCheck) -> Unit = { _, _ -> },
+    listRowLoweredSink: (serverId: String, lowered: ActivityListRowLowered) -> Unit = { _, _ -> },
     inboxRowPositionEnabled: (serverId: String) -> Boolean = { false },
     rowRereadDelayMillis: Long = ActivityRowRereadDelayMillis
 ): SharedActivityStore =
@@ -159,7 +160,8 @@ internal fun activityStore(
         inboxRowPositionEnabled = inboxRowPositionEnabled,
         rowRereadDelayMillis = rowRereadDelayMillis,
         inPlaceReconcileIntervalMillis = inPlaceReconcileIntervalMillis,
-        inPlaceCheckSink = inPlaceCheckSink
+        inPlaceCheckSink = inPlaceCheckSink,
+        listRowLoweredSink = listRowLoweredSink
     )
 
 internal class FakeInboxRepository(

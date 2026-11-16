@@ -400,6 +400,12 @@ class SharedActivityStore internal constructor(
      */
     private val inPlaceCheckSink: (serverId: String, check: ActivityInPlaceCheck) -> Unit = { _, _ -> },
     /**
+     * `inbox_row_position_v1`: where each `activity:list_row_lowered` goes (web
+     * `reportListRowsLowered`; [RaftClientTraceEvents.emitListRowLowered] in the app). Called under the
+     * realtime owner lock: it must only queue.
+     */
+    private val listRowLoweredSink: (serverId: String, lowered: ActivityListRowLowered) -> Unit = { _, _ -> },
+    /**
      * `inbox_row_position_v1` for the server the store is bound to (#triage:#244, inbox redesign step
      * 2, web `rowPositionOn`). Read only where `mobile_inbox_inplace_v0` is on too: each listed row is
      * then kept by the shared per-row position rule ([reduceActivityRow]) instead of the timed
@@ -563,21 +569,49 @@ class SharedActivityStore internal constructor(
      * by scope id: the first trigger each was asked for with, and how many asks it stands for), the
      * rows of the read in flight, and the one pending flush (web `pendingRows` / `inFlightRows`).
      */
-    private val rowRereadPending = LinkedHashMap<String, InboxRefreshTriggerCount>()
+    private val rowRereadPending = LinkedHashMap<String, ActivityRowRereadPending>()
     private val rowRereadInFlight = mutableSetOf<String>()
     private var rowRereadFlushJob: Job? = null
-    /** Bumped by every read this list projects: a row answer sent before one may predate it (web `getActivityReadStateRevision`). */
-    private var rowReadRevision = 0L
+    /**
+     * Bumped per row (scope id) by every read this list projects onto it: a row answer sent before one
+     * may predate it (web `getActivityReadStateRevision`, here per row so a read of one conversation
+     * does not drop the answers of the others).
+     */
+    private val rowReadRevisions = mutableMapOf<String, Long>()
+    /** Live messages applied in place with no re-read; every [ActivityPositionAuditEvery]th is audited (web `liveAppliedCount`). */
+    private var liveAppliedCount = 0L
+    /** Follow-up audits waiting for their delay (web `followupTimers`): each ends in one check. */
+    private val auditFollowups = LinkedHashMap<String, ActivityAuditFollowup>()
+    /**
+     * `inbox_row_position_v1`: the server whose list a fresh network answer (not the cache-restored
+     * page, not a remembered stale one) has loaded in this session; null after a switch or reset.
+     * Only such a list can own the badge ([ownsBadgeFor]).
+     */
+    @Volatile
+    private var freshListServerId: String? = null
+    /** Why the load in flight reads (for `activity:list_row_lowered`'s fetch reason / trigger). */
+    private var loadFetchLabel: Pair<InboxFetchReason?, InboxRefreshTriggerCount?> = null to null
     /** Bumped when the row state goes (server switch, reset): an answer from before is dropped. */
     private var rowRereadGeneration = 0L
 
     /**
-     * `inbox_row_position_v1`: this list can be [owner]'s badge's only writer: it counts the badge
-     * ([derivesBadgeFor]) and is shown, so it reads itself on the return to the foreground and on a
-     * refresh. A hidden list is not re-read until it shows, so the summary read still counts then.
+     * `inbox_row_position_v1`: this list is [owner]'s badge's only writer (Tenny, #triage:#244), shown
+     * or hidden: it counts the badge ([derivesBadgeFor]) and a fresh answer loaded it in this session
+     * ([freshListServerId]; a cache-restored page, or one whose read failed, does not own it). It
+     * keeps itself current for that: the shell hands it every live event while Activity is not shown
+     * (the hidden +1 path), an event it cannot count re-reads it, and every return to the foreground
+     * re-reads it ([onAppForegroundReturned]). In the background the summary store reads nothing
+     * anyway (it defers to the return), so owning the badge there suppresses no read.
      */
     internal fun ownsBadgeFor(owner: ProcessActivityUnreadOwner): Boolean =
-        !activitySurfaceHidden && _state.value.derivesBadgeFor(owner)
+        freshListServerId == owner.serverId && _state.value.derivesBadgeFor(owner)
+
+    /** [ownsBadgeFor] for the list's own server, with both flags on (caller holds realtimeOwnerLock). */
+    private fun listOwnsBadgeLocked(): Boolean {
+        val current = _state.value
+        val serverId = current.ownerServerId ?: return false
+        return rowPositionOnLocked() && freshListServerId == serverId && current.snapshot != null
+    }
 
     /** Test hook: the position state kept for a row's conversation. */
     internal fun rowPositionStateForTest(scopeId: String): ActivityRowClientState? = rowPositions.keptForTest(scopeId)
@@ -596,7 +630,10 @@ class SharedActivityStore internal constructor(
     private fun onAppForegroundReturned() {
         val job =
             synchronized(realtimeOwnerLock) {
-                if (!realtimeReconcileOwedOnForeground) return@synchronized null
+                // `inbox_row_position_v1`: a list that owns the badge always reads itself on the
+                // return (the summary read it suppresses was the only other one), shown or hidden.
+                if (!realtimeReconcileOwedOnForeground && !listOwnsBadgeLocked()) return@synchronized null
+                if (!realtimeReconcileOwedOnForeground) diagnosticsLogger("store_load domain=activity phase=foreground_return reason=list_owns_badge")
                 realtimeReconcileOwedOnForeground = false
                 resumeFoldLoads = resetLoadsStarted
                 resumeNotBeforeMillis = nowMillis() + realtimeBackgroundRefreshIntervalMillis
@@ -753,7 +790,7 @@ class SharedActivityStore internal constructor(
         when (intent) {
             is SharedActivityIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent)
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
-                applyRealtimeSummaryEvent(intent.event, intent.activeConversationId, intent.activityMuted)
+                applyRealtimeSummaryEvent(intent.event, intent.activeConversationId, intent.activityMuted, intent.primarySurfaceVisible)
             else -> error("applyLiveRealtime only accepts realtime intents")
         }
     }
@@ -1532,10 +1569,18 @@ class SharedActivityStore internal constructor(
                     "activity_inplace event=${event::class.simpleName.orEmpty()} result=${patch.name.lowercase()}"
                 )
                 return when (patch) {
-                    RealtimeRowPatch.Patched -> {
-                        armInPlaceReconcileLocked()
-                        null
-                    }
+                    RealtimeRowPatch.Patched ->
+                        when {
+                            // `inbox_row_position_v1`: no minute reconcile; the sampled position audit
+                            // checks the rows the rule applied (auditLiveAppliedLocked). A patch the
+                            // rule did not take re-reads the list, as web (receiveLiveByPosition false).
+                            rowPositionOnLocked() ->
+                                if (byPosition == null) scheduleRealtimeBackgroundReconcileLocked(trigger) else null
+                            else -> {
+                                armInPlaceReconcileLocked()
+                                null
+                            }
+                        }
                     RealtimeRowPatch.Unchanged,
                     RealtimeRowPatch.RowReread -> null
                     RealtimeRowPatch.Absent -> {
@@ -1880,9 +1925,10 @@ class SharedActivityStore internal constructor(
             realtimeReconcileOwedOnForeground = true
             return realtimeBackgroundReconcileJob ?: Job().apply { complete() }
         }
-        if (activitySurfaceHidden && inboxInPlaceOnLocked()) {
+        if (activitySurfaceHidden && inboxInPlaceOnLocked() && !listOwnsBadgeLocked()) {
             // Inbox refresh step 4, rule 3: nobody sees the list, so nothing reads it; the Refresh
-            // that shows it again reads it once (`visibility`).
+            // that shows it again reads it once (`visibility`). A list that owns the badge
+            // (`inbox_row_position_v1`) keeps reading, throttled: the badge is its count.
             diagnosticsLogger("store_load domain=activity phase=deferred reason=surface_hidden trigger=${trigger?.wireValue}")
             return realtimeBackgroundReconcileJob ?: Job().apply { complete() }
         }
@@ -1943,7 +1989,7 @@ class SharedActivityStore internal constructor(
                                     ReconcileStep.Stop
                                 }
                                 // Step 4: hidden while waiting; the Refresh that shows it reads.
-                                activitySurfaceHidden && inboxInPlaceOnLocked() -> {
+                                activitySurfaceHidden && inboxInPlaceOnLocked() && !listOwnsBadgeLocked() -> {
                                     realtimeBackgroundReconcileDirty = false
                                     realtimeBackgroundReconcileTrigger = null
                                     realtimeBackgroundReconcileJob = null
@@ -2076,12 +2122,45 @@ class SharedActivityStore internal constructor(
     }
 
     private fun resetRowPositionLocked() {
+        // Web resetRowPosition: the audits still waiting are not judged (one in flight records itself
+        // on its answer).
+        rowRereadPending.values.forEach { entry -> recordAuditNotJudgedLocked(entry, ActivityAuditNotJudgedCause.ServerSwitched) }
+        auditFollowups.values.forEach { followup ->
+            followup.job.cancel()
+            emitInPlaceCheckLocked(
+                followup.serverId,
+                inPlaceDriftCheck.notJudged(followup.row, ActivityAuditNotJudgedCause.ServerSwitched, detail = ";followup=1")
+            )
+        }
+        auditFollowups.clear()
+        liveAppliedCount = 0L
         rowRereadGeneration += 1L
         rowPositions.clear()
         rowRereadPending.clear()
         rowRereadInFlight.clear()
+        rowReadRevisions.clear()
         rowRereadFlushJob?.cancel()
         rowRereadFlushJob = null
+        freshListServerId = null
+    }
+
+    /** One `activity:inplace_check` to [serverId]'s trace stream (web `emitStateTransitionTrace`). */
+    private fun emitInPlaceCheckLocked(serverId: String?, check: ActivityInPlaceCheck) {
+        diagnosticsLogger(
+            "activity_inplace_check entity=${check.entityId} trigger=${check.trigger.wireValue} " +
+                "outcome=${check.outcome.wireValue} result=${check.result} scope=${check.scope ?: "-"}" +
+                (check.notJudgedCause?.let { " cause=${it.wireValue}" } ?: "")
+        )
+        if (serverId != null) inPlaceCheckSink(serverId, check)
+    }
+
+    /** Web `recordAuditNotJudged` for a waiting entry that is an audit (no-op otherwise). */
+    private fun recordAuditNotJudgedLocked(entry: ActivityRowRereadPending, cause: ActivityAuditNotJudgedCause, backend: String? = null) {
+        val audit = entry.audit ?: return
+        emitInPlaceCheckLocked(
+            entry.serverId,
+            inPlaceDriftCheck.notJudged(audit, cause, backend, if (entry.followup) ";followup=1" else "")
+        )
     }
 
     /**
@@ -2125,7 +2204,7 @@ class SharedActivityStore internal constructor(
             )
         val seq = message.seq?.takeIf { it >= 0L }?.toString()
         val before = rowPositions.stateOf(existing)
-        val live = reduceActivityRow(before, ActivityRowEvent.Live(seq.orEmpty(), verdict.counts, verdict.mention))
+        val live = reduceActivityRow(before, ActivityRowEvent.Live(seq.orEmpty(), verdict.counts, verdict.mention, verdict.moves))
         if (live.reread) {
             diagnosticsLogger(
                 "activity_row_position event=live scopeId=$scopeId seq=${seq ?: "-"} " +
@@ -2135,15 +2214,20 @@ class SharedActivityStore internal constructor(
             return RealtimeRowPatch.RowReread
         }
         var after = live.row
+        var rereadAsked = false
         // The reader's own send reads the conversation on the server, and no read state comes to say so.
         if (seq != null && own && (after.unreadCount > 0 || after.hasMention)) {
             val read = reduceActivityRow(after, ActivityRowEvent.Read(seq))
+            rereadAsked = read.reread
             if (read.reread) requestRowRereadLocked(scopeId, read.rereadReason.rereadTrigger()) else after = read.row
         }
         if (after == before) return RealtimeRowPatch.Unchanged
         rowPositions.keep(scopeId, after)
         val shown = existing.latestActivitySeq
-        val advances = seq != null && (shown == null || !isCanonicalActivitySeq(shown) || compareActivitySeq(seq, shown) > 0)
+        // Not past a mute, or a mention-only row: the row's shown position is now this message (web).
+        val advances =
+            seq != null && activityRowDisplayPosition(live.row) == seq &&
+                (shown == null || !isCanonicalActivitySeq(shown) || compareActivitySeq(seq, shown) > 0)
         val moved = if (advances) existing.advancedTo(message, seq!!) else existing
         val patched = moved.withActivityRowUnread(after, message.id).withActivityFollowStateProjection()
         diagnosticsLogger(
@@ -2158,8 +2242,30 @@ class SharedActivityStore internal constructor(
         } else {
             replaceActivityItemInPlace(patched, index, current, snapshot, intent)
         }
-        inPlaceDriftCheck.notePatched(patched, trigger)
+        inPlaceDriftCheck.notePatched(patched, trigger, ActivityInPlaceRereadPosition)
+        if (!rereadAsked) auditLiveAppliedLocked(scopeId, patched)
         return RealtimeRowPatch.Patched
+    }
+
+    /**
+     * Web `auditLiveApplied`: a live message applied in place with no re-read. One in
+     * [ActivityPositionAuditEvery] (a counter: the 20th, the 40th, ...) reads its row once after the
+     * usual delay (`X-Raft-Fetch-Reason: position_audit`, trigger `position_audit`), and the answer
+     * judges the row as the patch left it ([patched]): scope=row. Not when the row already waits for a
+     * read, nor when the patched row is no longer the one listed.
+     */
+    private fun auditLiveAppliedLocked(scopeId: String, patched: InboxItem) {
+        val listed = _state.value.snapshot?.items?.firstOrNull { it.key == patched.key } ?: return
+        if (listed.latestActivitySeq != patched.latestActivitySeq) return
+        if (++liveAppliedCount % ActivityPositionAuditEvery != 0L || scopeId in rowRereadPending) return
+        rowRereadPending[scopeId] =
+            ActivityRowRereadPending(
+                trigger = InboxRefreshTriggerCount(InboxRefreshTrigger.PositionAudit),
+                audit = listed,
+                serverId = _state.value.ownerServerId
+            )
+        diagnosticsLogger("activity_row_position event=audit scopeId=$scopeId applied=$liveAppliedCount")
+        scheduleRowRereadFlushLocked()
     }
 
     /** The row at a newer message: its preview, sender and seq, not its unread (web `advancedRow` + `movedFrontiers`). */
@@ -2235,6 +2341,9 @@ class SharedActivityStore internal constructor(
         val existing = snapshot.items[index]
         if (!existing.isActivityPositionRow()) return null
         val scopeId = existing.activityRowScopeId() ?: return null
+        // Web isThreadReplyGap: a reply count more than one past the listed row's means replies this
+        // client never saw.
+        val replyGap = event.replyCount - existing.replyCount > 1
         val reply = event.latestReply?.toActivityLiveMessage(event)
         val replyPatch =
             if (reply == null) {
@@ -2246,16 +2355,30 @@ class SharedActivityStore internal constructor(
                     ?: return null
             }
         val metaPatched = applyThreadUpdatedPatch(event, intent, rememberHighWater = false)
+        // Web rereadThreadRowOnGap: that row is re-read (`row_reply_gap`), not the list.
+        if (replyGap) {
+            diagnosticsLogger("activity_row_position event=reply_gap scopeId=$scopeId replyCount=${event.replyCount}/${existing.replyCount}")
+            requestRowRereadLocked(scopeId, InboxRefreshTrigger.RowReplyGap)
+            return RealtimeRowPatch.RowReread
+        }
         return if (replyPatch == RealtimeRowPatch.Unchanged && metaPatched) RealtimeRowPatch.Patched else replyPatch
     }
 
     /**
      * Re-read this one row (`?ids=`), never the list: batched with the rows waiting, never twice in
      * flight (web `requestRowReread`). Each waits [rowRereadDelayMillis] first, so a row the view is a
-     * moment behind on comes back with the message, and the two deliveries of one reply ask once.
+     * moment behind on comes back with the message, and the two deliveries of one reply ask once. A
+     * re-read supersedes an audit waiting for the row (the row is no longer as the patch left it).
      */
     private fun requestRowRereadLocked(scopeId: String, trigger: InboxRefreshTrigger) {
-        rowRereadPending[scopeId] = rowRereadPending[scopeId].foldWith(trigger)
+        val pending = rowRereadPending[scopeId]
+        rowRereadPending[scopeId] =
+            if (pending?.audit != null) {
+                recordAuditNotJudgedLocked(pending.copy(followup = false), ActivityAuditNotJudgedCause.SupersededByReread)
+                ActivityRowRereadPending(InboxRefreshTriggerCount(trigger), serverId = _state.value.ownerServerId)
+            } else {
+                ActivityRowRereadPending(pending?.trigger.foldWith(trigger), serverId = _state.value.ownerServerId)
+            }
         scheduleRowRereadFlushLocked()
     }
 
@@ -2269,57 +2392,110 @@ class SharedActivityStore internal constructor(
             }
     }
 
+    private class ActivityRowReadRequest(
+        val serverId: String,
+        val ready: List<Pair<String, ActivityRowRereadPending>>,
+        val trigger: InboxRefreshTriggerCount,
+        val audit: Boolean,
+        val revisions: Map<String, Long>
+    ) {
+        val ids: List<String> get() = ready.map { it.first }
+    }
+
     private suspend fun flushRowRereads(generation: Long) {
         val jobs = mutableListOf<Job>()
-        var request: Triple<String, List<String>, InboxRefreshTriggerCount>? = null
-        var revision = 0L
+        var request: ActivityRowReadRequest? = null
         synchronized(realtimeOwnerLock) {
             if (generation != rowRereadGeneration) return
             rowRereadFlushJob = null
-            val ready = rowRereadPending.entries.filter { it.key !in rowRereadInFlight }.take(ActivityRowRereadIdsMax)
+            val waiting = rowRereadPending.entries.filter { it.key !in rowRereadInFlight }
+            // Audits and re-reads go in reads of their own, so each read's reason says which (web).
+            val audit = waiting.firstOrNull()?.value?.audit != null
+            val ready =
+                waiting
+                    .filter { (it.value.audit != null) == audit }
+                    .take(ActivityRowRereadIdsMax)
+                    .map { it.key to it.value }
             if (ready.isEmpty()) return
-            val ids = ready.map { it.key }
-            val trigger = ready.map { it.value }.reduce { folded, next -> folded.foldWith(next)!! }
-            ids.forEach(rowRereadPending::remove)
-            if (rowRereadPending.keys.any { it !in rowRereadInFlight }) scheduleRowRereadFlushLocked()
+            ready.forEach { (scopeId, _) -> rowRereadPending.remove(scopeId) }
+            val trigger = ready.map { it.second.trigger }.reduce { folded, next -> folded.foldWith(next)!! }
             val serverId = _state.value.ownerServerId
-            if (serverId == null || !rowPositionOnLocked()) return
-            // Nobody sees the list (another tab, a pushed conversation, the background): the list read
-            // it owes on show stands for these rows.
-            if (!appForeground.value || activitySurfaceHidden) {
-                jobs += scheduleRealtimeBackgroundReconcileLocked(trigger.trigger)
+            if (serverId == null || !rowPositionOnLocked()) {
+                if (rowRereadPending.keys.any { it !in rowRereadInFlight }) scheduleRowRereadFlushLocked()
+                return
+            }
+            // Nobody can see the list (the background, or a hidden list that does not own the badge):
+            // the list read it owes on the return or the show stands for these rows; an audit is not
+            // judged (web: a hidden page reads nothing).
+            if (!appForeground.value || (activitySurfaceHidden && !listOwnsBadgeLocked())) {
+                if (audit) {
+                    ready.forEach { (_, entry) -> recordAuditNotJudgedLocked(entry, ActivityAuditNotJudgedCause.PageHidden) }
+                } else {
+                    jobs += scheduleRealtimeBackgroundReconcileLocked(trigger.trigger)
+                }
+                if (rowRereadPending.isNotEmpty()) scheduleRowRereadFlushLocked()
             } else {
+                if (rowRereadPending.keys.any { it !in rowRereadInFlight }) scheduleRowRereadFlushLocked()
+                val ids = ready.map { it.first }
                 rowRereadInFlight += ids
-                revision = rowReadRevision
-                request = Triple(serverId, ids, trigger)
+                request =
+                    ActivityRowReadRequest(
+                        serverId = serverId,
+                        ready = ready,
+                        trigger = trigger,
+                        audit = audit,
+                        revisions = ids.associateWith { rowReadRevisions[it] ?: 0L }
+                    )
             }
         }
         jobs.forEach(Job::start)
-        val (serverId, ids, trigger) = request ?: return
+        val read = request ?: return
         diagnosticsLogger(
-            "activity_row_reread phase=start ids=${ids.size} trigger=${trigger.trigger.wireValue} asks=${trigger.coalesced}"
+            "activity_row_reread phase=start ids=${read.ids.size} trigger=${read.trigger.trigger.wireValue} " +
+                "asks=${read.trigger.coalesced} audit=${read.audit}"
         )
         val result =
             try {
-                withInboxFetchReason(InboxFetchReason.PositionReread, trigger) {
-                    inboxRepository.loadRows(ServerId(serverId), ids)
+                withInboxFetchReason(
+                    if (read.audit) InboxFetchReason.PositionAudit else InboxFetchReason.PositionReread,
+                    read.trigger
+                ) {
+                    inboxRepository.loadRows(ServerId(read.serverId), read.ids)
                 }
-            } catch (cancelled: CancellationException) {
-                synchronized(realtimeOwnerLock) { if (generation == rowRereadGeneration) rowRereadInFlight -= ids.toSet() }
-                throw cancelled
+            } finally {
+                synchronized(realtimeOwnerLock) {
+                    if (generation == rowRereadGeneration) rowRereadInFlight -= read.ids.toSet()
+                }
             }
         synchronized(realtimeOwnerLock) {
-            if (generation != rowRereadGeneration || _state.value.ownerServerId != serverId) return
-            rowRereadInFlight -= ids.toSet()
-            diagnosticsLogger("activity_row_reread phase=finish ids=${ids.size} result=${result.activityDiagnosticsResult()}")
+            val backend = (result as? DataResult.Content)?.data?.inboxBackend
+            if (generation != rowRereadGeneration || _state.value.ownerServerId != read.serverId) {
+                read.ready.forEach { (_, entry) -> recordAuditNotJudgedLocked(entry, ActivityAuditNotJudgedCause.ServerSwitched, backend) }
+                return
+            }
+            diagnosticsLogger(
+                "activity_row_reread phase=finish ids=${read.ids.size} result=${result.activityDiagnosticsResult()} " +
+                    "backend=${backend ?: "-"}"
+            )
+            // A read of a row changed under it: that row's answer may predate it; ask again (an audit is
+            // not judged). The other rows' answers stand.
+            val changed = read.ids.filterTo(mutableSetOf()) { (rowReadRevisions[it] ?: 0L) != read.revisions[it] }
+            val asked = read.ready.filter { (scopeId, _) -> scopeId !in changed }
+            read.ready.filter { (scopeId, _) -> scopeId in changed }.forEach { (scopeId, entry) ->
+                if (entry.audit != null) {
+                    recordAuditNotJudgedLocked(entry, ActivityAuditNotJudgedCause.ReadChanged, backend)
+                } else {
+                    requestRowRereadLocked(scopeId, entry.trigger.trigger)
+                }
+            }
             when {
                 !rowPositionOnLocked() -> Unit
-                // A read changed under it: the answer may predate it; ask again.
-                revision != rowReadRevision -> ids.forEach { requestRowRereadLocked(it, trigger.trigger) }
-                result is DataResult.Content -> applyRowAnswerLocked(ids, result.data.items)?.let(jobs::add)
-                result is DataResult.Empty -> applyRowAnswerLocked(ids, emptyList())?.let(jobs::add)
-                // A failed row read falls back to the list read.
-                else -> jobs += scheduleRealtimeBackgroundReconcileLocked(trigger.trigger)
+                asked.isEmpty() -> Unit
+                result is DataResult.Content -> applyRowAnswerLocked(asked, result.data.items, backend)?.let(jobs::add)
+                result is DataResult.Empty -> applyRowAnswerLocked(asked, emptyList(), backend)?.let(jobs::add)
+                // A failed row read falls back to the list read (an audit is not judged).
+                read.audit -> asked.forEach { (_, entry) -> recordAuditNotJudgedLocked(entry, ActivityAuditNotJudgedCause.RequestFailed) }
+                else -> jobs += scheduleRealtimeBackgroundReconcileLocked(read.trigger.trigger)
             }
             if (rowRereadPending.isNotEmpty()) scheduleRowRereadFlushLocked()
         }
@@ -2327,34 +2503,59 @@ class SharedActivityStore internal constructor(
     }
 
     /**
-     * A row re-read's answer (web `applyRowAnswer`): each row still listed merges by the per-row rule
-     * (never added, never moved off the list). The route answers only the rows that still qualify for
-     * the All list, so an asked-for row the answer leaves out is one the list no longer has: the list
-     * is re-read ([InboxRefreshTrigger.RowMissing]).
+     * Web `auditRowMoved`: an audited row moved before its answer only if what the audit judges changed
+     * (its position, unread count or @). A refresh that rebuilds the row with the same values is not a move.
      */
-    private fun applyRowAnswerLocked(asked: List<String>, answered: List<InboxItem>): Job? {
+    private fun InboxItem.auditMovedFrom(audited: InboxItem): Boolean =
+        audited.latestActivitySeq != latestActivitySeq || audited.unreadCount != unreadCount || audited.hasMention != hasMention
+
+    /**
+     * A row re-read's answer (web `applyRowAnswer`): each asked row still listed merges by the per-row
+     * rule (never added, never moved off the list), judged first (the drift check, scope=row; an
+     * audit's row as the patch left it). The route answers only the rows that still qualify for the
+     * All list, so an asked-for row the answer leaves out is one the list no longer has: the list is
+     * re-read ([InboxRefreshTrigger.RowMissing], through the throttled single-flight background read).
+     * A row the read did not ask for is left as shown. An audited row the answer does not judge is
+     * recorded not judged (`row_missing`: left out; `row_unlisted`: answered, no longer listed here).
+     */
+    private fun applyRowAnswerLocked(
+        asked: List<Pair<String, ActivityRowRereadPending>>,
+        answered: List<InboxItem>,
+        backend: String?
+    ): Job? {
         val current = _state.value
         val snapshot = current.snapshot ?: return null
         val serverId = current.ownerServerId ?: return null
+        val askedByScope = asked.toMap()
         val owner = overlayOwner(current)
         val served =
             answered
-                .filter { it.isActivityPositionRow() }
+                .filter { it.isActivityPositionRow() && it.activityRowScopeId() in askedByScope }
                 .withActivityThreadTaskProjection(serverId, tasksDataStore)
                 .reconcileLocallyClearedUnreadItems(current.selectedFilter, owner)
                 .reconcileLocallyDoneItems(owner)
                 .items
         val returned = answered.mapNotNullTo(mutableSetOf()) { it.activityRowScopeId() }
         val listed = snapshot.items.mapNotNullTo(mutableSetOf()) { it.activityRowScopeId() }
-        val missing = asked.any { it !in returned && it in listed }
+        val missing = askedByScope.keys.any { it !in returned && it in listed }
         val servedByKey = served.associateBy(InboxItem::key)
+        val judged = mutableSetOf<String>()
+        val followups = mutableListOf<Pair<String, InboxItem>>()
         var delta = 0
         val moved = mutableSetOf<String>()
         val items =
             snapshot.items.map { item ->
                 val row = servedByKey[item.key]
                 if (row == null || !item.isActivityPositionRow()) return@map item
+                val scopeId = item.activityRowScopeId() ?: return@map item
+                val entry = askedByScope[scopeId] ?: return@map item
+                judged += scopeId
                 val next = mergeServedRowLocked(item, row, base = row)
+                val audit = entry.audit?.let { audited -> ActivityRowAudit(moved = item.auditMovedFrom(audited), followup = entry.followup) }
+                val (check, followup) =
+                    inPlaceDriftCheck.checkRow(item, row, entry.trigger.trigger, backend, audit, next.row, next.note)
+                check?.let { emitInPlaceCheckLocked(serverId, it) }
+                if (followup) followups += scopeId to next.row
                 delta += next.row.unreadCount - item.unreadCount
                 // A served row at a newer message than shown moves to its place by time.
                 if (!next.kept && next.row.activityRowTimeValue() != item.activityRowTimeValue()) moved += next.row.key
@@ -2382,10 +2583,66 @@ class SharedActivityStore internal constructor(
                 summarySource = "activity_row_reread"
             )
         }
+        asked.forEach { (scopeId, entry) ->
+            if (entry.audit != null && scopeId !in judged) {
+                recordAuditNotJudgedLocked(
+                    entry,
+                    if (scopeId in returned) ActivityAuditNotJudgedCause.RowUnlisted else ActivityAuditNotJudgedCause.RowMissing,
+                    backend
+                )
+            }
+        }
+        followups.forEach { (scopeId, row) -> scheduleAuditFollowupLocked(scopeId, row) }
         return if (missing) scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.RowMissing) else null
     }
 
-    private data class ActivityRowMerge(val row: InboxItem, val kept: Boolean)
+    /**
+     * Web `scheduleAuditFollowup`: an audit whose answer was behind [row] reads it once more,
+     * [ActivityAuditFollowupDelayMillis] later (then the usual row read delay), judged in full.
+     */
+    private fun scheduleAuditFollowupLocked(scopeId: String, row: InboxItem) {
+        if (scopeId in auditFollowups) return
+        val generation = rowRereadGeneration
+        val serverId = _state.value.ownerServerId
+        val job =
+            scope.launch {
+                delay(ActivityAuditFollowupDelayMillis)
+                synchronized(realtimeOwnerLock) {
+                    if (generation != rowRereadGeneration) return@launch
+                    auditFollowups.remove(scopeId)
+                    val current =
+                        _state.value.snapshot?.items?.firstOrNull { it.isActivityPositionRow() && it.activityRowScopeId() == scopeId }
+                    when {
+                        current == null ->
+                            emitInPlaceCheckLocked(
+                                serverId,
+                                inPlaceDriftCheck.notJudged(row, ActivityAuditNotJudgedCause.RowUnlisted, detail = ";followup=1")
+                            )
+                        // A re-read already waiting for the row stands in for the follow-up.
+                        scopeId in rowRereadPending ->
+                            emitInPlaceCheckLocked(
+                                serverId,
+                                inPlaceDriftCheck.notJudged(current, ActivityAuditNotJudgedCause.SupersededByReread, detail = ";followup=1")
+                            )
+                        else -> {
+                            rowRereadPending[scopeId] =
+                                ActivityRowRereadPending(
+                                    trigger = InboxRefreshTriggerCount(InboxRefreshTrigger.PositionAudit),
+                                    audit = current,
+                                    followup = true,
+                                    serverId = serverId
+                                )
+                            scheduleRowRereadFlushLocked()
+                        }
+                    }
+                }
+            }
+        auditFollowups[scopeId] = ActivityAuditFollowup(job, row, serverId)
+    }
+
+    /** [note]: web `mergeServedRow`'s note, what the merge started from (the audit detail's `;merged=`). */
+    private data class ActivityRowMerge(val row: InboxItem, val kept: Boolean, val note: String = "")
+
 
     /**
      * One answered row ([served], after the store's read and Done holds) against the row shown
@@ -2401,7 +2658,16 @@ class SharedActivityStore internal constructor(
         val state = rowPositions.stateOf(current)
         // A local read hold on the row: the applied seqs it covers do not count again (web `withReadApplied`).
         val owner = overlayOwner()
-        val before = if (owner != null && readOverlay.contains(owner, current.key)) state.withAllAppliedRead() else state
+        val readHeld = owner != null && readOverlay.contains(owner, current.key)
+        val before = if (readHeld) state.withAllAppliedRead() else state
+        // Web `mergeServedRow`'s note (#triage:#244): what the merge started from, for the audit detail.
+        fun above(row: ActivityRowState) =
+            if (pa == null) emptyList() else row.applied.filter { isCanonicalActivitySeq(it.seq) && compareActivitySeq(it.seq, pa) > 0 }
+        val note =
+            ";kept_state=${if (rowPositions.keptStateValid(current)) 1 else 0};row_position=${state.position ?: "-"}" +
+                ";applied=${state.applied.size};above=${above(state).size}" +
+                ";above_counts=${above(state).count { it.counts }}/${above(before).count { it.counts }}" +
+                ";read_through=${if (readHeld) "all" else "-"}"
         val answer =
             ActivityRowAnswer(
                 unreadCount = served.unreadCount,
@@ -2415,7 +2681,7 @@ class SharedActivityStore internal constructor(
         // (identity, as web's `result.row === before`: an answer equal to it is still taken).
         if (result.row === before) {
             diagnosticsLogger("activity_row_position event=answer scopeId=$scopeId pa=${pa ?: "-"} result=kept")
-            return ActivityRowMerge(current, kept = true)
+            return ActivityRowMerge(current, kept = true, note = note)
         }
         rowPositions.keep(scopeId, result.row)
         val shown = current.latestActivitySeq?.takeIf(::isCanonicalActivitySeq)
@@ -2443,7 +2709,7 @@ class SharedActivityStore internal constructor(
             "activity_row_position event=answer scopeId=$scopeId pa=${pa ?: "-"} result=merged " +
                 "newer=$newer unread=${merged.unreadCount} mention=${merged.hasMention} reread=${result.reread}"
         )
-        return ActivityRowMerge(merged, kept = newer)
+        return ActivityRowMerge(merged, kept = newer, note = note)
     }
 
     /**
@@ -2506,7 +2772,7 @@ class SharedActivityStore internal constructor(
         val snapshot = current.snapshot ?: return null
         val rows = snapshot.items.filter { it.activityRowScopeId() == channelId && it.isActivityPositionRow() }
         if (rows.isEmpty()) return null
-        rowReadRevision += 1L
+        rowReadRevisions[channelId] = (rowReadRevisions[channelId] ?: 0L) + 1L
         val seq = maxReadSeq.takeIf { it >= 0L }?.toString().orEmpty()
         val cleared = mutableListOf<InboxItem>()
         val replaced = mutableMapOf<String, InboxItem>()
@@ -2587,19 +2853,53 @@ class SharedActivityStore internal constructor(
      * holds of newer rows): judges the rows patched in place against [served] and sends the checks.
      * Flag off, nothing was noted and nothing is sent.
      */
-    private fun checkInPlaceDriftLocked(current: SharedActivityState, served: List<InboxItem>) {
+    private fun checkInPlaceDriftLocked(current: SharedActivityState, served: List<InboxItem>, backend: String? = null) {
         if (inPlaceDriftCheck.isEmpty || current.selectedFilter != InboxFilter.All) return
         val serverId = current.ownerServerId
         if (serverId == null || !inboxInPlaceEnabled(serverId)) {
             inPlaceDriftCheck.clear()
             return
         }
-        for (check in inPlaceDriftCheck.check(current.items, served)) {
+        val rowPosition = rowPositionOnLocked()
+        for (check in inPlaceDriftCheck.check(current.items, served, rowPosition, backend)) {
+            if (rowPosition) {
+                emitInPlaceCheckLocked(serverId, check)
+                continue
+            }
             diagnosticsLogger(
                 "activity_inplace_check entity=${check.entityId} trigger=${check.trigger.wireValue} " +
                     "outcome=${check.outcome.wireValue} result=${check.result}"
             )
             inPlaceCheckSink(serverId, check)
+        }
+    }
+
+    /**
+     * `inbox_row_position_v1`, web `reportListRowsLowered` (inboxListRowLowered.ts, #triage:#244): a
+     * list answer that leaves a row's unread below what the answer served for it sends one
+     * `activity:list_row_lowered` naming the first step of the answer's application that lowered it.
+     */
+    private fun reportListRowsLoweredLocked(
+        served: List<InboxItem>,
+        before: List<InboxItem>,
+        stages: List<Pair<ActivityListRowStep, List<InboxItem>>>
+    ) {
+        val serverId = _state.value.ownerServerId ?: return
+        val (reason, trigger) = loadFetchLabel
+        listRowsLowered(
+            served = served,
+            before = before,
+            stages = stages,
+            reason = reason?.wireValue,
+            trigger = trigger?.trigger?.wireValue,
+            rowPosition = true,
+            nowMillis = nowEpochMillis()
+        ).forEach { lowered ->
+            diagnosticsLogger(
+                "activity_list_row_lowered step=${lowered.step.wireValue} before=${lowered.before} " +
+                    "served=${lowered.served} after=${lowered.after}"
+            )
+            listRowLoweredSink(serverId, lowered)
         }
     }
 
@@ -2625,10 +2925,21 @@ class SharedActivityStore internal constructor(
     private suspend fun applyRealtimeSummaryEvent(
         event: RealtimeEvent,
         activeConversationId: String?,
-        activityMuted: Boolean = false
+        activityMuted: Boolean = false,
+        primarySurfaceVisible: Boolean = true
     ) {
         if (event is PerReceiverReadStateChanged) {
             applyPerReceiverReadStateChanged(event)
+            return
+        }
+        val ownsBadge = synchronized(realtimeOwnerLock) { listOwnsBadgeLocked() }
+        // Off the primary surface the shell used to send nothing; it still does nothing here unless
+        // this list owns the badge (`inbox_row_position_v1`): then every live event reaches it.
+        if (!primarySurfaceVisible && !ownsBadge) return
+        if (ownsBadge && event.rereadsHiddenOwnedList(_state.value.ownerServerId)) {
+            // An event the +1 path cannot count (the summary read it used to make is suppressed):
+            // the list re-reads itself, throttled (hidden: the hidden window).
+            synchronized(realtimeOwnerLock) { scheduleRealtimeBackgroundReconcileLocked(event.inboxRefreshTrigger()) }.start()
             return
         }
         val current = _state.value
@@ -2666,7 +2977,7 @@ class SharedActivityStore internal constructor(
             }
         if (increment <= 0) return
         reduceState(
-            SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId, activityMuted),
+            SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId, activityMuted, primarySurfaceVisible),
             current.copy(
                 snapshot =
                     snapshot.copy(
@@ -3002,6 +3313,7 @@ class SharedActivityStore internal constructor(
                     return@synchronized null
                 }
                 val generation = ++loadGeneration
+                loadFetchLabel = fetchReason to fetchTrigger
                 val startedAtMillis = nowMillis()
                 if (refresh) {
                     lastResetLoadStartedAtMillis = startedAtMillis
@@ -3609,6 +3921,12 @@ class SharedActivityStore internal constructor(
             }
         acceptCanonicalReplyThreadFacts(nextState)
         val freshAnswer = !keepShownOverStale && (result as? DataResult.Content)?.data?.staleReason == null
+        // `inbox_row_position_v1`: a fresh first-window answer of All is what lets the list own the badge.
+        if (!append && freshAnswer && current.selectedFilter == InboxFilter.All &&
+            (result is DataResult.Content || result is DataResult.Empty)
+        ) {
+            freshListServerId = current.ownerServerId
+        }
         reduceState(
             intent = intent,
             nextState = nextState,
@@ -3771,13 +4089,13 @@ class SharedActivityStore internal constructor(
                 is DataResult.Content -> {
                     val projectedData = projectedContentData
                         ?: error("content projection missing")
-                    val pageItems =
+                    val locallyRead =
                         projectedData.items
                             .withActivityThreadTaskProjection(result.data.server.id.value, tasksDataStore)
                             .reconcileLocallyClearedUnreadItems(current.selectedFilter, owner)
-                            .reconcileLocallyDoneItems(owner)
+                    val pageItems = locallyRead.reconcileLocallyDoneItems(owner)
                     // A remembered (`X-Raft-Stale`) answer can be minutes old: it judges nothing.
-                    if (!append && result.data.staleReason == null) checkInPlaceDriftLocked(current, pageItems.items)
+                    if (!append && result.data.staleReason == null) checkInPlaceDriftLocked(current, pageItems.items, result.data.inboxBackend)
                     beforeRealtimeHighWaterFold()
                     val realtimeReconcile =
                         reconcileRealtimeHighWater(
@@ -3800,6 +4118,18 @@ class SharedActivityStore internal constructor(
                         } else {
                             realtimeReconcile.items to 0
                         }
+                    if (!append && rowPositionOnLocked() && result.data.staleReason == null) {
+                        reportListRowsLoweredLocked(
+                            served = projectedData.items,
+                            before = current.items,
+                            stages =
+                                listOf(
+                                    ActivityListRowStep.LocalRead to locallyRead.items,
+                                    ActivityListRowStep.Done to pageItems.items,
+                                    ActivityListRowStep.Merge to answerItems
+                                )
+                        )
+                    }
                     val fetchedItems =
                         if (append) {
                             (current.items + answerItems).dedupeActivityItems()
@@ -5749,7 +6079,13 @@ sealed interface SharedActivityIntent {
         val event: RealtimeEvent,
         val activeConversationId: String?,
         /** See [ApplyRealtimeEvent.activityMuted]; read only with `inbox_row_position_v1` on. */
-        val activityMuted: Boolean = false
+        val activityMuted: Boolean = false,
+        /**
+         * The shell's primary surface is visible. Off it, the event is applied only by a list that
+         * owns the badge (`inbox_row_position_v1`, [SharedActivityStore.ownsBadgeFor]); otherwise it
+         * is dropped, as when the shell did not send it.
+         */
+        val primarySurfaceVisible: Boolean = true
     ) : SharedActivityIntent
 
     /**
@@ -5846,6 +6182,18 @@ internal fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
     }
 
 private fun RealtimeEvent.refreshesActivity(): Boolean = affectsActivityContent()
+
+/**
+ * `inbox_row_position_v1`: an event a hidden list that owns the badge cannot count by its +1 path
+ * (a new DM, an `activity:changed` for its server, a Home refresh): it re-reads itself instead.
+ */
+private fun RealtimeEvent.rereadsHiddenOwnedList(ownerServerId: String?): Boolean =
+    when (this) {
+        is DirectMessageCreated -> true
+        is ActivityChanged -> ownerServerId != null && serverId.value == ownerServerId
+        is RealtimeRefreshRequired -> scope == RealtimeRefreshScope.Home
+        else -> false
+    }
 
 private fun InboxItem.replyThreadPrewarmKey(serverId: String): ActivityReplyThreadPrewarmKey? {
     if (kind != InboxItemKind.Thread) return null
