@@ -90,7 +90,8 @@ fun RaftWindowDialog(
                 .fillMaxSize()
                 .then(if (properties.drawScrim) Modifier.background(RaftTheme.scrim) else Modifier),
         ) {
-            content()
+            // Its own window: a head in it is no pane's of the row under it.
+            RaftPaneGridOutsideRow(content)
         }
     }
 }

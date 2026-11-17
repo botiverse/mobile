@@ -208,7 +208,8 @@ fun RaftPaneGridColumnHead(
     val tag = RAFT_PANE_GRID_HEAD_TEST_TAG + (cellId ?: title)
     // In a column clipped under its minimum the cell is laid out wider than what shows: the head takes only what shows.
     val visible = LocalRaftPaneGridVisibleWidth.current
-    BoxWithConstraints(modifier.fillMaxWidth().height(metrics.headHeight).background(colors.layerCanvas)) {
+    // The pane's end fade passes the head by (raftPaneGridFitHead; its width is fitted here, by `visible`, too).
+    BoxWithConstraints(modifier.raftPaneGridFitHead().fillMaxWidth().height(metrics.headHeight).background(colors.layerCanvas)) {
         val headWidth = if (visible != null) minOf(maxWidth, visible) else maxWidth
         val start = if (lead != null) metrics.barEdgeInset else 16.dp
         val end = metrics.barEdgeInset
