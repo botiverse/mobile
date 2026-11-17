@@ -5,6 +5,7 @@ import build.raft.app.data.RaftAvatarMountedRenderDescriptor
 import build.raft.app.data.parseRaftAvatarMountedRenderModel
 import build.raft.app.data.percentDecodeStrict
 import build.raft.app.data.raftAvatarContentIdentity
+import build.raft.app.network.raftRewriteRetiredContentHost
 import build.raft.app.raftCanonicalIdentityBytes
 import build.raft.app.raftSha256Hex
 import coil3.key.Keyer
@@ -19,6 +20,12 @@ import coil3.request.Options
  * This is the CMP replacement of the Kuikly image adapters (Android `SlockKuiklyImageAdapter`,
  * iOS `KuiklyRenderComponentExpandHandler.hr_setImageWithUrl`): same routes, same order —
  * managed avatar model first, then inline SVG, bundled `assets://`, then http(s).
+ *
+ * [raftImageSourceOf] is also the single place a stored image URL on the retired production
+ * content host is moved to the CDN host ([raftRewriteRetiredContentHost]): every http(s) image
+ * (attachment thumbnails, inline images, avatars, Markdown images) from the local database, cached
+ * snapshots or server payloads is resolved here, and the cache key is derived from the rewritten
+ * URL, so an old and a new payload of the same object share one cache entry.
  */
 internal sealed interface RaftImageSource {
     /** Memory/disk cache identity (task #403: content fingerprint; Coil appends render params). */
@@ -83,7 +90,11 @@ internal fun raftImageSourceOf(model: String): RaftImageSource? {
         return if (path.isEmpty()) null else RaftImageSource.BundledAsset(path)
     }
     val lower = raw.lowercase()
-    if (lower.startsWith("http://") || lower.startsWith("https://")) return RaftImageSource.Network(raw)
+    if (lower.startsWith("http://") || lower.startsWith("https://")) {
+        // Stored payloads from before the R2 domain move still carry `content.raft.build`; load (and
+        // key the memory/disk cache by) the CDN URL the server hands out today for the same object.
+        return RaftImageSource.Network(raftRewriteRetiredContentHost(raw))
+    }
     return null
 }
 
