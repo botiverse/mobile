@@ -10,10 +10,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
@@ -56,6 +54,9 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.atomicfu.locks.synchronized
 import kotlin.math.roundToInt
 
@@ -244,11 +245,13 @@ private fun RaftKatexFonts.toLatexFontFamilies(bytes: RaftKatexFontBytes): Latex
  */
 private object RaftMathFontBytes {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    var loaded: RaftKatexFontBytes? by mutableStateOf(null)
-        private set
+    // A StateFlow, not Compose state: the read finishes on Default, and composition picks the value
+    // up on main through collectAsState.
+    private val bytes = MutableStateFlow<RaftKatexFontBytes?>(null)
+    val loaded: StateFlow<RaftKatexFontBytes?> = bytes.asStateFlow()
 
     private val load: Deferred<Unit> by lazy {
-        scope.async { loaded = loadRaftKatexFontBytes() }
+        scope.async { bytes.value = loadRaftKatexFontBytes() }
     }
 
     fun start() {
@@ -270,7 +273,7 @@ internal suspend fun awaitRaftMathFonts() {
 private fun rememberRaftMathConfig(textSize: TextUnit, color: Color): LatexConfig? {
     val fonts = rememberRaftKatexFonts()
     LaunchedEffect(Unit) { RaftMathFontBytes.start() }
-    val bytes = RaftMathFontBytes.loaded ?: return null
+    val bytes = RaftMathFontBytes.loaded.collectAsState().value ?: return null
     return remember(fonts, bytes, textSize, color) {
         LatexConfig(
             fontSize = textSize * RAFT_MATH_FONT_SCALE,

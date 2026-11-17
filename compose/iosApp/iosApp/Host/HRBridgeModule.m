@@ -6149,23 +6149,28 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (void)raft_finishAttachmentPicker:(NSDictionary *)result {
-    RaftBridgeCallback callback = self.raft_attachmentPickerCallback;
-    NSString *channelId = self.raft_attachmentPickerChannelId;
-    NSArray *files = [result[@"files"] isKindOfClass:NSArray.class] ? result[@"files"] : @[];
-    self.raft_attachmentPickerCallback = nil;
-    self.raft_attachmentPickerChannelId = nil;
-    self.raft_attachmentPickerCompressImages = NO;
-    RaftDiagnosticsRecord(
-        @"info",
-        @"SlockKuiklyAttachment",
-        [NSString stringWithFormat:@"picker_finish code=%@ files=%lu channelIdPresent=%@",
-                                   result[@"code"] ?: @0,
-                                   (unsigned long)files.count,
-                                   channelId.length > 0 ? @"true" : @"false"]
-    );
-    if (callback) {
-        RaftBridgeRunOnMain(^{ callback(result ?: @{}); });
-    }
+    // Called from the camera, file-copy and document-picker queues too. The picker properties are
+    // nonatomic and the main thread reads and sets them, so read and clear them on main only. Until
+    // this runs, a new picker request still sees the old callback and gets "busy".
+    RaftBridgeRunOnMain(^{
+        RaftBridgeCallback callback = self.raft_attachmentPickerCallback;
+        NSString *channelId = self.raft_attachmentPickerChannelId;
+        NSArray *files = [result[@"files"] isKindOfClass:NSArray.class] ? result[@"files"] : @[];
+        self.raft_attachmentPickerCallback = nil;
+        self.raft_attachmentPickerChannelId = nil;
+        self.raft_attachmentPickerCompressImages = NO;
+        RaftDiagnosticsRecord(
+            @"info",
+            @"SlockKuiklyAttachment",
+            [NSString stringWithFormat:@"picker_finish code=%@ files=%lu channelIdPresent=%@",
+                                       result[@"code"] ?: @0,
+                                       (unsigned long)files.count,
+                                       channelId.length > 0 ? @"true" : @"false"]
+        );
+        if (callback) {
+            callback(result ?: @{});
+        }
+    });
 }
 
 - (void)raft_finishAttachmentExport:(NSDictionary *)result {

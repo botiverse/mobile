@@ -8243,11 +8243,14 @@ private fun SharedThreadRouteContentContent(
             if (refresh) refreshOfflineStandIn(reason, current)
         }
         val hostNetworkEvents = RaftHostNetworkEvents(sharedStores.eventBus)
-        val networkSubscription = hostNetworkEvents.addAuthoritativeOnlineListener { onRecovered("network_recovered") }
+        // The bus calls listeners on the posting thread (on iOS the realtime host's queue): move to the
+        // page's scope on main, where the gate's other caller (onPayloadSettled) runs.
+        val networkSubscription =
+            hostNetworkEvents.addAuthoritativeOnlineListener { coroutineScope.launch { onRecovered("network_recovered") } }
         val realtimeSubscription =
             realtimeEvents.addListener { eventData ->
                 if (isRealtimeTransportConnectedEvent(eventData, latestCurrentSession?.currentServerId)) {
-                    onRecovered("realtime_connected")
+                    coroutineScope.launch { onRecovered("realtime_connected") }
                 }
             }
         onDispose {

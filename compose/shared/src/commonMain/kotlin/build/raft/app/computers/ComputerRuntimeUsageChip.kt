@@ -179,7 +179,9 @@ internal fun rememberComputerRuntimeAuthController(
     DisposableEffect(controller, realtime) {
         if (controller == null) return@DisposableEffect onDispose {}
         val sink = RealtimeGuardedActiveThreadSink { _, event -> controller.onRealtime(event) }
-        realtime?.registerGuardedActiveThreadSink(sink)
+        // On main: the controller and its sign-in session write Compose state and plain fields that
+        // the dialog also writes.
+        realtime?.registerGuardedActiveThreadSink(sink, onMain = true)
         onDispose {
             realtime?.unregisterGuardedActiveThreadSink(sink)
             controller.dispose()

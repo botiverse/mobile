@@ -383,6 +383,26 @@ class ServerRuntimeCatalogApiTest {
             assertEquals(emptyList(), kept)
         }
 
+    @Test
+    fun twoServersLoadingTogetherEachKeepTheirCatalog() =
+        runTest {
+            // Production loads run in parallel off main; the registry's publish is one locked
+            // read-modify-write, so the second server never overwrites the first one's entry.
+            val names = RaftRuntimeCatalogNameRegistry()
+            val api = PerServerApi().apply {
+                bodies["s1"] = ServerProjection
+                bodies["s2"] = ContractExample
+            }
+            val repository =
+                SharedServerRuntimeCatalogRepository(api, backgroundScope, cache = null, scopeProvider = { null }, names = names)
+            val s1 = async { repository.load("s1", DataRequestPriority.Visible) }
+            val s2 = async { repository.load("s2", DataRequestPriority.Visible) }
+            s1.await()
+            s2.await()
+            assertEquals(listOf("claude", "copilot", "qwen", "qoder", "codex"), names.catalog("s1")?.runtimes?.map { it.id })
+            assertEquals(listOf("kimi-sdk"), names.catalog("s2")?.runtimes?.map { it.id })
+        }
+
     private class PerServerApi : RaftServerRuntimeCatalogApi {
         val bodies = mutableMapOf<String, String>()
 
