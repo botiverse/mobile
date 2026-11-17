@@ -1027,6 +1027,34 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
+    /**
+     * One debounced pull (trigger `realtime`) for the realtime events Activity cannot settle from its
+     * own read: a live message for a row it lacks, a `notification:retract` ([requestRealtimeSyncPull]).
+     */
+    private val syncRealtimePull: RaftSyncRealtimePull by lazy {
+        RaftSyncRealtimePull(
+            scope = threadSendScope,
+            pull = { scope, trigger ->
+                if (currentSyncScope(scope.serverId) == scope) launchSyncChangesPull(scope.serverId, trigger = trigger) else null
+            },
+            isForeground = { RaftStaleReadRecoverySignals.foreground.value },
+            logger = sharedInfoLogger("SlockSync", "sync_changes"),
+        )
+    }
+
+    /**
+     * Activity could not settle a realtime event ([reason]) from its own read: one debounced pull of
+     * [serverId] ([RaftSyncRealtimePull]). Only for a server a shell has selected, signed in, with the
+     * inbox_row capability on (without it the pull carries no Activity rows). Called under the
+     * Activity store's realtime lock: it only queues.
+     */
+    internal fun requestRealtimeSyncPull(serverId: String, reason: String) {
+        val scope = currentSyncScope(serverId) ?: return
+        if (scopesForServer(scope.serverId).isEmpty()) return
+        if (!serverFeatureFlags.isEnabled(serverId, SYNC_INBOX_ROWS_FEATURE_FLAG_KEY)) return
+        syncRealtimePull.request(scope, reason)
+    }
+
     private val syncPullJobsLock = SynchronizedObject()
     private val syncPullJobs = mutableMapOf<String, MutableSet<Job>>()
 
@@ -1044,6 +1072,7 @@ internal class RaftSharedStoreProvider private constructor(
         cancelled.forEach { it.cancel() }
         syncTransientRetry.cancelWhere(reason = "server_unselected") { scopesForServer(it.serverId).isEmpty() }
         syncRetryAfter.cancelWhere(reason = "server_unselected") { scopesForServer(it.serverId).isEmpty() }
+        syncRealtimePull.cancelWhere(reason = "server_unselected") { scopesForServer(it.serverId).isEmpty() }
     }
 
     private val syncPullBindingGate = RaftSyncPullBindingGate()
@@ -1074,7 +1103,8 @@ internal class RaftSharedStoreProvider private constructor(
     /**
      * Pulls [serverId]'s changes since its cursor ([RaftSyncChangesEngine]) when it is a server a shell
      * has selected (other servers keep their summary fetch).
-     * Triggers: socket (re)connect, foreground return, server select. False when skipped.
+     * Triggers: socket (re)connect, foreground return, server select, realtime events Activity cannot
+     * settle ([requestRealtimeSyncPull]). False when skipped.
      *
      * [onFailed] runs when the pull failed and dropped the cursor
      * ([RaftSyncPullResult.Failed.needsFullRefetchFallback]): the caller's full-list refetch it stood
@@ -1091,12 +1121,24 @@ internal class RaftSharedStoreProvider private constructor(
         jitterPull: Boolean = false,
         onFailed: (() -> Unit)? = null,
         transientRetry: Boolean = false,
-    ): Boolean {
-        val scope = currentSyncScope(serverId) ?: return false
-        if (scopesForServer(scope.serverId).isEmpty()) return false
+    ): Boolean = launchSyncChangesPull(serverId, trigger, jitterSnapshots, jitterPull, onFailed, transientRetry) != null
+
+    /** [requestSyncChangesPull], returning the pull's job (null when skipped). */
+    private fun launchSyncChangesPull(
+        serverId: String,
+        trigger: String,
+        jitterSnapshots: Boolean = false,
+        jitterPull: Boolean = false,
+        onFailed: (() -> Unit)? = null,
+        transientRetry: Boolean = false,
+    ): Job? {
+        val scope = currentSyncScope(serverId) ?: return null
+        if (scopesForServer(scope.serverId).isEmpty()) return null
         // A normal trigger pulling first makes a waiting retry moot (#proj-mobile:#112).
         if (!transientRetry) syncTransientRetry.onTriggerPull(scope)
         syncRetryAfter.onTriggerPull(scope)
+        // It reads after every realtime hint so far: a waiting realtime pull is moot too.
+        syncRealtimePull.onTriggerPull(scope)
         val job =
             threadSendScope.launch(start = CoroutineStart.LAZY) {
                 val result = syncChangesEngine.pull(scope, trigger, jitterSnapshots, jitterPull)
@@ -1132,7 +1174,7 @@ internal class RaftSharedStoreProvider private constructor(
         synchronized(syncPullJobsLock) { syncPullJobs.getOrPut(scope.serverId) { mutableSetOf() } += job }
         job.invokeOnCompletion { synchronized(syncPullJobsLock) { syncPullJobs[scope.serverId]?.remove(job) } }
         job.start()
-        return true
+        return job
     }
 
     private fun syncServerMembersStores(serverId: String): List<SharedServerMembersStore> {
@@ -1432,6 +1474,7 @@ internal class RaftSharedStoreProvider private constructor(
                     reconnectRefetchJitter.reset(reason = if (context == null) "signed_out" else "binding_changed")
                     syncTransientRetry.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
                     syncRetryAfter.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
+                    syncRealtimePull.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
                     allServerMembersStores().forEach { store ->
                         store.retireAccountData(
                             successorEnvironmentId = context?.environmentId,
@@ -1769,6 +1812,7 @@ internal class RaftSharedStoreProvider private constructor(
                 syncCursorStore.clearServer(grant.serverId, lostAccountId)
                 syncTransientRetry.cancelWhere(reason = "server_access_lost") { it.serverId == grant.serverId }
                 syncRetryAfter.cancelWhere(reason = "server_access_lost") { it.serverId == grant.serverId }
+                syncRealtimePull.cancelWhere(reason = "server_access_lost") { it.serverId == grant.serverId }
                 // #45: that server's recent searches and frequent people / channels.
                 searchPersonalizationRepository.dropServer(grant.serverId, lostAccountId, nowMillis = defaultNowMillis())
                 // Offline resources, Home hints, Activity pages, notification preferences, reply windows
@@ -2901,6 +2945,7 @@ internal class RaftSharedStoreProvider private constructor(
                 inPlaceCheckSink = RaftClientTraceEvents::emitInPlaceCheck,
                 listRowLoweredSink = RaftClientTraceEvents::emitListRowLowered,
                 inboxRowPositionEnabled = ::inboxRowPositionEnabled,
+                onSyncPullHint = ::requestRealtimeSyncPull,
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
                         if (scope == RaftShellStoreScope.Legacy) homeActivityStoreScope else RaftStoreThreading.newScope()

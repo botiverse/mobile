@@ -120,7 +120,8 @@ internal fun activityStore(
     inPlaceCheckSink: (serverId: String, check: ActivityInPlaceCheck) -> Unit = { _, _ -> },
     listRowLoweredSink: (serverId: String, lowered: ActivityListRowLowered) -> Unit = { _, _ -> },
     inboxRowPositionEnabled: (serverId: String) -> Boolean = { false },
-    rowRereadDelayMillis: Long = ActivityRowRereadDelayMillis
+    rowRereadDelayMillis: Long = ActivityRowRereadDelayMillis,
+    onSyncPullHint: (serverId: String, reason: String) -> Unit = { _, _ -> }
 ): SharedActivityStore =
     SharedActivityStore(
         authStore = authStore,
@@ -165,7 +166,8 @@ internal fun activityStore(
         rowRereadDelayMillis = rowRereadDelayMillis,
         inPlaceReconcileIntervalMillis = inPlaceReconcileIntervalMillis,
         inPlaceCheckSink = inPlaceCheckSink,
-        listRowLoweredSink = listRowLoweredSink
+        listRowLoweredSink = listRowLoweredSink,
+        onSyncPullHint = onSyncPullHint
     )
 
 internal class FakeInboxRepository(
