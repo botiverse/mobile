@@ -8761,6 +8761,20 @@ internal class SharedThreadStore(
 
     /** One-shot Mark as Unread notices (Nothing to mark), shown by the page as a toast. */
     val readToggleNotices: SharedFlow<RaftReadToggleNotice> = _readToggleNotices.asSharedFlow()
+    private val _jumpFailures = MutableSharedFlow<ThreadJumpFailure>(extraBufferCapacity = 4)
+
+    /**
+     * One-shot: a jump to a message that had to load the messages around it ([jumpToMessage]) could
+     * not load them. The page shows the error toast (with the failed request's trace ID) and offers
+     * the jump again. A jump replaced by a newer one, or by leaving the conversation, is not a failure.
+     */
+    val jumpFailures: SharedFlow<ThreadJumpFailure> = _jumpFailures.asSharedFlow()
+
+    /** [jumpToLatest] is loading the canonical tail: a second call while it does starts no second request. */
+    private var latestJumpInFlight = false
+
+    /** The target of the non-pill jump loading around it now ([jumpToMessageOutsidePill]): a repeat tap is ignored. */
+    private var messageJumpInFlightTarget: String? = null
     private var lastRoutePayload: RaftThreadScreenPayload? = null
     /**
      * Hands 7e198cab: the local frame an anchored open did not show because it lacks the anchor
@@ -12817,7 +12831,22 @@ internal class SharedThreadStore(
      * walking `loadNewer()` one page at a time leaves the viewport at each rendered
      * window boundary and makes progress depend on another edge/drag callback.
      */
-    suspend fun jumpToLatest(): Boolean {
+    suspend fun jumpToLatest(): ThreadLatestJumpOutcome {
+        // One request per jump: further taps while it loads (the button shows it) join nothing and
+        // restart nothing; restarting would cancel the request already on the way.
+        if (latestJumpInFlight) {
+            diagnosticsLogger?.invoke("thread_jump_to_latest result=ignored reason=in_flight")
+            return ThreadLatestJumpOutcome.AlreadyLoading
+        }
+        latestJumpInFlight = true
+        try {
+            return jumpToLatestOnce()
+        } finally {
+            latestJumpInFlight = false
+        }
+    }
+
+    private suspend fun jumpToLatestOnce(): ThreadLatestJumpOutcome {
         val initial = _state.value.payload
         val tailRoute =
             (lastRoutePayload ?: initial.withoutThreadTimelineContent())
@@ -12830,7 +12859,7 @@ internal class SharedThreadStore(
             diagnosticsLogger?.invoke(
                 "thread_jump_to_latest result=already_at_tail messages=${initial.messages.size}"
             )
-            return true
+            return ThreadLatestJumpOutcome.Landed
         }
 
         // Retire the focused-window intent before the canonical tail fetch.
@@ -12858,11 +12887,20 @@ internal class SharedThreadStore(
             latest.resolveThreadRouteIdentity().canRetainThreadPageFor(tailRoute.resolveThreadRouteIdentity()) &&
                 latest.focusedMessageId == null &&
                 !latest.canLoadMoreAfter
+        // Another jump, a route change or an explicit refresh took the timeline meanwhile: this
+        // jump was replaced, it did not fail.
+        val outcome =
+            when {
+                reachedCanonicalTail -> ThreadLatestJumpOutcome.Landed
+                !staleToken.isCurrent(routeStaleToken) -> ThreadLatestJumpOutcome.Superseded
+                else -> ThreadLatestJumpOutcome.Failed
+            }
         diagnosticsLogger?.invoke(
-            "thread_jump_to_latest result=${if (reachedCanonicalTail) "applied" else "failed"} " +
-                "messages=${latest.messages.size} canLoadMoreAfter=${latest.canLoadMoreAfter}"
+            "thread_jump_to_latest result=${outcome.diagnosticName} " +
+                "messages=${latest.messages.size} canLoadMoreAfter=${latest.canLoadMoreAfter} " +
+                "errorCode=${latest.errorCode.orEmpty()}"
         )
-        return reachedCanonicalTail
+        return outcome
     }
 
     private suspend fun recoverRealtimeGap(serverSeq: Long) {
@@ -14274,10 +14312,14 @@ internal class SharedThreadStore(
             if (_state.value.unreadThreadJumpLoading) reduceState(_state.value.copy(unreadThreadJumpLoading = false))
         }
         val loaded = _state.value.payload.messages.any { it.id == target }
+        val superseded = !loaded && !staleToken.isCurrent(routeStaleToken)
         diagnosticsLogger?.invoke(
-            "thread_jump_to_message result=${if (loaded) "applied" else "failed"} target=${target.take(8)} " +
-                "messages=${_state.value.payload.messages.size}"
+            "thread_jump_to_message result=${if (loaded) "applied" else if (superseded) "superseded" else "failed"} " +
+                "target=${target.take(8)} messages=${_state.value.payload.messages.size}"
         )
+        if (!loaded && !superseded) {
+            _jumpFailures.tryEmit(ThreadJumpFailure(messageId = target, switchToTab = switchToTab, unreadThreadPill = true))
+        }
     }
 
     /**
@@ -14289,6 +14331,13 @@ internal class SharedThreadStore(
         val initial = _state.value.payload
         if (initial.messages.any { it.id == target }) {
             focusMessage(target, switchToTab)
+            return
+        }
+        // The same jump tapped again while its messages load: restarting it would cancel the request
+        // on the way and start over (the page shows the load at the top meanwhile). Another target
+        // replaces it, as a new search match or timeline row should.
+        if (messageJumpInFlightTarget == target) {
+            diagnosticsLogger?.invoke("thread_outline_jump result=ignored reason=in_flight target=${target.take(8)}")
             return
         }
         val nonce = nextThreadFocusedMessageRequestNonce()
@@ -14317,9 +14366,20 @@ internal class SharedThreadStore(
         pendingSecondaryTimelineApply = null
         val staleToken = advanceRouteStaleToken()
         diagnosticsLogger?.invoke("thread_outline_jump result=requested target=${target.take(8)} visibleMessages=${initial.messages.size}")
-        refresh(basePayload = focusRoute, staleToken = staleToken)
+        messageJumpInFlightTarget = target
+        try {
+            refresh(basePayload = focusRoute, staleToken = staleToken)
+        } finally {
+            if (messageJumpInFlightTarget == target) messageJumpInFlightTarget = null
+        }
         val loaded = _state.value.payload.messages.any { it.id == target }
-        diagnosticsLogger?.invoke("thread_outline_jump result=${if (loaded) "applied" else "failed"} target=${target.take(8)}")
+        val superseded = !loaded && !staleToken.isCurrent(routeStaleToken)
+        diagnosticsLogger?.invoke(
+            "thread_outline_jump result=${if (loaded) "applied" else if (superseded) "superseded" else "failed"} target=${target.take(8)}"
+        )
+        if (!loaded && !superseded) {
+            _jumpFailures.tryEmit(ThreadJumpFailure(messageId = target, switchToTab = switchToTab, unreadThreadPill = false))
+        }
     }
 
     private fun applyChannelProfile(intent: SharedThreadIntent.ApplyChannelProfile) {
@@ -14669,7 +14729,9 @@ internal class SharedThreadViewModel(
 
     suspend fun loadNewerPage(): ThreadNewerPageLoadOutcome = store.loadNewer()
 
-    suspend fun jumpToLatest(): Boolean = store.jumpToLatest()
+    suspend fun jumpToLatest(): ThreadLatestJumpOutcome = store.jumpToLatest()
+
+    fun jumpFailuresFlow(): Flow<ThreadJumpFailure> = store.jumpFailures
 
     fun setViewportFollowsLatest(followsLatest: Boolean) = store.setViewportFollowsLatest(followsLatest)
 
@@ -18389,3 +18451,26 @@ internal fun RawMessagePage.toEnteredPage(channelId: String, channelType: String
         channelType = channelType?.takeIf { it.isNotBlank() },
         replyCountByParentId = replyCountsByParentId,
     )
+
+/** How a [SharedThreadStore.jumpToLatest] ended, for the Back to Bottom button. */
+internal enum class ThreadLatestJumpOutcome(val diagnosticName: String) {
+    /** The canonical tail is on screen (it was already, or it loaded): scroll to the bottom. */
+    Landed("applied"),
+
+    /** The tail could not be loaded: the button comes back and the page says so. */
+    Failed("failed"),
+
+    /** Another jump, a route change or a refresh replaced this one: nothing to say. */
+    Superseded("superseded"),
+
+    /** A jump to the tail was already loading: this call started nothing. */
+    AlreadyLoading("ignored"),
+}
+
+/** A jump to [messageId] that could not load the messages around it ([SharedThreadStore.jumpFailures]). */
+internal data class ThreadJumpFailure(
+    val messageId: String,
+    val switchToTab: String?,
+    val unreadThreadPill: Boolean,
+)
+

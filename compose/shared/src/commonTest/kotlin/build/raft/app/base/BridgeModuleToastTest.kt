@@ -124,4 +124,39 @@ class BridgeModuleToastTest {
         assertNull(toast.description)
         assertNull(toast.actionLabel)
     }
+
+    @Test
+    fun errorToastWithRetryKeepsTheTraceIdAndItsCopyAction() {
+        val window = window(visible = true)
+        window.addOrigin(capabilities)
+        val traceId = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+        var retries = 0
+
+        bridge().errorToastWithRetry("Couldn't load these messages.", "Retry", onRetry = { retries += 1 }, traceId = traceId) {
+            RaftTraceIdToastStrings({ "Trace ID $it" }, "Copy", "Trace ID copied")
+        }
+
+        val toast = window.state.visible.single()
+        assertEquals("Couldn't load these messages.", toast.title)
+        assertEquals("Trace ID a1b2c3d4…", toast.description)
+        // The trace ID rule wins the toast's one action; the restored control is the retry.
+        assertEquals("Copy", toast.actionLabel)
+        assertEquals(0, retries)
+    }
+
+    @Test
+    fun errorToastWithRetryOffersRetryWhenNoResponseCarriedATraceId() {
+        val window = window(visible = true)
+        window.addOrigin(capabilities)
+        var retries = 0
+
+        bridge().errorToastWithRetry("Couldn't load these messages.", "Retry", onRetry = { retries += 1 }, traceId = null)
+
+        val toast = window.state.visible.single()
+        assertEquals("Couldn't load these messages.", toast.title)
+        assertNull(toast.description)
+        assertEquals("Retry", toast.actionLabel)
+        toast.onAction?.invoke()
+        assertEquals(1, retries)
+    }
 }

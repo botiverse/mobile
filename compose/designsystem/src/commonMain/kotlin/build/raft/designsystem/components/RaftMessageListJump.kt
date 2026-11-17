@@ -51,6 +51,15 @@ internal val RaftMessageListJumpRowGap = 8.dp
 internal val RaftMessageListJumpStackGap = 12.dp
 
 /**
+ * How far a pill's touch target reaches above and below its 32dp box, to 44dp
+ * ([RaftTouchTargetSize]). The pills float over the message list, which takes touches itself:
+ * Compose's near-hit ([raftTouchTarget]) loses to that direct hit, so a finger landing just above
+ * or below a pill scrolled or tapped the list instead (one of the taps that "did nothing" on Back
+ * to Bottom). The reach is laid out as the pill's own hit box instead ([raftHitOverhang]).
+ */
+internal val RaftMessageListJumpHitOverhang = (RaftTouchTargetSize - 32.dp) / 2
+
+/**
  * raft-ui `MessageListJumpControls`: where the jump pills float over a message list, centred
  * on its [side] edge, 12dp from it and from the sides. Align it in the list's parent
  * (`Modifier.align(Alignment.BottomCenter)`), and add the height of whatever else floats on
@@ -191,6 +200,7 @@ fun RaftMessageListJumpPill(
         interactionSource = interactionSource,
         widenTouchTarget = true,
         join = if (grouped) RaftButtonJoin.End else RaftButtonJoin.None,
+        hitOverhangVertical = RaftMessageListJumpHitOverhang,
     ) {
         Row(
             modifier = Modifier.padding(start = padding, end = padding),
@@ -264,6 +274,7 @@ fun RaftMessageListJumpPillDismiss(
         interactionSource = source,
         widenTouchTarget = true,
         join = RaftButtonJoin.Start,
+        hitOverhangVertical = RaftMessageListJumpHitOverhang,
     ) {
         Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
             RaftGlyphIcon(RaftGlyph.X, size = 16.dp, color = ink)
