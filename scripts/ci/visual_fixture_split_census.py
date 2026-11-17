@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PRODUCTION = ROOT / "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt"
+PRODUCTION = ROOT / "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPage.kt"
 MOVED = (
     ROOT / "compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadMessageRowVisualHost.kt",
     ROOT / "compose/shared/src/visualFixtureData/kotlin/build/raft/app/ThreadMessageRowVisualFixtures.kt",

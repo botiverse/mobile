@@ -59,7 +59,7 @@ An ownerless `sha256(url).png` directory, unbounded URL cache or native download
 
 Start at the current source rather than old line numbers:
 
-- `compose/shared/src/commonMain/kotlin/build/raft/app/ThreadRoutePayload.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadRoutePayload.kt`
 - `ThreadLaunchConversationIdentity.kt` and `ThreadLaunchProvenance.kt`
 - `SettingsStandalonePageData.kt`
 - `ExternalShareLaunch.kt`

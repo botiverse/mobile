@@ -16,7 +16,7 @@ internal const val ANDROID_SHELL_SERVER_ID_KEY = "serverId"
 internal const val ANDROID_DOCUMENT_SHELL_KEY = "slockDocumentShell"
 
 // Route-owner keys are the shared public `SLOCK_ROUTE_*` consts in
-// shared/RaftShellStoreLaunch.kt (made public so androidApp reads them).
+// shared/shell/RaftShellStoreLaunch.kt (made public so androidApp reads them).
 private const val ANDROID_ROUTE_ENVIRONMENT_ID_KEY = RAFT_ROUTE_ENVIRONMENT_ID
 private const val ANDROID_ROUTE_ACCOUNT_ID_KEY = RAFT_ROUTE_ACCOUNT_ID
 private const val ANDROID_ROUTE_SERVER_ID_KEY = RAFT_ROUTE_SERVER_ID

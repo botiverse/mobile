@@ -728,6 +728,22 @@ or helper scripts as a workaround for branch protection.
   through `implementation(project(":shared"))` in the same compose Gradle project.
 - When changing code under package `build.raft.app.*`, make the source change in
   `compose/shared/src/commonMain/kotlin/...`, not in `compose/androidApp/src/main/java/...`.
+- Folder layout of `compose/shared/src/commonMain/kotlin/build/raft/app/`: feature code
+  lives in its feature folder (`thread/`, `composer/`, `home/`, `search/`, `activity/`,
+  `channel/`, `members/`, `agents/`, `computers/`, `tasks/`, `artifact/`, `files/`,
+  `settings/`, `auth/`, `server/`, `shell/`, ...). Same-named
+  `actual` files in `androidMain` / `iosMain` / `desktopMain` sit in the same relative
+  folder. The feature folders keep `package build.raft.app` for now (folder ≠ package,
+  so moving a file needs no import changes). The older folders (`data/`, `network/`,
+  `base/`, `nav/`, `model/`, `markdown/`, `assistant/`, ...) declare their own
+  subpackage; `assistant/AssistantPage.kt` is the one `build.raft.app` file among
+  them. Check a file's `package` line, not its folder. The top level
+  holds only cross-cutting app infrastructure (theme, platform, avatars, icons, web
+  view, diagnostics). Put a new file in its feature folder, not at the top level.
+  Reusable, product-agnostic UI goes to `compose/designsystem`, not into a feature
+  folder (see Shared UI Component Discipline). When you move a file, update every
+  hard-coded path to it (workflow path filters, `scripts/` baselines and allowlists,
+  docs).
 - After changing `compose/shared`, compile the shared module and Android app from the
   compose Gradle root:
 

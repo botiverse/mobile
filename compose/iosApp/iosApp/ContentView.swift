@@ -53,7 +53,7 @@ struct ContentView: View {
         var data = destination.pageData
         data["pageName"] = destination.pageName
         data["slockSocialAuthProviders"] = raftIosOAuthProviders
-        // Shell identity contract (shared/RaftShellStoreLaunch.kt). A blank or
+        // Shell identity contract (shared/shell/RaftShellStoreLaunch.kt). A blank or
         // absent slockShellInstanceId falls back to Legacy anyway, so injecting
         // "legacy-app-shell" for the single-window path is byte-equivalent.
         // slockShellServerId is always written — even as null — so a serialized

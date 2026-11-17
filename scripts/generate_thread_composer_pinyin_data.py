@@ -17,7 +17,7 @@ PINYIN_DATA_URL = (
     f"{PINYIN_DATA_COMMIT}/pinyin.txt"
 )
 OUTPUT_PATH = Path(
-    "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPinyinData.kt"
+    "compose/shared/src/commonMain/kotlin/build/raft/app/composer/ThreadComposerPinyinData.kt"
 )
 BASIC_START = 0x4E00
 BASIC_END = 0x9FFF

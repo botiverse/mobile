@@ -33,8 +33,8 @@ on:
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/UnreadParser.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/ReadReceipt*.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedHomeStore.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/SharedThreadStore.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/RaftHomeComponents.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/thread/SharedThreadStore.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/home/RaftHomeComponents.kt"
       # The app code the Activity row cases drive (in-place row patch, live unread predicate).
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedActivityStore.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedActivityLocalMutationOverlay.kt"

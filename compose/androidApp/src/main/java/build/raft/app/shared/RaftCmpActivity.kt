@@ -3478,7 +3478,7 @@ internal open class RaftCmpActivity :
         private const val KEY_HOST_WINDOW_ID = "slockWindowId"
         // "statusBarHeight" / "safeAreaTop" / "navigationBarHeight" / "safeAreaBottom"
         // are written as string px values by withAndroidRuntimeWindowInsets(); they map
-        // to JSONObject params.safeAreaPx keys in shared/RaftAppSafeArea.kt.
+        // to JSONObject params.safeAreaPx keys in shared/shell/RaftAppSafeArea.kt.
         private const val EVENT_WINDOW_INSETS_CHANGED = "slockWindowInsetsChanged"
         private const val NAVIGATION_MODE_SETTING = "navigation_mode"
         private const val NAVIGATION_MODE_RESOURCE = "config_navBarInteractionMode"
