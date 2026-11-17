@@ -301,7 +301,7 @@ private fun WeChatQrStep(name: String, content: String?, line: WeChatConnectStep
                         val time = clockOf(line.attempt.expiresAt)
                         val sentence = stringResource(Res.string.assistant_wechat_waiting, time)
                         val at = sentence.indexOf(time)
-                        val mono = RaftTheme.typography.mono
+                        val mono = RaftTheme.typography.monoMeta.fontFamily
                         buildAnnotatedString {
                             append(sentence)
                             if (at >= 0) addStyle(SpanStyle(fontFamily = mono), at, at + time.length)
