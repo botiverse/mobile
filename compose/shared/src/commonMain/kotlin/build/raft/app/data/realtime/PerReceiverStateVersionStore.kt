@@ -8,6 +8,8 @@ import build.raft.app.network.sync.ReadStateSyncApplyResult
 import build.raft.app.network.sync.ReadStateSyncEvent
 import build.raft.app.network.sync.ReadStateSyncState
 import build.raft.app.network.sync.reduceReadStateSyncState
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 enum class PerReceiverStateScope(val wireName: String) {
     ReadState("read_state"),
@@ -128,7 +130,18 @@ class PerReceiverStateVersionStore(
             readStateMaxSeqKey(serverId, memberId, scopeId),
             checkpoint.maxReadSeq.coerceAtLeast(0L).toString()
         )
+        ReadStateAcceptances.note(key(serverId, memberId, PerReceiverStateScope.ReadState, scopeId))
     }
+
+    /** A mark of the read-state versions accepted so far, by any instance (Home's, Activity's), for [readStateAcceptedSince]. */
+    internal fun readStateAcceptMark(): Long = ReadStateAcceptances.mark()
+
+    /**
+     * Some instance accepted a newer read-state version for the scope after [mark] (web
+     * `hasAcceptedReadStateChangedAfter`): an answer requested before then may predate it.
+     */
+    internal fun readStateAcceptedSince(serverId: ServerId, memberId: MemberId, scopeId: ChannelId, mark: Long): Boolean =
+        ReadStateAcceptances.since(key(serverId, memberId, PerReceiverStateScope.ReadState, scopeId), mark)
 
     /**
      * Web `consumeReadStateSnapshot` on an `absent` frontier: the server holds no read state for the scope (its
@@ -217,4 +230,28 @@ class PerReceiverStateVersionStore(
         value
             .replace("%", "%25")
             .replace(".", "%2E")
+}
+
+/**
+ * When each read-state checkpoint last accepted a version, process-wide: Home and Activity each hold an instance
+ * over the same persisted checkpoints. In memory only (a request never outlives the process); past the cap the
+ * oldest scope goes and reads as not accepted since.
+ */
+private object ReadStateAcceptances {
+    private const val CAP = 2_000
+    private val lock = SynchronizedObject()
+    private var count = 0L
+    private val acceptedAt = LinkedHashMap<String, Long>()
+
+    fun mark(): Long = synchronized(lock) { count }
+
+    fun note(key: String) {
+        synchronized(lock) {
+            acceptedAt.remove(key)
+            acceptedAt[key] = ++count
+            while (acceptedAt.size > CAP) acceptedAt.remove(acceptedAt.keys.first())
+        }
+    }
+
+    fun since(key: String, mark: Long): Boolean = synchronized(lock) { (acceptedAt[key] ?: 0L) > mark }
 }

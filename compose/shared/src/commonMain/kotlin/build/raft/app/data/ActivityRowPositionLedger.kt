@@ -60,25 +60,6 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
     private val readSeqCeilings = LinkedHashMap<String, String>()
     /** Per row, the accepted read state last folded into its read seq ([foldLedgerRead]). Web `folded`. */
     private val folded = LinkedHashMap<String, ActivityLedgerReadState>()
-    /** Per row, when its read seq, ceiling or fold last changed ([readMark]). */
-    private val readChanges = LinkedHashMap<String, Long>()
-    private var readChangeCount = 0L
-
-    /** A mark of the reads so far, taken when a read of the list or rows starts ([readChangedSince]). */
-    fun readMark(): Long = synchronized(lock) { readChangeCount }
-
-    /**
-     * The conversation's read seq, ceiling or fold changed after [mark] (a read, a read state, a Mark as
-     * Unread): an answer requested before then may predate it. Web `hasAcceptedReadStateChangedAfter`.
-     */
-    fun readChangedSince(scopeId: String, mark: Long): Boolean = synchronized(lock) { (readChanges[scopeId] ?: 0L) > mark }
-
-    private fun noteReadChangedLocked(scopeId: String) {
-        readChanges.remove(scopeId)
-        readChanges[scopeId] = ++readChangeCount
-        while (readChanges.size > cap) readChanges.remove(readChanges.keys.first())
-    }
-
     /** The reducer's row: [row] as shown, with the state kept for it while it still shows its position. */
     fun stateOf(row: InboxItem): ActivityRowState {
         val scopeId = row.activityRowScopeId()
@@ -124,14 +105,18 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
 
     /**
      * The server's read cursor for the conversation, from the durable read-state path (read state v1), which
-     * keeps its own versions: its read seq becomes [seq], lower too.
+     * keeps its own versions: its read seq becomes [seq], lower too. The last fold's cursor follows it (its
+     * version stays: the checkpoint's), so a later checkpoint fold judges a rewind from the cursor applied here.
      */
     fun setReadCursor(scopeId: String, seq: String?) {
         synchronized(lock) {
             readSeqs.remove(scopeId)
             readSeqCeilings.remove(scopeId)
-            if (seq != null && isCanonicalActivitySeq(seq)) putReadSeqLocked(scopeId, seq)
-            noteReadChangedLocked(scopeId)
+            if (seq != null && isCanonicalActivitySeq(seq)) {
+                putReadSeqLocked(scopeId, seq)
+                val cursor = seq.toLongOrNull()
+                folded[scopeId]?.let { last -> if (cursor != null) folded[scopeId] = last.copy(maxReadSeq = cursor) }
+            }
         }
     }
 
@@ -142,8 +127,9 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
      * - marked unread ([markedUnread]: nothing countable), or its cursor below the last folded one or the read seq,
      *   whichever is higher (a counted Mark as Unread elsewhere: the server moves the cursor back and sends no flag;
      *   an own send raises the read seq with no version): Mark as Unread ([forgetRead]), so an answer at or below
-     *   the old read keeps its unread; then, unless marked, a read at the cursor ([noteRead]). A false alarm only
-     *   drops the read seq (safe); a missed mark would hide an unread;
+     *   the old read keeps its unread; then, unless marked, a read at the cursor ([noteRead]), which also reads
+     *   the applied live seqs at or below it (web `withAppliedRead`: a later answer below them does not count them
+     *   again). A false alarm only drops the read seq (safe); a missed mark would hide an unread;
      * - no accepted state any more, or an older version than the one folded (the cursor row deleted, e.g. access
      *   lost, and begun again from v1): the fold, the read seq and its ceiling go, so a new v1 is not ignored.
      */
@@ -154,14 +140,12 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
                 folded.remove(scopeId)
                 readSeqs.remove(scopeId)
                 readSeqCeilings.remove(scopeId)
-                noteReadChangedLocked(scopeId)
                 return@synchronized
             }
             if (accepted == null || (last != null && accepted.readStateVersion <= last.readStateVersion)) return@synchronized
             folded.remove(scopeId)
             folded[scopeId] = accepted
             while (folded.size > cap) folded.remove(folded.keys.first())
-            noteReadChangedLocked(scopeId)
             if (markedUnread) {
                 forgetReadLocked(scopeId)
                 return@synchronized
@@ -172,7 +156,10 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
                 (last != null && accepted.maxReadSeq < last.maxReadSeq) ||
                     (readSeq != null && compareActivityRowSeq(cursor, readSeq) < 0)
             if (rewound) forgetReadLocked(scopeId)
-            if (isCanonicalActivitySeq(cursor)) raiseReadSeqLocked(scopeId, cursor)
+            if (isCanonicalActivitySeq(cursor)) {
+                readAppliedLocked(scopeId, cursor)
+                raiseReadSeqLocked(scopeId, cursor)
+            }
         }
     }
 
@@ -184,9 +171,18 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
         synchronized(lock) { forgetReadLocked(scopeId) }
     }
 
+    /** The kept applied seqs at or below [seq] no longer count or light the @ (they stay applied). Web `withAppliedRead`. */
+    private fun readAppliedLocked(scopeId: String, seq: String) {
+        val kept = states[scopeId] ?: return
+        val covered = { entry: ActivityRowAppliedSeq ->
+            isCanonicalActivitySeq(entry.seq) && compareActivityRowSeq(entry.seq, seq) <= 0 && (entry.counts || entry.mention)
+        }
+        if (kept.applied.none(covered)) return
+        states[scopeId] = kept.copy(applied = kept.applied.map { if (covered(it)) it.copy(counts = false, mention = false) else it })
+    }
+
     private fun forgetReadLocked(scopeId: String) {
         val cleared = readSeqs.remove(scopeId) ?: return
-        noteReadChangedLocked(scopeId)
         val ceiling = readSeqCeilings[scopeId]?.takeIf { compareActivityRowSeq(it, cleared) > 0 } ?: cleared
         readSeqCeilings.remove(scopeId)
         readSeqCeilings[scopeId] = ceiling
@@ -203,7 +199,6 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
         if (kept != null && compareActivityRowSeq(seq, kept) <= 0) return
         readSeqs.remove(scopeId)
         putReadSeqLocked(scopeId, seq)
-        noteReadChangedLocked(scopeId)
     }
 
     private fun putReadSeqLocked(scopeId: String, seq: String) {
@@ -230,7 +225,6 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
             readSeqs.clear()
             readSeqCeilings.clear()
             folded.clear()
-            readChanges.clear()
         }
     }
 

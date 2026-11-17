@@ -445,7 +445,7 @@ class SharedActivityStore internal constructor(
 
     private var loadJob: Job? = null
     private var loadGeneration: Long = 0L
-    /** [ActivityRowPositionLedger.readMark] when the current list load started (only its answer is applied). */
+    /** [PerReceiverStateVersionStore.readStateAcceptMark] when the current list load started (only its answer is applied). */
     private var listReadMark: Long = 0L
     /** Task #164: the one pending recovery read while the shown Activity is stale. */
     private val staleRecovery =
@@ -2501,7 +2501,7 @@ class SharedActivityStore internal constructor(
         val trigger: InboxRefreshTriggerCount,
         val audit: Boolean,
         val revisions: Map<String, Long>,
-        /** [ActivityRowPositionLedger.readMark] when the read started. */
+        /** [PerReceiverStateVersionStore.readStateAcceptMark] when the read started. */
         val readMark: Long
     ) {
         val ids: List<String> get() = ready.map { it.first }
@@ -2551,7 +2551,7 @@ class SharedActivityStore internal constructor(
                         trigger = trigger,
                         audit = audit,
                         revisions = ids.associateWith { rowReadRevisions[it] ?: 0L },
-                        readMark = rowPositions.readMark()
+                        readMark = perReceiverStateVersionStore.readStateAcceptMark()
                     )
             }
         }
@@ -2604,8 +2604,9 @@ class SharedActivityStore internal constructor(
             when {
                 !rowPositionOnLocked() -> Unit
                 asked.isEmpty() -> Unit
-                result is DataResult.Content -> applyRowAnswerLocked(asked, result.data.items, backend, read.readMark)?.let(jobs::add)
-                result is DataResult.Empty -> applyRowAnswerLocked(asked, emptyList(), backend, read.readMark)?.let(jobs::add)
+                result is DataResult.Content ->
+                    applyRowAnswerLocked(asked, result.data.items, backend, read.readMark.takeIf { result.data.staleReason == null })?.let(jobs::add)
+                result is DataResult.Empty -> applyRowAnswerLocked(asked, emptyList(), backend, null)?.let(jobs::add)
                 // A failed row read falls back to the list read (an audit is not judged).
                 read.audit -> asked.forEach { (_, entry) -> recordAuditNotJudgedLocked(entry, ActivityAuditNotJudgedCause.RequestFailed) }
                 else -> jobs += scheduleRealtimeBackgroundReconcileLocked(read.trigger.trigger)
@@ -2635,13 +2636,14 @@ class SharedActivityStore internal constructor(
         asked: List<Pair<String, ActivityRowRereadPending>>,
         answered: List<InboxItem>,
         backend: String?,
-        readMark: Long
+        /** [PerReceiverStateVersionStore.readStateAcceptMark] when the read started; null: a stale answer, it judges no read state. */
+        readMark: Long?
     ): Job? {
         val current = _state.value
         val snapshot = current.snapshot ?: return null
         val serverId = current.ownerServerId ?: return null
         val askedByScope = asked.toMap()
-        forgetAbsentReadStatesLocked(current, answered.filter { it.activityRowScopeId() in askedByScope }, readMark)
+        if (readMark != null) forgetAbsentReadStatesLocked(current, answered.filter { it.activityRowScopeId() in askedByScope }, readMark)
         val owner = overlayOwner(current)
         val served =
             answered
@@ -3055,6 +3057,12 @@ class SharedActivityStore internal constructor(
      * Web `foldLedgerReadByPosition` (botiverse/slock #15307): the read state the ledger holds for the
      * conversation, accepted since the last fold by any path, into its row's read seq
      * ([ActivityRowPositionLedger.foldLedgerRead]). [markedUnread]: the held state is a mark.
+     *
+     * The checkpoint does not keep the mark, so a fold here (an answer, Mark as Unread) takes a marked state
+     * as a read at its cursor. Safe: a mark is saved only when nothing countable is unread (botiverse/slock
+     * #11795), so the cursor covers every counted message and the read seq hides none; a mention-only answer
+     * keeps its @ past the read seq; the row's dot follows `markedUnread` on the row, not the read seq. The
+     * realtime fact and the Mark as Unread answer carry the flag and fold with it.
      */
     private fun foldLedgerRead(scopeId: String, markedUnread: Boolean = false) {
         rowPositions.foldLedgerRead(scopeId, acceptedReadStateLookupLocked(_state.value)(scopeId), markedUnread)
@@ -3064,16 +3072,19 @@ class SharedActivityStore internal constructor(
      * Web `consumeReadStateSnapshot` on an `absent` frontier: a served row says the server holds no read state
      * for its conversation (the cursor row deleted, e.g. access lost; the next one starts again from v1). The
      * checkpoint goes, so that v1 is accepted, and the row's read seq with it at the next fold. A stale
-     * (`X-Raft-Stale`) answer judges nothing, nor does one for a conversation whose read changed after the
-     * read started ([readMark]; web `supersededBySocket`): a first read made meanwhile is not undone.
+     * (`X-Raft-Stale`) answer judges nothing, nor does one for a conversation a newer read-state version was
+     * accepted for (by any store) after the read started ([readMark]; web `supersededBySocket`): a first read
+     * made meanwhile is not undone. A local read ack or send alone accepts no version: it does not stop the
+     * clear. Flag off, nothing here: the checkpoint is Home's too.
      */
     private fun forgetAbsentReadStatesLocked(current: SharedActivityState, served: List<InboxItem>, readMark: Long) {
+        if (!rowPositionOnLocked()) return
         val serverId = current.ownerServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return
         val memberId = current.ownerUserId?.takeIf { it.isNotBlank() }?.let(::MemberId) ?: return
         served.forEach { item ->
             if (!item.readStateAbsent || !item.isActivityPositionRow()) return@forEach
             val scopeId = item.activityRowScopeId() ?: return@forEach
-            if (rowPositions.readChangedSince(scopeId, readMark)) return@forEach
+            if (perReceiverStateVersionStore.readStateAcceptedSince(serverId, memberId, ChannelId(scopeId), readMark)) return@forEach
             if (perReceiverStateVersionStore.clearReadStateCheckpoint(serverId, memberId, ChannelId(scopeId))) {
                 diagnosticsLogger("activity_read_state_absent scopeId=$scopeId result=checkpoint_cleared")
             }
@@ -3508,7 +3519,7 @@ class SharedActivityStore internal constructor(
                     return@synchronized null
                 }
                 val generation = ++loadGeneration
-                listReadMark = rowPositions.readMark()
+                listReadMark = perReceiverStateVersionStore.readStateAcceptMark()
                 loadFetchLabel = fetchReason to fetchTrigger
                 val startedAtMillis = nowMillis()
                 if (refresh) {

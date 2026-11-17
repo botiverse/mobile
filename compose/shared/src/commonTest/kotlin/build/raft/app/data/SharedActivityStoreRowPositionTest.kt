@@ -377,6 +377,67 @@ class SharedActivityStoreRowPositionTest {
     }
 
     @Test
+    fun anAbsentAnswerStillClearsWhenOnlyALocalReadLandedMeanwhile() = runTest {
+        // Scout (#4924): only a newer read-state version accepted after the read started stops the clear. A
+        // local read ack accepts none: the absent answer still drops the old checkpoint (v5), so the next v1,
+        // v2 (a Mark as Unread elsewhere) are not dropped as stale.
+        val versions = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+        val absent = channelRow.copy(unreadCount = 1, readStateAbsent = true)
+        val f = loadedStore(listOf(snapshot(listOf(channelRow)), snapshot(listOf(absent))), versions = versions)
+        f.store.dispatch(readState("channel-1", maxReadSeq = 10L, version = 5L))
+        runCurrent()
+        advanceTimeBy(ActivityLocalMutationHoldMillis + 30_000L)
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        f.store.dispatch(
+            SharedActivityIntent.ApplyReadReceiptResult(
+                ReadReceiptRequest.All(ChannelId("channel-1"), ReadReceiptOwner("production", "user-1", "server-1"), revision = 1L),
+                succeeded = true,
+                maxReadSeq = 12L
+            )
+        )
+        assertEquals("12" to null, f.store.rowPositionReadSeqForTest("channel-1"))
+        runCurrent()
+        assertEquals(0L, versions.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")).version)
+        f.store.dispatch(readState("channel-1", maxReadSeq = 11L, version = 2L))
+        runCurrent()
+        assertEquals(2L, versions.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")).version)
+    }
+
+    @Test
+    fun flagOffAnAbsentAnswerLeavesTheSharedCheckpoint() = runTest {
+        // The checkpoint is Home's too: flag off, Activity changes nothing about it.
+        val versions = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+        val absent = channelRow.copy(unreadCount = 1, readStateAbsent = true)
+        val f = loadedStore(listOf(snapshot(listOf(channelRow)), snapshot(listOf(absent))), rowPosition = false, versions = versions)
+        f.store.dispatch(readState("channel-1", maxReadSeq = 10L, version = 5L))
+        runCurrent()
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(5L, versions.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")).version)
+    }
+
+    @Test
+    fun aReadFoldedFromTheLedgerReadsTheAppliedLiveSeqsItCovers() = runTest {
+        // Scout (#4924): row at 10, live 11 and 12 applied; Home takes the read of 12 first, so this store
+        // only folds it. A late answer at 10 is read by the read seq, and 11 and 12 do not count again.
+        val versions = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+        val late = channelRow.copy(unreadCount = 1)
+        val f = loadedStore(listOf(snapshot(listOf(channelRow)), snapshot(listOf(late))), versions = versions)
+        f.store.dispatch(live("m-11", "channel-1", seq = 11L))
+        f.store.dispatch(live("m-12", "channel-1", seq = 12L))
+        runCurrent()
+        assertEquals(2, f.row(channelRow.key).unreadCount)
+        versions.applyOrObserveReadStateFact(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1"), 2L, 12L)
+        f.store.dispatch(readState("channel-1", maxReadSeq = 12L))
+        runCurrent()
+        assertEquals("12" to null, f.store.rowPositionReadSeqForTest("channel-1"))
+        assertEquals(listOf(false, false), f.store.rowPositionStateForTest("channel-1")?.applied?.map { it.counts })
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(0, f.row(channelRow.key).unreadCount)
+    }
+
+    @Test
     fun aLocalReadClearsAnAtOnAnUncountedMessageAndAMentionOnlyRowKeepsIt() = runTest {
         // Web #14805: a task conversation counts chat replies only, while the server's @ is any mention
         // past the read cursor, so a lifecycle line mentioning the reader lists the row with an @ and no

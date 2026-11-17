@@ -154,4 +154,21 @@ class ActivityRowReadSeqTest {
         ledger.foldLedgerRead("channel-3", null, markedUnread = false)
         assertEquals("4", ledger.readSeqForTest("channel-3"))
     }
+
+    @Test
+    fun aFoldedReadReadsTheAppliedSeqsAtOrBelowItsCursorOnly() {
+        val ledger = ActivityRowPositionLedger()
+        val row = activityItem("channel-1").copy(latestActivitySeq = "10")
+        var state = ledger.stateOf(row)
+        for (seq in listOf("11", "12", "13")) state = state.then(ActivityRowEvent.Live(seq, counts = true, mentionsViewer = false, moves = true))
+        ledger.keep("channel-1", state)
+        ledger.foldLedgerRead("channel-1", ledgerRead(12L, 2L), markedUnread = false)
+        assertEquals(listOf(false, false, true), ledger.keptForTest("channel-1")?.applied?.map { it.counts })
+        // A rewind reads only what is at or below the new cursor (here nothing more).
+        ledger.foldLedgerRead("channel-1", ledgerRead(11L, 3L), markedUnread = false)
+        assertEquals(listOf(false, false, true), ledger.keptForTest("channel-1")?.applied?.map { it.counts })
+        // A marked state reads nothing.
+        ledger.foldLedgerRead("channel-1", ledgerRead(13L, 4L), markedUnread = true)
+        assertEquals(true, ledger.keptForTest("channel-1")?.applied?.last()?.counts)
+    }
 }
