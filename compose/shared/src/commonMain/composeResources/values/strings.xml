@@ -510,6 +510,7 @@
     <string name="thread_error_reason_not_found">This item could not be found. It may have been moved or deleted.</string>
     <string name="thread_error_reason_attachment_too_large">The attachment is too large. Choose a smaller file and try again.</string>
     <string name="thread_error_reason_attachment_image_compression_failed">The image could not be compressed. Choose it again or select Original image.</string>
+    <string name="thread_error_reason_attachment_needs_reupload">An attachment is no longer available. Upload it again or remove it, then send.</string>
     <string name="thread_error_reason_rate_limited">Too many attempts. Please wait a moment and try again.</string>
     <string name="thread_error_reason_response_unreadable">The response could not be read. Please try again.</string>
     <string name="thread_error_reason_cancelled">The request was cancelled. Please try again.</string>

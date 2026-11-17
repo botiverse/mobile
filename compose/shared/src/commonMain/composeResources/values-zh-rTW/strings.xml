@@ -500,6 +500,7 @@
     <string name="thread_error_reason_not_found">找不到此項目，可能已被移動或刪除。</string>
     <string name="thread_error_reason_attachment_too_large">附件太大，請選擇較小的檔案後再試一次。</string>
     <string name="thread_error_reason_attachment_image_compression_failed">圖片壓縮失敗，請重新選擇，或勾選「原圖」。</string>
+    <string name="thread_error_reason_attachment_needs_reupload">有附件已無法使用。請重新上傳或移除後再傳送。</string>
     <string name="thread_error_reason_rate_limited">嘗試次數過多，請稍候再試一次。</string>
     <string name="thread_error_reason_response_unreadable">無法讀取伺服器回應，請再試一次。</string>
     <string name="thread_error_reason_cancelled">請求已取消，請再試一次。</string>

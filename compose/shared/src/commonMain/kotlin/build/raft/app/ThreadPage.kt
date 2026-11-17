@@ -3632,8 +3632,13 @@ internal fun RaftThreadMessageItem.hasLocalSendState(): Boolean =
         deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true) ||
         pendingSendContext != null
 
+/**
+ * A failed send whose attachment id the server refused as dead (expired, canceled, already linked…)
+ * can never succeed with the same ids, so it offers no Retry: its line says to upload the file
+ * again (web `message.composer.attachmentsNeedReupload`, botiverse/slock #15130).
+ */
 private fun RaftThreadMessageItem.canRetryLocalSend(): Boolean =
-    isFailedLocalSend()
+    isFailedLocalSend() && !threadSendFailureNeedsAttachmentReupload(pendingSendErrorCode)
 
 private fun RaftThreadMessageItem.isFailedLocalSend(): Boolean =
     deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true) && pendingSendContext != null
@@ -32328,7 +32333,8 @@ private fun ThreadMessageLocalSendStatus(
                     .padding(8.dp)
             )
         }
-        if (isFailed && retryEnabled) {
+        // A dead attachment id fails every resend: no Retry, the line says to upload it again.
+        if (isFailed && retryEnabled && !threadSendFailureNeedsAttachmentReupload(message.pendingSendErrorCode)) {
             RaftPanelAction(
                 onClick = { if (message.canRetryLocalSend()) onRetry() },
                 enabled = message.canRetryLocalSend(),

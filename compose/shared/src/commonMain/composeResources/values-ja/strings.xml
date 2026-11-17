@@ -510,6 +510,7 @@
     <string name="thread_error_reason_not_found">この項目が見つかりませんでした。移動または削除された可能性があります。</string>
     <string name="thread_error_reason_attachment_too_large">添付ファイルが大きすぎます。より小さいファイルを選択して、もう一度お試しください。</string>
     <string name="thread_error_reason_attachment_image_compression_failed">画像を圧縮できませんでした。もう一度選択するか、「元画像」を選択してください。</string>
+    <string name="thread_error_reason_attachment_needs_reupload">添付ファイルが利用できなくなりました。もう一度アップロードするか削除してから送信してください。</string>
     <string name="thread_error_reason_rate_limited">試行回数が多すぎます。しばらく待ってから、もう一度お試しください。</string>
     <string name="thread_error_reason_response_unreadable">応答を読み取れませんでした。もう一度お試しください。</string>
     <string name="thread_error_reason_cancelled">リクエストはキャンセルされました。もう一度お試しください。</string>

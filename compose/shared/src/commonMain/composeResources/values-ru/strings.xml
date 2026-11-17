@@ -500,6 +500,7 @@
     <string name="thread_error_reason_not_found">Не удалось найти этот элемент. Возможно, его переместили или удалили.</string>
     <string name="thread_error_reason_attachment_too_large">Вложение слишком большое. Выберите файл поменьше и попробуйте ещё раз.</string>
     <string name="thread_error_reason_attachment_image_compression_failed">Не удалось сжать изображение. Выберите его снова или отметьте «Оригинал».</string>
+    <string name="thread_error_reason_attachment_needs_reupload">Вложение больше недоступно. Загрузите его заново или удалите, затем отправьте.</string>
     <string name="thread_error_reason_rate_limited">Слишком много попыток. Подождите немного и попробуйте ещё раз.</string>
     <string name="thread_error_reason_response_unreadable">Не удалось прочитать ответ сервера. Попробуйте ещё раз.</string>
     <string name="thread_error_reason_cancelled">Запрос отменён. Попробуйте ещё раз.</string>

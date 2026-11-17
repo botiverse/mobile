@@ -500,6 +500,7 @@
     <string name="thread_error_reason_not_found">No se encontró este elemento. Es posible que se haya movido o eliminado.</string>
     <string name="thread_error_reason_attachment_too_large">El archivo adjunto es demasiado grande. Elige un archivo más pequeño e inténtalo de nuevo.</string>
     <string name="thread_error_reason_attachment_image_compression_failed">No se pudo comprimir la imagen. Vuelve a elegirla o selecciona “Imagen original”.</string>
+    <string name="thread_error_reason_attachment_needs_reupload">Un archivo adjunto ya no está disponible. Vuelve a subirlo o quítalo y luego envía.</string>
     <string name="thread_error_reason_rate_limited">Demasiados intentos. Espera un momento e inténtalo de nuevo.</string>
     <string name="thread_error_reason_response_unreadable">No se pudo leer la respuesta. Inténtalo de nuevo.</string>
     <string name="thread_error_reason_cancelled">Se canceló la solicitud. Inténtalo de nuevo.</string>
