@@ -48,15 +48,20 @@ internal data class ActivityRowClientState(
  * last answer delivered, the seqs applied above it since and whether an inversion was seen. Valid
  * only while the row still shows the position it implies: another path moved the row, and the
  * state starts again from the row as shown (web `rowPositionStateOf`).
+ *
+ * Beside it, per row, the highest seq the viewer read ([ActivityRowState.readSeq]): a fact about the
+ * conversation's reads, not about the row's position, so it is kept when the position state is not.
  */
 internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPositionStateCap) {
     private val lock = SynchronizedObject()
     private val states = LinkedHashMap<String, ActivityRowClientState>()
+    private val readSeqs = LinkedHashMap<String, String>()
 
     /** The reducer's row: [row] as shown, with the state kept for it while it still shows its position. */
     fun stateOf(row: InboxItem): ActivityRowState {
         val scopeId = row.activityRowScopeId()
         val kept = scopeId?.let { synchronized(lock) { states[it] } }
+        val readSeq = scopeId?.let { synchronized(lock) { readSeqs[it] } }
         val shown = row.latestActivitySeq
         val valid = kept != null && kept.displayPosition() == shown
         return ActivityRowState(
@@ -66,6 +71,7 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
             mentionOnly = row.unreadCount == 0 && row.hasMention,
             applied = if (valid) kept!!.applied else emptyList(),
             inversionObserved = if (valid) kept!!.inversionObserved else false,
+            readSeq = readSeq,
         )
     }
 
@@ -80,7 +86,42 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
             states.remove(scopeId)
             states[scopeId] = ActivityRowClientState(row.position, row.applied, row.inversionObserved)
             while (states.size > cap) states.remove(states.keys.first())
+            row.readSeq?.let { raiseReadSeqLocked(scopeId, it) }
         }
+    }
+
+    /** A read of the conversation through [seq] (a local read of the row, a read ack): raises its read seq, never lowers it. */
+    fun noteRead(scopeId: String, seq: String?) {
+        if (seq == null || !isCanonicalActivitySeq(seq)) return
+        synchronized(lock) { raiseReadSeqLocked(scopeId, seq) }
+    }
+
+    /**
+     * The server's read cursor for the conversation, from a read state newer than any before it (the
+     * store orders them by version): its read seq becomes [seq], lower too (Mark as Unread elsewhere).
+     */
+    fun setReadCursor(scopeId: String, seq: String?) {
+        synchronized(lock) {
+            readSeqs.remove(scopeId)
+            if (seq != null && isCanonicalActivitySeq(seq)) putReadSeqLocked(scopeId, seq)
+        }
+    }
+
+    /** Mark as Unread here: the read cursor moved back, the read seq no longer holds ([ActivityRowEvent.MarkUnread]). */
+    fun forgetRead(scopeId: String) {
+        synchronized(lock) { readSeqs.remove(scopeId) }
+    }
+
+    private fun raiseReadSeqLocked(scopeId: String, seq: String) {
+        val kept = readSeqs[scopeId]
+        if (kept != null && compareActivityRowSeq(seq, kept) <= 0) return
+        readSeqs.remove(scopeId)
+        putReadSeqLocked(scopeId, seq)
+    }
+
+    private fun putReadSeqLocked(scopeId: String, seq: String) {
+        readSeqs[scopeId] = seq
+        while (readSeqs.size > cap) readSeqs.remove(readSeqs.keys.first())
     }
 
     /** A row first listed by an answer: its state starts at the answer's position. */
@@ -97,10 +138,15 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
     }
 
     fun clear() {
-        synchronized(lock) { states.clear() }
+        synchronized(lock) {
+            states.clear()
+            readSeqs.clear()
+        }
     }
 
     internal fun keptForTest(scopeId: String): ActivityRowClientState? = synchronized(lock) { states[scopeId] }
+
+    internal fun readSeqForTest(scopeId: String): String? = synchronized(lock) { readSeqs[scopeId] }
 }
 
 /** The conversation id the row's position state and its re-read (`?ids=`) go by: the thread's own channel for a thread row. */

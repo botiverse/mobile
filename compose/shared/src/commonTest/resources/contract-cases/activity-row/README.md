@@ -112,6 +112,13 @@ The rule, in full (design doc "Fact 1"):
    answer below them does not count them again (`read_then_answer_below_applied`).
    A read covers only what is at or below it: an answer with a message past
    the read keeps its unread (`read_covers_only_its_activity`, #15049).
+   The row keeps the highest seq read (its **read seq**, raised by every read
+   or read ack, never lowered by an older one, and kept across answers). An
+   answer at a position at or below the read seq counted only read messages
+   (the server computed it before the read reached it): its unread and @ are
+   dropped (`answer_before_read_lands`, `answer_before_read_lands_no_live`).
+   A Mark as Unread clears the read seq (the shared reducer's `markUnread`
+   event; not a case act).
 
 8. A live message with `moves: false` (past a channel or DM mute) does not
    move the row: RisingWave keeps it at its last message before the mute.
@@ -179,6 +186,7 @@ while the flag is off) differs, web's loader lists the case in its own
 | 2026-11-14 | Tenny | #14993 review | `read_then_answer_below_applied` | A read covers the live seqs applied at or below it: an answer below them does not count them again (shared `applyRead`). | none (shared reducer since #14993) |
 | 2026-11-14 | Tenny | #14988 review | `predicate_muted_channel_mention` | A mention in a muted conversation lights the @ and does not count (RisingWave). | web flag-off live patch |
 | 2026-11-16 | Tenny | #triage:#244 | `predicate_muted_channel_message`, `predicate_muted_channel_mention`, `muted_message_leaves_row`, `muted_mention_lights_without_moving` | Follow RisingWave: past a mute no message moves a row with a pre-mute message (`moves: false`); a mention lights its @; a mention-only row still moves. Judged in place, no list re-read. | web flag-off live patch (re-reads the list on a mention) |
+| 2026-11-17 | Scout, Lagoon | #triage:#244 | `answer_before_read_lands`, `answer_before_read_lands_no_live` | The row keeps its read seq; an answer at or below it has nothing unread, so an answer computed before a read and arriving after it does not bring the unread back (shared `mergeAnswer`). | web meets it with its store's read projection (`inboxReadProjection.ts`, `projectionCoversActivity`), not yet through the shared read seq |
 
 Web's gaps closed in step 2 for the flag-on path (`inbox_row_position_v1`);
 the server's pure inbox model (`inboxPolicyModel.ts`) follows all four rows

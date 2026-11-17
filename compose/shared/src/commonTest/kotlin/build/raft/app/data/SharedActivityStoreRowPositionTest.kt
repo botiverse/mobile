@@ -252,6 +252,29 @@ class SharedActivityStoreRowPositionTest {
     }
 
     @Test
+    fun anAnswerComputedBeforeTheReadDoesNotBringTheUnreadBackAfterTheTimedHold() = runTest {
+        // slock `answer_before_read_lands`: the row keeps the seq read (10). Past the read hold, an
+        // answer the server computed before the read (still 1 unread at 10) lands: nothing it counted
+        // is unread. A later read state moving the cursor back (Mark as Unread on another device)
+        // lets the next answer count again.
+        val unread = channelRow.copy(unreadCount = 1)
+        val f = loadedStore(listOf(snapshot(listOf(unread)), snapshot(listOf(unread)), snapshot(listOf(unread))))
+        f.store.dispatch(readState("channel-1", maxReadSeq = 10L))
+        runCurrent()
+        assertEquals(0, f.row(channelRow.key).unreadCount)
+        advanceTimeBy(ActivityLocalMutationHoldMillis + 30_000L)
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(0, f.row(channelRow.key).unreadCount)
+
+        f.store.dispatch(readState("channel-1", maxReadSeq = 9L, version = 3L))
+        runCurrent()
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(1, f.row(channelRow.key).unreadCount)
+    }
+
+    @Test
     fun aLocalReadClearsAnAtOnAnUncountedMessageAndAMentionOnlyRowKeepsIt() = runTest {
         // Web #14805: a task conversation counts chat replies only, while the server's @ is any mention
         // past the read cursor, so a lifecycle line mentioning the reader lists the row with an @ and no
@@ -360,11 +383,11 @@ class SharedActivityStoreRowPositionTest {
         assertEquals(false, rows.hasMore)
     }
 
-    private fun readState(channelId: String, maxReadSeq: Long) =
+    private fun readState(channelId: String, maxReadSeq: Long, version: Long = 2L) =
         SharedActivityIntent.ApplyRealtimeEvent(
             PerReceiverReadStateChanged(
                 serverId = ServerId("server-1"),
-                scopes = listOf(PerReceiverReadStateScope(ChannelId(channelId), maxReadSeq = maxReadSeq, readStateVersion = 2L))
+                scopes = listOf(PerReceiverReadStateScope(ChannelId(channelId), maxReadSeq = maxReadSeq, readStateVersion = version))
             )
         )
 

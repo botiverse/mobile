@@ -2301,7 +2301,12 @@ class SharedActivityStore internal constructor(
         if (seq != null && own && (after.unreadCount > 0 || after.hasMention)) {
             val read = reduceActivityRow(after, ActivityRowEvent.Read(seq))
             rereadAsked = read.reread
-            if (read.reread) requestRowRereadLocked(scopeId, read.rereadReason.rereadTrigger()) else after = read.row
+            if (read.reread) {
+                rowPositions.noteRead(scopeId, seq)
+                requestRowRereadLocked(scopeId, read.rereadReason.rereadTrigger())
+            } else {
+                after = read.row
+            }
         }
         if (after == before) return RealtimeRowPatch.Unchanged
         rowPositions.keep(scopeId, after)
@@ -3195,6 +3200,9 @@ class SharedActivityStore internal constructor(
         maxReadSeq: Long,
         intent: SharedActivityIntent
     ): Job? {
+        // A read state newer than any before it: the conversation's read seq is its cursor, lower
+        // too (Mark as Unread on another device), whether or not the position rule runs now.
+        rowPositions.setReadCursor(channelId, maxReadSeq.takeIf { it >= 0L }?.toString())
         projectRemoteReadByPositionLocked(channelId, maxReadSeq, intent)?.let { cleared ->
             // The read is persisted: the hold keeps a lagging answer from bringing the rows back.
             val remoteReadOwner = overlayOwner()
@@ -5206,7 +5214,10 @@ class SharedActivityStore internal constructor(
                     onUnreadCountsChanged()
                     // No coordinator: this answer is the read ack (web `markRead` -> `noteLocalReadAck`).
                     if (serverId != null && serverId.value == _state.value.ownerServerId) {
-                        localReadAckHold.noteAck(targetChannelId.value, (result as? DataResult.Content)?.data?.maxReadSeq)
+                        val ackSeq = (result as? DataResult.Content)?.data?.maxReadSeq
+                        // The read ack: an answer the server computed before it does not bring the unread back.
+                        rowPositions.noteRead(targetChannelId.value, ackSeq?.toString())
+                        localReadAckHold.noteAck(targetChannelId.value, ackSeq)
                     }
                 }
             }
@@ -5314,7 +5325,11 @@ class SharedActivityStore internal constructor(
                 true
             }
         // Web `markRead` -> `noteLocalReadAck(channelId, maxReadSeq)` (slock #15197), off the realtime lock.
-        if (owned) localReadAckHold.noteAck(request.channelId.value, maxReadSeq)
+        if (owned) {
+            // The read ack: an answer the server computed before it does not bring the unread back.
+            rowPositions.noteRead(request.channelId.value, maxReadSeq?.toString())
+            localReadAckHold.noteAck(request.channelId.value, maxReadSeq)
+        }
     }
 
     private fun SharedActivityState.matchesReadReceiptOwner(owner: ReadReceiptOwner): Boolean {
@@ -5338,6 +5353,8 @@ class SharedActivityStore internal constructor(
         val optimisticUnreadCount = item.unreadCount.takeIf { it > 0 } ?: 1
         val key = item.key
         forgetUnreadCleared(key)
+        // The read cursor moves back: the row's read seq no longer holds (ActivityRowEvent.MarkUnread).
+        item.activityRowScopeId()?.let(rowPositions::forgetRead)
         val updatedItems =
             snapshot.items.map { existing ->
                 if (existing.key == key) {
@@ -5371,6 +5388,8 @@ class SharedActivityStore internal constructor(
             if (readOwner != null) readReceiptCoordinator?.settleReadsBeforeUnread(readOwner, targetChannelId)
             val result = readReceiptRepository.markChannelUnread(targetChannelId)
             if (result is DataResult.Content) {
+                // Again once answered: a read ack that landed while the mark was in flight raised it.
+                rowPositions.forgetRead(targetChannelId.value)
                 // The read point moved back, or stayed and the conversation was marked unread: the next
                 // open must send its read again (that is what clears it), not reuse an acknowledgement.
                 if (readOwner != null) {
