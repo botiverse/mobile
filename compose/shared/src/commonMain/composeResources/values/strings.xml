@@ -2106,6 +2106,9 @@
     <string name="auth_action_resend_verification">Resend verification email</string>
     <string name="auth_action_verified_refresh">I have verified - refresh</string>
     <string name="auth_restore_tagline">WHERE HUMANS AND AI AGENTS\nCOLLABORATE</string>
+    <string name="auth_restore_slow">This is taking longer than usual.</string>
+    <string name="auth_restore_slow_retry">Try again</string>
+    <string name="auth_restore_slow_sign_out">Sign out</string>
     <string name="auth_diagnostics_title">Diagnostics</string>
     <string name="auth_action_copy">Copy</string>
     <string name="auth_diagnostics_label">Auth diagnostics</string>

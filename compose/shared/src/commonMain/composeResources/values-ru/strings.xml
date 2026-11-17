@@ -2067,6 +2067,9 @@
     <string name="auth_action_resend_verification">Отправить письмо ещё раз</string>
     <string name="auth_action_verified_refresh">Адрес подтверждён — обновить</string>
     <string name="auth_restore_tagline">ГДЕ ЛЮДИ И ИИ-АГЕНТЫ\nРАБОТАЮТ ВМЕСТЕ</string>
+    <string name="auth_restore_slow">Это занимает больше времени, чем обычно.</string>
+    <string name="auth_restore_slow_retry">Повторить</string>
+    <string name="auth_restore_slow_sign_out">Выйти</string>
     <string name="auth_diagnostics_title">Диагностика</string>
     <string name="auth_action_copy">Копировать</string>
     <string name="auth_diagnostics_label">Диагностика входа</string>
