@@ -1,5 +1,6 @@
 package build.raft.app.image
 
+import build.raft.app.raftLogWarn
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -18,6 +19,7 @@ import kotlinx.coroutines.withContext
 
 private const val RAFT_IMAGE_DISK_CACHE_BYTES = 128L * 1024 * 1024
 private const val RAFT_IMAGE_MEMORY_CACHE_PERCENT = 0.2
+private const val RAFT_IMAGE_LOADER_LOG_TAG = "RaftImageLoader"
 
 private val raftImageLoaderInstalled = atomic(false)
 
@@ -42,13 +44,31 @@ suspend fun raftClearImageCaches() {
 }
 
 /**
- * Installs the Raft singleton Coil [ImageLoader] (idempotent). Must run before the first image
- * request: [build.raft.app.compat.pager.RaftPagerHost] calls it when a page host is created, and
- * hosts may call it earlier at startup.
+ * Installs the Raft singleton Coil [ImageLoader] (idempotent, never throws). Must run before the
+ * first image request: [build.raft.app.compat.pager.RaftPagerHost] calls it when a page host is
+ * created, and hosts may call it earlier at startup.
+ *
+ * If something already created Coil's default singleton (a `SingletonImageLoader.get` before this
+ * call, e.g. a Robolectric test sharing the JVM), Coil's `setSafe` refuses with an
+ * [IllegalStateException]; the install is then skipped with one log line instead of crashing.
+ * Coil 3 has no public "is the default loader created" check, so the exception is the signal.
  */
 fun raftInstallImageLoader() {
     if (!raftImageLoaderInstalled.compareAndSet(expect = false, update = true)) return
-    SingletonImageLoader.setSafe { context -> raftBuildImageLoader(context) }
+    try {
+        SingletonImageLoader.setSafe { context -> raftBuildImageLoader(context) }
+    } catch (_: IllegalStateException) {
+        raftLogWarn(RAFT_IMAGE_LOADER_LOG_TAG, "image_loader_install_skipped reason=singleton_already_created")
+    }
+}
+
+/**
+ * Test-only: forgets that the Raft loader was installed so a test can start from (and restore) a
+ * clean process state. Pair with Coil's `SingletonImageLoader.reset()`. Never call from app code.
+ */
+internal fun resetRaftImageLoaderForTest() {
+    raftImageLoaderInstalled.value = false
+    raftBuiltImageLoader.value = null
 }
 
 /**

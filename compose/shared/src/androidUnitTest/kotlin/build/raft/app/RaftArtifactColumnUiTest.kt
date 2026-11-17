@@ -58,7 +58,6 @@ import build.raft.designsystem.components.RAFT_PANE_GRID_MAIN_TEST_TAG
 import build.raft.designsystem.components.RAFT_PANE_GRID_TABS_TEST_TAG
 import build.raft.designsystem.components.RaftPaneGridExpand
 import kotlin.math.abs
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -95,14 +94,6 @@ import org.robolectric.annotation.Config
 class RaftArtifactColumnUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
-
-    // RaftPagerHost installs Raft's Coil loader, which throws once another test in this Robolectric
-    // sandbox (same JVM fork) already touched Coil's singleton; which tests share a fork shifts as
-    // test classes are added. Installing up front (failure tolerated) keeps this test order-independent.
-    @BeforeTest
-    fun installImageLoader() {
-        runCatching { build.raft.app.image.raftInstallImageLoader() }
-    }
 
     private val data = JsonObject(mapOf("serverId" to JsonPrimitive("s1"), "channelId" to JsonPrimitive("c1")))
     private val artifactData = JsonObject(mapOf("artifactId" to JsonPrimitive("pt_a1")))

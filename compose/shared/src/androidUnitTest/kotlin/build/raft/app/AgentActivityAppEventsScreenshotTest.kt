@@ -68,7 +68,7 @@ class AgentActivityAppEventsScreenshotTest {
     @OptIn(ExperimentalCoilApi::class)
     private fun capture(name: String, appearance: RaftAppAppearance) {
         // As ThreadMessageAttachmentsScreenshotTest: install the app's loader before the first request.
-        runCatching { build.raft.app.image.raftInstallImageLoader() }
+        build.raft.app.image.raftInstallImageLoader()
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
                 remember {
