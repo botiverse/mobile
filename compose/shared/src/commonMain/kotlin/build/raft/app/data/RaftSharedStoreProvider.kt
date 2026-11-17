@@ -1051,7 +1051,7 @@ internal class RaftSharedStoreProvider private constructor(
     internal fun requestRealtimeSyncPull(serverId: String, reason: String) {
         val scope = currentSyncScope(serverId) ?: return
         if (scopesForServer(scope.serverId).isEmpty()) return
-        if (!serverFeatureFlags.isEnabled(serverId, SYNC_INBOX_ROWS_FEATURE_FLAG_KEY)) return
+        if (!serverFeatureFlags.isEnabled(ServerId(serverId), SYNC_INBOX_ROWS_FEATURE_FLAG_KEY)) return
         syncRealtimePull.request(scope, reason)
     }
 
