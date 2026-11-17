@@ -24,12 +24,15 @@ import build.raft.designsystem.text.rememberRaftCarriedBaseline
  * Neither row reads the alignment line of a group while it measures: the name's tooltip is a box
  * and the cluster a row, and reading their baselines during measure made Compose 1.12 lay out
  * their children before a reused message row was placed ("LayoutNode … not found in RectList",
- * iOS crashes b692fce7 and 50046806 after a rotation, androidx fd550bed79). The name text carries
+ * suspected cause of iOS crashes b692fce7 and 50046806, which followed a window size change in a
+ * message list; not reproduced, androidx fd550bed79). The name text carries
  * its own baseline up instead ([build.raft.designsystem.text.RaftCarriedBaseline]). Same pixels:
  *  - the name text sits at the top of its tooltip box, so its baseline is the box's;
  *  - in the cluster a baseline-aligned part is placed at the deepest baseline less its own, so the
  *    name's line in the cluster is the deepest of the cluster's baselines: the name's, as the
  *    name (subhead 15/20) runs deeper than the meta texts (caption 12/16).
+ * So [meta] holds only single-line texts smaller than the name: a larger or padded badge would run
+ * deeper, push the name down, and the carried baseline would put the time a few pixels off.
  */
 @Composable
 internal fun ThreadMessageHeaderRow(

@@ -43,7 +43,8 @@ import org.robolectric.annotation.Config
 
 /**
  * iOS crashes b692fce7 (1.25.1) and 50046806 (1.25.0): "LayoutNode … not found in RectList" in a
- * message list just after a rotation. The message header read the baseline of its sender cluster
+ * message list, 89 / 167 ms after a window size change was logged (a rotation is not confirmed).
+ * Suspected cause, not reproduced on the JVM: the message header read the baseline of its sender cluster
  * (a row) and of the name's tooltip (a box) while it measured, which made Compose 1.12 lay out
  * their children before a reused row was placed (androidx fd550bed79, fixed in Compose 1.13).
  *

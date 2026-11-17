@@ -16,7 +16,7 @@ import androidx.compose.ui.layout.layout
  * Why: a parent that reads a child group's alignment line during measure makes Compose lay out
  * (and mark placed) that group's children before the parent itself is placed. For a reused
  * `LazyColumn` item, Compose 1.12 then throws "LayoutNode … not found in RectList" from
- * RectManager (iOS crashes c41fd092, b692fce7, 50046806; fixed upstream in Compose 1.13,
+ * RectManager (Android crash c41fd092; iOS crashes b692fce7, 50046806; fixed upstream in Compose 1.13,
  * androidx fd550bed79). A single text node has no children, so reading its own baseline is safe.
  *
  * Use: [raftCarryFirstBaseline] on the text itself; in the `Row`, `Modifier.alignBy { it.px }`
