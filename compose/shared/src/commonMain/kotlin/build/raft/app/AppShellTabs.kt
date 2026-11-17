@@ -186,7 +186,7 @@ internal fun appShellMoreTabShowsDot(attention: Set<RaftMoreAttention>, selected
 
 /**
  * Wide-rail entries, top to bottom: [RaftNavPresentation.Rail], the web LeftRail's set (Chat,
- * Activity, Tasks, Members, Computers, Apps; Help and Settings in its footer).
+ * Activity, Tasks, Artifacts, Members, Computers, Apps, Assistant; Help and Settings in its footer).
  */
 internal val AppShellRailTabKeys: List<String> = RaftNavPresentation.Rail.destinations.map { it.id }
 
@@ -200,10 +200,19 @@ internal fun appShellRailTabs(
     inlinePageRailId: String? = null,
     /** workspace_artifacts_v0 loaded and on ([appShellArtifactsShown]): the Artifacts entry shows. */
     artifacts: Boolean = false,
+    /** The Assistant entry shows (web `useRememberedAssistantShown`, the phone Home row's rule). */
+    assistant: Boolean = false,
 ): List<RaftBottomTabItemPayload> =
     raftNavItems(
         presentation = RaftNavPresentation.Rail,
-        ids = if (artifacts) AppShellRailTabKeys else AppShellRailTabKeys - RaftAppDestination.Artifacts.id,
+        ids =
+            AppShellRailTabKeys.filter { id ->
+                when (id) {
+                    RaftAppDestination.Artifacts.id -> artifacts
+                    RaftAppDestination.Assistant.id -> assistant
+                    else -> true
+                }
+            },
         selectedKey = inlinePageRailId ?: retainedAppShellSelectedTab(selectedTab),
         labelFor = labelFor,
         badges = RaftNavBadgeInputs(activityUnreadCount, moreAttention),
@@ -245,6 +254,8 @@ internal val AppShellRailOrder: List<String> =
         "members",
         RaftAppDestination.Computers.id,
         RaftAppDestination.Apps.id,
+        // web RAIL_TAB_IDS: the assistant last.
+        RaftAppDestination.Assistant.id,
     )
 
 internal fun <T> List<T>.orderedLikePhoneBar(key: (T) -> String): List<T> =

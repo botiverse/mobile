@@ -1072,12 +1072,16 @@ internal const val AppShellRailComputersKey = "rail_computers"
 internal const val AppShellRailAppsKey = "rail_apps"
 internal const val AppShellRailArtifactsKey = "rail_artifacts"
 
+/** The rail's Assistant: the assistant's page beside the rail (web LeftRail's `assistant` rail mode). */
+internal const val AppShellRailAssistantKey = "rail_assistant"
+
 /** The inline key a rail page destination opens as on the wide layout, or null. */
 internal fun appShellRailInlinePageKey(destination: RaftAppDestination?): String? =
     when (destination) {
         RaftAppDestination.Computers -> AppShellRailComputersKey
         RaftAppDestination.Apps -> AppShellRailAppsKey
         RaftAppDestination.Artifacts -> AppShellRailArtifactsKey
+        RaftAppDestination.Assistant -> AppShellRailAssistantKey
         else -> null
     }
 
@@ -1087,16 +1091,27 @@ internal fun appShellRailInlinePageRailId(railInlineSecondaryDestination: String
         AppShellRailComputersKey -> RaftAppDestination.Computers.id
         AppShellRailAppsKey -> RaftAppDestination.Apps.id
         AppShellRailArtifactsKey -> RaftAppDestination.Artifacts.id
+        AppShellRailAssistantKey -> RaftAppDestination.Assistant.id
         else -> null
     }
 
-/** The page an inline page key shows in the content area: the page its Settings row shows in the wide pane. */
-internal fun appShellRailInlinePage(railInlineSecondaryDestination: String?, storeScope: RaftShellStoreScope): Pair<String, JSONObject>? =
+/**
+ * The page an inline page key shows in the content area: the page its Settings row shows in the
+ * wide pane. [timeContext] is the shell's time display, for a page that shows messages (the
+ * assistant's DM).
+ */
+internal fun appShellRailInlinePage(
+    railInlineSecondaryDestination: String?,
+    storeScope: RaftShellStoreScope,
+    timeContext: AppShellThreadTimeContext? = null,
+): Pair<String, JSONObject>? =
     when (railInlineSecondaryDestination) {
         AppShellRailComputersKey -> settingsWideDetailPage(SettingsDestinationComputers, storeScope)
         AppShellRailAppsKey -> settingsWideDetailPage(SettingsDestinationConnectedApps, storeScope)
         // Its head without Back (the rail is the way out), as Computers.
         AppShellRailArtifactsKey -> ARTIFACTS_HOME_PAGE to artifactsHomePageData(storeScope)
+        // Its head without Back too; its gear and its DM as on the phone's page.
+        AppShellRailAssistantKey -> ASSISTANT_PAGE to assistantPageData(storeScope, timeContext)
         else -> null
     }
 
@@ -5890,6 +5905,17 @@ private fun RaftAppShellReadyContent(
         remember(serverMenuModel?.currentServer?.id, artifactsFlagRevision) {
             appShellArtifactsShown(sharedStores.serverFeatureFlags, serverMenuModel?.currentServer?.id)
         }
+    // web LeftRail `useRememberedAssistantShown`: the rail's Assistant, by the phone Home row's rule.
+    val railAssistantShown =
+        rememberAppShellRailAssistantShown(
+            navRailActive = navRailActive,
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            session = readySession,
+            serverId = serverMenuModel?.currentServer?.id,
+            railInlineSecondaryDestinationState = railInlineSecondaryDestinationState,
+            wideNavHistoriesState = wideNavHistoriesState,
+        )
     // Artifacts off for this server (or the flag turned off): its inline page closes and the wide
     // history's arrows never reopen it (review L1).
     AppShellServerMenuEffects(
@@ -5938,9 +5964,10 @@ private fun RaftAppShellReadyContent(
     }
     // The wide rail keeps the web LeftRail entries (Direction A, #proj-mobile 10-30): Chat,
     // Activity, Tasks, Members, Computers, Apps; Members is a rail root there.
-    val appShellRailTabItems = remember(selectedTab, railInlineSecondaryDestination, railNavLabels, activityTabUnreadCount, moreAttention, serverMenuArtifactsShown) {
+    val appShellRailTabItems = remember(selectedTab, railInlineSecondaryDestination, railNavLabels, activityTabUnreadCount, moreAttention, serverMenuArtifactsShown, railAssistantShown) {
         appShellRailTabs(
             artifacts = serverMenuArtifactsShown,
+            assistant = railAssistantShown,
             selectedTab = selectedTab,
             inlinePageRailId = appShellRailInlinePageRailId(railInlineSecondaryDestination),
             activityUnreadCount = activityTabUnreadCount,
@@ -8314,8 +8341,8 @@ private fun RaftAppShellReadyContent(
                         )
                     } else if (appShellRailInlinePage(railInlineSecondaryDestination, storeScope) != null) {
                         val inlinePage =
-                            remember(railInlineSecondaryDestination, storeScope) {
-                                appShellRailInlinePage(railInlineSecondaryDestination, storeScope)
+                            remember(railInlineSecondaryDestination, storeScope, threadTimeContext) {
+                                appShellRailInlinePage(railInlineSecondaryDestination, storeScope, threadTimeContext)
                             }
                         if (inlinePage != null) {
                             // The page as in the wide Settings pane: its head without Back (the rail
@@ -9445,6 +9472,46 @@ private fun AppShellRuntimeAuthorityEffects(
             chatLayout.conversationForwardGestureEnabled
         )
     }
+}
+
+/**
+ * Whether the wide rail shows its Assistant (web LeftRail `useRememberedAssistantShown`): the
+ * phone Home row's rule ([build.raft.app.assistant.rememberAssistantEntryShown]), only while the
+ * rail shows. When it goes (flag off, a guest, another server without it), its inline page closes
+ * and the wide history's arrows never reopen it, as Artifacts. Kept out of
+ * RaftAppShellReadyContent (JVM method size).
+ */
+@Composable
+private fun rememberAppShellRailAssistantShown(
+    navRailActive: Boolean,
+    sharedStores: RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    session: StoredAuthSession?,
+    serverId: String?,
+    railInlineSecondaryDestinationState: MutableState<String?>,
+    wideNavHistoriesState: MutableState<RaftWideNavHistories>,
+): Boolean {
+    if (!navRailActive) return false
+    val store = remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) }
+    val memory = remember { build.raft.app.data.HomeAssistantEntryMemory(build.raft.app.data.raftSharedPreferenceStore()) }
+    val server = serverId?.trim()?.takeIf(String::isNotEmpty)
+    val shown =
+        build.raft.app.assistant.rememberAssistantEntryShown(
+            store = store,
+            featureFlags = sharedStores.serverFeatureFlags,
+            memory = memory,
+            serverId = server,
+            userId = session?.user?.id,
+            serverRole = session?.servers?.firstOrNull { it.id == server }?.role,
+        )
+    var railInlineSecondaryDestination by railInlineSecondaryDestinationState
+    var wideNavHistories by wideNavHistoriesState
+    LaunchedEffect(shown, server) {
+        if (shown || server == null) return@LaunchedEffect
+        wideNavHistories = wideNavHistories.withoutSurface(server, AppShellRailAssistantKey)
+        if (railInlineSecondaryDestination == AppShellRailAssistantKey) railInlineSecondaryDestination = null
+    }
+    return shown
 }
 
 // Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).

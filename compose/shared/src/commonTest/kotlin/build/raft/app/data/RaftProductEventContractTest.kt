@@ -31,11 +31,14 @@ class RaftProductEventContractTest {
             listOf("home", "activity", "search", "saved", "tasks", "members", "computers", "settings", "more", "assistant", "apps", "artifacts")
         val NavSurfaces =
             listOf("mobile_tab_bar", "rail", "top_bar", "mobile_home_shortcuts", "sidebar", "keyboard_shortcut", "mobile_more")
+        /** `PAGE_VIEW_ROUTES` @ [PinnedPageViewRoutesSlockSha] (`assistant` 2026-10-23, `apps`, `artifacts`). */
+        const val PinnedPageViewRoutesSlockSha = "34511fe7e4a36d0d5c054f836be70821fa8b4608"
         val PageViewRoutes =
             listOf(
                 "channel", "dm", "activity", "tasks", "saved", "search", "members", "members_graph",
                 "agent", "human", "computer", "computers", "settings", "release_notes",
                 "home", "more", "thread", "task", "conversation_search",
+                "assistant", "apps", "artifacts",
             )
         val SettingsPageTabs =
             listOf(
@@ -58,6 +61,7 @@ class RaftProductEventContractTest {
         assertEquals(PinnedSlockSha, RAFT_PRODUCT_EVENTS_SLOCK_SHA)
         assertEquals(PinnedDeviceClassSlockSha, RAFT_PRODUCT_EVENTS_DEVICE_CLASS_SLOCK_SHA)
         assertEquals(PinnedNavDestinationsSlockSha, RAFT_PRODUCT_EVENTS_NAV_DESTINATIONS_SLOCK_SHA)
+        assertEquals(PinnedPageViewRoutesSlockSha, RAFT_PRODUCT_EVENTS_PAGE_VIEW_ROUTES_SLOCK_SHA)
     }
 
     @Test
@@ -66,7 +70,7 @@ class RaftProductEventContractTest {
             listOf(
                 "NAV_DESTINATIONS@$PinnedNavDestinationsSlockSha" to (NavDestinations to RaftNavDestination.entries.map { it.wire }),
                 "NAV_SURFACES" to (NavSurfaces to RaftNavSurface.entries.map { it.wire }),
-                "PAGE_VIEW_ROUTES" to (PageViewRoutes to RaftPageRoute.entries.map { it.wire }),
+                "PAGE_VIEW_ROUTES@$PinnedPageViewRoutesSlockSha" to (PageViewRoutes to RaftPageRoute.entries.map { it.wire }),
                 "settings_tab" to (SettingsPageTabs to RaftSettingsTab.entries.map { it.wire }),
                 "app_opened.start" to (AppOpenedStart to RaftAppOpenStart.entries.map { it.wire }),
                 "app_opened.via" to (AppOpenedVia to RaftAppOpenVia.entries.map { it.wire }),

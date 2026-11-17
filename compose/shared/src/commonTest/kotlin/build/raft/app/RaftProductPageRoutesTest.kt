@@ -64,6 +64,8 @@ class RaftProductPageRoutesTest {
         assertNull(appShellNavDestination("help"))
         // Nor Artifacts (NAV_DESTINATIONS has no `artifacts` yet).
         assertNull(appShellNavDestination("artifacts"))
+        // The rail's Assistant (web LeftRail `trackNavEntrySelected("assistant", "rail", …)`).
+        assertEquals(RaftNavDestination.Assistant, appShellNavDestination("assistant"))
         // Every other phone bar slot and rail entry has a destination.
         (AppShellPhoneBottomBarKeys + AppShellRailTabKeys - "apps" - "artifacts").forEach { key ->
             assertEquals(true, appShellNavDestination(key) != null, key)
@@ -123,6 +125,7 @@ class RaftProductPageRoutesTest {
             ),
         )
         assertEquals(view(RaftPageRoute.ReleaseNotes), page(AuthenticatedProductRoute.ReleaseNotes))
+        assertEquals(view(RaftPageRoute.Assistant), page(AuthenticatedProductRoute.Assistant))
         assertEquals(view(RaftPageRoute.Computers), page(AuthenticatedProductRoute.SettingsComputers))
         assertEquals(
             view(RaftPageRoute.Computer),
@@ -144,7 +147,6 @@ class RaftProductPageRoutesTest {
             AuthenticatedProductRoute.ThreadForwardBundle,
             AuthenticatedProductRoute.FilePreview,
             AuthenticatedProductRoute.ArtifactsHome,
-            AuthenticatedProductRoute.Assistant,
         ).forEach { assertNull(page(it), it.name) }
     }
 

@@ -58,7 +58,8 @@ import kotlinx.coroutines.flow.map
 
 /**
  * The personal assistant's page (web route `/s/:slug/assistant`, botiverse/slock
- * `packages/web/src/assistant/AssistantRoute.tsx`), pushed from the phone Home's Assistant row:
+ * `packages/web/src/assistant/AssistantRoute.tsx`), pushed from the phone Home's Assistant row,
+ * or beside the wide rail from its Assistant tab (an inline page, [AppShellRailAssistantKey]):
  * loading, then Home again when it is off, Create when there is no assistant yet, else its head
  * over the owner's DM with it.
  */
@@ -139,7 +140,11 @@ internal fun AssistantRoute() {
     val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val store = remember(sharedStores, storeScope) { sharedStores.myAssistantStore(storeScope) }
-    val closePage: () -> Unit = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+    // Beside the wide rail the page is the content area's (no Back; "close" leaves it for the tab under it).
+    val wideDetailClose = LocalRaftSettingsWideDetailClose.current
+    val closePage: () -> Unit = {
+        settingsPageClose(wideDetailClose) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+    }
     val session by produceState<AssistantPageSession?>(null, authStore) {
         val read = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
         val serverId = read?.currentServerId?.takeIf(String::isNotBlank)
@@ -302,8 +307,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.AssistantPageDm(
 
 /**
  * The head's gear (web AssistantSettingsButton): the assistant's profile on its Profile tab, where
- * its owner's Assistant section is (permissions, extra instructions). WeChat and Delete come with
- * the settings page (phase 2).
+ * its owner's Assistant section is (permissions, the otter, extra instructions, WeChat, Delete).
  */
 private fun Pager.openAssistantSettings(storeScope: RaftShellStoreScope, serverId: String?, agentId: String) {
     val pageData =

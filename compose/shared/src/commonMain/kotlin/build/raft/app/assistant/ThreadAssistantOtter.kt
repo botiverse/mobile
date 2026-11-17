@@ -281,7 +281,10 @@ internal fun rememberThreadAssistantOtter(
         }
     val contextAttachment = remember(server, dmChannelId) { ThreadAssistantContextAttachment() }
     SideEffect { contextAttachment.origin = contextOrigin }
-    if (server == null || dmChannelId == null || agentId == null) return null
+    // The account's "Show the otter everywhere" (web `useOtterVisibleSetting`): off hides it on
+    // every page and device; the DM still works. Not shown until the account's answer is known.
+    val otterShown = rememberAssistantOtterShown(store, user, enabled = dmChannelId != null)
+    if (server == null || dmChannelId == null || agentId == null || !otterShown) return null
     val assistant = (state as? MyAssistantState.Ready)?.assistant ?: return null
     val mood =
         assistantOtterMood(
@@ -328,6 +331,22 @@ internal fun rememberThreadAssistantOtter(
             rest = rest,
         )
     }
+}
+
+/**
+ * Whether the account shows the otter over every page ([SharedMyAssistantStore.otterPrefs]),
+ * asked once per account while [enabled] (the otter could show). A store without the setting
+ * always shows it.
+ */
+@Composable
+internal fun rememberAssistantOtterShown(store: SharedMyAssistantStore, userId: String?, enabled: Boolean): Boolean {
+    val prefs = store.otterPrefs ?: return true
+    val account = userId?.trim()?.takeIf(String::isNotEmpty)
+    LaunchedEffect(prefs, account, enabled) {
+        if (enabled && account != null) prefs.ensureLoaded(account)
+    }
+    val state by prefs.state.collectAsState()
+    return account != null && state.accountId == account && state.visible == true
 }
 
 /**

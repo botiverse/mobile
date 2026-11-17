@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.model.RaftTimeFormat24Hour
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +17,7 @@ class AppShellRailInlinePagesTest {
     fun railPageDestinationsOpenAsInlinePages() {
         assertEquals(AppShellRailComputersKey, appShellRailInlinePageKey(RaftAppDestination.Computers))
         assertEquals(AppShellRailAppsKey, appShellRailInlinePageKey(RaftAppDestination.Apps))
+        assertEquals(AppShellRailAssistantKey, appShellRailInlinePageKey(RaftAppDestination.Assistant))
         assertNull(appShellRailInlinePageKey(RaftAppDestination.Members))
         // Every rail page destination has an inline page: none is pushed over the shell.
         RaftNavPresentation.Rail.destinations
@@ -30,6 +32,10 @@ class AppShellRailInlinePagesTest {
         assertEquals(SETTINGS_WEB_VIEW_PAGE, appShellRailInlinePage(AppShellRailAppsKey, scope)?.first)
         // The Artifacts home beside the rail, as the web LeftRail's Artifacts tab.
         assertEquals(ARTIFACTS_HOME_PAGE, appShellRailInlinePage(AppShellRailArtifactsKey, scope)?.first)
+        // The assistant's page beside the rail (web's `assistant` rail mode), with the shell's time display for its DM.
+        val assistant = appShellRailInlinePage(AppShellRailAssistantKey, scope, AppShellThreadTimeContext(localOffsetMinutes = 480, timeFormat = RaftTimeFormat24Hour))
+        assertEquals(ASSISTANT_PAGE, assistant?.first)
+        assertEquals(480, assistant?.second?.optInt("localOffsetMinutes"))
         assertNull(appShellRailInlinePage(AppShellRailSearchKey, scope))
         assertNull(appShellRailInlinePage(null, scope))
     }
@@ -43,6 +49,11 @@ class AppShellRailInlinePagesTest {
         val withArtifacts = appShellRailTabs(selectedTab = "home", labelFor = { it }, artifacts = true, inlinePageRailId = appShellRailInlinePageRailId(AppShellRailArtifactsKey))
         assertEquals(listOf("home", "activity", "tasks", "artifacts", "members", "computers", "apps"), withArtifacts.map { it.key })
         assertEquals(listOf("artifacts"), withArtifacts.filter { it.selected }.map { it.key })
+        // The Assistant only where its entry shows (web `useRememberedAssistantShown`), last.
+        assertFalse(tabs.any { it.key == "assistant" })
+        val withAssistant = appShellRailTabs(selectedTab = "home", labelFor = { it }, assistant = true, inlinePageRailId = appShellRailInlinePageRailId(AppShellRailAssistantKey))
+        assertEquals("assistant", withAssistant.last().key)
+        assertEquals(listOf("assistant"), withAssistant.filter { it.selected }.map { it.key })
         val footer = appShellRailFooterTabs(selectedTab = "", labelFor = { it }, helpOpen = false)
         assertFalse(footer.any { it.selected })
         assertNull(appShellRailInlinePageRailId(AppShellRailSearchKey))

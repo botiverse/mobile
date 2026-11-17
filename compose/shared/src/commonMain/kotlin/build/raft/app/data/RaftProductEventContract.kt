@@ -87,6 +87,9 @@ const val RAFT_PRODUCT_EVENTS_DEVICE_CLASS_SLOCK_SHA: String = "9a30dba7deb45b2f
 /** `NAV_DESTINATIONS` ([RaftNavDestination]) at botiverse/slock staging, with `assistant`, `apps`, `artifacts`. */
 const val RAFT_PRODUCT_EVENTS_NAV_DESTINATIONS_SLOCK_SHA: String = "e136d7c9543fb84bf91330370d89e17c8d8fa044"
 
+/** `PAGE_VIEW_ROUTES` ([RaftPageRoute]) at botiverse/slock staging, with `assistant`, `apps`, `artifacts`. */
+const val RAFT_PRODUCT_EVENTS_PAGE_VIEW_ROUTES_SLOCK_SHA: String = "34511fe7e4a36d0d5c054f836be70821fa8b4608"
+
 /**
  * The batch `device_class`: whether this app runs on a phone or a tablet, as the app decides it.
  * The server prefers it over the User-Agent for `$device_type` (phone -> `mobile`, tablet -> `tablet`).
@@ -143,7 +146,10 @@ enum class RaftNavSurface(val wire: String) {
     @SerialName("mobile_more") MobileMore("mobile_more"),
 }
 
-/** `PAGE_VIEW_ROUTES`. */
+/**
+ * `PAGE_VIEW_ROUTES`, as of botiverse/slock @ [RAFT_PRODUCT_EVENTS_PAGE_VIEW_ROUTES_SLOCK_SHA]
+ * (`assistant`, `apps`, `artifacts` added after [RAFT_PRODUCT_EVENTS_SLOCK_SHA]).
+ */
 @Serializable
 enum class RaftPageRoute(val wire: String) {
     @SerialName("channel") Channel("channel"),
@@ -165,6 +171,15 @@ enum class RaftPageRoute(val wire: String) {
     @SerialName("thread") Thread("thread"),
     @SerialName("task") Task("task"),
     @SerialName("conversation_search") ConversationSearch("conversation_search"),
+
+    /** The personal assistant's page (web `/assistant`, registry 2026-10-23). */
+    @SerialName("assistant") Assistant("assistant"),
+
+    /** The Apps page (web `/apps`); the app sends none yet. */
+    @SerialName("apps") Apps("apps"),
+
+    /** The Artifacts page (web `/artifacts`); the app sends none yet. */
+    @SerialName("artifacts") Artifacts("artifacts"),
 }
 
 /** `page_viewed.settings_tab`: `SETTINGS_PAGE_TABS` + `NATIVE_SETTINGS_PAGE_TABS`. */

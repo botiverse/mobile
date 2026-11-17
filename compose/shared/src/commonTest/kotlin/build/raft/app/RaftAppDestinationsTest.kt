@@ -20,6 +20,7 @@ class RaftAppDestinationsTest {
                 RaftAppDestination.Members to "members",
                 RaftAppDestination.Computers to "computers",
                 RaftAppDestination.Apps to "apps",
+                RaftAppDestination.Assistant to "assistant",
                 RaftAppDestination.Server to "more",
                 RaftAppDestination.Help to "help",
                 RaftAppDestination.Settings to "settings",
@@ -53,10 +54,12 @@ class RaftAppDestinationsTest {
         assertEquals(RaftNavPresentation.PhoneBar, raftNavPresentation(navRailActive = false))
         assertEquals(RaftNavPresentation.Rail, raftNavPresentation(navRailActive = true))
         assertEquals(
-            listOf("home", "activity", "tasks", "artifacts", "members", "computers", "apps"),
+            listOf("home", "activity", "tasks", "artifacts", "members", "computers", "apps", "assistant"),
             RaftNavPresentation.Rail.destinations.map { it.id },
         )
         assertEquals(listOf("help", "settings"), RaftNavPresentation.Rail.footer.map { it.id })
+        // web OttieRailAvatar: the rail's Assistant is Ottie's face, nothing else is.
+        assertEquals(listOf("assistant"), RaftAppDestination.entries.map { it.id }.filter { raftNavShowsOttie(RaftNavPresentation.Rail, it) })
     }
 
     @Test
@@ -82,7 +85,7 @@ class RaftAppDestinationsTest {
     @Test
     fun routesSayWhatATapDoes() {
         assertEquals(
-            setOf(RaftAppDestination.Artifacts, RaftAppDestination.Computers, RaftAppDestination.Apps),
+            setOf(RaftAppDestination.Artifacts, RaftAppDestination.Computers, RaftAppDestination.Apps, RaftAppDestination.Assistant),
             RaftAppDestination.entries.filter { it.route == RaftNavRoute.Page }.toSet(),
         )
         assertEquals(RaftNavRoute.Menu, RaftAppDestination.Help.route)

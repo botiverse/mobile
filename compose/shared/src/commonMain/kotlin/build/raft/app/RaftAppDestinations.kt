@@ -22,6 +22,14 @@ internal sealed interface RaftNavIcon {
 
     /** A raft-ui glyph (web `ChatIcon`), drawn by [RaftConversationKindIcon][build.raft.designsystem.components.RaftConversationKindIcon]. */
     data class Glyph(val glyph: RaftConversationKindGlyph, override val lucide: RaftLucideIconName) : RaftNavIcon
+
+    /**
+     * Ottie's round face (web `OttieRailAvatar`, 28px on the rail): in full colour, not the
+     * item's ink. [lucide] stands in where only a Lucide name fits.
+     */
+    data object Ottie : RaftNavIcon {
+        override val lucide: RaftLucideIconName = RaftLucideIconName.Bot
+    }
 }
 
 /** The one source of a destination's attention dot (raft-design Badge: surfaces show a dot, never a count). */
@@ -157,6 +165,20 @@ internal enum class RaftAppDestination(
         // NAV_DESTINATIONS has `apps`; the app's mirror (RaftNavDestination) not yet.
         navEvent = null,
     ),
+    /**
+     * The personal assistant (web LeftRail's Assistant, last of the tabs, Ottie's face; slock
+     * 8c2a504ea6 #14307): the assistant's page in the content area beside the rail, only where
+     * an Assistant entry shows ([build.raft.app.assistant.rememberAssistantEntryShown], the
+     * phone Home row's rule). The phone reaches it from the Home row.
+     */
+    Assistant(
+        id = "assistant",
+        label = Res.string.home_nav_assistant,
+        icon = RaftNavIcon.Ottie,
+        badge = RaftNavBadgeSource.None,
+        route = RaftNavRoute.Page,
+        navEvent = RaftNavDestination.Assistant,
+    ),
     /** The phone bar's last tab: the current server, opening the server panel (raft-design #712, D1a). */
     Server(
         id = "more",
@@ -217,6 +239,7 @@ internal enum class RaftNavPresentation(
             RaftAppDestination.Members,
             RaftAppDestination.Computers,
             RaftAppDestination.Apps,
+            RaftAppDestination.Assistant,
         ),
         // The web heads this footer with its "collapse sidebar" toggle (SidebarToggleRailItem).
         // It is an action on the shell, not a destination, so it is not listed here: the rail
@@ -301,6 +324,10 @@ internal fun raftNavItems(
 /** The raft-ui glyph [key] draws on [presentation] instead of its Lucide icon (the rail's Chat). */
 internal fun raftNavGlyph(presentation: RaftNavPresentation, key: String): RaftConversationKindGlyph? =
     RaftAppDestination.fromId(key)?.let { (presentation.iconOf(it) as? RaftNavIcon.Glyph)?.glyph }
+
+/** Whether [key] draws Ottie's face on [presentation] instead of an icon (the rail's Assistant). */
+internal fun raftNavShowsOttie(presentation: RaftNavPresentation, key: String): Boolean =
+    RaftAppDestination.fromId(key)?.let { presentation.iconOf(it) } == RaftNavIcon.Ottie
 
 /** [presentation]'s labels by destination id, in the app language. */
 @Composable

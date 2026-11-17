@@ -37,6 +37,12 @@ import kotlinx.serialization.json.jsonObject
  *    A 400 whose `error` says "… limit reached (n/m on X plan)." is the agent or seat limit (web
  *    `isCapacityLimitError`, the message is the contract). Since botiverse/slock #12143 an
  *    assistant takes no agent seat and the server no longer sends it, but web still handles it.
+ *  - `DELETE servers/:id/assistant` (web assistantClient `deleteAssistant`): archives the person's
+ *    assistant (`archiveAgentAsUser(..., "keep")`) and answers `{ enabled, assistant: null }`
+ *    (`routes/myAssistant.api.test.ts` asserts `{ enabled: true, assistant: null }`). 404
+ *    `assistant_not_found` when there is none; 403 for a guest (`assistant_not_enabled`) or a fenced
+ *    refusal (`forbidden`); an `AgentArchiveError` answers its own status and code (404 / 409). Web
+ *    handles the refusals as for create: 403 not available, 404 / 409 read the assistant again.
  *
  * Web reads it in `packages/web/src/assistant/assistantClient.ts` (`useMyAssistant`): only while
  * the `personal_assistant` flag is on, never for a guest; any failure of the first read fails
@@ -266,11 +272,29 @@ sealed interface MyAssistantCreateResult {
     data class Failed(val code: Int?, val traceId: String? = null) : MyAssistantCreateResult
 }
 
+/** What one `DELETE servers/:id/assistant` gave (web `deleteAssistant` + `handleMutationError`). */
+sealed interface MyAssistantDeleteResult {
+    /** 2xx: deleted; [answer] is the server's view (`assistant: null`), null when it could not be read. */
+    data class Deleted(val answer: MyAssistantAnswer?) : MyAssistantDeleteResult
+
+    /** 403 (`assistant_not_enabled`, `forbidden`): not available here any more (web stores `NOT_ENABLED`). */
+    data class NotAvailable(val code: Int, val traceId: String? = null) : MyAssistantDeleteResult
+
+    /** 404 `assistant_not_found` or a 409: what the client holds is stale, read it again (web `refresh`). */
+    data class Stale(val code: Int, val traceId: String? = null) : MyAssistantDeleteResult
+
+    /** Anything else: nothing was deleted. [code] is the HTTP status, null for transport. */
+    data class Failed(val code: Int?, val traceId: String? = null) : MyAssistantDeleteResult
+}
+
 interface RaftMyAssistantApi {
     suspend fun fetch(serverId: ServerId): MyAssistantFetchResult
 
     /** `POST servers/:id/assistant` `{}`: creates the person's assistant (Ottie). */
     suspend fun create(serverId: ServerId): MyAssistantCreateResult
+
+    /** `DELETE servers/:id/assistant`: deletes (archives) the person's assistant. */
+    suspend fun delete(serverId: ServerId): MyAssistantDeleteResult
 
     /** `PATCH servers/:id/assistant` `{ ownerNotes }` with [notes] trimmed, empty clears them. */
     suspend fun updateOwnerNotes(serverId: ServerId, notes: String): MyAssistantOwnerNotesSaveResult
@@ -308,6 +332,20 @@ internal class RaftMyAssistantNetworkApi(
                 )
             }.getOrElse { return MyAssistantCreateResult.Failed(code = null) }
         return myAssistantCreateResultOf(response.code, response.bodyText ?: response.errorBodyText, response.traceId)
+    }
+
+    override suspend fun delete(serverId: ServerId): MyAssistantDeleteResult {
+        val response =
+            runCatchingPreservingCancellation {
+                networkClient.request(
+                    // The person confirmed Delete and waits on it.
+                    priority = DataRequestPriority.Foreground,
+                    path = "servers/${serverId.value}/assistant",
+                    method = "DELETE",
+                    serverIdOverride = serverId,
+                )
+            }.getOrElse { return MyAssistantDeleteResult.Failed(code = null) }
+        return myAssistantDeleteResultOf(response.code, response.bodyText ?: response.errorBodyText, response.traceId)
     }
 
     override suspend fun updateOwnerNotes(serverId: ServerId, notes: String): MyAssistantOwnerNotesSaveResult {
@@ -392,6 +430,23 @@ internal fun myAssistantCreateResultOf(
         else -> MyAssistantCreateResult.Failed(code, traceId)
     }
 }
+
+/**
+ * Web `deleteAssistant`'s answers: 2xx deleted (the view, `assistant: null`); 403 not available;
+ * 404 / 409 stale; anything else failed. (Web would also read a 400 limit message, which a delete
+ * never sends.)
+ */
+internal fun myAssistantDeleteResultOf(
+    code: Int,
+    bodyText: String?,
+    traceId: String? = null,
+): MyAssistantDeleteResult =
+    when {
+        code in 200..299 -> MyAssistantDeleteResult.Deleted(bodyText?.let(::parseSharedMyAssistantResponse))
+        code == 403 -> MyAssistantDeleteResult.NotAvailable(code, traceId)
+        code == 404 || code == 409 -> MyAssistantDeleteResult.Stale(code, traceId)
+        else -> MyAssistantDeleteResult.Failed(code, traceId)
+    }
 
 /** Web `isCapacityLimitError`: the server's `formatBillingCapacityLimitMessage` ("Seat limit reached (1/1 on Pro plan)."). */
 internal fun myAssistantIsCapacityLimitMessage(message: String): Boolean = message.contains("limit reached")

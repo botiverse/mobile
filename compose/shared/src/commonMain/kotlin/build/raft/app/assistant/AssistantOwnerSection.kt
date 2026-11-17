@@ -35,7 +35,9 @@ import build.raft.app.data.AgentLifecycleActionResult
 import build.raft.app.data.ComputerAccessRevokedErrorCode
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.MyAssistantDeleteOutcome
 import build.raft.app.data.MyAssistantKey
+import build.raft.app.data.RaftAssistantDmCardsApi
 import build.raft.app.data.MyAssistantOwnerNotesSaveOutcome
 import build.raft.app.data.MyAssistantRecord
 import build.raft.app.data.MyAssistantSettingSaveOutcome
@@ -61,6 +63,9 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialog
+import build.raft.designsystem.components.RaftDialogSize
+import build.raft.designsystem.components.RaftRiskTone
+import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.components.RaftDialogSheet
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftFieldError
@@ -76,11 +81,13 @@ import build.raft.designsystem.components.RaftTextareaCounter
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 // The owner's side of their personal assistant's profile (web assistant/AssistantOwnerSection.tsx,
-// AssistantInstructionsDialog.tsx, AssistantPaused.tsx `AssistantPausedNotice`): under the
-// profile, one 「Assistant」 section with the permission switches and Extra Instructions; under
+// AssistantInstructionsDialog.tsx, AssistantOtterSettings.tsx, AssistantPaused.tsx
+// `AssistantPausedNotice`; WeChat in AssistantOwnerWeChat.kt): under the profile, one 「Assistant」
+// section with the permission switches, the otter, Extra Instructions, WeChat and Delete; under
 // the hero, while a server owner or admin has paused it, the notice with Start. Only the owner
 // sees either: "my assistant" is the viewer's own, so another agent's profile, or anyone else's
 // view of this one, shows nothing. The owner cannot pause it (web parity: pausing is the server
@@ -105,6 +112,20 @@ internal class AssistantOwnerScope(
     val viewerIsGuest: Boolean,
     /** Reads what the assistant changed for its owner (Recent changes); null: no such row. */
     val settingChangesApi: RaftAssistantSettingChangesApi? = null,
+    /** The WeChat bridge's status and Disconnect; null: no WeChat row. */
+    val weChatApi: RaftAssistantDmCardsApi? = null,
+    /**
+     * The route's own scope (it outlives the section): a delete or a disconnect the server may
+     * already have done finishes, and what follows it runs, even once the section is gone.
+     */
+    val actionScope: CoroutineScope? = null,
+    /** `bridge.toastWithIntent`: the outcome of a disconnect (web `toast.success` / `toast.info`). */
+    val onToast: (message: String, intent: RaftToastIntent) -> Unit = { _, _ -> },
+    /**
+     * After the assistant is deleted: the profile closes (back to the assistant's page, which
+     * offers Create again, as web's page does once `assistant` is null).
+     */
+    val onAssistantDeleted: () -> Unit = {},
 )
 
 internal val LocalAssistantOwnerScope = compositionLocalOf<AssistantOwnerScope?> { null }
@@ -136,12 +157,13 @@ internal fun rememberOwnAssistant(agentId: String): MyAssistantRecord? {
 }
 
 /**
- * The owner's 「Assistant」 section of their assistant's profile (web `AssistantOwnerSection`): the
- * two permission switches (Read my direct messages, Send messages as me), then the Extra
- * Instructions row, which opens the editor. A row shows only while the server reports what it
- * needs (web: a switch when its setting is not null, the instructions when `ownerNotes !== null`);
- * with none of them, no section. [frame] draws the profile's section chrome (separator and padding)
- * round the content.
+ * The owner's 「Assistant」 section of their assistant's profile (web `AssistantOwnerSection`), in
+ * web's order: the two permission switches (Read my direct messages, Send messages as me); Show
+ * the otter on every page; Extra Instructions, WeChat and Recent changes; Delete assistant last.
+ * A row that needs something from the server shows only while the server reports it (web: a
+ * switch when its setting is not null, the instructions when `ownerNotes !== null`, WeChat while
+ * it may be connected here or a connection exists). [frame] draws the profile's section chrome
+ * (separator and padding) round the content.
  */
 @Composable
 internal fun AssistantOwnerSection(
@@ -157,21 +179,27 @@ internal fun AssistantOwnerSection(
             owner.settingChangesApi?.let { AssistantSettingChangesSource(owner.serverId, it) }
         }
     val changes = rememberAssistantSettingChanges(ASSISTANT_ACTION_SETTINGS, changesSource)
-    if (assistant.readsDms == null && assistant.sendAsOwner == null && savedNotes == null && changes.isEmpty()) return
     val key = remember(owner.serverId, owner.userId) { MyAssistantKey(owner.serverId, owner.userId) }
-    var editing by remember(agentId) { mutableStateOf(false) }
-    var viewingChanges by remember(agentId) { mutableStateOf(false) }
+    var open by remember(agentId) { mutableStateOf<AssistantOwnerDialog?>(null) }
     val switches = remember(agentId, key) { AssistantOwnerSwitchesState() }
     val scope = rememberCoroutineScope()
+    val actionScope = owner.actionScope ?: scope
+    val otter = rememberAssistantOwnerOtterRow(owner)
+    // Web reads the WeChat status again each time the panel opens (the bridge may have stopped).
+    val weChat = remember(owner.weChatApi, owner.serverId, actionScope) { owner.weChatApi?.let { AssistantWeChatStore(it, owner.serverId, actionScope) } }
+    LaunchedEffect(weChat) { weChat?.refresh() }
+    val weChatStatus = weChat?.status?.collectAsState()?.value.readyStatus()
+    // The store's delete is single flight; this is what the confirm shows meanwhile.
+    var deleting by remember(agentId) { mutableStateOf(false) }
     frame {
         AssistantOwnerSectionContent(
             name = assistant.name,
             readsDms = assistant.readsDms,
             sendAsOwner = assistant.sendAsOwner,
             showInstructions = savedNotes != null,
-            onOpenInstructions = { editing = true },
+            onOpenInstructions = { open = AssistantOwnerDialog.Instructions },
             showRecentChanges = changes.isNotEmpty(),
-            onOpenRecentChanges = { viewingChanges = true },
+            onOpenRecentChanges = { open = AssistantOwnerDialog.Changes },
             onSettingChange = { setting, value ->
                 if (!switches.isSaving(setting)) {
                     scope.launch { switches.flip(setting, value) { s, v -> owner.store.saveSetting(key, s, v) } }
@@ -179,23 +207,146 @@ internal fun AssistantOwnerSection(
             },
             saving = switches.saving,
             failures = switches.failures,
+            otter = otter,
+            weChat = weChatStatus?.takeIf { it.offersWeChatRow() }?.let { AssistantOwnerWeChatRow(connected = it.binding != null) },
+            onOpenWeChat = { open = AssistantOwnerDialog.WeChat },
+            onDelete = { open = AssistantOwnerDialog.Delete },
         )
     }
-    if (editing && savedNotes != null) {
-        AssistantInstructionsSheet(
-            name = assistant.name,
-            savedNotes = savedNotes,
-            onSave = { draft -> owner.store.saveOwnerNotes(key, draft) },
-            onDismiss = { editing = false },
-        )
+    when (open) {
+        AssistantOwnerDialog.Instructions ->
+            if (savedNotes != null) {
+                AssistantInstructionsSheet(
+                    name = assistant.name,
+                    savedNotes = savedNotes,
+                    onSave = { draft -> owner.store.saveOwnerNotes(key, draft) },
+                    onDismiss = { open = null },
+                )
+            }
+        AssistantOwnerDialog.Changes ->
+            if (changes.isNotEmpty()) {
+                AssistantRecentChangesSheet(
+                    changes = changes,
+                    currentServerId = owner.serverId,
+                    onDismiss = { open = null },
+                )
+            }
+        AssistantOwnerDialog.WeChat ->
+            if (weChat != null && weChatStatus != null) {
+                val disconnecting by weChat.disconnecting.collectAsState()
+                AssistantWeChatDialog(
+                    name = assistant.name,
+                    status = weChatStatus,
+                    disconnecting = disconnecting,
+                    onDisconnect = weChat::disconnect,
+                    onToastSuccess = { owner.onToast(it, RaftToastIntent.Success) },
+                    onToastInfo = { owner.onToast(it, RaftToastIntent.Info) },
+                    onClose = { open = null },
+                )
+            }
+        AssistantOwnerDialog.Delete -> {
+            val failedMessage = stringResource(Res.string.assistant_delete_failed)
+            AssistantDeleteConfirm(
+                name = assistant.name,
+                busy = deleting,
+                onDismiss = { if (!deleting) open = null },
+                onConfirm = {
+                    if (!deleting) {
+                        deleting = true
+                        actionScope.launch {
+                            val outcome =
+                                try {
+                                    owner.store.delete(key)
+                                } finally {
+                                    deleting = false
+                                }
+                            // Web closes the confirm when the request ends, either way.
+                            open = null
+                            when (outcome) {
+                                MyAssistantDeleteOutcome.Deleted -> owner.onAssistantDeleted()
+                                // Web says nothing; the app says why, with the trace ID (AGENTS.md).
+                                is MyAssistantDeleteOutcome.Failed -> owner.onErrorToast(failedMessage, outcome.error)
+                            }
+                        }
+                    }
+                },
+            )
+        }
+        null -> Unit
     }
-    if (viewingChanges && changes.isNotEmpty()) {
-        AssistantRecentChangesSheet(
-            changes = changes,
-            currentServerId = owner.serverId,
-            onDismiss = { viewingChanges = false },
-        )
-    }
+}
+
+/** Which of the section's dialogs is open (web AssistantOwnerSection `Open`). */
+internal enum class AssistantOwnerDialog { Instructions, WeChat, Changes, Delete }
+
+/** The WeChat row: "WeChat" once connected, else "Connect WeChat" (web `menuConnected` / `menuConnect`). */
+internal data class AssistantOwnerWeChatRow(val connected: Boolean)
+
+/**
+ * "Show {name} on every page" (web `OtterVisibleRow` with the profile's shorter line): the
+ * account's switch ([checked]), disabled while it saves or before it is known, and the failure of
+ * the last save with its trace ID.
+ */
+internal data class AssistantOwnerOtterRow(
+    val checked: Boolean,
+    val enabled: Boolean,
+    val failure: ScreenError? = null,
+    val onCheckedChange: (Boolean) -> Unit = {},
+)
+
+/** The otter row from the account's setting ([SharedMyAssistantStore.otterPrefs]); null without one. */
+@Composable
+private fun rememberAssistantOwnerOtterRow(owner: AssistantOwnerScope): AssistantOwnerOtterRow? {
+    val prefs = owner.store.otterPrefs ?: return null
+    LaunchedEffect(prefs, owner.userId) { prefs.ensureLoaded(owner.userId) }
+    val state by prefs.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    val mine = state.accountId == owner.userId.trim()
+    return AssistantOwnerOtterRow(
+        // Web: shown unless the account turned it off.
+        checked = !mine || state.visible != false,
+        enabled = mine && state.visible != null && !state.saving,
+        failure = state.saveFailure.takeIf { mine },
+        onCheckedChange = { value -> scope.launch { prefs.setVisible(owner.userId, value) } },
+    )
+}
+
+/**
+ * Delete assistant? (web AssistantOwnerSection `assistant-delete-confirm`): a small dialog, × in
+ * the head, Cancel then the red Delete; nothing closes it while the delete runs.
+ */
+@Composable
+internal fun AssistantDeleteConfirm(
+    name: String,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    RaftDialog(
+        onDismissRequest = onDismiss,
+        title = stringResource(Res.string.assistant_delete_title),
+        modifier = Modifier.testTag("assistant-delete-confirm"),
+        size = RaftDialogSize.Sm,
+        description = stringResource(Res.string.assistant_delete_body, name),
+        dismissOnClickOutside = !busy,
+        footer = {
+            RaftButton(
+                text = stringResource(Res.string.common_cancel),
+                onClick = onDismiss,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg,
+                enabled = !busy,
+            )
+            RaftButton(
+                text = stringResource(Res.string.assistant_delete),
+                onClick = onConfirm,
+                modifier = Modifier.testTag("assistant-delete-confirm-action"),
+                variant = RaftButtonVariant.Danger,
+                size = RaftButtonSize.Lg,
+                enabled = !busy,
+            )
+        },
+    )
 }
 
 /**
@@ -295,6 +446,13 @@ internal fun AssistantOwnerSectionContent(
     onOpenRecentChanges: () -> Unit = {},
     saving: Set<AssistantOwnerSetting> = emptySet(),
     failures: Map<AssistantOwnerSetting, ScreenError> = emptyMap(),
+    /** "Show {name} on every page"; null: no otter group. */
+    otter: AssistantOwnerOtterRow? = null,
+    /** The WeChat row (web `hasWeChat`); null: none. */
+    weChat: AssistantOwnerWeChatRow? = null,
+    onOpenWeChat: () -> Unit = {},
+    /** Delete assistant, last; null: none. */
+    onDelete: (() -> Unit)? = null,
 ) {
     Column(modifier.fillMaxWidth().testTag("assistant-owner-section")) {
         // Web SectionEyebrow `mb-3`.
@@ -332,7 +490,13 @@ internal fun AssistantOwnerSectionContent(
                     }
                 }
             }
-            if (showInstructions || showRecentChanges) {
+            if (otter != null) {
+                // Web `assistant-owner-otter`; its shortcut row is web's desktop only (no keyboard here).
+                RaftListRowGroup(Modifier.fillMaxWidth().testTag("assistant-owner-otter")) {
+                    AssistantOwnerOtterSwitchRow(name, otter)
+                }
+            }
+            if (showInstructions || weChat != null || showRecentChanges) {
                 RaftListRowGroup(Modifier.fillMaxWidth()) {
                     if (showInstructions) {
                         RaftListRow(
@@ -345,6 +509,21 @@ internal fun AssistantOwnerSectionContent(
                             trailing = { RaftListRowChevron() },
                         )
                     }
+                    if (weChat != null) {
+                        RaftListRow(
+                            title =
+                                stringResource(
+                                    if (weChat.connected) Res.string.assistant_wechat_menu_connected else Res.string.assistant_wechat_menu_connect
+                                ),
+                            modifier = Modifier.testTag("assistant-settings-wechat"),
+                            onClick = onOpenWeChat,
+                            variant = RaftListRowVariant.Plain,
+                            description = stringResource(Res.string.assistant_wechat_row_description, name),
+                            wrapDescription = true,
+                            divider = showInstructions,
+                            trailing = { RaftListRowChevron() },
+                        )
+                    }
                     if (showRecentChanges) {
                         RaftListRow(
                             title = stringResource(Res.string.assistant_recent_changes),
@@ -353,10 +532,23 @@ internal fun AssistantOwnerSectionContent(
                             variant = RaftListRowVariant.Plain,
                             description = stringResource(Res.string.assistant_recent_changes_description, name),
                             wrapDescription = true,
-                            divider = showInstructions,
+                            divider = showInstructions || weChat != null,
                             trailing = { RaftListRowChevron() },
                         )
                     }
+                }
+            }
+            if (onDelete != null) {
+                // Web's full-width `danger-outline` Button: the app's design system has no outlined
+                // danger button (raft-ui's doc forbids it), so the danger zone's action row (RiskTone).
+                RaftListRowGroup(Modifier.fillMaxWidth()) {
+                    RaftListRow(
+                        title = stringResource(Res.string.assistant_delete),
+                        modifier = Modifier.testTag("assistant-settings-delete"),
+                        onClick = onDelete,
+                        variant = RaftListRowVariant.Plain,
+                        risk = RaftRiskTone.Danger,
+                    )
                 }
             }
         }
@@ -401,6 +593,38 @@ private fun AssistantOwnerSwitchRow(
     )
     if (failure != null) {
         RaftTraceIdNote(failure.traceId, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
+    }
+}
+
+/** "Show {name} on every page" with the profile's shorter line (web `OtterVisibleRow`). */
+@Composable
+private fun AssistantOwnerOtterSwitchRow(name: String, otter: AssistantOwnerOtterRow) {
+    val title = stringResource(Res.string.assistant_otter_show_everywhere, name)
+    RaftListRow(
+        title = title,
+        modifier = Modifier.testTag("assistant-otter-visible-row"),
+        variant = RaftListRowVariant.Plain,
+        titleMaxLines = 2,
+        description = stringResource(Res.string.assistant_otter_show_everywhere_description),
+        wrapDescription = true,
+        saveStatus =
+            if (otter.failure != null) {
+                RaftSaveStatusState.Failed(stringResource(Res.string.assistant_setting_save_failed))
+            } else {
+                RaftSaveStatusState.Idle
+            },
+        trailing = {
+            RaftSwitch(
+                checked = otter.checked,
+                onCheckedChange = otter.onCheckedChange,
+                modifier = Modifier.testTag("assistant-otter-visible"),
+                enabled = otter.enabled,
+                label = title,
+            )
+        },
+    )
+    if (otter.failure != null) {
+        RaftTraceIdNote(otter.failure.traceId, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
     }
 }
 

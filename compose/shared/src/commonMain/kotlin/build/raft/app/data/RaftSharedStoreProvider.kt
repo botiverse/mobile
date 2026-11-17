@@ -1508,6 +1508,18 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
+    /**
+     * Whether the assistant's otter shows over every page: an account setting (`auth/me`
+     * `assistantOtterVisible`), read once per account by the otter or the owner's section.
+     */
+    val assistantOtterPrefsStore: SharedAssistantOtterPrefsStore by lazy {
+        SharedAssistantOtterPrefsStore(
+            dataSource = NetworkAssistantOtterPrefsDataSource(networkClient),
+            scope = threadSendScope,
+            logger = sharedInfoLogger("SlockAssistantOtterPrefs"),
+        )
+    }
+
     /** The current API environment's id: the feature-flag evaluation context. */
     private fun updateNetworkKmmRecoveryEnvironment(): String {
         val environment = apiEnvironmentStore.current()
@@ -2555,6 +2567,7 @@ internal class RaftSharedStoreProvider private constructor(
                 api = RaftMyAssistantNetworkApi(networkClient(scope)),
                 scope = threadSendScope,
                 logger = sharedInfoLogger("SlockMyAssistant"),
+                otterPrefs = assistantOtterPrefsStore,
             )
         }
 
