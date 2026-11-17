@@ -111,13 +111,65 @@ class SharedThreadComposerDraftCrashSurvivalTest {
         assertEquals("n", restartAndRestore(storage).seedText)
     }
 
+    @Test
+    fun rapidTypingLogsABoundedNumberOfLinesAndOneSummaryWhenTheBurstEnds() {
+        val storage = InMemoryRaftKeyValueStore()
+        val clock = VirtualDraftWriteClock()
+        val lines = mutableListOf<String>()
+        val store = startStore(storage, clock, diagnostics = { lines += it })
+        lines.clear()
+
+        var typed = ""
+        repeat(100) { index ->
+            typed += ('a' + index % 26)
+            store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = typed))
+            clock.advanceBy(5L)
+        }
+        clock.advanceBy(IntervalMillis)
+
+        assertEquals(typed, restartAndRestore(storage).seedText)
+        assertTrue(lines.size <= 3, "lines=${lines.size}: ${lines.joinToString(separator = "\n")}")
+        // The first write of the burst still logs the lines diagnostics scripts look for.
+        assertEquals(1, lines.count { it.startsWith("thread_composer_draft_persist_save ") })
+        assertEquals(0, lines.count { it.startsWith("thread_composer_draft_change_writes ") })
+
+        lines.clear()
+        store.dispatch(SharedThreadComposerDraftIntent.Flush)
+
+        val summaries = lines.filter { it.startsWith("thread_composer_draft_change_writes ") }
+        assertEquals(1, summaries.size, "lines=$lines")
+        assertTrue("lastTextLen=100" in summaries.single(), summaries.single())
+    }
+
+    @Test
+    fun typingAfterAQuietPeriodLogsItsFirstWriteAgain() {
+        val storage = InMemoryRaftKeyValueStore()
+        val clock = VirtualDraftWriteClock()
+        val lines = mutableListOf<String>()
+        val store = startStore(storage, clock, diagnostics = { lines += it })
+
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "a"))
+        clock.advanceBy(100L)
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "ab"))
+        clock.advanceBy(5_000L)
+        lines.clear()
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "abc"))
+        clock.advanceBy(0L)
+
+        // The quiet period ended the first burst (its summary) and the new write logs in full.
+        assertEquals(1, lines.count { it.startsWith("thread_composer_draft_change_writes ") }, "lines=$lines")
+        assertEquals(1, lines.count { it.startsWith("thread_composer_draft_persist_save ") }, "lines=$lines")
+    }
+
     private fun startStore(
         storage: SharedPreferenceStore,
-        clock: VirtualDraftWriteClock
+        clock: VirtualDraftWriteClock,
+        diagnostics: ((String) -> Unit)? = null,
     ): SharedThreadComposerDraftStore {
         val slice =
             SharedThreadComposerDraftPersistSlice(
-                persistence = SharedThreadComposerDraftPersistence(storage),
+                persistence = SharedThreadComposerDraftPersistence(storage, diagnosticsLogger = diagnostics),
+                diagnosticsLogger = diagnostics,
                 scheduler = clock,
                 changeWriteIntervalMillis = IntervalMillis,
                 monotonicMillis = clock::now

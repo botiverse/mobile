@@ -767,6 +767,11 @@ internal class SharedThreadComposerDraftPersistence(
         externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList(),
         /** Null keeps what is stored (a caller that does not own the mention list). */
         structuredMentions: List<ThreadSendMessageMention>? = null,
+        /**
+         * False for typed-text writes inside a burst (task #246): they skip the routine
+         * `persist_save[d]` lines; the slice logs one summary line for the burst instead.
+         */
+        routineDiagnostics: Boolean = true,
     ) {
         var durableSnapshot: SharedThreadComposerDraftStorageSnapshot? = null
         var mutation: SharedThreadComposerDraftNonTransactionalMutation? = null
@@ -803,6 +808,7 @@ internal class SharedThreadComposerDraftPersistence(
                     uploadedAttachments = uploadedAttachments,
                     externalShareSources = externalShareSources,
                     structuredMentions = structuredMentions,
+                    routineDiagnostics = routineDiagnostics,
                 )
                 mutation =
                     SharedThreadComposerDraftNonTransactionalMutation(
@@ -868,13 +874,14 @@ internal class SharedThreadComposerDraftPersistence(
         uploadedAttachments: List<SharedThreadComposerAttachment>,
         externalShareSources: List<SharedThreadComposerExternalShareSource>,
         structuredMentions: List<ThreadSendMessageMention>? = null,
+        routineDiagnostics: Boolean = true,
     ): Set<String> {
         val previous = readUnlocked(key)
         val persistedMentions =
             (structuredMentions ?: previous?.structuredMentions.orEmpty()).visibleStructuredMentionsIn(text)
         val persistedAttachments = uploadedAttachments.persistableThreadComposerDraftAttachments()
         val persistedSources = externalShareSources.validExternalShareComposerSources()
-        safeDiagnostics(
+        if (routineDiagnostics) safeDiagnostics(
             "thread_composer_draft_persist_save key=$key textLen=${text.length} " +
                 "textBlank=${text.isBlank()} asTask=$asTask attachments=${persistedAttachments.size} " +
                 "activeBefore=${activeKeys().sorted().joinToString(separator = ",")}"
@@ -940,7 +947,7 @@ internal class SharedThreadComposerDraftPersistence(
                 cause = error
             )
         }
-        safeDiagnostics(
+        if (routineDiagnostics) safeDiagnostics(
             "thread_composer_draft_persist_saved key=$key activeAfter=${activeKeys().sorted().joinToString(separator = ",")}"
         )
         return refsToRetire
@@ -1563,6 +1570,19 @@ internal class SharedThreadComposerDraftPersistSlice(
     private val writeGenerationByDraftKey = mutableMapOf<String, Long>()
     /** When the last background change write of a key started; guarded by [stateLock]. */
     private val lastChangeWriteAtMillisByDraftKey = mutableMapOf<String, Long>()
+    /** Typed-text write bursts being logged as one; guarded by [stateLock]. */
+    private val changeWriteLogBurstByDraftKey = mutableMapOf<String, ChangeWriteLogBurst>()
+
+    /**
+     * Logging of throttled typed-text writes: the first write after a quiet period logs as before;
+     * later writes of the burst are only counted and reported in one
+     * `thread_composer_draft_change_writes` line when the burst ends (the next write after a quiet
+     * period, a flush, a send, a draft switch or an account change).
+     */
+    private class ChangeWriteLogBurst(var lastWriteAtMillis: Long) {
+        var unloggedWrites = 0
+        var lastTextLength = 0
+    }
     /** Advanced each time the signed-in account changes; guarded by [stateLock]. */
     private var accountEpoch = 0L
 
@@ -1886,7 +1906,7 @@ internal class SharedThreadComposerDraftPersistSlice(
             next to pendingWritesByDraftKey.put(key, next)
         }
         previous?.cancellation?.cancel()
-        refreshActiveDraftRecords(reason = "ChangeProjected")
+        refreshActiveDraftRecords(reason = "ChangeProjected", onlyLogWhenChanged = true)
         schedulePendingCallback(key, pending)
     }
 
@@ -1999,6 +2019,7 @@ internal class SharedThreadComposerDraftPersistSlice(
 
     /** Flush while [persistenceWriteLock] is held; used by compound stage operations. */
     private fun flushPendingWriteLocked(key: String) {
+        endChangeWriteLogBurst(key)
         val pending = stateLock.withLock {
             pendingWritesByDraftKey.remove(key).also {
                 advanceWriteGenerationLocked(key)
@@ -2037,6 +2058,7 @@ internal class SharedThreadComposerDraftPersistSlice(
     }
 
     private fun cancelPendingWrite(key: String) {
+        endChangeWriteLogBurst(key)
         stateLock.withLock {
             pendingWritesByDraftKey.remove(key).also {
                 advanceWriteGenerationLocked(key)
@@ -2065,7 +2087,9 @@ internal class SharedThreadComposerDraftPersistSlice(
     private fun persistStateLocked(
         key: String,
         state: SharedThreadComposerDraftState,
-        reason: String
+        reason: String,
+        routineDiagnostics: Boolean = true,
+        onlyLogRecordsWhenChanged: Boolean = false,
     ) {
         if (!isCurrentAccount(state)) {
             // Text typed for an account that has since signed out (or been replaced) is dropped,
@@ -2080,8 +2104,9 @@ internal class SharedThreadComposerDraftPersistSlice(
             uploadedAttachments = state.visiblePersistableThreadComposerDraftAttachments(),
             externalShareSources = state.externalShareSources,
             structuredMentions = state.structuredMentions,
+            routineDiagnostics = routineDiagnostics,
         )
-        refreshActiveDraftRecords(reason = reason)
+        refreshActiveDraftRecords(reason = reason, onlyLogWhenChanged = onlyLogRecordsWhenChanged)
     }
 
     private fun persistStateIfGenerationCurrent(
@@ -2093,17 +2118,51 @@ internal class SharedThreadComposerDraftPersistSlice(
             persistenceWriteLock.withLock {
                 val isCurrent = writeGenerationByDraftKey[key] == generation
                 if (!isCurrent) return@withLock
-                persistStateLocked(key, state, "ChangeDebounced")
+                val firstOfBurst = admitChangeWriteToLogBurst(key, state.seedText.length)
+                persistStateLocked(
+                    key,
+                    state,
+                    "ChangeDebounced",
+                    routineDiagnostics = firstOfBurst,
+                    onlyLogRecordsWhenChanged = true,
+                )
             }
         }
+    }
+
+    /** True when this typed-text write starts a burst and logs; false when it is only counted. */
+    private fun admitChangeWriteToLogBurst(key: String, textLength: Int): Boolean {
+        val now = monotonicMillis()
+        val burst = stateLock.withLock { changeWriteLogBurstByDraftKey[key] }
+        if (burst != null && now - burst.lastWriteAtMillis < ChangeWriteLogQuietMillis) {
+            stateLock.withLock {
+                burst.lastWriteAtMillis = now
+                burst.unloggedWrites += 1
+                burst.lastTextLength = textLength
+            }
+            return false
+        }
+        endChangeWriteLogBurst(key)
+        stateLock.withLock { changeWriteLogBurstByDraftKey[key] = ChangeWriteLogBurst(lastWriteAtMillis = now) }
+        return true
+    }
+
+    private fun endChangeWriteLogBurst(key: String) {
+        val burst = stateLock.withLock { changeWriteLogBurstByDraftKey.remove(key) } ?: return
+        if (burst.unloggedWrites == 0) return
+        safeDiagnostics(
+            "thread_composer_draft_change_writes key=$key coalescedWrites=${burst.unloggedWrites} " +
+                "lastTextLen=${burst.lastTextLength}"
+        )
     }
 
     private fun safeDiagnostics(message: String) {
         runCatching { diagnosticsLogger?.invoke(message) }
     }
 
-    private fun refreshActiveDraftRecords(reason: String) {
+    private fun refreshActiveDraftRecords(reason: String, onlyLogWhenChanged: Boolean = false) {
         stateLock.withLock {
+            val before = SharedActiveDraftRecordsState.value
             val projected = persistence.activeDraftRecords().associateBy { it.key }.toMutableMap()
             pendingWritesByDraftKey.mapValues { (_, pending) -> pending.state }
                 .forEach { (key, state) ->
@@ -2116,6 +2175,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                 }
             SharedActiveDraftRecordsState.value = projected.values.toSet()
             val current = SharedActiveDraftRecordsState.value
+            if (onlyLogWhenChanged && current == before) return@withLock
             safeDiagnostics(
                 "thread_composer_draft_active_records reason=$reason count=${current.size} " +
                     "records=${current.toThreadComposerDraftDiagnosticsSummary()}"
@@ -2173,6 +2233,7 @@ internal class SharedThreadComposerDraftPersistSlice(
      * frozen, and the shared active-draft projection is then re-read for the successor.
      */
     fun retireAccountSession(rebind: () -> Unit) {
+        stateLock.withLock { changeWriteLogBurstByDraftKey.keys.toList() }.forEach(::endChangeWriteLogBurst)
         val cancelled = stateLock.withLock {
             accountEpoch += 1L
             val pending = pendingWritesByDraftKey.toMap()
@@ -2210,6 +2271,8 @@ internal class SharedThreadComposerDraftPersistSlice(
          * the last keystroke (or at any time during continuous typing) lost the newest text.
          */
         const val DefaultChangeWriteIntervalMillis = 40L
+        /** Typed-text writes closer than this to the previous one log as one burst. */
+        const val ChangeWriteLogQuietMillis = 2_000L
         val SharedActiveDraftRecordsState = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
     }
 }
