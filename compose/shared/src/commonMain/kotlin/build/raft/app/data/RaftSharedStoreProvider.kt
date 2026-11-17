@@ -3938,9 +3938,11 @@ internal class RaftSharedStoreProvider private constructor(
                         diagnosticsLogger = composerDraftLogger
                     ),
                     diagnosticsLogger = composerDraftLogger,
+                    // Typed text is written off the main thread, at once after a quiet period and
+                    // at most every 40 ms while typing (task #246: a crash right after typing).
                     scheduler =
                         CoroutineThreadComposerDraftPersistenceScheduler(
-                            CoroutineScope(SupervisorJob())
+                            CoroutineScope(SupervisorJob() + Dispatchers.Default)
                         ),
                     // Account-scoped: nothing is read until the binding follower below binds an
                     // account (or finds nobody signed in), so "no drafts" is not known before.

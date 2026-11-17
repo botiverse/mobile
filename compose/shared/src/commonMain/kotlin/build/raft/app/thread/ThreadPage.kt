@@ -231,6 +231,9 @@ import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -3694,8 +3697,19 @@ private fun SharedThreadRouteContentContent(
         viewModel(key = "shared-thread-composer-$threadInstanceKey") {
             SharedThreadComposerDraftViewModel(persistSlices = listOf(composerDraftPersistSlice))
         }
-    DisposableEffect(composerDraftViewModel, threadInstanceKey) {
+    // Typed text is written in the background within ~40 ms (task #246); going to the
+    // background, like leaving the page, also writes what is still pending at once.
+    val composerDraftLifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(composerDraftViewModel, threadInstanceKey, composerDraftLifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_STOP) {
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
+                }
+            }
+        composerDraftLifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            composerDraftLifecycleOwner.lifecycle.removeObserver(observer)
             composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
         }
     }

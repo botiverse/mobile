@@ -208,7 +208,7 @@ class SharedThreadComposerDraftStoreTest {
             SharedThreadComposerDraftPersistSlice(
                 persistence = persistence,
                 scheduler = scheduler,
-                changeDebounceMillis = 250L
+                changeWriteIntervalMillis = 250L
             )
         val draftKey = "send=channel-rapid|parent=_|mention=channel-rapid"
         val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))

@@ -32,6 +32,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.time.Clock
+import kotlin.time.TimeSource
 
 internal data class SharedThreadComposerDraftState(
     val instanceId: String = "",
@@ -1471,6 +1472,12 @@ internal fun interface SharedThreadComposerDraftPersistenceScheduler {
     fun schedule(delayMillis: Long, block: () -> Unit): SharedThreadComposerDraftPersistenceCancellation
 }
 
+private fun defaultThreadComposerDraftMonotonicMillis(): () -> Long {
+    val origin = TimeSource.Monotonic.markNow()
+    return { origin.elapsedNow().inWholeMilliseconds }
+}
+
+/** Runs draft writes on [scope]'s dispatcher (Dispatchers.Default in production), never inline. */
 internal class CoroutineThreadComposerDraftPersistenceScheduler(
     private val scope: CoroutineScope
 ) : SharedThreadComposerDraftPersistenceScheduler {
@@ -1512,7 +1519,16 @@ internal class SharedThreadComposerDraftPersistSlice(
     private val persistence: SharedThreadComposerDraftPersistence,
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     private val scheduler: SharedThreadComposerDraftPersistenceScheduler = ImmediateThreadComposerDraftPersistenceScheduler,
-    private val changeDebounceMillis: Long = DefaultChangeDebounceMillis,
+    /**
+     * Shortest spacing between two background writes of typed text for one draft (task #246).
+     * The first change after a quiet period is written at once (off the main thread); changes
+     * typed within this interval of the last write coalesce, latest wins, and are written when
+     * it ends.  This is a throttle, not a debounce: continuous typing never postpones the write
+     * past this bound, so a crash shortly after the last keystroke loses at most this much.
+     */
+    private val changeWriteIntervalMillis: Long = DefaultChangeWriteIntervalMillis,
+    /** Monotonic clock for [changeWriteIntervalMillis]; injectable for tests. */
+    private val monotonicMillis: () -> Long = defaultThreadComposerDraftMonotonicMillis(),
     /**
      * Whether [activeDraftRecordsState] is already this device's answer when the slice is built.
      * Production passes false: the drafts are account-scoped and read nothing until the account
@@ -1545,6 +1561,8 @@ internal class SharedThreadComposerDraftPersistSlice(
     private val persistenceWriteLock = reentrantLock()
     private val pendingWritesByDraftKey = mutableMapOf<String, PendingThreadComposerDraftWrite>()
     private val writeGenerationByDraftKey = mutableMapOf<String, Long>()
+    /** When the last background change write of a key started; guarded by [stateLock]. */
+    private val lastChangeWriteAtMillisByDraftKey = mutableMapOf<String, Long>()
     /** Advanced each time the signed-in account changes; guarded by [stateLock]. */
     private var accountEpoch = 0L
 
@@ -1882,11 +1900,12 @@ internal class SharedThreadComposerDraftPersistSlice(
         // re-armed after a failed write.
         var scheduling = true
         val cancellation =
-            scheduler.schedule(changeDebounceMillis) {
+            scheduler.schedule(changeWriteDelayMillis(key)) {
                 val claimed = stateLock.withLock {
                     if (pendingWritesByDraftKey[key] === pending) {
                         pendingWritesByDraftKey.remove(key)
                         pending.cancellation = null
+                        lastChangeWriteAtMillisByDraftKey[key] = monotonicMillis()
                         pending
                     } else {
                         null
@@ -1923,6 +1942,17 @@ internal class SharedThreadComposerDraftPersistSlice(
         }
         if (!stillCurrent) cancellation.cancel()
         return cancellation
+    }
+
+    /**
+     * Zero after a quiet period (write now); otherwise the rest of [changeWriteIntervalMillis]
+     * since the last write began.  A newer change cancels and re-arms the callback with this
+     * deadline, which does not move, so the latest text is written at most one interval later.
+     */
+    private fun changeWriteDelayMillis(key: String): Long {
+        val lastWriteAt = stateLock.withLock { lastChangeWriteAtMillisByDraftKey[key] } ?: return 0L
+        val elapsed = monotonicMillis() - lastWriteAt
+        return (changeWriteIntervalMillis - elapsed).coerceIn(0L, changeWriteIntervalMillis)
     }
 
     /**
@@ -2148,6 +2178,7 @@ internal class SharedThreadComposerDraftPersistSlice(
             val pending = pendingWritesByDraftKey.toMap()
             pending.keys.forEach(::advanceWriteGenerationLocked)
             pendingWritesByDraftKey.clear()
+            lastChangeWriteAtMillisByDraftKey.clear()
             stagedUploadedAttachmentsByDraftKey.clear()
             fallbackDraftSourceKeyByCurrentKey.clear()
             persistenceWriteLock.withLock { rebind() }
@@ -2174,7 +2205,11 @@ internal class SharedThreadComposerDraftPersistSlice(
     }
 
     private companion object {
-        const val DefaultChangeDebounceMillis = 250L
+        /**
+         * Was a 250 ms trailing debounce, re-armed by every keystroke: a crash within 250 ms of
+         * the last keystroke (or at any time during continuous typing) lost the newest text.
+         */
+        const val DefaultChangeWriteIntervalMillis = 40L
         val SharedActiveDraftRecordsState = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
     }
 }
