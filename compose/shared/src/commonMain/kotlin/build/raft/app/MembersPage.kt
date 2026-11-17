@@ -4706,7 +4706,11 @@ internal fun MemberDetailPageContent(
                 onErrorToast = { message, error -> bridge.errorToast(message, error) },
                 serverId = route.server.id.value,
                 userId = userId,
-                viewerIsGuest = route.server.role?.trim()?.equals("guest", ignoreCase = true) == true
+                viewerIsGuest = route.server.role?.trim()?.equals("guest", ignoreCase = true) == true,
+                settingChangesApi =
+                    build.raft.app.data.RaftAssistantSettingChangesNetworkApi(
+                        build.raft.app.data.RaftSharedStoreRegistry.get(bridge).networkClient(provider.storeScope)
+                    )
             )
         }
     CompositionLocalProvider(

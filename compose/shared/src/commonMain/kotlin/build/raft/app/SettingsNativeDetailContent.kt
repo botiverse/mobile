@@ -38,6 +38,10 @@ import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.SharedSettingsStorageSnapshot
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftAssistantSettingChangesNetworkApi
+import build.raft.app.assistant.AssistantSettingChangesSource
+import build.raft.app.assistant.LocalAssistantSettingChangesSource
+import androidx.compose.runtime.CompositionLocalProvider
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.isRefreshing
 import build.raft.app.data.runCatchingPreservingCancellation
@@ -181,8 +185,21 @@ internal fun SettingsNativeDetailScreen() {
         }
     }
 
+    // "Changed by your assistant" on Language & region, Theme and Notifications: the current server's audit.
+    val assistantChangesServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+    val assistantChangesSource =
+        remember(sharedStores, environment.storeScope, assistantChangesServerId) {
+            assistantChangesServerId?.let { serverId ->
+                AssistantSettingChangesSource(
+                    serverId = serverId,
+                    api = RaftAssistantSettingChangesNetworkApi(sharedStores.networkClient(environment.storeScope)),
+                )
+            }
+        }
+
     // A Settings search result opened this page at a setting: its row is brought into view and located.
     ProvideSettingsSearchLocator(pager.pageData.params) {
+    CompositionLocalProvider(LocalAssistantSettingChangesSource provides assistantChangesSource) {
     SettingsNativeDetailPageContent(
         session = session,
         authDataSource = environment.authDataSource,
@@ -239,6 +256,7 @@ internal fun SettingsNativeDetailScreen() {
         webBaseUrl = environment.webBaseUrl,
         onLogout = { pager.openLoginReplacingCurrentPage() },
     )
+    }
     }
 }
 

@@ -18,6 +18,10 @@ import build.raft.app.data.SettingsMobileSelectionSnapshot
 import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsLanguageRegionSnapshot
 import build.raft.app.data.TranslationTargetLanguages
+import build.raft.app.data.ASSISTANT_LANGUAGE_REGION_SETTINGS
+import build.raft.app.assistant.AssistantSettingChangesSection
+import build.raft.app.assistant.LocalAssistantSettingChangesSource
+import build.raft.app.assistant.rememberAssistantSettingChanges
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +60,10 @@ internal fun SettingsLanguageRegionContent(
     onLocaleChange: (String) -> Unit,
     onRetry: () -> Unit
 ) {
+    // Web LanguageRegionSection: what the assistant changed of the display language and time zone
+    // (not in a public, logged-out context: there is no source there).
+    val assistantChangesSource = LocalAssistantSettingChangesSource.current
+    val assistantChanges = rememberAssistantSettingChanges(ASSISTANT_LANGUAGE_REGION_SETTINGS, assistantChangesSource)
     LazyColumn(
         state = rememberSettingsSearchListState(),
         // The 16dp content inset stays under a mouse or trackpad; the cards move 16 apart there
@@ -141,6 +149,11 @@ internal fun SettingsLanguageRegionContent(
                         busy = busy,
                         onPick = onPick
                     )
+                }
+                if (assistantChanges.isNotEmpty()) {
+                    item {
+                        AssistantSettingChangesSection(assistantChanges, currentServerId = assistantChangesSource?.serverId)
+                    }
                 }
             }
         }
