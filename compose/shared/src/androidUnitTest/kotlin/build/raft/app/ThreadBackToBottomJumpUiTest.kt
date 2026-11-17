@@ -247,6 +247,20 @@ class ThreadBackToBottomJumpUiTest {
         waitForIdle()
     }
 
+    /** Waits (bounded, as [awaitStore]) for a toast on this window; on expiry says what the page did instead. */
+    private fun ComposeUiTest.awaitToast(harness: Harness) {
+        val deadline = System.nanoTime() + 10_000_000_000L
+        while (toasts.state.visible.isEmpty()) {
+            check(System.nanoTime() < deadline) {
+                "timed out waiting for the failed-load toast: visible=${toasts.state.visible.map { it.title }} " +
+                    "loading=${loadingShown()} backToBottom=${backToBottomShown()} log=${harness.log.takeLast(12)}"
+            }
+            Thread.sleep(10)
+            mainClock.advanceTimeByFrame()
+        }
+        settle()
+    }
+
     private fun ComposeUiTest.backToBottomShown(): Boolean = onAllNodesWithText(BackToBottom).fetchSemanticsNodes().isNotEmpty()
 
     private fun ComposeUiTest.loadingShown(): Boolean = onAllNodesWithText(Loading).fetchSemanticsNodes().isNotEmpty()
@@ -312,7 +326,10 @@ class ThreadBackToBottomJumpUiTest {
                 assertFalse(loadingShown(), "still loading after the load failed")
                 assertTrue(backToBottomShown(), "the button did not come back after the failure")
                 assertFalse(newestShown())
-                assertEquals(listOf("Couldn't load these messages. Try again."), toasts.state.visible.map { it.title })
+                // The toast is posted by the tap's coroutine once the store's failure reaches it: wait
+                // for it rather than read the window once (#proj-mobile:#168: one CI run read [] here).
+                awaitToast(harness)
+                assertEquals(listOf(JumpLoadFailed), toasts.state.visible.map { it.title })
 
                 // The retry: one tap, one request, and it lands.
                 harness.api.release = CompletableDeferred(200)
@@ -367,6 +384,7 @@ class ThreadBackToBottomJumpUiTest {
     private companion object {
         const val BackToBottom = "Back to Bottom"
         const val Loading = "Loading Messages…"
+        const val JumpLoadFailed = "Couldn't load these messages. Try again."
 
         /** RaftMessageListJumpHitOverhang: (44 - 32) / 2. */
         const val PillHitOverhangDp = 6f
