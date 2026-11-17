@@ -97,7 +97,13 @@ static NSUInteger const RaftDiagnosticsThreadNameMaxChars = 64;
 static NSUInteger const RaftDiagnosticsQueueLabelMaxChars = 96;
 static NSUInteger const RaftDiagnosticsExceptionPageMaxChars = 128;
 static NSUInteger const RaftDiagnosticsExceptionReasonMaxChars = 1024;
-static NSUInteger const RaftDiagnosticsExceptionStackMaxChars = 2048;
+// The unhandled-exception record is the one diagnostics line allowed past
+// RaftDiagnosticsMessageMaxChars: a Compose layout crash needs a few hundred frames, and the
+// line only goes to the local log that a Hands crash report attaches as a zip (not a request
+// field). Kotlin (RaftUnhandledExceptionRecord.kt) trims the stack to 12000 characters, head and
+// tail, so these caps only bound a caller that does not.
+static NSUInteger const RaftDiagnosticsExceptionStackMaxChars = 14336;
+static NSUInteger const RaftDiagnosticsExceptionMessageMaxChars = 16384;
 static char RaftDiagnosticsWriterQueueSpecificKey;
 static os_unfair_lock RaftDiagnosticsAdmissionLock = OS_UNFAIR_LOCK_INIT;
 static NSUInteger RaftDiagnosticsOutstandingCount = 0;
@@ -131,6 +137,8 @@ static atomic_uint_fast64_t RaftDiagnosticsMaxOutstandingCount = ATOMIC_VAR_INIT
 @property(nonatomic) BOOL rawMessageTruncated;
 @property(nonatomic) BOOL critical;
 @property(nonatomic) BOOL emitConsole;
+/// The final message's cap (RaftDiagnosticsMessageMaxChars except for the unhandled-exception record).
+@property(nonatomic) NSUInteger messageMaxChars;
 
 @end
 
@@ -1065,11 +1073,14 @@ static RaftDiagnosticsCapture *RaftDiagnosticsCreateCapture(
     NSString *message,
     int64_t timestampMillis,
     BOOL emitConsole,
-    BOOL forceCritical
+    BOOL forceCritical,
+    NSUInteger messageMaxChars
 ) {
+    // The raw copy keeps the same headroom over the final cap as an ordinary line (4096 over 2048).
+    NSUInteger rawMessageMaxChars = RaftDiagnosticsRawMessageMaxChars - RaftDiagnosticsMessageMaxChars + messageMaxChars;
     NSString *rawLevel = RaftDiagnosticsClippedCopy(level ?: @"info", RaftDiagnosticsRawLevelMaxChars);
     NSString *rawTag = RaftDiagnosticsClippedCopy(tag ?: @"", RaftDiagnosticsRawTagMaxChars);
-    NSString *rawMessage = RaftDiagnosticsClippedCopy(message ?: @"", RaftDiagnosticsRawMessageMaxChars);
+    NSString *rawMessage = RaftDiagnosticsClippedCopy(message ?: @"", rawMessageMaxChars);
     if (rawTag.length == 0 || rawMessage.length == 0 || !RaftDiagnosticsContainsNonWhitespace(rawMessage)) {
         return nil;
     }
@@ -1099,7 +1110,8 @@ static RaftDiagnosticsCapture *RaftDiagnosticsCreateCapture(
     capture.threadId = threadId;
     capture.timestampMillis = timestampMillis > 0 ? timestampMillis : RaftDiagnosticsNowMillis();
     capture.mainThread = mainThread;
-    capture.rawMessageTruncated = (message.length > RaftDiagnosticsRawMessageMaxChars);
+    capture.rawMessageTruncated = (message.length > rawMessageMaxChars);
+    capture.messageMaxChars = messageMaxChars;
     capture.critical = RaftDiagnosticsRawRecordIsCritical(rawLevel, rawTag, rawMessage, forceCritical);
     capture.emitConsole = emitConsole;
     return capture;
@@ -1675,8 +1687,8 @@ static void RaftDiagnosticsProcessCapture(RaftDiagnosticsCapture *capture) {
     if (![@[@"debug", @"info", @"warn", @"error"] containsObject:normalizedLevel]) {
         normalizedLevel = @"info";
     }
-    BOOL truncated = capture.rawMessageTruncated || safeMessage.length > RaftDiagnosticsMessageMaxChars;
-    NSString *finalMessage = RaftDiagnosticsClippedString(safeMessage, RaftDiagnosticsMessageMaxChars);
+    BOOL truncated = capture.rawMessageTruncated || safeMessage.length > capture.messageMaxChars;
+    NSString *finalMessage = RaftDiagnosticsClippedString(safeMessage, capture.messageMaxChars);
     NSString *safeThread = RaftDiagnosticsClippedString(
         RaftBridgeSanitizedLogString(capture.threadName),
         RaftDiagnosticsThreadNameMaxChars
@@ -1722,13 +1734,14 @@ static void RaftDiagnosticsProcessCapture(RaftDiagnosticsCapture *capture) {
     }
 }
 
-static uint64_t RaftDiagnosticsRecordWithContext(
+static uint64_t RaftDiagnosticsRecordWithContextAndLimit(
     NSString *level,
     NSString *tag,
     NSString *message,
     int64_t timestampMillis,
     BOOL emitConsole,
-    BOOL forceCritical
+    BOOL forceCritical,
+    NSUInteger messageMaxChars
 ) {
     atomic_fetch_add_explicit(&RaftDiagnosticsAttemptedCount, 1, memory_order_relaxed);
     RaftDiagnosticsCapture *capture = RaftDiagnosticsCreateCapture(
@@ -1737,7 +1750,8 @@ static uint64_t RaftDiagnosticsRecordWithContext(
         message,
         timestampMillis,
         emitConsole,
-        forceCritical
+        forceCritical,
+        messageMaxChars
     );
     if (!capture) {
         atomic_fetch_add_explicit(&RaftDiagnosticsRejectedInvalidCount, 1, memory_order_relaxed);
@@ -1797,6 +1811,25 @@ static uint64_t RaftDiagnosticsRecordWithContext(
     return sequence;
 }
 
+static uint64_t RaftDiagnosticsRecordWithContext(
+    NSString *level,
+    NSString *tag,
+    NSString *message,
+    int64_t timestampMillis,
+    BOOL emitConsole,
+    BOOL forceCritical
+) {
+    return RaftDiagnosticsRecordWithContextAndLimit(
+        level,
+        tag,
+        message,
+        timestampMillis,
+        emitConsole,
+        forceCritical,
+        RaftDiagnosticsMessageMaxChars
+    );
+}
+
 static void RaftDiagnosticsRecord(NSString *level, NSString *tag, NSString *message) {
     RaftDiagnosticsRecordWithContext(level, tag, message, 0, NO, NO);
 }
@@ -1816,14 +1849,18 @@ void RaftIosDiagnosticsRecordWithContext(
     RaftDiagnosticsRecordWithContext(level, tag, message, timestampMillis, emitConsole, forceCritical);
 }
 
-void RaftIosDiagnosticsRecordCriticalSynchronously(NSString *tag, NSString *message) {
+static void RaftDiagnosticsRecordCriticalSynchronouslyWithLimit(
+    NSString *tag,
+    NSString *message,
+    NSUInteger messageMaxChars
+) {
     NSString *boundedTag = RaftDiagnosticsClippedCopy(
         tag ?: RaftBridgeDefaultLogTag,
         RaftDiagnosticsRawTagMaxChars
     );
     NSString *boundedMessage = RaftDiagnosticsClippedCopy(
         message ?: @"",
-        RaftDiagnosticsRawMessageMaxChars
+        RaftDiagnosticsRawMessageMaxChars - RaftDiagnosticsMessageMaxChars + messageMaxChars
     );
     NSString *safeTag = RaftDiagnosticsClippedString(
         [RaftBridgeSanitizedLogString(
@@ -1835,7 +1872,7 @@ void RaftIosDiagnosticsRecordCriticalSynchronously(NSString *tag, NSString *mess
     NSString *safeMessage = RaftDiagnosticsClippedString(
         [RaftBridgeSanitizedLogString(RaftDiagnosticsStringByReplacingInvalidSurrogates(boundedMessage))
             stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet],
-        RaftDiagnosticsMessageMaxChars
+        messageMaxChars
     );
     if (safeMessage.length == 0) {
         return;
@@ -1844,7 +1881,11 @@ void RaftIosDiagnosticsRecordCriticalSynchronously(NSString *tag, NSString *mess
         safeTag = RaftBridgeDefaultLogTag;
     }
     NSLog(@"[%@][error] %@", safeTag, safeMessage);
-    RaftDiagnosticsRecordWithContext(@"error", safeTag, safeMessage, 0, NO, YES);
+    RaftDiagnosticsRecordWithContextAndLimit(@"error", safeTag, safeMessage, 0, NO, YES, messageMaxChars);
+}
+
+void RaftIosDiagnosticsRecordCriticalSynchronously(NSString *tag, NSString *message) {
+    RaftDiagnosticsRecordCriticalSynchronouslyWithLimit(tag, message, RaftDiagnosticsMessageMaxChars);
 }
 
 void RaftIosDiagnosticsRecordUnhandledException(
@@ -1870,7 +1911,11 @@ void RaftIosDiagnosticsRecordUnhandledException(
         (long)mode,
         boundedReason,
         boundedStack];
-    RaftIosDiagnosticsRecordCriticalSynchronously(@"SlockKuikly", message);
+    RaftDiagnosticsRecordCriticalSynchronouslyWithLimit(
+        @"SlockKuikly",
+        message,
+        RaftDiagnosticsExceptionMessageMaxChars
+    );
 }
 
 static NSString *RaftDiagnosticsExportRecentJsonl(NSUInteger maxChars) {

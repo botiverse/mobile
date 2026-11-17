@@ -6,7 +6,8 @@ import kotlin.test.assertTrue
 
 /**
  * The iOS unhandled-exception record must keep enough frames to symbolicate inside one
- * 2048-character diagnostics line (Hands f36226a4 kept three).
+ * diagnostics line (Hands f36226a4 kept three; a Compose layout crash, b692fce7, kept ~40 of its
+ * Compose frames and none of the layout that threw).
  */
 class RaftUnhandledExceptionRecordTest {
     private val composeMessage =
@@ -44,17 +45,42 @@ class RaftUnhandledExceptionRecordTest {
     }
 
     @Test
-    fun theWholeRecordKeepsAboutFortyFramesInOneDiagnosticsLine() {
+    fun theWholeRecordKeepsAFortyFrameStackWhole() {
         val error = IllegalStateException(composeMessage)
         val record = raftUnhandledExceptionRecord(error, "kotlin.IllegalStateException")
         assertTrue(record.reason.length <= RaftUnhandledExceptionReasonMaxChars, "reason ${record.reason.length}")
         assertTrue(record.reason.startsWith("kotlin.IllegalStateException: Horizontally scrollable"))
 
         val stack = raftCompactUnhandledExceptionStack(deviceStack, header)
-        val line = "kuikly_unhandled_exception page=unknown mode=0 reason=${record.reason} stack=$stack"
-        // The native recorder clips the line at 2048 characters: count the frames that survive.
-        val kept = line.take(2048).lines().count { it.startsWith("at ") || it.contains("stack=at ") }
-        assertTrue(kept >= 35, "frames kept in 2048 chars: $kept")
+        assertEquals(41, stack.lines().count { it.startsWith("at ") }, "every frame kept")
+        assertTrue(stack.lines().none { it.contains("elided") })
+    }
+
+    /** A Compose layout crash's depth (b692fce7): far more frames than the budget holds. */
+    @Test
+    fun aDeepStackKeepsItsHeadAndTailWithinTheBudget() {
+        val deep =
+            buildString {
+                append(header).append('\n')
+                for (i in 0 until 600) {
+                    append("    at $i   iosApp                              0x1048e4773        $bundle + ${9062259 + i} \n")
+                }
+            }
+        val stack = raftCompactUnhandledExceptionStack(deep, header)
+        assertTrue(stack.length <= RaftUnhandledExceptionStackMaxChars, "stack ${stack.length}")
+        val lines = stack.lines()
+        assertEquals("at 0 iosApp 0x1048e4773 iosApp + 9062259", lines.first(), "the frame that threw")
+        assertEquals("at 599 iosApp 0x1048e4773 iosApp + 9062858", lines.last(), "the outermost frame")
+        val marker = lines.single { it.contains("elided") }
+        val kept = lines.count { it.startsWith("at ") }
+        assertEquals("… ${600 - kept} lines elided …", marker)
+        assertTrue(kept >= 250, "frames kept: $kept")
+        // The head (where it threw) gets most of the room.
+        val head = lines.indexOf(marker)
+        assertTrue(head > kept - head, "head $head frames, tail ${kept - head}")
+        // With the longest reason and the prefix, the line fits the native recorder's 16384.
+        val line = "kuikly_unhandled_exception page=unknown mode=0 reason=${"r".repeat(RaftUnhandledExceptionReasonMaxChars)} stack=$stack"
+        assertTrue(line.length <= 16384, "line ${line.length}")
     }
 
     @Test
