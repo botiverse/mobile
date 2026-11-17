@@ -20,6 +20,12 @@ THREAD_PATHS=(
   compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadNewerPagination.kt
   compose/androidApp/src/androidTest/java/build/raft/app/shared/RaftThreadNewerAutoPaginationConnectedTest.kt
   compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadMessagesList.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadViewportScroll.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadMessagesListModel.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadTimelineRows.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPageContent.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPageTabs.kt
 )
 
 repo="$TMP_ROOT/repo"
@@ -274,6 +280,12 @@ thread_paths = %w[
   compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadNewerPagination.kt
   compose/androidApp/src/androidTest/java/build/raft/app/shared/RaftThreadNewerAutoPaginationConnectedTest.kt
   compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadMessagesList.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadViewportScroll.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadMessagesListModel.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadTimelineRows.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPageContent.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPageTabs.kt
 ]
 thread = find_step(workflow, "Select Thread newer-pagination gate")
 validate_consumer(thread, "run_gate", thread_paths)

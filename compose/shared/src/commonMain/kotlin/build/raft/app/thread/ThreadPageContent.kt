@@ -1,0 +1,2629 @@
+package build.raft.app
+
+import build.raft.app.assistant.LocalThreadAssistantPanelEmbed
+import build.raft.app.assistant.ThreadAssistantPanelMessagesReport
+import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.data.ThreadFindIntent
+import build.raft.app.data.RaftProductEvents
+import build.raft.app.components.RaftUiBanner
+import build.raft.app.components.RaftUiBannerSize
+import build.raft.app.components.RaftUiBannerStatus
+import build.raft.app.components.raftCardSurface
+import build.raft.app.data.ForwardMessageBatchResult
+import build.raft.app.data.ForwardMessageSendMode
+import build.raft.app.data.ForwardMessageTarget
+import build.raft.app.data.ForwardMessageTargetDirectoryCursor
+import build.raft.app.data.ForwardMessageTargetRepository
+import build.raft.app.data.RaftEventBus
+import build.raft.app.data.DataResult
+import build.raft.app.data.map
+import build.raft.app.data.SharedMembersChannelSuggestionSlice
+import build.raft.app.data.SharedMembersMemberSuggestionSlice
+import build.raft.app.data.SharedTasksRouteIntent
+import build.raft.app.data.SharedTasksViewModel
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.SharedMessageTranslationStore
+import build.raft.app.data.isEdgeBlockedMarker
+import build.raft.app.model.MemberProfile
+import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
+import build.raft.app.markdown.ThreadMarkdownTag
+import build.raft.app.markdown.ThreadMarkdownTagKind
+import build.raft.app.model.ChannelId
+import build.raft.app.model.MessageId
+import build.raft.app.model.TaskSummary
+import build.raft.app.model.ServerId
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.Pager
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
+
+/**
+ * task #346: state payload of [ThreadPageContent]. See RaftStructuralHomeShellData for why
+ * the flat parameter list had to be grouped (Android dex verifier rejects the
+ * un-minified giant composable frame on API 34/36 builds).
+ */
+private data class ThreadPageContentData(
+    val lounge: ThreadPageLounge? = null,
+    val agentFollowersHeader: @Composable () -> Unit,
+    /** Task v2: the task conversation's status / assignee / follow bar under the header; null elsewhere. */
+    val taskConversationBar: (@Composable () -> Unit)? = null,
+    /** Channel announcements: the strip above the timeline (ChannelAnnouncementHost.kt); null where none can show. */
+    val channelAnnouncementStrip: (@Composable () -> Unit)? = null,
+    /** Task v2: the top bar's task title and More menu rows; null elsewhere or before the task is known. */
+    val taskConversationChrome: TaskConversationHeaderChrome? = null,
+    /** Task v2 on a phone: whether the head's row is in view, and the head pulled down from the bar while it is not. */
+    val taskConversationHead: TaskHeadScrollState? = null,
+    /** Task v2 on a phone: the head pulled down from the bar over the messages ([TaskHeadFloat]). */
+    val taskConversationFloat: (@Composable () -> Unit)? = null,
+    /** Task v2 on a phone: the head as the conversation's first row ([LocalTaskConversationHeadRow]). */
+    val taskConversationHeadRow: TaskConversationHeadRow? = null,
+    val threadInstanceKey: String,
+    val routeActive: Boolean,
+    val hostForeground: Boolean,
+    val payload: RaftThreadScreenPayload,
+    val messageBodyTextStyle: TextStyle,
+    val timelineSlice: ThreadTimelineSlice,
+    val accessResolution: ThreadAccessResolution,
+    val canonicalAccessResolved: Boolean,
+    val initialHomeAccessLookupComplete: Boolean,
+    val lastRefreshResultReason: String?,
+    val replyParentAuthority: ReplyParentAuthorityStatus,
+    val writeActionsEnabled: Boolean,
+    val jointBillingNotice: JointBillingNotice = JointBillingNotice.None,
+    val jointGraceDeadlineLabel: String? = null,
+    val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
+    val channelProfileUpdateErrorCode: String?,
+    val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
+    val headerDisplay: ThreadHeaderDisplayModel,
+    val composerSurface: ThreadComposerSurface,
+    val baseComposerState: RaftThreadComposerPayload,
+    val composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
+    val resolvedAuxiliaryThreadId: String?,
+    val tasksViewModel: SharedTasksViewModel?,
+    val taskChannelId: ChannelId?,
+    val taskIdentityOptions: List<MemberProfile>,
+    val linkedTasksProjection: ThreadLinkedTasksProjection,
+    val filesViewModel: SharedThreadFilesViewModel?,
+    val memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
+    val channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
+    val selectedTab: RaftThreadTab,
+    val availableTabs: List<RaftThreadTab>,
+    val sideCardsEnabled: Boolean,
+    val activityMuteState: ThreadActivityMuteUiState?,
+    val activityMutedIndicatorVisible: Boolean,
+    val conversationPinState: ThreadConversationPinUiState?,
+    val forwardServerId: ServerId?,
+    val forwardTargetRepository: ForwardMessageTargetRepository?,
+    val contentExtrasVisible: Boolean,
+    val highlightedMentions: Set<String>,
+    val pendingActionCardIds: Set<String>,
+    val pendingTaskConvertMessageIds: Set<String>,
+    val markdownReferencePendingActionId: String?,
+    val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
+    val composerSendKeyEnabled: Boolean,
+    val longMessageCollapseEnabled: Boolean,
+    val longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting?,
+    val channelSettingsPanel: ThreadChannelSettingsPanel?,
+    val jumpInputs: ThreadJumpInputs,
+    val newMessageMenuEnabled: Boolean,
+    val currentServerSlug: String?,
+    val translationStore: SharedMessageTranslationStore?,
+    val visibleReadTailIndex: Int?,
+    /** A4 destination contract (task #18, spec §9): non-null when hosted as a detail pane. */
+    val adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest?,
+    val adaptiveStoreScope: RaftShellStoreScope,
+    val adaptiveEventBus: RaftEventBus,
+    val onThreadEvent: ThreadEventHandler,
+    /** The window's "something is about to open" signal: an open Tasks / Files cover closes on it. */
+    val incomingNavigation: RaftIncomingNavigationSignal? = null,
+)
+
+/** task #346: callback payload of [ThreadPageContent]. See ThreadPageContentData. */
+private class ThreadPageContentCallbacks(
+    val scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
+    val onSelectedTabChanged: (RaftThreadTab) -> Unit,
+    val onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
+    val onToggleActivityMute: (() -> Unit)?,
+    val onOpenSettingsPage: (() -> Boolean)?,
+    val onOpenTaskSummary: (TaskSummary, String) -> Unit,
+    val onTasksIntent: (SharedTasksRouteIntent) -> Unit,
+    val onFilesAuthRequired: (String?) -> Unit,
+    val onOpenFilesAttachment: (RaftThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
+    val onDownloadFilesAttachment: (RaftThreadAttachmentItem) -> Unit,
+    val onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
+    val onExternalAuthor: (RaftThreadMessageItem) -> Unit,
+    val agentStatusResolver: RaftAgentStatusResolver,
+    val memberAvatarResolver: RaftMemberAvatarResolver,
+    val memberModelLabelResolver: RaftMemberModelLabelResolver,
+    val diagnosticsLogger: (String) -> Unit,
+    val onLayoutGeneration: (width: Int, height: Int) -> Unit,
+    val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
+    val onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject?,
+    val mentionHandleResolver: (RaftThreadMessageItem) -> String?,
+    val onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
+    val onSaveShareImage: suspend (String) -> JSONObject?,
+    val onFirstContentReady: () -> Unit,
+    /** task #180: null when this surface has no side column to maximise. */
+    val onToggleFocusMode: (() -> Unit)? = null,
+    val focusModeActive: Boolean = false,
+    val onVisibleReadTailChange: (Int?) -> Unit,
+    val onViewportFollowsLatestChange: (Boolean) -> Unit,
+    val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    val onJumpToLatest: suspend () -> ThreadLatestJumpOutcome,
+    val onBack: () -> Unit,
+    val onUpdateChannelProfile: (String, String, String, String, String) -> Unit,
+    val onClearChannelProfileUpdateStatus: () -> Unit,
+    val onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit,
+    val onOpenForwardDestination: (ThreadForwardSuccessBanner) -> Unit,
+    val onComposerKeyboardInsetChanged: (Float) -> Unit,
+    val onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
+    val onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    val onComposerDropFiles: (ThreadComposerFileDrop) -> Unit = { it.release() },
+)
+
+internal @Composable
+fun ThreadPageContent(
+    /** Agent Lounge v0 (see [ThreadPageLounge]); null on pages that never show one. */
+    lounge: ThreadPageLounge? = null,
+    agentFollowersHeader: @Composable () -> Unit = {},
+    taskConversationBar: (@Composable () -> Unit)? = null,
+    channelAnnouncementStrip: (@Composable () -> Unit)? = null,
+    taskConversationChrome: TaskConversationHeaderChrome? = null,
+    taskConversationHead: TaskHeadScrollState? = null,
+    taskConversationFloat: (@Composable () -> Unit)? = null,
+    taskConversationHeadRow: TaskConversationHeadRow? = null,
+    scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
+    threadInstanceKey: String,
+    routeActive: Boolean,
+    hostForeground: Boolean,
+    payload: RaftThreadScreenPayload,
+    messageBodyTextStyle: TextStyle,
+    timelineSlice: ThreadTimelineSlice,
+    accessResolution: ThreadAccessResolution,
+    canonicalAccessResolved: Boolean,
+    initialHomeAccessLookupComplete: Boolean = false,
+    lastRefreshResultReason: String? = null,
+    replyParentAuthority: ReplyParentAuthorityStatus = ReplyParentAuthorityStatus.Resolving,
+    writeActionsEnabled: Boolean,
+    jointBillingNotice: JointBillingNotice = JointBillingNotice.None,
+    jointGraceDeadlineLabel: String? = null,
+    channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
+    channelProfileUpdateErrorCode: String? = null,
+    replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
+    headerDisplay: ThreadHeaderDisplayModel,
+    composerSurface: ThreadComposerSurface,
+    baseComposerState: RaftThreadComposerPayload,
+    composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
+    resolvedAuxiliaryThreadId: String?,
+    tasksViewModel: SharedTasksViewModel?,
+    taskChannelId: ChannelId?,
+    taskIdentityOptions: List<MemberProfile>,
+    linkedTasksProjection: ThreadLinkedTasksProjection,
+    filesViewModel: SharedThreadFilesViewModel?,
+    memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
+    channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
+    selectedTab: RaftThreadTab,
+    availableTabs: List<RaftThreadTab>,
+    /** Task v2 ([conversationSideCardsEnabled]): Tasks / Files cards instead of the tab row. */
+    sideCardsEnabled: Boolean = false,
+    onSelectedTabChanged: (RaftThreadTab) -> Unit,
+    onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
+    activityMuteState: ThreadActivityMuteUiState? = null,
+    activityMutedIndicatorVisible: Boolean = false,
+    onToggleActivityMute: (() -> Unit)? = null,
+    // A phone: opens the settings as a pushed page; false (or null) keeps the drawer.
+    onOpenSettingsPage: (() -> Boolean)? = null,
+    conversationPinState: ThreadConversationPinUiState? = null,
+    forwardServerId: ServerId?,
+    forwardTargetRepository: ForwardMessageTargetRepository?,
+    contentExtrasVisible: Boolean,
+    onOpenTaskSummary: (TaskSummary, String) -> Unit,
+    onTasksIntent: (SharedTasksRouteIntent) -> Unit,
+    onFilesAuthRequired: (String?) -> Unit,
+    onOpenFilesAttachment: (RaftThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
+    onDownloadFilesAttachment: (RaftThreadAttachmentItem) -> Unit,
+    onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
+    onExternalAuthor: (RaftThreadMessageItem) -> Unit = {},
+    highlightedMentions: Set<String>,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    memberModelLabelResolver: RaftMemberModelLabelResolver = EmptyRaftMemberModelLabelResolver,
+    diagnosticsLogger: (String) -> Unit = {},
+    onLayoutGeneration: (width: Int, height: Int) -> Unit = { _, _ -> },
+    onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit = { _, _ -> },
+    onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject? = { _, _, _, _, _ -> null },
+    pendingActionCardIds: Set<String> = emptySet(),
+    pendingTaskConvertMessageIds: Set<String> = emptySet(),
+    markdownReferencePendingActionId: String? = null,
+    attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
+    composerSendKeyEnabled: Boolean = false,
+    longMessageCollapseEnabled: Boolean = false,
+    longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting? = null,
+    /** The settings drawer's members strip and preferences (null: the drawer shows the name form and actions). */
+    channelSettingsPanel: ThreadChannelSettingsPanel? = null,
+    jumpInputs: ThreadJumpInputs = ThreadJumpInputs(),
+    newMessageMenuEnabled: Boolean = false,
+    currentServerSlug: String? = null,
+    translationStore: SharedMessageTranslationStore? = null,
+    mentionHandleResolver: (RaftThreadMessageItem) -> String? = { message -> message.threadMentionHandle() },
+    onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
+    onSaveShareImage: suspend (String) -> JSONObject?,
+    onFirstContentReady: () -> Unit = {},
+    visibleReadTailIndex: Int? = null,
+    onVisibleReadTailChange: (Int?) -> Unit = {},
+    onViewportFollowsLatestChange: (Boolean) -> Unit = {},
+    adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest? = null,
+    adaptiveStoreScope: RaftShellStoreScope = RaftShellStoreScope.Legacy,
+    adaptiveEventBus: RaftEventBus,
+    incomingNavigation: RaftIncomingNavigationSignal? = null,
+    onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
+    onJumpToLatest: suspend () -> ThreadLatestJumpOutcome,
+    onBack: () -> Unit,
+    onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
+    onClearChannelProfileUpdateStatus: () -> Unit = {},
+    onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit = {},
+    onOpenForwardDestination: (ThreadForwardSuccessBanner) -> Unit = {},
+    onComposerKeyboardInsetChanged: (Float) -> Unit = {},
+    onThreadEvent: ThreadEventHandler,
+    onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
+    onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onComposerDropFiles: (ThreadComposerFileDrop) -> Unit = { it.release() },
+    onToggleFocusMode: (() -> Unit)? = null,
+    focusModeActive: Boolean = false,
+)
+ {
+    ThreadFollowersOverlayHost {
+    ThreadPageContentContent(
+        modifier = Modifier,
+        onToggleFocusMode = onToggleFocusMode,
+        focusModeActive = focusModeActive,
+        data =
+            ThreadPageContentData(
+                lounge = lounge,
+                agentFollowersHeader = agentFollowersHeader,
+                taskConversationBar = taskConversationBar,
+                channelAnnouncementStrip = channelAnnouncementStrip,
+                taskConversationChrome = taskConversationChrome,
+                taskConversationHead = taskConversationHead,
+                taskConversationFloat = taskConversationFloat,
+                taskConversationHeadRow = taskConversationHeadRow,
+                threadInstanceKey = threadInstanceKey,
+                routeActive = routeActive,
+                hostForeground = hostForeground,
+                payload = payload,
+                messageBodyTextStyle = messageBodyTextStyle,
+                timelineSlice = timelineSlice,
+                accessResolution = accessResolution,
+                canonicalAccessResolved = canonicalAccessResolved,
+                initialHomeAccessLookupComplete = initialHomeAccessLookupComplete,
+                lastRefreshResultReason = lastRefreshResultReason,
+                replyParentAuthority = replyParentAuthority,
+                writeActionsEnabled = writeActionsEnabled,
+                jointBillingNotice = jointBillingNotice,
+                jointGraceDeadlineLabel = jointGraceDeadlineLabel,
+                channelProfileUpdateStatus = channelProfileUpdateStatus,
+                channelProfileUpdateErrorCode = channelProfileUpdateErrorCode,
+                replyMetadataByParentId = replyMetadataByParentId,
+                headerDisplay = headerDisplay,
+                composerSurface = composerSurface,
+                baseComposerState = baseComposerState,
+                composerDraftViewModel = composerDraftViewModel,
+                composerDraftPersistSlice = composerDraftPersistSlice,
+                resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
+                tasksViewModel = tasksViewModel,
+                taskChannelId = taskChannelId,
+                taskIdentityOptions = taskIdentityOptions,
+                linkedTasksProjection = linkedTasksProjection,
+                filesViewModel = filesViewModel,
+                memberSuggestionsFlow = memberSuggestionsFlow,
+                channelSuggestionsFlow = channelSuggestionsFlow,
+                selectedTab = selectedTab,
+                availableTabs = availableTabs,
+                sideCardsEnabled = sideCardsEnabled,
+                activityMuteState = activityMuteState,
+                activityMutedIndicatorVisible = activityMutedIndicatorVisible,
+                conversationPinState = conversationPinState,
+                forwardServerId = forwardServerId,
+                forwardTargetRepository = forwardTargetRepository,
+                contentExtrasVisible = contentExtrasVisible,
+                highlightedMentions = highlightedMentions,
+                pendingActionCardIds = pendingActionCardIds,
+                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
+                markdownReferencePendingActionId = markdownReferencePendingActionId,
+                attachmentOpenStates = attachmentOpenStates,
+                composerSendKeyEnabled = composerSendKeyEnabled,
+                longMessageCollapseEnabled = longMessageCollapseEnabled,
+                longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
+                channelSettingsPanel = channelSettingsPanel,
+                jumpInputs = jumpInputs,
+                newMessageMenuEnabled = newMessageMenuEnabled,
+                currentServerSlug = currentServerSlug,
+                translationStore = translationStore,
+                visibleReadTailIndex = visibleReadTailIndex,
+                adaptiveCloseRequest = adaptiveCloseRequest,
+                adaptiveStoreScope = adaptiveStoreScope,
+                adaptiveEventBus = adaptiveEventBus,
+                onThreadEvent = onThreadEvent,
+                incomingNavigation = incomingNavigation,
+            ),
+        callbacks =
+            ThreadPageContentCallbacks(
+                scaffold = scaffold,
+                onToggleFocusMode = onToggleFocusMode,
+                focusModeActive = focusModeActive,
+                onSelectedTabChanged = onSelectedTabChanged,
+                onSuggestionDemandChanged = onSuggestionDemandChanged,
+                onToggleActivityMute = onToggleActivityMute,
+                onOpenSettingsPage = onOpenSettingsPage,
+                onOpenTaskSummary = onOpenTaskSummary,
+                onTasksIntent = onTasksIntent,
+                onFilesAuthRequired = onFilesAuthRequired,
+                onOpenFilesAttachment = onOpenFilesAttachment,
+                onDownloadFilesAttachment = onDownloadFilesAttachment,
+                onOpenMemberProfile = onOpenMemberProfile,
+                onExternalAuthor = onExternalAuthor,
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                memberModelLabelResolver = memberModelLabelResolver,
+                diagnosticsLogger = diagnosticsLogger,
+                onLayoutGeneration = onLayoutGeneration,
+                onComposerLayoutProbe = onComposerLayoutProbe,
+                onComposerPixelProbe = onComposerPixelProbe,
+                mentionHandleResolver = mentionHandleResolver,
+                onExportShareImage = onExportShareImage,
+                onSaveShareImage = onSaveShareImage,
+                onFirstContentReady = onFirstContentReady,
+                onVisibleReadTailChange = onVisibleReadTailChange,
+                onViewportFollowsLatestChange = onViewportFollowsLatestChange,
+                onLoadNewer = onLoadNewer,
+                onJumpToLatest = onJumpToLatest,
+                onBack = onBack,
+                onUpdateChannelProfile = onUpdateChannelProfile,
+                onClearChannelProfileUpdateStatus = onClearChannelProfileUpdateStatus,
+                onForwardMessagesDelivered = onForwardMessagesDelivered,
+                onOpenForwardDestination = onOpenForwardDestination,
+                onComposerKeyboardInsetChanged = onComposerKeyboardInsetChanged,
+                onComposerSendRequest = onComposerSendRequest,
+                onComposerEvent = onComposerEvent,
+                onComposerDropFiles = onComposerDropFiles,
+            ),
+    )
+}
+}
+
+@Composable
+private fun ThreadPageContentContent(
+    modifier: Modifier = Modifier,
+    data: ThreadPageContentData,
+    callbacks: ThreadPageContentCallbacks,
+    onToggleFocusMode: (() -> Unit)? = null,
+    focusModeActive: Boolean = false,
+) {
+    val scaffold = callbacks.scaffold
+    val threadInstanceKey = data.threadInstanceKey
+    val routeActive = data.routeActive
+    val hostForeground = data.hostForeground
+    // Agent Lounge v0: the Lounge this page is, or a reply thread is in (null elsewhere).
+    val pageLounge = data.lounge?.lounge
+    val conversationLounge = pageLounge?.takeIf { data.payload.surfaceKind == RaftThreadSurfaceKind.Channel }
+    val payload =
+        remember(data.payload, conversationLounge, data.accessResolution) {
+            data.payload.withAgentLoungeAccess(conversationLounge, data.accessResolution)
+        }
+    val messageBodyTextStyle = data.messageBodyTextStyle
+    val timelineSlice = data.timelineSlice
+    // In the assistant's panel: a card from it still waiting here gives the otter its confirm mood.
+    ThreadAssistantPanelMessagesReport(timelineSlice.messages)
+    val accessResolution = data.accessResolution
+    val canonicalAccessResolved = data.canonicalAccessResolved
+    val replyParentAuthority = data.replyParentAuthority
+    val writeActionsEnabled = data.writeActionsEnabled
+    val jointBillingNotice = data.jointBillingNotice
+    val jointGraceDeadlineLabel = data.jointGraceDeadlineLabel
+    val channelProfileUpdateStatus = data.channelProfileUpdateStatus
+    val channelProfileUpdateErrorCode = data.channelProfileUpdateErrorCode
+    val replyMetadataByParentId = data.replyMetadataByParentId
+    val headerDisplay = data.headerDisplay
+    val composerSurface = data.composerSurface
+    val baseComposerState = data.baseComposerState
+    val composerDraftViewModel = data.composerDraftViewModel
+    val composerDraftPersistSlice = data.composerDraftPersistSlice
+    val resolvedAuxiliaryThreadId = data.resolvedAuxiliaryThreadId
+    val tasksViewModel = data.tasksViewModel
+    val taskChannelId = data.taskChannelId
+    val taskIdentityOptions = data.taskIdentityOptions
+    val linkedTasksProjection = data.linkedTasksProjection
+    val filesViewModel = data.filesViewModel
+    val memberSuggestionsFlow = data.memberSuggestionsFlow
+    val channelSuggestionsFlow = data.channelSuggestionsFlow
+    // botiverse/slock #11303 / #11321: the DM with an App Bot removed from this server, and that
+    // DM's threads, keep their history but the Bot can't answer: the composer is read-only.
+    val composerRemovedAppBot =
+        rememberRaftMemberAppBot(data.headerDisplay.composerDmAgentPeerId())?.takeIf { it.removed }
+    val selectedTab = data.selectedTab
+    val availableTabs = data.availableTabs
+    // Task v2: the person's open Tasks / Files cards (app-level, not this conversation's).
+    val sideCardsEnabled = data.sideCardsEnabled
+    val sideCardsStore = LocalConversationSideCards.current
+    val sideCardsStoreState by sideCardsStore.state.collectAsState()
+    val sideCards =
+        if (sideCardsEnabled) sideCardsStoreState.availableIn(RaftThreadTab.Tasks in availableTabs) else ConversationSideCardsState()
+    // Task v2 on a wide page: the cards stand in a column beside the conversation instead of
+    // covering it ([conversationSideCardsBeside]). In the workspace the column joins the pane grid
+    // around the page, right of the reply thread, and always stands beside: the grid's row plan
+    // makes room for it (#189: give way, clip, tabs; [conversationSideCardsBesideInGrid]). Known on
+    // the first frame. A page on its own measures its root; until then the window's width stands in.
+    val sideCardsDensity = LocalDensity.current.density
+    val sideCardsWindowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
+    var sideCardsPageWidthDp by remember { mutableStateOf(sideCardsWindowWidthDp) }
+    val sideCardsInGridRow = raftPaneGridInRow()
+    val sideCardsBeside =
+        sideCardsEnabled &&
+            if (sideCardsInGridRow) {
+                conversationSideCardsBesideInGrid(sideCardsWindowWidthDp)
+            } else {
+                conversationSideCardsBeside(sideCardsWindowWidthDp, sideCardsPageWidthDp)
+            }
+    // On a phone the cards cover the conversation: a link, notification or shortcut into a
+    // conversation (or a page opened at a message) closes them, so the message is not under them.
+    ConversationSideCardsIncomingNavigationEffect(
+        store = sideCardsStore,
+        signal = data.incomingNavigation,
+        coverConversation = sideCardsEnabled && !sideCardsBeside,
+        focusedMessageId = payload.focusedMessageId,
+    )
+    val onSelectedTabChanged = callbacks.onSelectedTabChanged
+    val onSuggestionDemandChanged = callbacks.onSuggestionDemandChanged
+    val activityMuteState = data.activityMuteState
+    val activityMutedIndicatorVisible = data.activityMutedIndicatorVisible
+    val onToggleActivityMute = callbacks.onToggleActivityMute
+    val onOpenSettingsPage = callbacks.onOpenSettingsPage
+    val conversationPinState = data.conversationPinState
+    val forwardServerId = data.forwardServerId
+    val forwardTargetRepository = data.forwardTargetRepository
+    val contentExtrasVisible = data.contentExtrasVisible
+    val onOpenTaskSummary = callbacks.onOpenTaskSummary
+    val onTasksIntent = callbacks.onTasksIntent
+    val onFilesAuthRequired = callbacks.onFilesAuthRequired
+    val onOpenFilesAttachment = callbacks.onOpenFilesAttachment
+    val onDownloadFilesAttachment = callbacks.onDownloadFilesAttachment
+    val onOpenMemberProfile = callbacks.onOpenMemberProfile
+    val onExternalAuthor = callbacks.onExternalAuthor
+    val highlightedMentions = data.highlightedMentions
+    val agentStatusResolver = callbacks.agentStatusResolver
+    val memberAvatarResolver = callbacks.memberAvatarResolver
+    val memberModelLabelResolver = callbacks.memberModelLabelResolver
+    val diagnosticsLogger = callbacks.diagnosticsLogger
+    val onLayoutGeneration = callbacks.onLayoutGeneration
+    val onComposerLayoutProbe = callbacks.onComposerLayoutProbe
+    val onComposerPixelProbe = callbacks.onComposerPixelProbe
+    val pendingActionCardIds = data.pendingActionCardIds
+    val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
+    val markdownReferencePendingActionId = data.markdownReferencePendingActionId
+    val attachmentOpenStates = data.attachmentOpenStates
+    val composerSendKeyEnabled = data.composerSendKeyEnabled
+    val longMessageCollapseEnabled = data.longMessageCollapseEnabled
+    val longMessageCollapseConversationSetting = data.longMessageCollapseConversationSetting
+    val channelSettingsPanel = data.channelSettingsPanel
+    val jumpInputs = data.jumpInputs
+    val newMessageMenuEnabled = data.newMessageMenuEnabled
+    val currentServerSlug = data.currentServerSlug
+    val translationStore = data.translationStore
+    val mentionHandleResolver = callbacks.mentionHandleResolver
+    val onExportShareImage = callbacks.onExportShareImage
+    val onSaveShareImage = callbacks.onSaveShareImage
+    val onFirstContentReady = callbacks.onFirstContentReady
+    val visibleReadTailIndex = data.visibleReadTailIndex
+    val adaptiveCloseRequest = data.adaptiveCloseRequest
+    val adaptiveStoreScope = data.adaptiveStoreScope
+    val adaptiveEventBus = data.adaptiveEventBus
+    // Desktop / hardware keyboard: the composer takes the focus when the conversation opens; the
+    // wide detail's conversation leaves it to the reply thread shown beside it, and a phone or
+    // tablet leaves it alone when the open lands on one message (a message link, Activity, search).
+    val composerAutofocusOnOpen =
+        rememberThreadComposerAutofocusOnOpen(
+            routeActive = routeActive,
+            adaptiveCloseRequest = adaptiveCloseRequest,
+            adaptiveStoreScope = adaptiveStoreScope,
+            opensOnMessage = !timelineSlice.focusedMessageId.isNullOrBlank(),
+        )
+    val onVisibleReadTailChange = callbacks.onVisibleReadTailChange
+    val onViewportFollowsLatestChange = callbacks.onViewportFollowsLatestChange
+    val onLoadNewer = callbacks.onLoadNewer
+    val onJumpToLatest = callbacks.onJumpToLatest
+    val onBack = callbacks.onBack
+    val onUpdateChannelProfile = callbacks.onUpdateChannelProfile
+    val onClearChannelProfileUpdateStatus = callbacks.onClearChannelProfileUpdateStatus
+    val onForwardMessagesDelivered = callbacks.onForwardMessagesDelivered
+    val onOpenForwardDestination = callbacks.onOpenForwardDestination
+    val onComposerKeyboardInsetChanged = callbacks.onComposerKeyboardInsetChanged
+    val onThreadEvent = data.onThreadEvent
+    val onComposerSendRequest = callbacks.onComposerSendRequest
+    val onComposerEvent = callbacks.onComposerEvent
+    val onComposerDropFiles = callbacks.onComposerDropFiles
+    val inlineReplyParticipantsById =
+        remember(payload.members, payload.memberCandidates) {
+            (payload.members + payload.memberCandidates)
+                .distinctBy(RaftThreadMemberItem::id)
+                .associateBy(RaftThreadMemberItem::id)
+        }
+    val renderEarlyLoadingShell =
+        payload.shouldRenderThreadLoadingShell(
+            timelineSlice = timelineSlice,
+            accessResolution = accessResolution
+        )
+    val renderAccessRetry = accessResolution.shouldRenderThreadAccessRetry()
+    val accessErrorLabels = threadUserFacingErrorLabels()
+    val shareExportScope = rememberCoroutineScope()
+    LaunchedEffect(threadInstanceKey, selectedTab, timelineSlice.status, timelineSlice.messages.size) {
+        if (
+            selectedTab != RaftThreadTab.Chat &&
+            payload.isReadyForThreadPerformanceGate()
+        ) {
+            delay(ThreadLayoutStabilityFrameDelayMs)
+            onFirstContentReady()
+        }
+    }
+    LaunchedEffect(
+        threadInstanceKey,
+        timelineSlice.status,
+        timelineSlice.messages.size,
+        payload.backgroundRefreshing,
+        timelineSlice.originStatus,
+        timelineSlice.originMessage?.id,
+        payload.originPreview,
+        payload.selectedTab,
+        selectedTab,
+        renderEarlyLoadingShell
+    ) {
+        diagnosticsLogger(
+            "thread_visible_state instance=$threadInstanceKey " +
+                "threadId=${payload.sourceThreadId.orEmpty()} " +
+                "streamChannelId=${payload.streamChannelId.orEmpty()} " +
+                "payloadTab=${payload.selectedTab} selectedTab=${selectedTab.wireValue} " +
+                "status=${timelineSlice.status} messages=${timelineSlice.messages.size} " +
+                "backgroundRefreshing=${payload.backgroundRefreshing} " +
+                "originStatus=${timelineSlice.originStatus} " +
+                "hasOriginMessage=${timelineSlice.originMessage != null} " +
+                "hasOriginPreview=${!payload.originPreview.isNullOrBlank()} " +
+                "renderEarlyLoadingShell=$renderEarlyLoadingShell " +
+                "accessResolution=${accessResolution.name} " +
+                "canonicalAccessResolved=$canonicalAccessResolved " +
+                "initialHomeAccessLookupComplete=${data.initialHomeAccessLookupComplete} " +
+                "lastRefreshResult=${data.lastRefreshResultReason ?: "none"} " +
+                "branch=${if (renderEarlyLoadingShell) "early_loading" else "tab_content"}"
+        )
+    }
+    var visibleTasksStartThreadId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    LaunchedEffect(selectedTab, sideCards.tasks, taskChannelId?.value, payload.status, tasksViewModel) {
+        val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
+        tasksViewModel ?: return@LaunchedEffect
+        // An open Tasks card loads the channel's tasks as the Tasks tab did.
+        val tasksShownTab = if (sideCards.tasks) RaftThreadTab.Tasks else selectedTab
+        if (
+            !shouldStartThreadTasksJoin(
+                payload = payload.copy(selectedTab = tasksShownTab.wireValue),
+                startedThreadId = visibleTasksStartThreadId,
+                taskChannelId = resolvedTaskChannelId
+            )
+        ) {
+            return@LaunchedEffect
+        }
+        visibleTasksStartThreadId = resolvedTaskChannelId.value
+        diagnosticsLogger(
+            "thread_tasks_join_start threadId=${payload.sourceThreadId.orEmpty()} reason=selected_tasks_tab"
+        )
+        onTasksIntent(SharedTasksRouteIntent.Start)
+    }
+    var activeModal by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // A phone opens the settings as a pushed page (ThreadSettingsPage.kt); a wide window as the drawer.
+    val settingsOpensAsPage = rememberThreadSettingsOpensAsPage()
+    LaunchedEffect(channelProfileUpdateStatus, activeModal) {
+        if (channelProfileUpdateStatus == ChannelProfileUpdateStatus.Succeeded) {
+            // web inline Save: the drawer stays open and Save reads "Changes saved" for a moment.
+            if (activeModal == "settings") delay(ThreadSettingsSavedNoticeMillis)
+            onClearChannelProfileUpdateStatus()
+        }
+    }
+    // Full bundles open a dedicated pager page (task #64); capture the pager at
+    // composable scope so the tap handler can route.
+    val threadScreenPagerForForwardBundle = LocalActivity.current.getPager() as Pager
+    var activeForwardSelectionMode by remember(threadInstanceKey) { mutableStateOf(ThreadForwardSelectionMode.Merged) }
+    var selectedShareMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    // The anchor of Select to here (web selectionStore `anchorId`): the message last added while it
+    // stays selected; null once it is deselected or the selection is cleared.
+    var shareSelectionAnchorId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // Select mode itself, apart from what is selected: as on the web (selectionStore `isActive`), it
+    // stays on with nothing selected (the select-all checkbox clears) until × ends it.
+    var shareSelectionMode by remember(threadInstanceKey) { mutableStateOf(false) }
+    var forwardMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    val selectedShareBounds = remember(threadInstanceKey) { mutableMapOf<String, ThreadShareCaptureRect>() }
+    var sharePreviewImage by remember(threadInstanceKey) { mutableStateOf<ThreadSharePreviewImage?>(null) }
+    var sharePreviewLoading by remember(threadInstanceKey) { mutableStateOf(false) }
+    // Android / desktop: the share image laid out off screen at the picked width (threadShareImageRendersOffscreen).
+    var shareImageWidthChoice by remember(threadInstanceKey) { mutableStateOf(ThreadShareImageWidthChoice()) }
+    var shareImageRenderWidthDp by remember(threadInstanceKey) { mutableStateOf(ThreadShareImageDefaultWidthDp) }
+    var shareImageBitmap by remember(threadInstanceKey) { mutableStateOf<ThreadShareRenderedImage?>(null) }
+    var shareImageRendering by remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareImageSaving by remember(threadInstanceKey) { mutableStateOf(false) }
+    val sharePngWriter = rememberRaftPngFileWriter()
+    LaunchedEffect(shareImageWidthChoice) {
+        val widthDp = shareImageWidthChoice.widthDp
+        if (widthDp != shareImageRenderWidthDp) {
+            // A drag of the custom slider lays the image out again once it pauses.
+            if (shareImageWidthChoice.preset == ThreadShareImageWidth.Custom) delay(ThreadShareImageWidthDebounceMs)
+            shareImageRenderWidthDp = widthDp
+        }
+    }
+    // The share image (up to 16M px) is held only while Share preview is open: however it closes
+    // (dismiss, saved, another modal), the bitmap goes with it.
+    val sharePreviewOpen = activeModal == "sharePreview"
+    LaunchedEffect(sharePreviewOpen) {
+        if (!sharePreviewOpen) {
+            shareImageBitmap = null
+            shareImageRendering = false
+        }
+    }
+    var shareCaptureMode by remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareCaptureTargetMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var shareCaptureAnchorBeforeTarget by remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareCaptureTailPaddingActive by remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareCaptureViewportBottomPx by remember(threadInstanceKey) { mutableStateOf(0f) }
+    var shareCaptureScrollOffsetPx by remember(threadInstanceKey) {
+        mutableStateOf(ThreadShareCaptureTopScrollOffsetPx)
+    }
+    // Search in this thread (web ThreadSearchBar): a reply thread's or a task's own bar.
+    val threadFind =
+        rememberThreadFindController(threadInstanceKey, taskSurface = payload.isTaskConversationSurface())
+    val threadFindState by threadFind.store.state.collectAsState()
+    val inlineSearchVisible = threadFindState.open
+    var forwardTargets by remember(threadInstanceKey) { mutableStateOf<List<ForwardMessageTarget>>(emptyList()) }
+    var forwardPickerFlow by remember(threadInstanceKey) { mutableStateOf(RaftForwardPickerFlowState()) }
+    var forwardSending by remember(threadInstanceKey) { mutableStateOf(false) }
+    var forwardSourceServerId by remember(threadInstanceKey) { mutableStateOf<ServerId?>(null) }
+    var forwardSelectedReceipts by remember(threadInstanceKey) {
+        mutableStateOf<List<ThreadForwardDestinationReceipt>>(emptyList())
+    }
+    var forwardRequestId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var forwardDirectoryGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
+    var forwardDirectoryNextCursor by remember(threadInstanceKey) { mutableStateOf<ForwardMessageTargetDirectoryCursor?>(null) }
+    var forwardOperationNonce by remember(threadInstanceKey) { mutableStateOf(0) }
+    var forwardNote by remember(threadInstanceKey) { mutableStateOf(TextFieldValue()) }
+    var forwardSuccessBanner by remember(threadInstanceKey) { mutableStateOf<ThreadForwardSuccessBanner?>(null) }
+    var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
+    var insertMentionRequest by remember(threadInstanceKey) { mutableStateOf<ThreadComposerInsertMentionRequest?>(null) }
+    val shareSelectionActive = shareSelectionMode && selectedTab == RaftThreadTab.Chat
+    val selectableShareMessageIds =
+        remember(timelineSlice) {
+            timelineSlice.threadSelectableShareMessageIds()
+        }
+    // Every reply is loaded: none older, none newer (web `selectableComplete`).
+    val selectableShareComplete = !timelineSlice.canLoadMoreBefore && !timelineSlice.canLoadMoreAfter
+    val selectedShareMessages =
+        remember(timelineSlice, selectedShareMessageIds) {
+            timelineSlice.threadSelectedShareMessages(selectedShareMessageIds)
+        }
+    val forwardMessages =
+        remember(timelineSlice, forwardMessageIds) {
+            timelineSlice.threadSelectedShareMessages(forwardMessageIds)
+        }
+    val forwardMessageSelection =
+        remember(forwardMessages) {
+            forwardMessages.threadForwardMessageSelection()
+        }
+    val selectedShareMarkdown =
+        remember(selectedShareMessages) {
+            selectedShareMessages.threadShareMarkdown()
+        }
+    val selectedShareLinks =
+        remember(payload, selectedShareMessages, currentServerSlug) {
+            selectedShareMessages
+                .mapNotNull { message -> payload.threadMessagePermalink(message, currentServerSlug) }
+                .joinToString(separator = "\n")
+        }
+    val forwardSourceChannelId = remember(payload) { payload.threadForwardSourceChannelId() }
+    val forwardTargetItems =
+        remember(forwardTargets, forwardSourceServerId, forwardSourceChannelId) {
+            forwardTargets
+                .threadForwardPickerTargets(forwardSourceServerId, forwardSourceChannelId)
+                .map { it.toRaftForwardTargetPickerItem() }
+        }
+    // slock #12621 "Threads & tasks": one GET per picker open (Visible lane), never per keystroke,
+    // never retried; a failure or an empty answer is no group.
+    val forwardConversationLoader =
+        remember(threadInstanceKey, forwardTargetRepository) {
+            forwardTargetRepository?.let(::ThreadForwardConversationTargetsLoader)
+        }
+    var forwardConversationTargets by remember(threadInstanceKey) { mutableStateOf<List<ForwardMessageTarget>>(emptyList()) }
+    val forwardConversationItems =
+        remember(forwardConversationTargets, forwardSourceServerId, forwardSourceChannelId) {
+            forwardConversationTargets
+                .threadForwardConversationPickerTargets(forwardSourceServerId, forwardSourceChannelId)
+                .map { it.toRaftForwardTargetPickerItem() }
+        }
+    LaunchedEffect(forwardPickerFlow.sessionKey, forwardSourceServerId, forwardConversationLoader) {
+        val sessionKey = forwardPickerFlow.sessionKey
+        val serverId = forwardSourceServerId
+        val loader = forwardConversationLoader
+        if (sessionKey == null || serverId == null || loader == null || sessionKey.serverId != serverId.value) {
+            forwardConversationTargets = emptyList()
+            return@LaunchedEffect
+        }
+        forwardConversationTargets =
+            loader.load(
+                sessionKey = sessionKey,
+                serverId = serverId,
+                currentChannelId = payload.threadForwardConversationCurrentChannelId()
+            )
+    }
+    LaunchedEffect(
+        forwardPickerFlow.sessionKey,
+        forwardPickerFlow.query,
+        forwardPickerFlow.requestGeneration,
+        forwardSourceServerId,
+        forwardServerId,
+        forwardTargetRepository
+    ) {
+        val sessionKey = forwardPickerFlow.sessionKey ?: return@LaunchedEffect
+        if (forwardPickerFlow.step == RaftForwardPickerStep.Closed) return@LaunchedEffect
+        val requestGeneration = forwardPickerFlow.requestGeneration
+        val repository = forwardTargetRepository
+        val serverId = forwardSourceServerId
+        if (repository == null || serverId == null) {
+            forwardPickerFlow =
+                forwardPickerFlow.reduce(
+                    RaftForwardPickerFlowEvent.LoadFailed(
+                        generation = requestGeneration,
+                        errorCode = "forward_target_repository_unavailable"
+                    )
+                )
+            return@LaunchedEffect
+        }
+        if (forwardServerId != serverId) {
+            repository.releaseDirectorySnapshot(sessionKey.directorySessionId())
+            forwardDirectoryNextCursor = null
+            forwardPickerFlow =
+                forwardPickerFlow.reduce(
+                    RaftForwardPickerFlowEvent.LoadFailed(
+                        generation = requestGeneration,
+                        errorCode = "forward_source_server_changed"
+                    )
+                )
+            return@LaunchedEffect
+        }
+        val query = forwardPickerFlow.query
+        val append = query.isBlank() && forwardPickerFlow.appending && forwardDirectoryNextCursor != null
+        val cursor =
+            if (append) {
+                forwardDirectoryNextCursor ?: ForwardMessageTargetDirectoryCursor()
+            } else {
+                ForwardMessageTargetDirectoryCursor()
+            }
+        val requestIdentity =
+            RaftForwardPickerRequestIdentity(
+                serverId = serverId.value,
+                sessionKey = sessionKey,
+                query = query,
+                generation = requestGeneration
+            )
+        val isCurrentRequest = {
+            val liveSession = forwardPickerFlow.sessionKey
+            liveSession != null &&
+                requestIdentity.accepts(
+                    serverId = forwardServerId?.value.orEmpty(),
+                    sessionKey = liveSession,
+                    query = forwardPickerFlow.query,
+                    generation = forwardPickerFlow.requestGeneration
+                )
+        }
+        // Search: local DM/channel matches show at once (display-only while Loading), the
+        // server's ranked list replaces them after the debounce. This effect restarts per
+        // keystroke, cancelling the previous server request; isCurrent drops stale answers.
+        val result: DataResult<ThreadForwardTargetLoadPage> =
+            if (query.isBlank()) {
+                raftForwardPickerGatedLoad<DataResult<ThreadForwardTargetLoadPage>>(
+                    debounce = false,
+                    isCurrent = isCurrentRequest
+                ) {
+                    when (
+                        val page =
+                            repository.directoryTargets(
+                                serverId = serverId,
+                                sessionId = sessionKey.directorySessionId(),
+                                cursor = cursor,
+                                pageSize = 30
+                            )
+                    ) {
+                        is DataResult.Content ->
+                            DataResult.Content(
+                                ThreadForwardTargetLoadPage(
+                                    items = page.data.items,
+                                    nextCursor = page.data.nextCursor,
+                                    reset = page.data.reset
+                                )
+                            )
+                        is DataResult.Empty -> DataResult.Empty(page.reason)
+                        is DataResult.Error -> DataResult.Error(page.error)
+                        is DataResult.NoPermission -> DataResult.NoPermission(page.blocker)
+                    }
+                }
+            } else {
+                when (
+                    val page =
+                        raftForwardPickerProgressiveSearch(
+                            repository = repository,
+                            serverId = serverId,
+                            query = query,
+                            limit = 60,
+                            isCurrent = isCurrentRequest,
+                            onInterim = { interim ->
+                                forwardTargets = interim
+                                forwardDirectoryNextCursor = null
+                            }
+                        )
+                ) {
+                    null -> null
+                    is DataResult.Content -> DataResult.Content(ThreadForwardTargetLoadPage(items = page.data))
+                    is DataResult.Empty -> DataResult.Empty(page.reason)
+                    is DataResult.Error -> DataResult.Error(page.error)
+                    is DataResult.NoPermission -> DataResult.NoPermission(page.blocker)
+                }
+            } ?: return@LaunchedEffect
+        when (result) {
+            is DataResult.Content -> {
+                val nextItems = result.data.items
+                forwardTargets =
+                    if (append && !result.data.reset) {
+                        (forwardTargets + nextItems).distinctBy { it.threadForwardSelectionKey() }
+                    } else {
+                        nextItems
+                    }
+                forwardDirectoryNextCursor =
+                    if (query.isBlank()) result.data.nextCursor else null
+                forwardDirectoryGeneration += 1
+                forwardPickerFlow =
+                    forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.LoadSucceeded(requestGeneration))
+            }
+            is DataResult.Empty -> {
+                if (!append) forwardTargets = emptyList()
+                forwardDirectoryNextCursor = null
+                forwardDirectoryGeneration += 1
+                forwardPickerFlow =
+                    forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.LoadSucceeded(requestGeneration))
+            }
+            is DataResult.Error -> {
+                if (result.error.code == "forward_directory_snapshot_expired") {
+                    forwardDirectoryNextCursor = null
+                }
+                forwardPickerFlow =
+                    forwardPickerFlow.reduce(
+                        RaftForwardPickerFlowEvent.LoadFailed(requestGeneration, result.error.code)
+                    )
+            }
+            is DataResult.NoPermission -> {
+                forwardPickerFlow =
+                    forwardPickerFlow.reduce(
+                        RaftForwardPickerFlowEvent.LoadFailed(requestGeneration, result.blocker.code)
+                    )
+            }
+        }
+    }
+    val clearShareSelection = {
+        shareSelectionMode = false
+        selectedShareMessageIds = emptySet()
+        shareSelectionAnchorId = null
+        selectedShareBounds.clear()
+        sharePreviewImage = null
+        sharePreviewLoading = false
+        shareImageBitmap = null
+        shareImageRendering = false
+        shareCaptureMode = false
+        shareCaptureTargetMessageId = null
+        shareCaptureAnchorBeforeTarget = false
+        shareCaptureTailPaddingActive = false
+        shareCaptureScrollOffsetPx = ThreadShareCaptureTopScrollOffsetPx
+        if (activeModal == "sharePreview") {
+            activeModal = null
+        }
+    }
+    val openForwardPickerForMessageIds: (Set<String>) -> Unit = openForward@{ messageIds ->
+        if (!writeActionsEnabled) {
+            diagnosticsLogger("thread_forward_open_rejected reason=write_actions_disabled")
+            return@openForward
+        }
+        val candidateMessages = timelineSlice.threadSelectedShareMessages(messageIds)
+        val selection = candidateMessages.threadForwardMessageSelection()
+        if (selection.forwardableMessages.isEmpty()) {
+            onThreadEvent(
+                "forwardMessagesFailed",
+                selection.threadForwardSelectionFailureMessage(),
+                null,
+                null
+            )
+            return@openForward
+        }
+        forwardMessageIds = candidateMessages.mapTo(linkedSetOf()) { it.id }
+        activeForwardSelectionMode = ThreadForwardSelectionMode.Merged
+        forwardSourceServerId = forwardServerId
+        forwardPickerFlow.sessionKey?.let { previous ->
+            forwardTargetRepository?.releaseDirectorySnapshot(previous.directorySessionId())
+        }
+        forwardPickerFlow =
+            forwardPickerFlow.reduce(
+                RaftForwardPickerFlowEvent.Open(
+                    sourceContext = threadInstanceKey,
+                    serverId = forwardServerId?.value.orEmpty()
+                )
+            )
+        forwardTargets = emptyList()
+        forwardConversationTargets = emptyList()
+        forwardDirectoryNextCursor = null
+        forwardSelectedReceipts = emptyList()
+        forwardNote = TextFieldValue()
+        activeModal = "forwardTargets"
+    }
+    val transientBackTarget =
+        threadTransientBackTarget(
+            activeModal = activeModal,
+            shareSelectionActive = shareSelectionActive,
+            inlineSearchVisible = inlineSearchVisible,
+            // Beside the conversation the cards cover nothing: Back is the page's (web: only a phone's Back closes them).
+            sideCardsOpen = sideCards.anyOpen && !sideCardsBeside
+        )
+    ThreadTransientBackHandler(transientBackTarget) { target ->
+        when (target) {
+            ThreadTransientBackTarget.SideCards -> sideCardsStore.closeAll()
+            ThreadTransientBackTarget.ShareSelection -> clearShareSelection()
+            ThreadTransientBackTarget.InlineSearch -> threadFind.store.dispatch(ThreadFindIntent.Close)
+        }
+    }
+    suspend fun captureSelectedShareFragments(): ThreadShareCaptureRect? {
+        // Capture slices, per message: the share image frames each message on its own.
+        val messageFragments = mutableListOf<MutableList<String>>()
+        var completedMessages = 0
+        // The click set shareCaptureMode, which drops the rows' viewer-only previews
+        // (LocalThreadShareCaptureActive). This screenshot is of the live list, so let that
+        // recomposition and the relayout it causes land before any bounds are read or pixels
+        // taken: one frame recomposes, the next lays out and reports the rows' new bounds.
+        // Fail closed: without a frame clock the recomposition can't be awaited, so the
+        // screenshot could still hold the viewer-only previews. No capture, export fails.
+        if (!awaitThreadShareCaptureFrames()) {
+            diagnosticsLogger("thread_share_capture_aborted reason=no_frame_clock")
+            return null
+        }
+        diagnosticsLogger(
+            "thread_share_capture_start selected=${selectedShareMessages.size} " +
+                "ids=${selectedShareMessages.joinToString(separator = ",") { it.id }}"
+        )
+        selectedShareMessages.forEach { message ->
+            val targetIndex = timelineSlice.threadMessageListItemIndex(message.id)
+            if (targetIndex < 0) {
+                diagnosticsLogger("thread_share_capture_target_missing messageId=${message.id}")
+                return@forEach
+            }
+            shareCaptureTargetMessageId = message.id
+            shareCaptureAnchorBeforeTarget = true
+            shareCaptureTailPaddingActive = true
+            var messageScrollBaseOffsetPx = ThreadShareCaptureTopScrollOffsetPx
+            shareCaptureScrollOffsetPx = messageScrollBaseOffsetPx
+            delay(ThreadShareCaptureScrollSettleMs + 64L)
+            // Keep the phase-one placement when the exact-target scroll is a
+            // no-op. Kuikly does not re-run onGloballyPositioned for an item
+            // whose placement did not change, so clearing here can discard the
+            // only fresh bounds for a target that was already visible.
+            shareCaptureAnchorBeforeTarget = false
+            delay(ThreadShareCaptureScrollSettleMs + 64L)
+            var attempts = 0
+            while (attempts < 24 && selectedShareBounds[message.id] == null) {
+                delay(32)
+                attempts += 1
+            }
+            val initialRect =
+                selectedShareBounds[message.id]
+                    ?: run {
+                        diagnosticsLogger(
+                            "thread_share_capture_bounds_missing messageId=${message.id} " +
+                                "targetIndex=$targetIndex attempts=$attempts"
+                        )
+                        return@forEach
+                    }
+            diagnosticsLogger(
+                "thread_share_capture_bounds_ready messageId=${message.id} targetIndex=$targetIndex " +
+                    "x=${initialRect.x} y=${initialRect.y} width=${initialRect.width} height=${initialRect.height}"
+            )
+            val captureViewportTop = initialRect.y.coerceAtLeast(0f)
+            val captureViewportBottom = shareCaptureViewportBottomPx
+            if (captureViewportBottom <= captureViewportTop) {
+                diagnosticsLogger(
+                    "thread_share_capture_viewport_missing messageId=${message.id} " +
+                        "top=$captureViewportTop bottom=$captureViewportBottom"
+                )
+                return@forEach
+            }
+            var capturedHeight = 0
+            var segmentHeight = 0
+            var segmentCount = 0
+            val fragments = mutableListOf<String>().also { messageFragments += it }
+            while (capturedHeight < initialRect.height.roundToInt() && segmentCount < ThreadShareCaptureMaxSegmentsPerMessage) {
+                val rect = selectedShareBounds[message.id] ?: break
+                val slice =
+                    threadShareCaptureSlice(
+                        messageHeight = initialRect.height,
+                        currentMessageTop = rect.y,
+                        captureViewportTop = captureViewportTop,
+                        captureViewportBottom = captureViewportBottom,
+                        capturedHeight = capturedHeight,
+                        segmentHeight = segmentHeight
+                    ) ?: break
+                val captureRect =
+                    ThreadShareCaptureRect(
+                        x = rect.x,
+                        y = slice.y,
+                        width = rect.width,
+                        height = slice.height,
+                        frame = false
+                    )
+                val result = runCatching { onExportShareImage(captureRect) }.getOrNull()
+                val path = result?.optString("path").orEmpty()
+                val exportedHeight = result?.optString("height")?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                if (result?.optString("status") != "ok" || path.isBlank() || exportedHeight <= 0) {
+                    diagnosticsLogger(
+                        "thread_share_capture_slice_failed messageId=${message.id} segment=$segmentCount " +
+                            "capturedHeight=$capturedHeight y=${captureRect.y} height=${captureRect.height} " +
+                            "status=${result?.optString("status").orEmpty()} " +
+                            "message=${result?.optString("message").orEmpty()} exportedHeight=$exportedHeight"
+                    )
+                    break
+                }
+                diagnosticsLogger(
+                    "thread_share_capture_slice_ok messageId=${message.id} segment=$segmentCount " +
+                        "capturedHeight=$capturedHeight exportedHeight=$exportedHeight"
+                )
+                fragments += path
+                segmentHeight = maxOf(segmentHeight, exportedHeight)
+                capturedHeight += exportedHeight
+                segmentCount += 1
+                if (capturedHeight >= initialRect.height.roundToInt()) {
+                    break
+                }
+                selectedShareBounds.clear()
+                shareCaptureAnchorBeforeTarget = false
+                shareCaptureTailPaddingActive = true
+                shareCaptureScrollOffsetPx = capturedHeight + messageScrollBaseOffsetPx
+                delay(ThreadShareCaptureScrollSettleMs + 64L)
+                attempts = 0
+                while (attempts < 24 && selectedShareBounds[message.id] == null) {
+                    delay(32)
+                    attempts += 1
+                }
+            }
+            if (capturedHeight >= initialRect.height.roundToInt()) {
+                completedMessages += 1
+            }
+        }
+        val fragmentCount = messageFragments.sumOf { it.size }
+        if (fragmentCount == 0 || completedMessages != selectedShareMessages.size) {
+            diagnosticsLogger(
+                "thread_share_capture_incomplete fragments=$fragmentCount " +
+                    "completed=$completedMessages selected=${selectedShareMessages.size}"
+            )
+            return null
+        }
+        diagnosticsLogger(
+            "thread_share_capture_complete fragments=$fragmentCount completed=$completedMessages"
+        )
+        return ThreadShareCaptureRect(
+            x = 0f,
+            y = 0f,
+            width = 0f,
+            height = 0f,
+            path = threadShareFragmentsParam(messageFragments)
+        )
+    }
+    var composerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(0f) }
+    val composerBottomSafeArea = raftBottomSafeAreaPadding()
+    val composerKeyboardInsetExcludesBottomSafeArea = raftKeyboardInsetExcludesBottomSafeArea()
+    val primaryFooterReady =
+        payload.isThreadPrimaryFooterReady(
+            timelineSlice = timelineSlice,
+            accessResolution = accessResolution
+        )
+    val showComposerForSelectedTab =
+        primaryFooterReady &&
+        jointBillingNotice != JointBillingNotice.Locked &&
+        shouldShowThreadComposerForReadyContent(
+            joined = payload.joined,
+            showComposer = payload.showComposer,
+            selectedTab = selectedTab.wireValue
+        )
+    val taskPanelChannelId =
+        remember(taskChannelId, threadInstanceKey) {
+            taskChannelId
+                ?: ChannelId(threadInstanceKey)
+        }
+    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
+    val draftProjection =
+        remember(activeDraftRecords) {
+            activeDraftRecords.toSharedThreadComposerDraftProjection()
+        }
+    val activeMarkdownTagKey = markdownReferencePendingActionId
+    val openMarkdownTag: (ThreadMarkdownTag, String) -> Unit = openMarkdownTag@{ tag, actionId ->
+        if (tag.kind != ThreadMarkdownTagKind.UserMention && markdownReferencePendingActionId != null) {
+            return@openMarkdownTag
+        }
+        when (tag.kind) {
+            ThreadMarkdownTagKind.UserMention -> {
+                onThreadEvent("openMarkdownTag", tag.label, null, tag.kind.name)
+            }
+            ThreadMarkdownTagKind.Task -> {
+                // `#proj:#7` / `dm:@peer:#7` name the task's conversation; the loaded timeline's own
+                // `#7` may be another conversation's task, so they always resolve by conversation.
+                val taskId =
+                    if (tag.channelName != null || tag.directMessagePeerName != null) {
+                        null
+                    } else {
+                        timelineSlice.findMarkdownTaskId(tag, linkedTasksProjection)
+                    }
+                if (!taskId.isNullOrBlank()) {
+                    onThreadEvent("openTask", taskId, markdownActionId = actionId)
+                } else {
+                    onThreadEvent("openMarkdownTaskNumber", tag.label, markdownActionId = actionId)
+                }
+            }
+            ThreadMarkdownTagKind.Channel -> {
+                onThreadEvent(
+                    "openMarkdownChannel",
+                    tag.channelName ?: tag.label,
+                    tab = tag.kind.name,
+                    markdownActionId = actionId
+                )
+            }
+            ThreadMarkdownTagKind.ChannelThread -> {
+                onThreadEvent(
+                    "openMarkdownThreadRef",
+                    tag.label,
+                    tab = tag.threadShortId,
+                    markdownActionId = actionId
+                )
+            }
+            ThreadMarkdownTagKind.Message -> {
+                onThreadEvent(
+                    "openMarkdownMessageRef",
+                    tag.label,
+                    tab = tag.kind.name,
+                    markdownActionId = actionId
+                )
+            }
+            ThreadMarkdownTagKind.DirectMessage -> {
+                onThreadEvent(
+                    "openMarkdownDirectMessage",
+                    tag.directMessagePeerName ?: tag.label,
+                    tab = tag.kind.name,
+                    markdownActionId = actionId
+                )
+            }
+            ThreadMarkdownTagKind.DirectMessageThread -> {
+                onThreadEvent(
+                    "openMarkdownDirectMessageThreadRef",
+                    tag.directMessagePeerName ?: tag.label,
+                    tab = tag.threadShortId,
+                    markdownActionId = actionId
+                )
+            }
+        }
+    }
+    val openMarkdownUrl: (String) -> Unit = { url ->
+        onThreadEvent("openMarkdownUrl", url, null, null)
+    }
+    val knownMarkdownChannelNames =
+        remember(payload.knownMarkdownChannelNames) {
+            payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet()
+        }
+    val knownMarkdownMentionNames =
+        remember(
+            payload.knownMarkdownMentionNames,
+            payload.members,
+            payload.memberCandidates,
+            payload.originMessage,
+            payload.messages,
+            timelineSlice.messages
+        ) {
+            payload.toKnownMarkdownMentionNameSet(timelineMessages = timelineSlice.messages)
+        }
+    val knownMarkdownDirectMessagePeerNames =
+        remember(
+            payload.knownMarkdownDirectMessagePeerNames,
+            payload.dmPeerName,
+            payload.dmPeerIdentity,
+            payload.surfaceKind,
+            payload.parentSurfaceKind,
+            payload.channelKind,
+            payload.parentChannelKind,
+            payload.members,
+            payload.memberCandidates
+        ) {
+            payload.toKnownMarkdownDirectMessagePeerNameSet()
+        }
+    // The tasks of the conversation being read (Web `taskByChannelNumber` for `taskContextChannelId`):
+    // a bare `#N` chips only for one of them.
+    val loadedMarkdownTaskStatuses = LocalRaftMarkdownTaskStatuses.current
+    val knownMarkdownTaskNumbers =
+        remember(payload.knownMarkdownTaskNumbers, loadedMarkdownTaskStatuses) {
+            payload.toKnownMarkdownTaskNumberSetOrNull() ?: loadedMarkdownTaskStatuses?.keys
+        }
+    val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean =
+        remember(
+            knownMarkdownChannelNames,
+            knownMarkdownMentionNames,
+            knownMarkdownDirectMessagePeerNames,
+            knownMarkdownTaskNumbers
+        ) {
+            { tag ->
+                tag.isKnownThreadMarkdownTag(
+                    knownMarkdownChannelNames,
+                    knownMarkdownMentionNames,
+                    knownMarkdownDirectMessagePeerNames,
+                    knownMarkdownTaskNumbers
+                )
+            }
+        }
+    val markdownTagContextSignature =
+        remember(
+            highlightedMentions,
+            knownMarkdownChannelNames,
+            knownMarkdownMentionNames,
+            knownMarkdownDirectMessagePeerNames,
+            knownMarkdownTaskNumbers
+        ) {
+            threadMarkdownTagContextSignature(
+                highlightedMentions = highlightedMentions,
+                knownChannelNames = knownMarkdownChannelNames,
+                knownMentionNames = knownMarkdownMentionNames,
+                knownDirectMessagePeerNames = knownMarkdownDirectMessagePeerNames,
+                knownTaskNumbers = knownMarkdownTaskNumbers
+            )
+        }
+    // Keyed on the resolved label index (equality), not on the member lists' identity: a
+    // same-content member refresh keeps the lambda, so token plans are not recomputed.
+    val markdownMentionLabels =
+        remember(payload.members, payload.memberCandidates) {
+            threadMarkdownMentionDisplayLabels(payload.members, payload.memberCandidates)
+        }
+    val resolveMarkdownTagLabel =
+        remember(markdownMentionLabels) {
+            { tag: ThreadMarkdownTag -> resolveThreadMarkdownTagDisplayLabel(tag, markdownMentionLabels) }
+        }
+    val timelineRenderConfig =
+        remember(
+            payload.backgroundRefreshing,
+            payload.errorCode,
+            payload.errorServerMessage,
+            payload.originPreview,
+            payload.originErrorCode,
+            payload.localOffsetMinutes,
+            payload.todayEpochDay,
+            payload.nowEpochMillis,
+            payload.timeFormat,
+            payload.members
+        ) {
+            payload.toThreadTimelineRenderConfig()
+        }
+    val selectThreadTab: (RaftThreadTab) -> Unit = { tab ->
+        onSelectedTabChanged(tab)
+        if (tab != RaftThreadTab.Chat) {
+            clearShareSelection()
+        }
+        onThreadEvent("selectTab", null, null, tab.wireValue)
+    }
+    var threadHeaderScrollToTopRequest by remember(threadInstanceKey) { mutableStateOf(0) }
+    val renderThreadTabContent: @Composable (RaftThreadTab, Modifier, Boolean) -> Unit =
+        { tab, contentModifier, tabActive ->
+        Box(
+            modifier = contentModifier
+                .fillMaxWidth()
+                .background(RaftColor.SurfaceWhite)
+        ) {
+            val unavailableNav = LocalConversationUnavailableNav.current
+            if (renderAccessRetry && unavailableNav != null && isConversationUnavailableErrorCode(payload.errorCode)) {
+                RaftConversationUnavailableState(wide = unavailableNav.wide, onBack = unavailableNav.onBack)
+            } else if (renderAccessRetry) {
+                ThreadStateActionMessage(
+                    title = stringResource(Res.string.thread_error_load),
+                    detail =
+                        accessErrorLabels.forErrorCode(payload.errorCode)
+                            ?: stringResource(Res.string.thread_error_access_resolution),
+                    actionLabel = stringResource(Res.string.common_retry),
+                    onClick = {
+                        onThreadEvent(
+                            threadRetryAction(canonicalAccessResolved),
+                            null,
+                            null,
+                            null
+                        )
+                    }
+                )
+            } else if (accessResolution == ThreadAccessResolution.NoPermission) {
+                ThreadStateMessage(
+                    if (payload.errorServerMessage.isEdgeBlockedMarker()) {
+                        stringResource(Res.string.thread_state_edge_blocked)
+                    } else {
+                        stringResource(Res.string.thread_state_no_permission)
+                    },
+                    if (payload.errorServerMessage.isEdgeBlockedMarker()) {
+                        stringResource(Res.string.error_edge_blocked)
+                    } else {
+                        stringResource(Res.string.thread_error_no_permission)
+                    }
+                )
+            } else if (renderEarlyLoadingShell) {
+                ThreadLoadingState()
+            } else when (tab) {
+                RaftThreadTab.Chat ->
+                    // Rows drop viewer-only previews while "Generate image" rasterizes them.
+                    CompositionLocalProvider(LocalThreadShareCaptureActive provides shareCaptureMode) {
+                    ThreadChatTab(
+                        threadInstanceKey = threadInstanceKey,
+                        routeActive = routeActive && tabActive,
+                        hostForeground = hostForeground,
+                        renderConfig = timelineRenderConfig,
+                        messageBodyTextStyle = messageBodyTextStyle,
+                        timelineSlice = timelineSlice,
+                        replyMetadataByParentId = replyMetadataByParentId,
+                        composerDraftPersistSlice = composerDraftPersistSlice,
+                        composerKeyboardInsetDp = composerKeyboardInsetDp,
+                        linkedTasksProjection = linkedTasksProjection,
+                        taskAssigneeOptions = taskIdentityOptions,
+                        highlightedMentions = highlightedMentions,
+                        agentStatusResolver = agentStatusResolver,
+                        memberAvatarResolver = memberAvatarResolver,
+                        memberModelLabelResolver = memberModelLabelResolver,
+                        inlineReplyParticipantsById = inlineReplyParticipantsById,
+                        pendingActionCardIds = pendingActionCardIds,
+                        pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
+                        attachmentOpenStates = attachmentOpenStates,
+                        writeActionsEnabled = writeActionsEnabled,
+                        currentServerSlug = currentServerSlug,
+                        contentExtrasVisible = contentExtrasVisible,
+                        longMessageCollapseEnabled = longMessageCollapseEnabled,
+                        jumpInputs = jumpInputs,
+                        newMessageMenuEnabled = newMessageMenuEnabled,
+                        inlineSearchVisible = inlineSearchVisible,
+                        isMarkdownTagValid = isMarkdownTagValid,
+                        markdownTagContextSignature = markdownTagContextSignature,
+                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                        activeMarkdownTagKey = activeMarkdownTagKey,
+                        onThreadEvent = onThreadEvent,
+                        onLoadNewer = onLoadNewer,
+                        onJumpToLatest = onJumpToLatest,
+                        onOpenMember = onOpenMemberProfile,
+                        onExternalAuthor = onExternalAuthor,
+                        onMentionAuthor = { message ->
+                            val handle = mentionHandleResolver(message)
+                            if (showComposerForSelectedTab && handle != null) {
+                                insertMentionRequestNonce += 1
+                                insertMentionRequest =
+                                    ThreadComposerInsertMentionRequest(
+                                        nonce = insertMentionRequestNonce,
+                                        handle = handle,
+                                        mention = message.threadAuthorStructuredMention(handle)
+                                    )
+                            } else if (handle == null) {
+                                diagnosticsLogger(
+                                    "thread_direct_mention_rejected reason=canonical_handle_unavailable " +
+                                        "messageId=${message.id} authorId=${message.authorId}"
+                                )
+                            }
+                        },
+                        onOpenMarkdownTag = openMarkdownTag,
+                        onOpenMarkdownUrl = openMarkdownUrl,
+                        diagnosticsLogger = diagnosticsLogger,
+                        onComposerLayoutProbe = onComposerLayoutProbe,
+                        onComposerPixelProbe = onComposerPixelProbe,
+                        shareSelectionActive = shareSelectionActive && !shareCaptureMode,
+                        shareSelectionCaptureActive = shareCaptureMode,
+                        shareSelectionCaptureAnchorMessageId =
+                            shareCaptureTargetMessageId ?: selectedShareMessages.firstOrNull()?.id,
+                        shareSelectionCaptureAnchorBeforeTarget = shareCaptureAnchorBeforeTarget,
+                        shareSelectionCaptureTailPaddingActive = shareCaptureTailPaddingActive,
+                        shareSelectionCaptureScrollOffsetPx = shareCaptureScrollOffsetPx,
+                        headerScrollToTopRequest = threadHeaderScrollToTopRequest,
+                        selectedShareMessageIds = selectedShareMessageIds,
+                        shareSelectToHere =
+                            remember(shareSelectionAnchorId, selectableShareMessageIds) {
+                                ThreadShareSelectToHere(
+                                    anchorId = shareSelectionAnchorId,
+                                    selectableIds = selectableShareMessageIds,
+                                    onSelectRange = { ids, edgeId ->
+                                        if (shareSelectionMode) {
+                                            selectedShareMessageIds = selectedShareMessageIds + ids
+                                            shareSelectionAnchorId = edgeId
+                                        }
+                                    },
+                                )
+                            },
+                        onShareSelectionBounds = { messageId, rect ->
+                            if (rect == null) {
+                                selectedShareBounds.remove(messageId)
+                            } else {
+                                selectedShareBounds[messageId] = rect
+                                diagnosticsLogger(
+                                    "thread_share_bounds_update messageId=$messageId " +
+                                        "x=${rect.x} y=${rect.y} width=${rect.width} height=${rect.height}"
+                                )
+                            }
+                        },
+                        onEnterShareSelection = { messageId ->
+                            if (!payload.isRetractedMessage(messageId)) {
+                                selectedShareMessageIds = setOf(messageId)
+                                shareSelectionAnchorId = messageId
+                                shareSelectionMode = true
+                                activeModal = null
+                            }
+                        },
+                        onForwardMessage = { messageId ->
+                            openForwardPickerForMessageIds(setOf(messageId))
+                        },
+                        onToggleShareSelection = { messageId ->
+                            if (messageId in selectedShareMessageIds) {
+                                selectedShareMessageIds = selectedShareMessageIds - messageId
+                                // Deselecting the anchor leaves none (a range from it would re-add it).
+                                if (shareSelectionAnchorId == messageId) shareSelectionAnchorId = null
+                            } else if (!payload.isRetractedMessage(messageId)) {
+                                // RFC 077 PR 2b: nothing of a retracted message can be shared.
+                                selectedShareMessageIds = selectedShareMessageIds + messageId
+                                shareSelectionAnchorId = messageId
+                            }
+                        },
+                        onOpenForwardBundle = { messageId ->
+                            val serverId = forwardServerId?.value
+                            val channelId = payload.resolveThreadRouteIdentity().timelineChannelId
+                            if (serverId != null && channelId != null) {
+                                threadScreenPagerForForwardBundle.openThreadForwardBundlePage(
+                                    ThreadForwardBundleRoute(
+                                        serverId = ServerId(serverId),
+                                        channelId = ChannelId(channelId),
+                                        messageId = MessageId(messageId)
+                                    )
+                                )
+                            } else {
+                                diagnosticsLogger(
+                                    "thread_forward_bundle_open_rejected reason=route_identity_missing " +
+                                        "messageId=$messageId serverId=${serverId.orEmpty()} channelId=${channelId.orEmpty()}"
+                                )
+                            }
+                        },
+                        translationStore = translationStore,
+                        onThreadContentReady = onFirstContentReady,
+                        onVisibleReadTailChange = onVisibleReadTailChange,
+                        onViewportFollowsLatestChange = onViewportFollowsLatestChange,
+                        visibleReadTailIndex = visibleReadTailIndex,
+                        adaptiveCloseRequest = adaptiveCloseRequest,
+                        adaptiveStoreScope = adaptiveStoreScope,
+                        adaptiveEventBus = adaptiveEventBus
+                    )
+                    }
+                RaftThreadTab.Tasks ->
+                    ThreadTasksTab(
+                        tasksViewModel = tasksViewModel,
+                        channelId = taskPanelChannelId,
+                        serverId = forwardServerId?.value,
+                        active = tab == selectedTab || tab.conversationSideCard()?.let { sideCardShowing(sideCards, sideCardsBeside, it) } == true,
+                        identityOptions = taskIdentityOptions,
+                        openTaskEnabled = payload.showTaskOpenActions,
+                        // Web canWriteTasksInChannel: New task, status and assignee only where the reader may
+                        // write this channel's tasks (the message menu's own gate).
+                        taskWritesEnabled = payload.channelTaskWritesShown(),
+                        draftProjection = draftProjection,
+                        timeContext = payload.toRaftTimeCapabilities().staticContext(),
+                        taskV2Enabled = linkedTasksProjection.taskV2Enabled,
+                        onOpenTask = { task -> onOpenTaskSummary(task, "tasks_panel") },
+                        onIntent = onTasksIntent
+                    )
+                RaftThreadTab.Files ->
+                    ThreadFilesTab(
+                        threadInstanceKey = threadInstanceKey,
+                        basePayload = payload,
+                        filesStartKey = resolvedAuxiliaryThreadId,
+                        filesViewModel = filesViewModel,
+                        active = tab == selectedTab || tab.conversationSideCard()?.let { sideCardShowing(sideCards, sideCardsBeside, it) } == true,
+                        attachmentOpenStates = attachmentOpenStates,
+                        onAuthRequired = onFilesAuthRequired,
+                        onOpenAttachment = onOpenFilesAttachment,
+                        onDownloadAttachment = onDownloadFilesAttachment,
+                        onOpenFileSource = { fileItem -> onThreadEvent("openFileSource", fileItem.attachmentId, null, null) }
+                    )
+            }
+        }
+    }
+    val composerSuggestionPortal =
+        remember(threadInstanceKey) { ThreadComposerSuggestionPortalState() }
+    // The thread timeline (botiverse/slock #13534): the reply thread's outline, read on opening the
+    // thread and on coming back to it, as the rail and the ⋯ menu's Timeline both need its count.
+    val threadOutline =
+        rememberThreadOutlineState(
+            (timelineSlice.historyChannelId ?: timelineSlice.sourceThreadId).takeIf { timelineSlice.replyThreadSurface }
+        )
+    val threadOutlineActive = routeActive && hostForeground
+    LaunchedEffect(threadOutline, threadOutlineActive) {
+        if (threadOutlineActive) threadOutline?.loadNewest()
+    }
+    CompositionLocalProvider(
+        LocalThreadOutlineState provides threadOutline,
+        LocalThreadFindController provides
+            threadFind.takeIf { payload.threadHeaderSearchAction() == ThreadHeaderSearchAction.InlineThreadSearch },
+        LocalThreadFindHighlightQuery provides threadFindState.query.takeIf { threadFindState.open },
+    ) {
+    scaffold(
+        ThreadRouteScaffoldSlots(
+            scaffoldPlan = ThreadRouteMountPlan.FeatureSurfaces.toThreadRouteScaffoldPlan(),
+            rootModifier =
+                Modifier.onGloballyPositioned { coordinates ->
+                    onLayoutGeneration(coordinates.size.width, coordinates.size.height)
+                    val pageWidthDp = coordinates.size.width / sideCardsDensity
+                    if (pageWidthDp != sideCardsPageWidthDp) sideCardsPageWidthDp = pageWidthDp
+                }.then(data.taskConversationHead?.let { Modifier.taskHeadFloatOutsidePress(it) } ?: Modifier),
+            header = {
+                // task #180: computed once per header composition, outside the header's own scope.
+                // The slice keeps reply facts out of its rows: the origin's thread channel and follow
+                // state come from the page's reply metadata (without it there was never a row here).
+                val originReplyMetadata =
+                    timelineSlice.originMessage?.let { origin -> replyMetadataByParentId.threadReplyMetadataFor(origin) }
+                val panelFollowAction =
+                    threadPanelFollowAction(
+                        timelineSlice.originMessage?.let { origin ->
+                            originReplyMetadata?.let { origin.withThreadReplyFacts(it) } ?: origin
+                        }
+                    )
+                val markUnreadThreadChannelId =
+                    threadPanelMarkUnreadChannelId(
+                        replyThreadSurface = timelineSlice.replyThreadSurface && data.taskConversationChrome == null,
+                        originReplyMetadata = originReplyMetadata
+                    )
+                // The channel details (raft-design channel.md): on the wide layout the details cell of the
+                // profile column in the conversation's row (RaftWidePanes.kt, #189 step 3), whose Settings
+                // toggle is pressed while they are open and closes them when pressed again (a profile
+                // above them stays); on a phone a pushed page. A DM keeps its settings page or drawer, a
+                // Lounge its drawer.
+                val profileColumn = LocalRaftProfileColumn.current
+                val channelDetailsOpen =
+                    conversationLounge == null &&
+                        payload.surfaceKind != RaftThreadSurfaceKind.DirectMessage &&
+                        profileColumn.showsChannelDetails(payload.sourceThreadId?.trim())
+                val showSettings: () -> Unit = {
+                    if (conversationLounge != null) {
+                        activeModal = "settings"
+                    } else if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
+                        // A wide window, or a page that could not open: the drawer.
+                        if (!(settingsOpensAsPage && onOpenSettingsPage?.invoke() == true)) activeModal = "settings"
+                    } else if (channelDetailsOpen) {
+                        profileColumn.closeDetails()
+                    } else {
+                        onThreadEvent("openChannelSettings", null, null, null)
+                    }
+                }
+                ThreadPageHeader(
+                    onOpenTimeline =
+                        threadOutline?.openTimelineAction(
+                            leadingMessageId = timelineSlice.parentMessageId ?: timelineSlice.originMessage?.id,
+                            origin = timelineSlice.originMessage,
+                            messages = timelineSlice.messages,
+                        ),
+                    agentFollowersHeader = data.agentFollowersHeader,
+                    payload = payload,
+                    headerDisplay = headerDisplay,
+                    originMessage = timelineSlice.originMessage,
+                    originReplyCount =
+                        threadHeaderReplyCount(
+                            timelineSlice,
+                            replyMetadataByParentId,
+                            hiddenHistoryCount = rememberThreadHiddenHistory(timelineSlice.historyChannelId)?.hiddenCount ?: 0
+                        ),
+                    activityMutedIndicatorVisible = activityMutedIndicatorVisible,
+                    agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
+                    showBack = !threadInSplitDetailPane(),
+                    // Task v2 on a phone: the header's Back closes the cards covering the conversation
+                    // first (web `headerMobileBack`), then leaves the page.
+                    onBack = if (sideCards.anyOpen && !sideCardsBeside) sideCardsStore::closeAll else onBack,
+                    onOpenInChannel = {
+                        onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
+                    },
+                    onOpenMemberProfile = onOpenMemberProfile,
+                    onOpenSearch = {
+                        when (payload.threadHeaderSearchAction()) {
+                            ThreadHeaderSearchAction.ChannelSearch ->
+                                onThreadEvent("openChannelSearch", payload.threadChannelSearchChannelId(), null, null)
+                            ThreadHeaderSearchAction.InlineThreadSearch -> {
+                                if (selectedTab != RaftThreadTab.Chat) {
+                                    onSelectedTabChanged(RaftThreadTab.Chat)
+                                    onThreadEvent("selectTab", null, null, RaftThreadTab.Chat.wireValue)
+                                }
+                                // web: the menu's Search in thread opens the bar (its last words kept).
+                                threadFind.store.dispatch(ThreadFindIntent.Open)
+                            }
+                            null -> Unit
+                        }
+                    },
+                    onShowMembers = {
+                        onThreadEvent("openMembersPager", null, null, null)
+                    },
+                    lounge = data.lounge,
+                    onShowSettings = showSettings,
+                    settingsOpen = channelDetailsOpen,
+                    onTitleClick =
+                        if (threadHeaderScrollToTopEnabled(payload.surfaceKind, selectedTab.wireValue)) {
+                            { threadHeaderScrollToTopRequest += 1 }
+                        } else if (
+                            conversationLounge == null &&
+                            payload.surfaceKind == RaftThreadSurfaceKind.Channel &&
+                            threadHeaderSettingsActionVisible(payload.showSettingsAction, payload.surfaceKind)
+                        ) {
+                            // raft-design channel.md: the channel's name opens its details, as in other chat apps.
+                            showSettings
+                        } else {
+                            null
+                        },
+                    // task #180: null on hosts without a side column, which also hides the menu item.
+                    onToggleFocusMode = callbacks.onToggleFocusMode,
+                    focusModeActive = callbacks.focusModeActive,
+                    // task #180 (artin): the follow row is derived by a pure helper from the same
+                    // per-message state the long-press menu reads, so the two cannot disagree and the
+                    // decision is unit-testable. Null = nothing to follow -> row is absent.
+                    threadFollowed = data.taskConversationChrome?.followed ?: panelFollowAction?.followed,
+                    taskConversationChrome = data.taskConversationChrome,
+                    onToggleThreadFollow =
+                        data.taskConversationChrome?.takeIf { it.followed != null }?.onToggleFollow
+                            ?: panelFollowAction?.let { follow ->
+                            {
+                                // The existing handler reads the thread channel from the attachmentId
+                                // slot: onThreadEvent(action, itemId, attachmentId, tab).
+                                onThreadEvent(
+                                    follow.action,
+                                    timelineSlice.originMessage?.id,
+                                    follow.threadChannelId,
+                                    null
+                                )
+                            }
+                        },
+                    onMarkThreadUnread =
+                        markUnreadThreadChannelId?.let { threadChannelId ->
+                            { onThreadEvent(MARK_THREAD_UNREAD_ACTION, null, threadChannelId, null) }
+                        },
+                    notificationLevelTarget =
+                        threadNotificationLevelTarget(
+                            serverId = forwardServerId?.value,
+                            replyThreadOrTask = timelineSlice.replyThreadSurface || data.taskConversationChrome != null,
+                            threadChannelId =
+                                payload.streamChannelId?.takeIf { it.isNotBlank() }
+                                    ?: panelFollowAction?.threadChannelId,
+                            parentChannelId = payload.parentChannelId,
+                            parentIsDirectMessage = payload.parentChannelKind == "dm",
+                            muted = payload.activityMuted
+                        ),
+                    sideCardToggles =
+                        if (sideCardsEnabled) {
+                            ThreadHeaderSideCardToggles(
+                                tasksAvailable = RaftThreadTab.Tasks in availableTabs,
+                                cards = sideCards,
+                                onToggle = { card ->
+                                    if (!sideCards.isOpen(card)) clearShareSelection()
+                                    sideCardsStore.toggle(card)
+                                    RaftProductEvents.channelTabSelected(
+                                        card.toThreadTab().productChannelTab(),
+                                        sideCards.isOpen(card)
+                                    )
+                                }
+                            )
+                        } else {
+                            null
+                        },
+                )
+            },
+            bodyCover =
+                if (sideCardsEnabled) {
+                    // Kept (empty) while the cards stand beside: the body never remounts across the breakpoint.
+                    cover@{
+                        if (sideCardsBeside) return@cover
+                        // No header Back (a split's detail pane): the card keeps its own (web).
+                        val cardBack = sideCards.shown?.takeIf { threadInSplitDetailPane() }?.let { card -> { sideCardsStore.close(card) } }
+                        ConversationSideCardsCover(
+                            cards = sideCards,
+                            onPick = sideCardsStore::focus,
+                            onBack = cardBack,
+                            // iOS back swipe: what Back does here (the card's own, else every open card).
+                            onSwipeClose = cardBack ?: sideCardsStore::closeAll,
+                            tasksContent = {
+                                renderThreadTabContent(RaftThreadTab.Tasks, Modifier.fillMaxSize(), true)
+                            },
+                            filesContent = {
+                                renderThreadTabContent(RaftThreadTab.Files, Modifier.fillMaxSize(), true)
+                            }
+                        )
+                    }
+                } else {
+                    null
+                },
+            sideColumns =
+                if (sideCardsBeside) {
+                    listOfNotNull(
+                        conversationSideCardsColumn(
+                            cards = sideCards,
+                            onPick = sideCardsStore::focus,
+                            onClose = sideCardsStore::close,
+                            tasksContent = {
+                                renderThreadTabContent(RaftThreadTab.Tasks, Modifier.fillMaxSize(), true)
+                            },
+                            filesContent = {
+                                renderThreadTabContent(RaftThreadTab.Files, Modifier.fillMaxSize(), true)
+                            }
+                        )
+                    )
+                } else {
+                    emptyList()
+                },
+            body = {
+            if (jointBillingNotice != JointBillingNotice.None) {
+                val deadlineLabel = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
+                RaftUiBanner(
+                    status =
+                        if (jointBillingNotice == JointBillingNotice.Locked) RaftUiBannerStatus.Destructive
+                        else RaftUiBannerStatus.Warning,
+                    title =
+                        stringResource(
+                            if (jointBillingNotice == JointBillingNotice.Locked) Res.string.joint_billing_locked_title
+                            else Res.string.joint_over_limit_grace_title
+                        ),
+                    description =
+                        if (jointBillingNotice == JointBillingNotice.Locked) {
+                            stringResource(Res.string.joint_billing_locked_detail)
+                        } else {
+                            stringResource(Res.string.joint_over_limit_grace_detail, deadlineLabel ?: "")
+                        },
+                    size = RaftUiBannerSize.Medium,
+                    iconName = RaftLucideIconName.TriangleAlert,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    // Web ChannelLimitBanners: Upgrade opens the upgrade dialog (read-only:
+                    // `joint_channel_read_only`, in its grace period: `joint_channel_over_limit`).
+                    // iOS view-only Billing: "View your plan" (the view-only Plan & Billing page).
+                    action =
+                        if (settingsBillingOffersUpgrade()) {
+                            val gate =
+                                if (jointBillingNotice == JointBillingNotice.Locked) RaftUpgradeGate.JointChannelReadOnly
+                                else RaftUpgradeGate.JointChannelOverLimit
+                            ({
+                                RaftButton(
+                                    text = stringResource(Res.string.raft_pro_upgrade),
+                                    onClick = { onThreadEvent(ThreadOpenUpgradeEvent, gate.wire, null, null) },
+                                    variant = RaftButtonVariant.Default,
+                                    size = RaftButtonSize.Md,
+                                )
+                            })
+                        } else {
+                            val openPlan = LocalThreadActionCardSpecHost.current.openPlan
+                            ({ build.raft.app.components.RaftViewPlanButton(onClick = openPlan) })
+                        },
+                )
+            }
+            // Agent Lounge v0: who is here, always on top of the conversation (web lounge-audience-notice).
+            if (conversationLounge != null) {
+                AgentLoungeAudienceNotice(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
+            // The channel's announcement: last of the top regions, right above the timeline (raft-design channel.md).
+            data.channelAnnouncementStrip?.invoke()
+            val threadTabContent: @Composable ColumnScope.() -> Unit = {
+            data.taskConversationBar?.invoke()
+            // In the assistant's panel only the chat shows (web AssistantDm: ChatPanel without its head or tasks).
+            if (payload.showModeTabs && LocalThreadAssistantPanelEmbed.current == null && !sideCardsEnabled) {
+                RaftTabbedScaffold(
+                    tabs = availableTabs.map { it.toRaftTabSpec() },
+                    selectedKey = selectedTab,
+                    onSelectedKeyChange = selectThreadTab,
+                    onTabTapped = { tab, wasSelected ->
+                        RaftProductEvents.channelTabSelected(tab.productChannelTab(), wasSelected)
+                    },
+                    onTabSwiped = { tab -> RaftProductEvents.channelTabSwiped(tab.productChannelTab()) },
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    itemKeyPrefix = "thread-tab",
+                    content = renderThreadTabContent
+                )
+            } else {
+                // No tab pager around the list here: dragging it left shows message times
+                // (ThreadMessageTimeReveal.kt). Under the pager that drag pages to Tasks.
+                // Task v2 on a phone: the list draws the head as its first row.
+                CompositionLocalProvider(
+                    LocalThreadTimeRevealAvailable provides true,
+                    LocalTaskConversationHeadRow provides data.taskConversationHeadRow,
+                ) {
+                    renderThreadTabContent(
+                        // Task v2 cards: the page under them is always the conversation.
+                        if (sideCardsEnabled) RaftThreadTab.Chat else selectedTab,
+                        Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)
+                            // Task v2 on a phone: scrolling the messages puts the pulled-down head back up.
+                            .then(data.taskConversationHead?.let { Modifier.nestedScroll(it.connection) } ?: Modifier),
+                        true
+                    )
+                }
+            }
+            }
+            if (payload.isTaskConversationSurface()) {
+                // Task v2: the head pulled down from the top bar hangs over the messages (no scrim,
+                // nothing moves under it); a press outside it, anywhere on the page, puts it back up
+                // (rootModifier).
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    Column(Modifier.fillMaxSize()) { threadTabContent() }
+                    data.taskConversationFloat?.invoke()
+                }
+            } else {
+                threadTabContent()
+            }
+            if (!primaryFooterReady) {
+                // Join and the composer mount only with the resolved render-slice emission. A
+                // cached timeline is shown before that (access still refreshing), so while a
+                // composer is still expected its dock keeps the composer's resting height:
+                // the bottom-pinned list is laid out at its final height on the first frame
+                // instead of jumping up when the composer mounts (Compose 版 open jitter).
+                if (
+                    threadReservesPendingComposerSlot(
+                        accessResolution = accessResolution,
+                        payloadStatus = payload.status,
+                        joined = payload.joined,
+                        showComposer = payload.showComposer,
+                        selectedTab = selectedTab.wireValue,
+                        composerLocked = jointBillingNotice == JointBillingNotice.Locked
+                    )
+                ) {
+                    ThreadComposerDock(
+                        edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
+                        composerModifier =
+                            Modifier.raftThreadComposerLiveKeyboardPadding(
+                                bottomSafeArea = composerBottomSafeArea,
+                                keyboardInsetExcludesBottomSafeArea =
+                                    composerKeyboardInsetExcludesBottomSafeArea
+                            )
+                    ) {
+                        ThreadComposerRestingHeightPlaceholder(composerSurface)
+                    }
+                }
+            } else if (
+                !writeActionsEnabled &&
+                payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+                (replyParentAuthority == ReplyParentAuthorityStatus.Unknown ||
+                    replyParentAuthority == ReplyParentAuthorityStatus.ParentDeleted)
+            ) {
+                // Task #228 successor direction B: "authority undetermined" is
+                // never rendered as a silently vanished composer - the user
+                // gets an explicit explanation and the state upgrades itself
+                // event-driven when the parent directory row arrives.
+                // Task #339: an authoritative directory miss says the channel
+                // was deleted instead of implying permissions are resolving.
+                Column(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .raftCardSurface()
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text =
+                            stringResource(
+                                when (replyParentAuthority) {
+                                    ReplyParentAuthorityStatus.ParentDeleted ->
+                                        Res.string.thread_parent_channel_deleted_composer
+                                    else -> Res.string.thread_parent_authority_resolving
+                                }
+                            ),
+                        style = RaftType.Body.copy(
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            color = RaftColor.TextBlack.copy(alpha = 0.7f)
+                        )
+                    )
+                }
+            } else if (agentLoungeFooterKind(conversationLounge, pageLounge) != null) {
+                // Agent Lounge v0: an archived Lounge says so (Unarchive only for a viewer whose server
+                // role may archive channels), and one you may only read has the read-only composer;
+                // never a Join.
+                AgentLoungeFooter(
+                    kind = agentLoungeFooterKind(conversationLounge, pageLounge),
+                    inputs = data.lounge,
+                    modifier = Modifier.padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
+                )
+            } else if (pageLounge == null && threadFooterShowsArchived(payload)) {
+                // Web ChatPanel `isArchived`: the archived banner in place of the composer or the
+                // Join button, for members and non-members alike (the server refuses every write).
+                val archived = data.lounge?.archivedChannel
+                ThreadArchivedChannelNotice(
+                    canUnarchive = archived?.canUnarchive == true,
+                    unarchiving = archived?.unarchiving == true,
+                    onUnarchive = {
+                        archived?.onUnarchive?.invoke { onThreadEvent("retryThreadLoad", null, null, null) }
+                    },
+                    modifier = Modifier.padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
+                )
+            } else if (!writeActionsEnabled) {
+                Unit
+            } else if (threadFooterShowsJoin(payload.joined, conversationLounge)) {
+                ThreadJoinFooter(
+                    label = localizedThreadJoinLabel(payload.joinLabel),
+                    onJoin = { onThreadEvent("joinChannel", null, null, null) },
+                    joining = ThreadChannelJoinsInFlight.isJoining(payload.joinChannelTargetId()),
+                )
+            } else if (shareSelectionActive) {
+                // Preserve the footer's layout height while capture owns the
+                // viewport. Removing it shifts Arrangement.Bottom rows after
+                // their bounds were reported, so PixelCopy starts one toolbar
+                // height above the selected message.
+                Box(
+                    modifier =
+                        Modifier
+                            .onGloballyPositioned { coordinates ->
+                                shareCaptureViewportBottomPx = coordinates.positionInRoot().y
+                            }
+                            .alpha(if (shareCaptureMode) 0f else 1f)
+                ) {
+                    ThreadShareSelectionToolbar(
+                        selectedCount = selectedShareMessages.size,
+                        onCancel = clearShareSelection,
+                        selectAll =
+                            if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
+                                ThreadShareSelectAll(
+                                    check = threadShareSelectAllCheck(selectedShareMessageIds, selectableShareMessageIds),
+                                    complete = selectableShareComplete,
+                                    enabled = selectedShareMessageIds.isNotEmpty() || selectableShareMessageIds.isNotEmpty(),
+                                    onClick = {
+                                        selectedShareMessageIds =
+                                            threadShareSelectAllNext(selectedShareMessageIds, selectableShareMessageIds)
+                                        // Web selectAll: clearing drops the anchor; selecting all keeps it.
+                                        if (selectedShareMessageIds.isEmpty()) shareSelectionAnchorId = null
+                                    },
+                                )
+                            } else {
+                                null
+                            },
+                        onForward = {
+                            openForwardPickerForMessageIds(selectedShareMessageIds)
+                        },
+                        forwardEnabled = writeActionsEnabled,
+                        onCopyMarkdown = {
+                            if (selectedShareMarkdown.isNotBlank()) {
+                                onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
+                            }
+                        },
+                        onExportImage = {
+                            if (threadShareImageRendersOffscreen && selectedShareMessages.isNotEmpty()) {
+                                // Laid out again off screen at the picked width (the renderer in `overlays`).
+                                diagnosticsLogger(
+                                    "thread_share_export_click selected=${selectedShareMessages.size} " +
+                                        "offscreen=true width=${shareImageWidthChoice.widthDp}"
+                                )
+                                sharePreviewImage = null
+                                shareImageBitmap = null
+                                shareImageRendering = true
+                                shareImageRenderWidthDp = shareImageWidthChoice.widthDp
+                                activeModal = "sharePreview"
+                            } else if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
+                                diagnosticsLogger(
+                                    "thread_share_export_click selected=${selectedShareMessages.size} " +
+                                        "scopeActive=${shareExportScope.coroutineContext[Job]?.isActive == true}"
+                                )
+                                sharePreviewLoading = true
+                                sharePreviewImage = null
+                                shareCaptureMode = true
+                                // Start before this click hides the selection toolbar and
+                                // changes capture-mode row composition. Kuikly may apply that state change before a
+                                // normally-dispatched child gets its first turn, leaving capture
+                                // mode to scroll the anchor without ever entering the export job.
+                                shareExportScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                                    diagnosticsLogger("thread_share_export_job_start")
+                                    var result: JSONObject? = null
+                                    try {
+                                        val captureRect = captureSelectedShareFragments()
+                                        result =
+                                            captureRect?.let { rect ->
+                                                runCatching { onExportShareImage(rect) }.getOrNull()
+                                            }
+                                    } finally {
+                                        shareCaptureMode = false
+                                        shareCaptureTargetMessageId = null
+                                        shareCaptureAnchorBeforeTarget = false
+                                        shareCaptureTailPaddingActive = false
+                                        shareCaptureScrollOffsetPx = ThreadShareCaptureTopScrollOffsetPx
+                                        sharePreviewLoading = false
+                                    }
+                                    if (result?.optString("status") == "ok") {
+                                        sharePreviewImage =
+                                            ThreadSharePreviewImage(
+                                                uri = result.optString("uri"),
+                                                path = result.optString("path"),
+                                                width = result.optString("width").toIntOrNull() ?: 0,
+                                                height = result.optString("height").toIntOrNull() ?: 0
+                                            )
+                                        activeModal = "sharePreview"
+                                    } else {
+                                        onThreadEvent(
+                                            "shareSelectionExportFailed",
+                                            result?.optString("message")?.takeIf { it.isNotBlank() },
+                                            null,
+                                            null
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        onCopyLinks = {
+                            if (selectedShareLinks.isNotBlank()) {
+                                onThreadEvent("copyShareSelectionLinks", selectedShareLinks, null, null)
+                            } else if (selectedShareMarkdown.isNotBlank()) {
+                                onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
+                            }
+                        }
+                    )
+                }
+            } else if (showComposerForSelectedTab) {
+                ThreadComposerDock(
+                    edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
+                    // Bottom padding follows WindowInsets.ime in the layout phase of the
+                    // same frame; composerKeyboardInsetDp (two frames late) only feeds the
+                    // page's decision state (see RaftThreadImeLayout.kt).
+                    composerModifier =
+                        Modifier.raftThreadComposerLiveKeyboardPadding(
+                            bottomSafeArea = composerBottomSafeArea,
+                            keyboardInsetExcludesBottomSafeArea =
+                                composerKeyboardInsetExcludesBottomSafeArea
+                        ).then(
+                            // Task v2: focus in the composer puts the pulled-down head back up.
+                            data.taskConversationHead?.let { taskHead ->
+                                Modifier.onFocusChanged { if (it.hasFocus) taskHead.closeFloat() }
+                            } ?: Modifier
+                        )
+                ) {
+                    CompositionLocalProvider(
+                        LocalThreadComposerSuggestionPortal provides composerSuggestionPortal,
+                        LocalAgentLoungeComposerName provides conversationLounge?.let { agentLoungeTitle(it.displayAgentName) },
+                    ) {
+                        ThreadComposerRoute(
+                            baseComposerState = baseComposerState,
+                            removedAppBot = composerRemovedAppBot,
+                            composerDraftViewModel = composerDraftViewModel,
+                            renderedPayload = payload,
+                            timelineSlice = timelineSlice,
+                            resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
+                            surface = composerSurface,
+                            memberSuggestionsFlow = memberSuggestionsFlow,
+                            channelSuggestionsFlow = channelSuggestionsFlow,
+                            agentStatusResolver = agentStatusResolver,
+                            onEvent = onComposerEvent,
+                            onDropFiles = onComposerDropFiles,
+                            onSendRequest = onComposerSendRequest,
+                            insertMentionRequest = insertMentionRequest,
+                            onInsertMentionConsumed = { request ->
+                                if (insertMentionRequest?.nonce == request.nonce) {
+                                    insertMentionRequest = null
+                                }
+                            },
+                            onSuggestionDemandChanged = onSuggestionDemandChanged,
+                            composerSendKeyEnabled = composerSendKeyEnabled,
+                            onKeyboardHeightChange = { nextInset ->
+                                if (nextInset != composerKeyboardInsetDp) {
+                                    composerKeyboardInsetDp = nextInset
+                                    onComposerKeyboardInsetChanged(nextInset)
+                                }
+                            },
+                            adaptiveNativeEditingStateReader =
+                                LocalThreadAdaptiveNativeEditingReader.current,
+                            autofocusOnOpen = composerAutofocusOnOpen,
+                        )
+                    }
+                }
+            }
+            },
+            overlays = {
+        ThreadComposerSuggestionPortalHost(composerSuggestionPortal)
+        if (threadShareImageRendersOffscreen && activeModal == "sharePreview" && selectedShareMessages.isNotEmpty()) {
+            val shareImageAuthorSuppression =
+                remember(selectedShareMessages, timelineSlice.messages, timelineSlice.compactConsecutiveMessages, timelineRenderConfig) {
+                    threadShareImageSuppressesAuthor(
+                        timeline = timelineSlice.messages,
+                        selected = selectedShareMessages,
+                        compactConsecutiveMessages = timelineSlice.compactConsecutiveMessages,
+                        localOffsetMinutes = timelineRenderConfig.timeContext.localOffsetMinutes,
+                    )
+                }
+            ThreadShareImageOffscreenRenderer(
+                cardWidthDp = shareImageRenderWidthDp,
+                rowCount = selectedShareMessages.size,
+                renderKey = selectedShareMessages,
+                background = RaftColor.Canvas,
+                onRendering = {
+                    shareImageRendering = true
+                    // Keep only the old preview on screen while the next image renders: the full
+                    // bitmap (up to 64 MB) can go before the new one is allocated. Download waits.
+                    shareImageBitmap = shareImageBitmap?.let { ThreadShareRenderedImage(image = it.preview, preview = it.preview) }
+                },
+                onRendered = { image ->
+                    shareImageBitmap = image
+                    shareImageRendering = false
+                    diagnosticsLogger(
+                        "thread_share_offscreen_rendered width=$shareImageRenderWidthDp " +
+                            "ok=${image != null} px=${image?.image?.width ?: 0}x${image?.image?.height ?: 0} " +
+                            "preview=${image?.preview?.width ?: 0}x${image?.preview?.height ?: 0}"
+                    )
+                },
+            ) { index ->
+                val message = selectedShareMessages[index]
+                val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(message)
+                val replyInThread =
+                    threadMessageIsReplyInThread(timelineSlice.replyThreadSurface, timelineSlice.originMessage?.id, message.id)
+                val sourceTasks =
+                    remember(message.id, linkedTasksProjection, replyInThread) {
+                        if (replyInThread) emptyList() else linkedTasksProjection.sourceTasksFor(message)
+                    }
+                val displayMessage =
+                    remember(message, linkedTasksProjection, sourceTasks.isEmpty()) {
+                        message.withLinkedTaskProjection(linkedTasksProjection)
+                            .let { if (sourceTasks.isEmpty()) it else it.withoutLinkedTask() }
+                    }
+                val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
+                val actionCard = if (contentExtrasVisible) remember(message.id, message.metadata) { message.threadActionCard() } else null
+                if (isSystemMessage && actionCard == null) {
+                    ThreadSystemMessageRow(message = displayMessage, timestampValue = message.timestampLabel)
+                } else {
+                    ThreadShareImageMessageRow(
+                        message = displayMessage,
+                        messageBodyTextStyle = messageBodyTextStyle,
+                        compactConsecutiveMessages = timelineSlice.compactConsecutiveMessages,
+                        suppressRepeatedAuthor = shareImageAuthorSuppression.getOrElse(index) { false },
+                        timestampLabel = message.timestampLabel,
+                        compactTimestampLabel = timelineRenderConfig.formatCompactTimestampLabel(message),
+                        replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message),
+                        sourceTasks = sourceTasks,
+                        actionCard = actionCard,
+                        actionCardExecutedTimeLabel =
+                            timelineRenderConfig.formatActionCardExecutedTimeLabel(
+                                actionCard?.executedAt,
+                                currentRaftTimeContextProvider?.todayEpochDay
+                            ),
+                        resolvedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName(),
+                        highlightedMentions = highlightedMentions,
+                        agentStatusResolver = agentStatusResolver,
+                        memberAvatarResolver = memberAvatarResolver,
+                        memberModelLabelResolver = memberModelLabelResolver,
+                        inlineReplyParticipantsById = inlineReplyParticipantsById,
+                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                        isMarkdownTagValid = isMarkdownTagValid,
+                        markdownTagContextSignature = markdownTagContextSignature,
+                        alignOwnMessageRight = timelineSlice.alignOwnMessagesRight && message.isOwn,
+                        messageAlignmentModeEnabled = timelineSlice.alignOwnMessagesRight,
+                        currentServerSlug = currentServerSlug,
+                        richContentEnabled = contentExtrasVisible,
+                    )
+                }
+            }
+        }
+        val visibleForwardPickerSession = forwardPickerFlow.sessionKey
+        val forwardPickerBottomSafeArea = raftBottomSafeAreaPadding()
+        if ((activeModal == "forwardTargets" || activeModal == "forwardNote") && visibleForwardPickerSession != null) {
+                RaftForwardTargetPicker(
+                    messageCount = forwardMessageSelection.forwardableMessages.size,
+                    skippedCount = forwardMessageSelection.skippedCount,
+                    nestedForwardCount = forwardMessageSelection.nestedForwardCount,
+                    // Keep the search field composed while results load: swapping it
+                    // for the read-only placeholder destroys the focused field and
+                    // closes the IME on every keystroke (verify feedback #255).
+                    searchInputInteractive = forwardPickerFlow.step == RaftForwardPickerStep.Targets,
+                    bottomSafeArea = forwardPickerBottomSafeArea,
+                    sourceLabel = payload.threadForwardSourceLabel(),
+                    singleTapContinues = true,
+                    state =
+                        RaftForwardTargetPickerUiState(
+                            sessionKey = visibleForwardPickerSession,
+                            query = forwardPickerFlow.query,
+                            items = forwardTargetItems,
+                            selectedKey = forwardPickerFlow.selectedKey,
+                            selectedItems = forwardSelectedReceipts.map { it.target.toRaftForwardTargetPickerItem() },
+                            loadState = forwardPickerFlow.loadState,
+                            errorCode = forwardPickerFlow.errorCode,
+                            canLoadMore = forwardDirectoryNextCursor != null,
+                            appending = forwardPickerFlow.appending,
+                            interactive = forwardPickerFlow.rowsInteractive,
+                            dismissEnabled = forwardPickerFlow.dismissEnabled,
+                            requestGeneration = forwardPickerFlow.requestGeneration,
+                            conversationItems = forwardConversationItems
+                        ),
+                    onIntent = { intent ->
+                        when (intent) {
+                            is RaftForwardTargetPickerIntent.QueryChanged -> {
+                                forwardPickerFlow.sessionKey?.let { session ->
+                                    forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
+                                }
+                                forwardPickerFlow =
+                                    forwardPickerFlow.reduce(
+                                        RaftForwardPickerFlowEvent.QueryChanged(intent.query)
+                                    )
+                                forwardDirectoryNextCursor = null
+                            }
+                            RaftForwardTargetPickerIntent.Retry -> {
+                                forwardPickerFlow =
+                                    forwardPickerFlow.reduce(
+                                        RaftForwardPickerFlowEvent.Retry(
+                                            appending = forwardPickerFlow.query.isBlank() && forwardDirectoryNextCursor != null
+                                        )
+                                    )
+                            }
+                            RaftForwardTargetPickerIntent.LoadMore -> {
+                                if (forwardDirectoryNextCursor != null && !forwardPickerFlow.appending) {
+                                    forwardPickerFlow =
+                                        forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.LoadMore)
+                                }
+                            }
+                            RaftForwardTargetPickerIntent.Dismiss -> {
+                                forwardPickerFlow.sessionKey?.let { session ->
+                                    forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
+                                }
+                                forwardPickerFlow = forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.Dismiss)
+                                forwardMessageIds = emptySet()
+                                activeModal = null
+                            }
+                            RaftForwardTargetPickerIntent.Continue -> {
+                                val nextFlow = forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.Continue)
+                                forwardPickerFlow = nextFlow
+                                if (nextFlow.step == RaftForwardPickerStep.Note) {
+                                    if (forwardRequestId == null) {
+                                        forwardRequestId = newThreadForwardRequestId()
+                                    }
+                                    activeModal = "forwardNote"
+                                }
+                            }
+                            is RaftForwardTargetPickerIntent.RemoveSelection -> {
+                                forwardPickerFlow =
+                                    forwardPickerFlow.reduce(
+                                        RaftForwardPickerFlowEvent.TargetSelected(
+                                            stableKey = intent.stableKey,
+                                            renderGeneration = forwardPickerFlow.requestGeneration
+                                        )
+                                    )
+                                forwardSelectedReceipts = forwardSelectedReceipts.filterNot {
+                                    it.target.threadForwardSelectionKey() == intent.stableKey
+                                }
+                                forwardRequestId = null
+                            }
+                            is RaftForwardTargetPickerIntent.TargetSelected -> {
+                                val nextFlow =
+                                    forwardPickerFlow.reduce(
+                                        RaftForwardPickerFlowEvent.TargetSelected(
+                                            stableKey = intent.item.stableKey,
+                                            renderGeneration = intent.renderGeneration
+                                        )
+                                    )
+                                val sourceServerId = forwardSourceServerId
+                                forwardRequestId = forwardRequestIdAfterSelectionChange(
+                                    previousKeys = forwardPickerFlow.selectedKeys,
+                                    nextKeys = nextFlow.selectedKeys,
+                                    currentRequestId = forwardRequestId
+                                )
+                                if (
+                                    sourceServerId != null &&
+                                    nextFlow.selectedKeys.contains(intent.item.stableKey)
+                                ) {
+                                    forwardPickerFlow = nextFlow
+                                    forwardOperationNonce += 1
+                                    val receipt =
+                                        intent.item.payload.toThreadForwardDestinationReceipt(
+                                            operationId = "$threadInstanceKey-fwd-$forwardOperationNonce",
+                                            sourceServerId = sourceServerId,
+                                            directoryGeneration = forwardDirectoryGeneration
+                                        )
+                                    forwardSelectedReceipts =
+                                        (forwardSelectedReceipts + receipt).distinctBy {
+                                            it.target.threadForwardSelectionKey()
+                                        }
+                                } else {
+                                    forwardPickerFlow = nextFlow
+                                    forwardSelectedReceipts = forwardSelectedReceipts.filterNot {
+                                        it.target.threadForwardSelectionKey() == intent.item.stableKey
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+        }
+        if (activeModal == "forwardNote") {
+                ThreadForwardNoteDialog(
+                    messageCount = forwardMessageSelection.forwardableMessages.size,
+                    selectedTargetLabel = forwardSelectedReceipts.joinToString(", ") { it.displayedTitle },
+                    note = forwardNote,
+                    sending = forwardSending,
+                    onNoteChange = { forwardNote = it },
+                    onDismiss = {
+                        forwardPickerFlow = forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.NoteBack)
+                        activeModal = "forwardTargets"
+                    },
+                    onSend = {
+                        if (!writeActionsEnabled) return@ThreadForwardNoteDialog
+                        val repository = forwardTargetRepository
+                        // task #803: the gate needs the LIVE server authority at
+                        // confirm time — forwardServerId is the live projection;
+                        // forwardSourceServerId is the frozen picker-open copy
+                        // already inside the receipt.
+                        val liveServerId = forwardServerId
+                        val sourceChannelId = forwardSourceChannelId
+                        val selectedReceipts = forwardSelectedReceipts
+                        when {
+                            repository == null ->
+                                onThreadEvent("forwardMessagesFailed", "Forward API unavailable", null, null)
+                            sourceChannelId == null ->
+                                onThreadEvent("forwardMessagesFailed", "Source conversation unavailable", null, null)
+                            selectedReceipts.isEmpty() ->
+                                onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
+                            !forwardSending -> {
+                                forwardSending = true
+                                shareExportScope.launch {
+                                    try {
+                                        val outcome =
+                                            executeThreadForwardBatch(
+                                                repository = repository,
+                                                liveSourceServerId = liveServerId,
+                                                sourceChannelId = sourceChannelId,
+                                                receipts = selectedReceipts,
+                                                currentDirectoryGeneration = forwardDirectoryGeneration,
+                                                messageIds = forwardMessageSelection.forwardableMessages.map { it.id },
+                                                mode = activeForwardSelectionMode.toForwardMessageSendMode(),
+                                                note = forwardNote.text,
+                                                requestId = forwardRequestId ?: newThreadForwardRequestId()
+                                            )
+                                        outcome.result
+                                            ?.takeIf { it.deliveries.isNotEmpty() }
+                                            ?.let { result ->
+                                                onForwardMessagesDelivered(result)
+                                                if (result.deliveries.size == 1 && result.failures.isEmpty()) {
+                                                    val delivery = result.deliveries.single()
+                                                    val receipt = selectedReceipts.singleOrNull()
+                                                    if (receipt != null) {
+                                                        forwardSuccessBanner =
+                                                            ThreadForwardSuccessBanner(
+                                                                target = receipt.target,
+                                                                destination = delivery.destination,
+                                                                messageId = delivery.message.id,
+                                                                conversationContext = delivery.message.conversationContext
+                                                            )
+                                                    }
+                                                }
+                                            }
+                                        if (outcome.failureCode == null && outcome.result != null && outcome.result.failures.isEmpty()) {
+                                            activeModal = null
+                                            forwardPickerFlow.sessionKey?.let { session ->
+                                                forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
+                                            }
+                                            forwardPickerFlow =
+                                                forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.Dismiss)
+                                            forwardSelectedReceipts = emptyList()
+                                            forwardRequestId = null
+                                            forwardMessageIds = emptySet()
+                                            forwardNote = TextFieldValue()
+                                            clearShareSelection()
+                                            if (outcome.result.deliveries.size != 1 || forwardSuccessBanner == null) {
+                                                onThreadEvent(
+                                                    "forwardMessagesSent",
+                                                    selectedReceipts.joinToString(", ") { it.displayedTitle },
+                                                    null,
+                                                    activeForwardSelectionMode.wireValue
+                                                )
+                                            }
+                                        } else {
+                                            outcome.result?.let { result ->
+                                                if (outcome.failedReceipts.isNotEmpty()) {
+                                                    val failedKeys = outcome.failedReceipts
+                                                        .map { it.target.threadForwardSelectionKey() }
+                                                        .toSet()
+                                                    forwardPickerFlow = forwardPickerFlow.reduce(
+                                                        RaftForwardPickerFlowEvent.ClearSelected(
+                                                            stableKeys = forwardPickerFlow.selectedKeys - failedKeys
+                                                        )
+                                                    )
+                                                    forwardSelectedReceipts = outcome.failedReceipts
+                                                    forwardRequestId = null
+                                                }
+                                            }
+                                            onThreadEvent(
+                                                "forwardMessagesFailed",
+                                                (outcome.failureCode ?: "forward_partial_failure").threadForwardErrorMessage(),
+                                                null,
+                                                null
+                                            )
+                                        }
+                                    } finally {
+                                        forwardSending = false
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+        }
+        forwardSuccessBanner?.let { banner ->
+            ThreadForwardSuccessToastView(
+                banner = banner,
+                onViewInChat = {
+                    forwardSuccessBanner = null
+                    onOpenForwardDestination(banner)
+                },
+                onDismiss = { forwardSuccessBanner = null }
+            )
+        }
+        when (activeModal) {
+            "settings" -> {
+                // Only a DM and a Lounge open here (a channel opens its details page, ChannelSettingsPage.kt).
+                // Agent Lounge v0: a Lounge's overflow is the DM's (mute, section, collapse): no
+                // members, settings or edit (the server refuses rename, visibility and other agents).
+                ThreadDirectMessageSettingsDrawer(
+                    name = conversationLounge?.let { agentLoungeTitle(it.displayAgentName) } ?: headerDisplay.title,
+                    directMessageTag = conversationLounge == null,
+                    activityMuteState = activityMuteState,
+                    section = channelSettingsPanel?.section,
+                    sectionEnabled = channelSettingsPanel?.writeActionsEnabled == true,
+                    longMessageCollapseSetting = longMessageCollapseConversationSetting,
+                    onDismiss = { activeModal = null },
+                    onToggleActivityMute = onToggleActivityMute,
+                    onMoveSection = { moves -> channelSettingsPanel?.onMoveSection?.invoke(moves) },
+                    onCreateSection = { name, emoji -> channelSettingsPanel?.onCreateSection?.invoke(name, emoji) },
+                )
+            }
+            "sharePreview" ->
+                ThreadSharePreviewModal(
+                    messages = selectedShareMessages,
+                    image = sharePreviewImage,
+                    onDismiss = { activeModal = null },
+                    onCopyMarkdown = {
+                        if (selectedShareMarkdown.isNotBlank()) {
+                            onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
+                        }
+                    },
+                    offscreen =
+                        if (threadShareImageRendersOffscreen) {
+                            ThreadSharePreviewOffscreen(
+                                image = shareImageBitmap,
+                                rendering = shareImageRendering || shareImageSaving,
+                                choice = shareImageWidthChoice,
+                                onChoiceChange = { shareImageWidthChoice = it },
+                            )
+                        } else {
+                            null
+                        },
+                    onDownloadImage = {
+                        val offscreenImage = shareImageBitmap?.image
+                        if (threadShareImageRendersOffscreen) {
+                            if (offscreenImage != null && !shareImageSaving && !shareImageRendering) {
+                                shareImageSaving = true
+                                shareExportScope.launch {
+                                    val result =
+                                        try {
+                                            val fileRef =
+                                                withContext(Dispatchers.Default) {
+                                                    runCatching { sharePngWriter.writePng(offscreenImage, ThreadShareImageFilePrefix) }.getOrNull()
+                                                }
+                                            val path = fileRef?.let(::threadShareImageFilePath)
+                                            if (path.isNullOrBlank()) null else runCatching { onSaveShareImage(path) }.getOrNull()
+                                        } finally {
+                                            shareImageSaving = false
+                                        }
+                                    val status = result?.optString("status")
+                                    if (status == "cancelled") return@launch
+                                    val saved = status == "ok"
+                                    if (saved) {
+                                        activeModal = null
+                                    }
+                                    onThreadEvent(
+                                        if (saved) "shareSelectionImageSaved" else "shareSelectionExportFailed",
+                                        result?.optString("message")?.takeIf { it.isNotBlank() },
+                                        null,
+                                        null
+                                    )
+                                }
+                            }
+                            return@ThreadSharePreviewModal
+                        }
+                        val imagePath = sharePreviewImage?.path
+                        if (!imagePath.isNullOrBlank()) {
+                            shareExportScope.launch {
+                                val result = runCatching { onSaveShareImage(imagePath) }.getOrNull()
+                                val saved = result?.optString("status") == "ok"
+                                if (saved) {
+                                    activeModal = null
+                                }
+                                onThreadEvent(
+                                    if (saved) {
+                                        "shareSelectionImageSaved"
+                                    } else {
+                                        "shareSelectionExportFailed"
+                                    },
+                                    result?.optString("message")?.takeIf { it.isNotBlank() },
+                                    null,
+                                    null
+                                )
+                            }
+                        }
+                    }
+                )
+        }
+            }
+        )
+    )
+    }
+}
+
+private const val ThreadShareCaptureMaxSegmentsPerMessage = 24
+private fun ThreadForwardSelectionMode.toForwardMessageSendMode(): ForwardMessageSendMode =
+    when (this) {
+        ThreadForwardSelectionMode.Merged -> ForwardMessageSendMode.Merged
+        ThreadForwardSelectionMode.Individual -> ForwardMessageSendMode.Individual
+    }
+
+@OptIn(ExperimentalUuidApi::class)
+private fun newThreadForwardRequestId(): String = Uuid.random().toString()
+
+private data class ThreadForwardTargetLoadPage(
+    val items: List<ForwardMessageTarget>,
+    val nextCursor: ForwardMessageTargetDirectoryCursor? = null,
+    val reset: Boolean = false
+)
+
+/** web inline Save: how long "Changes saved" shows before the form is idle again. */
+private const val ThreadSettingsSavedNoticeMillis = 1500L
+
+@Composable
+private fun localizedThreadJoinLabel(value: String): String =
+    if (value == "Join channel") {
+        stringResource(Res.string.thread_action_join_channel)
+    } else {
+        value
+    }

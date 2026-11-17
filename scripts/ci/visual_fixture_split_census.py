@@ -40,7 +40,46 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PRODUCTION = ROOT / "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPage.kt"
+PRODUCTION_DIR = ROOT / "compose/shared/src/commonMain/kotlin/build/raft/app/thread"
+# The production side of the census: ThreadPage.kt and the files it was later split into (moves
+# only, same package). Together they hold everything the census used to read from ThreadPage.kt,
+# so a visual-only symbol left in any of them is still caught. A file split out of these must be
+# listed here too.
+PRODUCTION = tuple(
+    PRODUCTION_DIR / name
+    for name in (
+        "ThreadPage.kt",
+        "ThreadActionCardView.kt",
+        "ThreadAttachmentViews.kt",
+        "ThreadComposerRoute.kt",
+        "ThreadForwarding.kt",
+        "ThreadMarkdownContext.kt",
+        "ThreadMembersPage.kt",
+        "ThreadMessageAvatar.kt",
+        "ThreadMessageCard.kt",
+        "ThreadMessageCardParts.kt",
+        "ThreadMessageGestures.kt",
+        "ThreadMessageItems.kt",
+        "ThreadMessageMenuModel.kt",
+        "ThreadMessageMenus.kt",
+        "ThreadMessagesList.kt",
+        "ThreadMessagesListModel.kt",
+        "ThreadPageContent.kt",
+        "ThreadPageHeader.kt",
+        "ThreadPageTabs.kt",
+        "ThreadPageVisualScreens.kt",
+        "ThreadReactions.kt",
+        "ThreadRouteGates.kt",
+        "ThreadRouteSupport.kt",
+        "ThreadScreenPayload.kt",
+        "ThreadSettingsDrawer.kt",
+        "ThreadShareSelection.kt",
+        "ThreadStateViews.kt",
+        "ThreadTimelineRows.kt",
+        "ThreadViewportAnchors.kt",
+        "ThreadViewportScroll.kt",
+    )
+)
 MOVED = (
     ROOT / "compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadMessageRowVisualHost.kt",
     ROOT / "compose/shared/src/visualFixtureData/kotlin/build/raft/app/ThreadMessageRowVisualFixtures.kt",
@@ -287,25 +326,36 @@ def orphaned_visual_prose(production: str) -> list[tuple[int, str]]:
     return hits
 
 
+def read_production() -> str:
+    return "\n".join(path.read_text(encoding="utf-8") for path in PRODUCTION)
+
+
 def base_production(rev: str = "origin/main") -> str | None:
-    """The pre-split production file, for the migrated-symbol census.
+    """The pre-split production files, for the migrated-symbol census.
 
     Returns None when the base cannot be read (shallow clone, detached CI
     checkout). The migrated census is then reported as unavailable rather than
-    guessed at - a partial list would read like a complete one.
+    guessed at - a partial list would read like a complete one. ThreadPage.kt
+    must be readable; a file split out of it may not exist yet at the base.
     """
-    rel = PRODUCTION.relative_to(ROOT).as_posix()
-    try:
-        done = subprocess.run(
-            ["git", "show", f"{rev}:{rel}"],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
-        return None
-    return done.stdout if done.returncode == 0 and done.stdout else None
+    texts: list[str] = []
+    for index, path in enumerate(PRODUCTION):
+        rel = path.relative_to(ROOT).as_posix()
+        try:
+            done = subprocess.run(
+                ["git", "show", f"{rev}:{rel}"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError:
+            return None
+        if done.returncode == 0 and done.stdout:
+            texts.append(done.stdout)
+        elif index == 0:
+            return None
+    return "\n".join(texts)
 
 
 def migrated_symbols(base: str, production: str, moved_text: str) -> list[tuple[str, str]]:
@@ -320,7 +370,7 @@ def migrated_symbols(base: str, production: str, moved_text: str) -> list[tuple[
 
 
 def main() -> int:
-    production = PRODUCTION.read_text(encoding="utf-8")
+    production = read_production()
     moved_text = "\n".join(p.read_text(encoding="utf-8") for p in MOVED)
     result = classify(production, moved_text)
     left_behind, unreachable, widened = result.left_behind, result.unreachable, result.widened
@@ -387,11 +437,15 @@ def main() -> int:
             print(f"   {name:<62} was {vis}")
         print(f"   migrated total={len(migrated)}")
     print()
-    prose = orphaned_visual_prose(production)
+    prose = [
+        (path.name, number, text)
+        for path in PRODUCTION
+        for number, text in orphaned_visual_prose(path.read_text(encoding="utf-8"))
+    ]
     print("== visual-only prose left in the production file ==")
     print("   (hard failure: an orphaned doc block re-binds to the next declaration)")
-    for number, text in prose:
-        print(f"   ORPHAN-DOC  {PRODUCTION.name}:{number}: {text}")
+    for name, number, text in prose:
+        print(f"   ORPHAN-DOC  {name}:{number}: {text}")
     print()
     print("== symbols declared in BOTH the production file and a moved file ==")
     print("   (hard failure: duplicate declaration in the same package)")

@@ -115,7 +115,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Diff preview with stats | `message/MessageItem.tsx` | TBC | `RaftFilePreview.kt:7401` only | – | M |
 | Attachment comments, channel files | `AttachmentCommentsPanel.tsx`, `ChannelFilesPanel.tsx` | done | `ThreadFilesContent.kt` | existing | – |
 | Drafts | `message/optimisticMessageDraft.ts` | done | `SharedThreadComposerDraftStore.kt` | client | – |
-| Live agent activity bar | `layout/LiveAgentActivityBar.tsx` | partial: status label in header only | `ThreadPage.kt` `liveActivityLabel` | realtime | S |
+| Live agent activity bar | `layout/LiveAgentActivityBar.tsx` | partial: status label in header only | `ThreadMembersPage.kt` `liveActivityLabel` | realtime | S |
 | History-limit (plan) banner | `message/HistoryLimitBanner.tsx` | partial: flag read, no banner | `data/ThreadApi.kt:103` | existing | S |
 | In-conversation search | `message/threadSearch.ts` | done | `thread_placeholder_search` | `GET /messages/search` | – |
 | Action cards | – | done | `data/ThreadActionCards.kt` | existing | – |

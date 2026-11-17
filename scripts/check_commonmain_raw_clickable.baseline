@@ -31,5 +31,6 @@
 2 build/raft/app/thread/ThreadAgentFollowers.kt
 1 build/raft/app/thread/ThreadAgentReadStatus.kt
 1 build/raft/app/thread/ThreadInlineVideoPreview.kt
+1 build/raft/app/thread/ThreadMessageCard.kt
 3 build/raft/app/thread/ThreadOutline.kt
-3 build/raft/app/thread/ThreadPage.kt
+2 build/raft/app/thread/ThreadPageHeader.kt
