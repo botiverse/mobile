@@ -701,12 +701,11 @@ internal interface SystemKillProgressStore {
  * - merged into the ticket already holding the id: accepted, like any ticket;
  * - 503 `submission_merge_conflict`: the same content again after [mergeRetryDelayMillis], at most
  *   [NativeMergeConflictRetries] times this launch, then kept queued for the next;
- * - 409, when nothing of it can be on Hands yet (its first send, or every earlier send was
- *   answered with an error status): Hands will not merge it, so it is re-frozen without the id
+ * - 409: Hands will not take it under this id. Hands answers an identical resend of a stored
+ *   report with 200, so a 409 never proves an earlier unanswered send was stored (it can mean a
+ *   different reporter, conflicting content or the merge cap). It is re-frozen without the id
  *   (`crash_native_correlation=merge_rejected`) and sent once more, standalone; from then on it
- *   is an ordinary report;
- * - 409 after a send that may have been stored (no answer came back): taken as that send's
- *   ticket, so the report is done and never filed twice.
+ *   is an ordinary report. A rare duplicate ticket is preferred over losing the exit.
  */
 internal suspend fun runSystemKillReports(
     store: SystemKillProgressStore,
@@ -825,8 +824,6 @@ internal suspend fun runSystemKillReports(
             }
         }
         if (!hasRoom(queued.budget)) continue
-        // Whether an earlier send under this report's submission_id may be on Hands already.
-        val mayBeStored = queued.attempted && queued.submissionId != null && !queued.submissionNotStored
         if (!queued.attempted) {
             val (ledger, dropped) = progress.ledger.attach(newBatchId)
             // The native decision is frozen with the first attempt: every resend carries it as is.
@@ -855,14 +852,10 @@ internal suspend fun runSystemKillReports(
             wait(mergeRetryDelayMillis)
             result = runCatching { submit(queued.message, queued.uploadExtras(), queued.submissionId) }
         }
-        var alreadyFiled = false
         if (queued.submissionId != null && result.exceptionOrNull()?.let(::nativeMergeFailure) == NativeMergeFailure.Refused) {
-            if (mayBeStored) {
-                // An earlier send got no answer and may be on Hands: this 409 is most likely that
-                // send. Taken as filed; sending it standalone could file it twice.
-                alreadyFiled = true
-            } else {
-                // Nothing of it is on Hands: re-frozen without the id and sent once more,
+            run {
+                // A 409 never proves an earlier unanswered send was stored (an identical resend
+                // of a stored report gets 200): re-frozen without the id and sent once more,
                 // standalone. Committed first, so every later attempt sends the same.
                 val standalone =
                     queued.copy(
@@ -878,7 +871,7 @@ internal suspend fun runSystemKillReports(
                 result = runCatching { submit(queued.message, queued.uploadExtras(), null) }
             }
         }
-        val error = result.exceptionOrNull()?.takeUnless { alreadyFiled }
+        val error = result.exceptionOrNull()
         if (error != null && !isPermanentHandsRejection(error)) {
             // Network, server, auth or configuration: everything stays queued, no budget is used.
             if (queued.submissionId != null) {
@@ -919,7 +912,6 @@ internal suspend fun runSystemKillReports(
             null,
             queued,
             when {
-                alreadyFiled -> "already_filed"
                 submission == null -> "rejected"
                 submission.merged -> "merged:${submission.ticketId?.take(8) ?: "anonymous"}"
                 else -> submission.ticketId?.take(8) ?: "none"
