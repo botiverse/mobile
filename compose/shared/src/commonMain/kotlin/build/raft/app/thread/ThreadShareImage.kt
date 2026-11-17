@@ -108,7 +108,7 @@ internal fun threadShareImageChromeHeightDp(rowCount: Int): Float =
  * Draws the share image for [rows] (each one message, captured at [density] from the
  * conversation) over [background], the conversation surface the rows were captured on (web:
  * the row's resolved surface). The card is as wide as the widest row plus the card padding.
- * [measurer] lays out the header's domain in Space Mono Bold.
+ * [measurer] lays out the header's domain in Space Mono Bold, so call it on the main thread.
  */
 internal fun renderThreadShareImage(
     rows: List<ImageBitmap>,
@@ -140,7 +140,9 @@ internal fun renderThreadShareImage(
  * rasterised): [rowSizes] are the rows' sizes in px at [density], and [drawRow] draws row `index`
  * with its top left at the origin (the offscreen share image draws each row's recorded layer, so
  * no row is held as a bitmap of its own). Call it on the main thread: a row's layer re-runs its
- * drawing on the recording canvas. [ThreadShareImageRecording.rasterise] may then run on any thread.
+ * drawing on the recording canvas, and the header's domain is laid out with [measurer] (text
+ * layout must not run beside the UI's, JetBrains CMP-10613). [ThreadShareImageRecording.rasterise]
+ * only plays the recorded commands back, so it may then run on any thread.
  */
 internal fun recordThreadShareImageRows(
     rowSizes: List<IntSize>,

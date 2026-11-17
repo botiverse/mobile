@@ -142,6 +142,10 @@ internal class RaftComposerImageExportText(
  * dp-sized text boxes match the screen. Mosaic block colours are sampled from [mosaicSource] (the
  * editor's on-screen decode), so each block has the colour the user saw rather than one
  * full-resolution pixel. Returns null when sizes are unknown.
+ *
+ * Main thread only when [text] is given: it is [renderRaftComposerImageExportBase] followed by
+ * [drawRaftComposerImageExportText] on the calling thread. The editor's save runs the two apart
+ * (the base off the main thread, the text on it).
  */
 internal fun renderRaftComposerImageExport(
     source: ImageBitmap,
@@ -153,6 +157,46 @@ internal fun renderRaftComposerImageExport(
     maxLongEdgePx: Int = RaftComposerImageExportMaxLongEdgePx,
     maxPixels: Long = RaftComposerImageExportMaxPixels,
 ): ImageBitmap? {
+    val base =
+        renderRaftComposerImageExportBase(
+            source = source,
+            content = content,
+            canvasSize = canvasSize,
+            density = density,
+            mosaicSource = mosaicSource,
+            maxLongEdgePx = maxLongEdgePx,
+            maxPixels = maxPixels,
+        ) ?: return null
+    if (text != null) drawRaftComposerImageExportText(base, content.textAnnotations, text)
+    return base.bitmap
+}
+
+/**
+ * An export with its photo, mosaic and pencil drawn but not its text yet: [bitmap] plus the
+ * geometry [drawRaftComposerImageExportText] needs to draw the text boxes in the same place.
+ */
+internal class RaftComposerImageExportBase internal constructor(
+    val bitmap: ImageBitmap,
+    internal val exportSize: IntSize,
+    internal val turns: Int,
+    internal val canvasSize: IntSize,
+    internal val density: Density,
+)
+
+/**
+ * The text-free part of [renderRaftComposerImageExport]: the photo at export resolution, the
+ * mosaic and the pencil. No text is laid out here, so it may run on any thread; this is the
+ * heavy part (up to [RaftComposerImageExportMaxPixels]).
+ */
+internal fun renderRaftComposerImageExportBase(
+    source: ImageBitmap,
+    content: RaftComposerImageEditorContent,
+    canvasSize: IntSize,
+    density: Density,
+    mosaicSource: ImageBitmap = source,
+    maxLongEdgePx: Int = RaftComposerImageExportMaxLongEdgePx,
+    maxPixels: Long = RaftComposerImageExportMaxPixels,
+): RaftComposerImageExportBase? {
     if (canvasSize.width <= 0 || canvasSize.height <= 0) return null
     val exportSize =
         raftComposerImageExportSize(
@@ -164,22 +208,57 @@ internal fun renderRaftComposerImageExport(
         ) ?: return null
     val turns = raftComposerImageNormalizeQuarterTurns(content.rotationQuarterTurns)
     val outputSize = raftComposerImageRotatedSize(exportSize, turns)
-    val bitmap = ImageBitmap(outputSize.width, outputSize.height)
+    val base =
+        RaftComposerImageExportBase(
+            bitmap = ImageBitmap(outputSize.width, outputSize.height),
+            exportSize = exportSize,
+            turns = turns,
+            canvasSize = canvasSize,
+            density = density,
+        )
+    base.drawInEditorCanvas {
+        drawRaftComposerBackgroundImage(image = source, cropRect = content.cropRect)
+        drawRaftComposerImageDrawOperations(image = mosaicSource, content = content, cropRect = content.cropRect)
+    }
+    return base
+}
+
+/**
+ * Draws [annotations] over [base] (the last layer of the export). Call it on the main thread:
+ * Compose Multiplatform's text layout keeps process-wide caches that are not thread-safe
+ * (JetBrains CMP-10613), so measuring or drawing text next to the UI's own text layout can
+ * corrupt them. It is cheap: a few boxes of at most 260 dp x 3 lines each.
+ */
+internal fun drawRaftComposerImageExportText(
+    base: RaftComposerImageExportBase,
+    annotations: List<RaftComposerImageTextAnnotation>,
+    text: RaftComposerImageExportText,
+) {
+    if (annotations.isEmpty()) return
+    base.drawInEditorCanvas {
+        annotations.forEach { annotation ->
+            drawRaftComposerImageTextAnnotation(annotation, base.canvasSize, text)
+        }
+    }
+}
+
+/** Draws [draw] into [RaftComposerImageExportBase.bitmap] in editor-canvas pixels. */
+private fun RaftComposerImageExportBase.drawInEditorCanvas(draw: DrawScope.() -> Unit) {
     val canvas = Canvas(bitmap)
     // Turn the whole picture: the edits are drawn in the unrotated canvas (see
     // RaftComposerImageEditorTransform.kt), so the matrix maps the unrotated render onto the
     // turned bitmap exactly as raftComposerImageRotatePoint does.
     when (turns) {
         1 -> {
-            canvas.translate(outputSize.width.toFloat(), 0f)
+            canvas.translate(bitmap.width.toFloat(), 0f)
             canvas.rotate(90f)
         }
         2 -> {
-            canvas.translate(outputSize.width.toFloat(), outputSize.height.toFloat())
+            canvas.translate(bitmap.width.toFloat(), bitmap.height.toFloat())
             canvas.rotate(180f)
         }
         3 -> {
-            canvas.translate(0f, outputSize.height.toFloat())
+            canvas.translate(0f, bitmap.height.toFloat())
             canvas.rotate(270f)
         }
     }
@@ -187,16 +266,7 @@ internal fun renderRaftComposerImageExport(
         sx = exportSize.width.toFloat() / canvasSize.width,
         sy = exportSize.height.toFloat() / canvasSize.height,
     )
-    CanvasDrawScope().draw(density, LayoutDirection.Ltr, canvas, canvasSize.toSize()) {
-        drawRaftComposerBackgroundImage(image = source, cropRect = content.cropRect)
-        drawRaftComposerImageDrawOperations(image = mosaicSource, content = content, cropRect = content.cropRect)
-        if (text != null) {
-            content.textAnnotations.forEach { annotation ->
-                drawRaftComposerImageTextAnnotation(annotation, canvasSize, text)
-            }
-        }
-    }
-    return bitmap
+    CanvasDrawScope().draw(density, LayoutDirection.Ltr, canvas, canvasSize.toSize(), draw)
 }
 
 /** Mosaic + pencil operations of [content] in order (shared by the screen and the export). */

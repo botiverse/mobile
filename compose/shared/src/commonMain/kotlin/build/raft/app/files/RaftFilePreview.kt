@@ -4841,16 +4841,22 @@ internal fun RaftFilePreviewComposerImageEditor(
                 model = imageUrl,
                 maxDecodeEdgePx = raftComposerImageExportDecodeEdgePx(displayImage.width, displayImage.height),
             ) ?: return@render null
-        withContext(Dispatchers.Default) {
-            renderRaftComposerImageExport(
-                source = source,
-                content = content,
-                canvasSize = canvasSize,
-                density = editorDensity,
-                text = exportText,
-                mosaicSource = displayImage,
-            )
+        // The photo, mosaic and pencil (the heavy part) off the main thread; the text boxes on it,
+        // since text layout must not run beside the UI's (CMP-10613, see drawRaftComposerImageExportText).
+        val base =
+            withContext(Dispatchers.Default) {
+                renderRaftComposerImageExportBase(
+                    source = source,
+                    content = content,
+                    canvasSize = canvasSize,
+                    density = editorDensity,
+                    mosaicSource = displayImage,
+                )
+            } ?: return@render null
+        withContext(Dispatchers.Main) {
+            drawRaftComposerImageExportText(base, content.textAnnotations, exportText)
         }
+        base.bitmap
     }
     // The text the colour row shows: the focused text, else the newest one.
     fun colourTextAnnotation(): RaftComposerImageTextAnnotation? {
