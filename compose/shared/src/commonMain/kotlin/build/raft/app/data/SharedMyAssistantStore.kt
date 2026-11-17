@@ -69,6 +69,8 @@ class SharedMyAssistantStore(
     private val scope: CoroutineScope,
     private val dmSetupRetryDelaysMillis: List<Long> = MyAssistantDmSetupRetryDelaysMillis,
     private val logger: (String) -> Unit = {},
+    /** Whether the otter shows over every page (the account's setting); null: always shown (tests). */
+    val otterPrefs: SharedAssistantOtterPrefsStore? = null,
 ) {
     private val answersState = MutableStateFlow<Map<MyAssistantKey, MyAssistantAnswer>>(emptyMap())
 
