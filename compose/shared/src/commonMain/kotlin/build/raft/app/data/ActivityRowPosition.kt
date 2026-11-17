@@ -62,12 +62,17 @@ internal data class ActivityRowState(
     val readSeqCeiling: String? = null,
 )
 
-/** A served row, as an answer carries it. Web `ActivityRowAnswer`. */
+/**
+ * A served row, as an answer carries it. Web `ActivityRowAnswer`. [readSeq] (optional): the viewer's read
+ * position served with the row (its `maxReadSeq`), merged as a read is: the row keeps the higher of the two,
+ * and a Mark as Unread's ceiling still holds (slock #15312, `sync_upsert_equal_position_replaces`).
+ */
 internal data class ActivityRowAnswer(
     val unreadCount: Int,
     val hasMention: Boolean,
     val position: String?,
     val mentionOnly: Boolean,
+    val readSeq: String? = null,
 )
 
 /** Web `ActivityRowEvent`. */
@@ -107,6 +112,7 @@ internal fun activityRowFromAnswer(answer: ActivityRowAnswer): ActivityRowState 
         hasMention = answer.hasMention,
         position = answer.position.takeIf { it.isCanonicalSeq() },
         mentionOnly = answer.mentionOnly,
+        readSeq = answer.readSeq.takeIf { it.isCanonicalSeq() },
     )
 
 /** The position the row shows (its `latestActivitySeq` on screen): the delivered one or the highest applied above it. Web `activityRowDisplayPosition`. */
@@ -167,18 +173,20 @@ private fun applyLive(row: ActivityRowState, event: ActivityRowEvent.Live): Acti
 private fun mergeAnswer(row: ActivityRowState, served: ActivityRowAnswer): ActivityRowResult {
     // A position that is not a canonical seq is no position (fail closed: no live patches).
     val answer = if (served.position.isCanonicalSeq()) served else served.copy(position = null)
+    // An answer older than the one the row came from changes nothing.
+    if (answer.position != null && row.position != null && compareActivityRowSeq(answer.position, row.position) < 0) return keep(row)
+    // The row's read seq and ceiling, raised by the answer's own read seq as a read would (max, under the ceiling).
+    val read = if (answer.readSeq == null) row else row.withReadSeq(answer.readSeq)
     val pa =
         answer.position
-            ?: return keep(activityRowFromAnswer(answer).copy(readSeq = row.readSeq, readSeqCeiling = row.readSeqCeiling))
-    // An answer older than the one the row came from changes nothing.
-    if (row.position != null && compareActivityRowSeq(pa, row.position) < 0) return keep(row)
+            ?: return keep(activityRowFromAnswer(answer).copy(readSeq = read.readSeq, readSeqCeiling = read.readSeqCeiling))
     val above = row.applied.filter { compareActivityRowSeq(it.seq, pa) > 0 }
     val trusted = row.applied.size - above.size
     // Everything the answer counted is at or below Pa: at or below the read, it is all read (the server
     // computed the answer before the read reached it). Not a mention-only answer: its @ does not follow
     // the read cursor on every server path (as applyRead).
     val counted =
-        if (!answer.mentionOnly && row.readSeq != null && compareActivityRowSeq(pa, row.readSeq) <= 0) {
+        if (!answer.mentionOnly && read.readSeq != null && compareActivityRowSeq(pa, read.readSeq) <= 0) {
             answer.copy(unreadCount = 0, hasMention = false, mentionOnly = false)
         } else {
             answer
@@ -187,8 +195,8 @@ private fun mergeAnswer(row: ActivityRowState, served: ActivityRowAnswer): Activ
         activityRowFromAnswer(counted).copy(
             applied = above,
             inversionObserved = row.inversionObserved && above.isNotEmpty(),
-            readSeq = row.readSeq,
-            readSeqCeiling = row.readSeqCeiling,
+            readSeq = read.readSeq,
+            readSeqCeiling = read.readSeqCeiling,
         )
     for (entry in above) next = next.withVerdict(entry.counts, entry.mention)
     return if (trusted > 0 && row.inversionObserved) reread(next, ActivityRowRereadReason.Inversion) else keep(next)
@@ -236,3 +244,47 @@ private fun ActivityRowState.markedUnread(): ActivityRowState {
     val ceiling = readSeqCeiling?.takeIf { compareActivityRowSeq(it, cleared) > 0 } ?: cleared
     return copy(readSeq = null, readSeqCeiling = ceiling)
 }
+
+/**
+ * A `GET /api/sync/changes` `inbox_row` change (inbox_row capability, slock #15312 `SyncInboxRowChange`), as
+ * the shared rule takes it. Web `applySyncInboxRowChange`'s `change`.
+ */
+internal sealed interface ActivitySyncRowChange {
+    /** The row as `GET /api/channels/inbox?ids=` answers it: applied as that answer. */
+    data class Upsert(val row: ActivityRowAnswer) : ActivitySyncRowChange
+
+    /** The row left the inbox; [position] null (`left`) removes it whatever it shows. */
+    data class Delete(val position: String?) : ActivitySyncRowChange
+}
+
+/** Web `applySyncInboxRowChange`'s result: [row] null = the row is no longer held. */
+internal data class ActivitySyncRowResult(
+    val row: ActivityRowState?,
+    val reread: Boolean,
+    val rereadReason: ActivityRowRereadReason? = null,
+)
+
+/**
+ * Web `applySyncInboxRowChange` (slock `packages/shared/src/activityRowPosition.ts`, #15312) on the held row
+ * ([held] null: none held). An upsert is an answer (the same merge: older than the held position ignored,
+ * equal replaces, the read seq kept as the higher one). A delete removes the row when its position is null or
+ * at or past the position the row shows (a live message applied above its answer included); below it, a newer
+ * message brought the row back and it is kept. A position that is not a canonical seq keeps the row.
+ */
+internal fun applySyncInboxRowChange(held: ActivityRowState?, change: ActivitySyncRowChange): ActivitySyncRowResult =
+    when (change) {
+        is ActivitySyncRowChange.Upsert -> {
+            val result = if (held == null) keep(activityRowFromAnswer(change.row)) else reduceActivityRow(held, ActivityRowEvent.Answer(change.row))
+            ActivitySyncRowResult(result.row, result.reread, result.rereadReason)
+        }
+        is ActivitySyncRowChange.Delete -> {
+            val removed = ActivitySyncRowResult(row = null, reread = false)
+            val shown = held?.let(::activityRowDisplayPosition)
+            when {
+                held == null || change.position == null || shown == null -> removed
+                !change.position.isCanonicalSeq() -> ActivitySyncRowResult(held, reread = false)
+                compareActivityRowSeq(change.position, shown) >= 0 -> removed
+                else -> ActivitySyncRowResult(held, reread = false)
+            }
+        }
+    }

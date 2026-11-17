@@ -134,6 +134,15 @@ const val MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY: String = "mobile_inbox_inplace_
 const val INBOX_ROW_POSITION_FEATURE_FLAG_KEY: String = "inbox_row_position_v1"
 
 /**
+ * Activity rows in incremental sync (#proj-mobile:#167; botiverse/slock #15312, the server's
+ * `SYNC_INBOX_ROWS_FEATURE_FLAG_KEY`, shared with web): per server, default off. On, the sync pull asks
+ * for `capabilities=inbox_row` and applies each changed Activity row it gets (`inbox_row`) in place,
+ * through the same merge as a `GET /channels/inbox?ids=` answer, instead of reading the list again.
+ * Off (or unresolved), the pull asks for nothing new and the response is exactly as before.
+ */
+const val SYNC_INBOX_ROWS_FEATURE_FLAG_KEY: String = "sync_inbox_rows_v0"
+
+/**
  * Personal assistant (botiverse/slock `PERSONAL_ASSISTANT_FEATURE_FLAG_KEY` in
  * `packages/server/src/services/featureFlagService.ts`, web `PERSONAL_ASSISTANT_FLAG_KEY`): per
  * server, default off. A pre-check before asking `GET servers/:id/assistant`, whose `enabled` then
@@ -226,6 +235,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
     MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY,
     INBOX_ROW_POSITION_FEATURE_FLAG_KEY,
+    SYNC_INBOX_ROWS_FEATURE_FLAG_KEY,
     TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY,
     PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
     DRAFTS_SECTION_FEATURE_FLAG_KEY,

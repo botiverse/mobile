@@ -26,6 +26,14 @@ import kotlinx.serialization.json.longOrNull
  *   entity". New entities and ops are added, never renamed.
  *
  * The cursor is opaque: echo it back, never parse or compare it.
+ *
+ * `inbox_row` capability (botiverse/slock #15312, `SyncInboxRowChange` / `SyncInboxReset` in
+ * packages/shared/src/syncChanges.ts; asked for with `capabilities=inbox_row` only while the server
+ * flag `sync_inbox_rows_v0` is on, [SYNC_CAPABILITY_INBOX_ROW]): `inbox_row` changes carry each changed
+ * Activity row as `GET /api/channels/inbox?ids=` answers it ([RaftSyncChange.InboxRowUpsert]) or its
+ * removal ([RaftSyncChange.InboxRowDelete]); `inboxReset` asks for the inbox snapshot again while the
+ * page's changes still apply; `retryAfterMs` asks for one more pull after that delay (a row is held
+ * back until its read model catches up). Without the capability none of them is sent.
  */
 
 /** A snapshot the client (re)takes through its existing list endpoint (`SYNC_SNAPSHOT_ENDPOINTS`). */
@@ -176,6 +184,29 @@ sealed interface RaftSyncChange {
         val id: String,
     ) : RaftSyncChange
 
+    /**
+     * `inbox_row` upsert: [row] is the Activity row as `GET /api/channels/inbox?ids=<id>` answers it,
+     * applied through the same merge as that answer. [id] is the row's own id (a channel / DM row's
+     * channelId, a thread / task row's threadChannelId).
+     */
+    data class InboxRowUpsert(
+        override val seq: Long,
+        override val id: String,
+        val row: JsonObject,
+        val source: RaftSyncInboxRowSource,
+    ) : RaftSyncInboxRowChange
+
+    /**
+     * `inbox_row` delete: the row left the inbox. Applied when [position] is null or at or past the
+     * position the held row shows; below it a newer message brought the row back and it stays.
+     */
+    data class InboxRowDelete(
+        override val seq: Long,
+        override val id: String,
+        val position: String?,
+        val reason: RaftSyncInboxRowDeleteReason,
+    ) : RaftSyncInboxRowChange
+
     /** A known entity with an op this client does not know: retake that entity's snapshots. */
     data class Resnapshot(
         override val seq: Long,
@@ -210,6 +241,41 @@ data class RaftSyncConversationState(
     data class Follow(val followed: Boolean, val threadDone: Boolean)
 }
 
+/** An `inbox_row` change ([RaftSyncChange.InboxRowUpsert] / [RaftSyncChange.InboxRowDelete]); [id] is the row's id. */
+sealed interface RaftSyncInboxRowChange : RaftSyncChange {
+    val id: String
+}
+
+/** The capability name asking for `inbox_row` changes (slock `SYNC_CAPABILITY_INBOX_ROW`). */
+const val SYNC_CAPABILITY_INBOX_ROW: String = "inbox_row"
+
+/** Why an `inbox_row` upsert was rebuilt (informational: every source applies the same way). */
+enum class RaftSyncInboxRowSource {
+    /** A change_log change (a read, Done, follow, leave). */
+    Log,
+
+    /** A new message reached the row. */
+    Message,
+
+    /** A source this client does not know (reported; the row still applies). */
+    Unknown,
+}
+
+/** Why an `inbox_row` delete removed the row. */
+enum class RaftSyncInboxRowDeleteReason {
+    /** Marked Done; `position` is the conversation's latest seq when it was. */
+    Done,
+
+    /** The viewer lost the conversation; `position` is null. */
+    Left,
+}
+
+/**
+ * `inboxReset` (inbox_row capability): retake the inbox snapshot; the page's changes still apply and
+ * the cursor goes on. [reason]: `init` | `too_many` | `held_too_long` (kept as sent).
+ */
+data class RaftSyncInboxReset(val reason: String)
+
 /** `reset` set: drop the cursor's state and take [snapshots]. */
 data class RaftSyncReset(
     /** `too_old` | `too_many` | `forced` (kept as sent so a newer reason still parses). */
@@ -225,6 +291,10 @@ data class RaftSyncChangesPage(
     val reset: RaftSyncReset?,
     /** Changes of an entity this client does not know (skipped, per the contract). */
     val skippedUnknownEntities: Int = 0,
+    /** inbox_row capability: retake the inbox snapshot (the changes still apply). */
+    val inboxReset: RaftSyncInboxReset? = null,
+    /** inbox_row capability: pull again after about this many milliseconds (a row is held back). */
+    val retryAfterMillis: Long? = null,
 )
 
 @Serializable
@@ -233,6 +303,14 @@ private data class SyncChangesResponseWire(
     val hasMore: Boolean,
     val changes: List<JsonObject> = emptyList(),
     val reset: SyncResetWire? = null,
+    val inboxReset: SyncInboxResetWire? = null,
+    val retryAfterMs: Double? = null,
+)
+
+@Serializable
+private data class SyncInboxResetWire(
+    val reason: String,
+    val snapshots: List<String> = emptyList(),
 )
 
 @Serializable
@@ -279,8 +357,18 @@ fun parseSyncChangesPage(bodyText: String): RaftSyncChangesPage? {
             )
         },
         skippedUnknownEntities = skipped,
+        inboxReset = wire.inboxReset?.let { reset ->
+            if (reset.reason !in SyncInboxResetReasons) {
+                // Still retaken: a reset of a kind this client does not know is a reset all the same.
+                reportUnknownTypeDropped("sync_changes", "inbox_reset_reason", reset.reason, fallback = "inbox_snapshot")
+            }
+            RaftSyncInboxReset(reset.reason)
+        },
+        retryAfterMillis = wire.retryAfterMs?.takeIf { it.isFinite() && it >= 0.0 }?.toLong(),
     )
 }
+
+private val SyncInboxResetReasons = setOf("init", "too_many", "held_too_long")
 
 private sealed interface ParsedSyncChange {
     data class Known(val change: RaftSyncChange) : ParsedSyncChange
@@ -319,10 +407,57 @@ private fun parseSyncChange(element: JsonObject): ParsedSyncChange {
                 }
             )
         "scope" -> ParsedSyncChange.Known(parseScopeChange(element, seq, id, op))
+        "inbox_row" -> parseInboxRowChange(element, seq, id, op)
         else -> {
             // Skipped on purpose (the log moves on), but never silently.
             reportUnknownTypeDropped("sync_changes", "entity", entity)
             ParsedSyncChange.UnknownEntity
+        }
+    }
+}
+
+/**
+ * An `inbox_row` change. An op or delete reason this client does not know is reported and retakes the
+ * inbox snapshot ([RaftSyncChange.Resnapshot]); an unknown upsert source is reported and the row still
+ * applies (the source does not change how). An upsert without a `row` object, or a delete whose
+ * `position` is neither a string nor null, is a contract mismatch.
+ */
+private fun parseInboxRowChange(element: JsonObject, seq: Long, id: String, op: String): ParsedSyncChange {
+    val inboxOnly = setOf(RaftSyncSnapshot.Inbox)
+    return when (op) {
+        "upsert" -> {
+            val row = element["row"] as? JsonObject ?: return ParsedSyncChange.Malformed
+            val source =
+                when (val raw = element.stringField("source")) {
+                    "log" -> RaftSyncInboxRowSource.Log
+                    "message" -> RaftSyncInboxRowSource.Message
+                    else -> {
+                        reportUnknownTypeDropped("sync_changes", "inbox_row_source", raw, fallback = "applied")
+                        RaftSyncInboxRowSource.Unknown
+                    }
+                }
+            ParsedSyncChange.Known(RaftSyncChange.InboxRowUpsert(seq, id, row, source))
+        }
+        "delete" -> {
+            val position =
+                when (val value = element["position"]) {
+                    null, JsonNull -> null
+                    else -> (value as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return ParsedSyncChange.Malformed
+                }
+            val reason =
+                when (val raw = element.stringField("reason")) {
+                    "done" -> RaftSyncInboxRowDeleteReason.Done
+                    "left" -> RaftSyncInboxRowDeleteReason.Left
+                    else -> {
+                        reportUnknownTypeDropped("sync_changes", "inbox_row_delete_reason", raw, fallback = "inbox_snapshot")
+                        return ParsedSyncChange.Known(RaftSyncChange.Resnapshot(seq, "inbox_row", op, inboxOnly))
+                    }
+                }
+            ParsedSyncChange.Known(RaftSyncChange.InboxRowDelete(seq, id, position, reason))
+        }
+        else -> {
+            reportUnknownTypeDropped("sync_changes", "inbox_row_op", op, fallback = "inbox_snapshot")
+            ParsedSyncChange.Known(RaftSyncChange.Resnapshot(seq, "inbox_row", op, inboxOnly))
         }
     }
 }

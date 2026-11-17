@@ -45,6 +45,16 @@ internal interface RaftSyncStoreTargets {
     fun refreshActivity(serverId: String, reason: String)
 
     /**
+     * `inbox_row` changes (inbox_row capability, in seq order) into every Activity store showing the
+     * server ([SharedActivityStore.applySyncInboxRows]): each through the same merge as a
+     * `GET /api/channels/inbox?ids=` answer. [RaftSyncInboxRowsOutcome.NotApplied] when no store showing
+     * the server could take them (none, or none with a fresh All list kept by the position rule): the
+     * caller then goes on as without the capability.
+     */
+    fun applyInboxRows(serverId: String, changes: List<RaftSyncInboxRowChange>): RaftSyncInboxRowsOutcome =
+        RaftSyncInboxRowsOutcome.NotApplied
+
+    /**
      * Another device marked conversation [channelId] Done (a `conversation` change with
      * `done.done` true): every Activity store showing the server drops its row when
      * [doneFrontierSeq] covers it ([SharedActivityStore.applyRemoteDone]).
@@ -70,6 +80,18 @@ internal interface RaftSyncStoreTargets {
      * not hold the message changes nothing.
      */
     suspend fun applyMessageRows(serverId: String, messages: List<Message>)
+}
+
+/** What the Activity stores did with a page's `inbox_row` changes ([RaftSyncStoreTargets.applyInboxRows]). */
+internal sealed interface RaftSyncInboxRowsOutcome {
+    /**
+     * Applied to every store showing the server. [settledIds]: the row ids whose change was applied
+     * (or judged and kept) there; a `conversation` change of one of them needs no Activity read.
+     */
+    data class Applied(val settledIds: Set<String>) : RaftSyncInboxRowsOutcome
+
+    /** No store could take them: `conversation` changes read the lists as before. */
+    data object NotApplied : RaftSyncInboxRowsOutcome
 }
 
 /** How one snapshot reload ended, for the cursor. */
@@ -221,6 +243,10 @@ internal class RaftSyncChangesStoreRouter(
         return !pullFailed
     }
 
+    override suspend fun reloadInbox(scope: RaftSyncScope, reason: String) {
+        refreshActivity(scope.serverId, "sync_$reason")
+    }
+
     override suspend fun retakeFailedReloads(scope: RaftSyncScope) {
         val serverId = scope.serverId
         val retakes = ledger.takeRetakes(serverId)
@@ -295,8 +321,15 @@ internal class RaftSyncChangesStoreRouter(
             }
         }
 
+        // Activity rows (inbox_row capability): applied in place by the Activity stores. A conversation
+        // change whose row came with it needs no Activity read; one without (an Artifact row, a row the
+        // server could not read) reads the lists as before.
+        val inboxRows =
+            if (plan.inboxRows.isEmpty()) RaftSyncInboxRowsOutcome.NotApplied else targets.applyInboxRows(serverId, plan.inboxRows)
+        val settledRows = (inboxRows as? RaftSyncInboxRowsOutcome.Applied)?.settledIds.orEmpty()
+
         // Home: channel list, orders, the viewer's own conversation state.
-        val conversations = applyConversationStates(serverId, plan)
+        val conversations = applyConversationStates(serverId, plan, settledRows)
         val homeChanged =
             RaftSyncRowEntity.Channel in plan.upserts || RaftSyncRowEntity.Channel in plan.deletes ||
                 RaftSyncRowEntity.SidebarOrder in plan.upserts || RaftSyncRowEntity.SidebarOrder in plan.deletes ||
@@ -337,7 +370,9 @@ internal class RaftSyncChangesStoreRouter(
             "sync_changes_apply serverId=$serverId rosterUpserts=${rosterUpserts.size} rosterDeletes=${rosterDeletes.size} " +
                 "machines=${machineRows.size}/${machineDeletes.size} home=$homeChanged activity=$activityChanged " +
                 "remoteDone=${conversations.remoteDone} channelMembers=${memberChannels.size} resnapshot=${resnapshot.joinToString(",") { it.wireName }.ifEmpty { "none" }} " +
-                "removedScopes=${plan.removedScopes.size} messages=${messages.size}/${messageRows.size}"
+                "removedScopes=${plan.removedScopes.size} messages=${messages.size}/${messageRows.size} " +
+                "inboxRows=${settledRows.size}/${plan.inboxRows.size}" +
+                (if (plan.inboxRows.isNotEmpty() && inboxRows == RaftSyncInboxRowsOutcome.NotApplied) " inboxRowsApplied=false" else "")
         )
     }
 
@@ -348,13 +383,21 @@ internal class RaftSyncChangesStoreRouter(
      * device's Done is applied to the Activity rows in place; anything this client can't patch
      * (no state, an undone, a follow change, a read alone, a row it can't judge) reads the lists,
      * and like web the conversations after the first such one are left to that read.
+     *
+     * A conversation in [settledRows] (its `inbox_row` came in the same page and the Activity stores
+     * took it) needs no Activity read and no Done patch: the row change is the newer state. Home still
+     * reads its lists for what it shows of it (a read, a follow, an undone, or no state at all).
      */
-    private fun applyConversationStates(serverId: String, plan: RaftSyncApplyPlan): ConversationRefresh {
+    private fun applyConversationStates(serverId: String, plan: RaftSyncApplyPlan, settledRows: Set<String>): ConversationRefresh {
         var home = false
         var activity = false
         var remoteDone = 0
         for (conversationId in plan.staleConversations.keys) {
             val state = plan.conversationStates[conversationId]
+            if (conversationId in settledRows) {
+                if (state == null || state.read != null || state.follow != null || state.done?.done == false) home = true
+                continue
+            }
             val done = state?.done
             if (state == null || state.follow != null || done == null || !done.done) {
                 return ConversationRefresh(home = true, activity = true, remoteDone = remoteDone)

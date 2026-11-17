@@ -299,6 +299,34 @@ class SharedRaftNetworkClientTest {
     }
 
     @Test
+    fun syncChangesPullAsksForInboxRowsOnlyOnTheServerWhoseFlagIsOn() = runBlocking {
+        // slock #15312: `capabilities=inbox_row` (routes/sync.ts parseCapabilities); none: the request is as before.
+        val executor = RecordingExecutor { ok("""{"cursor":"c1.2.1","hasMore":false,"changes":[],"reset":null}""") }
+        val client =
+            SharedRaftNetworkClient(
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                executor = executor
+            )
+        val api =
+            RaftSyncChangesNetworkApi(
+                client,
+                capabilities = { serverId -> if (serverId.value == "server-2") setOf(SYNC_CAPABILITY_INBOX_ROW) else emptySet() }
+            )
+
+        api.changes(ServerId("server-2"), since = "c1.1.1.m4.1", limit = 500)
+        api.changes(ServerId("server-1"), since = "c1.1.1", limit = 500)
+
+        assertEquals(
+            listOf(
+                "https://api.slock.test/api/sync/changes?since=c1.1.1.m4.1&limit=500&capabilities=inbox_row",
+                "https://api.slock.test/api/sync/changes?since=c1.1.1&limit=500",
+            ),
+            executor.requests.map { it.url }
+        )
+    }
+
+    @Test
     fun requestPreservesSearchQueryThroughUrlEncoding() = runBlocking {
         val logs = mutableListOf<String>()
         val executor = RecordingExecutor { ok("""{"results":[],"hasMore":false}""") }
