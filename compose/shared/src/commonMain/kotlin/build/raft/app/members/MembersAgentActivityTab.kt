@@ -1,0 +1,563 @@
+package build.raft.app
+
+import build.raft.app.resources.*
+import build.raft.designsystem.gesture.raftSwipesBetweenSegments
+import androidx.compose.ui.platform.testTag
+import androidx.compose.runtime.setValue
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftButton
+import build.raft.app.data.AgentActivityEntry
+import build.raft.app.data.agentActivitySubagentRowPresence
+import build.raft.app.data.groupAgentActivitySubagents
+import build.raft.app.data.AgentActivityOverviewIntent
+import build.raft.app.data.agentMemoryLimitExit
+import build.raft.app.data.isAgentBackgroundOomActivityTitle
+import build.raft.app.data.parseAgentBackgroundOomActivityText
+import build.raft.app.data.AgentDetailSnapshot
+import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.model.AgentStatus
+import build.raft.app.data.AgentActivityDetailKindClaudeRootPrivileges
+import build.raft.app.model.Presence
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.formatRaftTimestampClockWithSeconds
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.foundation.layout.PaddingValues
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftPanelNotice
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftUiPalette
+import build.raft.designsystem.components.RaftTextLink
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftEmptyState
+import build.raft.designsystem.components.RaftEmptyStateDefaults
+
+@Composable
+internal fun MembersAgentActivityTab(
+    detail: AgentDetailSnapshot?,
+    serverId: String?,
+    /** The detail page's observed live status (null = not observed: no dot). */
+    agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
+    /** The agent waits for its offline Computer ([membersAgentHeldByOfflineComputer]): "Computer offline". */
+    heldByOfflineComputer: Boolean = false,
+    loadState: MembersAgentActivityLoadState,
+    overview: MembersAgentActivityOverviewBinding? = null,
+    onOpenComputer: (() -> Unit)? = null,
+    onOpenMessage: (channelId: String, messageId: String) -> Unit = { _, _ -> },
+    diagnosticActionState: MembersAgentDiagnosticActionState?,
+    onCopyDiagnostics: () -> Unit,
+    timeContext: RaftTimeContext,
+    onOpenUrl: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    autoScrollToLatest: Boolean = true,
+    /** Stop one running sub-agent from its page; null: the viewer may not (web `canStopSubagents`). */
+    subagentStop: MembersAgentSubagentStop? = null
+) {
+    val errorStrings = localizedErrorPresentationStrings()
+    val copySucceeded =
+        diagnosticActionState?.actionKey == "copy" && diagnosticActionState.successLabel != null
+    var chosenActivityView by remember(detail?.agentId) { mutableStateOf(MembersAgentActivityView.Overview) }
+    // Without the Overview (its flag off or unresolved) the Overview choice reads as the raw log.
+    val activityView =
+        if (overview == null && chosenActivityView == MembersAgentActivityView.Overview) MembersAgentActivityView.Raw
+        else chosenActivityView
+    // The log oldest first, as the raw view shows it; the Sub-agents view folds it (web groupSubagents).
+    val activityLog =
+        remember(detail?.agentId, detail?.activity) {
+            detail?.activity.orEmpty()
+                .sortedWith(compareBy<AgentActivityEntry> { it.timestamp.membersActivitySortKey() }.thenBy { it.id })
+        }
+    val subagents = remember(activityLog) { groupAgentActivitySubagents(activityLog) }
+    var openSubagentKey by remember(detail?.agentId) { mutableStateOf<String?>(null) }
+    val subagentLink =
+        remember(activityLog, subagents) {
+            membersAgentActivitySubagentLink(activityLog, subagents) { key ->
+                openSubagentKey = key
+                chosenActivityView = MembersAgentActivityView.Subagents
+            }
+        }
+    val openSubagent = openSubagentKey?.let { key -> subagents.firstOrNull { it.key == key } }
+    // A sub-agent's page is transient: Back returns to the list first.
+    RaftBackHandler(enabled = activityView == MembersAgentActivityView.Subagents && openSubagent != null, label = "agent_subagent_detail") {
+        openSubagentKey = null
+    }
+    // Web AgentActivityLog (slock #14961): a runtime that can start sub-agents always offers the
+    // Sub-agents segment, with 0 too; any other runtime shows it once a sub-agent has appeared.
+    val showSubagents =
+        membersAgentActivityShowsSubagents(
+            runtime = detail?.summary?.runtime,
+            subagentCount = subagents.size,
+            viewing = activityView == MembersAgentActivityView.Subagents,
+        )
+    val changeView: (MembersAgentActivityView) -> Unit = { next ->
+        chosenActivityView = next
+        openSubagentKey = null
+    }
+    if (overview != null && detail != null) {
+        val agentId = detail.agentId
+        LaunchedEffect(agentId) { overview.onIntent(AgentActivityOverviewIntent.Open(agentId)) }
+        // A finished turn arrives with the agent leaving a busy state (web reloads on the
+        // agent:activity push). The store keeps the last-seen activity, so a revisit after the
+        // pager dropped this page still sees the edge; it debounces and coalesces the reload.
+        val liveActivity = detail.summary?.activity
+        LaunchedEffect(agentId, liveActivity) {
+            overview.onIntent(AgentActivityOverviewIntent.LiveActivityObserved(agentId, liveActivity))
+        }
+        // Pushes missed in the background or while the socket was down: catch up on return.
+        RaftLiveCatchUpEffect(serverId = serverId, visible = true) {
+            overview.onIntent(AgentActivityOverviewIntent.CatchUp)
+        }
+    }
+    // Web AgentActivityLog: without the Overview flag the tab is the raw log alone, no toolbar
+    // (Copy info lives in the profile's Actions and the runtime-error notice, as on the web);
+    // behind it, the Overview / Raw Log toolbar heads the tab.
+    // The switch's segments in order: a sideways swipe turns them before the profile's tab pager
+    // takes it, which it does only past the first or last one (nested-pager priority, #148).
+    val activityViews =
+        listOfNotNull(
+            MembersAgentActivityView.Overview.takeIf { overview != null },
+            MembersAgentActivityView.Raw,
+            MembersAgentActivityView.Subagents.takeIf { showSubagents },
+        )
+    val activityViewIndex = activityViews.indexOf(activityView)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(RaftTheme.colors.layerCanvas)
+            .raftSwipesBetweenSegments(
+                canGoBackward = activityViewIndex > 0,
+                canGoForward = activityViewIndex in 0 until activityViews.lastIndex,
+                onSwipe = { forward ->
+                    activityViews.getOrNull(activityViewIndex + if (forward) 1 else -1)?.let(changeView)
+                },
+            ),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        if (overview != null || showSubagents) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = MembersPageInset,
+                        vertical = RaftAppSpacing.Sm
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+            ) {
+                // Web AgentActivityLog: Overview / Raw Log, and Subagents (always for a runtime that
+                // can start them, else once the agent has had one).
+                // The switch takes what the button leaves; three segments scroll in their track.
+                Box(Modifier.weight(1f)) {
+                    MembersAgentActivityViewSwitch(
+                        view = activityView,
+                        onViewChange = changeView,
+                        showOverview = overview != null,
+                        subagentCount = if (showSubagents) subagents.size else null,
+                    )
+                }
+                // Copy info heads the tab with the Overview; without it, it lives in the profile.
+                if (overview != null) {
+                    RaftButton(
+                        text = if (copySucceeded) stringResource(Res.string.common_done) else stringResource(Res.string.member_action_copy_info),
+                        onClick = onCopyDiagnostics,
+                        enabled = diagnosticActionState?.inProgress != true,
+                        leadingIcon = {
+                            RaftContentLucideIcon(if (copySucceeded) RaftLucideIconName.Check else RaftLucideIconName.Copy)
+                        }
+                    )
+                }
+            }
+            MembersDetailSectionDivider()
+        }
+        if (overview != null && activityView == MembersAgentActivityView.Overview) {
+            val summary = detail?.summary
+            MembersAgentActivityOverview(
+                binding = overview,
+                now = MembersAgentActivityNow(
+                    label =
+                        if (heldByOfflineComputer) {
+                            stringResource(Res.string.agent_status_computer_offline)
+                        } else {
+                            membersLiveAgentStatusLabel(
+                                indicatorState = agentStatusIndicatorState,
+                                summaryStatus = summary?.status,
+                                summaryActivity = summary?.activity,
+                                summaryActivityDetail = summary?.activityDetail,
+                                fallback = MembersUnknownAgentStatusLabel
+                            )
+                        },
+                    // Its Computer offline: the offline light, whatever its last activity (web #14585).
+                    indicator =
+                        if (heldByOfflineComputer) {
+                            raftAgentStatusIndicatorState(status = AgentStatus.Offline, presence = Presence.Offline, external = false)
+                        } else {
+                            agentStatusIndicatorState
+                        },
+                    wakeCrashLoop =
+                        membersAgentActivityWakeCrashLoop(
+                            indicator = agentStatusIndicatorState,
+                            summaryDetailKind = summary?.activityDetailKind,
+                            summaryWakeCrashLoop = summary?.wakeCrashLoop
+                        )
+                ),
+                hasRawActivity = detail?.activity?.isNotEmpty() == true,
+                hasComputer = !summary?.machineId.isNullOrBlank(),
+                timeContext = timeContext,
+                onShowRaw = { changeView(MembersAgentActivityView.Raw) },
+                onOpenComputer = onOpenComputer,
+                onOpenUrl = onOpenUrl,
+                onOpenMessage = { channelId, messageId -> onOpenMessage(channelId, messageId.value) },
+                modifier = Modifier.fillMaxWidth().weight(1f)
+            )
+            return@Column
+        }
+        if (activityView == MembersAgentActivityView.Subagents) {
+            val contentModifier = Modifier.fillMaxWidth().weight(1f)
+            if (openSubagent != null) {
+                MembersAgentSubagentDetail(
+                    group = openSubagent,
+                    timeContext = timeContext,
+                    stop = subagentStop,
+                    onBack = { openSubagentKey = null },
+                    horizontalInset = MembersPageInset,
+                    modifier = contentModifier,
+                ) { _, entry, last ->
+                    MembersAgentActivityRow(entry, timeContext, onOpenUrl, last = last)
+                }
+            } else {
+                MembersAgentSubagentsList(
+                    groups = subagents,
+                    timeContext = timeContext,
+                    onOpen = { openSubagentKey = it },
+                    contentPadding = PaddingValues(start = MembersPageInset, end = MembersPageInset, bottom = RaftAppSpacing.Md),
+                    modifier = contentModifier,
+                )
+            }
+            return@Column
+        }
+        val rows =
+            remember(activityLog) {
+                activityLog.filterNot { it.type == "tool_start" && it.toolName?.normalizedMembersToolName() == "send_message" }
+            }
+        val hasRows = rows.isNotEmpty()
+        if (hasRows && (loadState is MembersAgentActivityLoadState.Refreshing || loadState is MembersAgentActivityLoadState.Error)) {
+            MembersAgentActivityLoadNotice(loadState)
+        }
+        if (!hasRows && (loadState is MembersAgentActivityLoadState.Loading || loadState is MembersAgentActivityLoadState.Refreshing)) {
+            RaftCenteredLoading(
+                message = stringResource(Res.string.member_state_loading_activity),
+                modifier = Modifier.fillMaxWidth().weight(1f)
+            )
+        } else if (!hasRows && loadState is MembersAgentActivityLoadState.Error) {
+            RaftEmptyState(
+                title = stringResource(Res.string.member_error_load_activity),
+                description = loadState.error.userFacingMessage(errorStrings),
+                icon = { RaftContentLucideIcon(RaftLucideIconName.Activity, size = RaftEmptyStateDefaults.IconSize) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            )
+        } else if (rows.isEmpty()) {
+            RaftEmptyState(
+                title = stringResource(Res.string.member_state_no_activity),
+                description = stringResource(Res.string.member_state_activity_start_agent),
+                icon = { RaftContentLucideIcon(RaftLucideIconName.Activity, size = RaftEmptyStateDefaults.IconSize) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            )
+        } else {
+            // Raw log tail (raft-design "Conversation › Following the newest"): opens at the newest,
+            // follows new entries while the reader is at the bottom, otherwise keeps their place
+            // and shows the thread's jump pill. Rows are keyed by the entry's own id.
+            MembersAgentActivityLogList(
+                rows = rows,
+                rowKey = { it.activityTimelineKey() },
+                resetKey = detail?.agentId,
+                followLatest = autoScrollToLatest,
+                // Web: the log's `py-3` plus each entry's `py-1.5` above the first and under the last.
+                contentPadding = PaddingValues(horizontal = MembersPageInset, vertical = MembersActivityLogPaddingY),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            ) { index, entry ->
+                MembersAgentActivityRow(entry, timeContext, onOpenUrl, last = index == rows.lastIndex, subagentLink = subagentLink)
+            }
+        }
+    }
+}
+
+private val MembersActivityLogPaddingY = 18.dp
+
+@Composable
+private fun MembersAgentActivityLoadNotice(
+    state: MembersAgentActivityLoadState,
+    modifier: Modifier = Modifier
+) {
+    val errorStrings = localizedErrorPresentationStrings()
+    val message =
+        when (state) {
+            MembersAgentActivityLoadState.Refreshing -> stringResource(Res.string.member_state_refreshing_activity)
+            is MembersAgentActivityLoadState.Error ->
+                "${stringResource(Res.string.member_error_load_activity)}: ${state.error.userFacingMessage(errorStrings)}"
+            MembersAgentActivityLoadState.Idle,
+            MembersAgentActivityLoadState.Loading -> return
+        }
+    // raft-ui PanelNotice: refreshing (info) or the refresh failed (warning) above the log.
+    RaftPanelNotice(
+        message = message,
+        modifier = modifier,
+        status = if (state is MembersAgentActivityLoadState.Error) RaftBannerStatus.Warning else RaftBannerStatus.Info
+    )
+}
+
+@Composable
+internal fun MembersAgentActivityRow(
+    activity: AgentActivityEntry,
+    timeContext: RaftTimeContext,
+    onOpenUrl: (String) -> Unit,
+    last: Boolean = false,
+    /** The raw log's links into the Sub-agents view; null in a sub-agent's own page. */
+    subagentLink: MembersAgentActivitySubagentLink? = null
+) {
+    val key = activity.activityTimelineKey()
+    var expanded by remember(key) { mutableStateOf(false) }
+    val memoryLimit = membersActivityRowMemoryLimitText(activity)
+    val body = memoryLimit?.body ?: activity.activityPrimaryDetail().orEmpty()
+    val longBody = body.length > 200 || body.count { it == '\n' } > 2
+    val displayBody =
+        if (!expanded && longBody) {
+            body.take(200).trimEnd() + "…"
+        } else {
+            body
+        }
+    val colors = RaftTheme.colors
+    val detailStyle = RaftTheme.typography.monoMeta
+    val titleText = memoryLimit?.title ?: activity.title
+    // Web StatusEntry: a status row is one wrapping line, the status in the title's ink and its
+    // detail after it (`ml-1.5 text-foreground-hint`) in the same type. A detail carrying a
+    // channel / thread ref keeps the ref-rendering body under the title.
+    val inlineStatusDetail =
+        displayBody.takeIf { activity.type == "status" && !longBody && it.isNotBlank() && !it.membersActivityMayHoldRef() }
+    // raft-ui Timeline as an activity log: presence-coloured pixels, title and detail in
+    // Space Mono, the time on the right, a `subagent` tag on a subagent's step. The title is
+    // web LOG_TITLE_CLASS: `text-foreground-muted wrap-anywhere`, wrapping instead of clipping.
+    // Web SystemEntry (#13383): a sub-agent's lifecycle system row reads as its state, not an error.
+    val subagentPresence = if (activity.type == "system") agentActivitySubagentRowPresence(activity.subagent) else null
+    RaftTimelineItem(
+        color = (subagentPresence ?: activity.statusActivity ?: activity.type).membersActivityAccentColor(),
+        last = last,
+        time = activity.timestamp.membersActivityDisplayTime(timeContext),
+        title = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (inlineStatusDetail != null) {
+                    RaftText(
+                        text = buildAnnotatedString {
+                            append(titleText)
+                            append(' ')
+                            withStyle(SpanStyle(color = colors.foregroundHint)) { append(inlineStatusDetail) }
+                        },
+                        style = raftTimelineMonoTitleStyle(),
+                        color = colors.foregroundMuted,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                } else {
+                    RaftText(
+                        text = titleText,
+                        style = raftTimelineMonoTitleStyle(),
+                        color = colors.foregroundMuted,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                }
+                membersActivitySubagentBadgeLabel(activity)?.let { subagentLabel ->
+                    // Web SubagentBadge (#13029): the marker opens that sub-agent's own run.
+                    val openSubagent: (() -> Unit)? =
+                        subagentLink?.let { link -> link.keyOfRow(activity.subagent)?.let { key -> { link.open(key) } } }
+                    RaftBadge(
+                        text = subagentLabel,
+                        appearance = RaftBadgeAppearance.Outline,
+                        onClick = openSubagent,
+                        modifier = if (openSubagent != null) Modifier.testTag(MembersAgentActivitySubagentOpenTag) else Modifier
+                    )
+                }
+            }
+        }
+    ) {
+        if (displayBody.isNotBlank() && inlineStatusDetail == null) {
+            // #64 owner override (artin 06-23 17:41): '改成用 RaftMarkdownBody
+            // 比较好，它能展示出来 #xxx 这些东西'. Restore the markdown branch so
+            // the activity body can render task refs / issue refs (e.g. `#225`,
+            // `#task-7`) as styled inline text + clickable onOpenUrl links
+            // when `refTextEnabled` is true.
+            if (activity.refTextEnabled) {
+                RaftMarkdownBody(
+                    body = displayBody,
+                    textStyle = detailStyle.copy(color = colors.foregroundHint),
+                    onOpenUrl = onOpenUrl,
+                )
+            } else {
+                // Web: a detail clamps only when it is long (the "Show more" toggle below).
+                RaftText(
+                    text = displayBody,
+                    style = detailStyle,
+                    color = colors.foregroundHint,
+                    maxLines = when {
+                        expanded -> 12
+                        longBody -> 3
+                        else -> Int.MAX_VALUE
+                    },
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (longBody) {
+            RaftTextLink(
+                text = if (expanded) stringResource(Res.string.member_label_show_less) else stringResource(Res.string.member_label_show_more),
+                onClick = { expanded = !expanded },
+                style = RaftTheme.typography.caption
+            )
+        }
+        // Web ToolStartEntry: the call that started a sub-agent opens it.
+        val spawnedKey = if (activity.type == "tool_start") subagentLink?.keyOfCall(activity.callId) else null
+        if (spawnedKey != null && subagentLink != null) {
+            RaftTextLink(
+                text = stringResource(Res.string.member_activity_subagents_open_from_log),
+                onClick = { subagentLink.open(spawnedKey) },
+                modifier = Modifier.testTag(MembersAgentActivitySubagentOpenTag),
+                style = RaftTheme.typography.monoMeta
+            )
+        }
+    }
+}
+
+private data class MembersActivityRowText(val title: String, val body: String)
+
+/**
+ * Web AgentActivityLog (#10860): a runtime stopped at the Computer's per-agent memory limit reads
+ * as such instead of "Crashed" plus the daemon's English detail, and the background-process notice
+ * (its `system` row and the `system_message` status beside it) gets this locale's copy. Null for
+ * every other row.
+ */
+@Composable
+private fun membersActivityRowMemoryLimitText(activity: AgentActivityEntry): MembersActivityRowText? {
+    if (activity.type == "status") {
+        // botiverse/slock #12892 (web StatusEntry): "Crashed" with how to fix the root refusal in
+        // this locale instead of the daemon's English detail.
+        if (activity.statusDetailKind == AgentActivityDetailKindClaudeRootPrivileges) {
+            return MembersActivityRowText(activity.title, stringResource(Res.string.agent_runtime_error_root_privileges))
+        }
+        val exit = if (activity.statusDetailKind == "runtime_crashed") agentMemoryLimitExit(activity.statusDetail, "runtime_crashed") else null
+        if (exit != null) {
+            val title = exit.memoryLimit?.let { stringResource(Res.string.agent_activity_memory_limit_stopped_with_limit, it) }
+                ?: stringResource(Res.string.agent_activity_memory_limit_stopped)
+            return MembersActivityRowText(title, "")
+        }
+        if (activity.statusDetailKind == "system_message" && isAgentBackgroundOomActivityTitle(activity.statusDetail)) {
+            // The notice's own system row says it once.
+            return MembersActivityRowText(stringResource(Res.string.agent_activity_background_oom), "")
+        }
+        return null
+    }
+    if (activity.type == "system" && isAgentBackgroundOomActivityTitle(activity.title)) {
+        val parsed = parseAgentBackgroundOomActivityText(activity.body)
+        val body = when {
+            parsed == null -> activity.body.orEmpty()
+            parsed.memoryLimit != null ->
+                stringResource(Res.string.agent_activity_log_background_oom_detail_with_limit, parsed.memoryLimit)
+            else -> stringResource(Res.string.agent_activity_log_background_oom_detail)
+        }
+        return MembersActivityRowText(stringResource(Res.string.agent_activity_log_background_oom_title), body)
+    }
+    return null
+}
+
+@Composable
+private fun membersActivitySubagentBadgeLabel(activity: AgentActivityEntry): String? {
+    if (!activity.membersActivityHasSubagentBadge()) return null
+    return activity.subagentType?.takeIf { it.isNotBlank() }
+        ?.let { stringResource(Res.string.member_activity_log_subagent_with_type, it) }
+        ?: stringResource(Res.string.member_activity_log_subagent)
+}
+
+private fun AgentActivityEntry.activityPrimaryDetail(): String? =
+    membersActivitySecondaryText()
+
+private fun AgentActivityEntry.activityTimelineKey(): String =
+    id.ifBlank { "${type}:${timestamp.orEmpty()}:${body.orEmpty()}:${toolName.orEmpty()}" }
+
+private fun String?.membersActivitySortKey(): Long =
+    parseRaftTimestampEpochMillisOrNull(this) ?: Long.MIN_VALUE
+
+private fun String?.membersActivityDisplayTime(timeContext: RaftTimeContext): String =
+    formatRaftTimestampClockWithSeconds(this, timeContext)
+        .takeIf { it.isNotBlank() }
+        ?: "No time"
+
+// raft-ui Timeline > Activity log: the presence colours (busy yellow while working,
+// error orange, online lime when done), `info` for output, stone when offline.
+private fun String.membersActivityAccentColor(): Color =
+    when (membersActivityStatusKey()) {
+        "error", "failed", "failure", "subagent_failed" -> RaftUiPalette.presenceError
+        "tool_start", "tool", "thinking", "working", "busy", "subagent_spawned", "subagent_started" ->
+            RaftUiPalette.presenceBusy
+        "running", "active", "online", "compaction_finished", "subagent_completed" -> RaftUiPalette.presenceOnline
+        // Web AgentActivityLog: Output and Raft actions are `online`, a compaction start `busy`.
+        "text", "message", "output", "slock_action" -> RaftUiPalette.presenceOnline
+        "offline", "disconnected", "subagent_suspended" -> RaftUiPalette.presenceOffline
+        "compaction_started" -> RaftUiPalette.presenceBusy
+        "system" -> RaftUiPalette.presenceError
+        else -> RaftUiPalette.presenceBusy
+    }
+
+/** A `#channel`, `#channel:thread` or `dm:@peer` ref the web RefText would render. */
+private fun String.membersActivityMayHoldRef(): Boolean = contains('#') || contains("dm:@")
+
+private fun String.membersActivityStatusKey(): String =
+    trim().lowercase().replace('-', '_').replace('.', '_')
+
+private fun String.normalizedMembersToolName(): String =
+    trim()
+        .substringAfterLast("__")
+        .substringAfterLast("/")
+        .substringAfterLast(".")
+        .ifBlank { trim() }
+
+internal fun membersAgentActivityInitialFirstVisibleIndex(itemCount: Int): Int =
+    (itemCount - 1).coerceAtLeast(0)
+
+internal fun membersAgentActivityNextBottomAnchor(
+    current: Boolean,
+    isScrollInProgress: Boolean,
+    isAtBottom: Boolean
+): Boolean =
+    when {
+        isAtBottom -> true
+        isScrollInProgress -> false
+        else -> current
+    }
