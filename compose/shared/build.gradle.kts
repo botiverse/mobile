@@ -209,6 +209,9 @@ kotlin {
                 implementation("build.raft.mermaid:mermaid-layout-api:0.1.14")
                 implementation("build.raft.mermaid:mermaid-layout-simple:0.1.14")
                 implementation("build.raft.mermaid:mermaid-compose:0.1.14")
+                api(project(":sprout-protocol"))
+                api(project(":sprout-runtime-kotlin"))
+                api(project(":sprout-renderer-compose"))
             }
         }
         val commonTest by getting {
@@ -427,7 +430,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
     defaultConfig {
-        minSdk = 21
+        minSdk = 23
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     // AGP 9 removed the library-level defaultConfig.targetSdk; it only ever applied to this

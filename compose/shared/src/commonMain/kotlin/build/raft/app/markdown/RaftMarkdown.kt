@@ -3226,6 +3226,13 @@ private fun RaftMarkdownCodeBlockWithCopy(
                 RaftMarkdownCodeBlockContent(code, language, style)
             }
         )
+    } else if (raftMarkdownIsGenUiFence(language)) {
+        RaftSproutBlock(
+            code = code,
+            fallback = {
+                RaftMarkdownCodeBlockContent(code, language, style)
+            }
+        )
     } else {
         RaftMarkdownCodeBlockContent(code, language, style)
     }
@@ -3287,7 +3294,7 @@ private val RaftMarkdownCodeActionInset = 6.dp
 internal val LocalRaftMarkdownCodeTapObserver = compositionLocalOf<(() -> Unit)?> { null }
 
 @Composable
-private fun Modifier.raftMarkdownObserveCodeTap(): Modifier {
+internal fun Modifier.raftMarkdownObserveCodeTap(): Modifier {
     val observer = LocalRaftMarkdownCodeTapObserver.current ?: return this
     val currentObserver by rememberUpdatedState(observer)
     return pointerInput(Unit) {

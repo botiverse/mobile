@@ -19,5 +19,9 @@
                 <data android:pathPrefix="/s/" />
             </intent-filter>
         </activity>
+        <activity
+            android:name="build.raft.app.SproutCloudPhoneActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 </manifest>

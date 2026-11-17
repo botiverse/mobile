@@ -1,0 +1,195 @@
+{
+  "guestRuntimeVersion": "0.0.0+9377d84bdb01",
+  "sha256": "9377d84bdb01339f5794e8b86e41197d4b73523405789b2e724eb2730b8807b9",
+  "bytes": 45486,
+  "file": "guest-runtime.js",
+  "abi": {
+    "abiVersion": 2,
+    "entryPoints": [
+      {
+        "name": "__cellStats",
+        "params": [],
+        "required": false,
+        "extension": false
+      },
+      {
+        "name": "__defineHosts",
+        "params": [
+          "json"
+        ],
+        "required": true,
+        "extension": false
+      },
+      {
+        "name": "__delta",
+        "params": [
+          "on"
+        ],
+        "required": false,
+        "extension": false
+      },
+      {
+        "name": "__dispatch",
+        "params": [
+          "id",
+          "argsJson"
+        ],
+        "required": true,
+        "extension": false
+      },
+      {
+        "name": "__epoch",
+        "params": [
+          "n"
+        ],
+        "required": true,
+        "extension": false
+      },
+      {
+        "name": "__load",
+        "params": [
+          "code",
+          "requireDefault"
+        ],
+        "required": true,
+        "extension": false
+      },
+      {
+        "name": "__loadParts",
+        "params": [
+          "reset",
+          "appendedJson",
+          "tailJson",
+          "requireDefault",
+          "stale",
+          "cellsJson"
+        ],
+        "required": true,
+        "extension": false
+      },
+      {
+        "name": "__motion",
+        "params": [
+          "reduce"
+        ],
+        "required": false,
+        "extension": false
+      },
+      {
+        "name": "__render",
+        "params": [
+          "full"
+        ],
+        "required": true,
+        "extension": false
+      },
+      {
+        "name": "__reports",
+        "params": [],
+        "required": false,
+        "extension": true
+      },
+      {
+        "name": "__schedule",
+        "params": [],
+        "required": true,
+        "extension": false
+      },
+      {
+        "name": "__sharedDefaults",
+        "params": [],
+        "required": true,
+        "extension": false
+      },
+      {
+        "name": "__sharedLoad",
+        "params": [
+          "json"
+        ],
+        "required": true,
+        "extension": false
+      },
+      {
+        "name": "__tick",
+        "params": [
+          "nowMs"
+        ],
+        "required": true,
+        "extension": false
+      }
+    ],
+    "hostBindings": [
+      "__denied",
+      "__enter",
+      "__log",
+      "__now",
+      "__sharedWrite",
+      "raft"
+    ],
+    "requiredBindings": [
+      "__enter",
+      "__log",
+      "__now"
+    ],
+    "hooks": [
+      "useCallback",
+      "useEffect",
+      "useMemo",
+      "useReducedMotion",
+      "useReducer",
+      "useRef",
+      "useSharedState",
+      "useState"
+    ],
+    "reactNamespace": [
+      "Fragment",
+      "createElement",
+      "useCallback",
+      "useEffect",
+      "useMemo",
+      "useReducedMotion",
+      "useReducer",
+      "useRef",
+      "useSharedState",
+      "useState"
+    ],
+    "programGlobals": [
+      "Fragment",
+      "React",
+      "cancelAnimationFrame",
+      "clearInterval",
+      "clearTimeout",
+      "console",
+      "h",
+      "performance",
+      "raft",
+      "requestAnimationFrame",
+      "setInterval",
+      "setTimeout"
+    ],
+    "compilerGlobals": [
+      "__F",
+      "__c",
+      "__f",
+      "__h"
+    ],
+    "capabilities": {
+      "useState": "implemented",
+      "useReducer": "implemented",
+      "useMemo": "implemented",
+      "useCallback": "implemented",
+      "useRef": "implemented",
+      "useEffect": "implemented",
+      "useSharedState": "implemented",
+      "useAction": "stub (throws UNSUPPORTED_CAPABILITY)",
+      "useLayoutEffect": "absent",
+      "useContext": "absent",
+      "createContext": "absent",
+      "useId": "absent",
+      "useTransition": "absent",
+      "useReducedMotion": "implemented",
+      "forwardRef": "absent",
+      "memo": "absent"
+    }
+  }
+}
