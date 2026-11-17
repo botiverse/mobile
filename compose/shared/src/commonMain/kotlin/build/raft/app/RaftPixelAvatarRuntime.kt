@@ -11,6 +11,8 @@ import build.raft.app.data.runCatchingPreservingCancellation
 import androidx.compose.ui.graphics.Color
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Runtime refresh of the pixel-avatar table from the deployed web app (task #352).
@@ -218,6 +220,15 @@ internal object RaftPixelAvatarRuntime {
     ): PixelAvatarData? {
         if (jsonText.isNullOrBlank()) return null
         val data = parsePixelAvatarData(jsonText) ?: return null
+        return applyParsed(data, source, minimumVersion)
+    }
+
+    /** [applyRuntimeJson] for a table parsed already: parse off main, then swap it in on main. */
+    fun applyParsed(
+        data: PixelAvatarData,
+        source: String,
+        minimumVersion: Int = bundled.version
+    ): PixelAvatarData? {
         if (data.version < minimumVersion) {
             raftLogInfo(
                 PixelAvatarRuntimeLogTag,
@@ -331,6 +342,8 @@ internal suspend fun refreshPixelAvatarsFromWeb(
         raftLogWarn(PixelAvatarRuntimeLogTag, "pixel_avatar_runtime fetch_body_empty")
         return
     }
-    val applied = RaftPixelAvatarRuntime.applyRuntimeJson(bodyText, source = "fetch") ?: return
+    val data = parsePixelAvatarData(bodyText) ?: return
+    // The table is Compose state that avatars on screen read: swap it on main (the parse stays here).
+    val applied = withContext(Dispatchers.Main) { RaftPixelAvatarRuntime.applyParsed(data, source = "fetch") } ?: return
     store.save(json = bodyText, version = applied.version, fetchedAtEpochMillis = nowEpochMillis())
 }

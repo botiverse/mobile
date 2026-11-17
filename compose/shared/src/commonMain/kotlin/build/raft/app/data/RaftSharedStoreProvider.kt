@@ -129,6 +129,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -4208,6 +4209,16 @@ internal fun interface RealtimeGuardedActiveThreadSink {
     suspend fun deliver(serverId: String, event: RealtimeEvent)
 }
 
+/**
+ * One guarded sink and the thread it runs on. Ingress runs on a background dispatcher; a sink that writes
+ * Compose snapshot state or other main-only objects registers with [onMain] and is called on
+ * `Dispatchers.Main`, one event after another, so it never races its own UI.
+ */
+private class RealtimeGuardedSinkRegistration(
+    val sink: RealtimeGuardedActiveThreadSink,
+    val onMain: Boolean,
+)
+
 internal class SharedRealtimeDomainEventOwner(
     private val tasksDataStore: SharedTasksDataStore? = null,
     /**
@@ -4230,8 +4241,13 @@ internal class SharedRealtimeDomainEventOwner(
 ) : RealtimeDomainEventOwner {
     private var sinks: RealtimeDomainEventSinks? = null
     private var guardedSinks: RealtimeGuardedDomainEventSinks? = null
-    private val activeThreadSinks = mutableListOf<RealtimeActiveThreadSink>()
-    private val guardedActiveThreadSinks = mutableListOf<RealtimeGuardedActiveThreadSink>()
+    // Copy-on-write: composables add and remove sinks on main while ingress iterates on a background
+    // thread. Writers swap in a new list under the lock; readers take the current list without it.
+    private val activeThreadSinkLock = SynchronizedObject()
+    @Volatile
+    private var activeThreadSinks: List<RealtimeActiveThreadSink> = emptyList()
+    @Volatile
+    private var guardedActiveThreadSinks: List<RealtimeGuardedSinkRegistration> = emptyList()
     private val acceptedKeys = ArrayDeque<String>()
     private val acceptedKeySet = mutableSetOf<String>()
     private val recoveryStates = mutableMapOf<String, MessageSeqRecoveryState<RealtimeEvent>>()
@@ -4376,23 +4392,45 @@ internal class SharedRealtimeDomainEventOwner(
     }
 
     override fun registerActiveThreadSink(sink: RealtimeActiveThreadSink) {
-        if (sink !in activeThreadSinks) {
-            activeThreadSinks.add(sink)
+        synchronized(activeThreadSinkLock) {
+            if (sink !in activeThreadSinks) activeThreadSinks = activeThreadSinks + sink
         }
     }
 
     override fun unregisterActiveThreadSink(sink: RealtimeActiveThreadSink) {
-        activeThreadSinks.remove(sink)
+        synchronized(activeThreadSinkLock) { activeThreadSinks = activeThreadSinks - sink }
     }
 
-    fun registerGuardedActiveThreadSink(sink: RealtimeGuardedActiveThreadSink) {
-        if (sink !in guardedActiveThreadSinks) {
-            guardedActiveThreadSinks.add(sink)
+    /**
+     * [onMain]: deliver on `Dispatchers.Main` (ingress waits for it, so each sink still sees events in
+     * order). Use it for a sink that writes Compose state or calls UI directly. Leave it off for a sink
+     * that only hands the event to a store (StateFlow, own dispatcher): it keeps that work off main.
+     */
+    fun registerGuardedActiveThreadSink(sink: RealtimeGuardedActiveThreadSink, onMain: Boolean = false) {
+        synchronized(activeThreadSinkLock) {
+            if (guardedActiveThreadSinks.none { it.sink == sink }) {
+                guardedActiveThreadSinks = guardedActiveThreadSinks + RealtimeGuardedSinkRegistration(sink, onMain)
+            }
         }
     }
 
     fun unregisterGuardedActiveThreadSink(sink: RealtimeGuardedActiveThreadSink) {
-        guardedActiveThreadSinks.remove(sink)
+        synchronized(activeThreadSinkLock) {
+            guardedActiveThreadSinks = guardedActiveThreadSinks.filterNot { it.sink == sink }
+        }
+    }
+
+    private suspend fun deliverToGuardedActiveThreadSinks(serverId: String, event: RealtimeEvent) {
+        for (registration in guardedActiveThreadSinks) {
+            if (!registration.onMain) {
+                registration.sink.deliver(serverId, event)
+                continue
+            }
+            withContext(Dispatchers.Main.immediate) {
+                // Unregistered (onDispose, also on main) while this event waited for main: drop it there.
+                if (guardedActiveThreadSinks.any { it === registration }) registration.sink.deliver(serverId, event)
+            }
+        }
     }
 
     /**
@@ -4403,8 +4441,8 @@ internal class SharedRealtimeDomainEventOwner(
      */
     suspend fun deliverSyncedMessageUpdate(serverId: String, event: MessageUpdated) {
         val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
-        activeThreadSinks.toList().forEach { sink -> sink.deliver(resolvedServerId, event) }
-        guardedActiveThreadSinks.toList().forEach { sink -> sink.deliver(resolvedServerId, event) }
+        activeThreadSinks.forEach { sink -> sink.deliver(resolvedServerId, event) }
+        deliverToGuardedActiveThreadSinks(resolvedServerId, event)
     }
 
     suspend fun accept(
@@ -4683,7 +4721,7 @@ internal class SharedRealtimeDomainEventOwner(
         // consumes Heartbeat seq for realtime gap recovery. Snapshot the list
         // so a sink unregistering during delivery cannot corrupt iteration.
         acceptedEvents.forEach { acceptedEvent ->
-            activeThreadSinks.toList().forEach { sink -> sink.deliver(resolvedServerId, acceptedEvent) }
+            activeThreadSinks.forEach { sink -> sink.deliver(resolvedServerId, acceptedEvent) }
             if (acceptedEvent is Heartbeat) {
                 activeSinks?.log?.invoke(
                     "realtime_domain_accept source=$source serverId=$resolvedServerId projection=none type=heartbeat"
@@ -4764,7 +4802,7 @@ internal class SharedRealtimeDomainEventOwner(
         if (acceptedEvents.isEmpty()) return
         val activeSinks = guardedSinks
         acceptedEvents.forEach { acceptedEvent ->
-            guardedActiveThreadSinks.toList().forEach { sink -> sink.deliver(resolvedServerId, acceptedEvent) }
+            deliverToGuardedActiveThreadSinks(resolvedServerId, acceptedEvent)
             if (acceptedEvent is Heartbeat) {
                 activeSinks?.log?.invoke(
                     "realtime_domain_accept source=$source serverId=$resolvedServerId projection=none type=heartbeat"

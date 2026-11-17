@@ -8,6 +8,8 @@ import build.raft.app.model.RUNTIME_MODELS
 import build.raft.app.model.RuntimeInfo
 import build.raft.app.model.RuntimeModelInfo
 import build.raft.app.model.ServerId
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -287,14 +289,21 @@ private fun RuntimeInfo.toBundledEntry(): RuntimeCatalogEntry =
 internal class RaftRuntimeCatalogNameRegistry {
     private var catalogs by mutableStateOf<Map<String, ServerRuntimeCatalog>>(emptyMap())
 
+    // Fetches for different servers publish in parallel off main: the read-modify-write of the map
+    // is one step under this lock, so neither server's catalog is lost. The write itself is a single
+    // global-snapshot write, which Compose allows from any thread.
+    private val publishLock = SynchronizedObject()
+
     fun publish(serverId: String, catalog: ServerRuntimeCatalog) {
         val key = serverId.trim()
         if (key.isBlank()) return
-        if (catalogs[key] != catalog) catalogs = catalogs + (key to catalog)
+        synchronized(publishLock) {
+            if (catalogs[key] != catalog) catalogs = catalogs + (key to catalog)
+        }
     }
 
     fun clear() {
-        catalogs = emptyMap()
+        synchronized(publishLock) { catalogs = emptyMap() }
     }
 
     /** [serverId]'s entry for [runtimeId], else (no server, or a catalog not read yet) the bundled one. */

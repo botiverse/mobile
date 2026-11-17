@@ -836,6 +836,24 @@ Core constraints every agent must follow:
   Settings, Tasks) extend this contract, but keep their own state shape, selectors,
   and snapshot granularity.
 
+## Main-thread-only APIs
+
+- Only on main: Compose text layout, measuring and font resolution (`ui-text`'s
+  global caches are unsynchronised, JetBrains CMP-10613); UIKit, and ObjC
+  `nonatomic` properties the UI also reads or sets (wrap in `RaftBridgeRunOnMain`);
+  Android View, WebView and window calls.
+- Compose snapshot state the UI reads: write it on main, or keep the value in a
+  `StateFlow` the UI collects. If it has to be written off main, make the
+  read-modify-write one step (`MutableStateFlow.update`, or a lock).
+- Fine off main: network, database, JSON and parsing into plain data, image
+  decode into a new bitmap, pixel work, PNG/JPEG encoding.
+- Realtime and bus callbacks arrive on a background thread. A guarded realtime
+  sink that touches UI state registers with `onMain = true` (delivered on main,
+  in order); a sink that only hands events to a store stays off main. A bus
+  listener in a composable hops with its `rememberCoroutineScope()`.
+- Guard: `RaftTextLayoutMainThreadGuardTest` (mobile #4925) fails when a
+  background block calls Compose text APIs.
+
 ## Compose ViewModel Lifecycle Rule
 
 This rule prevents a real production crash (white screen on launch).
