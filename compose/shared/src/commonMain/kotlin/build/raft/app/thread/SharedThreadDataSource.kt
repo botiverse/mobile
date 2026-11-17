@@ -5777,25 +5777,6 @@ internal class SharedThreadDataSource(
             ?.takeIf { message -> message.matchesReplyOriginParent(parentChannel, parentMessage) }
     }
 
-    private fun ThreadSnapshot.withReplyParentMessage(
-        parentChannelId: String,
-        parentMessageId: String,
-        parentMessage: Message?
-    ): ThreadSnapshot {
-        val parentChannel = ChannelId(parentChannelId)
-        val targetMessageId = MessageId(parentMessageId)
-        val existingParent =
-            this.parentMessage?.takeIf { message -> message.matchesReplyOriginParent(parentChannel, targetMessageId) }
-                ?: messages.firstOrNull { message -> message.matchesReplyOriginParent(parentChannel, targetMessageId) }
-        if (existingParent != null) {
-            return copy(parentMessage = existingParent)
-        }
-        return parentMessage
-            ?.takeIf { message -> message.matchesReplyOriginParent(parentChannel, targetMessageId) }
-            ?.let { parent -> copy(parentMessage = parent) }
-            ?: this
-    }
-
     private fun ThreadSnapshot.rememberReplyParentMessage(
         parentChannelId: String,
         parentMessageId: String,
@@ -5812,47 +5793,6 @@ internal class SharedThreadDataSource(
             messageResolver.upsertScoped(scopeId, parentChannel, candidate)
         }
         return this
-    }
-
-    private fun Message.needsReplyOriginContextHydration(): Boolean =
-        body.isBlank() && attachments.isEmpty()
-
-    private fun RaftThreadMessageItem.needsReplyOriginContextHydration(): Boolean =
-        body.isBlank() && attachments.isEmpty()
-
-    private fun Message.matchesReplyOriginParent(
-        parentChannelId: ChannelId,
-        parentMessageId: MessageId
-    ): Boolean =
-        id == parentMessageId &&
-            !needsReplyOriginContextHydration() &&
-            (channelId == parentChannelId || threadId == ThreadId(parentChannelId.value))
-
-    private fun ThreadSnapshot.hasRenderableReplyThreadMessages(
-        basePayload: RaftThreadScreenPayload
-    ): Boolean {
-        val parentMessageId =
-            basePayload.parentMessageId?.takeIf { it.isNotBlank() }
-                ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
-                ?: conversation.thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }
-        val replyThreadContentChannelId =
-            basePayload.copy(
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                sourceThreadId =
-                    basePayload.sourceThreadId
-                        ?: conversation.thread?.streamChannelId?.value
-                        ?: conversation.channelId?.value
-                        ?: conversation.threadId.value,
-                streamChannelId =
-                    basePayload.streamChannelId
-                        ?: conversation.thread?.streamChannelId?.value
-                        ?: conversation.channelId?.value
-                        ?: conversation.threadId.value
-            ).replyThreadContentChannelId()
-        return messages.any { message ->
-            message.id.value != parentMessageId &&
-                (replyThreadContentChannelId == null || message.belongsToReplyThreadContent(replyThreadContentChannelId))
-        }
     }
 
     private suspend fun fetchResolvedReplyThreadSnapshot(
