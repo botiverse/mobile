@@ -82,6 +82,15 @@ on:
         description: "Server environment label for the perf.json identity header"
         required: false
         default: "unspecified-ci"
+      # Release pre-login (docs/qa-acceptance/release-prelogin-contract.md): ONLY for an ordinary
+      # case on a release (non-debuggable) APK that scripts/qa/release_prelogin_allowlist.json lists.
+      # JSON: {"case_id":"<case id>","target":{"env":"staging","account_user_id":"…","server_id":"…",
+      # "server_slug":"…","server_name":"…"}} (the account/server Testbed froze; ids only, no secret).
+      # Empty (default): nothing changes; Alpha / password / bootstrap paths keep their meaning.
+      release_prelogin:
+        description: "Release pre-login request JSON (case_id + frozen target); empty = off"
+        required: false
+        default: ""
 # Minimal token scopes: contents to check out, actions to read ANOTHER run's
 # artifacts for the pinned-bits path (403 'Resource not accessible by
 # integration' on the first --apk-run use, run 29546757069). No write scopes.
@@ -507,6 +516,29 @@ jobs:
           QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
         run: bash scripts/qa/stamp_report.sh credential-receipt
 
+      # Release pre-login: decide BEFORE anything drives the app. Refused (not allow-listed, a never
+      # class, a debuggable/Alpha build, a bootstrap case, a bad target) fails here: the case is not
+      # run with a pre-login, and nothing falls back to another login path.
+      - name: Release pre-login plan
+        if: ${{ inputs.release_prelogin != '' }}
+        env:
+          RELEASE_PRELOGIN: ${{ inputs.release_prelogin }}
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+        run: |
+          if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then echo "::error::release pre-login refused: this case uses the bootstrap fixture"; exit 3; fi
+          case_id="$(node -e 'const v=JSON.parse(process.env.RELEASE_PRELOGIN);process.stdout.write(String(v.case_id??""))')"
+          target="$(node -e 'const v=JSON.parse(process.env.RELEASE_PRELOGIN);process.stdout.write(JSON.stringify(v.target??{}))')"
+          printf '%s' "$case_id" | grep -Eq '^[a-z0-9][a-z0-9-]{0,80}$' || { echo "::error::release pre-login refused: bad case_id"; exit 3; }
+          apk="$(find apks -name '*.apk' | head -1)"; test -s "$apk"
+          bt="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          if "$bt/aapt" dump badging "$apk" | grep -q '^application-debuggable'; then dbg=true; else dbg=false; fi
+          case_file="$(grep -lx "id: ${case_id}" docs/qa-acceptance/cases/*.yaml | head -1 || true)"
+          node scripts/qa/release_prelogin.mjs plan --case-id "$case_id" --case-file "$case_file" --target "$target" --build-debuggable "$dbg" --run-case-id "$STAMP_RUN_CASE_ID" --out qa-prelogin
+
+      - name: Build the QA capture browser (release pre-login)
+        if: ${{ inputs.release_prelogin != '' }}
+        run: bash scripts/qa/capture-browser/build.sh "${RUNNER_TEMP}/capture-browser.apk"
+
       - name: Mark pre-claim preparation complete
         if: ${{ inputs.stamp_run_case_id != '' }}
         run: printf '%s' ready_to_claim > "$RUNNER_TEMP/stamp-preclaim-phase"
@@ -565,6 +597,7 @@ jobs:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id || '' }}
           STAMP_URL: ${{ inputs.stamp_run_case_id != '' && secrets.STAMP_URL || '' }}
           STAMP_TOKEN: ${{ inputs.stamp_run_case_id != '' && secrets.STAMP_TOKEN || '' }}
+          QA_RELEASE_PRELOGIN: ${{ inputs.release_prelogin != '' && 'true' || '' }}
         with:
           api-level: 34
           arch: x86_64
@@ -612,7 +645,8 @@ jobs:
             if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then timeout --kill-after=5s 90s node scripts/qa/capture_bootstrap_diagnostics.mjs --out qa-evidence/bootstrap-diagnostics --label ready || true; fi
             # Login phase (#222), before the recorder and the agent: password login types through the emulator console
             # and captures nothing; bootstrap runs record "no login". Only a complete record of this run creates qa-login-ok.
-            rm -f qa-login-ok; PW=true; [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ] && PW=false; node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence && touch qa-login-ok || echo "::error::login phase UNKNOWN: nothing is captured and no evidence is uploaded"
+            # Release pre-login (release_prelogin.mjs; planned above): capture off, the app's own browser login, the frozen server, the app's own readiness receipt.
+            rm -f qa-login-ok; if [ -n "${QA_RELEASE_PRELOGIN:-}" ]; then node scripts/qa/release_prelogin.mjs login --out qa-prelogin --evidence qa-evidence --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --capture-browser-apk "$RUNNER_TEMP/capture-browser.apk" && touch qa-login-ok || echo "::error::release pre-login UNKNOWN: nothing is captured and no evidence is uploaded"; else PW=true; [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ] && PW=false; node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence && touch qa-login-ok || echo "::error::login phase UNKNOWN: nothing is captured and no evidence is uploaded"; fi
             adb logcat -c
             # task #14 perf v1: reset gfxinfo counters and stamp the capture
             # window start before the agent drives the app (record-only,
@@ -631,6 +665,8 @@ jobs:
             adb shell ls /sdcard/qa-rec-*.mp4 2>/dev/null | tr -d '\r' | while read f; do adb pull "$f" qa-evidence/ || true; done
             node scripts/qa/secure_evidence.mjs --dir qa-evidence || true
             evidence_rc=0; bash scripts/qa/stamp_report.sh report-evidence qa-evidence || evidence_rc=$?; echo "$evidence_rc" > qa-evidence/stamp-evidence.rc
+            # Release pre-login cleanup, always (recorder already stopped): the app's own Sign out, the readiness receiver disabled again; then the attempt's outcome.
+            if [ -n "${QA_RELEASE_PRELOGIN:-}" ]; then node scripts/qa/release_prelogin.mjs cleanup --out qa-prelogin --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" || true; node scripts/qa/release_prelogin.mjs verdict --out qa-prelogin --agent-rc qa-evidence/agent-rc.txt || true; fi
             if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then cleanup_rc=0; node scripts/qa/mobile_login_bootstrap.mjs cleanup --response "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" --binding "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" --ready "$RUNNER_TEMP/stamp-bootstrap-ready.json" --outcome completed --output "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" --run-case-id "$STAMP_RUN_CASE_ID" --ci-job-ref "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" || cleanup_rc=$?; rc="$cleanup_rc"; if [ "$cleanup_rc" = "0" ]; then cp "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" qa-evidence/bootstrap-cleanup.json; bash scripts/qa/stamp_report.sh bootstrap-terminal completed "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" || rc=$?; else PKG="$(cat qa-app-package.txt)"; adb shell am force-stop "$PKG" || true; adb shell pm clear "$PKG" || true; rm -f "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" "$RUNNER_TEMP/stamp-bootstrap-ready-${STAMP_RUN_CASE_ID}.json"; fi; echo "$rc" > qa-evidence/bootstrap-terminal.rc; fi
 
       # Required-marker gate: when the case declares production markers that
@@ -672,6 +708,16 @@ jobs:
           path: qa-evidence
           if-no-files-found: warn
 
+      # Non-sensitive by construction (ids, statuses; release_prelogin.mjs withholds them if a QA
+      # secret ever appears), so they upload even when the evidence gate withholds qa-evidence.
+      - name: Upload release pre-login receipts
+        if: ${{ always() && inputs.release_prelogin != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: qa-release-prelogin-receipts
+          path: qa-prelogin
+          if-no-files-found: warn
+
       - name: Report verdict
         # Infrastructure/setup failures are owned exclusively by the final
         # failure handler below so it can cleanup + terminal before closing the
@@ -682,6 +728,7 @@ jobs:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          RELEASE_PRELOGIN: ${{ inputs.release_prelogin }}
         run: |
           set -o pipefail
           rc="$(cat qa-evidence/agent-rc.txt 2>/dev/null || echo 2)"
@@ -708,6 +755,13 @@ jobs:
             echo "Stamp scope/evidence upload failed before teardown: rc=$erc (harness/incomplete, not product FAIL)." >> "$GITHUB_STEP_SUMMARY"
             rc=3
             lifecycle_rc=1
+          fi
+          # Release pre-login: any receipt not good (capture, callback, readiness, cleanup) means the
+          # agent's pass is NOT a product pass (3 = unknown, not a product FAIL).
+          if [ -n "${RELEASE_PRELOGIN}" ]; then
+            prc="$(cat qa-prelogin/outcome.rc 2>/dev/null || echo 3)"
+            echo "Release pre-login outcome: $(cat qa-prelogin/outcome.json 2>/dev/null || echo missing)" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$prc" != "0" ] && [ "$rc" = "0" ]; then rc=3; lifecycle_rc=1; fi
           fi
           trc="$(cat qa-evidence/bootstrap-terminal.rc 2>/dev/null || echo '')"
           if [ -n "$trc" ] && [ "$trc" != "0" ]; then

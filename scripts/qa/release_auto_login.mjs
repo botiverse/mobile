@@ -30,12 +30,14 @@
 //     --capture-browser-apk build/capture-browser.apk [--apk app-release.apk] \
 //     [--env staging|production] [--package build.raft.app] [--out release-auto-login-evidence]
 //     [--strict-cleanup] [--revoke-app-session] [--keep-capture-browser]
+//     [--no-capture] [--defer-app-session] [--phase sign-in|sign-out]
 //     [--scenario scripts/qa/scenarios/<name>.mjs [its options, e.g. --server-name X]]
 //   (or --credential-file <testbed qa-account get --out file>)
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import {
+  DEFERRED_APP_SESSION,
   ENVIRONMENTS,
   assessAppLogout,
   callbackSchemeFor,
@@ -64,6 +66,17 @@ const OUT = option("out", "release-auto-login-evidence");
 const KEEP_STUB = flag("keep-capture-browser");
 const STRICT_CLEANUP = flag("strict-cleanup");
 const REVOKE_APP_SESSION = flag("revoke-app-session");
+// Release pre-login for a Testbed case (scripts/qa/release_prelogin.mjs,
+// docs/qa-acceptance/release-prelogin-contract.md):
+//   --no-capture         no screenshot, UI dump or login log file is written at any step (the
+//                        login phase captures nothing); summary.json still records every step;
+//   --defer-app-session  the app stays signed in for the case; its session is signed out by the
+//                        attempt's own cleanup, a later run with --phase sign-out;
+//   --phase sign-out     no sign-in: only the app's own Sign out (with its bound logout evidence)
+//                        of a session a deferred run left; no credentials needed.
+const NO_CAPTURE = flag("no-capture");
+const DEFER_APP_SESSION = flag("defer-app-session");
+const PHASE = option("phase", "sign-in");
 // Optional: a module whose run(ctx) drives the signed-in app (and the QA account's web session)
 // before cleanup; docs/qa-acceptance/release-auto-login.md "Scenarios".
 const SCENARIO = option("scenario", "");
@@ -81,6 +94,10 @@ const summary = {
   web_host: WEB_URL ? new URL(WEB_URL).host : "",
   strict_cleanup: STRICT_CLEANUP,
   revoke_app_session: REVOKE_APP_SESSION,
+  no_capture: NO_CAPTURE,
+  defer_app_session: DEFER_APP_SESSION,
+  phase: PHASE,
+  screenshots_written: 0,
   steps: [],
 };
 let stepIndex = 0;
@@ -202,6 +219,8 @@ async function typeInto(fieldIndex, value) {
 // ---------- evidence ----------
 fs.mkdirSync(OUT, { recursive: true });
 function evidence(name) {
+  if (NO_CAPTURE) return;
+  summary.screenshots_written += 1;
   const base = path.join(OUT, `step-${String(stepIndex).padStart(2, "0")}-${name}`);
   try {
     fs.writeFileSync(`${base}.png`, adb(["exec-out", "screencap", "-p"], { binary: true, allowFailure: true }));
@@ -293,7 +312,8 @@ const cleanupStatus = {
   browser: "not_changed",
   capture_browser: "not_installed_by_run",
   web_session: "not_opened",
-  app_session: REVOKE_APP_SESSION ? "not_signed_in" : "not_requested",
+  // sign-out phase: a failure status until the Sign out has actually run.
+  app_session: PHASE === "sign-out" ? "not_requested" : REVOKE_APP_SESSION || DEFER_APP_SESSION ? "not_signed_in" : "not_requested",
 };
 const cleanupDetail = {};
 async function cleanupStep(key, body) {
@@ -517,6 +537,7 @@ async function appLogoutEvidence({ logcatCleared }) {
 
 async function revokeAppSession(appMayBeSignedIn) {
   await cleanupStep("app_session", async () => {
+    if (DEFER_APP_SESSION && PHASE === "sign-in") return appMayBeSignedIn ? DEFERRED_APP_SESSION : "not_signed_in";
     if (!REVOKE_APP_SESSION) return "not_requested";
     if (!appMayBeSignedIn) return "not_signed_in";
     let logcatCleared = true;
@@ -588,7 +609,23 @@ async function runScenario(webSession) {
 }
 
 // ---------- the flow ----------
+// --phase sign-out: the app's own Sign out of the session a --defer-app-session run left signed in
+// (for the Testbed case). No credentials, no browser change, no install; the device steps below
+// therefore record "not_changed" / "not_installed_by_run" unless something is left over.
+async function signOutPhase() {
+  if (!REVOKE_APP_SESSION) stop("--phase sign-out needs --revoke-app-session");
+  try {
+    await revokeAppSession(true);
+  } finally {
+    await cleanupDevice();
+    summary.cleanup = { ...cleanupStatus, ...cleanupDetail };
+  }
+}
+
 async function main() {
+  if (!["sign-in", "sign-out"].includes(PHASE)) stop(`unknown --phase ${PHASE}; use sign-in|sign-out`);
+  if (PHASE === "sign-out") return signOutPhase();
+  if (DEFER_APP_SESSION && REVOKE_APP_SESSION) stop("--defer-app-session and --revoke-app-session exclude each other in the sign-in phase");
   if (!preset && !(option("web-url") && option("api-url"))) stop(`unknown --env ${ENV_NAME}; use staging|production or pass --web-url and --api-url`);
   if (!STUB_APK && !shell(`pm path ${STUB_PKG}`, { allowFailure: true }).trim()) stop("--capture-browser-apk is required (build it with scripts/qa/capture-browser/build.sh)");
   const account = credentials();
@@ -717,6 +754,8 @@ async function main() {
       };
       redact.add(webSession.accessToken);
       redact.add(webSession.refreshToken);
+      // Non-secret: the pre-login compares it with the account Testbed froze for the attempt.
+      summary.account_user_id = webSession.userId;
 
       const described = await web("GET", `auth/app-login/requests/${encodeURIComponent(requestId)}`, { token: webSession.accessToken });
       if (described.status !== 200) stop(`the app-login request is not usable (HTTP ${described.status} ${described.json?.code ?? ""})`);
@@ -791,7 +830,8 @@ async function main() {
     await signOutWebSession(webSession);
     try { logcat?.kill("SIGTERM"); } catch {}
     if (fs.existsSync(logcatFile)) {
-      fs.writeFileSync(path.join(OUT, "logcat-app-login.txt"), redact(fs.readFileSync(logcatFile, "utf8")));
+      // --no-capture: the login window's log lines are read for the verdict only, never kept.
+      if (!NO_CAPTURE) fs.writeFileSync(path.join(OUT, "logcat-app-login.txt"), redact(fs.readFileSync(logcatFile, "utf8")));
       fs.rmSync(logcatFile);
     }
     await revokeAppSession(callbackSent);
@@ -803,15 +843,15 @@ async function main() {
 let signedIn = false;
 main()
   .then(() => {
-    signedIn = true;
-    log("signed in");
+    signedIn = PHASE === "sign-in";
+    log(signedIn ? "signed in" : "sign-out phase finished");
   })
   .catch((error) => {
     summary.error = redact(error instanceof Stop ? error.message : error.stack ?? error.message);
     console.error(`[release-auto-login] FAILED: ${summary.error}`);
   })
   .finally(() => {
-    const outcome = runOutcome({ signedIn, cleanup: cleanupStatus, strict: STRICT_CLEANUP });
+    const outcome = runOutcome({ signedIn, cleanup: cleanupStatus, strict: STRICT_CLEANUP, deferAppSession: DEFER_APP_SESSION, phase: PHASE });
     summary.result = outcome.result;
     summary.cleanup_ok = outcome.cleanupOk;
     summary.cleanup_failures = outcome.cleanupFailures;
@@ -819,7 +859,8 @@ main()
       const list = outcome.cleanupFailures.map((f) => `${f.step}=${f.status}`).join(", ");
       console.error(`[release-auto-login] cleanup incomplete: ${list}${STRICT_CLEANUP ? " (strict: failing the run)" : ""}`);
     }
-    process.exitCode = outcome.exitCode || (scenarioFailed ? 1 : 0);
+    process.exitCode = outcome.exitCode || (scenarioFailed || (PHASE === "sign-out" && summary.error) ? 1 : 0);
+    if (PHASE === "sign-out" && summary.error) summary.result = "cleanup_failed";
     if (SCENARIO) summary.scenario_result = summary.scenario?.result ?? (scenarioFailed ? "fail" : "pass");
     fs.writeFileSync(path.join(OUT, "summary.json"), `${redact(JSON.stringify(summary, null, 2))}\n`);
   });

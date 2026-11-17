@@ -1,0 +1,128 @@
+package build.raft.app.core.data.auth
+
+import build.raft.app.data.StoredAuthServer
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthUser
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.w3c.dom.Element
+
+/** Fake values only: no real account, server or token. */
+class QaReleaseReadinessReceiptTest {
+    private val attemptId = "pla_" + "0a".repeat(8)
+    private val nonce = "ab".repeat(16)
+    private val request = requireNotNull(QaReleaseReadinessRequest.parse(attemptId, nonce))
+
+    private fun session(selectedServerId: String? = "srv-fake-1", selectedServerSlug: String? = null) =
+        StoredAuthSession(
+            user = StoredAuthUser(id = "usr-fake-1", email = "fake@example.invalid", displayName = "Fake Person"),
+            accessToken = "fake-access-token-value",
+            refreshToken = "fake-refresh-token-value",
+            selectedServerId = selectedServerId,
+            selectedServerSlug = selectedServerSlug,
+            servers =
+                listOf(
+                    StoredAuthServer(id = "srv-fake-0", name = "Other", slug = "other-fake"),
+                    StoredAuthServer(id = "srv-fake-1", name = "Fake", slug = "fake-slug")
+                )
+        )
+
+    private fun receipt(qaSession: QaReadinessSession?) =
+        buildQaReleaseReadinessReceipt(
+            request = request,
+            session = qaSession,
+            packageName = "build.raft.app",
+            versionName = "1.27.0",
+            versionCode = 1270001,
+            pid = 4242,
+            processStartTicks = "987654"
+        )
+
+    @Test
+    fun receiptCarriesAttemptBindingSessionServerBuildAndProcess() {
+        val text = receipt(session().toQaReadinessSession())
+        assertEquals(
+            "{\"contract\":\"raft-qa-release-readiness/v1\",\"attempt_id\":\"$attemptId\",\"nonce\":\"$nonce\"," +
+                "\"package\":\"build.raft.app\",\"version_name\":\"1.27.0\",\"version_code\":1270001," +
+                "\"pid\":4242,\"process_start_ticks\":\"987654\",\"signed_in\":true,\"user_id\":\"usr-fake-1\"," +
+                "\"selected_server_id\":\"srv-fake-1\",\"selected_server_slug\":\"fake-slug\"}",
+            text
+        )
+    }
+
+    @Test
+    fun receiptNeverCarriesTokensEmailOrName() {
+        val text = receipt(session().toQaReadinessSession())
+        listOf("fake-access-token-value", "fake-refresh-token-value", "fake@example.invalid", "Fake Person", "token", "cookie", "email")
+            .forEach { assertFalse("receipt must not contain $it", text.contains(it, ignoreCase = true)) }
+    }
+
+    @Test
+    fun onlyTheStoredSelectionCountsNotTheFirstServerFallback() {
+        val chooser = session(selectedServerId = null).toQaReadinessSession()
+        assertNull(chooser.selectedServerId)
+        assertNull(chooser.selectedServerSlug)
+        assertTrue(receipt(chooser).contains("\"selected_server_id\":null"))
+        // A stored slug wins over the server list.
+        assertEquals("stored-slug", session(selectedServerSlug = "stored-slug").toQaReadinessSession().selectedServerSlug)
+    }
+
+    @Test
+    fun signedOutReportsNoIds() {
+        val text = receipt(null)
+        assertTrue(text.contains("\"signed_in\":false,\"user_id\":null,\"selected_server_id\":null"))
+    }
+
+    @Test
+    fun requestNeedsAWellFormedAttemptIdAndFreshNonce() {
+        assertNotNull(QaReleaseReadinessRequest.parse(attemptId, nonce))
+        assertNull(QaReleaseReadinessRequest.parse(null, nonce))
+        assertNull(QaReleaseReadinessRequest.parse(attemptId, null))
+        assertNull(QaReleaseReadinessRequest.parse("run-1", nonce))
+        assertNull(QaReleaseReadinessRequest.parse(attemptId, "short"))
+        assertNull(QaReleaseReadinessRequest.parse(attemptId, "\"},\"user_id\":\"x" + "a".repeat(32)))
+    }
+
+    @Test
+    fun procStatStartTicksMatchesTheScriptsField22() {
+        // pid (comm with spaces and a ')' ) state ppid ... field 22 = starttime.
+        val stat = "4242 (build.raft) app) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 987654 20 21"
+        assertEquals("987654", parseProcStatStartTicks(stat))
+        assertNull(parseProcStatStartTicks("garbage"))
+    }
+
+    @Test
+    fun manifestKeepsTheReceiverOffByDefaultAndShellOnly() {
+        val root =
+            DocumentBuilderFactory.newInstance()
+                .apply { isNamespaceAware = false }
+                .newDocumentBuilder()
+                .parse(locate("src/main/AndroidManifest.xml"))
+                .documentElement
+        val receivers = root.getElementsByTagName("receiver")
+        val receiver =
+            (0 until receivers.length)
+                .map { receivers.item(it) as Element }
+                .single { it.getAttribute("android:name") == ".core.data.auth.QaReleaseReadinessReceiver" }
+        assertEquals("false", receiver.getAttribute("android:enabled"))
+        assertEquals("android.permission.DUMP", receiver.getAttribute("android:permission"))
+        assertEquals(0, receiver.getElementsByTagName("intent-filter").length)
+    }
+
+    private fun locate(relativePath: String): File {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
+        repeat(8) {
+            val candidate = File(current, relativePath)
+            if (candidate.isFile) return candidate
+            File(current, "androidApp/$relativePath").takeIf { it.isFile }?.let { return it }
+            current = current.parentFile ?: return@repeat
+        }
+        error("Unable to locate $relativePath from ${System.getProperty("user.dir")}")
+    }
+}

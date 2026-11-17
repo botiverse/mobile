@@ -4,7 +4,7 @@
 // exits 0). Idempotent, so running it twice is harmless.
 //
 // Valid login record of this run (login_phase.mjs readRecord):
-//   password login: log lines (logcat*, system-log*) are kept only when their device
+//   password login (and the release pre-login, mode "release-prelogin"): log lines (logcat*, system-log*) are kept only when their device
 //     timestamp is strictly after login_end; a line at the same millisecond, a line in
 //     another format or without a timestamp is dropped. .xcresult bundles (opaque) go.
 //   no login: any sign-in line in the text evidence (web_login_attempt / app_login_complete)
@@ -45,7 +45,7 @@ export function gate(dir, env = process.env) {
   const { ok, record, reason } = readRecord(dir, env);
   let why = ok ? null : reason;
   const files = () => walk(dir).filter((f) => !KEEP.has(path.relative(dir, f)));
-  if (!why && record.mode === "password") {
+  if (!why && (record.mode === "password" || record.mode === "release-prelogin")) {
     for (const f of files()) {
       if (f.endsWith(".xcresult")) fs.rmSync(f, { recursive: true, force: true });
       else if (LOG_FILE.test(path.basename(f))) fs.writeFileSync(f, linesAfter(fs.readFileSync(f, "utf8"), record.login_end));

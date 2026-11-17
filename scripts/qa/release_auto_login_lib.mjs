@@ -108,10 +108,18 @@ export const CLEANUP_OK = {
   app_session: ["app_reported_server_logout_2xx", "not_signed_in"],
 };
 
+/**
+ * `--defer-app-session` (the release pre-login, scripts/qa/release_prelogin.mjs): the app must stay
+ * signed in for the Testbed case that follows, so its session is signed out by that attempt's own
+ * cleanup (`--phase sign-out`). Only then does this status count as done for the sign-in run.
+ */
+export const DEFERRED_APP_SESSION = "deferred_to_case_cleanup";
+
 /** Which cleanup steps failed, and whether the run may still exit 0. */
-export function summarizeCleanup(cleanup = {}) {
+export function summarizeCleanup(cleanup = {}, { deferAppSession = false } = {}) {
+  const okFor = (key) => (key === "app_session" && deferAppSession ? [...CLEANUP_OK[key], DEFERRED_APP_SESSION] : CLEANUP_OK[key]);
   const failures = Object.keys(CLEANUP_OK)
-    .filter((key) => !CLEANUP_OK[key].includes(cleanup[key]))
+    .filter((key) => !okFor(key).includes(cleanup[key]))
     .map((key) => ({ step: key, status: cleanup[key] ?? "missing" }));
   return { ok: failures.length === 0, failures };
 }
@@ -119,9 +127,15 @@ export function summarizeCleanup(cleanup = {}) {
 /**
  * The run's result and exit code. Sign-in failing is always a failure. With strict cleanup (the
  * Testbed mode) a signed-in run whose cleanup did not fully succeed also exits non-zero.
+ * `phase: "sign-out"` (no sign-in, only the app's own Sign out of a deferred session): "signed_out"
+ * when every cleanup step succeeded, else "cleanup_failed".
  */
-export function runOutcome({ signedIn, cleanup, strict }) {
-  const { ok, failures } = summarizeCleanup(cleanup);
+export function runOutcome({ signedIn, cleanup, strict, deferAppSession = false, phase = "sign-in" }) {
+  if (phase === "sign-out") {
+    const { ok, failures } = summarizeCleanup(cleanup);
+    return { result: ok ? "signed_out" : "cleanup_failed", exitCode: ok ? 0 : 1, cleanupOk: ok, cleanupFailures: failures };
+  }
+  const { ok, failures } = summarizeCleanup(cleanup, { deferAppSession });
   if (!signedIn) return { result: "failed", exitCode: 1, cleanupOk: ok, cleanupFailures: failures };
   if (!ok && strict) return { result: "cleanup_failed", exitCode: 1, cleanupOk: ok, cleanupFailures: failures };
   return { result: "signed_in", exitCode: 0, cleanupOk: ok, cleanupFailures: failures };

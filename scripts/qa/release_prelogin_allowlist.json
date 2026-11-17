@@ -1,0 +1,16 @@
+{
+  "contract": "raft-release-prelogin-allowlist/v1",
+  "_doc": "docs/qa-acceptance/release-prelogin-contract.md. A case is pre-logged-in on a release build ONLY when listed under cases with intent 'ordinary'. 'never' cases are refused even if listed. Adding a case is a reviewed change.",
+  "cases": {
+    "channel-switch-navigation": {
+      "intent": "ordinary",
+      "class": "ordinary",
+      "note": "Proposed single staging validation case (read-only, one server). Pending final review with Argus."
+    }
+  },
+  "never": {
+    "login-email-password": "login-ui",
+    "server-switch": "cross-server",
+    "server-create": "server-create"
+  }
+}

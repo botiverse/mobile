@@ -143,6 +143,14 @@ else `QA_TEST_EMAIL` / `QA_TEST_PASSWORD`. The account must not have two-step ve
 Evidence (`release-auto-login-evidence`): `summary.json`, a screenshot + UI dump per step,
 `logcat-app-login.txt` (only the `SlockAppLogin` tag, masked).
 
+## As a pre-login for Testbed cases
+
+`scripts/qa/release_prelogin.mjs` runs this script in two halves around an allow-listed ordinary
+Testbed case on a release build: `--no-capture --defer-app-session --strict-cleanup` to sign in
+(no screenshot, UI dump or login log written; the app stays signed in, `app_session:
+deferred_to_case_cleanup`), and later `--phase sign-out --revoke-app-session --strict-cleanup` for
+the app's own Sign out. See [release-prelogin-contract.md](release-prelogin-contract.md).
+
 ## Scenarios
 
 `--scenario scripts/qa/scenarios/<name>.mjs` (workflow inputs `scenario` + `scenario_args`) runs a
