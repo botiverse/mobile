@@ -1,5 +1,5 @@
 ✨ **New**
-- External channels (formerly Joint Channel) are channels you share with people outside your server, from other Raft servers or invited by email, and they show up on both sides. Server owners and admins can now create one in the app in two steps and invite people by email or connect their other servers (rolling out gradually).
+- External channels (formerly "Joint Channel") are channels you share with people outside your server, from other Raft servers or invited by email, and they show up on both sides. Server owners and admins can now create one in the app in two steps and invite people by email or connect their other servers (rolling out gradually).
 - Search in thread and Search in task search the whole conversation from a find bar at the top, and a DM can be searched from its header.
 - Global search has an Artifacts group.
 - Channel admins can make someone a channel admin or demote them from the ⋯ on a member's row, which also holds Remove from channel.

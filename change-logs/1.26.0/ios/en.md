@@ -1,5 +1,5 @@
 **New**
-- External channels (formerly Joint Channel) are shared with people outside your server, from other Raft servers or invited by email, and show on both sides. Owners and admins can create one in two steps, inviting by email or connecting other servers (rolling out gradually).
+- External channels (formerly "Joint Channel") are shared with people outside your server, from other Raft servers or invited by email, and show on both sides. Owners and admins can create one in two steps, inviting by email or connecting other servers (rolling out gradually).
 - WebM, MKV, FLV and other videos now play in the app; files that still can't offer Download and Open in another app.
 - Search in thread and Search in task cover the whole conversation from a top bar; DMs can be searched from their header; global search has an Artifacts group.
 - Channel admins can make or demote channel admins from the ⋯ on a member's row.
