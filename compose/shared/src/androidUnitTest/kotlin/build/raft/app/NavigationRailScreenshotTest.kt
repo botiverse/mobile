@@ -57,6 +57,18 @@ class NavigationRailScreenshotTest {
     @Test
     fun navigationRailHelpDark() = capture("shell.navigation-rail.help.dark", RaftAppAppearance.Dark, 1280, helpOpen = true)
 
+    /** The rail's Assistant (web OttieRailAvatar, slock #14307): Ottie's 28dp face, last of the tabs. */
+    @Test
+    fun navigationRailAssistantLight() = capture("shell.navigation-rail.assistant", RaftAppAppearance.Light, 1280, assistant = true)
+
+    @Test
+    fun navigationRailAssistantDark() = capture("shell.navigation-rail.assistant.dark", RaftAppAppearance.Dark, 1280, assistant = true)
+
+    /** Its page beside the rail: the Assistant is the selected sticker, the face in full colour. */
+    @Test
+    fun navigationRailAssistantSelected() =
+        capture("shell.navigation-rail.assistant-selected", RaftAppAppearance.Light, 1280, assistant = true, inlinePage = AppShellRailAssistantKey)
+
     @Test
     @Config(qualifiers = "w768dp-h1024dp-mdpi")
     fun ipadPortrait768Light() = capture("shell.navigation-rail.ipad-768", RaftAppAppearance.Light, 768)
@@ -90,7 +102,14 @@ class NavigationRailScreenshotTest {
             RaftServerSwitcherItem(id = "s5", name = "Stamp", slug = "stamp", activityUnreadCount = 0L),
         )
 
-    private fun capture(name: String, appearance: RaftAppAppearance, windowWidth: Int, helpOpen: Boolean = false) =
+    private fun capture(
+        name: String,
+        appearance: RaftAppAppearance,
+        windowWidth: Int,
+        helpOpen: Boolean = false,
+        assistant: Boolean = false,
+        inlinePage: String? = null,
+    ) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
                 remember {
@@ -121,6 +140,8 @@ class NavigationRailScreenshotTest {
                                     labelFor = { labels.getValue(it) },
                                     activityUnreadCount = 3,
                                     moreAttention = attention,
+                                    assistant = assistant,
+                                    inlinePageRailId = appShellRailInlinePageRailId(inlinePage),
                                 ),
                             onSelect = {},
                             modifier = Modifier.fillMaxHeight(),

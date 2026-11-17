@@ -92,14 +92,33 @@ internal fun rememberHomeAssistantRow(
     serverRole: String?,
 ): (() -> Unit)? {
     source ?: return null
-    val server = serverId.trim().takeIf(String::isNotEmpty)
+    val shown = rememberAssistantEntryShown(source.store, source.featureFlags, source.memory, serverId, userId, serverRole)
+    return if (shown) source.onOpen else null
+}
+
+/**
+ * Whether an Assistant entry shows for [serverId] (web `useRememberedAssistantShown`, shared by
+ * the phone Home's row and the wide rail's Assistant tab): "my assistant" is ready (not a guest,
+ * the flag on, the API says enabled), with or without an assistant yet; until it answers, as the
+ * last time ([memory]); each known answer is remembered, except while the flag could not be read.
+ */
+@Composable
+internal fun rememberAssistantEntryShown(
+    store: SharedMyAssistantStore,
+    featureFlags: SharedServerFeatureFlags,
+    memory: HomeAssistantEntryMemory,
+    serverId: String?,
+    userId: String?,
+    serverRole: String?,
+): Boolean {
+    val server = serverId?.trim()?.takeIf(String::isNotEmpty)
     val user = userId?.trim()?.takeIf(String::isNotEmpty)
-    val gate = rememberMyAssistantGate(source.store, source.featureFlags, server, user, assistantViewerIsGuest(serverRole))
+    val gate = rememberMyAssistantGate(store, featureFlags, server, user, assistantViewerIsGuest(serverRole))
     val answer = homeAssistantEntryAnswer(gate.state)
-    val remembered = remember(source.memory, user, server) { source.memory.read(user, server) }
+    val remembered = remember(memory, user, server) { memory.read(user, server) }
     val remembers = homeAssistantEntryRemembers(answer, gate.flagUndetermined)
-    LaunchedEffect(source.memory, user, server, answer, remembers) {
-        if (remembers && answer != null) source.memory.write(user, server, answer)
+    LaunchedEffect(memory, user, server, answer, remembers) {
+        if (remembers && answer != null) memory.write(user, server, answer)
     }
-    return if (homeAssistantEntryShown(answer, remembered)) source.onOpen else null
+    return homeAssistantEntryShown(answer, remembered)
 }

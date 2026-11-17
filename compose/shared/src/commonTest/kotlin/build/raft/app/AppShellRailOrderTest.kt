@@ -10,7 +10,7 @@ class AppShellRailOrderTest {
     @Test fun railFollowsThePhoneBarOrder() {
         // The rail's entries as the shell builds them: the tab keys, then the inline Search entry.
         assertEquals(
-            listOf("home", "activity", "tasks", AppShellRailSearchKey, "artifacts", "members", "computers", "apps"),
+            listOf("home", "activity", "tasks", AppShellRailSearchKey, "artifacts", "members", "computers", "apps", "assistant"),
             order(*(AppShellRailTabKeys + AppShellRailSearchKey).toTypedArray()),
         )
         // The phone bar's own destinations, Search included, are in the same relative order.
@@ -40,6 +40,23 @@ class AppShellRailOrderTest {
         assertEquals(listOf("home", "activity", "tasks", "members", "computers", "apps"), drawn(saved, artifacts = false))
         val resaved = build.raft.app.data.raftRailTabOrderWithVisibleOrder(saved, withoutTab.mapNotNull(::raftRailTabIdForKey))
         assertEquals(1, resaved.indexOf("artifacts"))
+    }
+
+    /** web RAIL_TAB_IDS: the assistant is the last tab, drawn only where its entry shows. */
+    @Test fun theAssistantIsLastAndOnlyWhereItShows() {
+        fun drawn(order: List<String>, assistant: Boolean) =
+            appShellRailTabs(selectedTab = "home", labelFor = { it }, assistant = assistant)
+                .orderedLikePhoneBar { it.key }
+                .orderedLikeRailTabOrder(order)
+                .map { it.key }
+        val default = build.raft.app.data.normalizeRaftRailTabOrder(null)
+        assertEquals(listOf("home", "activity", "tasks", "members", "computers", "apps", "assistant"), drawn(default, assistant = true))
+        assertEquals(listOf("home", "activity", "tasks", "members", "computers", "apps"), drawn(default, assistant = false))
+        // Dragged to the top here, it keeps that place; a server without it draws the rest unchanged.
+        val dragged = listOf("assistant", "home", "activity", "tasks", "members", "computers", "apps")
+        val saved = build.raft.app.data.raftRailTabOrderWithVisibleOrder(default, dragged.mapNotNull(::raftRailTabIdForKey))
+        assertEquals(dragged, drawn(saved, assistant = true))
+        assertEquals(dragged - "assistant", drawn(saved, assistant = false))
     }
 
     @Test fun dmsStayBesideHome() {

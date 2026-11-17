@@ -25,7 +25,7 @@ import kotlinx.serialization.json.Json
 
 /**
  * The web's rail tab ids in their default order (slock `RAIL_TAB_IDS`). `assistant` (the personal
- * assistant) has no rail entry in the app: it keeps its place in the order without being drawn.
+ * assistant) is drawn only where its entry shows; elsewhere it keeps its place without being drawn.
  */
 internal val RaftRailTabIds: List<String> =
     listOf("search", "chat", "activity", "tasks", "artifacts", "members", "computers", "apps", "assistant")
@@ -56,7 +56,7 @@ internal fun normalizeRaftRailTabOrder(order: List<String>?): List<String> {
 /**
  * The full order after the rail showed [visibleOrder] (a reorder of the ids it draws): the drawn
  * ids take the drawn ids' slots in [fullOrder] in their new order, so the tabs the app doesn't
- * draw (the assistant; Search while the top bar holds it) keep their place.
+ * draw (the assistant where it is off; Search while the top bar holds it) keep their place.
  */
 internal fun raftRailTabOrderWithVisibleOrder(fullOrder: List<String>, visibleOrder: List<String>): List<String> {
     val full = normalizeRaftRailTabOrder(fullOrder)

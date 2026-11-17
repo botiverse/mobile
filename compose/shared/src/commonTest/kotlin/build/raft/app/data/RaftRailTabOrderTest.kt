@@ -65,7 +65,7 @@ class RaftRailTabOrderTest {
 
     @Test
     fun `a move of the drawn tabs keeps the undrawn ones in their place`() {
-        // The top bar holds Search and the app has no assistant: the rail draws the other six.
+        // The top bar holds Search and the assistant is off here: the rail draws the other six.
         val full = listOf("search", "chat", "activity", "tasks", "members", "computers", "apps", "assistant")
         assertEquals(
             // Artifacts (not drawn on this server) keeps its slot: the fifth.

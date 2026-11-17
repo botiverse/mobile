@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
@@ -621,6 +622,9 @@ private fun raftRailSidebarToggleItem(toggle: RaftRailSidebarToggle): RaftAppRai
         shortcutLabel = toggle.shortcutLabel,
     )
 
+/** Web `OttieRailAvatar` (default size): Ottie's face on the rail, 28dp. */
+internal val RaftRailOttieFaceSize = 28.dp
+
 /** The screen-reader words for a rail item's dot, by its destination's badge source. */
 @Composable
 private fun raftNavRailAttentionDescriptions(): (String) -> String {
@@ -638,7 +642,11 @@ private fun raftNavRailAttentionDescriptions(): (String) -> String {
 
 @Composable
 private fun RaftNavigationRailIcon(item: RaftBottomTabItemPayload, glyph: RaftConversationKindGlyph?, ink: Color) {
-    if (glyph != null) {
+    if (raftNavShowsOttie(RaftNavPresentation.Rail, item.key)) {
+        // web OttieRailAvatar: a 28dp face where the other items have a 20dp glyph, centred on
+        // the icon box and overhanging it; in full colour in either sticker (not the item's ink).
+        HomeAssistantFace(Modifier.requiredSize(RaftRailOttieFaceSize), size = RaftRailOttieFaceSize)
+    } else if (glyph != null) {
         // web LeftRail: Chat is raft-ui `ChatIcon`, not a Lucide glyph.
         RaftConversationKindIcon(glyph, size = RaftAppRailDefaults.IconSize, color = ink)
     } else {

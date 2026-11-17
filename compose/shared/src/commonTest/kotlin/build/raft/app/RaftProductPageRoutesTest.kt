@@ -64,6 +64,8 @@ class RaftProductPageRoutesTest {
         assertNull(appShellNavDestination("help"))
         // Nor Artifacts (NAV_DESTINATIONS has no `artifacts` yet).
         assertNull(appShellNavDestination("artifacts"))
+        // The rail's Assistant (web LeftRail `trackNavEntrySelected("assistant", "rail", …)`).
+        assertEquals(RaftNavDestination.Assistant, appShellNavDestination("assistant"))
         // Every other phone bar slot and rail entry has a destination.
         (AppShellPhoneBottomBarKeys + AppShellRailTabKeys - "apps" - "artifacts").forEach { key ->
             assertEquals(true, appShellNavDestination(key) != null, key)
