@@ -26,13 +26,8 @@ import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedMessageTranslationStore
-import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.model.MemberProfile
-import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
-import build.raft.app.markdown.ThreadMarkdownTag
-import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.model.ChannelId
-import build.raft.app.model.MessageId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ServerId
 import androidx.compose.runtime.Composable
@@ -90,7 +85,7 @@ import kotlin.uuid.Uuid
  * the flat parameter list had to be grouped (Android dex verifier rejects the
  * un-minified giant composable frame on API 34/36 builds).
  */
-private data class ThreadPageContentData(
+internal data class ThreadPageContentData(
     val lounge: ThreadPageLounge? = null,
     val agentFollowersHeader: @Composable () -> Unit,
     /** Task v2: the task conversation's status / assignee / follow bar under the header; null elsewhere. */
@@ -168,7 +163,7 @@ private data class ThreadPageContentData(
 )
 
 /** task #346: callback payload of [ThreadPageContent]. See ThreadPageContentData. */
-private class ThreadPageContentCallbacks(
+internal class ThreadPageContentCallbacks(
     val scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     val onSelectedTabChanged: (RaftThreadTab) -> Unit,
     val onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
@@ -665,7 +660,8 @@ private fun ThreadPageContentContent(
         )
         onTasksIntent(SharedTasksRouteIntent.Start)
     }
-    var activeModal by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    val activeModalState = remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var activeModal by activeModalState
     // A phone opens the settings as a pushed page (ThreadSettingsPage.kt); a wide window as the drawer.
     val settingsOpensAsPage = rememberThreadSettingsOpensAsPage()
     LaunchedEffect(channelProfileUpdateStatus, activeModal) {
@@ -679,13 +675,16 @@ private fun ThreadPageContentContent(
     // composable scope so the tap handler can route.
     val threadScreenPagerForForwardBundle = LocalActivity.current.getPager() as Pager
     var activeForwardSelectionMode by remember(threadInstanceKey) { mutableStateOf(ThreadForwardSelectionMode.Merged) }
-    var selectedShareMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    val selectedShareMessageIdsState = remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedShareMessageIds by selectedShareMessageIdsState
     // The anchor of Select to here (web selectionStore `anchorId`): the message last added while it
     // stays selected; null once it is deselected or the selection is cleared.
-    var shareSelectionAnchorId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    val shareSelectionAnchorIdState = remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var shareSelectionAnchorId by shareSelectionAnchorIdState
     // Select mode itself, apart from what is selected: as on the web (selectionStore `isActive`), it
     // stays on with nothing selected (the select-all checkbox clears) until × ends it.
-    var shareSelectionMode by remember(threadInstanceKey) { mutableStateOf(false) }
+    val shareSelectionModeState = remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareSelectionMode by shareSelectionModeState
     var forwardMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     val selectedShareBounds = remember(threadInstanceKey) { mutableMapOf<String, ThreadShareCaptureRect>() }
     var sharePreviewImage by remember(threadInstanceKey) { mutableStateOf<ThreadSharePreviewImage?>(null) }
@@ -714,14 +713,19 @@ private fun ThreadPageContentContent(
             shareImageRendering = false
         }
     }
-    var shareCaptureMode by remember(threadInstanceKey) { mutableStateOf(false) }
-    var shareCaptureTargetMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var shareCaptureAnchorBeforeTarget by remember(threadInstanceKey) { mutableStateOf(false) }
-    var shareCaptureTailPaddingActive by remember(threadInstanceKey) { mutableStateOf(false) }
+    val shareCaptureModeState = remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareCaptureMode by shareCaptureModeState
+    val shareCaptureTargetMessageIdState = remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var shareCaptureTargetMessageId by shareCaptureTargetMessageIdState
+    val shareCaptureAnchorBeforeTargetState = remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareCaptureAnchorBeforeTarget by shareCaptureAnchorBeforeTargetState
+    val shareCaptureTailPaddingActiveState = remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareCaptureTailPaddingActive by shareCaptureTailPaddingActiveState
     var shareCaptureViewportBottomPx by remember(threadInstanceKey) { mutableStateOf(0f) }
-    var shareCaptureScrollOffsetPx by remember(threadInstanceKey) {
+    val shareCaptureScrollOffsetPxState = remember(threadInstanceKey) {
         mutableStateOf(ThreadShareCaptureTopScrollOffsetPx)
     }
+    var shareCaptureScrollOffsetPx by shareCaptureScrollOffsetPxState
     // Search in this thread (web ThreadSearchBar): a reply thread's or a task's own bar.
     val threadFind =
         rememberThreadFindController(threadInstanceKey, taskSurface = payload.isTaskConversationSurface())
@@ -740,8 +744,9 @@ private fun ThreadPageContentContent(
     var forwardOperationNonce by remember(threadInstanceKey) { mutableStateOf(0) }
     var forwardNote by remember(threadInstanceKey) { mutableStateOf(TextFieldValue()) }
     var forwardSuccessBanner by remember(threadInstanceKey) { mutableStateOf<ThreadForwardSuccessBanner?>(null) }
-    var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
-    var insertMentionRequest by remember(threadInstanceKey) { mutableStateOf<ThreadComposerInsertMentionRequest?>(null) }
+    val insertMentionRequestNonceState = remember(threadInstanceKey) { mutableStateOf(0) }
+    val insertMentionRequestState = remember(threadInstanceKey) { mutableStateOf<ThreadComposerInsertMentionRequest?>(null) }
+    var insertMentionRequest by insertMentionRequestState
     val shareSelectionActive = shareSelectionMode && selectedTab == RaftThreadTab.Chat
     val selectableShareMessageIds =
         remember(timelineSlice) {
@@ -1170,7 +1175,8 @@ private fun ThreadPageContentContent(
             path = threadShareFragmentsParam(messageFragments)
         )
     }
-    var composerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(0f) }
+    val composerKeyboardInsetDpState = remember(threadInstanceKey) { mutableStateOf(0f) }
+    var composerKeyboardInsetDp by composerKeyboardInsetDpState
     val composerBottomSafeArea = raftBottomSafeAreaPadding()
     val composerKeyboardInsetExcludesBottomSafeArea = raftKeyboardInsetExcludesBottomSafeArea()
     val primaryFooterReady =
@@ -1196,153 +1202,18 @@ private fun ThreadPageContentContent(
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
         }
-    val activeMarkdownTagKey = markdownReferencePendingActionId
-    val openMarkdownTag: (ThreadMarkdownTag, String) -> Unit = openMarkdownTag@{ tag, actionId ->
-        if (tag.kind != ThreadMarkdownTagKind.UserMention && markdownReferencePendingActionId != null) {
-            return@openMarkdownTag
-        }
-        when (tag.kind) {
-            ThreadMarkdownTagKind.UserMention -> {
-                onThreadEvent("openMarkdownTag", tag.label, null, tag.kind.name)
-            }
-            ThreadMarkdownTagKind.Task -> {
-                // `#proj:#7` / `dm:@peer:#7` name the task's conversation; the loaded timeline's own
-                // `#7` may be another conversation's task, so they always resolve by conversation.
-                val taskId =
-                    if (tag.channelName != null || tag.directMessagePeerName != null) {
-                        null
-                    } else {
-                        timelineSlice.findMarkdownTaskId(tag, linkedTasksProjection)
-                    }
-                if (!taskId.isNullOrBlank()) {
-                    onThreadEvent("openTask", taskId, markdownActionId = actionId)
-                } else {
-                    onThreadEvent("openMarkdownTaskNumber", tag.label, markdownActionId = actionId)
-                }
-            }
-            ThreadMarkdownTagKind.Channel -> {
-                onThreadEvent(
-                    "openMarkdownChannel",
-                    tag.channelName ?: tag.label,
-                    tab = tag.kind.name,
-                    markdownActionId = actionId
-                )
-            }
-            ThreadMarkdownTagKind.ChannelThread -> {
-                onThreadEvent(
-                    "openMarkdownThreadRef",
-                    tag.label,
-                    tab = tag.threadShortId,
-                    markdownActionId = actionId
-                )
-            }
-            ThreadMarkdownTagKind.Message -> {
-                onThreadEvent(
-                    "openMarkdownMessageRef",
-                    tag.label,
-                    tab = tag.kind.name,
-                    markdownActionId = actionId
-                )
-            }
-            ThreadMarkdownTagKind.DirectMessage -> {
-                onThreadEvent(
-                    "openMarkdownDirectMessage",
-                    tag.directMessagePeerName ?: tag.label,
-                    tab = tag.kind.name,
-                    markdownActionId = actionId
-                )
-            }
-            ThreadMarkdownTagKind.DirectMessageThread -> {
-                onThreadEvent(
-                    "openMarkdownDirectMessageThreadRef",
-                    tag.directMessagePeerName ?: tag.label,
-                    tab = tag.threadShortId,
-                    markdownActionId = actionId
-                )
-            }
-        }
-    }
-    val openMarkdownUrl: (String) -> Unit = { url ->
-        onThreadEvent("openMarkdownUrl", url, null, null)
-    }
-    val knownMarkdownChannelNames =
-        remember(payload.knownMarkdownChannelNames) {
-            payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet()
-        }
-    val knownMarkdownMentionNames =
-        remember(
-            payload.knownMarkdownMentionNames,
-            payload.members,
-            payload.memberCandidates,
-            payload.originMessage,
-            payload.messages,
-            timelineSlice.messages
-        ) {
-            payload.toKnownMarkdownMentionNameSet(timelineMessages = timelineSlice.messages)
-        }
-    val knownMarkdownDirectMessagePeerNames =
-        remember(
-            payload.knownMarkdownDirectMessagePeerNames,
-            payload.dmPeerName,
-            payload.dmPeerIdentity,
-            payload.surfaceKind,
-            payload.parentSurfaceKind,
-            payload.channelKind,
-            payload.parentChannelKind,
-            payload.members,
-            payload.memberCandidates
-        ) {
-            payload.toKnownMarkdownDirectMessagePeerNameSet()
-        }
-    // The tasks of the conversation being read (Web `taskByChannelNumber` for `taskContextChannelId`):
-    // a bare `#N` chips only for one of them.
-    val loadedMarkdownTaskStatuses = LocalRaftMarkdownTaskStatuses.current
-    val knownMarkdownTaskNumbers =
-        remember(payload.knownMarkdownTaskNumbers, loadedMarkdownTaskStatuses) {
-            payload.toKnownMarkdownTaskNumberSetOrNull() ?: loadedMarkdownTaskStatuses?.keys
-        }
-    val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean =
-        remember(
-            knownMarkdownChannelNames,
-            knownMarkdownMentionNames,
-            knownMarkdownDirectMessagePeerNames,
-            knownMarkdownTaskNumbers
-        ) {
-            { tag ->
-                tag.isKnownThreadMarkdownTag(
-                    knownMarkdownChannelNames,
-                    knownMarkdownMentionNames,
-                    knownMarkdownDirectMessagePeerNames,
-                    knownMarkdownTaskNumbers
-                )
-            }
-        }
-    val markdownTagContextSignature =
-        remember(
-            highlightedMentions,
-            knownMarkdownChannelNames,
-            knownMarkdownMentionNames,
-            knownMarkdownDirectMessagePeerNames,
-            knownMarkdownTaskNumbers
-        ) {
-            threadMarkdownTagContextSignature(
-                highlightedMentions = highlightedMentions,
-                knownChannelNames = knownMarkdownChannelNames,
-                knownMentionNames = knownMarkdownMentionNames,
-                knownDirectMessagePeerNames = knownMarkdownDirectMessagePeerNames,
-                knownTaskNumbers = knownMarkdownTaskNumbers
-            )
-        }
-    // Keyed on the resolved label index (equality), not on the member lists' identity: a
-    // same-content member refresh keeps the lambda, so token plans are not recomputed.
-    val markdownMentionLabels =
-        remember(payload.members, payload.memberCandidates) {
-            threadMarkdownMentionDisplayLabels(payload.members, payload.memberCandidates)
-        }
-    val resolveMarkdownTagLabel =
-        remember(markdownMentionLabels) {
-            { tag: ThreadMarkdownTag -> resolveThreadMarkdownTagDisplayLabel(tag, markdownMentionLabels) }
-        }
+    val markdownTagResolution =
+        threadMarkdownTagResolution(
+            payload = payload,
+            timelineSlice = timelineSlice,
+            linkedTasksProjection = linkedTasksProjection,
+            highlightedMentions = highlightedMentions,
+            markdownReferencePendingActionId = markdownReferencePendingActionId,
+            onThreadEvent = onThreadEvent,
+        )
+    val isMarkdownTagValid = markdownTagResolution.isMarkdownTagValid
+    val markdownTagContextSignature = markdownTagResolution.markdownTagContextSignature
+    val resolveMarkdownTagLabel = markdownTagResolution.resolveMarkdownTagLabel
     val timelineRenderConfig =
         remember(
             payload.backgroundRefreshing,
@@ -1365,226 +1236,50 @@ private fun ThreadPageContentContent(
         }
         onThreadEvent("selectTab", null, null, tab.wireValue)
     }
-    var threadHeaderScrollToTopRequest by remember(threadInstanceKey) { mutableStateOf(0) }
+    val threadHeaderScrollToTopRequestState = remember(threadInstanceKey) { mutableStateOf(0) }
+    var threadHeaderScrollToTopRequest by threadHeaderScrollToTopRequestState
     val renderThreadTabContent: @Composable (RaftThreadTab, Modifier, Boolean) -> Unit =
         { tab, contentModifier, tabActive ->
-        Box(
-            modifier = contentModifier
-                .fillMaxWidth()
-                .background(RaftColor.SurfaceWhite)
-        ) {
-            val unavailableNav = LocalConversationUnavailableNav.current
-            if (renderAccessRetry && unavailableNav != null && isConversationUnavailableErrorCode(payload.errorCode)) {
-                RaftConversationUnavailableState(wide = unavailableNav.wide, onBack = unavailableNav.onBack)
-            } else if (renderAccessRetry) {
-                ThreadStateActionMessage(
-                    title = stringResource(Res.string.thread_error_load),
-                    detail =
-                        accessErrorLabels.forErrorCode(payload.errorCode)
-                            ?: stringResource(Res.string.thread_error_access_resolution),
-                    actionLabel = stringResource(Res.string.common_retry),
-                    onClick = {
-                        onThreadEvent(
-                            threadRetryAction(canonicalAccessResolved),
-                            null,
-                            null,
-                            null
-                        )
-                    }
-                )
-            } else if (accessResolution == ThreadAccessResolution.NoPermission) {
-                ThreadStateMessage(
-                    if (payload.errorServerMessage.isEdgeBlockedMarker()) {
-                        stringResource(Res.string.thread_state_edge_blocked)
-                    } else {
-                        stringResource(Res.string.thread_state_no_permission)
-                    },
-                    if (payload.errorServerMessage.isEdgeBlockedMarker()) {
-                        stringResource(Res.string.error_edge_blocked)
-                    } else {
-                        stringResource(Res.string.thread_error_no_permission)
-                    }
-                )
-            } else if (renderEarlyLoadingShell) {
-                ThreadLoadingState()
-            } else when (tab) {
-                RaftThreadTab.Chat ->
-                    // Rows drop viewer-only previews while "Generate image" rasterizes them.
-                    CompositionLocalProvider(LocalThreadShareCaptureActive provides shareCaptureMode) {
-                    ThreadChatTab(
-                        threadInstanceKey = threadInstanceKey,
-                        routeActive = routeActive && tabActive,
-                        hostForeground = hostForeground,
-                        renderConfig = timelineRenderConfig,
-                        messageBodyTextStyle = messageBodyTextStyle,
-                        timelineSlice = timelineSlice,
-                        replyMetadataByParentId = replyMetadataByParentId,
-                        composerDraftPersistSlice = composerDraftPersistSlice,
-                        composerKeyboardInsetDp = composerKeyboardInsetDp,
-                        linkedTasksProjection = linkedTasksProjection,
-                        taskAssigneeOptions = taskIdentityOptions,
-                        highlightedMentions = highlightedMentions,
-                        agentStatusResolver = agentStatusResolver,
-                        memberAvatarResolver = memberAvatarResolver,
-                        memberModelLabelResolver = memberModelLabelResolver,
-                        inlineReplyParticipantsById = inlineReplyParticipantsById,
-                        pendingActionCardIds = pendingActionCardIds,
-                        pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
-                        attachmentOpenStates = attachmentOpenStates,
-                        writeActionsEnabled = writeActionsEnabled,
-                        currentServerSlug = currentServerSlug,
-                        contentExtrasVisible = contentExtrasVisible,
-                        longMessageCollapseEnabled = longMessageCollapseEnabled,
-                        jumpInputs = jumpInputs,
-                        newMessageMenuEnabled = newMessageMenuEnabled,
-                        inlineSearchVisible = inlineSearchVisible,
-                        isMarkdownTagValid = isMarkdownTagValid,
-                        markdownTagContextSignature = markdownTagContextSignature,
-                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                        activeMarkdownTagKey = activeMarkdownTagKey,
-                        onThreadEvent = onThreadEvent,
-                        onLoadNewer = onLoadNewer,
-                        onJumpToLatest = onJumpToLatest,
-                        onOpenMember = onOpenMemberProfile,
-                        onExternalAuthor = onExternalAuthor,
-                        onMentionAuthor = { message ->
-                            val handle = mentionHandleResolver(message)
-                            if (showComposerForSelectedTab && handle != null) {
-                                insertMentionRequestNonce += 1
-                                insertMentionRequest =
-                                    ThreadComposerInsertMentionRequest(
-                                        nonce = insertMentionRequestNonce,
-                                        handle = handle,
-                                        mention = message.threadAuthorStructuredMention(handle)
-                                    )
-                            } else if (handle == null) {
-                                diagnosticsLogger(
-                                    "thread_direct_mention_rejected reason=canonical_handle_unavailable " +
-                                        "messageId=${message.id} authorId=${message.authorId}"
-                                )
-                            }
-                        },
-                        onOpenMarkdownTag = openMarkdownTag,
-                        onOpenMarkdownUrl = openMarkdownUrl,
-                        diagnosticsLogger = diagnosticsLogger,
-                        onComposerLayoutProbe = onComposerLayoutProbe,
-                        onComposerPixelProbe = onComposerPixelProbe,
-                        shareSelectionActive = shareSelectionActive && !shareCaptureMode,
-                        shareSelectionCaptureActive = shareCaptureMode,
-                        shareSelectionCaptureAnchorMessageId =
-                            shareCaptureTargetMessageId ?: selectedShareMessages.firstOrNull()?.id,
-                        shareSelectionCaptureAnchorBeforeTarget = shareCaptureAnchorBeforeTarget,
-                        shareSelectionCaptureTailPaddingActive = shareCaptureTailPaddingActive,
-                        shareSelectionCaptureScrollOffsetPx = shareCaptureScrollOffsetPx,
-                        headerScrollToTopRequest = threadHeaderScrollToTopRequest,
-                        selectedShareMessageIds = selectedShareMessageIds,
-                        shareSelectToHere =
-                            remember(shareSelectionAnchorId, selectableShareMessageIds) {
-                                ThreadShareSelectToHere(
-                                    anchorId = shareSelectionAnchorId,
-                                    selectableIds = selectableShareMessageIds,
-                                    onSelectRange = { ids, edgeId ->
-                                        if (shareSelectionMode) {
-                                            selectedShareMessageIds = selectedShareMessageIds + ids
-                                            shareSelectionAnchorId = edgeId
-                                        }
-                                    },
-                                )
-                            },
-                        onShareSelectionBounds = { messageId, rect ->
-                            if (rect == null) {
-                                selectedShareBounds.remove(messageId)
-                            } else {
-                                selectedShareBounds[messageId] = rect
-                                diagnosticsLogger(
-                                    "thread_share_bounds_update messageId=$messageId " +
-                                        "x=${rect.x} y=${rect.y} width=${rect.width} height=${rect.height}"
-                                )
-                            }
-                        },
-                        onEnterShareSelection = { messageId ->
-                            if (!payload.isRetractedMessage(messageId)) {
-                                selectedShareMessageIds = setOf(messageId)
-                                shareSelectionAnchorId = messageId
-                                shareSelectionMode = true
-                                activeModal = null
-                            }
-                        },
-                        onForwardMessage = { messageId ->
-                            openForwardPickerForMessageIds(setOf(messageId))
-                        },
-                        onToggleShareSelection = { messageId ->
-                            if (messageId in selectedShareMessageIds) {
-                                selectedShareMessageIds = selectedShareMessageIds - messageId
-                                // Deselecting the anchor leaves none (a range from it would re-add it).
-                                if (shareSelectionAnchorId == messageId) shareSelectionAnchorId = null
-                            } else if (!payload.isRetractedMessage(messageId)) {
-                                // RFC 077 PR 2b: nothing of a retracted message can be shared.
-                                selectedShareMessageIds = selectedShareMessageIds + messageId
-                                shareSelectionAnchorId = messageId
-                            }
-                        },
-                        onOpenForwardBundle = { messageId ->
-                            val serverId = forwardServerId?.value
-                            val channelId = payload.resolveThreadRouteIdentity().timelineChannelId
-                            if (serverId != null && channelId != null) {
-                                threadScreenPagerForForwardBundle.openThreadForwardBundlePage(
-                                    ThreadForwardBundleRoute(
-                                        serverId = ServerId(serverId),
-                                        channelId = ChannelId(channelId),
-                                        messageId = MessageId(messageId)
-                                    )
-                                )
-                            } else {
-                                diagnosticsLogger(
-                                    "thread_forward_bundle_open_rejected reason=route_identity_missing " +
-                                        "messageId=$messageId serverId=${serverId.orEmpty()} channelId=${channelId.orEmpty()}"
-                                )
-                            }
-                        },
-                        translationStore = translationStore,
-                        onThreadContentReady = onFirstContentReady,
-                        onVisibleReadTailChange = onVisibleReadTailChange,
-                        onViewportFollowsLatestChange = onViewportFollowsLatestChange,
-                        visibleReadTailIndex = visibleReadTailIndex,
-                        adaptiveCloseRequest = adaptiveCloseRequest,
-                        adaptiveStoreScope = adaptiveStoreScope,
-                        adaptiveEventBus = adaptiveEventBus
-                    )
-                    }
-                RaftThreadTab.Tasks ->
-                    ThreadTasksTab(
-                        tasksViewModel = tasksViewModel,
-                        channelId = taskPanelChannelId,
-                        serverId = forwardServerId?.value,
-                        active = tab == selectedTab || tab.conversationSideCard()?.let { sideCardShowing(sideCards, sideCardsBeside, it) } == true,
-                        identityOptions = taskIdentityOptions,
-                        openTaskEnabled = payload.showTaskOpenActions,
-                        // Web canWriteTasksInChannel: New task, status and assignee only where the reader may
-                        // write this channel's tasks (the message menu's own gate).
-                        taskWritesEnabled = payload.channelTaskWritesShown(),
-                        draftProjection = draftProjection,
-                        timeContext = payload.toRaftTimeCapabilities().staticContext(),
-                        taskV2Enabled = linkedTasksProjection.taskV2Enabled,
-                        onOpenTask = { task -> onOpenTaskSummary(task, "tasks_panel") },
-                        onIntent = onTasksIntent
-                    )
-                RaftThreadTab.Files ->
-                    ThreadFilesTab(
-                        threadInstanceKey = threadInstanceKey,
-                        basePayload = payload,
-                        filesStartKey = resolvedAuxiliaryThreadId,
-                        filesViewModel = filesViewModel,
-                        active = tab == selectedTab || tab.conversationSideCard()?.let { sideCardShowing(sideCards, sideCardsBeside, it) } == true,
-                        attachmentOpenStates = attachmentOpenStates,
-                        onAuthRequired = onFilesAuthRequired,
-                        onOpenAttachment = onOpenFilesAttachment,
-                        onDownloadAttachment = onDownloadFilesAttachment,
-                        onOpenFileSource = { fileItem -> onThreadEvent("openFileSource", fileItem.attachmentId, null, null) }
-                    )
-            }
+            ThreadTabContent(
+                tab = tab,
+                contentModifier = contentModifier,
+                tabActive = tabActive,
+                data = data,
+                callbacks = callbacks,
+                payload = payload,
+                markdownTagResolution = markdownTagResolution,
+                activeModalState = activeModalState,
+                composerKeyboardInsetDpState = composerKeyboardInsetDpState,
+                insertMentionRequestState = insertMentionRequestState,
+                insertMentionRequestNonceState = insertMentionRequestNonceState,
+                selectedShareMessageIdsState = selectedShareMessageIdsState,
+                shareCaptureAnchorBeforeTargetState = shareCaptureAnchorBeforeTargetState,
+                shareCaptureModeState = shareCaptureModeState,
+                shareCaptureScrollOffsetPxState = shareCaptureScrollOffsetPxState,
+                shareCaptureTailPaddingActiveState = shareCaptureTailPaddingActiveState,
+                shareCaptureTargetMessageIdState = shareCaptureTargetMessageIdState,
+                shareSelectionAnchorIdState = shareSelectionAnchorIdState,
+                shareSelectionModeState = shareSelectionModeState,
+                threadHeaderScrollToTopRequestState = threadHeaderScrollToTopRequestState,
+                accessErrorLabels = accessErrorLabels,
+                draftProjection = draftProjection,
+                inlineReplyParticipantsById = inlineReplyParticipantsById,
+                inlineSearchVisible = inlineSearchVisible,
+                openForwardPickerForMessageIds = openForwardPickerForMessageIds,
+                renderAccessRetry = renderAccessRetry,
+                renderEarlyLoadingShell = renderEarlyLoadingShell,
+                selectableShareMessageIds = selectableShareMessageIds,
+                selectedShareBounds = selectedShareBounds,
+                selectedShareMessages = selectedShareMessages,
+                shareSelectionActive = shareSelectionActive,
+                showComposerForSelectedTab = showComposerForSelectedTab,
+                sideCards = sideCards,
+                sideCardsBeside = sideCardsBeside,
+                taskPanelChannelId = taskPanelChannelId,
+                threadScreenPagerForForwardBundle = threadScreenPagerForForwardBundle,
+                timelineRenderConfig = timelineRenderConfig,
+            )
         }
-    }
     val composerSuggestionPortal =
         remember(threadInstanceKey) { ThreadComposerSuggestionPortalState() }
     // The thread timeline (botiverse/slock #13534): the reply thread's outline, read on opening the
