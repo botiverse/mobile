@@ -181,6 +181,8 @@ kotlin {
                 // Message code blocks (artin task #20 lane K): keyword/string/comment/number
                 // ranges, coloured with raft-ui tokens in markdown/RaftMarkdownCodeHighlight.kt.
                 implementation(libs.snipme.highlights)
+                // The WeChat connect QR code (assistant/AssistantWeChatQrCode.kt; web uses uqr).
+                implementation(libs.qrose)
                 // Offline-first resources (persistence audit item 4): Store5 stream / fetcher over the
                 // localSnapshotEntity source of truth (data/RaftOfflineResources.kt).
                 implementation(libs.store5)

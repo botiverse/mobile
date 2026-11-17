@@ -2033,6 +2033,7 @@ private fun rememberMemberDetailAssistantOwnerScope(
             viewerIsGuest = route.server.role?.trim()?.equals("guest", ignoreCase = true) == true,
             settingChangesApi = build.raft.app.data.RaftAssistantSettingChangesNetworkApi(networkClient),
             weChatApi = build.raft.app.data.RaftAssistantDmCardsNetworkApi(networkClient),
+            weChatConnectApi = build.raft.app.data.RaftAssistantWeChatConnectNetworkApi(networkClient),
             actionScope = routeScope,
             onToast = { message, intent -> bridge.toastWithIntent(message, intent) },
             // Deleted: the profile closes, back to the assistant's page (Create) or wherever it was opened from.

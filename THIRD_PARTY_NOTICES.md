@@ -41,6 +41,7 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 | io.github.huarangmeng:latex-renderer / latex-parser / latex-base (message math) | 1.6.1 | MIT |
 | dev.snipme:highlights (message code block syntax colours) | 1.1.0 | Apache-2.0 |
 | net.engawapg.lib:zoomable (image lightbox zoom and pan) | 2.16.0 | Apache-2.0 |
+| io.github.alexzhirkevich:qrose (+ qrose-core / qrose-encoder-matrix / qrose-encoder-core; WeChat connect QR code) | 1.3.1 | MIT |
 | io.github.kdroidfilter:composemediaplayer (desktop video playback; jar includes its native AVFoundation / Media Foundation / GStreamer bridges) | 0.11.4 | MIT |
 | io.github.vinceglb:filekit-core (transitive, via composemediaplayer) | 0.14.2 | MIT |
 | org.mobilenativefoundation.store:store5 (+ core5 / cache5 / multicast5; offline-first resources) | 5.1.0-beta01 | Apache-2.0 |

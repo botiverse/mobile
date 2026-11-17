@@ -38,6 +38,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.MyAssistantDeleteOutcome
 import build.raft.app.data.MyAssistantKey
 import build.raft.app.data.RaftAssistantDmCardsApi
+import build.raft.app.data.RaftAssistantWeChatConnectApi
 import build.raft.app.data.MyAssistantOwnerNotesSaveOutcome
 import build.raft.app.data.MyAssistantRecord
 import build.raft.app.data.MyAssistantSettingSaveOutcome
@@ -114,6 +115,8 @@ internal class AssistantOwnerScope(
     val settingChangesApi: RaftAssistantSettingChangesApi? = null,
     /** The WeChat bridge's status and Disconnect; null: no WeChat row. */
     val weChatApi: RaftAssistantDmCardsApi? = null,
+    /** Connecting WeChat with a QR code (wide windows only); null: never offered. */
+    val weChatConnectApi: RaftAssistantWeChatConnectApi? = null,
     /**
      * The route's own scope (it outlives the section): a delete or a disconnect the server may
      * already have done finishes, and what follows it runs, even once the section is gone.
@@ -234,7 +237,10 @@ internal fun AssistantOwnerSection(
         AssistantOwnerDialog.WeChat ->
             if (weChat != null && weChatStatus != null) {
                 val disconnecting by weChat.disconnecting.collectAsState()
+                // The settings entry and the DM notice follow the status once connected.
+                val connect = rememberAssistantWeChatConnectStore(owner.weChatConnectApi, owner.serverId) { weChat.refresh() }
                 AssistantWeChatDialog(
+                    connect = connect,
                     name = assistant.name,
                     status = weChatStatus,
                     disconnecting = disconnecting,
@@ -805,7 +811,7 @@ internal fun AssistantInstructionsEditorBody(
 
 /** Web AlertDialog `assistant-instructions-discard`: Keep Editing, then the red Discard Changes. */
 @Composable
-private fun AssistantInstructionsDiscardDialog(onKeepEditing: () -> Unit, onDiscard: () -> Unit) {
+internal fun AssistantInstructionsDiscardDialog(onKeepEditing: () -> Unit, onDiscard: () -> Unit) {
     RaftDialog(
         onDismissRequest = onKeepEditing,
         title = stringResource(Res.string.member_avatar_unsaved_title),

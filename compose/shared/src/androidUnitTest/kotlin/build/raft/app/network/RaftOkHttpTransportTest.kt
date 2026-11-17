@@ -358,6 +358,41 @@ class RaftOkHttpTransportTest {
         assertTrue(progress.all { it.bytesTotal == total })
     }
 
+    /**
+     * WeChat connect (batch 3) carries the attempt's binding cookie by hand, since the app keeps no
+     * cookies: on the real OkHttp lanes (Android and desktop), a caller's `Cookie` header must reach
+     * the server unchanged (OkHttp's BridgeInterceptor only writes `Cookie` when a CookieJar returns
+     * some; the lanes have none), the response's `Set-Cookie` must reach the caller, and neither
+     * value may reach a log line.
+     */
+    @Test
+    fun aCookieHeaderGoesOutUnchangedSetCookieComesBackAndNeitherIsLogged() = runBlocking {
+        val executor = executorAgainst(twoRoutes = false)
+        val cookie = "raft_wechat_bind_3fa1c2d4e5b6a798=Zx9-Qm3_vT8kLp2Ws4Rt6Yu0Io1Pa5Sd7Fg9Hj2Kl4"
+        val setCookie = "raft_wechat_bind_0123456789abcdef=Sv1-secret_Value; Path=/api/x/attempts; Max-Age=300; HttpOnly; SameSite=Lax"
+        server.enqueue(MockResponse.Builder().code(201).addHeader("Set-Cookie", setCookie).body("{}").build())
+
+        val response =
+            executor.execute(
+                RaftRequestPriority.Visible,
+                server.url("/api/x/attempts/a1/poll").toString(),
+                "POST",
+                mapOf("Cookie" to cookie, HEADER_AUTHORIZATION to "Bearer access-1"),
+                "{}",
+                true,
+            )
+
+        assertEquals(201, response.code, response.transportDiagnostics)
+        assertEquals(cookie, server.takeRequest().headers["Cookie"])
+        val received = response.responseHeaders.entries.filter { it.key.equals("set-cookie", ignoreCase = true) }.flatMap { it.value }
+        assertEquals(listOf(setCookie), received)
+        assertTrue(debugLogs.any { it.startsWith("slock_http_execute_start") && "Cookie=present" in it }, debugLogs.toString())
+        for (line in debugLogs) {
+            assertFalse("Zx9-Qm3_vT8kLp2Ws4Rt6Yu0Io1Pa5Sd7Fg9Hj2Kl4" in line, line)
+            assertFalse("Sv1-secret_Value" in line, line)
+        }
+    }
+
     private fun uploadExecutor(customize: OkHttpClient.Builder.() -> Unit = {}): KtorRaftHttpExecutor {
         val lanes = RaftOkHttpLanes(buildRaftBaseOkHttpClient(eventListenerFactory = null).newBuilder().apply(customize).build())
         return KtorRaftHttpExecutor(

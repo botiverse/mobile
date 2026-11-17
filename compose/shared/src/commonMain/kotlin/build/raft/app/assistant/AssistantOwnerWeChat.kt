@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,11 +58,12 @@ import kotlinx.coroutines.launch
 // `GET servers/:id/assistant/wechat/status` and `DELETE .../wechat/binding?bindingId=`
 // (botiverse/slock packages/server/src/routes/assistantWeChat.ts; RaftAssistantDmCardsApi).
 //
-// Connecting is not offered in the app, as on the web at phone width (wechatConnectHere.ts
-// `phone`): the QR code has to be scanned with WeChat on the person's phone, which is this
-// screen, and the attempt is bound to the browser that started it by an HttpOnly cookie the
-// app's HTTP client does not keep (polls would be refused, 403 `wechat_attempt_unbound`). The
-// dialog says to connect from a computer, as web's phone dialog does. Disconnecting works here.
+// Connecting is offered where web offers it (wechatConnectHere.ts): a window at least as wide as
+// web's non-phone layout (tablet, unfolded foldable, desktop; [threadAssistantPanelWide]) shows
+// the QR code flow (AssistantWeChatConnect*.kt), carrying the attempt's binding cookie by hand
+// since the app keeps no cookies. At phone width the QR code would have to be scanned with WeChat
+// on this very phone (web `phone`): the dialog says to connect from a computer, as web's phone
+// dialog does. Disconnecting works everywhere.
 
 /**
  * The person's WeChat connection in one server for the owner's section (web `useWeChatStatus`,
@@ -145,9 +147,11 @@ internal fun WeChatStatus?.offersWeChatRow(): Boolean = this != null && (availab
 internal val WeChatBinding.stoppedWorking: Boolean get() = state == "reconnect_required"
 
 /**
- * Connect WeChat / WeChat (web `WeChatConnectDialog`), centered: the connection while one exists
- * ([WeChatConnectionBody]), else where to connect instead (web's phone dialog: the intro, the
- * info banner, one pink Close).
+ * Connect WeChat / WeChat (web `WeChatConnectDialog`), centered: the connection while one exists or
+ * right after connecting ([WeChatConnectionBody]); else, in a window as wide as web's non-phone
+ * layout ([wide], [threadAssistantPanelWide]) with [connect] available, the connect flow
+ * ([AssistantWeChatConnectFlowDialog]); else where to connect instead (web's phone dialog: the
+ * intro, the info banner, one pink Close). Closing stops the flow (its polls and cookie end).
  */
 @Composable
 internal fun AssistantWeChatDialog(
@@ -158,11 +162,45 @@ internal fun AssistantWeChatDialog(
     onToastSuccess: (String) -> Unit,
     onToastInfo: (String) -> Unit,
     onClose: () -> Unit,
+    connect: AssistantWeChatConnectStore? = null,
+    wide: Boolean = threadAssistantPanelWide(),
 ) {
+    val step = connect?.step?.collectAsState()?.value ?: WeChatConnectStep.Disclosure
+    // Reconnect from the connection view goes back into the flow.
+    var reconnecting by remember { mutableStateOf(false) }
     val binding = status.binding
-    if (binding == null) {
+    val justConnected = step is WeChatConnectStep.Connected
+    val canConnect = wide && connect != null
+    val close = {
+        connect?.stop()
+        onClose()
+    }
+    if (justConnected || (binding != null && !reconnecting)) {
+        WeChatConnectionDialog(
+            name = name,
+            binding = binding,
+            available = status.available,
+            justConnected = justConnected,
+            disconnecting = disconnecting,
+            onDisconnect = onDisconnect,
+            onReconnect =
+                if (canConnect && status.available) {
+                    {
+                        reconnecting = true
+                        connect?.start()
+                    }
+                } else {
+                    null
+                },
+            onToastSuccess = onToastSuccess,
+            onToastInfo = onToastInfo,
+            onClose = close,
+        )
+        return
+    }
+    if (connect == null || !canConnect) {
         RaftDialog(
-            onDismissRequest = onClose,
+            onDismissRequest = close,
             title = stringResource(Res.string.assistant_wechat_connect_title),
             modifier = Modifier.testTag("wechat-dialog"),
             description = stringResource(Res.string.assistant_wechat_intro, name),
@@ -170,7 +208,7 @@ internal fun AssistantWeChatDialog(
             footer = {
                 RaftButton(
                     text = stringResource(Res.string.common_close),
-                    onClick = onClose,
+                    onClick = close,
                     modifier = Modifier.testTag("wechat-close"),
                     variant = RaftButtonVariant.Primary,
                     size = RaftButtonSize.Lg,
@@ -181,8 +219,25 @@ internal fun AssistantWeChatDialog(
         }
         return
     }
-    var confirming by remember(binding.bindingId) { mutableStateOf(false) }
-    var failure by remember(binding.bindingId) { mutableStateOf<ScreenError?>(null) }
+    AssistantWeChatConnectFlowDialog(name = name, step = step, connect = connect, onClose = close)
+}
+
+/** Web `WeChatConnectionView` in its dialog: the body, one pink Done, and the disconnect confirm. */
+@Composable
+private fun WeChatConnectionDialog(
+    name: String,
+    binding: WeChatBinding?,
+    available: Boolean,
+    justConnected: Boolean,
+    disconnecting: Boolean,
+    onDisconnect: suspend (bindingId: String) -> WeChatDisconnectResult,
+    onReconnect: (() -> Unit)?,
+    onToastSuccess: (String) -> Unit,
+    onToastInfo: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    var confirming by remember(binding?.bindingId) { mutableStateOf(false) }
+    var failure by remember(binding?.bindingId) { mutableStateOf<ScreenError?>(null) }
     val scope = rememberCoroutineScope()
     val disconnectedText = stringResource(Res.string.assistant_wechat_disconnected)
     val endedText = stringResource(Res.string.assistant_wechat_notice_ended_body)
@@ -204,14 +259,16 @@ internal fun AssistantWeChatDialog(
         WeChatConnectionBody(
             name = name,
             binding = binding,
-            available = status.available,
+            available = available,
+            justConnected = justConnected,
+            onReconnect = onReconnect,
             onDisconnect = {
                 failure = null
                 confirming = true
             },
         )
     }
-    if (confirming) {
+    if (confirming && binding != null) {
         WeChatDisconnectConfirm(
             name = name,
             busy = disconnecting,
@@ -243,70 +300,101 @@ internal fun AssistantWeChatDialog(
 }
 
 /**
- * Web `WeChatConnectionView`'s body: a stopped connection's banner (where to reconnect: a
- * computer, as web's phone view), the state and since when, what it does, and the Disconnect row.
+ * Web `WeChatConnectionView`'s body: right after connecting, a success banner (once); a stopped
+ * connection's banner, with Reconnect where connecting works here ([onReconnect], a wide window),
+ * else where to reconnect (a computer, as web's phone view); the state and since when, what it
+ * does, and the Disconnect row. [binding] is null right after connecting when the status could
+ * not be read again.
  */
 @Composable
 internal fun WeChatConnectionBody(
     name: String,
-    binding: WeChatBinding,
+    binding: WeChatBinding?,
     available: Boolean,
     onDisconnect: () -> Unit,
+    justConnected: Boolean = false,
+    onReconnect: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
-    val stopped = binding.stoppedWorking
+    val stopped = binding?.stoppedWorking == true
     Column(Modifier.fillMaxWidth().testTag("wechat-connection"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (stopped) {
+        if (justConnected) {
+            RaftBanner(
+                title = stringResource(Res.string.assistant_wechat_connected_now),
+                description = stringResource(Res.string.assistant_wechat_try_it, name),
+                status = RaftBannerStatus.Success,
+                size = RaftBannerSize.Sm,
+                modifier = Modifier.testTag("wechat-connected-banner"),
+            )
+        } else if (stopped) {
             RaftBanner(
                 title = stringResource(Res.string.assistant_wechat_reconnect_title),
                 description =
                     stringResource(
-                        if (available) Res.string.assistant_wechat_reconnect_body_phone else Res.string.assistant_wechat_reconnect_body,
+                        if (available && onReconnect == null) Res.string.assistant_wechat_reconnect_body_phone else Res.string.assistant_wechat_reconnect_body,
                         name,
                     ),
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm,
                 modifier = Modifier.testTag("wechat-reconnect-banner"),
+                action =
+                    if (onReconnect != null) {
+                        {
+                            RaftButton(
+                                text = stringResource(Res.string.assistant_wechat_reconnect),
+                                onClick = onReconnect,
+                                modifier = Modifier.testTag("wechat-reconnect"),
+                                variant = RaftButtonVariant.Default,
+                                size = RaftButtonSize.Md,
+                            )
+                        }
+                    } else {
+                        null
+                    },
             )
         }
-        val since = binding.connectedAt.takeIf(String::isNotBlank)?.let { secondFactorRecoveryLocalTime(it) }
-        val stateLabel = stringResource(if (stopped) Res.string.assistant_wechat_status_stopped else Res.string.assistant_wechat_status_active)
-        RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
-            Item(stringResource(Res.string.assistant_wechat_status_label)) {
-                Row(Modifier.testTag("wechat-connection-state"), verticalAlignment = Alignment.CenterVertically) {
-                    RaftStatusDot(variant = if (stopped) RaftStatusVariant.Warning else RaftStatusVariant.Success)
-                    RaftText(
-                        stateLabel,
-                        Modifier.padding(start = 8.dp),
-                        style = RaftTheme.typography.callout,
-                        color = colors.foreground,
-                    )
+        if (binding != null) {
+            val since = binding.connectedAt.takeIf(String::isNotBlank)?.let { secondFactorRecoveryLocalTime(it) }
+            val stateLabel = stringResource(if (stopped) Res.string.assistant_wechat_status_stopped else Res.string.assistant_wechat_status_active)
+            RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
+                Item(stringResource(Res.string.assistant_wechat_status_label)) {
+                    Row(Modifier.testTag("wechat-connection-state"), verticalAlignment = Alignment.CenterVertically) {
+                        RaftStatusDot(variant = if (stopped) RaftStatusVariant.Warning else RaftStatusVariant.Success)
+                        RaftText(
+                            stateLabel,
+                            Modifier.padding(start = 8.dp),
+                            style = RaftTheme.typography.callout,
+                            color = colors.foreground,
+                        )
+                    }
                 }
+                if (since != null) Item(stringResource(Res.string.assistant_wechat_since_label), since, mono = true)
             }
-            if (since != null) Item(stringResource(Res.string.assistant_wechat_since_label), since, mono = true)
         }
         RaftText(
             stringResource(Res.string.assistant_wechat_connected_body, name),
             style = RaftTheme.typography.subhead,
             color = colors.foregroundMuted,
         )
-        RaftListRowGroup(Modifier.fillMaxWidth()) {
-            RaftListRow(
-                title = stringResource(Res.string.assistant_wechat_disconnect_row_title),
-                modifier = Modifier.testTag("wechat-disconnect-row"),
-                variant = RaftListRowVariant.Plain,
-                description = stringResource(Res.string.assistant_wechat_disconnect_row_body, name),
-                wrapDescription = true,
-                trailing = {
-                    RaftButton(
-                        text = stringResource(Res.string.assistant_wechat_disconnect),
-                        onClick = onDisconnect,
-                        modifier = Modifier.testTag("wechat-disconnect"),
-                        variant = RaftButtonVariant.Default,
-                        size = RaftButtonSize.Md,
-                    )
-                },
-            )
+        if (binding != null) {
+            RaftListRowGroup(Modifier.fillMaxWidth()) {
+                RaftListRow(
+                    title = stringResource(Res.string.assistant_wechat_disconnect_row_title),
+                    modifier = Modifier.testTag("wechat-disconnect-row"),
+                    variant = RaftListRowVariant.Plain,
+                    description = stringResource(Res.string.assistant_wechat_disconnect_row_body, name),
+                    wrapDescription = true,
+                    trailing = {
+                        RaftButton(
+                            text = stringResource(Res.string.assistant_wechat_disconnect),
+                            onClick = onDisconnect,
+                            modifier = Modifier.testTag("wechat-disconnect"),
+                            variant = RaftButtonVariant.Default,
+                            size = RaftButtonSize.Md,
+                        )
+                    },
+                )
+            }
         }
     }
 }
