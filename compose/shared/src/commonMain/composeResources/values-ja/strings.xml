@@ -2860,7 +2860,6 @@
     <string name="settings_computers_runtime_usage_claude_reset_disabled">ここでは Claude の上限リセットを使えません。リセットは使用されていません。</string>
     <string name="settings_computers_runtime_usage_claude_reset_view_action">利用できるリセットを表示</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_five_hour_action">5 時間リセットを使用</string>
-    <string name="settings_computers_runtime_usage_claude_reset_owner_only">Claude のリセットを使用できるのは、このコンピューターを接続したユーザーだけです。</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_five_hour">5 時間リセット</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_weekly">週間リセット</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_fable">Fable リセット</string>
@@ -2879,7 +2878,7 @@
     <string name="settings_computers_runtime_usage_claude_reset_at_limit_hint">5 時間の上限に達しているときは、ここからは 5 時間リセットしか使えません。週間、Fable、フルリセットを今すぐ使うには、claude.ai の Settings › Usage を開いてください。</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_selected_action">このリセットを使用</string>
     <string name="settings_computers_runtime_usage_claude_reset_consent_title">5 時間の上限でリセットを確認しますか？</string>
-    <string name="settings_computers_runtime_usage_claude_reset_consent_body">5 時間の上限に達しています。リセットの確認や使用では、このコンピューターで Claude Code が少しの間開き、5 時間の枠に含まれる小さなリクエストが 1 回送信されます。一部の Claude アカウント（旧方式の週 1 回の 5 時間リセットしかないもの）では、今 Claude Code のリセット一覧を開くだけで、確認なしにその 5 時間リセットがすぐに使用されます。問題ない場合のみ続行してください。</string>
+    <string name="settings_computers_runtime_usage_claude_reset_consent_body">このアカウントは 5 時間の上限に達しています。リセットの確認や使用では、このコンピューターで Claude Code が少しの間開き、このアカウントの 5 時間の枠に含まれる小さなリクエストが 1 回送信されます。一部の Claude アカウント（旧方式の週 1 回の 5 時間リセットしかないもの）では、今 Claude Code のリセット一覧を開くだけで、確認なしにその 5 時間リセットがすぐに使用されます。問題ない場合のみ続行してください。</string>
     <string name="settings_computers_runtime_usage_claude_reset_consent_confirm">続行</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm_title">%1$sを使用しますか？</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm_body">このコンピューターの Claude Code が %1$s の%2$sを今すぐ使用します。元に戻すことはできません。</string>

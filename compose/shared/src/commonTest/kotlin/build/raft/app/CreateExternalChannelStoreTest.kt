@@ -14,7 +14,10 @@ import build.raft.app.data.SentExternalInvite
 import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ThreadId
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -36,6 +39,8 @@ private class FakeCreateExternalChannelDataSource : CreateExternalChannelDataSou
         ArrayDeque<DataResult<ExternalInviteAnswer<SendExternalInvitesResult>>>()
     var connectAnswer: DataResult<ExternalInviteAnswer<List<ServerConnectOutcome>>> =
         DataResult.Content(ExternalInviteAnswer.Ok(emptyList()))
+    /** Holds every send until completed (the send still running). */
+    var sendGate: CompletableDeferred<Unit>? = null
     var freeLimitCalls = 0
     var serversCalls = 0
     val previewCalls = mutableListOf<List<String>>()
@@ -53,6 +58,7 @@ private class FakeCreateExternalChannelDataSource : CreateExternalChannelDataSou
 
     override suspend fun send(channelId: ChannelId, emails: List<String>): DataResult<ExternalInviteAnswer<SendExternalInvitesResult>> {
         sendCalls += channelId to emails
+        sendGate?.await()
         return sendAnswers.removeFirstOrNull()
             ?: DataResult.Content(ExternalInviteAnswer.Ok(SendExternalInvitesResult(sent = listOf(SentExternalInvite("i1", emails.first())))))
     }
@@ -155,6 +161,48 @@ class CreateExternalChannelStoreTest {
             effects.dropLast(1),
         )
         assertEquals("c1", assertIs<CreateExternalChannelEffect.Finished>(effects.last()).channel.channel.channelId.value)
+    }
+
+    /** slock #15136: "created, but the invites weren't sent" waits for a send that came back unsent. */
+    @Test
+    fun theCreatedNoticeShowsOnlyOnceASendAfterTheCreateFailed() = runTest {
+        val source =
+            FakeCreateExternalChannelDataSource().apply {
+                sendGate = CompletableDeferred()
+                sendAnswers.addLast(DataResult.Content(ExternalInviteAnswer.Refused(ExternalInviteRefusal(429, "daily_cap", "cap"))))
+            }
+        val store = started(source)
+        store.dispatch(CreateExternalChannelIntent.SetText("new@example.com"))
+        store.dispatch(CreateExternalChannelIntent.Review)
+        runCurrent()
+        store.dispatch(CreateExternalChannelIntent.Commit(draft))
+        runCurrent()
+        // Created, the invites still sending: no notice.
+        assertNotNull(store.state.value.created)
+        assertTrue(store.state.value.invite.busy)
+        assertFalse(store.state.value.showCreatedNotice)
+
+        source.sendGate!!.complete(Unit)
+        runCurrent()
+        // The send came back unsent and the review stays open: the notice.
+        assertEquals(ExternalInviteError.DailyCap, store.state.value.invite.failure?.error)
+        assertTrue(store.state.value.showCreatedNotice)
+
+        // The retry: hidden while it sends, and none once it succeeded (the review closes).
+        source.sendGate = CompletableDeferred()
+        store.dispatch(CreateExternalChannelIntent.Commit(draft))
+        runCurrent()
+        assertTrue(store.state.value.invite.busy)
+        assertFalse(store.state.value.showCreatedNotice)
+        val seen = mutableListOf<Boolean>()
+        val watcher = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { store.state.collect { seen += it.showCreatedNotice } }
+        runCurrent()
+        source.sendGate!!.complete(Unit)
+        runCurrent()
+        watcher.cancel()
+        assertIs<CreateExternalChannelEffect.Finished>(store.state.value.effects.last())
+        assertFalse(store.state.value.showCreatedNotice)
+        assertEquals(listOf(false), seen.distinct())
     }
 
     @Test

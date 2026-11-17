@@ -18,7 +18,8 @@ import kotlinx.serialization.json.doubleOrNull
  *
  * - `GET …/runtime-auth` carries `claudeLimitResets` (`ok` | `computer_upgrade_required`) only while
  *   the flag is on, for a person who may act, on an online Computer; beside it
- *   `claudeLimitResetAccess {canUse, canConsent}` (only the person who connected the Computer).
+ *   `claudeLimitResetAccess {canUse, canConsent}` (both true since slock #15124: the person who
+ *   connected the Computer, or an owner or admin; an older server sent false to an owner or admin).
  * - `POST …/runtime-account-usage/claude/limit-resets/read` with `{consent?: true}` answers
  *   `{result: RuntimeLimitResetsReadResult}`.
  * - `POST …/runtime-account-usage/claude/limit-reset` with `{idempotencyKey, kind}` answers as the
@@ -47,7 +48,7 @@ internal enum class ClaudeLimitResetsAvailability(val wire: String) {
     }
 }
 
-/** `GET …/runtime-auth` `claudeLimitResetAccess`: only the person who connected the Computer spends its Claude resets. */
+/** `GET …/runtime-auth` `claudeLimitResetAccess`: whether this viewer may spend the Computer's Claude resets (false only from an older server). */
 internal data class ClaudeLimitResetAccess(val canUse: Boolean, val canConsent: Boolean)
 
 internal fun JsonElement.toClaudeLimitResetAccess(): ClaudeLimitResetAccess? {

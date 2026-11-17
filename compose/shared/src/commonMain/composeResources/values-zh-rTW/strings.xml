@@ -2826,7 +2826,6 @@
     <string name="settings_computers_runtime_usage_claude_reset_disabled">這裡無法使用 Claude 額度重設。沒有用掉任何重設。</string>
     <string name="settings_computers_runtime_usage_claude_reset_view_action">查看可用的重設</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_five_hour_action">使用 5 小時重設</string>
-    <string name="settings_computers_runtime_usage_claude_reset_owner_only">只有連接這台電腦的人，才能使用它的 Claude 額度重設。</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_five_hour">5 小時重設</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_weekly">每週重設</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_fable">Fable 重設</string>
@@ -2845,9 +2844,9 @@
     <string name="settings_computers_runtime_usage_claude_reset_at_limit_hint">達到 5 小時上限時，這裡只能使用 5 小時重設。若要現在使用每週、Fable 或完整重設，請到 claude.ai 的 Settings › Usage。</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_selected_action">使用這個重設</string>
     <string name="settings_computers_runtime_usage_claude_reset_consent_title">要在 5 小時上限時查看重設嗎？</string>
-    <string name="settings_computers_runtime_usage_claude_reset_consent_body">你已達到 5 小時上限。查看或使用重設時，會在這台電腦上短暫開啟 Claude Code，並送出一個小請求，計入你的 5 小時額度。部分 Claude 帳號（只有舊版每週一次 5 小時重設的）此時只要開啟 Claude Code 的重設清單，就會立即用掉這次 5 小時重設，不會詢問。只有在你能接受時才繼續。</string>
+    <string name="settings_computers_runtime_usage_claude_reset_consent_body">這個帳號已達到 5 小時上限。查看或使用重設時，會在這台電腦上短暫開啟 Claude Code，並送出一個小請求，計入這個帳號的 5 小時額度。部分 Claude 帳號（只有舊版每週一次 5 小時重設的）此時只要開啟 Claude Code 的重設清單，就會立即用掉這次 5 小時重設，不會詢問。只有在你能接受時才繼續。</string>
     <string name="settings_computers_runtime_usage_claude_reset_consent_confirm">繼續</string>
-    <string name="settings_computers_runtime_usage_claude_reset_confirm_title">要使用你的%1$s嗎？</string>
+    <string name="settings_computers_runtime_usage_claude_reset_confirm_title">要使用這個帳號的%1$s嗎？</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm_body">這台電腦上的 Claude Code 會立即使用 %1$s 的%2$s。此操作無法復原。</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm">使用%1$s</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_left_one">剩餘 %1$d 次</string>
@@ -2858,7 +2857,7 @@
     <string name="settings_computers_runtime_usage_claude_reset_state_unknown">讀取失敗</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_not_checked">尚未檢查</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_not_offered">此帳號沒有</string>
-    <string name="settings_computers_runtime_usage_claude_reset_done">已使用你的%1$s。</string>
+    <string name="settings_computers_runtime_usage_claude_reset_done">已使用這個帳號的%1$s。</string>
     <string name="settings_computers_runtime_usage_claude_reset_no_reset">沒有可用的%1$s。沒有用掉任何重設。</string>
     <string name="settings_computers_runtime_usage_claude_reset_five_hour_spent">用掉的是 5 小時重設，而不是%1$s：這個帳號只有 Claude 舊版的每週一次 5 小時重設。</string>
     <string name="settings_computers_runtime_usage_claude_reset_unknown">無法確認是否已用掉重設。再試之前，請先在 Claude Code 裡查看 /usage。</string>

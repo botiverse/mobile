@@ -2860,7 +2860,6 @@
     <string name="settings_computers_runtime_usage_claude_reset_disabled">这里无法使用 Claude 额度重置。没有用掉任何重置。</string>
     <string name="settings_computers_runtime_usage_claude_reset_view_action">查看可用的重置</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_five_hour_action">使用 5 小时重置</string>
-    <string name="settings_computers_runtime_usage_claude_reset_owner_only">只有连接这台 Computer 的人，才能使用它的 Claude 额度重置。</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_five_hour">5 小时重置</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_weekly">每周重置</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_fable">Fable 重置</string>
@@ -2879,9 +2878,9 @@
     <string name="settings_computers_runtime_usage_claude_reset_at_limit_hint">达到 5 小时上限时，这里只能使用 5 小时重置。想现在使用每周、Fable 或全部重置，请到 claude.ai 的 Settings › Usage。</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_selected_action">使用这个重置</string>
     <string name="settings_computers_runtime_usage_claude_reset_consent_title">要在 5 小时上限时查看重置吗？</string>
-    <string name="settings_computers_runtime_usage_claude_reset_consent_body">你已达到 5 小时上限。查看或使用重置时，会在这台 Computer 上短暂打开 Claude Code，并发送一个小请求，计入你的 5 小时额度。部分 Claude 账号（只有旧版每周一次 5 小时重置的）此时只要打开 Claude Code 的重置列表，就会立即用掉这次 5 小时重置，不会询问。只有你能接受时才继续。</string>
+    <string name="settings_computers_runtime_usage_claude_reset_consent_body">这个账号已达到 5 小时上限。查看或使用重置时，会在这台 Computer 上短暂打开 Claude Code，并发送一个小请求，计入这个账号的 5 小时额度。部分 Claude 账号（只有旧版每周一次 5 小时重置的）此时只要打开 Claude Code 的重置列表，就会立即用掉这次 5 小时重置，不会询问。只有你能接受时才继续。</string>
     <string name="settings_computers_runtime_usage_claude_reset_consent_confirm">继续</string>
-    <string name="settings_computers_runtime_usage_claude_reset_confirm_title">使用你的%1$s？</string>
+    <string name="settings_computers_runtime_usage_claude_reset_confirm_title">使用这个账号的%1$s？</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm_body">这台 Computer 上的 Claude Code 会立即使用 %1$s 的%2$s。此操作无法撤销。</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm">使用%1$s</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_left_one">剩余 %1$d 次</string>
@@ -2892,7 +2891,7 @@
     <string name="settings_computers_runtime_usage_claude_reset_state_unknown">读取失败</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_not_checked">尚未检查</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_not_offered">此账号没有</string>
-    <string name="settings_computers_runtime_usage_claude_reset_done">已使用你的%1$s。</string>
+    <string name="settings_computers_runtime_usage_claude_reset_done">已使用这个账号的%1$s。</string>
     <string name="settings_computers_runtime_usage_claude_reset_no_reset">没有可用的%1$s。没有用掉任何重置。</string>
     <string name="settings_computers_runtime_usage_claude_reset_five_hour_spent">用掉的是 5 小时重置，而不是%1$s：这个账号只有 Claude 旧版的每周一次 5 小时重置。</string>
     <string name="settings_computers_runtime_usage_claude_reset_unknown">无法确认是否用掉了重置。再次尝试前，请先在 Claude Code 里查看 /usage。</string>
