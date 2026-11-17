@@ -398,6 +398,12 @@ class SharedActivityStore internal constructor(
      * #triage 6db2bd32). Off (the default): every read is today's.
      */
     private val inboxInPlaceEnabled: (serverId: String) -> Boolean = { false },
+    /**
+     * The stream channels a page reads on sight now ([ConversationReadOnSight]; the app passes the
+     * process registry). The shell's selected conversation is read on arrival only while one of
+     * them is it. Null (the default): the selection alone decides, as before.
+     */
+    private val conversationsReadOnSight: () -> Set<String>? = { null },
     /** See [ActivityInPlaceReconcileIntervalMillis]; injectable for virtual time. */
     private val inPlaceReconcileIntervalMillis: Long = ActivityInPlaceReconcileIntervalMillis,
     /**
@@ -833,7 +839,12 @@ class SharedActivityStore internal constructor(
         when (intent) {
             is SharedActivityIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent)
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
-                applyRealtimeSummaryEvent(intent.event, intent.activeConversationId, intent.activityMuted, intent.primarySurfaceVisible)
+                applyRealtimeSummaryEvent(
+                    intent.event,
+                    readOnArrivalConversationId(intent.activeConversationId, _state.value.snapshot),
+                    intent.activityMuted,
+                    intent.primarySurfaceVisible
+                )
             else -> error("applyLiveRealtime only accepts realtime intents")
         }
     }
@@ -2099,6 +2110,23 @@ class SharedActivityStore internal constructor(
 
     private enum class ReconcileStep { Load, Again, Stop }
 
+    /**
+     * The shell's selected conversation ([activeConversationId]) as the one whose live messages are
+     * read on arrival: only while a page reads it on sight ([conversationsReadOnSight]). Selected
+     * but not read (its page covered by one opened from it, scrolled up, held unread, loading, or
+     * left before the selection cleared) it sends no read, so its messages count here as the
+     * server counts them; otherwise the row shows read while the server keeps them unread
+     * (`activity:inplace_check` `unread=0/N`, trigger `thread_reply`).
+     */
+    private fun readOnArrivalConversationId(activeConversationId: String?, snapshot: InboxSnapshot?): String? {
+        val active = activeConversationId?.takeIf { it.isNotBlank() } ?: return null
+        val reading = conversationsReadOnSight() ?: return active
+        val read =
+            active in reading ||
+                (snapshot != null && reading.any { channelId -> isActiveActivityConversation(channelId, active, snapshot) })
+        return active.takeIf { read }
+    }
+
     /** `mobile_inbox_inplace_v0` for the server the list shows. */
     private fun inboxInPlaceOnLocked(): Boolean =
         _state.value.ownerServerId?.let(inboxInPlaceEnabled) == true
@@ -2116,7 +2144,7 @@ class SharedActivityStore internal constructor(
         if (current.selectedFilter != InboxFilter.All || current.snapshot == null) return null
         if (!inboxInPlaceOnLocked()) return null
         val principalId = current.ownerUserId?.trim()?.takeIf { it.isNotBlank() } ?: return null
-        return InPlaceUnreadContext(principalId, intent.activeConversationId)
+        return InPlaceUnreadContext(principalId, readOnArrivalConversationId(intent.activeConversationId, current.snapshot))
     }
 
     /**

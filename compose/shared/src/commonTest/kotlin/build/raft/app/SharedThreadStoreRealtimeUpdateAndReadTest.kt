@@ -11,6 +11,7 @@ import build.raft.app.SharedThreadStoreTestFixtures.cachePayloadForTest
 import build.raft.app.SharedThreadStoreTestFixtures.canonicalThreadDataSource
 import build.raft.app.SharedThreadStoreTestFixtures.contentPayload
 import build.raft.app.SharedThreadStoreTestFixtures.member
+import build.raft.app.data.ConversationReadOnSight
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.InMemoryRaftAuthSessionStore
@@ -954,6 +955,55 @@ class SharedThreadStoreRealtimeUpdateAndReadTest {
 
         assertEquals(listOf("channel-1"), api.readAllChannels)
         assertTrue(api.readSeqRequests.isEmpty(), "left conversation marked read: ${api.readSeqRequests}")
+        scope.cancel()
+    }
+
+    @Test
+    fun theConversationIsReadOnSightOnlyWhileThePageReadsItsLiveTail() = runTest {
+        // activity:inplace_check thread_reply unread=0/N: Activity reads a live message on arrival only
+        // while a page reads its conversation on sight. Shown at the tail: yes. Scrolled up from the tail
+        // (a live append is not read, task #232), left / covered (fb-4440a18c), or the page gone: no.
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
+        val dataSource =
+            testSharedThreadDataSource(
+                storeScope = backgroundScope,
+                networkApi = api,
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
+                    ),
+            )
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
+        val readOnSight = ConversationReadOnSight()
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                readCoalesceTimeSource = testScheduler.timeSource,
+                readOnSight = readOnSight
+            )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        assertFalse(readOnSight.isReading("channel-1"), "not read before the page shows it")
+
+        store.accept(SharedThreadIntent.MarkVisibleRead())
+        assertTrue(readOnSight.isReading("channel-1"), "shown at the tail")
+
+        store.accept(SharedThreadIntent.VisibleReadHidden)
+        assertFalse(readOnSight.isReading("channel-1"), "left or covered")
+
+        store.accept(leftConversationNewMessage("m2", 11L))
+        delay(5_000)
+        store.accept(SharedThreadIntent.MarkVisibleRead(visibleTailIndex = 0))
+        assertFalse(readOnSight.isReading("channel-1"), "shown, but scrolled up from the live tail")
+
+        store.accept(SharedThreadIntent.MarkVisibleRead(visibleTailIndex = 1))
+        assertTrue(readOnSight.isReading("channel-1"), "back at the tail")
+
+        store.clear()
+        assertFalse(readOnSight.isReading("channel-1"), "the page is gone")
         scope.cancel()
     }
 

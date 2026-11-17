@@ -2830,6 +2830,7 @@ internal class RaftSharedStoreProvider private constructor(
                 hiddenRealtimeBackgroundRefreshIntervalMillis = ActivityHiddenRealtimeBackgroundRefreshIntervalMillis,
                 syncReloads = syncReloadLedger,
                 inboxInPlaceEnabled = ::inboxInPlaceEnabled,
+                conversationsReadOnSight = raftConversationReadOnSight::readingChannels,
                 inPlaceCheckSink = RaftClientTraceEvents::emitInPlaceCheck,
                 listRowLoweredSink = RaftClientTraceEvents::emitListRowLowered,
                 inboxRowPositionEnabled = ::inboxRowPositionEnabled,

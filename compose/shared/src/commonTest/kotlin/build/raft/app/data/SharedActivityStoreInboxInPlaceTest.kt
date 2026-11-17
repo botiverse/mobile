@@ -40,7 +40,11 @@ class SharedActivityStoreInboxInPlaceTest {
 
     private class Fixture(val store: SharedActivityStore, val inbox: RecordingInbox)
 
-    private fun TestScope.loadedStore(rows: List<InboxItem>, inPlace: Boolean): Fixture {
+    private fun TestScope.loadedStore(
+        rows: List<InboxItem>,
+        inPlace: Boolean,
+        conversationsReadOnSight: () -> Set<String>? = { null }
+    ): Fixture {
         val inbox = RecordingInbox(FakeInboxRepository(initialSnapshots = listOf(snapshot(rows))))
         inbox.now = { testScheduler.currentTime }
         val store =
@@ -49,7 +53,8 @@ class SharedActivityStoreInboxInPlaceTest {
                 inboxRepository = inbox,
                 realtimeBackgroundRefreshIntervalMillis = ActivityRealtimeBackgroundRefreshIntervalMillis,
                 nowMillis = { testScheduler.currentTime },
-                inboxInPlaceEnabled = { inPlace }
+                inboxInPlaceEnabled = { inPlace },
+                conversationsReadOnSight = conversationsReadOnSight
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
@@ -136,6 +141,48 @@ class SharedActivityStoreInboxInPlaceTest {
         assertEquals(1 to MessageId("r-21"), row.unreadCount to row.firstUnreadMessageId)
         assertEquals(1, f.store.state.value.totalUnreadCount)
         assertEquals(1, f.inbox.reads.size, "no read for a row the list shows")
+    }
+
+    /**
+     * `activity:inplace_check` thread_reply `unread=0/1;mention=0/1`: the shell still had the thread
+     * selected, but no page was reading it (covered by a page opened from it, scrolled up, held
+     * unread), so the server counted the reply that the in-place patch had shown as read. A live
+     * message is read on arrival only while a page reads its conversation on sight; the selection
+     * may name it by stream channel or by its row key.
+     */
+    @Test
+    fun aSelectedThreadReadsLiveRepliesOnArrivalOnlyWhileAPageReadsItOnSight() = runTest {
+        data class Case(val selected: String, val readingOnSight: Set<String>, val readOnArrival: Boolean)
+        val cases =
+            listOf(
+                Case(selected = "thread-1", readingOnSight = setOf("thread-1"), readOnArrival = true),
+                Case(selected = threadRow.key, readingOnSight = setOf("thread-1"), readOnArrival = true),
+                Case(selected = "thread-1", readingOnSight = emptySet(), readOnArrival = false),
+                Case(selected = "thread-1", readingOnSight = setOf("channel-2"), readOnArrival = false),
+            )
+        for (case in cases) {
+            val f = loadedStore(listOf(otherRow, threadRow), inPlace = true, conversationsReadOnSight = { case.readingOnSight })
+
+            f.store.dispatch(
+                SharedActivityIntent.ApplyRealtimeEvent(
+                    MessageNew(
+                        message("r-21", channelId = "thread-1", seq = 21L).copy(
+                            mentions = listOf(MessageMention(type = "user", id = "user-1"))
+                        )
+                    ),
+                    activeConversationId = case.selected
+                )
+            )
+            runCurrent()
+
+            val row = f.store.state.value.items.first { it.key == threadRow.key }
+            assertEquals(MessageId("r-21"), row.latestActivityMessageId, "$case: the reply patches the row in place")
+            assertEquals(
+                if (case.readOnArrival) 0 to false else 1 to true,
+                row.unreadCount to row.hasMention,
+                "$case: unread and @ follow the server unless a page reads the thread"
+            )
+        }
     }
 
     @Test
