@@ -145,11 +145,18 @@ Evidence (`release-auto-login-evidence`): `summary.json`, a screenshot + UI dump
 
 ## As a pre-login for Testbed cases
 
-`scripts/qa/release_prelogin.mjs` runs this script in two halves around an allow-listed ordinary
-Testbed case on a release build: `--no-capture --defer-app-session --strict-cleanup` to sign in
-(no screenshot, UI dump or login log written; the app stays signed in, `app_session:
-deferred_to_case_cleanup`), and later `--phase sign-out --revoke-app-session --strict-cleanup` for
-the app's own Sign out. See [release-prelogin-contract.md](release-prelogin-contract.md).
+`scripts/qa/release_prelogin.mjs` runs this script in two halves around a Testbed-admitted ordinary
+case on the QA-instrumented `qaRelease` candidate:
+
+- **Sign in**, with `--no-capture --defer-app-session --strict-cleanup --account-ref-nonce <nonce>`:
+  - nothing from the login is written to disk: UI trees are read through `uiautomator dump
+    /dev/tty` and logcat dumps into memory, with no screenshots and no streamed log;
+  - the app stays signed in (`app_session: deferred_to_case_cleanup`);
+  - the summary carries a nonce-bound `account_user_ref`, not the account id.
+- **Sign out** later, with `--phase sign-out --revoke-app-session --strict-cleanup --no-capture`:
+  the app's own Sign out.
+
+See [release-prelogin-contract.md](release-prelogin-contract.md).
 
 ## Scenarios
 

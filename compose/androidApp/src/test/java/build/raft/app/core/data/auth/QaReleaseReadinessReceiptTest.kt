@@ -15,9 +15,14 @@ import org.w3c.dom.Element
 
 /** Fake values only: no real account, server or token. */
 class QaReleaseReadinessReceiptTest {
-    private val attemptId = "pla_" + "0a".repeat(8)
-    private val nonce = "ab".repeat(16)
-    private val request = requireNotNull(QaReleaseReadinessRequest.parse(attemptId, nonce))
+    private val attemptId = "pla_" + "0a".repeat(16)
+    private val nonce = "ab".repeat(32)
+    private val requestId = "cd".repeat(16)
+    private val request = requireNotNull(QaReleaseReadinessRequest.parse(attemptId, nonce, requestId))
+
+    // Shared fixed vector with scripts/qa/release_prelogin.test.mjs (userRef):
+    // sha256("raft-qa-readiness-user/v1" NUL ("ab" x 32) NUL "usr-fake-1").
+    private val userRefVector = "1b12673dbe0d552e3de10c8725bc8caaff65a00216c29226f2ead7aaa856f225"
 
     private fun session(selectedServerId: String? = "srv-fake-1", selectedServerSlug: String? = null) =
         StoredAuthSession(
@@ -45,21 +50,27 @@ class QaReleaseReadinessReceiptTest {
         )
 
     @Test
-    fun receiptCarriesAttemptBindingSessionServerBuildAndProcess() {
+    fun userRefIsTheNonceBoundSha256OfTheUserId() {
+        assertEquals(userRefVector, qaReadinessUserRef(nonce, "usr-fake-1"))
+        assertFalse(qaReadinessUserRef("cd".repeat(32), "usr-fake-1") == userRefVector)
+    }
+
+    @Test
+    fun receiptCarriesAttemptRequestBindingUserRefServerBuildAndProcess() {
         val text = receipt(session().toQaReadinessSession())
         assertEquals(
-            "{\"contract\":\"raft-qa-release-readiness/v1\",\"attempt_id\":\"$attemptId\",\"nonce\":\"$nonce\"," +
-                "\"package\":\"build.raft.app\",\"version_name\":\"1.27.0\",\"version_code\":1270001," +
-                "\"pid\":4242,\"process_start_ticks\":\"987654\",\"signed_in\":true,\"user_id\":\"usr-fake-1\"," +
+            "{\"contract\":\"raft-qa-release-readiness/v2\",\"attempt_id\":\"$attemptId\",\"nonce\":\"$nonce\"," +
+                "\"request_id\":\"$requestId\",\"package\":\"build.raft.app\",\"version_name\":\"1.27.0\",\"version_code\":1270001," +
+                "\"pid\":4242,\"process_start_ticks\":\"987654\",\"signed_in\":true,\"user_ref\":\"$userRefVector\"," +
                 "\"selected_server_id\":\"srv-fake-1\",\"selected_server_slug\":\"fake-slug\"}",
             text
         )
     }
 
     @Test
-    fun receiptNeverCarriesTokensEmailOrName() {
+    fun receiptNeverCarriesTokensEmailNameOrTheRawUserId() {
         val text = receipt(session().toQaReadinessSession())
-        listOf("fake-access-token-value", "fake-refresh-token-value", "fake@example.invalid", "Fake Person", "token", "cookie", "email")
+        listOf("fake-access-token-value", "fake-refresh-token-value", "fake@example.invalid", "Fake Person", "usr-fake-1", "token", "cookie", "email")
             .forEach { assertFalse("receipt must not contain $it", text.contains(it, ignoreCase = true)) }
     }
 
@@ -69,51 +80,72 @@ class QaReleaseReadinessReceiptTest {
         assertNull(chooser.selectedServerId)
         assertNull(chooser.selectedServerSlug)
         assertTrue(receipt(chooser).contains("\"selected_server_id\":null"))
-        // A stored slug wins over the server list.
         assertEquals("stored-slug", session(selectedServerSlug = "stored-slug").toQaReadinessSession().selectedServerSlug)
     }
 
     @Test
     fun signedOutReportsNoIds() {
-        val text = receipt(null)
-        assertTrue(text.contains("\"signed_in\":false,\"user_id\":null,\"selected_server_id\":null"))
+        assertTrue(receipt(null).contains("\"signed_in\":false,\"user_ref\":null,\"selected_server_id\":null"))
     }
 
     @Test
-    fun requestNeedsAWellFormedAttemptIdAndFreshNonce() {
-        assertNotNull(QaReleaseReadinessRequest.parse(attemptId, nonce))
-        assertNull(QaReleaseReadinessRequest.parse(null, nonce))
-        assertNull(QaReleaseReadinessRequest.parse(attemptId, null))
-        assertNull(QaReleaseReadinessRequest.parse("run-1", nonce))
-        assertNull(QaReleaseReadinessRequest.parse(attemptId, "short"))
-        assertNull(QaReleaseReadinessRequest.parse(attemptId, "\"},\"user_id\":\"x" + "a".repeat(32)))
+    fun requestNeedsTestbedAttemptIdNonceAndAFreshRequestId() {
+        assertNotNull(QaReleaseReadinessRequest.parse(attemptId, nonce, requestId))
+        assertNull(QaReleaseReadinessRequest.parse(null, nonce, requestId))
+        assertNull(QaReleaseReadinessRequest.parse(attemptId, null, requestId))
+        assertNull(QaReleaseReadinessRequest.parse(attemptId, nonce, null))
+        assertNull(QaReleaseReadinessRequest.parse("run-1", nonce, requestId))
+        assertNull(QaReleaseReadinessRequest.parse(attemptId, "short", requestId))
+        assertNull(QaReleaseReadinessRequest.parse(attemptId, nonce, "x"))
+        assertNull(QaReleaseReadinessRequest.parse(attemptId, "\"},\"user_ref\":\"x" + "a".repeat(60), requestId))
     }
 
     @Test
     fun procStatStartTicksMatchesTheScriptsField22() {
-        // pid (comm with spaces and a ')' ) state ppid ... field 22 = starttime.
         val stat = "4242 (build.raft) app) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 987654 20 21"
         assertEquals("987654", parseProcStatStartTicks(stat))
         assertNull(parseProcStatStartTicks("garbage"))
     }
 
     @Test
-    fun manifestKeepsTheReceiverOffByDefaultAndShellOnly() {
-        val root =
-            DocumentBuilderFactory.newInstance()
-                .apply { isNamespaceAware = false }
-                .newDocumentBuilder()
-                .parse(locate("src/main/AndroidManifest.xml"))
-                .documentElement
-        val receivers = root.getElementsByTagName("receiver")
+    fun storeSourceSetsDeclareNoReceiverOnlyTheQaCandidateDoes() {
+        for (store in listOf("src/main/AndroidManifest.xml", "src/play/AndroidManifest.xml")) {
+            assertFalse("$store must not name the receiver", locate(store).readText().contains("QaReleaseReadinessReceiver"))
+        }
+        assertFalse(File(locate("src/main/AndroidManifest.xml").parentFile.parentFile, "release/AndroidManifest.xml").let { it.isFile && it.readText().contains("QaReleaseReadinessReceiver") })
+        val receivers = manifest("src/qaRelease/AndroidManifest.xml").getElementsByTagName("receiver")
         val receiver =
             (0 until receivers.length)
                 .map { receivers.item(it) as Element }
-                .single { it.getAttribute("android:name") == ".core.data.auth.QaReleaseReadinessReceiver" }
+                .single { it.getAttribute("android:name") == "build.raft.app.core.data.auth.QaReleaseReadinessReceiver" }
         assertEquals("false", receiver.getAttribute("android:enabled"))
         assertEquals("android.permission.DUMP", receiver.getAttribute("android:permission"))
         assertEquals(0, receiver.getElementsByTagName("intent-filter").length)
     }
+
+    @Test
+    fun receiverSourceIsCompiledOnlyByDebugAndTheQaCandidate() {
+        val src = locate("src/main/AndroidManifest.xml").parentFile.parentFile
+        val holders =
+            src.walkTopDown()
+                .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+                .filterNot { it.relativeTo(src).path.replace('\\', '/').startsWith("test/") }
+                .filter { it.readText().contains("class QaReleaseReadinessReceiver") }
+                .map { it.relativeTo(src).path.replace('\\', '/') }
+                .toList()
+        assertEquals(listOf("qaReadiness/java/build/raft/app/core/data/auth/QaReleaseReadinessReceiver.kt"), holders)
+        val gradle = File(src.parentFile, "build.gradle.kts").readText()
+        val users = Regex("getByName\\(\"(\\w+)\"\\) \\{\\s*java\\.srcDir\\(\"src/qaReadiness/java\"\\)").findAll(gradle).map { it.groupValues[1] }.toSet()
+        assertEquals(setOf("debug", "qaRelease"), users)
+        assertEquals(2, Regex("src/qaReadiness/java").findAll(gradle).count())
+    }
+
+    private fun manifest(relativePath: String): Element =
+        DocumentBuilderFactory.newInstance()
+            .apply { isNamespaceAware = false }
+            .newDocumentBuilder()
+            .parse(locate(relativePath))
+            .documentElement
 
     private fun locate(relativePath: String): File {
         var current = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile

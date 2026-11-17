@@ -151,15 +151,6 @@
                 <action android:name="build.raft.app.qa.CAPTURE_BOUNDARY" />
             </intent-filter>
         </receiver>
-        <!-- Release pre-login readiness receipt (docs/qa-acceptance/release-prelogin-contract.md).
-             OFF by default in every build: disabled until the QA runner enables it over adb for one
-             Testbed attempt (and disables it in that attempt's cleanup); DUMP-protected so only adb's
-             shell (not another app) can send to it; no intent filter (explicit component only). -->
-        <receiver
-            android:name=".core.data.auth.QaReleaseReadinessReceiver"
-            android:enabled="false"
-            android:exported="true"
-            android:permission="android.permission.DUMP" />
         <activity
             android:name=".MainActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"

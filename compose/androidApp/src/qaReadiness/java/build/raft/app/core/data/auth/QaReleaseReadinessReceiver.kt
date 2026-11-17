@@ -9,31 +9,39 @@ import build.raft.app.BuildConfig
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.StoredAuthSession
 import java.io.File
+import java.security.MessageDigest
 
 /**
  * Release pre-login readiness receipt (docs/qa-acceptance/release-prelogin-contract.md).
  *
- * After `scripts/qa/release_prelogin.mjs` has signed a release build in for ONE Testbed attempt,
- * it asks the app itself what it is signed in to. The app answers with one non-sensitive logcat
- * line (tag [LOG_TAG]): the session's user id, the server actually selected (id + slug), the build
- * version, the attempt id + nonce it was asked with, and its own process identity. Never a token,
- * cookie, email or name.
+ * COMPILED OUT of the store build. This file sits in `src/qaReadiness/java`, a source directory
+ * that only the `debug` and the QA-instrumented `qaRelease` build types compile. Only
+ * `src/qaRelease/AndroidManifest.xml` declares the receiver. `release` and `play` have neither the
+ * class nor the manifest entry; `verifyReleaseHasNoQaReadinessReceiver` /
+ * `verifyPlayHasNoQaReadinessReceiver` check their merged manifests on every build.
  *
- * Gated OFF by default, in every build type:
- *  - the manifest declares this receiver `android:enabled="false"`: nothing reaches it until the
- *    QA runner enables the component over adb (`pm enable`), and the runner disables it again in
- *    the attempt's cleanup;
- *  - it is protected by `android.permission.DUMP` (signature|privileged|development): adb's shell
- *    holds it, ordinary apps cannot, so another app cannot trigger it even while it is enabled;
- *  - it has no intent filter: only an explicit component broadcast reaches it.
- * The line is only readable through logcat (adb or a READ_LOGS holder), not by other apps.
+ * In the qaRelease candidate it is still off by default. The manifest declares it disabled until
+ * the QA runner enables it over adb for one attempt, and the runner disables it again in cleanup.
+ * It needs `android.permission.DUMP` (adb's shell holds it; ordinary apps cannot get it) and has
+ * no intent filter (explicit component only).
+ *
+ * After the runner signed the app in for ONE Testbed attempt, the app answers one request with one
+ * logcat line (tag [LOG_TAG]). The line carries:
+ *  - the attempt id, nonce and per-request id it was asked with;
+ *  - `user_ref`, a nonce-bound sha256 of the session's user id (minimisation, not anonymisation
+ *    and not a signature: the runner recomputes it from the frozen account id);
+ *  - the server actually selected (id + slug);
+ *  - the build version;
+ *  - its own process identity.
+ * Never a token, cookie, email, name or the raw user id.
  */
 class QaReleaseReadinessReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val request =
             QaReleaseReadinessRequest.parse(
                 attemptId = intent.getStringExtra(EXTRA_ATTEMPT_ID),
-                nonce = intent.getStringExtra(EXTRA_NONCE)
+                nonce = intent.getStringExtra(EXTRA_NONCE),
+                requestId = intent.getStringExtra(EXTRA_REQUEST_ID)
             )
         intent.replaceExtras(null)
         if (request == null) {
@@ -62,25 +70,31 @@ class QaReleaseReadinessReceiver : BroadcastReceiver() {
         const val REJECTED_MARKER = "RAFT_QA_READINESS_REJECTED"
         const val EXTRA_ATTEMPT_ID = "qaAttemptId"
         const val EXTRA_NONCE = "qaNonce"
-        const val CONTRACT = "raft-qa-release-readiness/v1"
+        const val EXTRA_REQUEST_ID = "qaRequestId"
+        const val CONTRACT = "raft-qa-release-readiness/v2"
+        const val USER_REF_DOMAIN = "raft-qa-readiness-user/v1"
     }
 }
 
-/** What the runner sent: a Testbed attempt id and the fresh per-attempt nonce. */
-internal data class QaReleaseReadinessRequest(val attemptId: String, val nonce: String) {
+/**
+ * What the runner sent: the Testbed attempt id, its nonce (both minted by Testbed before dispatch)
+ * and a fresh id for this one request, so a line written for an earlier request never answers it.
+ */
+internal data class QaReleaseReadinessRequest(val attemptId: String, val nonce: String, val requestId: String) {
     companion object {
-        private val AttemptIdRegex = Regex("^pla_[0-9a-f]{16,64}$")
-        private val NonceRegex = Regex("^[0-9a-f]{32,128}$")
+        private val AttemptIdRegex = Regex("^pla_[0-9a-f]{32}$")
+        private val NonceRegex = Regex("^[0-9a-f]{64}$")
+        private val RequestIdRegex = Regex("^[0-9a-f]{32}$")
 
-        fun parse(attemptId: String?, nonce: String?): QaReleaseReadinessRequest? {
-            if (attemptId == null || nonce == null) return null
-            if (!AttemptIdRegex.matches(attemptId) || !NonceRegex.matches(nonce)) return null
-            return QaReleaseReadinessRequest(attemptId, nonce)
+        fun parse(attemptId: String?, nonce: String?, requestId: String?): QaReleaseReadinessRequest? {
+            if (attemptId == null || nonce == null || requestId == null) return null
+            if (!AttemptIdRegex.matches(attemptId) || !NonceRegex.matches(nonce) || !RequestIdRegex.matches(requestId)) return null
+            return QaReleaseReadinessRequest(attemptId, nonce, requestId)
         }
     }
 }
 
-/** The only session facts the receipt may carry. */
+/** The only session facts the receipt may use. */
 internal data class QaReadinessSession(
     val userId: String,
     val selectedServerId: String?,
@@ -100,6 +114,15 @@ internal fun StoredAuthSession.toQaReadinessSession(): QaReadinessSession {
     return QaReadinessSession(userId = user.id, selectedServerId = selected, selectedServerSlug = slug)
 }
 
+/**
+ * sha256(UTF-8 of "raft-qa-readiness-user/v1" NUL nonce NUL userId), lowercase hex. The same bytes
+ * as `userRef` in scripts/qa/release_prelogin_lib.mjs (shared fixed test vector).
+ */
+internal fun qaReadinessUserRef(nonce: String, userId: String): String =
+    MessageDigest.getInstance("SHA-256")
+        .digest("${QaReleaseReadinessReceiver.USER_REF_DOMAIN}\u0000$nonce\u0000$userId".encodeToByteArray())
+        .joinToString("") { "%02x".format(it) }
+
 /** `/proc/<pid>/stat` field 22 (start time in clock ticks since boot), as the QA scripts read it. */
 internal fun parseProcStatStartTicks(stat: String): String? {
     val close = stat.lastIndexOf(')')
@@ -109,8 +132,8 @@ internal fun parseProcStatStartTicks(stat: String): String? {
 }
 
 /**
- * One JSON object, flat, every value a string / number / null. `session == null` (signed out)
- * reports `signed_in: false` with no ids. No token, cookie, email or display name ever.
+ * One flat JSON object; every value is a string, number, boolean or null. `session == null`
+ * (signed out) reports `signed_in: false` with no ids.
  */
 internal fun buildQaReleaseReadinessReceipt(
     request: QaReleaseReadinessRequest,
@@ -126,13 +149,14 @@ internal fun buildQaReleaseReadinessReceipt(
             "contract" to QaReleaseReadinessReceiver.CONTRACT,
             "attempt_id" to request.attemptId,
             "nonce" to request.nonce,
+            "request_id" to request.requestId,
             "package" to packageName,
             "version_name" to versionName,
             "version_code" to versionCode,
             "pid" to pid,
             "process_start_ticks" to processStartTicks,
             "signed_in" to (session != null),
-            "user_id" to session?.userId,
+            "user_ref" to session?.let { qaReadinessUserRef(request.nonce, it.userId) },
             "selected_server_id" to session?.selectedServerId,
             "selected_server_slug" to session?.selectedServerSlug
         )

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    QA-instrumented release candidate ONLY (build type `qaRelease`; never published). The release
+    pre-login readiness receiver (docs/qa-acceptance/release-prelogin-contract.md). Store builds
+    (`release`, `play`) have neither this entry nor the class; their merged manifests are checked by
+    verifyReleaseHasNoQaReadinessReceiver / verifyPlayHasNoQaReadinessReceiver.
+    Still off by default here: disabled until the QA runner enables it over adb for one attempt (and
+    disables it in cleanup), DUMP-protected so only adb's shell can send to it, no intent filter.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name="build.raft.app.core.data.auth.QaReleaseReadinessReceiver"
+            android:enabled="false"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+    </application>
+</manifest>

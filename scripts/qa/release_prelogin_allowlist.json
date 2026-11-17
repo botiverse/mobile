@@ -1,11 +1,15 @@
 {
-  "contract": "raft-release-prelogin-allowlist/v1",
-  "_doc": "docs/qa-acceptance/release-prelogin-contract.md. A case is pre-logged-in on a release build ONLY when listed under cases with intent 'ordinary'. 'never' cases are refused even if listed. Adding a case is a reviewed change.",
+  "contract": "raft-release-prelogin-allowlist/v2",
+  "_doc": "docs/qa-acceptance/release-prelogin-contract.md. NARROWING ONLY: Testbed admission (a claim-bound frozen spec) decides whether a case attempt uses the release pre-login; this list can only refuse. An entry pins one exact case revision + sha256 and must say status 'compatible'. 'never' cases are refused whatever any spec says. Changing an entry is a reviewed change (Mobile + Testbed).",
   "cases": {
     "channel-switch-navigation": {
+      "revision": 3,
+      "case_sha256": "0c62efd84eebbbc1ceba998021d9b7a35d5b8f2032a31a419ba080c11748b95c",
+      "platform": "android",
       "intent": "ordinary",
       "class": "ordinary",
-      "note": "Proposed single staging validation case (read-only, one server). Pending final review with Argus."
+      "status": "candidate",
+      "note": "Later candidate only, not approved (Argus review of PR 4946). Still auth_fixture alpha-qa in Testbed: do not retag to get past admission. Opening channels can change read state, so it is not zero-write. Needs two distinguishable channels on the frozen server."
     }
   },
   "never": {

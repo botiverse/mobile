@@ -30,7 +30,7 @@
 //     --capture-browser-apk build/capture-browser.apk [--apk app-release.apk] \
 //     [--env staging|production] [--package build.raft.app] [--out release-auto-login-evidence]
 //     [--strict-cleanup] [--revoke-app-session] [--keep-capture-browser]
-//     [--no-capture] [--defer-app-session] [--phase sign-in|sign-out]
+//     [--no-capture] [--defer-app-session] [--phase sign-in|sign-out] [--account-ref-nonce <hex>]
 //     [--scenario scripts/qa/scenarios/<name>.mjs [its options, e.g. --server-name X]]
 //   (or --credential-file <testbed qa-account get --out file>)
 import fs from "node:fs";
@@ -49,6 +49,7 @@ import {
   validateCallbackUrl,
   validateCapturedLoginUrl,
 } from "./release_auto_login_lib.mjs";
+import { userRef } from "./release_prelogin_lib.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(`--${name}`);
@@ -68,8 +69,10 @@ const STRICT_CLEANUP = flag("strict-cleanup");
 const REVOKE_APP_SESSION = flag("revoke-app-session");
 // Release pre-login for a Testbed case (scripts/qa/release_prelogin.mjs,
 // docs/qa-acceptance/release-prelogin-contract.md):
-//   --no-capture         no screenshot, UI dump or login log file is written at any step (the
-//                        login phase captures nothing); summary.json still records every step;
+//   --no-capture         nothing from the login is written to disk, on the device or here: no
+//                        screenshot, no UI dump (UI trees are read through uiautomator's stdout
+//                        into memory), no streamed login log (logcat dumps are read into memory).
+//                        Only summary.json is written, at the end (masked, non-sensitive);
 //   --defer-app-session  the app stays signed in for the case; its session is signed out by the
 //                        attempt's own cleanup, a later run with --phase sign-out;
 //   --phase sign-out     no sign-in: only the app's own Sign out (with its bound logout evidence)
@@ -77,6 +80,7 @@ const REVOKE_APP_SESSION = flag("revoke-app-session");
 const NO_CAPTURE = flag("no-capture");
 const DEFER_APP_SESSION = flag("defer-app-session");
 const PHASE = option("phase", "sign-in");
+const ACCOUNT_REF_NONCE = option("account-ref-nonce", "");
 // Optional: a module whose run(ctx) drives the signed-in app (and the QA account's web session)
 // before cleanup; docs/qa-acceptance/release-auto-login.md "Scenarios".
 const SCENARIO = option("scenario", "");
@@ -125,6 +129,16 @@ const shell = (command, options) => adb(["shell", command], options);
 
 // ---------- UI (uiautomator) ----------
 function dumpXml() {
+  // --no-capture: the UI tree goes straight to this process's memory (uiautomator writes it to its
+  // own stdout); nothing is written on the device, so a killed run leaves no dump behind.
+  if (NO_CAPTURE) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const out = adb(["exec-out", "uiautomator", "dump", "/dev/tty"], { allowFailure: true, timeoutMs: 30_000 });
+      const xml = /<\?xml[\s\S]*<\/hierarchy>|<hierarchy[\s\S]*<\/hierarchy>/.exec(out)?.[0];
+      if (xml) return xml;
+    }
+    return "";
+  }
   for (let attempt = 0; attempt < 3; attempt += 1) {
     shell("uiautomator dump /sdcard/release-auto-login.xml >/dev/null 2>&1", { allowFailure: true, timeoutMs: 30_000 });
     const xml = adb(["exec-out", "cat", "/sdcard/release-auto-login.xml"], { allowFailure: true });
@@ -681,7 +695,8 @@ async function main() {
     });
 
     adb(["logcat", "-c"], { allowFailure: true });
-    logcat = spawn("adb", ["logcat", "-v", "threadtime", "-s", "SlockAppLogin:*"], { stdio: ["ignore", fs.openSync(logcatFile, "w"), "ignore"] });
+    // --no-capture: no streamed copy on disk; verify-signed-in reads logcat dumps into memory only.
+    if (!NO_CAPTURE) logcat = spawn("adb", ["logcat", "-v", "threadtime", "-s", "SlockAppLogin:*"], { stdio: ["ignore", fs.openSync(logcatFile, "w"), "ignore"] });
 
     await step("open-sign-in-page", async () => {
       launchApp();
@@ -754,8 +769,9 @@ async function main() {
       };
       redact.add(webSession.accessToken);
       redact.add(webSession.refreshToken);
-      // Non-secret: the pre-login compares it with the account Testbed froze for the attempt.
-      summary.account_user_id = webSession.userId;
+      // The pre-login compares the account with the one Testbed froze, as a nonce-bound sha256
+      // (release_prelogin_lib.mjs userRef); the raw id is not written.
+      if (ACCOUNT_REF_NONCE) summary.account_user_ref = userRef(ACCOUNT_REF_NONCE, webSession.userId);
 
       const described = await web("GET", `auth/app-login/requests/${encodeURIComponent(requestId)}`, { token: webSession.accessToken });
       if (described.status !== 200) stop(`the app-login request is not usable (HTTP ${described.status} ${described.json?.code ?? ""})`);
