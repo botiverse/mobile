@@ -850,6 +850,7 @@ private fun TaskHeadSourceValue(source: TaskHeadSource, serverId: String?, onOpe
                 identity = RaftMemberAvatarIdentity(source.authorKind, source.authorId, serverId),
                 label = source.authorName.orEmpty(),
                 avatarSize = TaskHeadFactAvatarSize,
+                modifier = Modifier.testTag(TaskHeadSourceFaceTestTag),
                 carriedAvatarWireValue = source.authorAvatarWireValue,
             )
         }
@@ -871,6 +872,10 @@ private fun TaskHeadSourceValue(source: TaskHeadSource, serverId: String?, onOpe
 /** The faces in the facts (Source, Created by): web `AvatarSlot` `compact-list`. */
 private val TaskHeadFactAvatarSize = 18.dp
 
+/** Tests only: the Source and Created by faces, which must draw alike (see [TaskHeadCreatedByValue]). */
+internal const val TaskHeadSourceFaceTestTag = "task-head-source-face"
+internal const val TaskHeadCreatorFaceTestTag = "task-head-creator-face"
+
 /** Created by: the creator's face (as on the Source row) and name; just the name without a creator. */
 @Composable
 private fun TaskHeadCreatedByValue(name: String, creator: TaskHeadPerson?, serverId: String?, onOpenCreator: ((TaskHeadPerson) -> Unit)?) {
@@ -880,6 +885,8 @@ private fun TaskHeadCreatedByValue(name: String, creator: TaskHeadPerson?, serve
     }
     // The face and name open the creator's profile, as a message author's avatar does (artin,
     // task #35). The row keeps its size: the platform widens a small target's touch area.
+    // Nothing clips the row: the face sits on its edge, and a rounded clip there (as the row had
+    // before #4814) cut the face's left corners, so it looked cropped beside Source's.
     val open = onOpenCreator?.let { { it(creator) } }
     Row(
         if (open != null) {
@@ -896,6 +903,7 @@ private fun TaskHeadCreatedByValue(name: String, creator: TaskHeadPerson?, serve
             identity = RaftMemberAvatarIdentity(creator.kind, creator.id, serverId),
             label = name.removePrefix("@"),
             avatarSize = TaskHeadFactAvatarSize,
+            modifier = Modifier.testTag(TaskHeadCreatorFaceTestTag),
             carriedAvatarWireValue = creator.avatarWireValue,
         )
         RaftDescriptionValue(name, Modifier.weight(1f, fill = false), copyable = false, maxLines = 1)
