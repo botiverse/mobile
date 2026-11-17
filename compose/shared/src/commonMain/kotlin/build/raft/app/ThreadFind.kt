@@ -145,7 +145,11 @@ internal fun threadFindCountText(state: ThreadFindState, loadingLabel: String): 
         else -> "${state.activeIndex + 1}/${state.matches.size}"
     }
 
-/** The page's find bar while it is open (the message list draws it over its end). */
+/**
+ * The page's find bar while it is open: the message list draws it over its top, right under the
+ * header (web ThreadPanel puts ThreadSearchBar first in its content), and keeps its first rows clear
+ * of it.
+ */
 @Composable
 internal fun ThreadFindBarHost(controller: ThreadFindController, modifier: Modifier = Modifier) {
     val state by controller.store.state.collectAsState()
@@ -156,7 +160,8 @@ internal fun ThreadFindBarHost(controller: ThreadFindController, modifier: Modif
 
 /**
  * The bar of Search in this thread (web `ThreadSearchBar`): the words, the match count, Previous /
- * Next and Close. Enter goes to the next match, Shift+Enter to the previous, Esc closes.
+ * Next and Close, over a seam at its bottom (web `border-b border-line-seam`). Enter goes to the
+ * next match, Shift+Enter to the previous, Esc closes.
  */
 @Composable
 internal fun ThreadFindBar(
@@ -186,7 +191,6 @@ internal fun ThreadFindBar(
             onBlur = {},
         )
     Column(modifier = modifier.fillMaxWidth().background(colors.layerCanvas).testTag(ThreadFindTestTags.Bar)) {
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
         Row(
             modifier =
                 Modifier
@@ -262,5 +266,6 @@ internal fun ThreadFindBar(
                 RaftSlotIcon(RaftLucideIconName.X, size = 14.dp)
             }
         }
+        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
     }
 }

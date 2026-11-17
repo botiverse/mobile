@@ -46,6 +46,16 @@ class SettingsHomeSearchEntityTitleTest {
         assertFalse(labels.any { it.startsWith("#") })
     }
 
+    @Test
+    fun directMessageSearchScopeNamesThePeer() {
+        // A DM's own search (its header's Search) is scoped by the DM's channel id; the chip and the
+        // "In …" row name the peer as web MessageSearchPage `scopeConversation` does: "@person".
+        val scope = homeSearchChannelFilters(homeState()).single { it.id == "channel-2" }
+
+        assertEquals("@alex (bot)", scope.label)
+        assertEquals(RaftLucideIconName.Bot, scope.icon)
+    }
+
     private fun homeState(): SharedHomeState =
         SharedHomeState(
             content =

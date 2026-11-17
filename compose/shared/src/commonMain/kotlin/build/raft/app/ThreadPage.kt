@@ -561,6 +561,7 @@ import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
@@ -3120,17 +3121,29 @@ internal fun RaftThreadScreenPayload.profileChannelId(): String? =
         else -> null
     }
 
+/**
+ * The conversation the header's Search opens its own search page for (web ChatPanel
+ * `handleSearchThisChannel`, on a phone `nav.toConversationSearch(channelType === "dm" ? "dm" :
+ * "channel", id)`): a channel's or a DM's own id; none for a reply thread or a task's conversation
+ * (they search in place, [ThreadHeaderSearchAction.InlineThreadSearch]).
+ */
 internal fun RaftThreadScreenPayload.threadChannelSearchChannelId(): String? =
     sourceThreadId
         ?.trim()
-        ?.takeIf { it.isNotBlank() && surfaceKind == RaftThreadSurfaceKind.Channel && !isTaskConversationSurface() }
+        ?.takeIf {
+            it.isNotBlank() &&
+                (surfaceKind == RaftThreadSurfaceKind.Channel || surfaceKind == RaftThreadSurfaceKind.DirectMessage) &&
+                !isTaskConversationSurface()
+        }
 
 /** Task v2: this page is a task's own conversation (`channels.type = 'task'`). */
 internal fun RaftThreadScreenPayload.isTaskConversationSurface(): Boolean =
     channelKind.normalizedThreadChannelKind() == RaftTaskConversationChannelKind
 
 internal enum class ThreadHeaderSearchAction {
+    /** The conversation's own search page (a channel's or a DM's), [threadChannelSearchChannelId]. */
     ChannelSearch,
+    /** Search in this thread / task: the find bar over the top of the message list. */
     InlineThreadSearch
 }
 
@@ -25745,12 +25758,29 @@ private fun ThreadMessagesListContent(
             LaunchedEffect(threadInstanceKey, maxHeight) {
                 measuredThreadViewportHeightDp = maxHeight.value
             }
+            // Search in this thread's bar (web ThreadSearchBar, the strip under the panel's header)
+            // lies over the top of the list, right under the header, out of the list's flow like the
+            // offline tip: the list reserves its measured height at its top, so the bar never hides
+            // the first rows or the origin card, and a match brought to the top (offset 0, measured
+            // after the top padding) lands just under it. The keyboard lifts only the composer.
+            val threadFindBarShown = threadFind != null && inlineSearchVisible
+            var threadFindBarHeightPx by remember(threadInstanceKey) { mutableIntStateOf(0) }
+            val threadFindBarTopInset =
+                when {
+                    !threadFindBarShown -> 0.dp
+                    threadFindBarHeightPx > 0 -> with(LocalDensity.current) { threadFindBarHeightPx.toDp() }
+                    else -> ThreadInlineSearchBarTopInset
+                }
             if (offlineLastKnownChrome.tipVisible && !shareSelectionCaptureActive) {
                 // Absolute overlay, out of the list's flow (artin, task #1125); the list reserves an
                 // equal top inset below so the tip never hides the first row when scrolled to the top.
                 // Not while "Generate image" captures the list: the export reads the window's pixels.
+                // Under the find bar while it is open.
                 ThreadOfflineLastKnownTip(
-                    modifier = Modifier.align(Alignment.TopCenter).zIndex(ThreadOfflineLastKnownTipZIndex)
+                    modifier =
+                        Modifier.align(Alignment.TopCenter)
+                            .padding(top = threadFindBarTopInset)
+                            .zIndex(ThreadOfflineLastKnownTipZIndex)
                 )
             }
             val inPlaceSelectionViewportHost = LocalThreadInPlaceTextSelectionHost.current
@@ -25931,7 +25961,9 @@ private fun ThreadMessagesListContent(
                 verticalArrangement = Arrangement.Bottom,
                 contentPadding =
                     PaddingValues(
-                        top = if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp,
+                        top =
+                            (if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp) +
+                                threadFindBarTopInset,
                         // The thread timeline's rail keeps clear of message content (web `--message-rail-inset`).
                         end = if (LocalThreadOutlineState.current?.railShown == true) ThreadOutlineRailInset else 0.dp,
                     ),
@@ -26564,8 +26596,7 @@ private fun ThreadMessagesListContent(
                                     ThreadShareCaptureBottomScrollPaddingHeight
                                 } else {
                                     0.dp
-                                }) +
-                                (if (inlineSearchVisible) ThreadInlineSearchBarBottomInset else 0.dp)
+                                })
                         )
                 )
                 }
@@ -26578,8 +26609,9 @@ private fun ThreadMessagesListContent(
         if (threadFind != null) {
             ThreadFindBarHost(
                 controller = threadFind,
-                modifier = Modifier.align(Alignment.BottomCenter)
+                modifier = Modifier.align(Alignment.TopCenter)
                     .zIndex(ThreadInlineSearchBarZIndex)
+                    .onSizeChanged { size -> threadFindBarHeightPx = size.height }
             )
         }
         // Read through a derived state: this scope is huge, and reading canScrollForward /
@@ -26762,7 +26794,8 @@ private fun ThreadMessagesListContent(
             )
         }
         val nextUnreadThread = unreadThreadJump?.takeIf { it.direction == ThreadUnreadThreadJumpDirection.Next }
-        val agentTypingLineShown = agentTyping != null && !inlineSearchVisible && !shareSelectionCaptureActive
+        // Also while Search in this thread is open: its bar sits at the list's top (web ThreadSearchBar).
+        val agentTypingLineShown = agentTyping != null && !shareSelectionCaptureActive
         // The list's end fade (raft-ui MessageListEndFade), always on; while the typing line shows it
         // grows by the line's height, solid under the line (web ChatPanel / ThreadPanel).
         // Except while "Generate image" captures the list: the export reads the window's pixels
@@ -27547,9 +27580,10 @@ private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scr
 private val ThreadBottomScrollPaddingHeight = 16.dp
 private val ThreadNewerMessagesBoundaryHeight = 36.dp
 private val ThreadShareCaptureBottomScrollPaddingHeight = 1200.dp
-private val ThreadInlineSearchBarBottomInset = 58.dp
+/** The list's top inset for the find bar until the bar is measured (its usual height). */
+private val ThreadInlineSearchBarTopInset = 58.dp
 private const val ThreadInlineSearchBarZIndex = 2f
-/** Over the messages, under the typing line, the inline search bar and the jump pills. */
+/** Over the messages, under the typing line, the find bar (at the list's top) and the jump pills. */
 private const val ThreadMessageListEndFadeZIndex = 1f
 /** Over the messages, under the jump pills and the inline search bar's popups. */
 private const val ThreadAgentTypingLineZIndex = 1.5f

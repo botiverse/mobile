@@ -102,6 +102,15 @@ class RaftProductPageRoutesTest {
             view(RaftPageRoute.ConversationSearch),
             page(AuthenticatedProductRoute.HomeSearch, JSONObject().apply { put(HOME_SEARCH_SELECTED_CHANNEL_ID, "c1") }),
         )
+        // A DM's header Search (web nav.toConversationSearch("dm", id)) is a conversation search too.
+        assertEquals(
+            view(RaftPageRoute.ConversationSearch),
+            page(
+                AuthenticatedProductRoute.HomeSearch,
+                RaftThreadScreenPayload(sourceThreadId = "dm-1", surfaceKind = RaftThreadSurfaceKind.DirectMessage)
+                    .toThreadChannelSearchPageData()!!,
+            ),
+        )
         assertEquals(view(RaftPageRoute.Saved), page(AuthenticatedProductRoute.HomeSaved))
         assertEquals(view(RaftPageRoute.Activity), page(AuthenticatedProductRoute.HomeActivity))
         assertEquals(view(RaftPageRoute.Members), page(AuthenticatedProductRoute.Members))
