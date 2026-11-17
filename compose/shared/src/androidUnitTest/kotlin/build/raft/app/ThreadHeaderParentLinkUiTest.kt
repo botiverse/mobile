@@ -127,7 +127,8 @@ class ThreadHeaderParentLinkUiTest {
         runRobolectricComposeUiTest {
             var opens = 0
             showHeader(replyCount = 3, onOpenInChannel = { opens++ })
-            onNodeWithText("@artin: 1.23 why").assertExists()
+            // The original is in view (or no list reports it): the title is the thread's own name.
+            onNodeWithText("Thread").assertExists()
             onNodeWithText(" · 3 replies").assertExists()
             onNodeWithText("@Lagoon").performClick()
             runOnIdle { assertEquals(1, opens) }

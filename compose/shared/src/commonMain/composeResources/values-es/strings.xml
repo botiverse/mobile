@@ -512,8 +512,12 @@
     <string name="thread_send_failure_details_copied">Detalles del error copiados</string>
     <string name="thread_state_original_unavailable">El mensaje original no está disponible.</string>
     <string name="thread_reply_title">Hilo</string>
-    <string name="thread_reply_title_preview_image">[Imagen]</string>
-    <string name="thread_reply_title_preview_file">[Archivo]</string>
+    <string name="thread_reply_title_preview_image">Imagen</string>
+    <string name="thread_reply_title_preview_file">Archivo</string>
+    <string name="thread_title_original_separator">:&#160;</string>
+    <string name="thread_title_original_a11y">Hilo: %1$s: %2$s</string>
+    <string name="thread_title_original_deleted_a11y">Hilo: mensaje original eliminado</string>
+    <string name="thread_title_original_unavailable_a11y">Hilo: no puedes ver el mensaje original</string>
     <string name="thread_channel_title">Canal</string>
     <string name="thread_channel_access_lost">Ya no estás en este canal</string>
     <string name="thread_direct_message_title">Mensaje directo</string>
