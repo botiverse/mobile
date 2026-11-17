@@ -3055,8 +3055,16 @@ private fun RaftComputerDetailBody(
                         var showAllRuntimes by remember(machineId) { mutableStateOf(false) }
                         // Install (slock #15214): offered by the runtime-auth read, read only once the
                         // not-installed chips are shown to a person who may see the Computer's runtimes.
+                        // The shell access is resolved only then too (a page that never shows them needs no
+                        // shell), and stays once resolved so hiding the chips keeps an Install in progress.
+                        var installShown by remember(machineId) { mutableStateOf(false) }
+                        if (showAllRuntimes) installShown = true
                         val installAccess =
-                            if (canEdit && hasNotInstalled) LocalMembersRuntimeAccountUsageAccess.current ?: rememberShellRuntimeAccountUsageAccess() else null
+                            if (canEdit && hasNotInstalled && installShown) {
+                                LocalMembersRuntimeAccountUsageAccess.current ?: rememberShellRuntimeAccountUsageAccess()
+                            } else {
+                                null
+                            }
                         val install = rememberComputerRuntimeInstallController(installAccess, machineId, readNow = showAllRuntimes)
                         // Usage runtimes open their account usage (web RuntimeAccountUsageGateChip).
                         ComputerRuntimeUsageChips(
