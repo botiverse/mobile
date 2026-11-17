@@ -14,7 +14,7 @@
 4 build/raft/app/home/RaftHomeComponents.kt
 2 build/raft/app/home/RaftWorkingNowSummary.kt
 1 build/raft/app/members/MembersAgentAvatarDialog.kt
-3 build/raft/app/members/MembersPage.kt
+2 build/raft/app/members/MembersAgentTabs.kt
 1 build/raft/app/settings/SettingsAccountPage.kt
 1 build/raft/app/settings/SettingsFormParts.kt
 4 build/raft/app/settings/SettingsHomePage.kt

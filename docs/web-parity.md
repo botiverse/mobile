@@ -160,21 +160,21 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Create, claim, assign, status, detail | `task/CreateTaskDialog.tsx`, `TaskProperties.tsx` | done | `data/TasksDataSource.kt`, `RaftTasksTaskColumn.kt` | existing | – |
 | **Task history timeline** | `task/HistoryTimeline.tsx` | missing | searched `/history` | `GET /tasks/:id/history` | S |
 | Linked tasks in threads | `message/MessageItem.tsx` | done | `ThreadLinkedTaskProjection.kt` | existing | – |
-| Agent list, profile, avatar, permissions | `agent/AgentDetailPanel.tsx` | done | `MembersPage.kt`, `data/AgentsApi.kt` | existing | – |
+| Agent list, profile, avatar, permissions | `agent/AgentDetailPanel.tsx` | done | `MembersList.kt`, `MembersAgentProfile.kt`, `MembersAgentTabs.kt` (permissions), `data/AgentsApi.kt` | existing | – |
 | Activity log (raw) | `agent/AgentActivityLog.tsx` | done | `data/AgentsApi.kt` | existing | – |
 | Activity overview (summaries) | `agent/AgentActivityOverview.tsx` | missing | – | `/agents/:id/activity-summaries` | M |
-| Agent DMs, reminders, workspace files, skills, apps tab | `agent/*` | done | `MembersPage.kt` tabs, `data/AgentsApi.kt` | existing | – |
+| Agent DMs, reminders, workspace files, skills, apps tab | `agent/*` | done | `MembersAgentTabs.kt` tabs, `data/AgentsApi.kt` | existing | – |
 | Agent MCP tab | `agent/AgentMcpTab.tsx` | missing | searched `mcp` | `/mcp/servers*` | M |
 | Runtime / model config, usage | `agent/RuntimeConfigFields.tsx`, `machine/RuntimeAccountUsageChip.tsx` | done (no manual usage refresh) | `MembersAgentRuntimeFormV2Dialog.kt`, `MembersAgentRuntimeUsage.kt` | existing | – |
 | Start / stop / reset, move to computer | `agent/ResetAgentDialog.tsx` | done | `data/AgentsApi.kt`, `MemberRepositoryDataSource.kt:1007` | existing | – |
 | Create agent on a computer; external agent | `agent/CreateAgentDialog.tsx`, `ExternalAgentToken.tsx` | done (external diagnostics unused) | `SharedCreateAgentDialog.kt` | existing | – |
 | **Hosted agents** | `CreateAgentDialog.tsx:102`, `agent/HostedModelChoice.tsx`, `HostedRuntimeStatus.tsx` | missing | searched `hosted-runtime`, `HostedRuntime` | `/agents/:id/hosted-runtime*` | L |
 | Agent migration | `agentMigration/*` | missing (status parsed, not shown) | `data/MemberAgentParser.kt:172` | `/agents/:id/migrate`, `/migration*` | L |
-| Agent archive | `agentArchive/AgentArchiveDialog.tsx` | partial: delete only | `MembersPage.kt` | `/agents/:id/archive*` | M |
+| Agent archive | `agentArchive/AgentArchiveDialog.tsx` | partial: delete only | `MembersDetailHeader.kt` | `/agents/:id/archive*` | M |
 | Archived agents list | `settings/ArchivedAgentsSection.tsx` | missing | – | `GET /agents/archived` | S |
 | Computers list / detail / upgrade / restart | `machine/MachineDetailPanel.tsx` | WebView | `SettingsComputersPage.kt` | existing | M to go native |
 | Add computer | `machine/AddMachineDialog.tsx` | WebView; native dialog built but not wired | `AddComputerDialog.kt` | `POST /servers/:id/machines` | S |
-| Invite humans, roles, remove member | `member/InviteHumanDialog.tsx`, `HumanDetailPanel.tsx` | done | `SharedInviteHumanDialog.kt`, `MembersPage.kt` | existing | – |
+| Invite humans, roles, remove member | `member/InviteHumanDialog.tsx`, `HumanDetailPanel.tsx` | done | `SharedInviteHumanDialog.kt`, `MembersHumanProfile.kt` | existing | – |
 | Pending invites / join links | `settings/PendingInviteRow.tsx` | WebView | `SettingsAdministrationPage.kt` | existing | – |
 | Guest role | `member/InviteHumanDialog.tsx:112-124` (flagged) | partial: public guest toggle only | `data/ServerPublicVisibilityApi.kt` | existing | M |
 

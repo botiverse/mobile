@@ -1,0 +1,1281 @@
+package build.raft.app
+
+import build.raft.app.resources.*
+import androidx.compose.ui.platform.testTag
+import androidx.compose.runtime.setValue
+import build.raft.app.components.raftCardSurface
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.app.data.AgentDetailSnapshot
+import build.raft.app.data.AgentDetailSummary
+import build.raft.app.data.AgentResetMode
+import build.raft.app.data.AgentProfileUpdateRequest
+import build.raft.app.data.DataResult
+import build.raft.app.data.ScreenError
+import build.raft.app.data.SharedCreateAgentFormStore
+import build.raft.app.data.ExistingAgentRuntimeOptions
+import build.raft.app.data.runtimeDeprecatedForAgent
+import build.raft.app.components.RaftUiBanner
+import build.raft.app.components.RaftUiBannerSize
+import build.raft.app.components.RaftUiBannerStatus
+import build.raft.app.data.CREATE_AGENT_BUILTIN_RUNTIME_ID
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
+import build.raft.app.data.toAgentDetailSummary
+import build.raft.app.model.AgentStatus
+import build.raft.app.model.RUNTIME_MODELS
+import build.raft.app.model.RuntimeConfig
+import build.raft.app.model.RuntimeModeConfig
+import build.raft.app.model.RuntimeModelConfig
+import build.raft.app.model.RuntimeProviderConfig
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.Presence
+import build.raft.app.model.supportsRuntimeFastMode
+import build.raft.app.model.supportsRuntimeReasoningEffort
+import build.raft.app.model.RaftTimeContext
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftSectionEyebrow
+import build.raft.designsystem.components.RaftPresence
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftStatusSize
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftRadius
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import build.raft.designsystem.components.raftCopyable
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import build.raft.app.data.AgentConfigApply
+import build.raft.app.data.runtimeCatalogDisplayName
+import build.raft.app.data.runtimeCatalogIsDeprecated
+import build.raft.designsystem.components.LocalRaftToastHostState
+import build.raft.designsystem.components.RaftToastHostState
+import build.raft.designsystem.components.RaftToastIntent
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import build.raft.app.model.isExternalAgentRuntime
+import androidx.compose.ui.semantics.selected
+
+/**
+ * The Computer / Computer status / Computer Version / Created / Creator rows of the agent
+ * profile's INFO section (web AgentProfileInfo InfoRows), split out so a golden can cover them.
+ * Each is its own stacked item: the computer's status and version are rows of their own, so a
+ * long (wrapping) computer name never has the status wedged into it.
+ */
+@Composable
+internal fun MembersAgentComputerInfoRows(
+    member: MemberProfile,
+    summary: AgentDetailSummary?,
+    machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
+    onOpenComputer: (() -> Unit)?,
+    timeContext: RaftTimeContext,
+    memberAvatarResolver: RaftMemberAvatarResolver
+) {
+    // Truth source is the computers store, not `machineId != null` (task #259).
+    val statusRow = machineStatusRow(summary?.machineId)
+    val machineName = summary?.machineName?.takeIf { it.isNotBlank() } ?: member.membersComputerName
+    MembersAgentInfoField(label = stringResource(Res.string.member_label_computer)) {
+        when (statusRow) {
+            // artin: 甲 -- until the store has answered, the row has no value (web
+            // `agentMachineRow.kind === "pending" ? null`), so it cannot flash
+            // "No computer assigned" before flipping to the machine.
+            MembersMachineStatusRow.Loading -> Unit
+            // Web `text-foreground-hint` on the callout.
+            MembersMachineStatusRow.NoComputer ->
+                RaftText(
+                    text = stringResource(Res.string.member_machine_no_computer_assigned),
+                    style = membersInfoValueStyle(),
+                    color = RaftTheme.colors.foregroundHint
+                )
+            is MembersMachineStatusRow.Machine -> {
+                // Web: a `font-mono text-foreground` button that opens the computer, underlined on
+                // hover. Android has no hover, so the underline shows whenever it is tappable.
+                val machineNameStyle =
+                    membersInfoValueStyle(mono = true).let { base ->
+                        if (onOpenComputer != null) base.copy(textDecoration = TextDecoration.Underline) else base
+                    }
+                RaftText(
+                    text = machineName.orDash(),
+                    style = machineNameStyle,
+                    color = RaftTheme.colors.foreground,
+                    // No maxLines/ellipsis on purpose: truncating a machine name hides exactly
+                    // the part that distinguishes two similar hosts; it wraps instead.
+                    softWrap = true,
+                    // Long press copies the name; a tap still opens the computer.
+                    modifier = Modifier
+                        .raftCopyable(machineName?.takeIf { it.isNotBlank() }, onClick = onOpenComputer)
+                        .fillMaxWidth()
+                )
+            }
+        }
+    }
+    if (statusRow is MembersMachineStatusRow.Machine) {
+        // web `agent-computer-connection`: "Computer status", not "Status" -- the hero already
+        // shows the agent's own activity. <StatusDot> (Status md, 10px) then the word.
+        MembersAgentInfoField(label = stringResource(Res.string.member_label_computer_status)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RaftStatusDot(
+                    presence = if (statusRow.online) RaftPresence.Online else RaftPresence.Offline,
+                    size = RaftStatusSize.Md
+                )
+                RaftText(
+                    text = stringResource(
+                        if (statusRow.online) Res.string.member_label_connected else Res.string.member_label_offline
+                    ),
+                    style = membersInfoValueStyle(),
+                    color = RaftTheme.colors.foreground
+                )
+            }
+        }
+        // web `agent-computer-version` (#14585): the version only, "v1.0.53"; "—" while the
+        // Computer is offline or reports none. Whether it is online is the row above.
+        val runLabel = membersAgentComputerVersionText(statusRow.runLabel)
+        MembersAgentInfoField(
+            label = stringResource(Res.string.settings_computers_label_version),
+            copyText = runLabel
+        ) {
+            RaftText(
+                text = runLabel,
+                style = membersInfoValueStyle(mono = true),
+                color = RaftTheme.colors.foreground
+            )
+        }
+    }
+    summary?.createdAt.membersLocalizedCreatedDateOrNull(timeContext)?.let { createdDate ->
+        MembersAgentInfoField(label = stringResource(Res.string.member_label_created), copyText = createdDate) {
+            // Web `<span className="font-mono">` on the callout.
+            RaftText(
+                text = createdDate,
+                style = membersInfoValueStyle(mono = true),
+                color = RaftTheme.colors.foreground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+    // Creator value stays a clickable identity chip (web opens the profile).
+    val creatorProfile = summary?.creator?.toStrictMemberProfile()
+    MembersAgentInfoField(label = stringResource(Res.string.member_label_creator), copyText = creatorProfile?.displayName) {
+        if (creatorProfile != null) {
+            // Web creator button: `flex items-center gap-2`, the name on the callout at
+            // 400, the @handle `font-mono text-mono-meta text-foreground-hint`.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                MembersRaftAvatar(
+                    member = creatorProfile,
+                    size = RaftAvatarSize.Xs,
+                    memberAvatarResolver = memberAvatarResolver
+                )
+                RaftText(
+                    text = creatorProfile.displayName,
+                    style = membersInfoValueStyle(),
+                    color = RaftTheme.colors.foreground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    // fill = false so the name shrinks to its content and the handle beside it
+                    // is not pushed out.
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                RaftText(
+                    text = creatorProfile.detailHandle,
+                    style = RaftTheme.typography.monoMeta,
+                    color = RaftTheme.colors.foregroundHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        } else {
+            RaftText(
+                text = stringResource(Res.string.member_state_no_creator_assigned),
+                style = membersInfoValueStyle(),
+                color = RaftTheme.colors.foregroundHint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * Web AgentProfileInfo `!isExternalAgent` (`agent.external === true || isExternalAgentRuntime(runtime)`):
+ * whether the profile shows the Runtime config section. An external agent, a cloud (hosted) one
+ * included, has none: its stored runtime and model are both the literal "external".
+ */
+internal fun membersAgentProfileShowsRuntimeConfig(member: MemberProfile, summary: AgentDetailSummary?): Boolean =
+    !(member.isExternal || summary?.isExternal == true || isExternalAgentRuntime(summary?.runtime))
+
+/**
+ * RUNTIME CONFIG section of the agent detail tab: read-only rows plus the shared runtime-config
+ * editor dialog and its save flow (task #1130 part 2, moved verbatim out of [MembersAgentProfileTab]).
+ */
+@Composable
+internal fun MembersAgentRuntimeConfigSection(
+    member: MemberProfile,
+    summary: AgentDetailSummary?,
+    agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
+    edit: MembersAgentProfileEditInputs,
+    runtimeModels: MembersAgentRuntimeModelInputs,
+    createAgentFormStore: SharedCreateAgentFormStore?,
+    onApplyAgentRuntimeConfigProjection: suspend (MembersAgentProfileEditAuthority, RuntimeConfig, Boolean?) -> Boolean
+) {
+    // Web AgentProfileInfo renders this section only `!isExternalAgent`: an external or cloud
+    // agent's runtime and model are the "external" placeholders (a cloud agent's model is its own
+    // row under the hosted status, [MembersAgentHostedRuntimeSection]).
+    if (!membersAgentProfileShowsRuntimeConfig(member, summary)) return
+    val canEdit = edit.canEdit
+    val agentProfileEditAuthority = edit.agentProfileEditAuthority
+    val agentDetailActions = edit.agentDetailActions
+    val onUpdateAgentProfile = edit.onUpdateAgentProfile
+    val onApplyAgentProfileResult = edit.onApplyAgentProfileResult
+    val onUnavailableAction = edit.onUnavailableAction
+    val errorStrings = edit.errorStrings
+    val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
+    val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
+    val onAgentRuntimeModelsRequest = runtimeModels.onAgentRuntimeModelsRequest
+    val runtimeConfigResolution = remember(summary) { summary.toMembersRuntimeConfigResolution() }
+    val canonicalRuntimeConfig =
+        (runtimeConfigResolution as? MembersAgentRuntimeConfigResolution.Content)?.config
+    val canonicalRuntimeId = canonicalRuntimeConfig?.runtime
+    val canonicalRuntimeModel = canonicalRuntimeConfig?.model
+    // Runtime mutations need an explicit canonical status. A null status is
+    // deliberately neutral in the renderer; treating it as "inactive" here
+    // would allow a reset-sensitive edit while presence is still unknown.
+    val canonicalRuntimeStatus = agentStatusIndicatorState?.status
+    val runtimeStatusResolved = membersAgentRuntimeStatusResolved(canonicalRuntimeStatus)
+    val activeAgent = membersAgentRuntimeActive(canonicalRuntimeStatus)
+    // The v2 editor reads and validates the agent's config on the server, so opening it only needs a
+    // known status (for the restart decision) and a readable config.
+    val runtimeEditorReady = runtimeStatusResolved && canonicalRuntimeConfig != null
+    val scope = rememberCoroutineScope()
+    val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
+    val runtimeEditingUnavailable = stringResource(Res.string.member_error_runtime_edit_unavailable)
+    val runtimeFormV2SavedRefresh = stringResource(Res.string.runtime_form_v2_saved_refresh)
+    val permissionErrorTemplate = membersStringTemplate(Res.string.member_error_permission)
+    val saveErrorTemplate = membersStringTemplate(Res.string.member_error_save)
+    var editingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
+    var runtimeEditorAuthority by remember(member.id.value) {
+        mutableStateOf<MembersAgentProfileEditAuthority?>(null)
+    }
+    // Inputs latched when the editor opens (artin 612602c0): a background/foreground cycle
+    // reconnects presence, which publishes status=null until the roster refresh lands, and
+    // re-reads detail/flags. Gating the dialog on those live values unmounted it and lost the
+    // user's typing; the dialog now composes from this snapshot instead.
+    var runtimeEditorSession by remember(member.id.value) {
+        mutableStateOf<MembersRuntimeEditorSession?>(null)
+    }
+    var savingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
+    var runtimeConfigError by remember(member.id.value) { mutableStateOf<String?>(null) }
+    // Runtime form v2 edit, the only runtime editor (task #8): a load failure shows Retry, a runtime
+    // switch loads the new runtime's v2 form, and a runtime without a v2 form shows "unavailable".
+    val runtimeFormV2Access =
+        agentProfileEditAuthority?.serverId?.value?.let { createAgentFormStore?.runtimeFormV2Access(it) }
+    var runtimeFormV2ErrorFields by remember(member.id.value, editingRuntimeConfig) { mutableStateOf(emptySet<String>()) }
+
+    LaunchedEffect(canonicalRuntimeId) {
+        canonicalRuntimeId?.let { onAgentRuntimeModelsRequest(it, false) }
+    }
+
+    // The runtimes this agent may switch to, as this server decides (`GET agents/:id/runtime-options`):
+    // the switch picker's list and the "(deprecated)" label/warning of its runtime. Read again when its
+    // runtime changes (a switch); a failure leaves none, and the catalog decides.
+    val agentRuntimeOptionsServerId = agentProfileEditAuthority?.serverId?.value
+    var agentRuntimeOptions by remember(member.id.value, agentRuntimeOptionsServerId) {
+        mutableStateOf<ExistingAgentRuntimeOptions?>(null)
+    }
+    LaunchedEffect(createAgentFormStore, agentRuntimeOptionsServerId, member.id.value, canonicalRuntimeId) {
+        val store = createAgentFormStore ?: return@LaunchedEffect
+        val serverId = agentRuntimeOptionsServerId ?: return@LaunchedEffect
+        if (canonicalRuntimeId == null) return@LaunchedEffect
+        agentRuntimeOptions = (store.loadAgentRuntimeOptions(serverId, member.id.value) as? DataResult.Content)?.data
+    }
+
+    // The one way an editing session ends: explicit close, save success, or a real close condition.
+    fun closeRuntimeEditor() {
+        editingRuntimeConfig = false
+        runtimeEditorAuthority = null
+        runtimeEditorSession = null
+    }
+
+    // Web `canRestartAgent` (canControlAgentRuntime on a non-archived agent): who may Restart from
+    // the Actions section may Restart now from the saved notice.
+    val canRestartNow = edit.canManage && summary?.deletedAt.isNullOrBlank() && agentDetailActions != null
+    val toastHost = LocalRaftToastHostState.current
+    val applyCopy = membersRuntimeConfigApplyCopy()
+    val restartFailed = stringResource(Res.string.settings_computers_restart_failed)
+    val onErrorToast = edit.onErrorToast
+
+    // Web `restartNow`: the agent's ordinary restart (a session reset for a new-session change),
+    // with no confirmation; "Restart failed." when it does not go through.
+    fun restartNow(mode: AgentResetMode) {
+        val actions = agentDetailActions ?: return
+        val action = if (mode == AgentResetMode.Session) MembersAgentLifecycleAction.ResetSession else MembersAgentLifecycleAction.Restart
+        scope.launch {
+            val result =
+                try {
+                    actions.runLifecycleAction(member.id, action)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    DataResult.Error(ScreenError("agent_${action.actionKey}_failed"))
+                }
+            result.membersLifecycleError(action)?.let { error ->
+                if (onErrorToast != null) onErrorToast(restartFailed, error) else onUnavailableAction(restartFailed)
+            }
+        }
+    }
+
+    fun showRuntimeConfigApplyNotice(notice: MembersRuntimeConfigApplyNotice) {
+        if (toastHost == null) {
+            onUnavailableAction(applyCopy.title(member.displayName))
+            return
+        }
+        showMembersRuntimeConfigApplyNotice(toastHost, notice, member.displayName, applyCopy, ::restartNow)
+    }
+
+    fun saveRuntimeConfigV2(submit: RuntimeFormV2SubmitBody, runtimeSwitched: Boolean, newSession: Boolean) {
+        val callback = onUpdateAgentProfile
+        // The access the form was loaded through; the authority check below still fences
+        // account/server/profile changes.
+        val access = runtimeEditorSession?.formV2Access ?: runtimeFormV2Access
+        if (
+            !canEdit ||
+                !runtimeStatusResolved ||
+                access == null ||
+                (agentDetailActions == null && callback == null) ||
+                savingRuntimeConfig
+        ) {
+            onUnavailableAction(runtimeEditingUnavailable)
+            return
+        }
+        val openedAuthority = runtimeEditorAuthority
+        val authorityCurrent = {
+            membersAgentProfileEditAuthorityMatches(
+                opened = openedAuthority,
+                current = currentProfileEditAuthority,
+                openedCatalogGeneration = 0L,
+                currentCatalogGeneration = 0L
+            )
+        }
+        if (!authorityCurrent()) {
+            runtimeConfigError = "agent_runtime_editor_stale"
+            onUnavailableAction(runtimeEditingUnavailable)
+            return
+        }
+        // Set before launching: a second tap in the same frame (e.g. on the switch confirmation)
+        // must hit the guard above instead of sending a second PATCH.
+        savingRuntimeConfig = true
+        scope.launch {
+            // Every exit (a stale authority after the request included) ends the saving state.
+            membersRuntimeEditorSaving(setSaving = { savingRuntimeConfig = it }) {
+                runtimeConfigError = null
+                runtimeFormV2ErrorFields = emptySet()
+                val result =
+                    try {
+                        val request =
+                            membersRuntimeFormV2UpdateRequest(
+                                agentId = member.id,
+                                displayName = member.displayName,
+                                description = member.description,
+                                submit = submit,
+                                runtimeSwitched = runtimeSwitched,
+                                activeAgent = activeAgent
+                            )
+                        if (agentDetailActions != null) {
+                            agentDetailActions.updateAgentProfile(request)
+                        } else {
+                            requireNotNull(callback).invoke(request)
+                        }
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        DataResult.Error(ScreenError("agent_runtime_config_save_failed"))
+                    }
+                if (!authorityCurrent()) return@membersRuntimeEditorSaving
+                when (result) {
+                    is DataResult.Content, is DataResult.Empty -> {
+                        val configApply = (result as? DataResult.Content)?.data?.configApply
+                        (result as? DataResult.Content)?.let { onApplyAgentProfileResult(it.data.withoutConfigApply()) }
+                        // The server assembled the config; show what it stored rather than guessing locally.
+                        val stored = (access.loader.agent(member.id) as? DataResult.Content)?.data
+                        val config = (stored?.toAgentDetailSummary().toMembersRuntimeConfigResolution()
+                            as? MembersAgentRuntimeConfigResolution.Content)?.config
+                        val authority = runtimeEditorAuthority
+                        val projected =
+                            config != null && authority != null &&
+                                onApplyAgentRuntimeConfigProjection(authority, config, stored?.modelLimitsDefaultsReported)
+                        closeRuntimeEditor()
+                        // The save landed; only the read-back failed, so the rows may lag until a refresh.
+                        if (!projected) onUnavailableAction(runtimeFormV2SavedRefresh)
+                        membersRuntimeConfigApplyNotice(
+                            configApply = configApply,
+                            agentActive = activeAgent,
+                            newSession = newSession,
+                            canRestart = canRestartNow
+                        )?.let { notice -> showRuntimeConfigApplyNotice(notice) }
+                    }
+                    is DataResult.NoPermission ->
+                        runtimeConfigError =
+                            membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
+                    is DataResult.Error -> {
+                        runtimeFormV2ErrorFields = result.error.formFieldKeys.toSet()
+                        runtimeConfigError = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
+                    }
+                }
+            }
+        }
+    }
+
+    val runtimeEditorCanOpen =
+        membersRuntimeEditorCanOpen(
+            canEdit = canEdit,
+            hasAuthority = agentProfileEditAuthority != null,
+            hasConfig = canonicalRuntimeConfig != null,
+            runtimeEditorReady = runtimeEditorReady,
+            hasFormV2Access = runtimeFormV2Access != null
+        )
+
+    fun openRuntimeEditor() {
+        val authority = agentProfileEditAuthority
+        val config = canonicalRuntimeConfig
+        if (runtimeEditorCanOpen && authority != null && config != null && runtimeFormV2Access != null) {
+            runtimeConfigError = null
+            runtimeEditorAuthority = authority
+            runtimeEditorSession =
+                MembersRuntimeEditorSession(
+                    authority = authority,
+                    config = config,
+                    machineId = (summary?.machineId ?: member.membersComputerId)?.takeIf { it.isNotBlank() },
+                    formV2Access = runtimeFormV2Access
+                )
+            editingRuntimeConfig = true
+        } else {
+            // Shown as on the web, but the editor needs a known status and a
+            // readable config; until then say so instead of opening nothing.
+            onUnavailableAction(runtimeEditingUnavailable)
+        }
+    }
+
+    // Web AgentProfileInfo `openRuntimeConfigRequested` (botiverse/slock #13435, #13460): Change
+    // model on the status, or View model settings on the billing banner, opens this editor, from
+    // another tab once this one is shown. As on the web (`editing = opened || (requested &&
+    // canOpen)`), a request waits while the editor cannot open yet (status still unknown, the
+    // config or the form access still loading) and opens it once it can; it is consumed then.
+    val runtimeEditorOpenRequested = edit.runtimeEditorOpenRequested
+    LaunchedEffect(runtimeEditorOpenRequested, runtimeEditorCanOpen) {
+        if (!membersRuntimeEditorOpenRequestActs(runtimeEditorOpenRequested, runtimeEditorCanOpen)) return@LaunchedEffect
+        if (!editingRuntimeConfig) openRuntimeEditor()
+        edit.onRuntimeEditorOpenRequestHandled()
+    }
+
+    // RUNTIME CONFIG section — web AgentProfileInfo: the "Runtime config" eyebrow with its pencil
+    // (`canManageAgent && !editing`), the stacked Runtime / Model / Reasoning / Mode / Provider /
+    // Command rows, then Environment Variables (`mt-3`), shown read-only and only when the agent
+    // has some (web `EnvVarsSection canManageAgent={false}`).
+    // No catalog-retry affordance in this read-only view (React parity): a failed
+    // model-catalog prefetch only matters inside the editor dialog, which
+    // re-requests on open and renders its own error + Retry (task #96).
+    MembersProfileSection(
+        title = stringResource(Res.string.member_section_runtime_config),
+        titleAction =
+            if (canEdit && !editingRuntimeConfig) {
+                {
+                    MembersProfilePencilButton(
+                        contentDescription = stringResource(Res.string.member_dialog_edit_runtime_config),
+                        onClick = { openRuntimeEditor() }
+                    )
+                }
+            } else {
+                null
+            }
+    ) {
+        val runtimeModelsCatalog = canonicalRuntimeId?.let(agentRuntimeModelsByRuntime::get)
+        // The agent's server: its catalog says whether the runtime is deprecated there.
+        val runtimeCatalogServerId = member.serverId?.value ?: agentProfileEditAuthority?.serverId?.value
+        MembersAgentRuntimeConfigRows(
+            resolution = runtimeConfigResolution,
+            runtimeModelsCatalog = runtimeModelsCatalog,
+            machineId = summary?.machineId ?: member.membersComputerId,
+            serverId = runtimeCatalogServerId,
+            runtimeDeprecated = canonicalRuntimeId?.let { runtimeDeprecatedForAgent(it, agentRuntimeOptions, runtimeCatalogServerId) },
+            runningHint =
+                canonicalRuntimeConfig?.let { config ->
+                    membersRuntimeRunningHint(
+                        agentActive = activeAgent,
+                        savedRuntime = config.runtime,
+                        savedModel = config.toMembersRuntimeModelValue(),
+                        runningRuntime = summary?.runningRuntime,
+                        runningModel = summary?.runningModel,
+                        runtimeName = { runtimeCatalogDisplayName(it, runtimeCatalogServerId) },
+                        modelLabel = { model ->
+                            membersAgentRuntimeModelDisplayLabel(config.runtime, model, runtimeModelsCatalog, runtimeCatalogServerId) ?: model
+                        }
+                    )
+                }
+        )
+        // Web AgentProfileInfo: under the runtime rows (`mt-3`), before Environment Variables, only
+        // when the server says the session reported Raft default limits (botiverse/slock #13492).
+        if (summary?.modelLimitsDefaultsReported == true) {
+            MembersAgentModelLimitsWarning(Modifier.padding(top = MembersProfileEnvVarsGap - MembersInfoItemGap))
+        }
+        MembersAgentRuntimeEnvVars(summary, modifier = Modifier.padding(top = MembersProfileEnvVarsGap - MembersInfoItemGap))
+    }
+
+    val session = runtimeEditorSession
+    val runtimeEditorDialog =
+        membersRuntimeEditorDialog(
+            editing = editingRuntimeConfig,
+            opened = session?.authority,
+            openedFormV2 = session?.formV2Access != null,
+            live = MembersRuntimeEditorLiveFacts(
+                authority = agentProfileEditAuthority,
+                canManage = edit.canManage,
+                deleted = summary?.deletedAt?.isNotBlank() == true,
+                runtimeStatusResolved = runtimeStatusResolved,
+                config = canonicalRuntimeConfig,
+                formV2Available = runtimeFormV2Access != null
+            )
+        )
+    // A real close condition (deleted / permission lost) ends the session, so the editor does not
+    // pop back up if that condition later clears.
+    LaunchedEffect(editingRuntimeConfig, runtimeEditorDialog) {
+        if (editingRuntimeConfig && runtimeEditorDialog == MembersRuntimeEditorDialog.None) {
+            closeRuntimeEditor()
+        }
+    }
+    if (session != null && runtimeEditorDialog == MembersRuntimeEditorDialog.FormV2) {
+        MembersAgentRuntimeFormV2Dialog(
+            access = checkNotNull(session.formV2Access),
+            agentId = member.id,
+            machineId = session.machineId,
+            runtimeId = session.config.runtime,
+            machineRuntimeIds = agentMachineRuntimes,
+            activeAgent = activeAgent,
+            modelLimitsDefaultsReported = summary?.modelLimitsDefaultsReported == true,
+            saving = savingRuntimeConfig,
+            error = runtimeConfigError,
+            errorFieldKeys = runtimeFormV2ErrorFields,
+            onDismiss = {
+                if (!savingRuntimeConfig) {
+                    closeRuntimeEditor()
+                    runtimeConfigError = null
+                }
+            },
+            onRuntimeSelected = {
+                runtimeConfigError = null
+                runtimeFormV2ErrorFields = emptySet()
+            },
+            runtimeCatalog = { machineId ->
+                val store = createAgentFormStore
+                (store?.loadRuntimeCatalog(session.authority.serverId.value, machineId) as? DataResult.Content)?.data
+            },
+            agentRuntimeOptions = agentRuntimeOptions,
+            onSave = ::saveRuntimeConfigV2
+        )
+    }
+}
+
+internal const val MEMBERS_RUNTIME_DEPRECATED_BANNER_TAG = "members-runtime-deprecated-banner"
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+internal fun MembersAgentRuntimeConfigRows(
+    resolution: MembersAgentRuntimeConfigResolution,
+    runtimeModelsCatalog: SharedCreateAgentRuntimeModelCatalog?,
+    machineId: String?,
+    /** The agent's server: its runtime catalog names the runtime and says whether it is deprecated. */
+    serverId: String?,
+    /** What a running agent still runs until a saved change applies; null hides the line. */
+    runningHint: MembersRuntimeRunningHint? = null,
+    /**
+     * Whether this server deprecated the agent's runtime ([runtimeDeprecatedForAgent]: its own
+     * runtime-options row); null: the catalog's answer. Drives " (deprecated)" and the warning.
+     */
+    runtimeDeprecated: Boolean? = null
+) {
+    val errorStrings = localizedErrorPresentationStrings()
+    val runtimeConfig = (resolution as? MembersAgentRuntimeConfigResolution.Content)?.config
+    if (runtimeConfig == null) {
+        Text(
+            text = stringResource(Res.string.member_state_runtime_config_unavailable),
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.AccentRed
+        )
+        Text(
+            text = (resolution as MembersAgentRuntimeConfigResolution.Unavailable)
+                .code
+                .userFacingErrorCodeMessage(errorStrings),
+            style = RaftType.Caption,
+            color = RaftColor.TextMutedGray
+        )
+        return
+    }
+    val runtimeId = runtimeConfig.runtime
+    val modelLabel =
+        membersAgentRuntimeModelDisplayLabel(
+            runtimeId = runtimeId,
+            modelId = runtimeConfig.toMembersRuntimeModelValue(),
+            runtimeModelsCatalog = runtimeModelsCatalog,
+            serverId = serverId
+        )
+    // Web: the same stacked DescriptionList as Info -- one row per property, label above value.
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(MembersInfoItemGap)
+    ) {
+        // The label below brings [serverId]'s catalog in; this follows it when it lands.
+        val deprecated = runtimeDeprecated ?: runtimeCatalogIsDeprecated(runtimeId, serverId)
+        MembersAgentInfoField(stringResource(Res.string.member_label_runtime)) {
+            MembersAgentRuntimeUsageChip(
+                label = runtimeLabelWithStatus(runtimeId, serverId, deprecated = deprecated),
+                runtimeId = runtimeId,
+                machineId = machineId
+            )
+        }
+        // Web AgentProfileInfo: under the Runtime row while the agent's runtime is deprecated here.
+        if (deprecated) {
+            RaftUiBanner(
+                status = RaftUiBannerStatus.Warning,
+                description = stringResource(Res.string.member_runtime_deprecated_warning),
+                size = RaftUiBannerSize.Small,
+                modifier = Modifier.testTag(MEMBERS_RUNTIME_DEPRECATED_BANNER_TAG)
+            )
+        }
+        if (modelLabel != null) {
+            MembersAgentInfoField(stringResource(Res.string.member_label_model), copyText = modelLabel) {
+                // Web `<span className="min-w-0 break-all font-mono">`: plain machine text, no chip.
+                RaftText(text = modelLabel, style = membersInfoValueStyle(mono = true), color = RaftTheme.colors.foreground)
+                if (runningHint != null) MembersRuntimeRunningHintLine(runningHint)
+            }
+        }
+        // kimi-sdk (task #275): the chip is gated on the selected model's LIVE
+        // catalog capability (never the static runtime set).
+        if (
+            supportsRuntimeReasoningEffort(runtimeId) ||
+            membersKimiSdkModelDeclaresReasoning(
+                runtime = runtimeId,
+                model = runtimeConfig.toMembersRuntimeModelValue(),
+                liveModels = runtimeModelsCatalog?.models.orEmpty()
+            )
+        ) {
+            MembersAgentInfoField(stringResource(Res.string.member_label_reasoning)) {
+                // Web `<span>`: the plain callout value.
+                RaftText(
+                    text = runtimeConfig.reasoningEffort?.let { effort ->
+                        membersReasoningEffortLabel(effort)?.let { stringResource(it) } ?: effort.toMembersDisplayLabel()
+                    } ?: stringResource(Res.string.member_label_default),
+                    style = membersInfoValueStyle(),
+                    color = RaftTheme.colors.foreground
+                )
+            }
+        }
+        if (supportsRuntimeFastMode(runtimeId)) {
+            MembersAgentInfoField(stringResource(Res.string.member_label_mode)) {
+                RaftText(
+                    text = if (runtimeConfig.mode is RuntimeModeConfig.Fast) stringResource(Res.string.member_label_fast) else stringResource(Res.string.member_label_default),
+                    style = membersInfoValueStyle(),
+                    color = RaftTheme.colors.foreground
+                )
+            }
+        }
+        if (runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
+            val providerId = runtimeConfig.provider.membersBuiltInProviderId()
+            // A saved provider connection (`kind:"connection"`) is a real choice, not "Default". The
+            // agent read carries only its id, so the row names the kind with the web's
+            // "Saved providers" wording (`agent.runtimeConfig.savedProviders`).
+            val savedConnection = runtimeConfig.provider is RuntimeProviderConfig.Connection
+            MembersAgentInfoField(stringResource(Res.string.member_label_provider), copyText = providerId.ifBlank { null }) {
+                // Web: `font-mono` value, else "Default" in `text-foreground-hint`, on the callout.
+                RaftText(
+                    text = when {
+                        providerId.isNotBlank() -> providerId
+                        savedConnection -> stringResource(Res.string.member_label_saved_provider)
+                        else -> stringResource(Res.string.member_label_default)
+                    },
+                    style = membersInfoValueStyle(mono = providerId.isNotBlank()),
+                    color = if (providerId.isBlank() && !savedConnection) RaftTheme.colors.foregroundHint else RaftTheme.colors.foreground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (runtimeId == "pi") {
+            val providerId =
+                (runtimeConfig.provider as? RuntimeProviderConfig.PiBuiltin)?.providerId
+            MembersAgentInfoField(stringResource(Res.string.member_label_provider), copyText = providerId) {
+                // Web: `font-mono` value, else "Default" in `text-foreground-hint`, on the callout.
+                RaftText(
+                    text = providerId ?: stringResource(Res.string.member_label_default),
+                    style = membersInfoValueStyle(mono = !(providerId == null)),
+                    color = if (providerId == null) RaftTheme.colors.foregroundHint else RaftTheme.colors.foreground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (runtimeId == "claude") {
+            val provider = runtimeConfig.provider as? RuntimeProviderConfig.Custom
+            MembersAgentInfoField(
+                stringResource(Res.string.member_label_provider),
+                copyText = provider?.apiUrl?.takeIf { it.isNotBlank() }
+            ) {
+                // Web: `font-mono` value, else "Default" in `text-foreground-hint`, on the callout.
+                RaftText(
+                    text = provider?.apiUrl?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.member_label_default),
+                    style = membersInfoValueStyle(mono = !(provider == null)),
+                    color = if (provider == null) RaftTheme.colors.foregroundHint else RaftTheme.colors.foreground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            val command = runtimeConfig.command?.takeIf { it.isNotBlank() }
+            MembersAgentInfoField(stringResource(Res.string.member_label_command), copyText = command) {
+                // Web: `font-mono` value, else "Default" in `text-foreground-hint`, on the callout.
+                RaftText(
+                    text = command ?: stringResource(Res.string.member_label_default),
+                    style = membersInfoValueStyle(mono = !(command == null)),
+                    color = if (command == null) RaftTheme.colors.foregroundHint else RaftTheme.colors.foreground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+internal fun membersAgentRuntimeModelDisplayLabel(
+    runtimeId: String,
+    modelId: String,
+    runtimeModelsCatalog: SharedCreateAgentRuntimeModelCatalog?,
+    /** The agent's server: its catalog's models, else the bundled list. */
+    serverId: String? = null
+): String? {
+    val normalizedRuntimeId = runtimeId.trim()
+    val normalizedModelId = modelId.trim()
+    if (normalizedRuntimeId.isBlank() || normalizedModelId.isBlank()) return null
+    fun String?.verifiedDisplayLabel(): String? =
+        this?.trim()?.takeIf { it.isNotBlank() && it != normalizedModelId }
+
+    return runtimeModelsCatalog
+        ?.models
+        ?.firstOrNull { it.id.trim() == normalizedModelId }
+        ?.label
+        .verifiedDisplayLabel()
+        // The server catalog's models for this runtime, else the bundled list.
+        ?: build.raft.app.data.RaftRuntimeCatalogNames.entry(normalizedRuntimeId, serverId)
+            ?.models
+            ?.firstOrNull { it.id == normalizedModelId }
+            ?.label
+            .verifiedDisplayLabel()
+        // The agent genuinely carries this model id; hiding it entirely reads as
+        // "model missing" (task #284). Fall back to the raw id rather than nothing.
+        ?: normalizedModelId
+}
+
+/**
+ * Web EnvVarsSection, read-only (`canManageAgent={false}` on the profile): nothing when the agent
+ * has no variables; else the "Environment Variables" eyebrow (`mb-1`) over `flex-wrap gap-2`
+ * chips -- `rounded-sticker bg-fill-muted px-1.5 py-0.5`, Space Mono meta, `KEY=` in ink and the
+ * masked value in hint ink.
+ */
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?, modifier: Modifier = Modifier) {
+    val envVarNames = summary.membersRuntimeEnvVarNames()
+    if (envVarNames.isEmpty()) return
+    val envVars = summary?.envVars.orEmpty()
+    val colors = RaftTheme.colors
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+    ) {
+        RaftSectionEyebrow(text = stringResource(Res.string.member_section_environment_variables))
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+        ) {
+            envVarNames.forEach { name ->
+                val shape = RoundedCornerShape(RaftRadius.Sticker)
+                // Long press copies the variable name (the value stays masked).
+                RaftText(
+                    text = buildAnnotatedString {
+                        withStyle(SpanStyle(color = colors.foreground)) { append("$name=") }
+                        withStyle(SpanStyle(color = colors.foregroundHint)) {
+                            append(membersMaskedEnvValue(envVars[name]))
+                        }
+                    },
+                    style = RaftTheme.typography.monoMeta,
+                    color = colors.foreground,
+                    modifier = Modifier
+                        .clip(shape)
+                        .background(colors.fillMuted, shape)
+                        .raftCopyable(name)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun membersMaskedEnvValue(value: String?): String =
+    "•".repeat(value?.length?.coerceIn(1, 8) ?: 3)
+
+internal fun membersAgentRuntimeActive(status: AgentStatus?): Boolean =
+    status != null && status.presence != Presence.Offline
+
+internal fun membersAgentRuntimeStatusResolved(status: AgentStatus?): Boolean = status != null
+
+/** What the runtime editor captured when the user opened it; the dialog composes from this. */
+internal data class MembersRuntimeEditorSession(
+    val authority: MembersAgentProfileEditAuthority,
+    val config: RuntimeConfig,
+    val machineId: String?,
+    val formV2Access: RuntimeFormV2Access?
+)
+
+/**
+ * The page's live facts on this frame. [runtimeStatusResolved], [config] and [formV2Available]
+ * go null/false transiently on a background/foreground reconnect (presence publishes status=null
+ * until the forced roster refresh lands); they gate opening and saving, never an open editor.
+ */
+internal data class MembersRuntimeEditorLiveFacts(
+    val authority: MembersAgentProfileEditAuthority?,
+    val canManage: Boolean,
+    val deleted: Boolean,
+    val runtimeStatusResolved: Boolean,
+    val config: RuntimeConfig?,
+    val formV2Available: Boolean
+)
+
+internal enum class MembersRuntimeEditorDialog { None, FormV2 }
+
+/** The agent-detail route's manage right: private surfaces plus server admin or agent creator. */
+internal fun membersRouteCanManageAgent(
+    allowsPrivateAgentSurfaces: Boolean,
+    canManageSettings: Boolean,
+    currentUserId: String?,
+    detail: AgentDetailSnapshot?
+): Boolean =
+    allowsPrivateAgentSurfaces &&
+        (canManageSettings || detail?.summary?.creatorId == currentUserId)
+
+/**
+ * Manage right for an already open runtime editor. While a detail refresh is in flight or failed
+ * the page has no [currentDetail] (the store still holds the last one), and a creator's right is
+ * read from the detail, so fall back to [lastContentDetail]. A fresh detail always wins, so a
+ * changed creator / revoked role / deletion still closes the editor.
+ */
+internal fun membersRuntimeEditorCanManage(
+    currentDetail: AgentDetailSnapshot?,
+    lastContentDetail: AgentDetailSnapshot?,
+    refreshTransient: Boolean,
+    canManageAgent: (AgentDetailSnapshot?) -> Boolean
+): Boolean {
+    val basis = currentDetail ?: lastContentDetail.takeIf { refreshTransient }
+    return basis?.summary?.deletedAt?.isNotBlank() != true && canManageAgent(basis)
+}
+
+/**
+ * Which runtime editor dialog is on screen. Once opened, only an explicit close, a real agent
+ * deletion, or lost manage permission closes it. A null live authority (detail reloading, or an
+ * account/server switch, which nulls it rather than replacing it) keeps it open; the save path's
+ * authority checks are what fence a switch. The different-owner branch below is defensive only:
+ * production does not hand this a non-null authority for another owner.
+ */
+internal fun membersRuntimeEditorDialog(
+    editing: Boolean,
+    opened: MembersAgentProfileEditAuthority?,
+    openedFormV2: Boolean,
+    live: MembersRuntimeEditorLiveFacts
+): MembersRuntimeEditorDialog {
+    if (!editing || opened == null) return MembersRuntimeEditorDialog.None
+    if (live.deleted || !live.canManage) return MembersRuntimeEditorDialog.None
+    val current = live.authority
+    if (
+        current != null &&
+        (current.memberId != opened.memberId ||
+            current.environmentId != opened.environmentId ||
+            current.accountId != opened.accountId ||
+            current.serverId != opened.serverId)
+    ) {
+        return MembersRuntimeEditorDialog.None
+    }
+    // Runtime form v2 is the only editor (task #8): load failures, runtime switches and an agent
+    // without a computer all stay in it. Without v2 access (no loader or server) nothing opens.
+    return if (openedFormV2) MembersRuntimeEditorDialog.FormV2 else MembersRuntimeEditorDialog.None
+}
+
+/**
+ * Runs a v2 save [block] and always ends the saving state, whatever way it exits (a stale
+ * authority after the request returns early; before this every such exit left Save spinning).
+ */
+internal suspend fun membersRuntimeEditorSaving(setSaving: (Boolean) -> Unit, block: suspend () -> Unit) {
+    try {
+        block()
+    } finally {
+        setSaving(false)
+    }
+}
+
+/**
+ * The PATCH for a v2 edit save: only the form ref and values travel. Web AgentProfileInfo
+ * (botiverse/slock #13372, reconciler step 11c): a running agent is not interrupted, so its save
+ * carries no `restartMode` (the server applies it at the agent's next idle point and says so in
+ * `configApply`); only a stopped agent's runtime switch asks for a new session
+ * (`restartMode: "session"`).
+ */
+internal fun membersRuntimeFormV2UpdateRequest(
+    agentId: MemberId,
+    displayName: String,
+    description: String?,
+    submit: RuntimeFormV2SubmitBody,
+    runtimeSwitched: Boolean,
+    activeAgent: Boolean
+): AgentProfileUpdateRequest =
+    AgentProfileUpdateRequest(
+        agentId = agentId,
+        displayName = displayName,
+        description = description?.takeIf { it.isNotBlank() },
+        runtimeResetMode = if (runtimeSwitched && !activeAgent) AgentResetMode.Session else null,
+        runtimeFormV2 = submit
+    )
+
+/**
+ * Web `agent-runtime-config-running`: `mt-1 block text-caption text-foreground-muted`, a model name
+ * in Space Mono (#13373), a runtime name in the body font.
+ */
+@Composable
+private fun MembersRuntimeRunningHintLine(hint: MembersRuntimeRunningHint) {
+    val template = stringResource(Res.string.member_runtime_config_running_switches_when_idle, MembersFormatSentinel, MembersFormatSentinel2)
+    val caption = RaftTheme.typography.caption
+    val nameStyle =
+        if (hint is MembersRuntimeRunningHint.Model) SpanStyle(fontFamily = RaftTheme.typography.monoCode.fontFamily) else SpanStyle()
+    val text =
+        buildAnnotatedString {
+            var rest = template
+            for ((sentinel, value) in listOf(MembersFormatSentinel to hint.running, MembersFormatSentinel2 to hint.saved)) {
+                val at = rest.indexOf(sentinel)
+                if (at < 0) continue
+                append(rest.substring(0, at))
+                withStyle(nameStyle) { append(value) }
+                rest = rest.substring(at + sentinel.length)
+            }
+            append(rest)
+        }
+    RaftText(
+        text = text,
+        style = caption,
+        color = RaftTheme.colors.foregroundMuted,
+        modifier = Modifier.padding(top = 4.dp).testTag(MEMBERS_RUNTIME_RUNNING_HINT_TAG)
+    )
+}
+
+internal const val MEMBERS_RUNTIME_RUNNING_HINT_TAG = "agent-runtime-config-running"
+
+/** The saved notice's words, resolved in composition. */
+internal class MembersRuntimeConfigApplyCopy(
+    /** "%1$s's settings saved". */
+    private val savedTitleTemplate: String,
+    val appliesWhenIdle: String,
+    val newSessionWhenIdle: String,
+    val appliesNextStart: String,
+    val restartNow: String
+) {
+    fun title(agentName: String): String = savedTitleTemplate.membersFormat(agentName)
+}
+
+@Composable
+internal fun membersRuntimeConfigApplyCopy(): MembersRuntimeConfigApplyCopy =
+    MembersRuntimeConfigApplyCopy(
+        savedTitleTemplate = membersStringTemplate(Res.string.member_runtime_config_saved_title),
+        appliesWhenIdle = stringResource(Res.string.member_runtime_config_applies_when_idle),
+        newSessionWhenIdle = stringResource(Res.string.member_runtime_config_new_session_when_idle),
+        appliesNextStart = stringResource(Res.string.member_runtime_config_applies_next_start),
+        restartNow = stringResource(Res.string.member_action_restart_now)
+    )
+
+/**
+ * Web `announceRuntimeConfigApply` (botiverse/slock #13373, Raft DS › Toast): a success toast whose
+ * title names the agent and whose description says when the change applies; Restart now, when
+ * offered, is its one action (tapping it closes the toast and runs [onRestartNow]).
+ */
+internal fun showMembersRuntimeConfigApplyNotice(
+    host: RaftToastHostState,
+    notice: MembersRuntimeConfigApplyNotice,
+    agentName: String,
+    copy: MembersRuntimeConfigApplyCopy,
+    onRestartNow: (AgentResetMode) -> Unit
+): Long {
+    val description =
+        when (notice.kind) {
+            MembersRuntimeConfigApplyKind.WhenIdle -> copy.appliesWhenIdle
+            MembersRuntimeConfigApplyKind.NewSessionWhenIdle -> copy.newSessionWhenIdle
+            MembersRuntimeConfigApplyKind.NextStart -> copy.appliesNextStart
+        }
+    val restartMode = notice.restartNow
+    return host.show(
+        title = copy.title(agentName),
+        description = description,
+        intent = RaftToastIntent.Success,
+        actionLabel = restartMode?.let { copy.restartNow },
+        onAction = restartMode?.let { mode -> { onRestartNow(mode) } }
+    )
+}
+
+/** When a saved runtime config change applies, as the saved notice says it. */
+internal enum class MembersRuntimeConfigApplyKind { WhenIdle, NewSessionWhenIdle, NextStart }
+
+/** The saved notice: when it applies, and Restart now's mode (null when not offered). */
+internal data class MembersRuntimeConfigApplyNotice(
+    val kind: MembersRuntimeConfigApplyKind,
+    val restartNow: AgentResetMode?
+)
+
+/**
+ * Web `announceRuntimeConfigApply` (botiverse/slock #13372, #13373): a running agent's saved change
+ * says when it applies: at its next idle point (`when_idle`), or, from a daemon too old for that,
+ * at its next start (`saved` on a running agent). `restarted` already happened and a stopped
+ * agent's change applies when it starts, as before: no notice. Restart now restarts the agent,
+ * resetting the session for a [newSession] change, for whoever [canRestart].
+ */
+internal fun membersRuntimeConfigApplyNotice(
+    configApply: AgentConfigApply?,
+    agentActive: Boolean,
+    newSession: Boolean,
+    canRestart: Boolean
+): MembersRuntimeConfigApplyNotice? {
+    val whenIdle = configApply == AgentConfigApply.WhenIdle
+    if (!whenIdle && !(configApply == AgentConfigApply.Saved && agentActive)) return null
+    val kind =
+        when {
+            !whenIdle -> MembersRuntimeConfigApplyKind.NextStart
+            newSession -> MembersRuntimeConfigApplyKind.NewSessionWhenIdle
+            else -> MembersRuntimeConfigApplyKind.WhenIdle
+        }
+    val restartMode = if (newSession) AgentResetMode.Session else AgentResetMode.Restart
+    return MembersRuntimeConfigApplyNotice(kind, restartMode.takeIf { canRestart })
+}
+
+/**
+ * Web AgentProfileInfo `runningConfigHint` (botiverse/slock #13372, #13373): while a running agent
+ * still runs another runtime or model than the saved one (a change waiting for its idle point),
+ * what it runs and what it switches to. Unknown, equal, or a stopped agent says nothing.
+ */
+internal sealed interface MembersRuntimeRunningHint {
+    val running: String
+    val saved: String
+
+    /** Runtime display names: set in the body font. */
+    data class Runtime(override val running: String, override val saved: String) : MembersRuntimeRunningHint
+
+    /** Model labels: set in mono, as the Model row. */
+    data class Model(override val running: String, override val saved: String) : MembersRuntimeRunningHint
+}
+
+internal fun membersRuntimeRunningHint(
+    agentActive: Boolean,
+    savedRuntime: String,
+    savedModel: String?,
+    runningRuntime: String?,
+    runningModel: String?,
+    runtimeName: (String) -> String,
+    modelLabel: (String) -> String
+): MembersRuntimeRunningHint? {
+    if (!agentActive) return null
+    val runtime = runningRuntime?.trim()?.takeIf { it.isNotEmpty() }
+    if (runtime != null && runtime != savedRuntime.trim()) {
+        return MembersRuntimeRunningHint.Runtime(runtimeName(runtime), runtimeName(savedRuntime))
+    }
+    val running = runningModel?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val saved = savedModel?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return if (running != saved) MembersRuntimeRunningHint.Model(modelLabel(running), modelLabel(saved)) else null
+}
+
+/** The runtime-switch confirmation used by the runtime editor. */
+@Composable
+internal fun MembersRuntimeSwitchConfirmationDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    RaftUnifiedDialog(
+        title = title,
+        maxWidth = 384.dp,
+        contentPadding = 24.dp,
+        onDismiss = onCancel
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
+                    .raftCardSurface(fill = RaftColor.WarningSoft)
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                RaftLucideIcon(
+                    RaftLucideIconName.Info,
+                    modifier = Modifier.size(18.dp),
+                    color = RaftColor.TextBlackArgb
+                )
+                Text(
+                    text = message,
+                    // Web ConfirmDialog warning body: text-subhead (15/20 400).
+                    style = RaftType.Subhead,
+                    color = RaftColor.TextBlack
+                )
+            }
+            RaftDialogFooter {
+                RaftButton(
+                    text = stringResource(Res.string.common_cancel),
+                    onClick = onCancel,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg
+                )
+                RaftButton(
+                    text = confirmLabel,
+                    variant = RaftButtonVariant.Warning,
+                    size = RaftButtonSize.Lg,
+                    onClick = onConfirm
+                )
+            }
+        }
+    }
+}
+
+internal sealed interface MembersAgentRuntimeConfigResolution {
+    data class Content(val config: RuntimeConfig) : MembersAgentRuntimeConfigResolution
+    data class Unavailable(val code: String) : MembersAgentRuntimeConfigResolution
+}
+
+private fun RuntimeProviderConfig?.membersBuiltInProviderId(): String =
+    when (this) {
+        is RuntimeProviderConfig.Preset -> providerId
+        is RuntimeProviderConfig.Gateway -> providerId
+        else -> ""
+    }
+
+internal fun AgentDetailSummary?.toMembersRuntimeConfigResolution(): MembersAgentRuntimeConfigResolution {
+    val summary = this ?: return MembersAgentRuntimeConfigResolution.Unavailable("agent_runtime_profile_missing")
+    val runtime = summary.runtime?.trim()?.takeIf { it.isNotBlank() }
+        ?: return MembersAgentRuntimeConfigResolution.Unavailable("agent_runtime_missing")
+    val model = summary.model?.trim()?.takeIf { it.isNotBlank() }
+        ?: return MembersAgentRuntimeConfigResolution.Unavailable("agent_runtime_model_missing")
+    return MembersAgentRuntimeConfigResolution.Content(RuntimeConfig(
+        runtime = runtime,
+        provider = summary.runtimeProvider,
+        model = membersRuntimeModelConfig(runtime, model, summary.runtimeModelKind),
+        mode = if (summary.executionMode?.trim()?.lowercase() == "fast") {
+            RuntimeModeConfig.Fast
+        } else {
+            RuntimeModeConfig.Default
+        },
+        reasoningEffort = summary.reasoning?.takeIf { it.isNotBlank() },
+        envVars = summary.envVars.takeIf { it.isNotEmpty() }
+    ))
+}
+
+/**
+ * kimi-sdk shows a reasoning row only when the computer's live catalog entry for [model] declares
+ * efforts with a valid default (task #275); there is no static fallback for kimi-sdk.
+ */
+private fun membersKimiSdkModelDeclaresReasoning(
+    runtime: String,
+    model: String,
+    liveModels: List<SharedCreateAgentRuntimeModelOption>
+): Boolean {
+    if (runtime != "kimi-sdk") return false
+    val live = liveModels.firstOrNull { it.id == model.trim() } ?: return false
+    val default = live.defaultReasoningEffort
+    val efforts = live.supportedReasoningEfforts.orEmpty()
+    return efforts.isNotEmpty() && !default.isNullOrBlank() && default in efforts
+}
+
+internal fun membersRuntimeModelConfig(
+    runtime: String,
+    model: String,
+    modelKind: String?
+): RuntimeModelConfig =
+    when (modelKind?.trim()?.lowercase()) {
+        "custom" -> RuntimeModelConfig.Custom(model)
+        "preset" -> RuntimeModelConfig.Preset(model)
+        else -> {
+            // No stored kind: a value outside the runtime's bundled presets is a custom model name.
+            val trimmed = model.trim()
+            val customModelMode = trimmed.isNotBlank() && RUNTIME_MODELS[runtime].orEmpty().none { it.id == trimmed }
+            if (customModelMode) RuntimeModelConfig.Custom(model) else RuntimeModelConfig.Preset(model)
+        }
+    }
+
+private fun RuntimeConfig.toMembersRuntimeModelValue(): String =
+    when (val modelConfig = model) {
+        is RuntimeModelConfig.Preset -> modelConfig.id
+        is RuntimeModelConfig.Custom -> modelConfig.name
+}
+
+internal fun membersAgentMachineRuntimeIds(
+    machines: List<SharedCreateAgentMachineOption>,
+    machineId: String?
+): List<String> {
+    val normalizedMachineId = machineId?.trim()?.takeIf { it.isNotBlank() } ?: return emptyList()
+    return machines.firstOrNull { it.id == normalizedMachineId }?.runtimes.orEmpty()
+}
+
+private fun AgentDetailSummary?.membersRuntimeEnvVarNames(): List<String> =
+    if (this == null) {
+        emptyList()
+    } else {
+        (envVars.keys + envVarNames)
+            .mapNotNull { it.trim().takeIf(String::isNotBlank) }
+            .distinct()
+            .sorted()
+    }
+
+private fun List<Pair<String, String>>.toMembersRuntimeEnvVars(): Map<String, String>? {
+    val values =
+        mapNotNull { (key, value) ->
+            key.trim().takeIf { it.isNotBlank() }?.let { it to value }
+        }.toMap()
+    return values.takeIf { it.isNotEmpty() }
+}
