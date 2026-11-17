@@ -86,7 +86,7 @@ internal fun RaftSproutBlock(
             engine.createSurface(
                 surfaceId = "chat-genui-${clockOrigin.hashCode()}",
                 catalog = RAFT_UI_CATALOG,
-                profile = ValidationProfile.RAFT_UI_EXTENDED,
+                profile = ValidationProfile.PORTABLE_V1,
             )
         }.onFailure { err ->
             raftLogWarn("RaftSproutBlock", "sprout_surface_create_failed: ${err.message}")
@@ -130,11 +130,11 @@ internal fun RaftSproutBlock(
             )
         }.onSuccess { commit ->
             latestCommit = commit
-            failedBeforeFirstFrame = commit.frame.root == null && commit.diagnostics.isNotEmpty()
+            failedBeforeFirstFrame = commit.frame.root.isEmpty() && commit.diagnostics.isNotEmpty()
             handleEffects(commit)
         }.onFailure { err ->
             raftLogWarn("RaftSproutBlock", "sprout_eval_failed: ${err.message}")
-            if (latestCommit?.frame?.root == null) {
+            if (latestCommit?.frame?.root.isNullOrEmpty()) {
                 failedBeforeFirstFrame = true
             }
         }
@@ -155,7 +155,7 @@ internal fun RaftSproutBlock(
     }
 
     val commit = latestCommit
-    if (failedBeforeFirstFrame && commit?.frame?.root == null) {
+    if (failedBeforeFirstFrame && commit?.frame?.root.isNullOrEmpty()) {
         fallback()
         return
     }
