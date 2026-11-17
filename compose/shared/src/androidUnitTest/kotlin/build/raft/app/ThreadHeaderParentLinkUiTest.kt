@@ -27,6 +27,7 @@ import kotlin.test.assertEquals
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -83,6 +84,14 @@ class ThreadHeaderParentLinkUiTest {
         replyCount: Int?,
         onOpenInChannel: () -> Unit,
         nativeBar: RaftNativeNavBarBridge? = null,
+        headerPayload: RaftThreadScreenPayload = payload,
+        display: ThreadHeaderDisplayModel =
+            ThreadHeaderDisplayModel(
+                title = ThreadReplyPageTitle,
+                subtitle = "@Lagoon",
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                channelKind = "dm",
+            ),
     ) {
         setContent {
             val pager =
@@ -98,14 +107,8 @@ class ThreadHeaderParentLinkUiTest {
                 RaftDesignSystemTheme {
                     Column(Modifier.fillMaxSize()) {
                         ThreadPageHeader(
-                            payload = payload,
-                            headerDisplay =
-                                ThreadHeaderDisplayModel(
-                                    title = ThreadReplyPageTitle,
-                                    subtitle = "@Lagoon",
-                                    surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                                    channelKind = "dm",
-                                ),
+                            payload = headerPayload,
+                            headerDisplay = display,
                             originMessage = origin,
                             originReplyCount = replyCount,
                             applyTopSafeArea = false,
@@ -139,6 +142,65 @@ class ThreadHeaderParentLinkUiTest {
         runRobolectricComposeUiTest {
             showHeader(replyCount = 0, onOpenInChannel = {})
             onNodeWithText(" · 0 replies").assertExists()
+        }
+
+    /**
+     * #proj-mobile:#162 (artin): a channel's Members button on the iOS bar showed its member count
+     * as the system's red badge, which reads as 28 unread. It carries the count as the web header
+     * does, a plain number beside the glyph ("count"), and no badge.
+     */
+    @Test
+    fun theNativeBarMembersButtonCarriesThePlainMemberCountNotARedBadge() =
+        runRobolectricComposeUiTest {
+            val bridge = RaftNativeNavBarBridge()
+            var actions: String? = null
+            bridge.attachListener(
+                object : RaftNativeNavBarListener {
+                    override fun onNativeNavBarChanged(
+                        title: String,
+                        subtitle: String?,
+                        actionsJson: String,
+                        extrasJson: String,
+                        titleMenuJson: String,
+                        hasBack: Boolean,
+                        nested: Boolean,
+                        titleImage: RaftNativeTabBarAvatar?,
+                    ) {
+                        actions = actionsJson
+                    }
+
+                    override fun onNativeNavBarCleared() = Unit
+
+                    override fun onNativeNavBarScroll(offset: Double, contentHeight: Double, dragging: Boolean) = Unit
+                }
+            )
+            showHeader(
+                replyCount = null,
+                onOpenInChannel = {},
+                nativeBar = bridge,
+                headerPayload =
+                    RaftThreadScreenPayload(
+                        instanceId = "channel-general",
+                        title = "general",
+                        status = "content",
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                        sourceThreadId = "channel-general",
+                        membersCount = 28,
+                    ),
+                display =
+                    ThreadHeaderDisplayModel(
+                        title = "general",
+                        subtitle = null,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                    ),
+            )
+            runOnIdle {
+                val members =
+                    Json.parseToJsonElement(actions!!).jsonArray.map { it.jsonObject }.single { it["id"] == JsonPrimitive("members") }
+                assertEquals(JsonPrimitive("28"), members["count"], members.toString())
+                assertEquals(null, members["badge"], "the member count is not an unread badge: $members")
+            }
         }
 
     @Test

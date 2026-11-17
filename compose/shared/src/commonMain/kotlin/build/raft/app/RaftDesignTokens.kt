@@ -245,7 +245,10 @@ private val SpaceGroteskFamilies = setOf(
 )
 // Space Mono ships only Regular (400) and Bold (700).
 private val SpaceMonoRegular = raftFace("SpaceMono-Regular", FontWeight.Normal)
-private val SpaceMonoBold = raftFace("SpaceMono-Bold", FontWeight.Bold)
+private val SpaceMonoBold = raftFace(RaftSpaceMonoBoldFaceName, FontWeight.Bold)
+
+/** Space Mono Bold's PostScript name (iOS registers it through UIAppFonts). */
+internal const val RaftSpaceMonoBoldFaceName = "SpaceMono-Bold"
 
 /** Is this one of the per-weight Space Grotesk families the tokens encode a weight into? */
 private fun isRaftEncodedFamily(fontFamily: FontFamily?): Boolean =
@@ -402,6 +405,9 @@ private fun TextStyle.resolveRaftFontFamily(): TextStyle {
  */
 private val RaftScaleCompact: RaftTypography =
     RaftTypography.from(RaftFonts(sans = FontFamily.SansSerif, mono = FontFamily.Monospace))
+
+/** `text-mono-meta` at the phone scale, for text a host draws (the native bar's member count). */
+internal val RaftMonoMeta: TextStyle get() = RaftScaleCompact.monoMeta
 
 private val RaftScaleWide: RaftTypography =
     RaftTypography.from(RaftFonts(sans = FontFamily.SansSerif, mono = FontFamily.Monospace), scale = DesignSystemScale.Wide)
