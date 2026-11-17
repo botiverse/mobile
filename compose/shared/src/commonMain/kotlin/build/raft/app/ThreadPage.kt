@@ -530,10 +530,7 @@ import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.FirstBaseline
-import androidx.compose.ui.layout.HorizontalAlignmentLine
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftMessageDelegatedAvatar
@@ -31120,68 +31117,31 @@ private fun ThreadMessageCardContent(
                                         .padding(end = if (reserveInlineTrailingSpace) 30.dp else 0.dp)
                                         .background(Color.Transparent)
                             ) {
-                                Row(
+                                // Web MessageItem: the sender's name mentions them in the composer
+                                // (tooltip "Mention @name"); the avatar opens the profile (artin
+                                // 2026-11-02). External, deleted and removed authors keep the profile.
+                                val nameMentionHandle =
+                                    message.authorHandle.trim().removePrefix("@").takeIf {
+                                        it.isNotBlank() && !shareSelectionActive && message.externalAuthor == null &&
+                                            message.threadAuthorBadgeLabel() == null
+                                    }
+                                // raft-ui 0.17 MessageItemHeader `items-baseline`: name, meta,
+                                // subtitle and time share the first baseline.
+                                ThreadMessageHeaderRow(
+                                    alignEnd = alignOwnMessageRight,
                                     modifier = Modifier.fillMaxWidth().raftMessageItemToolbarHeaderMask(headerMaskWidth),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    // raft-ui `MessageItemHeader`: gap-1.5.
-                                    horizontalArrangement =
-                                        if (alignOwnMessageRight) {
-                                            Arrangement.spacedBy(6.dp, Alignment.End)
-                                        } else {
-                                            Arrangement.spacedBy(6.dp)
-                                        }
-                                ) {
-                                    // Web MessageItem `MessageItemSenderGroup`: name, badges, model,
-                                    // subtitle and "sent by" share one cluster; the time sits outside it,
-                                    // so a long name can never push the time off the row. The name has no
-                                    // fixed cap (web `max-w-full`): it truncates only when it alone is
-                                    // wider than the cluster, and the subtitle gives up its room first.
-                                    Row(
-                                        // The time lines up with the name's baseline, not whichever
-                                        // badge or label in the cluster sits highest.
-                                        modifier = Modifier.weight(1f, fill = false).alignBy(ThreadSenderNameBaseline),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    ) {
-                                        // Web MessageItem: the sender's name mentions them in the composer
-                                        // (tooltip "Mention @name"); the avatar opens the profile (artin
-                                        // 2026-11-02). External, deleted and removed authors keep the profile.
-                                        val nameMentionHandle =
-                                            message.authorHandle.trim().removePrefix("@").takeIf {
-                                                it.isNotBlank() && !shareSelectionActive && message.externalAuthor == null &&
-                                                    message.threadAuthorBadgeLabel() == null
-                                            }
-                                        val authorNameText: @Composable (Modifier) -> Unit = { nameModifier ->
-                                            Text(
-                                                text = localizedAuthorName,
-                                                // raft-ui `MessageItemSender`: text-subhead (15/20) bold.
-                                                style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp).withRaftUserContentLocale(),
-                                                color = RaftColor.TextBlack,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier =
-                                                    nameModifier
-                                                        .threadSenderNameBaseline()
-                                                        .raftClickable(
-                                                            onClick = {
-                                                                if (nameMentionHandle != null) onMentionAuthor(message) else openAuthorProfile("author_name")
-                                                            },
-                                                            shape = RoundedCornerShape(RaftAppRadius.Sm),
-                                                            tier = RaftHoverTier.Subtle,
-                                                        )
+                                    time = { timeModifier ->
+                                        if (showTimestampInHeader) {
+                                            ThreadMessageTimestampLabel(
+                                                timestampLabel = timestampLabel,
+                                                modifier = timeModifier,
+                                                onToggle = {
+                                                    tapMovementGate.rejectChildAction("timestamp")
+                                                }
                                             )
                                         }
-                                        // raft-ui 0.17 MessageItemHeader `items-baseline`: name, meta,
-                                        // subtitle and time share the first baseline.
-                                        if (nameMentionHandle != null) {
-                                            RaftTooltip(
-                                                text = stringResource(Res.string.message_mention_sender, nameMentionHandle),
-                                                modifier = Modifier.alignByBaseline(),
-                                                openOnLongPress = false,
-                                            ) { authorNameText(Modifier) }
-                                        } else {
-                                            authorNameText(Modifier.alignByBaseline())
-                                        }
+                                    },
+                                    meta = {
                                         authorAppBot?.let { appBot ->
                                             RaftAppBotBadge(identity = appBot, botName = localizedAuthorName)
                                         }
@@ -31252,14 +31212,34 @@ private fun ThreadMessageCardContent(
                                             )
                                         }
                                     }
-                                    if (showTimestampInHeader) {
-                                        ThreadMessageTimestampLabel(
-                                            timestampLabel = timestampLabel,
-                                            modifier = Modifier.alignByBaseline(),
-                                            onToggle = {
-                                                tapMovementGate.rejectChildAction("timestamp")
-                                            }
+                                ) { inCluster, nameText ->
+                                    val authorNameText: @Composable (Modifier) -> Unit = { nameModifier ->
+                                        Text(
+                                            text = localizedAuthorName,
+                                            // raft-ui `MessageItemSender`: text-subhead (15/20) bold.
+                                            style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp).withRaftUserContentLocale(),
+                                            color = RaftColor.TextBlack,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier =
+                                                nameModifier
+                                                    .raftClickable(
+                                                        onClick = {
+                                                            if (nameMentionHandle != null) onMentionAuthor(message) else openAuthorProfile("author_name")
+                                                        },
+                                                        shape = RoundedCornerShape(RaftAppRadius.Sm),
+                                                        tier = RaftHoverTier.Subtle,
+                                                    )
                                         )
+                                    }
+                                    if (nameMentionHandle != null) {
+                                        RaftTooltip(
+                                            text = stringResource(Res.string.message_mention_sender, nameMentionHandle),
+                                            modifier = inCluster,
+                                            openOnLongPress = false,
+                                        ) { authorNameText(nameText) }
+                                    } else {
+                                        authorNameText(inCluster.then(nameText))
                                     }
                                 }
                             }
@@ -37805,17 +37785,6 @@ private fun ThreadAttachmentOpenUiState?.threadAttachmentOpenFailed(): Boolean =
 
 // raft-ui MessageAttachmentGroup `max-w-[360px]`.
 private val ThreadAttachmentGroupMaxWidth = 360.dp
-
-/** The sender name's first baseline, carried out of the sender cluster for the header time. */
-private val ThreadSenderNameBaseline = HorizontalAlignmentLine { a, b -> minOf(a, b) }
-
-private fun Modifier.threadSenderNameBaseline(): Modifier =
-    layout { measurable, constraints ->
-        val placeable = measurable.measure(constraints)
-        val baseline = placeable[FirstBaseline]
-        val lines: Map<AlignmentLine, Int> = if (baseline == AlignmentLine.Unspecified) emptyMap() else mapOf(ThreadSenderNameBaseline to baseline)
-        layout(placeable.width, placeable.height, lines) { placeable.place(0, 0) }
-    }
 
 /** UI-bound formatting: raw bytes win; sizeLabel exists only for compatibility snapshots. */
 internal fun RaftThreadAttachmentItem.displaySizeLabel(): String =

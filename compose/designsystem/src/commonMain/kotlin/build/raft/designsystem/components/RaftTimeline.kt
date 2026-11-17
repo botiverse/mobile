@@ -32,7 +32,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.text.RaftCarriedBaseline
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.text.raftCarryFirstBaseline
+import build.raft.designsystem.text.rememberRaftCarriedBaseline
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftUiPalette
@@ -153,12 +156,17 @@ private fun RaftTimelineItem(item: RaftTimelineItemSpec, last: Boolean) {
             verticalArrangement = Arrangement.spacedBy(RaftTimelineInnerGap),
         ) {
             // The time sits on the title's first baseline (raft-ui: one grid row, `items-baseline`).
+            // The title is a row (text and chevron) whose text sits at its top: the row lines it up
+            // by the text's own baseline, carried, never by reading the title row's baseline while
+            // it measures (see [RaftCarriedBaseline]: a task's history is in its conversation's list).
+            val titleBaseline = rememberRaftCarriedBaseline()
             Row(horizontalArrangement = Arrangement.spacedBy(RaftTimelineGap)) {
                 RaftTimelineFoldText(
                     item.title,
                     style = if (item.titleBold) typography.callout.copy(fontWeight = FontWeight.Bold) else typography.callout,
                     color = colors.foreground,
-                    modifier = Modifier.weight(1f).alignByBaseline(),
+                    modifier = Modifier.weight(1f).alignBy { titleBaseline.px },
+                    baseline = titleBaseline,
                 )
                 item.time?.let { time ->
                     RaftText(
@@ -203,6 +211,8 @@ private fun RaftTimelineFoldText(
     color: Color,
     modifier: Modifier = Modifier,
     initiallyOpen: Boolean = false,
+    /** Keeps the text's first baseline (the row's own: the text is at its top), for the caller's row. */
+    baseline: RaftCarriedBaseline? = null,
 ) {
     var open by remember(text) { mutableStateOf(initiallyOpen) }
     var long by remember(text) { mutableStateOf(initiallyOpen) }
@@ -219,7 +229,7 @@ private fun RaftTimelineFoldText(
     ) {
         RaftText(
             text,
-            Modifier.weight(1f, fill = false).alignByBaseline(),
+            Modifier.weight(1f, fill = false).alignByBaseline().then(baseline?.let { Modifier.raftCarryFirstBaseline(it) } ?: Modifier),
             style = style,
             color = color,
             maxLines = if (open) Int.MAX_VALUE else 1,
