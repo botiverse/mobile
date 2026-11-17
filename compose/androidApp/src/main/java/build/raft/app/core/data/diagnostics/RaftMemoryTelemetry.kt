@@ -15,6 +15,7 @@ import android.os.Process
 import android.os.SystemClock
 import android.system.Os
 import android.system.OsConstants
+import build.hands.update.HandsNativeCrash
 import build.raft.app.BuildConfig
 import java.io.File
 import java.net.URLDecoder
@@ -65,6 +66,15 @@ internal data class MemoryTelemetrySnapshot(
      * foreground; -1 when none (or written by a build before encoding 4).
      */
     val lastInteractionAtMillis: Long = -1L,
+    /**
+     * `HandsNativeCrash.processEventId` of this process (hands-android-sdk 0.13.2+): the
+     * `submission_id` its native-crash ticket is filed under, so a report of this process's exit
+     * can be merged into that ticket ([nativeExitSubmissionId]). "" when unknown (written by a
+     * build before encoding 5, or the SDK could not provide it).
+     */
+    val handsProcessEventId: String = "",
+    /** `HandsNativeCrash.processStartAt` (epoch ms) of this process; -1 when unknown, as [handsProcessEventId]. */
+    val handsProcessStartMillis: Long = -1L,
 ) {
     fun encode(): String =
         listOf(
@@ -91,6 +101,8 @@ internal data class MemoryTelemetrySnapshot(
             // URL-encoded: the name may hold the ',' and ';' this and the ring are split on.
             URLEncoder.encode(versionName, "UTF-8"),
             lastInteractionAtMillis,
+            URLEncoder.encode(handsProcessEventId, "UTF-8"),
+            handsProcessStartMillis,
         ).joinToString(",")
 
     /** `key=value` fields appended to `previous_process_exit`, relative to the exit time. */
@@ -114,8 +126,10 @@ internal data class MemoryTelemetrySnapshot(
             "trimAgeMs=${ageAt(exitTimestampMillis, lastTrimAtMillis)}"
 
     companion object {
-        private const val EncodingVersion = 4
-        private const val FieldCount = 22
+        private const val EncodingVersion = 5
+        private const val FieldCount = 24
+        /** Encoding 4 (no Hands process event), still read: the ring written by the previous build. */
+        private const val V4FieldCount = 22
         /** Encoding 3 (no last interaction), still read: the ring written by the previous build. */
         private const val V3FieldCount = 21
         /** Encoding 2 (no version), still read: the ring written by the previous build. */
@@ -128,17 +142,26 @@ internal data class MemoryTelemetrySnapshot(
             val version = parts[0].toIntOrNull()
             when {
                 version == EncodingVersion && parts.size == FieldCount -> Unit
+                version == 4 && parts.size == V4FieldCount -> Unit
                 version == 3 && parts.size == V3FieldCount -> Unit
                 version == 2 && parts.size == V2FieldCount -> Unit
                 else -> return null
             }
             // Encoding 3 added the build (code, then the URL-encoded name at index 20); encoding 4
-            // the last interaction after it.
+            // the last interaction after it; encoding 5 the Hands process event id and start.
             val versioned = version != 2
             val n = parts.take(if (versioned) V3FieldCount - 1 else V2FieldCount).map { it.toLongOrNull() ?: return null }
             val versionName =
                 if (versioned) runCatching { URLDecoder.decode(parts[V3FieldCount - 1], "UTF-8") }.getOrNull() ?: return null else ""
             val lastInteractionAtMillis =
+                if (version != null && version >= 4) parts[V4FieldCount - 1].toLongOrNull() ?: return null else -1L
+            val handsProcessEventId =
+                if (version == EncodingVersion) {
+                    runCatching { URLDecoder.decode(parts[FieldCount - 2], "UTF-8") }.getOrNull() ?: return null
+                } else {
+                    ""
+                }
+            val handsProcessStartMillis =
                 if (version == EncodingVersion) parts[FieldCount - 1].toLongOrNull() ?: return null else -1L
             return MemoryTelemetrySnapshot(
                 pid = n[1].toInt(),
@@ -162,6 +185,8 @@ internal data class MemoryTelemetrySnapshot(
                 versionCode = if (versioned) n[19] else -1L,
                 versionName = versionName,
                 lastInteractionAtMillis = lastInteractionAtMillis,
+                handsProcessEventId = handsProcessEventId,
+                handsProcessStartMillis = handsProcessStartMillis,
             )
         }
     }
@@ -334,6 +359,10 @@ internal object RaftMemoryTelemetry {
         runCatching {
             val processStartMillis =
                 System.currentTimeMillis() - (SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime())
+            // The id the SDK files this process's native crash under (a random UUID per process),
+            // kept with this process's record so the next launch can report its exit under it.
+            val handsProcess =
+                runCatching { HandsNativeCrash.processEventId to HandsNativeCrash.processStartAt }.getOrNull()
             handler = Handler(HandlerThread("raft-memory-telemetry").apply { start() }.looper)
             handler.post {
                 val previous =
@@ -355,6 +384,8 @@ internal object RaftMemoryTelemetry {
                         foregroundChangedAtMillis = now,
                         versionCode = BuildConfig.VERSION_CODE.toLong(),
                         versionName = BuildConfig.VERSION_NAME,
+                        handsProcessEventId = handsProcess?.first.orEmpty(),
+                        handsProcessStartMillis = handsProcess?.second ?: -1L,
                     )
                 persist(MemoryTelemetryWriteGate.Cause.ForegroundChange)
             }

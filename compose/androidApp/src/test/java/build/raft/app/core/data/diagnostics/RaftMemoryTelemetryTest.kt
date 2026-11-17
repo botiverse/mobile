@@ -67,6 +67,26 @@ class RaftMemoryTelemetryTest {
     }
 
     @Test
+    fun theHandsProcessEventRoundTripsAndARingWrittenByEncoding4DecodesWithoutIt() {
+        val stamped =
+            sample.copy(
+                versionCode = 12700001L,
+                versionName = "1.27.0",
+                lastInteractionAtMillis = 29_500L,
+                handsProcessEventId = "3f2c8a3e-9b1d-4c7e-8f00-1a2b3c4d5e6f",
+                handsProcessStartMillis = 1_003L,
+            )
+        assertEquals(stamped, MemoryTelemetrySnapshot.decode(stamped.encode()))
+        assertEquals(listOf(stamped), MemoryTelemetryRing.decode(MemoryTelemetryRing.encode(listOf(stamped))))
+
+        // Encoding 4 (the previous build): everything up to the last interaction, no Hands process event.
+        val v4 = "4," + stamped.encode().substringAfter(',').split(',').take(21).joinToString(",")
+        assertEquals(stamped.copy(handsProcessEventId = "", handsProcessStartMillis = -1L), MemoryTelemetrySnapshot.decode(v4))
+        // A wrong field count for its version decodes to nothing.
+        assertNull(MemoryTelemetrySnapshot.decode("4," + stamped.encode().substringAfter(',')))
+    }
+
+    @Test
     fun interactionWritesAreThrottledToOneEveryFiveSecondsAndNoneInTheBackground() {
         val throttle = InteractionWriteThrottle(RaftMemoryTelemetry.InteractionWriteIntervalMillis)
 

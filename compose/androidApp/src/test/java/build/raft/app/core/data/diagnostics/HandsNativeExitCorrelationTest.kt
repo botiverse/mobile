@@ -3,6 +3,7 @@ package build.raft.app.core.data.diagnostics
 import android.app.ActivityManager.RunningAppProcessInfo as Importance
 import android.app.Application
 import android.app.ApplicationExitInfo
+import build.hands.update.HandsFeedbackException
 import build.raft.app.shared.RaftBuildStamp
 import java.io.IOException
 import kotlinx.coroutines.test.runTest
@@ -170,7 +171,7 @@ class HandsNativeExitCorrelationTest {
         val store = FakeStore()
         val sent = mutableListOf<Map<String, Any?>>()
         // The upload started and maybe reached Hands, but no ticket id came back.
-        launch(store, sent, submit = { _, extras -> sent += extras; throw IOException("connection reset") })
+        launch(store, sent, submit = { _, extras, _ -> sent += extras; throw IOException("connection reset") })
         assertEquals(1, sent.size)
         val queued = store.persisted.queue.single()
         assertTrue("still queued: not reported", queued.attempted)
@@ -247,6 +248,204 @@ class HandsNativeExitCorrelationTest {
         assertEquals(1, scan.unreadable)
     }
 
+    // --- Merging by submission id (hands-android-sdk 0.13.2) ------------------------------------
+
+    private val eventId = "3f2c8a3e-9b1d-4c7e-8f00-1a2b3c4d5e6f"
+
+    /** The exited process's record, written by a build on 0.13.2: it holds the SDK's event id. */
+    private val withEventId get() = snapshot.copy(handsProcessEventId = eventId, handsProcessStartMillis = start + 3L)
+
+    /** One send as Hands saw it. */
+    private data class Sent(val extras: Map<String, Any?>, val submissionId: String?)
+
+    private fun answers(vararg outcomes: () -> SystemKillSubmission): Pair<MutableList<Sent>, suspend (String, Map<String, Any?>, String?) -> SystemKillSubmission> {
+        val calls = mutableListOf<Sent>()
+        val submit: suspend (String, Map<String, Any?>, String?) -> SystemKillSubmission = { _, extras, id ->
+            calls += Sent(extras, id)
+            // The last outcome repeats.
+            outcomes[minOf(calls.size, outcomes.size) - 1]()
+        }
+        return calls to submit
+    }
+
+    private fun mergeConflict() = HandsFeedbackException(503, "{\"error\":\"submission_merge_conflict\"}")
+
+    private fun refused() = HandsFeedbackException(409, "{\"error\":\"submission_conflict\"}")
+
+    @Test
+    fun theSubmissionIdIsTheRecordsEventIdOnlyWhenItChecksOut() {
+        assertEquals(eventId, nativeExitSubmissionId(withEventId))
+        assertEquals(eventId, nativeExitSubmissionId(withEventId.copy(handsProcessEventId = eventId.uppercase())))
+        assertEquals(eventId, nativeExitSubmissionId(withEventId.copy(handsProcessStartMillis = start + ProcessStartToleranceMillis)))
+        // No record, or one written before 0.13.2: the conservative path.
+        assertNull(nativeExitSubmissionId(null))
+        assertNull(nativeExitSubmissionId(snapshot))
+        assertNull(nativeExitSubmissionId(withEventId.copy(handsProcessStartMillis = -1L)))
+        // Not a UUID the SDK accepts (it would throw before sending).
+        assertNull(nativeExitSubmissionId(withEventId.copy(handsProcessEventId = "not-a-uuid")))
+        assertNull(nativeExitSubmissionId(withEventId.copy(handsProcessEventId = "3f2c8a3e-9b1d-0c7e-8f00-1a2b3c4d5e6f")))
+        // The SDK's start disagrees with the app's: not this process's id.
+        assertNull(nativeExitSubmissionId(withEventId.copy(handsProcessStartMillis = start + ProcessStartToleranceMillis + 1)))
+    }
+
+    @Test
+    fun aKnownSubmissionIdIsReportedAtOnceWithoutWaitingForTheSdk() {
+        val wait = NativeExitWait(identity.copy(submissionId = eventId), firstSeenMillis = now)
+        val pending = listOf(HandsNativePendingRecord(4242, exitAt))
+        assertEquals(NativeExitVerdict.Merge(eventId), decideNativeExit(wait, emptyList(), pending, now))
+        // Without the id the same exit still waits for the SDK's record.
+        assertEquals(NativeExitVerdict.Wait, decideNativeExit(wait.copy(identity = identity), emptyList(), pending, now))
+        // A confirmation still wins.
+        val confirmed = HandsNativeTicketConfirmation(4242, exitAt, start, "ticket-sdk")
+        assertEquals(NativeExitVerdict.SkipConfirmed("ticket-sdk"), decideNativeExit(wait, listOf(confirmed), pending, now))
+    }
+
+    @Test
+    fun anExitWithAnEventIdIsSentUnderItAndAMergeIsAccepted() = runTest {
+        val store = FakeStore()
+        // The SDK still holds its native record: no wait on the merge path.
+        val (calls, submit) = answers({ SystemKillSubmission("ticket-native", merged = true) })
+        launch(store, mutableListOf(), telemetry = withEventId, pending = listOf(HandsNativePendingRecord(4242, exitAt)), submit = submit)
+        assertEquals(1, calls.size)
+        assertEquals(eventId, calls.single().submissionId)
+        assertEquals(NativeCorrelationSubmissionId, calls.single().extras["crash_native_correlation"])
+        assertEquals("system_kill", calls.single().extras["crash_type"])
+        assertTrue(store.persisted.queue.isEmpty())
+
+        // Nothing again on a later launch.
+        launch(store, mutableListOf(), at = now + hour, telemetry = withEventId, submit = submit)
+        assertEquals(1, calls.size)
+    }
+
+    @Test
+    fun aMergeSeenByAnAnonymousClientHasNoTicketIdAndIsStillAccepted() = runTest {
+        val store = FakeStore()
+        val (calls, submit) = answers({ SystemKillSubmission(ticketId = null, merged = true) })
+        launch(store, mutableListOf(), telemetry = withEventId, submit = submit)
+        assertEquals(1, calls.size)
+        assertTrue(store.persisted.queue.isEmpty())
+        assertEquals(1, store.persisted.recentReportMillis.values.sumOf { it.size })
+    }
+
+    @Test
+    fun aMergeConflictIsRetriedWithTheSameContentAFewTimes() = runTest {
+        val store = FakeStore()
+        val waits = mutableListOf<Long>()
+        val (calls, submit) =
+            answers({ throw mergeConflict() }, { throw mergeConflict() }, { SystemKillSubmission("ticket-native", merged = true) })
+        launch(store, mutableListOf(), telemetry = withEventId, waits = waits, submit = submit)
+        assertEquals(3, calls.size)
+        assertEquals(1, calls.toSet().size)
+        assertEquals(List(NativeMergeConflictRetries) { NativeMergeConflictRetryDelayMillis }, waits)
+        assertTrue(store.persisted.queue.isEmpty())
+    }
+
+    @Test
+    fun aMergeConflictThatPersistsWaitsForTheNextLaunchThenA409IsSentStandalone() = runTest {
+        val store = FakeStore()
+        val (calls, submit) = answers({ throw mergeConflict() })
+        launch(store, mutableListOf(), telemetry = withEventId, submit = submit)
+        assertEquals(1 + NativeMergeConflictRetries, calls.size)
+        val queued = store.persisted.queue.single()
+        assertEquals(eventId, queued.submissionId)
+        assertTrue("Hands answered every send: nothing stored", queued.submissionNotStored)
+
+        // Next launch Hands refuses the id: nothing of it is on Hands, so it goes standalone.
+        val (later, laterSubmit) = answers({ throw refused() }, { SystemKillSubmission("ticket-app") })
+        launch(store, mutableListOf(), at = now + hour, telemetry = withEventId, submit = laterSubmit)
+        assertEquals(listOf(eventId, null), later.map { it.submissionId })
+        assertEquals(NativeCorrelationMergeRejected, later[1].extras["crash_native_correlation"])
+        assertEquals(later[0].extras["crash_exit_event_id"], later[1].extras["crash_exit_event_id"])
+        assertTrue(store.persisted.queue.isEmpty())
+    }
+
+    @Test
+    fun a409OnTheFirstSendFallsBackToOneStandaloneSendAndNeverLoops() = runTest {
+        val store = FakeStore()
+        val (calls, submit) = answers({ throw refused() })
+        launch(store, mutableListOf(), telemetry = withEventId, submit = submit)
+        // Once under the id, once standalone; the standalone 409 is a permanent rejection.
+        assertEquals(listOf(eventId, null), calls.map { it.submissionId })
+        assertTrue(store.persisted.queue.isEmpty())
+        assertEquals(BackgroundDropEntry.Rejected, store.persisted.ledger.accumulating.single().category)
+
+        launch(store, mutableListOf(), at = now + hour, telemetry = withEventId, submit = submit)
+        assertEquals(2, calls.size)
+    }
+
+    @Test
+    fun aStandaloneFallbackThatFailsIsResentStandalone() = runTest {
+        val store = FakeStore()
+        val (calls, submit) = answers({ throw refused() }, { throw IOException("offline") })
+        launch(store, mutableListOf(), telemetry = withEventId, submit = submit)
+        val queued = store.persisted.queue.single()
+        assertNull(queued.submissionId)
+        assertEquals(NativeCorrelationMergeRejected, queued.extras["crash_native_correlation"])
+
+        val (later, laterSubmit) = answers({ SystemKillSubmission("ticket-app") })
+        launch(store, mutableListOf(), at = now + hour, telemetry = withEventId, submit = laterSubmit)
+        assertEquals(listOf<String?>(null), later.map { it.submissionId })
+        assertEquals(calls[1].extras, later.single().extras)
+        assertTrue(store.persisted.queue.isEmpty())
+    }
+
+    @Test
+    fun a409AfterASendThatGotNoAnswerIsThatSendsTicket() = runTest {
+        val store = FakeStore()
+        // The first send may have reached Hands: no answer came back.
+        val (calls, submit) = answers({ throw IOException("connection reset") })
+        launch(store, mutableListOf(), telemetry = withEventId, submit = submit)
+        assertFalse(store.persisted.queue.single().submissionNotStored)
+
+        // Next launch the resend under the same id is refused: taken as filed, not sent standalone.
+        val (later, laterSubmit) = answers({ throw refused() })
+        launch(store, mutableListOf(), at = now + hour, telemetry = withEventId, submit = laterSubmit)
+        assertEquals(listOf<String?>(eventId), later.map { it.submissionId })
+        assertEquals(calls.single(), later.single())
+        assertTrue(store.persisted.queue.isEmpty())
+        assertTrue(store.persisted.ledger.accumulating.isEmpty())
+    }
+
+    @Test
+    fun otherFailuresUnderASubmissionIdFollowTheUsualRules() = runTest {
+        // A plain 503 is retried next launch, not now; a 400 is rejected.
+        val store = FakeStore()
+        val (calls, submit) = answers({ throw HandsFeedbackException(503, "unavailable") })
+        launch(store, mutableListOf(), telemetry = withEventId, submit = submit)
+        assertEquals(1, calls.size)
+        assertEquals(1, store.persisted.queue.size)
+
+        val rejected = FakeStore()
+        val (rejectedCalls, rejectedSubmit) = answers({ throw HandsFeedbackException(400, "bad") })
+        launch(rejected, mutableListOf(), telemetry = withEventId, submit = rejectedSubmit)
+        assertEquals(1, rejectedCalls.size)
+        assertTrue(rejected.persisted.queue.isEmpty())
+    }
+
+    @Test
+    fun theSubmissionIdSurvivesARestart() {
+        val waiting =
+            QueuedSystemKillReport(
+                key = SystemKillExitKey(4242, exitAt),
+                budget = SystemKillBudget.Review,
+                versionCode = 1L,
+                message = "m",
+                extras = mapOf("crash_type" to "system_kill"),
+                nativeExit = NativeExitWait(identity.copy(submissionId = eventId), firstSeenMillis = now),
+            )
+        val frozen = waiting.copy(nativeExit = null, attempted = true, submissionId = eventId, submissionNotStored = true)
+        assertEquals(listOf(waiting, frozen), QueuedSystemKillReport.decodeAll(QueuedSystemKillReport.encodeAll(listOf(waiting, frozen))))
+    }
+
+    @Test
+    fun hands409And503AreReadAsMergeFailuresOnlyWhenTheyAreAboutTheMerge() {
+        assertEquals(NativeMergeFailure.Refused, nativeMergeFailure(refused()))
+        assertEquals(NativeMergeFailure.RetrySameContent, nativeMergeFailure(mergeConflict()))
+        assertNull(nativeMergeFailure(HandsFeedbackException(503, "upstream")))
+        assertNull(nativeMergeFailure(HandsFeedbackException(400, "bad")))
+        assertNull(nativeMergeFailure(IOException("offline")))
+    }
+
     // --- Helpers -------------------------------------------------------------------------------
 
     private fun nativeExit() =
@@ -279,7 +478,10 @@ class HandsNativeExitCorrelationTest {
         at: Long = now,
         pending: List<HandsNativePendingRecord> = emptyList(),
         confirmations: List<HandsNativeTicketConfirmation> = emptyList(),
-        submit: suspend (String, Map<String, Any?>) -> String = { _, extras -> sent += extras; "ticket-app" },
+        telemetry: MemoryTelemetrySnapshot = snapshot,
+        waits: MutableList<Long> = mutableListOf(),
+        submit: suspend (String, Map<String, Any?>, String?) -> SystemKillSubmission =
+            { _, extras, _ -> sent += extras; SystemKillSubmission("ticket-app") },
     ) = runSystemKillReports(
         store = store,
         nowMillis = at,
@@ -288,7 +490,7 @@ class HandsNativeExitCorrelationTest {
             val visible = remaining.getValue(SystemKillBudget.Visible)
             planSystemKillReports(
                 exits = listOf(nativeExit()),
-                snapshots = listOf(snapshot),
+                snapshots = listOf(telemetry),
                 cutoffMillis = 0L,
                 watermarkMillis = progress.watermarkMillis,
                 recentReportMillis = visible.recentReportMillis,
@@ -306,6 +508,7 @@ class HandsNativeExitCorrelationTest {
         submit = submit,
         nativeConfirmations = confirmations,
         nativePending = pending,
+        wait = { waits += it },
     )
 
     private class FakeStore(var persisted: SystemKillProgress = SystemKillProgress()) : SystemKillProgressStore {

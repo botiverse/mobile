@@ -685,7 +685,7 @@ class AndroidSystemKillReportPersistenceTest {
             systemKillMessage(item.exit, item.telemetry) to systemKillExtras(item.exit, item.telemetry, installId = "install-a")
         },
         newBatchId = newBatchId,
-        submit = submit,
+        submit = { message, extras, _ -> SystemKillSubmission(submit(message, extras)) },
     )
 
     /** A foreground snapshot whose sample and interaction are both 600 s before [at]: recent foreground false. */
