@@ -3561,7 +3561,7 @@ static NSDictionary *RaftFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(voi
 
 @end
 
-// Settings → Storage (row contract: SettingsHomePage.kt localizedSettingsStorageRowDetail /
+// Settings → Storage (row contract: SettingsHomeAccountPayloads.kt localizedSettingsStorageRowDetail /
 // localizedSettingsStorageFeedback; Android reference: StorageManagementRepository.kt).
 typedef struct {
     unsigned long long database;

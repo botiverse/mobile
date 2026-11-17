@@ -1264,7 +1264,7 @@ HSPLbuild/raft/app/PixelAvatarWireDocument$Companion;->serializer()Lkotlinx/seri
 HSPLbuild/raft/app/PixelAvatarWireDocument;-><clinit>()V
 HSPLbuild/raft/app/SettingsHomePageKt;-><clinit>()V
 HSPLbuild/raft/app/SettingsHomePageKt;->getHomeSearchVisualMember()Lbuild/raft/app/model/MemberProfile;
-HSPLbuild/raft/app/SettingsHomePageKt;->pinnedChannelConversationIds(Lbuild/raft/app/data/SettingsServerSidebarOrderSnapshot;)Ljava/util/Set;
+HSPLbuild/raft/app/SettingsHomeSearchResultsKt;->pinnedChannelConversationIds(Lbuild/raft/app/data/SettingsServerSidebarOrderSnapshot;)Ljava/util/Set;
 HSPLbuild/raft/app/SharedConversationHeaderProjectionKt;->headerDiagnosticValue$default(Ljava/lang/String;IILjava/lang/Object;)Ljava/lang/String;
 HSPLbuild/raft/app/SharedConversationHeaderProjectionKt;->headerDiagnosticValue(Ljava/lang/String;I)Ljava/lang/String;
 HSPLbuild/raft/app/SharedConversationHeaderProjectionKt;->headerRouteDiagnostics(Lbuild/raft/app/RaftThreadScreenPayload;)Ljava/lang/String;

@@ -57,7 +57,7 @@ never received.
 
 ## 3. Fill every exhaustive `when`
 
-- `compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt`:
+- `compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeRealtime.kt`:
   `performanceMarkerName()` and `performanceMarkerPhase()`.
 - `compose/shared/src/jvmCommonMain/kotlin/build/raft/app/data/realtime/SocketIoRealtimeClient.kt`
   (Android and desktop): `realtimeDiagnosticName()`. Only the Android /

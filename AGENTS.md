@@ -970,7 +970,7 @@ edited (it bit #360 and #387 on the same day):
 
 1. Event name into `RealtimeSocketEvents.ServerWireEvents` — the socket client
    subscribes ONLY to that list; an unlisted event is silently never received.
-2. `SettingsHomePage.kt`: both exhaustive `when`s —
+2. `SettingsHomeRealtime.kt`: both exhaustive `when`s —
    `performanceMarkerName()` and `performanceMarkerPhase()`.
 3. `SocketIoRealtimeClient.kt` (`compose/shared/src/jvmCommonMain`, Android and
    desktop): the exhaustive `when` `realtimeDiagnosticName()`. Only the

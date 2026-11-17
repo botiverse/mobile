@@ -17,7 +17,9 @@
 2 build/raft/app/members/MembersAgentTabs.kt
 1 build/raft/app/settings/SettingsAccountPage.kt
 1 build/raft/app/settings/SettingsFormParts.kt
-4 build/raft/app/settings/SettingsHomePage.kt
+2 build/raft/app/settings/SettingsHomeSearchPanel.kt
+1 build/raft/app/settings/SettingsHomeSearchResults.kt
+1 build/raft/app/settings/SettingsHomeServerDrawer.kt
 1 build/raft/app/settings/SettingsHubPage.kt
 1 build/raft/app/shell/RaftDuoInnerRail.kt
 1 build/raft/app/shell/RaftMoveableDrawer.kt
