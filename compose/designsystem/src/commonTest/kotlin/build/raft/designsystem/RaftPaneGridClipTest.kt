@@ -2,6 +2,8 @@ package build.raft.designsystem
 
 import build.raft.designsystem.components.RaftRowPlanColumn
 import build.raft.designsystem.components.raftPaneGridFadeSpans
+import build.raft.designsystem.components.raftPaneGridMainShownDp
+import build.raft.designsystem.components.raftPaneGridNativeFadePx
 import build.raft.designsystem.components.raftPaneGridRowPlan
 import build.raft.designsystem.components.raftRowUnitWidths
 import kotlin.math.abs
@@ -68,6 +70,33 @@ class RaftPaneGridClipTest {
         val widths = shown(1538f - 381f, listOf(artifact))
         assertEquals(listOf(677, 480), widths.map { it.roundToInt() })
         assertInRoom(1157f, widths)
+    }
+
+    @Test
+    fun theMainPaneShowsWhatTheColumnsLeaveTheirSeamsIncluded() {
+        // The foldable's row: 476 right of the list's seam. The Artifact's 272 holds its own 1dp left seam (drawn inside
+        // its box), so the thread shows 204: the main pane has no seam of its own, the one right of it is the column's.
+        val room = 954f - 478f
+        val columns = shown(room, listOf(artifact)).drop(1)
+        assertEquals(204, raftPaneGridMainShownDp(room, columns).roundToInt())
+        // Main pane and columns, seams included, are the row exactly: nothing left over, nothing past its end.
+        assertTrue(abs(raftPaneGridMainShownDp(room, columns) + columns.sum() - room) < 0.01f)
+        // Two columns, two seams, each inside its column: still the row exactly.
+        val two = shown(1200f, listOf(sideThread, artifact)).drop(1)
+        assertTrue(abs(raftPaneGridMainShownDp(1200f, two) + two.sum() - 1200f) < 0.01f)
+        // A row too narrow for its columns never shows the main pane under nothing.
+        assertEquals(0f, raftPaneGridMainShownDp(300f, listOf(200f, 160f)))
+    }
+
+    @Test
+    fun aNativeViewFadesOverItsVisibleEnd() {
+        // The Artifact's WKWebView laid out at 480 from the column's start, 1dp in (the seam), in a 272 column: the
+        // pane's end is 271 into the view, the fade the 24 before it.
+        assertEquals(247f to 271f, raftPaneGridNativeFadePx(boxWidthPx = 272f, viewLeftPx = 1f, viewWidthPx = 480f, fadePx = 24f))
+        // A view that ends inside the pane is not cut: no fade.
+        assertEquals(null, raftPaneGridNativeFadePx(boxWidthPx = 500f, viewLeftPx = 1f, viewWidthPx = 480f, fadePx = 24f))
+        // Less than the fade's length shows: it fades from its start.
+        assertEquals(0f to 10f, raftPaneGridNativeFadePx(boxWidthPx = 11f, viewLeftPx = 1f, viewWidthPx = 480f, fadePx = 24f))
     }
 
     @Test

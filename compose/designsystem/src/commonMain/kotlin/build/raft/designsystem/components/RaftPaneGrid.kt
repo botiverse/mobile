@@ -58,6 +58,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
@@ -345,7 +346,12 @@ private fun Modifier.raftPaneGridContentMinWidth(minDp: Float): Modifier =
  * [bands]) fit the column and are never faded: the fade passes them by. Put it on the box that clips.
  */
 private fun Modifier.raftPaneGridClipFade(clipped: Boolean, bands: RaftPaneGridHeadBands): Modifier =
-    onPlaced { bands.box = it }
+    onPlaced {
+        bands.box = it
+        val width = it.size.width.toFloat()
+        if (bands.widthPx != width) bands.widthPx = width
+        if (bands.clipped != clipped) bands.clipped = clipped
+    }
         .then(
             if (!clipped) {
                 Modifier
@@ -390,6 +396,77 @@ internal class RaftPaneGridHeadBands {
     /** The pane's clipping box: plain memory, set where it is placed. */
     var box: LayoutCoordinates? = null
     val bands = mutableStateMapOf<Any, Pair<Float, Float>>()
+
+    /** The clipping box's width, px, and whether the pane is clipped (its end fades): for a native view's own fade. */
+    var widthPx by mutableStateOf(0f)
+    var clipped by mutableStateOf(false)
+}
+
+/**
+ * What of the planned row's main pane shows: the row's [roomDp] (the leading column and its seam left out already)
+ * less every column as planned, [columnWidthsDp]. A column's width includes its 1dp left seam (web: `border-l` inside
+ * the column's box; [RaftPaneGridSideColumn] draws it inside its width), so the main pane has no seam of its own to
+ * leave out: the seam right of it is the next column's.
+ */
+fun raftPaneGridMainShownDp(roomDp: Float, columnWidthsDp: List<Float>): Float = maxOf(0f, roomDp - columnWidthsDp.sum())
+
+/**
+ * A clipped pane's end fade across a native view in it, in the view's own dp (iOS points): opaque up to [startDp],
+ * gone from [endDp] (the pane's end) on. A Compose mask ([raftPaneGridClipFade]) never reaches a view drawn over the
+ * canvas (iOS UIKitView), so the view draws this one itself, as a mask too (spacing.md "Edges fade").
+ */
+@Immutable
+data class RaftPaneGridNativeFade(val startDp: Float, val endDp: Float)
+
+/**
+ * Where a clipped pane's end, [boxWidthPx] wide, falls across a view [viewLeftPx] in from its start and [viewWidthPx]
+ * wide: the fade over [fadePx] before it, in the view's px; null where the view ends before the pane's end (nothing of
+ * it is cut).
+ */
+fun raftPaneGridNativeFadePx(boxWidthPx: Float, viewLeftPx: Float, viewWidthPx: Float, fadePx: Float): Pair<Float, Float>? {
+    val end = boxWidthPx - viewLeftPx
+    if (end >= viewWidthPx - 0.5f || end <= 0f) return null
+    return maxOf(0f, end - fadePx) to end
+}
+
+/**
+ * The end fade of the clipped pane a native view stands in ([RaftPaneGridNativeFade]): put [modifier] on the view
+ * (its interop composable) and give it [fade] each time it updates; null outside a clipped pane of the planned row.
+ */
+@Stable
+class RaftPaneGridNativeFadeState internal constructor(private val bands: RaftPaneGridHeadBands?) {
+    private var leftPx by mutableStateOf<Float?>(null)
+    private var viewWidthPx by mutableStateOf(0f)
+
+    val modifier: Modifier =
+        if (bands == null) {
+            Modifier
+        } else {
+            Modifier.onGloballyPositioned { view ->
+                val box = bands.box?.takeIf { it.isAttached } ?: return@onGloballyPositioned
+                if (box.findRootCoordinates() !== view.findRootCoordinates()) return@onGloballyPositioned
+                val left = box.localPositionOf(view, Offset.Zero).x
+                if (leftPx != left) leftPx = left
+                val width = view.size.width.toFloat()
+                if (viewWidthPx != width) viewWidthPx = width
+            }
+        }
+
+    /** The fade now, in the view's dp; read in composition, so a change recomposes. */
+    fun fade(density: Density, layoutDirection: LayoutDirection): RaftPaneGridNativeFade? {
+        // Rule 2 keeps content against its start: in a right-to-left row it is cut at the left, not drawn here.
+        if (bands == null || !bands.clipped || layoutDirection == LayoutDirection.Rtl) return null
+        val left = leftPx ?: return null
+        val px = raftPaneGridNativeFadePx(bands.widthPx, left, viewWidthPx, with(density) { RaftFade.Edge.toPx() }) ?: return null
+        return RaftPaneGridNativeFade(px.first / density.density, px.second / density.density)
+    }
+}
+
+/** The end fade for a native view here ([RaftPaneGridNativeFadeState]). */
+@Composable
+fun rememberRaftPaneGridNativeFade(): RaftPaneGridNativeFadeState {
+    val bands = LocalRaftPaneGridHeadBands.current
+    return remember(bands) { RaftPaneGridNativeFadeState(bands) }
 }
 
 internal val LocalRaftPaneGridHeadBands = compositionLocalOf<RaftPaneGridHeadBands?> { null }
@@ -1245,7 +1322,7 @@ fun RaftPaneGrid(
                     if (mainTabs != null) RaftPaneGridTabStrip(mainTabs, RAFT_PANE_GRID_TABS_TEST_TAG + RAFT_ROW_CONVERSATION)
                     // Rule 2: in the planned row the main pane's content keeps 360 and clips, its end fading; its
                     // head fits what shows (raftPaneGridFitHead), as a column's does.
-                    val mainShownDp = maxOf(0f, roomDp - fitted.sum())
+                    val mainShownDp = raftPaneGridMainShownDp(roomDp, fitted)
                     val mainClipped = plan != null && mainShownDp < RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP
                     val mainBands = remember { RaftPaneGridHeadBands() }
                     Box(
@@ -1293,7 +1370,7 @@ fun RaftPaneGrid(
                             column = token?.let { host.freshColumn(it, column.bounds.id) } ?: column,
                             widthDp = fitted[index],
                             // A column's width includes its left seam (web), so the main pane has the rest.
-                            mainWidthDp = maxOf(0f, roomDp - fitted.sum()),
+                            mainWidthDp = raftPaneGridMainShownDp(roomDp, fitted),
                             fill = filling && place.sourceIds.any { it in fillIds },
                             hidden = leadingFills || (filling && place.sourceIds.none { it in fillIds }),
                             topInset = place.topInset,
