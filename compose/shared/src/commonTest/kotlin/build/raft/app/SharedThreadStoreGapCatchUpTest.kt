@@ -163,7 +163,7 @@ class SharedThreadStoreGapCatchUpTest {
 
         // Twin of the scrolled-up user: the ↓ tap (jumpToLatest) shows the newest page like channel open.
         api.bodyText = pageRangeResponse(500L..502L)
-        assertTrue(store.jumpToLatest())
+        assertEquals(ThreadLatestJumpOutcome.Landed, store.jumpToLatest())
         assertEquals(listOf("m500", "m501", "m502"), store.state.value.payload.messages.map { it.id })
         assertEquals(false, store.state.value.payload.canLoadMoreAfter)
         scopeJob.cancelAndJoin()

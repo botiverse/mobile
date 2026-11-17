@@ -311,6 +311,12 @@ internal fun RaftButtonBox(
      * layout or the drawing ([raftHitOverhang]).
      */
     hitOverhang: Dp = 0.dp,
+    /**
+     * Like [hitOverhang], above and below only (added to it): a control floating over something
+     * that takes touches itself (a jump pill over the message list), whose touch target must be
+     * its own box, since Compose's near-hit ([raftTouchTarget]) loses to a direct hit beneath.
+     */
+    hitOverhangVertical: Dp = 0.dp,
     /** Corners in place of `radius-control` (a bar button, [RaftControlMetrics.barButtonRadius]); null keeps it. */
     cornerRadius: Dp? = null,
     content: @Composable () -> Unit,
@@ -410,8 +416,13 @@ internal fun RaftButtonBox(
         // With an overhang the hit modifiers sit on a node that many dp larger than the drawing,
         // reported to the layout at the drawing's size.
         modifier =
-            if (hitOverhang > 0.dp) {
-                modifier.raftHitOverhang(hitOverhang).then(hit).padding(hitOverhang).then(drawing)
+            if (hitOverhang > 0.dp || hitOverhangVertical > 0.dp) {
+                val vertical = hitOverhang + hitOverhangVertical
+                modifier
+                    .raftHitOverhang(hitOverhang, vertical)
+                    .then(hit)
+                    .padding(horizontal = hitOverhang, vertical = vertical)
+                    .then(drawing)
             } else {
                 modifier.then(drawing).then(hit)
             },
@@ -431,12 +442,16 @@ internal fun RaftButtonBox(
  * `padding(overhang)`) stay put, and the pointer modifiers between the two get the larger box,
  * which Compose hit-tests past this node's bounds. Unlike [raftTouchTarget] it works for a mouse.
  */
-internal fun Modifier.raftHitOverhang(overhang: Dp): Modifier =
+internal fun Modifier.raftHitOverhang(overhang: Dp): Modifier = raftHitOverhang(overhang, overhang)
+
+/** [raftHitOverhang] with its own reach to the sides ([horizontal]) and above and below ([vertical]). */
+internal fun Modifier.raftHitOverhang(horizontal: Dp, vertical: Dp): Modifier =
     layout { measurable, constraints ->
-        val o = overhang.roundToPx()
-        val placeable = measurable.measure(constraints.offset(2 * o, 2 * o))
-        layout((placeable.width - 2 * o).coerceAtLeast(0), (placeable.height - 2 * o).coerceAtLeast(0)) {
-            placeable.place(-o, -o)
+        val x = horizontal.roundToPx()
+        val y = vertical.roundToPx()
+        val placeable = measurable.measure(constraints.offset(2 * x, 2 * y))
+        layout((placeable.width - 2 * x).coerceAtLeast(0), (placeable.height - 2 * y).coerceAtLeast(0)) {
+            placeable.place(-x, -y)
         }
     }
 

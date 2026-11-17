@@ -344,6 +344,74 @@ class SharedThreadUnreadThreadJumpTest {
         }
     }
 
+    /**
+     * A jump that is not the pill's (the thread timeline, a search match, a message link, a file's
+     * original message): the page shows the load (the header's refreshing state), the same jump
+     * tapped again meanwhile starts no second load (it used to cancel the first and start over),
+     * and a load that fails is reported once, for the page's error toast and its retry.
+     */
+    @Test
+    fun aMessageJumpTappedAgainWhileItLoadsStartsNoSecondLoadAndReportsItsFailure() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val repository = repository()
+        val release = CompletableDeferred<Unit>()
+        repository.releaseParent = release
+        repository.parentResult = DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
+        val store = SharedThreadStore(dataSource = dataSource(repository), scope = scope, initialPayload = channelWindow())
+        val failures = mutableListOf<ThreadJumpFailure>()
+        val collector = scope.launch { store.jumpFailures.collect { failures += it } }
+
+        try {
+            store.dispatch(SharedThreadIntent.JumpToMessage("p-old", switchToTab = "chat", unreadThreadPill = false))
+            advanceUntilIdle()
+            assertEquals(true, store.state.value.payload.backgroundRefreshing, "the page shows the load")
+
+            store.dispatch(SharedThreadIntent.JumpToMessage("p-old", switchToTab = "chat", unreadThreadPill = false))
+            advanceUntilIdle()
+            assertEquals(listOf(MessageId("p-old")), repository.parentRequests.map { it.first }, "the repeated tap starts nothing")
+
+            release.complete(Unit)
+            advanceUntilIdle()
+            assertEquals(false, store.state.value.payload.backgroundRefreshing)
+            assertEquals(listOf(ThreadJumpFailure(messageId = "p-old", switchToTab = "chat", unreadThreadPill = false)), failures)
+
+            // Not stuck: the retry (the toast's action) loads it.
+            repository.parentResult = DataResult.Content(channelContext("p-old", "p-old-next"))
+            store.dispatch(SharedThreadIntent.JumpToMessage("p-old", switchToTab = "chat", unreadThreadPill = false))
+            advanceUntilIdle()
+            assertEquals(2, repository.parentRequests.size)
+            assertEquals("p-old", store.state.value.payload.focusedMessageId)
+            assertEquals(listOf("p-old", "p-old-next"), store.state.value.payload.messages.map { it.id })
+            assertEquals(1, failures.size)
+        } finally {
+            collector.cancel()
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    /** The pill's jump that cannot load its parent is reported too (busy ends, the page says so). */
+    @Test
+    fun aPillJumpThatCannotLoadItsParentIsReported() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val repository = repository()
+        repository.parentResult = DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
+        val store = SharedThreadStore(dataSource = dataSource(repository), scope = scope, initialPayload = channelWindow())
+        val failures = mutableListOf<ThreadJumpFailure>()
+        val collector = scope.launch { store.jumpFailures.collect { failures += it } }
+
+        try {
+            store.dispatch(SharedThreadIntent.JumpToMessage("p-old", switchToTab = "chat"))
+            advanceUntilIdle()
+            assertEquals(false, store.state.value.unreadThreadJumpLoading)
+            assertEquals(listOf(ThreadJumpFailure(messageId = "p-old", switchToTab = "chat", unreadThreadPill = true)), failures)
+        } finally {
+            collector.cancel()
+            scopeJob.cancelAndJoin()
+        }
+    }
+
     /** A parent already loaded is focused at once: the pill never turns busy. */
     @Test
     fun aJumpToALoadedParentIsNeverBusy() = runTest {

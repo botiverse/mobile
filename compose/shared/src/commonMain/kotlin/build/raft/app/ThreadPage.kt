@@ -1492,7 +1492,7 @@ internal data class ThreadMembersProjection(
     val canAddMembers: Boolean
 )
 
-private data class ThreadShareCaptureRect(
+internal data class ThreadShareCaptureRect(
     val x: Float,
     val y: Float,
     val width: Float,
@@ -9302,6 +9302,31 @@ private fun SharedThreadRouteContentContent(
             }
         }
     val markUnreadNothingLabel by rememberUpdatedState(stringResource(Res.string.home_action_mark_unread_nothing))
+    val jumpLoadFailedLabel by rememberUpdatedState(stringResource(Res.string.thread_jump_load_failed))
+    val jumpRetryLabel by rememberUpdatedState(stringResource(Res.string.common_retry))
+    // A jump to a message that had to load the messages around it (an unread-thread pill, the
+    // thread timeline, a search match, a message link, a file's original message) could not load
+    // them: say so, with the trace ID, and offer the same jump again.
+    LaunchedEffect(threadViewModel) {
+        threadViewModel.jumpFailuresFlow().collect { failure ->
+            bridge.log(
+                "thread_jump_failed target=${failure.messageId.take(8)} unreadThreadPill=${failure.unreadThreadPill}"
+            )
+            bridge.errorToastWithRetry(
+                content = jumpLoadFailedLabel,
+                retryLabel = jumpRetryLabel,
+                onRetry = {
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.JumpToMessage(
+                            messageId = failure.messageId,
+                            switchToTab = failure.switchToTab,
+                            unreadThreadPill = failure.unreadThreadPill,
+                        )
+                    )
+                },
+            )
+        }
+    }
     LaunchedEffect(threadViewModel) {
         threadViewModel.readToggleNoticesFlow().collect { notice ->
             when (notice) {
@@ -14212,10 +14237,13 @@ private fun SharedThreadRouteContentContent(
                             bridge.toast(fileSourceUnavailableLabel)
                             return@ThreadPageContent
                         }
+                        // "Jump to Original Message": the file's message is often outside the loaded
+                        // window; a jump loads around it first (the page shows the load) and focuses it.
                         threadViewModel.dispatch(
-                            SharedThreadIntent.FocusMessage(
+                            SharedThreadIntent.JumpToMessage(
                                 messageId = sourceMessageId,
-                                switchToTab = RaftThreadTab.Chat.wireValue
+                                switchToTab = RaftThreadTab.Chat.wireValue,
+                                unreadThreadPill = false,
                             )
                         )
                     }
@@ -17181,7 +17209,7 @@ private fun ThreadDeferredLoadingRouteContent(
     )
 }
 
-private class ThreadEventHandler(
+internal class ThreadEventHandler(
     private val dispatch: (
         action: String,
         itemId: String?,
@@ -17317,7 +17345,7 @@ private class ThreadPageContentCallbacks(
     val onVisibleReadTailChange: (Int?) -> Unit,
     val onViewportFollowsLatestChange: (Boolean) -> Unit,
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
-    val onJumpToLatest: suspend () -> Boolean,
+    val onJumpToLatest: suspend () -> ThreadLatestJumpOutcome,
     val onBack: () -> Unit,
     val onUpdateChannelProfile: (String, String, String, String, String) -> Unit,
     val onClearChannelProfileUpdateStatus: () -> Unit,
@@ -17426,7 +17454,7 @@ fun ThreadPageContent(
     adaptiveEventBus: RaftEventBus,
     incomingNavigation: RaftIncomingNavigationSignal? = null,
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
-    onJumpToLatest: suspend () -> Boolean,
+    onJumpToLatest: suspend () -> ThreadLatestJumpOutcome,
     onBack: () -> Unit,
     onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onClearChannelProfileUpdateStatus: () -> Unit = {},
@@ -21565,7 +21593,7 @@ private class ThreadChatTabCallbacks(
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
     val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
-    val onJumpToLatest: suspend () -> Boolean,
+    val onJumpToLatest: suspend () -> ThreadLatestJumpOutcome,
     val onOpenMember: (MemberDetailIdentity) -> Unit,
     val onExternalAuthor: (RaftThreadMessageItem) -> Unit,
     val onMentionAuthor: (RaftThreadMessageItem) -> Unit,
@@ -21620,7 +21648,7 @@ fun ThreadChatTab(
     activeMarkdownTagKey: String? = null,
     onThreadEvent: ThreadEventHandler,
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
-    onJumpToLatest: suspend () -> Boolean,
+    onJumpToLatest: suspend () -> ThreadLatestJumpOutcome,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onExternalAuthor: (RaftThreadMessageItem) -> Unit = {},
     onMentionAuthor: (RaftThreadMessageItem) -> Unit,
@@ -22476,7 +22504,7 @@ private class ThreadMessagesListCallbacks(
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
     val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
-    val onJumpToLatest: suspend () -> Boolean,
+    val onJumpToLatest: suspend () -> ThreadLatestJumpOutcome,
     val onOpenMember: (MemberDetailIdentity) -> Unit,
     val onExternalAuthor: (RaftThreadMessageItem) -> Unit,
     val onMentionAuthor: (RaftThreadMessageItem) -> Unit,
@@ -22496,8 +22524,8 @@ private class ThreadMessagesListCallbacks(
     val onViewportFollowsLatestChange: (Boolean) -> Unit,
 )
 
-private @Composable
-fun ThreadMessagesList(
+@Composable
+internal fun ThreadMessagesList(
     threadInstanceKey: String,
     routeActive: Boolean,
     hostForeground: Boolean,
@@ -22532,7 +22560,7 @@ fun ThreadMessagesList(
     activeMarkdownTagKey: String? = null,
     onThreadEvent: ThreadEventHandler,
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
-    onJumpToLatest: suspend () -> Boolean,
+    onJumpToLatest: suspend () -> ThreadLatestJumpOutcome,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onExternalAuthor: (RaftThreadMessageItem) -> Unit = {},
     onMentionAuthor: (RaftThreadMessageItem) -> Unit,
@@ -23440,6 +23468,9 @@ private fun ThreadMessagesListContent(
     var backToBottomInteractionGuardActive by remember(threadInstanceKey) {
         mutableStateOf(false)
     }
+    // Back to Bottom is loading the newest messages (the loaded window ends before them): the
+    // button shows it (raft-ui busy pill) until they land or the load fails.
+    var backToBottomLoading by remember(threadInstanceKey) { mutableStateOf(false) }
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
@@ -26661,8 +26692,17 @@ private fun ThreadMessagesListContent(
                     shouldShowButton = shouldShowBackToBottomButton,
                     interactionGuardActive = backToBottomInteractionGuardActive
                 )
-        val onBackToBottomClick: () -> Unit = onClick@{
-            if (backToBottomInteractionGuardActive) return@onClick
+        val jumpToastPager = LocalActivity.current.getPager() as? Pager
+        val jumpToastBridge = remember(jumpToastPager) { jumpToastPager?.let { Utils.bridgeModule(it.pagerId) } }
+        val jumpLoadFailedLabel = stringResource(Res.string.thread_jump_load_failed)
+        val jumpRetryLabel = stringResource(Res.string.common_retry)
+        lateinit var onBackToBottomClick: () -> Unit
+        onBackToBottomClick = onClick@{
+            // One tap is one jump: further taps while it loads or scrolls do nothing (no second request).
+            if (backToBottomInteractionGuardActive) {
+                diagnosticsLogger("thread_back_to_bottom_click result=ignored reason=in_flight loading=$backToBottomLoading")
+                return@onClick
+            }
             // Keep both the visual button and its native dispatch
             // capture sibling mounted until the scroll has settled.
             // Removing them from inside the release callback lets the
@@ -26692,10 +26732,27 @@ private fun ThreadMessagesListContent(
                     "retiredFocusedAnchor=${retiredFocusedAnchorIdentity != null} " +
                     "canLoadMoreAfter=${renderPayload.canLoadMoreAfter}"
             )
+            // The newest messages are not loaded: the jump asks for them first, and says so.
+            backToBottomLoading = renderPayload.canLoadMoreAfter
             coroutineScope.launch {
                 try {
                     val clickUserScrollGeneration = userScrollGeneration.value
-                    val canonicalTailLoaded = onJumpToLatest()
+                    val outcome =
+                        try {
+                            onJumpToLatest()
+                        } finally {
+                            backToBottomLoading = false
+                        }
+                    val canonicalTailLoaded = outcome == ThreadLatestJumpOutcome.Landed
+                    if (outcome == ThreadLatestJumpOutcome.Failed) {
+                        // The button is back (not busy); the toast names the failure, with the failed
+                        // request's trace ID when there is one, and offers the jump again.
+                        jumpToastBridge?.errorToastWithRetry(
+                            content = jumpLoadFailedLabel,
+                            retryLabel = jumpRetryLabel,
+                            onRetry = { onBackToBottomClick() },
+                        )
+                    }
                     if (
                         !shouldCompleteThreadBackToBottom(
                             canonicalTailLoaded = canonicalTailLoaded,
@@ -26945,11 +27002,13 @@ private fun ThreadMessagesListContent(
                     RaftMessageListJumpPill(
                         text =
                             when {
+                                backToBottomLoading -> stringResource(Res.string.thread_jump_latest_loading)
                                 bottomJumpCount <= 0 -> stringResource(Res.string.thread_action_back_to_bottom)
                                 bottomJumpCount == 1 -> stringResource(Res.string.thread_jump_new_messages_one)
                                 else -> stringResource(Res.string.thread_jump_new_messages_many, bottomJumpCount)
                             },
                         onClick = onBackToBottomClick,
+                        busy = backToBottomLoading,
                     )
                 }
                 if (nextUnreadThread != null) unreadThreadPill(nextUnreadThread)

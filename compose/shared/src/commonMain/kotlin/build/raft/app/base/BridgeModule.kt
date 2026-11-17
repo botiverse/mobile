@@ -393,6 +393,29 @@ internal class BridgeModule : Module() {
         callNativeMethod("toast", methodArgs, null)
     }
 
+    /**
+     * [errorToast] for a load the person can ask for again (a jump in a conversation). With a trace
+     * ID the toast is [errorToast]'s, Copy action included (the trace ID rule), and the control that
+     * started the load, back from its loading state, is the retry. With none (no response reached
+     * the app) the toast's action is [retryLabel], which runs [onRetry].
+     */
+    fun errorToastWithRetry(
+        content: String,
+        retryLabel: String,
+        onRetry: () -> Unit,
+        traceId: String? = RaftFailedRequestTraceIds.recent(),
+        strings: () -> RaftTraceIdToastStrings = ::localizedRaftTraceIdToastStrings,
+    ) {
+        if (raftValidTraceIdOrNull(traceId) != null) {
+            errorToast(content, traceId, strings)
+            return
+        }
+        if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities, actionLabel = retryLabel, onAction = onRetry)) return
+        val methodArgs = JSONObject()
+        methodArgs.put("content", content)
+        callNativeMethod("toast", methodArgs, null)
+    }
+
     /** [errorToast] with [error]'s own trace id. */
     fun errorToast(content: String, error: ScreenError) = errorToast(content, error.traceId)
 
