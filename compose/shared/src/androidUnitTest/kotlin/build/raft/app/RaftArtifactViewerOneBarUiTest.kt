@@ -50,7 +50,8 @@ import org.robolectric.annotation.Config
  * its splash cover ([RaftArtifactViewerSplashCover]) are composed over a stand-in for that page:
  * - before the page draws its bar: the App's bar, the cover over the whole body (the page's row hidden), no generic
  *   "Loading…" (RaftCenteredLoading);
- * - once it does (`hostToolbar=1`): no App bar, the page's bar uncovered, the splash where it was.
+ * - once it does (`hostToolbar=1`): no App bar and no App cover: the page's bar, its own splash under it (the same one,
+ *   on the same clock), and the menus it opens from that bar over it.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -86,7 +87,21 @@ class RaftArtifactViewerOneBarUiTest {
                                 Box(Modifier.fillMaxSize().testTag("web")) {
                                     BasicText("page-row", Modifier.fillMaxWidth().height(56.dp).testTag("page-row"))
                                 }
-                                RaftArtifactViewerSplashCover(kinds, openedAt, desktopMode = false, underPageBar = pageDrawsBar)
+                                // As the viewer's body decides it (raftArtifactViewerLoadingIndicator), a document shown, not yet loaded.
+                                val indicator =
+                                    raftArtifactViewerLoadingIndicator(
+                                        RaftArtifactViewerOpenState(
+                                            sessionRead = true,
+                                            documentShown = true,
+                                            reusesKeptPage = false,
+                                            loadError = false,
+                                            sinceDocumentReadyMs = 500,
+                                            pageDrawsBar = pageDrawsBar,
+                                        )
+                                    )
+                                if (indicator == RaftArtifactViewerLoadingIndicator.AppSplash) {
+                                    RaftArtifactViewerSplashCover(kinds, openedAt, desktopMode = false, underPageBar = pageDrawsBar)
+                                }
                             }
                         }
                     }
@@ -109,7 +124,7 @@ class RaftArtifactViewerOneBarUiTest {
     }
 
     @Test
-    fun fromTheFirstFrameToHostLoadedOneBarAndThePixelSplash() =
+    fun fromTheFirstFrameUntilThePageDrawsItsBarOneBarAndThePixelSplash() =
         runRobolectricComposeUiTest {
             showViewer()
 
@@ -121,17 +136,18 @@ class RaftArtifactViewerOneBarUiTest {
             assertTrue(cover.top <= row.top && cover.bottom >= row.bottom, "the page's loading row is covered: no second bar ($cover, $row)")
             assertTrue(bounds("web").top > bounds("screen").top + 20f, "the page under the App's bar")
 
-            // The page draws the only bar (`hostToolbar=1`), still loading: the App's bar is gone, the page's shows.
+            // The page draws the only bar (`hostToolbar=1`), still loading: the App's bar is gone, the page's shows, and
+            // the App's cover is gone with it: the page's own splash (the same, on the same clock) is under its bar, and
+            // the ⋯ and version ▾ the page opens from that bar are drawn over it, never under a cover (Android 1.26: only
+            // the menu's top edge showed under the page's bar while the App's splash still covered the body).
             pageDrawsBar = true
             mainClock.advanceTimeByFrame()
             mainClock.advanceTimeByFrame()
             onAllNodes(appBarButtons).assertCountEquals(0)
-            assertOneLoaderAndItIsTheSplash()
-            val coverUnderPageBar = bounds(RAFT_ARTIFACT_VIEWER_SPLASH_COVER_TAG)
-            val pageBar = bounds("page-row")
-            assertTrue(pageBar.bottom <= coverUnderPageBar.top + 0.5f, "the page's bar is not covered ($pageBar, $coverUnderPageBar)")
-            // Its bar takes the App's place: the splash does not move.
-            assertEquals(cover.top, coverUnderPageBar.top, 0.5f)
-            assertEquals(cover.bottom, coverUnderPageBar.bottom, 0.5f)
+            onAllNodesWithTag(RAFT_ARTIFACT_VIEWER_SPLASH_COVER_TAG, useUnmergedTree = true).assertCountEquals(0)
+            onAllNodesWithTag(RAFT_ARTIFACT_LOADING_SPLASH_TAG, useUnmergedTree = true).assertCountEquals(0)
+            onAllNodesWithText("Loading…", useUnmergedTree = true).assertCountEquals(0)
+            // The page fills the body from the top, its bar where the App's was.
+            assertEquals(bounds("screen").top, bounds("page-row").top, 0.5f)
         }
 }

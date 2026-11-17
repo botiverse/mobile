@@ -171,6 +171,34 @@ class RaftArtifactLoadingSplashTest {
     }
 
     @Test
+    fun theCoverGoesOnceThePageDrawsItsBar() {
+        // Android 1.26: the page's ⋯ opened under the App's cover, which stayed under the page's bar until `hostLoaded=1`
+        // (or the 4 s fallback): only the menu's top edge showed. The page's bar hands the body over to the page.
+        fun state(pageDrawsBar: Boolean, pageLoaded: Boolean = false, sinceDocumentReadyMs: Long? = 500, reloading: Boolean = false) =
+            raftArtifactViewerLoadingIndicator(
+                RaftArtifactViewerOpenState(
+                    sessionRead = true,
+                    documentShown = true,
+                    reusesKeptPage = false,
+                    loadError = false,
+                    sinceDocumentReadyMs = sinceDocumentReadyMs,
+                    reloading = reloading,
+                    pageLoaded = pageLoaded,
+                    pageDrawsBar = pageDrawsBar,
+                )
+            )
+        // Under the App's bar the cover stays (the page's loading row, Back alone, never shows under it; no white page).
+        assertEquals(RaftArtifactViewerLoadingIndicator.AppSplash, state(pageDrawsBar = false))
+        assertEquals(RaftArtifactViewerLoadingIndicator.AppSplash, state(pageDrawsBar = false, sinceDocumentReadyMs = null))
+        // The page draws the only bar: its own splash and menus, at once, not at `hostLoaded=1` or the fallback.
+        assertEquals(RaftArtifactViewerLoadingIndicator.None, state(pageDrawsBar = true))
+        assertEquals(RaftArtifactViewerLoadingIndicator.None, state(pageDrawsBar = true, sinceDocumentReadyMs = null))
+        assertEquals(RaftArtifactViewerLoadingIndicator.None, state(pageDrawsBar = true, pageLoaded = true))
+        // Between WebViews the App's splash stays.
+        assertEquals(RaftArtifactViewerLoadingIndicator.AppSplash, state(pageDrawsBar = true, reloading = true))
+    }
+
+    @Test
     fun onlyAKeptPageThatDrewItsBarIsReusedUncovered() {
         // #301, the double bar: the prewarmed document on the warm route has drawn no bar and shown nothing.
         assertFalse(raftArtifactViewerKeptPageDrewBar(null))
