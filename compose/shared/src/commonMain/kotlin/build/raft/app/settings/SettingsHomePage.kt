@@ -2544,7 +2544,15 @@ private fun RaftAppShellReadyContent(
         if (suppressRestoreLanding) {
             AppShellNewWindowRestoreFrame(adaptivePane = adaptivePane, selectedTab = selectedTab)
         } else {
-            AppShellRestoreSplashContent()
+            // Web #15116: a slow restore offers Try again and Sign out instead of waiting it out.
+            AppShellColdRestoreSplash(
+                authDataSource = authDataSource,
+                bridge = bridge,
+                appShellCoroutineScope = appShellCoroutineScope,
+                authGateViewModel = authGateViewModel,
+                authGateMessageState = authGateMessageState,
+                authSessionResetGenerationState = authSessionResetGenerationState,
+            )
         }
         return
     }
@@ -9692,6 +9700,57 @@ private fun AppShellRealtimeSinkAndNetworkEffects(
             }
         onDispose { hostNetworkEvents.removeListener(callbackRef) }
     }
+}
+
+/**
+ * The cold-restore splash with its slow-restore way out (web #15116), out of
+ * RaftAppShellReadyContent for JVM method size: Try again is the gate's Retry, Sign out the
+ * email-verification gate's sign-out.
+ */
+@Composable
+private fun AppShellColdRestoreSplash(
+    authDataSource: SharedAuthDataSource,
+    bridge: build.raft.app.base.BridgeModule,
+    appShellCoroutineScope: kotlinx.coroutines.CoroutineScope,
+    authGateViewModel: SharedAuthGateViewModel,
+    authGateMessageState: MutableState<AuthGateMessage?>,
+    authSessionResetGenerationState: MutableState<Int>,
+) {
+    var authGateMessage by authGateMessageState
+    var authSessionResetGeneration by authSessionResetGenerationState
+    var signingOut by remember { mutableStateOf(false) }
+    AppShellSessionRestoreSplash(
+        signingOut = signingOut,
+        onRetry = {
+            authDataSource.logDiagnostics("auth_restore_slow action=retry")
+            authGateViewModel.dispatch(SharedAuthGateIntent.Retry)
+        },
+        onSignOut = {
+            if (!signingOut) {
+                signingOut = true
+                authDataSource.logDiagnostics("auth_restore_slow action=sign_out")
+                // The shell's scope, not the splash's: the sign-out finishes even if the restore lands
+                // meanwhile and the splash leaves.
+                appShellCoroutineScope.launch {
+                    try {
+                        appShellRestoreSignOut(
+                            logout = { authDataSource.logout() },
+                            disconnectRealtime = { bridge.realtimeDisconnect("logout") },
+                            dispatch = { intent ->
+                                authGateMessage = null
+                                authGateViewModel.dispatch(intent)
+                                // The email-verification sign-out resets the shell's session state; past
+                                // this early return it is reset when the shell composes again.
+                                authSessionResetGeneration += 1
+                            },
+                        )
+                    } finally {
+                        signingOut = false
+                    }
+                }
+            }
+        },
+    )
 }
 
 // Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).

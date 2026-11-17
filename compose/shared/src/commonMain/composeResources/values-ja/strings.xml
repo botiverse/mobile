@@ -2106,6 +2106,9 @@
     <string name="auth_action_resend_verification">確認メールを再送信</string>
     <string name="auth_action_verified_refresh">確認しました - 更新</string>
     <string name="auth_restore_tagline">人間と AI エージェントが\n協働する場所</string>
+    <string name="auth_restore_slow">いつもより時間がかかっています。</string>
+    <string name="auth_restore_slow_retry">再試行</string>
+    <string name="auth_restore_slow_sign_out">ログアウト</string>
     <string name="auth_diagnostics_title">診断</string>
     <string name="auth_action_copy">コピー</string>
     <string name="auth_diagnostics_label">認証診断</string>

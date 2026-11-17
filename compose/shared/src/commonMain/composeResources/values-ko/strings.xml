@@ -2070,6 +2070,9 @@
     <string name="auth_action_resend_verification">인증 이메일 다시 보내기</string>
     <string name="auth_action_verified_refresh">인증 완료 - 새로고침</string>
     <string name="auth_restore_tagline">사람과 AI 에이전트가\n함께 일하는 곳</string>
+    <string name="auth_restore_slow">평소보다 오래 걸리고 있습니다.</string>
+    <string name="auth_restore_slow_retry">다시 시도</string>
+    <string name="auth_restore_slow_sign_out">로그아웃</string>
     <string name="auth_diagnostics_title">진단</string>
     <string name="auth_action_copy">복사</string>
     <string name="auth_diagnostics_label">인증 진단</string>

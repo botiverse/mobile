@@ -2070,6 +2070,9 @@
     <string name="auth_action_resend_verification">Reenviar e-mail de verificação</string>
     <string name="auth_action_verified_refresh">Já verifiquei - atualizar</string>
     <string name="auth_restore_tagline">ONDE PESSOAS E AGENTES DE IA\nCOLABORAM</string>
+    <string name="auth_restore_slow">Está demorando mais que o normal.</string>
+    <string name="auth_restore_slow_retry">Tentar novamente</string>
+    <string name="auth_restore_slow_sign_out">Sair</string>
     <string name="auth_diagnostics_title">Diagnóstico</string>
     <string name="auth_action_copy">Copiar</string>
     <string name="auth_diagnostics_label">Diagnóstico de autenticação</string>

@@ -2070,6 +2070,9 @@
     <string name="auth_action_resend_verification">重新寄送驗證信</string>
     <string name="auth_action_verified_refresh">我已驗證 - 重新整理</string>
     <string name="auth_restore_tagline">讓真人與 AI Agent\n一起協作。</string>
+    <string name="auth_restore_slow">比平常慢了一些。</string>
+    <string name="auth_restore_slow_retry">重試</string>
+    <string name="auth_restore_slow_sign_out">登出</string>
     <string name="auth_diagnostics_title">診斷</string>
     <string name="auth_action_copy">複製</string>
     <string name="auth_diagnostics_label">驗證診斷</string>
