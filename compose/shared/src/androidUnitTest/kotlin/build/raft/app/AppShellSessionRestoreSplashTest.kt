@@ -8,10 +8,7 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import build.raft.app.compat.json.JSONObject
@@ -90,13 +87,8 @@ class AppShellSessionRestoreSplashTest {
         onNodeWithText("Sign out").assertExists()
 
         onNodeWithTag(AppShellRestoreRetryTestTag).performClick()
-        // DIAGNOSTIC (temporary): the old wait, without sending the click's snapshot writes first.
-        repeat(4) { mainClock.advanceTimeByFrame() }
-        waitForIdle()
-        val staleCount = onAllNodesWithTag(AppShellRestoreSlowTestTag).fetchSemanticsNodes().size
-        println("DIAG after 4 frames + idle: slow nodes=$staleCount\n" + onRoot(useUnmergedTree = true).printToString())
+        // The click's writes (slow = false, attempt + 1) reach composition on the next frame.
         advance(16)
-        println("DIAG after sendApplyNotifications + frame: slow nodes=" + onAllNodesWithTag(AppShellRestoreSlowTestTag).fetchSemanticsNodes().size)
         assertEquals(1, retries)
         assertEquals(0, signOuts)
         // Try again starts the wait over (the web reloads the page): no actions until the limit again.
