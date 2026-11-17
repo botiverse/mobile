@@ -131,6 +131,22 @@ class PerReceiverStateVersionStore(
     }
 
     /**
+     * Web `consumeReadStateSnapshot` on an `absent` frontier: the server holds no read state for the scope (its
+     * cursor row deleted, e.g. access lost), so the next one, from v1 again, must not be judged against the
+     * version held. Returns whether a checkpoint was held.
+     */
+    internal fun clearReadStateCheckpoint(
+        serverId: ServerId,
+        memberId: MemberId,
+        scopeId: ChannelId
+    ): Boolean {
+        if (readVersion(serverId, memberId, PerReceiverStateScope.ReadState, scopeId) <= 0L) return false
+        store.putString(key(serverId, memberId, PerReceiverStateScope.ReadState, scopeId), null)
+        store.putString(readStateMaxSeqKey(serverId, memberId, scopeId), null)
+        return true
+    }
+
+    /**
      * Applies a read-state fact through the one persisted version authority shared by projections.
      * A second projection may observe [PerReceiverReadStateFactResult.Current] after the first one
      * accepted the same fact; equal-version facts with a different cursor fail closed as stale.
