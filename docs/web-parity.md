@@ -184,7 +184,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 |---|---|---|---|---|---|
 | Email / Google / GitHub login (+ native Apple) | `auth/LoginPage.tsx` | done | `AuthPages.kt` | `/auth/login`, `/auth/mobile/oauth/*` | – |
 | Register, legal, forgot password, profile setup | `auth/*` | done | `AuthPages.kt` | existing | – |
-| Email verification | `auth/EmailVerificationPage.tsx` | partial: gate and resend; iOS link handling TBC | `SettingsHomePage.kt:4551` | existing | S |
+| Email verification | `auth/EmailVerificationPage.tsx` | partial: gate and resend; iOS link handling TBC | `SettingsHomeServerGate.kt` `AppShellEmailVerificationGateContent` | existing | S |
 | **Reset password link** | `auth/ResetPasswordPage.tsx` | missing: opens browser | searched `reset-password` | `/auth/reset-password` | S |
 | **Invite accept, `/join/:token`** | `auth/InviteAcceptPage.tsx` | missing: opens browser | searched `accept-invite`, `invite-info` | `/auth/accept-invite`, `/auth/invite-info` | M |
 | **Device / CLI login approval** | `pages/DeviceLoginPage.tsx` | missing: opens browser | searched `auth/device` | `/auth/device/approve` | S–M |

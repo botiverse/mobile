@@ -56,43 +56,43 @@
     "reason": "internal developer route launcher diagnostic copy"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
     "literal": "Bottom TabBar",
     "reason": "internal bottom-tab smoke preview label"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
     "literal": "Shared tab bar smoke preview",
     "reason": "internal bottom-tab smoke preview label"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
     "literal": "Edge",
     "reason": "internal bottom-tab smoke variant label"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
     "literal": "Navigation Rail",
     "reason": "internal bottom-tab smoke variant label"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
     "literal": "Rail layout",
     "reason": "internal bottom-tab smoke layout label"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
     "literal": "Shared TabBar variant parity with Android",
     "reason": "internal bottom-tab parity probe copy"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
     "literal": "Server Profile",
     "reason": "internal server danger-modal visual fixture heading",
     "context": "\"Server Profile\","
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
     "literal": "PROFILE",
     "reason": "internal server danger-modal visual fixture label"
   },
