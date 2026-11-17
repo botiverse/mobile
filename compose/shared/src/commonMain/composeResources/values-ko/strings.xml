@@ -3405,6 +3405,8 @@
     <string name="runtime_form_v2_source_status_no_models">이 컴퓨터가 보고한 사용 가능한 옵션이 없어요.</string>
     <string name="runtime_form_v2_source_status_unsupported">이 컴퓨터에서는 이 런타임의 옵션 목록을 가져올 수 없어요.</string>
     <string name="runtime_form_v2_source_status_machine_offline">이 컴퓨터가 오프라인이에요.</string>
+    <string name="runtime_form_v2_source_status_not_signed_in">이 런타임은 이 컴퓨터에 로그인되어 있지 않아요.</string>
+    <string name="runtime_form_v2_source_status_runtime_outdated">이 컴퓨터의 런타임 명령줄 도구가 오래되어 옵션 목록을 가져올 수 없어요. 해당 컴퓨터에서 업데이트해 주세요.</string>
     <string name="runtime_form_v2_source_status_unknown">옵션을 불러오지 못했어요.</string>
     <string name="runtime_form_v2_saved_refresh">저장했어요. 최신 설정을 보려면 새로고침하세요.</string>
     <string name="runtime_form_v2_saved_providers">저장된 제공업체</string>

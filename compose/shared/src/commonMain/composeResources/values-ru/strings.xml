@@ -3402,6 +3402,8 @@
     <string name="runtime_form_v2_source_status_no_models">Этот компьютер не сообщил ни об одном доступном варианте.</string>
     <string name="runtime_form_v2_source_status_unsupported">Этот компьютер не может получить список вариантов для этой среды выполнения.</string>
     <string name="runtime_form_v2_source_status_machine_offline">Этот компьютер не в сети.</string>
+    <string name="runtime_form_v2_source_status_not_signed_in">Вход в эту среду выполнения на этом компьютере не выполнен.</string>
+    <string name="runtime_form_v2_source_status_runtime_outdated">Инструмент командной строки этой среды выполнения на этом компьютере слишком старый, чтобы получить список вариантов. Обновите его там.</string>
     <string name="runtime_form_v2_source_status_unknown">Не удалось загрузить варианты.</string>
     <string name="runtime_form_v2_saved_refresh">Сохранено. Обновите, чтобы увидеть актуальные настройки.</string>
     <string name="runtime_form_v2_saved_providers">Сохранённые провайдеры</string>

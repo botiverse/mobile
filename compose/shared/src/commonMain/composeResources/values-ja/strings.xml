@@ -3574,6 +3574,8 @@
     <string name="runtime_form_v2_source_status_no_models">この Computer には利用できる選択肢がありません。</string>
     <string name="runtime_form_v2_source_status_unsupported">この Computer はこのランタイムの選択肢を一覧表示できません。</string>
     <string name="runtime_form_v2_source_status_machine_offline">この Computer はオフラインです。</string>
+    <string name="runtime_form_v2_source_status_not_signed_in">このランタイムはこのコンピューターでログインしていません。</string>
+    <string name="runtime_form_v2_source_status_runtime_outdated">このコンピューターのランタイムのコマンドラインツールが古いため、選択肢を一覧表示できません。そちらで更新してください。</string>
     <string name="runtime_form_v2_source_status_unknown">選択肢を読み込めませんでした。</string>
     <string name="runtime_form_v2_saved_refresh">保存しました。最新の設定は再読み込みで確認できます。</string>
     <string name="runtime_form_v2_saved_providers">保存済みのプロバイダー</string>

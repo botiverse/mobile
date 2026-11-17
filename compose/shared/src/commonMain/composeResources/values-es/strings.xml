@@ -3405,6 +3405,8 @@
     <string name="runtime_form_v2_source_status_no_models">Esta computadora no reportó ninguna opción disponible.</string>
     <string name="runtime_form_v2_source_status_unsupported">Esta computadora no puede listar las opciones de este runtime.</string>
     <string name="runtime_form_v2_source_status_machine_offline">Esta computadora está sin conexión.</string>
+    <string name="runtime_form_v2_source_status_not_signed_in">Este runtime no tiene la sesión iniciada en esta computadora.</string>
+    <string name="runtime_form_v2_source_status_runtime_outdated">La herramienta de línea de comandos de este runtime en esta computadora es demasiado antigua para listar las opciones. Actualízala allí.</string>
     <string name="runtime_form_v2_source_status_unknown">No se pudieron cargar las opciones.</string>
     <string name="runtime_form_v2_saved_refresh">Guardado. Actualiza para ver los ajustes más recientes.</string>
     <string name="runtime_form_v2_saved_providers">Proveedores guardados</string>

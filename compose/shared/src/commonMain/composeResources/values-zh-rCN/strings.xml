@@ -3574,6 +3574,8 @@
     <string name="runtime_form_v2_source_status_no_models">此 Computer 未报告任何可用选项。</string>
     <string name="runtime_form_v2_source_status_unsupported">此 Computer 无法列出此运行时的可选项。</string>
     <string name="runtime_form_v2_source_status_machine_offline">此 Computer 已离线。</string>
+    <string name="runtime_form_v2_source_status_not_signed_in">此运行时在这台 Computer 上没有登录。</string>
+    <string name="runtime_form_v2_source_status_runtime_outdated">这台 Computer 上的运行时命令行工具版本太旧，无法列出可选项。请在那里更新。</string>
     <string name="runtime_form_v2_source_status_unknown">无法加载可选项。</string>
     <string name="runtime_form_v2_saved_refresh">已保存，刷新后可看到最新配置。</string>
     <string name="runtime_form_v2_saved_providers">已保存的提供方</string>
