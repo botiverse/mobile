@@ -403,22 +403,6 @@ internal val LocalRaftPaneGridHeadBands = compositionLocalOf<RaftPaneGridHeadBan
 @Composable
 fun Modifier.raftPaneGridFitHead(): Modifier {
     val visible = LocalRaftPaneGridVisibleWidth.current
-    val bands = LocalRaftPaneGridHeadBands.current
-    val key = remember { Any() }
-    if (bands != null) DisposableEffect(bands) { onDispose { bands.bands.remove(key) } }
-    val band =
-        if (bands == null) {
-            Modifier
-        } else {
-            Modifier.onGloballyPositioned { head ->
-                val box = bands.box?.takeIf { it.isAttached } ?: return@onGloballyPositioned
-                // A head in another window (a dialog over the pane) is not the pane's.
-                if (box.findRootCoordinates() !== head.findRootCoordinates()) return@onGloballyPositioned
-                val top = box.localPositionOf(head, Offset.Zero).y
-                val span = top to top + head.size.height
-                if (bands.bands[key] != span) bands.bands[key] = span
-            }
-        }
     val fit =
         if (visible == null) {
             Modifier
@@ -435,7 +419,27 @@ fun Modifier.raftPaneGridFitHead(): Modifier {
                 }
             }
         }
-    return this.then(band).then(fit)
+    return this.raftPaneGridUnfaded().then(fit)
+}
+
+/**
+ * The pane's frame, not its content (a head, the line-seam between stacked cells): a clipped pane's end fade
+ * ([raftPaneGridClipFade]) passes it by, so it runs whole to the column's edge as the column's own left seam does.
+ * Spacing.md "Edges fade" fades content that is cut; the seams and heads are the column's, never cut.
+ */
+@Composable
+internal fun Modifier.raftPaneGridUnfaded(): Modifier {
+    val bands = LocalRaftPaneGridHeadBands.current ?: return this
+    val key = remember { Any() }
+    DisposableEffect(bands) { onDispose { bands.bands.remove(key) } }
+    return onGloballyPositioned { part ->
+        val box = bands.box?.takeIf { it.isAttached } ?: return@onGloballyPositioned
+        // Something in another window (a dialog over the pane) is not the pane's.
+        if (box.findRootCoordinates() !== part.findRootCoordinates()) return@onGloballyPositioned
+        val top = box.localPositionOf(part, Offset.Zero).y
+        val span = top to top + part.size.height
+        if (bands.bands[key] != span) bands.bands[key] = span
+    }
 }
 
 /**
@@ -1482,7 +1486,8 @@ private fun RaftPaneGridStackView(column: RaftPaneGridColumn, modifier: Modifier
         Column(Modifier.fillMaxSize()) {
             cells.forEachIndexed { i, cell ->
                 key(cell.id) {
-                    if (layout.seamAbove[i]) Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(RaftTheme.colors.lineSeam))
+                    // The column's frame, not content: it runs whole to the column's edge, unfaded.
+                    if (layout.seamAbove[i]) Box(Modifier.raftPaneGridUnfaded().fillMaxWidth().height(RaftStroke.Hairline).background(RaftTheme.colors.lineSeam))
                     Box(Modifier.height(layout.heights[i].dp).fillMaxWidth().clipToBounds()) {
                         RaftPaneGridCellHost(cell, collapsible, collapsed[i]) { store.setCollapsed(cell.id, it) }
                     }
