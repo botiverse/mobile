@@ -66,6 +66,10 @@ import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.app.assistant.AssistantSettingChangesSection
+import build.raft.app.assistant.LocalAssistantSettingChangesSource
+import build.raft.app.assistant.rememberAssistantSettingChanges
+import build.raft.app.data.ASSISTANT_NOTIFICATION_SETTINGS
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.raftClickable
@@ -123,6 +127,10 @@ internal fun SettingsNotificationsContent(
     }
     val now = nowEpochMillis ?: raftNowEpochMillis()
     val zone = timeZoneId ?: raftCurrentTimeZoneId()
+    // Web NotificationSettingsSection: what the assistant did here as the viewer (muted a
+    // conversation, set a level). Not on the On {server} page, as on the web.
+    val assistantChangesSource = LocalAssistantSettingChangesSource.current.takeIf { !serverOnly }
+    val assistantChanges = rememberAssistantSettingChanges(ASSISTANT_NOTIFICATION_SETTINGS, assistantChangesSource)
     LazyColumn(
         state = rememberSettingsSearchListState(),
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(horizontal = 16.dp),
@@ -279,6 +287,11 @@ internal fun SettingsNotificationsContent(
                                 )
                             }
                         }
+                    }
+                }
+                if (assistantChanges.isNotEmpty()) {
+                    item {
+                        AssistantSettingChangesSection(assistantChanges, currentServerId = assistantChangesSource?.serverId)
                     }
                 }
             }

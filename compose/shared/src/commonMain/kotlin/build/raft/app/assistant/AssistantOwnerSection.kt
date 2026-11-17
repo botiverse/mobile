@@ -27,6 +27,10 @@ import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftTraceIdNote
 import build.raft.app.data.ASSISTANT_OWNER_NOTES_MAX_LENGTH
 import build.raft.app.data.AssistantOwnerSetting
+import build.raft.app.data.ASSISTANT_ACTION_SETTINGS
+import build.raft.app.data.AssistantSettingChange
+import build.raft.app.data.RaftAssistantSettingChangesApi
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.data.AgentLifecycleActionResult
 import build.raft.app.data.ComputerAccessRevokedErrorCode
 import build.raft.app.data.DataRequestPriority
@@ -99,6 +103,8 @@ internal class AssistantOwnerScope(
     val serverId: String,
     val userId: String,
     val viewerIsGuest: Boolean,
+    /** Reads what the assistant changed for its owner (Recent changes); null: no such row. */
+    val settingChangesApi: RaftAssistantSettingChangesApi? = null,
 )
 
 internal val LocalAssistantOwnerScope = compositionLocalOf<AssistantOwnerScope?> { null }
@@ -145,9 +151,16 @@ internal fun AssistantOwnerSection(
     val owner = LocalAssistantOwnerScope.current ?: return
     val assistant = rememberOwnAssistant(agentId) ?: return
     val savedNotes = assistant.ownerNotes
-    if (assistant.readsDms == null && assistant.sendAsOwner == null && savedNotes == null) return
+    // Web `useAssistantSettingChanges(ASSISTANT_ACTION_SETTINGS)`: what it did on the owner's say-so.
+    val changesSource =
+        remember(owner.serverId, owner.settingChangesApi) {
+            owner.settingChangesApi?.let { AssistantSettingChangesSource(owner.serverId, it) }
+        }
+    val changes = rememberAssistantSettingChanges(ASSISTANT_ACTION_SETTINGS, changesSource)
+    if (assistant.readsDms == null && assistant.sendAsOwner == null && savedNotes == null && changes.isEmpty()) return
     val key = remember(owner.serverId, owner.userId) { MyAssistantKey(owner.serverId, owner.userId) }
     var editing by remember(agentId) { mutableStateOf(false) }
+    var viewingChanges by remember(agentId) { mutableStateOf(false) }
     val switches = remember(agentId, key) { AssistantOwnerSwitchesState() }
     val scope = rememberCoroutineScope()
     frame {
@@ -157,6 +170,8 @@ internal fun AssistantOwnerSection(
             sendAsOwner = assistant.sendAsOwner,
             showInstructions = savedNotes != null,
             onOpenInstructions = { editing = true },
+            showRecentChanges = changes.isNotEmpty(),
+            onOpenRecentChanges = { viewingChanges = true },
             onSettingChange = { setting, value ->
                 if (!switches.isSaving(setting)) {
                     scope.launch { switches.flip(setting, value) { s, v -> owner.store.saveSetting(key, s, v) } }
@@ -173,6 +188,47 @@ internal fun AssistantOwnerSection(
             onSave = { draft -> owner.store.saveOwnerNotes(key, draft) },
             onDismiss = { editing = false },
         )
+    }
+    if (viewingChanges && changes.isNotEmpty()) {
+        AssistantRecentChangesSheet(
+            changes = changes,
+            currentServerId = owner.serverId,
+            onDismiss = { viewingChanges = false },
+        )
+    }
+}
+
+/**
+ * Recent changes (web AssistantOwnerSection's `assistant-changes-dialog`): the lines of what the
+ * assistant did on the owner's say-so, with Done.
+ */
+@Composable
+internal fun AssistantRecentChangesSheet(
+    changes: List<AssistantSettingChange>,
+    currentServerId: String?,
+    onDismiss: () -> Unit,
+) {
+    RaftDialogSheet(
+        onDismissRequest = onDismiss,
+        title = stringResource(Res.string.assistant_recent_changes),
+        commitLabel = stringResource(Res.string.common_done),
+        onCommit = onDismiss,
+        modifier = Modifier.testTag("assistant-changes-dialog"),
+        closeLabel = stringResource(Res.string.common_close),
+    ) {
+        AssistantRecentChangesBody(changes, currentServerId)
+    }
+}
+
+/** The sheet's body: the lines, scrolling when long. */
+@Composable
+internal fun AssistantRecentChangesBody(
+    changes: List<AssistantSettingChange>,
+    currentServerId: String?,
+    timeContext: RaftTimeContext? = null,
+) {
+    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp)) {
+        AssistantSettingChangesList(changes, currentServerId, timeContext = timeContext)
     }
 }
 
@@ -234,6 +290,9 @@ internal fun AssistantOwnerSectionContent(
     onOpenInstructions: () -> Unit,
     onSettingChange: (AssistantOwnerSetting, Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    /** Web `changes.length > 0`: the Recent changes row, which opens [onOpenRecentChanges]. */
+    showRecentChanges: Boolean = false,
+    onOpenRecentChanges: () -> Unit = {},
     saving: Set<AssistantOwnerSetting> = emptySet(),
     failures: Map<AssistantOwnerSetting, ScreenError> = emptyMap(),
 ) {
@@ -273,17 +332,31 @@ internal fun AssistantOwnerSectionContent(
                     }
                 }
             }
-            if (showInstructions) {
+            if (showInstructions || showRecentChanges) {
                 RaftListRowGroup(Modifier.fillMaxWidth()) {
-                    RaftListRow(
-                        title = stringResource(Res.string.assistant_instructions_title),
-                        modifier = Modifier.testTag("assistant-settings-instructions"),
-                        onClick = onOpenInstructions,
-                        variant = RaftListRowVariant.Plain,
-                        description = stringResource(Res.string.assistant_instructions_row_description, name),
-                        wrapDescription = true,
-                        trailing = { RaftListRowChevron() },
-                    )
+                    if (showInstructions) {
+                        RaftListRow(
+                            title = stringResource(Res.string.assistant_instructions_title),
+                            modifier = Modifier.testTag("assistant-settings-instructions"),
+                            onClick = onOpenInstructions,
+                            variant = RaftListRowVariant.Plain,
+                            description = stringResource(Res.string.assistant_instructions_row_description, name),
+                            wrapDescription = true,
+                            trailing = { RaftListRowChevron() },
+                        )
+                    }
+                    if (showRecentChanges) {
+                        RaftListRow(
+                            title = stringResource(Res.string.assistant_recent_changes),
+                            modifier = Modifier.testTag("assistant-settings-changes"),
+                            onClick = onOpenRecentChanges,
+                            variant = RaftListRowVariant.Plain,
+                            description = stringResource(Res.string.assistant_recent_changes_description, name),
+                            wrapDescription = true,
+                            divider = showInstructions,
+                            trailing = { RaftListRowChevron() },
+                        )
+                    }
                 }
             }
         }

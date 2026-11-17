@@ -16,6 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.resources.*
+import build.raft.app.assistant.AssistantSettingChangesSection
+import build.raft.app.assistant.LocalAssistantSettingChangesSource
+import build.raft.app.assistant.rememberAssistantSettingChanges
+import build.raft.app.data.ASSISTANT_THEME_SETTINGS
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 
 /*
@@ -59,6 +63,9 @@ internal fun SettingsThemeContent(
 ) {
     val hasServer = serverTheme?.state?.visible == true
     val sections = settingsThemePageSections(hasServer)
+    // Web ServerThemeSection: what the assistant changed of this server's theme and the sidebar.
+    val assistantChangesSource = LocalAssistantSettingChangesSource.current
+    val assistantChanges = rememberAssistantSettingChanges(ASSISTANT_THEME_SETTINGS, assistantChangesSource)
     LazyColumn(
         state = rememberSettingsSearchListState(),
         // The 16dp content inset stays under a mouse or trackpad; the cards move 16 apart there
@@ -87,6 +94,11 @@ internal fun SettingsThemeContent(
                 Box(Modifier.fillMaxWidth().settingsSearchAnchor("server-theme", SettingsSearchCardShape)) {
                     SettingsServerThemePickerCard(serverTheme, pickerSections)
                 }
+            }
+        }
+        if (hasServer && assistantChanges.isNotEmpty()) {
+            item {
+                AssistantSettingChangesSection(assistantChanges, currentServerId = assistantChangesSource?.serverId)
             }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
