@@ -939,13 +939,20 @@ internal data class SharedThreadMessageKey(
 internal sealed interface SharedThreadMessageResolution {
     data class Loaded(val message: Message) : SharedThreadMessageResolution
     data object Missing : SharedThreadMessageResolution
-    data class Error(val code: String) : SharedThreadMessageResolution
+    /** [hiddenTarget]: the parent behind the plan's history window, as the server shows it (thread title). */
+    data class Error(
+        val code: String,
+        val hiddenTarget: build.raft.app.data.MessageContextHiddenTarget? = null,
+    ) : SharedThreadMessageResolution
 }
 
 internal sealed interface SharedThreadOriginResolution {
     data class Loaded(val message: RaftThreadMessageItem) : SharedThreadOriginResolution
     data object Missing : SharedThreadOriginResolution
-    data class Error(val code: String) : SharedThreadOriginResolution
+    data class Error(
+        val code: String,
+        val hiddenTarget: build.raft.app.data.MessageContextHiddenTarget? = null,
+    ) : SharedThreadOriginResolution
 }
 
 internal class SharedThreadMessageStore(
@@ -3669,7 +3676,7 @@ internal class SharedThreadDataSource(
                     resolution.message.toRaftThreadMessageItem(session.user.id)
                 )
             SharedThreadMessageResolution.Missing -> SharedThreadOriginResolution.Missing
-            is SharedThreadMessageResolution.Error -> SharedThreadOriginResolution.Error(resolution.code)
+            is SharedThreadMessageResolution.Error -> SharedThreadOriginResolution.Error(resolution.code, resolution.hiddenTarget)
         }
         return if (isCurrentReplyCacheProvenance(replyResolutionScope.provenance)) {
             selected
@@ -7592,7 +7599,8 @@ internal class SharedThreadDataSource(
                         is SharedThreadMessageResolution.Error ->
                             resolvedBase.copy(
                                 originStatus = "error",
-                                originErrorCode = parentResolution.code
+                                originErrorCode = parentResolution.code,
+                                originHiddenTarget = parentResolution.hiddenTarget
                             )
                         null ->
                             resolvedBase.copy(
@@ -7696,7 +7704,11 @@ internal class SharedThreadDataSource(
                         ?: SharedThreadMessageResolution.Missing
                 }
                 is DataResult.Empty -> SharedThreadMessageResolution.Missing
-                is DataResult.Error -> SharedThreadMessageResolution.Error(contextResult.error.code)
+                is DataResult.Error ->
+                    SharedThreadMessageResolution.Error(
+                        contextResult.error.code,
+                        contextResult.error.threadParentHiddenTargetOrNull(parentMessageId)
+                    )
                 is DataResult.NoPermission -> SharedThreadMessageResolution.Error(contextResult.blocker.code)
             }
         }
@@ -8502,6 +8514,13 @@ internal sealed interface SharedThreadIntent {
     data class FocusMessage(val messageId: String, val switchToTab: String? = null) : SharedThreadIntent
 
     /**
+     * Scroll to where the shown history starts: older pages load until there are none, then the
+     * list pins its top, where a Free plan's history paywall card is. A thread beside this
+     * conversation asks for it when its original is behind the history window (ThreadHeaderOriginalTitle.kt).
+     */
+    data class FocusHistoryStart(val switchToTab: String? = null) : SharedThreadIntent
+
+    /**
      * The unread-thread pill could not place these unread threads: their parents are not loaded.
      * Looks them up once in the followed-threads list (single-flight; an id is asked for at most
      * once per page) into [SharedThreadState.unreadThreadParents].
@@ -8978,6 +8997,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyChannelProfile,
             is SharedThreadIntent.SelectTab,
             is SharedThreadIntent.FocusMessage,
+            is SharedThreadIntent.FocusHistoryStart,
             is SharedThreadIntent.ResolveUnreadThreadParents,
             is SharedThreadIntent.JumpToMessage,
             is SharedThreadIntent.ApplyMembersPatch,
@@ -9080,6 +9100,13 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyChannelProfile -> applyChannelProfile(intent)
             is SharedThreadIntent.SelectTab -> selectTab(intent.tab)
             is SharedThreadIntent.FocusMessage -> focusMessage(intent.messageId, intent.switchToTab)
+            is SharedThreadIntent.FocusHistoryStart ->
+                reducePayloadPatch {
+                    it.copy(
+                        selectedTab = intent.switchToTab?.takeIf { tab -> tab.isNotBlank() } ?: it.selectedTab,
+                        historyStartFocusRequest = it.historyStartFocusRequest + 1
+                    )
+                }
             is SharedThreadIntent.ResolveUnreadThreadParents -> resolveUnreadThreadParents(intent.threadChannelIds)
             is SharedThreadIntent.JumpToMessage -> {
                 jumpToMessage(intent.messageId, intent.switchToTab, intent.unreadThreadPill)
@@ -10523,7 +10550,8 @@ internal class SharedThreadStore(
                                             originMessage = null,
                                             originParentMessageId = parentMessageId,
                                             originStatus = "error",
-                                            originErrorCode = resolution.code
+                                            originErrorCode = resolution.code,
+                                            originHiddenTarget = resolution.hiddenTarget
                                         )
                                 }
                             }

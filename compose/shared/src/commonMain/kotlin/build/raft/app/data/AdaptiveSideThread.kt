@@ -10,6 +10,7 @@ import build.raft.app.RaftAdaptiveWorkspaceIntent
 import build.raft.app.WireThreadLaunchPayload
 import build.raft.app.acceptsDetailCallback
 import build.raft.app.nextAdaptiveGeneration
+import build.raft.app.optBoolean
 import build.raft.app.optString
 import build.raft.app.reduceRaftAdaptiveWorkspace
 import build.raft.app.toRaftAdaptiveDetailCloseRequestOrNull
@@ -271,19 +272,29 @@ internal fun SharedAdaptiveWorkspaceSession.foldSideThreadIntoDetail(): SharedAd
 /** task #36: the side thread's "open parent channel" hands focus to the main detail's parent message. */
 internal const val RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT = "slockAdaptiveDetailFocusMessage"
 internal const val RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID = "slockAdaptiveDetailFocusMessageId"
+internal const val RAFT_ADAPTIVE_DETAIL_FOCUS_HISTORY_START = "slockAdaptiveDetailFocusHistoryStart"
 
-/** Focus [messageId] in the detail page identified by [target] (its own key/generation). */
+/**
+ * Focus [messageId] in the detail page identified by [target] (its own key/generation).
+ * [historyStart]: the message is behind the plan's history window, so the page scrolls to where its
+ * shown history starts (the history paywall card) instead (ThreadHeaderOriginalTitle.kt).
+ */
 internal data class AdaptiveParentFocusRequest(
     val target: RaftAdaptiveDetailCloseRequest,
     val messageId: String,
+    val historyStart: Boolean = false,
 ) {
-    fun toJson(): JsonObject = target.toJson().withEntry(RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID, messageId)
+    fun toJson(): JsonObject =
+        target.toJson()
+            .withEntry(RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID, messageId)
+            .let { json -> if (historyStart) json.withEntry(RAFT_ADAPTIVE_DETAIL_FOCUS_HISTORY_START, true) else json }
 }
 
 internal fun JsonObject.toAdaptiveParentFocusRequestOrNull(): AdaptiveParentFocusRequest? {
     val target = toRaftAdaptiveDetailCloseRequestOrNull() ?: return null
     val messageId = optString(RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID).trim().takeIf(String::isNotBlank) ?: return null
-    return AdaptiveParentFocusRequest(target, messageId)
+    val historyStart = optBoolean(RAFT_ADAPTIVE_DETAIL_FOCUS_HISTORY_START)
+    return AdaptiveParentFocusRequest(target, messageId, historyStart)
 }
 
 /**

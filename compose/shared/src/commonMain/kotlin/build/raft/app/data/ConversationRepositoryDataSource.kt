@@ -2649,6 +2649,12 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
                     retryable = code != 404,
                     serverMessage = serverMessage,
                     serverCode = serverCode,
+                    historyLimitedTarget =
+                        if (code == 404 && serverCode == MessageContextHistoryLimitedCode) {
+                            parseMessageContextHiddenTarget(bodyText?.takeIf { it.isNotBlank() } ?: errorBodyText)
+                        } else {
+                            null
+                        },
                 )
             )
     }

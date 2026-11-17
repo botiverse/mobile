@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.data.AdaptiveParentFocusRequest
+import build.raft.app.data.MessageContextHiddenTarget
+import build.raft.app.data.ScreenError
 import build.raft.app.model.ExternalMessageAuthor
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -79,8 +82,8 @@ class ThreadHeaderOriginalTitleTest {
     @Test
     fun onlyAPermissionRefusalMakesTheParentUnavailable() {
         assertEquals(ThreadHeaderOriginal.Unavailable, resolve(null, originStatus = "error", originErrorCode = "server_forbidden"))
-        // A parent behind the plan's history window (404) or a network miss is not "can't view":
-        // the title stays Thread and the place name still opens the conversation.
+        // A plain 404 (not found, or not readable: the context route answers both alike) or a network
+        // miss is not "can't view": the title stays Thread and the place name still opens the conversation.
         assertNull(resolve(null, originStatus = "error", originErrorCode = "http_404"))
         assertNull(resolve(null, originStatus = "error", originErrorCode = "thread_parent_context_network"))
     }
@@ -129,6 +132,132 @@ class ThreadHeaderOriginalTitleTest {
             assertEquals(case.reachable, state.parentReachable, case.toString())
             assertEquals(case.locate, state.locateMessageId(), case.toString())
         }
+    }
+
+    private val hidden =
+        MessageContextHiddenTarget(
+            messageId = "msg-1",
+            senderType = "user",
+            senderId = "user-1",
+            senderName = "Juno",
+            preview = "Can we ship **today**?",
+        )
+
+    @Test
+    fun parentBehindTheHistoryWindowIsNamedFromTheServersGlimpse() {
+        fun resolveHidden(target: MessageContextHiddenTarget, errorCode: String = "http_404") =
+            resolveThreadHeaderOriginal("error", errorCode, null, "Image", "File", "", target, "Unknown")
+        val shown = resolveHidden(hidden) as ThreadHeaderOriginal.Shown
+        assertEquals(ThreadHeaderOriginal.Shown("msg-1", "Juno", "Can we ship today?", behindHistory = true), shown)
+        assertEquals("Juno: Can we ship today?", threadHeaderOriginalTitleText(shown, ": "))
+        // Unnamed sender: "Unknown"; no words: the title stays Thread (web).
+        assertEquals("Unknown", (resolveHidden(hidden.copy(senderName = null)) as ThreadHeaderOriginal.Shown).sender)
+        assertEquals("Unknown", (resolveHidden(hidden.copy(senderName = "user-1")) as ThreadHeaderOriginal.Shown).sender)
+        assertNull(resolveHidden(hidden.copy(preview = null)))
+        // A permission refusal still wins.
+        assertEquals(ThreadHeaderOriginal.Unavailable, resolveHidden(hidden, errorCode = "server_forbidden"))
+        // Only while the read failed: a loaded original is named from itself.
+        assertEquals(
+            ThreadHeaderOriginal.Shown("msg-1", "Juno", "hi"),
+            resolveThreadHeaderOriginal("loaded", null, origin(body = "hi"), "Image", "File", "", hidden, "Unknown")
+        )
+    }
+
+    @Test
+    fun hiddenOriginalNamesTheTitleFromTheStartAndOpensTheConversationAlone() {
+        val state = ThreadHeaderOriginalState().apply {
+            original = ThreadHeaderOriginal.Shown("msg-1", "Juno", "Can we ship?", behindHistory = true)
+            originOutOfView = false
+        }
+        assertTrue(state.swapped)
+        assertTrue(state.parentReachable)
+        assertNull(state.locateMessageId())
+    }
+
+    @Test
+    fun parentContextRefusalReadsOnlyTheParentsHiddenTargetAndReportsTheRest() {
+        val lines = mutableListOf<String>()
+        fun read(error: ScreenError) = error.threadParentHiddenTargetOrNull("msg-1") { lines += it }
+        val limited = ScreenError(code = "http_404", retryable = false, serverCode = "history_limited", historyLimitedTarget = hidden, traceId = null)
+        assertEquals(hidden, read(limited))
+        assertTrue(lines.isEmpty())
+        // A plain not found and other failures carry nothing and report nothing.
+        assertNull(read(ScreenError(code = "http_404", retryable = false, traceId = null)))
+        assertNull(read(ScreenError(code = "server_unavailable", serverCode = "history_limited", traceId = null)))
+        assertTrue(lines.isEmpty())
+        // Another message's target, an unreadable one, an unknown code: read as not found, never silently.
+        assertNull(read(limited.copy(historyLimitedTarget = hidden.copy(messageId = "msg-2"))))
+        assertNull(read(limited.copy(historyLimitedTarget = null)))
+        assertNull(read(limited.copy(serverCode = "thread_gone")))
+        assertEquals(3, lines.size, lines.toString())
+        assertTrue(lines.all { it.startsWith("projection_value_unknown source=thread_parent_context") }, lines.toString())
+        assertTrue(lines.last().contains("value=thread_gone"), lines.last())
+    }
+
+    @Test
+    fun parentLocateIsNothingForADeletedOriginalAndTheHistoryStartForAHiddenOne() {
+        val reply =
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                parentMessageId = "msg-1",
+                originParentMessageId = "msg-1",
+            )
+        data class Case(val name: String, val payload: RaftThreadScreenPayload, val locate: ThreadParentLocate)
+        for (case in
+            listOf(
+                Case("loaded", reply.copy(originStatus = "loaded", originMessage = origin(body = "hi")), ThreadParentLocate.Message),
+                Case("retracted", reply.copy(originStatus = "loaded", originMessage = origin(body = "hi", deletedAt = "2026-11-01T00:00:00Z")), ThreadParentLocate.None),
+                Case("missing", reply.copy(originStatus = "missing"), ThreadParentLocate.None),
+                Case("hidden", reply.copy(originStatus = "error", originErrorCode = "http_404", originHiddenTarget = hidden), ThreadParentLocate.HistoryStart),
+                Case("hidden other message", reply.copy(originStatus = "error", originHiddenTarget = hidden.copy(messageId = "msg-2")), ThreadParentLocate.Message),
+                Case("hidden but loaded since", reply.copy(originStatus = "loaded", originMessage = origin(body = "hi"), originHiddenTarget = hidden), ThreadParentLocate.Message),
+                Case("network miss", reply.copy(originStatus = "error", originErrorCode = "http_404"), ThreadParentLocate.Message),
+                Case("loading", reply.copy(originStatus = "loading"), ThreadParentLocate.Message),
+                Case("channel", RaftThreadScreenPayload(originStatus = "missing"), ThreadParentLocate.Message),
+            )
+        ) {
+            assertEquals(case.locate, case.payload.threadParentLocate(), case.name)
+        }
+        // The list reads the hidden parent only while it is this thread's failed parent.
+        assertEquals(hidden, reply.copy(originStatus = "error", originHiddenTarget = hidden).toThreadTimelineSlice().originHiddenTarget)
+        assertNull(reply.copy(originStatus = "loaded", originMessage = origin(body = "hi"), originHiddenTarget = hidden).toThreadTimelineSlice().originHiddenTarget)
+    }
+
+    @Test
+    fun theConversationBesideTheThreadFocusesTheOriginalOrItsHistoryStart() {
+        val target = RaftAdaptiveDetailCloseRequest("shell", "channel:c1", 3)
+        assertEquals(
+            SharedThreadIntent.FocusMessage(messageId = "msg-1", switchToTab = RaftThreadTab.Chat.wireValue),
+            AdaptiveParentFocusRequest(target, "msg-1").toThreadFocusIntent()
+        )
+        assertEquals(
+            SharedThreadIntent.FocusHistoryStart(switchToTab = RaftThreadTab.Chat.wireValue),
+            AdaptiveParentFocusRequest(target, "msg-1", historyStart = true).toThreadFocusIntent()
+        )
+        // The page carries the request to its list, which jumps to the start like the outline's jump.
+        val channel = RaftThreadScreenPayload(historyStartFocusRequest = 2)
+        assertEquals(2, channel.toThreadTimelineSlice().historyStartFocusRequest)
+    }
+
+    @Test
+    fun aChannelsStartRowIsItsFirstRowSoTheJumpPinsOnceTheOldestPageIsLoaded() {
+        val channel = RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel).toThreadTimelineSlice()
+        assertTrue(channel.threadStartRowShown())
+        // A reply thread still waits for its loaded original row.
+        val reply = RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.ReplyThread, parentMessageId = "msg-1")
+        assertFalse(reply.toThreadTimelineSlice().threadStartRowShown())
+        // Older pages load until there are none, then the top is pinned (the history paywall card).
+        fun step(canLoadMoreBefore: Boolean, status: String = "idle") =
+            threadOutlineOriginJumpStep(
+                request = 1,
+                consumed = 0,
+                canLoadMoreBefore = canLoadMoreBefore,
+                olderMessagesStatus = status,
+                originRowShown = channel.threadStartRowShown(),
+            )
+        assertEquals(ThreadOutlineOriginJumpStep.LoadOlder, step(canLoadMoreBefore = true))
+        assertEquals(ThreadOutlineOriginJumpStep.Wait, step(canLoadMoreBefore = true, status = "loading"))
+        assertEquals(ThreadOutlineOriginJumpStep.Pin, step(canLoadMoreBefore = false))
     }
 
     @Test
