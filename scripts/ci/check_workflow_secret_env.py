@@ -187,7 +187,7 @@ QA_SECRET_STEPS: dict[str, dict[str, dict[str, dict]]] = {
 # edit fails until re-reviewed and re-pinned. Any other such file fails (rule 4).
 SCRIPT_ALLOWLIST = {
     "scripts/ci/test_git_diff_path_state.sh": ("sets a fixture git user.email; writes no credential",
-        "d25a5538daf9d6ff8f61bc3c5039fa93d30237c9efddbcf85427329d5878a46e"),
+        "1ed6c60ec91655722084bc9edfdc7616d9ee773c5fc3255a384bb7f67787f471"),
     "scripts/ci/test_gradle_cache_policy.sh": ("'token' is a test-case label for epoch characters",
         "63e42bb72aa1ad5466395d6b3b08a3e4d1daaacc97e69d47c5ad9125af3252ce"),
     ".github/actions/gradle-cache-policy/apply.sh": ("'token' is an error message about the epoch value",

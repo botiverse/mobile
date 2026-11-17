@@ -47,7 +47,7 @@ import build.raft.designsystem.theme.RaftTheme
 /*
  * The channel members page (web `ChannelMembers` presentation="page", ChannelMemberList.tsx)
  * drawn with compose/designsystem parts. State, intents and the roster logic stay in
- * ThreadPage.kt (`ThreadMembersPageContent`); these composables are the visual layer only and
+ * ThreadMembersPage.kt (`ThreadMembersPageContent`); these composables are the visual layer only and
  * must sit inside `RaftDesignSystemTheme`.
  */
 
