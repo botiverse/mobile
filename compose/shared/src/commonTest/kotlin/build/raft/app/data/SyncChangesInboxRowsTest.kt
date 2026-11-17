@@ -22,7 +22,7 @@ class SyncChangesInboxRowsTest {
     // ---- contract -------------------------------------------------------------------------------
 
     @Test
-    fun `inbox_row upserts and deletes parse with their row, source, position and reason`() {
+    fun `inbox_row upserts and deletes parse with their row source position and reason`() {
         val row = syncInboxChannelRow("ch-1", seq = "92233720368547758070")
         val page =
             parseSyncChangesPage(
@@ -103,7 +103,7 @@ class SyncChangesInboxRowsTest {
     // ---- plan -----------------------------------------------------------------------------------
 
     @Test
-    fun `the plan keeps inbox rows in seq order, one per id, and a removed server drops them`() {
+    fun `the plan keeps inbox rows in seq order one per id and a removed server drops them`() {
         val changes =
             parseSyncChangesPage(
                 syncChangesBody(
@@ -153,7 +153,7 @@ class SyncChangesInboxRowsTest {
     }
 
     @Test
-    fun `retryAfterMs asks the caller to wait, clamped, and delays an inboxReset that came with it`() = runTest {
+    fun `retryAfterMs asks the caller to wait clamped and delays an inboxReset that came with it`() = runTest {
         for ((serverMillis, expected) in listOf(2_000L to 2_000L, 10L to 1_000L, 600_000L to 30_000L)) {
             cursors.write(syncTestScope, "c1.1.1")
             val sink = RecordingSyncChangesSink()
@@ -295,7 +295,7 @@ class SyncChangesInboxRowsTest {
         RaftSyncPullResult.Synced(1, 0, false, null, truncated = false, retryAfterMillis = retryAfter, inboxReloadAfterMillis = inboxReloadAfter)
 
     @Test
-    fun `a held row pulls again after the wait unless another pull came first, and only in the foreground`() = runTest {
+    fun `a held row pulls again after the wait unless another pull came first and only in the foreground`() = runTest {
         var foreground = true
         val retry = RaftSyncRetryAfter(backgroundScope, isForeground = { foreground })
         val runs = mutableListOf<String>()
@@ -324,7 +324,7 @@ class SyncChangesInboxRowsTest {
     }
 
     @Test
-    fun `a delayed inbox reload runs once, survives a pull and goes with the session`() = runTest {
+    fun `a delayed inbox reload runs once survives a pull and goes with the session`() = runTest {
         val retry = RaftSyncRetryAfter(backgroundScope)
         val runs = mutableListOf<String>()
         retry.onPullFinished(syncTestScope, synced(inboxReloadAfter = 2_000L), repull = {}, reloadInbox = { runs += "inbox1" })
