@@ -8433,6 +8433,11 @@ internal fun Modifier.raftAppStickerDieCutEdge(color: Color): Modifier =
  * space). The [face] fills the inside of the edge with 2dp corners (`rounded-[2px]`), so a
  * photo or pixel face is never painted under the ink. An unspecified [borderWidth] takes the
  * raft-ui 1.5dp edge.
+ *
+ * A 0 [borderWidth] is a face inside the caller's own frame ([RaftAppAvatarSticker] in raft-ui
+ * Avatar's image slot): it is that slot, so it rounds as the slot does (`rounded-[2px]`). At the
+ * sticker's 4dp the face's corners came out rounder than the slot's, and the frame's fill showed
+ * in the four inner corners, against the ink edge.
  */
 @Composable
 internal fun RaftAppAvatarFrame(
@@ -8449,7 +8454,7 @@ internal fun RaftAppAvatarFrame(
             modifier
                 .raftAppStickerDieCutEdge(ringColor)
                 .size(width = avatarSize, height = avatarSize)
-                .clip(RaftAvatarStickerShape)
+                .clip(if (edge > 0.dp) RaftAvatarStickerShape else RaftAvatarFaceShape)
                 .background(fill)
                 .then(if (edge > 0.dp) Modifier.border(edge, RaftColor.StickerInk, RaftAvatarStickerShape) else Modifier),
         contentAlignment = Alignment.Center
