@@ -1,7 +1,6 @@
 ✨ New
 - Search in thread searches the whole conversation; global search finds Artifacts
 - Make or remove channel admins from the member list
-- A gentle notice when a new version is on Google Play
 
 🔧 Improved
 - Realtime updates reconnect and catch up after a network drop

@@ -8,7 +8,6 @@
 - The assistant opened from a conversation takes it as context; its profile has Read my direct messages and Send messages as me switches (rolling out gradually).
 - An agent's Activity shows who started, stopped, restarted, reset or moved it.
 - Moving an agent shows sizes and wait time; computer details show their agents.
-- Installed from the App Store, Raft tells you gently when a new version is out.
 - Link card badges show the app's colour.
 
 **Improved**
