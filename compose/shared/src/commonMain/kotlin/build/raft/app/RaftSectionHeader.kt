@@ -54,6 +54,7 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.raftCopyable
+import build.raft.designsystem.components.raftPaneGridFitHead
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftGlyph
@@ -207,7 +208,8 @@ internal fun RaftTopPageHeader(
     // iPhone Duo (raft-design #859): with the system's side column, Back is the column's first
     // button, and the header keeps the title from the 16dp margin.
     val backInColumn = onBack != null && raftSideColumnControls(back = raftSideColumnBackAction(onBack))
-    Column(modifier = Modifier.fillMaxWidth()) {
+    // In a pane of the wide row laid out wider than it shows (#189 rule 2), the head fits what shows: never clipped.
+    Column(modifier = Modifier.raftPaneGridFitHead().fillMaxWidth()) {
         RaftTopPageHeaderFrame(
             modifier = modifier,
             backgroundColor = backgroundColor,
@@ -345,6 +347,8 @@ internal fun RaftPanelBackHeader(
     Box(
         modifier =
             modifier
+                // In a pane of the wide row laid out wider than it shows (#189 rule 2): what shows, never clipped.
+                .raftPaneGridFitHead()
                 .fillMaxWidth()
                 .height(safeTop + RaftPanelHeaderHeight)
                 .background(RaftColor.Canvas)

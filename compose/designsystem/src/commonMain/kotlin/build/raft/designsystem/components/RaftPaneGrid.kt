@@ -47,6 +47,19 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
@@ -73,6 +86,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftFade
 import build.raft.designsystem.tokens.RaftStroke
 import kotlin.math.roundToInt
 
@@ -324,6 +338,195 @@ private fun Modifier.raftPaneGridContentMinWidth(minDp: Float): Modifier =
             layout(constraints.maxWidth, placeable.height) { placeable.placeRelative(0, 0) }
         }
     }
+
+/**
+ * Rule 2's clip, as the spec draws it (responsive.md "The channel's side columns", spacing.md "Edges fade"): where
+ * [clipped] (the column narrower than its content's minimum) the content's end fades out over `fade-edge` (24), a
+ * mask, never a colour, so the cut reads as content going on. The heads in it ([raftPaneGridFitHead], registered in
+ * [bands]) fit the column and are never faded: the fade passes them by. Put it on the box that clips.
+ */
+private fun Modifier.raftPaneGridClipFade(clipped: Boolean, bands: RaftPaneGridHeadBands): Modifier =
+    onPlaced {
+        bands.box = it
+        val width = it.size.width.toFloat()
+        if (bands.widthPx != width) bands.widthPx = width
+        if (bands.clipped != clipped) bands.clipped = clipped
+    }
+        .then(
+            if (!clipped) {
+                Modifier
+            } else {
+                // Offscreen, so DstIn masks only this content, not what is under it.
+                Modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        val fade = RaftFade.Edge.toPx().coerceAtMost(size.width / 2f)
+                        if (fade <= 0f) return@drawWithContent
+                        val rtl = layoutDirection == LayoutDirection.Rtl
+                        val x = if (rtl) 0f else size.width - fade
+                        val brush =
+                            if (rtl) Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), startX = 0f, endX = fade)
+                            else Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = x, endX = size.width)
+                        for ((top, bottom) in raftPaneGridFadeSpans(size.height, bands.bands.values)) {
+                            drawRect(brush, topLeft = Offset(x, top), size = Size(fade, bottom - top), blendMode = BlendMode.DstIn)
+                        }
+                    }
+            }
+        )
+
+/** The spans of a column [heightPx] high that its end fade covers: all of it but its heads' [bands] (top to bottom, px). */
+fun raftPaneGridFadeSpans(heightPx: Float, bands: Collection<Pair<Float, Float>>): List<Pair<Float, Float>> {
+    val spans = mutableListOf<Pair<Float, Float>>()
+    var top = 0f
+    for ((start, end) in bands.sortedBy { it.first }) {
+        if (start > top) spans += top to minOf(start, heightPx)
+        top = maxOf(top, end)
+        if (top >= heightPx) break
+    }
+    if (heightPx > top) spans += top to heightPx
+    return spans.filter { it.second > it.first }
+}
+
+/**
+ * Where the heads of a planned row's pane stand ([raftPaneGridFitHead]): their spans down its clipping box ([box]),
+ * px, so its end fade passes them by. One per pane: the main pane's and each column's.
+ */
+@Stable
+internal class RaftPaneGridHeadBands {
+    /** The pane's clipping box: plain memory, set where it is placed. */
+    var box: LayoutCoordinates? = null
+    val bands = mutableStateMapOf<Any, Pair<Float, Float>>()
+
+    /** The clipping box's width, px, and whether the pane is clipped (its end fades): for a native view's own fade. */
+    var widthPx by mutableStateOf(0f)
+    var clipped by mutableStateOf(false)
+}
+
+/**
+ * What of the planned row's main pane shows: the row's [roomDp] (the leading column and its seam left out already)
+ * less every column as planned, [columnWidthsDp]. A column's width includes its 1dp left seam (web: `border-l` inside
+ * the column's box; [RaftPaneGridSideColumn] draws it inside its width), so the main pane has no seam of its own to
+ * leave out: the seam right of it is the next column's.
+ */
+fun raftPaneGridMainShownDp(roomDp: Float, columnWidthsDp: List<Float>): Float = maxOf(0f, roomDp - columnWidthsDp.sum())
+
+/**
+ * A clipped pane's end fade across a native view in it, in the view's own dp (iOS points): opaque up to [startDp],
+ * gone from [endDp] (the pane's end) on. A Compose mask ([raftPaneGridClipFade]) never reaches a view drawn over the
+ * canvas (iOS UIKitView), so the view draws this one itself, as a mask too (spacing.md "Edges fade").
+ */
+@Immutable
+data class RaftPaneGridNativeFade(val startDp: Float, val endDp: Float)
+
+/**
+ * Where a clipped pane's end, [boxWidthPx] wide, falls across a view [viewLeftPx] in from its start and [viewWidthPx]
+ * wide: the fade over [fadePx] before it, in the view's px; null where the view ends before the pane's end (nothing of
+ * it is cut).
+ */
+fun raftPaneGridNativeFadePx(boxWidthPx: Float, viewLeftPx: Float, viewWidthPx: Float, fadePx: Float): Pair<Float, Float>? {
+    val end = boxWidthPx - viewLeftPx
+    if (end >= viewWidthPx - 0.5f || end <= 0f) return null
+    return maxOf(0f, end - fadePx) to end
+}
+
+/**
+ * The end fade of the clipped pane a native view stands in ([RaftPaneGridNativeFade]): put [modifier] on the view
+ * (its interop composable) and give it [fade] each time it updates; null outside a clipped pane of the planned row.
+ */
+@Stable
+class RaftPaneGridNativeFadeState internal constructor(private val bands: RaftPaneGridHeadBands?) {
+    private var leftPx by mutableStateOf<Float?>(null)
+    private var viewWidthPx by mutableStateOf(0f)
+
+    val modifier: Modifier =
+        if (bands == null) {
+            Modifier
+        } else {
+            Modifier.onGloballyPositioned { view ->
+                val box = bands.box?.takeIf { it.isAttached } ?: return@onGloballyPositioned
+                if (box.findRootCoordinates() !== view.findRootCoordinates()) return@onGloballyPositioned
+                val left = box.localPositionOf(view, Offset.Zero).x
+                if (leftPx != left) leftPx = left
+                val width = view.size.width.toFloat()
+                if (viewWidthPx != width) viewWidthPx = width
+            }
+        }
+
+    /** The fade now, in the view's dp; read in composition, so a change recomposes. */
+    fun fade(density: Density, layoutDirection: LayoutDirection): RaftPaneGridNativeFade? {
+        // Rule 2 keeps content against its start: in a right-to-left row it is cut at the left, not drawn here.
+        if (bands == null || !bands.clipped || layoutDirection == LayoutDirection.Rtl) return null
+        val left = leftPx ?: return null
+        val px = raftPaneGridNativeFadePx(bands.widthPx, left, viewWidthPx, with(density) { RaftFade.Edge.toPx() }) ?: return null
+        return RaftPaneGridNativeFade(px.first / density.density, px.second / density.density)
+    }
+}
+
+/** The end fade for a native view here ([RaftPaneGridNativeFadeState]). */
+@Composable
+fun rememberRaftPaneGridNativeFade(): RaftPaneGridNativeFadeState {
+    val bands = LocalRaftPaneGridHeadBands.current
+    return remember(bands) { RaftPaneGridNativeFadeState(bands) }
+}
+
+internal val LocalRaftPaneGridHeadBands = compositionLocalOf<RaftPaneGridHeadBands?> { null }
+
+/**
+ * A pane's head in the planned row (#189 rule 2: "the head is never clipped: it fits the column"): where its pane is
+ * laid out wider than it shows ([LocalRaftPaneGridVisibleWidth]), the head lays itself out at what shows, from the
+ * pane's start, so its title ellipsizes and its buttons stay in sight; and the pane's end fade passes it by. Outside a
+ * clipped pane it changes nothing. For a head the page draws itself; [RaftPaneGridColumnHead] does this already.
+ */
+@Composable
+fun Modifier.raftPaneGridFitHead(): Modifier {
+    val visible = LocalRaftPaneGridVisibleWidth.current
+    val fit =
+        if (visible == null) {
+            Modifier
+        } else {
+            Modifier.layout { measurable, constraints ->
+                val shown = visible.roundToPx().coerceAtLeast(0)
+                if (!constraints.hasBoundedWidth || shown >= constraints.maxWidth) {
+                    val placeable = measurable.measure(constraints)
+                    layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
+                } else {
+                    val placeable = measurable.measure(constraints.copy(minWidth = minOf(constraints.minWidth, shown), maxWidth = shown))
+                    // Reported at the width asked for, so nothing centres it: it stands at the pane's start.
+                    layout(maxOf(placeable.width, constraints.minWidth), placeable.height) { placeable.placeRelative(0, 0) }
+                }
+            }
+        }
+    return this.raftPaneGridUnfaded().then(fit)
+}
+
+/**
+ * The pane's frame, not its content (a head, the line-seam between stacked cells): a clipped pane's end fade
+ * ([raftPaneGridClipFade]) passes it by, so it runs whole to the column's edge as the column's own left seam does.
+ * Spacing.md "Edges fade" fades content that is cut; the seams and heads are the column's, never cut.
+ */
+@Composable
+internal fun Modifier.raftPaneGridUnfaded(): Modifier {
+    val bands = LocalRaftPaneGridHeadBands.current ?: return this
+    val key = remember { Any() }
+    DisposableEffect(bands) { onDispose { bands.bands.remove(key) } }
+    return onGloballyPositioned { part ->
+        val box = bands.box?.takeIf { it.isAttached } ?: return@onGloballyPositioned
+        // Something in another window (a dialog over the pane) is not the pane's.
+        if (box.findRootCoordinates() !== part.findRootCoordinates()) return@onGloballyPositioned
+        val top = box.localPositionOf(part, Offset.Zero).y
+        val span = top to top + part.size.height
+        if (bands.bands[key] != span) bands.bands[key] = span
+    }
+}
+
+/**
+ * Content in its own window over the row (a dialog): no pane's head, so nothing of the row's clip reaches it
+ * ([raftPaneGridFitHead], [RaftPaneGridColumnHead]).
+ */
+@Composable
+fun RaftPaneGridOutsideRow(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalRaftPaneGridVisibleWidth provides null, LocalRaftPaneGridHeadBands provides null, content = content)
+}
 
 /**
  * A tab not shown (#189 rule 4) is out of reach, as the web's `inert`: while [inert], Tab and the arrows never move
@@ -704,12 +907,14 @@ internal class RaftPaneGridHost internal constructor() {
                         val shown = LocalRaftPaneGridColumnShown.current
                         val controls = LocalRaftPaneGridColumnControls.current
                         val visible = LocalRaftPaneGridVisibleWidth.current
+                        val bands = LocalRaftPaneGridHeadBands.current
                         CompositionLocalProvider(locals) {
                             CompositionLocalProvider(
                                 LocalRaftPaneGridHost provides null,
                                 LocalRaftPaneGridColumnShown provides shown,
                                 LocalRaftPaneGridColumnControls provides controls,
                                 LocalRaftPaneGridVisibleWidth provides visible,
+                                LocalRaftPaneGridHeadBands provides bands,
                             ) {
                                 latest.content(scope)
                             }
@@ -885,7 +1090,8 @@ data class RaftPaneGridColumnControls(
 
 /**
  * The width of the column a cell stands in as it shows on screen, its seam left out; null outside a column, or where
- * the column fills the row. A column clipped under its minimum (#189 rule 2) lays its cells out at the minimum and
+ * the column fills the row. In the planned row's main pane: its width while it is clipped under its 360, else null.
+ * A column clipped under its minimum (#189 rule 2) lays its cells out at the minimum and
  * cuts them at its edge: a head ([RaftPaneGridColumnHead]) lays itself out at this width instead, folding its own
  * actions into ⋯ as it must, so nothing of it is cut off or drawn past its column.
  */
@@ -1114,13 +1320,24 @@ fun RaftPaneGrid(
                     // The row tabs at the pane's own width, so every tab stays in reach while the content clips.
                     val mainTabs = tabsOf[RAFT_ROW_CONVERSATION]
                     if (mainTabs != null) RaftPaneGridTabStrip(mainTabs, RAFT_PANE_GRID_TABS_TEST_TAG + RAFT_ROW_CONVERSATION)
-                    // Rule 2: in the planned row the main pane's content keeps 360 and clips.
-                    Box(Modifier.weight(1f).fillMaxWidth().then(if (plan != null) Modifier.clipToBounds() else Modifier)) {
+                    // Rule 2: in the planned row the main pane's content keeps 360 and clips, its end fading; its
+                    // head fits what shows (raftPaneGridFitHead), as a column's does.
+                    val mainShownDp = raftPaneGridMainShownDp(roomDp, fitted)
+                    val mainClipped = plan != null && mainShownDp < RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP
+                    val mainBands = remember { RaftPaneGridHeadBands() }
+                    Box(
+                        Modifier.weight(1f).fillMaxWidth()
+                            .then(if (plan != null) Modifier.clipToBounds().raftPaneGridClipFade(mainClipped, mainBands) else Modifier)
+                    ) {
                         Box(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (plan != null) RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP else 0f)) {
                             CompositionLocalProvider(
                                 LocalRaftPaneGridHost provides host,
                                 LocalRaftPaneGridDepth provides depth + 1,
                                 LocalRaftPaneGridRow provides row,
+                                // Unplanned (a nested grid, a row with no columns) the main pane is where it stands, as before.
+                                LocalRaftPaneGridVisibleWidth provides
+                                    if (plan == null) LocalRaftPaneGridVisibleWidth.current else if (mainClipped) mainShownDp.dp else null,
+                                LocalRaftPaneGridHeadBands provides if (plan == null) LocalRaftPaneGridHeadBands.current else mainBands,
                             ) { main() }
                         }
                     }
@@ -1153,7 +1370,7 @@ fun RaftPaneGrid(
                             column = token?.let { host.freshColumn(it, column.bounds.id) } ?: column,
                             widthDp = fitted[index],
                             // A column's width includes its left seam (web), so the main pane has the rest.
-                            mainWidthDp = maxOf(0f, roomDp - fitted.sum()),
+                            mainWidthDp = raftPaneGridMainShownDp(roomDp, fitted),
                             fill = filling && place.sourceIds.any { it in fillIds },
                             hidden = leadingFills || (filling && place.sourceIds.none { it in fillIds }),
                             topInset = place.topInset,
@@ -1261,7 +1478,10 @@ fun RowScope.RaftPaneGridSideColumn(
                     RaftPaneGridTabStrip(tabs, RAFT_PANE_GRID_TABS_TEST_TAG + column.bounds.id)
                 }
             }
-            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+            // Rule 2: narrower than its content's minimum, the content keeps it against the start and clips, its end
+            // fading out under the heads, which fit the column.
+            val bands = remember { RaftPaneGridHeadBands() }
+            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().raftPaneGridClipFade(!fill && !gone && width < minWidth, bands)) {
                 Row(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (fill) 0f else minWidth)) {
                     Spacer(Modifier.width(seam).fillMaxHeight())
                     // A page in a cell is not in the main pane: a grid it declares is its own.
@@ -1271,6 +1491,7 @@ fun RowScope.RaftPaneGridSideColumn(
                         LocalRaftPaneGridColumnControls provides controls,
                         // What of the column shows, for the heads (its content may be laid out wider and clipped).
                         LocalRaftPaneGridVisibleWidth provides if (fill) null else (width.dp - seam).coerceAtLeast(0.dp),
+                        LocalRaftPaneGridHeadBands provides bands,
                     ) {
                         RaftPaneGridStackView(column, Modifier.weight(1f).fillMaxHeight())
                     }
@@ -1342,7 +1563,8 @@ private fun RaftPaneGridStackView(column: RaftPaneGridColumn, modifier: Modifier
         Column(Modifier.fillMaxSize()) {
             cells.forEachIndexed { i, cell ->
                 key(cell.id) {
-                    if (layout.seamAbove[i]) Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(RaftTheme.colors.lineSeam))
+                    // The column's frame, not content: it runs whole to the column's edge, unfaded.
+                    if (layout.seamAbove[i]) Box(Modifier.raftPaneGridUnfaded().fillMaxWidth().height(RaftStroke.Hairline).background(RaftTheme.colors.lineSeam))
                     Box(Modifier.height(layout.heights[i].dp).fillMaxWidth().clipToBounds()) {
                         RaftPaneGridCellHost(cell, collapsible, collapsed[i]) { store.setCollapsed(cell.id, it) }
                     }

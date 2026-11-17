@@ -7,8 +7,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.objcPtr
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import build.raft.designsystem.components.RaftPaneGridNativeFade
+import build.raft.designsystem.components.rememberRaftPaneGridNativeFade
+import kotlinx.cinterop.useContents
+import platform.CoreGraphics.CGColorCreateCopy
 import platform.CoreGraphics.CGColorGetAlpha
+import platform.CoreGraphics.CGPointMake
 import platform.CoreGraphics.CGRectMake
+import platform.Foundation.CFBridgingRelease
+import platform.QuartzCore.CAGradientLayer
+import platform.QuartzCore.CATransaction
 import platform.Foundation.NSError
 import platform.Foundation.NSHTTPURLResponse
 import platform.Foundation.NSTimer
@@ -51,13 +61,18 @@ internal actual fun RaftSandboxWebViewHost(
     controller: RaftWebViewController,
     modifier: Modifier,
 ) {
+    // In a pane of the wide row clipped under its content's minimum (the Artifact column), its end fades: the grid's
+    // Compose mask doesn't reach this native view, so the container masks itself the same way.
+    val endFade = rememberRaftPaneGridNativeFade()
+    val fade = endFade.fade(LocalDensity.current, LocalLayoutDirection.current)
     UIKitView(
         factory = { RaftIosSandboxWebViewContainer(events).also { it.webViewHost.applyInitialBackground(config.backgroundArgb) } },
-        modifier = modifier,
+        modifier = modifier.then(endFade.modifier),
         update = { view ->
             view.webViewHost.events = events
             view.webViewHost.applyConfig(config)
             view.webViewHost.bindController(controller)
+            view.applyEndFade(fade)
         },
         onRelease = { view -> view.webViewHost.dispose() },
     )
@@ -70,6 +85,50 @@ internal class RaftIosSandboxWebViewContainer(events: RaftWebViewEvents) : UIVie
     override fun layoutSubviews() {
         super.layoutSubviews()
         webViewHost.layout()
+        updateEndFadeMask()
+    }
+
+    /** The clipped pane's end fade across this view ([RaftPaneGridNativeFade], points); null: none. */
+    private var endFade: RaftPaneGridNativeFade? = null
+    private var endFadeMask: CAGradientLayer? = null
+
+    fun applyEndFade(fade: RaftPaneGridNativeFade?) {
+        if (fade == endFade) return
+        endFade = fade
+        updateEndFadeMask()
+    }
+
+    /**
+     * spacing.md "Edges fade": a mask, never a colour, so whatever the page draws fades the same. Opaque up to the
+     * fade's start, clear from its end (the pane's edge) on; removed when the pane isn't clipped.
+     */
+    private fun updateEndFadeMask() {
+        val fade = endFade
+        val width = bounds.useContents { size.width }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if (fade == null || width <= 0.0) {
+            if (endFadeMask != null) {
+                layer.mask = null
+                endFadeMask = null
+            }
+        } else {
+            val mask =
+                endFadeMask ?: CAGradientLayer().also { made ->
+                    made.startPoint = CGPointMake(0.0, 0.5)
+                    made.endPoint = CGPointMake(1.0, 0.5)
+                    val opaque = CFBridgingRelease(CGColorCreateCopy(UIColor.blackColor.CGColor))
+                    val clear = CFBridgingRelease(CGColorCreateCopy(UIColor.clearColor.CGColor))
+                    made.colors = listOf(opaque, opaque, clear, clear)
+                    endFadeMask = made
+                    layer.mask = made
+                }
+            mask.frame = bounds
+            val start = (fade.startDp / width).coerceIn(0.0, 1.0)
+            val end = (fade.endDp / width).coerceIn(start, 1.0)
+            mask.locations = listOf(0.0, start, end, 1.0)
+        }
+        CATransaction.commit()
     }
 
     /** A covered page's views leave the window: pause the navigation-state poll until it returns. */
