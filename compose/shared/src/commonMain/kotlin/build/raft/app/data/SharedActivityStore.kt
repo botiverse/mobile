@@ -22,6 +22,7 @@ import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageSystemProvenance
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
+import build.raft.app.model.NotificationRetracted
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.RealtimeEvent
@@ -434,7 +435,15 @@ class SharedActivityStore internal constructor(
      */
     private val inboxRowPositionEnabled: (serverId: String) -> Boolean = { false },
     /** See [ActivityRowRereadDelayMillis]; injectable for virtual time. */
-    private val rowRereadDelayMillis: Long = ActivityRowRereadDelayMillis
+    private val rowRereadDelayMillis: Long = ActivityRowRereadDelayMillis,
+    /**
+     * A realtime event this list cannot settle from its own read, for the server it is bound to: a
+     * live message or reply for a row it lacks (`activity_inplace result=absent`: the inbox read model
+     * may not have the row yet) or a `notification:retract` (a row done or read in another session).
+     * The app asks for one debounced incremental sync pull ([RaftSyncRealtimePull]). Called under the
+     * realtime owner lock: it must only queue.
+     */
+    private val onSyncPullHint: (serverId: String, reason: String) -> Unit = { _, _ -> }
 ) {
     private val _state = raftStoreState(SharedActivityState(), "SharedActivityStore")
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
@@ -1555,6 +1564,10 @@ class SharedActivityStore internal constructor(
             dropRetainedRows(intent) { true }
         }
         event.channelUpdatedId()?.let(::checkRetainedChannelReadableLocked)
+        if (event is NotificationRetracted) {
+            requestSyncPullForRetract(event)
+            return null
+        }
         if (event is ThreadFollowersUpdated) {
             // A task conversation row shows the reader's follow state (Unfollow / Follow). The frame
             // (slock threadFollowerRealtimeService, to the conversation's room) does not say whose
@@ -1657,6 +1670,7 @@ class SharedActivityStore internal constructor(
                     RealtimeRowPatch.RowReread -> null
                     RealtimeRowPatch.Absent -> {
                         noteInPlaceAbsentLocked(event)
+                        requestSyncPullLocked(if (event is ThreadUpdated) "thread_reply_absent" else "message_absent")
                         scheduleRealtimeBackgroundReconcileLocked(trigger)
                     }
                     RealtimeRowPatch.NeedsRead -> scheduleRealtimeBackgroundReconcileLocked(trigger)
@@ -2955,6 +2969,20 @@ class SharedActivityStore internal constructor(
     private fun SharedActivityIntent.ApplyRealtimeEvent.inPlaceTrigger(): InboxRefreshTrigger =
         if (event is ThreadUpdated) InboxRefreshTrigger.ThreadReply else InboxRefreshTrigger.MessageNew
 
+    /** See [onSyncPullHint]. */
+    private fun requestSyncPullLocked(reason: String) {
+        _state.value.ownerServerId?.let { serverId -> onSyncPullHint(serverId, reason) }
+    }
+
+    /**
+     * `notification:retract` for this list's server: the conversation was read or done in some
+     * session. No read of the list brings that (the frame names no row); the sync pull does.
+     */
+    private fun requestSyncPullForRetract(event: NotificationRetracted) {
+        val owner = _state.value.ownerServerId ?: return
+        if (owner == event.serverId.value) onSyncPullHint(owner, "notification_retract")
+    }
+
     /** A live message for a row the list lacks: the check notes whether the re-read brings it. */
     private fun noteInPlaceAbsentLocked(event: RealtimeEvent) {
         when (event) {
@@ -3127,6 +3155,11 @@ class SharedActivityStore internal constructor(
     ) {
         if (event is PerReceiverReadStateChanged) {
             applyPerReceiverReadStateChanged(event)
+            return
+        }
+        // A list off screen keeps the row too: the pull reaches it there as well.
+        if (event is NotificationRetracted) {
+            requestSyncPullForRetract(event)
             return
         }
         val ownsBadge = synchronized(realtimeOwnerLock) { listOwnsBadgeLocked() }

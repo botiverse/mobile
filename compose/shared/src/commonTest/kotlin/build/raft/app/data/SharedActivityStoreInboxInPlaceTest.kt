@@ -5,6 +5,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageMention
 import build.raft.app.model.MessageNew
+import build.raft.app.model.NotificationRetracted
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
@@ -38,7 +39,11 @@ class SharedActivityStoreInboxInPlaceTest {
         }
     }
 
-    private class Fixture(val store: SharedActivityStore, val inbox: RecordingInbox)
+    private class Fixture(
+        val store: SharedActivityStore,
+        val inbox: RecordingInbox,
+        val syncPullHints: MutableList<Pair<String, String>>
+    )
 
     private fun TestScope.loadedStore(
         rows: List<InboxItem>,
@@ -47,6 +52,7 @@ class SharedActivityStoreInboxInPlaceTest {
     ): Fixture {
         val inbox = RecordingInbox(FakeInboxRepository(initialSnapshots = listOf(snapshot(rows))))
         inbox.now = { testScheduler.currentTime }
+        val syncPullHints = mutableListOf<Pair<String, String>>()
         val store =
             activityStore(
                 scope = backgroundScope,
@@ -54,12 +60,13 @@ class SharedActivityStoreInboxInPlaceTest {
                 realtimeBackgroundRefreshIntervalMillis = ActivityRealtimeBackgroundRefreshIntervalMillis,
                 nowMillis = { testScheduler.currentTime },
                 inboxInPlaceEnabled = { inPlace },
-                conversationsReadOnSight = conversationsReadOnSight
+                conversationsReadOnSight = conversationsReadOnSight,
+                onSyncPullHint = { serverId, reason -> syncPullHints += serverId to reason }
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
         assertEquals(listOf<InboxFetchReason?>(InboxFetchReason.Initial), inbox.reads.map { it.reason })
-        return Fixture(store, inbox)
+        return Fixture(store, inbox, syncPullHints)
     }
 
     private val channelRow = activityItem("channel-1").copy(latestActivitySeq = "10")
@@ -200,6 +207,37 @@ class SharedActivityStoreInboxInPlaceTest {
         assertEquals(InboxRefreshTriggerCount(InboxRefreshTrigger.MessageNew, coalesced = 2), read.trigger)
         assertEquals(ActivityRealtimeBackgroundRefreshIntervalMillis, read.atMillis, "the throttle's trailing edge")
     }
+
+    @Test
+    fun aRowTheListLacksAndARetractAskForTheSyncPullAShownRowDoesNot() = runTest {
+        val f = loadedStore(listOf(otherRow, channelRow, threadRow), inPlace = true)
+
+        // Shown rows patch in place: the list has them, nothing to pull.
+        f.store.dispatch(live("m-11", channelId = "channel-1", seq = 11L, mentionsMe = true))
+        f.store.dispatch(reply("r-21", seq = 21L, replyCount = 3))
+        runCurrent()
+        assertEquals(emptyList<Pair<String, String>>(), f.syncPullHints)
+
+        // A mention for a row the list lacks: the re-read may not have it yet, so the pull is asked too.
+        f.store.dispatch(live("m-1", channelId = "channel-9", seq = 1L, mentionsMe = true))
+        runCurrent()
+        assertEquals(listOf("server-1" to "message_absent"), f.syncPullHints)
+
+        // Done or read in another session: only the retract comes, visible list or not.
+        f.store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(retract("server-1")))
+        f.store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(retract("server-2")))
+        f.store.dispatch(
+            SharedActivityIntent.ApplyRealtimeSummaryEvent(retract("server-1"), activeConversationId = null, primarySurfaceVisible = false)
+        )
+        runCurrent()
+        assertEquals(
+            listOf("server-1" to "message_absent", "server-1" to "notification_retract", "server-1" to "notification_retract"),
+            f.syncPullHints
+        )
+    }
+
+    private fun retract(serverId: String) =
+        NotificationRetracted(ServerId(serverId), groupKey = "channel:channel-1", conversationId = "channel-1", throughSeq = 10L)
 
     @Test
     fun aHiddenListReadsNothingAndShowingItReadsOnceForVisibility() = runTest {
