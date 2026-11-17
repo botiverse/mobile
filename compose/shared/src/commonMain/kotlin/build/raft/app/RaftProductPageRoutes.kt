@@ -134,6 +134,9 @@ internal fun authenticatedProductPageView(
         AuthenticatedProductRoute.ArtifactViewer,
         // No `artifacts` route in the shared page_viewed registry yet.
         AuthenticatedProductRoute.ArtifactsHome,
+        // `assistant` is in the shared page_viewed registry (slock 2026-10-23), not yet in the app's
+        // pinned RaftPageRoute; the Home row's tap is reported (nav_entry_selected), the view not yet.
+        AuthenticatedProductRoute.Assistant,
         // No `external_invite` route in the shared page_viewed registry (the server records its own view).
         AuthenticatedProductRoute.ExternalInvite,
         // No `server_join` route in the shared page_viewed registry.

@@ -44,6 +44,7 @@ import build.raft.designsystem.components.RaftInboxItemLeadingBadge
 import build.raft.designsystem.components.RaftInboxItemLeading
 import build.raft.designsystem.components.RaftAvatarEmpty
 import build.raft.designsystem.components.RaftMessageDelegatedAvatar
+import build.raft.designsystem.components.RaftStickerDisc
 import build.raft.designsystem.components.RaftAvatarGroup
 import build.raft.designsystem.components.RaftAvatarGroupCount
 import build.raft.designsystem.components.RaftAvatarSize
@@ -605,6 +606,25 @@ class DisplayComponentScreenshotTest {
                     RaftInboxItemLeading(badge = threadBadge) { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md) }
                     Caption("Selected row")
                 }
+            }
+        }
+
+    /**
+     * Web `OttieRailAvatar`: the round sticker face at the phone Home row's 24dp and the rail's
+     * 28dp, over the canvas and over a yellow (selected) sticker; the ink edge over the image,
+     * the die-cut ring outside it in dark.
+     */
+    @Test
+    fun stickerDisc() =
+        capture("sticker_disc") {
+            val face: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {
+                Box(Modifier.fillMaxSize().background(RaftUiPalette.presenceExternal))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                RaftStickerDisc(size = 24.dp, image = face)
+                RaftStickerDisc(size = 28.dp, image = face)
+                Box(Modifier.background(RaftUiPalette.selected).padding(8.dp)) { RaftStickerDisc(size = 24.dp, image = face) }
+                Caption("24, 28, on a sticker")
             }
         }
 

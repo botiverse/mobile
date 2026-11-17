@@ -25,7 +25,10 @@ class RaftProductEventContractTest {
     private companion object {
         const val PinnedSlockSha = "9fdf630244561c770e7223ed190b9920c35da29a"
 
-        val NavDestinations = listOf("home", "activity", "search", "saved", "tasks", "members", "computers", "settings", "more")
+        /** `NAV_DESTINATIONS` @ [PinnedNavDestinationsSlockSha] (the personal assistant's row, #14598). */
+        const val PinnedNavDestinationsSlockSha = "e136d7c9543fb84bf91330370d89e17c8d8fa044"
+        val NavDestinations =
+            listOf("home", "activity", "search", "saved", "tasks", "members", "computers", "settings", "more", "assistant", "apps", "artifacts")
         val NavSurfaces =
             listOf("mobile_tab_bar", "rail", "top_bar", "mobile_home_shortcuts", "sidebar", "keyboard_shortcut", "mobile_more")
         val PageViewRoutes =
@@ -54,13 +57,14 @@ class RaftProductEventContractTest {
     fun pinnedShaMatchesProductionConstant() {
         assertEquals(PinnedSlockSha, RAFT_PRODUCT_EVENTS_SLOCK_SHA)
         assertEquals(PinnedDeviceClassSlockSha, RAFT_PRODUCT_EVENTS_DEVICE_CLASS_SLOCK_SHA)
+        assertEquals(PinnedNavDestinationsSlockSha, RAFT_PRODUCT_EVENTS_NAV_DESTINATIONS_SLOCK_SHA)
     }
 
     @Test
     fun enumWireValuesEqualTheRegistry() {
         val cases =
             listOf(
-                "NAV_DESTINATIONS" to (NavDestinations to RaftNavDestination.entries.map { it.wire }),
+                "NAV_DESTINATIONS@$PinnedNavDestinationsSlockSha" to (NavDestinations to RaftNavDestination.entries.map { it.wire }),
                 "NAV_SURFACES" to (NavSurfaces to RaftNavSurface.entries.map { it.wire }),
                 "PAGE_VIEW_ROUTES" to (PageViewRoutes to RaftPageRoute.entries.map { it.wire }),
                 "settings_tab" to (SettingsPageTabs to RaftSettingsTab.entries.map { it.wire }),

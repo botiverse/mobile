@@ -7621,6 +7621,13 @@ private fun RaftAppShellReadyContent(
                                     null
                                 }
                             }
+                        // The phone Home's Assistant row (web `mobileInline` only; the wide layout has the rail).
+                        val homeAssistantEntry =
+                            rememberAppShellHomeAssistantEntry(
+                                phone = !desktopModeOnLargeScreen,
+                                sharedStores = sharedStores,
+                                storeScope = storeScope,
+                            ) { pager.openAssistantPage(navigationStoreScope, threadTimeContext) }
                         val prefersChineseCommunity =
                             localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese
                         PerformanceSceneEffect(bridge, "kuikly_home", active = active)
@@ -7749,6 +7756,7 @@ private fun RaftAppShellReadyContent(
                                         pager.openHomeDraftsPage(threadTimeContext, navigationStoreScope)
                                     }
                                 },
+                                assistantEntry = homeAssistantEntry,
                                 onOpenComputers = {
                                     selectAppShellTab("settings")
                                     retainedAppShellTabs = retainedAppShellTabs + "settings"
@@ -13069,6 +13077,8 @@ private fun SharedHomeScreen(
     /** Server flag `drafts_section_v0` on: what the Drafts row's count reads; null hides the row. */
     draftsSource: RaftDraftsSource? = null,
     onOpenDrafts: () -> Unit = {},
+    /** The phone layout's Assistant row (web `mobileInline`); null: no row (the wide layout). */
+    assistantEntry: build.raft.app.assistant.HomeAssistantEntrySource? = null,
     onOpenComputers: () -> Unit = {},
     /** One Computer's page (a version-gate notice's View); falls back to the Computers list. */
     onOpenComputer: (machineId: String) -> Unit = { onOpenComputers() },
@@ -13515,6 +13525,8 @@ private fun SharedHomeScreen(
                 ),
                 savedCount = savedCount,
                 draftsCount = draftListing.count.takeIf { draftDirectory != null && draftListing.recordsKnown },
+                onAssistantClick =
+                    build.raft.app.assistant.rememberHomeAssistantRow(assistantEntry, snapshot.server.id.value, current.session.user.id, snapshot.server.role),
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 serverDrawerEnabled = serverDrawerEnabled,
                 homeServerAvatarEnabled = homeServerAvatarEnabled,

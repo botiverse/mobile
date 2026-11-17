@@ -133,6 +133,8 @@ val RaftMobileStackPages: RaftStackPageAllowlist =
                 RaftStackPageRule(pageName = build.raft.app.SETTINGS_COMPUTERS_PAGE),
                 // The Artifacts home, from the server panel (task #proj-mobile:#62).
                 RaftStackPageRule(pageName = build.raft.app.ARTIFACTS_HOME_PAGE),
+                // The personal assistant's page, from the phone Home's Assistant row (1.27).
+                RaftStackPageRule(pageName = build.raft.app.ASSISTANT_PAGE),
             ) +
             RaftStackChatFilesBrowsePages.map { RaftStackPageRule(pageName = it) } +
             RaftStackServerPanelTabs.map { tab ->

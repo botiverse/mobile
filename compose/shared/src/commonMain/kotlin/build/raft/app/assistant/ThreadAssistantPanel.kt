@@ -172,13 +172,7 @@ internal fun ThreadAssistantPanel(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(32.dp).clipToBounds(), contentAlignment = Alignment.BottomCenter) {
-                    Image(
-                        painter = painterResource(Res.drawable.assistant_otter_curious),
-                        contentDescription = null,
-                        modifier = Modifier.requiredSize(38.dp, 26.dp),
-                    )
-                }
+                AssistantHeadFace()
                 Column(Modifier.weight(1f)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -192,16 +186,7 @@ internal fun ThreadAssistantPanel(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        if (paused) {
-                            // Web AssistantPausedChip: the agent state chip with the offline light and "Paused".
-                            RaftBadge(
-                                text = stringResource(Res.string.assistant_paused_chip),
-                                modifier = Modifier.testTag(ThreadAssistantPanelPausedTestTag),
-                                appearance = RaftBadgeAppearance.Soft,
-                                variant = RaftBadgeVariant.Muted,
-                                icon = { RaftStatusDot(presence = RaftPresence.Offline) },
-                            )
-                        }
+                        if (paused) AssistantPausedChip()
                     }
                     RaftText(
                         stringResource(assistantPanelMeta(mood, readsDms)),
@@ -226,6 +211,33 @@ internal fun ThreadAssistantPanel(
         }
         Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam))
         conversation()
+    }
+}
+
+/** Web AssistantPausedChip: the agent state chip with the offline light and "Paused". */
+@Composable
+internal fun AssistantPausedChip(modifier: Modifier = Modifier) {
+    RaftBadge(
+        text = stringResource(Res.string.assistant_paused_chip),
+        modifier = modifier.testTag(ThreadAssistantPanelPausedTestTag),
+        appearance = RaftBadgeAppearance.Soft,
+        variant = RaftBadgeVariant.Muted,
+        icon = { RaftStatusDot(presence = RaftPresence.Offline) },
+    )
+}
+
+/**
+ * The assistant's face in a 32dp head (the panel's, the Assistant page's): the otter's head, cut
+ * at its chest, sitting on the box's bottom edge.
+ */
+@Composable
+internal fun AssistantHeadFace(modifier: Modifier = Modifier) {
+    Box(modifier.size(32.dp).clipToBounds(), contentAlignment = Alignment.BottomCenter) {
+        Image(
+            painter = painterResource(Res.drawable.assistant_otter_curious),
+            contentDescription = null,
+            modifier = Modifier.requiredSize(38.dp, 26.dp),
+        )
     }
 }
 

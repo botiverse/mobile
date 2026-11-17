@@ -46,6 +46,9 @@ import build.raft.designsystem.components.RaftWorkspaceButtonDefaults
 import build.raft.designsystem.components.RaftSidebarItem
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftSidebarItemVariant
+import build.raft.designsystem.components.RaftStickerDisc
+import androidx.compose.foundation.layout.requiredSize
+import org.jetbrains.compose.resources.painterResource
 import build.raft.designsystem.components.raftSidebarItemIconSize
 import build.raft.designsystem.components.RaftSidebarItemMarks
 import build.raft.designsystem.components.RaftSidebarItemMeta
@@ -1768,6 +1771,8 @@ internal class RaftStructuralHomeShellCallbacks(
     val onFollowedThreadsClick: () -> Unit = {},
     val onSavedClick: () -> Unit = {},
     val onDraftsClick: () -> Unit = {},
+    /** The phone Home's Assistant row (web `useRememberedAssistantShown`); null hides the row. */
+    val onAssistantClick: (() -> Unit)? = null,
     val onSearchClick: () -> Unit = {},
     val onNotificationView: (RaftHomeNotificationItem) -> Unit = {},
     val onNotificationDismiss: (RaftHomeNotificationItem) -> Unit = {},
@@ -1898,6 +1903,8 @@ internal fun RaftStructuralHomeShell(
     onFollowedThreadsClick: () -> Unit = {},
     onSavedClick: () -> Unit = {},
     onDraftsClick: () -> Unit = {},
+    /** The phone Home's Assistant row under Saved / Drafts; null hides it. */
+    onAssistantClick: (() -> Unit)? = null,
     onSearchClick: () -> Unit = {},
     onNotificationView: (RaftHomeNotificationItem) -> Unit = {},
     onNotificationDismiss: (RaftHomeNotificationItem) -> Unit = {},
@@ -2023,6 +2030,7 @@ internal fun RaftStructuralHomeShell(
                 onFollowedThreadsClick = onFollowedThreadsClick,
                 onSavedClick = onSavedClick,
                 onDraftsClick = onDraftsClick,
+                onAssistantClick = onAssistantClick,
                 onSearchClick = onSearchClick,
                 onNotificationView = onNotificationView,
                 onNotificationDismiss = onNotificationDismiss,
@@ -2146,6 +2154,7 @@ private fun RaftStructuralHomeShellContent(
     val onFollowedThreadsClick = callbacks.onFollowedThreadsClick
     val onSavedClick = callbacks.onSavedClick
     val onDraftsClick = callbacks.onDraftsClick
+    val onAssistantClick = callbacks.onAssistantClick
     val onSearchClick = callbacks.onSearchClick
     val onNotificationView = callbacks.onNotificationView
     val onNotificationDismiss = callbacks.onNotificationDismiss
@@ -2659,6 +2668,13 @@ private fun RaftStructuralHomeShellContent(
         dismissNotificationCenterForFocusLoss()
         onDraftsClick()
     }
+    val onAssistantClickWithDismiss: (() -> Unit)? =
+        onAssistantClick?.let { open ->
+            {
+                dismissNotificationCenterForFocusLoss()
+                open()
+            }
+        }
     val onChannelClickWithDismiss: (String) -> Unit = { conversationId ->
         dismissNotificationCenterForFocusLoss()
         onChannelClick(conversationId)
@@ -2903,6 +2919,11 @@ private fun RaftStructuralHomeShellContent(
                                 // row with its gray count (hidden at 0). Null: the flag is off, no row.
                                 if (draftsCount != null) {
                                     item { HomeSidebarEntryRow(RaftLucideIconName.Pencil, labels.drafts, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Drafts, modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding), trailing = formatHomeSavedCount(draftsCount)?.let { count -> { RaftSidebarItemMeta(count) } }, onClick = if (sidebarInteractionsEnabled) onDraftsClickWithDismiss else null) }
+                                }
+                                // The personal assistant (web phone Home, botiverse/slock #14598): after Saved and
+                                // Drafts, Ottie's round face where the others have a glyph; never selected.
+                                if (onAssistantClickWithDismiss != null) {
+                                    item(key = "entry-assistant") { HomeSidebarAssistantRow(Modifier.padding(horizontal = HomeListRowHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onAssistantClickWithDismiss else null) }
                                 }
                                 item(key = "entries-list-bottom") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                 inlineError?.let { error ->
@@ -7294,6 +7315,28 @@ internal fun HomeSidebarRowStatesVisualContent() {
 }
 
 /**
+ * Visual fixture: the top of the phone Home with the Assistant row (web phone Home, slock
+ * #14598): Saved with its count, Drafts, then Assistant with Ottie's face, the names on one line.
+ */
+@Composable
+internal fun HomeAssistantRowVisualContent() {
+    RaftDesignSystemTheme {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(RaftTheme.colors.layerCanvas)
+                    .padding(vertical = 16.dp)
+        ) {
+            val rowModifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding)
+            HomeSidebarEntryRow(RaftLucideIconName.Bookmark, stringResource(Res.string.home_nav_saved), modifier = rowModifier, trailing = { RaftSidebarItemMeta("3") })
+            HomeSidebarEntryRow(RaftLucideIconName.Pencil, stringResource(Res.string.home_nav_drafts), modifier = rowModifier)
+            HomeSidebarAssistantRow(rowModifier, onClick = {})
+        }
+    }
+}
+
+/**
  * Search / Activity / Saved at the top of the Home list: a raft-ui SidebarItem
  * ([RaftSidebarItem]) led by a lucide icon. [trailing] is the count (Activity's pink
  * unread count, Saved's quiet number).
@@ -7316,6 +7359,46 @@ private fun HomeSidebarEntryRow(
         trailing = trailing,
         variant = RaftSidebarItemVariant.Entry
     )
+}
+
+/**
+ * The phone Home's Assistant row (web Sidebar `mobileInline` Assistant entry, slock #14598): the
+ * entry row with Ottie's round face ([HomeAssistantFace], 24dp) where Saved and Drafts have a
+ * 20dp glyph, overhanging the 20dp icon column by 2dp on each side so the name lines up with
+ * theirs (web `-mx-0.5`). Labelled `layout.sidebar.assistant`; no count; never selected (the page
+ * it opens is pushed over Home).
+ */
+@Composable
+internal fun HomeSidebarAssistantRow(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    RaftSidebarItem(
+        title = stringResource(Res.string.home_nav_assistant),
+        modifier = modifier.testTag(HomeSidebarAssistantRowTestTag),
+        onClick = onClick,
+        selected = false,
+        leading = { HomeAssistantFace(Modifier.requiredSize(HomeAssistantFaceSize)) },
+        variant = RaftSidebarItemVariant.Entry,
+    )
+}
+
+/** Web `OttieRailAvatar size={24}`: the row's face, 4dp larger than an entry row's 20dp glyph. */
+internal val HomeAssistantFaceSize = 24.dp
+
+/** Web `data-testid="sidebar-assistant-row"` analogue. */
+internal const val HomeSidebarAssistantRowTestTag = "home-sidebar-assistant-row"
+
+/**
+ * Ottie's round face (web `OttieRailAvatar`): the rail crop of the curious pose (cream baked in,
+ * the 84px crop for every density) in a [RaftStickerDisc]. Decorative: the row names it.
+ */
+@Composable
+internal fun HomeAssistantFace(modifier: Modifier = Modifier, size: Dp = HomeAssistantFaceSize) {
+    RaftStickerDisc(size = size, modifier = modifier) {
+        Image(
+            painter = painterResource(Res.drawable.assistant_ottie_rail),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
 }
 
 /**

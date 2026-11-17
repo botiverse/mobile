@@ -409,6 +409,19 @@ class SharedServerFeatureFlags(
     }
 
     /**
+     * True when the evaluation for [serverId] settled without a snapshot (failed / malformed) and no
+     * stored last-known value decides [key] either: [isEnabled] reads the default (off), but the
+     * flag's real value is unknown (web `useServerFeatureFlag` `state: "undetermined"`). A remembered
+     * answer (the phone Home's Assistant row) must not learn "off" from it.
+     */
+    fun isDecisionUndetermined(serverId: ServerId, key: String): Boolean {
+        if (serverId.value.isBlank()) return false
+        if (snapshots[serverId.value] != null) return false
+        if (lastKnown?.read(serverId, key) != null) return false
+        return synchronized(stateLock) { serverId.value in settledWithoutSnapshot }
+    }
+
+    /**
      * The (environment, account) the last-known values are read for changed, e.g. the binding became
      * known after the first frames of a cold start.
      */
