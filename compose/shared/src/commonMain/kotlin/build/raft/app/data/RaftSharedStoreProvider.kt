@@ -2014,8 +2014,20 @@ internal class RaftSharedStoreProvider private constructor(
                             }
                         }
                     }
+                    // The selected server's runtime catalog, for every runtime label in this shell
+                    // (its "(deprecated)" is that server's answer): the cached answer at once, then
+                    // the server's, once per selection (one request per server in flight).
+                    val runtimeCatalog = launch {
+                        selectionStore.currentServerId.collectLatest { serverId ->
+                            val clean = serverId?.trim()?.takeIf { it.isNotBlank() } ?: return@collectLatest
+                            val repository = serverRuntimeCatalogRepository(scope)
+                            repository.cached(clean)
+                            repository.load(clean, DataRequestPriority.Background)
+                        }
+                    }
                     selectionStore.disposed.first { it }
                     prefetching.cancel()
+                    runtimeCatalog.cancel()
                 }
             }
         }
@@ -2440,6 +2452,19 @@ internal class RaftSharedStoreProvider private constructor(
                 logger = sharedInfoLogger("SlockRuntimeCatalog", "shared_server_runtime_catalog")
             )
         }
+
+    /**
+     * Makes [serverId]'s runtime catalog what its runtime labels read ([RaftRuntimeCatalogNames]):
+     * its cached answer at once, then one Background request per server in this process
+     * ([SharedServerRuntimeCatalogRepository.ensureLoaded]), through a shell showing that server
+     * when there is one. For labels shown outside the pages that load the catalog themselves.
+     */
+    internal fun ensureServerRuntimeCatalog(serverId: String) {
+        val clean = serverId.trim().takeIf { it.isNotBlank() } ?: return
+        if (RaftRuntimeCatalogNames.catalog(clean)?.source == RuntimeCatalogSource.Server) return
+        val repository = serverRuntimeCatalogRepository(scopesForServer(clean).firstOrNull() ?: RaftShellStoreScope.Legacy)
+        threadSendScope.launch { repository.ensureLoaded(clean, DataRequestPriority.Background) }
+    }
 
     fun createAgentFormStore(scope: RaftShellStoreScope): SharedCreateAgentFormStore =
         shellCreateAgentFormStores.getOrPut(scope) {

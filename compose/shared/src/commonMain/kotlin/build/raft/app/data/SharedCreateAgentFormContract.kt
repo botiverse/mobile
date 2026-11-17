@@ -94,7 +94,9 @@ internal val SharedCreateAgentRuntimeOption.deprecatedHere: Boolean
 internal fun runtimeDeprecatedForAgent(
     runtimeId: String,
     rows: ExistingAgentRuntimeOptions?,
-    catalogDeprecated: (String) -> Boolean = { runtimeCatalogIsDeprecated(it) }
+    /** The agent's server, whose catalog answers without the row (never another server's). */
+    serverId: String?,
+    catalogDeprecated: (String) -> Boolean = { runtimeCatalogIsDeprecated(it, serverId) }
 ): Boolean = rows?.currentRow(runtimeId)?.deprecatedHere ?: catalogDeprecated(runtimeId)
 
 /** Whether the server has a runtime form v2 for a runtime, from the runtime-options rows. */

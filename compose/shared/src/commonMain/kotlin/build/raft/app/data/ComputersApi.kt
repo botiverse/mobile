@@ -1572,16 +1572,16 @@ private fun JsonElement.toRuntimeModelInfo(): RuntimeModelInfo? {
     val label = obj["label"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() } ?: id
     val verified = obj["verified"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
     val supportedReasoningEfforts =
+        // Absent (or not a list): not reported. `[]`: the model takes no effort (slock #15162).
         runCatching { obj["supportedReasoningEfforts"]?.jsonArray }
             .getOrNull()
-            .orEmpty()
-            .mapNotNull { effort ->
+            ?.mapNotNull { effort ->
                 runCatching { effort.jsonPrimitive.contentOrNull }
                     .getOrNull()
                     ?.trim()
                     ?.takeIf { it.isNotBlank() }
             }
-            .distinct()
+            ?.distinct()
     val defaultReasoningEffort =
         obj["defaultReasoningEffort"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotBlank() }
     return RuntimeModelInfo(

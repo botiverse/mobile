@@ -55,14 +55,15 @@ class RaftMemberModelLabelTest {
 
     @Test
     fun anExternalOrCloudAgentShowsWhatTheWebShows() {
-        // Web ProfilePreviewCardContent: Model = getModelLabel(runtime, model), which falls back to
-        // the raw id, so an external/cloud agent's card reads "external"; its Runtime row names the
-        // sentinel "External agent" (formatRuntimeLabelWithStatus). MessageItem's agentModelLabel
-        // likewise gives "external" (the cloud wording needs `hostedRuntime`, not on MemberProfile).
+        // Web ProfilePreviewCardContent: Model = getModelLabel(runtime, model); shared RUNTIME_MODELS
+        // lists the external sentinel (`{ id: "external", label: "External agent" }`), so an
+        // external/cloud agent's card reads "External agent", as its Runtime row does
+        // (formatRuntimeLabelWithStatus). MessageItem's agentModelLabel likewise (the cloud wording
+        // needs `hostedRuntime`, not on MemberProfile).
         val external = memberProfile(kind = MemberKind.Agent, roleDescription = "external", model = "external")
-        assertEquals("external", external.modelLabel())
+        assertEquals("External agent", external.modelLabel())
         val card = raftProfilePreviewCardModel(external.copy(isExternal = true))
-        assertEquals("external", card.modelLabel)
+        assertEquals("External agent", card.modelLabel)
         assertEquals("External agent", card.runtimeLabel, "the runtime row names the sentinel, never the raw id")
     }
 

@@ -142,11 +142,13 @@ private fun RuntimeConfigUsageContent() {
                 resolution = remember { runtimeConfigFixture("claude", "claude-opus-4-1") },
                 runtimeModelsCatalog = null,
                 machineId = "m-1",
+                serverId = null,
             )
             MembersAgentRuntimeConfigRows(
                 resolution = remember { runtimeConfigFixture("codex", "gpt-5-codex") },
                 runtimeModelsCatalog = null,
                 machineId = "m-1",
+                serverId = null,
             )
         }
     }

@@ -117,7 +117,8 @@ data class RuntimeConfig(
 /**
  * The bundled runtime table: the last resort after the server catalog
  * (`GET /api/servers/:id/runtimes`, shared `ServerRuntimeCatalog`) and its per-server cache.
- * Mirrors slock `packages/shared/src/runtimeCatalog.ts` `RUNTIMES` at f5fe2ca864 (PR #12065).
+ * Mirrors slock `packages/shared/src/runtimeCatalog.ts` `RUNTIMES` at origin/staging 0b369d1aef
+ * (unchanged since f5fe2ca864, PR #12065).
  * [displayName] is the bare product name; a label that names a lifecycle status adds it
  * (" (deprecated)", " (experimental)") from the app's strings.
  */
@@ -168,7 +169,12 @@ data class RuntimeModelInfo(
     val id: String,
     val label: String,
     val verified: String? = null, // "launchable" | "suggestion_only" | null
-    val supportedReasoningEfforts: List<String> = emptyList(),
+    /**
+     * The reasoning effort ids this model accepts (shared `RuntimeModelInfo`, slock #15162): null
+     * when not reported (readers fall back to the catalog or the runtime's base set); an empty list
+     * when the model takes no reasoning effort (no fallback, nothing offered).
+     */
+    val supportedReasoningEfforts: List<String>? = null,
     val defaultReasoningEffort: String? = null
 )
 
@@ -179,7 +185,18 @@ data class RuntimeModelPresentation(
 
 private val CLAUDE_REASONING_EFFORTS = listOf("low", "medium", "high", "xhigh", "max")
 
+/**
+ * The bundled model table: the fallback when neither the Computer nor the server catalog lists a
+ * runtime's models. Mirrors slock `packages/shared/src/index.ts` `RUNTIME_MODELS` at origin/staging
+ * 0b369d1aef: the same runtimes, rows, labels, order (the first row is [getDefaultModel]) and
+ * reasoning metadata.
+ */
 val RUNTIME_MODELS: Map<String, List<RuntimeModelInfo>> = mapOf(
+    // Shared `EXTERNAL_AGENT_RUNTIME_ID` / `EXTERNAL_AGENT_RUNTIME_MODEL` / display name.
+    "external" to listOf(
+        RuntimeModelInfo("external", "External agent")
+    ),
+    "builtin" to PI_BUILTIN_RUNTIME_MODELS,
     // Same rows and order as slock packages/shared RUNTIME_MODELS.claude (the fallback when the
     // Computer's own catalog is unavailable).
     "claude" to listOf(
@@ -201,7 +218,37 @@ val RUNTIME_MODELS: Map<String, List<RuntimeModelInfo>> = mapOf(
         RuntimeModelInfo("claude-haiku-5-5", "Claude Haiku 5.5", supportedReasoningEfforts = CLAUDE_REASONING_EFFORTS),
         RuntimeModelInfo("claude-haiku-4-5", "Claude Haiku 4.5")
     ),
+    // Order and per-model reasoning metadata follow upstream Codex's bundled catalog
+    // (codex-rs/models-manager/models.json, rust-v0.162.0), as slock's.
     "codex" to listOf(
+        RuntimeModelInfo(
+            "gpt-6.1-sol",
+            "GPT-6.1 Sol",
+            verified = "launchable",
+            supportedReasoningEfforts = listOf("low", "medium", "high", "xhigh", "max", "ultra"),
+            defaultReasoningEffort = "low"
+        ),
+        RuntimeModelInfo(
+            "gpt-6-astra",
+            "GPT-6-Astra",
+            verified = "launchable",
+            supportedReasoningEfforts = listOf("low", "medium", "high", "xhigh", "max", "ultra"),
+            defaultReasoningEffort = "low"
+        ),
+        RuntimeModelInfo(
+            "gpt-6-sol",
+            "GPT-6 Sol",
+            verified = "launchable",
+            supportedReasoningEfforts = listOf("low", "medium", "high", "xhigh", "max", "ultra"),
+            defaultReasoningEffort = "medium"
+        ),
+        RuntimeModelInfo(
+            "gpt-6-luna",
+            "GPT-6 Luna",
+            verified = "launchable",
+            supportedReasoningEfforts = listOf("low", "medium", "high", "xhigh", "max"),
+            defaultReasoningEffort = "medium"
+        ),
         RuntimeModelInfo(
             "gpt-5.6-sol",
             "GPT-5.6 Sol",
@@ -234,6 +281,18 @@ val RUNTIME_MODELS: Map<String, List<RuntimeModelInfo>> = mapOf(
         RuntimeModelInfo("gpt-5-codex", "GPT-5 Codex"),
         RuntimeModelInfo("gpt-5", "GPT-5")
     ),
+    "grok" to listOf(
+        RuntimeModelInfo(
+            "grok-4.5",
+            "Grok 4.5",
+            verified = "launchable",
+            supportedReasoningEfforts = listOf("high", "medium", "low"),
+            defaultReasoningEffort = "high"
+        ),
+        // A new choice without changing the bundled default; live detection owns availability.
+        RuntimeModelInfo("grok-4.6", "Grok 4.6", verified = "suggestion_only"),
+        RuntimeModelInfo("grok-composer-2.5-fast", "Composer 2.5", verified = "launchable")
+    ),
     "antigravity" to listOf(
         RuntimeModelInfo("default", "AGY configured default", verified = "suggestion_only")
     ),
@@ -257,15 +316,22 @@ val RUNTIME_MODELS: Map<String, List<RuntimeModelInfo>> = mapOf(
     ),
     "opencode" to listOf(
         RuntimeModelInfo("default", "Configured Default / Auto", verified = "suggestion_only"),
-        RuntimeModelInfo("deepseek/deepseek-v4-pro", "DeepSeek V4 Pro (OpenCode)", verified = "suggestion_only"),
-        RuntimeModelInfo("openrouter/anthropic/claude-opus-4.5", "Claude Opus 4.5 via OpenRouter", verified = "suggestion_only"),
-        RuntimeModelInfo("fusecode/opus[1m]", "Opus 1M via FuseCode", verified = "suggestion_only")
+        // slock `formatRuntimeProviderModelLabel(id)`.
+        RuntimeModelInfo("deepseek/deepseek-v4-pro", "DeepSeek V4 Pro · DeepSeek", verified = "suggestion_only"),
+        RuntimeModelInfo("openrouter/anthropic/claude-opus-4.5", "Claude Opus 4.5 · Anthropic via OpenRouter", verified = "suggestion_only"),
+        RuntimeModelInfo("fusecode/opus[1m]", "Opus 1M · FuseCode", verified = "suggestion_only")
     ),
     "pi" to listOf(
         RuntimeModelInfo("default", "Configured Default / Auto", verified = "suggestion_only")
     ),
+    // Kimi CLI resolves model keys from each user's local config: defer to its default model.
     "kimi" to listOf(
         RuntimeModelInfo("default", "Configured Default")
+    ),
+    // Kimi Code's live list comes from the Computer; this one entry is its managed default, and keeps
+    // getDefaultModel("kimi-sdk") from falling through to Claude's "sonnet".
+    "kimi-sdk" to listOf(
+        RuntimeModelInfo("kimi-code/kimi-for-coding", "Kimi for Coding (default)", verified = "launchable")
     )
 )
 
@@ -278,10 +344,11 @@ fun getModelLabel(runtimeId: String, modelId: String): String =
 /**
  * Mirrors React `canonicalizeCodexPresentation`.
  *
- * Codex hosts can report the older machine default (`gpt-5.5`) first even when
- * the Raft GPT-5.6 presets are available. Keep live-only models, but present
- * known Codex presets in the shared catalog order and prefer GPT-5.6 Sol only
- * when the selected machine actually surfaced it. Other runtimes keep the
+ * Codex hosts can report an older machine default (`gpt-5.5`) first even when
+ * the Raft presets are available. Keep live-only models, but present known
+ * Codex presets in the shared catalog order and prefer the bundled default
+ * ([getDefaultModel], GPT-6.1 Sol) only when the selected machine actually
+ * surfaced it; else the machine default, else the first ordered model. Other runtimes keep the
  * machine-provided order/default unchanged.
  */
 fun canonicalizeRuntimeModelPresentation(

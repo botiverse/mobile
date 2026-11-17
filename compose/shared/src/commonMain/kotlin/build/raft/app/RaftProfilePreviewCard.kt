@@ -73,6 +73,8 @@ internal data class RaftProfilePreviewCardModel(
     val readReceipt: RaftProfilePreviewReadReceipt? = null,
     /** The server whose avatar cache holds the face. */
     val serverId: String? = null,
+    /** The agent's server, whose runtime catalog says whether [runtimeId] is deprecated there. */
+    val runtimeServerId: String? = serverId,
     /**
      * Someone from another server than the viewed one ([memberOrigin], web #14535): the ribbon
      * across the card's top with [originServers] and "External"; an agent shows none of this
@@ -140,7 +142,7 @@ internal fun raftProfilePreviewCardModel(
         description = if (appBot != null) null else profile.description?.trim()?.takeIf { it.isNotBlank() },
         appBot = appBot,
         status = if (isAgent && appBot == null) status else null,
-        runtimeLabel = if (agentFacts) runtimeId?.let { runtimeIdentityDisplayName(it, profile.serverId?.value) } else null,
+        runtimeLabel = if (agentFacts) runtimeId?.let { runtimeIdentityDisplayName(it, profile.serverId?.value ?: viewerServerId) } else null,
         runtimeId = if (agentFacts) runtimeId else null,
         modelLabel = if (agentFacts) profile.modelLabel() else null,
         computer =
@@ -155,6 +157,7 @@ internal fun raftProfilePreviewCardModel(
             },
         readReceipt = if (isAgent && appBot == null) readReceipt else null,
         serverId = profile.serverId?.value,
+        runtimeServerId = profile.serverId?.value ?: viewerServerId,
         external = origin.external,
         originServers = origin.servers,
     )
@@ -317,7 +320,7 @@ internal fun RaftProfilePreviewCardContent(
                     },
                     model.runtimeLabel?.let { label ->
                         stringResource(Res.string.member_label_runtime) to
-                            (model.runtimeId?.let { runtimeLabelWithStatus(it, model.serverId) } ?: label)
+                            (model.runtimeId?.let { runtimeLabelWithStatus(it, model.runtimeServerId) } ?: label)
                     },
                     model.modelLabel?.let { stringResource(Res.string.member_label_model) to it },
                 ),

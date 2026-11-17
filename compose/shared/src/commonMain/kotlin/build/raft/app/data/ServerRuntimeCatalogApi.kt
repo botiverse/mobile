@@ -19,6 +19,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /*
  * Server runtime catalog: `GET /api/servers/:id/runtimes`.
@@ -273,31 +276,37 @@ private fun RuntimeInfo.toBundledEntry(): RuntimeCatalogEntry =
 
 /**
  * The catalogs read in this process, for naming a runtime anywhere (subtitles, chips, profile
- * cards) without a server in hand. Snapshot state, so a name on screen follows a catalog that
- * lands later. Lookup: the catalog of the server asked for (else the last one read) → the bundled
- * table → the raw id. A runtime missing from every list never errors: it reads as its id.
+ * cards). Snapshot state, so a label on screen follows a catalog that lands later.
+ *
+ * A runtime's lifecycle (deprecated, experimental) is a per-server answer (Antigravity is offered
+ * again where the server says so): [entry] reads only the catalog of the server asked for, else the
+ * bundled table, never another server's catalog (web `useRuntimeDeprecatedHere`: the current
+ * server's catalog, else the bundled one). Only a bare name ([displayNameEntry]) may come from any
+ * catalog read here when neither the server asked for nor the bundled table knows the runtime.
  */
 internal class RaftRuntimeCatalogNameRegistry {
     private var catalogs by mutableStateOf<Map<String, ServerRuntimeCatalog>>(emptyMap())
-    private var lastServerId by mutableStateOf<String?>(null)
 
     fun publish(serverId: String, catalog: ServerRuntimeCatalog) {
         val key = serverId.trim()
         if (key.isBlank()) return
         if (catalogs[key] != catalog) catalogs = catalogs + (key to catalog)
-        if (lastServerId != key) lastServerId = key
     }
 
     fun clear() {
         catalogs = emptyMap()
-        lastServerId = null
     }
 
+    /** [serverId]'s entry for [runtimeId], else (no server, or a catalog not read yet) the bundled one. */
     fun entry(runtimeId: String, serverId: String? = null): RuntimeCatalogEntry? {
         val id = runtimeId.trim()
-        val server = serverId?.trim()?.takeIf { it.isNotBlank() } ?: lastServerId
+        val server = serverId?.trim()?.takeIf { it.isNotBlank() }
         return server?.let { catalogs[it]?.entry(id) } ?: BundledRuntimeCatalog.entry(id)
     }
+
+    /** For a name only: [entry], else the first catalog read here that lists [runtimeId]. */
+    fun displayNameEntry(runtimeId: String, serverId: String? = null): RuntimeCatalogEntry? =
+        entry(runtimeId, serverId) ?: runtimeId.trim().let { id -> catalogs.values.firstNotNullOfOrNull { it.entry(id) } }
 
     fun catalog(serverId: String?): ServerRuntimeCatalog? = serverId?.trim()?.let { catalogs[it] }
 }
@@ -305,14 +314,15 @@ internal class RaftRuntimeCatalogNameRegistry {
 /** The process-wide registry every runtime name on screen reads. */
 internal val RaftRuntimeCatalogNames: RaftRuntimeCatalogNameRegistry = RaftRuntimeCatalogNameRegistry()
 
-/** The name of [runtimeId]: catalog → bundled table → the id itself. */
+/** The name of [runtimeId]: [serverId]'s catalog → bundled table → any catalog read → the id itself. */
 internal fun runtimeCatalogDisplayName(runtimeId: String, serverId: String? = null): String =
-    RaftRuntimeCatalogNames.entry(runtimeId, serverId)?.displayName ?: runtimeId
+    RaftRuntimeCatalogNames.displayNameEntry(runtimeId, serverId)?.displayName ?: runtimeId
 
-internal fun runtimeCatalogIsDeprecated(runtimeId: String, serverId: String? = null): Boolean =
+/** Deprecated on [serverId] (its catalog, else the bundled table); no server: the bundled table. */
+internal fun runtimeCatalogIsDeprecated(runtimeId: String, serverId: String?): Boolean =
     RaftRuntimeCatalogNames.entry(runtimeId, serverId)?.deprecated == true
 
-internal fun runtimeCatalogIsExperimental(runtimeId: String, serverId: String? = null): Boolean =
+internal fun runtimeCatalogIsExperimental(runtimeId: String, serverId: String?): Boolean =
     RaftRuntimeCatalogNames.entry(runtimeId, serverId)?.experimental == true
 
 // ── Transport, cache, repository ──
@@ -363,10 +373,14 @@ internal class SharedServerRuntimeCatalogRepository(
     /** `environment|account` of the session, or null without one (nothing is cached then). */
     private val scopeProvider: suspend () -> String?,
     private val names: RaftRuntimeCatalogNameRegistry = RaftRuntimeCatalogNames,
-    private val logger: (String) -> Unit = {}
+    private val logger: (String) -> Unit = {},
+    private val timeSource: TimeSource = TimeSource.Monotonic
 ) {
     private val mutex = Mutex()
     private val inFlight = mutableMapOf<String, Deferred<ServerRuntimeCatalog>>()
+
+    /** When [ensureLoaded] last asked each server (answered or not). */
+    private val ensuredAt = mutableMapOf<String, TimeMark>()
 
     /** The cached catalog of [serverId] (else bundled), without a request. */
     suspend fun cached(serverId: String): ServerRuntimeCatalog {
@@ -395,6 +409,30 @@ internal class SharedServerRuntimeCatalogRepository(
                 }
             }
         return request.await()
+    }
+
+    /**
+     * For a label that names a runtime (a row, a chip, a card; web `useServerRuntimeCatalog`, one
+     * shared read per server, a settled answer reused for a minute): publishes [serverId]'s cached
+     * answer at once, then asks the server. Every other call within [ENSURE_REUSE] (each row of a
+     * list) is free: it neither waits nor asks. A server switch refreshes through [load] instead.
+     */
+    suspend fun ensureLoaded(serverId: String, priority: DataRequestPriority) {
+        val key = serverId.trim()
+        if (key.isBlank()) return
+        val ask =
+            mutex.withLock {
+                val last = ensuredAt[key]
+                (last == null || last.elapsedNow() >= ENSURE_REUSE).also { if (it) ensuredAt[key] = timeSource.markNow() }
+            }
+        if (!ask) return
+        if (names.catalog(key) == null) cached(key)
+        load(key, priority)
+    }
+
+    private companion object {
+        /** web `CATALOG_REUSE_MS`. */
+        val ENSURE_REUSE = 1.minutes
     }
 
     private suspend fun fetch(serverId: String, priority: DataRequestPriority): ServerRuntimeCatalog {

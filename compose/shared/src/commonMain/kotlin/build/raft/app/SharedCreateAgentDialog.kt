@@ -351,7 +351,8 @@ internal data class SharedCreateAgentRuntimeModelOption(
     val id: String,
     val label: String,
     val verified: String? = null,
-    val supportedReasoningEfforts: List<String> = emptyList(),
+    /** Null: not reported; empty: the model takes no reasoning effort ([RuntimeModelInfo]). */
+    val supportedReasoningEfforts: List<String>? = null,
     val defaultReasoningEffort: String? = null
 )
 

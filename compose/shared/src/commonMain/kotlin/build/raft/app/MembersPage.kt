@@ -10107,6 +10107,8 @@ private fun MembersHumanCreatedAgentsSection(
                 createdAgents.forEachIndexed { index, agent ->
                     MembersHumanCreatedAgentRow(
                         agent = agent,
+                        // The agents a person created on this server: its runtime catalog names them.
+                        serverId = member.serverId?.value,
                         divider = index > 0,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
@@ -10202,8 +10204,9 @@ private fun MembersHumanActionsSection(
 }
 
 @Composable
-private fun MembersHumanCreatedAgentRow(
+internal fun MembersHumanCreatedAgentRow(
     agent: AgentProfile,
+    serverId: String?,
     divider: Boolean,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
@@ -10229,7 +10232,7 @@ private fun MembersHumanCreatedAgentRow(
         title = profile.displayName,
         onClick = onClick,
         divider = divider,
-        subtitle = agent.runtime?.takeIf { it.isNotBlank() }?.let { runtimeLabelWithStatus(it) }
+        subtitle = agent.runtime?.takeIf { it.isNotBlank() }?.let { runtimeLabelWithStatus(it, serverId) }
             ?: profile.detailRoleLabel,
         leading = { MembersStickerAvatar(profile, RaftAvatarSize.Md, memberAvatarResolver) },
         trailing = observedDisplayState?.let { observed ->
@@ -10644,7 +10647,7 @@ internal fun MembersAgentProfileHeader(
                     }
                     if (runtimeId != null && appBot == null) {
                         // Web `agent-profile-runtime-chip`: the DS runtime chip led by Lucide `square-terminal`.
-                        val runtimeLabel = runtimeLabelWithStatus(runtimeId)
+                        val runtimeLabel = runtimeLabelWithStatus(runtimeId, member.serverId?.value)
                         RaftRuntimeChip(
                             text = runtimeLabel,
                             modifier = Modifier.raftCopyable(runtimeLabel),
@@ -11958,11 +11961,14 @@ private fun MembersAgentRuntimeConfigSection(
             }
     ) {
         val runtimeModelsCatalog = canonicalRuntimeId?.let(agentRuntimeModelsByRuntime::get)
+        // The agent's server: its catalog says whether the runtime is deprecated there.
+        val runtimeCatalogServerId = member.serverId?.value ?: agentProfileEditAuthority?.serverId?.value
         MembersAgentRuntimeConfigRows(
             resolution = runtimeConfigResolution,
             runtimeModelsCatalog = runtimeModelsCatalog,
             machineId = summary?.machineId ?: member.membersComputerId,
-            runtimeDeprecated = canonicalRuntimeId?.let { runtimeDeprecatedForAgent(it, agentRuntimeOptions) },
+            serverId = runtimeCatalogServerId,
+            runtimeDeprecated = canonicalRuntimeId?.let { runtimeDeprecatedForAgent(it, agentRuntimeOptions, runtimeCatalogServerId) },
             runningHint =
                 canonicalRuntimeConfig?.let { config ->
                     membersRuntimeRunningHint(
@@ -11971,9 +11977,9 @@ private fun MembersAgentRuntimeConfigSection(
                         savedModel = config.toMembersRuntimeModelValue(),
                         runningRuntime = summary?.runningRuntime,
                         runningModel = summary?.runningModel,
-                        runtimeName = { runtimeCatalogDisplayName(it) },
+                        runtimeName = { runtimeCatalogDisplayName(it, runtimeCatalogServerId) },
                         modelLabel = { model ->
-                            membersAgentRuntimeModelDisplayLabel(config.runtime, model, runtimeModelsCatalog) ?: model
+                            membersAgentRuntimeModelDisplayLabel(config.runtime, model, runtimeModelsCatalog, runtimeCatalogServerId) ?: model
                         }
                     )
                 }
@@ -12406,6 +12412,8 @@ internal fun MembersAgentRuntimeConfigRows(
     resolution: MembersAgentRuntimeConfigResolution,
     runtimeModelsCatalog: SharedCreateAgentRuntimeModelCatalog?,
     machineId: String?,
+    /** The agent's server: its runtime catalog names the runtime and says whether it is deprecated. */
+    serverId: String?,
     /** What a running agent still runs until a saved change applies; null hides the line. */
     runningHint: MembersRuntimeRunningHint? = null,
     /**
@@ -12436,17 +12444,19 @@ internal fun MembersAgentRuntimeConfigRows(
         membersAgentRuntimeModelDisplayLabel(
             runtimeId = runtimeId,
             modelId = runtimeConfig.toMembersRuntimeModelValue(),
-            runtimeModelsCatalog = runtimeModelsCatalog
+            runtimeModelsCatalog = runtimeModelsCatalog,
+            serverId = serverId
         )
     // Web: the same stacked DescriptionList as Info -- one row per property, label above value.
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(MembersInfoItemGap)
     ) {
-        val deprecated = runtimeDeprecated ?: runtimeCatalogIsDeprecated(runtimeId)
+        // The label below brings [serverId]'s catalog in; this follows it when it lands.
+        val deprecated = runtimeDeprecated ?: runtimeCatalogIsDeprecated(runtimeId, serverId)
         MembersAgentInfoField(stringResource(Res.string.member_label_runtime)) {
             MembersAgentRuntimeUsageChip(
-                label = runtimeLabelWithStatus(runtimeId, deprecated = deprecated),
+                label = runtimeLabelWithStatus(runtimeId, serverId, deprecated = deprecated),
                 runtimeId = runtimeId,
                 machineId = machineId
             )
@@ -12565,7 +12575,9 @@ internal fun MembersAgentRuntimeConfigRows(
 internal fun membersAgentRuntimeModelDisplayLabel(
     runtimeId: String,
     modelId: String,
-    runtimeModelsCatalog: SharedCreateAgentRuntimeModelCatalog?
+    runtimeModelsCatalog: SharedCreateAgentRuntimeModelCatalog?,
+    /** The agent's server: its catalog's models, else the bundled list. */
+    serverId: String? = null
 ): String? {
     val normalizedRuntimeId = runtimeId.trim()
     val normalizedModelId = modelId.trim()
@@ -12579,7 +12591,7 @@ internal fun membersAgentRuntimeModelDisplayLabel(
         ?.label
         .verifiedDisplayLabel()
         // The server catalog's models for this runtime, else the bundled list.
-        ?: build.raft.app.data.RaftRuntimeCatalogNames.entry(normalizedRuntimeId)
+        ?: build.raft.app.data.RaftRuntimeCatalogNames.entry(normalizedRuntimeId, serverId)
             ?.models
             ?.firstOrNull { it.id == normalizedModelId }
             ?.label
@@ -13011,7 +13023,8 @@ private fun membersKimiSdkModelDeclaresReasoning(
     if (runtime != "kimi-sdk") return false
     val live = liveModels.firstOrNull { it.id == model.trim() } ?: return false
     val default = live.defaultReasoningEffort
-    return live.supportedReasoningEfforts.isNotEmpty() && !default.isNullOrBlank() && default in live.supportedReasoningEfforts
+    val efforts = live.supportedReasoningEfforts.orEmpty()
+    return efforts.isNotEmpty() && !default.isNullOrBlank() && default in efforts
 }
 
 internal fun membersRuntimeModelConfig(

@@ -111,11 +111,11 @@ class RuntimeServerVerdictTest {
                 .rows.first()
         assertEquals("copilot" to RuntimePickerGroup.Current, copilot.id to copilot.group)
         assertTrue(copilot.deprecated)
-        assertTrue(runtimeDeprecatedForAgent("copilot", onCopilot, catalogDeprecated = { false }))
+        assertTrue(runtimeDeprecatedForAgent("copilot", onCopilot, serverId = null, catalogDeprecated = { false }))
 
         // Antigravity revived on this server: its own row has no `admissionReason`, whatever the bundle says.
         val onAntigravity = existingRows(current = "antigravity", installed = setOf("antigravity"), revived = setOf("antigravity"))
-        assertFalse(runtimeDeprecatedForAgent("antigravity", onAntigravity, catalogDeprecated = { true }))
+        assertFalse(runtimeDeprecatedForAgent("antigravity", onAntigravity, serverId = null, catalogDeprecated = { true }))
         val row =
             runtimePickerRows(BundledRuntimeCatalog, listOf("antigravity"), "antigravity", showAll = false, currentRuntimeId = "antigravity", options = onAntigravity.options)
                 .rows.first()
@@ -126,7 +126,7 @@ class RuntimeServerVerdictTest {
     fun afterASwitchTheOldCurrentRowSaysNothingAboutTheNewRuntime() {
         // Rows read while the agent ran Copilot (deprecated); it has since switched to Codex CLI.
         val stale = existingRows(current = "copilot", installed = setOf("copilot", "codex"))
-        assertFalse(runtimeDeprecatedForAgent("codex", stale, catalogDeprecated = { false }))
+        assertFalse(runtimeDeprecatedForAgent("codex", stale, serverId = null, catalogDeprecated = { false }))
         val picker =
             runtimePickerRows(BundledRuntimeCatalog, listOf("copilot", "codex"), "codex", showAll = false, currentRuntimeId = "codex", options = stale.options)
         val codex = picker.rows.first()
@@ -137,10 +137,10 @@ class RuntimeServerVerdictTest {
         // The other way round: rows that still mark Codex current say nothing about Copilot, so the
         // catalog answers for it.
         val staleCodex = existingRows(current = "codex", installed = setOf("copilot", "codex"))
-        assertTrue(runtimeDeprecatedForAgent("copilot", staleCodex, catalogDeprecated = { it == "copilot" }))
-        assertFalse(runtimeDeprecatedForAgent("copilot", staleCodex, catalogDeprecated = { false }))
+        assertTrue(runtimeDeprecatedForAgent("copilot", staleCodex, serverId = null, catalogDeprecated = { it == "copilot" }))
+        assertFalse(runtimeDeprecatedForAgent("copilot", staleCodex, serverId = null, catalogDeprecated = { false }))
         // No rows at all: the catalog.
-        assertTrue(runtimeDeprecatedForAgent("copilot", null, catalogDeprecated = { it == "copilot" }))
+        assertTrue(runtimeDeprecatedForAgent("copilot", null, serverId = null, catalogDeprecated = { it == "copilot" }))
     }
 
     private val newAgentRuntimeIds = listOf("builtin", "claude", "codex", "cursor", "grok", "kimi-sdk", "opencode", "pi", "qoder", "qwen")

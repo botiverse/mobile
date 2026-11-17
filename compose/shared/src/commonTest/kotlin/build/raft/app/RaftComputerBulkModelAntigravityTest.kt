@@ -13,7 +13,7 @@ import kotlin.test.assertNull
  * levels the Computer lists.
  */
 class RaftComputerBulkModelAntigravityTest {
-    private fun option(id: String, efforts: List<String> = emptyList(), default: String? = null) =
+    private fun option(id: String, efforts: List<String>? = null, default: String? = null) =
         RaftBulkModelOption(id, id, efforts, default)
 
     @Test
@@ -37,14 +37,25 @@ class RaftComputerBulkModelAntigravityTest {
     @Test
     fun antigravityOffersOnlyTheLevelsAModelLists() {
         assertEquals(listOf("low", "high"), raftBulkReasoningEffortOptions("antigravity", listOf("high", "low")))
-        assertEquals(emptyList(), raftBulkReasoningEffortOptions("antigravity", emptyList()))
-        // Other runtimes still offer the base set for a model that declares none.
-        assertEquals(listOf("low", "medium", "high", "xhigh"), raftBulkReasoningEffortOptions("claude", emptyList()))
+        assertEquals(emptyList(), raftBulkReasoningEffortOptions("antigravity", null))
+        // Other runtimes still offer the base set for a model that reports none.
+        assertEquals(listOf("low", "medium", "high", "xhigh"), raftBulkReasoningEffortOptions("claude", null))
 
         assertEquals("high", raftBulkReconcileReasoningEffort("antigravity", listOf("low", "high"), "high", current = null))
         assertEquals("low", raftBulkReconcileReasoningEffort("antigravity", listOf("low", "high"), "high", current = "low"))
         // A model with no listed levels (the configured default): Default, whatever was picked before.
-        assertNull(raftBulkReconcileReasoningEffort("antigravity", emptyList(), null, current = "high"))
-        assertEquals("high", raftBulkReconcileReasoningEffort("claude", emptyList(), null, current = "high"))
+        assertNull(raftBulkReconcileReasoningEffort("antigravity", null, null, current = "high"))
+        assertEquals("high", raftBulkReconcileReasoningEffort("claude", null, null, current = "high"))
+    }
+
+    @Test
+    fun aModelThatDeclaresNoEffortsOffersNoneOnAnyRuntime() {
+        // slock #15162: `[]` is the model saying it takes no effort, not that it did not say.
+        for (runtime in listOf("codex", "claude", "antigravity")) {
+            assertEquals(emptyList(), raftBulkReasoningEffortOptions(runtime, emptyList()), runtime)
+            // Default, even over a stale choice or a declared default.
+            assertNull(raftBulkReconcileReasoningEffort(runtime, emptyList(), "medium", current = "high"), runtime)
+            assertNull(raftBulkReconcileReasoningEffort(runtime, emptyList(), null, current = null), runtime)
+        }
     }
 }
