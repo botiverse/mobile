@@ -78,7 +78,8 @@ class AppShellSessionRestoreSplashTest {
         onNodeWithText("Sign out").assertExists()
 
         onNodeWithTag(AppShellRestoreRetryTestTag).performClick()
-        advance(16)
+        // The click lands within a frame; the state it sets is drawn in the next one.
+        advance(32)
         assertEquals(1, retries)
         assertEquals(0, signOuts)
         // Try again starts the wait over (the web reloads the page): no actions until the limit again.
