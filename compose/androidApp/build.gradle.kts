@@ -787,14 +787,6 @@ android {
         getByName("connectedTest") {
             res.srcDir("src/connectedTest/res")
         }
-        // The readiness receiver's code: compiled by debug (so PR CI compiles and unit-tests it) and
-        // by qaRelease only. release / play never see this directory.
-        getByName("debug") {
-            java.srcDir("src/qaReadiness/java")
-        }
-        getByName("qaRelease") {
-            java.srcDir("src/qaReadiness/java")
-        }
     }
 }
 
@@ -817,6 +809,12 @@ androidComponents {
             layout.buildDirectory.dir("generated/assets/ossLicenses/main").get().asFile.absolutePath
         )
     }
+    // The release pre-login readiness receiver's code (src/qaReadiness/kotlin): compiled by debug
+    // (so PR CI compiles and unit-tests it) and by the qaRelease candidate only. release / play
+    // never see this directory.
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.sources.kotlin?.addStaticSourceDirectory(file("src/qaReadiness/kotlin").absolutePath)
+    }
     // Store builds must not carry the release pre-login readiness receiver; the QA candidate must.
     // Checked on the MERGED manifest (what is packaged), wired into assemble/bundle below.
     onVariants(selector().withBuildType("release")) { variant ->
@@ -826,6 +824,7 @@ androidComponents {
         registerQaReadinessReceiverCheck(variant, expectPresent = false)
     }
     onVariants(selector().withBuildType("qaRelease")) { variant ->
+        variant.sources.kotlin?.addStaticSourceDirectory(file("src/qaReadiness/kotlin").absolutePath)
         registerQaReadinessReceiverCheck(variant, expectPresent = true)
     }
 }

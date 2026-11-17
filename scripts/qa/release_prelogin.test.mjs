@@ -551,7 +551,8 @@ test("release_auto_login: deferred app session counts only in the deferred sign-
 
 test("store builds compile the receiver out: only debug + qaRelease source sets, only the qaRelease manifest", () => {
   const gradle = fs.readFileSync(path.join(ROOT, "compose/androidApp/build.gradle.kts"), "utf8");
-  assert.deepEqual([...gradle.matchAll(/getByName\("(\w+)"\) \{\s*java\.srcDir\("src\/qaReadiness\/java"\)/g)].map((m) => m[1]).sort(), ["debug", "qaRelease"]);
+  assert.deepEqual([...gradle.matchAll(/withBuildType\("(\w+)"\)\) \{ variant ->\s*variant\.sources\.kotlin\?\.addStaticSourceDirectory\(file\("src\/qaReadiness\/kotlin"\)/g)].map((m) => m[1]).sort(), ["debug", "qaRelease"]);
+  assert.equal([...gradle.matchAll(/src\/qaReadiness\/kotlin"\)/g)].length, 2);
   assert.match(gradle, /onVariants\(selector\(\)\.withBuildType\("release"\)\) \{ variant ->\s*registerQaReadinessReceiverCheck\(variant, expectPresent = false\)/);
   assert.match(gradle, /onVariants\(selector\(\)\.withBuildType\("play"\)\) \{ variant ->\s*registerQaReadinessReceiverCheck\(variant, expectPresent = false\)/);
   for (const m of ["main", "play"]) assert.doesNotMatch(fs.readFileSync(path.join(ROOT, `compose/androidApp/src/${m}/AndroidManifest.xml`), "utf8"), /QaReleaseReadinessReceiver/);

@@ -133,11 +133,13 @@ class QaReleaseReadinessReceiptTest {
                 .filter { it.readText().contains("class QaReleaseReadinessReceiver") }
                 .map { it.relativeTo(src).path.replace('\\', '/') }
                 .toList()
-        assertEquals(listOf("qaReadiness/java/build/raft/app/core/data/auth/QaReleaseReadinessReceiver.kt"), holders)
+        assertEquals(listOf("qaReadiness/kotlin/build/raft/app/core/data/auth/QaReleaseReadinessReceiver.kt"), holders)
         val gradle = File(src.parentFile, "build.gradle.kts").readText()
-        val users = Regex("getByName\\(\"(\\w+)\"\\) \\{\\s*java\\.srcDir\\(\"src/qaReadiness/java\"\\)").findAll(gradle).map { it.groupValues[1] }.toSet()
+        val users =
+            Regex("withBuildType\\(\"(\\w+)\"\\)\\) \\{ variant ->\\s*variant\\.sources\\.kotlin\\?\\.addStaticSourceDirectory\\(file\\(\"src/qaReadiness/kotlin\"\\)")
+                .findAll(gradle).map { it.groupValues[1] }.toSet()
         assertEquals(setOf("debug", "qaRelease"), users)
-        assertEquals(2, Regex("src/qaReadiness/java").findAll(gradle).count())
+        assertEquals(2, Regex("addStaticSourceDirectory\\(file\\(\"src/qaReadiness/kotlin\"\\)").findAll(gradle).count())
     }
 
     private fun manifest(relativePath: String): Element =

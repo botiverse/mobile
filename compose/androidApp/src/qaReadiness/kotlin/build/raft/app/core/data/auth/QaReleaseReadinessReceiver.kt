@@ -14,7 +14,7 @@ import java.security.MessageDigest
 /**
  * Release pre-login readiness receipt (docs/qa-acceptance/release-prelogin-contract.md).
  *
- * COMPILED OUT of the store build. This file sits in `src/qaReadiness/java`, a source directory
+ * COMPILED OUT of the store build. This file sits in `src/qaReadiness/kotlin`, a source directory
  * that only the `debug` and the QA-instrumented `qaRelease` build types compile. Only
  * `src/qaRelease/AndroidManifest.xml` declares the receiver. `release` and `play` have neither the
  * class nor the manifest entry; `verifyReleaseHasNoQaReadinessReceiver` /

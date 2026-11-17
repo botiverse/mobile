@@ -18,7 +18,7 @@ Testbed cases, with receipts.
 ## What runs, and on which bytes
 
 - **The readiness receiver is compiled out of the store build.** Its code sits in
-  `compose/androidApp/src/qaReadiness/java`. Only the `debug` build type (so PR CI compiles and
+  `compose/androidApp/src/qaReadiness/kotlin`. Only the `debug` build type (so PR CI compiles and
   unit-tests it) and the QA-instrumented build type **`qaRelease`** compile that directory. Only
   `src/qaRelease/AndroidManifest.xml` declares the receiver.
 - **`release` and `play` contain neither the class nor the manifest entry.** Gradle tasks
