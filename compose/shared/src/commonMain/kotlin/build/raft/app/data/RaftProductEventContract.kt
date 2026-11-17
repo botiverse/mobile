@@ -84,6 +84,9 @@ const val RAFT_PRODUCT_EVENTS_APP_SETTINGS_SLOCK_SHA: String = "409605bdd39c2ee8
  */
 const val RAFT_PRODUCT_EVENTS_DEVICE_CLASS_SLOCK_SHA: String = "9a30dba7deb45b2f7d3154a8a57ace55fb45b35c"
 
+/** `NAV_DESTINATIONS` ([RaftNavDestination]) at botiverse/slock staging, with `assistant`, `apps`, `artifacts`. */
+const val RAFT_PRODUCT_EVENTS_NAV_DESTINATIONS_SLOCK_SHA: String = "e136d7c9543fb84bf91330370d89e17c8d8fa044"
+
 /**
  * The batch `device_class`: whether this app runs on a phone or a tablet, as the app decides it.
  * The server prefers it over the User-Agent for `$device_type` (phone -> `mobile`, tablet -> `tablet`).
@@ -102,7 +105,10 @@ enum class RaftProductEventSource(val wire: String) {
     @SerialName("harmonyos") HarmonyOs("harmonyos"),
 }
 
-/** `NAV_DESTINATIONS`. */
+/**
+ * `NAV_DESTINATIONS`, as of botiverse/slock @ [RAFT_PRODUCT_EVENTS_NAV_DESTINATIONS_SLOCK_SHA]
+ * (`assistant`, `apps`, `artifacts` added after [RAFT_PRODUCT_EVENTS_SLOCK_SHA]).
+ */
 @Serializable
 enum class RaftNavDestination(val wire: String) {
     @SerialName("home") Home("home"),
@@ -114,6 +120,15 @@ enum class RaftNavDestination(val wire: String) {
     @SerialName("computers") Computers("computers"),
     @SerialName("settings") Settings("settings"),
     @SerialName("more") More("more"),
+
+    /** The personal assistant (the phone Home's Assistant row, slock #14598). */
+    @SerialName("assistant") Assistant("assistant"),
+
+    /** The Apps page; the app sends none yet. */
+    @SerialName("apps") Apps("apps"),
+
+    /** The Artifacts page; the app sends none yet. */
+    @SerialName("artifacts") Artifacts("artifacts"),
 }
 
 /** `NAV_SURFACES`. */

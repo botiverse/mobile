@@ -35,6 +35,8 @@ class AuthenticatedProductRouteTest {
                 RAFT_ARTIFACT_VIEWER_PAGE,
                 // The Artifacts home (workspace_artifacts_v0), pushed from the server panel.
                 ARTIFACTS_HOME_PAGE,
+                // The personal assistant's page, pushed from the phone Home's Assistant row.
+                ASSISTANT_PAGE,
                 // An external channel invite link's page (identity: the token only).
                 EXTERNAL_INVITE_PAGE,
                 // A server join link's page (identity: the token only).

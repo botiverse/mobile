@@ -279,9 +279,12 @@ class SharedServerFeatureFlagsTest {
         for (case in cases) {
             val flags = SharedServerFeatureFlags(case.api)
             assertTrue(flags.isDecisionPending(server, key), case.name)
+            assertFalse(flags.isDecisionUndetermined(server, key), "pending is not undetermined: ${case.name}")
             runCatching { flags.prefetch(server) }
             assertFalse(flags.isDecisionPending(server, key), case.name)
             assertEquals(case.enabledAfter, flags.isEnabled(server, key), case.name)
+            // A failed evaluation reads off but is not a known off (web `undetermined`).
+            assertEquals(!case.name.startsWith("accepted"), flags.isDecisionUndetermined(server, key), case.name)
             // Per server: another server still waits for its own evaluation.
             assertTrue(flags.isDecisionPending(ServerId("s2"), key), case.name)
         }
@@ -299,6 +302,9 @@ class SharedServerFeatureFlagsTest {
         val coldStart = process(FakeApi(HomeNetworkResponse(code = 0, bodyText = null)))
         assertFalse(coldStart.isDecisionPending(server, key))
         assertTrue(coldStart.isEnabled(server, key))
+        // A failed evaluation with a stored value: the stored value is known, not undetermined.
+        coldStart.prefetch(server)
+        assertFalse(coldStart.isDecisionUndetermined(server, key))
     }
 
     @Test
