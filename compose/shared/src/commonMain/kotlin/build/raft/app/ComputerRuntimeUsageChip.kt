@@ -855,7 +855,7 @@ internal class ComputerRuntimeAuthBinding(
 ) {
     /** What the card draws; null until the Computer's sign-in state is read. */
     val cardState: ComputerRuntimeAuthCardState?
-        get() = controller.view?.let { ComputerRuntimeAuthCardState(controller.raftRuntimeId, controller.runtime, it) }
+        get() = controller.view?.let { ComputerRuntimeAuthCardState(controller.raftRuntimeId, controller.runtime, it, upgrade = controller.upgradeOffer) }
 }
 
 /**
@@ -899,7 +899,7 @@ internal fun ComputerRuntimeUsageSheetHost(
         }
     }
     val timeContext = currentRaftTimeContextProvider?.current
-    val authState = auth?.view?.let { ComputerRuntimeAuthCardState(auth.raftRuntimeId, auth.runtime, it) }
+    val authState = auth?.view?.let { ComputerRuntimeAuthCardState(auth.raftRuntimeId, auth.runtime, it, upgrade = auth.upgradeOffer) }
     ComputerRuntimeUsageSheet(
         runtimeLabel = runtimeLabel,
         state = controller.sheetState(runtimeVersion),
@@ -1470,7 +1470,7 @@ internal fun ComputerRuntimeAuthOnlyCard(
     }
     if (auth != null) {
         ComputerRuntimeAuthProviderRows(auth, onSignOutProvider)
-        if (auth.action() != null) {
+        if (auth.hasActions) {
             Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
                 ComputerRuntimeAuthActionView(auth, onSignIn, onSignOut)
             }
@@ -1682,7 +1682,7 @@ private fun ComputerRuntimeUsageCardBody(
         }
     }
     // Web: the quiet sign-in action in the card's action row (here under it: a phone-wide card).
-    if (auth?.action() != null) {
+    if (auth?.hasActions == true) {
         Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp)) {
             ComputerRuntimeAuthActionView(auth, onSignIn, onSignOut)
         }

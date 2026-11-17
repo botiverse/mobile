@@ -498,6 +498,7 @@ class KmmResourceI18nTest {
                 Res.string.thread_error_reason_not_found,
                 Res.string.thread_error_reason_attachment_too_large,
                 Res.string.thread_error_reason_attachment_image_compression_failed,
+                Res.string.thread_error_reason_attachment_needs_reupload,
                 Res.string.thread_error_reason_rate_limited,
                 Res.string.thread_error_reason_response_unreadable,
                 Res.string.thread_error_reason_cancelled,

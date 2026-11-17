@@ -222,6 +222,41 @@ internal class SharedRuntimeAccountUsageStore(
             withContext(NonCancellable) { invalidateRuntimeAuthView(machineId) }
         }
 
+    /** Runs the runtime's updater on the Computer; the cached view goes either way (web `finally invalidate`). */
+    suspend fun upgradeRuntime(
+        owner: SharedComputersOwner,
+        serverId: String,
+        machineId: String,
+        runtime: RuntimeAuthRuntime,
+    ): RuntimeAuthCall<RuntimeUpgradeResult> =
+        try {
+            asOwner(owner) { client.upgradeRuntime(ServerId(serverId), machineId, runtime) }
+        } finally {
+            withContext(NonCancellable) { invalidateRuntimeAuthView(machineId) }
+        }
+
+    /** Reads what installing the runtime would run there; nothing runs and nothing is invalidated. */
+    suspend fun runtimeInstallPlan(
+        owner: SharedComputersOwner,
+        serverId: String,
+        machineId: String,
+        runtime: RuntimeAuthRuntime,
+    ): RuntimeAuthCall<RuntimeInstallPlan> =
+        asOwner(owner) { client.runtimeInstallPlan(ServerId(serverId), machineId, runtime) }
+
+    /** Runs the runtime's installer on the Computer; the cached view goes either way (web `finally invalidate`). */
+    suspend fun installRuntime(
+        owner: SharedComputersOwner,
+        serverId: String,
+        machineId: String,
+        runtime: RuntimeAuthRuntime,
+    ): RuntimeAuthCall<RuntimeInstallResult> =
+        try {
+            asOwner(owner) { client.installRuntime(ServerId(serverId), machineId, runtime) }
+        } finally {
+            withContext(NonCancellable) { invalidateRuntimeAuthView(machineId) }
+        }
+
     suspend fun runtimeAuthProviders(
         owner: SharedComputersOwner,
         serverId: String,

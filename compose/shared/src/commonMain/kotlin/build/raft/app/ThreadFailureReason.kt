@@ -33,11 +33,30 @@ internal enum class ThreadUserFacingErrorReason {
     ItemNotFound,
     AttachmentTooLarge,
     AttachmentImageCompressionFailed,
+    AttachmentNeedsReupload,
     RateLimited,
     ResponseUnreadable,
     RequestCancelled,
     Generic
 }
+
+/**
+ * Send refusals that mean an uploaded attachment id can never be linked again (server
+ * attachmentLinkingService; web `DEAD_ATTACHMENT_CODES`, botiverse/slock #15130). Resending the
+ * same ids fails every time: the file has to be uploaded again for a new id.
+ */
+private val ThreadSendDeadAttachmentCodes =
+    setOf(
+        "attachment_not_found",
+        "attachment_already_linked",
+        "attachment_not_linked",
+        "attachment_expired",
+        "attachment_canceled"
+    )
+
+/** Whether a send failed because one of its attachment ids is dead, so Retry can never succeed. */
+internal fun threadSendFailureNeedsAttachmentReupload(errorCode: String?): Boolean =
+    errorCode?.trim()?.lowercase() in ThreadSendDeadAttachmentCodes
 
 private val ThreadUserFacingKnownReasons =
     mapOf(
@@ -91,6 +110,7 @@ internal fun threadUserFacingErrorCodeReason(errorCode: String?): ThreadUserFaci
             ?.takeIf { it.isNotBlank() }
             ?: return null
     ThreadUserFacingKnownReasons[normalized]?.let { return it }
+    if (normalized in ThreadSendDeadAttachmentCodes) return ThreadUserFacingErrorReason.AttachmentNeedsReupload
     return when {
         normalized == "auth_required" ||
             normalized == "auth_session" ||
@@ -140,6 +160,8 @@ internal fun ThreadUserFacingErrorReason.stringDesc(): StringDesc =
         ThreadUserFacingErrorReason.AttachmentTooLarge -> Res.string.thread_error_reason_attachment_too_large.desc()
         ThreadUserFacingErrorReason.AttachmentImageCompressionFailed ->
             Res.string.thread_error_reason_attachment_image_compression_failed.desc()
+        ThreadUserFacingErrorReason.AttachmentNeedsReupload ->
+            Res.string.thread_error_reason_attachment_needs_reupload.desc()
         ThreadUserFacingErrorReason.RateLimited -> Res.string.thread_error_reason_rate_limited.desc()
         ThreadUserFacingErrorReason.ResponseUnreadable -> Res.string.thread_error_reason_response_unreadable.desc()
         ThreadUserFacingErrorReason.RequestCancelled -> Res.string.thread_error_reason_cancelled.desc()
@@ -183,6 +205,8 @@ internal fun threadUserFacingErrorLabels(): ThreadUserFacingErrorLabels =
                 ThreadUserFacingErrorReason.AttachmentTooLarge.stringDesc().localized(),
             ThreadUserFacingErrorReason.AttachmentImageCompressionFailed to
                 ThreadUserFacingErrorReason.AttachmentImageCompressionFailed.stringDesc().localized(),
+            ThreadUserFacingErrorReason.AttachmentNeedsReupload to
+                ThreadUserFacingErrorReason.AttachmentNeedsReupload.stringDesc().localized(),
             ThreadUserFacingErrorReason.RateLimited to
                 ThreadUserFacingErrorReason.RateLimited.stringDesc().localized(),
             ThreadUserFacingErrorReason.ResponseUnreadable to

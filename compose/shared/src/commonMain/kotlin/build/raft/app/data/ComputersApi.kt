@@ -147,6 +147,12 @@ interface RaftComputersApi {
     /** `GET …/runtime-auth/:runtime/providers`. */
     suspend fun runtimeAuthProviders(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse =
         error("runtimeAuthProviders is not implemented")
+    /**
+     * `POST servers/:id/machines/:machineId/runtimes/:runtime/:operation` with `{respondAsync}`, for
+     * [operation] `upgrade`, `install-plan` or `install` (slock #15117 / #15214, RuntimeUpgradeInstall.kt).
+     */
+    suspend fun runtimeOperation(serverId: ServerId, machineId: String, runtime: String, operation: String, body: String): HomeNetworkResponse =
+        error("runtimeOperation is not implemented")
     /** `POST …/runtime-auth/:runtime/connect-provider` with `{providerId, apiKey}`. Never log [body]. */
     suspend fun connectRuntimeProvider(serverId: ServerId, machineId: String, runtime: String, body: String): HomeNetworkResponse =
         error("connectRuntimeProvider is not implemented")
@@ -417,6 +423,16 @@ internal class RaftComputersNetworkApi(
         networkClient.request(
             priority = DataRequestPriority.Foreground,
             path = "${runtimeAuthPath(serverId, machineId, runtime)}/logout",
+            method = "POST",
+            serverIdOverride = serverId,
+            bodyText = body
+        )
+
+    override suspend fun runtimeOperation(serverId: ServerId, machineId: String, runtime: String, operation: String, body: String): HomeNetworkResponse =
+        networkClient.request(
+            // The person pressed Upgrade or Install and waits for the outcome.
+            priority = DataRequestPriority.Foreground,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/runtimes/${runtime.trim()}/${operation.trim()}",
             method = "POST",
             serverIdOverride = serverId,
             bodyText = body
@@ -708,6 +724,38 @@ internal class RaftComputersApiClient(
         return answerOf(serverId, started, RUNTIME_AUTH_LOGOUT_RELAY_BUDGET_MILLIS).runtimeAuthCall { wire ->
             (wire as? JsonObject)?.get("result")?.toRuntimeAuthLogoutResult()
         }
+    }
+
+    /** Runs the runtime's own updater on the Computer (a person pressed Upgrade; web `upgradeRuntime`). */
+    suspend fun upgradeRuntime(serverId: ServerId, machineId: String, runtime: RuntimeAuthRuntime): RuntimeAuthCall<RuntimeUpgradeResult> =
+        runtimeOperationCall(serverId, machineId, runtime, "upgrade", RUNTIME_UPGRADE_RELAY_BUDGET_MILLIS) { wire ->
+            (wire as? JsonObject)?.get("result")?.toRuntimeUpgradeResult()
+        }
+
+    /** What installing the runtime would run, read on the Computer without running it (web `runtimeInstallPlan`). */
+    suspend fun runtimeInstallPlan(serverId: ServerId, machineId: String, runtime: RuntimeAuthRuntime): RuntimeAuthCall<RuntimeInstallPlan> =
+        runtimeOperationCall(serverId, machineId, runtime, "install-plan", RUNTIME_INSTALL_PLAN_RELAY_BUDGET_MILLIS) { wire ->
+            (wire as? JsonObject)?.get("plan")?.toRuntimeInstallPlan()
+        }
+
+    /** Runs the runtime's own installer on the Computer (the person confirmed its plan; web `installRuntime`). */
+    suspend fun installRuntime(serverId: ServerId, machineId: String, runtime: RuntimeAuthRuntime): RuntimeAuthCall<RuntimeInstallResult> =
+        runtimeOperationCall(serverId, machineId, runtime, "install", RUNTIME_INSTALL_RELAY_BUDGET_MILLIS) { wire ->
+            (wire as? JsonObject)?.get("result")?.toRuntimeInstallResult()
+        }
+
+    /** Only the runtime is sent; what runs is the Computer's to say. */
+    private suspend fun <T> runtimeOperationCall(
+        serverId: ServerId,
+        machineId: String,
+        runtime: RuntimeAuthRuntime,
+        operation: String,
+        budgetMillis: Long,
+        read: (JsonElement) -> T?,
+    ): RuntimeAuthCall<T> {
+        val body = runtimeAuthBodyJson.encodeToString(RuntimeMachineOperationBody.serializer(), RuntimeMachineOperationBody(respondAsync = true))
+        val started = transport.runtimeOperation(serverId, machineId, runtime.wire, operation, body)
+        return answerOf(serverId, started, budgetMillis).runtimeAuthCall(read)
     }
 
     /** The providers the runtime lists on the Computer (Pi's `/login` list), read there. */

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftFieldLabel
@@ -596,18 +597,28 @@ private fun RuntimeFormV2FieldRow(
     }
 }
 
+/**
+ * The line for why a source is not live (`option_source.status` reason), as the web's
+ * RUNTIME_FORM_V2_SOURCE_REASON_MESSAGE; an unknown reason gets the generic line.
+ * not_signed_in / runtime_outdated: botiverse/slock #15105.
+ */
+internal fun runtimeFormV2SourceReasonText(reason: String?): StringResource =
+    when (reason) {
+        "probe_timeout" -> Res.string.runtime_form_v2_source_status_probe_timeout
+        "probe_failed" -> Res.string.runtime_form_v2_source_status_probe_failed
+        "missing_config" -> Res.string.runtime_form_v2_source_status_missing_config
+        "no_models" -> Res.string.runtime_form_v2_source_status_no_models
+        "unsupported" -> Res.string.runtime_form_v2_source_status_unsupported
+        "machine_offline" -> Res.string.runtime_form_v2_source_status_machine_offline
+        "not_signed_in" -> Res.string.runtime_form_v2_source_status_not_signed_in
+        "runtime_outdated" -> Res.string.runtime_form_v2_source_status_runtime_outdated
+        else -> Res.string.runtime_form_v2_source_status_unknown
+    }
+
 /** Why a source is not live (`option_source.status`); an unknown reason gets the generic line. */
 @Composable
 private fun RuntimeFormV2SourceStatusLine(status: RuntimeFormV2SourceStatus, retrying: Boolean, onRetry: (() -> Unit)?) {
-    val reason = when (status.reason) {
-        "probe_timeout" -> stringResource(Res.string.runtime_form_v2_source_status_probe_timeout)
-        "probe_failed" -> stringResource(Res.string.runtime_form_v2_source_status_probe_failed)
-        "missing_config" -> stringResource(Res.string.runtime_form_v2_source_status_missing_config)
-        "no_models" -> stringResource(Res.string.runtime_form_v2_source_status_no_models)
-        "unsupported" -> stringResource(Res.string.runtime_form_v2_source_status_unsupported)
-        "machine_offline" -> stringResource(Res.string.runtime_form_v2_source_status_machine_offline)
-        else -> stringResource(Res.string.runtime_form_v2_source_status_unknown)
-    }
+    val reason = stringResource(runtimeFormV2SourceReasonText(status.reason))
     val text = if (status.unavailable) reason else "$reason ${stringResource(Res.string.runtime_form_v2_source_status_fallback)}"
     Text(text, style = RaftType.Caption, color = if (status.unavailable) RaftColor.AccentRed else RaftColor.TextMutedGray)
     // Retry only when the server says it may help.

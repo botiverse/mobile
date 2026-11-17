@@ -4,6 +4,7 @@ import build.raft.app.network.RaftRequestTimeoutException
 import build.raft.app.resources.ResourceStringDesc
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -105,6 +106,37 @@ class ThreadFailureReasonTest {
             ThreadUserFacingErrorReason.Generic,
             threadUserFacingErrorCodeReason("attachment_size_unavailable")
         )
+    }
+
+    @Test
+    fun deadAttachmentSendRefusalsAskToUploadAgainAndAreNeverRetried() {
+        // botiverse/slock #15130 DEAD_ATTACHMENT_CODES (server attachmentLinkingService).
+        listOf(
+            "attachment_not_found",
+            "attachment_already_linked",
+            "attachment_not_linked",
+            "attachment_expired",
+            "attachment_canceled"
+        ).forEach { code ->
+            assertEquals(ThreadUserFacingErrorReason.AttachmentNeedsReupload, threadUserFacingErrorCodeReason(code), code)
+            assertEquals("localized:AttachmentNeedsReupload", threadSendFailureSummary(code, labels), code)
+            assertTrue(threadSendFailureNeedsAttachmentReupload(code), code)
+        }
+        // Other attachment refusals keep their own handling.
+        listOf("attachment_id_invalid", "attachment_duplicate", "attachment_replay_conflict", "attachment_too_large", null)
+            .forEach { code -> assertFalse(threadSendFailureNeedsAttachmentReupload(code), code.toString()) }
+        assertEquals(ThreadUserFacingErrorReason.ItemNotFound, threadUserFacingErrorCodeReason("message_not_found"))
+    }
+
+    @Test
+    fun deadAttachmentCodeIsReadFromTheServersSendRefusal() {
+        // messages.ts `res.status(err.status).json({ error: err.message, code: err.code })`, 410, with the
+        // attachmentLifecycleService message.
+        val body = """{"error":"Attachment 7b0c0f9e-2f53-4d7e-9b0a-2b4a3e8c1d11 expired before the message was sent. Re-upload the file.","code":"attachment_expired"}"""
+        val code = threadSendFailureErrorCode(contractCode = null, errorBodyText = body, httpCode = 410)
+        assertEquals("attachment_expired", code)
+        assertFalse(threadSendShouldSilentlyRetry(code, 410))
+        assertTrue(threadSendFailureNeedsAttachmentReupload(code))
     }
 
     @Test
