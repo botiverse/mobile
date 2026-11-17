@@ -24,8 +24,9 @@ import build.raft.designsystem.text.rememberRaftCarriedBaseline
  * Neither row reads the alignment line of a group while it measures: the name's tooltip is a box
  * and the cluster a row, and reading their baselines during measure made Compose 1.12 lay out
  * their children before a reused message row was placed ("LayoutNode … not found in RectList",
- * suspected cause of iOS crashes b692fce7 and 50046806, which followed a window size change in a
- * message list; not reproduced, androidx fd550bed79). The name text carries
+ * suspected cause of iOS crashes b692fce7 and 50046806 in a message list: a window size record
+ * precedes each exception log, the SIGABRT has second precision only; not reproduced,
+ * androidx fd550bed79). The name text carries
  * its own baseline up instead ([build.raft.designsystem.text.RaftCarriedBaseline]). Same pixels:
  *  - the name text sits at the top of its tooltip box, so its baseline is the box's;
  *  - in the cluster a baseline-aligned part is placed at the deepest baseline less its own, so the
