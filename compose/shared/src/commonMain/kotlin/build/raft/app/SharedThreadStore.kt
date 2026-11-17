@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.data.externalMessageAuthorOrFallback
 import build.raft.app.data.AttachmentUploadCapabilities
+import build.raft.app.data.ConversationReadOnSight
+import build.raft.app.data.raftConversationReadOnSight
 import build.raft.app.data.RaftFeedbackAgentDraftSent
 import build.raft.app.data.RaftRatingPrompt
 import build.raft.app.data.isFeedbackSubmitAction
@@ -8609,6 +8611,11 @@ internal class SharedThreadStore(
     // virtual-time test hands in the scheduler's time source to keep the window and the retry on
     // one clock; production keeps the monotonic wall clock.
     private val readCoalesceTimeSource: TimeSource = TimeSource.Monotonic,
+    /**
+     * Where this page says which conversation it reads on sight (shown, at its live tail, reads
+     * not held): Activity counts no unread for a live message only there.
+     */
+    private val readOnSight: ConversationReadOnSight = raftConversationReadOnSight,
 ) {
     private val readStateProjection = ThreadReadStateProjection()
     // task #387: seed the first frame from the in-memory reply cache synchronously, so a warm
@@ -9092,6 +9099,7 @@ internal class SharedThreadStore(
     }
 
     fun clear() {
+        readOnSight.hide(this)
         loadJob?.cancel()
         loadJob = null
         realtimeGapRecoveryJob?.cancel()
@@ -12155,6 +12163,7 @@ internal class SharedThreadStore(
     /** fb-4440a18c: the page stopped showing this conversation; nothing it queued may be marked now. */
     private fun hideVisibleRead() {
         visibleReadShown = false
+        readOnSight.hide(this)
         val hadDeferred = deferredReadJob?.isActive == true
         deferredReadJob?.cancel()
         deferredReadJob = null
@@ -12169,6 +12178,8 @@ internal class SharedThreadStore(
     }
 
     private suspend fun markVisibleRead(visibleTailIndex: Int? = null) {
+        // Shown again below only once this read is known to go out for the live tail.
+        readOnSight.hide(this)
         if (!visibleReadShown) {
             diagnosticsLogger?.invoke("thread_read_skip reason=not_shown")
             return
@@ -12202,6 +12213,11 @@ internal class SharedThreadStore(
         // Reading another thread here means the person left the one they marked: its hold ends.
         markedUnreadHoldChannelId = null
         pendingMarkUnreadChannelId = null
+        // Read on sight only at the live tail: scrolled up, a live append is not read (task #232),
+        // so Activity must count it as the server does.
+        if (visibleTailIndex == null || authorityState.payload.visibleReadMarker(null) == marker) {
+            readOnSight.show(this, marker.channelId)
+        }
         if (marker.wasRecentlyMarkedRead()) {
             // Task #19 (Hands 2aa74345): the window only coalesces. A marker NEWER than the completed one
             // (a message that arrived, or a stand-in replaced by the network page, right after the last
@@ -12305,6 +12321,7 @@ internal class SharedThreadStore(
         val holds = channelId == _state.value.payload.cacheThreadId()
         if (holds) {
             markedUnreadHoldChannelId = channelId
+            readOnSight.hide(this)
             pendingMarkUnreadChannelId = null
             deferredReadJob?.cancel()
             deferredReadJob = null
