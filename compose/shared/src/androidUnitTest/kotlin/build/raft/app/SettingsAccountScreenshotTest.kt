@@ -49,7 +49,7 @@ class SettingsAccountScreenshotTest {
     // fork had created a page host (which installs it), so the goldens followed fork layout.
     @org.junit.Before
     fun installImageLoader() {
-        runCatching { build.raft.app.image.raftInstallImageLoader() }
+        build.raft.app.image.raftInstallImageLoader()
     }
 
     @Test

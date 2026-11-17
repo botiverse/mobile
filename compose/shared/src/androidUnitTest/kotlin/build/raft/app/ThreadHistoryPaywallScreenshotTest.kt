@@ -67,7 +67,7 @@ class ThreadHistoryPaywallScreenshotTest {
     @Test fun allHiddenDark() = capture("thread.history-paywall.all-hidden.dark", RaftAppAppearance.Dark) { AllHiddenDm() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) {
-        runCatching { build.raft.app.image.raftInstallImageLoader() }
+        build.raft.app.image.raftInstallImageLoader()
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
             val clock = remember { RaftTimeContextProvider(PaywallClock) }

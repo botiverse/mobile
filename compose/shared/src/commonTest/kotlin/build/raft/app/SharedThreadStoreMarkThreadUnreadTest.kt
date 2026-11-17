@@ -271,7 +271,7 @@ class SharedThreadStoreMarkThreadUnreadTest {
         return Harness(store, dataSource, repository, notices, scope)
     }
 
-    private class RecordingReadReceiptRepository(
+    internal class RecordingReadReceiptRepository(
         private val unreadAnswer: DataResult<ReadReceiptResult>,
     ) : ReadReceiptRepository {
         val calls = mutableListOf<String>()

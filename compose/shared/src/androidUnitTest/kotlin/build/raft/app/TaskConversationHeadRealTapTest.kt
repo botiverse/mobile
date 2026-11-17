@@ -101,7 +101,7 @@ class TaskConversationHeadRealTapTest {
         // another test in the same JVM had set the context (run alone, or first in its fork, it
         // failed or hung).
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(org.robolectric.RuntimeEnvironment.getApplication())
-        runCatching { build.raft.app.image.raftInstallImageLoader() }
+        build.raft.app.image.raftInstallImageLoader()
         listOf(
             RAFT_AUTH_SESSION_MMKV_NAMESPACE,
             RaftLocalPreferenceStore.KuiklyNamespace,

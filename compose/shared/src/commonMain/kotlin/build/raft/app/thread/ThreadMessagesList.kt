@@ -2,11 +2,7 @@ package build.raft.app
 
 import build.raft.app.nav.LocalRaftStackPageLeaving
 import build.raft.app.resources.*
-import build.raft.designsystem.components.RaftMessageListJumpSide
 import build.raft.designsystem.components.RaftLocatedMillis
-import build.raft.designsystem.components.RaftMessageListJumpPill
-import build.raft.designsystem.components.RaftMessageListJumpControls
-import build.raft.designsystem.components.RaftGlyph
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
 import build.raft.app.data.ThreadFindIntent
 import build.raft.app.data.RaftMessageAction
@@ -1102,7 +1098,8 @@ private fun ThreadMessagesListContent(
     }
     // Back to Bottom is loading the newest messages (the loaded window ends before them): the
     // button shows it (raft-ui busy pill) until they land or the load fails.
-    var backToBottomLoading by remember(threadInstanceKey) { mutableStateOf(false) }
+    val backToBottomLoadingState = remember(threadInstanceKey) { mutableStateOf(false) }
+    var backToBottomLoading by backToBottomLoadingState
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
@@ -1687,7 +1684,8 @@ private fun ThreadMessagesListContent(
     ThreadHeaderOriginalReporter(listState.raw, renderPayload, renderConfig.originErrorCode)
     val headerScrollToTopRequestFence =
         remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
-    var outlineOriginJumpRequest by remember(threadInstanceKey) { mutableStateOf(0) }
+    val outlineOriginJumpRequestState = remember(threadInstanceKey) { mutableStateOf(0) }
+    var outlineOriginJumpRequest by outlineOriginJumpRequestState
     var outlineOriginJumpConsumed by remember(threadInstanceKey) { mutableStateOf(0) }
     // A thread beside this conversation whose original is behind the history window: the same jump
     // to the start, where the history paywall card is (ThreadHeaderOriginalTitle.kt).
@@ -4472,74 +4470,6 @@ private fun ThreadMessagesListContent(
         val nextUnreadThread = unreadThreadJump?.takeIf { it.direction == ThreadUnreadThreadJumpDirection.Next }
         // Also while Search in this thread is open: its bar sits at the list's top (web ThreadSearchBar).
         val agentTypingLineShown = agentTyping != null && !shareSelectionCaptureActive
-        // The list's end fade (raft-ui MessageListEndFade), always on; while the typing line shows it
-        // grows by the line's height, solid under the line (web ChatPanel / ThreadPanel).
-        // Except while "Generate image" captures the list: the export reads the window's pixels
-        // slice by slice, so an overlay on the list would be baked into every slice that reaches
-        // the list's end (artin: a washed-out band mid-image). Same rule as the jump pills above.
-        if (!shareSelectionCaptureActive) {
-            ThreadMessageListEndFade(
-                typingLineShown = agentTypingLineShown,
-                modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadMessageListEndFadeZIndex),
-            )
-        }
-        if (renderPayload.replyThreadSurface && !shareSelectionActive && !shareSelectionCaptureActive) {
-            // The thread timeline (web ConversationOutline): the rail in a wide window, the ⋯ menu's
-            // Timeline sheet elsewhere; see ThreadOutline.kt.
-            // Built on first read only: the viewport is read while the rail or the sheet shows, so a
-            // phone without the sheet open never maps its rows.
-            val outlineKeyToMessageId =
-                remember(renderPayload.messages, renderPayload.originMessage?.id, duplicateMessageRandomIds) {
-                    lazy {
-                        buildMap {
-                            renderPayload.originMessage?.id?.let { put(ThreadOriginListItemKey, it) }
-                            renderPayload.messages.forEach { put(it.messageListItemKey(duplicateMessageRandomIds), it.id) }
-                        }
-                    }
-                }
-            val outlineViewport =
-                remember(listState, reverseLayout, outlineKeyToMessageId) {
-                    {
-                        val visible = listState.raw.layoutInfo.visibleItemsInfo
-                        val topFirst = if (reverseLayout) visible.sortedByDescending { it.offset } else visible.sortedBy { it.offset }
-                        val keys = outlineKeyToMessageId.value
-                        ThreadOutlineViewport(topFirst.mapNotNull { keys[it.key] })
-                    }
-                }
-            val outlineOriginId = renderPayload.originMessage?.id
-            val outlineTimeContext =
-                currentRaftTimeContextProvider?.current?.copy(timeFormat = renderConfig.timeContext.timeFormat)
-                    ?: renderConfig.timeContext.refreshedAt(defaultNowMillis())
-            ThreadOutlineHost(
-                state = LocalThreadOutlineState.current,
-                leadingMessageId = renderPayload.parentMessageId ?: outlineOriginId,
-                origin = renderPayload.originMessage,
-                messages = renderPayload.messages,
-                viewport = outlineViewport,
-                jumpTargetId = renderPayload.focusedMessageId,
-                jumpNonce = renderPayload.focusedMessageRequestNonce,
-                listWidth = maxWidth,
-                // The payload's time context has no "today": without the page's live one every row
-                // would show the raw UTC wire timestamp. Same day source as the date dividers.
-                formatTime = { value -> outlineTimeContext.formatTimestampLabel(value) },
-                onJump = { messageId ->
-                    // The thread's first message heads the list and isn't among the replies the
-                    // page focuses: scroll to its row (web `jumpToParent`); a reply is focused.
-                    if (messageId == (renderPayload.parentMessageId ?: outlineOriginId)) {
-                        outlineOriginJumpRequest += 1
-                    } else {
-                        onThreadEvent(ThreadOutlineJumpAction, messageId, null, null)
-                    }
-                },
-                modifier = Modifier.zIndex(ThreadJumpControlsZIndex),
-            )
-        }
-        if (agentTyping != null && agentTypingLineShown) {
-            ThreadAgentTypingLine(
-                typing = agentTyping,
-                modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadAgentTypingLineZIndex),
-            )
-        }
         // Select to here (ThreadSelectToHere.kt, web useSelectToHere): in select mode, while the
         // anchor is out of view. Only reads the viewport; a tap changes the selection, never the
         // scroll position, so no viewport intent is taken here.
@@ -4585,62 +4515,31 @@ private fun ThreadMessagesListContent(
             }
         }
         val selectToHerePillDirection = selectToHereDirection.takeIf { selectToHere != null }
-        if (backToBottomMounted || nextUnreadThread != null || selectToHerePillDirection != null) {
-            // Kuikly-era rule kept: the native dispatch capture sits on the pills' ancestor path so
-            // a tap on a pill never also starts a gesture on the message row underneath.
-            RaftMessageListJumpControls(
-                // While the typing line shows, the pills sit above it, not over it (web
-                // `--message-list-bottom-inset`).
-                modifier = Modifier.align(Alignment.BottomCenter)
-                    .padding(bottom = if (agentTypingLineShown) ThreadAgentTypingLineHeight else 0.dp)
-                    .zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
-            ) {
-                // Web BottomJumpControls: first on the controls' line (nearest the edge when stacked).
-                if (selectToHere != null && selectToHerePillDirection != null) {
-                    RaftMessageListJumpPill(
-                        text = stringResource(Res.string.thread_select_to_here),
-                        icon =
-                            if (selectToHerePillDirection == ThreadSelectToHereDirection.Up) RaftGlyph.ArrowUp else RaftGlyph.ArrowDown,
-                        onClick = {
-                            val selectable = selectToHere.selectableIds
-                            threadIdsToViewportEdge(
-                                orderedIds = selectToHereOrderedIds,
-                                anchorId = selectToHere.anchorId,
-                                visibleIds = selectToHereVisibleIds(),
-                                isSelectable = { it in selectable },
-                            )?.let { range ->
-                                diagnosticsLogger(
-                                    "thread_select_to_here direction=${range.direction} count=${range.ids.size}"
-                                )
-                                selectToHere.onSelectRange(range.ids, range.edgeId)
-                            }
-                        },
-                    )
-                }
-                if (backToBottomMounted) {
-                    RaftMessageListJumpPill(
-                        text =
-                            when {
-                                backToBottomLoading -> stringResource(Res.string.thread_jump_latest_loading)
-                                bottomJumpCount <= 0 -> stringResource(Res.string.thread_action_back_to_bottom)
-                                bottomJumpCount == 1 -> stringResource(Res.string.thread_jump_new_messages_one)
-                                else -> stringResource(Res.string.thread_jump_new_messages_many, bottomJumpCount)
-                            },
-                        onClick = onBackToBottomClick,
-                        busy = backToBottomLoading,
-                    )
-                }
-                if (nextUnreadThread != null) unreadThreadPill(nextUnreadThread)
-            }
-        }
-        unreadThreadJump?.takeIf { it.direction == ThreadUnreadThreadJumpDirection.Earliest }?.let { earliest ->
-            RaftMessageListJumpControls(
-                modifier = Modifier.align(Alignment.TopCenter).zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
-                side = RaftMessageListJumpSide.Top,
-            ) {
-                unreadThreadPill(earliest)
-            }
-        }
+        ThreadMessagesListOverlays(
+            shareSelectionActive = shareSelectionActive,
+            shareSelectionCaptureActive = shareSelectionCaptureActive,
+            renderPayload = renderPayload,
+            renderConfig = renderConfig,
+            duplicateMessageRandomIds = duplicateMessageRandomIds,
+            listState = listState,
+            reverseLayout = reverseLayout,
+            agentTyping = agentTyping,
+            agentTypingLineShown = agentTypingLineShown,
+            outlineOriginJumpRequestState = outlineOriginJumpRequestState,
+            selectToHere = selectToHere,
+            selectToHereOrderedIds = selectToHereOrderedIds,
+            selectToHereVisibleIds = selectToHereVisibleIds,
+            selectToHerePillDirection = selectToHerePillDirection,
+            backToBottomMounted = backToBottomMounted,
+            backToBottomLoadingState = backToBottomLoadingState,
+            bottomJumpCount = bottomJumpCount,
+            onBackToBottomClick = onBackToBottomClick,
+            unreadThreadJump = unreadThreadJump,
+            nextUnreadThread = nextUnreadThread,
+            unreadThreadPill = unreadThreadPill,
+            onThreadEvent = onThreadEvent,
+            diagnosticsLogger = diagnosticsLogger,
+        )
         authorDescriptionPopover?.let { request ->
             ThreadAuthorDescriptionPopover(
                 request = request,
@@ -5217,10 +5116,6 @@ private val ThreadShareCaptureBottomScrollPaddingHeight = 1200.dp
 /** The list's top inset for the find bar until the bar is measured (its usual height). */
 private val ThreadInlineSearchBarTopInset = 58.dp
 private const val ThreadInlineSearchBarZIndex = 2f
-/** Over the messages, under the typing line, the find bar (at the list's top) and the jump pills. */
-private const val ThreadMessageListEndFadeZIndex = 1f
-/** Over the messages, under the jump pills and the inline search bar's popups. */
-private const val ThreadAgentTypingLineZIndex = 1.5f
 private fun LazyViewportIntent.threadViewportIntentDiagnosticName(): String =
     when (this) {
         LazyViewportIntent.FollowingLatest -> "following_latest"
@@ -5270,9 +5165,6 @@ private fun ThreadListViewport.isLatestItemAtRenderedBottom(
     latestItemIndex: Int,
     trailingPaddingSize: Int = 0
 ): Boolean = threadItemAtRenderedBottom(layoutInfo, latestItemIndex, trailingPaddingSize)
-
-/** Above the list rows and the inline search bar's neighbours, as the old floating pills. */
-private const val ThreadJumpControlsZIndex = 5f
 
 private const val ThreadBackToBottomReleaseGuardMillis = 64L
 

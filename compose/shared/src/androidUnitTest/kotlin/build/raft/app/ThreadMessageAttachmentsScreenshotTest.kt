@@ -60,9 +60,9 @@ class ThreadMessageAttachmentsScreenshotTest {
     @OptIn(ExperimentalCoilApi::class)
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) {
         // The app installs its image loader at startup; without that, the first image request
-        // creates Coil's default singleton and the later install throws inside a LaunchedEffect,
-        // which stops recomposition (the failed-image placeholder would never appear).
-        runCatching { build.raft.app.image.raftInstallImageLoader() }
+        // creates Coil's default singleton and the later install is skipped, so the goldens would
+        // draw with Coil's default loader instead of Raft's.
+        build.raft.app.image.raftInstallImageLoader()
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             CompositionLocalProvider(
                 LocalInspectionMode provides true,
