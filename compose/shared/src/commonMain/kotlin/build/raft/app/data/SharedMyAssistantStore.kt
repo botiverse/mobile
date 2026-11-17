@@ -5,6 +5,7 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -79,6 +80,7 @@ class SharedMyAssistantStore(
 
     private val lock = SynchronizedObject()
     private val inFlight = mutableMapOf<MyAssistantKey, Job>()
+    private val createsInFlight = mutableMapOf<MyAssistantKey, Deferred<MyAssistantCreateOutcome>>()
 
     fun answerFor(key: MyAssistantKey): MyAssistantAnswer? = answersState.value[key]
 
@@ -128,6 +130,77 @@ class SharedMyAssistantStore(
             }
         }
     }
+
+    /**
+     * Creates the person's assistant (web `createAssistant`), single flight per person and server:
+     * a second press while one is on its way waits for the same answer instead of asking again.
+     * Runs in the store's scope, so leaving the page does not cancel a create the server may
+     * already have done. On a create, or a 409 `assistant_exists` (adopted), the cached answer
+     * becomes the server's view and the page turns into the assistant's DM; while its DM is still
+     * being set up the store asks again with backoff. A 403 closes it (not available), a 404 or
+     * another 409 reads the assistant again.
+     */
+    suspend fun create(key: MyAssistantKey): MyAssistantCreateOutcome {
+        if (key.serverId.isBlank() || key.userId.isBlank()) {
+            return MyAssistantCreateOutcome.Failed(ScreenError("missing_identity", retryable = false))
+        }
+        val request =
+            synchronized(lock) {
+                createsInFlight[key] ?: scope.async(start = CoroutineStart.LAZY) {
+                    try {
+                        createOnce(key)
+                    } finally {
+                        synchronized(lock) { createsInFlight.remove(key) }
+                    }
+                }.also { createsInFlight[key] = it }
+            }
+        request.start()
+        return request.await()
+    }
+
+    /** Whether a create for [key] is on its way. */
+    fun creating(key: MyAssistantKey): Boolean = synchronized(lock) { createsInFlight.containsKey(key) }
+
+    private suspend fun createOnce(key: MyAssistantKey): MyAssistantCreateOutcome =
+        when (val result = api.create(ServerId(key.serverId))) {
+            is MyAssistantCreateResult.Created -> {
+                val answer = result.answer
+                if (answer != null) store(key, answer) else load(key, keepOnError = true)
+                scope.launch { awaitDmSetup(key) }
+                MyAssistantCreateOutcome.Done
+            }
+            is MyAssistantCreateResult.Exists -> {
+                logger("my_assistant create_adopted_existing server=${key.serverId}")
+                store(key, result.answer)
+                scope.launch { awaitDmSetup(key) }
+                MyAssistantCreateOutcome.Done
+            }
+            is MyAssistantCreateResult.CapacityLimit -> {
+                logger("my_assistant create_capacity_limit server=${key.serverId} traceId=${result.traceId ?: "none"}")
+                MyAssistantCreateOutcome.CapacityLimit(
+                    ScreenError("assistant_capacity_limit", retryable = false, serverMessage = result.message, traceId = result.traceId)
+                )
+            }
+            is MyAssistantCreateResult.NotAvailable -> {
+                logger("my_assistant create_not_available server=${key.serverId} code=${result.code} traceId=${result.traceId ?: "none"}")
+                store(key, MyAssistantAnswer.NotEnabled)
+                MyAssistantCreateOutcome.Done
+            }
+            is MyAssistantCreateResult.Stale -> {
+                logger("my_assistant create_stale server=${key.serverId} code=${result.code} traceId=${result.traceId ?: "none"}")
+                load(key, keepOnError = true)
+                MyAssistantCreateOutcome.Done
+            }
+            is MyAssistantCreateResult.Failed -> {
+                logger(
+                    "my_assistant create_failed server=${key.serverId} code=${result.code ?: "transport"}" +
+                        " traceId=${result.traceId ?: "none"}"
+                )
+                MyAssistantCreateOutcome.Failed(
+                    ScreenError(result.code?.let { "http_$it" } ?: "network_error", traceId = result.traceId)
+                )
+            }
+        }
 
     /**
      * Saves the owner's extra instructions (web `saveAssistantOwnerNotes`): [notes] trimmed, empty
@@ -236,6 +309,21 @@ class SharedMyAssistantStore(
     private fun store(key: MyAssistantKey, answer: MyAssistantAnswer) {
         answersState.update { current -> if (current[key] == answer) current else current + (key to answer) }
     }
+}
+
+/** What a create means for the Create view (web CreateAssistantView `CreateFailure`). */
+sealed interface MyAssistantCreateOutcome {
+    /**
+     * The cached answer now says what is so (created, adopted, closed or read again): the page
+     * follows it. Nothing for the view to show.
+     */
+    data object Done : MyAssistantCreateOutcome
+
+    /** At the agent or seat limit: [error] carries the server's message and the trace ID. */
+    data class CapacityLimit(val error: ScreenError) : MyAssistantCreateOutcome
+
+    /** Not created for any other reason: "Couldn't create your assistant", with the trace ID. */
+    data class Failed(val error: ScreenError) : MyAssistantCreateOutcome
 }
 
 /**

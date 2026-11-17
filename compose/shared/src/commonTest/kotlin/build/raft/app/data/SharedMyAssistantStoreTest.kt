@@ -41,7 +41,17 @@ class SharedMyAssistantStoreTest {
         val saveResult: MyAssistantOwnerNotesSaveResult = MyAssistantOwnerNotesSaveResult.Failed(500),
         val settingResult: MyAssistantSettingSaveResult = MyAssistantSettingSaveResult.Failed(500),
         val settingGate: CompletableDeferred<Unit>? = null,
+        val createResult: MyAssistantCreateResult = MyAssistantCreateResult.Failed(500),
+        val createGate: CompletableDeferred<Unit>? = null,
     ) : RaftMyAssistantApi {
+        var creates = 0
+
+        override suspend fun create(serverId: ServerId): MyAssistantCreateResult {
+            creates += 1
+            createGate?.await()
+            return createResult
+        }
+
         private val script = results.toList()
         val asked = mutableListOf<String>()
         val saved = mutableListOf<String>()
@@ -384,6 +394,102 @@ class SharedMyAssistantStoreTest {
             settle()
             assertEquals(2, api.asked.size)
             assertEquals(MyAssistantAnswer.NotEnabled, store.answerFor(key))
+        }
+
+    @Test
+    fun aCreateTakesTheServersViewAndWaitsForTheDm() =
+        runTest {
+            val api =
+                ScriptedApi(
+                    MyAssistantFetchResult.Answer(MyAssistantAnswer(true, null)),
+                    MyAssistantFetchResult.Answer(ready),
+                    createResult = MyAssistantCreateResult.Created(settingUp),
+                )
+            val store = SharedMyAssistantStore(api, scope = backgroundScope)
+            store.ensureLoaded(key)
+            runCurrent()
+            assertEquals(MyAssistantState.Ready(null), myAssistantState(false, false, true, store.answerFor(key)))
+            assertEquals(MyAssistantCreateOutcome.Done, store.create(key))
+            assertEquals(settingUp, store.answerFor(key))
+            // Its DM is still being set up: asked again with backoff until it is there.
+            advanceTimeBy(2_001)
+            assertEquals(ready, store.answerFor(key))
+            assertEquals(1, api.creates)
+        }
+
+    @Test
+    fun aSecondPressWaitsForTheSameCreate() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val api = ScriptedApi(MyAssistantFetchResult.Answer(ready), createResult = MyAssistantCreateResult.Created(ready), createGate = gate)
+            val store = SharedMyAssistantStore(api, scope = backgroundScope)
+            val first = async { store.create(key) }
+            val second = async { store.create(key) }
+            runCurrent()
+            assertTrue(store.creating(key))
+            gate.complete(Unit)
+            assertEquals(MyAssistantCreateOutcome.Done, first.await())
+            assertEquals(MyAssistantCreateOutcome.Done, second.await())
+            assertEquals(1, api.creates, "one POST for both presses")
+            assertFalse(store.creating(key))
+            // Done: the next press asks again.
+            store.create(key)
+            assertEquals(2, api.creates)
+        }
+
+    @Test
+    fun anExistingAssistantIsAdopted() =
+        runTest {
+            val api = ScriptedApi(MyAssistantFetchResult.Answer(ready), createResult = MyAssistantCreateResult.Exists(ready))
+            val store = SharedMyAssistantStore(api, scope = backgroundScope)
+            assertEquals(MyAssistantCreateOutcome.Done, store.create(key))
+            assertEquals(ready, store.answerFor(key))
+        }
+
+    @Test
+    fun aCreateTheServerRefusesClosesOrReadsAgain() =
+        runTest {
+            val closed =
+                SharedMyAssistantStore(
+                    ScriptedApi(MyAssistantFetchResult.Answer(ready), createResult = MyAssistantCreateResult.NotAvailable(403)),
+                    scope = backgroundScope,
+                )
+            assertEquals(MyAssistantCreateOutcome.Done, closed.create(key))
+            assertEquals(MyAssistantState.Off, myAssistantState(false, false, true, closed.answerFor(key)))
+            val staleApi = ScriptedApi(MyAssistantFetchResult.Answer(ready), createResult = MyAssistantCreateResult.Stale(404))
+            val stale = SharedMyAssistantStore(staleApi, scope = backgroundScope)
+            assertEquals(MyAssistantCreateOutcome.Done, stale.create(key))
+            assertEquals(listOf("s1"), staleApi.asked, "read again")
+            assertEquals(ready, stale.answerFor(key))
+        }
+
+    @Test
+    fun theLimitAndOtherFailuresKeepTheTraceAndChangeNothing() =
+        runTest {
+            val none = MyAssistantAnswer(true, null)
+            val limited =
+                SharedMyAssistantStore(
+                    ScriptedApi(
+                        MyAssistantFetchResult.Answer(none),
+                        createResult = MyAssistantCreateResult.CapacityLimit("Seat limit reached (1/1 on Pro plan).", TRACE_ID),
+                    ),
+                    scope = backgroundScope,
+                )
+            limited.ensureLoaded(key)
+            runCurrent()
+            val limit = assertIs<MyAssistantCreateOutcome.CapacityLimit>(limited.create(key))
+            assertEquals("Seat limit reached (1/1 on Pro plan).", limit.error.serverMessage)
+            assertEquals(TRACE_ID, limit.error.traceId)
+            assertEquals(none, limited.answerFor(key))
+            val failed =
+                SharedMyAssistantStore(
+                    ScriptedApi(MyAssistantFetchResult.Answer(none), createResult = MyAssistantCreateResult.Failed(500, TRACE_ID)),
+                    scope = backgroundScope,
+                )
+            val failure = assertIs<MyAssistantCreateOutcome.Failed>(failed.create(key))
+            assertEquals("http_500", failure.error.code)
+            assertEquals(TRACE_ID, failure.error.traceId)
+            assertNull(failed.answerFor(key))
         }
 }
 

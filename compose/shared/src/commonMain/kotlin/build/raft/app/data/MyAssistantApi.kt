@@ -30,6 +30,13 @@ import kotlinx.serialization.json.jsonObject
  *  - `PATCH servers/:id/assistant` `{ readsDms: boolean }` or `{ sendAsOwner: boolean }` (RFC 077):
  *    the owner's two switches, one per request (web assistantClient `updateAssistantSetting`); the
  *    same view back.
+ *  - `POST servers/:id/assistant` `{}` (web assistantClient `createAssistant`): 201 with the same
+ *    view as the `GET`. The server names every assistant Ottie and ignores a `name`. 409
+ *    `assistant_exists` carries the existing assistant's view beside `error` and `code` (the
+ *    client adopts it); 403 `assistant_not_enabled`; 404 / any other 409: read the assistant again.
+ *    A 400 whose `error` says "… limit reached (n/m on X plan)." is the agent or seat limit (web
+ *    `isCapacityLimitError`, the message is the contract). Since botiverse/slock #12143 an
+ *    assistant takes no agent seat and the server no longer sends it, but web still handles it.
  *
  * Web reads it in `packages/web/src/assistant/assistantClient.ts` (`useMyAssistant`): only while
  * the `personal_assistant` flag is on, never for a guest; any failure of the first read fails
@@ -227,8 +234,43 @@ sealed interface MyAssistantSettingSaveResult {
     data class Failed(val code: Int?, val traceId: String? = null) : MyAssistantSettingSaveResult
 }
 
+/**
+ * The `POST servers/:id/assistant` body. Web sends `{}`: every assistant is Ottie, so there is
+ * nothing to choose (an older client's `name` is ignored by the server).
+ */
+@Serializable
+class MyAssistantCreateRequest
+
+/** The `POST` body: `{}` ([MyAssistantCreateRequest]). */
+fun encodeMyAssistantCreateBody(): String =
+    myAssistantJson.encodeToString(MyAssistantCreateRequest.serializer(), MyAssistantCreateRequest())
+
+/** What one `POST servers/:id/assistant` gave (web `createAssistant` + `handleMutationError`). */
+sealed interface MyAssistantCreateResult {
+    /** 201: created; [answer] is the server's view, null when it could not be read. */
+    data class Created(val answer: MyAssistantAnswer?) : MyAssistantCreateResult
+
+    /** 409 `assistant_exists` with the existing assistant: adopt it (web stores it `enabled: true`). */
+    data class Exists(val answer: MyAssistantAnswer) : MyAssistantCreateResult
+
+    /** 400 at the agent or seat limit: [message] is the server's, shown as it is (web `AssistantCapacityError`). */
+    data class CapacityLimit(val message: String, val traceId: String? = null) : MyAssistantCreateResult
+
+    /** 403 `assistant_not_enabled` (or a revoked membership): not available here any more. */
+    data class NotAvailable(val code: Int, val traceId: String? = null) : MyAssistantCreateResult
+
+    /** 404, or a 409 without the assistant: what the client holds is stale, read it again (web `refresh`). */
+    data class Stale(val code: Int, val traceId: String? = null) : MyAssistantCreateResult
+
+    /** Anything else: nothing was created. [code] is the HTTP status, null for transport. */
+    data class Failed(val code: Int?, val traceId: String? = null) : MyAssistantCreateResult
+}
+
 interface RaftMyAssistantApi {
     suspend fun fetch(serverId: ServerId): MyAssistantFetchResult
+
+    /** `POST servers/:id/assistant` `{}`: creates the person's assistant (Ottie). */
+    suspend fun create(serverId: ServerId): MyAssistantCreateResult
 
     /** `PATCH servers/:id/assistant` `{ ownerNotes }` with [notes] trimmed, empty clears them. */
     suspend fun updateOwnerNotes(serverId: ServerId, notes: String): MyAssistantOwnerNotesSaveResult
@@ -251,6 +293,21 @@ internal class RaftMyAssistantNetworkApi(
                 )
             }.getOrElse { return MyAssistantFetchResult.Failed(code = null) }
         return myAssistantFetchResultOf(response.code, response.bodyText)
+    }
+
+    override suspend fun create(serverId: ServerId): MyAssistantCreateResult {
+        val response =
+            runCatchingPreservingCancellation {
+                networkClient.request(
+                    // The person pressed Create and waits on it.
+                    priority = DataRequestPriority.Foreground,
+                    path = "servers/${serverId.value}/assistant",
+                    method = "POST",
+                    serverIdOverride = serverId,
+                    bodyText = encodeMyAssistantCreateBody(),
+                )
+            }.getOrElse { return MyAssistantCreateResult.Failed(code = null) }
+        return myAssistantCreateResultOf(response.code, response.bodyText ?: response.errorBodyText, response.traceId)
     }
 
     override suspend fun updateOwnerNotes(serverId: ServerId, notes: String): MyAssistantOwnerNotesSaveResult {
@@ -309,14 +366,47 @@ internal fun myAssistantOwnerNotesSaveResultOf(
         else -> MyAssistantOwnerNotesSaveResult.Failed(code, traceId)
     }
 
+/**
+ * Web `createAssistant`'s answers: 2xx created; 400 whose `error` is the limit's message
+ * (`isCapacityLimitError`: it contains "limit reached"); 403 not available; 409
+ * `assistant_exists` with an assistant adopted (`enabled: true`); 404 or another 409 stale.
+ */
+internal fun myAssistantCreateResultOf(
+    code: Int,
+    bodyText: String?,
+    traceId: String? = null,
+): MyAssistantCreateResult {
+    if (code in 200..299) return MyAssistantCreateResult.Created(bodyText?.let(::parseSharedMyAssistantResponse))
+    val message = myAssistantErrorField(bodyText, "error")
+    return when {
+        code == 400 && message != null && myAssistantIsCapacityLimitMessage(message) ->
+            MyAssistantCreateResult.CapacityLimit(message, traceId)
+        code == 403 -> MyAssistantCreateResult.NotAvailable(code, traceId)
+        code == 409 && myAssistantErrorCode(bodyText) == "assistant_exists" ->
+            bodyText
+                ?.let(::parseSharedMyAssistantResponse)
+                ?.takeIf { it.assistant != null }
+                ?.let { MyAssistantCreateResult.Exists(it.copy(enabled = true)) }
+                ?: MyAssistantCreateResult.Stale(code, traceId)
+        code == 404 || code == 409 -> MyAssistantCreateResult.Stale(code, traceId)
+        else -> MyAssistantCreateResult.Failed(code, traceId)
+    }
+}
+
+/** Web `isCapacityLimitError`: the server's `formatBillingCapacityLimitMessage` ("Seat limit reached (1/1 on Pro plan)."). */
+internal fun myAssistantIsCapacityLimitMessage(message: String): Boolean = message.contains("limit reached")
+
 /** The error body's `code`, else its `error` (web assistantClient `errorOf`). */
-private fun myAssistantErrorCode(bodyText: String?): String? {
+private fun myAssistantErrorCode(bodyText: String?): String? =
+    myAssistantErrorField(bodyText, "code") ?: myAssistantErrorField(bodyText, "error")
+
+/** One string field of an error body, trimmed; null when absent, empty or not a string. */
+private fun myAssistantErrorField(bodyText: String?, name: String): String? {
     val body =
         bodyText?.takeIf(String::isNotBlank)?.let { text ->
             runCatching { myAssistantJson.parseToJsonElement(text) as? JsonObject }.getOrNull()
         } ?: return null
-    fun field(name: String): String? = (body[name] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.trim()?.takeIf(String::isNotEmpty)
-    return field("code") ?: field("error")
+    return (body[name] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.trim()?.takeIf(String::isNotEmpty)
 }
 
 internal fun myAssistantFetchResultOf(code: Int, bodyText: String?): MyAssistantFetchResult =
