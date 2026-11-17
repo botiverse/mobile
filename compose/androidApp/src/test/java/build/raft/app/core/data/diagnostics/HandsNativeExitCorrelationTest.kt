@@ -390,20 +390,22 @@ class HandsNativeExitCorrelationTest {
     }
 
     @Test
-    fun a409AfterASendThatGotNoAnswerIsThatSendsTicket() = runTest {
+    fun a409AfterASendThatGotNoAnswerIsStillSentStandalone() = runTest {
         val store = FakeStore()
-        // The first send may have reached Hands: no answer came back.
+        // The first send may or may not have reached Hands: no answer came back.
         val (calls, submit) = answers({ throw IOException("connection reset") })
         launch(store, mutableListOf(), telemetry = withEventId, submit = submit)
         assertFalse(store.persisted.queue.single().submissionNotStored)
 
-        // Next launch the resend under the same id is refused: taken as filed, not sent standalone.
-        val (later, laterSubmit) = answers({ throw refused() })
+        // Next launch the resend under the same id is refused. Hands answers an identical resend
+        // of a stored report with 200, so the 409 proves nothing was stored: the exit is re-sent
+        // standalone (merge_rejected) instead of being dropped.
+        val (later, laterSubmit) = answers({ throw refused() }, { SystemKillSubmission("ticket-standalone") })
         launch(store, mutableListOf(), at = now + hour, telemetry = withEventId, submit = laterSubmit)
-        assertEquals(listOf<String?>(eventId), later.map { it.submissionId })
-        assertEquals(calls.single(), later.single())
+        assertEquals(listOf<String?>(eventId, null), later.map { it.submissionId })
+        assertEquals(calls.single(), later.first())
+        assertEquals(NativeCorrelationMergeRejected, later[1].extras["crash_native_correlation"])
         assertTrue(store.persisted.queue.isEmpty())
-        assertTrue(store.persisted.ledger.accumulating.isEmpty())
     }
 
     @Test
