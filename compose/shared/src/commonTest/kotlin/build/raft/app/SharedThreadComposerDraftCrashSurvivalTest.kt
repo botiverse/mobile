@@ -116,7 +116,10 @@ class SharedThreadComposerDraftCrashSurvivalTest {
         val storage = InMemoryRaftKeyValueStore()
         val clock = VirtualDraftWriteClock()
         val lines = mutableListOf<String>()
-        val store = startStore(storage, clock, diagnostics = { lines += it })
+        // The draft-write lines. Each dispatched intent also logs the MVI transition's
+        // transition_prepared/finalized/completed; those are per dispatch, not per write.
+        val store =
+            startStore(storage, clock, diagnostics = { line -> if (!line.startsWith(TransitionLinePrefix)) lines += line })
         lines.clear()
 
         var typed = ""
@@ -146,7 +149,8 @@ class SharedThreadComposerDraftCrashSurvivalTest {
         val storage = InMemoryRaftKeyValueStore()
         val clock = VirtualDraftWriteClock()
         val lines = mutableListOf<String>()
-        val store = startStore(storage, clock, diagnostics = { lines += it })
+        val store =
+            startStore(storage, clock, diagnostics = { line -> if (!line.startsWith(TransitionLinePrefix)) lines += line })
 
         store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "a"))
         clock.advanceBy(100L)
@@ -203,6 +207,7 @@ class SharedThreadComposerDraftCrashSurvivalTest {
 
     private companion object {
         const val IntervalMillis = 40L
+        const val TransitionLinePrefix = "thread_composer_draft_transition_"
     }
 }
 
