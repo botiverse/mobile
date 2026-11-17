@@ -110,6 +110,7 @@ class MembersRuntimeConfigApplyUiTest {
                         resolution = grokConfig(),
                         runtimeModelsCatalog = null,
                         machineId = null,
+                        serverId = null,
                         runningHint = MembersRuntimeRunningHint.Model(running = "grok-3", saved = "grok-4")
                     )
                 }
@@ -122,7 +123,7 @@ class MembersRuntimeConfigApplyUiTest {
     fun withoutAPendingChangeTheModelRowHasNoHint() = runRobolectricComposeUiTest {
         setContent {
             RaftTheme(appearance = RaftAppearance.Light) {
-                Column { MembersAgentRuntimeConfigRows(resolution = grokConfig(), runtimeModelsCatalog = null, machineId = null) }
+                Column { MembersAgentRuntimeConfigRows(resolution = grokConfig(), runtimeModelsCatalog = null, machineId = null, serverId = null) }
             }
         }
         onNodeWithTag(MEMBERS_RUNTIME_RUNNING_HINT_TAG).assertDoesNotExist()

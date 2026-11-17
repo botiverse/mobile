@@ -135,6 +135,7 @@ private fun ComputerInfoContent() {
                 },
             runtimeModelsCatalog = null,
             machineId = null,
+            serverId = null,
         )
     }
 }

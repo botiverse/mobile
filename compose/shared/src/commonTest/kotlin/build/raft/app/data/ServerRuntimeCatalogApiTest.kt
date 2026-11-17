@@ -11,6 +11,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 
 /**
  * `GET /api/servers/:id/runtimes` (botiverse/slock `docs/contracts/server-runtime-catalog.md`
@@ -149,7 +151,9 @@ class ServerRuntimeCatalogApiTest {
             )
         names.publish("s1", catalog)
         assertEquals("Claude Code (server)", names.entry("claude", "s1")?.displayName)
-        assertEquals("Newcomer", names.entry("newcomer")?.displayName)
+        // Without a server only a bare name may come from a catalog read here; a status never does.
+        assertNull(names.entry("newcomer"))
+        assertEquals("Newcomer", names.displayNameEntry("newcomer")?.displayName)
         // Turned off on the server (absent): the bundled table still names it.
         assertEquals("Codex CLI", names.entry("codex", "s1")?.displayName)
         // Known nowhere: no entry, the caller shows the id.
@@ -157,6 +161,74 @@ class ServerRuntimeCatalogApiTest {
         // Another server without a catalog read yet: bundled.
         assertEquals("Claude Code", names.entry("claude", "s2")?.displayName)
     }
+
+    @Test
+    fun aRuntimesStatusIsAskedOfItsOwnServerNeverTheCatalogReadLast() {
+        val names = RaftRuntimeCatalogNameRegistry()
+        val revived =
+            ServerRuntimeCatalog(
+                catalogVersion = 1,
+                runtimes = listOf(entry("antigravity", displayName = "Antigravity CLI").copy(deprecated = false)),
+                source = RuntimeCatalogSource.Server
+            )
+        names.publish("oar", revived)
+        // The server that offers Antigravity again: not deprecated there.
+        assertFalse(names.entry("antigravity", "oar")!!.deprecated)
+        // No server, or a server whose catalog was not read: the bundled table, never "oar"'s answer.
+        assertTrue(names.entry("antigravity")!!.deprecated)
+        assertTrue(names.entry("antigravity", "other")!!.deprecated)
+        assertTrue(names.entry("antigravity", " ")!!.deprecated)
+    }
+
+    @Test
+    fun ensureLoadedPublishesTheCachedAnswerThenAsksTheServerOncePerMinute() =
+        runTest {
+            val prefs = MapPreferences()
+            val api = FakeApi()
+            val revivedBody = """{"catalogVersion":1,"runtimes":[{"id":"antigravity","displayName":"Antigravity CLI","supported":true,"deprecated":false,"forms":[{"kind":"v2"}]}]}"""
+            // A previous run cached this server's answer.
+            prefs.values["${SERVER_RUNTIME_CATALOG_CACHE_KEY_PREFIX}env|acct|oar"] = revivedBody
+            val names = RaftRuntimeCatalogNameRegistry()
+            val clock = TestTimeSource()
+            val repository =
+                SharedServerRuntimeCatalogRepository(
+                    api,
+                    backgroundScope,
+                    ServerRuntimeCatalogCache(prefs),
+                    scopeProvider = { "env|acct" },
+                    names = names,
+                    timeSource = clock
+                )
+
+            // Offline: the cached answer is what the labels read.
+            api.next = HomeNetworkResponse(code = 503, bodyText = null)
+            repository.ensureLoaded("oar", DataRequestPriority.Background)
+            assertEquals(RuntimeCatalogSource.Cache, names.catalog("oar")?.source)
+            assertFalse(names.entry("antigravity", "oar")!!.deprecated)
+            assertEquals(listOf(DataRequestPriority.Background), api.priorities)
+
+            // Every other row asking for the same server is free: no second request.
+            api.next = HomeNetworkResponse(code = 200, bodyText = revivedBody)
+            repeat(3) { repository.ensureLoaded(" oar ", DataRequestPriority.Background) }
+            assertEquals(1, api.paths.size)
+            // A server switch refreshes through load().
+            repository.load("oar", DataRequestPriority.Background)
+            assertEquals(RuntimeCatalogSource.Server, names.catalog("oar")?.source)
+            assertEquals(2, api.paths.size)
+
+            // Another server is asked once too; a blank one never.
+            repository.ensureLoaded("s2", DataRequestPriority.Background)
+            repository.ensureLoaded("", DataRequestPriority.Background)
+            assertEquals(listOf("servers/oar/runtimes", "servers/oar/runtimes", "servers/s2/runtimes"), api.paths)
+
+            // A minute later (web CATALOG_REUSE_MS) a label may ask again.
+            clock += 59.seconds
+            repository.ensureLoaded("oar", DataRequestPriority.Background)
+            assertEquals(3, api.paths.size)
+            clock += 1.seconds
+            repository.ensureLoaded("oar", DataRequestPriority.Background)
+            assertEquals(4, api.paths.size)
+        }
 
     @Test
     fun staticModelsAreTheWholeListAndFallbackLetsLiveDetectionWin() {

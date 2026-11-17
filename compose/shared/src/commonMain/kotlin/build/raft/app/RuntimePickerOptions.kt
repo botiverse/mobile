@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.data.BundledRuntimeCatalog
 import build.raft.app.data.RaftRuntimeCatalogNames
+import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedServerRuntimeCatalogRepository
 import build.raft.app.data.followServerRuntimeCatalog
 import build.raft.app.data.MobileRuntimeForms
@@ -322,19 +323,39 @@ internal fun runtimeIdentityDisplayName(runtimeId: String, serverId: String? = n
  * A runtime named as an identity (a subtitle, a chip, a profile card), web
  * `formatRuntimeLabelWithStatus`: the name plus " (deprecated)" or " (experimental)". Prose
  * (a runtime inside a sentence) uses the bare [runtimeCatalogDisplayName].
+ *
+ * The status is [serverId]'s answer (web `useRuntimeDeprecatedHere`): its catalog is brought in
+ * ([EnsureServerRuntimeCatalog]) and the label follows it when it lands; until then, and without a
+ * server, the bundled table's.
  */
 @Composable
 internal fun runtimeLabelWithStatus(
     runtimeId: String,
-    serverId: String? = null,
+    serverId: String?,
     /** The server's answer for this agent's runtime ([runtimeDeprecatedForAgent]); null: the catalog's. */
     deprecated: Boolean? = null
 ): String {
+    EnsureServerRuntimeCatalog(serverId)
     val name = runtimeIdentityDisplayName(runtimeId, serverId)
     return when {
         deprecated ?: runtimeCatalogIsDeprecated(runtimeId, serverId) -> name + stringResource(Res.string.runtime_suffix_deprecated)
         runtimeCatalogIsExperimental(runtimeId, serverId) -> name + stringResource(Res.string.runtime_suffix_experimental)
         else -> name
+    }
+}
+
+/**
+ * Brings [serverId]'s runtime catalog into [RaftRuntimeCatalogNames] for the labels that name its
+ * runtimes: the cached answer at once, then one Background request per server in this process
+ * (`RaftSharedStoreProvider.ensureServerRuntimeCatalog`), so a list's rows share it. Nothing
+ * without a server, or before the shared stores exist (previews, UI tests).
+ */
+@Composable
+internal fun EnsureServerRuntimeCatalog(serverId: String?) {
+    val clean = serverId?.trim().orEmpty()
+    LaunchedEffect(clean) {
+        if (clean.isBlank()) return@LaunchedEffect
+        RaftSharedStoreRegistry.currentOrNull()?.ensureServerRuntimeCatalog(clean)
     }
 }
 

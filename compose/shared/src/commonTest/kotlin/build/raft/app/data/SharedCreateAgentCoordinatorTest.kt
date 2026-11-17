@@ -35,11 +35,11 @@ class SharedCreateAgentCoordinatorTest {
     }
 
     @Test
-    fun loadRuntimeModelsCanonicalizesCodexGpt56OrderAndDefault() = runBlocking {
+    fun loadRuntimeModelsCanonicalizesCodexOrderAndDefault() = runBlocking {
         val computersApi =
             FakeCreateAgentComputersApi(
                 runtimeModelsBody =
-                    """{"models":[{"id":"gpt-5.5","label":"GPT-5.5"},{"id":"gpt-5.6-sol","label":"GPT-5.6 Sol"},{"id":"gpt-5.6-terra","label":"GPT-5.6 Terra"},{"id":"gpt-5.6-luna","label":"GPT-5.6 Luna"},{"id":"gpt-5.4","label":"GPT-5.4"}],"default":"gpt-5.5"}"""
+                    """{"models":[{"id":"gpt-5.5","label":"GPT-5.5"},{"id":"gpt-5.6-sol","label":"GPT-5.6 Sol"},{"id":"gpt-5.6-terra","label":"GPT-5.6 Terra"},{"id":"gpt-5.6-luna","label":"GPT-5.6 Luna"},{"id":"gpt-5.4","label":"GPT-5.4"},{"id":"gpt-6.1-sol","label":"GPT-6.1 Sol"}],"default":"gpt-5.5"}"""
             )
         val coordinator =
             SharedCreateAgentCoordinator(
@@ -49,17 +49,19 @@ class SharedCreateAgentCoordinatorTest {
 
         val result = coordinator.loadRuntimeModels("server-1", "machine-1", "codex")
 
+        // web canonicalizeCodexPresentation: the bundled default (GPT-6.1 Sol) when the machine has it.
         val catalog = assertIs<DataResult.Content<SharedCreateAgentRuntimeModelCatalog>>(result).data
-        assertEquals("gpt-5.6-sol", catalog.defaultModel)
+        assertEquals("gpt-6.1-sol", catalog.defaultModel)
         assertEquals(
-            listOf("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4"),
+            listOf("gpt-6.1-sol", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4"),
             catalog.models.map { it.id }
         )
         assertEquals(
             listOf("low", "medium", "high", "xhigh", "max", "ultra"),
             catalog.models.first().supportedReasoningEfforts
         )
-        assertEquals("medium", catalog.models.first().defaultReasoningEffort)
+        assertEquals("low", catalog.models.first().defaultReasoningEffort)
+        assertEquals("medium", catalog.models[1].defaultReasoningEffort)
     }
 }
 

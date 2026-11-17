@@ -208,6 +208,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                     }
                 }
                 item(key = "runtime-form-v2") {
+                    // Opened from anywhere (not only the Members page): bring this server's catalog in.
+                    EnsureServerRuntimeCatalog(access.serverId.value)
                     RuntimeFormV2RuntimeSection(
                         runtime = selectedRuntimeId,
                         onRuntimeChange = { picked ->
@@ -221,7 +223,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                         runtimeAvailabilityError = null,
                         enabled = !saving,
                         quotaMachine = quotaMachine,
-                        // The server catalog read in this process (the Members page warms it), else bundled.
+                        // This server's catalog read in this process, else bundled until it lands.
                         catalog = RaftRuntimeCatalogNames.catalog(access.serverId.value) ?: BundledRuntimeCatalog,
                         currentRuntimeId = runtimeId,
                         options = membersRuntimeSwitchRows(agentRuntimeOptions, machineId)
