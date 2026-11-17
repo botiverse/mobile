@@ -88,6 +88,11 @@ private const val PREF_SERVER_TOKEN = "server_token"
 private const val PREF_SERVER_SCOPE = "server_scope"
 private const val PREF_STREAMING = "chat_streaming"
 
+// IP-allowlisted cloud-phone gateway: zero credentials in APK/git; upstream rotates server-side
+private const val DEFAULT_CLOUD_GATEWAY_URL = "https://men-hewlett-candles-tale.trycloudflare.com"
+private const val DEFAULT_CLOUD_GATEWAY_TOKEN = "cloud-phone-ip-gated"
+private const val DEFAULT_CLOUD_SCOPE = "android-playground"
+
 private enum class PlaygroundRoute { CHAT, DEV_TOOLS }
 private enum class ViewerMode { YOU, MATE, SPLIT }
 
@@ -183,16 +188,20 @@ fun SproutCloudPhoneVerificationScreen(
     val youViewerId = remember { "android-you-$sessionTag" }
     val mateViewerId = remember { "android-mate-$sessionTag" }
 
-    // Cloud demo-server connection state (zero hardcoded secrets in source/git!)
+    // Cloud demo-server connection state: connects to real model by default via IP-gated gateway!
     var savedServerConfig by remember {
         val url = prefs.getString(PREF_SERVER_URL, null)
         val tok = prefs.getString(PREF_SERVER_TOKEN, null)
-        val sc = prefs.getString(PREF_SERVER_SCOPE, "channel-generative-ui") ?: "channel-generative-ui"
+        val sc = prefs.getString(PREF_SERVER_SCOPE, DEFAULT_CLOUD_SCOPE) ?: DEFAULT_CLOUD_SCOPE
         mutableStateOf(
             if (!url.isNullOrBlank() && !tok.isNullOrBlank()) {
                 DemoServerConfig(serverUrl = url, token = tok, scopeId = sc)
             } else {
-                null
+                DemoServerConfig(
+                    serverUrl = DEFAULT_CLOUD_GATEWAY_URL,
+                    token = DEFAULT_CLOUD_GATEWAY_TOKEN,
+                    scopeId = sc,
+                )
             },
         )
     }
@@ -251,21 +260,35 @@ fun SproutCloudPhoneVerificationScreen(
     fun applyNewServerConfig(cfg: DemoServerConfig?) {
         localGenJob?.cancel()
         targetMessageId = null
-        savedServerConfig = cfg
         if (cfg != null) {
-            prefs.edit()
-                .putString(PREF_SERVER_URL, cfg.serverUrl)
-                .putString(PREF_SERVER_TOKEN, cfg.token)
-                .putString(PREF_SERVER_SCOPE, cfg.scopeId)
-                .apply()
-            serverNotice = "正在连接云端模型 (${cfg.scopeId})…"
+            savedServerConfig = cfg
+            if (cfg.serverUrl == DEFAULT_CLOUD_GATEWAY_URL && cfg.token == DEFAULT_CLOUD_GATEWAY_TOKEN) {
+                prefs.edit()
+                    .remove(PREF_SERVER_URL)
+                    .remove(PREF_SERVER_TOKEN)
+                    .putString(PREF_SERVER_SCOPE, cfg.scopeId)
+                    .apply()
+            } else {
+                prefs.edit()
+                    .putString(PREF_SERVER_URL, cfg.serverUrl)
+                    .putString(PREF_SERVER_TOKEN, cfg.token)
+                    .putString(PREF_SERVER_SCOPE, cfg.scopeId)
+                    .apply()
+            }
+            serverNotice = "正在连接真模型 (${cfg.scopeId})…"
         } else {
+            val resetCfg = DemoServerConfig(
+                serverUrl = DEFAULT_CLOUD_GATEWAY_URL,
+                token = DEFAULT_CLOUD_GATEWAY_TOKEN,
+                scopeId = DEFAULT_CLOUD_SCOPE,
+            )
+            savedServerConfig = resetCfg
             prefs.edit()
                 .remove(PREF_SERVER_URL)
                 .remove(PREF_SERVER_TOKEN)
+                .putString(PREF_SERVER_SCOPE, DEFAULT_CLOUD_SCOPE)
                 .apply()
-            serverHealth = null
-            serverNotice = null
+            serverNotice = "已恢复默认真模型网关 (${resetCfg.scopeId})…"
         }
     }
 
@@ -760,8 +783,8 @@ fun SproutCloudPhoneVerificationScreen(
                         },
                     )
                     HeaderPillButton(
-                        label = if (serverClient != null) "云端模型" else "连真模型",
-                        active = serverClient != null,
+                        label = "频道 / 模型",
+                        active = serverSheetOpen,
                         onClick = { serverSheetOpen = !serverSheetOpen },
                     )
                     HeaderPillButton(
@@ -1013,6 +1036,9 @@ fun SproutCloudPhoneVerificationScreen(
                         }
                     }
                 } else {
+                    SuggestionChip(label = "📱 平板对比表格", enabled = !agentRunning) {
+                        sendPrompt("对比一下 OPPO pad mini 和 华为 padmini 给我一个对比表格")
+                    }
                     SproutPlaygroundCatalog.SAMPLES.forEach { s ->
                         SuggestionChip(label = s.chipLabel, enabled = !agentRunning) {
                             sendPrompt(s.defaultPrompt)
@@ -1217,7 +1243,7 @@ private fun ViewerTimelinePane(
                         .padding(16.dp),
                 ) {
                     BasicText(
-                        text = "频道暂无消息。点下方快捷提示词或输入一句话，@Sprout 会在消息中直接生成可交互原生界面。",
+                        text = "已默认直连 Claude Opus 真模型。在下方输入任意需求（例如：对比一下 OPPO pad mini 和 华为 padmini 给我一个对比表格），或点击快捷提示词，Agent 会流式生成可交互原生界面。",
                         style = TextStyle(fontSize = 13.sp, color = RAFT_MUTED),
                     )
                 }
@@ -1848,7 +1874,7 @@ private fun ServerConnectionPanel(
                     style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = RAFT_INK),
                 )
             }
-            if (currentConfig != null) {
+            if (currentConfig != null && currentConfig.serverUrl != DEFAULT_CLOUD_GATEWAY_URL) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(7.dp))
@@ -1857,7 +1883,7 @@ private fun ServerConnectionPanel(
                         .padding(horizontal = 10.dp, vertical = 7.dp),
                 ) {
                     BasicText(
-                        text = "切回内置",
+                        text = "恢复默认真模型网关",
                         style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF991B1B)),
                     )
                 }
