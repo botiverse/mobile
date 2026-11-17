@@ -15,6 +15,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 /**
  * Shared store for Members agent detail page transient state.
@@ -250,12 +251,36 @@ internal sealed interface SharedAgentDetailIntent {
 }
 
 internal class SharedAgentDetailStore(
-    private val logger: (String) -> Unit = {}
+    private val logger: (String) -> Unit = {},
+    initialState: SharedAgentDetailState = SharedAgentDetailState()
 ) {
-    private val _state = MutableStateFlow(SharedAgentDetailState())
+    private val _state = MutableStateFlow(initialState)
     val state: StateFlow<SharedAgentDetailState> = _state.asStateFlow()
+    private val routeStores = MutableStateFlow<List<SharedAgentDetailStore>>(emptyList())
+
+    /**
+     * A profile route's own agent-detail store, alive for as long as the route stays composed.
+     *
+     * The shell store used to be the profile's store too, a single slot: another agent's profile
+     * opened over this one (A's profile -> its computer -> B's profile) took it over, and A, uncovered
+     * by Back, had nothing to show until it loaded again (Hands 11c0ed95, then a full-page "Loading..."
+     * after #4849). Each profile now keeps its own store, so the page under the stack keeps exactly
+     * what it showed. It starts from the shell's state (an opener's seed and the activity logs) and
+     * keeps receiving the shell's realtime activity ([forwardsToRouteStores]); everything else the
+     * route dispatches stays in the route. [closeRouteStore] when the route leaves composition.
+     */
+    fun openRouteStore(): SharedAgentDetailStore {
+        val routeStore = SharedAgentDetailStore(logger = logger, initialState = _state.value)
+        routeStores.update { it + routeStore }
+        return routeStore
+    }
+
+    fun closeRouteStore(routeStore: SharedAgentDetailStore) {
+        routeStores.update { stores -> stores.filterNot { it === routeStore } }
+    }
 
     fun dispatch(intent: SharedAgentDetailIntent) {
+        if (intent.forwardsToRouteStores()) routeStores.value.forEach { it.dispatch(intent) }
         val current = _state.value
         val next = when (intent) {
             is SharedAgentDetailIntent.SelectMember ->
@@ -634,6 +659,11 @@ private fun SharedAgentDetailState.applyAgentActivityUpdate(
         agentActivitySeq = event.serverSeq?.let { agentActivitySeq + (agentId to it) } ?: agentActivitySeq
     )
 }
+
+/** Shell-wide realtime that every open profile route's store must see too. */
+private fun SharedAgentDetailIntent.forwardsToRouteStores(): Boolean =
+    this is SharedAgentDetailIntent.ApplyAgentActivityUpdate ||
+        this == SharedAgentDetailIntent.ResetAgentActivitySeq
 
 private fun SharedAgentDetailState.acceptsDetailResult(
     owner: SharedAgentDetailOwner?,
