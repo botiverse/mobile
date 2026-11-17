@@ -226,7 +226,8 @@ internal data class SettingsAboutPayloadCopy(
     val licensesDetail: String = "Review third-party libraries included in the app package.",
     val open: String = "Open",
     val copyEnvironment: String = "Copy environment info",
-    val copyEnvironmentDetail: String = "Copy the same sanitized environment used for diagnostics and feedback.",
+    /** The copy row carries the environment only; app logs go with Feedback. */
+    val copyEnvironmentHint: String = "To include logs, send them with Feedback.",
     val copy: String = "Copy",
     val openRaft: String = "Open Raft",
     val openWebDetail: (String) -> String = { "Open $it in the system browser." }
@@ -256,7 +257,7 @@ private fun settingsAboutPayloadCopy(resolvedWebUrl: String): SettingsAboutPaylo
         licensesDetail = stringResource(Res.string.settings_about_licenses_detail, raftPlatformProductName()),
         open = stringResource(Res.string.settings_state_open),
         copyEnvironment = stringResource(Res.string.settings_about_action_copy_environment),
-        copyEnvironmentDetail = stringResource(Res.string.settings_about_copy_environment_detail),
+        copyEnvironmentHint = stringResource(Res.string.settings_diagnostics_logs_via_feedback_hint),
         copy = stringResource(Res.string.settings_about_action_copy),
         openRaft = stringResource(Res.string.settings_about_action_open_raft),
         openWebDetail = { localizedOpenWebDetail }
@@ -358,7 +359,7 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                     key = "copyEnvironmentInfo",
                                     iconName = RaftLucideIconName.Clipboard,
                                     title = copy.copyEnvironment,
-                                    detail = copy.copyEnvironmentDetail,
+                                    detail = copy.copyEnvironmentHint,
                                     status = copy.copy,
                                     enabled = true
                                 )

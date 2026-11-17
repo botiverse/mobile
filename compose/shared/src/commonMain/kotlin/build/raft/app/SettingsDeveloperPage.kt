@@ -483,8 +483,9 @@ internal data class SettingsDiagnosticsPayloadCopy(
     val export: String = "Export",
     val disabled: String = "Disabled",
     val send: String = "Send",
-    val exportLogs: String = "Export logs",
-    val exportLogsDetail: String = "Export environment, status, and recent app JSONL logs.",
+    val shareEnvironment: String = "Share environment info",
+    /** Under the copy/share rows: they carry the environment only, app logs go with Feedback. */
+    val logsViaFeedbackHint: String = "To include logs, send them with Feedback.",
     val sendDiagnostics: String = "Send diagnostics",
     val sendDiagnosticsDetail: String = "Share sanitized diagnostics with support.",
     val app: String = "App",
@@ -528,8 +529,8 @@ private fun settingsDiagnosticsPayloadCopy(): SettingsDiagnosticsPayloadCopy =
         export = stringResource(Res.string.settings_state_export),
         disabled = stringResource(Res.string.settings_state_disabled),
         send = stringResource(Res.string.settings_state_send),
-        exportLogs = stringResource(Res.string.settings_diagnostics_action_export_logs),
-        exportLogsDetail = stringResource(Res.string.settings_diagnostics_export_logs_detail),
+        shareEnvironment = stringResource(Res.string.settings_diagnostics_action_share_environment),
+        logsViaFeedbackHint = stringResource(Res.string.settings_diagnostics_logs_via_feedback_hint),
         sendDiagnostics = stringResource(Res.string.settings_diagnostics_action_send),
         sendDiagnosticsDetail = stringResource(Res.string.settings_diagnostics_send_detail),
         app = stringResource(Res.string.settings_diagnostics_label_app),
@@ -772,7 +773,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                     title = copy.actions,
                     rows =
                         listOf(
-                            RaftSharedSettingsRow("shareLogs", RaftLucideIconName.Share, copy.exportLogs, copy.exportLogsDetail, status = if (diagnosticsExportAvailable) copy.export else copy.disabled, enabled = diagnosticsExportAvailable),
+                            RaftSharedSettingsRow("shareLogs", RaftLucideIconName.Share, copy.shareEnvironment, copy.logsViaFeedbackHint, status = if (diagnosticsExportAvailable) copy.export else copy.disabled, enabled = diagnosticsExportAvailable),
                             RaftSharedSettingsRow("feedback", RaftLucideIconName.MessageSquarePlus, copy.sendDiagnostics, copy.sendDiagnosticsDetail, status = copy.send, enabled = true)
                         )
                 )

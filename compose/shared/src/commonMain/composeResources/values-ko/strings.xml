@@ -3259,7 +3259,6 @@
     <string name="settings_about_action_check">확인</string>
     <string name="settings_about_licenses_detail">%1$s 앱 패키지에 포함된 서드파티 라이브러리를 확인해요.</string>
     <string name="settings_about_action_copy_environment">환경 정보 복사</string>
-    <string name="settings_about_copy_environment_detail">진단과 피드백에 쓰이는 것과 같은, 민감 정보를 제거한 환경 정보를 복사해요.</string>
     <string name="settings_about_action_copy">복사</string>
     <string name="settings_about_source_code">소스 코드</string>
     <string name="settings_about_action_open_raft">Raft 열기</string>
@@ -3305,8 +3304,8 @@
     <string name="settings_diagnostics_section_environment">환경</string>
     <string name="settings_diagnostics_section_load_status">로드 상태</string>
     <string name="settings_diagnostics_section_actions">관리</string>
-    <string name="settings_diagnostics_action_export_logs">로그 내보내기</string>
-    <string name="settings_diagnostics_export_logs_detail">환경, 상태, 최근 앱 JSONL 로그를 내보내요.</string>
+    <string name="settings_diagnostics_action_share_environment">환경 정보 공유</string>
+    <string name="settings_diagnostics_logs_via_feedback_hint">로그가 필요하면 '피드백'으로 보내 주세요.</string>
     <string name="settings_diagnostics_action_send">진단 정보 보내기</string>
     <string name="settings_diagnostics_send_detail">민감 정보를 제거한 진단 정보를 지원팀과 공유해요.</string>
     <string name="settings_diagnostics_detail_basic">인증 및 민감 정보를 제거한 앱 진단</string>

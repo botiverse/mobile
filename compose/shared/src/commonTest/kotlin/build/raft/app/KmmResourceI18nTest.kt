@@ -569,7 +569,8 @@ class KmmResourceI18nTest {
             Res.string.settings_developer_api_environment,
             Res.string.settings_developer_environment_save_detail,
             Res.string.settings_diagnostics_title,
-            Res.string.settings_diagnostics_action_export_logs,
+            Res.string.settings_diagnostics_action_share_environment,
+            Res.string.settings_diagnostics_logs_via_feedback_hint,
             Res.string.settings_state_saved
         ).forEach { resource ->
             assertTrue(

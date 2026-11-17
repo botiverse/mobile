@@ -3424,7 +3424,6 @@
     <string name="settings_about_action_check">检查</string>
     <string name="settings_about_licenses_detail">查看 %1$s 应用包中包含的第三方库。</string>
     <string name="settings_about_action_copy_environment">复制环境信息</string>
-    <string name="settings_about_copy_environment_detail">复制与诊断和反馈相同的脱敏环境信息。</string>
     <string name="settings_about_action_copy">复制</string>
     <string name="settings_about_source_code">源代码</string>
     <string name="settings_about_action_open_raft">打开 Raft</string>
@@ -3472,8 +3471,8 @@
     <string name="settings_diagnostics_section_environment">环境</string>
     <string name="settings_diagnostics_section_load_status">加载状态</string>
     <string name="settings_diagnostics_section_actions">操作</string>
-    <string name="settings_diagnostics_action_export_logs">导出日志</string>
-    <string name="settings_diagnostics_export_logs_detail">导出环境、状态和近期应用 JSONL 日志。</string>
+    <string name="settings_diagnostics_action_share_environment">分享环境信息</string>
+    <string name="settings_diagnostics_logs_via_feedback_hint">需要日志时，请在「反馈」里提交。</string>
     <string name="settings_diagnostics_action_send">发送诊断</string>
     <string name="settings_diagnostics_send_detail">向支持团队分享脱敏诊断信息。</string>
     <string name="settings_diagnostics_detail_basic">认证和脱敏应用诊断</string>

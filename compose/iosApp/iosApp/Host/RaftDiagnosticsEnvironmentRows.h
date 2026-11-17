@@ -33,3 +33,18 @@ static inline NSString *RaftDiagnosticsEnvironmentRowsText(NSDictionary *about,
     }
     return text;
 }
+
+/// The "Raft diagnostics / Environment" text: the header and the Environment rows, nothing else.
+///
+/// With `omitEmptyRows` YES this is the whole user-facing copy/share text (Settings > About copy,
+/// Diagnostics share, the report-failed fallback): it never carries app run logs, which leave the
+/// device only with an explicit Feedback submit. The Feedback attachment passes NO and appends its
+/// "iOS diagnostics" section (recent logs) after this text.
+static inline NSString *RaftDiagnosticsSummaryText(NSDictionary *about,
+                                                   NSArray<NSDictionary *> *rows,
+                                                   BOOL omitEmptyRows) {
+    NSMutableString *text = [NSMutableString string];
+    [text appendString:@"Raft diagnostics\n\nEnvironment\n"];
+    [text appendString:RaftDiagnosticsEnvironmentRowsText(about, rows, omitEmptyRows)];
+    return text;
+}

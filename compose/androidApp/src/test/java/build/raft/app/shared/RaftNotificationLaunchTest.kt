@@ -84,6 +84,51 @@ class RaftNotificationLaunchTest {
     }
 
     @Test
+    fun diagnosticsCopySummaryCarriesEnvironmentButNoRunLogs() {
+        val about =
+            mapOf<String, Any>(
+                "appName" to "Raft",
+                "versionLabel" to "1.27.0",
+                "buildLabel" to "1270000",
+                "sourceLabel" to "abc123",
+                "platformLabel" to "Android 16 / SDK 36",
+                "deviceLabel" to "Google Pixel",
+                "selectedServerLabel" to "Botiverse",
+                "socketStatusLabel" to "connected"
+            )
+        val logLine = "{\"ts\":1,\"tag\":\"SlockRealtime\",\"msg\":\"socket_connect_start\"}"
+
+        val summary = formatSettingsDiagnosticsSummaryText(about)
+
+        listOf(
+            "Version: 1.27.0",
+            "Build: 1270000",
+            "Source: abc123",
+            "Platform: Android 16 / SDK 36",
+            "Device: Google Pixel",
+            "Selected server: Botiverse",
+            "Socket: connected"
+        ).forEach { line -> assertTrue("summary missing $line", summary.lines().contains(line)) }
+        listOf("Recent logs", "App diagnostics", "socket_connect_start", FeedbackZipRecentLogsPointer)
+            .forEach { text -> assertFalse("copy/share summary carried $text", summary.contains(text)) }
+
+        // The Feedback attachment keeps the same environment and still carries the logs.
+        val attachment =
+            formatMergedSettingsDiagnosticsExportText(
+                about = about,
+                recentLogs = logLine,
+                hasFallbackDiagnosticsLogs = true
+            )
+        assertTrue(attachment.startsWith(summary))
+        assertTrue(attachment.contains("Recent logs"))
+        assertTrue(attachment.contains(logLine))
+        assertEquals(
+            settingsFeedbackShareEnvironmentSection(attachment),
+            settingsFeedbackShareEnvironmentSection(summary)
+        )
+    }
+
+    @Test
     fun feedbackShareEnvironmentOmitsDisplayAndSocketDetails() {
         val exportText =
             formatMergedSettingsDiagnosticsExportText(
