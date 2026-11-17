@@ -5306,7 +5306,10 @@ private fun ThreadPageScreen(
                 bridge.errorToast(threadFindLoadFailedLabel, error)
             }
         }
+    // The head's title and its parent link (ThreadHeaderOriginalTitle.kt): one per thread page.
+    val headerOriginalState = remember(payload.instanceId) { ThreadHeaderOriginalState() }
     CompositionLocalProvider(
+        LocalThreadHeaderOriginalState provides headerOriginalState,
         LocalConversationUnavailableNav provides conversationUnavailableNav,
         LocalThreadOutlineApi provides threadOutlineApi,
         LocalThreadFindEnvironment provides threadFindEnvironment,
@@ -5351,6 +5354,10 @@ private fun ThreadPageScreen(
                     timeContext = currentPayload.toRaftTimeCapabilities().staticContext(),
                     alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
                     compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
+                    // raft-design conversation.md "Threads": the place name and View in Channel open the
+                    // conversation at the original message, highlighted; a deleted one (or one not loaded,
+                    // e.g. behind the history window) opens the conversation alone.
+                    anchorMessageId = headerOriginalState.locateMessageId(),
                     onWarn = bridge::logWarn
                 ) ?: return@SharedThreadRouteContent false
             openStandaloneThreadPayload(parentPayload, serverIdOverride = parentServerId)
@@ -19779,17 +19786,13 @@ internal fun ThreadPageHeader(
     // Task v2 (web TaskConversationBar): a task conversation's search is the More menu's Search in Task.
     val taskConversation = payload.isTaskConversationSurface()
     val topSafeArea = if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp
-    val replyThreadPreviewTitle =
-        if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread && headerDisplay.title == ThreadReplyPageTitle) {
-            replyThreadHeaderPreviewTitle(
-                origin = originMessage,
-                imageLabel = stringResource(Res.string.thread_reply_title_preview_image),
-                fileLabel = stringResource(Res.string.thread_reply_title_preview_file),
-                externalFallbackName = rememberExternalAuthorFallbackName()
-            )
-        } else {
-            null
+    // raft-design conversation.md "Threads" (web #15285): the title names the original message once
+    // it scrolls out of view; a parent the person can't open offers no way in (ThreadHeaderOriginalTitle.kt).
+    val headerOriginal =
+        LocalThreadHeaderOriginalState.current?.takeIf {
+            headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread && headerDisplay.title == ThreadReplyPageTitle
         }
+    val parentReachable = headerOriginal?.parentReachable != false
     val replyThreadReplyCountLabel =
         when {
             headerDisplay.surfaceKind != RaftThreadSurfaceKind.ReplyThread || originReplyCount == null -> null
@@ -19809,10 +19812,11 @@ internal fun ThreadPageHeader(
         (loungeTitle ?: headerDisplay.subtitle)?.takeIf {
             it.isNotBlank() &&
                 headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+                parentReachable &&
                 payload.threadHeaderOpenInParentActionVisible()
         }
     val localizedHeaderTitle =
-        loungeTitle?.takeIf { loungeHeader != null } ?: replyThreadPreviewTitle ?: localizedThreadHeaderTitle(
+        loungeTitle?.takeIf { loungeHeader != null } ?: localizedThreadHeaderTitle(
             title = headerDisplay.title,
             surfaceKind = headerDisplay.surfaceKind,
             localizedReplyThread = stringResource(Res.string.thread_reply_title),
@@ -19865,6 +19869,7 @@ internal fun ThreadPageHeader(
                         onOpenSearch = onOpenSearch,
                         onShowSettings = onShowSettings,
                         onOpenInChannel = onOpenInChannel,
+                        parentReachable = parentReachable,
                         onToggleFocusMode = onToggleFocusMode,
                         focusModeActive = focusModeActive,
                         threadFollowed = threadFollowed,
@@ -19892,6 +19897,7 @@ internal fun ThreadPageHeader(
                 onOpenSearch = onOpenSearch,
                 onShowSettings = onShowSettings,
                 onOpenInChannel = onOpenInChannel,
+                parentReachable = parentReachable,
                 onToggleFocusMode = onToggleFocusMode,
                 focusModeActive = focusModeActive,
                 threadFollowed = threadFollowed,
@@ -20049,21 +20055,20 @@ internal fun ThreadPageHeader(
                         .then(if (loungeHeader != null) Modifier.testTag(AgentLoungeTestTags.Header) else Modifier)
                         // A long press copies the channel / DM name; the tap (scroll to top) stays.
                         .raftCopyable(
-                            (loungeTitle?.takeIf { loungeHeader != null }
-                                ?: threadHeaderCopyText(headerDisplay.title, headerDisplay.surfaceKind)).takeIf { replyThreadPreviewTitle == null },
+                            loungeTitle?.takeIf { loungeHeader != null }
+                                ?: threadHeaderCopyText(headerDisplay.title, headerDisplay.surfaceKind),
                             onClick = onTitleClick,
                         ),
                 // raft-ui `PanelHeaderContent`: the 22dp title line sits straight on the 18dp meta line.
                 verticalArrangement = Arrangement.Top
             ) {
                 ThreadHeaderNameFirstRow(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = localizedHeaderTitle,
+                    ThreadHeaderTitleText(
+                        normalTitle = localizedHeaderTitle,
+                        state = headerOriginal,
                         // raft-ui `PanelTitle`: text-headline (17/22 bold; 16/24 in the wide type).
                         style = RaftType.Headline.copy(color = RaftColor.TextBlack),
                         color = RaftColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
                     )
                     if (
                         loungeHeader == null &&
@@ -20165,7 +20170,7 @@ internal fun ThreadPageHeader(
                     }
                     val replyThreadSearch = onOpenSearch.takeIf { replyThreadMenu && payload.threadHeaderSearchAction() != null }
                     val replyThreadViewInChannel =
-                        onOpenInChannel.takeIf { replyThreadMenu && payload.threadHeaderOpenInParentActionVisible() }
+                        onOpenInChannel.takeIf { replyThreadMenu && parentReachable && payload.threadHeaderOpenInParentActionVisible() }
                     val toggleFocus = onToggleFocusMode
                     val hasPanelMenu =
                         onToggleThreadFollow != null || onMarkThreadUnread != null || taskConversation ||
@@ -20248,6 +20253,8 @@ private fun threadHeaderSideColumnActions(
     onOpenSearch: () -> Unit,
     onShowSettings: () -> Unit,
     onOpenInChannel: () -> Unit,
+    /** False where the person can't open the parent conversation: no View in Channel (ThreadHeaderOriginal.Unavailable). */
+    parentReachable: Boolean = true,
     onToggleFocusMode: (() -> Unit)?,
     focusModeActive: Boolean,
     threadFollowed: Boolean?,
@@ -20320,7 +20327,7 @@ private fun threadHeaderSideColumnActions(
         if (onOpenTimeline != null) {
             add(raftSideColumnLucideAction(THREAD_TIMELINE_MENU_ITEM_ID, timelineLabel, RaftLucideIconName.List, onOpenTimeline, priority = -1))
         }
-        if (payload.threadHeaderOpenInParentActionVisible()) {
+        if (parentReachable && payload.threadHeaderOpenInParentActionVisible()) {
             add(raftSideColumnLucideAction("thread-open-in-channel", viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel))
         }
         // web ThreadPanelHeader (slock #12211): Focus mode (the head's Expand) never goes into the ⋯.
@@ -24020,6 +24027,8 @@ private fun ThreadMessagesListContent(
             }
         }
     }
+    // The head's title names the original once its row scrolls away (ThreadHeaderOriginalTitle.kt).
+    ThreadHeaderOriginalReporter(listState.raw, renderPayload, renderConfig.originErrorCode)
     val headerScrollToTopRequestFence =
         remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
     var outlineOriginJumpRequest by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -27573,7 +27582,7 @@ internal fun ThreadComposerDock(
 
 private const val ThreadOlderMessagesListItemKey = "thread-page:older-messages"
 private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
-private const val ThreadOriginListItemKey = "thread-page:origin"
+internal const val ThreadOriginListItemKey = "thread-page:origin"
 private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 private const val ThreadReplyLoadingListItemKey = "thread-page:reply-loading"
 private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
