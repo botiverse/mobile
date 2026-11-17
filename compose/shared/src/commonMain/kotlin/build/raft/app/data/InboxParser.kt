@@ -138,6 +138,9 @@ private fun JsonElement.presentReadStateVersionOrNull(): Long? {
     return if (version.isString) null else version.content.toLongOrNull()
 }
 
+/** An `{kind: "absent"}` frontier: no read state for the conversation on the server. */
+private fun JsonElement.isAbsentFrontier(): Boolean = (this as? JsonObject)?.stringFieldOrNull("kind") == "absent"
+
 /** A present frontier's `maxReadSeq` (a decimal string), else null. */
 private fun JsonElement.presentMaxReadSeqOrNull(): String? {
     val frontier = this as? JsonObject ?: return null
@@ -437,6 +440,7 @@ private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): In
         readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
         readStateVersion = readState?.presentReadStateVersionOrNull(),
         readStateMaxReadSeq = readState?.presentMaxReadSeqOrNull(),
+        readStateAbsent = readState?.isAbsentFrontier() == true,
         markedUnread = readState?.isMarkedUnreadFrontier() == true,
         latestActivitySeq = latestActivitySeq?.takeIf(::isCanonicalActivitySeq),
         doneFrontierSeq = doneFrontierSeq,
@@ -500,6 +504,7 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
         readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
         readStateVersion = readState?.presentReadStateVersionOrNull(),
         readStateMaxReadSeq = readState?.presentMaxReadSeqOrNull(),
+        readStateAbsent = readState?.isAbsentFrontier() == true,
         markedUnread = readState?.isMarkedUnreadFrontier() == true,
         latestActivitySeq = latestActivitySeq?.takeIf(::isCanonicalActivitySeq),
         doneFrontierSeq = doneFrontierSeq,

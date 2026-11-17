@@ -1,6 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageSystemProvenance
@@ -57,12 +59,17 @@ class SharedActivityStoreRowPositionTest {
         fun row(key: String): InboxItem = store.state.value.items.first { it.key == key }
     }
 
-    private fun TestScope.loadedStore(lists: List<InboxSnapshot>, rowPosition: Boolean = true): Fixture {
+    private fun TestScope.loadedStore(
+        lists: List<InboxSnapshot>,
+        rowPosition: Boolean = true,
+        versions: PerReceiverStateVersionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+    ): Fixture {
         val inbox = RecordingInbox(lists)
         val store =
             activityStore(
                 scope = backgroundScope,
                 inboxRepository = inbox,
+                perReceiverStateVersionStore = versions,
                 realtimeBackgroundRefreshIntervalMillis = ActivityRealtimeBackgroundRefreshIntervalMillis,
                 nowMillis = { testScheduler.currentTime },
                 inboxInPlaceEnabled = { true },
@@ -288,6 +295,146 @@ class SharedActivityStoreRowPositionTest {
         f.store.dispatch(SharedActivityIntent.Refresh)
         runCurrent()
         assertEquals(1, f.row(channelRow.key).unreadCount)
+    }
+
+    @Test
+    fun aCursorMovedBackElsewhereWithoutTheFlagKeepsTheNextAnswerUnreadAlsoWhenHomeTookItFirst() = runTest {
+        // slock #15307: Mark as Unread on another device with countable unread only moves the read cursor
+        // back (no `markedUnread`). Home shares the read checkpoints and took the fact first, so it reaches
+        // this store at the version already held: the row's read seq still goes, and the answer at the old
+        // read (1 unread at 10) keeps its unread.
+        val versions = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+        val unread = channelRow.copy(unreadCount = 1)
+        val f = loadedStore(listOf(snapshot(listOf(unread)), snapshot(listOf(unread))), versions = versions)
+        f.store.dispatch(readState("channel-1", maxReadSeq = 10L))
+        runCurrent()
+        assertEquals("10" to null, f.store.rowPositionReadSeqForTest("channel-1"))
+        advanceTimeBy(ActivityLocalMutationHoldMillis + 30_000L)
+
+        versions.applyOrObserveReadStateFact(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1"), 3L, 9L)
+        f.store.dispatch(readState("channel-1", maxReadSeq = 9L, version = 3L))
+        runCurrent()
+        assertEquals(null to "10", f.store.rowPositionReadSeqForTest("channel-1"))
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(1, f.row(channelRow.key).unreadCount)
+    }
+
+    @Test
+    fun aCursorMovedBackElsewhereIsFoldedAtTheNextAnswerWhenNoReadStateEventCameHere() = runTest {
+        // The ledger took the rewind on another path (Home) and this store saw no event for it: the answer
+        // folds it first, so the old read seq does not clear the unread it serves.
+        val versions = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+        val unread = channelRow.copy(unreadCount = 1)
+        val f = loadedStore(listOf(snapshot(listOf(unread)), snapshot(listOf(unread))), versions = versions)
+        f.store.dispatch(readState("channel-1", maxReadSeq = 10L))
+        runCurrent()
+        advanceTimeBy(ActivityLocalMutationHoldMillis + 30_000L)
+        versions.applyOrObserveReadStateFact(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1"), 3L, 9L)
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(1, f.row(channelRow.key).unreadCount)
+        assertEquals(null to "10", f.store.rowPositionReadSeqForTest("channel-1"))
+    }
+
+    @Test
+    fun aReadStateBegunAgainAfterAccessWasLostDropsTheReadSeq() = runTest {
+        // slock #15307: access lost deletes the cursor row; an answer serves it `absent` and the read state
+        // starts again from v1. The read seq of the old cursor goes (the answer's unread at 10 counts) and
+        // the new v1 is accepted, not judged stale against v5.
+        val versions = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+        val absent = channelRow.copy(unreadCount = 1, readStateAbsent = true)
+        val f = loadedStore(listOf(snapshot(listOf(channelRow)), snapshot(listOf(absent))), versions = versions)
+        f.store.dispatch(readState("channel-1", maxReadSeq = 10L, version = 5L))
+        runCurrent()
+        assertEquals("10" to null, f.store.rowPositionReadSeqForTest("channel-1"))
+        advanceTimeBy(ActivityLocalMutationHoldMillis + 30_000L)
+
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(1, f.row(channelRow.key).unreadCount)
+        assertEquals(null to null, f.store.rowPositionReadSeqForTest("channel-1"))
+        assertEquals(0L, versions.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")).version)
+
+        f.store.dispatch(readState("channel-1", maxReadSeq = 4L, version = 1L))
+        runCurrent()
+        assertEquals("4" to null, f.store.rowPositionReadSeqForTest("channel-1"))
+    }
+
+    @Test
+    fun anAbsentAnswerRequestedBeforeAReadDoesNotUndoIt() = runTest {
+        // Web `supersededBySocket`: the list read starts, then the first read of the conversation lands (v1);
+        // the answer, computed before it, still says `absent`. The read and its checkpoint stand.
+        val versions = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+        val absent = channelRow.copy(unreadCount = 1, readStateAbsent = true)
+        val f = loadedStore(listOf(snapshot(listOf(channelRow)), snapshot(listOf(absent))), versions = versions)
+        f.store.dispatch(readState("channel-1", maxReadSeq = 10L, version = 1L))
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals("10" to null, f.store.rowPositionReadSeqForTest("channel-1"))
+        assertEquals(1L, versions.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")).version)
+        assertEquals(0, f.row(channelRow.key).unreadCount)
+    }
+
+    @Test
+    fun anAbsentAnswerStillClearsWhenOnlyALocalReadLandedMeanwhile() = runTest {
+        // Scout (#4924): only a newer read-state version accepted after the read started stops the clear. A
+        // local read ack accepts none: the absent answer still drops the old checkpoint (v5), so the next v1,
+        // v2 (a Mark as Unread elsewhere) are not dropped as stale.
+        val versions = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+        val absent = channelRow.copy(unreadCount = 1, readStateAbsent = true)
+        val f = loadedStore(listOf(snapshot(listOf(channelRow)), snapshot(listOf(absent))), versions = versions)
+        f.store.dispatch(readState("channel-1", maxReadSeq = 10L, version = 5L))
+        runCurrent()
+        advanceTimeBy(ActivityLocalMutationHoldMillis + 30_000L)
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        f.store.dispatch(
+            SharedActivityIntent.ApplyReadReceiptResult(
+                ReadReceiptRequest.All(ChannelId("channel-1"), ReadReceiptOwner("production", "user-1", "server-1"), revision = 1L),
+                succeeded = true,
+                maxReadSeq = 12L
+            )
+        )
+        assertEquals("12" to null, f.store.rowPositionReadSeqForTest("channel-1"))
+        runCurrent()
+        assertEquals(0L, versions.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")).version)
+        f.store.dispatch(readState("channel-1", maxReadSeq = 11L, version = 2L))
+        runCurrent()
+        assertEquals(2L, versions.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")).version)
+    }
+
+    @Test
+    fun flagOffAnAbsentAnswerLeavesTheSharedCheckpoint() = runTest {
+        // The checkpoint is Home's too: flag off, Activity changes nothing about it.
+        val versions = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+        val absent = channelRow.copy(unreadCount = 1, readStateAbsent = true)
+        val f = loadedStore(listOf(snapshot(listOf(channelRow)), snapshot(listOf(absent))), rowPosition = false, versions = versions)
+        f.store.dispatch(readState("channel-1", maxReadSeq = 10L, version = 5L))
+        runCurrent()
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(5L, versions.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")).version)
+    }
+
+    @Test
+    fun aReadFoldedFromTheLedgerReadsTheAppliedLiveSeqsItCovers() = runTest {
+        // Scout (#4924): row at 10, live 11 and 12 applied; Home takes the read of 12 first, so this store
+        // only folds it. A late answer at 10 is read by the read seq, and 11 and 12 do not count again.
+        val versions = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+        val late = channelRow.copy(unreadCount = 1)
+        val f = loadedStore(listOf(snapshot(listOf(channelRow)), snapshot(listOf(late))), versions = versions)
+        f.store.dispatch(live("m-11", "channel-1", seq = 11L))
+        f.store.dispatch(live("m-12", "channel-1", seq = 12L))
+        runCurrent()
+        assertEquals(2, f.row(channelRow.key).unreadCount)
+        versions.applyOrObserveReadStateFact(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1"), 2L, 12L)
+        f.store.dispatch(readState("channel-1", maxReadSeq = 12L))
+        runCurrent()
+        assertEquals("12" to null, f.store.rowPositionReadSeqForTest("channel-1"))
+        assertEquals(listOf(false, false), f.store.rowPositionStateForTest("channel-1")?.applied?.map { it.counts })
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(0, f.row(channelRow.key).unreadCount)
     }
 
     @Test

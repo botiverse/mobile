@@ -76,6 +76,25 @@ class InboxParserReadStateTest {
     }
 
     @Test
+    fun onlyAnAbsentFrontierSaysTheServerHoldsNoReadState() {
+        // InboxScopeReadFrontier `{kind:"absent"}`: no cursor row (never read, or deleted when access was lost).
+        val cases =
+            listOf(
+                "absent" to ("""{"kind":"absent"}""" to true),
+                "present" to (present("null") to false),
+                "corrupt" to ("""{"kind":"corrupt"}""" to false),
+                "omitted" to (null to false),
+                "json null" to ("null" to false),
+            )
+        cases.forEach { (name, case) ->
+            val (readState, expected) = case
+            val item = parseSharedInboxSnapshot(body(channelRow("c-1", readState)))?.items?.singleOrNull() ?: error("row dropped for case=$name")
+            assertEquals(expected, item.readStateAbsent, name)
+        }
+        assertEquals(true, parseSharedInboxSnapshot(body(threadRow("""{"kind":"absent"}""")))?.items?.single()?.readStateAbsent)
+    }
+
+    @Test
     fun rowsKeepTheirWireChannelTypeThatTheKindFolds() {
         // channelType / parentChannelType: "channel" | "private" | "joint" | "dm" (slock web
         // inboxStore.ts @ 7a5a03a5a). channelKind folds private into Channel; the raw type keeps it.

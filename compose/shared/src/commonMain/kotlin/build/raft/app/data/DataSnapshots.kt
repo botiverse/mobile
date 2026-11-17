@@ -100,6 +100,11 @@ data class InboxItem(
     val readStateVersion: Long? = null,
     val readStateMaxReadSeq: String? = null,
     /**
+     * Wire `readState.kind == "absent"`: the server holds no read state for the conversation (never read, or
+     * its cursor row deleted when access was lost). Activity forgets the read state it held for it.
+     */
+    val readStateAbsent: Boolean = false,
+    /**
      * Wire `readState.markedUnread` (botiverse/slock #11795): the person marked this conversation
      * unread and nothing countable is unread. With [unreadCount] 0 the row shows unread with a dot
      * and no number (and the Unread filter lists it); counts never include it.
