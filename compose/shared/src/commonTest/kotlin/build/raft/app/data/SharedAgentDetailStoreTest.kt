@@ -1132,4 +1132,70 @@ class SharedAgentDetailStoreTest {
         assertEquals("Plan", rows.single().subagentType)
         assertEquals("1782367200000", rows.single().timestamp)
     }
+    // Hands 11c0ed95: A's profile -> its computer -> B's profile -> Back -> Back. Each profile route
+    // keeps its own store, so B's load never touches what A's (still composed) page shows.
+    @Test
+    fun anotherAgentsProfileRouteLeavesTheCoveredProfileUntouched() {
+        val shell = store()
+        val agentB = MemberId("agent-b")
+        val routeA = shell.openRouteStore()
+        routeA.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        routeA.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Online")))
+        val shownByA = routeA.state.value
+
+        val routeB = shell.openRouteStore()
+        routeB.dispatch(SharedAgentDetailIntent.DeselectMember)
+        routeB.dispatch(SharedAgentDetailIntent.SelectMember(agentB))
+        routeB.dispatch(SharedAgentDetailIntent.SetDetailLoading(agentB))
+        routeB.dispatch(SharedAgentDetailIntent.SetDetail(agentB, testDetail.copy(agentId = agentB)))
+        shell.closeRouteStore(routeB)
+
+        assertTrue(shownByA === routeA.state.value)
+        assertEquals(testMemberId, routeA.state.value.agentId)
+        assertEquals(SharedAgentDetailLoadStatus.Content, routeA.state.value.detailLoadStatus)
+        assertEquals(agentB, routeB.state.value.agentId)
+        // The route's own dispatches stay in the route.
+        assertNull(shell.state.value.agentId)
+    }
+
+    @Test
+    fun aProfileRouteStartsFromTheShellSeedButNotTheOtherWayRound() {
+        val shell = store()
+        shell.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        shell.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Online")))
+
+        val route = shell.openRouteStore()
+        assertEquals(shell.state.value, route.state.value)
+
+        // A seed for a profile opened later does not reach the route already open.
+        shell.dispatch(SharedAgentDetailIntent.DeselectMember)
+        assertEquals(testMemberId, route.state.value.agentId)
+    }
+
+    @Test
+    fun shellRealtimeReachesOpenProfileRoutesUntilTheyClose() {
+        val shell = store()
+        val route = shell.openRouteStore()
+        route.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        route.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Offline", activity = "Offline")))
+
+        shell.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Working, detail = "Building", serverSeq = 10L),
+                observedAtMillis = 100L
+            )
+        )
+        assertEquals("Working", route.state.value.detail?.summary?.status)
+        assertEquals(10L, route.state.value.agentActivitySeq[testMemberId])
+        assertEquals(10L, shell.state.value.agentActivitySeq[testMemberId])
+
+        shell.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
+        assertEquals(1L, route.state.value.agentActivitySeqEpoch)
+        assertTrue(route.state.value.agentActivitySeq.isEmpty())
+
+        shell.closeRouteStore(route)
+        shell.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
+        assertEquals(1L, route.state.value.agentActivitySeqEpoch)
+        assertEquals(2L, shell.state.value.agentActivitySeqEpoch)
+    }
 }
