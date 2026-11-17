@@ -231,6 +231,9 @@ import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -3694,11 +3697,7 @@ private fun SharedThreadRouteContentContent(
         viewModel(key = "shared-thread-composer-$threadInstanceKey") {
             SharedThreadComposerDraftViewModel(persistSlices = listOf(composerDraftPersistSlice))
         }
-    DisposableEffect(composerDraftViewModel, threadInstanceKey) {
-        onDispose {
-            composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
-        }
-    }
+    FlushComposerDraftOnLeave(composerDraftViewModel, threadInstanceKey)
     // dm #119: an open keyboard goes down before the image picker / editor opens and comes back
     // when the user is back at the composer (ThreadComposerKeyboardHandoff.kt).
     val composerKeyboardHandoff =
@@ -10286,3 +10285,29 @@ private fun RaftThreadAttachmentItem.threadAttachmentDownloadId(generation: Long
         .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
         .take(160)
         .ifBlank { "thread-attachment-download" }
+
+/**
+ * Typed text is written in the background within ~40 ms (task #246); going to the background, like
+ * leaving the page, also writes what is still pending at once. Its own function: the route
+ * content composable is at its JVM method-size ceiling.
+ */
+@Composable
+private fun FlushComposerDraftOnLeave(
+    composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    threadInstanceKey: String,
+) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(composerDraftViewModel, threadInstanceKey, lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_STOP) {
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
+        }
+    }
+}
