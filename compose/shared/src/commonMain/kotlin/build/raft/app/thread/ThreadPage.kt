@@ -3697,22 +3697,7 @@ private fun SharedThreadRouteContentContent(
         viewModel(key = "shared-thread-composer-$threadInstanceKey") {
             SharedThreadComposerDraftViewModel(persistSlices = listOf(composerDraftPersistSlice))
         }
-    // Typed text is written in the background within ~40 ms (task #246); going to the
-    // background, like leaving the page, also writes what is still pending at once.
-    val composerDraftLifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(composerDraftViewModel, threadInstanceKey, composerDraftLifecycleOwner) {
-        val observer =
-            LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_STOP) {
-                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
-                }
-            }
-        composerDraftLifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            composerDraftLifecycleOwner.lifecycle.removeObserver(observer)
-            composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
-        }
-    }
+    FlushComposerDraftOnLeave(composerDraftViewModel, threadInstanceKey)
     // dm #119: an open keyboard goes down before the image picker / editor opens and comes back
     // when the user is back at the composer (ThreadComposerKeyboardHandoff.kt).
     val composerKeyboardHandoff =
@@ -10300,3 +10285,29 @@ private fun RaftThreadAttachmentItem.threadAttachmentDownloadId(generation: Long
         .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
         .take(160)
         .ifBlank { "thread-attachment-download" }
+
+/**
+ * Typed text is written in the background within ~40 ms (task #246); going to the background, like
+ * leaving the page, also writes what is still pending at once. Its own function: the route
+ * content composable is at its JVM method-size ceiling.
+ */
+@Composable
+private fun FlushComposerDraftOnLeave(
+    composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    threadInstanceKey: String,
+) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(composerDraftViewModel, threadInstanceKey, lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_STOP) {
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
+        }
+    }
+}
