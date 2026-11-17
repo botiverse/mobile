@@ -15,9 +15,9 @@ fail() {
 }
 
 THREAD_PATHS=(
-  compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt
-  compose/shared/src/commonMain/kotlin/build/raft/app/LazyViewportController.kt
-  compose/shared/src/commonMain/kotlin/build/raft/app/ThreadNewerPagination.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPage.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/LazyViewportController.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadNewerPagination.kt
   compose/androidApp/src/androidTest/java/build/raft/app/shared/RaftThreadNewerAutoPaginationConnectedTest.kt
   compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt
 )
@@ -27,7 +27,7 @@ git init -q "$repo"
 git -C "$repo" config user.name ci-fixture
 git -C "$repo" config user.email ci-fixture@example.invalid
 mkdir -p \
-  "$repo/compose/shared/src/commonMain/kotlin/build/raft/app" \
+  "$repo/compose/shared/src/commonMain/kotlin/build/raft/app/thread" \
   "$repo/compose/shared/src/visualFixtures/kotlin/build/raft/app" \
   "$repo/docs"
 printf 'thread base\n' > "$repo/${THREAD_PATHS[0]}"
@@ -269,9 +269,9 @@ validate_git_safe_action_source(safe_workspace_action)
 
 workflow = YAML.load_file(workflow_path)
 thread_paths = %w[
-  compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt
-  compose/shared/src/commonMain/kotlin/build/raft/app/LazyViewportController.kt
-  compose/shared/src/commonMain/kotlin/build/raft/app/ThreadNewerPagination.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPage.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/LazyViewportController.kt
+  compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadNewerPagination.kt
   compose/androidApp/src/androidTest/java/build/raft/app/shared/RaftThreadNewerAutoPaginationConnectedTest.kt
   compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt
 ]

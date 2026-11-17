@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Keeps the search snippet port and its vendored vectors on one pinned slock commit.
 #
-# Provenance: compose/shared/.../RaftSearchSnippet.kt ports `buildSearchSnippet`
+# Provenance: compose/shared/.../search/RaftSearchSnippet.kt ports `buildSearchSnippet`
 # (packages/shared/src/searchSnippet.ts) and RaftSearchSnippetVectorTest.kt copies its
 # slock test cases, both at github.com/botiverse/slock @ the SHA in
 # RAFT_SEARCH_SNIPPET_SLOCK_SHA. The check is fully local: the SHA in the port, the vector
@@ -9,7 +9,7 @@
 # the function, re-copy the cases and bump all three together.
 set -euo pipefail
 
-readonly PORT="compose/shared/src/commonMain/kotlin/build/raft/app/RaftSearchSnippet.kt"
+readonly PORT="compose/shared/src/commonMain/kotlin/build/raft/app/search/RaftSearchSnippet.kt"
 readonly TEST="compose/shared/src/commonTest/kotlin/build/raft/app/RaftSearchSnippetVectorTest.kt"
 
 for file in "$PORT" "$TEST"; do

@@ -115,7 +115,7 @@ The remaining risk to verify/fix is end-to-end retention: thread REST, realtime 
 - Server task lifecycle-to-thread contract: `<slock-source>/packages/server/src/routes/tasks.ts`
 - Server thread inbox Done endpoint: `<slock-source>/packages/server/src/routes/channels.ts`
 - Server thread follow Done state: `<slock-source>/packages/server/src/services/channelService.ts`
-- KMP thread parser/render notes: `compose/shared/src/commonMain/kotlin/build/raft/app/data/ThreadMessagesParser.kt`, `compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt`, `compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt`
+- KMP thread parser/render notes: `compose/shared/src/commonMain/kotlin/build/raft/app/data/ThreadMessagesParser.kt`, `compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt`, `compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPage.kt`
 
 ## Non-Goals
 
