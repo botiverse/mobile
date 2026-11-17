@@ -143,7 +143,7 @@ class SharedActivityStoreSyncInboxRowsTest {
     fun aRowThatDoesNotReadReadsTheListAgain() = runTest {
         val f = loaded(listOf(row("ch-1", "10")))
         val outcome = f.sync(syncInboxRowUpsert(1, "ch-1", """{"kind":"channel"}"""))
-        assertEquals(emptySet(), assertIs<RaftSyncInboxRowsOutcome.Applied>(outcome).settledIds)
+        assertEquals(emptySet<String>(), assertIs<RaftSyncInboxRowsOutcome.Applied>(outcome).settledIds)
         settle()
         assertEquals(2, f.inbox.listReads)
     }

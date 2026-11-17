@@ -194,7 +194,7 @@ class SyncChangesInboxRowsTest {
         assertEquals(listOf("apply", "snapshots:reset_too_old"), sink.log)
         assertNull(synced.retryAfterMillis, "only the last page's wait counts")
         assertNull(synced.inboxResetReason)
-        assertEquals(listOf("c1.1.1", "c1.2.1.m2.1.k"), api.sinces)
+        assertEquals(listOf<String?>("c1.1.1", "c1.2.1.m2.1.k"), api.sinces)
     }
 
     // ---- router ---------------------------------------------------------------------------------
@@ -302,7 +302,7 @@ class SyncChangesInboxRowsTest {
         retry.onPullFinished(syncTestScope, synced(retryAfter = 2_000L), repull = { runs += "pull" }, reloadInbox = { runs += "inbox" })
         advanceTimeBy(1_999L)
         runCurrent()
-        assertEquals(emptyList(), runs)
+        assertEquals(emptyList<String>(), runs)
         advanceTimeBy(1L)
         runCurrent()
         assertEquals(listOf("pull"), runs)
