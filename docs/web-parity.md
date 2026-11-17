@@ -84,8 +84,8 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Pin / mute channel | `channel/ChannelPinMenuItem.tsx` | done | `ChannelSettingsPage.kt` | `PATCH /channels/:id/notification-settings` | – |
 | Mark read / unread / all read | `layout/SidebarReadToggleMenuItem.tsx` | done | `data/ReadReceiptRepositoryDataSource.kt` | existing | – |
 | Create channel | `channel/CreateChannelDialog.tsx` | done | `SettingsHomePage.kt` `submitCreateChannel` | `POST /channels` | – |
-| Join public channel | `message/ChatPanel.tsx` | done | `SharedThreadStore.kt` `joinChannel` | `POST /channels/:id/join` | – |
-| **Leave channel** | `channel/EditChannelDialog.tsx` | partial: data layer only, no UI | `SharedThreadStore.kt:4249` | `POST /channels/:id/leave` | S |
+| Join public channel | `message/ChatPanel.tsx` | done | `SharedThreadDataSource.kt` `joinChannel` | `POST /channels/:id/join` | – |
+| **Leave channel** | `channel/EditChannelDialog.tsx` | partial: data layer only, no UI | `SharedThreadDataSource.kt` `leaveChannel` | `POST /channels/:id/leave` | S |
 | Rename / description / private | `channel/EditChannelDialog.tsx` | done | `ChannelSettingsPage.kt`, `ChannelSettingsStore.kt` | `PATCH /channels/:id` | – |
 | Archive / delete | `channel/EditChannelDialog.tsx` | done | `data/ChannelRepositoryDataSource.kt` | existing | – |
 | **Unarchive, archived list** | `settings/ArchivedChannelsSection.tsx` | missing | searched `unarchive` | `POST /channels/:id/unarchive` | S |
@@ -97,7 +97,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Code syntax highlighting | `markdown/ShikiHighlightedCode.tsx` | partial: copy button, no highlighting | `markdown/RaftMarkdown.kt` | client | M |
 | Mentions, autocomplete, pending mention actions | `message/autocompleteTriggers.ts`, `PendingMentionActionStrip.tsx` | done | `ThreadComposerSuggestionSearch.kt`, `PendingMentionActionBatch.kt` | existing | – |
 | Reactions | `message/ReactionGlyph.tsx` | done | `data/ThreadApi.kt:393` | existing | – |
-| Who reacted | `store/reactionViewerReadModel.ts` | partial: names resolved on device | `SharedThreadStore.kt` `resolveThreadReactorNames` | `GET /messages/:id/reactions/viewer` unused | S |
+| Who reacted | `store/reactionViewerReadModel.ts` | partial: names resolved on device | `SharedThreadPayloadMutations.kt` `resolveThreadReactorNames` | `GET /messages/:id/reactions/viewer` unused | S |
 | Permalink, quoted preview, copy / quote / select | `message/MessageItem.tsx` | done | `RaftMessagePermalink.kt` | `GET /messages/context/:id` | – |
 | Multi-select, share as image | `SelectModeToolbar.tsx` | done | strings `thread_action_select_message` | – | – |
 | Forward, forwarded bundle | `ForwardComposerDialog.tsx`, `ForwardedBundleCard.tsx` | done | `RaftForwardTargetPicker.kt`, `ThreadForwardBundleDetailStore.kt` | `POST /messages/forward` | – |
