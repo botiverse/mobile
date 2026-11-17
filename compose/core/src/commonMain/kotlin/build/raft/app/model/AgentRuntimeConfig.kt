@@ -169,7 +169,12 @@ data class RuntimeModelInfo(
     val id: String,
     val label: String,
     val verified: String? = null, // "launchable" | "suggestion_only" | null
-    val supportedReasoningEfforts: List<String> = emptyList(),
+    /**
+     * The reasoning effort ids this model accepts (shared `RuntimeModelInfo`, slock #15162): null
+     * when not reported (readers fall back to the catalog or the runtime's base set); an empty list
+     * when the model takes no reasoning effort (no fallback, nothing offered).
+     */
+    val supportedReasoningEfforts: List<String>? = null,
     val defaultReasoningEffort: String? = null
 )
 

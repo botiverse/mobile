@@ -159,15 +159,15 @@ internal class SharedCreateAgentCoordinator(
                 val options =
                     presentation.models.map { model ->
                         val fallback = fallbackById[model.id]
+                        // Web `resolveModelInfo` (slock #15162): a live entry that lists its efforts
+                        // wins even when the list is empty (the model takes none); else the catalog's.
+                        val reasoning = if (model.supportedReasoningEfforts != null) model else fallback ?: model
                         SharedCreateAgentRuntimeModelOption(
                             id = model.id,
                             label = model.label.takeIf { it.isNotBlank() } ?: fallback?.label ?: model.id,
                             verified = model.verified ?: fallback?.verified,
-                            supportedReasoningEfforts =
-                                model.supportedReasoningEfforts.takeIf { it.isNotEmpty() }
-                                    ?: fallback?.supportedReasoningEfforts.orEmpty(),
-                            defaultReasoningEffort =
-                                model.defaultReasoningEffort ?: fallback?.defaultReasoningEffort
+                            supportedReasoningEfforts = reasoning.supportedReasoningEfforts,
+                            defaultReasoningEffort = reasoning.defaultReasoningEffort
                         )
                     }
                 DataResult.Content(

@@ -63,6 +63,38 @@ class SharedCreateAgentCoordinatorTest {
         assertEquals("low", catalog.models.first().defaultReasoningEffort)
         assertEquals("medium", catalog.models[1].defaultReasoningEffort)
     }
+
+    @Test
+    fun aLiveModelThatListsNoEffortsTakesNoneOverTheCatalog() = runBlocking {
+        // web gpt56ReasoningOptions.test.ts (slock #15162): gpt-5.6-sol is in the bundled table with
+        // six levels; this Computer says it takes none. A live-only model declaring none gets none.
+        // A live entry that omits its efforts keeps the bundled ones.
+        val computersApi =
+            FakeCreateAgentComputersApi(
+                runtimeModelsBody =
+                    """{"models":[{"id":"gpt-5.6-sol","label":"GPT-5.6 Sol (live)","supportedReasoningEfforts":[]},{"id":"gpt-no-reasoning","label":"GPT No Reasoning","supportedReasoningEfforts":[]},{"id":"gpt-5.6-terra","label":"GPT-5.6 Terra (live, no metadata)"}],"default":"gpt-5.6-sol"}"""
+            )
+        val coordinator =
+            SharedCreateAgentCoordinator(
+                agentsApiClient = RaftAgentsApiClient(FakeCreateAgentAgentsApi()),
+                computersApiClient = RaftComputersApiClient(computersApi)
+            )
+
+        val catalog = assertIs<DataResult.Content<SharedCreateAgentRuntimeModelCatalog>>(
+            coordinator.loadRuntimeModels("server-1", "machine-1", "codex")
+        ).data
+        val sol = catalog.models.single { it.id == "gpt-5.6-sol" }
+        assertEquals(emptyList(), sol.supportedReasoningEfforts)
+        assertEquals(null, sol.defaultReasoningEffort)
+        assertEquals(emptyList(), raftBulkReasoningEffortOptions("codex", sol.supportedReasoningEfforts))
+        assertEquals(null, raftBulkReconcileReasoningEffort("codex", sol.supportedReasoningEfforts, sol.defaultReasoningEffort, "ultra"))
+        val liveOnly = catalog.models.single { it.id == "gpt-no-reasoning" }
+        assertEquals(emptyList(), raftBulkReasoningEffortOptions("codex", liveOnly.supportedReasoningEfforts))
+        assertEquals(null, raftBulkReconcileReasoningEffort("codex", liveOnly.supportedReasoningEfforts, null, "high"))
+        val terra = catalog.models.single { it.id == "gpt-5.6-terra" }
+        assertEquals(listOf("low", "medium", "high", "xhigh", "max", "ultra"), terra.supportedReasoningEfforts)
+        assertEquals("ultra", raftBulkReconcileReasoningEffort("codex", terra.supportedReasoningEfforts, terra.defaultReasoningEffort, "ultra"))
+    }
 }
 
 private class FakeCreateAgentComputersApi(

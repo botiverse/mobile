@@ -155,7 +155,8 @@ internal class RaftComputerBulkAgentActions(
 internal data class RaftBulkModelOption(
     val id: String,
     val label: String,
-    val supportedReasoningEfforts: List<String>,
+    /** Null: not reported; empty: the model takes no reasoning effort. */
+    val supportedReasoningEfforts: List<String>?,
     val defaultReasoningEffort: String?,
 )
 

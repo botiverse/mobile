@@ -50,7 +50,8 @@ class ComputersApiTest {
             runtimeModels.models.first().supportedReasoningEfforts
         )
         assertEquals("medium", runtimeModels.models.first().defaultReasoningEffort)
-        assertEquals(emptyList(), runtimeModels.models.last().supportedReasoningEfforts)
+        // Not reported (no key) is null, never "takes no effort" (slock #15162).
+        assertEquals(null, runtimeModels.models.last().supportedReasoningEfforts)
         assertEquals(null, runtimeModels.models.last().defaultReasoningEffort)
         val runtimeCatalog =
             assertIs<DataResult.Content<SharedCreateAgentRuntimeCatalog>>(

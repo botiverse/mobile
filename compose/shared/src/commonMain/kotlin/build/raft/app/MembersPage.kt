@@ -13023,7 +13023,8 @@ private fun membersKimiSdkModelDeclaresReasoning(
     if (runtime != "kimi-sdk") return false
     val live = liveModels.firstOrNull { it.id == model.trim() } ?: return false
     val default = live.defaultReasoningEffort
-    return live.supportedReasoningEfforts.isNotEmpty() && !default.isNullOrBlank() && default in live.supportedReasoningEfforts
+    val efforts = live.supportedReasoningEfforts.orEmpty()
+    return efforts.isNotEmpty() && !default.isNullOrBlank() && default in efforts
 }
 
 internal fun membersRuntimeModelConfig(
