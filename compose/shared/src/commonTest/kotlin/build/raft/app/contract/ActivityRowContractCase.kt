@@ -125,6 +125,11 @@ internal sealed interface ActivityRowStep {
     @Serializable
     @SerialName("read")
     data class Read(val seq: String) : ActivityRowStep
+
+    /** The viewer marks the conversation unread (the read cursor moves back). */
+    @Serializable
+    @SerialName("markUnread")
+    data object MarkUnread : ActivityRowStep
 }
 
 /**
@@ -155,7 +160,7 @@ internal data class ActivityRowDecision(val question: String, val owner: String,
 /** The `row` expectation keys of formatVersion 1 (README "Expectations"). */
 internal val ActivityRowStateKeys = setOf("unreadCount", "hasMention", "position", "mentionOnly")
 
-private val ActivityRowActs = setOf("liveMessage", "answer", "read")
+private val ActivityRowActs = setOf("liveMessage", "answer", "read", "markUnread")
 
 private val ActivityRowRules = setOf("position", "predicate")
 

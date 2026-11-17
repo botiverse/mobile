@@ -87,6 +87,7 @@ mention seq as its position.
 | `liveMessage` | `seq`, `counts` (`true`/`false`/`null`), `mentionsViewer` | A live message of the row's conversation arrives, with the predicate's verdict for it. `counts: null` = it cannot be judged (re-read the row). |
 | `answer` | `row` | An inbox answer with this row arrives (a list read or a single-row re-read). |
 | `read` | `seq` | The viewer's read up to `seq` is applied (a persisted read, a read change's `refSeq`). |
+| `markUnread` | none | The viewer marks the conversation unread (the read cursor moves back). |
 
 The rule, in full (design doc "Fact 1"):
 
@@ -112,6 +113,17 @@ The rule, in full (design doc "Fact 1"):
    answer below them does not count them again (`read_then_answer_below_applied`).
    A read covers only what is at or below it: an answer with a message past
    the read keeps its unread (`read_covers_only_its_activity`, #15049).
+   The row keeps the highest seq read (its **read seq**, raised by every read
+   or read ack, never lowered by an older one, and kept across answers). An
+   answer at a position at or below the read seq counted only read messages
+   (the server computed it before the read reached it): its unread and @ are
+   dropped (`answer_before_read_lands`, `answer_before_read_lands_no_live`).
+   A mention-only answer is taken as it is: its @ does not follow the read
+   cursor on every server path (`answer_mention_only_after_read_keeps_at`).
+   A Mark as Unread clears the read seq and keeps it as a ceiling: a read at
+   or below the ceiling (a late ack of a read from before the mark) does not
+   raise the read seq; a read above it lifts the ceiling and records as usual
+   (`mark_unread_then_late_read_ack`).
 
 8. A live message with `moves: false` (past a channel or DM mute) does not
    move the row: RisingWave keeps it at its last message before the mute.
@@ -179,6 +191,7 @@ while the flag is off) differs, web's loader lists the case in its own
 | 2026-11-14 | Tenny | #14993 review | `read_then_answer_below_applied` | A read covers the live seqs applied at or below it: an answer below them does not count them again (shared `applyRead`). | none (shared reducer since #14993) |
 | 2026-11-14 | Tenny | #14988 review | `predicate_muted_channel_mention` | A mention in a muted conversation lights the @ and does not count (RisingWave). | web flag-off live patch |
 | 2026-11-16 | Tenny | #triage:#244 | `predicate_muted_channel_message`, `predicate_muted_channel_mention`, `muted_message_leaves_row`, `muted_mention_lights_without_moving` | Follow RisingWave: past a mute no message moves a row with a pre-mute message (`moves: false`); a mention lights its @; a mention-only row still moves. Judged in place, no list re-read. | web flag-off live patch (re-reads the list on a mention) |
+| 2026-11-17 | Scout, Lagoon | #triage:#244, #15301 review | `answer_before_read_lands`, `answer_before_read_lands_no_live`, `answer_mention_only_after_read_keeps_at`, `mark_unread_then_late_read_ack` | The row keeps its read seq; an answer at or below it has nothing unread, so an answer computed before a read and arriving after it does not bring the unread back (shared `mergeAnswer`). A mention-only answer is not cleared by it. Mark as Unread clears it and keeps a ceiling a late read ack cannot raise it past. | web meets it with its store's read projection (`inboxReadProjection.ts`, `projectionCoversActivity`), not yet through the shared read seq |
 
 Web's gaps closed in step 2 for the flag-on path (`inbox_row_position_v1`);
 the server's pure inbox model (`inboxPolicyModel.ts`) follows all four rows

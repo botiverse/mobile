@@ -19,6 +19,12 @@ package build.raft.app.data
  * then re-read the row. A read covers the applied seqs at or below it: they no longer count, so an
  * answer below them does not count them again. A row with no position takes no live patches: every
  * event for it re-reads it.
+ * The row keeps the highest seq the viewer read ([ActivityRowState.readSeq], set by local reads and read
+ * acks). An answer at or below it counted only read messages: the server computed it before the read
+ * reached it, so its unread and @ are dropped (`answer_before_read_lands`); a mention-only answer is taken as
+ * it is (its @ does not follow the read cursor on every server path). A Mark as Unread clears it and keeps the
+ * old value as a ceiling: a later read at or below it (a late ack of a read from before the mark) does not
+ * raise it again (`mark_unread_then_late_read_ack`).
  *
  * Seqs are canonical decimal strings (`^(0|[1-9][0-9]*)$`), taken and returned as such and compared
  * exactly (`messages.seq` is a 64-bit bigserial; contract case `seq_above_2_53`).
@@ -43,6 +49,17 @@ internal data class ActivityRowState(
     val applied: List<ActivityRowAppliedSeq> = emptyList(),
     /** A live seq lower than an applied one arrived since the last answer (two messages committed out of seq order). */
     val inversionObserved: Boolean = false,
+    /**
+     * The highest seq the viewer read on this client: every message at or below it is read. Kept across
+     * answers; null = none known. An answer at or below it has nothing unread. Web `readSeq`.
+     */
+    val readSeq: String? = null,
+    /**
+     * Set by a Mark as Unread: the read seq it cleared. A read at or below it (a late ack of a read from
+     * before the mark) does not raise [readSeq]; a read above it clears it and records normally. Web
+     * `readSeqCeiling`.
+     */
+    val readSeqCeiling: String? = null,
 )
 
 /** A served row, as an answer carries it. Web `ActivityRowAnswer`. */
@@ -66,6 +83,9 @@ internal sealed interface ActivityRowEvent {
 
     /** The viewer read the conversation up to [seq] (a persisted read or a read change's `refSeq`). */
     data class Read(val seq: String) : ActivityRowEvent
+
+    /** The viewer marked the conversation unread: the read cursor moved back, so [ActivityRowState.readSeq] no longer holds. */
+    data object MarkUnread : ActivityRowEvent
 }
 
 /** Web `ActivityRowRereadReason` (`ambiguous_seq`, `inversion`, `null_position`, `unjudged`, `partial_read`). */
@@ -98,6 +118,7 @@ internal fun reduceActivityRow(row: ActivityRowState, event: ActivityRowEvent): 
         is ActivityRowEvent.Live -> applyLive(row, event)
         is ActivityRowEvent.Answer -> mergeAnswer(row, event.row)
         is ActivityRowEvent.Read -> applyRead(row, event.seq)
+        ActivityRowEvent.MarkUnread -> keep(row.markedUnread())
     }
 
 /**
@@ -146,19 +167,36 @@ private fun applyLive(row: ActivityRowState, event: ActivityRowEvent.Live): Acti
 private fun mergeAnswer(row: ActivityRowState, served: ActivityRowAnswer): ActivityRowResult {
     // A position that is not a canonical seq is no position (fail closed: no live patches).
     val answer = if (served.position.isCanonicalSeq()) served else served.copy(position = null)
-    val pa = answer.position ?: return keep(activityRowFromAnswer(answer))
+    val pa =
+        answer.position
+            ?: return keep(activityRowFromAnswer(answer).copy(readSeq = row.readSeq, readSeqCeiling = row.readSeqCeiling))
     // An answer older than the one the row came from changes nothing.
     if (row.position != null && compareActivityRowSeq(pa, row.position) < 0) return keep(row)
     val above = row.applied.filter { compareActivityRowSeq(it.seq, pa) > 0 }
     val trusted = row.applied.size - above.size
-    var next = activityRowFromAnswer(answer).copy(applied = above, inversionObserved = row.inversionObserved && above.isNotEmpty())
+    // Everything the answer counted is at or below Pa: at or below the read, it is all read (the server
+    // computed the answer before the read reached it). Not a mention-only answer: its @ does not follow
+    // the read cursor on every server path (as applyRead).
+    val counted =
+        if (!answer.mentionOnly && row.readSeq != null && compareActivityRowSeq(pa, row.readSeq) <= 0) {
+            answer.copy(unreadCount = 0, hasMention = false, mentionOnly = false)
+        } else {
+            answer
+        }
+    var next =
+        activityRowFromAnswer(counted).copy(
+            applied = above,
+            inversionObserved = row.inversionObserved && above.isNotEmpty(),
+            readSeq = row.readSeq,
+            readSeqCeiling = row.readSeqCeiling,
+        )
     for (entry in above) next = next.withVerdict(entry.counts, entry.mention)
     return if (trusted > 0 && row.inversionObserved) reread(next, ActivityRowRereadReason.Inversion) else keep(next)
 }
 
 private fun applyRead(original: ActivityRowState, seq: String): ActivityRowResult {
     // The seqs the read covers are read: a later answer below them must not count them again.
-    val row = original.withAppliedRead(seq)
+    val row = original.withAppliedRead(seq).withReadSeq(seq)
     val shown = activityRowDisplayPosition(row)
     if (row.unreadCount == 0 && !row.hasMention) return keep(row)
     // A mention-only row's @ is not a cursor matter on every server path; a partial read cannot be
@@ -175,4 +213,26 @@ private fun ActivityRowState.withAppliedRead(seq: String): ActivityRowState {
     val covered = { entry: ActivityRowAppliedSeq -> compareActivityRowSeq(entry.seq, seq) <= 0 && (entry.counts || entry.mention) }
     if (applied.none(covered)) return this
     return copy(applied = applied.map { if (covered(it)) it.copy(counts = false, mention = false) else it })
+}
+
+/**
+ * The read raises [ActivityRowState.readSeq] (never lowers it: a late, older read ack changes nothing). At or
+ * below a Mark as Unread's ceiling it does not raise it (a late ack of a read from before the mark); above it,
+ * the ceiling goes. Web `withReadSeq`.
+ */
+private fun ActivityRowState.withReadSeq(seq: String): ActivityRowState {
+    if (!seq.isCanonicalSeq()) return this
+    if (readSeqCeiling != null) {
+        if (compareActivityRowSeq(seq, readSeqCeiling) <= 0) return this
+        return copy(readSeqCeiling = null).withReadSeq(seq)
+    }
+    if (readSeq != null && compareActivityRowSeq(seq, readSeq) <= 0) return this
+    return copy(readSeq = seq)
+}
+
+/** Mark as Unread: the read seq goes, kept as the ceiling a late read ack must pass to raise it again. Web `markedUnread`. */
+private fun ActivityRowState.markedUnread(): ActivityRowState {
+    val cleared = readSeq ?: return this
+    val ceiling = readSeqCeiling?.takeIf { compareActivityRowSeq(it, cleared) > 0 } ?: cleared
+    return copy(readSeq = null, readSeqCeiling = ceiling)
 }

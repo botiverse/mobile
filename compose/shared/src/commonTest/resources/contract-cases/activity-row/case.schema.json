@@ -211,6 +211,14 @@
             "act": { "const": "read" },
             "seq": { "$ref": "#/$defs/seq" }
           }
+        },
+        {
+          "description": "The viewer marks the conversation unread (the read cursor moves back): the row's read seq is cleared and kept as a ceiling a later read must pass to raise it again.",
+          "additionalProperties": false,
+          "required": ["act"],
+          "properties": {
+            "act": { "const": "markUnread" }
+          }
         }
       ]
     },
