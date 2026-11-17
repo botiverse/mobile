@@ -53,6 +53,8 @@ import androidx.compose.ui.text.buildAnnotatedString
 import build.raft.designsystem.components.appendRaftTextLink
 import build.raft.designsystem.text.RaftText
 import build.raft.app.data.runtimeform.v2.runtimeFormV2DependentSourceIds
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2EffortUnavailable
+import build.raft.app.data.runtimeform.v2.runtimeFormV2EffortUnavailable
 import build.raft.app.data.runtimeform.v2.runtimeFormV2SelectedConnection
 import build.raft.app.data.runtimeform.v2.runtimeFormV2SourceStatus
 import build.raft.app.data.runtimeform.v2.runtimeFormV2UnavailableChoices
@@ -107,10 +109,12 @@ internal fun RuntimeFormV2Fields(
     val visible = loaded.form.fields.filter {
         it.kind != RuntimeFormV2FieldKind.Unsupported || isRuntimeFormV2FieldRequired(it, values)
     }.filter { isRuntimeFormV2FieldVisible(it, values, loaded.sources) }
-    // Hidden choices (a derived select with nothing to pick) are not drawn.
+    // Hidden choices (a derived select with nothing to pick) are not drawn, unless the Computer says why a
+    // model's effort list is empty: then it is drawn, not adjustable, with the reason (slock #15274).
     val drawn = visible.filterNot { field ->
         field.kind == RuntimeFormV2FieldKind.DerivedSelect &&
-            (runtimeFormV2Choices(field, loaded.sources, values) as? RuntimeFormV2Choices.Select)?.options.isNullOrEmpty()
+            (runtimeFormV2Choices(field, loaded.sources, values) as? RuntimeFormV2Choices.Select)?.options.isNullOrEmpty() &&
+            runtimeFormV2EffortUnavailable(field, loaded.sources, values) == null
     }
     val primary = drawn.filterNot { it.advanced }
     val advanced = drawn.filter { it.advanced }
@@ -302,6 +306,11 @@ private fun RuntimeFormV2FieldRow(
     val fieldEnabled = enabled && !connectionOwned
     val required = isRuntimeFormV2FieldRequired(field, values) && !connectionOwned
     val hint = if (connectionOwned) managedHint else field.hint
+    // A reasoning effort the selected model has no levels for, with the Computer's explanation.
+    runtimeFormV2EffortUnavailable(field, loaded.sources, values)?.let { unavailable ->
+        RuntimeFormV2EffortUnavailableField(field, unavailable)
+        return
+    }
     when (field.kind) {
         RuntimeFormV2FieldKind.Text, RuntimeFormV2FieldKind.Url ->
             RuntimeFormV2TextInput(
@@ -807,6 +816,35 @@ private fun rememberRuntimeFormV2Editor(keyboardOptions: KeyboardOptions): RaftD
         onFocus = {},
         onBlur = {}
     )
+
+/**
+ * A reasoning effort field whose model offers no level, as on the web (slock #15274): the label, the value in
+ * effect (Default) in a picker that cannot change, and why: the model takes no effort, or its levels could not
+ * be read (the runtime's reason, plain text, never links or markup). The stored value is left as it is.
+ */
+@Composable
+private fun RuntimeFormV2EffortUnavailableField(field: RuntimeFormV2Field, unavailable: RuntimeFormV2EffortUnavailable) {
+    val defaultLabel = stringResource(Res.string.runtime_form_v2_option_default)
+    val noMatches = stringResource(Res.string.common_no_matches)
+    val reason = when (unavailable) {
+        RuntimeFormV2EffortUnavailable.None -> stringResource(Res.string.runtime_form_v2_effort_not_supported)
+        is RuntimeFormV2EffortUnavailable.Unreadable -> stringResource(Res.string.runtime_form_v2_effort_unreadable, unavailable.reason)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftFieldLabel(text = field.label)
+        RaftCombobox(
+            value = "",
+            options = listOf(RaftComboboxOption("", defaultLabel)),
+            onValueChange = {},
+            emptyText = { noMatches },
+            placeholder = field.placeholder ?: field.label,
+            title = field.label,
+            enabled = false,
+            label = field.label
+        )
+        Text(reason, style = RaftType.Caption, color = RaftColor.TextMutedGray)
+    }
+}
 
 /**
  * A runtime form v2 hint under a custom control: plain text as before, or, when the server copy holds

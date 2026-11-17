@@ -3389,6 +3389,8 @@
     <string name="runtime_form_v2_error_rejected">El servidor rechazó este valor</string>
     <string name="runtime_form_v2_error_secret_reentry_required">La clave de API está vinculada a la configuración guardada que cambiaste. Ingresa una nueva.</string>
     <string name="runtime_form_v2_option_default">Predeterminado</string>
+    <string name="runtime_form_v2_effort_not_supported">Este modelo no permite ajustar el esfuerzo.</string>
+    <string name="runtime_form_v2_effort_unreadable">No se pueden leer los niveles de esfuerzo: %1$s</string>
     <string name="runtime_form_v2_use_custom">Usar “%1$s”</string>
     <string name="runtime_form_v2_custom_value">Personalizado</string>
     <string name="runtime_form_v2_secret_keep_hint">Déjalo en blanco para mantener el valor actual.</string>

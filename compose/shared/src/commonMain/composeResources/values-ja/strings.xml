@@ -3558,6 +3558,8 @@
     <string name="runtime_form_v2_error_rejected">サーバーがこの値を受け付けませんでした</string>
     <string name="runtime_form_v2_error_secret_reentry_required">API キーは変更した保存済みの設定に紐づいています。新しいキーを入力してください。</string>
     <string name="runtime_form_v2_option_default">デフォルト</string>
+    <string name="runtime_form_v2_effort_not_supported">このモデルは推論の強度を調整できません。</string>
+    <string name="runtime_form_v2_effort_unreadable">推論の強度を読み取れません：%1$s</string>
     <string name="runtime_form_v2_use_custom">「%1$s」を使う</string>
     <string name="runtime_form_v2_custom_value">カスタム</string>
     <string name="runtime_form_v2_secret_keep_hint">空欄のままにすると現在の値を保持します。</string>

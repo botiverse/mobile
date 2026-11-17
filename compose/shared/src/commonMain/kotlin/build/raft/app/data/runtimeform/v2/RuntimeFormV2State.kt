@@ -39,6 +39,12 @@ internal data class RuntimeFormV2Choice(
 
     /** `provider.saved_connection` (edit): the bound connection cannot be selected right now; it blocks the save. */
     val unavailable: Boolean get() = attributes["unavailable"].booleanValue()
+
+    /** A model option: why its effort levels could not be read (runtime text, plain, never markup); null when absent. */
+    val reasoningEffortUnavailableReason: String? get() = attributes["reasoningEffortUnavailableReason"].stringOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+
+    /** A model option: the runtime declared that this model takes no reasoning effort. */
+    val reasoningEffortNone: Boolean get() = attributes["reasoningEffortNone"].booleanValue()
 }
 
 /**
@@ -263,6 +269,32 @@ internal fun runtimeFormV2Choices(
         }
         else -> null
     }
+}
+
+/** Why a derived effort field offers no level: none for the model, or they could not be read (with the runtime's reason). */
+internal sealed interface RuntimeFormV2EffortUnavailable {
+    data object None : RuntimeFormV2EffortUnavailable
+    data class Unreadable(val reason: String) : RuntimeFormV2EffortUnavailable
+}
+
+/**
+ * For a derived_select over a model's reasoning efforts that offers nothing: why, from the selected model
+ * option (`reasoningEffortUnavailableReason`, `reasoningEffortNone`). Null when it offers levels, or when the
+ * empty list was not explained (an older Computer, a model whose id names its level): the field stays hidden
+ * then, as before. Mirrors slock v2State `runtimeFormV2EffortUnavailable` (slock #15274).
+ */
+internal fun runtimeFormV2EffortUnavailable(
+    field: RuntimeFormV2Field,
+    sources: RuntimeFormV2Sources,
+    values: RuntimeFormV2Values
+): RuntimeFormV2EffortUnavailable? {
+    val from = field.derivedFrom
+    if (field.kind != RuntimeFormV2FieldKind.DerivedSelect || from?.attribute != "supportedReasoningEfforts") return null
+    val selected = selectedOption(from.key, sources, values) ?: return null
+    val levels = selected.attributes[from.attribute] as? JsonArray
+    if (levels != null && levels.any { it.stringOrNull() != null }) return null
+    selected.reasoningEffortUnavailableReason?.let { return RuntimeFormV2EffortUnavailable.Unreadable(it) }
+    return if (selected.reasoningEffortNone) RuntimeFormV2EffortUnavailable.None else null
 }
 
 private fun selectedOption(
@@ -568,8 +600,8 @@ internal fun validateRuntimeFormV2(
             errors[field.key] = RuntimeFormV2ErrorCode.InvalidUrl
         }
         // A derived list with nothing to offer (a model without an effort menu, or a typed custom model no
-        // option describes) is not shown, so it cannot be corrected here: its value goes to the server
-        // unchanged, which validates it. Mirrors slock v2State.
+        // option describes) is hidden, or shown not adjustable when the Computer says why, so it cannot be
+        // corrected here: its value goes to the server unchanged, which validates it. Mirrors slock v2State.
         val unconstrained = field.kind == RuntimeFormV2FieldKind.DerivedSelect &&
             choices is RuntimeFormV2Choices.Select && choices.options.isEmpty()
         if (

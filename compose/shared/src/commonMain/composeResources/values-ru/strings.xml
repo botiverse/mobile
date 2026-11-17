@@ -3386,6 +3386,8 @@
     <string name="runtime_form_v2_error_rejected">Сервер отклонил это значение</string>
     <string name="runtime_form_v2_error_secret_reentry_required">Ключ API привязан к сохранённым настройкам, которые вы изменили. Введите новый ключ.</string>
     <string name="runtime_form_v2_option_default">По умолчанию</string>
+    <string name="runtime_form_v2_effort_not_supported">Эта модель не поддерживает настройку глубины рассуждений.</string>
+    <string name="runtime_form_v2_effort_unreadable">Не удалось прочитать уровни глубины рассуждений: %1$s</string>
     <string name="runtime_form_v2_use_custom">Использовать «%1$s»</string>
     <string name="runtime_form_v2_custom_value">Пользовательский</string>
     <string name="runtime_form_v2_secret_keep_hint">Оставьте пустым, чтобы сохранить текущее значение.</string>
