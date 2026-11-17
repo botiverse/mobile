@@ -40078,10 +40078,12 @@ private fun ThreadForwardSearchingSkeletonRow() {
  * ([build.raft.designsystem.components.RaftSelectionToolbarDock]: 20dp from the sides, 12dp above
  * the bottom plus the safe area). Nothing behind it: no full-width bar, no top divider.
  *
- * Order: (in a thread, the select-all checkbox, botiverse/slock #12681) · "N selected" · Copy
- * Link · Forward · More (Generate Image, Copy MD) · × (Cancel, last), each a 44dp bar button
- * showing its icon alone, its name the label and the long-press tooltip. With 0 selected the
- * toolbar stays, every action is disabled, and only × ends the selection.
+ * Order, as the web's: (in a thread, the select-all checkbox, botiverse/slock #12681) · "N
+ * selected" · Forward · Generate image · Copy Link · Copy MD · (More) · × (Cancel, last), each a
+ * 44dp bar button showing its icon alone, its name the label and the long-press tooltip. The last
+ * three are secondary: when the row doesn't fit, they give way into More first, the last first,
+ * then Forward; More shows only then, its menu opening upward. With 0 selected the toolbar stays,
+ * every action is disabled, and only × ends the selection.
  */
 @Composable
 internal fun ThreadShareSelectionToolbar(
@@ -40097,28 +40099,41 @@ internal fun ThreadShareSelectionToolbar(
 ) {
     val hasSelection = selectedCount > 0
     var moreMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
+    // The actions in More while it shows (the ones that don't fit the row), for its menu.
+    var moreFoldedIds by remember { mutableStateOf<List<String>>(emptyList()) }
     val moreAnchor = remember { RaftLiveRootAnchorRef(identity = "thread_share_selection_more") }
-    val moreItems =
+    val iconSize = build.raft.designsystem.components.RaftSelectionToolbarDefaults.IconSize
+    val icons =
+        mapOf(
+            "forward" to RaftLucideIconName.Forward,
+            "generate-image" to RaftLucideIconName.Image,
+            "copy-link" to RaftLucideIconName.Link,
+            "copy-md" to RaftLucideIconName.Copy
+        )
+    fun spec(id: String, label: String, onClick: () -> Unit, enabled: Boolean, secondary: Boolean) =
+        build.raft.designsystem.components.RaftSelectionToolbarActionSpec(
+            id = id,
+            label = label,
+            onClick = onClick,
+            enabled = enabled,
+            secondary = secondary,
+            icon = { ThreadShareSelectionGlyph(icons.getValue(id), iconSize) }
+        )
+    val actions =
         listOfNotNull(
-            RaftUiMenuItem(
-                id = "generate-image",
-                label = stringResource(Res.string.thread_share_generate_image),
-                icon = RaftLucideIconName.Image,
-                enabled = hasSelection
-            ),
+            spec("forward", stringResource(Res.string.thread_action_forward), onForward, hasSelection && forwardEnabled, secondary = false),
+            spec("generate-image", stringResource(Res.string.thread_share_generate_image), onExportImage, hasSelection, secondary = true),
+            spec("copy-link", stringResource(Res.string.thread_action_copy_link), onCopyLinks, hasSelection, secondary = true),
             onCopyMarkdown?.let {
-                RaftUiMenuItem(
-                    id = "copy-md",
-                    label = stringResource(Res.string.thread_share_copy_markdown),
-                    icon = RaftLucideIconName.Copy,
-                    enabled = hasSelection
-                )
+                spec("copy-md", stringResource(Res.string.thread_share_copy_markdown), it, hasSelection, secondary = true)
             }
         )
     build.raft.designsystem.components.RaftSelectionToolbarDock(bottomSafeArea = bottomSafeArea) {
         val saysAll = selectAll != null && threadShareSelectionSaysAll(selectAll.check, selectAll.complete)
         val selectAllLabel = stringResource(Res.string.thread_share_selection_select_all_in_thread)
-        val iconSize = build.raft.designsystem.components.RaftSelectionToolbarDefaults.IconSize
+        val moreLabel = stringResource(Res.string.thread_share_selection_more_actions)
+        val moreTooltip = stringResource(Res.string.thread_new_message_menu_more)
+        val cancelLabel = stringResource(Res.string.common_cancel)
         build.raft.designsystem.components.RaftSelectionToolbar(
             count =
                 when {
@@ -40139,52 +40154,37 @@ internal fun ThreadShareSelectionToolbar(
                             modifier = Modifier.semantics { contentDescription = selectAllLabel }
                         )
                     }
-                }
-        ) {
-            build.raft.designsystem.components.RaftSelectionToolbarAction(
-                label = stringResource(Res.string.thread_action_copy_link),
-                onClick = onCopyLinks,
-                enabled = hasSelection
-            ) {
-                ThreadShareSelectionGlyph(RaftLucideIconName.Copy, iconSize)
-            }
-            build.raft.designsystem.components.RaftSelectionToolbarAction(
-                label = stringResource(Res.string.thread_action_forward),
-                onClick = onForward,
-                enabled = hasSelection && forwardEnabled
-            ) {
-                ThreadShareSelectionGlyph(RaftLucideIconName.Forward, iconSize)
-            }
-            build.raft.designsystem.components.RaftSelectionToolbarMore(
-                onClick = {
-                    moreAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { moreMenuAnchor = it }
                 },
-                label = stringResource(Res.string.thread_share_selection_more_actions),
-                tooltip = stringResource(Res.string.thread_new_message_menu_more),
-                // Everything in More acts on the selection.
-                enabled = hasSelection,
-                open = moreMenuAnchor != null,
-                modifier = Modifier.raftCaptureLiveRootAnchor(moreAnchor)
-            ) {
-                ThreadShareSelectionGlyph(RaftLucideIconName.Ellipsis, iconSize)
+            actions = actions,
+            more = { folded ->
+                build.raft.designsystem.components.RaftSelectionToolbarMore(
+                    onClick = {
+                        moreFoldedIds = folded.map { it.id }
+                        moreAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { moreMenuAnchor = it }
+                    },
+                    label = moreLabel,
+                    tooltip = moreTooltip,
+                    open = moreMenuAnchor != null,
+                    modifier = Modifier.raftCaptureLiveRootAnchor(moreAnchor)
+                ) {
+                    ThreadShareSelectionGlyph(RaftLucideIconName.Ellipsis, iconSize)
+                }
+            },
+            close = {
+                build.raft.designsystem.components.RaftSelectionToolbarClose(onClick = onCancel, label = cancelLabel)
             }
-            build.raft.designsystem.components.RaftSelectionToolbarClose(
-                onClick = onCancel,
-                label = stringResource(Res.string.common_cancel)
-            )
-        }
+        )
     }
     moreMenuAnchor?.let { anchor ->
+        // The folded actions as they are now (labels, enabled), in their order.
+        val menuActions = actions.filter { it.id in moreFoldedIds }
         RaftUiControlledMenu(
             expanded = true,
             anchor = anchor,
-            items = moreItems,
+            items = menuActions.map { RaftUiMenuItem(id = it.id, label = it.label, icon = icons.getValue(it.id), enabled = it.enabled) },
             onSelect = { id ->
                 moreMenuAnchor = null
-                when (id) {
-                    "generate-image" -> onExportImage()
-                    "copy-md" -> onCopyMarkdown?.invoke()
-                }
+                menuActions.firstOrNull { it.id == id }?.onClick?.invoke()
             },
             onDismiss = { moreMenuAnchor = null },
             // web SelectModeToolbar's DropdownMenuContent `side="top" align="end" sideOffset={8}`.

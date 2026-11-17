@@ -4,9 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -14,7 +11,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -22,6 +22,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.isTraversalGroup
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
@@ -50,8 +52,9 @@ import build.raft.designsystem.tokens.RaftStroke
 // Ported at the touch values (the recipe's base classes, not its `md:pointer-fine:` ones), which
 // is what a phone and a touch screen draw: icon-only 44dp bar buttons, the label only the
 // accessible name and the tooltip. The metrics read the theme's control metrics, so under a fine
-// pointer they take its head and bar-button sizes; the web's labelled `md` buttons, its `gap-1`
-// and its fit-toolbar (actions moving into More as the row narrows) are not ported.
+// pointer they take its head and bar-button sizes; the web's labelled `md` buttons and its
+// `gap-1` are not ported. Its fit is: actions move into More as the row narrows, in the web's
+// order (raftSelectionToolbarFit).
 
 /**
  * raft-ui SelectionToolbar metrics (selection-toolbar.recipe.ts), from the theme's control
@@ -130,6 +133,51 @@ fun RaftSelectionToolbarDock(
 }
 
 /**
+ * One action on the selection for [RaftSelectionToolbar]: drawn as a [RaftSelectionToolbarAction]
+ * while it fits the row, else handed to the toolbar's More menu. [id] tells the caller which one
+ * a More menu item is. [secondary] actions give way into More first (raft-ui
+ * `SelectionToolbarAction secondary`).
+ */
+@Immutable
+class RaftSelectionToolbarActionSpec(
+    val id: String,
+    val label: String,
+    val onClick: () -> Unit,
+    val enabled: Boolean = true,
+    val secondary: Boolean = false,
+    val icon: @Composable () -> Unit,
+)
+
+/**
+ * Which actions (one [secondary] flag each) give way into More when the row has [room] px: the web's fit
+ * order (raft-ui SelectionToolbar: the hint first, then the secondary actions into More, the last
+ * first, then the others, the last first; the count and × never). By touch the labels are already
+ * hidden, so the web's label step changes nothing here. [fixed] is everything that always shows
+ * (the padding, the leading control, the count, ×); every action and More are [button] px wide.
+ * Returns whether the hint shows and the indices of the folded actions, in their order.
+ */
+internal fun raftSelectionToolbarFit(
+    room: Int,
+    fixed: Int,
+    hint: Int,
+    button: Int,
+    secondary: List<Boolean>,
+): Pair<Boolean, List<Int>> {
+    val all = secondary.indices.toList()
+    if (fixed + hint + button * all.size <= room) return true to emptyList()
+    if (fixed + button * all.size <= room) return false to emptyList()
+    // The order the actions move into More: the secondary ones from the end, then the others from the end.
+    val order = all.filter { secondary[it] }.reversed() + all.filter { !secondary[it] }.reversed()
+    val folded = mutableListOf<Int>()
+    for (index in order) {
+        folded += index
+        val shown = all.size - folded.size
+        if (fixed + button * (shown + 1) <= room) break
+    }
+    return false to folded.sorted()
+}
+
+/**
  * raft-ui `SelectionToolbar`: the floating toolbar for selected items (messages, tasks). One row,
  * as wide as its content, a head tall ([RaftSelectionToolbarDefaults.Height], 56dp by touch) on a
  * card: `layer-popover`, the container radius, a 1dp `line-seam` ring round its edge (`ring-1`,
@@ -145,21 +193,30 @@ fun RaftSelectionToolbarDock(
  * - [hint], optional (`SelectionToolbarHint`, "1 will be skipped"): `text-caption`
  *   `foreground-hint`, 4dp before what follows. The web sets it flush after the count; here
  *   8dp separate them.
- * - [actions], in order: a [RaftSelectionToolbarAction] per action, then
- *   [RaftSelectionToolbarMore] where some live in a menu, then [RaftSelectionToolbarClose] last.
+ * - [actions], each a [RaftSelectionToolbarAction] (a 44dp icon-only bar button), in order.
+ * - [more], only while some actions are out of the row: a [RaftSelectionToolbarMore] whose menu
+ *   (opening upward) holds the folded actions it is given, in their order.
+ * - [close], last: a [RaftSelectionToolbarClose].
  *
- * Place it with [RaftSelectionToolbarDock], no wider than the dock's room. [label] names the
- * toolbar for screen readers ("Selected message actions").
+ * One row at any width, never wrapping: measured against the width it floats in (the dock's
+ * room, its max width constraint), what doesn't fit gives way in the web's order
+ * ([raftSelectionToolbarFit]): the hint first, then the secondary actions into More (the last
+ * first), then the others (the last first). The count and × never give way. More shows only then.
+ *
+ * Place it with [RaftSelectionToolbarDock]. [label] names the toolbar for screen readers
+ * ("Selected message actions").
  */
 @Composable
 fun RaftSelectionToolbar(
     count: String,
+    actions: List<RaftSelectionToolbarActionSpec>,
+    more: @Composable (folded: List<RaftSelectionToolbarActionSpec>) -> Unit,
+    close: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     label: String? = null,
     countValue: String? = null,
     hint: String? = null,
     leading: (@Composable () -> Unit)? = null,
-    actions: @Composable RowScope.() -> Unit,
 ) {
     val d = RaftSelectionToolbarDefaults
     val colors = RaftTheme.colors
@@ -167,74 +224,136 @@ fun RaftSelectionToolbar(
     val radius = RaftRadius.Container
     val fill = colors.layerPopover
     val ring = colors.lineSeam
-    Row(
-        modifier =
-            modifier
-                .raftFloatShadow(RaftTheme.isDark, radius)
-                // `ring-1`: a box-shadow ring outside the edge, under the content.
-                .drawBehind {
-                    val w = RaftStroke.Hairline.toPx()
-                    drawRoundRect(
-                        color = ring,
-                        topLeft = Offset(-w / 2f, -w / 2f),
-                        size = Size(size.width + w, size.height + w),
-                        cornerRadius = CornerRadius(radius.toPx() + w / 2f),
-                        style = Stroke(width = w),
-                    )
+    val toolbarHeight = d.Height
+    val paddingX = d.PaddingX
+    val buttonSize = d.ButtonSize
+    val countStyle = typography.callout.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
+    val value = countValue.orEmpty()
+    val valueAt = if (value.isEmpty()) -1 else count.indexOf(value)
+    val monoFamily = typography.monoMeta.fontFamily
+    val countText =
+        remember(count, value, valueAt, monoFamily) {
+            buildAnnotatedString {
+                if (valueAt < 0) {
+                    append(count)
+                } else {
+                    append(count.substring(0, valueAt))
+                    withStyle(SpanStyle(fontFamily = monoFamily)) { append(value) }
+                    append(count.substring(valueAt + value.length))
                 }
-                .background(fill, RoundedCornerShape(radius))
-                .semantics {
-                    isTraversalGroup = true
-                    if (label != null) contentDescription = label
-                }
-                .height(d.Height)
-                .padding(PaddingValues(horizontal = d.PaddingX)),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        CompositionLocalProvider(LocalRaftSurfaceColor provides fill) {
-            if (leading != null) {
-                Box(Modifier.size(d.ButtonSize), contentAlignment = Alignment.Center) { leading() }
             }
-            val countStyle = typography.callout.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
-            val value = countValue.orEmpty()
-            val valueAt = if (value.isEmpty()) -1 else count.indexOf(value)
-            val countText =
-                buildAnnotatedString {
-                    if (valueAt < 0) {
-                        append(count)
-                    } else {
-                        append(count.substring(0, valueAt))
-                        withStyle(SpanStyle(fontFamily = typography.monoMeta.fontFamily)) { append(value) }
-                        append(count.substring(valueAt + value.length))
+        }
+    CompositionLocalProvider(LocalRaftSurfaceColor provides fill) {
+        SubcomposeLayout(
+            modifier =
+                modifier
+                    .raftFloatShadow(RaftTheme.isDark, radius)
+                    // `ring-1`: a box-shadow ring outside the edge, under the content.
+                    .drawBehind {
+                        val w = RaftStroke.Hairline.toPx()
+                        drawRoundRect(
+                            color = ring,
+                            topLeft = Offset(-w / 2f, -w / 2f),
+                            size = Size(size.width + w, size.height + w),
+                            cornerRadius = CornerRadius(radius.toPx() + w / 2f),
+                            style = Stroke(width = w),
+                        )
                     }
+                    .background(fill, RoundedCornerShape(radius))
+                    .semantics {
+                        isTraversalGroup = true
+                        if (label != null) contentDescription = label
+                    }
+                    .height(toolbarHeight),
+        ) { constraints ->
+            val loose = Constraints(maxHeight = constraints.maxHeight)
+            val pad = paddingX.roundToPx()
+            val button = buttonSize.roundToPx()
+            val leadingPlaceables =
+                if (leading == null) {
+                    emptyList()
+                } else {
+                    subcompose(SelectionToolbarSlot.Leading) {
+                        Box(Modifier.size(buttonSize), contentAlignment = Alignment.Center) { leading() }
+                    }.map { it.measure(loose) }
                 }
-            RaftText(
-                text = countText,
-                style = countStyle,
-                color = colors.foreground,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Clip,
-                modifier =
-                    Modifier
-                        .padding(start = d.CountPaddingStart)
-                        .semantics { liveRegion = LiveRegionMode.Polite },
-            )
-            if (hint != null) {
-                RaftText(
-                    text = hint,
-                    style = typography.caption,
-                    color = colors.foregroundHint,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Clip,
-                    modifier = Modifier.padding(start = d.CountPaddingStart, end = d.HintPaddingEnd),
+            val countPlaceables =
+                subcompose(SelectionToolbarSlot.Count) {
+                    RaftText(
+                        text = countText,
+                        style = countStyle,
+                        color = colors.foreground,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip,
+                        modifier =
+                            Modifier
+                                .padding(start = d.CountPaddingStart)
+                                .semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                }.map { it.measure(loose) }
+            val hintPlaceables =
+                if (hint == null) {
+                    emptyList()
+                } else {
+                    subcompose(SelectionToolbarSlot.Hint) {
+                        RaftText(
+                            text = hint,
+                            style = typography.caption,
+                            color = colors.foregroundHint,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Clip,
+                            modifier = Modifier.padding(start = d.CountPaddingStart, end = d.HintPaddingEnd),
+                        )
+                    }.map { it.measure(loose) }
+                }
+            val closePlaceables = subcompose(SelectionToolbarSlot.Close, close).map { it.measure(loose) }
+            val fixed =
+                pad * 2 + leadingPlaceables.sumOf { it.width } + countPlaceables.sumOf { it.width } +
+                    closePlaceables.sumOf { it.width }
+            val (hintShown, foldedIndices) =
+                raftSelectionToolbarFit(
+                    room = constraints.maxWidth,
+                    fixed = fixed,
+                    hint = hintPlaceables.sumOf { it.width },
+                    button = button,
+                    secondary = actions.map { it.secondary },
                 )
+            val shown = actions.filterIndexed { index, _ -> index !in foldedIndices }
+            val folded = foldedIndices.map { actions[it] }
+            val actionPlaceables =
+                subcompose(SelectionToolbarSlot.Actions) {
+                    shown.forEach { action ->
+                        key(action.id) {
+                            RaftSelectionToolbarAction(
+                                label = action.label,
+                                onClick = action.onClick,
+                                enabled = action.enabled,
+                                icon = action.icon,
+                            )
+                        }
+                    }
+                }.map { it.measure(loose) }
+            val morePlaceables =
+                if (folded.isEmpty()) emptyList() else subcompose(SelectionToolbarSlot.More) { more(folded) }.map { it.measure(loose) }
+            val row =
+                leadingPlaceables + countPlaceables + (if (hintShown) hintPlaceables else emptyList()) +
+                    actionPlaceables + morePlaceables + closePlaceables
+            val width = constraints.constrainWidth(pad * 2 + row.sumOf { it.width })
+            val rowHeight = constraints.constrainHeight(row.maxOfOrNull { it.height } ?: 0)
+            layout(width, rowHeight) {
+                var x = pad
+                row.forEach { placeable ->
+                    placeable.placeRelative(x, (rowHeight - placeable.height) / 2)
+                    x += placeable.width
+                }
             }
-            actions()
         }
     }
 }
+
+private enum class SelectionToolbarSlot { Leading, Count, Hint, Actions, More, Close }
 
 /**
  * raft-ui `SelectionToolbarAction` by touch: one action on the selection, a ghost bar button
