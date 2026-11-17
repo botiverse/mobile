@@ -4675,36 +4675,7 @@ internal fun MemberDetailPageContent(
             }
         }
     // The viewer's own personal assistant, for its owner's section of the agent profile.
-    val assistantRoute = routeState as? MemberDetailRouteState.Agent
-    val assistantOwnerScope: AssistantOwnerScope? =
-        remember(
-            bridge,
-            provider,
-            assistantRoute?.server?.id,
-            assistantRoute?.server?.role,
-            assistantRoute?.currentUserId
-        ) {
-            val route = assistantRoute ?: return@remember null
-            val userId = route.currentUserId?.trim()?.takeIf { it.isNotBlank() } ?: return@remember null
-            val flags = provider.serverFeatureFlags ?: return@remember null
-            AssistantOwnerScope(
-                store = build.raft.app.data.RaftSharedStoreRegistry.get(bridge).myAssistantStore(provider.storeScope),
-                featureFlags = flags,
-                serverMembersStore = provider.serverMembersStore,
-                // The profile's own lifecycle Start (MemberRepository.startAgent), single-flight per agent.
-                startAgent = { agentId ->
-                    provider.runLifecycleAction(route.server.id, agentId, MembersAgentLifecycleAction.Start)
-                },
-                onErrorToast = { message, error -> bridge.errorToast(message, error) },
-                serverId = route.server.id.value,
-                userId = userId,
-                viewerIsGuest = route.server.role?.trim()?.equals("guest", ignoreCase = true) == true,
-                settingChangesApi =
-                    build.raft.app.data.RaftAssistantSettingChangesNetworkApi(
-                        build.raft.app.data.RaftSharedStoreRegistry.get(bridge).networkClient(provider.storeScope)
-                    )
-            )
-        }
+    val assistantOwnerScope = rememberMemberDetailAssistantOwnerScope(provider, routeState as? MemberDetailRouteState.Agent, routeScope, closeDetail)
     CompositionLocalProvider(
         LocalMembersRuntimeAccountUsageAccess provides runtimeAccountUsageAccess,
         LocalAssistantOwnerScope provides assistantOwnerScope
@@ -12212,6 +12183,53 @@ private fun MembersAgentProfileTab(
             // person's profile, HumanDetailPanel), so the agent profile does not render one either.
             MembersAgentSkillsSection(detail)
         }
+    }
+}
+
+/**
+ * The viewer's own personal assistant, for its owner's section of the agent profile
+ * ([AssistantOwnerScope]); null off an agent route, without the person or the flags. Kept out of
+ * [MemberDetailPageContent] (JVM method size).
+ */
+@Composable
+private fun rememberMemberDetailAssistantOwnerScope(
+    provider: MemberDetailRouteProvider,
+    assistantRoute: MemberDetailRouteState.Agent?,
+    routeScope: kotlinx.coroutines.CoroutineScope,
+    closeDetail: () -> Unit,
+): AssistantOwnerScope? {
+    val bridge = provider.bridge
+    val closeAfterAssistantDeleted by rememberUpdatedState(closeDetail)
+    return remember(
+        bridge,
+        provider,
+        assistantRoute?.server?.id,
+        assistantRoute?.server?.role,
+        assistantRoute?.currentUserId
+    ) {
+        val route = assistantRoute ?: return@remember null
+        val userId = route.currentUserId?.trim()?.takeIf { it.isNotBlank() } ?: return@remember null
+        val flags = provider.serverFeatureFlags ?: return@remember null
+        val networkClient = build.raft.app.data.RaftSharedStoreRegistry.get(bridge).networkClient(provider.storeScope)
+        AssistantOwnerScope(
+            store = build.raft.app.data.RaftSharedStoreRegistry.get(bridge).myAssistantStore(provider.storeScope),
+            featureFlags = flags,
+            serverMembersStore = provider.serverMembersStore,
+            // The profile's own lifecycle Start (MemberRepository.startAgent), single-flight per agent.
+            startAgent = { agentId ->
+                provider.runLifecycleAction(route.server.id, agentId, MembersAgentLifecycleAction.Start)
+            },
+            onErrorToast = { message, error -> bridge.errorToast(message, error) },
+            serverId = route.server.id.value,
+            userId = userId,
+            viewerIsGuest = route.server.role?.trim()?.equals("guest", ignoreCase = true) == true,
+            settingChangesApi = build.raft.app.data.RaftAssistantSettingChangesNetworkApi(networkClient),
+            weChatApi = build.raft.app.data.RaftAssistantDmCardsNetworkApi(networkClient),
+            actionScope = routeScope,
+            onToast = { message, intent -> bridge.toastWithIntent(message, intent) },
+            // Deleted: the profile closes, back to the assistant's page (Create) or wherever it was opened from.
+            onAssistantDeleted = { closeAfterAssistantDeleted() },
+        )
     }
 }
 
