@@ -682,82 +682,204 @@ object PortableV6Spec {
         return V6PropsCheckResult(JsonObject(clean), dropped.size, dropped)
     }
 
+    data class SvgFinding(
+        val code: String,
+        val message: String,
+        val nodeId: String,
+    )
+
+    class SvgRootContext(val idPrefix: String)
+
     /**
-     * Collects unique `<linearGradient id="...">` definitions in direct children of `<svg>`
-     * AND tracks all seen IDs across the `<svg>` root (a second occurrence of the same `id` in one `<svg>` root is dropped!).
+     * Enforces `PORTABLE_SVG_RULES` post-order on a validated `<svg>` root (`NodeKind.PRIMITIVE`),
+     * matching TypeScript `checkSvgRoot` (`packages/validator/src/portable.ts`) 1-for-1:
+     * - Walks through catalog SVG containers (`<defs>`, `<radialGradient>`, `<clipPath>`, `<mask>`) AND
+     *   already-expanded `TreeRefs` nodes so all elements in one `<svg>` root share a single `id` namespace.
+     * - Resolves `fill` / `stroke` `url(#id)` on portable primitives against unique `<linearGradient>` (primitive)
+     *   and `<radialGradient>` (catalog) definitions anywhere in this `<svg>` root (including inside `<defs>`).
+     * - Enforces `objectBoundingBox` `0..1` numeric coordinate bounds on `<linearGradient>` and non-decreasing
+     *   `<stop>` offsets on both `<linearGradient>` and `<radialGradient>`, returning new `TreeNode.Element`
+     *   copies only along modified paths so cached `TreeRefs` nodes are never mutated in place.
      */
-    class SvgRootContext(val idPrefix: String) {
-        val seenIds = HashSet<String>()
-        val validGradientIds = LinkedHashSet<String>()
-    }
+    fun checkSvgRoot(
+        root: TreeNode.Element,
+        unresolvedGradientPaint: String? = "none",
+    ): Pair<TreeNode.Element, List<SvgFinding>> {
+        val findings = ArrayList<SvgFinding>()
+        val nodes = ArrayList<TreeNode.Element>()
 
-    fun collectSvgRootGradients(svgRawChildren: JsonArray?, idPrefix: String, svgRootId: String? = null): Set<String> {
-        if (svgRawChildren == null) return emptySet()
-        val seenInRoot = HashSet<String>()
-        if (svgRootId != null && STRICT_ID_REGEX.matches(svgRootId)) {
-            seenInRoot.add(idPrefix + svgRootId)
+        fun collect(node: TreeNode.Element) {
+            nodes.add(node)
+            for (child in node.children) {
+                if (child is TreeNode.Element) collect(child)
+            }
         }
-        val gradients = LinkedHashSet<String>()
+        collect(root)
 
-        fun scanIdsPreOrder(items: JsonArray?, directUnderSvg: Boolean) {
-            if (items == null) return
-            for (el in items) {
-                val obj = el as? JsonObject ?: continue
-                val t = (obj["t"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
-                val rawId = (obj["p"] as? JsonObject)?.get("id")?.let { it as? JsonPrimitive }?.takeIf { it.isString }?.content
-                if (rawId != null && STRICT_ID_REGEX.matches(rawId)) {
-                    val prefixed = idPrefix + rawId
-                    val isFirst = seenInRoot.add(prefixed)
-                    if (isFirst && directUnderSvg && t == "linearGradient") {
-                        gradients.add(prefixed)
-                    } else if (!isFirst) {
-                        gradients.remove(prefixed)
+        val ids = HashSet<String>()
+        val gradients = HashSet<String>()
+        val ambiguous = HashSet<String>()
+        val dropDuplicateIdNodeIds = HashSet<String>()
+
+        for (node in nodes) {
+            val id = (node.props["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
+            if (!ids.add(id)) {
+                ambiguous.add(id)
+                dropDuplicateIdNodeIds.add(node.id)
+                findings.add(
+                    SvgFinding(
+                        code = "PROP_DROPPED",
+                        message = "<${node.type}>: prop \"id\" was dropped: the id is already used in this svg",
+                        nodeId = node.id,
+                    ),
+                )
+                continue
+            }
+            if ((node.kind == NodeKind.PRIMITIVE && node.type == "linearGradient") ||
+                (node.kind == NodeKind.COMPONENT && node.type == "radialGradient")
+            ) {
+                gradients.add(id)
+            }
+        }
+
+        val propPatches = HashMap<String, LinkedHashMap<String, JsonElement?>>()
+        val childPatches = HashMap<String, List<TreeNode>>()
+
+        fun patchProp(node: TreeNode.Element, key: String, value: JsonElement?) {
+            val map = propPatches.getOrPut(node.id) { LinkedHashMap() }
+            map[key] = value
+        }
+
+        for (node in nodes) {
+            if (node.id in dropDuplicateIdNodeIds) {
+                patchProp(node, "id", null)
+            }
+
+            if (node.kind == NodeKind.PRIMITIVE) {
+                for (paintProp in listOf("fill", "stroke")) {
+                    val value = (node.props[paintProp] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
+                    if (!value.startsWith("url(#") || !value.endsWith(")")) continue
+                    val targetId = value.substring(5, value.length - 1)
+                    if (targetId in gradients && targetId !in ambiguous) continue
+                    patchProp(node, paintProp, unresolvedGradientPaint?.let { JsonPrimitive(it) })
+                    val reason = if (targetId in ambiguous) {
+                        "its id is used more than once in this svg"
+                    } else {
+                        "it names no linearGradient of this svg"
+                    }
+                    findings.add(
+                        SvgFinding(
+                            code = "PROP_DROPPED",
+                            message = "<${node.type}>: prop \"$paintProp\" was set to \"none\": $reason",
+                            nodeId = node.id,
+                        ),
+                    )
+                }
+
+                if (node.type == "linearGradient") {
+                    val gu = (node.props["gradientUnits"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                    if (gu != "userSpaceOnUse") {
+                        for (coordProp in listOf("x1", "y1", "x2", "y2")) {
+                            val prim = node.props[coordProp] as? JsonPrimitive ?: continue
+                            if (prim.isString || prim.booleanOrNull != null) continue
+                            val num = prim.doubleOrNull ?: continue
+                            if (num in 0.0..1.0) continue
+                            patchProp(node, coordProp, null)
+                            findings.add(
+                                SvgFinding(
+                                    code = "PROP_DROPPED",
+                                    message = "<linearGradient>: prop \"$coordProp\" was dropped: with objectBoundingBox units a number is in 0..1",
+                                    nodeId = node.id,
+                                ),
+                            )
+                        }
                     }
                 }
-                if (t == "g" || t == "linearGradient") {
-                    scanIdsPreOrder(obj["c"] as? JsonArray, directUnderSvg = false)
+            }
+
+            if ((node.kind == NodeKind.PRIMITIVE && node.type == "linearGradient") ||
+                (node.kind == NodeKind.COMPONENT && node.type == "radialGradient")
+            ) {
+                var last = 0.0
+                val kept = ArrayList<TreeNode>(node.children.size)
+                for (child in node.children) {
+                    if (child is TreeNode.Element && child.kind == NodeKind.PRIMITIVE && child.type == "stop") {
+                        val offPrim = child.props["offset"] as? JsonPrimitive
+                        val offset = if (offPrim != null && !offPrim.isString && offPrim.booleanOrNull == null) {
+                            offPrim.doubleOrNull ?: 0.0
+                        } else {
+                            0.0
+                        }
+                        if (offset < last) {
+                            findings.add(
+                                SvgFinding(
+                                    code = "INVALID_NODE",
+                                    message = "<stop> was left out: the offsets of a gradient's stops must not decrease",
+                                    nodeId = child.id,
+                                ),
+                            )
+                            continue
+                        }
+                        last = offset
+                    }
+                    kept.add(child)
+                }
+                if (kept.size != node.children.size) {
+                    childPatches[node.id] = kept
                 }
             }
         }
 
-        scanIdsPreOrder(svgRawChildren, directUnderSvg = true)
-        return gradients
+        if (propPatches.isEmpty() && childPatches.isEmpty()) {
+            return root to findings
+        }
+
+        fun rewrite(node: TreeNode.Element): TreeNode.Element {
+            val baseChildren = childPatches[node.id] ?: node.children
+            var childrenChanged = baseChildren !== node.children
+            val nextChildren = ArrayList<TreeNode>(baseChildren.size)
+            for (child in baseChildren) {
+                if (child is TreeNode.Element) {
+                    val rewritten = rewrite(child)
+                    if (rewritten !== child) childrenChanged = true
+                    nextChildren.add(rewritten)
+                } else {
+                    nextChildren.add(child)
+                }
+            }
+            val patch = propPatches[node.id]
+            if (patch == null && !childrenChanged) return node
+            val nextProps = if (patch != null) {
+                val mutable = LinkedHashMap<String, JsonElement>(node.props)
+                for ((k, v) in patch) {
+                    if (v == null) mutable.remove(k) else mutable[k] = v
+                }
+                JsonObject(mutable)
+            } else {
+                node.props
+            }
+            return node.copy(props = nextProps, children = nextChildren)
+        }
+
+        return rewrite(root) to findings
     }
 
     fun validateSvgNodePropsV6(
         tag: String,
         rawProps: JsonObject,
         idPrefix: String,
-        localGradientIds: Set<String>,
-        seenSvgIds: MutableSet<String>,
-        previousStopOffset: Double? = null,
-        /** Spec v8 §17 Item 9: when `"none"`, an unresolved `url(#id)` emits `PROP_DROPPED` AND sets paint to `"none"` so it never falls back to `currentColor`. */
-        unresolvedGradientPaint: String? = null,
-    ): Pair<V6PropsCheckResult, Double?> {
+    ): V6PropsCheckResult {
         val clean = LinkedHashMap<String, JsonElement>()
         val dropped = ArrayList<String>()
-        var explicitStopOffset: Double? = null
 
-        val gradientUnits = if (tag == "linearGradient") {
-            val gu = (rawProps["gradientUnits"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-            if (gu == "userSpaceOnUse") "userSpaceOnUse" else "objectBoundingBox"
-        } else {
-            "objectBoundingBox"
-        }
-
-        fun checkUniqueSvgId(propVal: JsonElement): JsonPrimitive? {
-            val checked = checkStrictId(propVal, idPrefix) ?: return null
-            return if (seenSvgIds.add(checked.content)) checked else null
-        }
-
-        fun checkSvgPaintProp(propName: String, propVal: JsonElement): JsonPrimitive? {
-            val normalized = normalizeColor(propVal, idPrefix, allowSvgNoneAndGradient = true, allowedLocalGradientIds = localGradientIds)
-            if (normalized != null) return JsonPrimitive(normalized)
-            if (unresolvedGradientPaint != null && isLocalGradientUrlSyntax(propVal)) {
-                dropped.add(propName)
-                return JsonPrimitive(unresolvedGradientPaint)
+        fun checkSyntacticSvgPaint(propVal: JsonElement): JsonPrimitive? {
+            val s = (propVal as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+            if (s == "none") return JsonPrimitive("none")
+            val match = LOCAL_GRADIENT_URL_REGEX.matchEntire(s)
+            if (match != null) {
+                return JsonPrimitive("url(#$idPrefix${match.groupValues[1]})")
             }
-            return null
+            return normalizeColor(propVal, idPrefix, allowSvgNoneAndGradient = false)?.let { JsonPrimitive(it) }
         }
 
         for ((propName, propVal) in rawProps) {
@@ -765,39 +887,28 @@ object PortableV6Spec {
                 dropped.add(propName)
                 continue
             }
-            var handledFallbackPaint = false
             val checked: JsonElement? = when (tag) {
                 "svg" -> when (propName) {
                     "width", "height", "strokeWidth" -> checkNonNegativeBoxNumber(propVal)
                     "opacity" -> checkUnitRatioStrict(propVal)
                     "viewBox" -> parseViewBox(propVal)
                     "preserveAspectRatio" -> checkEnum(propVal, setOf("none", "xMidYMid meet"))
-                    "fill", "stroke" -> {
-                        val before = dropped.size
-                        val p = checkSvgPaintProp(propName, propVal)
-                        if (dropped.size > before) handledFallbackPaint = true
-                        p
-                    }
-                    "id" -> checkUniqueSvgId(propVal)
+                    "fill", "stroke" -> checkSyntacticSvgPaint(propVal)
+                    "id" -> checkStrictId(propVal, idPrefix)
                     "ariaLabel" -> checkBoundedStringRejectOverlimit(propVal, MAX_ARIA_LABEL_CHARS)
                     "hidden" -> (propVal as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull?.let { JsonPrimitive(it) }
                     else -> null
                 }
 
                 "path", "circle", "rect", "g", "text" -> when (propName) {
-                    "fill", "stroke" -> {
-                        val before = dropped.size
-                        val p = checkSvgPaintProp(propName, propVal)
-                        if (dropped.size > before) handledFallbackPaint = true
-                        p
-                    }
+                    "fill", "stroke" -> checkSyntacticSvgPaint(propVal)
                     "strokeWidth" -> checkNonNegativeBoxNumber(propVal)
                     "strokeLinecap" -> checkEnum(propVal, setOf("butt", "round", "square"))
                     "strokeLinejoin" -> checkEnum(propVal, setOf("miter", "round", "bevel"))
                     "opacity", "fillOpacity", "strokeOpacity" -> checkUnitRatioStrict(propVal)
                     "fillRule" -> checkEnum(propVal, setOf("nonzero", "evenodd"))
                     "transform" -> parseSvgTransform(propVal)?.let { JsonPrimitive(it.canonical) }
-                    "id" -> checkUniqueSvgId(propVal)
+                    "id" -> checkStrictId(propVal, idPrefix)
                     "d" -> if (tag == "path") {
                         val s = (propVal as? JsonPrimitive)?.takeIf { it.isString }?.content
                         if (s != null && isValidSvgPathData(s)) JsonPrimitive(s) else null
@@ -813,23 +924,15 @@ object PortableV6Spec {
                 }
 
                 "linearGradient" -> when (propName) {
-                    "id" -> checkUniqueSvgId(propVal)
+                    "id" -> checkStrictId(propVal, idPrefix)
                     "gradientUnits" -> checkEnum(propVal, setOf("objectBoundingBox", "userSpaceOnUse"))
                     "gradientTransform" -> parseSvgTransform(propVal)?.let { JsonPrimitive(it.canonical) }
-                    "x1", "y1", "x2", "y2" -> parseCoordinate(propVal, gradientUnits)
+                    "x1", "y1", "x2", "y2" -> parseCoordinate(propVal, "userSpaceOnUse")
                     else -> null
                 }
 
                 "stop" -> when (propName) {
-                    "offset" -> {
-                        val frac = parseFraction(propVal)
-                        if (frac == null) {
-                            null
-                        } else {
-                            explicitStopOffset = frac
-                            PropAndCssValidator.jsonNumberPrimitive(frac)
-                        }
-                    }
+                    "offset" -> parseFraction(propVal)?.let { PropAndCssValidator.jsonNumberPrimitive(it) }
                     "stopColor" -> normalizeColor(propVal, idPrefix, allowSvgNoneAndGradient = false)?.let { JsonPrimitive(it) }
                     "stopOpacity" -> checkUnitRatioStrict(propVal)
                     else -> null
@@ -839,27 +942,13 @@ object PortableV6Spec {
             }
 
             if (checked == null) {
-                if (!handledFallbackPaint) dropped.add(propName)
+                dropped.add(propName)
             } else {
                 clean[propName] = checked
             }
         }
 
-        if (tag == "stop") {
-            val effectiveOffset = explicitStopOffset ?: 0.0
-            if (previousStopOffset != null && effectiveOffset < previousStopOffset - 1e-9) {
-                // PORTABLE_SVG_RULES ("stop-order"): decreasing stop is left out with INVALID_NODE!
-                return V6PropsCheckResult(
-                    cleanProps = JsonObject(clean),
-                    droppedCount = dropped.size,
-                    droppedMessages = dropped,
-                    rejectStopNode = true,
-                ) to previousStopOffset
-            }
-            return V6PropsCheckResult(JsonObject(clean), dropped.size, dropped) to effectiveOffset
-        }
-
-        return V6PropsCheckResult(JsonObject(clean), dropped.size, dropped) to previousStopOffset
+        return V6PropsCheckResult(JsonObject(clean), dropped.size, dropped)
     }
 
     private fun checkEnum(el: JsonElement?, allowed: Set<String>): JsonPrimitive? {

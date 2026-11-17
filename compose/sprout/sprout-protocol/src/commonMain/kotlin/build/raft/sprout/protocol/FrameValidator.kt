@@ -1137,29 +1137,19 @@ object SproutFrameValidator {
         // In `PORTABLE_V1`, portable primitives (`g == "p"`) use `PortableV6Spec` exact semantic validation
         if (isPortableProfile && entryAndKind.second == NodeKind.PRIMITIVE) {
             val activeSvgCtx = if (name == "svg") {
-                val rootId = (rawProps["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-                PortableV6Spec.SvgRootContext(idPrefix).apply {
-                    validGradientIds.addAll(PortableV6Spec.collectSvgRootGradients(item["c"] as? JsonArray, idPrefix, rootId))
-                }
+                PortableV6Spec.SvgRootContext(idPrefix)
             } else {
                 svgRootCtx ?: PortableV6Spec.SvgRootContext(idPrefix)
             }
 
-            var nextStopOff = previousStopOffset
             val v6PropsResult = if (name == "div" || name == "span") {
                 PortableV6Spec.validateBoxOrSpanPropsV6(name, rawProps, idPrefix)
             } else {
-                val (res, resolvedOff) = PortableV6Spec.validateSvgNodePropsV6(
+                PortableV6Spec.validateSvgNodePropsV6(
                     tag = name,
                     rawProps = rawProps,
                     idPrefix = idPrefix,
-                    localGradientIds = activeSvgCtx.validGradientIds,
-                    seenSvgIds = activeSvgCtx.seenIds,
-                    previousStopOffset = previousStopOffset,
-                    unresolvedGradientPaint = options.unresolvedGradientPaint,
                 )
-                nextStopOff = resolvedOff
-                res
             }
 
             if (v6PropsResult.droppedCount > 0) {
@@ -1169,19 +1159,13 @@ object SproutFrameValidator {
                 }
             }
 
-            if (v6PropsResult.rejectStopNode) {
-                onUnknownComponent()
-                addHostDiagnostic("INVALID_NODE", "Decreasing <stop> offset on <$safeDisplayName>", nodeId, false)
-                return nextStopOff
-            }
-
             val allowedPrimitiveEvents = if (name == "linearGradient" || name == "stop") emptySet() else setOf("click")
             val cleanEvents = validateEvents(item, nodeId, allowedPrimitiveEvents, null)
             if (cleanEvents == null) {
                 onUnknownComponent()
                 addHostDiagnostic("INVALID_NODE", "Invalid events field on <$safeDisplayName>", nodeId, false)
                 if (!inSvg) out.add(makeNotice(nodeId, "INVALID_NODE", "Invalid node", null, null))
-                return nextStopOff
+                return previousStopOffset
             }
 
             val acceptsKidsV6 = name !in setOf("path", "circle", "rect", "stop")
@@ -1211,17 +1195,32 @@ object SproutFrameValidator {
                 v6PropsResult.cleanProps
             }
 
-            out.add(
-                TreeNode.Element(
-                    id = nodeId,
-                    kind = NodeKind.PRIMITIVE,
-                    type = name,
-                    props = finalPrimitiveProps,
-                    events = cleanEvents,
-                    children = children,
-                ),
+            val rawElement = TreeNode.Element(
+                id = nodeId,
+                kind = NodeKind.PRIMITIVE,
+                type = name,
+                props = finalPrimitiveProps,
+                events = cleanEvents,
+                children = children,
             )
-            return nextStopOff
+
+            if (name == "svg") {
+                val (checkedSvgElement, svgFindings) = PortableV6Spec.checkSvgRoot(
+                    root = rawElement,
+                    unresolvedGradientPaint = options.unresolvedGradientPaint,
+                )
+                for (finding in svgFindings) {
+                    if (finding.code == "PROP_DROPPED") onDroppedProps(1)
+                    addHostDiagnostic(finding.code, finding.message, finding.nodeId, false)
+                }
+                if (svgFindings.isNotEmpty() && options.refs != null) {
+                    options.refs.unsafeCssAnimationSeen = true
+                }
+                out.add(checkedSvgElement)
+            } else {
+                out.add(rawElement)
+            }
+            return previousStopOffset
         }
 
         val cleanProps = LinkedHashMap<String, JsonElement>()

@@ -46,10 +46,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.atomicfu.atomic
+import kotlin.random.Random
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.startCoroutine
-import kotlin.random.Random
 import kotlin.time.DurationUnit
 import kotlin.time.TimeSource
 
@@ -800,7 +800,9 @@ internal class GuestVmHandle(
     val guestAbiVersion: Int,
     private val limits: RuntimeLimits,
     private val isSourceFinished: () -> Boolean,
+    private val onClosedOnce: () -> Unit = {},
 ) : AutoCloseable {
+    private var closedOnce = false
     var activeLogicalNowMs: Long = 0L
         private set
     var activeHostEntry: String = "none"
@@ -1101,6 +1103,10 @@ internal class GuestVmHandle(
         if (!vm.isClosed) {
             runCatching { vm.close() }
         }
+        if (!closedOnce) {
+            closedOnce = true
+            onClosedOnce()
+        }
     }
 }
 
@@ -1201,6 +1207,17 @@ class SproutSurface internal constructor(
         }
     }
 
+    private class SuppressedCallEffectLedger(
+        val sharedViewBeforeCall: JsonObject? = null,
+        val enqueuedStateOperationId: String? = null,
+        val promotedStateOperationId: String? = null,
+        val createdActionRequestIds: List<String> = emptyList(),
+    ) {
+        companion object {
+            val NONE = SuppressedCallEffectLedger()
+        }
+    }
+
     private val pendingBatches = ArrayDeque<PendingStateOperation>()
     private var activeOut: ActiveOutRequest? = null
     private val fencedOps = LinkedHashMap<String, Long>()
@@ -1248,6 +1265,9 @@ class SproutSurface internal constructor(
     }
 
     private var refs = TreeRefs("$surfaceId:${catalog.catalogId}:${catalog.catalogVersion}:$profile:${engine.guestRuntimeVersion}")
+    private var wholeTreesOnly = false
+    internal var liveGuestVmCountForTest: Int = 0
+        private set
     private val elementBindingsIndex = HashMap<String, Map<String, EventBinding>>()
     private var lastValidFrame: SurfaceFrame
     private var lastSuggestedInitialState: JsonObject = JsonObject(emptyMap())
@@ -1314,6 +1334,7 @@ class SproutSurface internal constructor(
             memoryLimit = limits.memoryLimitBytes
             maxStackSize = limits.maxStackSizeBytes
         }
+        liveGuestVmCountForTest += 1
         val handle = GuestVmHandle(
             vm = rawVm,
             epoch = epoch,
@@ -1321,6 +1342,7 @@ class SproutSurface internal constructor(
             guestAbiVersion = engine.guestAbiVersion,
             limits = limits,
             isSourceFinished = { sourceFinished },
+            onClosedOnce = { liveGuestVmCountForTest = (liveGuestVmCountForTest - 1).coerceAtLeast(0) },
         )
         try {
             handle.installBindings(omitRequiredBindingsForTest = omitRequiredBindingsForTest)
@@ -1344,7 +1366,7 @@ class SproutSurface internal constructor(
                 phase = "engine",
                 jsCallExpr = "globalThis.__epoch($epoch)",
             )
-            val deltaFlag = if (useCells) 1 else 0
+            val deltaFlag = if (useCells && !wholeTreesOnly) 1 else 0
             handle.invokeEntry<Any?>(
                 entryName = "__delta",
                 budgetMs = 100L,
@@ -1927,8 +1949,8 @@ class SproutSurface internal constructor(
         val execMark = TimeSource.Monotonic.markNow()
         val escapedCode = Json.encodeToString(kotlinx.serialization.serializer<String>(), strictJs)
         val renderedFrameJson: String
-        val scheduleJson: String
-        val defaultsJson: String
+        var scheduleJson: String
+        var defaultsJson: String
         try {
             candidateGuest.clearCallScratch()
             candidateGuest.invokeEntry<Any?>(
@@ -1995,7 +2017,8 @@ class SproutSurface internal constructor(
         candidateGuest.clearCallScratch()
 
         val valMark = TimeSource.Monotonic.markNow()
-        val outcome = SproutFrameValidator.validateJsonString(
+        val activeCandidateRefs = if (wholeTreesOnly) null else candidateRefs
+        var outcome = SproutFrameValidator.validateJsonString(
             rawJson = renderedFrameJson,
             catalog = catalog,
             options = ValidateFrameOptions(
@@ -2004,11 +2027,94 @@ class SproutSurface internal constructor(
                 portableSpecMode = portableSpecMode,
                 maxFrameBytes = maxFrameBytes,
                 idPrefix = "s-$surfaceId-",
-                refs = candidateRefs,
+                refs = activeCandidateRefs,
                 hostEnvelope = buildHostEnvelope(),
                 unresolvedGradientPaint = "none",
             ),
         )
+        var extraCandidateDiags: List<ProtocolDiagnostic> = emptyList()
+        if (outcome.isAccepted && activeCandidateRefs?.unsafeCssAnimationSeen == true) {
+            wholeTreesOnly = true
+            refs.reset()
+            val fullRaw: String
+            try {
+                candidateGuest.invokeEntry<Any?>(
+                    entryName = "__delta",
+                    budgetMs = 50L,
+                    phase = "engine",
+                    jsCallExpr = "globalThis.__delta(0)",
+                    logicalNowMs = logicalNow,
+                )
+                fullRaw = candidateGuest.invokeEntry(
+                    entryName = "__render",
+                    budgetMs = limits.sourceUpdateBudgetMs,
+                    phase = "render",
+                    jsCallExpr = "globalThis.__render(0)",
+                    logicalNowMs = logicalNow,
+                )
+                scheduleJson = candidateGuest.invokeEntry(
+                    entryName = "__schedule",
+                    budgetMs = 50L,
+                    phase = "engine",
+                    jsCallExpr = "globalThis.__schedule()",
+                    logicalNowMs = logicalNow,
+                )
+                defaultsJson = candidateGuest.invokeEntry(
+                    entryName = "__sharedDefaults",
+                    budgetMs = 50L,
+                    phase = "state",
+                    jsCallExpr = "globalThis.__sharedDefaults()",
+                    logicalNowMs = logicalNow,
+                )
+            } catch (err: SproutRuntimeException) {
+                val fallbackDiags = candidateGuest.pendingDiagnostics.toList()
+                candidateGuest.close()
+                markFinalInvalidReadOnly()
+                val errDiag = ProtocolDiagnostic(
+                    code = err.code,
+                    phase = err.phase,
+                    message = err.message.takeUnicodeCodePoints(240),
+                    origin = DiagnosticOrigin.HOST,
+                )
+                val allDiags = scratchDiags + fallbackDiags + errDiag
+                return FrameCommit(
+                    frame = lastValidFrame,
+                    diagnostics = allDiags,
+                    stats = ValidationStats(hostDiagnostics = allDiags.size),
+                    sharedSubtreeNodes = 0,
+                    effects = emptyList(),
+                    suggestedInitialState = lastSuggestedInitialState,
+                    nextTimerDueMs = null,
+                    hasAnimationFrame = false,
+                    interactionEnabled = false,
+                    inertReason = InertReason.FINAL_INVALID,
+                    status = SurfaceStatus.FINAL_INVALID,
+                    changed = false,
+                    pendingStateOperations = pendingBatches.size,
+                    guestRuntimeVersion = engine.guestRuntimeVersion,
+                    guestAbiVersion = engine.guestAbiVersion,
+                    compileMs = compileMs,
+                    executeMs = execMark.elapsedNow().toDouble(DurationUnit.MILLISECONDS),
+                    validateMs = valMark.elapsedNow().toDouble(DurationUnit.MILLISECONDS),
+                )
+            }
+            extraCandidateDiags = candidateGuest.pendingDiagnostics.toList()
+            candidateGuest.clearCallScratch()
+            outcome = SproutFrameValidator.validateJsonString(
+                rawJson = fullRaw,
+                catalog = catalog,
+                options = ValidateFrameOptions(
+                    profile = profile,
+                    primitivesVersion = primitivesVersion,
+                    portableSpecMode = portableSpecMode,
+                    maxFrameBytes = maxFrameBytes,
+                    idPrefix = "s-$surfaceId-",
+                    refs = null,
+                    hostEnvelope = buildHostEnvelope(),
+                    unresolvedGradientPaint = "none",
+                ),
+            )
+        }
         val valMs = valMark.elapsedNow().toDouble(DurationUnit.MILLISECONDS)
 
         val validatedFrame = outcome.frame
@@ -2017,7 +2123,7 @@ class SproutSurface internal constructor(
             markFinalInvalidReadOnly()
             return FrameCommit(
                 frame = lastValidFrame,
-                diagnostics = scratchDiags + outcome.diagnostics,
+                diagnostics = scratchDiags + extraCandidateDiags + outcome.diagnostics,
                 stats = outcome.stats,
                 sharedSubtreeNodes = 0,
                 effects = emptyList(),
@@ -2045,6 +2151,7 @@ class SproutSurface internal constructor(
 
         runtimeEpoch = candidateEpoch
         refs = candidateRefs
+        if (wholeTreesOnly) refs.reset()
         loadCountInCurrentVm = 1
         ranTolerantOrIncrementalLoad = false
         touchedInCurrentVm = false
@@ -2059,7 +2166,7 @@ class SproutSurface internal constructor(
         val shared = TreeSharer.shareTree(
             prev = if (lastValidFrame.frameRevision > 0) lastValidFrame.root else null,
             next = validatedFrame.root,
-            refs = refs,
+            refs = if (wholeTreesOnly) null else refs,
         )
         val committedFrame = validatedFrame.copy(root = shared.nodes)
         lastValidFrame = committedFrame
@@ -2210,13 +2317,41 @@ class SproutSurface internal constructor(
         val outboundEffects = ArrayList<OutboundEffect>()
         val extraDiags = ArrayList<ProtocolDiagnostic>(drainStartupDiagnostics())
         extraDiags.addAll(guest.pendingDiagnostics)
+        var enqueuedStateOpId: String? = null
+        var promotedStateOpId: String? = null
+        val createdActionRequestIds = ArrayList<String>()
+
+        fun applyRollbackFrameOrMarkInert() {
+            try {
+                val rollbackFrameJson = rollbackGuestShared(viewBefore, logicalNow)
+                if (rollbackFrameJson.isNotEmpty()) {
+                    frameJsonStr = rollbackFrameJson
+                }
+            } catch (err: SproutRuntimeException) {
+                extraDiags.addAll(guest.pendingDiagnostics)
+                guest.clearCallScratch()
+                extraDiags.add(
+                    ProtocolDiagnostic(
+                        code = err.code,
+                        phase = "state",
+                        message = err.message.takeUnicodeCodePoints(240),
+                        nodeId = nodeId,
+                        origin = DiagnosticOrigin.HOST,
+                    ),
+                )
+                frameJsonStr = ""
+                if (lastValidFrame.frameRevision > 0L) {
+                    if (inertReason == InertReason.NONE) {
+                        inertReason = InertReason.FRAME_REJECTED
+                    }
+                    elementBindingsIndex.clear()
+                }
+            }
+        }
 
         // Process shared-state writes or roll back suppressed preview writes in the SAME call (Ruling 3 & 6)
         if (guest.needsSharedRollback) {
-            val rollbackFrameJson = rollbackGuestShared(viewBefore, logicalNow)
-            if (rollbackFrameJson.isNotEmpty()) {
-                frameJsonStr = rollbackFrameJson
-            }
+            applyRollbackFrameOrMarkInert()
         } else if (sourceFinished && guest.latestSharedWriteJson != null) {
             val nextWhole = canonicalizeJsonObject(json.parseToJsonElement(guest.latestSharedWriteJson!!).jsonObject)
             val ops = diffSharedStateOps(viewBefore, nextWhole)
@@ -2237,10 +2372,7 @@ class SproutSurface internal constructor(
                             origin = DiagnosticOrigin.HOST,
                         ),
                     )
-                    val rollbackFrameJson = rollbackGuestShared(viewBefore, logicalNow)
-                    if (rollbackFrameJson.isNotEmpty()) {
-                        frameJsonStr = rollbackFrameJson
-                    }
+                    applyRollbackFrameOrMarkInert()
                 } else if (pendingBatches.size >= limits.maxPendingStateOperations) {
                     extraDiags.add(
                         ProtocolDiagnostic(
@@ -2251,10 +2383,7 @@ class SproutSurface internal constructor(
                             origin = DiagnosticOrigin.HOST,
                         ),
                     )
-                    val rollbackFrameJson = rollbackGuestShared(viewBefore, logicalNow)
-                    if (rollbackFrameJson.isNotEmpty()) {
-                        frameJsonStr = rollbackFrameJson
-                    }
+                    applyRollbackFrameOrMarkInert()
                 } else {
                     val opId = engine.nextUnrepeatableId()
                     val overlayAfter = applyOpsToState(viewBefore, ops)
@@ -2266,7 +2395,8 @@ class SproutSurface internal constructor(
                         baseRevision = confirmedStateRevision,
                     )
                     pendingBatches.addLast(batch)
-                    promoteNextPendingIfIdle(outboundEffects)
+                    enqueuedStateOpId = opId
+                    promotedStateOpId = promoteNextPendingIfIdle(outboundEffects)
                 }
             }
         }
@@ -2328,6 +2458,7 @@ class SproutSurface internal constructor(
                     } else {
                         val reqId = engine.nextUnrepeatableId()
                         pendingRequestIds.add(reqId)
+                        createdActionRequestIds.add(reqId)
                         outboundEffects.add(
                             OutboundEffect.ActionRequest(
                                 action = actionName,
@@ -2345,13 +2476,42 @@ class SproutSurface internal constructor(
         }
         guest.clearCallScratch()
 
-        val scheduleJson = guest.invokeEntry<String>(
-            entryName = "__schedule",
-            budgetMs = 50L,
-            phase = "engine",
-            jsCallExpr = "globalThis.__schedule()",
-            logicalNowMs = logicalNow,
+        val callLedger = SuppressedCallEffectLedger(
+            sharedViewBeforeCall = if (enqueuedStateOpId != null) viewBefore else null,
+            enqueuedStateOperationId = enqueuedStateOpId,
+            promotedStateOperationId = promotedStateOpId,
+            createdActionRequestIds = createdActionRequestIds,
         )
+
+        val scheduleJson = try {
+            guest.invokeEntry<String>(
+                entryName = "__schedule",
+                budgetMs = 50L,
+                phase = "engine",
+                jsCallExpr = "globalThis.__schedule()",
+                logicalNowMs = logicalNow,
+            )
+        } catch (err: SproutRuntimeException) {
+            val scratchDiags = guest.pendingDiagnostics.toList()
+            guest.clearCallScratch()
+            rollbackSuppressedCallEffects(callLedger, logicalNow)
+            if (lastValidFrame.frameRevision > 0L) {
+                if (inertReason == InertReason.NONE) {
+                    inertReason = InertReason.FRAME_REJECTED
+                }
+                elementBindingsIndex.clear()
+            }
+            return diagnosticOnLastValid(
+                ProtocolDiagnostic(
+                    code = err.code,
+                    phase = err.phase,
+                    message = err.message.takeUnicodeCodePoints(240),
+                    nodeId = nodeId,
+                    origin = DiagnosticOrigin.HOST,
+                ),
+                extraDiags = extraDiags + scratchDiags,
+            )
+        }
         applyScheduleJson(scheduleJson)
         val execMs = execMark.elapsedNow().toDouble(DurationUnit.MILLISECONDS)
 
@@ -2386,6 +2546,7 @@ class SproutSurface internal constructor(
             extraHostDiagnostics = extraDiags,
             isStreamingAppend = false,
             logicalNowMs = logicalNow,
+            callLedger = callLedger,
         )
     }
 
@@ -2617,6 +2778,7 @@ class SproutSurface internal constructor(
         val outboundEffects = ArrayList<OutboundEffect>()
         val diagnostics = ArrayList<ProtocolDiagnostic>()
         val dropped = ArrayList<PendingStateOperation>()
+        var promotedStateOpId: String? = null
 
         when (receipt) {
             is StateReceipt.Uncertain -> {
@@ -2688,7 +2850,7 @@ class SproutSurface internal constructor(
                     val canonState = canonicalizeJsonObject(receipt.state)
                     if (out.withdrawn) {
                         applyConcurrentAuthoritativeState(receipt.revision, receipt.state, diagnostics, dropped)
-                        promoteNextPendingIfIdle(outboundEffects)
+                        promotedStateOpId = promoteNextPendingIfIdle(outboundEffects)
                     } else {
                         val acceptedBatch = pendingBatches.removeFirst()
                         val proven = receipt.revision > confirmedStateRevision &&
@@ -2711,7 +2873,7 @@ class SproutSurface internal constructor(
                                 ),
                             )
                         }
-                        promoteNextPendingIfIdle(outboundEffects)
+                        promotedStateOpId = promoteNextPendingIfIdle(outboundEffects)
                     }
                 }
             }
@@ -2756,7 +2918,7 @@ class SproutSurface internal constructor(
                             ),
                         )
                     }
-                    promoteNextPendingIfIdle(outboundEffects)
+                    promotedStateOpId = promoteNextPendingIfIdle(outboundEffects)
                 }
             }
 
@@ -2792,7 +2954,7 @@ class SproutSurface internal constructor(
                         ),
                     )
                 }
-                promoteNextPendingIfIdle(outboundEffects)
+                promotedStateOpId = promoteNextPendingIfIdle(outboundEffects)
             }
 
             is StateReceipt.Withdrawn -> {
@@ -2850,7 +3012,7 @@ class SproutSurface internal constructor(
                 if (receipt.revision > confirmedStateRevision) {
                     applyConcurrentAuthoritativeState(receipt.revision, receipt.state, diagnostics, dropped)
                 }
-                promoteNextPendingIfIdle(outboundEffects)
+                promotedStateOpId = promoteNextPendingIfIdle(outboundEffects)
             }
         }
 
@@ -2859,6 +3021,7 @@ class SproutSurface internal constructor(
             outboundEffects = outboundEffects,
             diagnostics = drainStartupDiagnostics() + diagnostics,
             dropped = dropped,
+            callLedger = SuppressedCallEffectLedger(promotedStateOperationId = promotedStateOpId),
         )
     }
 
@@ -2867,6 +3030,7 @@ class SproutSurface internal constructor(
         outboundEffects: List<OutboundEffect>,
         diagnostics: List<ProtocolDiagnostic>,
         dropped: List<PendingStateOperation>,
+        callLedger: SuppressedCallEffectLedger = SuppressedCallEffectLedger.NONE,
     ): FrameCommit {
         if (inertReason == InertReason.FINAL_INVALID || abandonedState != null) {
             lastValidFrame = lastValidFrame.copy(stateRevision = confirmedStateRevision)
@@ -2898,13 +3062,55 @@ class SproutSurface internal constructor(
         val execMark = TimeSource.Monotonic.markNow()
         guest.clearCallScratch()
         val escapedView = Json.encodeToString(kotlinx.serialization.serializer<String>(), targetView.toString())
-        val rawFrameJson = guest.invokeEntry<String>(
-            entryName = "__sharedLoad",
-            budgetMs = limits.dispatchBudgetMs,
-            phase = "state",
-            jsCallExpr = "globalThis.__sharedLoad($escapedView)",
-            logicalNowMs = logicalNow,
-        )
+        val rawFrameJson = try {
+            guest.invokeEntry<String>(
+                entryName = "__sharedLoad",
+                budgetMs = limits.dispatchBudgetMs,
+                phase = "state",
+                jsCallExpr = "globalThis.__sharedLoad($escapedView)",
+                logicalNowMs = logicalNow,
+            )
+        } catch (err: SproutRuntimeException) {
+            val scratchDiags = guest.pendingDiagnostics.toList()
+            guest.clearCallScratch()
+            rollbackSuppressedCallEffects(callLedger, logicalNow)
+            if (lastValidFrame.frameRevision > 0L) {
+                if (inertReason == InertReason.NONE) {
+                    inertReason = InertReason.FRAME_REJECTED
+                }
+                elementBindingsIndex.clear()
+            }
+            lastValidFrame = lastValidFrame.copy(stateRevision = confirmedStateRevision)
+            val errDiag = ProtocolDiagnostic(
+                code = err.code,
+                phase = "state",
+                message = err.message.takeUnicodeCodePoints(240),
+                origin = DiagnosticOrigin.HOST,
+            )
+            val failDiags = diagnostics + scratchDiags + errDiag
+            return FrameCommit(
+                frame = lastValidFrame,
+                diagnostics = failDiags,
+                stats = ValidationStats(hostDiagnostics = failDiags.size),
+                sharedSubtreeNodes = 0,
+                effects = emptyList(),
+                suggestedInitialState = lastSuggestedInitialState,
+                nextTimerDueMs = nextTimerDueMs,
+                hasAnimationFrame = hasAnimationFrame,
+                interactionEnabled = interactionEnabled,
+                inertReason = inertReason,
+                status = status,
+                uncertain = uncertainOperation(),
+                changed = false,
+                pendingStateOperations = pendingBatches.size,
+                droppedOperations = dropped,
+                guestRuntimeVersion = engine.guestRuntimeVersion,
+                guestAbiVersion = engine.guestAbiVersion,
+                compileMs = 0.0,
+                executeMs = execMark.elapsedNow().toDouble(DurationUnit.MILLISECONDS),
+                validateMs = 0.0,
+            )
+        }
         val scratchDiags = guest.pendingDiagnostics.toList()
         guest.clearCallScratch()
         val allDiags = diagnostics + scratchDiags
@@ -2945,6 +3151,7 @@ class SproutSurface internal constructor(
             isStreamingAppend = false,
             logicalNowMs = logicalNow,
             droppedOperations = dropped,
+            callLedger = callLedger,
         )
     }
 
@@ -3122,7 +3329,7 @@ class SproutSurface internal constructor(
         guest.close()
     }
 
-    private fun promoteNextPendingIfIdle(outboundEffects: MutableList<OutboundEffect>) {
+    private fun promoteNextPendingIfIdle(outboundEffects: MutableList<OutboundEffect>): String? {
         if (activeOut == null && pendingBatches.isNotEmpty()) {
             val nextHead = pendingBatches.removeFirst().copy(baseRevision = confirmedStateRevision, sent = true)
             pendingBatches.addFirst(nextHead)
@@ -3137,6 +3344,39 @@ class SproutSurface internal constructor(
             )
             activeOut = out
             outboundEffects.add(out.toProposeEffect())
+            return out.operationId
+        }
+        return null
+    }
+
+    private fun rollbackSuppressedCallEffects(
+        callLedger: SuppressedCallEffectLedger,
+        logicalNowMs: Long,
+    ) {
+        for (reqId in callLedger.createdActionRequestIds) {
+            pendingRequestIds.remove(reqId)
+        }
+        val promotedId = callLedger.promotedStateOperationId
+        if (promotedId != null) {
+            if (activeOut?.operationId == promotedId) {
+                activeOut = null
+            }
+            if (promotedId != callLedger.enqueuedStateOperationId) {
+                val head = pendingBatches.firstOrNull()
+                if (head != null && head.operationId == promotedId && head.sent) {
+                    pendingBatches.removeFirst()
+                    pendingBatches.addFirst(head.copy(sent = false))
+                }
+            }
+        }
+        val enqueuedId = callLedger.enqueuedStateOperationId
+        if (enqueuedId != null) {
+            pendingBatches.removeAll { it.operationId == enqueuedId }
+        }
+        val restoreView = callLedger.sharedViewBeforeCall
+        if (restoreView != null) {
+            rollbackGuestSharedQuietly(restoreView, logicalNowMs)
+            guest.clearCallScratch()
         }
     }
 
@@ -3391,8 +3631,10 @@ class SproutSurface internal constructor(
         allowSnapshotRetry: Boolean = true,
         isStrictFinish: Boolean = false,
         droppedOperations: List<PendingStateOperation> = emptyList(),
+        callLedger: SuppressedCallEffectLedger = SuppressedCallEffectLedger.NONE,
     ): FrameCommit {
         val valMark = TimeSource.Monotonic.markNow()
+        val activeRefs = if (wholeTreesOnly) null else refs
         val outcome: FrameValidationOutcome = SproutFrameValidator.validateJsonString(
             rawJson = guestFrameRawJson,
             catalog = catalog,
@@ -3402,23 +3644,78 @@ class SproutSurface internal constructor(
                 portableSpecMode = portableSpecMode,
                 maxFrameBytes = maxFrameBytes,
                 idPrefix = "s-$surfaceId-",
-                refs = refs,
+                refs = activeRefs,
                 hostEnvelope = buildHostEnvelope(),
                 unresolvedGradientPaint = "none",
             ),
         )
         val valMs = valMark.elapsedNow().toDouble(DurationUnit.MILLISECONDS)
 
-        // Bounded 1-shot recovery on MISSING_REFERENCE / FRAME_BASE_MISMATCH (v5 §14 Decision 13 & v6 §15 Item 13)
-        if (!outcome.isAccepted && outcome.needsFullSnapshot && allowSnapshotRetry) {
-            refs.reset()
-            val retryRaw = guest.invokeEntry<String>(
-                entryName = "__render",
-                budgetMs = limits.sourceUpdateBudgetMs,
-                phase = "render",
-                jsCallExpr = "globalThis.__render(1)",
-                logicalNowMs = logicalNowMs,
+        fun handleFallbackGuestError(err: SproutRuntimeException): FrameCommit {
+            val fallbackDiags = guest.pendingDiagnostics.toList()
+            guest.clearCallScratch()
+            rollbackSuppressedCallEffects(callLedger, logicalNowMs)
+            if (isStrictFinish) {
+                markFinalInvalidReadOnly()
+            } else {
+                if (inertReason == InertReason.NONE) {
+                    inertReason = InertReason.FRAME_REJECTED
+                }
+                elementBindingsIndex.clear()
+            }
+            val errDiag = ProtocolDiagnostic(
+                code = err.code,
+                phase = err.phase,
+                message = err.message.takeUnicodeCodePoints(240),
+                origin = DiagnosticOrigin.HOST,
             )
+            val allDiags = extraHostDiagnostics + fallbackDiags + errDiag
+            return FrameCommit(
+                frame = lastValidFrame,
+                diagnostics = allDiags,
+                stats = ValidationStats(hostDiagnostics = allDiags.size),
+                sharedSubtreeNodes = 0,
+                effects = emptyList(),
+                suggestedInitialState = lastSuggestedInitialState,
+                nextTimerDueMs = nextTimerDueMs,
+                hasAnimationFrame = hasAnimationFrame,
+                interactionEnabled = false,
+                inertReason = inertReason,
+                status = status,
+                changed = false,
+                pendingStateOperations = pendingBatches.size,
+                droppedOperations = droppedOperations,
+                guestRuntimeVersion = engine.guestRuntimeVersion,
+                guestAbiVersion = engine.guestAbiVersion,
+                compileMs = compileMs,
+                executeMs = execMs,
+                validateMs = valMs,
+            )
+        }
+
+        // Bounded 1-shot recovery on MISSING_REFERENCE / FRAME_BASE_MISMATCH (v5 §14 Decision 13 & v6 §15 Item 13)
+        if (!outcome.isAccepted && outcome.needsFullSnapshot && allowSnapshotRetry && activeRefs != null) {
+            activeRefs.reset()
+            val retryRaw: String = try {
+                val r = guest.invokeEntry<String>(
+                    entryName = "__render",
+                    budgetMs = limits.sourceUpdateBudgetMs,
+                    phase = "render",
+                    jsCallExpr = "globalThis.__render(1)",
+                    logicalNowMs = logicalNowMs,
+                )
+                val sched = guest.invokeEntry<String>(
+                    entryName = "__schedule",
+                    budgetMs = 50L,
+                    phase = "engine",
+                    jsCallExpr = "globalThis.__schedule()",
+                    logicalNowMs = logicalNowMs,
+                )
+                applyScheduleJson(sched)
+                r
+            } catch (err: SproutRuntimeException) {
+                return handleFallbackGuestError(err)
+            }
             val retryDiags = guest.pendingDiagnostics.toList()
             guest.clearCallScratch()
             return validateGuestFrameAndCommit(
@@ -3432,11 +3729,60 @@ class SproutSurface internal constructor(
                 allowSnapshotRetry = false,
                 isStrictFinish = isStrictFinish,
                 droppedOperations = droppedOperations,
+                callLedger = callLedger,
+            )
+        }
+
+        if (outcome.isAccepted && activeRefs?.unsafeCssAnimationSeen == true) {
+            wholeTreesOnly = true
+            activeRefs.reset()
+            val fullRaw: String = try {
+                guest.invokeEntry<Any?>(
+                    entryName = "__delta",
+                    budgetMs = 50L,
+                    phase = "engine",
+                    jsCallExpr = "globalThis.__delta(0)",
+                    logicalNowMs = logicalNowMs,
+                )
+                val r = guest.invokeEntry<String>(
+                    entryName = "__render",
+                    budgetMs = limits.sourceUpdateBudgetMs,
+                    phase = "render",
+                    jsCallExpr = "globalThis.__render(0)",
+                    logicalNowMs = logicalNowMs,
+                )
+                val sched = guest.invokeEntry<String>(
+                    entryName = "__schedule",
+                    budgetMs = 50L,
+                    phase = "engine",
+                    jsCallExpr = "globalThis.__schedule()",
+                    logicalNowMs = logicalNowMs,
+                )
+                applyScheduleJson(sched)
+                r
+            } catch (err: SproutRuntimeException) {
+                return handleFallbackGuestError(err)
+            }
+            val fullDiags = guest.pendingDiagnostics.toList()
+            guest.clearCallScratch()
+            return validateGuestFrameAndCommit(
+                guestFrameRawJson = fullRaw,
+                compileMs = compileMs,
+                execMs = execMs,
+                effects = effects,
+                extraHostDiagnostics = extraHostDiagnostics + fullDiags,
+                isStreamingAppend = isStreamingAppend,
+                logicalNowMs = logicalNowMs,
+                allowSnapshotRetry = false,
+                isStrictFinish = isStrictFinish,
+                droppedOperations = droppedOperations,
+                callLedger = callLedger,
             )
         }
 
         val validatedFrame = outcome.frame
         if (!outcome.isAccepted || validatedFrame == null) {
+            rollbackSuppressedCallEffects(callLedger, logicalNowMs)
             // Spec v6 §15 Item 13: rejected guest render already overwrote guest handler table -> keep visual tree read-only!
             if (isStrictFinish) {
                 markFinalInvalidReadOnly()
@@ -3471,6 +3817,7 @@ class SproutSurface internal constructor(
         if (validatedFrame.runtimeEpoch != runtimeEpoch ||
             (lastValidFrame.runtimeEpoch == runtimeEpoch && validatedFrame.frameRevision <= lastValidFrame.frameRevision)
         ) {
+            rollbackSuppressedCallEffects(callLedger, logicalNowMs)
             inertReason = if (isStrictFinish) InertReason.FINAL_INVALID else InertReason.FRAME_REJECTED
             if (isStrictFinish) status = SurfaceStatus.FINAL_INVALID
             elementBindingsIndex.clear()
@@ -3532,7 +3879,7 @@ class SproutSurface internal constructor(
         val shared = TreeSharer.shareTree(
             prev = if (lastValidFrame.frameRevision > 0) lastValidFrame.root else null,
             next = validatedFrame.root,
-            refs = refs,
+            refs = if (wholeTreesOnly) null else refs,
         )
         val committedFrame = validatedFrame.copy(root = shared.nodes)
         lastValidFrame = committedFrame
@@ -3672,8 +4019,9 @@ class SproutSurface internal constructor(
         )
     }
 
-    private fun sha256Hex(text: String): String =
-        SproutSha256.sha256Hex(text.encodeToByteArray())
+    private fun sha256Hex(text: String): String {
+        return SproutSha256.sha256Hex(text.encodeToByteArray())
+    }
 
     private fun checkNotDisposed() {
         if (disposed) throw SproutRuntimeException("ENGINE_FAILED", "engine", "Surface '$surfaceId' has been disposed")
