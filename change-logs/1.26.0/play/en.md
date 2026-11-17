@@ -1,4 +1,5 @@
 ✨ New
+- External channels: share one with other servers or people outside Raft
 - Search in thread searches the whole conversation; global search finds Artifacts
 - Make or remove channel admins from the member list
 
@@ -9,4 +10,4 @@
 
 🐛 Fixed
 - Drafts are no longer lost when the app restarts
-- Raft links open in the app, plus fixes for crashes and smaller issues
+- Raft links open in the app, plus crash and other fixes
