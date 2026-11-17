@@ -36,13 +36,6 @@ import kotlinx.serialization.json.Json
  */
 const val SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY: String = "sync_core_notification_prefs_v0"
 const val SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY: String = "sync_core_read_state_v1"
-/**
- * Agent read progress (botiverse/slock `packages/shared/src/featureFlags.ts`
- * `AGENT_READ_PROGRESS_FEATURE_FLAG_KEY`, default off). On, a channel or
- * reply thread shows each agent's face on the message it read up to, and, only when the viewer's latest
- * message will not reach an agent that stopped following or muted, the line under it (ThreadAgentReadStatus.kt).
- */
-const val AGENT_READ_PROGRESS_FEATURE_FLAG_KEY: String = "agent_read_progress_v0"
 const val MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY: String = "mobile_thread_page_size_v0"
 const val MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY: String = "mobile_activity_stable_order_v1"
 /**
@@ -225,7 +218,6 @@ const val EXTERNAL_CHANNELS_FEATURE_FLAG_KEY: String = "external_channels_v1"
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
     SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY,
-    AGENT_READ_PROGRESS_FEATURE_FLAG_KEY,
     MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY,
     MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
     MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,

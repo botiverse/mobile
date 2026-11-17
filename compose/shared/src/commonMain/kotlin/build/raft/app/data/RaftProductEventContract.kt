@@ -55,10 +55,9 @@ const val RAFT_PRODUCT_ENTRY_EVENTS_BASE_SLOCK_SHA: String = "3e959613eeeaa80607
 
 /**
  * botiverse/slock #13636 head (gated features with no server record; live in server v1.21.61):
- * `drafts_page_viewed` (`DRAFT_COUNT_BUCKETS`), `drafts_item_opened` (`DRAFT_PLACES`) and
- * `agent_read_progress_shown` (`AGENT_READ_PROGRESS_PARTS`, `AGENT_READ_PROGRESS_CONVERSATIONS`),
- * all registered for `APP_CLIENTS`. Web emitters: `packages/web/src/analytics/gatedFeatures.ts`,
- * re-read on staging @ 987c47fa6ca2eb03fcace5777f807cd17070cea9.
+ * `drafts_page_viewed` (`DRAFT_COUNT_BUCKETS`) and `drafts_item_opened` (`DRAFT_PLACES`), both
+ * registered for `APP_CLIENTS` (`agent_read_progress_shown` went with the feature). Web emitters:
+ * `packages/web/src/analytics/gatedFeatures.ts`, re-read on staging @ 987c47fa6ca2eb03fcace5777f807cd17070cea9.
  */
 const val RAFT_PRODUCT_EVENTS_GATED_FEATURES_SLOCK_SHA: String = "a5a145f9fe3ce4da49cba8e7d2ec39293c1f1270"
 
@@ -322,20 +321,6 @@ enum class RaftDraftPlaceKind(val wire: String) {
     @SerialName("task") Task("task"),
 }
 
-/** `AGENT_READ_PROGRESS_PARTS`: the agents' faces, or the line saying a message will not reach an agent. */
-@Serializable
-enum class RaftAgentReadProgressPart(val wire: String) {
-    @SerialName("faces") Faces("faces"),
-    @SerialName("not_reaching_line") NotReachingLine("not_reaching_line"),
-}
-
-/** `AGENT_READ_PROGRESS_CONVERSATIONS`: a DM never shows agent read progress. */
-@Serializable
-enum class RaftAgentReadProgressConversation(val wire: String) {
-    @SerialName("channel") Channel("channel"),
-    @SerialName("thread") Thread("thread"),
-}
-
 /** `app_rating_prompt_requested.trigger`: the moment after which the app asked for a store rating. */
 @Serializable
 enum class RaftAppRatingPromptTrigger(val wire: String) {
@@ -460,12 +445,6 @@ data class RaftDraftsItemOpenedProperties(
 )
 
 @Serializable
-data class RaftAgentReadProgressShownProperties(
-    val part: RaftAgentReadProgressPart,
-    val conversation: RaftAgentReadProgressConversation,
-)
-
-@Serializable
 data class RaftChannelTabSelectedProperties(
     val tab: RaftChannelTab,
     val surface: RaftChannelTabSurface,
@@ -544,9 +523,6 @@ sealed class RaftProductEvent<P>(val name: String, private val serializer: KSeri
 
     data class DraftsItemOpened(override val properties: RaftDraftsItemOpenedProperties) :
         RaftProductEvent<RaftDraftsItemOpenedProperties>("drafts_item_opened", RaftDraftsItemOpenedProperties.serializer())
-
-    data class AgentReadProgressShown(override val properties: RaftAgentReadProgressShownProperties) :
-        RaftProductEvent<RaftAgentReadProgressShownProperties>("agent_read_progress_shown", RaftAgentReadProgressShownProperties.serializer())
 
     data class AppRatingPromptRequested(override val properties: RaftAppRatingPromptRequestedProperties) :
         RaftProductEvent<RaftAppRatingPromptRequestedProperties>(
