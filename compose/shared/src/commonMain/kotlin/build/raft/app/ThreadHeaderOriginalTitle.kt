@@ -13,6 +13,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -170,21 +171,38 @@ internal fun RaftThreadScreenPayload.threadOriginHiddenTargetOrNull(): MessageCo
     return target.takeIf { it.messageId == parentId }
 }
 
+/** What "open the parent conversation" locates there. */
+internal enum class ThreadParentLocate {
+    /** The original message (anchor + highlight). */
+    Message,
+
+    /** Where the shown history starts, the history paywall card: the original is behind the plan's history window. */
+    HistoryStart,
+
+    /** Nothing: the original is deleted, so the conversation only opens. */
+    None,
+}
+
 /**
- * Whether "open the parent conversation" only opens it, locating nothing: the original is deleted
- * (raft-design conversation.md "Threads"; web `openThreadParentInConversation` `locate`), or behind
- * the plan's history window (the conversation stops at its paywall). [ThreadHeaderOriginalState.locateMessageId]
- * is null for the same originals.
+ * What "open the parent conversation" locates (raft-design conversation.md "Threads"; web
+ * `openThreadParentInConversation` `locate`): nothing for a deleted original; for one behind the
+ * plan's history window, the history start where the paywall card is (design, Kirby: in place
+ * beside the thread); else the original.
  */
-internal fun RaftThreadScreenPayload.threadParentOpensConversationOnly(): Boolean =
-    surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
-        (originStatus == "missing" || originMessage?.isRetracted == true || threadOriginHiddenTargetOrNull() != null)
+internal fun RaftThreadScreenPayload.threadParentLocate(): ThreadParentLocate =
+    when {
+        surfaceKind != RaftThreadSurfaceKind.ReplyThread -> ThreadParentLocate.Message
+        originStatus == "missing" || originMessage?.isRetracted == true -> ThreadParentLocate.None
+        threadOriginHiddenTargetOrNull() != null -> ThreadParentLocate.HistoryStart
+        else -> ThreadParentLocate.Message
+    }
 
 /**
  * The side column's "open parent conversation" (task #36), beside the conversation it came from:
- * asks the main detail to locate the original ([request]), unless the original has nothing to locate
- * ([threadParentOpensConversationOnly]); then the conversation, already open beside the thread, is
- * left as it is (web: `if (!locate) return`). The caller has already handed input focus away.
+ * asks the main detail to locate the original ([request]) or, for one behind the history window, to
+ * scroll to its history paywall card; the thread stays open. A deleted original has nothing to
+ * locate: the conversation, already open beside the thread, is left as it is (web: `if (!locate)
+ * return`). The caller has already handed input focus away.
  */
 internal fun postSideThreadParentFocus(
     request: AdaptiveParentFocusRequest,
@@ -192,17 +210,50 @@ internal fun postSideThreadParentFocus(
     bridge: BridgeModule,
     eventBus: RaftEventBus,
 ) {
-    if (thread.threadParentOpensConversationOnly()) {
+    val locate = thread.threadParentLocate()
+    if (locate == ThreadParentLocate.None) {
         bridge.log("adaptive_side_thread_parent_focus result=open_only generation=${request.target.generation}")
         return
     }
-    bridge.log("adaptive_side_thread_parent_focus result=requested generation=${request.target.generation}")
+    val historyStart = locate == ThreadParentLocate.HistoryStart
+    bridge.log(
+        "adaptive_side_thread_parent_focus result=requested historyStart=$historyStart generation=${request.target.generation}"
+    )
     eventBus.post(
         eventName = RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT,
-        eventData = request.toJson(),
+        eventData = request.copy(historyStart = historyStart).toJson(),
         crossProcess = true,
         source = "adaptive_side_thread_parent",
     )
+}
+
+/** The main detail's answer to a side thread's parent request: focus the message, or scroll to the history start. */
+internal fun AdaptiveParentFocusRequest.toThreadFocusIntent(): SharedThreadIntent =
+    if (historyStart) {
+        SharedThreadIntent.FocusHistoryStart(switchToTab = RaftThreadTab.Chat.wireValue)
+    } else {
+        SharedThreadIntent.FocusMessage(messageId = messageId, switchToTab = RaftThreadTab.Chat.wireValue)
+    }
+
+/**
+ * Whether the list's start row is shown, so a jump to the start can pin the top: a reply thread's
+ * original row (loaded), or in any other conversation its first row (where a Free plan's history
+ * paywall card is, once the oldest page is loaded).
+ */
+internal fun ThreadTimelineSlice.threadStartRowShown(): Boolean =
+    if (replyThreadSurface) hasThreadOriginItem() && originMessage != null else true
+
+/** Calls [onRequest] once for each new [request] value after the first composition (a page's history-start focus). */
+@Composable
+internal fun ThreadHistoryStartFocusEffect(threadInstanceKey: Any, request: Int, onRequest: () -> Unit) {
+    var consumed by remember(threadInstanceKey) { mutableStateOf(request) }
+    val latestOnRequest by rememberUpdatedState(onRequest)
+    LaunchedEffect(threadInstanceKey, request) {
+        if (request > consumed) {
+            consumed = request
+            latestOnRequest()
+        }
+    }
 }
 
 /**

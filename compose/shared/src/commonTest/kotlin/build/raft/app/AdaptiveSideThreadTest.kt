@@ -269,6 +269,10 @@ class AdaptiveSideThreadTest {
         assertFalse(opened.acceptsParentFocus(opened.mainSource().copy(shellInstanceId = "other"), focus))
         // Wire round trip.
         assertEquals(focus, focus.toJson().toAdaptiveParentFocusRequestOrNull())
+        // An original behind the history window: the history start, round-tripped too.
+        val historyStart = focus.copy(historyStart = true)
+        assertEquals(historyStart, historyStart.toJson().toAdaptiveParentFocusRequestOrNull())
+        assertFalse(focus.toJson().containsKey(RAFT_ADAPTIVE_DETAIL_FOCUS_HISTORY_START))
         // The main page's own parent action is not a side action (existing navigation applies).
         assertNull(opened.sideThreadParentFocus(opened.mainSource()))
     }

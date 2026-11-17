@@ -78,6 +78,8 @@ internal data class ThreadTimelineSlice(
      * it (ThreadHeaderOriginalTitle.kt). Never a row of the list.
      */
     val originHiddenTarget: build.raft.app.data.MessageContextHiddenTarget? = null,
+    /** [RaftThreadScreenPayload.historyStartFocusRequest]: a new value scrolls the list to its history start. */
+    val historyStartFocusRequest: Int = 0,
 ) {
     /** Derived from [surfaceKind] and [channelKind]; the menu's `reply` capability reads this single source. */
     val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
@@ -133,7 +135,8 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
         beginningReplyCount = threadBeginningReplyCount(),
         historyChannelId = (streamChannelId ?: sourceThreadId)?.trim()?.takeIf { it.isNotEmpty() },
         joined = joined,
-        originHiddenTarget = threadOriginHiddenTargetOrNull()
+        originHiddenTarget = threadOriginHiddenTargetOrNull(),
+        historyStartFocusRequest = historyStartFocusRequest
     )
 
 internal fun RaftThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadata =

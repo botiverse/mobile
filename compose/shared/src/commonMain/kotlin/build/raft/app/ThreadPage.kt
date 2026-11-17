@@ -2478,6 +2478,12 @@ internal data class RaftThreadScreenPayload(
     val originParentMessageId: String? = null,
     val focusedMessageId: String? = null,
     val focusedMessageRequestNonce: Int = 0,
+    /**
+     * Bumped by [SharedThreadIntent.FocusHistoryStart]: the list scrolls to where the shown history
+     * starts (the history paywall card). Page-local, never stored.
+     */
+    @Transient
+    val historyStartFocusRequest: Int = 0,
     val originStatus: String = "none",
     val originErrorCode: String? = null,
     /**
@@ -7615,12 +7621,8 @@ private fun SharedThreadRouteContentContent(
             "adaptive_side_thread_parent_focus result=${outcome.logValue} generation=${request.target.generation}"
         )
         if (outcome == AdaptiveParentFocusOutcome.Applied) {
-            threadViewModel.dispatch(
-                SharedThreadIntent.FocusMessage(
-                    messageId = request.messageId,
-                    switchToTab = RaftThreadTab.Chat.wireValue,
-                )
-            )
+            // A message, or the history start for one behind the history window (ThreadHeaderOriginalTitle.kt).
+            threadViewModel.dispatch(request.toThreadFocusIntent())
         }
     }
     val payload = renderSlice.payload
@@ -14559,7 +14561,7 @@ private fun SharedThreadRouteContentContent(
                     if (sideParentFocus != null) {
                         adaptiveFocusManager.clearFocus(force = true)
                         adaptiveKeyboardController?.hide()
-                        // A deleted original only leaves the conversation beside it open (ThreadHeaderOriginalTitle.kt).
+                        // The original, its history start (behind the window), or nothing (deleted): ThreadHeaderOriginalTitle.kt.
                         postSideThreadParentFocus(sideParentFocus, renderedThread, bridge, eventBus)
                     } else if (!onOpenParentThread(renderedThread, currentSession?.currentServerId)) {
                         bridge.logWarn(
@@ -24074,6 +24076,9 @@ private fun ThreadMessagesListContent(
         remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
     var outlineOriginJumpRequest by remember(threadInstanceKey) { mutableStateOf(0) }
     var outlineOriginJumpConsumed by remember(threadInstanceKey) { mutableStateOf(0) }
+    // A thread beside this conversation whose original is behind the history window: the same jump
+    // to the start, where the history paywall card is (ThreadHeaderOriginalTitle.kt).
+    ThreadHistoryStartFocusEffect(threadInstanceKey, renderPayload.historyStartFocusRequest) { outlineOriginJumpRequest += 1 }
     LaunchedEffect(threadInstanceKey, headerScrollToTopRequest, lazyItemCount) {
         if (!consumeThreadHeaderScrollToTopRequest(
                 request = headerScrollToTopRequest,
@@ -24114,7 +24119,7 @@ private fun ThreadMessagesListContent(
                 consumed = outlineOriginJumpConsumed,
                 canLoadMoreBefore = renderPayload.canLoadMoreBefore,
                 olderMessagesStatus = renderPayload.olderMessagesStatus,
-                originRowShown = renderPayload.hasThreadOriginItem() && renderPayload.originMessage != null,
+                originRowShown = renderPayload.threadStartRowShown(),
             )
         when (step) {
             ThreadOutlineOriginJumpStep.Idle, ThreadOutlineOriginJumpStep.Wait -> Unit

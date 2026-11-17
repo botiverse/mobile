@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.AdaptiveParentFocusRequest
 import build.raft.app.data.MessageContextHiddenTarget
 import build.raft.app.data.ScreenError
 import build.raft.app.model.ExternalMessageAuthor
@@ -194,32 +195,69 @@ class ThreadHeaderOriginalTitleTest {
     }
 
     @Test
-    fun deletedOrHiddenOriginalOnlyOpensTheConversation() {
+    fun parentLocateIsNothingForADeletedOriginalAndTheHistoryStartForAHiddenOne() {
         val reply =
             RaftThreadScreenPayload(
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentMessageId = "msg-1",
                 originParentMessageId = "msg-1",
             )
-        data class Case(val name: String, val payload: RaftThreadScreenPayload, val openOnly: Boolean)
+        data class Case(val name: String, val payload: RaftThreadScreenPayload, val locate: ThreadParentLocate)
         for (case in
             listOf(
-                Case("loaded", reply.copy(originStatus = "loaded", originMessage = origin(body = "hi")), openOnly = false),
-                Case("retracted", reply.copy(originStatus = "loaded", originMessage = origin(body = "hi", deletedAt = "2026-11-01T00:00:00Z")), openOnly = true),
-                Case("missing", reply.copy(originStatus = "missing"), openOnly = true),
-                Case("hidden", reply.copy(originStatus = "error", originErrorCode = "http_404", originHiddenTarget = hidden), openOnly = true),
-                Case("hidden other message", reply.copy(originStatus = "error", originHiddenTarget = hidden.copy(messageId = "msg-2")), openOnly = false),
-                Case("hidden but loaded since", reply.copy(originStatus = "loaded", originMessage = origin(body = "hi"), originHiddenTarget = hidden), openOnly = false),
-                Case("network miss", reply.copy(originStatus = "error", originErrorCode = "http_404"), openOnly = false),
-                Case("loading", reply.copy(originStatus = "loading"), openOnly = false),
-                Case("channel", RaftThreadScreenPayload(originStatus = "missing"), openOnly = false),
+                Case("loaded", reply.copy(originStatus = "loaded", originMessage = origin(body = "hi")), ThreadParentLocate.Message),
+                Case("retracted", reply.copy(originStatus = "loaded", originMessage = origin(body = "hi", deletedAt = "2026-11-01T00:00:00Z")), ThreadParentLocate.None),
+                Case("missing", reply.copy(originStatus = "missing"), ThreadParentLocate.None),
+                Case("hidden", reply.copy(originStatus = "error", originErrorCode = "http_404", originHiddenTarget = hidden), ThreadParentLocate.HistoryStart),
+                Case("hidden other message", reply.copy(originStatus = "error", originHiddenTarget = hidden.copy(messageId = "msg-2")), ThreadParentLocate.Message),
+                Case("hidden but loaded since", reply.copy(originStatus = "loaded", originMessage = origin(body = "hi"), originHiddenTarget = hidden), ThreadParentLocate.Message),
+                Case("network miss", reply.copy(originStatus = "error", originErrorCode = "http_404"), ThreadParentLocate.Message),
+                Case("loading", reply.copy(originStatus = "loading"), ThreadParentLocate.Message),
+                Case("channel", RaftThreadScreenPayload(originStatus = "missing"), ThreadParentLocate.Message),
             )
         ) {
-            assertEquals(case.openOnly, case.payload.threadParentOpensConversationOnly(), case.name)
+            assertEquals(case.locate, case.payload.threadParentLocate(), case.name)
         }
         // The list reads the hidden parent only while it is this thread's failed parent.
         assertEquals(hidden, reply.copy(originStatus = "error", originHiddenTarget = hidden).toThreadTimelineSlice().originHiddenTarget)
         assertNull(reply.copy(originStatus = "loaded", originMessage = origin(body = "hi"), originHiddenTarget = hidden).toThreadTimelineSlice().originHiddenTarget)
+    }
+
+    @Test
+    fun theConversationBesideTheThreadFocusesTheOriginalOrItsHistoryStart() {
+        val target = RaftAdaptiveDetailCloseRequest("shell", "channel:c1", 3)
+        assertEquals(
+            SharedThreadIntent.FocusMessage(messageId = "msg-1", switchToTab = RaftThreadTab.Chat.wireValue),
+            AdaptiveParentFocusRequest(target, "msg-1").toThreadFocusIntent()
+        )
+        assertEquals(
+            SharedThreadIntent.FocusHistoryStart(switchToTab = RaftThreadTab.Chat.wireValue),
+            AdaptiveParentFocusRequest(target, "msg-1", historyStart = true).toThreadFocusIntent()
+        )
+        // The page carries the request to its list, which jumps to the start like the outline's jump.
+        val channel = RaftThreadScreenPayload(historyStartFocusRequest = 2)
+        assertEquals(2, channel.toThreadTimelineSlice().historyStartFocusRequest)
+    }
+
+    @Test
+    fun aChannelsStartRowIsItsFirstRowSoTheJumpPinsOnceTheOldestPageIsLoaded() {
+        val channel = RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel).toThreadTimelineSlice()
+        assertTrue(channel.threadStartRowShown())
+        // A reply thread still waits for its loaded original row.
+        val reply = RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.ReplyThread, parentMessageId = "msg-1")
+        assertFalse(reply.toThreadTimelineSlice().threadStartRowShown())
+        // Older pages load until there are none, then the top is pinned (the history paywall card).
+        fun step(canLoadMoreBefore: Boolean, status: String = "idle") =
+            threadOutlineOriginJumpStep(
+                request = 1,
+                consumed = 0,
+                canLoadMoreBefore = canLoadMoreBefore,
+                olderMessagesStatus = status,
+                originRowShown = channel.threadStartRowShown(),
+            )
+        assertEquals(ThreadOutlineOriginJumpStep.LoadOlder, step(canLoadMoreBefore = true))
+        assertEquals(ThreadOutlineOriginJumpStep.Wait, step(canLoadMoreBefore = true, status = "loading"))
+        assertEquals(ThreadOutlineOriginJumpStep.Pin, step(canLoadMoreBefore = false))
     }
 
     @Test

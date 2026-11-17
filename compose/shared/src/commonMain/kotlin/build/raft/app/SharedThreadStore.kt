@@ -8514,6 +8514,13 @@ internal sealed interface SharedThreadIntent {
     data class FocusMessage(val messageId: String, val switchToTab: String? = null) : SharedThreadIntent
 
     /**
+     * Scroll to where the shown history starts: older pages load until there are none, then the
+     * list pins its top, where a Free plan's history paywall card is. A thread beside this
+     * conversation asks for it when its original is behind the history window (ThreadHeaderOriginalTitle.kt).
+     */
+    data class FocusHistoryStart(val switchToTab: String? = null) : SharedThreadIntent
+
+    /**
      * The unread-thread pill could not place these unread threads: their parents are not loaded.
      * Looks them up once in the followed-threads list (single-flight; an id is asked for at most
      * once per page) into [SharedThreadState.unreadThreadParents].
@@ -8990,6 +8997,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyChannelProfile,
             is SharedThreadIntent.SelectTab,
             is SharedThreadIntent.FocusMessage,
+            is SharedThreadIntent.FocusHistoryStart,
             is SharedThreadIntent.ResolveUnreadThreadParents,
             is SharedThreadIntent.JumpToMessage,
             is SharedThreadIntent.ApplyMembersPatch,
@@ -9092,6 +9100,13 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyChannelProfile -> applyChannelProfile(intent)
             is SharedThreadIntent.SelectTab -> selectTab(intent.tab)
             is SharedThreadIntent.FocusMessage -> focusMessage(intent.messageId, intent.switchToTab)
+            is SharedThreadIntent.FocusHistoryStart ->
+                reducePayloadPatch {
+                    it.copy(
+                        selectedTab = intent.switchToTab?.takeIf { tab -> tab.isNotBlank() } ?: it.selectedTab,
+                        historyStartFocusRequest = it.historyStartFocusRequest + 1
+                    )
+                }
             is SharedThreadIntent.ResolveUnreadThreadParents -> resolveUnreadThreadParents(intent.threadChannelIds)
             is SharedThreadIntent.JumpToMessage -> {
                 jumpToMessage(intent.messageId, intent.switchToTab, intent.unreadThreadPill)
