@@ -1187,7 +1187,8 @@ class SharedAgentDetailStoreTest {
         )
         assertEquals("Working", route.state.value.detail?.summary?.status)
         assertEquals(10L, route.state.value.agentActivitySeq[testMemberId])
-        assertEquals(10L, shell.state.value.agentActivitySeq[testMemberId])
+        // The shell has no agent selected, so it ignores the event (applyAgentActivityUpdate); only the open page applied it.
+        assertEquals(null, shell.state.value.agentActivitySeq[testMemberId])
 
         shell.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
         assertEquals(1L, route.state.value.agentActivitySeqEpoch)
