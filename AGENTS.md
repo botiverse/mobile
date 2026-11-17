@@ -851,8 +851,8 @@ Core constraints every agent must follow:
   sink that touches UI state registers with `onMain = true` (delivered on main,
   in order); a sink that only hands events to a store stays off main. A bus
   listener in a composable hops with its `rememberCoroutineScope()`.
-- Guard: `RaftTextLayoutMainThreadGuardTest` (mobile #4925, pending at the time
-  of writing) fails when a background block calls Compose text APIs.
+- Guard: `RaftTextLayoutMainThreadGuardTest` (mobile #4925) fails when a
+  background block calls Compose text APIs.
 
 ## Compose ViewModel Lifecycle Rule
 
