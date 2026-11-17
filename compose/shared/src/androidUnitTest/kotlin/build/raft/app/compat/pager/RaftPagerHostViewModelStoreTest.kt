@@ -18,7 +18,6 @@ import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftCmpPageArgs
 import java.time.Duration
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotSame
@@ -44,14 +43,6 @@ import org.robolectric.annotation.Config
 class RaftPagerHostViewModelStoreTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
-
-    // RaftPagerHost installs Raft's Coil loader, which throws once another test in this Robolectric
-    // sandbox (same JVM fork) already touched Coil's singleton; which tests share a fork shifts as
-    // test classes are added. Installing up front (failure tolerated) keeps this test order-independent.
-    @BeforeTest
-    fun installImageLoader() {
-        runCatching { build.raft.app.image.raftInstallImageLoader() }
-    }
 
     private class ProbeViewModel(val conversation: String) : ViewModel() {
         var cleared = false

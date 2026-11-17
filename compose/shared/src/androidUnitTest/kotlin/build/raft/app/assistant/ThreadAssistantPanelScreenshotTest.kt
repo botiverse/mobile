@@ -82,7 +82,7 @@ class ThreadAssistantPanelScreenshotTest {
 
     @org.junit.Before
     fun installImageLoader() {
-        runCatching { build.raft.app.image.raftInstallImageLoader() }
+        build.raft.app.image.raftInstallImageLoader()
     }
 
     /**

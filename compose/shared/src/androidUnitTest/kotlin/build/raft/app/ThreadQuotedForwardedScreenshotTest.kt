@@ -87,7 +87,7 @@ class ThreadQuotedForwardedScreenshotTest {
 
     @OptIn(ExperimentalCoilApi::class)
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) {
-        runCatching { build.raft.app.image.raftInstallImageLoader() }
+        build.raft.app.image.raftInstallImageLoader()
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val clock =
                 remember {

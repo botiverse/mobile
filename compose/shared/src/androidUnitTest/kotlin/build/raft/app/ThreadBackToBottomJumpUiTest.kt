@@ -102,7 +102,7 @@ class ThreadBackToBottomJumpUiTest {
         // The list reads the shared stores (SQLDelight, app-scope key-value stores), as
         // TaskConversationHeadRealTapTest sets them up.
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
-        runCatching { build.raft.app.image.raftInstallImageLoader() }
+        build.raft.app.image.raftInstallImageLoader()
         listOf(
             RAFT_AUTH_SESSION_MMKV_NAMESPACE,
             RaftLocalPreferenceStore.KuiklyNamespace,

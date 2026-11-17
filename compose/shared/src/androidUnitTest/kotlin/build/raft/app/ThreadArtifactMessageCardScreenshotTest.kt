@@ -141,7 +141,7 @@ class ThreadArtifactMessageCardScreenshotTest {
     @OptIn(ExperimentalCoilApi::class)
     private fun captureScreenshots(name: String, appearance: RaftAppAppearance) {
         // As ThreadMessageAttachmentsScreenshotTest: the app's loader first, then Coil's preview handler.
-        runCatching { build.raft.app.image.raftInstallImageLoader() }
+        build.raft.app.image.raftInstallImageLoader()
         val now = 1_792_635_000_000L
         val timeContext = RaftTimeContext(localOffsetMinutes = 8 * 60, todayEpochDay = raftEpochDayForDate(2026, 10, 22), nowEpochMillis = now)
         val ago = { millis: Long -> Instant.ofEpochMilli(now - millis).toString() }
