@@ -43,8 +43,17 @@ class SharedMyAssistantStoreTest {
         val settingGate: CompletableDeferred<Unit>? = null,
         val createResult: MyAssistantCreateResult = MyAssistantCreateResult.Failed(500),
         val createGate: CompletableDeferred<Unit>? = null,
+        val deleteResult: MyAssistantDeleteResult = MyAssistantDeleteResult.Failed(500),
+        val deleteGate: CompletableDeferred<Unit>? = null,
     ) : RaftMyAssistantApi {
         var creates = 0
+        var deletes = 0
+
+        override suspend fun delete(serverId: ServerId): MyAssistantDeleteResult {
+            deletes += 1
+            deleteGate?.await()
+            return deleteResult
+        }
 
         override suspend fun create(serverId: ServerId): MyAssistantCreateResult {
             creates += 1
@@ -490,6 +499,74 @@ class SharedMyAssistantStoreTest {
             assertEquals("http_500", failure.error.code)
             assertEquals(TRACE_ID, failure.error.traceId)
             assertNull(failed.answerFor(key))
+        }
+
+    @Test
+    fun aDeleteLeavesNoAssistantAndTheNextOpenOffersCreate() =
+        runTest {
+            val none = MyAssistantAnswer(true, null)
+            val api = ScriptedApi(MyAssistantFetchResult.Answer(ready), deleteResult = MyAssistantDeleteResult.Deleted(none))
+            val store = SharedMyAssistantStore(api, scope = backgroundScope)
+            store.ensureLoaded(key)
+            runCurrent()
+            assertEquals(MyAssistantDeleteOutcome.Deleted, store.delete(key))
+            assertEquals(none, store.answerFor(key))
+            assertEquals(MyAssistantState.Ready(null), myAssistantState(false, false, true, store.answerFor(key)))
+            // A 200 whose body can't be read is still "no assistant": cleared, then read again.
+            val unread = ScriptedApi(MyAssistantFetchResult.Answer(none), deleteResult = MyAssistantDeleteResult.Deleted(null))
+            val unreadStore = SharedMyAssistantStore(unread, scope = backgroundScope)
+            assertEquals(MyAssistantDeleteOutcome.Deleted, unreadStore.delete(key))
+            assertNull(unreadStore.answerFor(key)?.assistant)
+            settle()
+            assertEquals(listOf("s1"), unread.asked)
+        }
+
+    @Test
+    fun aSecondConfirmWaitsForTheSameDelete() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            val api =
+                ScriptedApi(
+                    MyAssistantFetchResult.Answer(ready),
+                    deleteResult = MyAssistantDeleteResult.Deleted(MyAssistantAnswer(true, null)),
+                    deleteGate = gate,
+                )
+            val store = SharedMyAssistantStore(api, scope = backgroundScope)
+            val first = async { store.delete(key) }
+            val second = async { store.delete(key) }
+            runCurrent()
+            assertTrue(store.deleting(key))
+            gate.complete(Unit)
+            assertEquals(MyAssistantDeleteOutcome.Deleted, first.await())
+            assertEquals(MyAssistantDeleteOutcome.Deleted, second.await())
+            assertEquals(1, api.deletes, "one DELETE for both confirms")
+            assertFalse(store.deleting(key))
+        }
+
+    @Test
+    fun aDeleteTheServerRefusesClosesReadsAgainOrKeepsTheTrace() =
+        runTest {
+            val closed =
+                SharedMyAssistantStore(
+                    ScriptedApi(MyAssistantFetchResult.Answer(ready), deleteResult = MyAssistantDeleteResult.NotAvailable(403)),
+                    scope = backgroundScope,
+                )
+            assertEquals(MyAssistantDeleteOutcome.Deleted, closed.delete(key))
+            assertEquals(MyAssistantState.Off, myAssistantState(false, false, true, closed.answerFor(key)))
+            val gone = MyAssistantAnswer(true, null)
+            val staleApi = ScriptedApi(MyAssistantFetchResult.Answer(gone), deleteResult = MyAssistantDeleteResult.Stale(404))
+            val stale = SharedMyAssistantStore(staleApi, scope = backgroundScope)
+            assertEquals(MyAssistantDeleteOutcome.Deleted, stale.delete(key))
+            assertEquals(listOf("s1"), staleApi.asked, "read again")
+            assertEquals(gone, stale.answerFor(key))
+            val failedApi = ScriptedApi(MyAssistantFetchResult.Answer(ready), deleteResult = MyAssistantDeleteResult.Failed(500, TRACE_ID))
+            val failed = SharedMyAssistantStore(failedApi, scope = backgroundScope)
+            failed.ensureLoaded(key)
+            runCurrent()
+            val failure = assertIs<MyAssistantDeleteOutcome.Failed>(failed.delete(key))
+            assertEquals("http_500", failure.error.code)
+            assertEquals(TRACE_ID, failure.error.traceId)
+            assertEquals(ready, failed.answerFor(key), "the assistant stays")
         }
 }
 

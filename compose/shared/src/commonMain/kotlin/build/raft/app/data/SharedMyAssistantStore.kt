@@ -81,6 +81,7 @@ class SharedMyAssistantStore(
     private val lock = SynchronizedObject()
     private val inFlight = mutableMapOf<MyAssistantKey, Job>()
     private val createsInFlight = mutableMapOf<MyAssistantKey, Deferred<MyAssistantCreateOutcome>>()
+    private val deletesInFlight = mutableMapOf<MyAssistantKey, Deferred<MyAssistantDeleteOutcome>>()
 
     fun answerFor(key: MyAssistantKey): MyAssistantAnswer? = answersState.value[key]
 
@@ -197,6 +198,69 @@ class SharedMyAssistantStore(
                         " traceId=${result.traceId ?: "none"}"
                 )
                 MyAssistantCreateOutcome.Failed(
+                    ScreenError(result.code?.let { "http_$it" } ?: "network_error", traceId = result.traceId)
+                )
+            }
+        }
+
+    /**
+     * Deletes the person's assistant (web `deleteAssistant`), single flight per person and server:
+     * a second confirm while one is on its way waits for the same answer. Runs in the store's
+     * scope, so closing the profile does not cancel a delete the server may already have done. On
+     * a delete the cached answer becomes the server's view (no assistant: the page offers Create
+     * again); a 403 closes it (not available), a 404 or 409 reads the assistant again. Only another
+     * failure is the caller's to show.
+     */
+    suspend fun delete(key: MyAssistantKey): MyAssistantDeleteOutcome {
+        if (key.serverId.isBlank() || key.userId.isBlank()) {
+            return MyAssistantDeleteOutcome.Failed(ScreenError("missing_identity", retryable = false))
+        }
+        val request =
+            synchronized(lock) {
+                deletesInFlight[key] ?: scope.async(start = CoroutineStart.LAZY) {
+                    try {
+                        deleteOnce(key)
+                    } finally {
+                        synchronized(lock) { deletesInFlight.remove(key) }
+                    }
+                }.also { deletesInFlight[key] = it }
+            }
+        request.start()
+        return request.await()
+    }
+
+    /** Whether a delete for [key] is on its way. */
+    fun deleting(key: MyAssistantKey): Boolean = synchronized(lock) { deletesInFlight.containsKey(key) }
+
+    private suspend fun deleteOnce(key: MyAssistantKey): MyAssistantDeleteOutcome =
+        when (val result = api.delete(ServerId(key.serverId))) {
+            is MyAssistantDeleteResult.Deleted -> {
+                // Web stores the reply's view; one that can't be read is still "no assistant here".
+                val answer = result.answer?.takeIf { it.assistant == null }
+                if (answer != null) {
+                    store(key, answer)
+                } else {
+                    store(key, MyAssistantAnswer(enabled = answerFor(key)?.enabled ?: true, assistant = null))
+                    scope.launch { load(key, keepOnError = true) }
+                }
+                MyAssistantDeleteOutcome.Deleted
+            }
+            is MyAssistantDeleteResult.NotAvailable -> {
+                logger("my_assistant delete_not_available server=${key.serverId} code=${result.code} traceId=${result.traceId ?: "none"}")
+                store(key, MyAssistantAnswer.NotEnabled)
+                MyAssistantDeleteOutcome.Deleted
+            }
+            is MyAssistantDeleteResult.Stale -> {
+                logger("my_assistant delete_stale server=${key.serverId} code=${result.code} traceId=${result.traceId ?: "none"}")
+                load(key, keepOnError = true)
+                MyAssistantDeleteOutcome.Deleted
+            }
+            is MyAssistantDeleteResult.Failed -> {
+                logger(
+                    "my_assistant delete_failed server=${key.serverId} code=${result.code ?: "transport"}" +
+                        " traceId=${result.traceId ?: "none"}"
+                )
+                MyAssistantDeleteOutcome.Failed(
                     ScreenError(result.code?.let { "http_$it" } ?: "network_error", traceId = result.traceId)
                 )
             }
@@ -324,6 +388,18 @@ sealed interface MyAssistantCreateOutcome {
 
     /** Not created for any other reason: "Couldn't create your assistant", with the trace ID. */
     data class Failed(val error: ScreenError) : MyAssistantCreateOutcome
+}
+
+/** What a delete means for the owner's section (web AssistantOwnerSection `handleDelete`). */
+sealed interface MyAssistantDeleteOutcome {
+    /**
+     * The cached answer now says what is so (deleted, closed, or read again): the section goes
+     * with the assistant and the page offers Create. Nothing to show.
+     */
+    data object Deleted : MyAssistantDeleteOutcome
+
+    /** Not deleted (5xx, offline): said with the trace ID; the assistant stays. */
+    data class Failed(val error: ScreenError) : MyAssistantDeleteOutcome
 }
 
 /**
