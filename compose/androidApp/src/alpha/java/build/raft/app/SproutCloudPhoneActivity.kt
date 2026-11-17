@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -306,9 +307,14 @@ private fun SproutCloudPhoneVerificationScreen(
         }
     }
 
+    var activeIc by remember { mutableStateOf<InputConnection?>(null) }
+
     fun driveInputConnection(op: String, text: String) {
+        if (op == "reset_ic") {
+            activeIc = null
+        }
         val target = hostView.findFocus() ?: hostView
-        val ic = target.onCreateInputConnection(EditorInfo())
+        val ic = activeIc ?: target.onCreateInputConnection(EditorInfo())?.also { activeIc = it }
         if (ic == null) {
             imeStatus = "no_input_connection(focus_input_first)"
         } else {
@@ -324,6 +330,9 @@ private fun SproutCloudPhoneVerificationScreen(
                 "finish" -> {
                     val ok = ic.finishComposingText()
                     imeStatus = "finished=$ok"
+                }
+                "reset_ic" -> {
+                    imeStatus = "ic_rebound=true"
                 }
             }
         }
