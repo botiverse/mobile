@@ -117,6 +117,8 @@ class SharedThreadStoreCharacterizationTest {
                         (!case.replayed || state.replyParentAuthority == ReplyParentAuthorityStatus.Writable)
                 }
             testScheduler.runCurrent()
+            assertTrue(harness.conversations.threadStarted.isCompleted, "$name: the reload read the cached stream by id")
+            assertTrue(settled.canonicalAccessResolved, name)
 
             val replayed = harness.logs.filter { it.startsWith("thread_parent_authority_hint_replayed") }
             if (case.replayed) {
@@ -163,9 +165,14 @@ class SharedThreadStoreCharacterizationTest {
                     DataResult.Content(ChannelSnapshot(server = home.server.copy(id = serverId), channels = home.channels))
                 },
             )
+        // The first open reads the reply by its parent pair (getReplyThread) and caches the resolved
+        // stream; every later load of this route (the Refresh / second Start below) re-reads it by
+        // stream id (getThread). Both answer the same readable reply page.
+        val replyPage = DataResult.Content(replyThreadAccessSnapshot(parentChannelIdValue = HintParentId))
         val conversations =
             ReplyThreadAccessConversationRepositoryRecorder(
-                replyResult = DataResult.Content(replyThreadAccessSnapshot(parentChannelIdValue = HintParentId))
+                replyResult = replyPage,
+                threadResult = replyPage,
             )
         val store =
             SharedThreadStore(
