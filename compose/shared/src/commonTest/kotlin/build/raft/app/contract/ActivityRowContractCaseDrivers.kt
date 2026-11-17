@@ -38,6 +38,12 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
+import build.raft.app.data.RaftSyncChange
+import build.raft.app.data.RaftSyncInboxRowDeleteReason
+import build.raft.app.data.RaftSyncInboxRowSource
+import build.raft.app.data.RaftSyncInboxRowsOutcome
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -82,7 +88,7 @@ internal sealed interface ActivityRowCasePlan {
     data class Misconfigured(val reason: String) : ActivityRowCasePlan
 }
 
-internal val ActivityRowCaseDrivers: List<ActivityRowCaseDriver> = listOf(positionDriver(), predicateDriver())
+internal val ActivityRowCaseDrivers: List<ActivityRowCaseDriver> = listOf(positionDriver(), syncInboxRowDriver(), predicateDriver())
 
 internal fun planActivityRowCase(case: ActivityRowContractCase): ActivityRowCasePlan {
     if (case.status == "pending-product-decision") {
@@ -285,6 +291,56 @@ private fun positionDriver() =
         run = { case -> runPositionCase(case) },
     )
 
+/**
+ * `sync_inbox_row` (slock #15312): the same harness, with each `answer` delivered as a sync `inbox_row`
+ * upsert of the row and each `syncDelete` as a delete, through [SharedActivityStore.applySyncInboxRows]
+ * as the sync router hands them over (live messages and reads as in a position case).
+ */
+private fun syncInboxRowDriver() =
+    ActivityRowCaseDriver(
+        name = "sync_inbox_row",
+        decline = { case ->
+            when {
+                case.rule != "sync_inbox_row" -> "not a sync_inbox_row case"
+                case.given.row == null -> "no given.row"
+                case.expect?.reread == null -> "no expected reread"
+                case.checkpoints.any { it.afterStep !in 1..case.steps.size } -> "a checkpoint is out of range"
+                else -> null
+            }
+        },
+        run = { case -> runPositionCase(case) },
+    )
+
+/** The row as `GET /api/channels/inbox?ids=` (and so an `inbox_row` upsert) serves it: [toChannelRow] on the wire. */
+private fun ActivityRowServed.toWireRow(): JsonObject {
+    val fields =
+        buildMap<String, JsonElement> {
+            put("kind", JsonPrimitive("channel"))
+            put("channelId", JsonPrimitive(PositionChannel))
+            put("channelName", JsonPrimitive(PositionChannel))
+            put("channelType", JsonPrimitive("channel"))
+            put("unreadCount", JsonPrimitive(unreadCount))
+            put("hasMention", JsonPrimitive(hasMention))
+            if (hasMention) put("firstMentionMessageId", JsonPrimitive("mention-$position"))
+            put("lastMessageId", JsonPrimitive("m-${position ?: "unpaired"}"))
+            put("latestActivitySeq", position?.let(::JsonPrimitive) ?: JsonNull)
+            if (position != null) {
+                put(
+                    "readState",
+                    JsonObject(
+                        buildMap<String, JsonElement> {
+                            put("kind", JsonPrimitive("present"))
+                            put("readStateVersion", JsonPrimitive(1))
+                            readSeq?.let { put("maxReadSeq", JsonPrimitive(it)) }
+                            put("latestActivity", JsonObject(mapOf("messageId" to JsonPrimitive("m-$position"), "seq" to JsonPrimitive(position))))
+                        }
+                    ),
+                )
+            }
+        }
+    return JsonObject(fields)
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 private fun TestScope.runPositionCase(case: ActivityRowContractCase): List<String> {
     val failures = mutableListOf<String>()
@@ -292,7 +348,8 @@ private fun TestScope.runPositionCase(case: ActivityRowContractCase): List<Strin
     val shown = activityRowMismatches("as served", case.given.row.toExpectation(), h.observed())
     if (shown.isNotEmpty()) return listOf("the harness did not show the given row: $shown")
 
-    fun check(where: String, row: JsonObject?, reread: Boolean?) {
+    fun check(where: String, row: JsonObject?, reread: Boolean?, removed: Boolean? = null) {
+        if (removed != null && removed != (h.observed() == null)) failures += "$where: removed: expected $removed, got ${h.observed() == null}"
         row?.let { failures += activityRowMismatches(where, it, h.observed()) }
         if (reread != null && reread != h.inbox.rereadAsked) {
             failures += "$where: reread: expected $reread, got ${h.inbox.rereadAsked}"
@@ -305,16 +362,28 @@ private fun TestScope.runPositionCase(case: ActivityRowContractCase): List<Strin
                 val seq = step.seq.toLongOrNull() ?: return listOf("step ${index + 1}: seq ${step.seq} is not a 64-bit seq")
                 h.store.dispatch(step.toIntent(seq))
             }
-            is ActivityRowStep.Answer -> {
-                // The answer to a re-read already in flight, or else a list read the harness asks for.
-                if (h.inbox.pending == null) {
-                    h.inbox.harnessAsking = true
-                    h.store.dispatch(SharedActivityIntent.Refresh)
-                    runCurrent()
-                }
-                val pending = h.inbox.pending ?: return listOf("step ${index + 1}: the store started no read to answer")
-                pending.complete(snapshot(listOf(step.row.toChannelRow()), serverId = ServerIdValue))
+            is ActivityRowStep.SyncDelete -> {
+                val reason = if (step.reason == "left") RaftSyncInboxRowDeleteReason.Left else RaftSyncInboxRowDeleteReason.Done
+                val delete = RaftSyncChange.InboxRowDelete(index + 1L, PositionChannel, step.position, reason)
+                val outcome = h.store.applySyncInboxRows(ServerIdValue, listOf(delete))
+                if (outcome !is RaftSyncInboxRowsOutcome.Applied) return listOf("step ${index + 1}: the store did not take the delete ($outcome)")
             }
+            is ActivityRowStep.Answer ->
+                if (case.rule == "sync_inbox_row") {
+                    // An `inbox_row` upsert of the row (the same merge as an answer).
+                    val upsert = RaftSyncChange.InboxRowUpsert(index + 1L, PositionChannel, step.row.toWireRow(), RaftSyncInboxRowSource.Log)
+                    val outcome = h.store.applySyncInboxRows(ServerIdValue, listOf(upsert))
+                    if (outcome !is RaftSyncInboxRowsOutcome.Applied) return listOf("step ${index + 1}: the store did not take the upsert ($outcome)")
+                } else {
+                    // The answer to a re-read already in flight, or else a list read the harness asks for.
+                    if (h.inbox.pending == null) {
+                        h.inbox.harnessAsking = true
+                        h.store.dispatch(SharedActivityIntent.Refresh)
+                        runCurrent()
+                    }
+                    val pending = h.inbox.pending ?: return listOf("step ${index + 1}: the store started no read to answer")
+                    pending.complete(snapshot(listOf(step.row.toChannelRow()), serverId = ServerIdValue))
+                }
             is ActivityRowStep.Read -> {
                 val seq = step.seq.toLongOrNull() ?: return listOf("step ${index + 1}: seq ${step.seq} is not a 64-bit seq")
                 h.store.dispatch(
@@ -339,10 +408,10 @@ private fun TestScope.runPositionCase(case: ActivityRowContractCase): List<Strin
         }
         settle()
         case.checkpoints.filter { it.afterStep == index + 1 }.forEach { checkpoint ->
-            check("after step ${index + 1}", checkpoint.row, checkpoint.reread)
+            check("after step ${index + 1}", checkpoint.row, checkpoint.reread, checkpoint.removed)
         }
     }
-    check("at the end", case.expect!!.row, case.expect.reread)
+    check("at the end", case.expect!!.row, case.expect.reread, case.expect.removed)
     return failures
 }
 

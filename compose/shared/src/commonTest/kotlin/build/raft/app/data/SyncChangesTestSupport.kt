@@ -19,13 +19,50 @@ internal class SyncTestPreferences : SharedPreferenceStore {
 
 internal val syncTestScope = RaftSyncScope("https://api.example.test", "user-1", "server-1")
 
-/** A `GET /api/sync/changes` body with [changes] (raw JSON objects) and an optional raw [reset]. */
+/**
+ * A `GET /api/sync/changes` body with [changes] (raw JSON objects) and an optional raw [reset]; with the
+ * inbox_row capability (slock #15312) also a raw [inboxReset] and [retryAfterMs] when given.
+ */
 internal fun syncChangesBody(
     cursor: String,
     hasMore: Boolean = false,
     changes: List<String> = emptyList(),
     reset: String = "null",
-): String = """{"cursor":"$cursor","hasMore":$hasMore,"changes":[${changes.joinToString(",")}],"reset":$reset}"""
+    inboxReset: String? = null,
+    retryAfterMs: Long? = null,
+): String =
+    """{"cursor":"$cursor","hasMore":$hasMore,"changes":[${changes.joinToString(",")}],"reset":$reset""" +
+        (inboxReset?.let { ""","inboxReset":$it""" } ?: "") +
+        (retryAfterMs?.let { ""","retryAfterMs":$it""" } ?: "") + "}"
+
+/** An `inbox_row` upsert (slock #15312 `SyncInboxRowChange`): [row] is the raw `?ids=` row JSON. */
+internal fun syncInboxRowUpsert(seq: Long, id: String, row: String, source: String = "message"): String =
+    """{"seq":$seq,"entity":"inbox_row","id":"$id","op":"upsert","row":$row,"source":"$source"}"""
+
+/** An `inbox_row` delete; [position] null is JSON null. */
+internal fun syncInboxRowDelete(seq: Long, id: String, position: String?, reason: String = "done"): String =
+    """{"seq":$seq,"entity":"inbox_row","id":"$id","op":"delete","position":${position?.let { "\"$it\"" } ?: "null"},"reason":"$reason"}"""
+
+/**
+ * A channel row as `GET /api/channels/inbox?ids=` serves it (slock channelService `InboxItem`, channel arm),
+ * at [seq] with [unread] unread; [maxReadSeq] fills its read frontier.
+ */
+internal fun syncInboxChannelRow(
+    channelId: String,
+    seq: String,
+    unread: Int = 1,
+    hasMention: Boolean = false,
+    at: String = "2026-11-17T10:00:00.000Z",
+    maxReadSeq: String? = null,
+): String {
+    val readState =
+        maxReadSeq?.let {
+            ""","readState":{"kind":"present","readStateVersion":2,"maxReadSeq":"$it","latestActivity":{"messageId":"m-$seq","seq":"$seq"}}"""
+        } ?: ""
+    return """{"kind":"channel","channelId":"$channelId","channelName":"$channelId","channelType":"channel",""" +
+        """"unreadCount":$unread,"hasMention":$hasMention,"lastMessageId":"m-$seq","lastMessagePreview":"hi",""" +
+        """"lastMessageAt":"$at","latestActivitySeq":"$seq"$readState}"""
+}
 
 internal fun syncUpsert(seq: Long, entity: String, id: String, row: String): String =
     """{"seq":$seq,"entity":"$entity","id":"$id","op":"upsert","row":$row}"""
@@ -89,5 +126,9 @@ internal class RecordingSyncChangesSink(
     override suspend fun apply(scope: RaftSyncScope, plan: RaftSyncApplyPlan) {
         calls += "apply"
         plans += plan
+    }
+
+    override suspend fun reloadInbox(scope: RaftSyncScope, reason: String) {
+        calls += "inbox:$reason"
     }
 }

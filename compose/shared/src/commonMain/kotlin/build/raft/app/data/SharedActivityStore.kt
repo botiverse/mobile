@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.activityRowTimeValue
+import build.raft.app.reportProjectionRowDropped
 import build.raft.app.shownAuthorName
 import build.raft.app.withKnownLatestDelegatedLabelsFrom
 import build.raft.app.SharedThreadContentGeneration
@@ -2769,7 +2770,13 @@ class SharedActivityStore internal constructor(
      * shows ([kept]) with the merged unread; otherwise [base] (the served row as the list fold left
      * it) with the merged unread.
      */
-    private fun mergeServedRowLocked(current: InboxItem, served: InboxItem, base: InboxItem): ActivityRowMerge {
+    private fun mergeServedRowLocked(
+        current: InboxItem,
+        served: InboxItem,
+        base: InboxItem,
+        /** The read seq served with the row (a sync `inbox_row` upsert's `maxReadSeq`), merged as a read is. */
+        readSeq: String? = null
+    ): ActivityRowMerge {
         val scopeId = current.activityRowScopeId() ?: return ActivityRowMerge(base, kept = false)
         val pa = served.latestActivitySeq?.takeIf(::isCanonicalActivitySeq)
         // Web: the ledger's read state accepted since the last fold, before every answer merge.
@@ -2792,7 +2799,8 @@ class SharedActivityStore internal constructor(
                 unreadCount = served.unreadCount,
                 hasMention = served.hasMention,
                 position = pa,
-                mentionOnly = served.unreadCount == 0 && served.hasMention
+                mentionOnly = served.unreadCount == 0 && served.hasMention,
+                readSeq = readSeq?.takeIf(::isCanonicalActivitySeq)
             )
         val result = reduceActivityRow(before, ActivityRowEvent.Answer(answer))
         if (result.reread) requestRowRereadLocked(scopeId, result.rereadReason.rereadTrigger())
@@ -5628,6 +5636,143 @@ class SharedActivityStore internal constructor(
             )
             outcome
         }
+
+    /**
+     * `inbox_row` changes of a `GET /api/sync/changes` page (inbox_row capability, botiverse/slock #15312;
+     * web `applySyncInboxRowChange`), in seq order, for [serverId]'s list. Taken only by a fresh All list
+     * kept by the position rule (`mobile_inbox_inplace_v0` + `inbox_row_position_v1`): any other list
+     * answers [RaftSyncInboxRowsOutcome.NotApplied] and sync reads it as before.
+     *
+     * - upsert: the row as `?ids=` answers it, after the store's read and Done holds. A listed row merges
+     *   by the per-row rule exactly as a row re-read's answer ([mergeServedRowLocked], with the row's
+     *   served read seq): older than the held position ignored, equal replaces. An unlisted row is
+     *   added at its place by time (not past the loaded window while more pages wait).
+     * - delete: removes the listed row when its position is null or at or past the position the row
+     *   shows; a `done` one is held against a lagging list like a Done made here.
+     * A row that does not read (or is not the rule's: a joint row) re-reads the list.
+     */
+    internal fun applySyncInboxRows(serverId: String, changes: List<RaftSyncInboxRowChange>): RaftSyncInboxRowsOutcome {
+        var job: Job? = null
+        val outcome =
+            synchronized(realtimeOwnerLock) {
+                val current = _state.value
+                val snapshot = current.snapshot
+                if (current.ownerServerId != serverId || snapshot == null || !rowPositionOnLocked() ||
+                    freshListOwner != (serverId to current.ownerUserId)
+                ) {
+                    diagnosticsLogger("activity_sync_rows serverId=$serverId changes=${changes.size} result=not_applied")
+                    return@synchronized RaftSyncInboxRowsOutcome.NotApplied
+                }
+                val owner = overlayOwner(current)
+                val items = snapshot.items.toMutableList()
+                var totalCount = snapshot.totalCount
+                var delta = 0
+                val settled = mutableSetOf<String>()
+                val moved = mutableSetOf<String>()
+                var unreadable = 0
+                var upserts = 0
+                var deletes = 0
+                fun listedIndex(id: String) = items.indexOfFirst { it.isActivityPositionRow() && it.activityRowScopeId() == id }
+                for (change in changes) {
+                    when (change) {
+                        is RaftSyncChange.InboxRowUpsert -> {
+                            val parsed = parseSharedInboxRow(change.row)
+                            if (parsed == null || !parsed.isActivityPositionRow() || parsed.activityRowScopeId() != change.id) {
+                                if (parsed == null) reportProjectionRowDropped("sync_inbox_row", "decode_failed")
+                                unreadable += 1
+                                continue
+                            }
+                            settled += change.id
+                            // The store's read and Done holds, as for a row re-read's answer.
+                            val served =
+                                listOf(parsed)
+                                    .withActivityThreadTaskProjection(serverId, tasksDataStore)
+                                    .reconcileLocallyClearedUnreadItems(current.selectedFilter, owner)
+                                    .reconcileLocallyDoneItems(owner)
+                                    .items
+                                    .singleOrNull() ?: continue
+                            upserts += 1
+                            val index = listedIndex(change.id)
+                            if (index >= 0) {
+                                val shown = items[index]
+                                realtimeHighWater.remove(shown.key)
+                                val next = mergeServedRowLocked(shown, served, base = served, readSeq = parsed.readStateMaxReadSeq)
+                                delta += next.row.unreadCount - shown.unreadCount
+                                if (!next.kept && next.row.activityRowTimeValue() != shown.activityRowTimeValue()) moved += next.row.key
+                                items[index] = next.row
+                            } else {
+                                if (snapshot.hasMore && items.isNotEmpty() && served.isOlderThan(items.last())) continue
+                                rowPositions.start(change.id, served.latestActivitySeq)
+                                foldLedgerRead(change.id)
+                                rowPositions.noteRead(change.id, parsed.readStateMaxReadSeq)
+                                items += served
+                                moved += served.key
+                                totalCount += 1
+                                delta += served.unreadCount
+                            }
+                        }
+                        is RaftSyncChange.InboxRowDelete -> {
+                            settled += change.id
+                            val index = listedIndex(change.id)
+                            if (index < 0) continue
+                            val shown = items[index]
+                            val result = applySyncInboxRowChange(rowPositions.stateOf(shown), ActivitySyncRowChange.Delete(change.position))
+                            if (result.row != null) continue
+                            deletes += 1
+                            if (change.reason == RaftSyncInboxRowDeleteReason.Done && owner != null) {
+                                // Already on the server: the hold starts now, as for a confirmed Done made here.
+                                doneOverlay.remember(owner, shown)?.let { generation -> doneOverlay.confirm(owner, shown.key, generation) }
+                            }
+                            items.removeAt(index)
+                            moved -= shown.key
+                            totalCount -= 1
+                            delta -= shown.unreadCount
+                        }
+                    }
+                }
+                val ordered =
+                    if (moved.isEmpty()) {
+                        items
+                    } else {
+                        activityRowsWithHeldRowsAtTheirTime(
+                            served = items.filterNot { it.key in moved },
+                            held = items.filter { it.key in moved }
+                        )
+                    }
+                if (ordered != snapshot.items) {
+                    val removedKeys = snapshot.items.map { it.key }.toSet() - ordered.map { it.key }.toSet()
+                    reduceState(
+                        SharedActivityIntent.Refresh,
+                        current.copy(
+                            snapshot =
+                                snapshot.copy(
+                                    items = ordered,
+                                    totalCount = maxOf(0, totalCount),
+                                    totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + delta)
+                                ),
+                            retainedReadRowKeys = current.retainedReadRowKeys - removedKeys
+                        ),
+                        summarySource = "activity_sync_inbox_rows"
+                    )
+                }
+                // A row this list cannot apply by the rule: the list is read again, as before the capability.
+                if (unreadable > 0) job = scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other)
+                diagnosticsLogger(
+                    "activity_sync_rows serverId=$serverId changes=${changes.size} upserts=$upserts deletes=$deletes " +
+                        "unreadable=$unreadable result=applied"
+                )
+                RaftSyncInboxRowsOutcome.Applied(settled)
+            }
+        job?.start()
+        return outcome
+    }
+
+    /** This row's activity is older than [other]'s (a row without a time is not). */
+    private fun InboxItem.isOlderThan(other: InboxItem): Boolean {
+        val mine = parseRaftTimestampEpochMillisOrNull(activityRowTimeValue()) ?: return false
+        val theirs = parseRaftTimestampEpochMillisOrNull(other.activityRowTimeValue()) ?: return false
+        return mine < theirs
+    }
 
     private fun removeItemOptimistically(item: InboxItem) {
         val current = _state.value

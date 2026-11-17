@@ -971,7 +971,18 @@ internal class RaftSharedStoreProvider private constructor(
 
     private val syncChangesEngine: RaftSyncChangesEngine by lazy {
         RaftSyncChangesEngine(
-            api = RaftSyncChangesNetworkApi(networkClient),
+            api =
+                RaftSyncChangesNetworkApi(
+                    networkClient,
+                    // `sync_inbox_rows_v0` on for the server: ask for its Activity rows (inbox_row).
+                    capabilities = { serverId ->
+                        if (serverFeatureFlags.isEnabled(serverId, SYNC_INBOX_ROWS_FEATURE_FLAG_KEY)) {
+                            setOf(SYNC_CAPABILITY_INBOX_ROW)
+                        } else {
+                            emptySet()
+                        }
+                    },
+                ),
             cursors = syncCursorStore,
             sink =
                 RaftSyncChangesStoreRouter(
@@ -1007,6 +1018,15 @@ internal class RaftSharedStoreProvider private constructor(
         RaftSyncTransientRetry(scope = threadSendScope, logger = sharedInfoLogger("SlockSync", "sync_changes"))
     }
 
+    /** The waits a pull's answer asks for (`retryAfterMs`, a delayed `inboxReset`), per scope. */
+    private val syncRetryAfter: RaftSyncRetryAfter by lazy {
+        RaftSyncRetryAfter(
+            scope = threadSendScope,
+            isForeground = { RaftStaleReadRecoverySignals.foreground.value },
+            logger = sharedInfoLogger("SlockSync", "sync_changes"),
+        )
+    }
+
     private val syncPullJobsLock = SynchronizedObject()
     private val syncPullJobs = mutableMapOf<String, MutableSet<Job>>()
 
@@ -1023,6 +1043,7 @@ internal class RaftSharedStoreProvider private constructor(
             }
         cancelled.forEach { it.cancel() }
         syncTransientRetry.cancelWhere(reason = "server_unselected") { scopesForServer(it.serverId).isEmpty() }
+        syncRetryAfter.cancelWhere(reason = "server_unselected") { scopesForServer(it.serverId).isEmpty() }
     }
 
     private val syncPullBindingGate = RaftSyncPullBindingGate()
@@ -1075,6 +1096,7 @@ internal class RaftSharedStoreProvider private constructor(
         if (scopesForServer(scope.serverId).isEmpty()) return false
         // A normal trigger pulling first makes a waiting retry moot (#proj-mobile:#112).
         if (!transientRetry) syncTransientRetry.onTriggerPull(scope)
+        syncRetryAfter.onTriggerPull(scope)
         val job =
             threadSendScope.launch(start = CoroutineStart.LAZY) {
                 val result = syncChangesEngine.pull(scope, trigger, jitterSnapshots, jitterPull)
@@ -1087,6 +1109,20 @@ internal class RaftSharedStoreProvider private constructor(
                 }
                 // A first transient failure kept the cursor and refetched nothing: one retry 30–60 s
                 // later, with this caller's fallback for when it fails again (#proj-mobile:#112).
+                // inbox_row capability: a held row (`retryAfterMs`) pulls again later; a delayed inboxReset
+                // retakes the Activity list then.
+                syncRetryAfter.onPullFinished(
+                    scope,
+                    result,
+                    repull = {
+                        if (currentSyncScope(scope.serverId) == scope) requestSyncChangesPull(scope.serverId, trigger = "retry_after")
+                    },
+                    reloadInbox = {
+                        if (currentSyncScope(scope.serverId) == scope) {
+                            syncStoreTargets.refreshActivity(scope.serverId, reason = "sync_inbox_reset_delayed")
+                        }
+                    },
+                )
                 syncTransientRetry.onPullFinished(scope, result, wasRetry = transientRetry) {
                     if (currentSyncScope(scope.serverId) == scope) {
                         requestSyncChangesPull(scope.serverId, trigger = "transient_retry", onFailed = onFailed, transientRetry = true)
@@ -1173,6 +1209,21 @@ internal class RaftSharedStoreProvider private constructor(
                     if (scope in activeScopes) store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
                 }
                 activityUnreadSummaryStore.refresh(ServerId(serverId), reason = reason)
+            }
+
+            override fun applyInboxRows(serverId: String, changes: List<RaftSyncInboxRowChange>): RaftSyncInboxRowsOutcome {
+                val activeScopes = scopesForServer(serverId).toSet()
+                val outcomes =
+                    homeActivityStores.entries()
+                        .filter { (scope, _) -> scope in activeScopes }
+                        .map { (_, store) -> store.applySyncInboxRows(serverId, changes) }
+                // A store that could not take them reads its list through the `conversation` changes, as
+                // before the capability (and so do the others: a duplicate read is harmless).
+                val applied = outcomes.filterIsInstance<RaftSyncInboxRowsOutcome.Applied>()
+                if (applied.isEmpty() || applied.size != outcomes.size) return RaftSyncInboxRowsOutcome.NotApplied
+                // The badge's summary, as the Activity refetch read it (a list that owns the badge skips it).
+                activityUnreadSummaryStore.refresh(ServerId(serverId), reason = "sync_inbox_rows")
+                return RaftSyncInboxRowsOutcome.Applied(applied.map { it.settledIds }.reduce { a, b -> a intersect b })
             }
 
             override fun applyRemoteDone(serverId: String, channelId: String, doneFrontierSeq: String?): ActivityRemoteDoneOutcome {
@@ -1380,6 +1431,7 @@ internal class RaftSharedStoreProvider private constructor(
                     // binding, and the successor's first connects fetch at once.
                     reconnectRefetchJitter.reset(reason = if (context == null) "signed_out" else "binding_changed")
                     syncTransientRetry.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
+                    syncRetryAfter.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
                     allServerMembersStores().forEach { store ->
                         store.retireAccountData(
                             successorEnvironmentId = context?.environmentId,
@@ -1716,6 +1768,7 @@ internal class RaftSharedStoreProvider private constructor(
                 tasksDataStore.dropServer(grant.serverId)
                 syncCursorStore.clearServer(grant.serverId, lostAccountId)
                 syncTransientRetry.cancelWhere(reason = "server_access_lost") { it.serverId == grant.serverId }
+                syncRetryAfter.cancelWhere(reason = "server_access_lost") { it.serverId == grant.serverId }
                 // #45: that server's recent searches and frequent people / channels.
                 searchPersonalizationRepository.dropServer(grant.serverId, lostAccountId, nowMillis = defaultNowMillis())
                 // Offline resources, Home hints, Activity pages, notification preferences, reply windows

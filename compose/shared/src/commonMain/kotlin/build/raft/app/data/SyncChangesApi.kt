@@ -28,17 +28,31 @@ private data class SyncChangesErrorWire(val code: String? = null)
 
 private val syncChangesErrorJson = Json { ignoreUnknownKeys = true }
 
-/** `GET sync/changes?since=&limit=` through the shared network client, bound to [serverId]. */
+/** The `capabilities` query value (comma-separated, slock routes/sync.ts `parseCapabilities`), or null for none. */
+internal fun syncChangesCapabilitiesQuery(capabilities: Set<String>): String? =
+    capabilities.map(String::trim).filter(String::isNotEmpty).sorted().takeIf { it.isNotEmpty() }?.joinToString(",")
+
+/**
+ * `GET sync/changes?since=&limit=[&capabilities=]` through the shared network client, bound to [serverId].
+ * [capabilities]: what to ask for on [serverId] now (`inbox_row` while `sync_inbox_rows_v0` is on); none
+ * sends no parameter, and the response is exactly as before the capability.
+ */
 internal class RaftSyncChangesNetworkApi(
     private val networkClient: RaftNetworkClient,
     private val priority: DataRequestPriority = DataRequestPriority.Background,
+    private val capabilities: (ServerId) -> Set<String> = { emptySet() },
 ) : RaftSyncChangesApi {
     override suspend fun changes(serverId: ServerId, since: String?, limit: Int): RaftSyncChangesFetch {
         val response =
             networkClient.request(
                 priority = priority,
                 path = "sync/changes",
-                query = listOfNotNull(since?.let { "since" to it }, "limit" to limit.toString()),
+                query =
+                    listOfNotNull(
+                        since?.let { "since" to it },
+                        "limit" to limit.toString(),
+                        syncChangesCapabilitiesQuery(capabilities(serverId))?.let { "capabilities" to it },
+                    ),
                 serverIdOverride = serverId,
             )
         return syncChangesFetchOf(response)

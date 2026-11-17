@@ -20,8 +20,10 @@ import kotlinx.serialization.json.jsonPrimitive
  * format in its README; #triage:#244), vendored at
  * `src/commonTest/resources/contract-cases/activity-row/` by `scripts/sync_slock_contract_cases.py`.
  *
- * Two rules: `position` (a served row, then live messages / answers / reads, and whether the row is
- * re-read) and `predicate` (does one live message count, and does it light the @).
+ * Three rules: `position` (a served row, then live messages / answers / reads, and whether the row is
+ * re-read), `predicate` (does one live message count, and does it light the @) and `sync_inbox_row`
+ * (a `GET /api/sync/changes` `inbox_row` change on the held row: an upsert is an `answer` step, a
+ * delete a `syncDelete` step; the row may end `removed`; slock #15312).
  *
  * The decoder is lenient per case, like [decodeUnreadContractCase]: an unknown `act`, `formatVersion`,
  * field or expectation key skips and reports that one case (never fails the suite, never passes it).
@@ -56,13 +58,17 @@ internal data class ActivityRowGiven(
     val message: ActivityRowMessage? = null,
 )
 
-/** A served row's unread inputs. [position] is a decimal seq string (exact; one case is above 2^53). */
+/**
+ * A served row's unread inputs. [position] is a decimal seq string (exact; one case is above 2^53).
+ * [readSeq] (optional, an answer's row): the read position served with it (its `maxReadSeq`).
+ */
 @Serializable
 internal data class ActivityRowServed(
     val unreadCount: Int,
     val hasMention: Boolean,
     val position: String?,
     val mentionOnly: Boolean,
+    val readSeq: String? = null,
 )
 
 @Serializable
@@ -130,6 +136,11 @@ internal sealed interface ActivityRowStep {
     @Serializable
     @SerialName("markUnread")
     data object MarkUnread : ActivityRowStep
+
+    /** `sync_inbox_row` only: an `inbox_row` delete arrives ([position] null: `left`). */
+    @Serializable
+    @SerialName("syncDelete")
+    data class SyncDelete(val position: String?, val reason: String) : ActivityRowStep
 }
 
 /**
@@ -140,11 +151,18 @@ internal sealed interface ActivityRowStep {
 internal data class ActivityRowExpectation(
     val row: JsonObject? = null,
     val reread: Boolean? = null,
+    /** `sync_inbox_row` only: the row is no longer held. */
+    val removed: Boolean? = null,
     val verdict: ActivityRowVerdict? = null,
 )
 
 @Serializable
-internal data class ActivityRowCheckpoint(val afterStep: Int, val row: JsonObject? = null, val reread: Boolean? = null)
+internal data class ActivityRowCheckpoint(
+    val afterStep: Int,
+    val row: JsonObject? = null,
+    val reread: Boolean? = null,
+    val removed: Boolean? = null,
+)
 
 @Serializable
 internal data class ActivityRowVerdict(
@@ -160,9 +178,9 @@ internal data class ActivityRowDecision(val question: String, val owner: String,
 /** The `row` expectation keys of formatVersion 1 (README "Expectations"). */
 internal val ActivityRowStateKeys = setOf("unreadCount", "hasMention", "position", "mentionOnly")
 
-private val ActivityRowActs = setOf("liveMessage", "answer", "read", "markUnread")
+private val ActivityRowActs = setOf("liveMessage", "answer", "read", "markUnread", "syncDelete")
 
-private val ActivityRowRules = setOf("position", "predicate")
+private val ActivityRowRules = setOf("position", "predicate", "sync_inbox_row")
 
 /** Strict: an unknown field in a known act, `given` or `expect` is a case this code cannot read. */
 private val activityRowCaseJson = Json { classDiscriminator = "act" }

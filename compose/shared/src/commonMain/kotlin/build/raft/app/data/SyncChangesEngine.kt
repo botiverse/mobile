@@ -49,6 +49,16 @@ internal fun isTransientSyncChangesFailure(code: String): Boolean {
     return status == 0 || status == 408 || status == 429 || status >= 500
 }
 
+/** The shortest wait a `retryAfterMs` may ask for (slock sends about 2 s). */
+internal const val SYNC_CHANGES_RETRY_AFTER_MIN_MILLIS: Long = 1_000L
+
+/** The longest wait a `retryAfterMs` may ask for. */
+internal const val SYNC_CHANGES_RETRY_AFTER_MAX_MILLIS: Long = 30_000L
+
+/** A server `retryAfterMs`, clamped to [SYNC_CHANGES_RETRY_AFTER_MIN_MILLIS]..[SYNC_CHANGES_RETRY_AFTER_MAX_MILLIS]. */
+internal fun syncRetryAfterMillis(serverMillis: Long): Long =
+    serverMillis.coerceIn(SYNC_CHANGES_RETRY_AFTER_MIN_MILLIS, SYNC_CHANGES_RETRY_AFTER_MAX_MILLIS)
+
 /** The most a pull triggered by a socket RE-connect waits before its first request (Ray 10-27). */
 internal const val SYNC_CHANGES_RECONNECT_PULL_JITTER_MAX_MILLIS: Long = 2_000L
 
@@ -76,11 +86,16 @@ internal data class RaftSyncApplyPlan(
     val addedChannelIds: Set<String> = emptySet(),
     /** Scopes the viewer lost, in order: drop everything held under them. */
     val removedScopes: List<RaftSyncChange.ScopeRemoved> = emptyList(),
+    /**
+     * `inbox_row` changes (inbox_row capability), in seq order, one per row id (the later wins; the
+     * server sends one per id per response anyway).
+     */
+    val inboxRows: List<RaftSyncInboxRowChange> = emptyList(),
 ) {
     val isEmpty: Boolean
         get() =
             upserts.isEmpty() && deletes.isEmpty() && staleConversations.isEmpty() && snapshots.isEmpty() &&
-                addedChannelIds.isEmpty() && removedScopes.isEmpty()
+                addedChannelIds.isEmpty() && removedScopes.isEmpty() && inboxRows.isEmpty()
 
     fun upsertsOf(entity: RaftSyncRowEntity): Map<String, JsonObject> = upserts[entity].orEmpty()
 
@@ -95,6 +110,7 @@ internal fun List<RaftSyncChange>.toSyncApplyPlan(): RaftSyncApplyPlan {
     val snapshots = LinkedHashSet<RaftSyncSnapshot>()
     val addedChannels = LinkedHashSet<String>()
     val removed = ArrayList<RaftSyncChange.ScopeRemoved>()
+    val inboxRows = LinkedHashMap<String, RaftSyncInboxRowChange>()
     for (change in this) {
         when (change) {
             is RaftSyncChange.Upsert -> rows.getOrPut(change.entity) { LinkedHashMap() }.apply {
@@ -149,8 +165,13 @@ internal fun List<RaftSyncChange>.toSyncApplyPlan(): RaftSyncApplyPlan {
                         states.clear()
                         snapshots.clear()
                         addedChannels.clear()
+                        inboxRows.clear()
                     }
                 }
+            }
+            is RaftSyncInboxRowChange -> inboxRows.apply {
+                remove(change.id)
+                put(change.id, change)
             }
             is RaftSyncChange.Resnapshot -> snapshots += change.snapshots
         }
@@ -172,6 +193,8 @@ internal fun List<RaftSyncChange>.toSyncApplyPlan(): RaftSyncApplyPlan {
         snapshots = snapshots,
         addedChannelIds = addedChannels,
         removedScopes = removed,
+        // Applied in seq order (stable: the server's order within one seq; message rows share the response's).
+        inboxRows = inboxRows.values.sortedBy { it.seq },
     )
 }
 
@@ -186,6 +209,12 @@ internal interface RaftSyncChangesSink {
 
     /** Applies one page's changes. */
     suspend fun apply(scope: RaftSyncScope, plan: RaftSyncApplyPlan)
+
+    /**
+     * `inboxReset` (inbox_row capability): retake the inbox snapshot (the Activity list), [reason]
+     * `inbox_reset_<reason>`. Not awaited, like any Activity reload; the page's changes were applied first.
+     */
+    suspend fun reloadInbox(scope: RaftSyncScope, reason: String) {}
 
     /**
      * Reads again what an earlier pull's reloads failed to read ([RaftSyncReloadLedger]), at the
@@ -204,6 +233,18 @@ internal sealed interface RaftSyncPullResult {
         val truncated: Boolean,
         /** The stored cursor differs from the one the pull started from (equality only: it stays opaque). */
         val cursorAdvanced: Boolean = true,
+        /**
+         * The last page's `retryAfterMs` ([syncRetryAfterMillis]-clamped): the server holds a row back
+         * until its read model catches up; pull again after this long (the caller schedules it).
+         */
+        val retryAfterMillis: Long? = null,
+        /**
+         * An `inboxReset` that came with `retryAfterMs`: retake the inbox snapshot after this long (the
+         * snapshot is read from the same lagging read model). One without a delay was retaken at once.
+         */
+        val inboxReloadAfterMillis: Long? = null,
+        /** The last `inboxReset` reason of the pull, for the log. */
+        val inboxResetReason: String? = null,
     ) : RaftSyncPullResult {
         /**
          * Go on in a follow-up pull: stopped at the page cap with more waiting, and the cursor moved.
@@ -334,7 +375,10 @@ internal class RaftSyncChangesEngine(
                     is RaftSyncPullResult.Synced ->
                         "result=synced pages=${result.pages} changes=${result.changes} firstSync=${result.firstSync} " +
                             "reset=${result.resetReason ?: "none"} truncated=${result.truncated} " +
-                            "cursorAdvanced=${result.cursorAdvanced}"
+                            "cursorAdvanced=${result.cursorAdvanced}" +
+                            (result.inboxResetReason?.let { " inboxReset=$it" } ?: "") +
+                            (result.retryAfterMillis?.let { " retryAfterMs=$it" } ?: "") +
+                            (result.inboxReloadAfterMillis?.let { " inboxReloadAfterMs=$it" } ?: "")
                     is RaftSyncPullResult.Failed -> "result=failed code=${result.code} cursorKept=${result.cursorKept}"
                 } + " durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
@@ -368,6 +412,9 @@ internal class RaftSyncChangesEngine(
         var resetReason: String? = null
         var pages = 0
         var changes = 0
+        var retryAfter: Long? = null
+        var inboxReloadAfter: Long? = null
+        var inboxResetReason: String? = null
         // The cursor on disk. Pages advance only [cursor] (in memory) and it is stored once the whole
         // pull is done: a pull failing at page 3 of 5 keeps the cursor from before page 1, so the
         // kept cursor (#proj-mobile:#112) asks for pages 1-2 again rather than skipping them. They
@@ -384,6 +431,9 @@ internal class RaftSyncChangesEngine(
             cursors.write(scope, end)
             return RaftSyncPullResult.Synced(
                 pages, changes, firstSync, resetReason, truncated = truncated, cursorAdvanced = end != startCursor,
+                retryAfterMillis = retryAfter,
+                inboxReloadAfterMillis = inboxReloadAfter,
+                inboxResetReason = inboxResetReason,
             )
         }
 
@@ -443,6 +493,8 @@ internal class RaftSyncChangesEngine(
             pages += 1
             if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
             val reset = page.reset
+            // Only the last page's wait counts: an earlier page's held row is asked for again by the pages after it.
+            retryAfter = page.retryAfterMillis?.let(::syncRetryAfterMillis)
             if (reset != null) {
                 resetReason = reset.reason
                 snapshotJitterDelay()
@@ -454,6 +506,18 @@ internal class RaftSyncChangesEngine(
                 changes += page.changes.size
                 val plan = page.changes.toSyncApplyPlan()
                 if (!plan.isEmpty) sink.apply(scope, plan)
+                // inboxReset: the changes above still apply (unlike `reset`); then the inbox snapshot, at
+                // once or, with `retryAfterMs`, after it (the caller schedules that one).
+                page.inboxReset?.let { inboxReset ->
+                    inboxResetReason = inboxReset.reason
+                    val wait = page.retryAfterMillis
+                    if (wait == null) {
+                        if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
+                        sink.reloadInbox(scope, reason = "inbox_reset_${inboxReset.reason}")
+                    } else {
+                        inboxReloadAfter = syncRetryAfterMillis(wait)
+                    }
+                }
             }
             if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
             cursor = page.cursor

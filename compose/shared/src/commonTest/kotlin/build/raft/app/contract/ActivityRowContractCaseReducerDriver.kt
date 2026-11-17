@@ -3,6 +3,8 @@ package build.raft.app.contract
 import build.raft.app.data.ActivityRowAnswer
 import build.raft.app.data.ActivityRowEvent
 import build.raft.app.data.ActivityRowState
+import build.raft.app.data.ActivitySyncRowChange
+import build.raft.app.data.applySyncInboxRowChange
 import build.raft.app.data.ActivityUnreadMessage
 import build.raft.app.data.ActivityUnreadRowKind
 import build.raft.app.data.ActivityUnreadScope
@@ -29,7 +31,7 @@ internal fun runActivityRowCaseOnReducer(case: ActivityRowContractCase): List<St
     val expect = case.expect ?: return listOf("an agreed case has no expect")
     return when (case.rule) {
         "predicate" -> runPredicateOnReducer(case, expect)
-        "position" -> runPositionOnReducer(case, expect)
+        "position", "sync_inbox_row" -> runPositionOnReducer(case, expect)
         else -> listOf("unknown rule '${case.rule}'")
     }
 }
@@ -69,7 +71,7 @@ private fun runPredicateOnReducer(case: ActivityRowContractCase, expect: Activit
     return if (actual == expected) emptyList() else listOf("verdict: expected $expected, got $actual")
 }
 
-private fun ActivityRowServed.toAnswer() = ActivityRowAnswer(unreadCount, hasMention, position, mentionOnly)
+private fun ActivityRowServed.toAnswer() = ActivityRowAnswer(unreadCount, hasMention, position, mentionOnly, readSeq)
 
 private fun ActivityRowStep.toEvent(): ActivityRowEvent =
     when (this) {
@@ -77,6 +79,7 @@ private fun ActivityRowStep.toEvent(): ActivityRowEvent =
         is ActivityRowStep.Answer -> ActivityRowEvent.Answer(row.toAnswer())
         is ActivityRowStep.Read -> ActivityRowEvent.Read(seq)
         ActivityRowStep.MarkUnread -> ActivityRowEvent.MarkUnread
+        is ActivityRowStep.SyncDelete -> error("syncDelete is not a reducer event (applySyncInboxRowChange)")
     }
 
 /** The row as the case reads it: `position` is the shown one, `mentionOnly` the reducer's own flag. */
@@ -89,17 +92,30 @@ private fun ActivityRowState.shown(key: String): JsonElement =
         else -> error("unknown row key $key")
     }
 
+/**
+ * `position` and `sync_inbox_row`: slock's runner drives both the same way; in a `sync_inbox_row` case an
+ * `answer` is an `inbox_row` upsert and a `syncDelete` a delete, both through [applySyncInboxRowChange].
+ */
 private fun runPositionOnReducer(case: ActivityRowContractCase, expect: ActivityRowExpectation): List<String> {
     val given = case.given.row ?: return listOf("no given.row")
     val expectedReread = expect.reread ?: return listOf("no expected reread")
+    val sync = case.rule == "sync_inbox_row"
     val failures = mutableListOf<String>()
-    var row = activityRowFromAnswer(given.toAnswer())
+    var row: ActivityRowState? = activityRowFromAnswer(given.toAnswer())
     var reread = false
 
-    fun check(where: String, expected: JsonObject?, expectedRereadHere: Boolean?) {
+    fun check(where: String, expected: JsonObject?, expectedRereadHere: Boolean?, expectedRemoved: Boolean?) {
+        if (expectedRemoved != null && expectedRemoved != (row == null)) {
+            failures += "$where: removed: expected $expectedRemoved, got ${row == null}"
+        }
         expected?.forEach { (key, value) ->
-            val actual = row.shown(key)
-            if (actual != value) failures += "$where: $key: expected $value, got $actual"
+            val held = row
+            if (held == null) {
+                failures += "$where: the row is not held (expected $key $value)"
+            } else {
+                val actual = held.shown(key)
+                if (actual != value) failures += "$where: $key: expected $value, got $actual"
+            }
         }
         if (expectedRereadHere != null && expectedRereadHere != reread) {
             failures += "$where: reread: expected $expectedRereadHere, got $reread"
@@ -109,14 +125,28 @@ private fun runPositionOnReducer(case: ActivityRowContractCase, expect: Activity
     case.checkpoints.filter { it.afterStep !in 1..case.steps.size }.forEach {
         failures += "checkpoint after step ${it.afterStep} is out of range (${case.steps.size} steps)"
     }
-    case.steps.forEachIndexed { index, step ->
-        val result = reduceActivityRow(row, step.toEvent())
-        row = result.row
-        reread = reread || result.reread
+    for ((index, step) in case.steps.withIndex()) {
+        when {
+            step is ActivityRowStep.SyncDelete -> {
+                if (!sync) return failures + "step ${index + 1}: syncDelete is a sync_inbox_row act"
+                row = applySyncInboxRowChange(row, ActivitySyncRowChange.Delete(step.position)).row
+            }
+            sync && step is ActivityRowStep.Answer -> {
+                val result = applySyncInboxRowChange(row, ActivitySyncRowChange.Upsert(step.row.toAnswer()))
+                row = result.row
+                reread = reread || result.reread
+            }
+            else -> {
+                val held = row ?: return failures + "step ${index + 1}: the row was removed by an earlier step"
+                val result = reduceActivityRow(held, step.toEvent())
+                row = result.row
+                reread = reread || result.reread
+            }
+        }
         case.checkpoints.filter { it.afterStep == index + 1 }.forEach { checkpoint ->
-            check("after step ${index + 1}", checkpoint.row, checkpoint.reread)
+            check("after step ${index + 1}", checkpoint.row, checkpoint.reread, checkpoint.removed)
         }
     }
-    check("at the end", expect.row, expectedReread)
+    check("at the end", expect.row, expectedReread, expect.removed)
     return failures
 }

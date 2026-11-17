@@ -347,6 +347,20 @@ fun parseSharedInboxSnapshot(
     )
 }.getOrNull()
 
+/**
+ * One Activity row as a sync `inbox_row` upsert carries it (botiverse/slock #15312: the row exactly as
+ * `GET /api/channels/inbox?ids=<id>` answers it), read by the same row parser as a list answer. Null
+ * when it does not decode (or is a row kind this client does not show).
+ */
+fun parseSharedInboxRow(
+    row: JsonObject,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): InboxItem? =
+    parseSharedInboxSnapshot(
+        JsonObject(mapOf("items" to JsonArray(listOf(row)), "hasMore" to JsonPrimitive(false))).toString(),
+        diagnostics,
+    )?.items?.singleOrNull()
+
 private val InboxIgnoredWebLocalKinds = setOf("mention_action")
 
 private fun WireInboxItem.toDomain(diagnostics: (String) -> Unit): InboxItem? = when (kind) {
