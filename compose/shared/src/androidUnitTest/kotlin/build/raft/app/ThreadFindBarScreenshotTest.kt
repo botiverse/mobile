@@ -36,8 +36,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Search in this thread (web `ThreadSearchBar`, slock staging e4c09353f), the bar over the end of
- * the message list with the open match above it (`info-soft` row, its words marked):
+ * Search in this thread (web `ThreadSearchBar`, slock staging e4c09353f), the bar over the top of
+ * the message list, under the header, with its seam below it and the open match under it
+ * (`info-soft` row, its words marked):
  * - `thread.find.results` / `.dark`: "launch", 2/3, Previous / Next / Close;
  * - `thread.find.loading`: "Loading" while the whole thread is read;
  * - `thread.find.no-match`: 0/0, Previous / Next disabled;
@@ -90,6 +91,7 @@ class ThreadFindBarScreenshotTest {
     ) = RaftRobolectricScreenshot.capture(name, appearance, reportDir = REPORT_DIR, activities = activities) {
         Host(appearance) {
             Column(Modifier.fillMaxSize()) {
+                ThreadFindBar(state = state, taskSurface = taskSurface, onIntent = {}, autoFocus = false)
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     Column(
                         Modifier
@@ -103,7 +105,6 @@ class ThreadFindBarScreenshotTest {
                         }
                     }
                 }
-                ThreadFindBar(state = state, taskSurface = taskSurface, onIntent = {}, autoFocus = false)
             }
         }
     }

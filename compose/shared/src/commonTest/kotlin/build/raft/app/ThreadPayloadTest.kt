@@ -9014,11 +9014,35 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadChannelSearchPageDataRejectsNonChannelSurfaces() {
+    fun threadChannelSearchPageDataScopesADirectMessageToItsOwnChannel() {
+        // web ChatPanel handleSearchThisChannel on a phone: nav.toConversationSearch("dm", id).
+        val payload =
+            RaftThreadScreenPayload(
+                instanceId = "dm-1",
+                sourceThreadId = " dm-1 ",
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                channelKind = "dm",
+                localOffsetMinutes = 480,
+                timeFormat = RaftTimeFormat12Hour
+            )
+
+        assertEquals("dm-1", payload.threadChannelSearchChannelId())
+        val pageData = payload.toThreadChannelSearchPageData()!!
+
+        assertEquals(HOME_SEARCH_PAGE, pageData.optString("pageName"))
+        assertEquals("search", pageData.optString("destination"))
+        assertEquals("dm-1", pageData.optString(HOME_SEARCH_SELECTED_CHANNEL_ID))
+        assertEquals(true, pageData.optBoolean(HOME_SEARCH_FOCUS_INPUT, false))
+        assertEquals("480", pageData.optString("localOffsetMinutes"))
+        assertEquals(RaftTimeFormat12Hour, pageData.optString("timeFormat"))
+    }
+
+    @Test
+    fun threadChannelSearchPageDataRejectsThreadAndBlankSurfaces() {
         assertEquals(
             null,
             RaftThreadScreenPayload(
-                sourceThreadId = "dm-1",
+                sourceThreadId = "   ",
                 surfaceKind = RaftThreadSurfaceKind.DirectMessage
             ).toThreadChannelSearchPageData()
         )
@@ -9039,7 +9063,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadHeaderSearchKeepsChannelSearchPageAndScopesInlineSearchToThreads() {
+    fun threadHeaderSearchOpensChannelAndDmSearchPagesAndScopesInlineSearchToThreads() {
         assertEquals(
             ThreadHeaderSearchAction.ChannelSearch,
             RaftThreadScreenPayload(
@@ -9054,10 +9078,18 @@ class ThreadPayloadTest {
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread
             ).threadHeaderSearchAction()
         )
+        // A DM opens its own search page too (web ChatPanel handleSearchThisChannel).
+        assertEquals(
+            ThreadHeaderSearchAction.ChannelSearch,
+            RaftThreadScreenPayload(
+                sourceThreadId = "dm-1",
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage
+            ).threadHeaderSearchAction()
+        )
+        // Not before the page knows which DM it is.
         assertEquals(
             null,
             RaftThreadScreenPayload(
-                sourceThreadId = "dm-1",
                 surfaceKind = RaftThreadSurfaceKind.DirectMessage
             ).threadHeaderSearchAction()
         )
