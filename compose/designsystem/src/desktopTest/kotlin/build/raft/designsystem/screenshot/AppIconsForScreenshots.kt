@@ -114,6 +114,17 @@ internal enum class AppIcon(vararg val paths: String) {
         "M15 10H9",
         "M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z",
     ),
+    // Lucide image: the message select mode's Generate image (web SelectModeToolbar).
+    Image(
+        "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
+        "M 7.0 9.0 A 2.0 2.0 0 1 0 11.0 9.0 A 2.0 2.0 0 1 0 7.0 9.0 Z",
+        "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21",
+    ),
+    // Lucide link: the message select mode's Copy Link (web SelectModeToolbar).
+    Link(
+        "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71",
+        "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
+    ),
     ;
 
     val parsed by lazy { paths.map { PathParser().parsePathString(it).toPath() } }
