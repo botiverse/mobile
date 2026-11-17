@@ -1004,6 +1004,7 @@ private fun RaftArtifactViewerWebBody(
                 sinceDocumentReadyMs = coverFallbackFrom?.elapsedNow()?.inWholeMilliseconds.also { coverFallbackTick },
                 pageLoaded = pageLoadedAt != null,
                 splashEnded = splashEnded,
+                pageDrawsBar = drawsBar,
             )
         )
     LaunchedEffect(loadingIndicator) {

@@ -409,6 +409,11 @@ internal data class RaftArtifactViewerOpenState(
     val pageLoaded: Boolean = false,
     /** After [pageLoaded], the App's splash played its ending (fill, hold, fade). */
     val splashEnded: Boolean = false,
+    /**
+     * The page draws the only bar (`hostToolbar=1`, shown, no load error): its own splash, on the same
+     * clock and in the same place, or its content is under that bar, and its menus open from it.
+     */
+    val pageDrawsBar: Boolean = false,
 )
 
 /**
@@ -421,10 +426,12 @@ internal data class RaftArtifactViewerOpenState(
 internal const val RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS = 4_000L
 
 /**
- * One loader at a time (#301): on a fresh load the App's splash covers the page until the page
- * says its loading is over (`hostLoaded=1`, slock #15036: the moment its own splash would start its
- * ending, or 150 ms after a failure left no splash on screen), plays its ending, then the page
- * alone. A kept page reused that showed an Artifact before is never covered (it sends no signal):
+ * One loader at a time (#301): on a fresh load the App's splash covers the page while the App's bar is
+ * up (the page's loading row, Back alone, never shows under it), until the page draws the only bar
+ * (`hostToolbar=1`, [RaftArtifactViewerOpenState.pageDrawsBar]: its own splash, the same one on the
+ * same clock, takes over in place, and its menus open over it) or says its loading is over
+ * (`hostLoaded=1`, slock #15036: the moment its own splash would start its ending, or 150 ms after a
+ * failure left no splash on screen; the App's splash then plays its ending), then the page alone. A kept page reused that showed an Artifact before is never covered (it sends no signal):
  * its own splash shows, under its own bar. A kept page only booted is covered as a fresh load. A page that never says so (an older web) is shown at
  * [RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS]. Before, the App showed its generic "Loading" (a small
  * spinner and a line) until the WebView committed a document, and the page then its own pixel
@@ -438,6 +445,10 @@ internal fun raftArtifactViewerLoadingIndicator(state: RaftArtifactViewerOpenSta
         // In-page reuse of a document that showed an Artifact gets no hand-over signal: the page's own
         // splash (under its own bar), never the App's over it.
         state.reusesKeptPage -> RaftArtifactViewerLoadingIndicator.None
+        // The page draws the only bar: the page takes over at once (its own splash shows where the App's was).
+        // Never a cover under its bar: its ⋯ and version ▾ open from that bar over the body, inside the
+        // WebView, and a cover there hid them (only the menu's top edge showed under the bar, 1.26).
+        state.pageDrawsBar -> RaftArtifactViewerLoadingIndicator.None
         // Loaded: the App's splash plays its ending over the page, then the page alone.
         state.pageLoaded -> if (state.splashEnded) RaftArtifactViewerLoadingIndicator.None else RaftArtifactViewerLoadingIndicator.AppSplash
         state.sinceDocumentReadyMs != null && state.sinceDocumentReadyMs >= RAFT_ARTIFACT_VIEWER_SPLASH_FALLBACK_MS ->
