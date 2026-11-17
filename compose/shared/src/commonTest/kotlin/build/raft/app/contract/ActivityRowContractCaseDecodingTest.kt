@@ -44,7 +44,7 @@ class ActivityRowContractCaseDecodingTest {
                 positionCase(
                     """[{"act":"liveMessage","seq":"9007199254740993","counts":null,"mentionsViewer":false},""" +
                         """{"act":"answer","row":{"unreadCount":2,"hasMention":true,"position":null,"mentionOnly":false}},""" +
-                        """{"act":"read","seq":"100"}]""",
+                        """{"act":"read","seq":"100"},{"act":"markUnread"}]""",
                     row = """{"position":null}""",
                 ),
             )
@@ -54,6 +54,7 @@ class ActivityRowContractCaseDecodingTest {
         assertEquals(9007199254740993L, (case.steps[0] as ActivityRowStep.LiveMessage).seq.toLong(), "no float rounding")
         assertNull(assertIs<ActivityRowStep.Answer>(case.steps[1]).row.position)
         assertEquals(ActivityRowStep.Read("100"), case.steps[2])
+        assertEquals(ActivityRowStep.MarkUnread, case.steps[3])
         assertEquals(JsonNull, case.expect?.row?.get("position"), "position:null is asserted, not dropped")
 
         val absent = assertIs<ActivityRowCaseDecoding.Decoded>(decodeActivityRowContractCase("p", predicateMessage("")))

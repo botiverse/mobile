@@ -76,6 +76,7 @@ private fun ActivityRowStep.toEvent(): ActivityRowEvent =
         is ActivityRowStep.LiveMessage -> ActivityRowEvent.Live(seq, counts, mentionsViewer, moves)
         is ActivityRowStep.Answer -> ActivityRowEvent.Answer(row.toAnswer())
         is ActivityRowStep.Read -> ActivityRowEvent.Read(seq)
+        ActivityRowStep.MarkUnread -> ActivityRowEvent.MarkUnread
     }
 
 /** The row as the case reads it: `position` is the shown one, `mentionOnly` the reducer's own flag. */

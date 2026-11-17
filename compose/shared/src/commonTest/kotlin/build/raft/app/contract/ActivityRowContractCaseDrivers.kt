@@ -52,8 +52,18 @@ import kotlinx.serialization.json.JsonPrimitive
  * Empty since `inbox_row_position_v1` (#triage:#244, PR B): the store, with the flag on as the
  * harness runs it, keeps each row by the shared rule and passes every agreed case. The flag-off path
  * is today's and still differs from the position and system-line cases; SharedActivityStoreTest pins it.
+ *
+ * A case with `markUnread` is not a product gap but one this store harness cannot drive: its `read` act
+ * is a version-ordered read state, which the store rightly orders after the mark, while the case's late
+ * read is a stale ack of a read from before it. The reducer runs the case
+ * (ActivityRowContractCaseReducerTest); ActivityRowReadSeqTest pins the ledger's ceiling and
+ * SharedActivityStoreRowPositionTest the store's Mark as Unread.
  */
-internal val AppActivityRowKnownGaps: Map<String, String> = emptyMap()
+internal val AppActivityRowKnownGaps: Map<String, String> =
+    mapOf(
+        "mark_unread_then_late_read_ack" to
+            "store harness: its read act is a newer read state, not a stale read ack (reducer and ledger tests cover it)",
+    )
 
 /** One way the app can run a case: [decline] says why it cannot (null = it can). */
 internal class ActivityRowCaseDriver(
@@ -323,6 +333,9 @@ private fun TestScope.runPositionCase(case: ActivityRowContractCase): List<Strin
                     )
                 )
             }
+            // Listed in AppActivityRowKnownGaps: a read after it would be a newer read state here, not the
+            // case's stale ack, so the harness does not drive it.
+            ActivityRowStep.MarkUnread -> return listOf("step ${index + 1}: markUnread is not driven by the store harness")
         }
         settle()
         case.checkpoints.filter { it.afterStep == index + 1 }.forEach { checkpoint ->

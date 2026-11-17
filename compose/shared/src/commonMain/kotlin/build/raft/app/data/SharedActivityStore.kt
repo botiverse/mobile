@@ -662,6 +662,10 @@ class SharedActivityStore internal constructor(
     /** Test hook: the position state kept for a row's conversation. */
     internal fun rowPositionStateForTest(scopeId: String): ActivityRowClientState? = rowPositions.keptForTest(scopeId)
 
+    /** The row's read seq and Mark as Unread ceiling. */
+    internal fun rowPositionReadSeqForTest(scopeId: String): Pair<String?, String?> =
+        rowPositions.readSeqForTest(scopeId) to rowPositions.readSeqCeilingForTest(scopeId)
+
     init {
         scope.launch {
             var previous = appForeground.value
@@ -5388,7 +5392,9 @@ class SharedActivityStore internal constructor(
             if (readOwner != null) readReceiptCoordinator?.settleReadsBeforeUnread(readOwner, targetChannelId)
             val result = readReceiptRepository.markChannelUnread(targetChannelId)
             if (result is DataResult.Content) {
-                // Again once answered: a read ack that landed while the mark was in flight raised it.
+                // Again once answered: the mark waits for earlier reads to settle, and an ack landing then
+                // (above the ceiling set when the mark started) raised the read seq. Clearing it here
+                // makes that ack's seq the ceiling, so a later stale ack cannot raise it again.
                 rowPositions.forgetRead(targetChannelId.value)
                 // The read point moved back, or stayed and the conversation was marked unread: the next
                 // open must send its read again (that is what clears it), not reuse an acknowledgement.

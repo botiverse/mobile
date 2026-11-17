@@ -56,12 +56,14 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
     private val lock = SynchronizedObject()
     private val states = LinkedHashMap<String, ActivityRowClientState>()
     private val readSeqs = LinkedHashMap<String, String>()
+    /** Per row, the read seq a Mark as Unread cleared ([ActivityRowState.readSeqCeiling]). */
+    private val readSeqCeilings = LinkedHashMap<String, String>()
 
     /** The reducer's row: [row] as shown, with the state kept for it while it still shows its position. */
     fun stateOf(row: InboxItem): ActivityRowState {
         val scopeId = row.activityRowScopeId()
         val kept = scopeId?.let { synchronized(lock) { states[it] } }
-        val readSeq = scopeId?.let { synchronized(lock) { readSeqs[it] } }
+        val (readSeq, readSeqCeiling) = scopeId?.let { synchronized(lock) { readSeqs[it] to readSeqCeilings[it] } } ?: (null to null)
         val shown = row.latestActivitySeq
         val valid = kept != null && kept.displayPosition() == shown
         return ActivityRowState(
@@ -72,6 +74,7 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
             applied = if (valid) kept!!.applied else emptyList(),
             inversionObserved = if (valid) kept!!.inversionObserved else false,
             readSeq = readSeq,
+            readSeqCeiling = readSeqCeiling,
         )
     }
 
@@ -90,7 +93,10 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
         }
     }
 
-    /** A read of the conversation through [seq] (a local read of the row, a read ack): raises its read seq, never lowers it. */
+    /**
+     * A read of the conversation through [seq] (a local read of the row, a read ack): raises its read seq, never
+     * lowers it; at or below a Mark as Unread's ceiling it changes nothing, above it the ceiling goes.
+     */
     fun noteRead(scopeId: String, seq: String?) {
         if (seq == null || !isCanonicalActivitySeq(seq)) return
         synchronized(lock) { raiseReadSeqLocked(scopeId, seq) }
@@ -103,16 +109,31 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
     fun setReadCursor(scopeId: String, seq: String?) {
         synchronized(lock) {
             readSeqs.remove(scopeId)
+            readSeqCeilings.remove(scopeId)
             if (seq != null && isCanonicalActivitySeq(seq)) putReadSeqLocked(scopeId, seq)
         }
     }
 
-    /** Mark as Unread here: the read cursor moved back, the read seq no longer holds ([ActivityRowEvent.MarkUnread]). */
+    /**
+     * Mark as Unread here: the read cursor moved back, the read seq no longer holds; it is kept as the ceiling a
+     * later read ack must pass ([ActivityRowEvent.MarkUnread]).
+     */
     fun forgetRead(scopeId: String) {
-        synchronized(lock) { readSeqs.remove(scopeId) }
+        synchronized(lock) {
+            val cleared = readSeqs.remove(scopeId) ?: return@synchronized
+            val ceiling = readSeqCeilings[scopeId]?.takeIf { compareActivityRowSeq(it, cleared) > 0 } ?: cleared
+            readSeqCeilings.remove(scopeId)
+            readSeqCeilings[scopeId] = ceiling
+            while (readSeqCeilings.size > cap) readSeqCeilings.remove(readSeqCeilings.keys.first())
+        }
     }
 
     private fun raiseReadSeqLocked(scopeId: String, seq: String) {
+        val ceiling = readSeqCeilings[scopeId]
+        if (ceiling != null) {
+            if (compareActivityRowSeq(seq, ceiling) <= 0) return
+            readSeqCeilings.remove(scopeId)
+        }
         val kept = readSeqs[scopeId]
         if (kept != null && compareActivityRowSeq(seq, kept) <= 0) return
         readSeqs.remove(scopeId)
@@ -141,12 +162,15 @@ internal class ActivityRowPositionLedger(private val cap: Int = ActivityRowPosit
         synchronized(lock) {
             states.clear()
             readSeqs.clear()
+            readSeqCeilings.clear()
         }
     }
 
     internal fun keptForTest(scopeId: String): ActivityRowClientState? = synchronized(lock) { states[scopeId] }
 
     internal fun readSeqForTest(scopeId: String): String? = synchronized(lock) { readSeqs[scopeId] }
+
+    internal fun readSeqCeilingForTest(scopeId: String): String? = synchronized(lock) { readSeqCeilings[scopeId] }
 }
 
 /** The conversation id the row's position state and its re-read (`?ids=`) go by: the thread's own channel for a thread row. */

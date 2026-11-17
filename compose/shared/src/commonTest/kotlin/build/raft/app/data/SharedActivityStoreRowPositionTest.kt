@@ -275,6 +275,22 @@ class SharedActivityStoreRowPositionTest {
     }
 
     @Test
+    fun markAsUnreadHereClearsTheReadSeqSoTheNextAnswerCounts() = runTest {
+        // slock `mark_unread_then_late_read_ack`: Mark as Unread clears the row's read seq (kept as a
+        // ceiling), so an answer at the read position counts again.
+        val unread = channelRow.copy(unreadCount = 1)
+        val f = loadedStore(listOf(snapshot(listOf(unread)), snapshot(listOf(unread))))
+        f.store.dispatch(readState("channel-1", maxReadSeq = 10L))
+        runCurrent()
+        f.store.dispatch(SharedActivityIntent.MarkUnread(f.row(channelRow.key)))
+        runCurrent()
+        assertEquals(null to "10", f.store.rowPositionReadSeqForTest("channel-1"))
+        f.store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(1, f.row(channelRow.key).unreadCount)
+    }
+
+    @Test
     fun aLocalReadClearsAnAtOnAnUncountedMessageAndAMentionOnlyRowKeepsIt() = runTest {
         // Web #14805: a task conversation counts chat replies only, while the server's @ is any mention
         // past the read cursor, so a lifecycle line mentioning the reader lists the row with an @ and no
