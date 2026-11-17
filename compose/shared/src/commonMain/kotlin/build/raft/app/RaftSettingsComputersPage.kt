@@ -3053,6 +3053,11 @@ private fun RaftComputerDetailBody(
                         val chips = raftComputerRuntimeChips(computer.runtimes, runtimeCatalog)
                         val hasNotInstalled = chips.any { it.availability == RaftComputerRuntimeAvailability.NotInstalled }
                         var showAllRuntimes by remember(machineId) { mutableStateOf(false) }
+                        // Install (slock #15214): offered by the runtime-auth read, read only once the
+                        // not-installed chips are shown to a person who may see the Computer's runtimes.
+                        val installAccess =
+                            if (canEdit && hasNotInstalled) LocalMembersRuntimeAccountUsageAccess.current ?: rememberShellRuntimeAccountUsageAccess() else null
+                        val install = rememberComputerRuntimeInstallController(installAccess, machineId, readNow = showAllRuntimes)
                         // Usage runtimes open their account usage (web RuntimeAccountUsageGateChip).
                         ComputerRuntimeUsageChips(
                             chips.filter { showAllRuntimes || it.availability != RaftComputerRuntimeAvailability.NotInstalled },
@@ -3062,7 +3067,20 @@ private fun RaftComputerDetailBody(
                             computerName = computer.name,
                             agents = snapshot.agents,
                         ) { chip ->
-                            RaftComputerRuntimeBadge(chip)
+                            val installAs = install?.takeIf { chip.availability == RaftComputerRuntimeAvailability.NotInstalled }?.installableAs(chip.id)
+                            if (install != null && installAs != null) {
+                                val experimental = if (chip.experimental) stringResource(Res.string.runtime_suffix_experimental) else ""
+                                ComputerRuntimeInstallChip(
+                                    label = chip.name + experimental + stringResource(Res.string.agent_create_suffix_not_installed),
+                                    copyText = chip.name,
+                                    raftRuntimeId = chip.id,
+                                    runtimeName = chip.name,
+                                    installAs = installAs,
+                                    controller = install,
+                                )
+                            } else {
+                                RaftComputerRuntimeBadge(chip)
+                            }
                         }
                         if (hasNotInstalled) {
                             RaftTextLink(
@@ -3078,6 +3096,7 @@ private fun RaftComputerDetailBody(
                                 style = RaftTheme.typography.footnote,
                             )
                         }
+                        if (install != null) ComputerRuntimeInstallStatus(install, computer.name, installAccess?.auth?.openUrl ?: {})
                     }
                 }
                 Spacer(Modifier.height(8.dp))

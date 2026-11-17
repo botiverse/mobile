@@ -33,6 +33,7 @@ import build.raft.app.data.RuntimeAuthUnavailableReason
 import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.oauthMethods
 import build.raft.app.data.SettingsComputerAgentSnapshot
+import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -74,6 +75,8 @@ internal data class ComputerRuntimeAuthCardState(
     val raftRuntimeId: String,
     val runtime: RuntimeAuthRuntime,
     val view: RuntimeAuthView,
+    /** Upgrade where the server offers it for this runtime (slock #15117); null: no Upgrade on the card. */
+    val upgrade: ComputerRuntimeUpgradeOffer? = null,
 ) {
     val status: RuntimeAuthStatus?
         get() = view.statusOf(runtime)
@@ -87,8 +90,11 @@ internal sealed interface ComputerRuntimeAuthAction {
     /** "Upgrade this Computer to sign in from here" / "This Computer has no owner, …". */
     data class Caption(val notAttached: Boolean) : ComputerRuntimeAuthAction
 
-    /** The CLI is missing, too old or an installation OAR can't use: why, and how to install it. */
-    data class Unavailable(val reason: RuntimeAuthUnavailableReason) : ComputerRuntimeAuthAction
+    /**
+     * The CLI is missing, too old or an installation OAR can't use: why, and how to install it.
+     * [upgradeOffered]: too old where the card offers Upgrade, which replaces the "update it there" guidance.
+     */
+    data class Unavailable(val reason: RuntimeAuthUnavailableReason, val upgradeOffered: Boolean = false) : ComputerRuntimeAuthAction
 
     /** Pi: one more provider at a time; pink while none is stored. */
     data class AddProvider(val primary: Boolean) : ComputerRuntimeAuthAction
@@ -110,7 +116,7 @@ internal fun ComputerRuntimeAuthCardState.action(): ComputerRuntimeAuthAction? {
     }
     if (view.availability != RuntimeAuthAvailability.Ok) return null
     val current = status
-    if (current is RuntimeAuthStatus.Unavailable) return ComputerRuntimeAuthAction.Unavailable(current.reason)
+    if (current is RuntimeAuthStatus.Unavailable) return ComputerRuntimeAuthAction.Unavailable(current.reason, upgradeOffered = upgrade != null)
     if (runtime.perProvider) return ComputerRuntimeAuthAction.AddProvider(primary = current !is RuntimeAuthStatus.LoggedIn)
     if (current is RuntimeAuthStatus.LoggedIn) {
         // Qoder has no sign-out; a Computer from before Antigravity's signs it in but not out.
@@ -118,6 +124,10 @@ internal fun ComputerRuntimeAuthCardState.action(): ComputerRuntimeAuthAction? {
     }
     return ComputerRuntimeAuthAction.SignIn
 }
+
+/** Whether the card has anything in its action row: the sign-in action, or Upgrade (web `runtimeAuthAction`). */
+internal val ComputerRuntimeAuthCardState.hasActions: Boolean
+    get() = action() != null || (upgrade != null && view.canAct)
 
 /**
  * The sign-in state under the card's title (web `RuntimeAuthHeaderLine`): "Not signed in", the
@@ -169,8 +179,10 @@ private fun ComputerRuntimeAuthStatusChip(signedIn: Boolean, modifier: Modifier 
 }
 
 /**
- * The card's sign-in action (web `runtimeAuthAction`): a button, or the caption that says why there
- * is none here. Nothing for a person who may not act. [fullWidth]: the phone sheet's stacked buttons.
+ * The card's actions (web `runtimeAuthAction`): the sign-in action (a button, or the caption that
+ * says why there is none here), then Upgrade for a runtime the Computer can upgrade (slock #15117)
+ * and what the last Upgrade learned. Nothing for a person who may not act. [fullWidth]: the phone
+ * sheet's stacked buttons.
  */
 @Composable
 internal fun ComputerRuntimeAuthActionView(
@@ -179,6 +191,27 @@ internal fun ComputerRuntimeAuthActionView(
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
     fullWidth: Boolean = false,
+) {
+    val upgrade = auth.upgrade?.takeIf { auth.view.canAct }
+    if (upgrade == null) {
+        ComputerRuntimeAuthSignInActionView(auth, onSignIn, onSignOut, modifier, fullWidth)
+        return
+    }
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ComputerRuntimeAuthSignInActionView(auth, onSignIn, onSignOut, Modifier, fullWidth)
+        ComputerRuntimeUpgradeButton(upgrade, fullWidth)
+        ComputerRuntimeOperationOutcome(computerRuntimeUpgradeCopy(upgrade.state), runtimeName = runtimeCatalogDisplayName(auth.raftRuntimeId))
+    }
+}
+
+/** The sign-in action alone (web `runtimeAuthActionAlone`). */
+@Composable
+private fun ComputerRuntimeAuthSignInActionView(
+    auth: ComputerRuntimeAuthCardState,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+    modifier: Modifier,
+    fullWidth: Boolean,
 ) {
     val action = auth.action() ?: return
     val size = if (fullWidth) RaftButtonSize.Lg else RaftButtonSize.Md
@@ -193,7 +226,7 @@ internal fun ComputerRuntimeAuthActionView(
                 style = RaftTheme.typography.caption,
                 color = RaftTheme.colors.foregroundHint,
             )
-        is ComputerRuntimeAuthAction.Unavailable -> ComputerRuntimeAuthUnavailable(auth.raftRuntimeId, action.reason, modifier)
+        is ComputerRuntimeAuthAction.Unavailable -> ComputerRuntimeAuthUnavailable(auth.raftRuntimeId, action.reason, modifier, action.upgradeOffered)
         is ComputerRuntimeAuthAction.AddProvider ->
             RaftButton(
                 text = stringResource(Res.string.settings_computers_runtime_auth_pi_add_provider),
@@ -231,7 +264,22 @@ internal fun ComputerRuntimeAuthActionView(
  * install the CLI there (with a copy button) when a command is known and it can help.
  */
 @Composable
-internal fun ComputerRuntimeAuthUnavailable(raftRuntimeId: String, reason: RuntimeAuthUnavailableReason, modifier: Modifier = Modifier) {
+internal fun ComputerRuntimeAuthUnavailable(
+    raftRuntimeId: String,
+    reason: RuntimeAuthUnavailableReason,
+    modifier: Modifier = Modifier,
+    upgradeOffered: Boolean = false,
+) {
+    // Too old where Upgrade is offered: the card's Upgrade replaces the "update it there" guidance (slock #15117).
+    if (reason == RuntimeAuthUnavailableReason.VersionUnsupported && upgradeOffered) {
+        RaftText(
+            stringResource(Res.string.settings_computers_runtime_upgrade_too_old),
+            modifier = modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_AUTH_CLI_UNAVAILABLE_TAG),
+            style = RaftTheme.typography.caption,
+            color = RaftTheme.colors.foregroundHint,
+        )
+        return
+    }
     val install = if (reason == RuntimeAuthUnavailableReason.UnsupportedInstallation) null else RUNTIME_INSTALL_COMMANDS[raftRuntimeId]
     val hint = RaftTheme.colors.foregroundHint
     Column(modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_AUTH_CLI_UNAVAILABLE_TAG), verticalArrangement = Arrangement.spacedBy(4.dp)) {

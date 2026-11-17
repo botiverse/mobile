@@ -199,6 +199,18 @@ internal data class RuntimeAuthView(
     val claudeLimitResets: ClaudeLimitResetsAvailability? = null,
     /** Who may spend them (slock #14375); null from a server that predates it (offered as usable). */
     val claudeLimitResetAccess: ClaudeLimitResetAccess? = null,
+    /**
+     * Upgrade (slock #15117, `runtimeUpgrade: true` + `upgradableRuntimes`): the runtimes this
+     * Computer last reported it can upgrade, sent only while `runtime_upgrade_button` is on for a
+     * viewer who may act on a Computer that runs a runtime's updater; null: no Upgrade here.
+     */
+    val upgradableRuntimes: List<RuntimeAuthRuntime>? = null,
+    /**
+     * Install (slock #15214, `runtimeInstall: true` + `installableRuntimes`): the runtimes this
+     * Computer does not have and can install, under the same conditions behind
+     * `runtime_install_button`; null: no Install here.
+     */
+    val installableRuntimes: List<RuntimeAuthRuntime>? = null,
 ) {
     /** Each reported runtime's status `kind` by its wire id. */
     val statusKinds: Map<String, String>
@@ -215,6 +227,14 @@ internal data class RuntimeAuthView(
         logoutRuntimes?.let { return runtime in it }
         return !runtime.logoutNeedsCapability && computerSupports(runtime)
     }
+
+    /** Web `runtimeUpgradeOffered`: the server's say-so, a viewer who may act, and a runtime the Computer can upgrade. */
+    fun upgradeOffered(runtime: RuntimeAuthRuntime?): Boolean =
+        canAct && runtime != null && upgradableRuntimes?.contains(runtime) == true
+
+    /** Web `runtimeInstallOffered`: the server's say-so, a viewer who may act, and a runtime the Computer can install. */
+    fun installOffered(runtime: RuntimeAuthRuntime?): Boolean =
+        canAct && runtime != null && installableRuntimes?.contains(runtime) == true
 
     /** The person may act and the Computer can be reached (web `canActOnRuntimes`). */
     val canActNow: Boolean
@@ -248,7 +268,15 @@ internal fun JsonElement.toRuntimeAuthView(): RuntimeAuthView? {
         logoutRuntimes = envelope.runtimeList("logoutRuntimes"),
         claudeLimitResets = ClaudeLimitResetsAvailability.fromWire(envelope.plainString("claudeLimitResets")),
         claudeLimitResetAccess = envelope["claudeLimitResetAccess"]?.toClaudeLimitResetAccess(),
+        upgradableRuntimes = envelope.offeredRuntimeList("runtimeUpgrade", "upgradableRuntimes"),
+        installableRuntimes = envelope.offeredRuntimeList("runtimeInstall", "installableRuntimes"),
     )
+}
+
+/** [listKey]'s runtimes when [flagKey] is `true` (the server offers the action here, maybe for none); null otherwise. */
+private fun JsonObject.offeredRuntimeList(flagKey: String, listKey: String): List<RuntimeAuthRuntime>? {
+    val offered = (this[flagKey] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull == true
+    return if (offered) runtimeList(listKey).orEmpty() else null
 }
 
 private fun JsonObject.runtimeList(key: String): List<RuntimeAuthRuntime>? {

@@ -17,6 +17,7 @@ import build.raft.app.data.RuntimeAuthSignedInProvider
 import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthUnavailableReason
 import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.RuntimeUpgradeResult
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedRealtimeDomainEventOwner
 import build.raft.app.data.SharedRuntimeAccountUsageStore
@@ -79,6 +80,10 @@ internal interface ComputerRuntimeAuthOps {
     suspend fun providers(runtime: RuntimeAuthRuntime): RuntimeAuthCall<RuntimeAuthProvidersResult>
 
     suspend fun connect(runtime: RuntimeAuthRuntime, providerId: String, apiKey: String): RuntimeAuthCall<RuntimeAuthProviderConnectResult>
+
+    /** Runs the runtime's own updater on the Computer (slock #15117); the cached view is dropped. */
+    suspend fun upgrade(runtime: RuntimeAuthRuntime): RuntimeAuthCall<RuntimeUpgradeResult> =
+        RuntimeAuthCall.Refused(RuntimeAuthRequestError(status = null, code = null))
 }
 
 internal class StoreComputerRuntimeAuthOps(
@@ -107,6 +112,22 @@ internal class StoreComputerRuntimeAuthOps(
 
     override suspend fun connect(runtime: RuntimeAuthRuntime, providerId: String, apiKey: String) =
         store.connectRuntimeProvider(owner, serverId, machineId, runtime, providerId, apiKey)
+
+    override suspend fun upgrade(runtime: RuntimeAuthRuntime) = store.upgradeRuntime(owner, serverId, machineId, runtime)
+}
+
+/** Install's calls of one Computer, through the same store (its runtime-auth read is shared with the cards). */
+internal class StoreComputerRuntimeInstallOps(
+    private val store: SharedRuntimeAccountUsageStore,
+    private val owner: SharedComputersOwner,
+    private val serverId: String,
+    private val machineId: String,
+) : ComputerRuntimeInstallOps {
+    override suspend fun view(force: Boolean) = store.runtimeAuthView(owner, serverId, machineId, force)
+
+    override suspend fun installPlan(runtime: RuntimeAuthRuntime) = store.runtimeInstallPlan(owner, serverId, machineId, runtime)
+
+    override suspend fun install(runtime: RuntimeAuthRuntime) = store.installRuntime(owner, serverId, machineId, runtime)
 }
 
 /**
@@ -766,7 +787,39 @@ internal class ComputerRuntimeAuthController(
         private set
     var dialog by mutableStateOf<ComputerRuntimeAuthDialog?>(null)
         private set
+
+    /** What the last Upgrade on this card learned (web `useRuntimeUpgrade`). */
+    var upgrade by mutableStateOf<ComputerRuntimeUpgradeState>(ComputerRuntimeUpgradeState.Idle)
+        private set
     private var readSeq = 0
+
+    /** Upgrade where the server offers it for this runtime (web `useOfferedRuntimeUpgrade`); null otherwise. */
+    val upgradeOffer: ComputerRuntimeUpgradeOffer?
+        get() = if (view?.upgradeOffered(runtime) == true) ComputerRuntimeUpgradeOffer(upgrade, ::startUpgrade) else null
+
+    /**
+     * Upgrade, only on the person's press: the Computer runs the runtime's own updater, then
+     * re-detects its runtimes; the view is read again whatever the answer (web `finally invalidate`).
+     */
+    fun startUpgrade() {
+        if (upgrade == ComputerRuntimeUpgradeState.Running) return
+        upgrade = ComputerRuntimeUpgradeState.Running
+        scope.launch {
+            val result = ops.upgrade(runtime)
+            log("computer_runtime_upgrade runtime=${runtime.wire} result=${result.operationLabel()}")
+            when (result) {
+                is RuntimeAuthCall.Done -> upgrade = ComputerRuntimeUpgradeState.Done(result.value)
+                is RuntimeAuthCall.Refused ->
+                    upgrade = ComputerRuntimeUpgradeState.Refused(computerRuntimeOperationRefusal(result.error.code), result.error.traceId)
+                RuntimeAuthCall.Superseded -> {
+                    upgrade = ComputerRuntimeUpgradeState.Idle
+                    superseded()
+                    return@launch
+                }
+            }
+            read(force = true)
+        }
+    }
 
     val status: RuntimeAuthStatus?
         get() = view?.statusOf(runtime)
