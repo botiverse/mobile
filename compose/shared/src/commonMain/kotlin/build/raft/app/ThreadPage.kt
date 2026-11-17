@@ -7221,6 +7221,39 @@ internal val LocalThreadAdaptiveInitiationCapture =
 internal val LocalThreadAdaptiveNativeEditingReader =
     compositionLocalOf<RaftTextFieldNativeEditingStateReader?> { null }
 
+// A jump to a message that had to load the messages around it (an unread-thread pill, the
+// thread timeline, a search match, a message link, a file's original message) could not load
+// them: say so, with the trace ID, and offer the same jump again. Kept out of
+// SharedThreadRouteContentContent to hold that method under its JVM size ceiling.
+@Composable
+private fun ThreadJumpFailureToasts(
+    threadViewModel: SharedThreadViewModel,
+    bridge: build.raft.app.base.BridgeModule,
+) {
+    val jumpLoadFailedLabel by rememberUpdatedState(stringResource(Res.string.thread_jump_load_failed))
+    val jumpRetryLabel by rememberUpdatedState(stringResource(Res.string.common_retry))
+    LaunchedEffect(threadViewModel) {
+        threadViewModel.jumpFailuresFlow().collect { failure ->
+            bridge.log(
+                "thread_jump_failed target=${failure.messageId.take(8)} unreadThreadPill=${failure.unreadThreadPill}"
+            )
+            bridge.errorToastWithRetry(
+                content = jumpLoadFailedLabel,
+                retryLabel = jumpRetryLabel,
+                onRetry = {
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.JumpToMessage(
+                            messageId = failure.messageId,
+                            switchToTab = failure.switchToTab,
+                            unreadThreadPill = failure.unreadThreadPill,
+                        )
+                    )
+                },
+            )
+        }
+    }
+}
+
 private data class SharedThreadRouteContentData(
     val initialPayload: RaftThreadScreenPayload,
     val timeContextProvider: RaftTimeContextProvider,
@@ -9302,31 +9335,7 @@ private fun SharedThreadRouteContentContent(
             }
         }
     val markUnreadNothingLabel by rememberUpdatedState(stringResource(Res.string.home_action_mark_unread_nothing))
-    val jumpLoadFailedLabel by rememberUpdatedState(stringResource(Res.string.thread_jump_load_failed))
-    val jumpRetryLabel by rememberUpdatedState(stringResource(Res.string.common_retry))
-    // A jump to a message that had to load the messages around it (an unread-thread pill, the
-    // thread timeline, a search match, a message link, a file's original message) could not load
-    // them: say so, with the trace ID, and offer the same jump again.
-    LaunchedEffect(threadViewModel) {
-        threadViewModel.jumpFailuresFlow().collect { failure ->
-            bridge.log(
-                "thread_jump_failed target=${failure.messageId.take(8)} unreadThreadPill=${failure.unreadThreadPill}"
-            )
-            bridge.errorToastWithRetry(
-                content = jumpLoadFailedLabel,
-                retryLabel = jumpRetryLabel,
-                onRetry = {
-                    threadViewModel.dispatch(
-                        SharedThreadIntent.JumpToMessage(
-                            messageId = failure.messageId,
-                            switchToTab = failure.switchToTab,
-                            unreadThreadPill = failure.unreadThreadPill,
-                        )
-                    )
-                },
-            )
-        }
-    }
+    ThreadJumpFailureToasts(threadViewModel, bridge)
     LaunchedEffect(threadViewModel) {
         threadViewModel.readToggleNoticesFlow().collect { notice ->
             when (notice) {
