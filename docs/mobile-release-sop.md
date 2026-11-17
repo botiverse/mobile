@@ -286,6 +286,10 @@ The release workflows are the build/test gate for the candidate; don't run a
 separate `Test` workflow for it. When the first draft is dispatched, start the
 interval reminder (§8).
 
+Once the drafts are built, the operator posts progress top-level in
+`#proj-mobile`: branch, build ids, Hands share links, and TestFlight and Play
+state (artin, 2026-11-17).
+
 ### 5.1 Android
 
 Hands app `raft-android` (id `a78f3891-f980-4f48-80d7-2a58e93a99aa`,
