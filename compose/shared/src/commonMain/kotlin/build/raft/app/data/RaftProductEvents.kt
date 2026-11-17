@@ -113,17 +113,6 @@ object RaftProductEvents {
         recorder.draftsItemOpened(place)
     }
 
-    /** See [RaftProductEventsRecorder.agentReadProgressShown]; a null [scopeId] (feature off there) sends nothing. */
-    fun agentReadProgressShown(
-        scopeId: String?,
-        conversation: RaftAgentReadProgressConversation,
-        faces: Boolean,
-        notReachingLine: Boolean,
-    ) {
-        if (scopeId == null) return
-        recorder.agentReadProgressShown(scopeId, conversation, faces, notReachingLine)
-    }
-
     /** See [RaftProductEventsRecorder.appRatingPromptRequested]. */
     fun appRatingPromptRequested(trigger: RaftAppRatingPromptTrigger) {
         recorder.appRatingPromptRequested(trigger)

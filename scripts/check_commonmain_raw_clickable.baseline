@@ -29,7 +29,6 @@
 1 build/raft/app/thread/ConversationUnavailable.kt
 1 build/raft/app/thread/RaftMessageLinkNotFound.kt
 2 build/raft/app/thread/ThreadAgentFollowers.kt
-1 build/raft/app/thread/ThreadAgentReadStatus.kt
 1 build/raft/app/thread/ThreadInlineVideoPreview.kt
 1 build/raft/app/thread/ThreadMessageCard.kt
 3 build/raft/app/thread/ThreadOutline.kt

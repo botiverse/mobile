@@ -7294,13 +7294,6 @@ private fun SharedThreadRouteContentContent(
                     }
                 },
             )
-        val agentTypingInThread =
-            rememberThreadAgentTypingInThread(
-                payload = renderedThread,
-                sharedStores = sharedStores,
-                storeScope = storeScope,
-                serverId = currentServerId,
-            )
         // The personal assistant's otter (web AssistantOtterAnchor): on this conversation's composer
         // when the assistant is ready with its DM, never on that DM or a thread in it.
         val assistantOtterHostId = remember { newAssistantOtterHostId() }
@@ -7480,7 +7473,6 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
                 LocalThreadPeerReadReceipts provides peerReadReceipts,
                 LocalThreadAgentTyping provides agentTyping,
-                LocalThreadAgentTypingInThread provides agentTypingInThread,
                 LocalThreadAssistantOtter provides assistantOtter,
                 // The assistant DM's receipt and WeChat notice cards. Read from values this lambda
                 // already captures (see the JVM-limit note below).
