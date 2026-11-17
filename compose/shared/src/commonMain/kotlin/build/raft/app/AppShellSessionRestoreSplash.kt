@@ -106,6 +106,7 @@ internal fun AppShellSessionRestoreSplash(
                         RaftButton(
                             text = stringResource(Res.string.auth_restore_slow_retry),
                             onClick = {
+                                slow = false
                                 attempt += 1
                                 onRetry()
                             },

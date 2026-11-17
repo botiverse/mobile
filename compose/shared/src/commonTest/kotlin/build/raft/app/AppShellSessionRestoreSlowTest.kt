@@ -8,7 +8,7 @@ import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -39,21 +39,21 @@ class AppShellSessionRestoreSlowTest {
                 scope = backgroundScope,
             )
         store.dispatch(SharedAuthGateIntent.Restore)
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(1, attempts.size)
         assertEquals(SharedAuthGateState.Restoring, store.state.value)
 
         store.dispatch(SharedAuthGateIntent.Retry)
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(2, attempts.size, "Try again restarts the restore")
         assertEquals(SharedAuthGateState.Restoring, store.state.value)
 
         // The first, abandoned request answering late does not count; the fresh one does.
         attempts[0].complete(SharedAuthResult.Unauthenticated)
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(SharedAuthGateState.Restoring, store.state.value)
         attempts[1].complete(SharedAuthResult.Success(session))
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(SharedAuthGateState.Ready(session), store.state.value)
     }
 
@@ -62,7 +62,7 @@ class AppShellSessionRestoreSlowTest {
         val hanging = CompletableDeferred<SharedAuthResult<StoredAuthSession>>()
         val store = SharedAuthGateStore(restoreSession = { hanging.await() }, scope = backgroundScope)
         store.dispatch(SharedAuthGateIntent.Restore)
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(SharedAuthGateState.Restoring, store.state.value)
 
         val steps = mutableListOf<String>()
@@ -79,7 +79,7 @@ class AppShellSessionRestoreSlowTest {
 
         // The restore that was hanging answers after the sign-out: it was cancelled, nothing lands.
         hanging.complete(SharedAuthResult.Success(session))
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(SharedAuthGateState.AuthRequired, store.state.value)
     }
 }
