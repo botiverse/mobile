@@ -2823,7 +2823,6 @@
     <string name="settings_computers_runtime_usage_claude_reset_disabled">Здесь нельзя использовать сбросы лимитов Claude. Сброс не использован.</string>
     <string name="settings_computers_runtime_usage_claude_reset_view_action">Показать доступные сбросы</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_five_hour_action">Использовать 5-часовой сброс</string>
-    <string name="settings_computers_runtime_usage_claude_reset_owner_only">Использовать сбросы Claude этого компьютера может только тот, кто его подключил.</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_five_hour">5-часовой сброс</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_weekly">недельный сброс</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_fable">сброс Fable</string>
@@ -2842,7 +2841,7 @@
     <string name="settings_computers_runtime_usage_claude_reset_at_limit_hint">Пока вы на 5-часовом лимите, отсюда можно использовать только 5-часовой сброс. Чтобы использовать недельный, Fable или полный сброс сейчас, откройте Settings › Usage на claude.ai.</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_selected_action">Использовать этот сброс</string>
     <string name="settings_computers_runtime_usage_claude_reset_consent_title">Проверить сбросы на 5-часовом лимите?</string>
-    <string name="settings_computers_runtime_usage_claude_reset_consent_body">Вы достигли 5-часового лимита. Проверка или использование сброса ненадолго открывает Claude Code на этом компьютере и отправляет один небольшой запрос, который учитывается в 5-часовом окне. В некоторых аккаунтах Claude (где есть только еженедельный 5-часовой сброс старой программы) одно открытие списка сбросов Claude Code сейчас сразу использует этот сброс без вопросов. Продолжайте, только если вас это устраивает.</string>
+    <string name="settings_computers_runtime_usage_claude_reset_consent_body">Этот аккаунт достиг 5-часового лимита. Проверка или использование сброса ненадолго открывает Claude Code на этом компьютере и отправляет один небольшой запрос, который учитывается в 5-часовом окне аккаунта. В некоторых аккаунтах Claude (где есть только еженедельный 5-часовой сброс старой программы) одно открытие списка сбросов Claude Code сейчас сразу использует этот сброс без вопросов. Продолжайте, только если вас это устраивает.</string>
     <string name="settings_computers_runtime_usage_claude_reset_consent_confirm">Продолжить</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm_title">Использовать %1$s?</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm_body">Claude Code на этом компьютере сейчас использует %2$s аккаунта %1$s. Это нельзя отменить.</string>

@@ -23,7 +23,8 @@ internal const val CreateExternalChannelCreatedTag = "create-channel-external-cr
  * review for the channel about to be made. Its button reads Create and Invite until the channel
  * exists, then Invite; Back returns to step 2 until then. Skip (the sheet's close) leaves: before
  * the create nothing was made, after it onto the channel. A send that failed after the create says
- * the channel was made above the refusal.
+ * the channel was made above the refusal, as a warning, and only once it failed
+ * ([CreateExternalChannelState.showCreatedNotice]).
  */
 @Composable
 internal fun SharedCreateExternalChannelReview(
@@ -67,10 +68,10 @@ internal fun SharedCreateExternalChannelReviewBody(state: CreateExternalChannelS
     val invite = state.invite
     val created = state.created
     Column(Modifier.fillMaxSize()) {
-        if (created != null) {
+        if (created != null && state.showCreatedNotice) {
             RaftBanner(
                 description = stringResource(Res.string.channel_create_external_created, created.channel.name.removePrefix("#")),
-                status = RaftBannerStatus.Success,
+                status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm,
                 modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp).testTag(CreateExternalChannelCreatedTag),
             )

@@ -2826,7 +2826,6 @@
     <string name="settings_computers_runtime_usage_claude_reset_disabled">여기서는 Claude 한도 초기화를 사용할 수 없어요. 초기화를 사용하지 않았어요.</string>
     <string name="settings_computers_runtime_usage_claude_reset_view_action">사용 가능한 초기화 보기</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_five_hour_action">5시간 초기화 사용</string>
-    <string name="settings_computers_runtime_usage_claude_reset_owner_only">이 컴퓨터를 연결한 사람만 이 컴퓨터의 Claude 초기화를 사용할 수 있어요.</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_five_hour">5시간 초기화</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_weekly">주간 초기화</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_fable">Fable 초기화</string>
@@ -2845,7 +2844,7 @@
     <string name="settings_computers_runtime_usage_claude_reset_at_limit_hint">5시간 한도에 도달한 동안에는 여기서 5시간 초기화만 사용할 수 있어요. 주간, Fable, 전체 초기화를 지금 사용하려면 claude.ai의 Settings › Usage로 가세요.</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_selected_action">이 초기화 사용</string>
     <string name="settings_computers_runtime_usage_claude_reset_consent_title">5시간 한도에서 초기화를 확인할까요?</string>
-    <string name="settings_computers_runtime_usage_claude_reset_consent_body">5시간 한도에 도달했어요. 초기화를 확인하거나 사용하면 이 컴퓨터에서 Claude Code가 잠깐 열리고, 5시간 한도에 포함되는 작은 요청이 한 번 전송돼요. 일부 Claude 계정(이전 방식인 주 1회 5시간 초기화만 있는 계정)에서는 지금 Claude Code의 초기화 목록을 열기만 해도 묻지 않고 그 5시간 초기화가 바로 사용돼요. 괜찮을 때만 계속하세요.</string>
+    <string name="settings_computers_runtime_usage_claude_reset_consent_body">이 계정이 5시간 한도에 도달했어요. 초기화를 확인하거나 사용하면 이 컴퓨터에서 Claude Code가 잠깐 열리고, 이 계정의 5시간 한도에 포함되는 작은 요청이 한 번 전송돼요. 일부 Claude 계정(이전 방식인 주 1회 5시간 초기화만 있는 계정)에서는 지금 Claude Code의 초기화 목록을 열기만 해도 묻지 않고 그 5시간 초기화가 바로 사용돼요. 괜찮을 때만 계속하세요.</string>
     <string name="settings_computers_runtime_usage_claude_reset_consent_confirm">계속</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm_title">%1$s를 사용할까요?</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm_body">이 컴퓨터의 Claude Code가 지금 %1$s의 %2$s를 사용해요. 되돌릴 수 없어요.</string>

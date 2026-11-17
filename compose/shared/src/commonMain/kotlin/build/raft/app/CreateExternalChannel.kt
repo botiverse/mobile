@@ -65,6 +65,14 @@ internal data class CreateExternalChannelState(
     val created: CreateChannelResult? = null,
     val effects: List<CreateExternalChannelEffect> = emptyList(),
 ) {
+    /**
+     * Web `createdExternal && !externalCommitting` (slock #15136): "created, but the invites weren't
+     * sent" only once a send after the create came back unsent and the review stayed open; not while
+     * Create and Invite is still sending, nor once it finished (the review closes onto the channel).
+     */
+    val showCreatedNotice: Boolean
+        get() = created != null && !invite.busy && effects.none { it is CreateExternalChannelEffect.Finished }
+
     /** Web `emailsBlocked`: step 2's Create and Invite needs an email or a server, and 20 at most. */
     val canReview: Boolean
         get() = !invite.busy && (invite.entries.isNotEmpty() || invite.chosenServers.isNotEmpty()) && invite.overBy <= 0
@@ -280,13 +288,19 @@ internal class CreateExternalChannelStore(
                         null -> listOf(ExternalInvitesEffect.ServersNotConnected((result as? DataResult.Error)?.error?.traceId))
                     }
                 }
-            updateInvite { it.copy(busy = false) }
             val toasts =
                 listOfNotNull(
                     ExternalInvitesEffect.Sent(sent).takeIf { sent > 0 },
                     ExternalInvitesEffect.Added(added).takeIf { added > 0 },
                 ) + serverEffects
-            emit(*(toasts.map { CreateExternalChannelEffect.Toast(it) } + CreateExternalChannelEffect.Finished(channel)).toTypedArray())
+            // One update: no state in between that is idle with the channel created and nothing pending
+            // (it would show "created, but the invites weren't sent" for a send that succeeded).
+            mutableState.update {
+                it.copy(
+                    invite = it.invite.copy(busy = false),
+                    effects = it.effects + toasts.map { toast -> CreateExternalChannelEffect.Toast(toast) } + CreateExternalChannelEffect.Finished(channel),
+                )
+            }
         }
     }
 }

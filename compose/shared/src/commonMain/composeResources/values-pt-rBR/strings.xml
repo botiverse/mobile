@@ -2826,7 +2826,6 @@
     <string name="settings_computers_runtime_usage_claude_reset_disabled">Não é possível usar as redefinições de limite do Claude aqui. Nenhuma redefinição foi usada.</string>
     <string name="settings_computers_runtime_usage_claude_reset_view_action">Ver redefinições disponíveis</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_five_hour_action">Usar redefinição de 5 horas</string>
-    <string name="settings_computers_runtime_usage_claude_reset_owner_only">Somente quem conectou este computador pode usar as redefinições do Claude dele.</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_five_hour">redefinição de 5 horas</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_weekly">redefinição semanal</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_fable">redefinição do Fable</string>
@@ -2844,10 +2843,10 @@
     <string name="settings_computers_runtime_usage_claude_reset_read_timeout_view_only">O computador não respondeu a tempo.</string>
     <string name="settings_computers_runtime_usage_claude_reset_at_limit_hint">Enquanto você estiver no limite de 5 horas, só uma redefinição de 5 horas pode ser usada por aqui. Para usar agora uma semanal, do Fable ou completa, acesse Settings › Usage em claude.ai.</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_selected_action">Usar esta redefinição</string>
-    <string name="settings_computers_runtime_usage_claude_reset_consent_title">Ver suas redefinições no limite de 5 horas?</string>
-    <string name="settings_computers_runtime_usage_claude_reset_consent_body">Você atingiu seu limite de 5 horas. Verificar ou usar uma redefinição abre o Claude Code neste computador por um instante e envia uma pequena solicitação, que conta para sua janela de 5 horas. Em algumas contas do Claude (as que só têm a redefinição de 5 horas semanal do programa antigo), basta abrir agora a lista de redefinições do Claude Code para usar essa redefinição na hora, sem perguntar. Continue só se estiver tudo bem.</string>
+    <string name="settings_computers_runtime_usage_claude_reset_consent_title">Ver as redefinições desta conta no limite de 5 horas?</string>
+    <string name="settings_computers_runtime_usage_claude_reset_consent_body">Esta conta atingiu o limite de 5 horas. Verificar ou usar uma redefinição abre o Claude Code neste computador por um instante e envia uma pequena solicitação, que conta para a janela de 5 horas da conta. Em algumas contas do Claude (as que só têm a redefinição de 5 horas semanal do programa antigo), basta abrir agora a lista de redefinições do Claude Code para usar essa redefinição na hora, sem perguntar. Continue só se estiver tudo bem.</string>
     <string name="settings_computers_runtime_usage_claude_reset_consent_confirm">Continuar</string>
-    <string name="settings_computers_runtime_usage_claude_reset_confirm_title">Usar sua %1$s?</string>
+    <string name="settings_computers_runtime_usage_claude_reset_confirm_title">Usar a %1$s desta conta?</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm_body">O Claude Code deste computador vai usar agora a %2$s de %1$s. Isso não pode ser desfeito.</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm">Usar %1$s</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_left_one">Resta %1$d</string>
@@ -2858,9 +2857,9 @@
     <string name="settings_computers_runtime_usage_claude_reset_state_unknown">Não foi possível ler</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_not_checked">Não verificada</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_not_offered">Não existe nesta conta</string>
-    <string name="settings_computers_runtime_usage_claude_reset_done">Sua %1$s foi usada.</string>
+    <string name="settings_computers_runtime_usage_claude_reset_done">A %1$s desta conta foi usada.</string>
     <string name="settings_computers_runtime_usage_claude_reset_no_reset">Nenhuma %1$s para usar. Nenhuma redefinição foi usada.</string>
-    <string name="settings_computers_runtime_usage_claude_reset_five_hour_spent">Sua redefinição de 5 horas foi usada no lugar da %1$s: esta conta só tem a redefinição de 5 horas semanal do programa antigo do Claude.</string>
+    <string name="settings_computers_runtime_usage_claude_reset_five_hour_spent">A redefinição de 5 horas desta conta foi usada no lugar da %1$s: ela só tem a redefinição de 5 horas semanal do programa antigo do Claude.</string>
     <string name="settings_computers_runtime_usage_claude_reset_unknown">Não conseguimos confirmar se uma redefinição foi usada. Confira /usage no Claude Code antes de tentar de novo.</string>
     <string name="settings_computers_runtime_usage_claude_reset_timeout">O computador não respondeu a tempo, então não se sabe se uma redefinição foi usada. Confira /usage no Claude Code antes de tentar de novo.</string>
     <string name="settings_computers_runtime_usage_claude_reset_not_attempted">Nada foi usado: o computador estava ocupado ou ficou sem tempo. Tente novamente.</string>

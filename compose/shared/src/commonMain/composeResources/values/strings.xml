@@ -2860,7 +2860,6 @@
     <string name="settings_computers_runtime_usage_claude_reset_disabled">Claude limit resets can't be used here. No reset was used.</string>
     <string name="settings_computers_runtime_usage_claude_reset_view_action">View available resets</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_five_hour_action">Use 5-hour reset</string>
-    <string name="settings_computers_runtime_usage_claude_reset_owner_only">Only the person who connected this Computer can use its Claude resets.</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_five_hour">5-hour reset</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_weekly">weekly reset</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_fable">Fable reset</string>
@@ -2878,10 +2877,10 @@
     <string name="settings_computers_runtime_usage_claude_reset_read_timeout_view_only">The Computer didn't answer in time.</string>
     <string name="settings_computers_runtime_usage_claude_reset_at_limit_hint">At your 5-hour limit, only a 5-hour reset can be used from here. To use a weekly, Fable or full reset now, go to Settings › Usage on claude.ai.</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_selected_action">Use this reset</string>
-    <string name="settings_computers_runtime_usage_claude_reset_consent_title">Check your resets at the 5-hour limit?</string>
-    <string name="settings_computers_runtime_usage_claude_reset_consent_body">You're at your 5-hour limit. Checking or using a reset opens Claude Code on this Computer for a moment and sends one small request, which counts against your 5-hour window. On some Claude accounts (those with only the older once-a-week 5-hour reset), just opening Claude Code's reset list now uses that 5-hour reset right away, without asking. Continue only if that's OK.</string>
+    <string name="settings_computers_runtime_usage_claude_reset_consent_title">Check this account's resets at the 5-hour limit?</string>
+    <string name="settings_computers_runtime_usage_claude_reset_consent_body">This account is at its 5-hour limit. Checking or using a reset opens Claude Code on this Computer for a moment and sends one small request, which counts against the account's 5-hour window. On some Claude accounts (those with only the older once-a-week 5-hour reset), just opening Claude Code's reset list now uses that 5-hour reset right away, without asking. Continue only if that's OK.</string>
     <string name="settings_computers_runtime_usage_claude_reset_consent_confirm">Continue</string>
-    <string name="settings_computers_runtime_usage_claude_reset_confirm_title">Use your %1$s?</string>
+    <string name="settings_computers_runtime_usage_claude_reset_confirm_title">Use this account's %1$s?</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm_body">Claude Code on this Computer uses %1$s's %2$s now. This can't be undone.</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm">Use %1$s</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_left_one">%1$d left</string>
@@ -2892,9 +2891,9 @@
     <string name="settings_computers_runtime_usage_claude_reset_state_unknown">Couldn't read</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_not_checked">Not checked yet</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_not_offered">Not on this account</string>
-    <string name="settings_computers_runtime_usage_claude_reset_done">Used your %1$s.</string>
+    <string name="settings_computers_runtime_usage_claude_reset_done">Used this account's %1$s.</string>
     <string name="settings_computers_runtime_usage_claude_reset_no_reset">No %1$s to use. No reset was used.</string>
-    <string name="settings_computers_runtime_usage_claude_reset_five_hour_spent">Your 5-hour reset was used instead of the %1$s: this account has only Claude's older once-a-week 5-hour reset.</string>
+    <string name="settings_computers_runtime_usage_claude_reset_five_hour_spent">This account's 5-hour reset was used instead of the %1$s: it has only Claude's older once-a-week 5-hour reset.</string>
     <string name="settings_computers_runtime_usage_claude_reset_unknown">We couldn't confirm whether a reset was used. Check /usage in Claude Code before trying again.</string>
     <string name="settings_computers_runtime_usage_claude_reset_timeout">The Computer didn't answer in time, so it's not known whether a reset was used. Check /usage in Claude Code before trying again.</string>
     <string name="settings_computers_runtime_usage_claude_reset_not_attempted">Nothing was used: the Computer was busy or ran out of time. Try again.</string>

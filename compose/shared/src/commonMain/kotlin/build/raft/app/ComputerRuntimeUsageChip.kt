@@ -448,8 +448,8 @@ internal class ComputerRuntimeUsageController(
 
     /**
      * "View available resets" (web `ClaudeLimitResetsDialog`): reads at once below the 5-hour
-     * limit; at it, the person who connected the Computer is asked to consent first, anyone else
-     * is told who can (the card does not offer it to them there).
+     * limit; at it, a viewer who may use the resets is asked to consent first, anyone else (only
+     * on an older server) is told who can (the card does not offer it to them there).
      */
     private fun openClaudeLimitResets() {
         if (claudeLimitResetOffer?.view != true) return
@@ -459,7 +459,7 @@ internal class ComputerRuntimeUsageController(
             when {
                 !atLimit -> ComputerRuntimeClaudeLimitResetsPhase.Reading(consent = false)
                 canUse -> ComputerRuntimeClaudeLimitResetsPhase.Consent
-                else -> ComputerRuntimeClaudeLimitResetsPhase.Failed(ComputerRuntimeClaudeLimitResetText.OwnerOnly)
+                else -> ComputerRuntimeClaudeLimitResetsPhase.Failed(ComputerRuntimeClaudeLimitResetText.Forbidden)
             }
         claudeLimitResetsDialog = ComputerRuntimeClaudeLimitResetsListState(phase = phase, canUse = canUse, atFiveHourLimit = atLimit)
         if (phase is ComputerRuntimeClaudeLimitResetsPhase.Reading) readClaudeLimitResets(consent = false)
@@ -511,7 +511,7 @@ internal class ComputerRuntimeUsageController(
                                         if (canUse) {
                                             ComputerRuntimeClaudeLimitResetsPhase.Consent
                                         } else {
-                                            ComputerRuntimeClaudeLimitResetsPhase.Failed(ComputerRuntimeClaudeLimitResetText.OwnerOnly)
+                                            ComputerRuntimeClaudeLimitResetsPhase.Failed(ComputerRuntimeClaudeLimitResetText.Forbidden)
                                         }
                                     else -> {
                                         if (claudeLimitResetsNotSupportedHere(read.reason)) claudeNotSupportedHere = true

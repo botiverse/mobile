@@ -54,15 +54,17 @@ import build.raft.designsystem.theme.RaftTheme
  * when asked, and the confirm uses one kind. Codex's "Use a reset" is ComputerRuntimeLimitReset.kt.
  */
 
-/** Web `ClaudeLimitResetOffer`: use (the person who connected the Computer), or the list only. */
+/** Web `ClaudeLimitResetOffer`: use (the person who connected the Computer, or an owner or admin), or the list only (an older server). */
 internal enum class ComputerRuntimeClaudeLimitResetAccess { Use, ViewOnly }
 
 /**
  * Web `claudeLimitResetOffer`: only for Claude, a person who may act on the Computer's runtimes
  * while it can be reached, Claude Code not signed out, the server saying this Computer runs them
  * (`claudeLimitResets` ok: the flag is on) and the Computer not having answered that it cannot.
- * `canUse` alone decides: someone else may only view the list, and only below the 5-hour limit,
- * where the read needs no consent. An older server without the field: offered as usable.
+ * `canUse` alone decides. The current server sends it true to everyone it sends the resets to (the
+ * person who connected the Computer, an owner or admin; slock #15124); an older server sent it false
+ * to an owner or admin who did not connect it, who may then only view the list, and only below the
+ * 5-hour limit, where the read needs no consent. A server without the field: offered as usable.
  */
 internal fun computerRuntimeClaudeLimitResetAccess(
     provider: RuntimeAccountUsageProvider,
@@ -112,7 +114,6 @@ internal sealed interface ComputerRuntimeClaudeLimitResetText {
     data object Reauth : ComputerRuntimeClaudeLimitResetText
     data class ReadFailed(val viewOnly: Boolean) : ComputerRuntimeClaudeLimitResetText
     data class ReadTimeout(val viewOnly: Boolean) : ComputerRuntimeClaudeLimitResetText
-    data object OwnerOnly : ComputerRuntimeClaudeLimitResetText
     data object Forbidden : ComputerRuntimeClaudeLimitResetText
     data object ComputerOffline : ComputerRuntimeClaudeLimitResetText
     data object UpgradeRequired : ComputerRuntimeClaudeLimitResetText
@@ -179,7 +180,6 @@ internal val RuntimeLimitResetRefusal.outcomeUnknown: Boolean
 internal fun RuntimeLimitResetRefusal.claudeRequestError(): ComputerRuntimeClaudeLimitResetText {
     val status = status
     return when {
-        code == "claude_limit_reset_owner_only" -> ComputerRuntimeClaudeLimitResetText.OwnerOnly
         status == 403 -> ComputerRuntimeClaudeLimitResetText.Forbidden
         code == "computer_offline" -> ComputerRuntimeClaudeLimitResetText.ComputerOffline
         code == "computer_upgrade_required" -> ComputerRuntimeClaudeLimitResetText.UpgradeRequired
@@ -301,7 +301,6 @@ internal fun ComputerRuntimeClaudeLimitResetText.text(): String =
                     Res.string.settings_computers_runtime_usage_claude_reset_read_timeout
                 }
             )
-        ComputerRuntimeClaudeLimitResetText.OwnerOnly -> stringResource(Res.string.settings_computers_runtime_usage_claude_reset_owner_only)
         ComputerRuntimeClaudeLimitResetText.Forbidden -> stringResource(Res.string.settings_computers_runtime_usage_limit_reset_forbidden)
         ComputerRuntimeClaudeLimitResetText.ComputerOffline -> stringResource(Res.string.settings_computers_runtime_usage_limit_reset_computer_offline)
         ComputerRuntimeClaudeLimitResetText.UpgradeRequired -> stringResource(Res.string.settings_computers_runtime_usage_limit_reset_upgrade_required)

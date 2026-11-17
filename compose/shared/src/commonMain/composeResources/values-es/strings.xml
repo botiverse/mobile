@@ -2826,7 +2826,6 @@
     <string name="settings_computers_runtime_usage_claude_reset_disabled">Aquí no se pueden usar los restablecimientos de límite de Claude. No se usó ningún restablecimiento.</string>
     <string name="settings_computers_runtime_usage_claude_reset_view_action">Ver restablecimientos disponibles</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_five_hour_action">Usar restablecimiento de 5 horas</string>
-    <string name="settings_computers_runtime_usage_claude_reset_owner_only">Solo la persona que conectó esta computadora puede usar sus restablecimientos de Claude.</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_five_hour">restablecimiento de 5 horas</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_weekly">restablecimiento semanal</string>
     <string name="settings_computers_runtime_usage_claude_reset_kind_fable">restablecimiento de Fable</string>
@@ -2844,10 +2843,10 @@
     <string name="settings_computers_runtime_usage_claude_reset_read_timeout_view_only">La computadora no respondió a tiempo.</string>
     <string name="settings_computers_runtime_usage_claude_reset_at_limit_hint">Mientras estés en tu límite de 5 horas, desde aquí solo se puede usar un restablecimiento de 5 horas. Para usar ahora uno semanal, de Fable o completo, ve a Settings › Usage en claude.ai.</string>
     <string name="settings_computers_runtime_usage_claude_reset_use_selected_action">Usar este restablecimiento</string>
-    <string name="settings_computers_runtime_usage_claude_reset_consent_title">¿Ver tus restablecimientos en el límite de 5 horas?</string>
-    <string name="settings_computers_runtime_usage_claude_reset_consent_body">Llegaste a tu límite de 5 horas. Revisar o usar un restablecimiento abre Claude Code en esta computadora por un momento y envía una pequeña solicitud, que cuenta para tu ventana de 5 horas. En algunas cuentas de Claude (las que solo tienen el restablecimiento de 5 horas semanal del programa anterior), con solo abrir ahora la lista de restablecimientos de Claude Code se usa ese restablecimiento de inmediato, sin preguntar. Continúa solo si te parece bien.</string>
+    <string name="settings_computers_runtime_usage_claude_reset_consent_title">¿Ver los restablecimientos de esta cuenta en el límite de 5 horas?</string>
+    <string name="settings_computers_runtime_usage_claude_reset_consent_body">Esta cuenta llegó a su límite de 5 horas. Revisar o usar un restablecimiento abre Claude Code en esta computadora por un momento y envía una pequeña solicitud, que cuenta para la ventana de 5 horas de la cuenta. En algunas cuentas de Claude (las que solo tienen el restablecimiento de 5 horas semanal del programa anterior), con solo abrir ahora la lista de restablecimientos de Claude Code se usa ese restablecimiento de inmediato, sin preguntar. Continúa solo si te parece bien.</string>
     <string name="settings_computers_runtime_usage_claude_reset_consent_confirm">Continuar</string>
-    <string name="settings_computers_runtime_usage_claude_reset_confirm_title">¿Usar tu %1$s?</string>
+    <string name="settings_computers_runtime_usage_claude_reset_confirm_title">¿Usar el %1$s de esta cuenta?</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm_body">Claude Code en esta computadora usará ahora el %2$s de %1$s. No se puede deshacer.</string>
     <string name="settings_computers_runtime_usage_claude_reset_confirm">Usar %1$s</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_left_one">Queda %1$d</string>
@@ -2858,9 +2857,9 @@
     <string name="settings_computers_runtime_usage_claude_reset_state_unknown">No se pudo leer</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_not_checked">Sin comprobar</string>
     <string name="settings_computers_runtime_usage_claude_reset_state_not_offered">No está en esta cuenta</string>
-    <string name="settings_computers_runtime_usage_claude_reset_done">Se usó tu %1$s.</string>
+    <string name="settings_computers_runtime_usage_claude_reset_done">Se usó el %1$s de esta cuenta.</string>
     <string name="settings_computers_runtime_usage_claude_reset_no_reset">No hay %1$s para usar. No se usó ningún restablecimiento.</string>
-    <string name="settings_computers_runtime_usage_claude_reset_five_hour_spent">Se usó tu restablecimiento de 5 horas en lugar del %1$s: esta cuenta solo tiene el restablecimiento de 5 horas semanal del programa anterior de Claude.</string>
+    <string name="settings_computers_runtime_usage_claude_reset_five_hour_spent">Se usó el restablecimiento de 5 horas de esta cuenta en lugar del %1$s: solo tiene el restablecimiento de 5 horas semanal del programa anterior de Claude.</string>
     <string name="settings_computers_runtime_usage_claude_reset_unknown">No pudimos confirmar si se usó un restablecimiento. Revisa /usage en Claude Code antes de volver a intentarlo.</string>
     <string name="settings_computers_runtime_usage_claude_reset_timeout">La computadora no respondió a tiempo, así que no se sabe si se usó un restablecimiento. Revisa /usage en Claude Code antes de volver a intentarlo.</string>
     <string name="settings_computers_runtime_usage_claude_reset_not_attempted">No se usó nada: la computadora estaba ocupada o se quedó sin tiempo. Vuelve a intentarlo.</string>
