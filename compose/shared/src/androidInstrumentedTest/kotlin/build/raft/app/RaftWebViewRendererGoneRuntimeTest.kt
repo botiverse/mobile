@@ -50,7 +50,10 @@ class RaftWebViewRendererGoneRuntimeTest {
         }
         instrumentation.runOnMainSync {
             RaftWebViewRendererGone.resetForTest()
-            RaftWebViewRendererGone.ticketSink = { _, extras -> tickets += extras }
+            RaftWebViewRendererGone.ticketSink = { _, extras, done ->
+                tickets += extras
+                done(true)
+            }
             warm =
                 WebView(context).apply {
                     webViewClient =
