@@ -54,6 +54,9 @@ class MembersAgentActivitySubTabSwipeUiTest {
 
     private fun ComposeUiTest.showProfile() {
         selected = ActivityPage
+        // The Overview draws avatars: install the app's Coil loader first, as the app does, so this
+        // test never creates Coil's default singleton under a later RaftPagerHost test in this JVM.
+        runCatching { build.raft.app.image.raftInstallImageLoader() }
         setContent {
             val pager =
                 remember {
