@@ -416,6 +416,11 @@ internal class BridgeSettingsPlatformCapabilities(
         return DataResult.Content(response.toDiagnosticsHostSnapshot())
     }
 
+    /**
+     * Copy / share the environment summary (version, build, source, platform, device, server,
+     * socket). Hosts never put app run logs here: logs leave the device only with an explicit
+     * Feedback submit, as the diagnostics attachment (product ruling 2026-11-17).
+     */
     suspend fun copyDiagnostics(): Boolean =
         diagnosticsSettingsCapability("copyDiagnostics")?.optString("status") == "ok"
 

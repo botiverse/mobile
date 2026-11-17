@@ -506,34 +506,50 @@ private fun Bitmap.recycleIfNeededForThreadImage() {
     }
 }
 
+/**
+ * The user-facing copy/share text (Settings > About "Copy environment info", Diagnostics share,
+ * the signed-out report-failed fallback): the Environment rows only. App run logs never go on the
+ * clipboard or a share sheet; they leave the device only with an explicit Feedback submit, inside
+ * the attachment built by [formatMergedSettingsDiagnosticsExportText] (product ruling 2026-11-17).
+ */
+internal fun formatSettingsDiagnosticsSummaryText(about: Map<String, Any>): String =
+        buildString {
+            appendLine("Raft diagnostics")
+            appendLine()
+            appendLine("Environment")
+            appendMergedSettingsDiagnosticsEnvironmentRows(about)
+        }
+
+private fun StringBuilder.appendMergedSettingsDiagnosticsEnvironmentRows(about: Map<String, Any>) {
+    appendDiagnosticsExportLine("App", about.diagnosticsStringValue("appName").ifBlank { "Raft" })
+    appendDiagnosticsExportLine("Version", about.diagnosticsStringValue("versionLabel"))
+    appendDiagnosticsExportLine("Version code", about.diagnosticsStringValue("versionCodeLabel"))
+    appendDiagnosticsExportLine("Build", about.diagnosticsStringValue("buildLabel"))
+    appendDiagnosticsExportLine("Source", about.diagnosticsStringValue("sourceLabel"))
+    appendDiagnosticsExportLine("Package", about.diagnosticsStringValue("packageName"))
+    appendDiagnosticsExportLine("Platform", about.diagnosticsStringValue("platformLabel"))
+    appendDiagnosticsExportLine("SDK", about.diagnosticsStringValue("sdkLabel"))
+    appendDiagnosticsExportLine("Device", about.diagnosticsStringValue("deviceLabel"))
+    appendDiagnosticsExportLine("Model", about.diagnosticsStringValue("modelLabel"))
+    appendDiagnosticsExportLine("WebView", about.diagnosticsStringValue("webViewLabel"))
+    appendDiagnosticsExportLine("Install time", about.diagnosticsStringValue("installTimeLabel"))
+    appendDiagnosticsExportLine("Screen", about.diagnosticsStringValue("screenLabel"))
+    appendDiagnosticsExportLine("Density", about.diagnosticsStringValue("densityLabel"))
+    appendDiagnosticsExportLine("Font scale", about.diagnosticsStringValue("fontScaleLabel"))
+    appendDiagnosticsExportLine("Session", about.diagnosticsStringValue("sessionStatusLabel"))
+    appendDiagnosticsExportLine("Signed in user", about.diagnosticsStringValue("signedInUserLabel"))
+    appendDiagnosticsExportLine("Selected server", about.diagnosticsStringValue("selectedServerLabel"))
+    appendDiagnosticsExportLine("Socket", about.diagnosticsStringValue("socketStatusLabel"))
+}
+
+/** The summary inside the Feedback diagnostics attachment; never copied or shared. */
 internal fun formatMergedSettingsDiagnosticsExportText(
         about: Map<String, Any>,
         recentLogs: String,
         hasFallbackDiagnosticsLogs: Boolean
 ): String =
         buildString {
-            appendLine("Raft diagnostics")
-            appendLine()
-            appendLine("Environment")
-            appendDiagnosticsExportLine("App", about.diagnosticsStringValue("appName").ifBlank { "Raft" })
-            appendDiagnosticsExportLine("Version", about.diagnosticsStringValue("versionLabel"))
-            appendDiagnosticsExportLine("Version code", about.diagnosticsStringValue("versionCodeLabel"))
-            appendDiagnosticsExportLine("Build", about.diagnosticsStringValue("buildLabel"))
-            appendDiagnosticsExportLine("Source", about.diagnosticsStringValue("sourceLabel"))
-            appendDiagnosticsExportLine("Package", about.diagnosticsStringValue("packageName"))
-            appendDiagnosticsExportLine("Platform", about.diagnosticsStringValue("platformLabel"))
-            appendDiagnosticsExportLine("SDK", about.diagnosticsStringValue("sdkLabel"))
-            appendDiagnosticsExportLine("Device", about.diagnosticsStringValue("deviceLabel"))
-            appendDiagnosticsExportLine("Model", about.diagnosticsStringValue("modelLabel"))
-            appendDiagnosticsExportLine("WebView", about.diagnosticsStringValue("webViewLabel"))
-            appendDiagnosticsExportLine("Install time", about.diagnosticsStringValue("installTimeLabel"))
-            appendDiagnosticsExportLine("Screen", about.diagnosticsStringValue("screenLabel"))
-            appendDiagnosticsExportLine("Density", about.diagnosticsStringValue("densityLabel"))
-            appendDiagnosticsExportLine("Font scale", about.diagnosticsStringValue("fontScaleLabel"))
-            appendDiagnosticsExportLine("Session", about.diagnosticsStringValue("sessionStatusLabel"))
-            appendDiagnosticsExportLine("Signed in user", about.diagnosticsStringValue("signedInUserLabel"))
-            appendDiagnosticsExportLine("Selected server", about.diagnosticsStringValue("selectedServerLabel"))
-            appendDiagnosticsExportLine("Socket", about.diagnosticsStringValue("socketStatusLabel"))
+            append(formatSettingsDiagnosticsSummaryText(about))
             appendLine()
             appendLine("App diagnostics")
             appendDiagnosticsExportLine("TDLog", "disabled")
@@ -5310,14 +5326,14 @@ internal class RaftBridgeModule(
                         "loadDiagnostics" -> loadSettingsDiagnostics()
                         "setDiagnosticFeatureFlagOverride" -> setDiagnosticFeatureFlagOverride(request)
                         "copyDiagnostics" -> {
-                            copyText("Raft diagnostics", buildMergedSettingsDiagnosticsExportText())
+                            copyText("Raft diagnostics", buildSettingsDiagnosticsSummaryText())
                             RaftAppLog.record("SlockDiagnostics", "shared_copy_diagnostics")
                             mapOf("status" to "ok")
                         }
                         "shareDiagnostics" -> {
                             shareText(
                                     subject = "Raft diagnostics",
-                                    text = buildMergedSettingsDiagnosticsExportText()
+                                    text = buildSettingsDiagnosticsSummaryText()
                             )
                             RaftAppLog.record("SlockDiagnostics", "shared_share_diagnostics")
                             mapOf("status" to "ok")
@@ -6935,7 +6951,7 @@ internal class RaftBridgeModule(
             attachmentNames: List<String>
     ): String {
         val updateRoute = handsUpdateRouteForRuntime()
-        val environment = settingsFeedbackShareEnvironmentSection(buildMergedSettingsDiagnosticsExportText())
+        val environment = settingsFeedbackShareEnvironmentSection(buildSettingsDiagnosticsSummaryText())
         val utcTime =
                 SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
                         .apply { timeZone = TimeZone.getTimeZone("UTC") }
@@ -6991,9 +7007,9 @@ internal class RaftBridgeModule(
     }
 
     private fun writeDiagnosticsFeedbackFile(): DiagnosticsFeedbackFile {
-        // The zip carries the logs themselves (app_logs/, auth_logs/): its summary leaves out the
-        // ~120 KB "Recent logs" copy of them that the copy/share text needs.
-        val summaryText = buildMergedSettingsDiagnosticsExportText(includeRecentLogs = false)
+        // The zip carries the logs themselves (app_logs/, auth_logs/): its summary points at them
+        // instead of repeating them inline. This Feedback submit is the only path that sends logs.
+        val summaryText = buildDiagnosticsFeedbackAttachmentSummaryText()
         val archive = RaftAndroidLocalDiagnostics.prepareDiagnosticsFeedbackArchive(appContext, summaryText)
         RaftAndroidLocalDiagnostics.uploadDiagnostics(
                 context = appContext,
@@ -7223,18 +7239,20 @@ internal class RaftBridgeModule(
                 else -> "text/plain"
             }
 
-    private fun buildMergedSettingsDiagnosticsExportText(includeRecentLogs: Boolean = true): String {
+    /** Copy/share text: the Environment rows only, no app run logs (see [formatSettingsDiagnosticsSummaryText]). */
+    private fun buildSettingsDiagnosticsSummaryText(): String {
         val about = loadSettingsAbout()
         recordSettingsDiagnosticsEnvironment(about)
-        val recentLogs =
-                if (includeRecentLogs) {
-                    RaftAndroidLocalDiagnostics.exportRecentDiagnosticsText(appContext)
-                } else {
-                    FeedbackZipRecentLogsPointer
-                }
+        return formatSettingsDiagnosticsSummaryText(about)
+    }
+
+    /** The summary written into the Feedback diagnostics zip, next to the log files it points at. */
+    private fun buildDiagnosticsFeedbackAttachmentSummaryText(): String {
+        val about = loadSettingsAbout()
+        recordSettingsDiagnosticsEnvironment(about)
         val base = formatMergedSettingsDiagnosticsExportText(
                 about = about,
-                recentLogs = recentLogs,
+                recentLogs = FeedbackZipRecentLogsPointer,
                 hasFallbackDiagnosticsLogs = RaftAndroidLocalDiagnostics.hasFallbackDiagnosticsLogs(appContext)
         )
         val readState =

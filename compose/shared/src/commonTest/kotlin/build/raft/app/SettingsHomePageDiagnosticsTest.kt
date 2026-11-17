@@ -702,6 +702,8 @@ class SettingsHomePageDiagnosticsTest {
         assertEquals("Copy environment info", copyEnvironmentRow.title)
         assertEquals("Copy", copyEnvironmentRow.status)
         assertTrue(copyEnvironmentRow.enabled)
+        // The copy carries the environment only; the row says logs go with Feedback.
+        assertEquals("To include logs, send them with Feedback.", copyEnvironmentRow.detail)
         assertFalse(rows.any { it.key == "feedback" })
     }
 
@@ -833,6 +835,9 @@ class SettingsHomePageDiagnosticsTest {
         assertFalse("copyLogs" in actionRows)
         assertTrue(actionRows.getValue("shareLogs").enabled)
         assertEquals("Export", actionRows.getValue("shareLogs").status)
+        // Share carries the environment only; the row says logs go with Feedback.
+        assertEquals("Share environment info", actionRows.getValue("shareLogs").title)
+        assertEquals("To include logs, send them with Feedback.", actionRows.getValue("shareLogs").detail)
         assertTrue(actionRows.getValue("feedback").enabled)
         assertFalse("clearLogs" in actionRows)
     }

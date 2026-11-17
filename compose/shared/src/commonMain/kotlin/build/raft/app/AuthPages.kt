@@ -27,7 +27,6 @@ import build.raft.app.data.SharedSettingsApiEnvironmentRequest
 import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
-import build.raft.app.data.SharedSettingsDiagnosticsEntry
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
@@ -626,6 +625,8 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                             ) {
                                 is DataResult.Content -> bridge.toast(reportSubmittedPrefix + result.data.ticketId)
                                 else -> {
+                                    // The report did not go out: copy/share the environment
+                                    // summary only (the host builds it without app run logs).
                                     settingsCapabilities.copyDiagnostics()
                                     settingsCapabilities.shareDiagnostics()
                                     bridge.toast(reportFailedDiagnosticsCopiedMessage)
@@ -646,9 +647,12 @@ private fun DataResult<build.raft.app.data.SharedSettingsDiagnosticsSnapshot>.to
         is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
     }
 
+/**
+ * The signed-out diagnostics text for copying: the environment and any load error, never the app
+ * run logs (product ruling 2026-11-17: logs leave the device only with an explicit Feedback submit).
+ */
 internal fun buildAuthDiagnosticsExportText(
     about: SharedSettingsAboutSnapshot?,
-    entries: List<SharedSettingsDiagnosticsEntry>,
     errorMessage: String? = null
 ): String =
     redactAuthDiagnosticsText(
@@ -670,15 +674,6 @@ internal fun buildAuthDiagnosticsExportText(
                 appendLine()
                 appendLine("Load errors")
                 appendDiagnosticsLine("Error", it)
-            }
-            appendLine()
-            appendLine("Recent logs")
-            if (entries.isEmpty()) {
-                appendLine("No recent entries")
-            } else {
-                entries.takeLast(120).forEach { entry ->
-                    appendLine("${entry.timestampLabel} ${entry.tag}: ${entry.message}")
-                }
             }
         }
     )

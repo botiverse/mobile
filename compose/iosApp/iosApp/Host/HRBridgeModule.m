@@ -1966,36 +1966,51 @@ static void RaftDiagnosticsClear(void) {
     });
 }
 
-static NSString *RaftDiagnosticsBuildExportText(NSDictionary *about, BOOL omitEmptyRows) {
+static NSArray<NSDictionary *> *RaftDiagnosticsEnvironmentRows(void) {
+    static NSArray<NSDictionary *> *rows;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        rows = @[
+            @{ @"key": @"appName", @"label": @"App" },
+            @{ @"key": @"versionLabel", @"label": @"Version" },
+            @{ @"key": @"versionCodeLabel", @"label": @"Version code" },
+            @{ @"key": @"buildLabel", @"label": @"Build" },
+            @{ @"key": @"sourceLabel", @"label": @"Source" },
+            @{ @"key": @"packageName", @"label": @"Package" },
+            @{ @"key": @"platformLabel", @"label": @"Platform" },
+            @{ @"key": @"sdkLabel", @"label": @"SDK" },
+            @{ @"key": @"deviceLabel", @"label": @"Device" },
+            @{ @"key": @"modelLabel", @"label": @"Model" },
+            @{ @"key": @"installTimeLabel", @"label": @"Install time" },
+            @{ @"key": @"screenLabel", @"label": @"Screen" },
+            @{ @"key": @"densityLabel", @"label": @"Density" },
+            @{ @"key": @"fontScaleLabel", @"label": @"Font scale" },
+            @{ @"key": @"sessionStatusLabel", @"label": @"Session" },
+            @{ @"key": @"signedInUserLabel", @"label": @"Signed in user" },
+            @{ @"key": @"selectedServerLabel", @"label": @"Selected server" },
+            @{ @"key": @"socketStatusLabel", @"label": @"Socket" },
+            @{ @"key": @"diagnosticsReason", @"label": @"Diagnostics reason" },
+            @{ @"key": @"crashAtMillis", @"label": @"Crash at millis" },
+            @{ @"key": @"crashAt", @"label": @"Crash at" }
+        ];
+    });
+    return rows;
+}
+
+// The user-facing copy/share text (Settings > About "Copy environment info", Diagnostics share,
+// the signed-out report-failed fallback): the Environment rows only, never the app run logs
+// (product ruling 2026-11-17: app logs leave the device only with an explicit Feedback submit).
+// task #382 (product ruling 2026-09-17, option (a)): these surfaces omit empty rows entirely
+// instead of printing "--" placeholders.
+static NSString *RaftDiagnosticsBuildSummaryText(NSDictionary *about) {
+    return RaftDiagnosticsSummaryText(about ?: @{}, RaftDiagnosticsEnvironmentRows(), YES);
+}
+
+// The Feedback diagnostics attachment only: full Environment rows (empty ones as "--") plus the
+// recent app diagnostics. Never put this text on the pasteboard or a share sheet.
+static NSString *RaftDiagnosticsBuildAttachmentExportText(NSDictionary *about) {
     NSMutableString *text = [NSMutableString string];
-    [text appendString:@"Raft diagnostics\n\nEnvironment\n"];
-    NSArray<NSDictionary *> *rows = @[
-        @{ @"key": @"appName", @"label": @"App" },
-        @{ @"key": @"versionLabel", @"label": @"Version" },
-        @{ @"key": @"versionCodeLabel", @"label": @"Version code" },
-        @{ @"key": @"buildLabel", @"label": @"Build" },
-        @{ @"key": @"sourceLabel", @"label": @"Source" },
-        @{ @"key": @"packageName", @"label": @"Package" },
-        @{ @"key": @"platformLabel", @"label": @"Platform" },
-        @{ @"key": @"sdkLabel", @"label": @"SDK" },
-        @{ @"key": @"deviceLabel", @"label": @"Device" },
-        @{ @"key": @"modelLabel", @"label": @"Model" },
-        @{ @"key": @"installTimeLabel", @"label": @"Install time" },
-        @{ @"key": @"screenLabel", @"label": @"Screen" },
-        @{ @"key": @"densityLabel", @"label": @"Density" },
-        @{ @"key": @"fontScaleLabel", @"label": @"Font scale" },
-        @{ @"key": @"sessionStatusLabel", @"label": @"Session" },
-        @{ @"key": @"signedInUserLabel", @"label": @"Signed in user" },
-        @{ @"key": @"selectedServerLabel", @"label": @"Selected server" },
-        @{ @"key": @"socketStatusLabel", @"label": @"Socket" },
-        @{ @"key": @"diagnosticsReason", @"label": @"Diagnostics reason" },
-        @{ @"key": @"crashAtMillis", @"label": @"Crash at millis" },
-        @{ @"key": @"crashAt", @"label": @"Crash at" }
-    ];
-    // task #382 (product ruling 2026-09-17, option (a)): user-facing copy/share
-    // surfaces omit empty rows entirely instead of printing "--" placeholders;
-    // the diagnostics attachment passes omitEmptyRows=NO and keeps full rows.
-    [text appendString:RaftDiagnosticsEnvironmentRowsText(about, rows, omitEmptyRows)];
+    [text appendString:RaftDiagnosticsSummaryText(about ?: @{}, RaftDiagnosticsEnvironmentRows(), NO)];
     [text appendString:@"\niOS diagnostics\n"];
     [text appendString:RaftDiagnosticsExportRecentText(RaftDiagnosticsRecentMaxChars)];
     return text;
@@ -2125,7 +2140,7 @@ static void RaftDiagnosticsPruneFeedbackFiles(NSString *dir) {
 static NSDictionary *RaftDiagnosticsPrepareAttachmentFiles(NSDictionary *about, NSString *reason, BOOL includeBodyBase64) {
     NSDictionary *result = RaftDiagnosticsPerformOwnerOperation(^id{
         NSString *summaryText = RaftDiagnosticsStringByReplacingInvalidSurrogates(
-            RaftBridgeSanitizedLogString(RaftDiagnosticsBuildExportText(about ?: @{}, NO))
+            RaftBridgeSanitizedLogString(RaftDiagnosticsBuildAttachmentExportText(about))
         );
         NSString *safeReason = RaftBridgeSanitizedLogString(reason ?: @"diagnostics").lowercaseString;
         NSData *summaryData = [summaryText dataUsingEncoding:NSUTF8StringEncoding];
@@ -6390,7 +6405,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         };
     }
     if ([action isEqualToString:@"copyDiagnostics"]) {
-        NSString *exportText = RaftDiagnosticsBuildExportText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}], YES);
+        NSString *exportText = RaftDiagnosticsBuildSummaryText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}]);
         RaftBridgeRunOnMain(^{
             UIPasteboard.generalPasteboard.string = exportText;
         });
@@ -6398,7 +6413,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"shareDiagnostics"]) {
-        NSString *exportText = RaftDiagnosticsBuildExportText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}], YES);
+        NSString *exportText = RaftDiagnosticsBuildSummaryText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}]);
         [self raft_shareItems:@[ exportText ]];
         RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_share_diagnostics");
         return @{ @"status" : @"ok" };
@@ -6582,7 +6597,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                 }
                 NSString *shortId = [ticketId substringToIndex:MIN(ticketId.length, (NSUInteger)8)];
                 NSString *environment = RaftDiagnosticsEnvironmentSectionFromExportText(
-                    RaftDiagnosticsBuildExportText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}], YES)
+                    RaftDiagnosticsBuildSummaryText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}])
                 );
                 NSString *attachmentBlock = RaftHandsFeedbackAttachmentBlock(attachments);
                 NSString *attachmentSection = attachmentBlock.length > 0

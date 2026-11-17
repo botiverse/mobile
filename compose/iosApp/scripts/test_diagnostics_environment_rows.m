@@ -49,6 +49,15 @@ int main(void) {
         NSString *numericKept = RaftDiagnosticsEnvironmentRowsText(numericAbout, SampleRows(), NO);
         Require([numericKept containsString:@"App: 42\n"], @"NSNumber must be stringified");
 
+        // The user-facing copy/share text is the header plus the Environment rows, nothing else:
+        // no "iOS diagnostics" section and no run logs (those go only with Feedback).
+        NSString *summary = RaftDiagnosticsSummaryText(about, SampleRows(), YES);
+        Require([summary isEqualToString:@"Raft diagnostics\n\nEnvironment\nApp: Raft\nVersion: 1.0.0+abcdef0\n"],
+                @"copy summary must be exactly the header and the non-empty Environment rows");
+        Require(![summary containsString:@"iOS diagnostics"], @"copy summary must not carry the diagnostics section");
+        NSString *attachmentHead = RaftDiagnosticsSummaryText(about, SampleRows(), NO);
+        Require([attachmentHead containsString:@"Selected server: --\n"], @"attachment keeps placeholder rows");
+
         NSLog(@"PASS: diagnostics environment rows omit/keep semantics");
     }
     return 0;
