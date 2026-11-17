@@ -124,6 +124,8 @@ internal fun authenticatedProductPageView(
                 RaftProductPageView(RaftPageRoute.Computers)
             }
         AuthenticatedProductRoute.ReleaseNotes -> RaftProductPageView(RaftPageRoute.ReleaseNotes)
+        // Web `/s/:slug/assistant`: the pushed page on a phone, the rail's inline page on the wide layout.
+        AuthenticatedProductRoute.Assistant -> RaftProductPageView(RaftPageRoute.Assistant)
         AuthenticatedProductRoute.ThreadMembers,
         AuthenticatedProductRoute.ChannelSettings,
         AuthenticatedProductRoute.ThreadSettings,
@@ -132,11 +134,8 @@ internal fun authenticatedProductPageView(
         AuthenticatedProductRoute.HomeDrafts,
         AuthenticatedProductRoute.FilePreview,
         AuthenticatedProductRoute.ArtifactViewer,
-        // No `artifacts` route in the shared page_viewed registry yet.
+        // `artifacts` is in the registry (RaftPageRoute.Artifacts); the Artifacts home's view is not wired yet.
         AuthenticatedProductRoute.ArtifactsHome,
-        // `assistant` is in the shared page_viewed registry (slock 2026-10-23), not yet in the app's
-        // pinned RaftPageRoute; the Home row's tap is reported (nav_entry_selected), the view not yet.
-        AuthenticatedProductRoute.Assistant,
         // No `external_invite` route in the shared page_viewed registry (the server records its own view).
         AuthenticatedProductRoute.ExternalInvite,
         // No `server_join` route in the shared page_viewed registry.

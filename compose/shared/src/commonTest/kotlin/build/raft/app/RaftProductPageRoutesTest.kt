@@ -123,6 +123,7 @@ class RaftProductPageRoutesTest {
             ),
         )
         assertEquals(view(RaftPageRoute.ReleaseNotes), page(AuthenticatedProductRoute.ReleaseNotes))
+        assertEquals(view(RaftPageRoute.Assistant), page(AuthenticatedProductRoute.Assistant))
         assertEquals(view(RaftPageRoute.Computers), page(AuthenticatedProductRoute.SettingsComputers))
         assertEquals(
             view(RaftPageRoute.Computer),
@@ -144,7 +145,6 @@ class RaftProductPageRoutesTest {
             AuthenticatedProductRoute.ThreadForwardBundle,
             AuthenticatedProductRoute.FilePreview,
             AuthenticatedProductRoute.ArtifactsHome,
-            AuthenticatedProductRoute.Assistant,
         ).forEach { assertNull(page(it), it.name) }
     }
 
