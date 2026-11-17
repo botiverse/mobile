@@ -19930,7 +19930,7 @@ internal fun ThreadPageHeader(
                 },
         )
     // PROTOTYPE (native nav bar): the conversation's buttons on the system bar: Members (with its
-    // count) first, then the Duo column's actions (the header's Search / Settings / Open in
+    // member count, plain) first, then the Duo column's actions (the header's Search / Settings / Open in
     // Channel and its ⋯ rows: Focus mode, Search in Task, View in Channel, Mark as Unread,
     // Follow), then the ⋯'s notification level row. The bar keeps two buttons, the rest in ⋯.
     val nativeSideActions =
@@ -19974,7 +19974,9 @@ internal fun ThreadPageHeader(
                             membersLabel,
                             "person.2",
                             onShowMembers,
-                            badge = payload.membersCount.takeIf { it > 0 },
+                            // The web header's member count: a quiet number beside the glyph,
+                            // not the red unread badge (28 members read as 28 unread; #proj-mobile:#162).
+                            count = raftNativeNavBarCountText(payload.membersCount),
                             priority = Int.MAX_VALUE,
                             icon = RaftLucideIconName.Users,
                         )

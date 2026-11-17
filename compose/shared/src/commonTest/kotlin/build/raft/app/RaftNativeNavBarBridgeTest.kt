@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 
 /** iOS native navigation: the bar's head stack and the trailing-button split. */
@@ -154,6 +155,24 @@ class RaftNativeNavBarBridgeTest {
     }
 
     @Test
+    fun aPlainCountTravelsApartFromTheUnreadBadgeAndIsCappedLikeTheWeb() {
+        val bridge = RaftNativeNavBarBridge()
+        val recorder = Recorder()
+        bridge.attachListener(recorder)
+        val page = RaftNativeNavBarBridge.Entry()
+        bridge.activate(page)
+        val members = RaftNativeNavBarAction("members", "Members", "person.2", {}, count = raftNativeNavBarCountText(28))
+        val bell = RaftNativeNavBarAction("bell", "Notifications", "bell", {}, badge = 3)
+        bridge.publish(page, RaftNativeNavBarHead("General", null, listOf(members, bell), RaftNativeNavBarTitleExtras()))
+        val rows = Json.parseToJsonElement(recorder.actions.last()).jsonArray.map { it.jsonObject }
+        assertEquals(JsonPrimitive("28"), rows[0]["count"])
+        assertEquals(null, rows[0]["badge"])
+        assertEquals(JsonPrimitive(3), rows[1]["badge"])
+        assertEquals(null, rows[1]["count"])
+        assertEquals(listOf(null, "1", "99", "99+"), listOf(0, 1, 99, 100).map(::raftNativeNavBarCountText))
+    }
+
+    @Test
     fun theAssetNameIsTheIosCatalogNameOfTheGlyph() {
         assertEquals("lucide-bell", raftNativeNavBarImageAssetName(RaftLucideIconName.Bell))
         assertEquals("lucide-direct-message", raftNativeNavBarImageAssetName(RaftLucideIconName.DirectMessage))
@@ -235,6 +254,11 @@ class RaftNativeNavBarBridgeTest {
         val subtitle = RaftNativeNavBarTypography.subtitle()
         assertEquals(RaftType.Caption.fontSize.value.toDouble(), subtitle.size)
         assertEquals("SpaceGrotesk-Medium", subtitle.fontName)
+        // The member count: web's `font-mono` bold count, the design system's `text-mono-meta`.
+        val count = RaftNativeNavBarTypography.barCount()
+        assertEquals("SpaceMono-Bold", count.fontName)
+        assertEquals(RaftMonoMeta.fontSize.value.toDouble(), count.size)
+        assertEquals(12.0, count.size)
     }
 
     @Test

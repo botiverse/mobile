@@ -145,4 +145,10 @@ object RaftNativeNavBarTypography {
 
     /** The line under the title: the conversation head's meta line, `text-caption` (12/16 500). */
     fun subtitle(): RaftNativeNavBarFont = raftNativeNavBarFont(RaftType.Caption)
+
+    /**
+     * A bar button's [RaftNativeNavBarAction.count] (the members count beside the glyph): web's
+     * header member count, `text-mono-meta` in Space Mono Bold with tabular figures, muted ink.
+     */
+    fun barCount(): RaftNativeNavBarFont = RaftNativeNavBarFont(RaftSpaceMonoBoldFaceName, RaftMonoMeta.fontSize.value.toDouble(), 0.0)
 }

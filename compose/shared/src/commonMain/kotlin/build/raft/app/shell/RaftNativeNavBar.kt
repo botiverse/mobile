@@ -71,7 +71,9 @@ enum class RaftNativeNavBarPlacement { Leading, Trailing, Overflow }
  * head draws for it, which the host draws from its asset catalog (`lucide-<name>`, see
  * [raftNativeNavBarImageAssetName]); [systemSymbol] is the SF Symbol the host falls back to when
  * there is no [icon] or its asset is missing (both null: a text button, or a menu row without an
- * image); [badge] a count on the button; [attention] the "new" dot (the bell); [checked] a menu
+ * image); [badge] an unread-style count on the button (the system's red badge); [count] a plain
+ * count beside the glyph that is not unread (the channel's members: the web header's member
+ * count, a quiet number, no red fill); [attention] the "new" dot (the bell); [checked] a menu
  * row's checkmark (the current server); [children] makes it a submenu (a button whose tap opens
  * the menu).
  */
@@ -81,6 +83,8 @@ data class RaftNativeNavBarAction(
     val systemSymbol: String?,
     val onClick: () -> Unit,
     val badge: Int? = null,
+    /** Display text, already capped ("99+"): see [raftNativeNavBarCountText]. */
+    val count: String? = null,
     val attention: Boolean = false,
     val enabled: Boolean = true,
     val checked: Boolean = false,
@@ -98,6 +102,14 @@ data class RaftNativeNavBarAction(
  * same names the native tab bar uses.
  */
 internal fun raftNativeNavBarImageAssetName(icon: RaftLucideIconName): String = raftNativeTabBarImageAssetName(icon)
+
+/** [RaftNativeNavBarAction.count]'s text: null at 0, capped at "99+" as the web header's member count. */
+internal fun raftNativeNavBarCountText(count: Int): String? =
+    when {
+        count <= 0 -> null
+        count > 99 -> "99+"
+        else -> count.toString()
+    }
 
 /** At most this many trailing buttons beside the ⋯ (the Duo column's two-action rule). */
 internal const val RaftNativeNavBarMaxTrailing = 2
@@ -197,7 +209,7 @@ internal data class RaftNativeNavBarHead(
 interface RaftNativeNavBarListener {
     /**
      * Show [title] / [subtitle], the bar buttons of [actionsJson] (`[{"id","label","systemSymbol",
-     * "badge","attention","enabled","checked","destructive","placement":"leading"|"trailing"|
+     * "badge","count","attention","enabled","checked","destructive","placement":"leading"|"trailing"|
      * "overflow","children":[..]}]`, in order), the title view extras of [extrasJson]
      * (`{"leading":{"kind":"channel"|"avatar",..},"badge":..,"refreshing":..}`) and the title menu
      * rows of [titleMenuJson] (same row shape; `[]` for none). [hasBack]: the head has a Back of
@@ -464,6 +476,7 @@ private fun List<RaftNativeNavBarAction>.toJsonArray(): kotlinx.serialization.js
                 action.icon?.let { put("imageAsset", raftNativeNavBarImageAssetName(it)) }
                 action.systemSymbol?.let { put("systemSymbol", it) }
                 action.badge?.let { put("badge", it) }
+                action.count?.let { put("count", it) }
                 if (action.attention) put("attention", true)
                 if (!action.enabled) put("enabled", false)
                 if (action.checked) put("checked", true)

@@ -598,6 +598,8 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         let asset: String?
         let symbol: String?
         let badge: Int?
+        /// A plain count beside the glyph, not unread (the channel's members), already capped ("99+").
+        let count: String?
         let attention: Bool
         let enabled: Bool
         let checked: Bool
@@ -615,6 +617,7 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             asset: row["imageAsset"] as? String,
             symbol: row["systemSymbol"] as? String,
             badge: (row["badge"] as? NSNumber)?.intValue,
+            count: (row["count"] as? String).flatMap { $0.isEmpty ? nil : $0 },
             attention: (row["attention"] as? Bool) ?? false,
             enabled: (row["enabled"] as? Bool) ?? true,
             checked: (row["checked"] as? Bool) ?? false,
@@ -648,6 +651,8 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         if #available(iOS 16.0, *) {
             if let badge = action.badge, badge > 0 {
                 row.subtitle = "\(badge)"
+            } else if let count = action.count {
+                row.subtitle = count
             } else if action.attention {
                 row.subtitle = "●"
             }
@@ -656,9 +661,12 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
     }
 
     /// A bar button: its design-system glyph, else its SF Symbol, else its label as text; a submenu
-    /// opens on tap; a count badge.
+    /// opens on tap; a count badge, or a plain count beside the glyph ([countBarItem]).
     private func barItem(_ action: Action) -> UIBarButtonItem {
         let image = RaftNativeNavIcon.image(asset: action.asset, symbol: action.symbol)
+        if let count = action.count, action.children.isEmpty, let image {
+            return countBarItem(action, image: image, count: count)
+        }
         let button: UIBarButtonItem
         if !action.children.isEmpty {
             button = UIBarButtonItem(
@@ -685,6 +693,34 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             button.accessibilityValue = "\(count)"
         }
         return button
+    }
+
+    /// The Members button: its glyph and the member count beside it in muted text, as the web
+    /// header draws it (Space Mono Bold `text-mono-meta`), not the system's red
+    /// badge, which read as that many unread (#proj-mobile:#162).
+    private func countBarItem(_ action: Action, image: UIImage, count: String) -> UIBarButtonItem {
+        var config = UIButton.Configuration.plain()
+        config.image = image
+        config.imagePadding = 4
+        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6)
+        config.baseForegroundColor = .label
+        var title = AttributedString(count)
+        // Space Mono: every figure is one width already (the web's tabular-nums).
+        title.font = RaftNativeNavBarType.font(RaftNativeNavBarType.count, fallbackWeight: .bold)
+        title.foregroundColor = UIColor.secondaryLabel
+        config.attributedTitle = title
+        let button = UIButton(
+            configuration: config,
+            primaryAction: UIAction { [weak self] _ in _ = self?.bridge.actionTapped(id: action.id) }
+        )
+        button.isEnabled = action.enabled
+        button.accessibilityLabel = action.label
+        button.accessibilityValue = count
+        let item = UIBarButtonItem(customView: button)
+        item.isEnabled = action.enabled
+        item.accessibilityLabel = action.label
+        item.accessibilityValue = count
+        return item
     }
 
     // MARK: Large-title mirror
@@ -914,6 +950,8 @@ enum RaftNativeNavBarType {
 
     static var title: RaftNativeNavBarFont { RaftNativeNavBarTypography.shared.title() }
     static var subtitle: RaftNativeNavBarFont { RaftNativeNavBarTypography.shared.subtitle() }
+    /// A bar button's plain count (the member count): `text-mono-meta`, Space Mono Bold.
+    static var count: RaftNativeNavBarFont { RaftNativeNavBarTypography.shared.barCount() }
 
     static var titleFont: UIFont { font(title, fallbackWeight: .bold) }
     static var subtitleFont: UIFont { font(subtitle, fallbackWeight: .medium) }
