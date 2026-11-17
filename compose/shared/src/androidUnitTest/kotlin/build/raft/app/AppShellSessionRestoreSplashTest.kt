@@ -78,8 +78,9 @@ class AppShellSessionRestoreSplashTest {
         onNodeWithText("Sign out").assertExists()
 
         onNodeWithTag(AppShellRestoreRetryTestTag).performClick()
-        // The click lands within a frame; the state it sets is drawn in the next one.
-        advance(32)
+        // Let the click's state change reach composition: a few frames, then idle.
+        repeat(4) { mainClock.advanceTimeByFrame() }
+        waitForIdle()
         assertEquals(1, retries)
         assertEquals(0, signOuts)
         // Try again starts the wait over (the web reloads the page): no actions until the limit again.
@@ -139,6 +140,14 @@ class AppShellSessionRestoreSplashScreenshotTest {
     @AfterTest
     fun restoreLocale() {
         StringDesc.localeType = previousLocale
+    }
+
+    // The launch logo (`assets://`) needs Raft's image loader; without it the logo drew or not
+    // depending on whether an earlier test in the same JVM fork had installed it (see
+    // SettingsAccountScreenshotTest).
+    @org.junit.Before
+    fun installImageLoader() {
+        runCatching { build.raft.app.image.raftInstallImageLoader() }
     }
 
     @Test
