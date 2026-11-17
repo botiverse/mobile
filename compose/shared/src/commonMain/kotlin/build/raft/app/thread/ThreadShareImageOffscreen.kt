@@ -303,7 +303,8 @@ internal fun ThreadShareImageOffscreenRenderer(
             try {
                 val rowLayers = (0 until rowCount).map { index -> layers[index] ?: error("share image row $index has no layer") }
                 // Main thread: each row's layer re-runs its drawing into the recording (a GraphicsLayer
-                // reads the composition's state there), so only the commands are captured here.
+                // reads the composition's state there) and the header's text is laid out, so only the
+                // commands are captured here. Never move this into rasterContext (CMP-10613).
                 val recording =
                     recordThreadShareImageRows(
                         rowSizes = measured,
