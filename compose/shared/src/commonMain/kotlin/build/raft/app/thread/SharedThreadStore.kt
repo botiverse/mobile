@@ -449,9 +449,6 @@ internal class SharedThreadStore(
         val apply: suspend () -> Unit,
     )
 
-    private fun RaftThreadScreenPayload.realtimeGapRouteIdentity(): ThreadRouteIdentity =
-        resolveThreadRouteIdentity()
-
     private data class RealtimeEventDecision(
         val source: String,
         val emitted: Boolean = false,
@@ -2521,39 +2518,6 @@ internal class SharedThreadStore(
     }
 
     /**
-     * Classifies the reply-thread parent write authority after an access
-     * resolution pass. Non-reply surfaces never carry parent authority.
-     */
-    private fun resolveReplyParentAuthorityStatus(
-        accessResolution: ThreadAccessResolution,
-        payload: RaftThreadScreenPayload,
-        candidate: ConversationAccessCandidate?,
-    ): ReplyParentAuthorityStatus {
-        if (payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) {
-            return ReplyParentAuthorityStatus.Writable
-        }
-        return when {
-            accessResolution == ThreadAccessResolution.NoPermission ||
-                accessResolution == ThreadAccessResolution.Error ->
-                ReplyParentAuthorityStatus.Denied
-            candidate != null && payload.acceptsInitialConversationAccessCandidate(candidate) ->
-                if (payload.joined && payload.canSend) {
-                    ReplyParentAuthorityStatus.Writable
-                } else {
-                    ReplyParentAuthorityStatus.Denied
-                }
-            else ->
-                // This classification only runs from the apply pass, which by
-                // definition completes the initial home access lookup.
-                if (payload.hasReadableCanonicalReplyContent()) {
-                    ReplyParentAuthorityStatus.Unknown
-                } else {
-                    ReplyParentAuthorityStatus.Resolving
-                }
-        }
-    }
-
-    /**
      * Event-driven re-evaluation of reply-thread parent authority (task #228
      * successor direction A). The Home directory is the same authority source
      * the initial lookup consults; when its row for the exact parent appears
@@ -3695,31 +3659,6 @@ internal class SharedThreadStore(
         val replyDelta = event.replyCount - previousReplyCount
         if (replyDelta <= 0 || loadedReplyDelta >= replyDelta) return null
         return ReplyCountRealtimeGap(replyCount = event.replyCount)
-    }
-
-    private fun RaftThreadScreenPayload.loadedReplyTimelineCount(): Int =
-        if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
-            val parentId = originParentMessageId?.takeIf { it.isNotBlank() }
-            messages.count { message -> message.id != parentId }
-        } else {
-            messages.size
-        }
-
-    private fun RaftThreadScreenPayload.knownReplyCountFor(
-        event: ThreadUpdated,
-        activeReplyParentMessageId: MessageId?
-    ): Int? {
-        val parentIds =
-            listOfNotNull(
-                originParentMessageId?.takeIf { it.isNotBlank() },
-                parentMessageId?.takeIf { it.isNotBlank() },
-                activeReplyParentMessageId?.value,
-                event.parentMessageId.value
-            ).toSet()
-        return (listOfNotNull(originMessage) + messages)
-            .filter { message -> message.id in parentIds }
-            .map { message -> message.replyCount }
-            .maxOrNull()
     }
 
     /** fb-4440a18c: the page stopped showing this conversation; nothing it queued may be marked now. */
@@ -5636,15 +5575,6 @@ internal class SharedThreadStore(
             diagnosticsLogger = { line -> diagnosticsLogger?.invoke(line) },
         )
 
-    /** The thread parents loaded in [payload] when it is a channel's timeline, else none. */
-    private fun loadedChannelThreadParents(payload: RaftThreadScreenPayload): Map<String, ThreadUnreadThreadParent> {
-        val routeIdentity = payload.resolveThreadRouteIdentity()
-        val channelId =
-            routeIdentity.timelineChannelId?.takeIf { routeIdentity.surfaceKind == RaftThreadSurfaceKind.Channel }
-                ?: return emptyMap()
-        return payload.messages.toLoadedThreadParents(channelId)
-    }
-
     /** Ids asked for while a lookup was in flight: looked up right after it instead of dropped. */
     private val unreadThreadParentsQueued = LinkedHashSet<String>()
 
@@ -6086,9 +6016,6 @@ internal class SharedThreadStore(
         }
         return true
     }
-
-    private fun ThreadAccessResolution.refusesReferenceTarget(): Boolean =
-        this == ThreadAccessResolution.NoPermission || this == ThreadAccessResolution.Error
 
     private suspend fun reducePayloadPatchAndCache(
         cachePayload: Boolean = false,
