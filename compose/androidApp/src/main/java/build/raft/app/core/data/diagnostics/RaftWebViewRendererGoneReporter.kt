@@ -6,10 +6,12 @@ import build.hands.update.HandsFeedback
 import build.raft.app.BuildConfig
 import build.raft.app.RaftWebViewRendererGone
 import build.raft.app.RaftWebViewRendererGoneDailyStore
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -17,6 +19,9 @@ import kotlinx.coroutines.launch
  * decides which deaths get one: crashes only, one per process per minute, a few a day). Same
  * transport as the system-kill tickets ([AndroidSystemKillReporter]): a [HandsFeedback] `crash`
  * ticket whose `crash_type` (`webview_renderer_gone`) and `crash_fatal=false` tell it apart.
+ *
+ * The shared gate counts a ticket against its quota only when this reporter says Hands accepted
+ * it ([submitRendererGoneTicket]); a failure gives the quota back.
  */
 internal object RaftWebViewRendererGoneReporter {
     private const val Tag = "SlockWebViewRendererGone"
@@ -42,19 +47,16 @@ internal object RaftWebViewRendererGoneReporter {
         }
         RaftWebViewRendererGone.dailyStore =
             PreferencesDailyStore(appContext.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE))
-        RaftWebViewRendererGone.ticketSink = { message, extras ->
+        RaftWebViewRendererGone.ticketSink = { message, extras, done ->
+            // One id for every attempt of this ticket, so a retry after a lost response can be paired.
+            val withId = extras + ("crash_exit_event_id" to UUID.randomUUID().toString())
             uploadScope.launch {
-                runCatching { feedback.submit(message = message, kind = "crash", extras = extras) }
-                    .onSuccess { ticket ->
-                        RaftAndroidLocalDiagnostics.recordLog("info", Tag, "webview_renderer_gone_ticket ticket=${ticket.take(8)}")
-                    }
-                    .onFailure { error ->
-                        RaftAndroidLocalDiagnostics.recordLog(
-                            "warn",
-                            Tag,
-                            "webview_renderer_gone_ticket_failed class=${error.javaClass.name}",
-                        )
-                    }
+                val accepted =
+                    submitRendererGoneTicket(
+                        submit = { feedback.submit(message = message, kind = "crash", extras = withId) },
+                        log = { level, line -> RaftAndroidLocalDiagnostics.recordLog(level, Tag, line) },
+                    )
+                done(accepted)
             }
         }
     }
@@ -70,4 +72,40 @@ internal object RaftWebViewRendererGoneReporter {
             preferences.edit().putLong(DayKey, epochDay).putInt(CountKey, count).apply()
         }
     }
+}
+
+/** The wait before the one retry of a renderer-gone ticket. */
+internal const val RendererGoneTicketRetryDelayMillis = 30_000L
+
+/**
+ * Submits one renderer-gone ticket; true when Hands accepted it. [HandsFeedback.submit] has no
+ * offline queue (hands-android-sdk 0.13.1), so a retryable failure (network, 5xx, 401/403/404/408/429)
+ * is retried once after [retryDelayMillis], with the same [submit] (same extras, same
+ * `crash_exit_event_id`); a permanent rejection ([isPermanentHandsRejection]) is not retried.
+ * Nothing is kept for a later launch.
+ */
+internal suspend fun submitRendererGoneTicket(
+    submit: suspend () -> String,
+    log: (level: String, line: String) -> Unit,
+    retryDelayMillis: Long = RendererGoneTicketRetryDelayMillis,
+    wait: suspend (Long) -> Unit = { delay(it) },
+): Boolean {
+    for (attempt in 1..2) {
+        val result = runCatching { submit() }
+        val ticket = result.getOrNull()
+        if (ticket != null) {
+            log("info", "webview_renderer_gone_ticket ticket=${ticket.take(8)} attempt=$attempt")
+            return true
+        }
+        val error = result.exceptionOrNull()
+        val retry = attempt == 1 && error != null && !isPermanentHandsRejection(error)
+        log(
+            "warn",
+            "webview_renderer_gone_ticket_failed class=${error?.javaClass?.name} attempt=$attempt " +
+                "retry=${if (retry) "once" else "none"}",
+        )
+        if (!retry) return false
+        wait(retryDelayMillis)
+    }
+    return false
 }

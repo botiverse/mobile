@@ -8,6 +8,7 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Renderer deaths of the app's WebViews.
@@ -29,11 +30,14 @@ object RaftWebViewRendererGone {
     internal const val LOG_TAG = RAFT_WEBVIEW_DIAGNOSTICS_TAG
 
     /**
-     * Files a non-fatal ticket (`message`, `extras`). Installed by the Android host (androidApp
-     * `RaftWebViewRendererGoneReporter`, through Hands); null: deaths are only logged.
+     * Files a non-fatal ticket (`message`, `extras`) and calls `done` once, on any thread: true
+     * when Hands accepted it, false when the host gave up (after its own retry). Only an accepted
+     * ticket uses the daily quota ([RaftWebViewRendererGoneTicketGate]). Installed by the Android
+     * host (androidApp `RaftWebViewRendererGoneReporter`, through Hands); null: deaths are only
+     * logged and use no quota.
      */
     @Volatile
-    var ticketSink: ((message: String, extras: Map<String, Any?>) -> Unit)? = null
+    var ticketSink: ((message: String, extras: Map<String, Any?>, done: (accepted: Boolean) -> Unit) -> Unit)? = null
 
     /** The daily ticket count; the host persists it across processes. In memory until installed. */
     @Volatile
@@ -89,18 +93,30 @@ object RaftWebViewRendererGone {
         val batch = pending ?: return
         pending = null
         val event = RaftWebViewRendererGoneEvent.of(batch, pendingProvider)
-        val decision = ticketGate().decide(event, clock())
+        val sink = ticketSink
+        val gate = ticketGate()
+        // No sink, no ticket: the death is logged and takes nothing from the quota.
+        val reservation = if (sink == null) null else gate.reserve(event, clock())
+        val decision = reservation?.decision ?: RaftWebViewRendererGoneTicketDecision.NoSink
         raftLogWarn(
             LOG_TAG,
             "webview_renderer_gone_event surfaces=${event.surfaces.joinToString(",")} webViews=${event.webViewCount} " +
                 "didCrash=${event.didCrash} priority=${raftRendererPriorityLabel(event.rendererPriorityAtExit)} " +
                 "ticket=${decision.label}",
         )
-        if (decision != RaftWebViewRendererGoneTicketDecision.File) return
-        val sink = ticketSink ?: return
-        runCatching { sink(raftWebViewRendererGoneTicketMessage(event), raftWebViewRendererGoneTicketExtras(event)) }
+        if (sink == null || reservation == null || decision != RaftWebViewRendererGoneTicketDecision.File) return
+        // The sink may call back on any thread, or throw before it does; the reservation settles once.
+        val settled = AtomicBoolean(false)
+        val done = { accepted: Boolean ->
+            if (settled.compareAndSet(false, true)) {
+                gate.settle(reservation, accepted)
+                if (!accepted) raftLogWarn(LOG_TAG, "webview_renderer_gone_ticket_quota_returned")
+            }
+        }
+        runCatching { sink(raftWebViewRendererGoneTicketMessage(event), raftWebViewRendererGoneTicketExtras(event), done) }
             .onFailure { error ->
                 raftLogWarn(LOG_TAG, "webview_renderer_gone_ticket_failed class=${error::class.simpleName}")
+                done(false)
             }
     }
 
@@ -177,10 +193,12 @@ internal enum class RaftWebViewRendererGoneTicketDecision(val label: String) {
      * under memory pressure, and the WebViews rebuild themselves. Logged, no ticket.
      */
     SystemReclaim("log_only_system_reclaim"),
-    /** A ticket was filed by this process less than a minute ago. */
+    /** A ticket was filed (or is being filed) by this process less than a minute ago. */
     RecentTicket("deduped_recent"),
-    /** [RaftWebViewRendererGoneTicketGate.maxPerDay] tickets were filed today (UTC). */
+    /** [RaftWebViewRendererGoneTicketGate.maxPerDay] tickets were accepted (or are in flight) today (UTC). */
     DailyCap("capped_daily"),
+    /** No ticket sink is installed: logged only, no quota used. */
+    NoSink("log_only_no_sink"),
 }
 
 /** The day ([epochDay], UTC) and how many tickets were filed on it. */
@@ -203,26 +221,71 @@ interface RaftWebViewRendererGoneDailyStore {
 /**
  * Which death events become a ticket: crashes only, at most one per process per
  * [minIntervalMillis] and [maxPerDay] per UTC day (persisted through [dailyStore]).
+ *
+ * The quota is used only by a ticket Hands accepted. [reserve] holds a slot for a ticket being
+ * sent (in this process, in memory) so a burst cannot overshoot the limits while uploads are in
+ * flight; [settle] then writes the daily count on acceptance, or gives the slot back (the
+ * one-minute interval included) on failure. A ticket still in flight when the process dies is
+ * not counted: the daily count is of confirmed tickets only.
  */
 internal class RaftWebViewRendererGoneTicketGate(
     private val dailyStore: RaftWebViewRendererGoneDailyStore,
     private val minIntervalMillis: Long = 60_000L,
     private val maxPerDay: Int = 5,
 ) {
-    private var lastFiledAtMillis: Long? = null
+    /** One decision; for [RaftWebViewRendererGoneTicketDecision.File], a held slot to [settle]. */
+    class Reservation internal constructor(
+        val decision: RaftWebViewRendererGoneTicketDecision,
+        internal val atMillis: Long,
+        internal val epochDay: Long,
+        internal val previousLastFiledAtMillis: Long?,
+    )
 
-    fun decide(event: RaftWebViewRendererGoneEvent, nowMillis: Long): RaftWebViewRendererGoneTicketDecision {
-        if (!event.didCrash) return RaftWebViewRendererGoneTicketDecision.SystemReclaim
+    /** The last accepted or in-flight ticket of this process. */
+    private var lastFiledAtMillis: Long? = null
+    private val inFlight = mutableListOf<Reservation>()
+
+    @Synchronized
+    fun reserve(event: RaftWebViewRendererGoneEvent, nowMillis: Long): Reservation {
+        fun no(decision: RaftWebViewRendererGoneTicketDecision) = Reservation(decision, nowMillis, -1L, lastFiledAtMillis)
+        if (!event.didCrash) return no(RaftWebViewRendererGoneTicketDecision.SystemReclaim)
         val last = lastFiledAtMillis
         // A clock set back counts as recent, never as a free slot.
-        if (last != null && nowMillis - last < minIntervalMillis) return RaftWebViewRendererGoneTicketDecision.RecentTicket
+        if (last != null && nowMillis - last < minIntervalMillis) return no(RaftWebViewRendererGoneTicketDecision.RecentTicket)
         val day = Math.floorDiv(nowMillis, MILLIS_PER_DAY)
-        val stored = runCatching { dailyStore.load() }.getOrNull()
-        val today = if (stored?.first == day) stored.second else 0
-        if (today >= maxPerDay) return RaftWebViewRendererGoneTicketDecision.DailyCap
-        runCatching { dailyStore.save(day, today + 1) }
+        if (acceptedOn(day) + inFlight.count { it.epochDay == day } >= maxPerDay) {
+            return no(RaftWebViewRendererGoneTicketDecision.DailyCap)
+        }
+        val reservation = Reservation(RaftWebViewRendererGoneTicketDecision.File, nowMillis, day, last)
+        inFlight += reservation
         lastFiledAtMillis = nowMillis
-        return RaftWebViewRendererGoneTicketDecision.File
+        return reservation
+    }
+
+    /**
+     * Ends [reservation]: [accepted] counts it on its UTC day (unless the stored count already
+     * moved to a later day); otherwise its slot is free again and, unless a later ticket was
+     * reserved since, so is the one-minute interval. A reservation settles once; repeats and
+     * non-[RaftWebViewRendererGoneTicketDecision.File] ones do nothing.
+     */
+    @Synchronized
+    fun settle(reservation: Reservation, accepted: Boolean) {
+        if (!inFlight.remove(reservation)) return
+        if (accepted) {
+            val stored = runCatching { dailyStore.load() }.getOrNull()
+            when {
+                stored == null || stored.first < reservation.epochDay -> runCatching { dailyStore.save(reservation.epochDay, 1) }
+                stored.first == reservation.epochDay -> runCatching { dailyStore.save(reservation.epochDay, stored.second + 1) }
+                else -> Unit
+            }
+        } else if (lastFiledAtMillis == reservation.atMillis) {
+            lastFiledAtMillis = reservation.previousLastFiledAtMillis
+        }
+    }
+
+    private fun acceptedOn(day: Long): Int {
+        val stored = runCatching { dailyStore.load() }.getOrNull()
+        return if (stored?.first == day) stored.second else 0
     }
 
     private companion object {

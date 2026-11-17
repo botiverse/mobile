@@ -99,12 +99,18 @@ class AndroidSystemKillReportTest {
         for (reason in listOf(ApplicationExitInfo.REASON_PACKAGE_UPDATED, ApplicationExitInfo.REASON_PACKAGE_STATE_CHANGE)) {
             assertEquals(SystemKillDecision.SkipPackageChange, classify(reason, foreground, true))
         }
-        for (reason in listOf(
-            ApplicationExitInfo.REASON_CRASH,
-            ApplicationExitInfo.REASON_CRASH_NATIVE,
-            ApplicationExitInfo.REASON_ANR
-        )) {
+        for (reason in listOf(ApplicationExitInfo.REASON_CRASH, ApplicationExitInfo.REASON_ANR)) {
             assertEquals(SystemKillDecision.SkipReportedElsewhere, classify(reason, foreground, true))
+        }
+    }
+
+    @Test
+    fun aNativeCrashIsReportedUnlessConfirmedElsewhereWhateverItsImportance() {
+        // No longer assumed filed by HandsCrash: the send phase decides (decideNativeExit).
+        for (importance in listOf(foreground, cached)) {
+            for (telemetry in listOf(true, false, null)) {
+                assertEquals(SystemKillDecision.ReportNativeCrash, classify(ApplicationExitInfo.REASON_CRASH_NATIVE, importance, telemetry))
+            }
         }
     }
 
@@ -568,11 +574,11 @@ class AndroidSystemKillReportTest {
     }
 
     @Test
-    fun aSignaledExitWithACrashSignalIsLeftToHandsCrash() {
+    fun aSignaledExitWithACrashSignalIsANativeCrash() {
         val visible = android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
         listOf(4, 6, 7, 8, 11).forEach { signal ->
             assertEquals(
-                SystemKillDecision.SkipReportedElsewhere,
+                SystemKillDecision.ReportNativeCrash,
                 classify(ApplicationExitInfo.REASON_SIGNALED, visible, true, status = signal),
             )
         }

@@ -38,8 +38,14 @@ internal enum class SystemKillDecision(val label: String, val report: Boolean) {
     SkipUserInitiated("user_initiated", false),
     /** An install or package change; not a failure. */
     SkipPackageChange("package_change", false),
-    /** Java/native crashes go through HandsCrash, ANRs through HandsCrash's ANR pass. */
+    /** Java crashes go through HandsCrash, ANRs through HandsCrash's ANR pass. */
     SkipReportedElsewhere("reported_elsewhere", false),
+    /**
+     * A native crash (`crash_native`, or `signaled` with a crash signal). HandsCrash may file its
+     * own ticket, but nothing confirms it did, so it is sent unless a confirmed Hands ticket
+     * matches the exit ([decideNativeExit], HandsNativeExitCorrelation.kt).
+     */
+    ReportNativeCrash("report_native_crash", true),
     /**
      * Not the main app process (a `:name` service process, or an isolated/sandboxed one such as a
      * WebView renderer). It carries no build stamp or telemetry, the user does not see the app
@@ -59,15 +65,19 @@ private val UserInitiatedReasons =
 private val PackageChangeReasons =
     setOf(ApplicationExitInfo.REASON_PACKAGE_UPDATED, ApplicationExitInfo.REASON_PACKAGE_STATE_CHANGE)
 
-private val ReportedElsewhereReasons =
-    setOf(ApplicationExitInfo.REASON_CRASH, ApplicationExitInfo.REASON_CRASH_NATIVE, ApplicationExitInfo.REASON_ANR)
+private val ReportedElsewhereReasons = setOf(ApplicationExitInfo.REASON_CRASH, ApplicationExitInfo.REASON_ANR)
 
 /**
  * Crash signals (SIGILL 4, SIGABRT 6, SIGBUS 7, SIGFPE 8, SIGSEGV 11): some devices record a native
- * crash as `signaled` with the signal as status instead of `crash_native`, and HandsCrash already
- * filed it (Hands b00e67c3 and its duplicate SystemKill c9061aa6, 11-09). SIGKILL (9) stays a kill.
+ * crash as `signaled` with the signal as status instead of `crash_native` (Hands b00e67c3, whose
+ * HandsCrash ticket and SystemKill c9061aa6 were one crash, 11-09). SIGKILL (9) stays a kill.
  */
 private val CrashSignals = setOf(4, 6, 7, 8, 11)
+
+/** A native crash: `crash_native`, or `signaled` with a crash signal ([CrashSignals]). */
+internal fun isNativeCrashExit(reasonCode: Int, status: Int): Boolean =
+    reasonCode == ApplicationExitInfo.REASON_CRASH_NATIVE ||
+        (reasonCode == ApplicationExitInfo.REASON_SIGNALED && status in CrashSignals)
 
 /** The importances that mean an activity was on screen: foreground (100) and visible (200). */
 private val VisibleImportances =
@@ -205,7 +215,9 @@ internal fun systemKillBudget(exit: SystemKillExit, telemetry: MemoryTelemetrySn
         exit.importance in VisibleImportances || recent == true -> SystemKillBudget.Visible
         recent == false &&
             exit.importance >= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE &&
-            exit.reasonCode !in HandsActionableSystemKillReasonCodes -> SystemKillBudget.Background
+            exit.reasonCode !in HandsActionableSystemKillReasonCodes &&
+            // A crash is never archived as a background kill, whatever reason code it was given.
+            !isNativeCrashExit(exit.reasonCode, exit.status) -> SystemKillBudget.Background
         else -> SystemKillBudget.Review
     }
 }
@@ -242,7 +254,7 @@ internal fun classifySystemKill(
         reasonCode in UserInitiatedReasons -> SystemKillDecision.SkipUserInitiated
         reasonCode in PackageChangeReasons -> SystemKillDecision.SkipPackageChange
         reasonCode in ReportedElsewhereReasons -> SystemKillDecision.SkipReportedElsewhere
-        reasonCode == ApplicationExitInfo.REASON_SIGNALED && status in CrashSignals -> SystemKillDecision.SkipReportedElsewhere
+        isNativeCrashExit(reasonCode, status) -> SystemKillDecision.ReportNativeCrash
         importance in VisibleImportances -> SystemKillDecision.Report
         recentForegroundEvidence(telemetry, exitTimestampMillis) != null -> SystemKillDecision.Report
         else -> SystemKillDecision.ReportBackground
@@ -489,6 +501,11 @@ internal data class QueuedSystemKillReport(
     val attempted: Boolean = false,
     /** The drop counts bound to this report at its first attempt; only this report ever sends them. */
     val sentBatch: BackgroundDropBatch? = null,
+    /**
+     * For a native crash ([SystemKillDecision.ReportNativeCrash]): the exit's identity and how long
+     * its decision has waited ([decideNativeExit]); null for every other report and once decided.
+     */
+    val nativeExit: NativeExitWait? = null,
 ) {
     /** What every attempt of this report uploads. */
     fun uploadExtras(): Map<String, Any?> = extras + sentBatch?.extras().orEmpty()
@@ -503,6 +520,19 @@ internal data class QueuedSystemKillReport(
             .put("extras", JSONObject().apply { extras.forEach { (k, v) -> put(k, v ?: JSONObject.NULL) } })
             .put("attempted", attempted)
             .apply { sentBatch?.let { put("sent_batch_id", it.id).put("sent_batch", it.allToJson()) } }
+            .apply {
+                nativeExit?.let { wait ->
+                    put(
+                        "native_exit",
+                        JSONObject()
+                            .put("pid", wait.identity.pid)
+                            .put("exit_timestamp", wait.identity.exitTimestampMillis)
+                            .put("process_start", wait.identity.processStartMillis ?: JSONObject.NULL)
+                            .put("first_seen", wait.firstSeenMillis)
+                            .put("launches_waited", wait.launchesWaited),
+                    )
+                }
+            }
 
     companion object {
         fun fromJson(json: JSONObject): QueuedSystemKillReport? {
@@ -519,6 +549,19 @@ internal data class QueuedSystemKillReport(
                 sentBatch =
                     json.optString("sent_batch_id", "").takeIf(String::isNotEmpty)?.let {
                         BackgroundDropBatch(it, BackgroundDropLedger.entries(json.optJSONArray("sent_batch")))
+                    },
+                nativeExit =
+                    json.optJSONObject("native_exit")?.let { wait ->
+                        NativeExitWait(
+                            identity =
+                                NativeExitIdentity(
+                                    pid = wait.optInt("pid"),
+                                    exitTimestampMillis = wait.optLong("exit_timestamp"),
+                                    processStartMillis = if (wait.isNull("process_start")) null else wait.optLong("process_start"),
+                                ),
+                            firstSeenMillis = wait.optLong("first_seen"),
+                            launchesWaited = wait.optInt("launches_waited"),
+                        )
                     },
             )
         }
@@ -628,6 +671,11 @@ internal interface SystemKillProgressStore {
  * Hands answers a resend of a stored report with its first ticket and keeps nothing new from it.
  * A batch is bound to one report only, so no other report sends it; it leaves the device with
  * that report's accepted upload and returns to the ledger if the report is rejected or evicted.
+ *
+ * A native crash ([QueuedSystemKillReport.nativeExit]) is decided in the send phase before its
+ * first attempt ([decideNativeExit]): dropped on a [nativeConfirmations] match, kept queued (no
+ * budget used) while a [nativePending] record may be its, within the wait bounds, else sent with
+ * `crash_native_correlation`.
  */
 internal suspend fun runSystemKillReports(
     store: SystemKillProgressStore,
@@ -640,6 +688,11 @@ internal suspend fun runSystemKillReports(
     log: (item: SystemKillPlanItem?, queued: QueuedSystemKillReport?, outcome: String) -> Unit = { _, _, _ -> },
     onRetryableFailure: (timestampMillis: Long, error: Throwable) -> Unit = { _, _ -> },
     queueCap: Int = MaxQueuedSystemKillReports,
+    /** Native tickets Hands confirmed ([HandsNativeTicketConfirmation.None] with SDK 0.13.1). */
+    nativeConfirmations: List<HandsNativeTicketConfirmation> = HandsNativeTicketConfirmation.None,
+    /** Native-crash records the SDK still holds this launch. */
+    nativePending: List<HandsNativePendingRecord> = emptyList(),
+    onNativeVerdict: (queued: QueuedSystemKillReport, verdict: NativeExitVerdict) -> Unit = { _, _ -> },
 ) {
     var progress = store.load()
 
@@ -665,7 +718,22 @@ internal suspend fun runSystemKillReports(
         val queued =
             if (item.action == SystemKillAction.Submit || item.action == SystemKillAction.Deferred) {
                 val (message, extras) = buildReport(item)
-                QueuedSystemKillReport(item.key, item.budget, systemKillExitVersionCode(item.exit, item.telemetry), message, extras)
+                QueuedSystemKillReport(
+                    item.key,
+                    item.budget,
+                    systemKillExitVersionCode(item.exit, item.telemetry),
+                    message,
+                    extras,
+                    nativeExit =
+                        if (item.decision == SystemKillDecision.ReportNativeCrash) {
+                            NativeExitWait(
+                                NativeExitIdentity(item.exit.pid, item.exit.timestampMillis, item.telemetry?.processStartMillis),
+                                firstSeenMillis = nowMillis,
+                            )
+                        } else {
+                            null
+                        },
+                )
             } else {
                 null
             }
@@ -683,11 +751,42 @@ internal suspend fun runSystemKillReports(
         return sentNow.getValue(budget) < limit.perLaunch && progress.recent(budget, nowMillis).size < limit.perDay
     }
     for (candidate in progress.queue.sortedWith(compareBy<QueuedSystemKillReport>({ it.budget.ordinal }, { it.key.timestampMillis }))) {
-        if (!hasRoom(candidate.budget)) continue
         var queued = progress.queue.firstOrNull { it.key == candidate.key } ?: continue
+        // A native crash not yet attempted is decided first, without budget: a confirmed Hands
+        // ticket drops it, a pending SDK record holds it. Once attempted it is only ever resent.
+        var nativeCorrelation: String? = null
+        val wait = queued.nativeExit
+        if (wait != null && !queued.attempted) {
+            val verdict = decideNativeExit(wait, nativeConfirmations, nativePending, nowMillis)
+            when (verdict) {
+                is NativeExitVerdict.SkipConfirmed -> {
+                    val next = progress.copy(queue = progress.queue.filterNot { it.key == queued.key })
+                    if (!store.commit(next)) return
+                    progress = next
+                    onNativeVerdict(queued, verdict)
+                    continue
+                }
+                NativeExitVerdict.Wait -> {
+                    val waited = queued.copy(nativeExit = wait.copy(launchesWaited = wait.launchesWaited + 1))
+                    val next = progress.copy(queue = progress.queue.map { if (it.key == waited.key) waited else it })
+                    if (!store.commit(next)) return
+                    progress = next
+                    onNativeVerdict(waited, verdict)
+                    continue
+                }
+                is NativeExitVerdict.Report -> {
+                    onNativeVerdict(queued, verdict)
+                    nativeCorrelation = verdict.correlation
+                }
+            }
+        }
+        if (!hasRoom(queued.budget)) continue
         if (!queued.attempted) {
             val (ledger, dropped) = progress.ledger.attach(newBatchId)
-            val bound = queued.copy(attempted = true, sentBatch = dropped)
+            // The native decision is frozen with the first attempt: every resend carries it as is.
+            val decidedExtras =
+                nativeCorrelation?.let { queued.extras + ("crash_native_correlation" to it) } ?: queued.extras
+            val bound = queued.copy(attempted = true, sentBatch = dropped, extras = decidedExtras, nativeExit = null)
             val frozen = progress.copy(ledger = ledger, queue = progress.queue.map { if (it.key == bound.key) bound else it })
             // What the first attempt sends must be on disk before it is sent: every resend sends the same.
             if (!store.commit(frozen)) return
@@ -1283,6 +1382,17 @@ internal object AndroidSystemKillReporter {
             runCatching { context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime }.getOrNull()
         val reporter =
             SystemKillReporterBuild(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong(), packageUpdatedMillis, now)
+        // The SDK's own native-crash records still on disk (read-only; see HandsNativeExitCorrelation.kt).
+        val nativeScan =
+            runCatching { scanHandsNativePendingRecords(handsNativeCrashDir(context.filesDir)) }
+                .getOrElse { HandsNativePendingScan(emptyList(), 0) }
+        if (nativeScan.records.isNotEmpty() || nativeScan.unreadable > 0) {
+            RaftAndroidLocalDiagnostics.recordLog(
+                "info",
+                Tag,
+                "hands_native_records pending=${nativeScan.records.size} unreadable=${nativeScan.unreadable}",
+            )
+        }
         runSystemKillReports(
             store = PreferencesProgressStore(preferences),
             nowMillis = now,
@@ -1325,6 +1435,24 @@ internal object AndroidSystemKillReporter {
                     Tag,
                     "system_kill_report_upload_failed timestampMillis=$timestampMillis " +
                         "class=${error.javaClass.name} retry=next_launch",
+                )
+            },
+            // hands-android-sdk 0.13.1 gives the app no native ticket id: nothing is ever confirmed.
+            nativeConfirmations = HandsNativeTicketConfirmation.None,
+            nativePending = nativeScan.records,
+            onNativeVerdict = { queued, verdict ->
+                val wait = queued.nativeExit
+                RaftAndroidLocalDiagnostics.recordLog(
+                    "info",
+                    Tag,
+                    "native_exit_correlation verdict=${verdict.label} timestampMillis=${queued.key.timestampMillis} " +
+                        "processStart=${if (wait?.identity?.processStartMillis != null) "known" else "unknown"} " +
+                        "launchesWaited=${wait?.launchesWaited ?: 0}" +
+                        when (verdict) {
+                            is NativeExitVerdict.Report -> " correlation=${verdict.correlation}"
+                            is NativeExitVerdict.SkipConfirmed -> " ticket=${verdict.ticketId.take(8)}"
+                            NativeExitVerdict.Wait -> ""
+                        },
                 )
             },
         )

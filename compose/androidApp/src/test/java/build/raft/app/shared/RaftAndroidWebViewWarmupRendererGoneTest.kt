@@ -41,7 +41,10 @@ class RaftAndroidWebViewWarmupRendererGoneTest {
             true
         }
         RaftWebViewRendererGone.dailyStore = RaftWebViewRendererGoneDailyStore.InMemory()
-        RaftWebViewRendererGone.ticketSink = { _, extras -> tickets += extras }
+        RaftWebViewRendererGone.ticketSink = { _, extras, done ->
+            tickets += extras
+            done(true)
+        }
     }
 
     @After
