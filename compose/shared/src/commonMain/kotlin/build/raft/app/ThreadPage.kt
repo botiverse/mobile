@@ -2480,6 +2480,12 @@ internal data class RaftThreadScreenPayload(
     val focusedMessageRequestNonce: Int = 0,
     val originStatus: String = "none",
     val originErrorCode: String? = null,
+    /**
+     * With [originStatus] "error": the original behind the plan's history window, as the
+     * `messages/context` refusal shows it (sender, first words). It names the title
+     * (ThreadHeaderOriginalTitle.kt); never a row of the list.
+     */
+    val originHiddenTarget: build.raft.app.data.MessageContextHiddenTarget? = null,
     val tasks: List<RaftThreadTaskItem> = emptyList(),
     val knownMarkdownChannelNames: List<String> = emptyList(),
     val knownMarkdownMentionNames: List<String> = emptyList(),
@@ -14553,13 +14559,8 @@ private fun SharedThreadRouteContentContent(
                     if (sideParentFocus != null) {
                         adaptiveFocusManager.clearFocus(force = true)
                         adaptiveKeyboardController?.hide()
-                        bridge.log("adaptive_side_thread_parent_focus result=requested generation=${sideParentFocus.target.generation}")
-                        eventBus.post(
-                            eventName = RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT,
-                            eventData = sideParentFocus.toJson(),
-                            crossProcess = true,
-                            source = "adaptive_side_thread_parent",
-                        )
+                        // A deleted original only leaves the conversation beside it open (ThreadHeaderOriginalTitle.kt).
+                        postSideThreadParentFocus(sideParentFocus, renderedThread, bridge, eventBus)
                     } else if (!onOpenParentThread(renderedThread, currentSession?.currentServerId)) {
                         bridge.logWarn(
                             "thread_parent_navigation_rejected reason=parent_conversation_unresolved " +

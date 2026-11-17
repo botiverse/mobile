@@ -29,6 +29,13 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import build.raft.app.base.BridgeModule
+import build.raft.app.data.AdaptiveParentFocusRequest
+import build.raft.app.data.MessageContextHiddenTarget
+import build.raft.app.data.MessageContextHistoryLimitedCode
+import build.raft.app.data.RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
+import build.raft.app.data.RaftEventBus
+import build.raft.app.data.ScreenError
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.app.resources.*
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -45,8 +52,19 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** What the title can say about the thread's original message (web `ThreadHeaderOriginal`). */
 internal sealed interface ThreadHeaderOriginal {
-    /** Loaded and readable: the swapped title names [sender] and [text]; the place name locates [messageId]. */
-    data class Shown(val messageId: String, val sender: String, val text: String) : ThreadHeaderOriginal
+    /**
+     * Loaded and readable: the swapped title names [sender] and [text]; the place name locates [messageId].
+     * [behindHistory]: the original is behind the plan's history window (known only from the server's
+     * glimpse of it). It is never a row of the list, so the title names it from the start (web
+     * `parentOutOfView = !!glimpse`), and the place name opens the conversation alone, where it stops
+     * at the paywall.
+     */
+    data class Shown(
+        val messageId: String,
+        val sender: String,
+        val text: String,
+        val behindHistory: Boolean = false,
+    ) : ThreadHeaderOriginal
 
     /** Retracted or gone: the title stays "Thread"; the place name only opens the conversation. */
     data object Deleted : ThreadHeaderOriginal
@@ -57,9 +75,10 @@ internal sealed interface ThreadHeaderOriginal {
 
 /**
  * The title's original, or null while nothing is known of it (the title stays "Thread", the place
- * name opens the conversation). A read refused for permission is [ThreadHeaderOriginal.Unavailable];
- * any other failed read (a parent behind the plan's history window answers 404 like a network
- * miss) is null, so the place name still opens the conversation, where it stops at the paywall.
+ * name opens the conversation). A read refused for permission is [ThreadHeaderOriginal.Unavailable].
+ * A parent behind the plan's history window ([hiddenTarget], from the `history_limited` refusal) is
+ * named from the server's glimpse of it, as the web does (`resolveThreadHeaderOriginal` `glimpse`);
+ * any other failed read is null, so the place name still opens the conversation.
  */
 internal fun resolveThreadHeaderOriginal(
     originStatus: String,
@@ -69,6 +88,10 @@ internal fun resolveThreadHeaderOriginal(
     fileLabel: String,
     /** The localized "External user", shown for an External author the wire did not name. */
     externalFallbackName: String = "",
+    /** The parent behind the history window ([ThreadTimelineSlice.originHiddenTarget]). */
+    hiddenTarget: MessageContextHiddenTarget? = null,
+    /** The localized "Unknown", for a hidden parent whose sender the server does not name. */
+    unknownSenderLabel: String = "",
 ): ThreadHeaderOriginal? {
     if (originStatus == "error" &&
         threadUserFacingErrorCodeReason(originErrorCode) == ThreadUserFacingErrorReason.PermissionDenied
@@ -76,6 +99,9 @@ internal fun resolveThreadHeaderOriginal(
         return ThreadHeaderOriginal.Unavailable
     }
     if (originStatus == "missing" || origin?.isRetracted == true) return ThreadHeaderOriginal.Deleted
+    if (origin == null && originStatus == "error" && hiddenTarget != null) {
+        return threadHeaderHiddenOriginal(hiddenTarget, unknownSenderLabel)
+    }
     if (origin == null || originStatus == "error") return null
     val sender =
         threadHeaderSafeTitleOrNull(
@@ -88,6 +114,95 @@ internal fun resolveThreadHeaderOriginal(
         ) ?: return null
     val text = threadHeaderOriginalFirstLine(origin.body, origin.attachments, imageLabel, fileLabel) ?: return null
     return ThreadHeaderOriginal.Shown(messageId = origin.id, sender = sender, text = text)
+}
+
+/**
+ * A parent behind the history window, named from the server's glimpse: its sender ([unknownSenderLabel]
+ * when unnamed) and the first line of its preview. Null when the glimpse has no words (web: the title
+ * stays "Thread").
+ */
+internal fun threadHeaderHiddenOriginal(
+    hiddenTarget: MessageContextHiddenTarget,
+    unknownSenderLabel: String,
+): ThreadHeaderOriginal.Shown? {
+    val text = threadHeaderOriginalFirstLine(hiddenTarget.preview.orEmpty(), emptyList(), "", "") ?: return null
+    val sender =
+        threadHeaderSafeTitleOrNull(hiddenTarget.senderName, setOf(hiddenTarget.senderId))
+            ?: unknownSenderLabel.takeIf { it.isNotBlank() }
+            ?: return null
+    return ThreadHeaderOriginal.Shown(messageId = hiddenTarget.messageId, sender = sender, text = text, behindHistory = true)
+}
+
+/**
+ * The parent's glimpse in a failed `messages/context` read of a reply thread's parent: the
+ * `history_limited` refusal's target when it is [parentMessageId]. A 404 that names a code this app
+ * does not know, or a `history_limited` one without a readable target, is reported (AGENTS.md "No
+ * silent drops") and read as not found.
+ */
+internal fun ScreenError.threadParentHiddenTargetOrNull(
+    parentMessageId: String,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): MessageContextHiddenTarget? {
+    if (code != "http_404") return null
+    val wireCode = serverCode ?: return null
+    if (wireCode != MessageContextHistoryLimitedCode) {
+        reportUnknownTypeDropped("thread_parent_context", "code", wireCode, fallback = "not_found", diagnostics = diagnostics)
+        return null
+    }
+    val target = historyLimitedTarget?.takeIf { it.messageId == parentMessageId }
+    if (target == null) {
+        reportUnknownTypeDropped(
+            "thread_parent_context",
+            "hiddenTarget",
+            if (historyLimitedTarget == null) "unreadable" else "other_message",
+            fallback = "thread_title",
+            diagnostics = diagnostics,
+        )
+    }
+    return target
+}
+
+/** [RaftThreadScreenPayload.originHiddenTarget] while it is this reply thread's parent and its read failed. */
+internal fun RaftThreadScreenPayload.threadOriginHiddenTargetOrNull(): MessageContextHiddenTarget? {
+    val target = originHiddenTarget ?: return null
+    if (surfaceKind != RaftThreadSurfaceKind.ReplyThread || originStatus != "error" || originMessage != null) return null
+    val parentId = parentMessageId?.takeIf { it.isNotBlank() } ?: originParentMessageId
+    return target.takeIf { it.messageId == parentId }
+}
+
+/**
+ * Whether "open the parent conversation" only opens it, locating nothing: the original is deleted
+ * (raft-design conversation.md "Threads"; web `openThreadParentInConversation` `locate`), or behind
+ * the plan's history window (the conversation stops at its paywall). [ThreadHeaderOriginalState.locateMessageId]
+ * is null for the same originals.
+ */
+internal fun RaftThreadScreenPayload.threadParentOpensConversationOnly(): Boolean =
+    surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+        (originStatus == "missing" || originMessage?.isRetracted == true || threadOriginHiddenTargetOrNull() != null)
+
+/**
+ * The side column's "open parent conversation" (task #36), beside the conversation it came from:
+ * asks the main detail to locate the original ([request]), unless the original has nothing to locate
+ * ([threadParentOpensConversationOnly]); then the conversation, already open beside the thread, is
+ * left as it is (web: `if (!locate) return`). The caller has already handed input focus away.
+ */
+internal fun postSideThreadParentFocus(
+    request: AdaptiveParentFocusRequest,
+    thread: RaftThreadScreenPayload,
+    bridge: BridgeModule,
+    eventBus: RaftEventBus,
+) {
+    if (thread.threadParentOpensConversationOnly()) {
+        bridge.log("adaptive_side_thread_parent_focus result=open_only generation=${request.target.generation}")
+        return
+    }
+    bridge.log("adaptive_side_thread_parent_focus result=requested generation=${request.target.generation}")
+    eventBus.post(
+        eventName = RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT,
+        eventData = request.toJson(),
+        crossProcess = true,
+        source = "adaptive_side_thread_parent",
+    )
 }
 
 /**
@@ -149,14 +264,15 @@ internal class ThreadHeaderOriginalState {
     var original: ThreadHeaderOriginal? by mutableStateOf(null)
     var originOutOfView: Boolean by mutableStateOf(false)
 
-    /** The original names the title now. */
-    val swapped: Boolean get() = original is ThreadHeaderOriginal.Shown && originOutOfView
+    /** The original names the title now (one behind the history window is never in view). */
+    val swapped: Boolean
+        get() = (original as? ThreadHeaderOriginal.Shown)?.let { it.behindHistory || originOutOfView } == true
 
     /** False where the person can't open the parent conversation: no link, no View in channel. */
     val parentReachable: Boolean get() = original !is ThreadHeaderOriginal.Unavailable
 
     /** The message the place name and View in channel locate; null opens the conversation alone. */
-    fun locateMessageId(): String? = (original as? ThreadHeaderOriginal.Shown)?.messageId
+    fun locateMessageId(): String? = (original as? ThreadHeaderOriginal.Shown)?.takeUnless { it.behindHistory }?.messageId
 }
 
 internal val LocalThreadHeaderOriginalState = staticCompositionLocalOf<ThreadHeaderOriginalState?> { null }
@@ -173,14 +289,18 @@ internal fun ThreadHeaderOriginalReporter(
     val imageLabel = stringResource(Res.string.thread_reply_title_preview_image)
     val fileLabel = stringResource(Res.string.thread_reply_title_preview_file)
     val externalFallbackName = rememberExternalAuthorFallbackName()
+    val unknownSenderLabel = stringResource(Res.string.thread_history_paywall_unknown_sender)
     val originStatus = timelineSlice.originStatus
     val origin = timelineSlice.originMessage
+    val hiddenTarget = timelineSlice.originHiddenTarget
     val original =
-        remember(replyThread, originStatus, originErrorCode, origin, imageLabel, fileLabel, externalFallbackName) {
+        remember(replyThread, originStatus, originErrorCode, origin, hiddenTarget, imageLabel, fileLabel, externalFallbackName, unknownSenderLabel) {
             if (!replyThread) {
                 null
             } else {
-                resolveThreadHeaderOriginal(originStatus, originErrorCode, origin, imageLabel, fileLabel, externalFallbackName)
+                resolveThreadHeaderOriginal(
+                    originStatus, originErrorCode, origin, imageLabel, fileLabel, externalFallbackName, hiddenTarget, unknownSenderLabel
+                )
             }
         }
     SideEffect {
@@ -225,7 +345,7 @@ internal fun ThreadHeaderTitleText(
     modifier: Modifier = Modifier,
 ) {
     val original = state?.original
-    val shown = (original as? ThreadHeaderOriginal.Shown)?.takeIf { state.originOutOfView }
+    val shown = (original as? ThreadHeaderOriginal.Shown)?.takeIf { state.swapped }
     val accessibleName =
         when {
             original is ThreadHeaderOriginal.Deleted -> stringResource(Res.string.thread_title_original_deleted_a11y)

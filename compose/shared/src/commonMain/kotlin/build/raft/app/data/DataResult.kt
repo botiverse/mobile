@@ -72,6 +72,12 @@ data class ScreenError(
      */
     val secondFactorStepUp: SecondFactorStepUpChallenge? = null,
     /**
+     * A `messages/context` 404 with `code: "history_limited"` (MessageContextHistoryLimitedApi.kt):
+     * the message it points at, behind the plan's history window, as the server shows it. Null for
+     * every other error.
+     */
+    val historyLimitedTarget: MessageContextHiddenTarget? = null,
+    /**
      * The failed request's server trace id (`X-Trace-Id`), shown with a copy action under the
      * error so a report can be found on the server (AGENTS.md "Errors carry the trace ID").
      * Defaults to the failure the HTTP layer saw just now ([RaftFailedRequestTraceIds], as the

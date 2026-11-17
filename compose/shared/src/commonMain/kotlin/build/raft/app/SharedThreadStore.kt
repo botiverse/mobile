@@ -939,13 +939,20 @@ internal data class SharedThreadMessageKey(
 internal sealed interface SharedThreadMessageResolution {
     data class Loaded(val message: Message) : SharedThreadMessageResolution
     data object Missing : SharedThreadMessageResolution
-    data class Error(val code: String) : SharedThreadMessageResolution
+    /** [hiddenTarget]: the parent behind the plan's history window, as the server shows it (thread title). */
+    data class Error(
+        val code: String,
+        val hiddenTarget: build.raft.app.data.MessageContextHiddenTarget? = null,
+    ) : SharedThreadMessageResolution
 }
 
 internal sealed interface SharedThreadOriginResolution {
     data class Loaded(val message: RaftThreadMessageItem) : SharedThreadOriginResolution
     data object Missing : SharedThreadOriginResolution
-    data class Error(val code: String) : SharedThreadOriginResolution
+    data class Error(
+        val code: String,
+        val hiddenTarget: build.raft.app.data.MessageContextHiddenTarget? = null,
+    ) : SharedThreadOriginResolution
 }
 
 internal class SharedThreadMessageStore(
@@ -3669,7 +3676,7 @@ internal class SharedThreadDataSource(
                     resolution.message.toRaftThreadMessageItem(session.user.id)
                 )
             SharedThreadMessageResolution.Missing -> SharedThreadOriginResolution.Missing
-            is SharedThreadMessageResolution.Error -> SharedThreadOriginResolution.Error(resolution.code)
+            is SharedThreadMessageResolution.Error -> SharedThreadOriginResolution.Error(resolution.code, resolution.hiddenTarget)
         }
         return if (isCurrentReplyCacheProvenance(replyResolutionScope.provenance)) {
             selected
@@ -7592,7 +7599,8 @@ internal class SharedThreadDataSource(
                         is SharedThreadMessageResolution.Error ->
                             resolvedBase.copy(
                                 originStatus = "error",
-                                originErrorCode = parentResolution.code
+                                originErrorCode = parentResolution.code,
+                                originHiddenTarget = parentResolution.hiddenTarget
                             )
                         null ->
                             resolvedBase.copy(
@@ -7696,7 +7704,11 @@ internal class SharedThreadDataSource(
                         ?: SharedThreadMessageResolution.Missing
                 }
                 is DataResult.Empty -> SharedThreadMessageResolution.Missing
-                is DataResult.Error -> SharedThreadMessageResolution.Error(contextResult.error.code)
+                is DataResult.Error ->
+                    SharedThreadMessageResolution.Error(
+                        contextResult.error.code,
+                        contextResult.error.threadParentHiddenTargetOrNull(parentMessageId)
+                    )
                 is DataResult.NoPermission -> SharedThreadMessageResolution.Error(contextResult.blocker.code)
             }
         }
@@ -10523,7 +10535,8 @@ internal class SharedThreadStore(
                                             originMessage = null,
                                             originParentMessageId = parentMessageId,
                                             originStatus = "error",
-                                            originErrorCode = resolution.code
+                                            originErrorCode = resolution.code,
+                                            originHiddenTarget = resolution.hiddenTarget
                                         )
                                 }
                             }

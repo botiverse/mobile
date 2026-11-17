@@ -72,6 +72,12 @@ internal data class ThreadTimelineSlice(
      * offers no "Mark channel as unread" there: the sidebar doesn't list it, so it has no unread.
      */
     val joined: Boolean = true,
+    /**
+     * A reply thread's parent behind the plan's history window, as the server shows it (sender and
+     * first words), known only while [originStatus] is "error" for that parent: the head's title names
+     * it (ThreadHeaderOriginalTitle.kt). Never a row of the list.
+     */
+    val originHiddenTarget: build.raft.app.data.MessageContextHiddenTarget? = null,
 ) {
     /** Derived from [surfaceKind] and [channelKind]; the menu's `reply` capability reads this single source. */
     val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
@@ -126,7 +132,8 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
         beginningReplyCountLabel = threadBeginningReplyCountLabel(),
         beginningReplyCount = threadBeginningReplyCount(),
         historyChannelId = (streamChannelId ?: sourceThreadId)?.trim()?.takeIf { it.isNotEmpty() },
-        joined = joined
+        joined = joined,
+        originHiddenTarget = threadOriginHiddenTargetOrNull()
     )
 
 internal fun RaftThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadata =
