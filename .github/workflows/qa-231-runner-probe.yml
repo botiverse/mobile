@@ -1,0 +1,63 @@
+name: Android 36 login driver compatibility
+on:
+  push:
+    branches: [agent/argus/231-api36-compat]
+permissions:
+  contents: read
+jobs:
+  runner:
+    name: Run the merged UI Automator driver on a Pixel Fold
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools platforms;android-34 build-tools;35.0.0
+      - name: Build the unchanged login driver and a positive execution marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/qa/build_login_form.sh "$RUNNER_TEMP/qa-login-form.jar"
+          mkdir -p "$RUNNER_TEMP/probe-classes"
+          cd "$RUNNER_TEMP"
+          cat > Qa231RunnerProbe.java <<'JAVA'
+          import com.android.uiautomator.testrunner.UiAutomatorTestCase;
+          public final class Qa231RunnerProbe extends UiAutomatorTestCase {
+              public void testMergedDriverRuns() throws Exception {
+                  Class<?> type = Class.forName("RaftQaLoginForm");
+                  type.getMethod("testFill").invoke(type.getDeclaredConstructor().newInstance());
+                  System.out.println("QA231_MERGED_DRIVER_EXECUTED");
+              }
+          }
+          JAVA
+          platform="$ANDROID_HOME/platforms/android-34"
+          javac --release 8 -cp "$platform/android.jar:$platform/uiautomator.jar:$platform/optional/android.test.base.jar" -d probe-classes Qa231RunnerProbe.java
+          "$ANDROID_HOME/build-tools/35.0.0/d8" --min-api 34 --lib "$platform/android.jar" --classpath "$platform/uiautomator.jar" --classpath "$platform/optional/android.test.base.jar" --output "$RUNNER_TEMP/qa231-probe.jar" probe-classes/*.class
+      - name: Enable the runner's emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Invoke the legacy runner on Google APIs 36 x86_64
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_fold
+          ram-size: 4096M
+          cores: 2
+          emulator-boot-timeout: 1200
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: |
+            test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" = 36
+            test "$(adb shell getprop ro.product.cpu.abi | tr -d '\r')" = x86_64
+            adb shell cmd device_state print-states
+            adb shell 'command -v uiautomator && ls /system/framework/android.test.base.jar /system/framework/android.test.runner.jar'
+            adb push "$RUNNER_TEMP/qa-login-form.jar" /data/local/tmp/qa-login-form.jar
+            adb push "$RUNNER_TEMP/qa231-probe.jar" /data/local/tmp/qa231-probe.jar
+            adb shell chmod 444 /data/local/tmp/qa-login-form.jar /data/local/tmp/qa231-probe.jar
+            adb shell -T uiautomator runtest /system/framework/android.test.base.jar /system/framework/android.test.runner.jar /data/local/tmp/qa-login-form.jar /data/local/tmp/qa231-probe.jar -c Qa231RunnerProbe#testMergedDriverRuns </dev/null > "$RUNNER_TEMP/qa231-result"
+            tr -d '\r' < "$RUNNER_TEMP/qa231-result" | grep -Fx QA231_MERGED_DRIVER_EXECUTED
+            echo 'Google APIs 36 x86_64 Pixel Fold executed the merged driver with empty input.'
