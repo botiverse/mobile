@@ -4,6 +4,7 @@ import build.raft.app.data.RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE
 import build.raft.app.data.RAFT_APP_LOGIN_MMKV_NAMESPACE
 import build.raft.app.data.RAFT_AUTH_SESSION_MMKV_NAMESPACE
 import build.raft.app.data.RAFT_DEVICE_STATE_MMKV_NAMESPACE
+import build.raft.app.data.RAFT_DRAFT_JOURNAL_MMKV_NAMESPACE
 import build.raft.app.data.RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE
 import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import build.raft.app.data.RaftLocalPreferenceStore
@@ -33,6 +34,8 @@ class RaftBackupRulesTest {
                 RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE,
                 // A restored "asked for notification permission" without the permission never asks again.
                 RAFT_DEVICE_STATE_MMKV_NAMESPACE,
+                // The composer drafts' crash journal holds account-bound draft text.
+                RAFT_DRAFT_JOURNAL_MMKV_NAMESPACE,
                 "slockMobileOAuth",
             ).forEach { namespace ->
                 add(Rule("file", "mmkv/$namespace"))

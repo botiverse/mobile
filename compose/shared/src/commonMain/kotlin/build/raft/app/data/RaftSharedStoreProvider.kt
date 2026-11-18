@@ -8,6 +8,7 @@ import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loader
 import build.raft.app.host.HostCapabilities
 import build.raft.app.RaftComposerDraftUploads
 import build.raft.app.SharedThreadComposerDraftAccount
+import build.raft.app.SharedThreadComposerDraftAccountLinkedStore
 import build.raft.app.SharedThreadComposerDraftAccountStore
 import build.raft.app.SharedThreadComposerDraftAccounts
 import build.raft.app.SharedThreadComposerDraftPersistSlice
@@ -3922,6 +3923,19 @@ internal class RaftSharedStoreProvider private constructor(
                     liveAccount = { presenceAuthContext.value?.toComposerDraftAccount() },
                     diagnosticsLogger = composerDraftLogger
                 )
+            // Task #246: the crash journal's per-keystroke write goes to a small store of its own
+            // (Android: the dedicated `slockDraftJournal` MMKV file), not the shared preference file.
+            // Platforms that install no such store keep it in the shared one, as before.
+            val composerDraftJournalBase =
+                runCatching {
+                    RaftSharedKeyValueStoreProvider.create(namespace = RAFT_DRAFT_JOURNAL_MMKV_NAMESPACE, storageName = "draft journal").store
+                }.getOrNull()
+            logSharedAuthDiagnostic(
+                "shared_key_value",
+                "storage_scope name=draftJournal store=${if (composerDraftJournalBase != null) "dedicated" else "shared_preference"}"
+            )
+            val composerDraftJournalStore =
+                composerDraftJournalBase?.let { SharedThreadComposerDraftAccountLinkedStore(it, composerDraftAccountStore) }
             val composerDraftAccounts =
                 SharedThreadComposerDraftAccounts(
                     base = sharedPreferenceStore,
@@ -3929,13 +3943,15 @@ internal class RaftSharedStoreProvider private constructor(
                     persistenceFor = { view ->
                         SharedThreadComposerDraftPersistence(view, diagnosticsLogger = composerDraftLogger)
                     },
-                    diagnosticsLogger = composerDraftLogger
+                    diagnosticsLogger = composerDraftLogger,
+                    journalBase = composerDraftJournalBase,
                 )
             val composerDraftPersistSlice =
                 SharedThreadComposerDraftPersistSlice(
                     SharedThreadComposerDraftPersistence(
                         composerDraftAccountStore,
-                        diagnosticsLogger = composerDraftLogger
+                        diagnosticsLogger = composerDraftLogger,
+                        journalStore = composerDraftJournalStore ?: composerDraftAccountStore,
                     ),
                     diagnosticsLogger = composerDraftLogger,
                     // Typed text is written off the main thread, at once after a quiet period and

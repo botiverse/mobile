@@ -1,6 +1,7 @@
 package build.raft.app.core.data.auth
 
 import build.raft.app.data.RAFT_DEVICE_STATE_MMKV_NAMESPACE
+import build.raft.app.data.RAFT_DRAFT_JOURNAL_MMKV_NAMESPACE
 import build.raft.app.data.RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,5 +21,11 @@ class AndroidAppScopeSharedKeyValueNamespacesTest {
         // The notification-permission auto prompt keeps its "asked" flag here; without a factory
         // the shared provider throws when the signed-in shell first shows.
         assertTrue(RAFT_DEVICE_STATE_MMKV_NAMESPACE in androidAppScopeSharedKeyValueNamespaces)
+    }
+
+    @Test
+    fun draftJournalNamespaceGetsItsOwnAppScopeStorage() {
+        // Task #246: the composer's crash journal is written per keystroke to its own MMKV file, not slockLocal.
+        assertTrue(RAFT_DRAFT_JOURNAL_MMKV_NAMESPACE in androidAppScopeSharedKeyValueNamespaces)
     }
 }

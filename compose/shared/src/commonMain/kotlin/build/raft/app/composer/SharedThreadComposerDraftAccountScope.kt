@@ -187,6 +187,9 @@ internal class SharedThreadComposerDraftAccountStore(
         base.putString(SharedThreadComposerDraftPersistence.ActiveIndexKey, null)
     }
 
+    /** Lists [account] as an owner of rows on this device (rows written to a linked store count too). */
+    internal fun ensureOwner(account: SharedThreadComposerDraftAccount) = registerOwner(account)
+
     private fun registerOwner(account: SharedThreadComposerDraftAccount) {
         synchronized(lock) { registerOwnerLocked(account) }
     }
@@ -217,6 +220,30 @@ internal class SharedThreadComposerDraftAccountStore(
 }
 
 /** One account's draft rows, fixed (used only to delete them). */
+/**
+ * Another store (the draft journal's own file) scoped to the same account as [accountStore]: keys are
+ * mapped exactly as [accountStore] maps them, the account is [accountStore]'s current one (none bound:
+ * reads find nothing and writes are dropped), and a write lists the account as an owner in
+ * [accountStore]'s base, so the account purge finds these rows too.
+ */
+internal class SharedThreadComposerDraftAccountLinkedStore(
+    private val base: SharedPreferenceStore,
+    private val accountStore: SharedThreadComposerDraftAccountStore,
+) : SharedPreferenceStore, SharedThreadComposerDraftJournalScope {
+    override fun journalScopeToken(): String? = accountStore.currentAccount()?.storageToken
+
+    override fun getString(key: String): String? {
+        val account = accountStore.currentAccount() ?: return null
+        return base.getString(SharedThreadComposerDraftAccountKeys.scopedKey(account, key))
+    }
+
+    override fun putString(key: String, value: String?) {
+        val account = accountStore.currentAccount() ?: return
+        if (value != null) accountStore.ensureOwner(account)
+        base.putString(SharedThreadComposerDraftAccountKeys.scopedKey(account, key), value)
+    }
+}
+
 private class SharedThreadComposerDraftFixedAccountStore(
     private val base: SharedPreferenceStore,
     private val storageToken: String
@@ -249,7 +276,9 @@ internal class SharedThreadComposerDraftAccounts(
     val store: SharedThreadComposerDraftAccountStore,
     /** Builds a facade used only to clear rows, so temporary files retire on the normal path. */
     private val persistenceFor: (SharedPreferenceStore) -> SharedThreadComposerDraftPersistence,
-    private val diagnosticsLogger: ((String) -> Unit)? = null
+    private val diagnosticsLogger: ((String) -> Unit)? = null,
+    /** The draft journal's own store, when it has one: an owner's journal rows there are purged too. */
+    private val journalBase: SharedPreferenceStore? = null,
 ) {
     private val lock = SynchronizedObject()
     /** One facade per owner token: the facade lock registry is keyed by store identity. */
@@ -376,6 +405,10 @@ internal class SharedThreadComposerDraftAccounts(
             }
         view.putString(indexKey, null)
         SharedThreadComposerDraftPersistence.journalRowKeys(view).forEach { row -> view.putString(row, null) }
+        journalBase?.let { journal ->
+            val journalView = SharedThreadComposerDraftFixedAccountStore(journal, token)
+            SharedThreadComposerDraftPersistence.journalRowKeys(journalView).forEach { row -> journalView.putString(row, null) }
+        }
         // Rows and index written directly (not through a facade): no cached index may outlive them.
         SharedThreadComposerDraftJournalIndexEpoch.bump()
         store.forgetOwner(token)

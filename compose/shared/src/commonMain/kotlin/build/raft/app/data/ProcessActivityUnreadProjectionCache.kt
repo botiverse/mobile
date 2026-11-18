@@ -5,6 +5,9 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 const val RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE = "slockActivityUnread"
+
+/** The composer drafts' crash journal (task #246): a small store of its own, written per keystroke. */
+const val RAFT_DRAFT_JOURNAL_MMKV_NAMESPACE = "slockDraftJournal"
 const val RAFT_ACTIVITY_UNREAD_MMKV_STORAGE_KEY = "projections"
 const val RAFT_ACTIVITY_UNREAD_MMKV_RAW_STORAGE_KEY =
     "$RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE:$RAFT_ACTIVITY_UNREAD_MMKV_STORAGE_KEY"

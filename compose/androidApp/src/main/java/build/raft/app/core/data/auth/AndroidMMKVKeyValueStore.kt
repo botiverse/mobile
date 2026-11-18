@@ -4,6 +4,7 @@ import android.content.Context
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.RAFT_DEVICE_STATE_MMKV_NAMESPACE
+import build.raft.app.data.RAFT_DRAFT_JOURNAL_MMKV_NAMESPACE
 import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.RAFT_AUTH_SESSION_MMKV_NAMESPACE
 import build.raft.app.data.RAFT_AUTH_SESSION_MMKV_STORAGE_KEY
@@ -232,7 +233,13 @@ internal val androidAppScopeSharedKeyValueNamespaces: List<String> =
         RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE,
         RAFT_APP_LOGIN_MMKV_NAMESPACE,
         RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE,
-        RAFT_DEVICE_STATE_MMKV_NAMESPACE
+        RAFT_DEVICE_STATE_MMKV_NAMESPACE,
+        // Draft crash journal (task #246): its own small file, so the per-keystroke write never appends to
+        // (or triggers a full rewrite of) the shared slockLocal file. Single-process mode, as every store
+        // here: the app runs in one process (no android:process in the manifest) and the composer that
+        // writes the journal lives in it; multi-process mode would add an inter-process file lock to every
+        // keystroke's write for no reader.
+        RAFT_DRAFT_JOURNAL_MMKV_NAMESPACE
     )
 
 fun installAndroidAppScopeSharedKeyValueStores(context: Context) {

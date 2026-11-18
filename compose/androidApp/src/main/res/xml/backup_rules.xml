@@ -34,6 +34,9 @@
     <!-- per-install state that must not outlive the install (e.g. "asked for notification permission") -->
     <exclude domain="file" path="mmkv/slockDeviceState" />
     <exclude domain="file" path="mmkv/slockDeviceState.crc" />
+    <!-- composer drafts' crash journal (account-bound text, task #246) -->
+    <exclude domain="file" path="mmkv/slockDraftJournal" />
+    <exclude domain="file" path="mmkv/slockDraftJournal.crc" />
     <!-- widget state (account data, per-device widget ids) -->
     <exclude domain="file" path="mmkv/slock_status_widget" />
     <exclude domain="file" path="mmkv/slock_status_widget.crc" />
