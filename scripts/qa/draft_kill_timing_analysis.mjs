@@ -30,17 +30,26 @@ export function parseKillLine(message, pkg) {
 /** |logcat monotonic stamp − uptimeMs| of the change line above which Δ is not trusted. */
 export const MAX_CLOCK_SKEW_MS = 20;
 
-/** Bucket windows (seconds of Δ that count as "this bucket"). */
+/**
+ * Tolerance of each bucket: the whole measured exit Δ interval must lie in [lo_ms, hi_ms] (inclusive).
+ * Nominal D (the device-side sleep) is never counted as measured.
+ */
 export const BUCKETS = {
-  0.05: { lo: 0, hi: 0.1 },
-  0.1: { lo: 0.05, hi: 0.15 },
-  0.3: { lo: 0.2, hi: 0.4 },
-  0.7: { lo: 0.55, hi: 0.85 },
+  0.05: { lo_ms: 20, hi_ms: 80 },
+  0.1: { lo_ms: 70, hi_ms: 130 },
+  0.3: { lo_ms: 250, hi_ms: 350 },
+  0.7: { lo_ms: 600, hi_ms: 800 },
+  1: { lo_ms: 800, hi_ms: 1200 },
 };
 
 export function bucketFor(delaySec) {
-  return BUCKETS[delaySec] ?? { lo: delaySec * 0.5, hi: delaySec * 1.5 };
+  return BUCKETS[delaySec] ?? { lo_ms: Math.round(delaySec * 800), hi_ms: Math.round(delaySec * 1200) };
 }
+
+/** Send-then-kill regression (b): the exit must be within 100 ms of the send tap. */
+export const SEND_WINDOW = { lo_ms: 0, hi_ms: 100 };
+
+export const insideWindow = (lowerMs, upperMs, w) => lowerMs != null && upperMs != null && lowerMs >= w.lo_ms && upperMs <= w.hi_ms;
 
 /** `[user,pid,process,...]` of an events-buffer am_kill / am_proc_died line → {pid, name}, or null. */
 export function parseEventPid(message) {
@@ -72,24 +81,27 @@ export function killReason(l, pkg, oldPid) {
 /** A force-stop kill: "stop <pkg> due to ..." (cmd activity force-stop / am force-stop). */
 export const isForceStopReason = (reason, pkg) => reason != null && reason.startsWith(`stop ${pkg}`);
 
+/** Kill reasons a run's own action may produce: the force-stop, and for the recents swipe also "remove task". */
+export const isIntendedReason = (reason, pkg, extra = []) => isForceStopReason(reason, pkg) || (reason != null && extra.some((p) => reason.startsWith(p)));
+
 /**
  * How the old process ended other than by the force-stop, if it did: a system kill for another reason
  * (dependency_died / "depends on provider ...", low memory, ANR), an app crash (AndroidRuntime FATAL in
  * the old pid) or an ANR line. Such a sample is excluded, never counted as a hit or a miss.
  */
-export function foreignExit(parsed, { pkg, oldPid }) {
+export function foreignExit(parsed, { pkg, oldPid, extraReasons = [] }) {
   for (const l of parsed) {
     const reason = killReason(l, pkg, oldPid);
-    if (reason != null && !isForceStopReason(reason, pkg)) return { tsMs: l.tsMs, what: `system kill: ${reason}` };
+    if (reason != null && !isIntendedReason(reason, pkg, extraReasons)) return { tsMs: l.tsMs, what: `system kill: ${reason}` };
     if (l.tag === "AndroidRuntime" && l.pid === oldPid && /FATAL EXCEPTION/.test(l.message)) return { tsMs: l.tsMs, what: "app crash" };
     if (l.tag === "ActivityManager" && new RegExp(`^ANR in ${pkg.replace(/\./g, "\\.")}\\b`).test(l.message)) return { tsMs: l.tsMs, what: "ANR" };
   }
   return null;
 }
 
-export function exitInterval(parsed, { pkg, oldPid, runIndex }) {
-  // Only the force-stop's own kill lines bound the exit from below.
-  const lowers = parsed.filter((l) => isForceStopReason(killReason(l, pkg, oldPid), pkg));
+export function exitInterval(parsed, { pkg, oldPid, runIndex, extraReasons = [] }) {
+  // Only the run's own kill lines (force-stop; recents swipe: remove task) bound the exit from below.
+  const lowers = parsed.filter((l) => isIntendedReason(killReason(l, pkg, oldPid), pkg, extraReasons));
   const lower = lowers.length ? Math.max(...lowers.map((l) => l.tsMs)) : null;
   const uppers = parsed.filter((l) =>
     (l.tag === "RaftDraftTimingProbe" && new RegExp(`^run=${runIndex} pid_gone\\b`).test(l.message)) ||
@@ -113,8 +125,8 @@ export function exitInterval(parsed, { pkg, oldPid, runIndex }) {
 export function measuredBucket(lowerMs, upperMs) {
   if (lowerMs == null || upperMs == null) return null;
   const fits = Object.entries(BUCKETS)
-    .filter(([, b]) => lowerMs > b.lo * 1000 && upperMs <= b.hi * 1000)
-    .sort((a, b) => a[1].hi - b[1].hi);
+    .filter(([, b]) => insideWindow(lowerMs, upperMs, b))
+    .sort((a, b) => a[1].hi_ms - b[1].hi_ms);
   return fits.length ? Number(fits[0][0]) : null;
 }
 
@@ -125,9 +137,9 @@ function classify(result, delaySec) {
     result.timing = "measured";
     return;
   }
-  const { lo, hi } = bucketFor(delaySec);
-  if (result.delta_lower_ms > lo * 1000 && result.delta_upper_ms <= hi * 1000) result.timing = "hit";
-  else result.reason = `exit Δ [${result.delta_lower_ms}, ${result.delta_upper_ms}] ms not inside bucket (${lo}, ${hi}] s`;
+  const w = bucketFor(delaySec);
+  if (insideWindow(result.delta_lower_ms, result.delta_upper_ms, w)) result.timing = "hit";
+  else result.reason = `exit Δ [${result.delta_lower_ms}, ${result.delta_upper_ms}] ms not inside bucket [${w.lo_ms}, ${w.hi_ms}] ms`;
 }
 
 /**
@@ -145,14 +157,14 @@ function classify(result, delaySec) {
  * @param {boolean} input.pidGone the old pid was gone after the kill
  * @param {string|null} [input.refProbe] measure from this probe line (`run=<n> <refProbe>`) instead of the last change
  */
-export function analyzeKillRun({ lines, pkg, oldPid, samePid = true, runIndex, expectedLen, delaySec, pidGone, refProbe = null }) {
+export function analyzeKillRun({ lines, pkg, oldPid, samePid = true, runIndex, expectedLen, delaySec, pidGone, refProbe = null, extraReasons = [], window = null }) {
   const parsed = lines.map(parseLogcatLine).filter(Boolean);
   const timing = parsed
     .filter((l) => l.tag === "RaftDraftTiming")
     .map((l) => ({ ...l, ...parseTimingMessage(l.message) }))
     .filter((l) => l.kind);
-  const exit = exitInterval(parsed, { pkg, oldPid, runIndex });
-  const foreign = foreignExit(parsed, { pkg, oldPid });
+  const exit = exitInterval(parsed, { pkg, oldPid, runIndex, extraReasons });
+  const foreign = foreignExit(parsed, { pkg, oldPid, extraReasons });
   const lower = exit.lower_ms;
 
   const beforeSignal = (l) => lower == null || l.tsMs <= lower;
@@ -197,7 +209,12 @@ export function analyzeKillRun({ lines, pkg, oldPid, samePid = true, runIndex, e
   else if (refProbe && !probe) result.reason = `no ${refProbe} probe line`;
   else if (!refProbe && !lastChange) result.reason = lateChange ? "last keystroke reached the composer only after the kill signal could have been sent" : "no change_received for the full text before the kill";
   else if (!refProbe && (result.clock_skew_ms == null || Math.abs(result.clock_skew_ms) > MAX_CLOCK_SKEW_MS)) result.reason = `logcat and uptime clocks disagree (skew ${result.clock_skew_ms} ms)`;
-  classify(result, delaySec);
+  result.kill_reason = exit.lower_ms != null ? parsed.map((l) => killReason(l, pkg, oldPid)).find((r) => isIntendedReason(r, pkg, extraReasons)) ?? null : null;
+  if (window && !result.reason) {
+    // A regression with its own required window (b: within 100 ms of the send tap).
+    if (insideWindow(result.delta_lower_ms, result.delta_upper_ms, window)) result.timing = "hit";
+    else result.reason = `exit Δ [${result.delta_lower_ms}, ${result.delta_upper_ms}] ms not inside required [${window.lo_ms}, ${window.hi_ms}] ms`;
+  } else classify(result, delaySec);
   // Whatever D was asked for, the bucket the measured interval actually proves (bucketed modes only).
   result.measured_bucket = !result.reason || /not inside bucket/.test(result.reason ?? "") ? (delaySec == null ? null : measuredBucket(result.delta_lower_ms, result.delta_upper_ms)) : null;
   return result;
@@ -253,8 +270,8 @@ export function markdownTable(runs, summary) {
   const measured = summarizeByMeasuredBucket(runs);
   out.push(
     "### By measured bucket (the whole exit Δ interval inside the window, whatever D was asked)", "",
-    "| bucket | window (s) | samples | restored | written before kill |", "|---|---|---|---|---|",
-    ...measured.map((g) => `| ${g.bucket} | (${BUCKETS[g.bucket].lo}, ${BUCKETS[g.bucket].hi}] | ${g.samples} | ${g.restored} | ${g.written_before_kill} |`),
+    "| bucket | tolerance (whole exit Δ interval) | samples | restored | written before kill |", "|---|---|---|---|---|",
+    ...measured.map((g) => `| ${g.bucket} | [${BUCKETS[g.bucket].lo_ms}, ${BUCKETS[g.bucket].hi_ms}] ms | ${g.samples} | ${g.restored} | ${g.written_before_kill} |`),
     "",
   );
   out.push(

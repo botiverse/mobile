@@ -119,12 +119,27 @@ test("an exit that is not the force-stop is excluded, not a hit or a miss", () =
 });
 
 test("the measured bucket is the tightest window holding the whole interval", () => {
-  assert.equal(measuredBucket(12, 41), 0.05);
-  assert.equal(measuredBucket(60, 120), 0.1);
+  assert.equal(measuredBucket(25, 41), 0.05);
+  assert.equal(measuredBucket(12, 41), null);
+  assert.equal(measuredBucket(75, 120), 0.1);
   assert.equal(measuredBucket(90, 160), null);
   assert.equal(measuredBucket(250, 330), 0.3);
-  const r = analyzeKillRun({ ...base, expectedLen: 5, delaySec: 0.1, lines: [change(10, 1, 5), killing(10.012), gone(10.041)] });
+  const r = analyzeKillRun({ ...base, expectedLen: 5, delaySec: 0.1, lines: [change(10, 1, 5), killing(10.025), gone(10.041)] });
   assert.equal(r.timing, "unconfirmed");
   assert.equal(r.measured_bucket, 0.05);
   assert.deepEqual(summarizeByMeasuredBucket([{ ...r, pass: true }]), [{ bucket: 0.05, samples: 1, restored: 1, written_before_kill: 0 }]);
+});
+
+test("the send regression has its own 100 ms window; a recents swipe may kill by remove task", () => {
+  const slow = analyzeKillRun({ ...base, expectedLen: 5, delaySec: null, refProbe: "send_tap", window: { lo_ms: 0, hi_ms: 100 }, lines: [probe(20, 1, "send_tap"), killing(20.11), gone(20.115)] });
+  assert.equal(slow.timing, "unconfirmed");
+  assert.match(slow.reason, /not inside required \[0, 100\]/);
+  const fast = analyzeKillRun({ ...base, expectedLen: 5, delaySec: null, refProbe: "send_tap", window: { lo_ms: 0, hi_ms: 100 }, lines: [probe(20, 1, "send_tap"), killing(20.06), gone(20.07)] });
+  assert.equal(fast.timing, "hit");
+  const removeTask = line(10.2, 600, "ActivityManager", `Killing ${PID}:${PKG}/u0a192 (adj 900): remove task`);
+  const swipe = analyzeKillRun({ ...base, expectedLen: 5, delaySec: null, extraReasons: ["remove task"], lines: [change(10, 1, 5), removeTask, gone(10.21)] });
+  assert.equal(swipe.timing, "measured");
+  assert.equal(swipe.kill_reason, "remove task");
+  // Without the swipe allowance the same exit is not this run's force-stop.
+  assert.equal(analyzeKillRun({ ...base, expectedLen: 5, delaySec: null, lines: [change(10, 1, 5), removeTask, gone(10.21)] }).timing, "excluded");
 });

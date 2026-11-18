@@ -22,7 +22,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
-import { analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
+import { createHash } from "node:crypto";
+import { BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, value, index, all) => {
@@ -497,13 +498,13 @@ function killScript({ oldPid, startTime, before, sleepSec, probeLabel = null }) 
 }
 
 /** Runs [script] for the old process, then decides the run (exit interval, timing) and the relaunch pid. */
-async function killAndAnalyze({ oldPid, startTime, script, expectedLen, delaySec, refProbe = null, mark }) {
+async function killAndAnalyze({ oldPid, startTime, script, expectedLen, delaySec, refProbe = null, mark, window = null, extraReasons = [] }) {
   const out = shell(script, { timeoutMs: 90_000 });
   await sleep(1500);
   const pidGone = !shell(`ls -d /proc/${oldPid} 2>/dev/null`, { allowFailure: true }).trim();
   const lines = linesSince(mark);
   const analysis = analyzeKillRun({
-    lines, pkg: PKG, oldPid, samePid: out.includes("SAME_PROCESS"), runIndex, expectedLen, delaySec, pidGone, refProbe,
+    lines, pkg: PKG, oldPid, samePid: out.includes("SAME_PROCESS"), runIndex, expectedLen, delaySec, pidGone, refProbe, window, extraReasons,
   });
   return { analysis: { ...analysis, old_start_time: startTime, pid_gone_after_poll: out.includes("PID_GONE") }, lines };
 }
@@ -513,19 +514,19 @@ async function killAndAnalyze({ oldPid, startTime, script, expectedLen, delaySec
  * process during the run that was not this run's force-stop (e.g. dependency_died when Play services'
  * FontsProvider process dies) is named in the run, so it can never pass for a force-stop sample.
  */
-function foreignAppDeaths(mark, oldPid) {
+function foreignAppDeaths(mark, oldPid, extraReasons = []) {
   const foreign = [];
   for (const l of linesSince(mark).map(parseLogcatLine).filter(Boolean)) {
     const ev = l.tag === "am_kill" ? parseEventPid(l.message) : null;
     if (!ev || ev.name !== PKG) continue;
     const reason = killReason(l, PKG, ev.pid);
-    if (!isForceStopReason(reason, PKG)) foreign.push(`pid ${ev.pid}${ev.pid === oldPid ? " (old)" : ""}: ${reason}`);
+    if (!isForceStopReason(reason, PKG) && !extraReasons.some((r) => reason?.startsWith(r))) foreign.push(`pid ${ev.pid}${ev.pid === oldPid ? " (old)" : ""}: ${reason}`);
   }
   return foreign;
 }
 
 function relaunchIdentity(record, oldPid, oldStart, mark) {
-  const foreign = foreignAppDeaths(mark, oldPid);
+  const foreign = foreignAppDeaths(mark, oldPid, record.mode === "recents" ? ["remove task"] : []);
   if (foreign.length) record.foreign_app_deaths = foreign;
   record.new_pid = pidOf();
   const newStart = record.new_pid ? startTimeOf(record.new_pid) : null;
@@ -535,35 +536,60 @@ function relaunchIdentity(record, oldPid, oldStart, mark) {
 
 // ---------- runs ----------
 let runIndex = 0;
-const overheadSamples = [];
-/** Median of (exit lower bound − last change) − sleep over earlier runs; 35 ms before any. */
-function killOverheadMs() {
-  if (!overheadSamples.length) return 35;
-  const sorted = [...overheadSamples].sort((a, b) => a - b);
-  return Math.max(0, sorted[Math.floor(sorted.length / 2)]);
+const median = (values, fallback) => {
+  if (!values.length) return fallback;
+  const sorted = [...values].sort((x, y) => x - y);
+  return sorted[Math.floor(sorted.length / 2)];
+};
+/** Per mode: (exit Δ lower − sleep) and exit-interval widths of earlier runs, to aim the next sleep. */
+const aim = { bucket: { overhead: [], width: [] }, fast: { overhead: [], width: [] }, send: { overhead: [], width: [] } };
+/**
+ * The sleep that puts the whole exit interval in [lo_ms, hi_ms]: aim the lower bound at the window centre
+ * minus half the median width, less the measured overhead between the sleep's end and the kill line.
+ * Δ is always measured afterwards; the sleep is only aiming.
+ */
+function aimedSleepSec(mode, window) {
+  const a = aim[mode];
+  const targetLower = (window.lo_ms + window.hi_ms) / 2 - median(a.width, 30) / 2;
+  return Math.max(0, Math.round(targetLower - median(a.overhead, 35)) / 1000);
 }
+function learn(mode, analysis, sleepSec) {
+  if (analysis.delta_lower_ms == null || !analysis.same_process) return;
+  aim[mode].overhead.push(analysis.delta_lower_ms - sleepSec * 1000);
+  if (analysis.exit_width_ms != null) aim[mode].width.push(analysis.exit_width_ms);
+}
+/** Keys typed in a fast run: tuned after each fast run so the burst spans ~4 s (agreed 3-5 s). */
+let fastKeyCount = 45;
+const FAST_TARGET_MS = 4000;
+const FAST_ALPHABET = "abcdefghijklmnoprstuvwxyz0123456789"; // no q: q is the last key
 const markerPrefix = () => `dk${RUN_TAG}r${String(runIndex).padStart(2, "0")}x`;
+let SCREEN = { w: 1080, h: 2400 };
 
 /**
- * One kill run. [mode]: "bucket" (prefix typed, then last key + sleep D + kill in one shell),
- * "fast" (the whole text typed key by key on the device for 3-5 s, then last key + sleep D + kill),
- * "home" (last key, Home, sleep 0.1, kill), "send" (tap Send, sleep 0.1, kill).
+ * One kill run. [mode]:
+ *  "bucket": prefix typed, then one device-side shell: last key, sleep, force-stop.
+ *  "fast":   one device-side shell: ~4 s of single keystrokes, last key, sleep, force-stop.
+ *  "home":   last key, Home, sleep 0.1 s, force-stop.
+ *  "recents": last key, recents (KEYCODE_APP_SWITCH), swipe the task card away, then force-stop if the
+ *             process is still there; the swipe's own kill ("remove task") counts as this run's kill.
+ *  "send":   full text typed and written; one device-side shell: tap Send, sleep, force-stop;
+ *            required window: exit within [0, 100] ms of the tap.
  */
 async function killRun(api, { group, mode, delaySec }) {
   runIndex += 1;
   const record = { group, mode, delay_sec: delaySec, run: runIndex };
   const runMark = logcatMark();
   try {
-    const composer = await readyEmptyComposer(api);
+    await readyEmptyComposer(api);
     const prefix = markerPrefix();
     let expected = `${prefix}${LAST_CHAR}`;
     let fastChars = "";
     if (mode === "fast") {
-      fastChars = "abcdefghijklmnoprstuvwxyz0123456789abcdefghijklmnoprstuvwxyz"; // 60 keys, no q
+      fastChars = Array.from({ length: fastKeyCount }, (_, i) => FAST_ALPHABET[i % FAST_ALPHABET.length]).join("");
       expected = `${prefix}${fastChars}${LAST_CHAR}`;
+      record.fast_keys = fastChars.length + 1;
     }
     if (mode === "send") {
-      // Whole text in the composer and durable, then Send and kill.
       let mark = logcatMark();
       shell(`${INPUT} text ${expected}`);
       if (!(await waitForTiming("the full text written", (l) => l.includes(`draft_written`) && l.includes(` len=${expected.length} `), { fromMark: mark }))) {
@@ -575,13 +601,16 @@ async function killRun(api, { group, mode, delaySec }) {
       const oldPid = pidOf();
       if (!oldPid) fail("the app has no pid before the kill");
       const startTime = startTimeOf(oldPid);
+      const sleepSec = aimedSleepSec("send", SEND_WINDOW);
+      record.sleep_sec = sleepSec;
       mark = logcatMark();
-      // Δ is measured from the send_tap probe (logged right before the tap) to the exit interval.
+      // Tap and force-stop in the same device-side shell; Δ from the send_tap probe logged right before the tap.
       const { analysis } = await killAndAnalyze({
-        oldPid, startTime, mark, expectedLen: expected.length, delaySec: null, refProbe: "send_tap",
-        script: killScript({ oldPid, startTime, before: `${INPUT} tap ${x} ${y}; `, sleepSec: 0.1, probeLabel: "send_tap" }),
+        oldPid, startTime, mark, expectedLen: expected.length, delaySec: null, refProbe: "send_tap", window: SEND_WINDOW,
+        script: killScript({ oldPid, startTime, before: `${INPUT} tap ${x} ${y}; `, sleepSec, probeLabel: "send_tap" }),
       });
       Object.assign(record, analysis);
+      learn("send", analysis, sleepSec);
       const seen = await composerAfterRelaunch(api, "", 8_000);
       const sentOnServer = (await recentMessageTexts(api)).some((t) => t.includes(expected));
       record.sent_on_server = sentOnServer;
@@ -594,38 +623,57 @@ async function killRun(api, { group, mode, delaySec }) {
     }
 
     let mark = logcatMark();
-    if (mode !== "fast") {
-      shell(`${INPUT} text ${prefix}`);
-      if (!(await waitForTiming("the prefix", (l) => l.includes("change_received") && l.includes(` len=${prefix.length} `), { fromMark: mark }))) {
-        record.note = "no change_received for the prefix";
-      }
-      await sleep(300);
-    } else {
-      shell(`${INPUT} text ${prefix}`);
-      await waitForTiming("the prefix", (l) => l.includes("change_received") && l.includes(` len=${prefix.length} `), { fromMark: mark });
-      await sleep(300);
+    shell(`${INPUT} text ${prefix}`);
+    if (!(await waitForTiming("the prefix", (l) => l.includes("change_received") && l.includes(` len=${prefix.length} `), { fromMark: mark }))) {
+      record.note = "no change_received for the prefix";
     }
+    await sleep(300);
     const oldPid = pidOf();
     if (!oldPid) fail("the app has no pid before the kill");
     const startTime = startTimeOf(oldPid);
     mark = logcatMark();
-    const typeFast = mode === "fast" ? `for c in ${fastChars.split("").join(" ")}; do ${INPUT} text $c; sleep 0.03; done; ` : "";
-    const home = mode === "home" ? `${INPUT} keyevent KEYCODE_HOME; ` : "";
-    // The force-stop lands some ms after the sleep ends (cmd start-up, system_server work): sleep D minus the
-    // overhead measured in earlier runs, so the exit interval is centred on D. Δ is always measured, never assumed.
-    const sleepSec = mode === "home" ? 0.1 : Math.max(0, Math.round((delaySec - killOverheadMs() / 1000) * 1000) / 1000);
+    let before = `${INPUT} keyevent ${LAST_KEY}; `;
+    let sleepSec;
+    let extraReasons = [];
+    if (mode === "fast") {
+      before = `for c in ${fastChars.split("").join(" ")}; do ${INPUT} text $c; done; ${before}`;
+      sleepSec = aimedSleepSec("fast", bucketFor(delaySec));
+    } else if (mode === "home") {
+      before += `${INPUT} keyevent KEYCODE_HOME; `;
+      sleepSec = 0.1;
+    } else if (mode === "recents") {
+      const x = Math.round(SCREEN.w / 2);
+      before += `${INPUT} keyevent KEYCODE_APP_SWITCH; sleep 1; ${INPUT} swipe ${x} ${Math.round(SCREEN.h * 0.55)} ${x} ${Math.round(SCREEN.h * 0.05)} 150; `;
+      sleepSec = 1;
+      extraReasons = ["remove task"];
+    } else {
+      sleepSec = aimedSleepSec("bucket", bucketFor(delaySec));
+    }
     record.sleep_sec = sleepSec;
+    const bucketed = mode === "bucket" || mode === "fast";
     const { analysis, lines } = await killAndAnalyze({
-      oldPid, startTime, mark, expectedLen: expected.length, delaySec: mode === "home" ? null : delaySec,
-      script: killScript({ oldPid, startTime, before: `${typeFast}${INPUT} keyevent ${LAST_KEY}; ${home}`, sleepSec }),
+      oldPid, startTime, mark, expectedLen: expected.length, delaySec: bucketed ? delaySec : null, extraReasons,
+      script: killScript({ oldPid, startTime, before, sleepSec }),
     });
     Object.assign(record, analysis);
-    if (mode !== "home" && analysis.delta_lower_ms != null && analysis.last_change_seq != null && analysis.same_process) {
-      overheadSamples.push(analysis.delta_lower_ms - sleepSec * 1000);
+    if (bucketed) learn(mode, analysis, sleepSec);
+    if (mode === "recents") {
+      record.recents_swipe_killed = analysis.kill_reason?.startsWith("remove task") ?? false;
+      record.note = record.recents_swipe_killed
+        ? "recents swipe removed the task and killed the process (remove task)"
+        : `recents swipe did not kill the process; it ended by ${analysis.kill_reason ?? "unknown"}`;
     }
     if (mode === "fast") {
-      const changes = lines.filter((l) => l.includes("RaftDraftTiming") && l.includes("change_received")).map((l) => Number(/uptimeMs=(\d+)/.exec(l)?.[1]));
-      record.typing_ms = changes.length > 1 ? changes.at(-1) - changes[0] : null;
+      // The burst on the device clock: first to last change_received of the old process after the run started.
+      const changes = lines.map(parseLogcatLine).filter((l) => l && l.tag === "RaftDraftTiming" && l.pid === oldPid && l.message.startsWith("change_received"))
+        .map((l) => Number(/uptimeMs=(\d+)/.exec(l.message)?.[1]));
+      record.typing_span_ms = changes.length > 1 ? changes.at(-1) - changes[0] : null;
+      record.typing_changes = changes.length;
+      record.typing_in_3_to_5_s = record.typing_span_ms != null && record.typing_span_ms >= 3000 && record.typing_span_ms <= 5000;
+      if (record.typing_span_ms && changes.length > 1) {
+        const perKey = record.typing_span_ms / (changes.length - 1);
+        fastKeyCount = Math.min(120, Math.max(15, Math.round(FAST_TARGET_MS / perKey)));
+      }
     }
     const seen = await composerAfterRelaunch(api, expected);
     record.expected_desc = describeText(expected);
@@ -653,7 +701,7 @@ async function killRun(api, { group, mode, delaySec }) {
     screenshot(`run-${runIndex}-ERROR`);
     return record;
   } finally {
-    log(`run ${runIndex} ${group}: timing=${record.timing} exitΔ=[${record.delta_lower_ms ?? "-"}, ${record.delta_upper_ms ?? "-"}]ms written=${record.written_before_kill} pass=${record.pass}${record.reason ? ` (${record.reason})` : ""}`);
+    log(`run ${runIndex} ${group}: sleep=${record.sleep_sec ?? "-"} timing=${record.timing} exitΔ=[${record.delta_lower_ms ?? "-"}, ${record.delta_upper_ms ?? "-"}]ms bucket=${record.measured_bucket ?? "-"} pass=${record.pass}${record.reason ? ` (${record.reason})` : ""}`);
   }
 }
 
@@ -706,6 +754,11 @@ async function main() {
         model: shell("getprop ro.product.model").trim(),
         input: INPUT,
         force_stop: FORCE_STOP,
+        screen: (() => {
+          const m = /(\d+)x(\d+)/.exec(shell("wm size", { allowFailure: true }));
+          if (m) SCREEN = { w: Number(m[1]), h: Number(m[2]) };
+          return SCREEN;
+        })(),
       };
     });
 
@@ -728,7 +781,16 @@ async function main() {
       const dump = shell(`dumpsys package ${PKG}`, { allowFailure: true });
       const version = /versionName=(\S+)/.exec(dump)?.[1] ?? "";
       if (!version) fail(`${PKG} is not installed after adb install`);
-      return { version_name: version, debuggable: /pkgFlags=\[[^\]]*DEBUGGABLE/.test(dump) };
+      // Identity of what is actually installed, not just the Alpha label.
+      const basePath = /package:(\S+)/.exec(shell(`pm path ${PKG}`, { allowFailure: true }))?.[1] ?? "";
+      summary.apk = {
+        file_sha256: createHash("sha256").update(fs.readFileSync(APK)).digest("hex"),
+        installed_base_apk_sha256: basePath ? shell(`sha256sum ${basePath}`, { allowFailure: true }).trim().split(/\s+/)[0] : null,
+        version_name: version,
+        version_code: /versionCode=(\d+)/.exec(dump)?.[1] ?? null,
+        debuggable: /pkgFlags=\[[^\]]*DEBUGGABLE/.test(dump),
+      };
+      return summary.apk;
     });
 
     startCapture();
@@ -744,21 +806,41 @@ async function main() {
     });
     await step("positive-control", () => positiveControl(api));
 
-    const plan = [];
-    for (let i = 0; i < RUNS_PER_BUCKET; i += 1) for (const d of DELAYS) plan.push({ group: `D=${d}`, mode: "bucket", delaySec: d });
-    for (let i = 0; i < FAST_RUNS; i += 1) for (const d of FAST_DELAYS) plan.push({ group: `fast D=${d}`, mode: "fast", delaySec: d });
-    plan.push({ group: "a: wait 1 s", mode: "bucket", delaySec: 1 });
-    plan.push({ group: "b: send, kill 0.1 s", mode: "send", delaySec: null });
-    plan.push({ group: "c: Home, kill", mode: "home", delaySec: null });
+    // Bucket runs go on until each bucket has RUNS_PER_BUCKET valid samples (the whole measured exit interval
+    // inside that bucket's tolerance, whatever D was aimed at) or its attempts run out.
+    const maxAttempts = Math.max(RUNS_PER_BUCKET * 3, RUNS_PER_BUCKET + 5);
+    summary.bucket_progress = Object.fromEntries(DELAYS.map((d) => [d, { valid: 0, attempted: 0, max_attempts: maxAttempts }]));
+    const fixed = [];
+    for (let i = 0; i < FAST_RUNS; i += 1) for (const d of FAST_DELAYS) fixed.push({ group: `fast D=${d}`, mode: "fast", delaySec: d });
+    fixed.push({ group: "a: wait 1 s", mode: "bucket", delaySec: 1 });
+    for (let i = 0; i < 5; i += 1) fixed.push({ group: "b: send, kill within 100 ms", mode: "send", delaySec: null, untilHit: true });
+    fixed.push({ group: "c1: Home, kill", mode: "home", delaySec: null });
+    fixed.push({ group: "c2: recents swipe (task removed)", mode: "recents", delaySec: null });
 
     await step("kill-runs", async () => {
       let consecutiveErrors = 0;
-      for (const item of plan) {
-        const record = await killRun(api, item);
+      const keep = (record) => {
         summary.runs.push(record);
         fs.appendFileSync(path.join(OUT, "runs.jsonl"), `${JSON.stringify(record)}\n`);
         consecutiveErrors = record.error ? consecutiveErrors + 1 : 0;
         if (consecutiveErrors >= 3) fail(`three runs in a row errored; last: ${record.error}`);
+      };
+      const progress = summary.bucket_progress;
+      const open = () => DELAYS.filter((d) => progress[d].valid < RUNS_PER_BUCKET && progress[d].attempted < maxAttempts);
+      while (open().length) {
+        for (const d of open()) {
+          progress[d].attempted += 1;
+          const record = await killRun(api, { group: `D=${d}`, mode: "bucket", delaySec: d });
+          if (record.measured_bucket != null && progress[record.measured_bucket]) progress[record.measured_bucket].valid += 1;
+          keep(record);
+        }
+      }
+      let sendHit = false;
+      for (const item of fixed) {
+        if (item.untilHit && sendHit) continue;
+        const record = await killRun(api, item);
+        if (item.mode === "send" && record.timing === "hit") sendHit = true;
+        keep(record);
       }
       return { runs: summary.runs.length };
     });
@@ -782,15 +864,25 @@ async function main() {
       if (!summary.channel_archive.archived) console.error(`::warning::channel #${CHANNEL} was not archived: ${JSON.stringify(summary.channel_archive)}`);
     }
     await stopCapture();
-    summary.buckets = Object.fromEntries([...DELAYS, ...FAST_DELAYS, 1].map((d) => [d, bucketFor(d)]));
+    summary.buckets = BUCKETS;
+    summary.send_window = SEND_WINDOW;
     summary.summary = summarize(summary.runs);
     fs.writeFileSync(path.join(OUT, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
     const header =
       `## Draft kill timing (task #246)\n\nResult: **${summary.result}**${summary.failed_step ? ` (failed at ${summary.failed_step}: ${summary.error})` : ""}\n\n` +
-      `Exit interval on the device clock (logcat -v monotonic): lower = latest pre-signal line (AM "Killing" / am_kill), upper = earliest evidence ` +
-      `of death (device-side /proc poll: gone or zombie; am_proc_died; cgroup empty). Exit Δ = interval − last change_received uptimeMs ` +
-      `(b: − the send_tap probe). Hit = the WHOLE exit Δ interval inside the bucket window ` +
-      `(${Object.entries(summary.buckets).map(([d, b]) => `D=${d}: (${b.lo}, ${b.hi}] s`).join("; ")}); b/c are measured, not bucketed. Sleep before the kill = D − measured kill overhead (median of earlier runs).\n\n` +
+      `Exit interval on the device clock (logcat -v monotonic): lower = latest pre-signal line of the run's own kill (AM "Killing" / am_kill "stop <pkg>"; ` +
+      `recents swipe: also "remove task"), upper = earliest evidence of death (device-side /proc poll: gone or zombie; am_proc_died; cgroup empty). ` +
+      `Exit Δ = interval − last change_received uptimeMs (b: − the send_tap probe logged right before the tap). A sample is valid for a bucket only when ` +
+      `the WHOLE exit Δ interval is inside its tolerance: ${Object.entries(BUCKETS).map(([d, b]) => `${d} s = [${b.lo_ms}, ${b.hi_ms}] ms`).join("; ")}; ` +
+      `b: [${SEND_WINDOW.lo_ms}, ${SEND_WINDOW.hi_ms}] ms after the tap. The device-side sleep is only aim (window centre minus measured overhead), never counted as measured. ` +
+      `Exits not caused by the run's own kill (dependency_died, crash, ANR) are "excluded".\n\n` +
+      (summary.apk ? `APK: sha256 ${summary.apk.file_sha256}; installed base.apk sha256 ${summary.apk.installed_base_apk_sha256}; versionName ${summary.apk.version_name}; versionCode ${summary.apk.version_code}; debuggable ${summary.apk.debuggable}.\n\n` : "") +
+      (summary.bucket_progress ? `Valid / attempted per bucket (target ${RUNS_PER_BUCKET} valid): ${Object.entries(summary.bucket_progress).map(([d, p]) => `${d} s: ${p.valid} / ${p.attempted}`).join("; ")} ` +
+        `(a sample counts for the bucket its measured interval proves, so "attempted" is runs aimed at that bucket).\n\n` : "") +
+      (() => {
+        const fast = summary.runs.filter((r) => r.mode === "fast");
+        return fast.length ? `Fast typing bursts (device clock, first to last change_received): ${fast.map((r) => `${r.typing_span_ms ?? "?"} ms/${r.typing_changes ?? "?"} changes`).join(", ")}; within 3-5 s: ${fast.filter((r) => r.typing_in_3_to_5_s).length}/${fast.length}.\n\n` : "";
+      })() +
       `Channel: #${CHANNEL} (created for this run; archived: ${summary.channel_archive?.archived ?? "n/a"}). ` +
       `Other activity in it during the run: ${summary.channel_activity?.other_activity ?? "unknown"}` +
       `${summary.channel_activity?.other_kinds ? ` ${JSON.stringify(summary.channel_activity.other_kinds)}` : ""}.\n\n` +
