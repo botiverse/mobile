@@ -26,7 +26,8 @@ class SharedThreadComposerDraftCrashSurvivalTest {
         // Nothing of the virtual clock passes: only work that is due now runs before the kill.
         clock.advanceBy(0L)
 
-        assertEquals(listOf(0L), clock.requestedDelays)
+        // Written synchronously in the transition: nothing was even scheduled.
+        assertEquals(emptyList<Long>(), clock.requestedDelays)
         assertEquals("hello", restartAndRestore(storage).seedText)
     }
 
@@ -212,7 +213,7 @@ class SharedThreadComposerDraftCrashSurvivalTest {
 }
 
 /** Virtual time: scheduled blocks run when [advanceBy] reaches their due time. */
-private class VirtualDraftWriteClock : SharedThreadComposerDraftPersistenceScheduler {
+internal class VirtualDraftWriteClock : SharedThreadComposerDraftPersistenceScheduler {
     private class Task(val dueAt: Long, val order: Long, val block: () -> Unit) {
         var cancelled = false
     }

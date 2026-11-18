@@ -208,7 +208,9 @@ class SharedThreadComposerDraftStoreTest {
             SharedThreadComposerDraftPersistSlice(
                 persistence = persistence,
                 scheduler = scheduler,
-                changeWriteIntervalMillis = 250L
+                changeWriteIntervalMillis = 250L,
+                // The coalesced background path; SharedThreadComposerDraftSyncFirstWriteTest covers the synchronous first write.
+                syncFirstChangeWrite = false,
             )
         val draftKey = "send=channel-rapid|parent=_|mention=channel-rapid"
         val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
@@ -241,7 +243,8 @@ class SharedThreadComposerDraftStoreTest {
         val storage = CountingSharedPreferenceStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
         val scheduler = FakeThreadComposerDraftPersistenceScheduler()
-        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler)
+        // The coalesced background path; SharedThreadComposerDraftSyncFirstWriteTest covers the synchronous first write.
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler, syncFirstChangeWrite = false)
         val draftKey = "send=channel-blur|parent=_|mention=channel-blur"
         val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
 
@@ -314,7 +317,8 @@ class SharedThreadComposerDraftStoreTest {
         val storage = CountingSharedPreferenceStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
         val scheduler = FakeThreadComposerDraftPersistenceScheduler()
-        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler)
+        // The coalesced background path; SharedThreadComposerDraftSyncFirstWriteTest covers the synchronous first write.
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler, syncFirstChangeWrite = false)
         val draftKey = "send=channel-send|parent=_|mention=channel-send"
         val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
 
@@ -342,7 +346,8 @@ class SharedThreadComposerDraftStoreTest {
         val storage = CountingSharedPreferenceStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
         val scheduler = FakeThreadComposerDraftPersistenceScheduler()
-        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler)
+        // The coalesced background path; SharedThreadComposerDraftSyncFirstWriteTest covers the synchronous first write.
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler, syncFirstChangeWrite = false)
         val firstKey = "send=channel-one|parent=_|mention=channel-one"
         val secondKey = "send=channel-two|parent=_|mention=channel-two"
         val firstStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))

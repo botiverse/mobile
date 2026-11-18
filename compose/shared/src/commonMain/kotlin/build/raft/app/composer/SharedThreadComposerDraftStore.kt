@@ -759,6 +759,29 @@ internal class SharedThreadComposerDraftPersistence(
             .firstOrNull()
     }
 
+    /**
+     * [save] only when the store-wide [lock] is free right now; false (nothing written) when another
+     * thread holds it.  For the composer's synchronous first write on the input thread, which must not
+     * wait behind another writer (task #246).
+     */
+    fun trySave(
+        key: String,
+        text: String,
+        asTask: Boolean,
+        uploadedAttachments: List<SharedThreadComposerAttachment>,
+        externalShareSources: List<SharedThreadComposerExternalShareSource>,
+        structuredMentions: List<ThreadSendMessageMention>?,
+        routineDiagnostics: Boolean,
+    ): Boolean {
+        if (!lock.tryLock()) return false
+        try {
+            save(key, text, asTask, uploadedAttachments, externalShareSources, structuredMentions, routineDiagnostics)
+        } finally {
+            lock.unlock()
+        }
+        return true
+    }
+
     fun save(
         key: String,
         text: String,
@@ -1541,7 +1564,19 @@ internal class SharedThreadComposerDraftPersistSlice(
      * Production passes false: the drafts are account-scoped and read nothing until the account
      * binding is known (architecture review B, site 7).
      */
-    recordsKnownAtStart: Boolean = true
+    recordsKnownAtStart: Boolean = true,
+    /**
+     * Write the first typed change after a quiet period synchronously, before the transition
+     * returns (task #246).  The background write it replaces took 20-30 ms at p50 and over 100 ms at
+     * p95 on an emulator (dispatch to Dispatchers.Default, locks, MMKV), so a kill in that window lost
+     * the newest keystroke.  On the calling (input) thread the write is a few MMKV putString calls
+     * (text, asTask, attachments, sources, mentions, editedAt, the active index): copies into a
+     * memory-mapped file, microseconds each, no fsync.  Changes inside the write interval still
+     * coalesce on [scheduler].
+     */
+    private val syncFirstChangeWrite: Boolean = true,
+    /** Test seam: false simulates another thread holding the draft store lock at the synchronous write. */
+    private val syncWriteLockAvailable: () -> Boolean = { true },
 ) : MviPersistSlice<SharedThreadComposerDraftState, SharedThreadComposerDraftIntent> {
     /** Runtimes using this slice serialize their transitions on it; see [SharedThreadComposerDraftStore]. */
     internal val transitionAdmissionLock: ReentrantLock
@@ -1570,6 +1605,8 @@ internal class SharedThreadComposerDraftPersistSlice(
     private val writeGenerationByDraftKey = mutableMapOf<String, Long>()
     /** When the last background change write of a key started; guarded by [stateLock]. */
     private val lastChangeWriteAtMillisByDraftKey = mutableMapOf<String, Long>()
+    /** Keys whose current burst already logged a synchronous-write fallback; guarded by [stateLock]. */
+    private val syncWriteFallbackLoggedKeys = mutableSetOf<String>()
     /** Typed-text write bursts being logged as one; guarded by [stateLock]. */
     private val changeWriteLogBurstByDraftKey = mutableMapOf<String, ChangeWriteLogBurst>()
 
@@ -1897,6 +1934,7 @@ internal class SharedThreadComposerDraftPersistSlice(
         key: String,
         state: SharedThreadComposerDraftState
     ) {
+        if (syncFirstChangeWrite && changeWriteDelayMillis(key) == 0L && writeChangeNow(key, state)) return
         val (pending, previous) = stateLock.withLock {
             val next =
                 PendingThreadComposerDraftWrite(
@@ -1908,6 +1946,56 @@ internal class SharedThreadComposerDraftPersistSlice(
         previous?.cancellation?.cancel()
         refreshActiveDraftRecords(reason = "ChangeProjected", onlyLogWhenChanged = true)
         schedulePendingCallback(key, pending)
+    }
+
+    /**
+     * The first typed change after a quiet period, written on the calling thread before the
+     * transition returns ([syncFirstChangeWrite]).  The write advances the key's generation, so a
+     * background write of older text still in flight is fenced exactly as a newer Change fences it,
+     * and it goes through [persistStateLocked], so text of a retired account is never written.
+     * It never waits: when another thread holds the draft store's lock, it returns false and the
+     * caller schedules the usual immediate background write (logged once per burst).
+     */
+    private fun writeChangeNow(key: String, state: SharedThreadComposerDraftState): Boolean =
+        stateLock.withLock {
+            persistenceWriteLock.withLock {
+                val routine = isFirstOfChangeWriteBurst(key)
+                val written =
+                    try {
+                        syncWriteLockAvailable() &&
+                            persistStateLocked(
+                                key,
+                                state,
+                                "ChangeWrittenNow",
+                                routineDiagnostics = routine,
+                                onlyLogRecordsWhenChanged = true,
+                                waitForStoreLock = false,
+                            ) != PersistOutcome.Busy
+                    } catch (error: Throwable) {
+                        safeDiagnostics(
+                            "thread_composer_draft_sync_write_failed key=$key error=${error::class.simpleName.orEmpty()}"
+                        )
+                        false
+                    }
+                if (!written) {
+                    if (syncWriteFallbackLoggedKeys.add(key)) {
+                        safeDiagnostics("thread_composer_draft_sync_write_fallback key=$key reason=store_busy_or_failed")
+                    }
+                    return@withLock false
+                }
+                admitChangeWriteToLogBurst(key, state.seedText.length)
+                // Fence any older pending or in-flight background write of this key.
+                val previous = pendingWritesByDraftKey.remove(key)
+                advanceWriteGenerationLocked(key)
+                lastChangeWriteAtMillisByDraftKey[key] = monotonicMillis()
+                previous?.cancellation?.cancel()
+                true
+            }
+        }
+
+    private fun isFirstOfChangeWriteBurst(key: String): Boolean {
+        val burst = stateLock.withLock { changeWriteLogBurstByDraftKey[key] } ?: return true
+        return monotonicMillis() - burst.lastWriteAtMillis >= ChangeWriteLogQuietMillis
     }
 
     private fun schedulePendingCallback(
@@ -2080,6 +2168,7 @@ internal class SharedThreadComposerDraftPersistSlice(
         stateLock.withLock {
             persistenceWriteLock.withLock {
                 persistStateLocked(key, state, reason)
+                Unit
             }
         }
     }
@@ -2090,24 +2179,44 @@ internal class SharedThreadComposerDraftPersistSlice(
         reason: String,
         routineDiagnostics: Boolean = true,
         onlyLogRecordsWhenChanged: Boolean = false,
-    ) {
+        /** False: give up ([PersistOutcome.Busy]) instead of waiting when the store lock is held elsewhere. */
+        waitForStoreLock: Boolean = true,
+    ): PersistOutcome {
         if (!isCurrentAccount(state)) {
             // Text typed for an account that has since signed out (or been replaced) is dropped,
             // never written into whoever is signed in now.
             safeDiagnostics("thread_composer_draft_persist_skipped key=$key reason=account_retired")
-            return
+            return PersistOutcome.SkippedRetiredAccount
         }
-        persistence.save(
-            key = key,
-            text = state.seedText,
-            asTask = state.seedAsTask,
-            uploadedAttachments = state.visiblePersistableThreadComposerDraftAttachments(),
-            externalShareSources = state.externalShareSources,
-            structuredMentions = state.structuredMentions,
-            routineDiagnostics = routineDiagnostics,
-        )
+        val attachments = state.visiblePersistableThreadComposerDraftAttachments()
+        if (waitForStoreLock) {
+            persistence.save(
+                key = key,
+                text = state.seedText,
+                asTask = state.seedAsTask,
+                uploadedAttachments = attachments,
+                externalShareSources = state.externalShareSources,
+                structuredMentions = state.structuredMentions,
+                routineDiagnostics = routineDiagnostics,
+            )
+        } else if (
+            !persistence.trySave(
+                key = key,
+                text = state.seedText,
+                asTask = state.seedAsTask,
+                uploadedAttachments = attachments,
+                externalShareSources = state.externalShareSources,
+                structuredMentions = state.structuredMentions,
+                routineDiagnostics = routineDiagnostics,
+            )
+        ) {
+            return PersistOutcome.Busy
+        }
         refreshActiveDraftRecords(reason = reason, onlyLogWhenChanged = onlyLogRecordsWhenChanged)
+        return PersistOutcome.Written
     }
+
+    private enum class PersistOutcome { Written, SkippedRetiredAccount, Busy }
 
     private fun persistStateIfGenerationCurrent(
         key: String,
@@ -2126,6 +2235,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                     routineDiagnostics = firstOfBurst,
                     onlyLogRecordsWhenChanged = true,
                 )
+                Unit
             }
         }
     }
@@ -2148,7 +2258,9 @@ internal class SharedThreadComposerDraftPersistSlice(
     }
 
     private fun endChangeWriteLogBurst(key: String) {
-        val burst = stateLock.withLock { changeWriteLogBurstByDraftKey.remove(key) } ?: return
+        val burst = stateLock.withLock {
+            changeWriteLogBurstByDraftKey.remove(key)?.also { syncWriteFallbackLoggedKeys.remove(key) }
+        } ?: return
         if (burst.unloggedWrites == 0) return
         safeDiagnostics(
             "thread_composer_draft_change_writes key=$key coalescedWrites=${burst.unloggedWrites} " +
