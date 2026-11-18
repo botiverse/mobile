@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyzeKillRun, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
+import { analyzeKillRun, measuredBucket, summarizeByMeasuredBucket, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
 
 const PKG = "build.raft.app.alpha";
 const PID = 4242;
@@ -116,4 +116,15 @@ test("an exit that is not the force-stop is excluded, not a hit or a miss", () =
   const ok = analyzeKillRun({ ...base, expectedLen: 5, delaySec: 0.05, lines: [change(10, 1, 5), killing(10.05), amKill(10.051), gone(10.06)] });
   assert.equal(ok.timing, "hit");
   assert.equal(summarize([{ group: "g", ...dep, pass: true }])[0].excluded, 1);
+});
+
+test("the measured bucket is the tightest window holding the whole interval", () => {
+  assert.equal(measuredBucket(12, 41), 0.05);
+  assert.equal(measuredBucket(60, 120), 0.1);
+  assert.equal(measuredBucket(90, 160), null);
+  assert.equal(measuredBucket(250, 330), 0.3);
+  const r = analyzeKillRun({ ...base, expectedLen: 5, delaySec: 0.1, lines: [change(10, 1, 5), killing(10.012), gone(10.041)] });
+  assert.equal(r.timing, "unconfirmed");
+  assert.equal(r.measured_bucket, 0.05);
+  assert.deepEqual(summarizeByMeasuredBucket([{ ...r, pass: true }]), [{ bucket: 0.05, samples: 1, restored: 1, written_before_kill: 0 }]);
 });

@@ -109,6 +109,15 @@ export function exitInterval(parsed, { pkg, oldPid, runIndex }) {
   };
 }
 
+/** The tightest bucket whose window holds the whole exit Δ interval [lowerMs, upperMs], or null. */
+export function measuredBucket(lowerMs, upperMs) {
+  if (lowerMs == null || upperMs == null) return null;
+  const fits = Object.entries(BUCKETS)
+    .filter(([, b]) => lowerMs > b.lo * 1000 && upperMs <= b.hi * 1000)
+    .sort((a, b) => a[1].hi - b[1].hi);
+  return fits.length ? Number(fits[0][0]) : null;
+}
+
 /** Hit only when the whole possible exit interval, measured from [refMs], is inside the bucket. */
 function classify(result, delaySec) {
   if (result.reason) return;
@@ -189,6 +198,8 @@ export function analyzeKillRun({ lines, pkg, oldPid, samePid = true, runIndex, e
   else if (!refProbe && !lastChange) result.reason = lateChange ? "last keystroke reached the composer only after the kill signal could have been sent" : "no change_received for the full text before the kill";
   else if (!refProbe && (result.clock_skew_ms == null || Math.abs(result.clock_skew_ms) > MAX_CLOCK_SKEW_MS)) result.reason = `logcat and uptime clocks disagree (skew ${result.clock_skew_ms} ms)`;
   classify(result, delaySec);
+  // Whatever D was asked for, the bucket the measured interval actually proves (bucketed modes only).
+  result.measured_bucket = !result.reason || /not inside bucket/.test(result.reason ?? "") ? (delaySec == null ? null : measuredBucket(result.delta_lower_ms, result.delta_upper_ms)) : null;
   return result;
 }
 
@@ -223,8 +234,29 @@ export function summarize(runs) {
 
 const cell = (v) => (v == null ? "-" : String(v).replace(/\|/g, "/"));
 
+/** Per measured bucket: samples whose whole exit Δ interval lies in that bucket, and how many were restored. */
+export function summarizeByMeasuredBucket(runs) {
+  const rows = new Map();
+  for (const r of runs) {
+    if (r.measured_bucket == null) continue;
+    const g = rows.get(r.measured_bucket) ?? { bucket: r.measured_bucket, samples: 0, restored: 0, written_before_kill: 0 };
+    g.samples += 1;
+    if (r.pass) g.restored += 1;
+    if (r.written_before_kill) g.written_before_kill += 1;
+    rows.set(r.measured_bucket, g);
+  }
+  return [...rows.values()].sort((a, b) => a.bucket - b.bucket);
+}
+
 export function markdownTable(runs, summary) {
   const out = [];
+  const measured = summarizeByMeasuredBucket(runs);
+  out.push(
+    "### By measured bucket (the whole exit Δ interval inside the window, whatever D was asked)", "",
+    "| bucket | window (s) | samples | restored | written before kill |", "|---|---|---|---|---|",
+    ...measured.map((g) => `| ${g.bucket} | (${BUCKETS[g.bucket].lo}, ${BUCKETS[g.bucket].hi}] | ${g.samples} | ${g.restored} | ${g.written_before_kill} |`),
+    "",
+  );
   out.push(
     "### Per bucket", "",
     "| group | runs | timing hits | unconfirmed | excluded (exit not by force-stop) | pass (restored / expected) | pass when hit | written before kill | exit Δ upper min / median / max (ms) | exit interval width median / max (ms) |",
@@ -235,12 +267,12 @@ export function markdownTable(runs, summary) {
   }
   out.push(
     "", "### Per run", "",
-    "| # | group | D (s) | exit Δ lower (ms) | exit Δ upper (ms) | width (ms) | bounds | timing | written before kill | expected | composer after relaunch | pass | old pid | new pid | pid gone | note |",
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+    "| # | group | D (s) | sleep (s) | measured bucket | exit Δ lower (ms) | exit Δ upper (ms) | width (ms) | bounds | timing | written before kill | expected | composer after relaunch | pass | old pid | new pid | pid gone | note |",
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
   );
   runs.forEach((r, i) => {
     const bounds = r.exit_lower_source ? `${r.exit_lower_source} .. ${r.exit_upper_source ?? "?"}` : "-";
-    out.push(`| ${i + 1} | ${r.group} | ${cell(r.delay_sec)} | ${cell(r.delta_lower_ms)} | ${cell(r.delta_upper_ms)} | ${cell(r.exit_width_ms)} | ${bounds} | ${r.timing} | ${r.written_before_kill ? "yes" : "no"} | ${cell(r.expected_desc)} | ${cell(r.observed_desc)} | ${r.pass ? "yes" : "no"} | ${cell(r.old_pid)} | ${cell(r.new_pid)} | ${r.pid_gone ? "yes" : "no"} | ${cell([r.reason, r.note, r.error, r.foreign_app_deaths?.length ? `other app deaths: ${r.foreign_app_deaths.join("; ")}` : null].filter(Boolean).join("; ") || null)} |`);
+    out.push(`| ${i + 1} | ${r.group} | ${cell(r.delay_sec)} | ${cell(r.sleep_sec)} | ${cell(r.measured_bucket)} | ${cell(r.delta_lower_ms)} | ${cell(r.delta_upper_ms)} | ${cell(r.exit_width_ms)} | ${bounds} | ${r.timing} | ${r.written_before_kill ? "yes" : "no"} | ${cell(r.expected_desc)} | ${cell(r.observed_desc)} | ${r.pass ? "yes" : "no"} | ${cell(r.old_pid)} | ${cell(r.new_pid)} | ${r.pid_gone ? "yes" : "no"} | ${cell([r.sample, r.reason, r.note, r.error, r.foreign_app_deaths?.length ? `other app deaths: ${r.foreign_app_deaths.join("; ")}` : null].filter(Boolean).join("; ") || null)} |`);
   });
   return `${out.join("\n")}\n`;
 }

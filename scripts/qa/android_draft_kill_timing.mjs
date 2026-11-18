@@ -287,6 +287,17 @@ async function createRunChannel(api) {
   fail(`could not create channel #${CHANNEL}: ${JSON.stringify(attempts)}`);
 }
 
+/** Channels an earlier run of this scenario created and could not archive (`qa-draft-246-*`): archive them now. */
+async function archiveLeftoverRunChannels(api) {
+  const list = listOf((await raftJson("GET", "channels", { token: api.token, serverId: api.server.id })).json, "channels");
+  const results = [];
+  for (const c of list.filter((c) => c?.id && /^qa-draft-246-\d+-\d+$/.test(c?.name ?? "") && c?.name !== CHANNEL && !c?.archivedAt && !c?.archived)) {
+    const res = await raftJson("POST", `channels/${c.id}/archive`, { token: api.token, serverId: api.server.id });
+    results.push({ name: c.name, archived: res.status < 300, status: res.status });
+  }
+  return results;
+}
+
 async function archiveRunChannel(api) {
   if (!api.channel?.id) return { archived: false, reason: "no channel was created" };
   try {
@@ -312,6 +323,7 @@ async function recentMessageTexts(api) {
  */
 async function channelActivityCheck(api) {
   const { status, rows } = await channelMessages(api);
+  if (status !== 200) return { http: status, other_activity: null, note: "could not read the channel: activity unknown" };
   const ours = (m) => String(m?.content ?? "").includes(`dk${RUN_TAG}`) && (api.selfId == null || m?.senderId === api.selfId);
   const others = rows.filter((m) => !ours(m));
   const kinds = {};
@@ -619,7 +631,15 @@ async function killRun(api, { group, mode, delaySec }) {
     record.expected_desc = describeText(expected);
     record.observed_desc = describeText(seen);
     relaunchIdentity(record, oldPid, startTime, mark);
-    record.pass = seen === expected;
+    if (record.last_change_seq == null && /no change_received/.test(record.reason ?? "")) {
+      // The last keystroke never reached the composer before the kill, so the app never had the full text:
+      // not a draft-survival sample. The draft must still hold everything the app did receive (the prefix).
+      record.sample = "last key not received before the kill";
+      record.expected_desc = `${describeText(expected)}, or ${describeText(expected.slice(0, -1))} if the last key never arrived`;
+      record.pass = seen === expected || seen === expected.slice(0, -1);
+    } else {
+      record.pass = seen === expected;
+    }
     return record;
   } catch (error) {
     record.timing = record.timing ?? "unconfirmed";
@@ -696,6 +716,7 @@ async function main() {
       if (!api.server?.id || !api.server.slug) fail(`the QA account does not see server ${SERVER} (with a slug)`);
       const me = (await raftJson("GET", "auth/me", { token: api.token })).json;
       api.selfId = me?.id ?? me?.user?.id ?? null;
+      summary.leftover_channels_archived = await archiveLeftoverRunChannels(api);
       api.channel = await createRunChannel(api);
       summary.channel_created = { name: api.channel.name, visibility: api.channel.visibility };
       return { channel: api.channel.name, visibility: api.channel.visibility };
@@ -751,6 +772,8 @@ async function main() {
   } finally {
     if (api.channel?.id) {
       try {
+        // The run outlives the access token: sign in to the API again for the checks and the archive.
+        api.token = await apiLogin();
         summary.channel_activity = await channelActivityCheck(api);
       } catch (error) {
         summary.channel_activity = { error: redact(error.message).slice(0, 200) };
