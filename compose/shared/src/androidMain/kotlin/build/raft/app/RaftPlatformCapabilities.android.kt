@@ -38,7 +38,8 @@ internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = true
  * large). Read at each call: a foldable's smallest width follows its fold.
  */
 internal actual fun raftPlatformLargeScreenPossible(): Boolean {
-    val smallestWidthDp = Resources.getSystem().configuration.smallestScreenWidthDp
+    // Plain JVM unit tests have no Android framework: no large screen there.
+    val smallestWidthDp = runCatching { Resources.getSystem().configuration.smallestScreenWidthDp }.getOrNull() ?: return false
     if (smallestWidthDp >= RAFT_ANDROID_TABLET_SMALLEST_WIDTH_DP) return true
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
     return runCatching {

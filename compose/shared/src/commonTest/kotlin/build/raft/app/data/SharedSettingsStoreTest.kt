@@ -54,7 +54,6 @@ class SharedSettingsStoreTest {
                 SharedSettingsDestination.LanguageRegion,
                 SharedSettingsDestination.Appearance,
                 SharedSettingsDestination.Notifications,
-                SharedSettingsDestination.Mobile,
                 SharedSettingsDestination.Storage,
                 SharedSettingsDestination.Server,
                 SharedSettingsDestination.Billing,
