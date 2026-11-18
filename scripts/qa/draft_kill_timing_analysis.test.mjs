@@ -161,12 +161,16 @@ test("write paths are counted from the marker lines", () => {
   assert.deepEqual(counts, { sync: 1, background: 2, flush: 0, unlabeled: 1, sync_write_fallback: 1 });
 });
 
-test("journal write cost distribution comes from draft_journal_written lines", () => {
+test("journal write cost distribution comes from paired draft_journal_written lines only", () => {
   const l = (sec, msg) => line(sec, PID, "RaftDraftTiming", msg);
   const stats = journalCostStats([
-    l(1, "draft_journal_written path=sync costUs=120 len=3 uptimeMs=1000"),
-    l(2, "draft_journal_written path=sync costUs=80 len=4 uptimeMs=2000"),
-    l(3, "change_received seq=1 len=4 uptimeMs=3000"),
+    l(1, "change_received seq=1 len=3 uptimeMs=1000"),
+    l(1, "draft_journal_written seq=1 path=sync costUs=120 len=3 uptimeMs=1000"),
+    l(2, "change_received seq=2 len=4 uptimeMs=2000"),
+    l(2, "draft_journal_written seq=2 path=sync costUs=80 len=4 uptimeMs=2000"),
+    // No change_received of seq 7, and a line without a seq: excluded.
+    l(3, "draft_journal_written seq=7 path=sync costUs=9000 len=4 uptimeMs=3000"),
+    l(3, "draft_journal_written path=sync costUs=9000 len=4 uptimeMs=3000"),
   ]);
-  assert.deepEqual(stats, { samples: 2, min_us: 80, p50_us: 120, p95_us: 120, p99_us: 120, max_us: 120 });
+  assert.deepEqual(stats, { samples: 2, min_us: 80, p50_us: 120, p95_us: 120, p99_us: 120, max_us: 120, basis: "paired samples only", unpaired_excluded: 2 });
 });

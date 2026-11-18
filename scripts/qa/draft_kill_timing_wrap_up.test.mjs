@@ -99,7 +99,7 @@ test("wrap-up over a logcat far larger than the heap finishes with bounded memor
   const fd = fs.openSync(file, "w");
   for (let i = 0; i < 96; i += 1) {
     fs.writeSync(fd, block);
-    fs.writeSync(fd, `${journal(i + 1, 100 + i)}\n`);
+    fs.writeSync(fd, `${edit(i + 1, i + 1, 100 + i).join("\n")}\n`);
   }
   fs.closeSync(fd);
   const moduleUrl = new URL("./draft_kill_timing_analysis.mjs", import.meta.url).href;
@@ -169,24 +169,51 @@ test("the channel concurrency check gates the run: other activity, a failed or a
   assert.equal(verdict({ error: "fetch failed" }).result, "unconfirmed");
 });
 
-test("journal coverage pairs by (process, seq): a kill during the last journal write is not a missing sample", () => {
-  assert.deepEqual(journalCoverage({ edits: 200, paired: 198, failures: 0, missing: 2 }), { edits: 200, paired: 198, failures: 0, interrupted: 0, missing: 2, unpaired: 0, allowed_missing: 2, covered: true });
+const killedAt = (sec, pid = PID) => line(sec, 600, "ActivityManager", `Killing ${pid}:${PKG}/u0a190 (adj 0): stop ${PKG} due to from pid 9000`);
+const procDied = (sec, pid = PID) => line(sec, 600, "am_proc_died", `[0,${pid},${PKG},0,17]`);
+
+test("journal coverage: tolerance, and an empty run is never covered", () => {
+  assert.deepEqual(journalCoverage({ edits: 200, paired: 198, failures: 0, missing: 2 }), { edits: 200, paired: 198, failures: 0, likely_interrupted: 0, missing: 2, unpaired: 0, allowed_missing: 2, covered: true });
   assert.equal(journalCoverage({ edits: 200, paired: 197, failures: 0, missing: 3 }).covered, false);
   assert.equal(journalCoverage({ edits: 0, paired: 0, failures: 0, missing: 0 }).covered, false);
+});
 
-  // Killed during the journal write of its last edit: the marker is there, the cost line is not.
-  const killed = wrapUpVerdict(timingsPass(), statsOf([...edit(1, 1, 100), ...edit(2, 2, 110), change(3, 3), ...edit(4, 1, 90, 5000)]), config);
-  assert.equal(killed.result, "pass", JSON.stringify(killed.unconfirmed));
-  assert.deepEqual(killed.journal_coverage, { edits: 4, paired: 3, failures: 0, interrupted: 1, missing: 0, unpaired: 0, allowed_missing: 0, covered: true });
+test("a last input without a result and without death evidence of its process is not a pass", () => {
+  // Two inputs, one with a cost line, one with nothing, and no record of the process dying.
+  const noDeath = wrapUpVerdict(timingsPass(), statsOf([...edit(1, 1, 100), change(2, 2)]), config);
+  assert.equal(noDeath.result, "unconfirmed");
+  assert.deepEqual(noDeath.journal_coverage, { edits: 2, paired: 1, failures: 0, likely_interrupted: 0, missing: 1, unpaired: 0, allowed_missing: 0, covered: false });
+
+  // Death evidence for ANOTHER pid, or logged BEFORE the input, does not count.
+  for (const death of [killedAt(3, 777), procDied(1.5)]) {
+    const r = wrapUpVerdict(timingsPass(), statsOf([...edit(1, 1, 100), change(2, 2), death]), config);
+    assert.equal(r.result, "unconfirmed", death);
+    assert.equal(r.journal_coverage.missing, 1);
+    assert.equal(r.journal_coverage.likely_interrupted, 0);
+  }
+});
+
+test("a last input without a result whose process then died is listed as likely interrupted", () => {
+  for (const death of [killedAt(2.01), procDied(2.05), line(2.06, 600, "libprocessgroup", `Successfully killed process cgroup uid 10190 pid ${PID} in 3ms`)]) {
+    const r = wrapUpVerdict(timingsPass(), statsOf([...edit(1, 1, 100), ...edit(1.5, 2, 110), change(2, 3), death, ...edit(4, 1, 90, 5000)]), config);
+    assert.equal(r.result, "pass", `${death} ${JSON.stringify(r.unconfirmed)}`);
+    assert.deepEqual(r.journal_coverage, { edits: 4, paired: 3, failures: 0, likely_interrupted: 1, missing: 0, unpaired: 0, allowed_missing: 0, covered: true });
+  }
+  // Only the process's LAST input can have been interrupted: an earlier one without a result stays missing.
+  const earlier = wrapUpVerdict(timingsPass(), statsOf([change(1, 1), ...edit(2, 2, 100), killedAt(3)]), config);
+  assert.equal(earlier.result, "unconfirmed");
+  assert.equal(earlier.journal_coverage.missing, 1);
 });
 
 test("journal coverage: a missing sample mid-run is unconfirmed even when extra lines of other changes make the totals match", () => {
   // Edit 2 has no cost line; edit 1 logged two and a line of seq 9 has no edit. Totals: 3 edits, 3 cost lines.
-  const lines = [change(1, 1), journal(1, 100, 1), journal(1.1, 100, 1), change(2, 2), journal(2.5, 100, 9), ...edit(3, 3, 100)];
+  const lines = [change(1, 1), journal(1, 100, 1), journal(1.1, 5000, 1), change(2, 2), journal(2.5, 7000, 9), ...edit(3, 3, 300), killedAt(4)];
   const masked = wrapUpVerdict(timingsPass(), statsOf(lines), config);
   assert.equal(masked.result, "unconfirmed");
-  assert.deepEqual(masked.journal_coverage, { edits: 3, paired: 2, failures: 0, interrupted: 0, missing: 1, unpaired: 1, allowed_missing: 0, covered: false });
-  assert.match(masked.unconfirmed.join("\n"), /2 paired of 3 edits, 1 missing/);
+  assert.deepEqual(masked.journal_coverage, { edits: 3, paired: 2, failures: 0, likely_interrupted: 0, missing: 1, unpaired: 2, allowed_missing: 0, covered: false });
+  assert.match(masked.unconfirmed.join("\n"), /2 paired of 3 edits, 1 without a result/);
+  // Percentiles use the paired samples only: the repeat (5000) and the unpaired seq 9 (7000) are excluded.
+  assert.deepEqual(masked.journal_write_cost, { samples: 2, min_us: 100, p50_us: 300, p95_us: 300, p99_us: 300, max_us: 300, basis: "paired samples only", unpaired_excluded: 2 });
 
   // The same seq in another process is another change.
   const otherProcess = statsOf([...edit(1, 1, 100), change(2, 2), journal(2, 100, 2, 5000), ...edit(3, 3, 100)]).journal_coverage;

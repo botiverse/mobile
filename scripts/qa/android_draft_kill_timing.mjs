@@ -1039,9 +1039,9 @@ async function main() {
       (summary.unmet?.length ? `Unmet conditions:\n${summary.unmet.map((u) => `- ${u}`).join("\n")}\n\n` : "") +
       (summary.unconfirmed?.length ? `Unconfirmed (no pass without them):\n${summary.unconfirmed.map((u) => `- ${u}`).join("\n")}\n\n` : "") +
       (summary.journal_coverage ? `Crash-journal coverage, paired by (process, seq): ${summary.journal_coverage.edits} edits (change_received), ` +
-        `${summary.journal_coverage.paired} with a cost line, ${summary.journal_coverage.failures} write failures, ${summary.journal_coverage.interrupted} interrupted by a kill ` +
-        `(last edit of a process, no journal line), ${summary.journal_coverage.missing} missing (allowed ${summary.journal_coverage.allowed_missing}), ` +
-        `${summary.journal_coverage.unpaired} unpaired journal lines.\n\n` : "") +
+        `${summary.journal_coverage.paired} with a cost line, ${summary.journal_coverage.failures} write failures, ${summary.journal_coverage.likely_interrupted} likely interrupted ` +
+        `(the process's last edit, no journal line, its death logged after that edit), ${summary.journal_coverage.missing} without a result (allowed ${summary.journal_coverage.allowed_missing}), ` +
+        `${summary.journal_coverage.unpaired} unpaired journal lines (excluded).\n\n` : "") +
       `Exit interval on the device clock (logcat -v monotonic): lower = latest pre-signal line of the run's own kill (AM "Killing" / am_kill "stop <pkg>"; ` +
       `recents swipe: also "remove task"), upper = earliest evidence of death (device-side /proc poll: gone or zombie; am_proc_died; cgroup empty). ` +
       `Exit Δ = interval − last change_received uptimeMs (b: − the send_tap probe logged right before the tap). A sample is valid for a bucket only when ` +
@@ -1057,7 +1057,7 @@ async function main() {
         `(${summary.apk.file_sha256 === summary.apk.installed_base_apk_sha256 ? "match" : "MISMATCH"}); versionName ${summary.apk.version_name}; versionCode ${summary.apk.version_code}; ` +
         `debuggable ${summary.apk.debuggable}; source commit ${summary.apk.source_commit ?? "?"}` +
         `${summary.apk.required_commit ? `; contains ${summary.apk.required_commit}: ${summary.apk.required_commit_compare ?? "unknown"}` : ""}.\n\n` : "") +
-      (summary.journal_write_cost ? `Crash-journal write on the input thread (draft_journal_written costUs, encode + one store write): ` +
+      (summary.journal_write_cost ? `Crash-journal write on the input thread (draft_journal_written costUs, encode + one store write; paired completed samples only, ${summary.journal_write_cost.unpaired_excluded ?? 0} unpaired lines excluded): ` +
         `n=${summary.journal_write_cost.samples}, min ${summary.journal_write_cost.min_us}, p50 ${summary.journal_write_cost.p50_us}, p95 ${summary.journal_write_cost.p95_us}, ` +
         `p99 ${summary.journal_write_cost.p99_us}, max ${summary.journal_write_cost.max_us} µs (target p95 < 1000 µs).\n\n` : "") +
       (summary.write_paths ? `Draft writes by path (app marker lines): ${JSON.stringify(summary.write_paths)}.\n\n` : "") +
