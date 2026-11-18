@@ -18,6 +18,10 @@ on:
         description: "Make the run red when any check FAILs (the daily schedule always does)"
         type: boolean
         default: false
+      candidate_aasa_ref:
+        description: "Also run the iOS URL matrix against a candidate AASA (an https raw URL, or a path in this repo at the run's ref), as if app.raft.build served it"
+        type: string
+        default: ""
   schedule:
     - cron: "17 1 * * *" # daily 01:17 UTC
   pull_request:
@@ -73,17 +77,34 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: scripts/app_links
+          # A candidate given as a repo path needs the whole tree (an empty sparse-checkout is a full one).
+          sparse-checkout: ${{ (inputs.candidate_aasa_ref == '' || startsWith(inputs.candidate_aasa_ref, 'https://')) && 'scripts/app_links' || '' }}
 
       - uses: actions/download-artifact@v8
         with:
           name: app-link-web
           path: results/web
 
+      # The input only reaches the shell through env, never interpolated into the script.
+      - name: Candidate AASA
+        if: ${{ inputs.candidate_aasa_ref != '' }}
+        env:
+          CANDIDATE_REF: ${{ inputs.candidate_aasa_ref }}
+        run: |
+          mkdir -p results/candidate
+          case "$CANDIDATE_REF" in
+            https://*) curl -fsSL --max-time 30 -o results/candidate/aasa.json -- "$CANDIDATE_REF" ;;
+            *) cp -- "$CANDIDATE_REF" results/candidate/aasa.json ;;
+          esac
+          python3 -I -c 'import json,sys; json.load(open(sys.argv[1]))' results/candidate/aasa.json
+          shasum -a 256 results/candidate/aasa.json
+
       - name: swcutil verify
+        env:
+          CANDIDATE: ${{ inputs.candidate_aasa_ref != '' && 'results/candidate/aasa.json' || '' }}
         run: |
           sw_vers
-          python3 -I scripts/app_links/diagnose.py ios --web results/web --out results/ios.json
+          python3 -I scripts/app_links/diagnose.py ios --web results/web --out results/ios.json ${CANDIDATE:+--candidate "$CANDIDATE"}
 
       - uses: actions/upload-artifact@v7
         with:

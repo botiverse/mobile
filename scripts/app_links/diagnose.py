@@ -9,7 +9,8 @@ Run by .github/workflows/app-link-diagnose.yml. Subcommands (each writes one JSO
   ios     (macOS)    The URL matrix through Apple's own matcher, `sudo swcutil verify`
                      (TN3155), against the origin and the Apple-CDN copy of each AASA, plus a
                      self-test on two pinned AASA files (the 11-17 prod file must block DM links,
-                     the botiverse/slock #15228 file must open them).
+                     the botiverse/slock #15228 file must open them). --candidate adds a column
+                     for an AASA not served yet (workflow input candidate_aasa_ref).
   builds  (Linux)    Optional: the latest published Hands builds. APK signer certificates and
                      shipped autoVerify filters; IPA associated-domains entitlement. WARN-only
                      when no Hands token is available.
@@ -570,8 +571,13 @@ def cmd_ios(args) -> int:
     rows[-1]["self_test"] = True
 
     columns, results = [], {}
-    for t in web["ios_targets"]:
-        col = f"{t['host']} {'CDN' if t['source'] == 'cdn' else 'origin'}"
+    targets = list(web["ios_targets"])
+    if args.candidate:
+        # A candidate AASA (workflow input candidate_aasa_ref): the same matrix against a file not
+        # served yet, matched as if app.raft.build served it, beside the live columns.
+        targets.append({"host": "app.raft.build", "source": "candidate", "file": str(Path(args.candidate).resolve()), "entitled": True})
+    for t in targets:
+        col = f"{t['host']} {dict(cdn='CDN', candidate='candidate').get(t['source'], 'origin')}"
         columns.append({"key": col, **t})
         if t.get("same_as_origin"):
             continue  # filled from the origin column below
@@ -599,7 +605,7 @@ def cmd_ios(args) -> int:
         status = PASS if not wrong else (FAIL if c["entitled"] and not errors else WARN)
         if not c["entitled"] and status == FAIL:
             status = WARN
-        source = "Apple CDN copy (what devices install)" if c["source"] == "cdn" else "origin file"
+        source = {"cdn": "Apple CDN copy (what devices install)", "candidate": "candidate file (not served)"}.get(c["source"], "origin file")
         detail = f"{counted - len(wrong)}/{counted} as expected"
         if wrong:
             detail += "; wrong: " + ", ".join(f"`{w}`" for w in wrong)
@@ -859,6 +865,7 @@ def main(argv=None) -> int:
     i = sub.add_parser("ios")
     i.add_argument("--web", required=True, help="directory with web.json and aasa/")
     i.add_argument("--out", required=True)
+    i.add_argument("--candidate", default="", help="also run the matrix against this AASA file (as app.raft.build)")
     b = sub.add_parser("builds")
     b.add_argument("--web", required=True)
     b.add_argument("--out", required=True)
