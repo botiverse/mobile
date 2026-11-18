@@ -40,7 +40,7 @@ DEFAULT_MAX_BYTES = 50 * 1024
 CEILINGS: dict[str, tuple[int, str]] = {
     "build.raft.app.ThreadPageKt.SharedThreadRouteContentContent"
     "(Lbuild/raft/app/SharedThreadRouteContentData;Lbuild/raft/app/SharedThreadRouteContentCallbacks;"
-    "Landroidx/compose/runtime/Composer;I)V": (55002, "tracked by #proj-mobile:#123"),
+    "Landroidx/compose/runtime/Composer;I)V": (54970, "tracked by #proj-mobile:#123"),
 }
 
 
