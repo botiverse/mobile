@@ -88,7 +88,6 @@ import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.SecondFactorStepUpCoordinator
-import build.raft.app.data.SecondFactorStepUpIntent
 import build.raft.app.data.SecondFactorStepUpOutcome
 import build.raft.app.data.SecondFactorStepUpRepository
 import build.raft.app.data.RaftIntegrationsActionsPushNetworkApi
@@ -443,7 +442,7 @@ private data class ThreadMarkdownMentionOpenTarget(
     val identity: MemberDetailIdentity
 )
 
-private fun <T> DataResult<T>.threadActionErrorCode(fallback: String): String =
+internal fun <T> DataResult<T>.threadActionErrorCode(fallback: String): String =
     when (this) {
         is DataResult.Content -> fallback
         is DataResult.Empty -> reason.name.lowercase()
@@ -1293,7 +1292,7 @@ private fun ThreadJumpFailureToasts(
     }
 }
 
-private data class SharedThreadRouteContentData(
+internal data class SharedThreadRouteContentData(
     val initialPayload: RaftThreadScreenPayload,
     val timeContextProvider: RaftTimeContextProvider,
     val bridge: build.raft.app.base.BridgeModule,
@@ -1578,9 +1577,10 @@ private fun SharedThreadRouteContentContent(
     // still inside the same composition pass, so the warm path completes inline and the first
     // frame renders the cached timeline.
     remember(threadViewModel) { threadViewModel.ensureStarted() }
-    val renderSlice by remember(threadViewModel) {
+    val renderSliceState = remember(threadViewModel) {
         threadViewModel.renderSliceFlow()
     }.collectAsState(threadViewModel.currentRenderSlice)
+    val renderSlice by renderSliceState
     ThreadConversationAccessLostEffect(
         threadViewModel = threadViewModel,
         instanceKey = initialRouteIdentity.instanceKey,
@@ -2628,7 +2628,8 @@ private fun SharedThreadRouteContentContent(
     var pendingReactionVisuals by remember(threadInstanceKey) {
         mutableStateOf<Map<ThreadReactionPendingKey, ThreadReactionPendingVisual>>(emptyMap())
     }
-    var pendingActionCardIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    val pendingActionCardIdsState = remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingActionCardIds by pendingActionCardIdsState
     var pendingTaskConvertMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     // Task v2: "Create Task from Message" (the message it is open for, its create in flight, its failure).
     val createTaskFromMessage = remember(threadInstanceKey) { TaskCreateFromMessageFlow() }
@@ -2649,13 +2650,17 @@ private fun SharedThreadRouteContentContent(
     fun finishMarkdownReferencePending(token: ThreadMarkdownReferencePendingToken?) {
         markdownRefOpenStore.finish(token)
     }
-    var textSelectionMessage by remember(threadInstanceKey) { mutableStateOf<RaftThreadMessageItem?>(null) }
-    var createAgentDialogState by remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
+    val textSelectionMessageState = remember(threadInstanceKey) { mutableStateOf<RaftThreadMessageItem?>(null) }
+    var textSelectionMessage by textSelectionMessageState
+    val createAgentDialogStateHolder = remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
+    var createAgentDialogState by createAgentDialogStateHolder
     val markdownTaskOpenRequestGate = remember(threadInstanceKey) {
         MarkdownTaskNumberOpenRequestGate()
     }
-    var createAgentComputerServerId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var createAgentComputerServerResolved by remember(threadInstanceKey) { mutableStateOf(false) }
+    val createAgentComputerServerIdState = remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var createAgentComputerServerId by createAgentComputerServerIdState
+    val createAgentComputerServerResolvedState = remember(threadInstanceKey) { mutableStateOf(false) }
+    var createAgentComputerServerResolved by createAgentComputerServerResolvedState
     LaunchedEffect(threadInstanceKey, currentSession?.currentServerId) {
         createAgentComputerServerId = currentSession?.currentServerId?.takeIf { it.isNotBlank() }
         createAgentComputerServerResolved = true
@@ -2922,9 +2927,10 @@ private fun SharedThreadRouteContentContent(
         memberNotFoundTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
     fun localizedAttachmentSkippedMany(count: Int): String =
         attachmentSkippedManyTemplate.replace(ThreadLocalizedFeedbackPlaceholder, count.toString())
-    var attachmentCommentsDialogState by remember(threadInstanceKey) {
+    val attachmentCommentsDialogStateHolder = remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
+    var attachmentCommentsDialogState by attachmentCommentsDialogStateHolder
     LaunchedEffect(renderSlice.writeActionsEnabled) {
         attachmentCommentsDialogState =
             attachmentCommentsDialogState.retainForThreadWriteAuthority(renderSlice.writeActionsEnabled)
@@ -3905,7 +3911,7 @@ private fun SharedThreadRouteContentContent(
                 stepUp = actionCardStepUp,
             )
         }
-    val installAppDialogState by installAppDialogStore.state.collectAsState()
+    val installAppDialogStateHolder = installAppDialogStore.state.collectAsState()
 
     val actionCardSpecCopiedLabel = stringResource(Res.string.common_copied)
     // A4: spec card Buttons that run the card (execute, its confirm, a form) go through this store
@@ -7148,6 +7154,21 @@ private fun SharedThreadRouteContentContent(
     }
     val onForegroundBannerDismiss: (RaftForegroundMessageBanner) -> Unit = { target -> foregroundBannerStore.dismiss(target.id) }
 
+    // The dialogs' state, read through one holder: the banner host's content lambda below is at
+    // the JVM's captured-value limit. Rebuilt every composition; each field is remembered above.
+    val threadRouteDialogStates =
+        ThreadRouteDialogStates(
+            textSelectionMessage = textSelectionMessageState,
+            attachmentCommentsDialogState = attachmentCommentsDialogStateHolder,
+            installAppDialogState = installAppDialogStateHolder,
+            createAgentDialogState = createAgentDialogStateHolder,
+            createAgentComputerServerId = createAgentComputerServerIdState,
+            createAgentComputerServerResolved = createAgentComputerServerResolvedState,
+            pendingActionCardIds = pendingActionCardIdsState,
+            renderSlice = renderSliceState,
+            actionCardSpecStore = actionCardSpecStore,
+            createAgentFormStore = createAgentFormStore,
+        )
     RaftForegroundBannerHost(
         banner =
             foregroundMessageBanner?.takeIf {
@@ -10052,219 +10073,36 @@ private fun SharedThreadRouteContentContent(
                 }
             }
         SideEffect { inPlaceTextSelectionHost.quoteIntoComposer = inPlaceSelectionQuote }
-        textSelectionMessage?.let { message ->
-            // Select Text (web #11467): the message's Markdown in a bottom sheet; Copy / Quote take
-            // the selection made there, or the whole message.
-            val quoteTarget = selectionQuoteTarget
-            // Same time source as the message list: the live provider when there is one, else the payload's.
-            val timeContext =
-                currentRaftTimeContextProvider?.current ?: payload.toRaftTimeCapabilities().staticContext()
-            key(message.id, message.body) {
-                ThreadMessageSelectTextSheet(
-                    markdown = message.body,
-                    senderName = message.localizedAuthorName(),
-                    timeLabel = formatThreadCompactTimestampLabel(message.timestampLabel, timeContext),
-                    textStyle = resolvedMessageBodyTextStyle,
-                    onDismiss = { textSelectionMessage = null },
-                    onCopy = { text ->
-                        bridge.log("thread_select_text_copy messageId=${message.id} chars=${text.length}")
-                        bridge.copyToPasteboard(text)
-                        bridge.briefToast(copiedLabel)
-                    },
-                    onQuote =
-                        if (quoteTarget == ThreadSelectTextQuoteTarget.None) {
-                            null
-                        } else {
-                            { quote ->
-                                // Close first so the sheet's window gives the composer its focus back.
-                                textSelectionMessage = null
-                                bridge.log(
-                                    "thread_select_text_quote messageId=${message.id} target=${quoteTarget.name} " +
-                                        "chars=${quote.length}"
-                                )
-                                composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.AppendQuote(quote))
-                            }
-                        }
-                )
-            }
-        }
-        attachmentCommentsDialogState
-            .retainForThreadWriteAuthority(renderSlice.writeActionsEnabled)
-            ?.let { dialogState ->
-            ThreadAttachmentCommentsSheet(
-                state = dialogState,
-                onDismiss = { attachmentCommentsDialogState = null },
-                onFilterChange = { filter ->
-                    attachmentCommentsDialogState =
-                        attachmentCommentsDialogState
-                            ?.takeIf { it.attachment.id == dialogState.attachment.id }
-                            ?.copy(filter = filter)
-                },
-                onDraftChange = { draft ->
-                    attachmentCommentsDialogState =
-                        attachmentCommentsDialogState
-                            ?.takeIf { it.attachment.id == dialogState.attachment.id }
-                            ?.withAttachmentCommentEditorValue(draft)
-                },
-                onRetry = ::reloadAttachmentComments,
-                onSend = ::sendAttachmentComment,
-                onResolve = ::resolveAttachmentComment,
-                onQuote = { comment ->
-                    attachmentCommentsDialogState =
-                        attachmentCommentsDialogState
-                            ?.takeIf { it.attachment.id == dialogState.attachment.id }
-                            ?.withQuotedAttachmentComment(comment)
-                }
-            )
-        }
-        // The dialog follows the live card (realtime / the execute answer), not the one it opened with.
-        val liveInstallCard =
-            installAppDialogState?.messageId?.let { messageId ->
-                renderedTimelineSlice.threadActionMessage(messageId, linkedTasksProjection)?.threadActionCard()
-            }
-        LaunchedEffect(installAppDialogState?.messageId, liveInstallCard) {
-            val messageId = installAppDialogState?.messageId ?: return@LaunchedEffect
-            liveInstallCard?.let { installAppDialogStore.dispatch(ThreadInstallAppActionIntent.CardUpdated(messageId, it)) }
-        }
-        installAppDialogState?.let { dialogState ->
-            ThreadInstallAppActionDialog(state = dialogState, onIntent = installAppDialogStore::dispatch)
-        }
-        // A4: a spec card's confirm / form follows the live card (its confirmation version, done elsewhere).
-        val actionCardSpecDialogMessageId = actionCardSpecState.confirm?.messageId ?: actionCardSpecState.form?.messageId
-        val liveActionCardSpecCard =
-            actionCardSpecDialogMessageId?.let { messageId ->
-                renderedTimelineSlice.threadActionMessage(messageId, linkedTasksProjection)?.threadActionCard()
-            }
-        LaunchedEffect(actionCardSpecDialogMessageId, liveActionCardSpecCard) {
-            val messageId = actionCardSpecDialogMessageId ?: return@LaunchedEffect
-            liveActionCardSpecCard?.let { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.CardUpdated(messageId, it)) }
-        }
-        actionCardSpecState.confirm?.let { confirmState ->
-            // The sheet sits outside the thread's locals: give it the card's names and viewer server.
-            CompositionLocalProvider(
-                LocalThreadActionCardNames provides actionCardNames,
-                LocalThreadViewerServerId provides currentServerId,
-            ) {
-                ThreadActionCardSpecConfirmSheet(state = confirmState, onIntent = actionCardSpecStore::dispatch)
-            }
-        }
-        actionCardSpecState.form?.let { formState ->
-            // Pickers choose from what this device already holds (spec §3.4): the server's and
-            // this channel's members, and the Home sidebar's channels.
-            val homeChannels =
-                (sharedHomeState.content as? SharedHomeContentState.Content)?.baseSnapshot?.channels.orEmpty()
-            val candidates =
-                remember(formState.messageId, threadServerMembersEntry, homeChannels) {
-                    threadActionCardFormCandidates(
-                        serverMembers =
-                            threadMembersServerId?.let { serverMembersStore?.currentServerMembers(it) }.orEmpty(),
-                        channelMembers =
-                            threadMembersServerId?.let { serverId ->
-                                threadMembersChannelId?.let { channelId -> serverMembersStore?.currentChannelMembers(serverId, channelId) }
-                            }.orEmpty(),
-                        channels = homeChannels,
-                    )
-                }
-            RaftActionCardFormSheet(
-                form = formState.form,
-                values = formState.values,
-                onValuesChange = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.FormValuesChanged(it)) },
-                fieldErrors = formState.issues,
-                fieldErrorsTraceId = formState.issuesTraceId,
-                submitting = formState.submitting,
-                onSubmit = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.SubmitForm(it)) },
-                onDismiss = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.DismissForm) },
-                candidates = candidates,
-                formError = threadActionCardSpecErrorText(formState.error),
-            )
-        }
-        // Last of the card dialogs, so it opens over the install confirmation or spec sheet that asked.
-        actionCardStepUpState?.let { dialogState ->
-            SecondFactorStepUpDialog(
-                state = dialogState,
-                onIntent = { intent ->
-                    coroutineScope.launch { actionCardStepUp.accept(intent) }
-                    if (intent == SecondFactorStepUpIntent.SignInAgain) onAuthRequired("auth_required")
-                },
-                description = stringResource(Res.string.settings_step_up_generic_description),
-            )
-        }
-        createAgentDialogState?.let { dialogState ->
-            ThreadCreateAgentActionDialogHost(
-                dialogState = dialogState,
-                computersStore = computersStore,
-                createAgentFormStore = createAgentFormStore,
-                computerServerId = createAgentComputerServerId,
-                computerServerResolved = createAgentComputerServerResolved,
-                onAuthRequired = ::routeAuthRequired,
-                onAddComputer = { pager.openSettingsComputersPage(storeScope, openAddComputer = true) },
-                onDismiss = {
-                    if (!dialogState.submitting) {
-                        createAgentDialogState = null
-                    }
-                },
-                onSubmit = submitCreateAgent@{ request ->
-                    if (!renderSlice.writeActionsEnabled || dialogState.submitting) {
-                        return@submitCreateAgent
-                    }
-                    val normalizedName = request.name.trim().removePrefix("@")
-                    if (normalizedName.isBlank()) {
-                        createAgentDialogState = dialogState.failedWith("agent_name_required")
-                        return@submitCreateAgent
-                    }
-                    val submitCard =
-                        dialogState.card.copy(
-                            name = normalizedName,
-                            description = request.description,
-                            suggestedComputer =
-                                if (dialogState.card.requiredComputer.isNullOrBlank()) {
-                                    request.machineId
-                                } else {
-                                    dialogState.card.suggestedComputer
-                                }
-                        )
-                    val submittingState = dialogState.submittingWith(submitCard)
-                    createAgentDialogState = submittingState
-                    pendingActionCardIds = pendingActionCardIds + dialogState.messageId
-                    coroutineScope.launch {
-                        try {
-                            when (
-                                val result =
-                                    dataSource.commitAgentCreateActionCardFromDialog(
-                                        messageId = dialogState.messageId,
-                                        card = submitCard,
-                                        submit = request
-                                    )
-                            ) {
-                                is DataResult.Content -> {
-                                    createAgentFormStore.rememberCreatedAgent(createAgentComputerServerId, request)
-                                    threadViewModel.dispatch(
-                                        SharedThreadIntent.ApplyActionCard(dialogState.messageId, result.data)
-                                    )
-                                    createAgentDialogState = null
-                                    bridge.toast(actionCardSuccessLabels[submitCard.type] ?: genericActionCardSuccessLabel)
-                                }
-                                is DataResult.Empty,
-                                is DataResult.Error -> {
-                                    createAgentDialogState =
-                                        submittingState.failedWith(
-                                            errorCode = result.threadActionErrorCode("agent_create_failed"),
-                                            errorServerMessage = (result as? DataResult.Error)?.error?.serverMessage
-                                        )
-                                }
-                                is DataResult.NoPermission -> {
-                                    if (routeAuthRequired(result)) return@launch
-                                    createAgentDialogState =
-                                        submittingState.failedWith(errorCode = result.blocker.code)
-                                }
-                            }
-                        } finally {
-                            pendingActionCardIds = pendingActionCardIds - dialogState.messageId
-                        }
-                    }
-                }
-            )
-        }
+        ThreadRouteDialogs(
+            states = threadRouteDialogStates,
+            data = data,
+            labels = labels,
+            selectionQuoteTarget = selectionQuoteTarget,
+            payload = payload,
+            resolvedMessageBodyTextStyle = resolvedMessageBodyTextStyle,
+            composerDraftViewModel = composerDraftViewModel,
+            threadViewModel = threadViewModel,
+            renderedTimelineSlice = renderedTimelineSlice,
+            linkedTasksProjection = linkedTasksProjection,
+            installAppDialogStore = installAppDialogStore,
+            actionCardSpecState = actionCardSpecState,
+            actionCardNames = actionCardNames,
+            currentServerId = currentServerId,
+            sharedHomeState = sharedHomeState,
+            threadServerMembersEntry = threadServerMembersEntry,
+            threadMembersServerId = threadMembersServerId,
+            threadMembersChannelId = threadMembersChannelId,
+            actionCardStepUp = actionCardStepUp,
+            actionCardStepUpState = actionCardStepUpState,
+            coroutineScope = coroutineScope,
+            pager = pager,
+            onAuthRequired = onAuthRequired,
+            routeAuthRequiredForCode = ::routeAuthRequired,
+            routeAuthRequiredForResult = ::routeAuthRequired,
+            onReloadAttachmentComments = ::reloadAttachmentComments,
+            onSendAttachmentComment = ::sendAttachmentComment,
+            onResolveAttachmentComment = ::resolveAttachmentComment,
+        )
     }
 }
 
