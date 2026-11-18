@@ -72,7 +72,13 @@ class AgentActivityLocalizedCopyTest {
         assertEquals(Res.string.member_activity_log_tool_read_file, agentToolLogLabelRes("Read"))
         assertEquals(Res.string.member_activity_log_tool_check_messages, agentToolLogLabelRes("mcp__chat__check_messages"))
         assertEquals(Res.string.member_activity_log_tool_check_messages, agentToolLogLabelRes("receive_message"))
-        assertEquals(Res.string.member_activity_log_tool_spawn_subagent, agentToolLogLabelRes("spawn_subagent"))
+        // Web KNOWN_TOOL_ALIASES: sub-agents and todo lists are known only by the runtimes' names
+        // (Agent / Task, TodoWrite / SetTodoList); the bare semantic name is an unknown tool there.
+        assertEquals(Res.string.member_activity_log_tool_spawn_subagent, agentToolLogLabelRes("Agent"))
+        assertEquals(Res.string.member_activity_log_tool_spawn_subagent, agentToolLogLabelRes("Task"))
+        assertEquals(Res.string.member_activity_log_tool_todo_write, agentToolLogLabelRes("TodoWrite"))
+        assertNull(agentToolLogLabelRes("spawn_subagent"))
+        assertNull(agentToolLogLabelRes("todo_write"))
         // A tool Raft doesn't know keeps its own name.
         assertNull(agentToolLogLabelRes("mcp__linear__create_issue"))
         assertNull(agentToolLogLabelRes(""))

@@ -4,6 +4,7 @@ import build.raft.app.data.PushPreviewMode
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ThreadId
+import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -20,6 +21,24 @@ class RaftForegroundBannerPushPreviewTest {
             senderOnlyMessageTemplate = "${RaftPushPreviewBannerStrings.SENDER_PLACEHOLDER} sent a message",
             senderOnlyMentionTemplate = "${RaftPushPreviewBannerStrings.SENDER_PLACEHOLDER} mentioned you"
         )
+
+    @Test
+    fun redactionDropsTheCatalogFallbacksItReplaces() {
+        // An older server's push: the "mentioned you: <preview>" fallback carries message text.
+        val legacy =
+            banner().copy(
+                title = "",
+                body = "",
+                titleFallback = Res.string.foreground_banner_new_message.desc(),
+                bodyFallback = Res.string.foreground_banner_mentioned_you.format(SENDER, MESSAGE_TEXT)
+            )
+        val senderOnly = legacy.redactedForPushPreview(PushPreviewMode.SenderOnly, SENDER, mentioned = true, strings)
+        assertNull(senderOnly.bodyFallback)
+        assertEquals(legacy.titleFallback, senderOnly.titleFallback)
+        val hidden = legacy.redactedForPushPreview(PushPreviewMode.Hidden, SENDER, mentioned = true, strings)
+        assertNull(hidden.titleFallback)
+        assertNull(hidden.bodyFallback)
+    }
 
     @Test
     fun fullModeLeavesTheBannerUntouched() {

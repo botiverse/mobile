@@ -4,7 +4,9 @@ import build.raft.app.resources.Res
 import build.raft.app.resources.common_close
 import build.raft.app.resources.desc
 import build.raft.app.resources.format
-import build.raft.app.resources.resolve
+import build.raft.app.resources.localized
+import build.raft.app.resources.RawStringDesc
+import build.raft.app.resources.StringDesc
 import build.raft.app.resources.foreground_banner_new_message
 import build.raft.app.resources.foreground_banner_sent_new_message
 import build.raft.app.resources.foreground_banner_dm_context
@@ -136,7 +138,13 @@ internal data class RaftForegroundMessageBanner(
      * Set for another workspace's notification (contract §4.5: shown like any other): its tap goes
      * through window navigation, which switches to [serverId] first and then opens it.
      */
-    val crossServerSource: ConversationOpenSourceMessageIdentity? = null
+    val crossServerSource: ConversationOpenSourceMessageIdentity? = null,
+    /**
+     * An older server's push without a title / body: the catalog copy shown instead of a blank
+     * [title] / [body], resolved only when the banner is drawn (never while building it).
+     */
+    val titleFallback: StringDesc? = null,
+    val bodyFallback: StringDesc? = null
 )
 
 /** One banner model, route owner and expiry clock for one AppShell/window. */
@@ -412,7 +420,7 @@ private fun RaftForegroundBannerText(
             RaftForegroundBannerThreadContextRow(threadContext)
         }
         Text(
-            text = banner.body,
+            text = banner.body.takeIf { it.isNotBlank() } ?: banner.bodyFallback?.localized().orEmpty(),
             style =
                 RaftType.Caption
                     .copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack)
@@ -458,7 +466,7 @@ private fun RaftForegroundBannerTitleRow(banner: RaftForegroundMessageBanner) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = banner.title,
+            text = banner.title.takeIf { it.isNotBlank() } ?: banner.titleFallback?.localized().orEmpty(),
             style = RaftType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp, color = RaftColor.TextBlack),
             color = RaftColor.TextBlack,
             maxLines = 1,
@@ -951,6 +959,8 @@ internal fun raftNotificationPushBannerOrNull(
         onSuppressed("visible_conversation")
         return null
     }
+    val foregroundBannerTitle = event.foregroundBannerTitle()
+    val foregroundBannerBody = event.foregroundBannerBody()
     return RaftForegroundMessageBanner(
         id = "push:${event.serverId.value}:${event.messageId.value}",
         serverId = event.serverId.value,
@@ -958,16 +968,18 @@ internal fun raftNotificationPushBannerOrNull(
         conversation = conversation,
         openRequest =
             openRequest,
-        title = event.foregroundBannerTitle(),
+        title = foregroundBannerTitle.shownText(),
         context = event.subtitle.orEmpty(),
         threadContext = null,
-        body = event.foregroundBannerBody(),
+        body = foregroundBannerBody.shownText(),
         iconKind = (null as SharedConversationDirectoryProjection?).resolveForegroundBannerIconKind(conversation),
         iconName = (null as SharedConversationDirectoryProjection?).resolveForegroundBannerIconName(conversation),
         senderMemberId = event.senderId?.takeIf { event.senderKind != null }?.value,
         avatarWireValue = null,
         avatarLabel = (event.senderName ?: event.title).trim().take(2).uppercase().ifBlank { "??" },
-        crossServerSource = sourceIdentity.takeIf { otherServer }
+        crossServerSource = sourceIdentity.takeIf { otherServer },
+        titleFallback = foregroundBannerTitle.catalogFallback(),
+        bodyFallback = foregroundBannerBody.catalogFallback()
     )
 }
 
@@ -1010,7 +1022,8 @@ internal fun RaftForegroundMessageBanner.redactedForPushPreview(
             val sender = senderName?.trim()?.takeIf { it.isNotEmpty() }
             copy(
                 threadContext = null,
-                body = sender?.let { strings.senderOnlyBody(it, mentioned) } ?: strings.hiddenBody(mentioned)
+                body = sender?.let { strings.senderOnlyBody(it, mentioned) } ?: strings.hiddenBody(mentioned),
+                bodyFallback = null
             )
         }
         PushPreviewMode.Hidden ->
@@ -1021,7 +1034,9 @@ internal fun RaftForegroundMessageBanner.redactedForPushPreview(
                 body = strings.hiddenBody(mentioned),
                 senderMemberId = null,
                 avatarWireValue = null,
-                avatarLabel = strings.hiddenTitle.take(2).uppercase()
+                avatarLabel = strings.hiddenTitle.take(2).uppercase(),
+                titleFallback = null,
+                bodyFallback = null
             )
     }
 
@@ -1029,48 +1044,52 @@ internal fun RaftForegroundMessageBanner.redactedForPushPreview(
  * Banner copy (slock contract §1.5): the payload's title (where a tap lands) with the context line
  * shown as [RaftForegroundMessageBanner.context] instead of joined into it, and the payload's body
  * (`Sender: text`). A payload without a title or body (an older server) falls back to the typed
- * fields.
+ * fields; catalog copy among them stays an unresolved [StringDesc] until the banner is drawn.
  */
-private fun NotificationPushReceived.foregroundBannerTitle(): String =
-    raftNotificationTitleWithoutSubtitle(title.trim(), subtitle).ifBlank { legacyForegroundBannerTitle() }
+private fun NotificationPushReceived.foregroundBannerTitle(): StringDesc =
+    raftNotificationTitleWithoutSubtitle(title.trim(), subtitle).takeIf { it.isNotBlank() }?.let(::RawStringDesc)
+        ?: legacyForegroundBannerTitle()
 
-private fun NotificationPushReceived.foregroundBannerBody(): String = body.ifBlank { legacyForegroundBannerBody() }
+private fun NotificationPushReceived.foregroundBannerBody(): StringDesc =
+    body.takeIf { it.isNotBlank() }?.let(::RawStringDesc) ?: legacyForegroundBannerBody()
 
-/**
- * An older server's payload (no title / body): the banner builds them from the typed fields, in the
- * app language. Only this rare path reads the catalog outside composition.
- */
-private fun NotificationPushReceived.legacyForegroundBannerTitle(): String {
+/** The text a banner field holds now: raw text as is, catalog copy blank (see [catalogFallback]). */
+private fun StringDesc.shownText(): String = (this as? RawStringDesc)?.string.orEmpty()
+
+/** Catalog copy, resolved when the banner is drawn; null for raw text. */
+private fun StringDesc.catalogFallback(): StringDesc? = takeUnless { it is RawStringDesc }
+
+private fun NotificationPushReceived.legacyForegroundBannerTitle(): StringDesc {
     val serverLabel = serverName?.trim()?.takeIf { it.isNotBlank() }
-        ?: return title.ifBlank { Res.string.foreground_banner_new_message.desc().resolve() }
+        ?: return title.takeIf { it.isNotBlank() }?.let(::RawStringDesc) ?: Res.string.foreground_banner_new_message.desc()
     val conversationLabel = channelName?.trim()?.takeIf { it.isNotBlank() }
     return when (kind) {
-        ConversationKind.DirectMessage -> Res.string.foreground_banner_dm_context.format(serverLabel).resolve()
+        ConversationKind.DirectMessage -> Res.string.foreground_banner_dm_context.format(serverLabel)
         ConversationKind.Channel,
-        ConversationKind.Joint -> conversationLabel?.let { "#${it.removePrefix("#")} · $serverLabel" }
+        ConversationKind.Joint -> conversationLabel?.let { RawStringDesc("#${it.removePrefix("#")} · $serverLabel") }
         ConversationKind.Thread ->
             when (parentChannelKind) {
-                ConversationKind.DirectMessage -> Res.string.foreground_banner_thread_in_dm_context.format(serverLabel).resolve()
+                ConversationKind.DirectMessage -> Res.string.foreground_banner_thread_in_dm_context.format(serverLabel)
                 ConversationKind.Channel,
                 ConversationKind.Joint ->
                     conversationLabel?.let {
-                        Res.string.foreground_banner_thread_in_channel_context.format(it.removePrefix("#"), serverLabel).resolve()
+                        Res.string.foreground_banner_thread_in_channel_context.format(it.removePrefix("#"), serverLabel)
                     }
                 else -> null
             }
         else -> null
-    } ?: title.ifBlank { Res.string.foreground_banner_new_message.desc().resolve() }
+    } ?: title.takeIf { it.isNotBlank() }?.let(::RawStringDesc) ?: Res.string.foreground_banner_new_message.desc()
 }
 
-private fun NotificationPushReceived.legacyForegroundBannerBody(): String {
+private fun NotificationPushReceived.legacyForegroundBannerBody(): StringDesc {
     val senderLabel = senderName?.trim()?.takeIf { it.isNotBlank() }
     val preview = messagePreview?.trim()?.takeIf { it.isNotBlank() }
     if (senderLabel == null || preview == null) {
-        return body.ifBlank { Res.string.foreground_banner_sent_new_message.desc().resolve() }
+        return body.takeIf { it.isNotBlank() }?.let(::RawStringDesc) ?: Res.string.foreground_banner_sent_new_message.desc()
     }
     return if (mentioned == true) {
-        Res.string.foreground_banner_mentioned_you.format(senderLabel, preview).resolve()
+        Res.string.foreground_banner_mentioned_you.format(senderLabel, preview)
     } else {
-        "$senderLabel: $preview"
+        RawStringDesc("$senderLabel: $preview")
     }
 }
