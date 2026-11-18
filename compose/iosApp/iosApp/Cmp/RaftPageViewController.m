@@ -12,6 +12,8 @@ static const NSTimeInterval RaftPageMillisPerDay = 86400000.0;
 static const NSTimeInterval RaftPageMillisPerMinute = 60000.0;
 static NSString *const RaftAppShellPageName = @"compose_slock_app_shell";
 static NSString *const RaftConversationForwardPagerEvent = @"slockConversationForwardRequested";
+// Shared RAFT_APP_SHELL_HOST_DID_APPEAR_PAGER_EVENT: the shell is on screen again (a pop).
+static NSString *const RaftAppShellHostDidAppearPagerEvent = @"slockAppShellHostDidAppear";
 static NSString *const RaftAdaptivePanePagerEvent = @"slockAdaptivePaneChanged";
 static NSString *const RaftAdaptiveNativeCommitResultEvent = @"slockAdaptiveNativeCommitResult";
 // Shared contract (RaftAppSafeArea.kt): live window insets in pixels, keyed by pageData slockWindowId.
@@ -148,15 +150,30 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
 
 - (void)setRaftConversationForwardGestureEnabled:(BOOL)enabled {
     _raftConversationForwardGestureEnabled = enabled;
-    [self.navigationController fd_setConversationForwardGestureEnabled:
-        enabled && self.raftIsAppShellPage];
+    UINavigationController *navigationController = self.navigationController;
+    if (enabled && navigationController == nil) {
+        RaftConversationForwardLog(@"recognizer_not_attached reason=no_navigation_controller");
+    }
+    // Attach only while this shell is the top page. Armed while a pushed page is on top (shared's
+    // page visibility can lag a native push), the bit is kept and the shell's viewDidAppear
+    // (raftAppShellDidAppear) attaches it once Home is back.
+    BOOL onTop = navigationController.topViewController == self;
+    if (enabled && navigationController != nil && !onTop) {
+        RaftConversationForwardLog(@"recognizer_not_attached reason=shell_not_top");
+    }
+    [navigationController fd_setConversationForwardGestureEnabled:
+        enabled && self.raftIsAppShellPage && onTop];
 }
 
 - (void)raftRequestConversationForward {
     if (!self.raftIsAppShellPage || !self.raftConversationForwardGestureEnabled) {
+        RaftConversationForwardLog([NSString stringWithFormat:
+            @"request_dropped reason=%@",
+            self.raftIsAppShellPage ? @"not_enabled" : @"not_app_shell"]);
         return;
     }
     self.raftConversationForwardGestureEnabled = NO;
+    RaftConversationForwardLog(@"request_sent");
     [self raftSendEvent:RaftConversationForwardPagerEvent data:@{}];
 }
 
@@ -339,6 +356,23 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     [self raftPublishWindowInsets];
     [RaftIosComposeScrollEdgeEffects hideInView:self.view];
     [RaftIosTopBandDiagnostics notePageAppear];
+    if (self.raftIsAppShellPage) {
+        [self raftAppShellDidAppear];
+    }
+}
+
+/// Back on the shell (a pushed page was popped). Pushing that page detached the navigation
+/// controller's Forward recognizer (the FD push hook mirrors the pushed page's bit, always NO), so
+/// it is re-applied from the shell's own bit; and the shared shell is told directly, because its
+/// Compose pageDidAppear does not reliably follow a native pop and Forward history is promoted on
+/// this signal.
+- (void)raftAppShellDidAppear {
+    if (!self.raftIsAppShellPage) {
+        return;
+    }
+    [self.navigationController fd_setConversationForwardGestureEnabled:
+        self.raftConversationForwardGestureEnabled];
+    [self raftSendEvent:RaftAppShellHostDidAppearPagerEvent data:@{}];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {

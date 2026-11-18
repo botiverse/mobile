@@ -100,6 +100,13 @@ NS_ASSUME_NONNULL_BEGIN
 /** Emits an intent-only pager event; shared code revalidates and rebuilds the route. */
 - (void)raftRequestConversationForward;
 
+/**
+ * The app shell's viewDidAppear step (no-op on other pages): re-applies the shell's Forward
+ * admission bit to the navigation controller's recognizer (a push detached it) and sends
+ * `slockAppShellHostDidAppear` so shared code offers the conversation just left to Forward.
+ */
+- (void)raftAppShellDidAppear;
+
 @end
 
 NS_ASSUME_NONNULL_END

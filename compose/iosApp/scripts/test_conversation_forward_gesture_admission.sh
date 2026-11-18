@@ -18,6 +18,7 @@ static RaftConversationForwardGestureAdmission allowed(void) {
         .enabled = true,
         .appShellIsTop = true,
         .navigationStackAtRoot = true,
+        .startedAtTrailingEdge = true,
         .velocityX = -600.0,
         .velocityY = 20.0,
         .isLeftToRight = true,
@@ -48,6 +49,9 @@ int main(void) {
     assert(!RaftConversationForwardGestureShouldBegin(input));
     input = allowed(); input.textInputActive = true;
     assert(!RaftConversationForwardGestureShouldBegin(input));
+    input = allowed(); input.startedAtTrailingEdge = false;
+    assert(!RaftConversationForwardGestureShouldBegin(input));
+    assert(rejectedFor(input, "not_edge_start"));
     input = allowed(); input.velocityX = 600.0;
     assert(!RaftConversationForwardGestureShouldBegin(input));
     input = allowed(); input.velocityX = -50.0; input.velocityY = 200.0;
@@ -61,6 +65,18 @@ int main(void) {
     // Before the finger has a velocity, the translation decides.
     input = allowed(); input.velocityX = 0.0; input.velocityY = 0.0; input.translationX = -12.0; input.translationY = 2.0;
     assert(RaftConversationForwardGestureShouldBegin(input));
+
+    // Edge strip: 24 pt from the trailing edge (right in LTR, left in RTL), 402 pt wide view.
+    assert(RaftConversationForwardTouchStartsInEdgeZone(400.0, 402.0, true));   // QA: x=400
+    assert(RaftConversationForwardTouchStartsInEdgeZone(399.99, 402.0, true));  // XCUITest dx 0.995
+    assert(RaftConversationForwardTouchStartsInEdgeZone(378.0, 402.0, true));
+    assert(RaftConversationForwardTouchStartsInEdgeZone(402.5, 402.0, true));
+    assert(!RaftConversationForwardTouchStartsInEdgeZone(377.0, 402.0, true));
+    assert(!RaftConversationForwardTouchStartsInEdgeZone(201.0, 402.0, true));
+    assert(!RaftConversationForwardTouchStartsInEdgeZone(2.0, 402.0, true));    // left edge: back, not Forward
+    assert(RaftConversationForwardTouchStartsInEdgeZone(2.0, 402.0, false));    // RTL: left edge
+    assert(!RaftConversationForwardTouchStartsInEdgeZone(400.0, 402.0, false));
+    assert(!RaftConversationForwardTouchStartsInEdgeZone(400.0, 0.0, true));
 
     // The diagnostics reason names the first check that refused (artin #111).
     assert(rejectedFor(allowed(), "admitted"));
