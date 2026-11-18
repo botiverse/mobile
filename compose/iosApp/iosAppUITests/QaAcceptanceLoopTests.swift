@@ -775,27 +775,21 @@ private struct ConversationForwardGestureProbe {
         guard row.exists else { throw ProbeError.missing("forward gesture toggle row") }
         // Let the scroll settle: a tap on a still-moving list missed the toggle (run 44366573495).
         Thread.sleep(forTimeInterval: 1.5)
-        var on = false
-        for attempt in 1...2 {
-            let frame = row.frame
-            let toggle = app.switches.allElementsBoundByIndex.first { candidate in
-                let f = candidate.frame
-                return f.height > 0 && f.midY >= frame.minY - 4 && f.midY <= frame.maxY + 4
-            }
-            let before = toggle?.value as? String ?? "?"
-            if let toggle {
-                test.probeTap(app, x: toggle.frame.midX, y: toggle.frame.midY)
-            } else {
-                test.probeTap(app, x: frame.maxX - 30, y: frame.midY)
-            }
-            Thread.sleep(forTimeInterval: 1.5)
-            let after = toggle?.value as? String ?? "?"
-            steps.append("toggle attempt \(attempt): switch=\(toggle != nil) before=\(before) after=\(after)")
-            // Without a readable switch, one tap is all we can do.
-            on = toggle == nil || after == "1"
-            if on { break }
+        // One tap: Compose's switch exposes no readable value (run 44376185633 read "" both
+        // times), so a second tap would only turn it off again. Whether Forward armed shows in
+        // the host's diagnostics (conversation_forward_arm).
+        let frame = row.frame
+        let toggle = app.switches.allElementsBoundByIndex.first { candidate in
+            let f = candidate.frame
+            return f.height > 0 && f.midY >= frame.minY - 4 && f.midY <= frame.maxY + 4
         }
-        if !on { throw ProbeError.missing("forward gesture switch did not turn on") }
+        if let toggle {
+            test.probeTap(app, x: toggle.frame.midX, y: toggle.frame.midY)
+        } else {
+            test.probeTap(app, x: frame.maxX - 30, y: frame.midY)
+        }
+        Thread.sleep(forTimeInterval: 1.5)
+        steps.append("tapped forward gesture switch (switch element=\(toggle != nil))")
         test.probeAttach(app, name: "forward-setting")
         // Back to Home: two pages (Appearance, Settings).
         for _ in 0..<4 where !onHome {
