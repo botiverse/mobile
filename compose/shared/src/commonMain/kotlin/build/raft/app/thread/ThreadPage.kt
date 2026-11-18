@@ -5,9 +5,6 @@ import build.raft.app.assistant.LocalThreadAssistantOtter
 import build.raft.app.assistant.LocalThreadAssistantPanelEmbed
 import build.raft.app.assistant.assistantContextTokenForSend
 import build.raft.app.assistant.withAssistantContextReference
-import build.raft.app.assistant.ThreadAssistantPanelConversationMissing
-import build.raft.app.assistant.ThreadAssistantPanelSheet
-import build.raft.app.assistant.assistantOtterDmOpenRequest
 import build.raft.app.assistant.newAssistantOtterHostId
 import build.raft.app.assistant.rememberThreadAssistantOtter
 import build.raft.app.assistant.threadForegroundBannerOnPage
@@ -124,8 +121,6 @@ import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.TaskConversationDetailsState
 import build.raft.app.data.TaskConversationDetailsViewModel
 import build.raft.app.data.TaskConversationHeaderEvent
-import build.raft.app.data.taskHeadSourceMessageId
-import build.raft.app.data.valueOrNull
 import build.raft.app.data.TaskConversationHeaderViewModel
 import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.SharedTasksProjectionSlice
@@ -154,7 +149,6 @@ import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.model.ConversationKind
-import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
@@ -212,7 +206,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -7273,59 +7266,14 @@ private fun SharedThreadRouteContentContent(
         // A press opens the assistant over this page (web AssistantOtter's phone Drawer): its head,
         // then its DM as the conversation page itself (THREAD_PAGE embedded, without its head).
         assistantOtter?.let { otter ->
-            ThreadAssistantPanelSheet(
-                otter,
-                // A phone's drawer covers the page: its banner goes over the drawer instead.
-                onCoversPageChange = { covers -> bannerHandoff?.coveredByWindow?.value = covers },
-                // The page's banner goes over the panel while it is open (threadForegroundBannerOnPage);
-                // once it is closing, the page shows it again.
-                windowOverlay = {
-                    val handoff = bannerHandoff
-                    handoff?.banner?.takeIf { otter.panelOpen }?.let { banner ->
-                        RaftForegroundMessageBannerView(
-                            banner = banner,
-                            topSafeArea = handoff.topSafeArea,
-                            serverMembersStore = handoff.serverMembersStore,
-                            currentServerId = foregroundBannerMemberServerId(banner, handoff.currentServerId),
-                            onClick = { handoff.onClick(banner) },
-                            onDismiss = { handoff.onDismiss(banner) },
-                        )
-                    }
-                },
-            ) {
-                val dmPageData =
-                    remember(otter.serverId, otter.dmChannelId) {
-                        val request = assistantOtterDmOpenRequest(otter.serverId, otter.dmChannelId, conversationIdentityProvider)
-                        val launch =
-                            request
-                                ?.let {
-                                    buildAppShellThreadPayload(
-                                        conversation = it.conversationIdentity,
-                                        timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
-                                        alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
-                                        compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
-                                        onWarn = bridge::logWarn
-                                    )
-                                }
-                                ?.toWireThreadLaunchPayloadOrNull()
-                        launch?.let {
-                            threadLaunchPageData(it)
-                                .withRaftShellStoreScope(RaftShellStoreScope.create(storeScope.shellInstanceId, otter.serverId))
-                        }
-                    }
-                LaunchedEffect(dmPageData == null) {
-                    if (dmPageData == null) bridge.logWarn("assistant_panel_dm_unresolved dm=${otter.dmChannelId}")
-                }
-                if (dmPageData == null) {
-                    ThreadAssistantPanelConversationMissing(otter.assistantName)
-                } else {
-                    RaftChildPage(
-                        pageName = THREAD_PAGE,
-                        pageData = dmPageData,
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                    )
-                }
-            }
+            ThreadRouteAssistantPanel(
+                otter = otter,
+                bannerHandoff = bannerHandoff,
+                renderedThread = renderedThread,
+                conversationIdentityProvider = conversationIdentityProvider,
+                bridge = bridge,
+                storeScope = storeScope,
+            )
         }
         // App link previews (artin #20 lane L): this viewer on this Server, asked once per conversation.
         val appLinkPreviewViewerId = currentSession?.user?.id?.takeIf(String::isNotBlank)
@@ -7582,59 +7530,27 @@ private fun SharedThreadRouteContentContent(
         val taskConversationHeadRoute: (@Composable (placement: TaskHeadPlacement) -> Unit)? =
             if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
                 { placement ->
-                    TaskConversationHeadRoute(
-                        task = taskConversationTask,
-                        state = taskConversationHeaderState,
-                        details = taskConversationDetailsState,
-                        statusUpdating = taskConversationTasksState?.statusUpdatingTaskId == taskConversationTask.id.value,
-                        assigneeCandidates = taskConversationMembersSlice.members,
-                        timeContext = taskConversationTimeContext,
-                        onUpdateStatus = { status ->
-                            taskConversationTasksViewModel?.let { TaskHeadEdits(it::dispatch).updateStatus(taskConversationTask, status) }
-                        },
-                        onMoveToBacklog = { reason ->
-                            taskConversationTasksViewModel?.let { TaskHeadEdits(it::dispatch).moveToBacklog(taskConversationTask, reason) }
-                        },
-                        onAssign = { member ->
-                            taskConversationTasksViewModel?.let { TaskHeadEdits(it::dispatch).assign(taskConversationTask, member) }
-                        },
-                        onOpenSource = {
-                            openTaskInChannel(taskConversationTask, taskConversationTask.taskHeadSourceMessageId(), "source")
-                        },
-                        // The creator's face and name: their profile, as a message author's avatar opens it.
-                        onOpenCreator = { person ->
-                            onOpenMemberProfile(
-                                renderedThread,
-                                renderedTimelineSlice,
-                                MemberDetailIdentity(MemberId(person.id), person.kind, currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)),
-                            )
-                        },
-                        onOpenEarlierDiscussion = {
-                            val earlier = taskConversationDetailsState.earlierDiscussion.valueOrNull
-                            openTaskConversationTarget(
-                                taskConversationTask.taskEarlierDiscussionOpenRequest(
-                                    serverId = currentServerId.orEmpty(),
-                                    threadChannelId = earlier?.threadChannelId,
-                                    conversationDirectory = taskConversationDirectory(taskConversationTask),
-                                ),
-                                "earlier_discussion",
-                            )
-                        },
-                        scrollState = taskHeadScrollState,
-                        // Typing on a phone: the pulled-down head goes back up.
-                        keyboardUp = adaptivePageKeyboardInsetDp > 0f,
-                        onRetryHistory = { taskConversationDetailsViewModel?.retryHistory() },
-                        // The offline stand-in refuses writes: its status and assignee are plain facts.
-                        editable = taskConversationTasksState?.standIn != true,
-                        canWriteChannel = taskConversationChannelWritable,
+                    ThreadRouteTaskHead(
                         placement = placement,
-                        serverId = currentServerId,
-                        onAmend = taskConversationTasksViewModel.taskHeadAmend(taskConversationTask),
-                        // Once deleted the page closes, as on `task:deleted` (web closes the dialog).
-                        onDelete =
-                            taskConversationTasksViewModel.taskHeadDelete(taskConversationTask) {
-                                taskConversationHeaderViewModel?.onTaskDeleted(taskConversationTask.id, null)
-                            },
+                        taskConversationTask = taskConversationTask,
+                        taskConversationHeaderState = taskConversationHeaderState,
+                        taskConversationDetailsState = taskConversationDetailsState,
+                        taskConversationTasksState = taskConversationTasksState,
+                        taskConversationMembersSlice = taskConversationMembersSlice,
+                        taskConversationTimeContext = taskConversationTimeContext,
+                        taskConversationTasksViewModel = taskConversationTasksViewModel,
+                        taskConversationDetailsViewModel = taskConversationDetailsViewModel,
+                        taskConversationHeaderViewModel = taskConversationHeaderViewModel,
+                        taskHeadScrollState = taskHeadScrollState,
+                        taskConversationChannelWritable = taskConversationChannelWritable,
+                        adaptivePageKeyboardInsetDp = adaptivePageKeyboardInsetDp,
+                        renderedThread = renderedThread,
+                        renderedTimelineSlice = renderedTimelineSlice,
+                        currentServerId = currentServerId,
+                        onOpenMemberProfile = onOpenMemberProfile,
+                        openTaskInChannel = openTaskInChannel,
+                        onOpenTaskConversationTarget = ::openTaskConversationTarget,
+                        onTaskConversationDirectory = ::taskConversationDirectory,
                     )
                 }
             } else {
