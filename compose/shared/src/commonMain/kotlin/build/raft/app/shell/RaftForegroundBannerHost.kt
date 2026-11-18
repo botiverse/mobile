@@ -2,6 +2,15 @@ package build.raft.app
 
 import build.raft.app.resources.Res
 import build.raft.app.resources.common_close
+import build.raft.app.resources.desc
+import build.raft.app.resources.format
+import build.raft.app.resources.resolve
+import build.raft.app.resources.foreground_banner_new_message
+import build.raft.app.resources.foreground_banner_sent_new_message
+import build.raft.app.resources.foreground_banner_dm_context
+import build.raft.app.resources.foreground_banner_thread_in_dm_context
+import build.raft.app.resources.foreground_banner_thread_in_channel_context
+import build.raft.app.resources.foreground_banner_mentioned_you
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
@@ -1027,32 +1036,40 @@ private fun NotificationPushReceived.foregroundBannerTitle(): String =
 
 private fun NotificationPushReceived.foregroundBannerBody(): String = body.ifBlank { legacyForegroundBannerBody() }
 
+/**
+ * An older server's payload (no title / body): the banner builds them from the typed fields, in the
+ * app language. Only this rare path reads the catalog outside composition.
+ */
 private fun NotificationPushReceived.legacyForegroundBannerTitle(): String {
     val serverLabel = serverName?.trim()?.takeIf { it.isNotBlank() }
-        ?: return title.ifBlank { "New message" }
+        ?: return title.ifBlank { Res.string.foreground_banner_new_message.desc().resolve() }
     val conversationLabel = channelName?.trim()?.takeIf { it.isNotBlank() }
     return when (kind) {
-        ConversationKind.DirectMessage -> "DM · $serverLabel"
+        ConversationKind.DirectMessage -> Res.string.foreground_banner_dm_context.format(serverLabel).resolve()
         ConversationKind.Channel,
         ConversationKind.Joint -> conversationLabel?.let { "#${it.removePrefix("#")} · $serverLabel" }
         ConversationKind.Thread ->
             when (parentChannelKind) {
-                ConversationKind.DirectMessage -> "Thread in DM · $serverLabel"
+                ConversationKind.DirectMessage -> Res.string.foreground_banner_thread_in_dm_context.format(serverLabel).resolve()
                 ConversationKind.Channel,
                 ConversationKind.Joint ->
-                    conversationLabel?.let { "Thread in #${it.removePrefix("#")} · $serverLabel" }
+                    conversationLabel?.let {
+                        Res.string.foreground_banner_thread_in_channel_context.format(it.removePrefix("#"), serverLabel).resolve()
+                    }
                 else -> null
             }
         else -> null
-    } ?: title.ifBlank { "New message" }
+    } ?: title.ifBlank { Res.string.foreground_banner_new_message.desc().resolve() }
 }
 
 private fun NotificationPushReceived.legacyForegroundBannerBody(): String {
     val senderLabel = senderName?.trim()?.takeIf { it.isNotBlank() }
     val preview = messagePreview?.trim()?.takeIf { it.isNotBlank() }
-    if (senderLabel == null || preview == null) return body.ifBlank { "Sent a new message." }
+    if (senderLabel == null || preview == null) {
+        return body.ifBlank { Res.string.foreground_banner_sent_new_message.desc().resolve() }
+    }
     return if (mentioned == true) {
-        "$senderLabel mentioned you: $preview"
+        Res.string.foreground_banner_mentioned_you.format(senderLabel, preview).resolve()
     } else {
         "$senderLabel: $preview"
     }

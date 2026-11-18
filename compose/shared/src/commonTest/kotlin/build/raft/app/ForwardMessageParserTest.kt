@@ -137,7 +137,8 @@ class ForwardMessageParserTest {
         )
 
         val bundle = assertNotNull(payload.messages.single().forwardBundle)
-        assertEquals("Forwarded", bundle.title)
+        // No English title from the parser: the page names the bundle in the reader's language.
+        assertEquals("", bundle.title)
         assertEquals("#general", bundle.sourceTitle)
         assertEquals(2, bundle.totalCount)
         assertEquals("m1", bundle.messages.first().id)

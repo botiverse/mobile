@@ -1,0 +1,119 @@
+package build.raft.app
+
+import build.raft.app.data.AgentActivityEntry
+import build.raft.app.data.SharedServerMemberStatus
+import build.raft.app.model.AgentStatus
+import build.raft.app.model.Presence
+import build.raft.app.resources.*
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+
+/**
+ * The activity log and the status line say the client's own words in the reader's language: tool
+ * labels, the parsers' fallback titles, and the daemon's freshness hold / delivery_unconsumed
+ * details (web `utils/activity.ts`), instead of the English the data layer keeps as ids.
+ */
+class AgentActivityLocalizedCopyTest {
+    @Test
+    fun freshnessHoldTitlesMapLikeWeb() {
+        assertEquals(AgentFreshnessHold.Send, agentFreshnessHold("Send held by freshness check"))
+        assertEquals(AgentFreshnessHold.TaskClaim, agentFreshnessHold(" Task claim held by freshness check "))
+        assertEquals(AgentFreshnessHold.TaskAmend, agentFreshnessHold("Task amendment held by freshness check"))
+        assertEquals(AgentFreshnessHold.TaskUpdate, agentFreshnessHold("Task update held by freshness check"))
+        assertNull(agentFreshnessHold("Sent message"))
+        assertNull(agentFreshnessHold(null))
+    }
+
+    @Test
+    fun freshnessHoldBodyReadsAsCountAndTarget() {
+        assertEquals(
+            AgentFreshnessHoldDetail(count = 3, target = "#general"),
+            parseAgentFreshnessHoldText("target: #general\nnew messages: 3 newer messages since your last read")
+        )
+        assertEquals(
+            AgentFreshnessHoldDetail(count = 2, target = "#proj:abc123"),
+            parseAgentFreshnessHoldText("target: #proj:abc123\nunreviewed synced context for this target: 2")
+        )
+        assertNull(parseAgentFreshnessHoldText("target: #general"))
+        assertNull(parseAgentFreshnessHoldText("new messages: 3 newer"))
+        assertNull(parseAgentFreshnessHoldText(null))
+        assertEquals(Res.string.member_activity_log_freshness_hold_detail_one, AgentFreshnessHoldDetail(1, "#x").messageRes())
+        assertEquals(Res.string.member_activity_log_freshness_hold_detail_other, AgentFreshnessHoldDetail(4, "#x").messageRes())
+    }
+
+    @Test
+    fun statusLineMapsDaemonDetailKindsWhateverTheActivity() {
+        assertEquals(
+            RaftAgentActivityDetailText.FreshnessHold(AgentFreshnessHold.TaskClaim),
+            state(AgentStatus.Working, "Task claim held by freshness check", detailKind = "freshness_hold")
+                .workingActivityDetailText()
+        )
+        // An unknown hold title still reads as the hold, never as the daemon's English.
+        assertEquals(
+            RaftAgentActivityDetailText.FreshnessHold(AgentFreshnessHold.Send),
+            state(AgentStatus.Working, "Something held", detailKind = "freshness_hold").serverKindActivityDetailText()
+        )
+        assertEquals(
+            RaftAgentActivityDetailText.DeliveryUnconsumed,
+            state(AgentStatus.Online, "3 deliveries unconsumed", detailKind = "delivery_unconsumed")
+                .serverKindActivityDetailText()
+        )
+        assertNull(state(AgentStatus.Working, "Reading", detailKind = "starting").serverKindActivityDetailText())
+        assertNull(
+            state(null, "External", external = true, detailKind = "delivery_unconsumed").serverKindActivityDetailText()
+        )
+    }
+
+    @Test
+    fun knownToolsUseTheirTranslatedLogLabel() {
+        assertEquals(Res.string.member_activity_log_tool_bash, agentToolLogLabelRes("Bash"))
+        assertEquals(Res.string.member_activity_log_tool_bash, agentToolLogLabelRes("command_execution"))
+        assertEquals(Res.string.member_activity_log_tool_read_file, agentToolLogLabelRes("Read"))
+        assertEquals(Res.string.member_activity_log_tool_check_messages, agentToolLogLabelRes("mcp__chat__check_messages"))
+        assertEquals(Res.string.member_activity_log_tool_check_messages, agentToolLogLabelRes("receive_message"))
+        assertEquals(Res.string.member_activity_log_tool_spawn_subagent, agentToolLogLabelRes("spawn_subagent"))
+        // A tool Raft doesn't know keeps its own name.
+        assertNull(agentToolLogLabelRes("mcp__linear__create_issue"))
+        assertNull(agentToolLogLabelRes(""))
+    }
+
+    @Test
+    fun parserFallbackTitlesAreTranslatedAtRender() {
+        assertEquals(
+            Res.string.member_activity_log_tool_grep,
+            membersActivityFixedTitleRes(entry(type = "tool_start", title = "Searching code", toolName = "Grep"))
+        )
+        assertEquals(
+            Res.string.member_activity_log_freshness_hold_task_update,
+            membersActivityFixedTitleRes(entry(type = "slock_action", title = "Task update held by freshness check"))
+        )
+        assertEquals(Res.string.member_activity_log_raft_action, membersActivityFixedTitleRes(entry(type = "slock_action", title = "Raft action")))
+        assertEquals(Res.string.activity_list_system_sender, membersActivityFixedTitleRes(entry(type = "system", title = "System")))
+        assertEquals(Res.string.member_label_status, membersActivityFixedTitleRes(entry(type = "status", title = "Status")))
+        assertEquals(
+            Res.string.member_activity_log_agent_activity,
+            membersActivityFixedTitleRes(entry(type = "tool_start", title = "Agent activity", toolName = ""))
+        )
+        // A server title and an unknown tool show as they are.
+        assertNull(membersActivityFixedTitleRes(entry(type = "slock_action", title = "Claimed #12")))
+        assertNull(membersActivityFixedTitleRes(entry(type = "tool_start", title = "create_issue", toolName = "mcp__linear__create_issue")))
+    }
+
+    private fun entry(type: String, title: String, toolName: String? = null) =
+        AgentActivityEntry(id = "row", type = type, title = title, toolName = toolName)
+
+    private fun state(
+        status: AgentStatus?,
+        statusLabel: String?,
+        external: Boolean = false,
+        detailKind: String? = null
+    ): RaftAgentStatusIndicatorState =
+        SharedServerMemberStatus(
+            status = status,
+            presence = status?.presence ?: Presence.Offline,
+            statusLabel = statusLabel,
+            detailKind = detailKind,
+            external = external
+        ).toRaftAgentStatusIndicatorState()
+}

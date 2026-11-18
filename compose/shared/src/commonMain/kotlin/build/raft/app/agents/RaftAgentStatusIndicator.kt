@@ -424,12 +424,19 @@ internal sealed interface RaftAgentActivityDetailText {
 
     data class Tool(val toolName: String) : RaftAgentActivityDetailText
 
+    /** detailKind `freshness_hold`: the agent reads newer messages before the held action. */
+    data class FreshnessHold(val hold: AgentFreshnessHold) : RaftAgentActivityDetailText
+
+    /** detailKind `delivery_unconsumed`: messages delivered, the runtime not responding. */
+    data object DeliveryUnconsumed : RaftAgentActivityDetailText
+
     data class Raw(val text: String) : RaftAgentActivityDetailText
 }
 
 /** Null for non-working agents and for a working agent with no detail. */
 internal fun RaftAgentStatusIndicatorState.workingActivityDetailText(): RaftAgentActivityDetailText? {
     if (external || status != AgentStatus.Working) return null
+    serverKindActivityDetailText()?.let { return it }
     when (detailKind?.trim()) {
         "starting", "runtime_starting" -> return RaftAgentActivityDetailText.Starting
         "compacting_context" -> return RaftAgentActivityDetailText.CompactingContext
@@ -438,6 +445,20 @@ internal fun RaftAgentStatusIndicatorState.workingActivityDetailText(): RaftAgen
     val detail = label.trim()
     if (detail.isGenericWorkingLabel()) return null
     return RaftAgentActivityDetailText.Raw(detail)
+}
+
+/**
+ * Web `getActivityTextDescriptor`: the daemon's `delivery_unconsumed` and `freshness_hold` details
+ * read as fixed copy whatever the activity kind, never as the daemon's English. Null otherwise.
+ */
+internal fun RaftAgentStatusIndicatorState.serverKindActivityDetailText(): RaftAgentActivityDetailText? {
+    if (external) return null
+    return when (detailKind?.trim()) {
+        AgentActivityDetailKindDeliveryUnconsumed -> RaftAgentActivityDetailText.DeliveryUnconsumed
+        AgentActivityDetailKindFreshnessHold ->
+            RaftAgentActivityDetailText.FreshnessHold(agentFreshnessHold(label) ?: AgentFreshnessHold.Send)
+        else -> null
+    }
 }
 
 /**
@@ -467,6 +488,8 @@ internal fun RaftAgentActivityDetailText.localizedText(): String =
                 "run_command" -> stringResource(Res.string.agent_activity_tool_run_command)
                 else -> stringResource(Res.string.agent_activity_tool_using, toolName.truncateAgentToolLabel())
             }
+        is RaftAgentActivityDetailText.FreshnessHold -> stringResource(hold.labelRes)
+        RaftAgentActivityDetailText.DeliveryUnconsumed -> stringResource(Res.string.agent_activity_delivery_unconsumed)
         is RaftAgentActivityDetailText.Raw -> text
     }
 
@@ -480,6 +503,7 @@ internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(): String 
     if (detailKind == AgentActivityDetailKindClaudeRootPrivileges) {
         return stringResource(Res.string.agent_runtime_error_root_privileges)
     }
+    serverKindActivityDetailText()?.let { return it.localizedText() }
     // Web #13985: a coded runtime error reads its title; the server's generic member line, ours.
     if (status == AgentStatus.Error && !external) {
         agentErrorStatusCopy(errorCode, label)?.let { return stringResource(it) }

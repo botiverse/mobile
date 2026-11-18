@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.RaftRadioRow
 import build.raft.designsystem.components.RaftRadioGroup
 import build.raft.app.data.RaftAppAppearanceRuntime
@@ -408,7 +409,10 @@ private fun SettingsAppearanceFontSizeCard(
                         selectedValue = selected,
                         options =
                             snapshot.messageBodyFontSize.options.map {
-                                SegmentedControlOption(it.key, it.label)
+                                SegmentedControlOption(
+                                    it.key,
+                                    settingsMessageFontSizeLabelRes(it.key)?.let { res -> stringResource(res) } ?: it.label
+                                )
                             },
                         onValueSelected = onFontSizeDraftChange,
                         enabled = snapshot.messageBodyFontSize.available && !busy
@@ -504,3 +508,15 @@ private fun settingsAppearancePreviewClock(): String {
     val local = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
     return "${local.hour.toString().padStart(2, '0')}:${local.minute.toString().padStart(2, '0')}"
 }
+
+/**
+ * Web `settings.appearance.fontSizeSmall` / `fontSizeMedium` / `fontSizeLarge`: a message font
+ * size's word in this locale, by its key (the store's label is only its id).
+ */
+internal fun settingsMessageFontSizeLabelRes(key: String): StringResource? =
+    when (key) {
+        "sm" -> Res.string.settings_appearance_message_font_size_small
+        "md" -> Res.string.settings_appearance_message_font_size_medium
+        "lg" -> Res.string.settings_appearance_message_font_size_large
+        else -> null
+    }

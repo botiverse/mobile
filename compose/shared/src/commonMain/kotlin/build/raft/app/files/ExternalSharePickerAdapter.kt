@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import build.raft.app.resources.*
 import build.raft.app.data.ExternalShareIntent
 import build.raft.app.data.ExternalShareState
 import build.raft.app.data.externalShareDirectorySessionId
@@ -52,7 +53,7 @@ internal fun ExternalShareTargetPickerSurface(
         bottomSafeArea = bottomSafeArea,
         topContent = {
             RaftServerChoice(
-                title = "Server",
+                title = stringResource(Res.string.settings_server_title),
                 options = state.serverOptions,
                 selectedId = state.serverId,
                 optionId = { server -> server.id },
