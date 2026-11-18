@@ -1,0 +1,185 @@
+{
+  "_comment": "Real-shaped Raft links and where they must open. Paths only: the diagnose script puts each claimed host in front. expect.ios / expect.android: app = opens the app as a Universal Link / verified App Link, web = stays in the browser. Android claims all of /s/ and lets the app validate the route, so nested /s/ paths open the app there by design.",
+  "urls": [
+    {
+      "id": "channel",
+      "label": "channel permalink",
+      "path": "/s/oranixslocktest/channel/0b7c9a8e-4f1d-4c55-9a77-1f2e3d4c5b6a",
+      "expect": {
+        "ios": "app",
+        "android": "app"
+      }
+    },
+    {
+      "id": "channel-reply",
+      "label": "reply permalink ?msg=",
+      "path": "/s/oranixslocktest/channel/0b7c9a8e-4f1d-4c55-9a77-1f2e3d4c5b6a?msg=7d1e2f3a-5b6c-4d7e-8f90-a1b2c3d4e5f6",
+      "expect": {
+        "ios": "app",
+        "android": "app"
+      }
+    },
+    {
+      "id": "thread",
+      "label": "thread reply ?msg=&thread=",
+      "path": "/s/oranixslocktest/channel/0b7c9a8e-4f1d-4c55-9a77-1f2e3d4c5b6a?msg=7d1e2f3a-5b6c-4d7e-8f90-a1b2c3d4e5f6&thread=0b7c9a8e-4f1d-4c55-9a77-1f2e3d4c5b6a%3A3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+      "expect": {
+        "ios": "app",
+        "android": "app"
+      }
+    },
+    {
+      "id": "dm",
+      "label": "DM permalink",
+      "path": "/s/oranixslocktest/dm/5e6f7a8b-9c0d-4e1f-a2b3-c4d5e6f7a8b9",
+      "expect": {
+        "ios": "app",
+        "android": "app"
+      }
+    },
+    {
+      "id": "dm-msg",
+      "label": "DM permalink ?msg=",
+      "path": "/s/oranixslocktest/dm/5e6f7a8b-9c0d-4e1f-a2b3-c4d5e6f7a8b9?msg=9a8b7c6d-5e4f-4a3b-2c1d-0e9f8a7b6c5d",
+      "expect": {
+        "ios": "app",
+        "android": "app"
+      }
+    },
+    {
+      "id": "artifacts-query",
+      "label": "open Artifact /s/<slug>/artifacts?artifact=",
+      "path": "/s/oranixslocktest/artifacts?artifact=art_2f3e4d5c6b7a&version=3",
+      "expect": {
+        "ios": "app",
+        "android": "app"
+      }
+    },
+    {
+      "id": "artifact",
+      "label": "Artifact share /artifacts/<id>",
+      "path": "/artifacts/art_2f3e4d5c6b7a",
+      "expect": {
+        "ios": "app",
+        "android": "app"
+      }
+    },
+    {
+      "id": "artifact-version",
+      "label": "Artifact share /artifacts/<id>/v/<n>",
+      "path": "/artifacts/art_2f3e4d5c6b7a/v/3",
+      "expect": {
+        "ios": "app",
+        "android": "app"
+      }
+    },
+    {
+      "id": "external-invite",
+      "label": "external channel invite",
+      "path": "/external-invite/inv_8f7e6d5c4b3a",
+      "expect": {
+        "ios": "app",
+        "android": "app"
+      }
+    },
+    {
+      "id": "join",
+      "label": "server join link (app 1.25+)",
+      "path": "/join/jn_1a2b3c4d5e6f",
+      "expect": {
+        "ios": "app",
+        "android": "app"
+      }
+    },
+    {
+      "id": "download",
+      "label": "/download",
+      "path": "/download",
+      "expect": {
+        "ios": "app",
+        "android": "web"
+      }
+    },
+    {
+      "id": "signup-verify",
+      "label": "sign-up verify link (slock verificationEmailUrl, URLSearchParams-encoded)",
+      "path": "/?verify=vt_4b5c6d7e8f9a&returnTo=%2Flogin%2Fapp%3Frequest%3Dreq_0a1b2c3d",
+      "expect": {
+        "ios": "app",
+        "android": "web"
+      }
+    },
+    {
+      "id": "dm-extra",
+      "label": "DM + extra segment (must not open on iOS)",
+      "path": "/s/oranixslocktest/dm/5e6f7a8b-9c0d-4e1f-a2b3-c4d5e6f7a8b9/extra",
+      "expect": {
+        "ios": "web",
+        "android": "app"
+      }
+    },
+    {
+      "id": "channel-extra",
+      "label": "channel + extra segment",
+      "path": "/s/oranixslocktest/channel/0b7c9a8e-4f1d-4c55-9a77-1f2e3d4c5b6a/extra",
+      "expect": {
+        "ios": "web",
+        "android": "app"
+      }
+    },
+    {
+      "id": "channel-nested",
+      "label": "nested /s/<a>/<b>/channel/<id>",
+      "path": "/s/oranixslocktest/settings/channel/0b7c9a8e-4f1d-4c55-9a77-1f2e3d4c5b6a",
+      "expect": {
+        "ios": "web",
+        "android": "app"
+      }
+    },
+    {
+      "id": "channel-no-id",
+      "label": "/s/<slug>/channel/ (no id)",
+      "path": "/s/oranixslocktest/channel/",
+      "expect": {
+        "ios": "web",
+        "android": "app"
+      }
+    },
+    {
+      "id": "artifact-extra",
+      "label": "Artifact + extra segment",
+      "path": "/artifacts/art_2f3e4d5c6b7a/extra",
+      "expect": {
+        "ios": "web",
+        "android": "app"
+      }
+    },
+    {
+      "id": "root",
+      "label": "/ without verify query",
+      "path": "/",
+      "expect": {
+        "ios": "web",
+        "android": "web"
+      }
+    },
+    {
+      "id": "login",
+      "label": "/login",
+      "path": "/login",
+      "expect": {
+        "ios": "web",
+        "android": "web"
+      }
+    },
+    {
+      "id": "settings",
+      "label": "/s/<slug>/settings (web-only page)",
+      "path": "/s/oranixslocktest/settings",
+      "expect": {
+        "ios": "web",
+        "android": "app"
+      }
+    }
+  ]
+}

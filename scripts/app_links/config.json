@@ -1,0 +1,13 @@
+{
+  "_comment": "Expectations the app link diagnose (scripts/app_links/diagnose.py) cannot read from the build config. Everything else (hosts, bundle id, intent filters, upload-key fingerprints) is read from the repo at run time.",
+  "apple_team_id": "XDAPXFY8FZ",
+  "apple_team_id_source": "Apple Distribution: Botiverse, Inc. (XDAPXFY8FZ), change-logs/1.9.1/release-receipt.md. CI reads the real value from the secret SLOCK_IOS_APPLE_TEAM_ID, which this public workflow does not use; the latest-build check compares it with the shipped IPA's application-identifier.",
+  "android_package": "build.raft.app",
+  "android_extra_fingerprints": [
+    {
+      "sha256": "D7:70:71:84:A6:BE:7F:0C:EC:D6:2E:3F:F9:E0:89:D4:58:A8:4F:AF:A3:BD:8E:2F:AE:4B:3B:60:D8:C5:6A:D6",
+      "role": "Google Play app signing key",
+      "source": "Not in this repo (Play holds the key). Taken from the served assetlinks.json on 2026-11-18; Play Console > Setup > App signing shows it. The two upload/legacy keys come from scripts/verify_android_apk_with_rotation.sh."
+    }
+  ]
+}
