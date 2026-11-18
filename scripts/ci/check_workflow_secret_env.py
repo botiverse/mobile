@@ -89,8 +89,9 @@ USES_LINE = re.compile(r"^\s*(?:-\s+)?uses\s*:\s*(.+?)\s*$")
 # exactly one step: a second step with the same identity fails, so a name cannot be borrowed.
 STEP_ALLOWLIST = {
     ("android-realtime-e2e.yml", "e2e", "Find and download the Alpha APK"):
-        ("GH_TOKEN is github.token for `gh`; outputs are run id, artifact name, APK path, package, sha256",
-         "52c2a79ba73f58afbd9570d969369315bde1b50b99c2b76959247b3459028c53"),
+        ("GH_TOKEN is github.token for `gh`; outputs are run id, artifact name, APK path, package, sha256, "
+         "the artifact's source sha and the compare status of an optional required commit (no credentials)",
+         "86c3359962a8a808512b06ab5edf52f76a83aa770936d1b4aeda2a637d17c674"),
     ("release-auto-login.yml", "sign-in", "Download the release APK"):
         ("GH_TOKEN is github.token for `gh run download`; outputs are the APK path and version",
          "c206125a3ef184fbf55a29ad8040936ef304b169e08f11625268f9176c69c822"),
@@ -156,7 +157,7 @@ QA_SECRET_STEPS: dict[str, dict[str, dict[str, dict]]] = {
     }},
     "android-realtime-e2e.yml": {"e2e": {
         PREFLIGHT: {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
-        "Run realtime e2e on the emulator": {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        "Run the scenario on the emulator": {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
     }},
     "android-update-e2e.yml": {"e2e": {
         PREFLIGHT: {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
