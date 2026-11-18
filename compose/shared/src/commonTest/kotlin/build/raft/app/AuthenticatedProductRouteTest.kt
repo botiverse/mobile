@@ -30,6 +30,8 @@ class AuthenticatedProductRouteTest {
                 SETTINGS_WEB_VIEW_PAGE,
                 SETTINGS_STORAGE_PAGE,
                 SETTINGS_COMPUTERS_PAGE,
+                // Settings > Labs (server_labs_ui_v0).
+                SETTINGS_LABS_PAGE,
                 RELEASE_NOTES_PAGE,
                 // The in-app Artifact viewer: its own authenticated page (sign-out replaces it with login).
                 RAFT_ARTIFACT_VIEWER_PAGE,

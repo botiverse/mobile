@@ -32,6 +32,7 @@ internal enum class AuthenticatedProductRoute(val pageName: String) {
     SettingsWebView(SETTINGS_WEB_VIEW_PAGE),
     SettingsStorage(SETTINGS_STORAGE_PAGE),
     SettingsComputers(SETTINGS_COMPUTERS_PAGE),
+    SettingsLabs(SETTINGS_LABS_PAGE),
     ReleaseNotes(RELEASE_NOTES_PAGE),
     ArtifactViewer(RAFT_ARTIFACT_VIEWER_PAGE),
     ArtifactsHome(ARTIFACTS_HOME_PAGE),

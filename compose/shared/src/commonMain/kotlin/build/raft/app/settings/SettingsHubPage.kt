@@ -94,11 +94,18 @@ internal fun SettingsAppShellHomeContent(
     onBack: (() -> Unit)? = null,
     /** The server's `slack_bridge_v0` flag: the IM Bridges row. */
     imBridgesEnabled: Boolean = false,
+    /** The server's `server_labs_ui_v0` flag: the Labs row. */
+    labsEnabled: Boolean = false,
     /** Search settings on top of the list; null: no field. */
     search: SettingsSearchHost? = null,
 ) {
     // The phone's Settings: Computers and Apps are on the server panel that opened it.
-    val payload = appShellSettingsHomePayload(session, imBridgesEnabled = imBridgesEnabled, serverPanelPages = true)
+    val payload = appShellSettingsHomePayload(
+            session,
+            imBridgesEnabled = imBridgesEnabled,
+            labsEnabled = labsEnabled,
+            serverPanelPages = true,
+        )
     SettingsHomeContent(
         payload =
             payload.copy(
@@ -134,12 +141,14 @@ internal fun SettingsAppShellHomeContent(
  * Administration ([administration]) are rows only for who may open them, as on the web
  * (useSidebarViewState `canViewBillingSettings` / `canViewAdministrationSettings`, from
  * settingsNavigation.ts `canOpenSettingsTab`): [settingsHomeBillingVisible] and
- * [settingsHomeAdministrationVisible] for the current server's role.
+ * [settingsHomeAdministrationVisible] for the current server's role. Labs ends the Workspace group, as it ends the web's Server group
+ * (useSidebarRoute `labs`), only with [labs]: the server's `server_labs_ui_v0` flag (web `labsUiEnabled`).
  */
 internal fun settingsHomeRowKeys(
     hasThemeServer: Boolean,
     appPreferencesUnderAppearance: Boolean = settingsAppPreferencesUnderAppearance(),
     imBridges: Boolean = false,
+    labs: Boolean = false,
     releaseNotes: Boolean = settingsReleaseNotesAvailable(),
     serverPanelPages: Boolean = false,
     guest: Boolean = false,
@@ -162,6 +171,7 @@ internal fun settingsHomeRowKeys(
         SettingsDestinationImBridges.takeIf { imBridges },
         SettingsDestinationConnectedApps.takeIf { !serverPanelPages || guest },
         SettingsDestinationComputers.takeUnless { serverPanelPages },
+        SettingsDestinationLabs.takeIf { labs },
         SettingsNativeDetailPage.About.key,
         SettingsDestinationDocumentation,
         SettingsDestinationHandsFeedback,
@@ -196,6 +206,8 @@ internal fun appShellSettingsHomePayload(
     appPreferencesUnderAppearance: Boolean = settingsAppPreferencesUnderAppearance(),
     /** The server's `slack_bridge_v0` flag: the IM Bridges row ([settingsHomeRowKeys]). */
     imBridgesEnabled: Boolean = false,
+    /** The server's `server_labs_ui_v0` flag: the Labs row ([settingsHomeRowKeys]). */
+    labsEnabled: Boolean = false,
     /** iOS: Billing opens the system browser ([settingsBillingLeavesRaft]), its row a trailing ↗. */
     billingOpensExternally: Boolean = settingsBillingLeavesRaft(),
     /** The phone: Computers and Apps are on the server panel ([settingsHomeRowKeys]). */
@@ -313,6 +325,14 @@ internal fun appShellSettingsHomePayload(
                 iconName = RaftLucideIconName.Monitor,
                 section = workspaceSection
             ),
+            // web: a sidebar label only, no description.
+            SettingsHomePageLinkPayload(
+                key = SettingsDestinationLabs,
+                title = stringResource(Res.string.settings_labs_title),
+                subtitle = "",
+                iconName = RaftLucideIconName.FlaskConical,
+                section = workspaceSection
+            ),
             SettingsHomePageLinkPayload(
                 key = SettingsNativeDetailPage.About.key,
                 title = stringResource(Res.string.settings_about_title),
@@ -351,6 +371,7 @@ internal fun appShellSettingsHomePayload(
                 hasThemeServer = themeServer != null,
                 appPreferencesUnderAppearance = appPreferencesUnderAppearance,
                 imBridges = imBridgesEnabled,
+                labs = labsEnabled,
                 serverPanelPages = serverPanelPages,
                 guest = serverRole.equals("guest", ignoreCase = true),
                 billing = settingsHomeBillingVisible(serverRole),

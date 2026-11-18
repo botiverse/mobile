@@ -96,6 +96,7 @@ class RaftStackPageAllowlistTest {
             SETTINGS_COMPUTERS_PAGE,
             build.raft.app.ARTIFACTS_HOME_PAGE,
             build.raft.app.ASSISTANT_PAGE,
+            build.raft.app.SETTINGS_LABS_PAGE,
         ).forEach { name ->
             val scope = data("slockShellInstanceId" to "shell-1")
             assertEquals(RaftStackOpenRoute.Stack, route(name, scope), name)

@@ -114,6 +114,7 @@ internal fun authenticatedProductPageView(
         AuthenticatedProductRoute.SettingsHandsFeedback -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Feedback)
         AuthenticatedProductRoute.SettingsFeedbackTickets -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Feedback)
         AuthenticatedProductRoute.SettingsStorage -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Storage)
+        AuthenticatedProductRoute.SettingsLabs -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Labs)
         AuthenticatedProductRoute.SettingsNativeDetail ->
             settingsNativeDetailRoute(params)?.page?.productSettingsTab()?.let { RaftProductPageView(RaftPageRoute.Settings, it) }
         AuthenticatedProductRoute.SettingsWebView -> settingsWebViewSurfaceFromPageData(params)?.productPageView()
