@@ -207,7 +207,9 @@ private fun MembersAgentRecentTurnRow(turn: AgentActivityTurn, timeContext: Raft
                     color = colors.foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = triggerMaxWidth),
+                    // The badges keep their whole width (web `shrink-0`); on a narrow row the
+                    // trigger gives way too, up to its 45% cap, instead of a badge shrinking to "…".
+                    modifier = Modifier.widthIn(max = triggerMaxWidth).weight(1f, fill = false),
                 )
             }
             RaftText(
