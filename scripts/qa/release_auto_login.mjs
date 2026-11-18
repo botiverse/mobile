@@ -355,8 +355,14 @@ async function cleanupDevice() {
 
 // The script's own web session: what the web's Sign out sends, then proof: the server must refuse
 // that refresh token (401). /auth/logout answers 200 even for an unknown token, so 200 alone is not.
+// The web login's answer when it gave no session: "lost" (POST /auth/login sent, no HTTP answer:
+// network error / timeout) or "incomplete" (a 2xx without a usable access token, or an unreadable
+// body). The request may still have opened a session on the server, so the cleanup status is
+// login_outcome_unknown (a cleanup failure), never not_opened. Every other answer keeps its status.
+let webLoginResponse = "";
 async function signOutWebSession(webSession) {
   await cleanupStep("web_session", async () => {
+    if (!webSession && (webLoginResponse === "lost" || webLoginResponse === "incomplete")) return "login_outcome_unknown";
     if (!webSession) return "not_opened";
     if (!webSession.refreshToken) throw new Error("the login returned no refresh token to sign out");
     const out = await web("POST", "auth/logout", { token: webSession.accessToken, body: { refreshToken: webSession.refreshToken } });
@@ -702,7 +708,17 @@ async function main() {
     });
 
     const callback = await step("web-login-and-confirm", async () => {
-      const login = await web("POST", "auth/login", { body: { email: account.email, password: account.password } });
+      let login;
+      try {
+        login = await web("POST", "auth/login", { body: { email: account.email, password: account.password } });
+      } catch (error) {
+        // web() stops itself on a 429 (an answer); anything else thrown is a lost answer.
+        if (!(error instanceof Stop)) webLoginResponse = "lost";
+        throw error;
+      }
+      if (login.status >= 200 && login.status < 300 && !login.json?.accessToken && !login.json?.secondFactorRequired && !login.json?.challenge) {
+        webLoginResponse = "incomplete";
+      }
       if (login.status === 401) stop("the QA account's email/password were refused (HTTP 401)");
       if (login.status !== 200) stop(`POST /auth/login answered HTTP ${login.status} ${login.json?.code ?? ""}`);
       if (login.json?.secondFactorRequired || login.json?.challenge) {

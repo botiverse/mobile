@@ -199,7 +199,7 @@ jobs:
       artifact_name: release-auto-login-apk
       # versionCode = major*10_000_000 + build must fit Android's 32-bit int (and stay <= 2_100_000_000):
       # 2000 overflowed to a negative versionCode. 209 is the top of the reserved QA window (200..209,
-      # scripts/qa/android_update_hands_fixture.sh); this build is never published to Hands.
+      # the Hands update fixture script); this build is never published to Hands.
       version_major: "209"
       version_minor: "0"
       version_patch: "0"
