@@ -417,6 +417,7 @@ jobs:
         id: stamp-claim
         if: ${{ inputs.stamp_run_case_id != '' }}
         env:
+          STAMP_DIRECT_ANDROID_APK: ${{ inputs.apk_url != '' && inputs.apk_run_id == '' && inputs.artifact_sha256 == '' }}
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
           STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
