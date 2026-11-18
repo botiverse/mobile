@@ -24,9 +24,21 @@ private val channelRepositoryJson = Json {
 
 private suspend fun RaftNetworkClient.channels(
     priority: DataRequestPriority,
-    serverId: ServerId? = null
+    serverId: ServerId? = null,
+    includeArchived: Boolean = false,
 ): HomeNetworkResponse =
-    request(priority, "channels", serverIdOverride = serverId)
+    if (includeArchived) {
+        request(priority, "channels", query = HOME_CHANNELS_QUERY, serverIdOverride = serverId)
+    } else {
+        request(priority, "channels", serverIdOverride = serverId)
+    }
+
+/**
+ * `GET /channels?archived=include` (slock routes/channels.ts; the default is `exclude`): the web
+ * loads its channel list this way (channelStore) so search and `#` find archived channels. Home
+ * keeps them out of the sidebar ([HomeSnapshot.archivedChannels]).
+ */
+internal val HOME_CHANNELS_QUERY: List<Pair<String, String>> = listOf("archived" to "include")
 
 private suspend fun RaftNetworkClient.directMessages(
     priority: DataRequestPriority,
@@ -112,6 +124,11 @@ class RealChannelRepository(
     override suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot> {
         val context = serverContext(serverId) ?: return authRequired()
         return fetchChannels(context)
+    }
+
+    override suspend fun getChannelsIncludingArchived(serverId: ServerId): DataResult<ChannelSnapshot> {
+        val context = serverContext(serverId) ?: return authRequired()
+        return fetchChannels(context, includeArchived = true)
     }
 
     override suspend fun getDirectMessages(serverId: ServerId): DataResult<DirectMessageSnapshot> {
@@ -305,15 +322,18 @@ class RealChannelRepository(
         )
     }
 
-    private suspend fun fetchChannels(context: SharedChannelServerContext): DataResult<ChannelSnapshot> =
+    private suspend fun fetchChannels(
+        context: SharedChannelServerContext,
+        includeArchived: Boolean = false,
+    ): DataResult<ChannelSnapshot> =
         executeChannel(
             emptyReason = EmptyReason.NoChannels,
-            block = { networkClient.channels(DataRequestPriority.Visible, context.server.id) },
+            block = { networkClient.channels(DataRequestPriority.Visible, context.server.id, includeArchived) },
             emptyWhen = { it.channels.isEmpty() },
             source = "home_channels",
             mapper = { bodyText ->
                 val parsed =
-                    parseSharedChannelSnapshot(bodyText, context.server)
+                    parseSharedChannelSnapshot(bodyText, context.server, includeArchived)
                         ?: throw IllegalStateException("Channels response missing channel array")
                 parsed.copy(channels = parsed.channels.dedupeChannelRows())
             }
@@ -417,7 +437,7 @@ internal class NetworkRaftHomeApi(
     private val networkClient: RaftNetworkClient
 ) : RaftHomeApi {
     override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
-        networkClient.channels(priority)
+        networkClient.request(priority, "channels", query = HOME_CHANNELS_QUERY)
 
     override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.directMessages(priority)
@@ -429,7 +449,7 @@ internal class NetworkRaftHomeApi(
         networkClient.serverUnreadSummary(priority)
 
     override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
-        networkClient.request(priority, "channels", serverIdOverride = serverId)
+        networkClient.request(priority, "channels", query = HOME_CHANNELS_QUERY, serverIdOverride = serverId)
 
     override suspend fun directMessages(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.request(priority, "channels/dm", serverIdOverride = serverId)

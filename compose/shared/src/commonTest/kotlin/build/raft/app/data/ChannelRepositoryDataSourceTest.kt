@@ -674,6 +674,41 @@ class ChannelRepositoryDataSourceTest {
         assertEquals(12, home.serverUnreadCounts["server-1"])
     }
 
+    @Test
+    fun homeAsksForArchivedChannelsAndKeepsThemOutOfTheSidebar() = runBlocking {
+        // web channelStore: `GET /channels?archived=include`; Home keeps the archived ones for search only.
+        val channels =
+            """[{"id":"channel-1","name":"general","type":"channel","joined":true},""" +
+                """{"id":"channel-old","name":"old","type":"channel","joined":true,"archivedAt":"2026-11-01T00:00:00.000Z"}]"""
+        val network =
+            FakeChannelNetworkClient(
+                pathResponses =
+                    mapOf(
+                        "channels" to channels,
+                        "channels/dm" to """[]""",
+                        "channels/unread" to channelUnreadSummaryBody(emptyMap()),
+                        "servers/unread-summary" to """[]"""
+                    )
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val home = assertIs<DataResult.Content<HomeSnapshot>>(repository.getHome(ServerId("server-1"))).data
+        assertEquals(listOf("archived" to "include"), network.queriesByPath["channels"])
+        assertEquals(listOf("channel-1"), home.channels.map { it.channelId.value })
+        assertEquals(listOf("channel-old"), home.archivedChannels.map { it.channelId.value })
+
+        // Other channel lists keep the server's default (archived left out)...
+        network.queriesByPath.clear()
+        val plain = assertIs<DataResult.Content<ChannelSnapshot>>(repository.getChannels(ServerId("server-1"))).data
+        assertEquals(emptyList(), network.queriesByPath["channels"])
+        assertEquals(listOf("channel-1"), plain.channels.map { it.channelId.value })
+
+        // ...except the composer's `#` list, which offers archived channels like the web.
+        val withArchived = assertIs<DataResult.Content<ChannelSnapshot>>(repository.getChannelsIncludingArchived(ServerId("server-1"))).data
+        assertEquals(listOf("archived" to "include"), network.queriesByPath["channels"])
+        assertEquals(listOf(false, true), withArchived.channels.map { it.archived })
+    }
+
     private fun String.asJsonObject() =
         Json.parseToJsonElement(this).jsonObject
 
@@ -716,6 +751,7 @@ class ChannelRepositoryDataSourceTest {
     ) : RaftNetworkClient {
         val requests = mutableListOf<RecordedChannelRequest>()
         val bodies = mutableListOf<String>()
+        val queriesByPath = mutableMapOf<String, List<Pair<String, String>>>()
 
         override suspend fun request(
             priority: DataRequestPriority,
@@ -727,6 +763,7 @@ class ChannelRepositoryDataSourceTest {
         ): HomeNetworkResponse {
             val normalizedPath = path.trim('/')
             requests += RecordedChannelRequest(priority, method, normalizedPath)
+            queriesByPath[normalizedPath] = query
             bodyText?.let { bodies += it }
             return HomeNetworkResponse(
                 code = responseCode,

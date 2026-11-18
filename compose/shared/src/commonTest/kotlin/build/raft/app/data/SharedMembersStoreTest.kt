@@ -41,11 +41,14 @@ class SharedMembersStoreTest {
     }
 
     @Test
-    fun channelSuggestionsIgnoreArchivedAndDirectMessages() = runBlocking {
+    fun channelSuggestionsKeepArchivedChannelsBadgedLikeTheWebAndSkipDirectMessages() = runBlocking {
+        // web MessageInput `#` list: every public, private or joint channel, archived ones too (in
+        // the list's order, no tier), with an "Archived" badge. A live channel wins a shared name.
         val channelRepository =
             FakeChannelRepository(
                 channels =
                     listOf(
+                        channel("channel-old-general", "general", "old", archived = true),
                         channel("channel-1", "general", "team"),
                         channel("channel-2", "archived", "old", archived = true),
                         channel("dm-1", "cindy", "dm", kind = ConversationKind.DirectMessage)
@@ -55,7 +58,14 @@ class SharedMembersStoreTest {
 
         store.dispatch(SharedMembersIntent.EnsureChannelSuggestions)
 
-        assertEquals(listOf(SharedMembersChannelSuggestion("general", "team", channelId = "channel-1")), store.state.value.channelSuggestions)
+        assertEquals(1, channelRepository.getChannelsIncludingArchivedCalls)
+        assertEquals(
+            listOf(
+                SharedMembersChannelSuggestion("general", "team", channelId = "channel-1"),
+                SharedMembersChannelSuggestion("archived", "old", channelId = "channel-2", archived = true)
+            ),
+            store.state.value.channelSuggestions
+        )
     }
 
     private fun store(channelRepository: FakeChannelRepository): SharedMembersStore =
@@ -71,9 +81,16 @@ class SharedMembersStoreTest {
         val channelsByServer = mutableMapOf("server-1" to channels)
         var getChannelsCalls = 0
 
+        var getChannelsIncludingArchivedCalls = 0
+
         override suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot> {
             getChannelsCalls += 1
             return DataResult.Content(ChannelSnapshot(server(serverId.value), channelsByServer[serverId.value].orEmpty()))
+        }
+
+        override suspend fun getChannelsIncludingArchived(serverId: ServerId): DataResult<ChannelSnapshot> {
+            getChannelsIncludingArchivedCalls += 1
+            return getChannels(serverId)
         }
 
         override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> = error("unused")

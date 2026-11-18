@@ -41,6 +41,8 @@ data class SharedMembersChannelSuggestion(
     /** The channel's id and wire type (`channel` / `private` / `joint`), for its kind glyph. */
     val channelId: String? = null,
     val channelType: String? = null,
+    /** Archived: still offered (web MessageInput `#` list), with an "Archived" badge. */
+    val archived: Boolean = false,
 )
 
 data class SharedMembersMentionScope(
@@ -148,7 +150,7 @@ class SharedMembersStore(
     private suspend fun loadChannelSuggestions(serverId: String) {
         val result =
             runCatchingPreservingCancellation {
-                channelRepository.getChannels(ServerId(serverId))
+                channelRepository.getChannelsIncludingArchived(ServerId(serverId))
             }.getOrElse { throwable ->
                 logger("shared_members_channels_result serverId=$serverId result=exception message=${throwable.message.orEmpty()}")
                 if (_state.value.serverId == serverId) {
@@ -192,19 +194,27 @@ class SharedMembersStore(
     }
 }
 
-private fun List<ConversationSummary>.toSharedMembersChannelSuggestions(): List<SharedMembersChannelSuggestion> {
+/**
+ * The composer's `#` list. Archived channels stay in it, in the server's order and with a badge,
+ * as on the web (MessageInput `channelAutocompleteCandidates` keeps every channel, public, private
+ * or joint, archived or not, and ranks them without a tier). A live channel wins a name it shares
+ * with an archived one.
+ */
+internal fun List<ConversationSummary>.toSharedMembersChannelSuggestions(): List<SharedMembersChannelSuggestion> {
     val deduped = LinkedHashMap<String, SharedMembersChannelSuggestion>()
     for (channel in this) {
-        if (channel.archived || channel.kind == ConversationKind.DirectMessage) continue
+        if (channel.kind == ConversationKind.DirectMessage) continue
         val name = channel.name.trim().removePrefix("#").takeIf { it.isNotBlank() } ?: continue
         val key = name.lowercase()
-        if (!deduped.containsKey(key)) {
+        val existing = deduped[key]
+        if (existing == null || (existing.archived && !channel.archived)) {
             deduped[key] =
                 SharedMembersChannelSuggestion(
                     name = name,
                     subtitle = channel.subtitle?.trim()?.takeIf { it.isNotBlank() },
                     channelId = channel.channelId?.value,
                     channelType = if (channel.kind == ConversationKind.Joint) "joint" else channel.channelType,
+                    archived = channel.archived,
                 )
         }
     }

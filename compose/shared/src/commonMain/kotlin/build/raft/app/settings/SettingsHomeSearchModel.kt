@@ -9,6 +9,8 @@ import build.raft.app.data.ComputerSummary
 import build.raft.app.data.selectComputerServerSlice
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.HomeConversationRow
+import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SearchScope
@@ -361,7 +363,7 @@ internal fun homeSearchEntityCandidates(
     computerDirectory: HomeSearchComputerDirectory = HomeSearchComputerDirectory(),
 ): List<HomeSearchEntityCandidate> {
     val snapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
-    val conversations = snapshot.channels + snapshot.directMessages
+    val conversations = snapshot.channels + snapshot.homeSearchArchivedChannels() + snapshot.directMessages
     val homeServerId = snapshot.server.id.value
     // task #238: this map is an identity index, so it needs an owner scope and must reject blank
     // ids. Keyed by a bare memberId, a joint-channel member carried in from another server could
@@ -496,6 +498,19 @@ internal fun homeSearchEntityCandidates(
                 candidate.result.threadId?.let { threadId -> threadId in absorbedDmThreadIds } == true
         }
     return (visibleConversationEntries + memberEntries + computerEntries).distinctBy { it.result.key }
+}
+
+/**
+ * The archived channels search lists (web `searchEntities`: archived channels rank last, with an
+ * "Archived" badge), never the sidebar. A channel the live list holds (unarchived since the last
+ * load) is the live row.
+ */
+internal fun HomeSnapshot.homeSearchArchivedChannels(): List<HomeChannelRow> {
+    if (archivedChannels.isEmpty()) return emptyList()
+    val live = channels.mapTo(HashSet()) { it.threadId }
+    return archivedChannels
+        .filter { it.threadId !in live }
+        .map { if (it.archived) it else it.copy(archived = true) }
 }
 
 /**
