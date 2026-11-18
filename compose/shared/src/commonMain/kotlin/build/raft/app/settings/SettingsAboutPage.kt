@@ -11,6 +11,7 @@ import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedSettingsUpdateTransactionState
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.StoredAuthSession
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +66,9 @@ internal fun SharedSettingsAboutContent(
             errorStrings = localizedErrorPresentationStrings(),
             updateCheck = updateCheck,
             actionState = actionState,
+            connectedServerHost = settingsAboutConnectedServerHost(
+                (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
+            ),
             copy = settingsAboutPayloadCopy()
         )
     val developer = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
@@ -110,7 +114,7 @@ internal fun SharedSettingsAboutContent(
             DEVELOPER_ACTION_HANDS_UPDATE_CHECK -> onCheckHandsUpdate()
             "openSourceLicenses" -> onOpenSourceLicenses()
             "copyEnvironmentInfo" -> onCopyEnvironmentInfo()
-            DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
+            DEVELOPER_ACTION_API_ENVIRONMENT, SETTINGS_ABOUT_CONNECTED_SERVER_ROW -> onOpenApiEnvironment()
             "diagnostics" -> onOpenDiagnostics()
             SETTINGS_ABOUT_FEEDBACK_ACTION -> onSendFeedback?.invoke()
             SETTINGS_ABOUT_VERSION_ROW -> if (onOpenDeveloper != null && versionTaps.tap()) onOpenDeveloper()
@@ -120,6 +124,7 @@ internal fun SharedSettingsAboutContent(
 
 internal const val SETTINGS_ABOUT_FEEDBACK_ACTION = "sendFeedback"
 internal const val SETTINGS_ABOUT_VERSION_ROW = "version"
+internal const val SETTINGS_ABOUT_CONNECTED_SERVER_ROW = "connectedServer"
 internal const val SETTINGS_ABOUT_SOURCE_CODE_ACTION = "openSourceCode"
 
 /** The app's own source repository, opened from Settings › About › Source code. */
@@ -130,6 +135,48 @@ internal const val RAFT_MOBILE_SOURCE_CODE_URL = "https://github.com/botiverse/m
  * years. It is source-available, not OSI open source, so the row says "Source code".
  */
 internal const val RAFT_MOBILE_SOURCE_LICENSE = "FSL-1.1-ALv2"
+
+/**
+ * The host of the server the app talks to, for About's Connected server row; null on the official
+ * Raft service (or before the environment loads), so the row only shows on a self-hosted or other
+ * non-official server. Official means the production API base, the same rule as the environment
+ * indicator ([raftEnvironmentIndicatorLabel]).
+ */
+internal fun settingsAboutConnectedServerHost(developer: SharedSettingsDeveloperSnapshot?): String? {
+    val apiBaseUrl = developer?.apiBaseUrl.orEmpty().trim()
+    if (apiBaseUrl.isBlank()) return null
+    if (apiBaseUrl.trimEnd('/') == SharedApiEnvironmentStore.Production.apiBaseUrl.trim().trimEnd('/')) return null
+    val afterScheme = if ("://" in apiBaseUrl) apiBaseUrl.substringAfter("://") else apiBaseUrl
+    return afterScheme
+        .substringBefore('/')
+        .substringBefore('?')
+        .substringBefore('#')
+        .substringAfterLast('@')
+        .lowercase()
+        .takeIf(String::isNotBlank)
+}
+
+/**
+ * What a long press on About's Version row copies: version, build, build time, Git commit and
+ * package as one block, in English like the diagnostics text, for bug reports.
+ */
+internal fun SharedSettingsAboutSnapshot.settingsAboutVersionCopyText(): String =
+    listOf(
+        "Version" to versionLabel,
+        "Build" to buildLabel,
+        "Build time" to buildTime,
+        "Git commit" to gitCommit,
+        "Package" to packageName
+    )
+        .filter { (_, value) -> value.isNotBlank() }
+        .joinToString("\n") { (label, value) -> "$label: ${value.trim()}" }
+
+/** The Version row's value: `1.26.0 (12600002)`, the build in parentheses when known. */
+internal fun SharedSettingsAboutSnapshot.settingsAboutVersionValue(unknown: String): String {
+    val version = versionLabel.trim().ifBlank { unknown }
+    val build = buildLabel.trim()
+    return if (build.isBlank()) version else "$version ($build)"
+}
 
 /** The URL an About row opens in the system browser, or null for rows that don't leave Raft. */
 internal fun settingsAboutExternalUrl(action: String, value: String?, webUrl: String): String? =
@@ -209,13 +256,11 @@ internal data class SettingsAboutPayloadCopy(
     val title: String = "About",
     val detail: String = "Version, build, and source",
     val applicationSection: String = "Application",
-    val application: String = "Application",
     val version: String = "Version",
-    val buildTime: String = "Build time",
-    val gitCommit: String = "Git commit",
-    val packageLabel: String = "Package",
+    val versionCopyHint: String = "Long press to copy",
+    val connectedServer: String = "Connected server",
+    val change: String = "Change",
     val unknown: String = "Unknown",
-    val buildUnknown: String = "Build unknown",
     val actions: String = "Actions",
     val checkUpdate: String = "Check for update",
     val checkUpdateDetail: String = "Checks for a newer mobile build and opens the installer when available.",
@@ -246,13 +291,11 @@ private fun settingsAboutPayloadCopy(): SettingsAboutPayloadCopy {
         title = stringResource(Res.string.settings_about_title),
         detail = stringResource(Res.string.settings_about_version_build_source),
         applicationSection = stringResource(Res.string.settings_about_section_application),
-        application = stringResource(Res.string.settings_about_label_application),
         version = stringResource(Res.string.settings_about_label_version),
-        buildTime = stringResource(Res.string.settings_about_label_build_time),
-        gitCommit = stringResource(Res.string.settings_about_label_git_commit),
-        packageLabel = stringResource(Res.string.settings_about_label_package),
+        versionCopyHint = stringResource(Res.string.settings_about_version_copy_hint),
+        connectedServer = stringResource(Res.string.settings_about_label_connected_server),
+        change = stringResource(Res.string.settings_about_action_change),
         unknown = stringResource(Res.string.settings_about_state_unknown),
-        buildUnknown = stringResource(Res.string.settings_about_state_build_unknown),
         actions = stringResource(Res.string.settings_about_section_actions),
         checkUpdate = stringResource(Res.string.settings_about_action_check_update),
         checkUpdateDetail = stringResource(Res.string.settings_about_check_update_detail, raftPlatformProductName()),
@@ -294,6 +337,8 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
     errorStrings: ErrorPresentationStrings,
     updateCheck: SharedSettingsUpdateCheckSnapshot? = null,
     actionState: SharedSettingsActionState? = null,
+    /** The self-hosted or other non-official server's host ([settingsAboutConnectedServerHost]); null hides the row. */
+    connectedServerHost: String? = null,
     copy: SettingsAboutPayloadCopy = SettingsAboutPayloadCopy()
 ): RaftSharedSettingsPayload {
     val raftLabel = "Raft"
@@ -310,13 +355,35 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                 RaftSharedSettingsSection(
                     title = copy.applicationSection,
                     rows =
-                        listOf(
-                            RaftSharedSettingsRow("appName", RaftLucideIconName.Sparkles, copy.application, appName.ifBlank { raftLabel }, copyValue = appName.ifBlank { raftLabel }),
-                            RaftSharedSettingsRow(SETTINGS_ABOUT_VERSION_ROW, RaftLucideIconName.BadgeInfo, copy.version, versionLabel.ifBlank { copy.unknown }, status = buildLabel.ifBlank { copy.buildUnknown }, copyValue = versionLabel, hiddenTap = true),
-                            RaftSharedSettingsRow("buildTime", RaftLucideIconName.Clock, copy.buildTime, buildTime.ifBlank { copy.unknown }, copyValue = buildTime),
-                            RaftSharedSettingsRow("gitCommit", RaftLucideIconName.GitBranch, copy.gitCommit, gitCommit.ifBlank { copy.unknown }, copyValue = gitCommit),
-                            RaftSharedSettingsRow("package", RaftLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown }, copyValue = packageName)
-                        )
+                        buildList {
+                            // Build time, Git commit and package are not rows of their own: a long
+                            // press on Version copies them with the version and build.
+                            val versionCopyText = settingsAboutVersionCopyText()
+                            add(
+                                RaftSharedSettingsRow(
+                                    key = SETTINGS_ABOUT_VERSION_ROW,
+                                    iconName = RaftLucideIconName.BadgeInfo,
+                                    title = copy.version,
+                                    detail = settingsAboutVersionValue(copy.unknown),
+                                    supportingDetail = if (versionCopyText.isNotBlank()) copy.versionCopyHint else "",
+                                    copyValue = versionCopyText,
+                                    hiddenTap = true
+                                )
+                            )
+                            connectedServerHost?.takeIf(String::isNotBlank)?.let { host ->
+                                add(
+                                    RaftSharedSettingsRow(
+                                        key = SETTINGS_ABOUT_CONNECTED_SERVER_ROW,
+                                        iconName = RaftLucideIconName.Server,
+                                        title = copy.connectedServer,
+                                        detail = host,
+                                        status = copy.change,
+                                        enabled = true,
+                                        copyValue = host
+                                    )
+                                )
+                            }
+                        }
                 ),
                 RaftSharedSettingsSection(
                     title = copy.actions,

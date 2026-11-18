@@ -3506,13 +3506,11 @@
     <string name="settings_about_version_build_source">Version, build, and source</string>
     <string name="settings_about_section_application">Application</string>
     <string name="settings_about_section_actions">Actions</string>
-    <string name="settings_about_label_application">Application</string>
     <string name="settings_about_label_version">Version</string>
-    <string name="settings_about_label_build_time">Build time</string>
-    <string name="settings_about_label_git_commit">Git commit</string>
-    <string name="settings_about_label_package">Package</string>
+    <string name="settings_about_version_copy_hint">Long press to copy</string>
+    <string name="settings_about_label_connected_server">Connected server</string>
+    <string name="settings_about_action_change">Change</string>
     <string name="settings_about_state_unknown">Unknown</string>
-    <string name="settings_about_state_build_unknown">Build unknown</string>
     <string name="settings_about_state_none">None</string>
     <string name="settings_about_state_signed_in">Signed in</string>
     <string name="settings_about_state_signed_out">Signed out</string>

@@ -3335,13 +3335,11 @@
     <string name="settings_about_version_build_source">Versão, build e origem</string>
     <string name="settings_about_section_application">Aplicativo</string>
     <string name="settings_about_section_actions">Ações</string>
-    <string name="settings_about_label_application">Aplicativo</string>
     <string name="settings_about_label_version">Versão</string>
-    <string name="settings_about_label_build_time">Horário da compilação</string>
-    <string name="settings_about_label_git_commit">Commit do Git</string>
-    <string name="settings_about_label_package">Pacote</string>
+    <string name="settings_about_version_copy_hint">Toque e segure para copiar</string>
+    <string name="settings_about_label_connected_server">Servidor conectado</string>
+    <string name="settings_about_action_change">Alterar</string>
     <string name="settings_about_state_unknown">Desconhecido</string>
-    <string name="settings_about_state_build_unknown">Compilação desconhecida</string>
     <string name="settings_about_state_none">Nenhum</string>
     <string name="settings_about_state_signed_in">Com login</string>
     <string name="settings_about_state_signed_out">Sessão encerrada</string>

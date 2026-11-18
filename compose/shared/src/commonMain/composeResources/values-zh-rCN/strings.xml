@@ -3506,13 +3506,11 @@
     <string name="settings_about_version_build_source">版本、构建与来源</string>
     <string name="settings_about_section_application">应用</string>
     <string name="settings_about_section_actions">操作</string>
-    <string name="settings_about_label_application">应用</string>
     <string name="settings_about_label_version">版本</string>
-    <string name="settings_about_label_build_time">构建时间</string>
-    <string name="settings_about_label_git_commit">Git 提交</string>
-    <string name="settings_about_label_package">包名</string>
+    <string name="settings_about_version_copy_hint">长按复制</string>
+    <string name="settings_about_label_connected_server">连接的服务器</string>
+    <string name="settings_about_action_change">更改</string>
     <string name="settings_about_state_unknown">未知</string>
-    <string name="settings_about_state_build_unknown">构建未知</string>
     <string name="settings_about_state_none">无</string>
     <string name="settings_about_state_signed_in">已登录</string>
     <string name="settings_about_state_signed_out">已退出登录</string>

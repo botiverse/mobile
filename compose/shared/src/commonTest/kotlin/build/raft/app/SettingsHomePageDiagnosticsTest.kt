@@ -7,6 +7,7 @@ import build.raft.app.data.PlatformFile
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
+import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
@@ -709,7 +710,7 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
-    fun aboutPayloadOnlyKeepsVersionBuildStatusInApplicationRows() {
+    fun aboutVersionRowFoldsBuildDetailsIntoOneRow() {
         val payload =
             SharedSettingsAboutSnapshot(
                 appName = "Raft",
@@ -723,41 +724,91 @@ class SettingsHomePageDiagnosticsTest {
                 errorStrings = englishErrorPresentationStringsForTest()
             )
 
-        val rows = payload.sections.first { it.title == "Application" }.rows.associateBy { it.key }
-
-        assertEquals("", rows.getValue("appName").status)
-        assertEquals("1000100", rows.getValue("version").status)
-        assertEquals("", rows.getValue("buildTime").status)
-        assertEquals("", rows.getValue("gitCommit").status)
-        assertEquals("", rows.getValue("package").status)
+        val rows = payload.sections.first { it.title == "Application" }.rows
+        // No Application (always "Raft"), Build time, Git commit or Package rows: only Version,
+        // and no Connected server row on the official service.
+        assertEquals(listOf(SETTINGS_ABOUT_VERSION_ROW), rows.map { it.key })
+        val version = rows.single()
+        assertEquals("Version", version.title)
+        assertEquals("1.0.1 (1000100)", version.detail)
+        assertEquals("", version.status)
+        assertEquals("Long press to copy", version.supportingDetail)
+        // The hidden 7-tap Developer unlock stays on the row.
+        assertTrue(version.hiddenTap)
+        // A long press copies everything the removed rows showed, as one block.
+        assertEquals(
+            "Version: 1.0.1\nBuild: 1000100\nBuild time: 2026-07-03T19:03:28Z\nGit commit: 15fb7be3\nPackage: build.raft.app",
+            version.copyValue
+        )
     }
 
     @Test
-    fun aboutAndDiagnosticsRowsCarryLongPressCopyValues() {
-        val aboutPayload =
-            SharedSettingsAboutSnapshot(
-                appName = "Raft",
-                versionLabel = "1.0.1",
-                buildLabel = "1000100",
-                buildTime = "2026-07-03T19:03:28Z",
-                gitCommit = "15fb7be3",
-                packageName = "build.raft.app"
-            ).toAboutPayload(
-                webUrl = "https://app.raft.build",
-                errorStrings = englishErrorPresentationStringsForTest()
+    fun aboutVersionRowWithoutBuildShowsVersionOnly() {
+        val version =
+            SharedSettingsAboutSnapshot(appName = "Raft", versionLabel = "1.0.1")
+                .toAboutPayload(webUrl = "https://app.raft.build", errorStrings = englishErrorPresentationStringsForTest())
+                .sections.first { it.title == "Application" }.rows.single { it.key == SETTINGS_ABOUT_VERSION_ROW }
+
+        assertEquals("1.0.1", version.detail)
+        assertEquals("Version: 1.0.1", version.copyValue)
+
+        val unknown =
+            SharedSettingsAboutSnapshot()
+                .toAboutPayload(webUrl = "https://app.raft.build", errorStrings = englishErrorPresentationStringsForTest())
+                .sections.first { it.title == "Application" }.rows.single { it.key == SETTINGS_ABOUT_VERSION_ROW }
+        assertEquals("Unknown", unknown.detail)
+        // Nothing to copy: no "Long press to copy" hint.
+        assertEquals("", unknown.copyValue)
+        assertEquals("", unknown.supportingDetail)
+    }
+
+    @Test
+    fun aboutShowsConnectedServerOnlyOffTheOfficialService() {
+        assertNull(settingsAboutConnectedServerHost(null))
+        assertNull(settingsAboutConnectedServerHost(SharedSettingsDeveloperSnapshot()))
+        assertNull(
+            settingsAboutConnectedServerHost(
+                SharedSettingsDeveloperSnapshot(
+                    environmentKey = "production",
+                    apiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl
+                )
             )
+        )
+        assertNull(
+            settingsAboutConnectedServerHost(
+                SharedSettingsDeveloperSnapshot(apiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl.trimEnd('/'))
+            )
+        )
+        assertEquals(
+            "raft.example.com",
+            settingsAboutConnectedServerHost(
+                SharedSettingsDeveloperSnapshot(environmentKey = "custom", apiBaseUrl = "https://raft.example.com/api/")
+            )
+        )
+        assertEquals(
+            "raft.example.com:8443",
+            settingsAboutConnectedServerHost(SharedSettingsDeveloperSnapshot(apiBaseUrl = "https://user@Raft.Example.com:8443/api?x=1"))
+        )
 
-        val aboutRows = aboutPayload.sections.first { it.title == "Application" }.rows.associateBy { it.key }
-        assertEquals("Raft", aboutRows.getValue("appName").copyValue)
-        // A long press copies the value as shown (the build stays its own status label).
-        assertEquals("1.0.1", aboutRows.getValue("version").copyValue)
-        assertEquals("2026-07-03T19:03:28Z", aboutRows.getValue("buildTime").copyValue)
-        assertEquals("15fb7be3", aboutRows.getValue("gitCommit").copyValue)
-        assertEquals("build.raft.app", aboutRows.getValue("package").copyValue)
-        listOf("appName", "version", "buildTime", "gitCommit", "package").forEach { key ->
-            assertEquals(aboutRows.getValue(key).detail, aboutRows.getValue(key).copyValue, "row=$key")
-        }
+        val rows =
+            SharedSettingsAboutSnapshot(appName = "Raft", versionLabel = "1.0.1", buildLabel = "1000100")
+                .toAboutPayload(
+                    webUrl = "https://raft.example.com",
+                    errorStrings = englishErrorPresentationStringsForTest(),
+                    connectedServerHost = "raft.example.com"
+                )
+                .sections.first { it.title == "Application" }.rows
+        assertEquals(listOf(SETTINGS_ABOUT_VERSION_ROW, SETTINGS_ABOUT_CONNECTED_SERVER_ROW), rows.map { it.key })
+        val server = rows.last()
+        assertEquals("Connected server", server.title)
+        assertEquals("raft.example.com", server.detail)
+        assertEquals("Change", server.status)
+        assertTrue(server.enabled)
+        assertEquals("raft.example.com", server.copyValue)
+    }
 
+    @Test
+    fun diagnosticsRowsCarryLongPressCopyValues() {
         val diagnosticsPayload =
             emptyList<build.raft.app.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
                 state =
