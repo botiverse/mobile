@@ -127,6 +127,10 @@ function pickServerIfAsked(ns) {
 // Wide layout: an icon rail whose items carry content-desc (Chat, Activity, Tasks, Artifacts, Members, ...).
 // Narrow layout: bottom tabs (Home/Chat, Activity, ..., More).
 const TAB_ALIASES = { Home: "(Home|Chat)", Chat: "(Chat|Home)" };
+function waitShell() {
+  for (let i = 0; i < 20; i++) { const ns = nodes(); if (find(ns, /^Choose server$/)) { pickServerIfAsked(ns); continue; } if (find(ns, /^(Chat|Home|Members)$/)) { hideIme(); return true; } sleep(2000); }
+  log("shell not ready"); return false;
+}
 function tabNode(ns, name) { const re = new RegExp(`^${TAB_ALIASES[name] || name}$`); return ns.find((n) => (re.test(n.text) || re.test(n.desc)) && n.w > 0 && n.h > 0 && n.w < 400); }
 function gotoTab(name) {
   let ns = nodes(); let t = tabNode(ns, name);
@@ -237,6 +241,7 @@ function main() {
   shot("home-unfolded");
   const [W, H] = size(); note("env", "size_now", `${W}x${H}`);
 
+  waitShell();
   // ---- Separate scenario: Members list (mobile #4991, Hands 52b93946) ----
   try { membersScenario(); } catch (e) { log("members scenario error", e.stack); note("members", "driver_error", String(e.stack).slice(0, 1500)); }
   // Reset to a clean unfolded shell for the #4984 steps.
@@ -290,40 +295,32 @@ function main() {
     openChannel();
   }
 
-  // ---- Step 1c: composer attach photo -> preview of the attachment ----
+  // ---- Step 1c: composer Add image -> system photo picker -> compose_file_preview pushed over the shell
+  // (Hands 1dd76297 path). Each iteration picks the photo again; some with a double tap on the picker item. ----
   {
-    let cn = nodes("composer-search");
-    const attach = find(cn, /^Add image$/) || find(cn, /attach|add (file|photo|attachment)|^add$|plus|more options/i, (n) => n.y > H * 0.6);
-    note("1", "composer_attach_button", attach ? label(attach) : "NOT FOUND");
-    if (attach) {
-      tap(attach.x, attach.y); sleep(2000); let an = nodes("attach-menu"); shot("attach-menu");
-      const inPicker = an.some((n) => n.pkg && n.pkg !== PKG && /media|photopicker|documentsui|gallery|photos/i.test(n.pkg));
-      const photo = inPicker ? { x: -1, y: -1, text: "(system picker opened directly)" } : (find(an, /^(Photos?|Gallery|Photo library|Images?|Choose photo|Photos & videos|Library)$/i) || find(an, /photo|gallery|image/i));
-      note("1", "attach_menu_photo_entry", photo ? label(photo) : "NOT FOUND");
-      if (photo) {
-        if (photo.x >= 0) { tap(photo.x, photo.y); sleep(3500); } let pn = nodes("photo-picker"); shot("photo-picker");
-        const pic = pn.find((n) => /Photo taken|qa-fixture|Image|photo/i.test(n.desc) && n.w > 80) || pn.find((n) => n.pkg && !n.pkg.includes(PKG) && n.clickable && n.w > 150 && n.w < W / 2 && n.y > H * 0.2);
-        note("1", "picker_item", pic ? `${label(pic)} pkg=${pic.pkg}` : "NOT FOUND");
-        if (pic) {
-          tap(pic.x, pic.y); sleep(1500); let dn = nodes("picker-after-select");
-          const done = find(dn, /^(Done|Add|Select|Add \(1\)|Open)$/i); if (done) { tap(done.x, done.y); }
-          sleep(3500); let cn2 = nodes("composer-with-attachment"); shot("composer-with-attachment");
-          const chip = composerChip();
-          note("1", "composer_chip", chip ? label(chip) : "NOT FOUND");
-          if (chip) {
-            TARGET_KIND = "chip";
-            let o = 0; newLog();
-            for (let i = 0; i < ITER; i++) { if (i % 4 === 1) sh(`input tap ${chip.x} ${chip.y} & input tap ${chip.x} ${chip.y}; wait`); else tap(chip.x, chip.y); sleep(i === 0 ? 2500 : (i % 3 === 0 ? 150 : 800)); if (i === 0) { shot("composer-preview-open"); nodes("composer-preview-open"); } back(); sleep(700); }
-            const f = newLog(); for (const l of f) if (/nav3_stack open page=/.test(l)) o++;
-            note("1", "composer_preview_pages", f.filter((l) => /nav3_stack open page=/.test(l)).slice(0, 2).map((l) => l.replace(/^.*nav3_stack /, "").slice(0, 160)));
-            note("1", "composer_preview_opens", o);
-            const hits = f.filter((l) => CRASH.test(l)); if (hits.length) crashes.push({ step: "1-composer", lines: hits });
-            note("1", "composer_crash_lines", hits.slice(0, 10)); note("1", "composer_foreground_after", foreground());
-            shot("composer-after-rapid"); if (!foreground()) launch();
-          }
-        } else { back(); sleep(1000); }
-      } else { back(); sleep(1000); }
+    openChannel();
+    let opens = 0, closes = 0, misses = 0; newLog();
+    const rec = recStart("step1-composer-preview", 175);
+    for (let i = 0; i < ITER; i++) {
+      const cn = nodes(i === 0 ? "composer-search" : undefined);
+      const attach = find(cn, /^Add image$/);
+      if (!attach) { misses++; log("Add image not found", i); if (i === 0) shot("composer-no-add-image"); back(); sleep(1200); openChannel(); continue; }
+      tap(attach.x, attach.y); sleep(2500);
+      const pn = nodes(i === 0 ? "photo-picker" : undefined); if (i === 0) shot("photo-picker");
+      const pic = pn.find((n) => /Photo taken|qa-fixture|Image|photo/i.test(n.desc) && n.w > 80 && n.pkg !== PKG);
+      if (!pic) { misses++; log("picker item not found", i); back(); sleep(1500); continue; }
+      if (i % 4 === 1) sh(`input tap ${pic.x} ${pic.y} & input tap ${pic.x} ${pic.y}; wait`); else tap(pic.x, pic.y);
+      sleep(i % 3 === 0 ? 400 : 2500); // some pops land while the preview push is still sliding
+      if (i === 0) { sleep(1000); shot("composer-preview-open"); nodes("composer-preview-open"); }
+      back(); sleep(1500);
+      const top = nodes(); if (!find(top, /^Add image$/)) { back(); sleep(1200); } // a double tap may have stacked a second page
     }
+    recStop(rec);
+    const f = newLog(); for (const l of f) { if (/nav3_stack open page=compose_file_preview/.test(l)) opens++; if (/nav3_stack close page=compose_file_preview/.test(l)) closes++; }
+    note("1", "composer_preview_iterations", ITER); note("1", "composer_preview_opens", opens); note("1", "composer_preview_closes", closes); note("1", "composer_preview_misses", misses);
+    const hits = f.filter((l) => CRASH.test(l)); if (hits.length) crashes.push({ step: "1-composer", lines: hits });
+    note("1", "composer_crash_lines", hits.slice(0, 10)); note("1", "composer_foreground_after", foreground());
+    shot("composer-after-rapid"); if (!foreground()) launch();
   }
   checkCrash("1-end");
 
