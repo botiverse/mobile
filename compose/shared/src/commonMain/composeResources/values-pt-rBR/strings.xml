@@ -1544,7 +1544,7 @@
     <string name="agent_runtime_error_code_model_unavailable_title">Modelo indisponível</string>
     <string name="agent_runtime_error_code_model_unavailable_member">O modelo configurado do agente não está disponível para a conta do provedor dele. Peça ao proprietário do agente para escolher outro modelo ou trocar de plano.</string>
     <string name="agent_runtime_error_code_model_unavailable_manager">O modelo do agente não está disponível para a conta do provedor dele. Escolha outro modelo nas configurações do agente ou troque de plano.</string>
-    <string name="agent_runtime_error_code_auth_required_title">É preciso fazer login</string>
+    <string name="agent_runtime_error_code_auth_required_title">Login necessário</string>
     <string name="agent_runtime_error_code_auth_required_member">O runtime do agente não está conectado a uma conta ou a credencial do provedor foi rejeitada. Peça ao proprietário do agente para fazer login novamente ou atualizar a credencial.</string>
     <string name="agent_runtime_error_code_auth_required_manager">O runtime do agente não está conectado a uma conta ou a credencial do provedor foi rejeitada. Faça login novamente no computador do agente ou atualize a credencial.</string>
     <string name="agent_runtime_error_code_network_timeout_title">Provedor inacessível</string>
@@ -4302,7 +4302,7 @@
     <string name="artifacts_viewer_latest">Mais recente</string>
     <string name="artifacts_viewer_version_published">%1$s · %2$s</string>
     <string name="artifacts_viewer_switch_version">v%1$d, trocar de versão</string>
-    <string name="artifacts_viewer_read_count">%1$d leram</string>
+    <string name="artifacts_viewer_read_count">Lido por %1$d</string>
     <string name="artifacts_viewer_comments">Comentários</string>
     <string name="artifacts_viewer_comments_count">Comentários (%1$d)</string>
     <string name="activity_list_object_home">· %1$s</string>
@@ -4462,7 +4462,7 @@
     <string name="thread_history_paywall_thread_parent_title_one">A primeira mensagem e %1$s resposta têm mais de %2$d dias</string>
     <string name="thread_history_paywall_thread_parent_title_other">A primeira mensagem e %1$s respostas têm mais de %2$d dias</string>
     <string name="thread_history_paywall_thread_parent_title_capped">A primeira mensagem e mais de %1$s respostas têm mais de %2$d dias</string>
-    <string name="thread_history_paywall_thread_parent_all_title_one">A primeira mensagem e %1$s resposta, a única, têm mais de %2$d dias</string>
+    <string name="thread_history_paywall_thread_parent_all_title_one">Toda a thread (a primeira mensagem e %1$s resposta) tem mais de %2$d dias</string>
     <string name="thread_history_paywall_thread_parent_all_title_other">A primeira mensagem e todas as %1$s respostas têm mais de %2$d dias</string>
     <string name="thread_history_paywall_thread_parent_all_title_capped">A primeira mensagem e todas as respostas (mais de %1$s) têm mais de %2$d dias</string>
     <string name="thread_history_paywall_thread_parent_only_title">A primeira mensagem tem mais de %1$d dias</string>
@@ -4510,7 +4510,7 @@
     <string name="upgrade_dialog_continue_owner">Fazer upgrade na web</string>
     <string name="upgrade_dialog_continue_member">Pedir a um proprietário na web</string>
     <string name="upgrade_dialog_open_again">Abrir a web de novo</string>
-    <string name="upgrade_dialog_waiting">Conclua na web. Quando %1$s virar Pro, isto fecha sozinho.</string>
+    <string name="upgrade_dialog_waiting">Conclua na web. Quando %1$s passar para o Pro, esta tela fecha sozinha.</string>
     <string name="upgrade_dialog_paid_toast">%1$s agora está no Pro</string>
     <string name="upgrade_dialog_seats_title">Adicionar licenças a %1$s</string>
     <string name="upgrade_dialog_seats_hint">Todas as licenças de %1$s estão em uso. Todos em %1$s compartilham essas licenças.</string>
@@ -4743,7 +4743,7 @@
     <string name="settings_feedback_tickets_sender_team">Equipe</string>
     <string name="settings_feedback_tickets_sender_update">Atualização</string>
     <string name="settings_feedback_tickets_unread_label">%1$s, %2$d não lidas</string>
-    <string name="settings_feedback_tickets_filed_on_label">%1$s, enviado em %2$s</string>
+    <string name="settings_feedback_tickets_filed_on_label">%1$s, enviado via %2$s</string>
     <string name="settings_feedback_tickets_list_date">%2$d de %1$s</string>
     <string name="settings_feedback_tickets_list_date_year">%2$d de %1$s de %3$d</string>
     <string name="settings_feedback_tickets_close_ticket">Fechar ticket</string>

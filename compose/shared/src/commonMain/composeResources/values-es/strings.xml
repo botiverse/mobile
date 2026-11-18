@@ -4302,7 +4302,7 @@
     <string name="artifacts_viewer_latest">Última</string>
     <string name="artifacts_viewer_version_published">%1$s · %2$s</string>
     <string name="artifacts_viewer_switch_version">v%1$d, cambiar de versión</string>
-    <string name="artifacts_viewer_read_count">%1$d lo leyeron</string>
+    <string name="artifacts_viewer_read_count">Leído por %1$d</string>
     <string name="artifacts_viewer_comments">Comentarios</string>
     <string name="artifacts_viewer_comments_count">Comentarios (%1$d)</string>
     <string name="activity_list_object_home">· %1$s</string>
@@ -4462,7 +4462,7 @@
     <string name="thread_history_paywall_thread_parent_title_one">El primer mensaje y %1$s respuesta superan los %2$d días de antigüedad</string>
     <string name="thread_history_paywall_thread_parent_title_other">El primer mensaje y %1$s respuestas superan los %2$d días de antigüedad</string>
     <string name="thread_history_paywall_thread_parent_title_capped">El primer mensaje y más de %1$s respuestas superan los %2$d días de antigüedad</string>
-    <string name="thread_history_paywall_thread_parent_all_title_one">El primer mensaje y su %1$s respuesta, la única, superan los %2$d días de antigüedad</string>
+    <string name="thread_history_paywall_thread_parent_all_title_one">Todo el hilo (el primer mensaje y %1$s respuesta) supera los %2$d días de antigüedad</string>
     <string name="thread_history_paywall_thread_parent_all_title_other">El primer mensaje y sus %1$s respuestas superan los %2$d días de antigüedad</string>
     <string name="thread_history_paywall_thread_parent_all_title_capped">El primer mensaje y sus más de %1$s respuestas superan los %2$d días de antigüedad</string>
     <string name="thread_history_paywall_thread_parent_only_title">El primer mensaje supera los %1$d días de antigüedad</string>
@@ -4510,7 +4510,7 @@
     <string name="upgrade_dialog_continue_owner">Mejorar en la web</string>
     <string name="upgrade_dialog_continue_member">Pedírselo a un propietario en la web</string>
     <string name="upgrade_dialog_open_again">Abrir la web de nuevo</string>
-    <string name="upgrade_dialog_waiting">Termina en la web. Cuando %1$s pase a Pro, esto se cerrará solo.</string>
+    <string name="upgrade_dialog_waiting">Termina en la web. Cuando %1$s pase a Pro, esta ventana se cerrará sola.</string>
     <string name="upgrade_dialog_paid_toast">%1$s ya está en Pro</string>
     <string name="upgrade_dialog_seats_title">Agregar puestos a %1$s</string>
     <string name="upgrade_dialog_seats_hint">Todos los puestos de %1$s están ocupados. Todos en %1$s comparten estos puestos.</string>
@@ -4520,7 +4520,7 @@
     <string name="upgrade_dialog_seats_waiting">Termina en la web. Los puestos nuevos se pueden usar en cuanto se agregan.</string>
     <string name="upgrade_dialog_limit_title">Llegaste a un límite del plan Free</string>
     <string name="upgrade_dialog_limit_history">El plan Free conserva los mensajes de los últimos 30 días.</string>
-    <string name="upgrade_dialog_limit_upload_quota">El plan Free permite subir hasta 100 MB al mes, y el de este mes ya se agotó.</string>
+    <string name="upgrade_dialog_limit_upload_quota">El plan Free permite subir hasta 100 MB al mes, y ya se agotaron las subidas de este mes.</string>
     <string name="upgrade_dialog_limit_file_size">El plan Free permite subir archivos de hasta 50 MB cada uno.</string>
     <string name="upgrade_dialog_limit_joint_free_cap">Un canal compartido admite como máximo 2 servidores gratuitos, y este ya está lleno.</string>
     <string name="upgrade_dialog_limit_joint_host_limit">Un servidor gratuito puede alojar 1 canal compartido al que se hayan unido otros servidores.</string>
@@ -4743,7 +4743,7 @@
     <string name="settings_feedback_tickets_sender_team">Equipo</string>
     <string name="settings_feedback_tickets_sender_update">Actualización</string>
     <string name="settings_feedback_tickets_unread_label">%1$s, %2$d sin leer</string>
-    <string name="settings_feedback_tickets_filed_on_label">%1$s, enviado el %2$s</string>
+    <string name="settings_feedback_tickets_filed_on_label">%1$s, enviado desde %2$s</string>
     <string name="settings_feedback_tickets_list_date">%2$d de %1$s</string>
     <string name="settings_feedback_tickets_list_date_year">%2$d de %1$s de %3$d</string>
     <string name="settings_feedback_tickets_close_ticket">Cerrar ticket</string>
@@ -5103,8 +5103,8 @@
     <string name="external_agent_create_prompt_install">1. Instala o actualiza Raft CLI:</string>
     <string name="external_agent_create_prompt_login">2. Inicia sesión como este agente:</string>
     <string name="external_agent_create_prompt_credential">Cuando el comando te pida la credencial de agente, pídemela. Nunca pongas la credencial en un comando, en un archivo ni en un mensaje a otra persona.</string>
-    <string name="external_agent_create_prompt_after">3. Después de iniciar sesión, añade `--profile %1$s` a cada comando raft (o define RAFT_PROFILE=%1$s). Ejecuta el comando del manual que muestra el inicio de sesión y luego avísame de que estás conectado: envíame un mensaje directo con `raft --profile %1$s message send --target dm:@%2$s` (el texto del mensaje va por stdin). Raft no te inicia cuando llega un mensaje: ejecuta `raft --profile %1$s inbox check` al empezar a trabajar y entre tareas.</string>
-    <string name="external_agent_create_prompt_after_no_recipient">3. Después de iniciar sesión, añade `--profile %1$s` a cada comando raft (o define RAFT_PROFILE=%1$s). Ejecuta el comando del manual que muestra el inicio de sesión. Raft no te inicia cuando llega un mensaje: ejecuta `raft --profile %1$s inbox check` al empezar a trabajar y entre tareas.</string>
+    <string name="external_agent_create_prompt_after">3. Después de iniciar sesión, añade `--profile %1$s` a cada comando raft (o define RAFT_PROFILE=%1$s). Ejecuta el comando `manual` que muestra el inicio de sesión y luego avísame de que estás conectado: envíame un mensaje directo con `raft --profile %1$s message send --target dm:@%2$s` (el texto del mensaje va por stdin). Raft no te inicia cuando llega un mensaje: ejecuta `raft --profile %1$s inbox check` al empezar a trabajar y entre tareas.</string>
+    <string name="external_agent_create_prompt_after_no_recipient">3. Después de iniciar sesión, añade `--profile %1$s` a cada comando raft (o define RAFT_PROFILE=%1$s). Ejecuta el comando `manual` que muestra el inicio de sesión. Raft no te inicia cuando llega un mensaje: ejecuta `raft --profile %1$s inbox check` al empezar a trabajar y entre tareas.</string>
     <string name="external_agent_card_title">Configuración externa</string>
     <string name="external_agent_card_no_credential_hint">Todavía no tiene una credencial de agente. Crea una abajo y dásela a %1$s.</string>
     <string name="external_agent_card_online">En línea</string>
@@ -5444,8 +5444,8 @@
     <string name="settings_computers_runtime_auth_pi_remove_key_description">Se quitará la clave de %1$s de %2$s en %3$s.</string>
     <string name="settings_computers_runtime_auth_pi_remove_key_confirm">Quitar</string>
     <string name="settings_computers_runtime_auth_pi_sign_out_description">Se cerrará la sesión de %1$s en %2$s en %3$s. Sus otros proveedores siguen con la sesión iniciada.</string>
-    <string name="settings_computers_runtime_auth_pi_sign_out_agents_one">Este agente de %2$s en esta computadora puede usar %1$s. Sigue funcionando, pero no podrá usar %1$s hasta que alguien lo vuelva a agregar:</string>
-    <string name="settings_computers_runtime_auth_pi_sign_out_agents_other">Estos %3$d agentes de %2$s en esta computadora pueden usar %1$s. Siguen funcionando, pero no podrán usar %1$s hasta que alguien lo vuelva a agregar:</string>
+    <string name="settings_computers_runtime_auth_pi_sign_out_agents_one">Este agente de %2$s en esta computadora podría usar %1$s. Sigue funcionando, pero no podrá usar %1$s hasta que alguien lo vuelva a agregar:</string>
+    <string name="settings_computers_runtime_auth_pi_sign_out_agents_other">Estos %3$d agentes de %2$s en esta computadora podrían usar %1$s. Siguen funcionando, pero no podrán usar %1$s hasta que alguien lo vuelva a agregar:</string>
     <string name="settings_computers_runtime_auth_pi_title">Agregar un proveedor a %1$s</string>
     <string name="settings_computers_runtime_auth_pi_choose_prompt">Elige un proveedor para %1$s en %2$s. Inicia sesión con tu cuenta o pega una clave de API.</string>
     <string name="settings_computers_runtime_auth_pi_group_account">Iniciar sesión con una cuenta</string>

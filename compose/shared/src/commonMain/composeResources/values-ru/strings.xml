@@ -1544,7 +1544,7 @@
     <string name="agent_runtime_error_code_model_unavailable_title">Модель недоступна</string>
     <string name="agent_runtime_error_code_model_unavailable_member">Модель, настроенная для агента, недоступна в его аккаунте у провайдера. Попросите владельца агента выбрать другую модель или сменить тариф.</string>
     <string name="agent_runtime_error_code_model_unavailable_manager">Модель агента недоступна в его аккаунте у провайдера. Выберите другую модель в настройках агента или смените тариф.</string>
-    <string name="agent_runtime_error_code_auth_required_title">Нужно войти</string>
+    <string name="agent_runtime_error_code_auth_required_title">Нужен вход</string>
     <string name="agent_runtime_error_code_auth_required_member">В среде выполнения агента не выполнен вход, или провайдер отклонил учётные данные. Попросите владельца агента войти снова или обновить учётные данные.</string>
     <string name="agent_runtime_error_code_auth_required_manager">В среде выполнения агента не выполнен вход, или провайдер отклонил учётные данные. Войдите снова на компьютере агента или обновите учётные данные.</string>
     <string name="agent_runtime_error_code_network_timeout_title">Провайдер недоступен</string>
@@ -3328,7 +3328,7 @@
     <string name="settings_developer_text_input_trace">Трассировка ввода текста</string>
     <string name="settings_developer_text_input_trace_detail">Записывать в журнал приложения каждое изменение с клавиатуры и синхронизацию текста в полях ввода (только длину, без самого текста) — для отчётов об ошибках IME.</string>
     <string name="settings_developer_verbose_diagnostics">Подробная диагностика</string>
-    <string name="settings_developer_verbose_diagnostics_detail">Также записывать в журнал приложения повторяющиеся события реального времени, подробности об аватарах, Markdown и прокрутке и каждый успешный запрос. Отчёты в отзывах станут больше. Отключается при перезапуске приложения.</string>
+    <string name="settings_developer_verbose_diagnostics_detail">Также записывать в журнал приложения дублирующиеся события реального времени, подробности об аватарах, Markdown и прокрутке и каждый успешный запрос. Журналы, прикладываемые к отзывам, станут объёмнее. Отключается при перезапуске приложения.</string>
     <string name="settings_developer_nav3_stack">Стек страниц Navigation 3</string>
     <string name="settings_developer_nav3_stack_detail">Открывать уже перенесённые страницы внутри окна приложения (Android). Вступит в силу при следующем запуске приложения.</string>
     <string name="settings_developer_multi_server_realtime">Обновления в реальном времени в каждом окне</string>
@@ -4743,7 +4743,7 @@
     <string name="settings_feedback_tickets_sender_team">Команда</string>
     <string name="settings_feedback_tickets_sender_update">Обновление</string>
     <string name="settings_feedback_tickets_unread_label">%1$s, непрочитанных: %2$d</string>
-    <string name="settings_feedback_tickets_filed_on_label">%1$s, отправлено %2$s</string>
+    <string name="settings_feedback_tickets_filed_on_label">%1$s, отправлено через %2$s</string>
     <string name="settings_feedback_tickets_list_date">%2$d %1$s</string>
     <string name="settings_feedback_tickets_list_date_year">%2$d %1$s %3$d г.</string>
     <string name="settings_feedback_tickets_close_ticket">Закрыть обращение</string>

@@ -4516,7 +4516,7 @@
     <string name="upgrade_dialog_seats_hint">%1$s 서버의 시트가 다 찼어요. %1$s 서버의 모든 사람이 이 시트를 함께 사용해요.</string>
     <string name="upgrade_dialog_seats_continue">웹에서 시트 추가</string>
     <string name="upgrade_dialog_seats_owner_note">시트는 웹의 요금제 및 결제에서 추가해요. 브라우저에서 열려요.</string>
-    <string name="upgrade_dialog_seats_member_note">%1$s 서버에 시트를 추가하려면 서버 소유자가 필요해요.</string>
+    <string name="upgrade_dialog_seats_member_note">%1$s 서버에는 소유자만 시트를 추가할 수 있어요.</string>
     <string name="upgrade_dialog_seats_waiting">웹에서 마쳐 주세요. 시트가 추가되면 바로 사용할 수 있어요.</string>
     <string name="upgrade_dialog_limit_title">무료 요금제 한도에 도달했어요</string>
     <string name="upgrade_dialog_limit_history">무료 요금제는 최근 30일 동안의 메시지만 보관해요.</string>
@@ -4743,7 +4743,7 @@
     <string name="settings_feedback_tickets_sender_team">팀</string>
     <string name="settings_feedback_tickets_sender_update">업데이트</string>
     <string name="settings_feedback_tickets_unread_label">%1$s, 읽지 않음 %2$d개</string>
-    <string name="settings_feedback_tickets_filed_on_label">%1$s, %2$s에 제출</string>
+    <string name="settings_feedback_tickets_filed_on_label">%1$s, %2$s에서 제출</string>
     <string name="settings_feedback_tickets_list_date">%1$s %2$d일</string>
     <string name="settings_feedback_tickets_list_date_year">%3$d년 %1$s %2$d일</string>
     <string name="settings_feedback_tickets_close_ticket">티켓 닫기</string>
@@ -5076,7 +5076,7 @@
     <string name="external_agent_create_failed">Raft가 에이전트를 만들지 못했어요. 다시 시도해 주세요.</string>
     <string name="external_agent_create_setup_title">%1$s 설정</string>
     <string name="external_agent_create_waiting">%1$s 연결 대기 중…</string>
-    <string name="external_agent_create_waiting_hint">%1$s 에이전트가 로그인하면 자동으로 업데이트돼요.</string>
+    <string name="external_agent_create_waiting_hint">%1$s 에이전트가 로그인하면 이 화면이 자동으로 업데이트돼요.</string>
     <string name="external_agent_create_online">%1$s 에이전트가 온라인이에요</string>
     <string name="external_agent_create_online_hint">%1$s 에이전트가 Raft에 로그인했어요. 이제 닫아도 돼요.</string>
     <string name="external_agent_create_switch_to_sdk">대신 SDK로 만들기</string>
@@ -5130,7 +5130,7 @@
     <string name="external_agent_card_unnamed_credential">에이전트 자격 증명</string>
     <string name="external_agent_card_credential_used">%1$s에 생성 · 마지막 사용 %2$s</string>
     <string name="external_agent_card_credential_not_used">%1$s에 생성 · 아직 사용 안 함</string>
-    <string name="external_agent_card_credential_actions">%1$s 작업</string>
+    <string name="external_agent_card_credential_actions">%1$s 옵션</string>
     <string name="external_agent_card_revoke">폐기</string>
     <string name="external_agent_card_revoke_error">Raft가 자격 증명을 폐기하지 못했어요. 다시 시도해 주세요.</string>
     <string name="external_agent_card_replace_title">새 자격 증명을 만들까요?</string>
@@ -5428,8 +5428,8 @@
     <string name="settings_computers_runtime_auth_provider_error_request_failed">컴퓨터에 연결하지 못했어요. 다시 시도하세요.</string>
     <string name="settings_computers_runtime_auth_provider_error_invalid_input">입력한 내용을 확인하고 다시 시도하세요.</string>
     <string name="settings_computers_runtime_auth_provider_error_rejected">%1$s이(가) 이 설정을 받아들이지 않았어요. 키를 확인하고 다시 시도하세요.</string>
-    <string name="settings_computers_runtime_auth_provider_error_list_timed_out">%1$s의 응답이 너무 늦어요. 다시 시도하세요.</string>
-    <string name="settings_computers_runtime_auth_provider_error_connect_timed_out">%1$s의 응답이 너무 늦어요. 키가 저장됐는지 알 수 없어요. 카드를 확인하고 필요하면 다시 시도하세요.</string>
+    <string name="settings_computers_runtime_auth_provider_error_list_timed_out">%1$s의 응답이 너무 오래 걸렸어요. 다시 시도하세요.</string>
+    <string name="settings_computers_runtime_auth_provider_error_connect_timed_out">%1$s의 응답이 너무 오래 걸렸어요. 키가 저장됐는지 알 수 없어요. 카드를 확인하고 필요하면 다시 시도하세요.</string>
     <string name="settings_computers_runtime_auth_provider_error_process_failed">이 컴퓨터에서 %1$s을(를) 실행하지 못했어요. 다시 시도하세요.</string>
     <string name="settings_computers_runtime_auth_provider_error_invalid_response">%1$s의 응답을 읽을 수 없어요. 컴퓨터에서 %1$s을(를) 업데이트한 다음 다시 시도하세요.</string>
     <string name="settings_computers_runtime_auth_provider_error_unsupported">이 컴퓨터의 %1$s은(는) 웹에서 연결할 수 없어요.</string>
@@ -5443,9 +5443,9 @@
     <string name="settings_computers_runtime_auth_pi_remove_key_title">%1$s 키를 삭제할까요?</string>
     <string name="settings_computers_runtime_auth_pi_remove_key_description">%3$s의 %2$s에서 %1$s 키가 삭제돼요.</string>
     <string name="settings_computers_runtime_auth_pi_remove_key_confirm">삭제</string>
-    <string name="settings_computers_runtime_auth_pi_sign_out_description">%3$s의 %2$s에서 %1$s 로그아웃돼요. 다른 제공자는 로그인 상태로 남아요.</string>
-    <string name="settings_computers_runtime_auth_pi_sign_out_agents_one">이 컴퓨터의 %2$s 에이전트 1개가 %1$s을(를) 쓸 수 있어요. 계속 실행되지만, 누군가 다시 추가하기 전까지 %1$s은(는) 쓸 수 없어요:</string>
-    <string name="settings_computers_runtime_auth_pi_sign_out_agents_other">이 컴퓨터의 %2$s 에이전트 %3$d개가 %1$s을(를) 쓸 수 있어요. 계속 실행되지만, 누군가 다시 추가하기 전까지 %1$s은(는) 쓸 수 없어요:</string>
+    <string name="settings_computers_runtime_auth_pi_sign_out_description">%3$s의 %2$s에서 %1$s이(가) 로그아웃돼요. 다른 제공자는 로그인 상태로 남아요.</string>
+    <string name="settings_computers_runtime_auth_pi_sign_out_agents_one">이 컴퓨터의 %2$s 에이전트 1개가 %1$s을(를) 쓰고 있을 수 있어요. 계속 실행되지만, 누군가 다시 추가하기 전까지 %1$s은(는) 쓸 수 없어요:</string>
+    <string name="settings_computers_runtime_auth_pi_sign_out_agents_other">이 컴퓨터의 %2$s 에이전트 %3$d개가 %1$s을(를) 쓰고 있을 수 있어요. 계속 실행되지만, 누군가 다시 추가하기 전까지 %1$s은(는) 쓸 수 없어요:</string>
     <string name="settings_computers_runtime_auth_pi_title">%1$s에 제공자 추가</string>
     <string name="settings_computers_runtime_auth_pi_choose_prompt">%2$s의 %1$s에서 쓸 제공자를 고르세요. 계정으로 로그인하거나 API 키를 붙여넣으세요.</string>
     <string name="settings_computers_runtime_auth_pi_group_account">계정으로 로그인</string>
