@@ -147,6 +147,8 @@ internal fun SharedSettingsServerContent(
      * own id; null on surfaces without a network (fixtures), which then say nothing about Computers.
      */
     leaveImpact: SettingsServerLeaveImpactBinding? = null,
+    /** Archived channels and agents (web ArchivedChannelsSection / ArchivedAgentsSection); null on surfaces without a network. */
+    archive: SettingsServerArchiveUi? = null,
     onAction: (String, String?) -> Unit
 ) {
     val visualFullHeight = settingsVisualFullHeightEnabled()
@@ -182,6 +184,13 @@ internal fun SharedSettingsServerContent(
                     )
                 }
             }
+        }
+        // Web ServerTabContent: Archived channels, then Archived agents, before the Danger zone.
+        if (archive != null && archive.channelsVisible) {
+            item(key = SettingsArchivedChannelsSectionTag) { SettingsArchivedChannelsSection(archive) }
+        }
+        if (archive != null && archive.agentsVisible) {
+            item(key = SettingsArchivedAgentsSectionTag) { SettingsArchivedAgentsSection(archive) }
         }
         payload.sections.forEach { section ->
             when (section.title) {

@@ -1,0 +1,200 @@
+package build.raft.app
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
+import build.raft.app.data.ArchivedAgent
+import build.raft.app.data.ArchivedAgentWorkspace
+import build.raft.app.data.ArchivedChannel
+import build.raft.app.data.NetworkServerArchiveDataSource
+import build.raft.app.data.RaftNetworkClient
+import build.raft.app.data.SharedServerArchiveIntent
+import build.raft.app.data.SharedServerArchiveState
+import build.raft.app.data.SharedServerArchiveStore
+import build.raft.app.data.serverRoleCanArchiveChannels
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftAvatar
+import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftAvatarType
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerSize
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconTile
+import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftListRowVariant
+import build.raft.designsystem.components.raftAvatarInitials
+
+/*
+ * Settings › Server's Archived channels and Archived agents (web
+ * `components/settings/ArchivedChannelsSection.tsx`, `UnarchiveChannelButton.tsx`,
+ * `ArchivedAgentsSection.tsx`), between Public access and the Danger zone as the web's
+ * ServerTabContent orders them. Archived channels: owner and admin only (`archiveChannels`), each
+ * with Unarchive; archived agents: when, and where the workspace is.
+ */
+
+internal const val SettingsArchivedChannelsSectionTag = "archived-channels-section"
+internal const val SettingsArchivedAgentsSectionTag = "archived-agents-section"
+
+internal fun settingsArchivedChannelRowTag(id: String) = "archived-channel-row-$id"
+
+internal fun settingsArchivedAgentRowTag(id: String) = "archived-agent-row-$id"
+
+/** The sections' state and intents; [canArchiveChannels]: the viewer's role may archive. */
+internal class SettingsServerArchiveUi(
+    val state: SharedServerArchiveState,
+    val canArchiveChannels: Boolean,
+    val dispatch: (SharedServerArchiveIntent) -> Unit,
+    /** The clock the dates read in (null: the app's live one; screenshots fix it). */
+    val timeContext: RaftTimeContext? = null,
+)
+
+/** The page's store, read for [serverId] whenever it or the viewer's [role] changes. */
+@Composable
+internal fun rememberSettingsServerArchive(networkClient: RaftNetworkClient?, serverId: String?, role: String?): SettingsServerArchiveUi? {
+    if (networkClient == null) return null
+    val scope = rememberCoroutineScope()
+    val store = remember(networkClient, scope) { SharedServerArchiveStore(NetworkServerArchiveDataSource(networkClient), scope) }
+    val canArchive = serverRoleCanArchiveChannels(role)
+    LaunchedEffect(store, serverId, canArchive) { store.dispatch(SharedServerArchiveIntent.Load(serverId, canArchive)) }
+    val state by store.state.collectAsState()
+    return SettingsServerArchiveUi(state = state, canArchiveChannels = canArchive, dispatch = store::dispatch)
+}
+
+/** The archive's date in the reader's zone, web `formatMediumDateTime`; the raw value if unreadable. */
+@Composable
+private fun settingsArchiveDate(iso: String, timeContext: RaftTimeContext?): String =
+    taskHeadDateTime(iso, currentRaftTimeContext(timeContext))?.localized() ?: iso
+
+internal val SettingsServerArchiveUi.channelsVisible: Boolean
+    get() = canArchiveChannels && state.channels.isNotEmpty()
+
+internal val SettingsServerArchiveUi.agentsVisible: Boolean
+    get() = state.agents.isNotEmpty()
+
+@Composable
+internal fun SettingsArchivedChannelsSection(ui: SettingsServerArchiveUi) {
+    if (!ui.channelsVisible) return
+    val state = ui.state
+    SettingsFormSection(iconName = RaftLucideIconName.Archive, title = stringResource(Res.string.settings_archived_channels_title)) {
+        Column(
+            Modifier.fillMaxWidth().testTag(SettingsArchivedChannelsSectionTag).settingsSearchAnchor("archived-channels"),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            val error = state.unarchiveError ?: if (state.unarchiveFailedGeneric) stringResource(Res.string.channel_settings_unarchive_failed) else null
+            error?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm) }
+            RaftListRowGroup(Modifier.fillMaxWidth()) {
+                state.channels.forEachIndexed { index, channel ->
+                    SettingsArchivedChannelRow(
+                        channel = channel,
+                        divider = index > 0,
+                        busy = state.unarchivingChannelId == channel.id,
+                        enabled = state.unarchivingChannelId == null,
+                        timeContext = ui.timeContext,
+                    ) { ui.dispatch(SharedServerArchiveIntent.Unarchive(channel.id)) }
+                }
+            }
+        }
+    }
+}
+
+/** External first (a guest, a guest server or an open invite), as the channel's header tags it. */
+@Composable
+private fun settingsArchivedChannelTypeLabel(channel: ArchivedChannel): String =
+    stringResource(
+        when {
+            isRaftExternalSectionChannel(channel.type, channel.hasExternalRelation) -> Res.string.settings_archived_channels_joint
+            channel.type == "private" -> Res.string.settings_archived_channels_private
+            else -> Res.string.settings_archived_channels_public
+        }
+    )
+
+@Composable
+private fun SettingsArchivedChannelRow(
+    channel: ArchivedChannel,
+    divider: Boolean,
+    busy: Boolean,
+    enabled: Boolean,
+    timeContext: RaftTimeContext?,
+    onUnarchive: () -> Unit,
+) {
+    val typeLabel = settingsArchivedChannelTypeLabel(channel)
+    RaftListRow(
+        title = stringResource(Res.string.settings_archived_channels_channel_name, channel.name),
+        modifier = Modifier.testTag(settingsArchivedChannelRowTag(channel.id)),
+        variant = RaftListRowVariant.Plain,
+        divider = divider,
+        subtitle = stringResource(Res.string.settings_archived_channels_metadata, typeLabel, settingsArchiveDate(channel.archivedAt, timeContext)),
+        leading = {
+            RaftIconTile(size = RaftIconTileSize.Sm) {
+                RaftChannelKindIcon(
+                    glyph = raftChannelRecordKindGlyph(channel.type, hasExternalRelation = channel.hasExternalRelation),
+                    size = RaftIconTileSize.Sm.icon,
+                    color = raftArgbHex(RaftColor.ForegroundMuted),
+                )
+            }
+        },
+        trailing = {
+            RaftButton(
+                text = stringResource(if (busy) Res.string.channel_settings_unarchiving else Res.string.joint_create_unarchive),
+                onClick = onUnarchive,
+                variant = RaftButtonVariant.Default,
+                size = RaftButtonSize.Md,
+                enabled = enabled,
+            )
+        },
+    )
+}
+
+@Composable
+internal fun SettingsArchivedAgentsSection(ui: SettingsServerArchiveUi) {
+    if (!ui.agentsVisible) return
+    SettingsFormSection(iconName = RaftLucideIconName.Archive, title = stringResource(Res.string.settings_archived_agents_title)) {
+        RaftListRowGroup(Modifier.fillMaxWidth().testTag(SettingsArchivedAgentsSectionTag).settingsSearchAnchor("archived-agents")) {
+            ui.state.agents.forEachIndexed { index, agent ->
+                SettingsArchivedAgentRow(agent, divider = index > 0, timeContext = ui.timeContext)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsArchivedAgentRow(agent: ArchivedAgent, divider: Boolean, timeContext: RaftTimeContext?) {
+    val workspace =
+        when (agent.workspace) {
+            ArchivedAgentWorkspace.Deleting -> stringResource(Res.string.settings_archived_agents_workspace_deleting)
+            ArchivedAgentWorkspace.OnComputer -> stringResource(Res.string.settings_archived_agents_workspace_on_computer, agent.machineName.orEmpty())
+            ArchivedAgentWorkspace.Deleted -> stringResource(Res.string.settings_archived_agents_workspace_deleted)
+            ArchivedAgentWorkspace.Unknown -> stringResource(Res.string.settings_archived_agents_workspace_unknown)
+        }
+    RaftListRow(
+        title = agent.name,
+        modifier = Modifier.testTag(settingsArchivedAgentRowTag(agent.agentId)),
+        variant = RaftListRowVariant.Plain,
+        divider = divider,
+        subtitle = stringResource(Res.string.settings_archived_agents_metadata, settingsArchiveDate(agent.archivedAt, timeContext), workspace),
+        leading = {
+            // Web: the agent's avatar, greyed (an archived agent).
+            RaftAvatar(
+                type = RaftAvatarType.Agent,
+                size = RaftAvatarSize.Sm,
+                initials = raftAvatarInitials(agent.name, RaftAvatarSize.Sm).ifBlank { "A" },
+            )
+        },
+    )
+}
