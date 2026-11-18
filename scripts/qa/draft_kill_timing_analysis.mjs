@@ -243,9 +243,13 @@ export function analyzeKillRun({ lines, pkg, oldPid, samePid = true, runIndex, e
   return result;
 }
 
+/** Nearest-rank percentile of sorted [values]: the value at rank ceil(q * n) (1-based), clamped to 1..n. */
+export const nearestRank = (sorted, q) =>
+  sorted.length ? sorted[Math.min(sorted.length, Math.max(1, Math.ceil(q * sorted.length))) - 1] : null;
+
 const quantiles = (values, unit) => {
   values.sort((a, b) => a - b);
-  const at = (q) => (values.length ? values[Math.min(values.length - 1, Math.floor(q * values.length))] : null);
+  const at = (q) => nearestRank(values, q);
   return { samples: values.length, [`min_${unit}`]: values[0] ?? null, [`p50_${unit}`]: at(0.5), [`p95_${unit}`]: at(0.95), [`p99_${unit}`]: at(0.99), [`max_${unit}`]: values.at(-1) ?? null };
 };
 
@@ -685,7 +689,7 @@ export function wrapUpVerdict(summary, logcatStats, config) {
  * 1. A sample is a `draft_journal_written seq=N ... costUs encodeUs storeUs indexUs putUs` line whose
  *    (logcat pid, seq) matches a `change_received seq=N` line of the same pid; the first such line per
  *    (pid, seq) counts, repeats and lines without a matching input are excluded (counted as unpaired).
- * 2. Percentiles: nearest-rank on the sorted values, index floor(q * n) clamped to n - 1 (as quantiles()).
+ * 2. Percentiles: nearest-rank on the sorted values, rank ceil(q * n) (1-based) clamped to 1..n (nearestRank).
  * 3. Registration vs update: a line with `indexWrite=1` (the write also registered the draft key in the
  *    journal index) is "registration", `indexWrite=0` "update". Lines of builds that do not log the field
  *    are "unlabelled": which of them registered a key cannot be told from the line, so it is not guessed.
@@ -693,20 +697,22 @@ export function wrapUpVerdict(summary, logcatStats, config) {
  *    PUT holding >= 50% of the total, else "none"; share = sum of a part / sum of totals over slow samples.
  */
 export function costSplitReport(lines, { slowUs = 1000, listSlowest = 50 } = {}) {
+  // Two passes, like the end-of-run summary (pairJournalLines): every input first, then the cost lines,
+  // so a cost line pairs with its input wherever the two sit in the file.
+  const parsed = [];
   const inputs = new Set();
-  const seen = new Set();
-  const samples = [];
-  let unpaired = 0;
   for (const raw of lines) {
     if (!raw.includes("RaftDraftTiming")) continue;
     const l = parseLogcatLine(raw);
     if (!l || l.tag !== "RaftDraftTiming") continue;
     const input = /^change_received seq=(\d+) /.exec(l.message);
-    if (input) {
-      inputs.add(`${l.pid}:${input[1]}`);
-      continue;
-    }
-    if (!l.message.startsWith("draft_journal_written ")) continue;
+    if (input) inputs.add(`${l.pid}:${input[1]}`);
+    else if (l.message.startsWith("draft_journal_written ")) parsed.push(l);
+  }
+  const seen = new Set();
+  const samples = [];
+  let unpaired = 0;
+  for (const l of parsed) {
     const field = (name) => {
       const m = new RegExp(`\\b${name}=(\\d+)`).exec(l.message);
       return m ? Number(m[1]) : null;
@@ -779,7 +785,7 @@ export function summarize(runs) {
   }
   const stats = (values) => {
     const sorted = [...values].sort((a, b) => a - b);
-    return { min: sorted[0] ?? null, median: sorted.length ? sorted[Math.floor(sorted.length / 2)] : null, max: sorted.at(-1) ?? null };
+    return { min: sorted[0] ?? null, median: nearestRank(sorted, 0.5), max: sorted.at(-1) ?? null };
   };
   return [...groups.values()].map((g) => {
     const { delta_ms, width_ms, ...rest } = g;

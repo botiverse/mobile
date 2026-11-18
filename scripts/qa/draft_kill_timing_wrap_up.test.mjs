@@ -219,7 +219,7 @@ test("journal coverage: a missing sample mid-run is unconfirmed even when extra 
   assert.deepEqual(masked.journal_coverage, { edits: 3, paired: 2, failures: 0, likely_interrupted: 0, missing: 1, unpaired: 2, allowed_missing: 0, covered: false });
   assert.match(masked.unconfirmed.join("\n"), /2 paired of 3 edits, 1 without a result/);
   // Percentiles use the paired samples only: the repeat (5000) and the unpaired seq 9 (7000) are excluded.
-  assert.deepEqual(masked.journal_write_cost, { samples: 2, min_us: 100, p50_us: 300, p95_us: 300, p99_us: 300, max_us: 300, basis: "paired samples only", unpaired_excluded: 2 });
+  assert.deepEqual(masked.journal_write_cost, { samples: 2, min_us: 100, p50_us: 100, p95_us: 300, p99_us: 300, max_us: 300, basis: "paired samples only", unpaired_excluded: 2 });
 
   // The same seq in another process is another change.
   const otherProcess = statsOf([...edit(1, 1, 100), change(2, 2), journal(2, 100, 2, 5000), ...edit(3, 3, 100)]).journal_coverage;
@@ -334,7 +334,8 @@ test("the journal cost splits into ENCODE and STORE over the paired samples only
   ]);
   assert.equal(stats.journal_write_cost_parts.encode.samples, 2);
   assert.equal(stats.journal_write_cost_parts.encode.max_us, 120);
-  assert.equal(stats.journal_write_cost_parts.store.p50_us, 2060);
+  assert.equal(stats.journal_write_cost_parts.store.p50_us, 350);
+  assert.equal(stats.journal_write_cost_parts.store.p95_us, 2060);
   assert.equal(stats.journal_write_cost_parts.put.max_us, 2000);
   assert.equal(stats.journal_write_cost.unpaired_excluded, 1);
 });
@@ -367,4 +368,13 @@ test("the cost split report is reproducible from timing lines: pairing, groups, 
   assert.deepEqual(r.slow.slowest.map((s) => s.key), [`${PID}:3`, `${PID}:5`, `${PID}:1`]);
   // Lines without indexWrite (older builds) are unlabelled, never guessed.
   assert.equal(costSplitReport([change(1, 1), cost(1, 1, 500, 100, 200, 200, null)]).groups.unlabelled.total.samples, 1);
+});
+
+test("the cost split pairs a cost line with its input wherever the input sits in the file", () => {
+  const cost = (sec, seq) => line(sec, PID, "RaftDraftTiming", `draft_journal_written seq=${seq} path=sync costUs=500 encodeUs=100 storeUs=400 indexUs=100 putUs=300 indexWrite=0 len=3 uptimeMs=1`);
+  // The cost line first (e.g. logcat buffers interleaved), its input after it: still paired, as the summary does.
+  const lines = [cost(1, 1), change(1, 1)];
+  assert.equal(costSplitReport(lines).samples, 1);
+  assert.equal(costSplitReport(lines).unpaired, 0);
+  assert.equal(statsOf(lines).journal_coverage.paired, 1);
 });

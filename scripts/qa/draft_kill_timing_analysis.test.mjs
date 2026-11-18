@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { journalCostStats, writePathCounts, writeLatencyStats, analyzeKillRun, measuredBucket, summarizeByMeasuredBucket, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
+import { nearestRank, journalCostStats, writePathCounts, writeLatencyStats, analyzeKillRun, measuredBucket, summarizeByMeasuredBucket, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
 
 const PKG = "build.raft.app.alpha";
 const PID = 4242;
@@ -146,7 +146,7 @@ test("the send regression has its own 100 ms window; a recents swipe may kill by
 
 test("write latency pairs each change with its own write", () => {
   const stats = writeLatencyStats([change(1, 1, 1), written(1.02, 1, 1), change(2, 2, 2), change(2.01, 3, 3), written(2.05, 3, 3), change(3, 4, 4)]);
-  assert.deepEqual(stats, { samples: 2, min_ms: 20, p50_ms: 40, p95_ms: 40, p99_ms: 40, max_ms: 40 });
+  assert.deepEqual(stats, { samples: 2, min_ms: 20, p50_ms: 20, p95_ms: 40, p99_ms: 40, max_ms: 40 });
 });
 
 test("write paths are counted from the marker lines", () => {
@@ -172,5 +172,16 @@ test("journal write cost distribution comes from paired draft_journal_written li
     l(3, "draft_journal_written seq=7 path=sync costUs=9000 len=4 uptimeMs=3000"),
     l(3, "draft_journal_written path=sync costUs=9000 len=4 uptimeMs=3000"),
   ]);
-  assert.deepEqual(stats, { samples: 2, min_us: 80, p50_us: 120, p95_us: 120, p99_us: 120, max_us: 120, basis: "paired samples only", unpaired_excluded: 2 });
+  assert.deepEqual(stats, { samples: 2, min_us: 80, p50_us: 80, p95_us: 120, p99_us: 120, max_us: 120, basis: "paired samples only", unpaired_excluded: 2 });
+});
+
+test("percentiles are nearest-rank: rank ceil(q * n), so 1..100 gives p50/p95/p99 = 50/95/99", () => {
+  const probe = Array.from({ length: 100 }, (_, i) => i + 1);
+  assert.deepEqual([0.5, 0.95, 0.99, 1].map((q) => nearestRank(probe, q)), [50, 95, 99, 100]);
+  assert.equal(nearestRank([7], 0.95), 7);
+  assert.equal(nearestRank([1, 2], 0.5), 1);
+  assert.equal(nearestRank([], 0.5), null);
+  const l = (sec, msg) => line(sec, PID, "RaftDraftTiming", msg);
+  const stats = journalCostStats(probe.flatMap((v) => [l(v, `change_received seq=${v} len=1 uptimeMs=${v}`), l(v, `draft_journal_written seq=${v} path=sync costUs=${v} len=1 uptimeMs=${v}`)]));
+  assert.deepEqual([stats.p50_us, stats.p95_us, stats.p99_us, stats.max_us], [50, 95, 99, 100]);
 });

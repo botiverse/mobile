@@ -56,9 +56,6 @@ jobs:
       EVIDENCE: ${{ inputs.scenario == 'draft-kill-timing' && 'draft-kill-timing-evidence' || 'realtime-e2e-evidence' }}
       SCENARIO: ${{ inputs.scenario || 'realtime' }}
       RUNS_PER_BUCKET: ${{ inputs.runs_per_bucket || '10' }}
-      # Read-only (permissions: actions: read): the draft-kill scenario checks that an earlier run has
-      # completed before archiving the channel it left behind.
-      GH_RUN_STATUS_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
 
@@ -127,6 +124,9 @@ jobs:
           APK_ARTIFACT: ${{ steps.apk.outputs.artifact }}
           REQUIRE_COMMIT: ${{ inputs.require_commit }}
           REQUIRE_COMMIT_STATUS: ${{ steps.apk.outputs.require_commit_status }}
+          # Read-only (permissions: actions: read), this step only: the draft-kill scenario checks that an
+          # earlier run has completed before archiving the channel it left behind.
+          GH_RUN_STATUS_TOKEN: ${{ github.token }}
         with:
           api-level: 34
           arch: x86_64
