@@ -3,11 +3,11 @@
 // screen recorder starts and before the agent loop takes its first screenshot, and writes
 // qa-evidence/login-record.json. Three rules:
 //
-// 1. The secret never goes into a process argument or a file. Android types it through the
-//    emulator console (`event text` over the console TCP socket from this process). Nothing
+// 1. The secret never goes into a process argument or a file. Android sends it on stdin to
+//    a UI Automator driver that sets the two fields on the expected Chrome site. Nothing
 //    else has a safe path, so iOS and every driver refuse to type a secret (refuseSecret);
 //    iOS legacy password login therefore ends UNKNOWN.
-// 2. The login window captures nothing: no screenshot, no recording (the recorder is stopped
+// 2. The login window allows only fixed structural diagnostics: no screenshot or recording (the recorder is stopped
 //    and confirmed gone before the window and must still be gone after it; the workflow starts
 //    it only after a complete record), no UI tree to the model or logs (the tree is read
 //    in memory, from /dev/tty, only to find fields and buttons), and no log lines from the
@@ -21,16 +21,17 @@
 // bootstrap smoke) write a run-bound "no-login" record instead; seeing anything login-like
 // later turns it into "unknown" (markUnknown).
 //
+// On Android the CI job first builds its driver with scripts/qa/build_login_form.sh
+// "$RUNNER_TEMP/qa-login-form.jar" in a step without the account environment.
 // Usage:
 //   node scripts/qa/login_phase.mjs login --platform android|ios --password-login true|false \
 //     --out qa-evidence [--package build.raft.app] [--device emulator-5554]
 //   node scripts/qa/login_phase.mjs check --out qa-evidence    (exit 0 only for a valid record)
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { ENVIRONMENTS } from "./release_auto_login_lib.mjs";
 
 export const RECORD = "login-record.json";
 const CONTRACT = "qa-login-record/v1";
@@ -93,6 +94,7 @@ export function parseUiNodes(xml) {
     const attr = (k) => new RegExp(`\\s${k}="([^"]*)"`).exec(tag)?.[1] ?? "";
     const b = /bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(tag);
     return {
+      id: attr("resource-id"), focused: attr("focused") === "true",
       text: attr("text"), desc: attr("content-desc"), hint: attr("hint"), cls: attr("class"), pkg: attr("package"),
       password: attr("password") === "true", checkable: attr("checkable") === "true", checked: attr("checked") === "true",
       enabled: attr("enabled") !== "false", editable: /EditText/.test(attr("class")),
@@ -116,103 +118,181 @@ export function parseReceipt(logText) {
   return result === "retry" ? {} : { refused: `${result}/${reason}` };
 }
 
-const CONSOLE_SAFE = /^[\x21-\x7e]+$/;
-// Types text through the emulator console. Only printable ASCII without spaces: anything else
-// could not be typed faithfully (or would split the console command), so it is refused.
-export async function consoleType(port, text, { tokenFile = path.join(os.homedir(), ".emulator_console_auth_token"), timeoutMs = 15000 } = {}) {
-  if (!CONSOLE_SAFE.test(text)) throw new Error("the console cannot type this value safely");
-  const token = fs.existsSync(tokenFile) ? fs.readFileSync(tokenFile, "utf8").trim() : "";
-  const sock = net.connect(Number(port), "127.0.0.1");
-  sock.setTimeout(timeoutMs, () => sock.destroy(new Error("emulator console timed out")));
-  let buf = "";
-  let waiter = null;
-  const settle = () => {
-    const m = waiter && /(?:^|\n)(OK|KO[^\n]*)\r?\n/.exec(buf);
-    if (!m) return;
-    buf = buf.slice(m.index + m[0].length);
-    const w = waiter; waiter = null;
-    if (m[1] === "OK") w.resolve(); else w.reject(new Error("emulator console refused a command"));
+const CHROME = "com.android.chrome";
+const FORM_JAR = "qa-login-form.jar";
+const APP_REFUSALS = new Set([
+  "ignored/no_pending", "ignored/return_uri_mismatch", "stale/request_id_mismatch",
+  "login_error/environment_changed", "login_error/expired", "login_error/verifier_invalid",
+  "login_error/callback_error", "login_error/callback_no_code", "login_error/exchange_failed",
+  "receipt without a device timestamp",
+]);
+const DEVICE_JAR = `/data/local/tmp/${FORM_JAR}`;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const CHROME_DISMISS = /^(Use (?:Chrome )?without an account|No,? thanks|Not now|Skip)$/i;
+const CHROME_CONTINUE = /^(Accept & continue|Got it|Continue)$/i;
+const SYSTEM_RETURN = /^(Open|Always|Just once)$/i;
+const labelIs = (node, re) => [node.text, node.desc].some((value) => re.test(value.replaceAll("&amp;", "&").trim()));
+const FORM_MESSAGES = new Map([
+  ["Invalid email format", "invalid-email"], ["Password is required", "missing-password"],
+  ["Sign-in failed", "sign-in-failed"],
+  ["This sign-in request has expired. Start sign-in again from the app.", "request-expired"],
+  ["This sign-in request was already handled. Start sign-in again from the app if needed.", "request-already-handled"],
+  ["This sign-in link isn't valid. Start sign-in again from the app.", "request-invalid"],
+]);
+const visible = (node) => node.bounds && node.bounds[2] > node.bounds[0] && node.bounds[3] > node.bounds[1];
+
+function loginControls(nodes, pkg) {
+  const screen = nodes.filter(visible);
+  const chrome = screen.filter((n) => n.pkg === CHROME);
+  const chromeSetup = chrome.filter((n) => n.enabled && n.id.startsWith(`${CHROME}:id/`));
+  const button = (label) => chrome.find((n) => n.cls === "android.widget.Button" && labelIs(n, label));
+  const crashDialog = screen.some((n) => n.pkg === "android" && n.id === "android:id/aerr_close");
+  return {
+    surface: crashDialog ? "system-app-error" : chrome.length ? "chrome" : screen.some((n) => n.pkg === pkg) ? "app" : screen.length ? "other" : "unreadable",
+    passwordInputVisible: chrome.some((n) => n.editable && n.password),
+    message: chrome.map((n) => FORM_MESSAGES.get(n.text) || FORM_MESSAGES.get(n.desc)).find(Boolean) || "none-recognized",
+    consent: screen.find((n) => n.pkg === pkg && n.checkable && !n.checked && n.enabled),
+    launch: screen.find((n) => n.pkg === pkg && n.enabled && labelIs(n, /^Sign in to Raft$/i)),
+    setup: chromeSetup.find((n) => labelIs(n, CHROME_DISMISS)) || chromeSetup.find((n) => labelIs(n, CHROME_CONTINUE)),
+    email: chrome.find((n) => n.id === "login-email" && n.editable && !n.password),
+    password: chrome.find((n) => n.id === "login-password" && n.editable && n.password),
+    submit: button(/^Sign in$/i),
+    confirm: button(/^(Confirm sign-in|Confirm|Approve|Allow)$/i),
+    openApp: button(/^(Open the app|Open)$/i),
+    systemReturn: screen.find((n) => ["android", "com.android.intentresolver"].includes(n.pkg) && n.enabled && labelIs(n, SYSTEM_RETURN)),
   };
-  const ok = () => new Promise((resolve, reject) => { waiter = { resolve, reject }; settle(); });
-  sock.on("data", (d) => { buf += d; settle(); });
-  sock.on("error", (e) => waiter?.reject(e));
-  try {
-    await ok(); // banner
-    if (token) { sock.write(`auth ${token}\n`); await ok(); }
-    sock.write(`event text ${text}\n`);
-    await ok();
-  } finally {
-    sock.end("quit\n");
-  }
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const BUTTONS = /^(Sign in to Raft|Accept & continue|Use without an account|No thanks|Continue|Confirm|Approve|Allow|Open|Always|Just once)$/i;
+// Only these literals cross the protected window. No node text, lengths, URLs, identifiers,
+// coordinates or log lines are copied. The normal evidence gate is still closed on failure.
+function failureUi(controls, lastAction, reason) {
+  const state = (n) => !n ? "absent" : !n.enabled ? "disabled" : n.focused ? "focused" : "visible";
+  const dump = { format: "android-login-ui/v1", lastAction, reason, surface: controls?.surface ?? "unobserved" };
+  if (controls) {
+    dump.message = controls.message;
+    dump.passwordInputVisible = controls.passwordInputVisible;
+    for (const key of ["consent", "launch", "setup", "email", "password", "submit", "confirm", "openApp", "systemReturn"]) dump[key] = state(controls[key]);
+  }
+  return dump;
+}
 
-export async function androidPasswordLogin({ out, pkg = "build.raft.app", device = "", env = process.env, timeoutMs = 180000, pollMs = 2000 }) {
-  const base = device ? ["-s", device] : [];
-  const adb = (...args) => execFileSync("adb", [...base, ...args], { env, encoding: "utf8", timeout: 60000, stdio: ["ignore", "pipe", "pipe"] });
-  const unknown = (reason) => { markUnknown(out, reason, env); return { ok: false, reason }; };
+function loginOrigin(env) {
+  const api = (env.QA_API_BASE || ENVIRONMENTS.production.apiBaseUrl).replace(/\/$/, "");
+  return Object.values(ENVIRONMENTS).find((e) => e.apiBaseUrl.replace(/\/$/, "") === api)?.webUrl;
+}
+
+export async function androidPasswordLogin({ out, pkg = "build.raft.app", device = "", env = process.env, timeoutMs = 180000, pollMs = 2000, expectedOrigin = loginOrigin(env) }) {
+  const { QA_TEST_EMAIL: email, QA_TEST_PASSWORD: password, ...adbEnv } = env;
+  let serial = device;
+  const execAdb = (args, input) => execFileSync("adb", [...(serial ? ["-s", serial] : []), ...args], {
+    env: adbEnv, encoding: "utf8", timeout: 60000, input, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+  });
+  const adb = (...args) => execAdb(args);
   const recorderGone = () => /rc=1\s*$/.test(adb("shell", "pidof screenrecord; echo rc=$?"));
   const tap = (n) => adb("shell", "input", "tap", String((n.bounds[0] + n.bounds[2]) >> 1), String((n.bounds[1] + n.bounds[3]) >> 1));
+  let lastAction = "before-form";
+  let controls;
+  let installedDriver = false;
+  const unknown = (reason) => {
+    markUnknown(out, reason, env);
+    const dump = failureUi(controls, lastAction, reason);
+    console.log(`Protected login UI: ${JSON.stringify(dump)}`);
+    if (env.GITHUB_STEP_SUMMARY) {
+      try { fs.appendFileSync(env.GITHUB_STEP_SUMMARY, `\n### Android login failure — last UI observation\n\n\`\`\`json\n${JSON.stringify(dump, null, 2)}\n\`\`\`\n`); } catch { /* The same dump is in the job log. */ }
+    }
+    return { ok: false, reason };
+  };
   writeRecord(out, { mode: "password", status: "unknown", login_end: null, reason: "login phase started and did not finish" }, env);
   try {
-    const [email, password] = [env.QA_TEST_EMAIL || "", env.QA_TEST_PASSWORD || ""];
     if (!email || !password) return unknown("QA credentials missing");
-    if (!CONSOLE_SAFE.test(email) || !CONSOLE_SAFE.test(password)) return unknown("a credential the console cannot type faithfully");
-    // Only on the CI emulator this job created: the workflow writes this run's id to the device
-    // right after boot. Without it nothing on the device is changed and nothing is typed.
-    const serial = device || adb("get-serialno").trim();
-    const port = /^emulator-(\d+)$/.exec(serial)?.[1];
-    if (!port) return unknown("not an emulator; cannot tell the device is this run's own");
+    if ([email, password].some((value) => /[^!-~]/.test(value))) return unknown("unsupported credential format");
+    if (!expectedOrigin) return unknown("unknown QA account environment");
+    serial ||= adb("get-serialno").trim();
+    if (!/^emulator-\d+$/.test(serial)) return unknown("not an emulator; cannot tell the device is this run's own");
     if (adb("shell", `cat ${OWNER_MARKER} 2>/dev/null`).trim() !== runId(env)) return unknown("cannot tell the emulator is this run's own");
-    // Explicit, acknowledged stop: no recorder may run during the window.
     adb("shell", "pkill -INT screenrecord; true");
     for (let i = 0; i < 5 && !recorderGone(); i++) await sleep(1000);
     if (!recorderGone()) return unknown("screen recorder did not stop before the login window");
     adb("logcat", "-c");
     adb("shell", "settings", "put", "secure", "autofill_service", "null");
 
-    let typedAt = 0;
-    let stamp = null;
+    let filled = false;
+    let submittedAt = 0;
+    const followed = new Set();
+    let stamp;
     for (const deadline = Date.now() + timeoutMs; !stamp; await sleep(pollMs)) {
-      if (Date.now() > deadline) return unknown("no login-complete receipt");
       const receipt = parseReceipt(adb("logcat", "-d", "-v", "threadtime", "-s", "SlockAppLogin:I"));
-      if (receipt.refused) return unknown(`app refused the login (${receipt.refused})`);
-      if ((stamp = receipt.stamp)) break;
-      const nodes = parseUiNodes(adb("exec-out", "uiautomator", "dump", "/dev/tty"));
-      const pw = nodes.find((n) => n.editable && n.password && n.bounds);
-      if (pw && typedAt) {
-        if (Date.now() - typedAt > 20000) return unknown("the login form is still there after submitting");
+      if (receipt.refused) {
+        return unknown(APP_REFUSALS.has(receipt.refused) ? `app refused the login (${receipt.refused})` : "unrecognized app login refusal");
+      }
+      if (receipt.stamp) {
+        if (!submittedAt) return unknown("login receipt before this form was submitted");
+        stamp = receipt.stamp;
+        break;
+      }
+      controls = undefined;
+      controls = loginControls(parseUiNodes(adb("exec-out", "uiautomator", "dump", "/dev/tty")), pkg);
+      if (controls.surface === "system-app-error") return unknown("Android is showing an app crash dialog");
+      if (Date.now() > deadline) return unknown("no login-complete receipt");
+      if (submittedAt) {
+        if (controls.password && Date.now() - submittedAt > 20000) return unknown("the login form is still there after submitting");
+        const next = controls.confirm?.enabled ? controls.confirm : controls.openApp?.enabled ? controls.openApp : controls.systemReturn;
+        if (next && !controls.password) {
+          const action = next === controls.confirm ? "confirm-sign-in" : next === controls.openApp ? "open-app" : "return-to-app";
+          if (!followed.has(action)) {
+            lastAction = action;
+            followed.add(action);
+            tap(next);
+          }
+        }
         continue;
       }
-      if (pw) {
-        const field = nodes.filter((n) => n.editable && !n.password && n.bounds && n.bounds[1] < pw.bounds[1]).at(-1);
-        if (!field) return unknown("no email field above the password field");
-        tap(field); await consoleType(port, email);
-        tap(pw); await consoleType(port, password);
-        adb("shell", "input", "keyevent", "66");
-        typedAt = Date.now();
+      if (filled) {
+        if (controls.submit?.enabled && controls.password) {
+          lastAction = "submit-form";
+          tap(controls.submit);
+          submittedAt = Date.now();
+        }
         continue;
       }
-      const consent = nodes.find((n) => n.pkg === pkg && n.checkable && !n.checked && n.bounds);
-      const button = nodes.find((n) => n.enabled && n.bounds && BUTTONS.test((n.text || n.desc).trim()));
-      if (consent) tap(consent); else if (button) tap(button);
+      if (controls.email?.enabled && controls.password?.enabled) {
+        lastAction = "fill-email";
+        if (!env.RUNNER_TEMP || !fs.existsSync(path.join(env.RUNNER_TEMP, FORM_JAR))) return unknown("protected login form driver missing");
+        adb("push", path.join(env.RUNNER_TEMP, FORM_JAR), DEVICE_JAR);
+        installedDriver = true;
+        adb("shell", "chmod", "444", DEVICE_JAR);
+        const result = execAdb(["shell", "-T", "uiautomator", "runtest", "/system/framework/android.test.base.jar", "/system/framework/android.test.runner.jar", DEVICE_JAR,
+          "-c", "RaftQaLoginForm#testFill", "-e", "origin", expectedOrigin], `${email}\n${password}\n`);
+        if (/^QA_LOGIN_SITE_UNVERIFIED\r?$/m.test(result)) return unknown("the browser address could not be matched to the QA environment");
+        if (!/^QA_LOGIN_EMAIL_SET\r?$/m.test(result)) return unknown("could not fill the expected browser email field");
+        lastAction = "fill-password";
+        if (!/^QA_LOGIN_PASSWORD_SET\r?$/m.test(result)) return unknown("could not fill the expected browser password field");
+        filled = true;
+        continue;
+      }
+      const next = controls.consent || controls.launch || controls.setup;
+      if (next) {
+        lastAction = next === controls.consent ? "app-consent" : next === controls.launch ? "launch-browser" : "browser-setup";
+        tap(next);
+      }
     }
 
     // Clear what the browser and keyboard learned. Owned emulator only (checked above).
     const ime = adb("shell", "settings", "get", "secure", "default_input_method").trim().split("/")[0];
-    for (const target of ["com.android.chrome", ime]) {
-      if (!target || !/Success/.test(adb("shell", "pm", "clear", target))) return unknown(`could not clear ${target || "the keyboard"}`);
+    for (const target of [CHROME, ime]) {
+      if (!target || !/Success/.test(adb("shell", "pm", "clear", target))) return unknown("could not clear the browser or keyboard");
     }
     if (!recorderGone()) return unknown("a screen recorder ran during the login window");
     const focus = /mCurrentFocus=Window\{[^}]*\}/.exec(adb("shell", "dumpsys", "window"))?.[0] ?? "";
     if (!focus.includes(` ${pkg}/`)) return unknown("the app is not in front after login");
     writeRecord(out, { mode: "password", status: "complete", login_end: stamp, reason: "app_login_complete result=app_shell reason=exchanged" }, env);
     return { ok: true, stamp };
-  } catch (error) {
-    // Never echo the error text: a tool's message could carry what it was given.
-    return unknown(`login probe failed (${error?.code || error?.name || "error"})`);
+  } catch {
+    return unknown("login probe failed");
+  } finally {
+    if (installedDriver) {
+      try { adb("shell", "rm", "-f", DEVICE_JAR); } catch { /* The jar contains only code on the ephemeral emulator. */ }
+    }
   }
 }
 
