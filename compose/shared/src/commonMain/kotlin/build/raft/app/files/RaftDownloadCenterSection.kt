@@ -174,7 +174,12 @@ private fun RaftDownloadCenterRow(
                 when {
                     entry.errorKind == RaftDownloadErrorKind.Interrupted || !canRetry ->
                         stringResource(Res.string.download_center_retry_unavailable)
-                    else -> entry.errorMessage
+                    // By the host's status word; its own message (platform English) is never shown.
+                    else ->
+                        stringResource(
+                            (raftAttachmentSaveFailure(entry.errorHostStatus ?: "failed", RaftAttachmentSaveDestination.Downloads)
+                                ?: RaftAttachmentSaveFailure.UnableToDownload).messageRes
+                        )
                 }
             if (!detail.isNullOrBlank()) {
                 RaftText(detail, style = typography.footnote, color = colors.foregroundMuted)

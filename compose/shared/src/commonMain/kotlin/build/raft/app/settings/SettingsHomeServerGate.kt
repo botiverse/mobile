@@ -392,7 +392,7 @@ internal fun AppShellServerGateContent(
             }
             is SharedAuthResult.Failure -> {
                 authDataSource.logDiagnostics("auth_choose_server_load_result result=failure code=${result.code}")
-                errorPresentation = AuthGateMessage.Dynamic(result.message)
+                errorPresentation = result.authGateMessage()
             }
             SharedAuthResult.Unauthenticated -> {
                 authDataSource.logDiagnostics("auth_choose_server_load_result result=unauthenticated action=stay_on_server_picker")
@@ -599,7 +599,7 @@ internal fun AppShellServerGateContent(
                     onSessionCleared(clearedSession)
                     onSignOut()
                 }
-                is SharedAuthResult.Failure -> errorPresentation = AuthGateMessage.Dynamic(result.message)
+                is SharedAuthResult.Failure -> errorPresentation = result.authGateMessage()
                 SharedAuthResult.Unauthenticated -> {
                     onSessionCleared(clearedSession)
                     onSignOut()
@@ -626,7 +626,7 @@ internal fun AppShellServerGateContent(
             }
             is SharedAuthResult.Failure -> {
                 authDataSource.logDiagnostics("auth_choose_server_action_result target=$target result=failure code=${result.code}")
-                errorPresentation = serverGateActionFailureMessage(target, result.message)
+                errorPresentation = serverGateActionFailureMessage(target, result)
             }
             SharedAuthResult.Unauthenticated -> {
                 authDataSource.logDiagnostics("auth_choose_server_action_result target=$target result=unauthenticated action=stay_on_server_picker")
@@ -680,12 +680,16 @@ internal fun appShellAuthLossEffectShouldApply(
                 currentSession.refreshToken == capturedSession.refreshToken
         )
 
-internal fun serverGateActionFailureMessage(target: String, message: String): AuthGateMessage =
-    if (target == "__create__" && message == AuthAuthorityChangedMessage) {
+internal fun serverGateActionFailureMessage(target: String, failure: SharedAuthResult.Failure): AuthGateMessage =
+    if (target == "__create__" && failure.message == AuthAuthorityChangedMessage) {
         AuthGateMessage.Static(Res.string.auth_error_session_changed_retry_create_server.desc())
     } else {
-        AuthGateMessage.Dynamic(message)
+        failure.authGateMessage()
     }
+
+/** The client's localized copy when it has one ([SharedAuthResult.Failure.display]), else the server's words. */
+internal fun SharedAuthResult.Failure.authGateMessage(): AuthGateMessage =
+    display?.let { AuthGateMessage.Static(it) } ?: AuthGateMessage.Dynamic(message)
 
 // Web parity: ServerSelector.tsx `toSlug` — lowercase, then every character
 // outside [a-z0-9-] becomes "-" (no collapsing, no trimming). The create form
@@ -812,7 +816,7 @@ internal fun AppShellEmailVerificationGateContent(
             }
             is SharedAuthResult.Failure -> {
                 sentPresentation = null
-                errorPresentation = AuthGateMessage.Dynamic(result.message)
+                errorPresentation = result.authGateMessage()
                 authDataSource.logDiagnostics("auth_resend_verification_result result=failure code=${result.code}")
             }
             SharedAuthResult.Unauthenticated -> {

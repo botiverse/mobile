@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.RaftHostStrings
 import build.raft.app.raftLogInfo
 import build.raft.app.raftLogWarn
+import build.raft.app.resources.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -145,13 +146,13 @@ internal class IosMobileOAuthPendingStore(
 
 internal sealed interface IosMobileOAuthStartOutcome {
     data class Success(val response: AuthMobileOAuthStartResponse) : IosMobileOAuthStartOutcome
-    data class Failure(val message: String, val stepUpMethods: String? = null) : IosMobileOAuthStartOutcome
+    data class Failure(val message: StringDesc, val stepUpMethods: String? = null) : IosMobileOAuthStartOutcome
     data object Unauthenticated : IosMobileOAuthStartOutcome
 }
 
 internal sealed interface IosNativeAppleStartOutcome {
     data class Success(val response: AuthNativeAppleMobileOAuthStartResponse) : IosNativeAppleStartOutcome
-    data class Failure(val message: String) : IosNativeAppleStartOutcome
+    data class Failure(val message: StringDesc) : IosNativeAppleStartOutcome
     data object Unauthenticated : IosNativeAppleStartOutcome
 }
 
@@ -159,13 +160,13 @@ internal sealed interface IosNativeAppleAuthorizationOutcome {
     data class Success(
         val response: AuthNativeAppleMobileOAuthAuthorizationResponse,
     ) : IosNativeAppleAuthorizationOutcome
-    data class Failure(val message: String) : IosNativeAppleAuthorizationOutcome
+    data class Failure(val message: StringDesc) : IosNativeAppleAuthorizationOutcome
     data object Unauthenticated : IosNativeAppleAuthorizationOutcome
 }
 
 internal sealed interface IosMobileOAuthLinkOutcome {
     data object Success : IosMobileOAuthLinkOutcome
-    data class Failure(val message: String) : IosMobileOAuthLinkOutcome
+    data class Failure(val message: StringDesc) : IosMobileOAuthLinkOutcome
     data object Unauthenticated : IosMobileOAuthLinkOutcome
 }
 
@@ -258,7 +259,7 @@ private class SharedIosMobileOAuthRuntime(
                 )
         ) {
             is SharedAuthResult.Success -> IosMobileOAuthLinkOutcome.Success
-            is SharedAuthResult.Failure -> IosMobileOAuthLinkOutcome.Failure(result.message)
+            is SharedAuthResult.Failure -> IosMobileOAuthLinkOutcome.Failure(result.userMessage)
             SharedAuthResult.Unauthenticated -> IosMobileOAuthLinkOutcome.Unauthenticated
         }
 }
@@ -267,21 +268,21 @@ private fun SharedAuthResult<AuthMobileOAuthStartResponse>.toIosStartOutcome(): 
     when (this) {
         is SharedAuthResult.Success -> IosMobileOAuthStartOutcome.Success(data)
         is SharedAuthResult.Failure ->
-            IosMobileOAuthStartOutcome.Failure(message, secondFactorStepUp?.methods?.joinToString(","))
+            IosMobileOAuthStartOutcome.Failure(userMessage, secondFactorStepUp?.methods?.joinToString(","))
         SharedAuthResult.Unauthenticated -> IosMobileOAuthStartOutcome.Unauthenticated
     }
 
 private fun SharedAuthResult<AuthNativeAppleMobileOAuthStartResponse>.toIosNativeAppleStartOutcome(): IosNativeAppleStartOutcome =
     when (this) {
         is SharedAuthResult.Success -> IosNativeAppleStartOutcome.Success(data)
-        is SharedAuthResult.Failure -> IosNativeAppleStartOutcome.Failure(message)
+        is SharedAuthResult.Failure -> IosNativeAppleStartOutcome.Failure(userMessage)
         SharedAuthResult.Unauthenticated -> IosNativeAppleStartOutcome.Unauthenticated
     }
 
 private fun SharedAuthResult<AuthNativeAppleMobileOAuthAuthorizationResponse>.toIosNativeAppleAuthorizationOutcome(): IosNativeAppleAuthorizationOutcome =
     when (this) {
         is SharedAuthResult.Success -> IosNativeAppleAuthorizationOutcome.Success(data)
-        is SharedAuthResult.Failure -> IosNativeAppleAuthorizationOutcome.Failure(message)
+        is SharedAuthResult.Failure -> IosNativeAppleAuthorizationOutcome.Failure(userMessage)
         SharedAuthResult.Unauthenticated -> IosNativeAppleAuthorizationOutcome.Unauthenticated
     }
 
@@ -355,8 +356,18 @@ internal class IosMobileOAuthCoordinator(
     private val pendingStore: IosMobileOAuthPendingStore,
     private val runtimeProvider: () -> IosMobileOAuthRuntime?,
     private val nowMillis: () -> Long = ::defaultNowMillis,
+    /** Results cross to Swift as text, in the app language; tests read the resource keys. */
+    private val resolveMessage: (StringDesc) -> String = RaftHostStrings::text,
 ) {
     private val mutex = Mutex()
+
+    private fun startError(code: String, message: StringDesc): RaftIosMobileOAuthStartResult =
+        iosMobileOAuthStartError(code, resolveMessage(message))
+
+    private fun errorCompletion(
+        pending: IosMobileOAuthPendingRequest,
+        message: StringDesc,
+    ): RaftIosMobileOAuthCompletionResult = iosMobileOAuthErrorCompletion(pending, resolveMessage(message))
 
     suspend fun startBrowser(
         provider: String,
@@ -379,13 +390,13 @@ internal class IosMobileOAuthCoordinator(
             ) {
                 return@withLock startError(
                     code = "ios_mobile_oauth_invalid_request",
-                    message = "Mobile sign-in could not be prepared.",
+                    message = Res.string.auth_error_link_prepare_failed.desc(),
                 )
             }
             val runtime = runtimeProvider()
                 ?: return@withLock startError(
                     code = "ios_mobile_oauth_runtime_not_ready",
-                    message = "Raft is still starting. Try again.",
+                    message = Res.string.auth_error_runtime_starting.desc(),
                 )
             val environmentKey = runtime.environmentKey.trim().ifBlank { "production" }
             val returnUri = when {
@@ -393,7 +404,7 @@ internal class IosMobileOAuthCoordinator(
                 isApprovedMobileOAuthReturnUri(returnUriOverride) -> returnUriOverride
                 else -> return@withLock startError(
                     code = "ios_mobile_oauth_invalid_return_uri",
-                    message = "Mobile sign-in could not be prepared.",
+                    message = Res.string.auth_error_link_prepare_failed.desc(),
                 )
             }
             val outcome =
@@ -419,7 +430,7 @@ internal class IosMobileOAuthCoordinator(
                     ) {
                         return@withLock startError(
                             code = "ios_mobile_oauth_start_contract_mismatch",
-                            message = "Mobile sign-in could not be prepared.",
+                            message = Res.string.auth_error_link_prepare_failed.desc(),
                         )
                     }
                     val callbackScheme = returnUri.substringBefore("://")
@@ -460,7 +471,7 @@ internal class IosMobileOAuthCoordinator(
                 IosMobileOAuthStartOutcome.Unauthenticated ->
                     startError(
                         code = "ios_mobile_oauth_auth_required",
-                        message = "Sign in again to continue.",
+                        message = Res.string.error_session_expired.desc(),
                     )
             }
         }
@@ -483,13 +494,13 @@ internal class IosMobileOAuthCoordinator(
             ) {
                 return@withLock startError(
                     code = "ios_mobile_oauth_invalid_request",
-                    message = "Mobile sign-in could not be prepared.",
+                    message = Res.string.auth_error_link_prepare_failed.desc(),
                 )
             }
             val runtime = runtimeProvider()
                 ?: return@withLock startError(
                     code = "ios_mobile_oauth_runtime_not_ready",
-                    message = "Raft is still starting. Try again.",
+                    message = Res.string.auth_error_runtime_starting.desc(),
                 )
             val environmentKey = runtime.environmentKey.trim().ifBlank { "production" }
             val returnUri = when {
@@ -497,7 +508,7 @@ internal class IosMobileOAuthCoordinator(
                 isApprovedMobileOAuthReturnUri(returnUriOverride) -> returnUriOverride
                 else -> return@withLock startError(
                     code = "ios_mobile_oauth_invalid_return_uri",
-                    message = "Mobile sign-in could not be prepared.",
+                    message = Res.string.auth_error_link_prepare_failed.desc(),
                 )
             }
             val outcome =
@@ -524,7 +535,7 @@ internal class IosMobileOAuthCoordinator(
                     ) {
                         return@withLock startError(
                             code = "ios_native_apple_start_contract_mismatch",
-                            message = "Mobile sign-in could not be prepared.",
+                            message = Res.string.auth_error_link_prepare_failed.desc(),
                         )
                     }
                     pendingStore.save(
@@ -554,7 +565,7 @@ internal class IosMobileOAuthCoordinator(
                 IosNativeAppleStartOutcome.Unauthenticated ->
                     startError(
                         code = "ios_mobile_oauth_auth_required",
-                        message = "Sign in again to continue.",
+                        message = Res.string.error_session_expired.desc(),
                     )
             }
         }
@@ -578,7 +589,7 @@ internal class IosMobileOAuthCoordinator(
             val ageMillis = nowMillis() - pending.startedAtMillis
             if (ageMillis >= IOS_MOBILE_OAUTH_PENDING_TTL_MILLIS || ageMillis < -IOS_MOBILE_OAUTH_CLOCK_SKEW_MILLIS) {
                 pendingStore.clear()
-                return@withLock errorCompletion(pending, "Sign-in request expired. Try again.")
+                return@withLock errorCompletion(pending, Res.string.auth_error_mobile_oauth_request_expired.desc())
             }
             if (authorizationCode.isBlank() || identityToken.isBlank()) {
                 pendingStore.clear()
@@ -597,7 +608,7 @@ internal class IosMobileOAuthCoordinator(
                 pendingStore.clear()
                 return@withLock errorCompletion(
                     pending,
-                    "The API environment changed. Start sign-in again.",
+                    Res.string.auth_error_mobile_oauth_environment_changed.desc(),
                 )
             }
             val result =
@@ -656,7 +667,7 @@ internal class IosMobileOAuthCoordinator(
                 IosMobileOAuthCallbackAdmission.Ignore -> ignoredCompletion()
                 IosMobileOAuthCallbackAdmission.Expired -> {
                     pendingStore.clear()
-                    errorCompletion(pending, "Sign-in request expired. Try again.")
+                    errorCompletion(pending, Res.string.auth_error_mobile_oauth_request_expired.desc())
                 }
                 IosMobileOAuthCallbackAdmission.Invalid -> {
                     pendingStore.clear()
@@ -684,7 +695,7 @@ internal class IosMobileOAuthCoordinator(
                         pendingStore.clear()
                         return@withLock errorCompletion(
                             pending,
-                            "The API environment changed. Start sign-in again.",
+                            Res.string.auth_error_mobile_oauth_environment_changed.desc(),
                         )
                     }
                     val terminal =
@@ -734,14 +745,14 @@ internal class IosMobileOAuthCoordinator(
             IosMobileOAuthLinkOutcome.Success ->
                 RaftIosMobileOAuthCompletionResult(
                     status = "settings_account",
-                    message = "${pending.provider.iosMobileOAuthProviderName()} account linked.",
+                    message = resolveMessage(Res.string.auth_notice_mobile_oauth_linked.format(pending.provider.iosMobileOAuthProviderName())),
                     provider = pending.provider,
                 )
             is IosMobileOAuthLinkOutcome.Failure -> errorCompletion(pending, outcome.message)
             IosMobileOAuthLinkOutcome.Unauthenticated ->
                 errorCompletion(
                     pending,
-                    "Sign in again to link ${pending.provider.iosMobileOAuthProviderName()}.",
+                    Res.string.auth_error_mobile_oauth_link_sign_in_again.format(pending.provider.iosMobileOAuthProviderName()),
                 )
         }
 }
@@ -762,7 +773,7 @@ private fun isApprovedMobileOAuthReturnUri(value: String): Boolean =
             IOS_MOBILE_OAUTH_DEBUG_RETURN_URI,
         )
 
-private fun startError(code: String, message: String): RaftIosMobileOAuthStartResult =
+private fun iosMobileOAuthStartError(code: String, message: String): RaftIosMobileOAuthStartResult =
     RaftIosMobileOAuthStartResult(
         status = "error",
         code = 0,
@@ -773,7 +784,7 @@ private fun startError(code: String, message: String): RaftIosMobileOAuthStartRe
 private fun ignoredCompletion(): RaftIosMobileOAuthCompletionResult =
     RaftIosMobileOAuthCompletionResult(status = "ignored")
 
-private fun errorCompletion(
+private fun iosMobileOAuthErrorCompletion(
     pending: IosMobileOAuthPendingRequest,
     message: String,
 ): RaftIosMobileOAuthCompletionResult =
@@ -783,30 +794,31 @@ private fun errorCompletion(
         provider = pending.provider,
     )
 
-private fun iosMobileOAuthActionFailedMessage(provider: String, mode: String): String =
+private fun iosMobileOAuthActionFailedMessage(provider: String, mode: String): StringDesc =
     if (mode == IOS_MOBILE_OAUTH_LINK_MODE) {
-        "Unable to link ${provider.iosMobileOAuthProviderName()}. Try again."
+        Res.string.auth_error_mobile_oauth_link_failed.format(provider.iosMobileOAuthProviderName())
     } else {
-        "${provider.iosMobileOAuthProviderName()} sign-in failed. Try again."
+        Res.string.auth_error_mobile_oauth_sign_in_failed.format(provider.iosMobileOAuthProviderName())
     }
 
+/** The copy for a provider [error] code (callback `error`, Swift cancel reason); never the code itself. */
 internal fun iosMobileOAuthProviderErrorMessage(
     provider: String,
     mode: String,
     error: String,
     accountConflictMessage: (String) -> String = RaftHostStrings::mobileOAuthAccountConflict,
     providerConflictMessage: (String) -> String = RaftHostStrings::mobileOAuthProviderConflict,
-): String {
+): StringDesc {
     val providerName = provider.iosMobileOAuthProviderName()
     return when (error.trim().lowercase()) {
         "access_denied", "provider_cancelled", "user_cancelled" ->
             if (mode == IOS_MOBILE_OAUTH_LINK_MODE) {
-                "$providerName account linking was cancelled."
+                Res.string.auth_notice_mobile_oauth_link_cancelled.format(providerName)
             } else {
-                "$providerName sign-in was cancelled."
+                Res.string.auth_notice_mobile_oauth_sign_in_cancelled.format(providerName)
             }
         "expired", "request_not_pending", "handoff_code_expired", "handoff_code_consumed" ->
-            "Sign-in request expired. Try again."
+            Res.string.auth_error_mobile_oauth_request_expired.desc()
         // Delegated to the shared mapper so Android resolves the identical
         // branch and copy; see MobileOAuthConflictMessages.kt.
         "account_conflict", "provider_conflict" ->
@@ -815,22 +827,14 @@ internal fun iosMobileOAuthProviderErrorMessage(
                 error = error,
                 accountConflictMessage = accountConflictMessage,
                 providerConflictMessage = providerConflictMessage,
-            ) ?: iosMobileOAuthActionFailedMessage(provider, mode)
-        "registration_disabled" ->
-            "New account registration is currently unavailable."
-        "runtime_not_ready" ->
-            "Raft is still starting. Try sign-in again."
+            )?.desc() ?: iosMobileOAuthActionFailedMessage(provider, mode)
+        "registration_disabled" -> Res.string.auth_error_registration_disabled.desc()
+        "runtime_not_ready" -> Res.string.auth_error_runtime_starting.desc()
         else -> iosMobileOAuthActionFailedMessage(provider, mode)
     }
 }
 
-private fun String.iosMobileOAuthProviderName(): String =
-    when (lowercase()) {
-        "google" -> "Google"
-        "github" -> "GitHub"
-        "apple" -> "Apple"
-        else -> "Social"
-    }
+private fun String.iosMobileOAuthProviderName(): String = mobileOAuthProviderDisplayName(this)
 
 /**
  * Native iOS entry point. Swift owns AuthenticationServices presentation and cryptographic PKCE
@@ -874,9 +878,9 @@ object RaftIosMobileOAuthBridge {
                         returnUriOverride = returnUri,
                     )
                 }.getOrElse {
-                    startError(
+                    iosMobileOAuthStartError(
                         code = "ios_mobile_oauth_bridge_unavailable",
-                        message = "Mobile sign-in is unavailable. Try again.",
+                        message = RaftHostStrings.signInFailed(),
                     )
                 }
             raftLogInfo(
@@ -907,9 +911,9 @@ object RaftIosMobileOAuthBridge {
                         returnUriOverride = returnUri,
                     )
                 }.getOrElse {
-                    startError(
+                    iosMobileOAuthStartError(
                         code = "ios_mobile_oauth_bridge_unavailable",
-                        message = "Mobile sign-in is unavailable. Try again.",
+                        message = RaftHostStrings.signInFailed(),
                     )
                 }
             raftLogInfo(
@@ -941,7 +945,7 @@ object RaftIosMobileOAuthBridge {
                     )
                     RaftIosMobileOAuthCompletionResult(
                         status = "login_error",
-                        message = "Mobile sign-in failed. Try again.",
+                        message = RaftHostStrings.signInFailed(),
                         provider = "apple",
                     )
                 }
@@ -983,7 +987,7 @@ object RaftIosMobileOAuthBridge {
                     raftLogWarn(IOS_MOBILE_OAUTH_LOG_TAG, "oauth_callback_failed errorType=${it::class.simpleName ?: "unknown"}")
                     RaftIosMobileOAuthCompletionResult(
                         status = "login_error",
-                        message = "Mobile sign-in failed. Try again.",
+                        message = RaftHostStrings.signInFailed(),
                     )
                 }
             raftLogInfo(

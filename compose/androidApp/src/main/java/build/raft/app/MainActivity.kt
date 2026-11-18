@@ -22,6 +22,8 @@ import build.raft.app.data.SharedAuthErrorCode
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedEmailVerificationResult
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.userMessage
+import build.raft.app.resources.resolve
 import android.content.Intent
 import android.content.Context
 import android.content.pm.PackageManager
@@ -261,7 +263,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 is SharedEmailVerificationResult.Failure -> {
-                    Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, result.userMessage.resolve(), Toast.LENGTH_LONG).show()
                     when (emailVerificationNavigation(hasLiveShellInTask, EmailVerificationOutcome.Failure)) {
                         EmailVerificationNavigation.FinishTrampoline -> finish()
                         EmailVerificationNavigation.OpenAuthShell ->
@@ -379,7 +381,7 @@ class MainActivity : ComponentActivity() {
                     openSettingsAccountAfterMobileOAuthLink()
                 }
                 is SharedAuthResult.Failure -> {
-                    Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, result.userMessage.resolve(), Toast.LENGTH_SHORT).show()
                     openSettingsAccountAfterMobileOAuthLink()
                 }
                 SharedAuthResult.Unauthenticated -> {

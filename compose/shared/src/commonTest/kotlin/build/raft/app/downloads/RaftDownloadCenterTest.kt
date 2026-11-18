@@ -208,6 +208,7 @@ class RaftDownloadCenterTest {
         assertEquals(RaftDownloadStatus.Failed, center.row().status)
         assertEquals(RaftDownloadErrorKind.Failed, center.row().errorKind)
         assertEquals("HTTP 500", center.row().errorMessage)
+        assertEquals("download_failed", center.row().errorHostStatus)
 
         task.rearm()
         now = 3_000L
@@ -354,7 +355,8 @@ class RaftDownloadCenterTest {
         runCurrent()
         val failed = entry()!!.toFilePreviewDownloadView()
         assertEquals(RaftFilePreviewDownloadPhase.Failed, failed.phase, "the file page offers Retry")
-        assertEquals("network lost", failed.errorMessage)
+        assertNull(failed.errorMessage, "the host's own words stay off the page")
+        assertEquals("network lost", entry()!!.errorMessage, "and stay on the row for diagnosis")
         assertNull(raftThreadAttachmentCardDownloadLabel(entry(), terms))
     }
 

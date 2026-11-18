@@ -2612,7 +2612,7 @@ private fun RaftAppShellReadyContent(
         }
         is SharedAuthGateState.Error -> {
             AppShellAuthErrorContent(
-                message = gate.message,
+                message = gate.message.localized(),
                 onRetry = { authGateViewModel.dispatch(SharedAuthGateIntent.Retry) },
                 onSignIn = { authGateViewModel.dispatch(SharedAuthGateIntent.ShowSignIn) },
                 onOpenDiagnostics = { pager.openAppShellDeveloper() },

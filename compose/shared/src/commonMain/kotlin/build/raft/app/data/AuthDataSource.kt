@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import build.raft.app.image.raftClearImageCaches
+import build.raft.app.resources.*
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -94,7 +95,8 @@ class SharedAuthDataSource(
         if (email.isBlank() || password.isBlank()) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
-                "Email and password are required."
+                "Email and password are required.",
+                display = Res.string.auth_validation_email_password_required.desc()
             )
         }
 
@@ -123,7 +125,8 @@ class SharedAuthDataSource(
                             )
                             return SharedAuthResult.Failure(
                                 SharedAuthErrorCode.Network,
-                                "Could not reach Raft. Check your connection and try again."
+                                "Could not reach Raft. Check your connection and try again.",
+                                display = Res.string.error_server_unreachable.desc()
                             )
                         }
             ) {
@@ -195,13 +198,15 @@ class SharedAuthDataSource(
         if (normalizedProvider != "google") {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
-                "This sign-in provider is not available on this device."
+                "This sign-in provider is not available on this device.",
+                display = Res.string.auth_error_provider_unavailable.desc()
             )
         }
         if (code.isBlank()) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
-                "Google sign-in did not return an authorization code."
+                "Google sign-in did not return an authorization code.",
+                display = Res.string.auth_error_mobile_oauth_sign_in_failed.format("Google")
             )
         }
 
@@ -272,13 +277,15 @@ class SharedAuthDataSource(
         if (normalizedProvider !in BrowserMobileOAuthProviders) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
-                "This account provider is not available on this device."
+                "This account provider is not available on this device.",
+                display = Res.string.auth_error_provider_unavailable.desc()
             )
         }
         if (returnUri.isBlank() || codeChallenge.isBlank()) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
-                "Account linking could not be prepared."
+                "Account linking could not be prepared.",
+                display = Res.string.auth_error_link_prepare_failed.desc()
             )
         }
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
@@ -331,13 +338,15 @@ class SharedAuthDataSource(
         if (normalizedProvider !in MobileOAuthProviders) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
-                "This account provider is not available on this device."
+                "This account provider is not available on this device.",
+                display = Res.string.auth_error_provider_unavailable.desc()
             )
         }
         if (code.isBlank() || codeVerifier.isBlank()) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
-                "Account linking did not return the required credentials."
+                "Account linking did not return the required credentials.",
+                display = Res.string.auth_error_mobile_oauth_link_failed.format(mobileOAuthProviderDisplayName(normalizedProvider))
             )
         }
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
@@ -365,6 +374,12 @@ class SharedAuthDataSource(
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
                 if (mode == "link") "Account linking could not be prepared." else "Mobile sign-in could not be prepared.",
+                display =
+                    if (mode == "link") {
+                        Res.string.auth_error_link_prepare_failed.desc()
+                    } else {
+                        Res.string.auth_error_sign_in_failed.desc()
+                    },
             )
         }
         val authorization =
@@ -410,6 +425,12 @@ class SharedAuthDataSource(
                 } else {
                     "Mobile sign-in did not return the required credentials."
                 },
+                display =
+                    if (mode == "link") {
+                        Res.string.auth_error_mobile_oauth_link_failed.format(mobileOAuthProviderDisplayName("apple"))
+                    } else {
+                        Res.string.auth_error_mobile_oauth_sign_in_failed.format(mobileOAuthProviderDisplayName("apple"))
+                    },
             )
         }
         val authorization =
@@ -505,7 +526,8 @@ class SharedAuthDataSource(
         if (normalizedName.length < 5 || normalizedDisplayName.isBlank()) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
-                "Username and display name are required."
+                "Username and display name are required.",
+                display = Res.string.auth_validation_profile_required.desc()
             )
         }
         val current = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
@@ -556,7 +578,7 @@ class SharedAuthDataSource(
             is AuthApiResult.Success -> Unit
             is AuthApiResult.Failure -> {
                 val failure = response.toSharedAuthFailure()
-                return SharedEmailVerificationResult.Failure(failure.code, failure.message)
+                return SharedEmailVerificationResult.Failure(failure.code, failure.message, failure.display)
             }
         }
         return refreshEmailVerificationStatus()
@@ -603,7 +625,8 @@ class SharedAuthDataSource(
                     )
                     return SharedAuthResult.Failure(
                         SharedAuthErrorCode.Unknown,
-                        "Could not restore local session. Local storage setup failed."
+                        "Could not restore local session. Local storage setup failed.",
+                        display = Res.string.auth_error_restore_local_storage.desc()
                     )
                 }
                 ?: run {
@@ -616,7 +639,7 @@ class SharedAuthDataSource(
                     diagnosticsLogger(
                         "auth_restore_current_user_exception errorType=${throwable.safeDiagnosticsType()} mapped=network"
                     )
-                    SharedAuthResult.Failure(SharedAuthErrorCode.Network, "Network unavailable. Check your connection.")
+                    authNetworkUnavailableFailure()
                 }
         return when (current) {
             is SharedAuthResult.Success -> {
@@ -638,7 +661,7 @@ class SharedAuthDataSource(
                             diagnosticsLogger(
                                 "auth_restore_refresh_exception errorType=${throwable.safeDiagnosticsType()} mapped=network"
                             )
-                            SharedAuthResult.Failure(SharedAuthErrorCode.Network, "Network unavailable. Check your connection.")
+                            authNetworkUnavailableFailure()
                         }
                 when (refreshed) {
                     is SharedAuthResult.Success -> {
@@ -650,10 +673,7 @@ class SharedAuthDataSource(
                                     diagnosticsLogger(
                                         "auth_restore_refreshed_current_user_exception errorType=${it.safeDiagnosticsType()} mapped=network"
                                     )
-                                    SharedAuthResult.Failure(
-                                        SharedAuthErrorCode.Network,
-                                        "Network unavailable. Check your connection."
-                                    )
+                                    authNetworkUnavailableFailure()
                                 }
                         ) {
                             is SharedAuthResult.Success -> {
@@ -948,6 +968,7 @@ class SharedAuthDataSource(
         return SharedAuthResult.Failure(
             SharedAuthErrorCode.Unknown,
             AuthAuthorityChangedMessage,
+            display = Res.string.auth_error_session_refresh.desc(),
         )
     }
 
@@ -1005,7 +1026,11 @@ class SharedAuthDataSource(
         var session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         val normalizedName = name.trim()
         if (normalizedName.isBlank()) {
-            return SharedAuthResult.Failure(SharedAuthErrorCode.Validation, "Server name is required.")
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "Server name is required.",
+                display = Res.string.auth_validation_server_name_required.desc()
+            )
         }
         val body =
             authJson.encodeToString(
@@ -1031,6 +1056,7 @@ class SharedAuthDataSource(
                         return SharedAuthResult.Failure(
                             SharedAuthErrorCode.Unknown,
                             AuthAuthorityChangedMessage,
+                            display = Res.string.auth_error_session_changed_retry_create_server.desc(),
                         )
                     }
                     session = refreshed.data
@@ -1570,7 +1596,8 @@ internal suspend fun selectStoredAuthServer(
     if (expectedSession.servers.none { it.id == serverId }) {
         return SharedAuthResult.Failure(
             SharedAuthErrorCode.Unknown,
-            "Server not found."
+            "Server not found.",
+            display = Res.string.auth_error_server_not_found.desc()
         )
     }
     val updated =
@@ -1621,7 +1648,11 @@ private fun SharedAuthResult.Failure.isRecoverableRestoreFailure(): Boolean =
         code == SharedAuthErrorCode.Server ||
         (code == SharedAuthErrorCode.Unknown && message == AUTH_ME_CONTRACT_MISMATCH)
 
-private fun loginStageFailure(stage: String, detail: String? = null): SharedAuthResult.Failure =
+/**
+ * Signed in, but a local setup [stage] failed. [SharedAuthResult.Failure.message] names the stage
+ * and [detail] for logs; the user reads one sentence without either (stage ids are internal).
+ */
+internal fun loginStageFailure(stage: String, detail: String? = null): SharedAuthResult.Failure =
     SharedAuthResult.Failure(
         SharedAuthErrorCode.Unknown,
         buildString {
@@ -1632,8 +1663,25 @@ private fun loginStageFailure(stage: String, detail: String? = null): SharedAuth
                 append(" ")
                 append(detail)
             }
-        }
+        },
+        display = Res.string.auth_error_sign_in_setup_failed.desc()
     )
+
+private fun authNetworkUnavailableFailure(): SharedAuthResult.Failure =
+    SharedAuthResult.Failure(
+        SharedAuthErrorCode.Network,
+        "Network unavailable. Check your connection.",
+        display = Res.string.error_network_connection_failed.desc()
+    )
+
+/** The sign-in provider's name as its brand writes it, for copy ("Unable to link GitHub"). */
+internal fun mobileOAuthProviderDisplayName(provider: String): String =
+    when (provider.trim().lowercase()) {
+        "google" -> "Google"
+        "github" -> "GitHub"
+        "apple" -> "Apple"
+        else -> "Social"
+    }
 
 private fun Throwable.persistenceDiagnostics(): String =
     toPersistenceFailureDiagnostics().let { diagnostics ->
@@ -2210,11 +2258,21 @@ sealed interface SharedAuthResult<out T> {
     data object Unauthenticated : SharedAuthResult<Nothing>
     data class Failure(
         val code: SharedAuthErrorCode,
+        /**
+         * The server's own words, or the client's English for logs and diagnostics (and a few
+         * internal ids callers compare against). Shown as-is only when [display] is null.
+         */
         val message: String,
         /** A 403 `second_factor_step_up_required` (linking a sign-in method): what to step up with. */
-        val secondFactorStepUp: SecondFactorStepUpChallenge? = null
+        val secondFactorStepUp: SecondFactorStepUpChallenge? = null,
+        /** The client's own copy for this failure, in the app language; null shows [message]. */
+        val display: StringDesc? = null
     ) : SharedAuthResult<Nothing>
 }
+
+/** What the user reads for [this]: the client's localized copy, else the server's message as sent. */
+val SharedAuthResult.Failure.userMessage: StringDesc
+    get() = display ?: message.desc()
 
 sealed interface SharedEmailVerificationResult {
     data class Verified(val session: StoredAuthSession) : SharedEmailVerificationResult
@@ -2222,9 +2280,15 @@ sealed interface SharedEmailVerificationResult {
     data class RefreshPending(val message: String) : SharedEmailVerificationResult
     data class Failure(
         val code: SharedAuthErrorCode,
-        val message: String
+        val message: String,
+        /** As [SharedAuthResult.Failure.display]. */
+        val display: StringDesc? = null
     ) : SharedEmailVerificationResult
 }
+
+/** As [SharedAuthResult.Failure.userMessage]. */
+val SharedEmailVerificationResult.Failure.userMessage: StringDesc
+    get() = display ?: message.desc()
 
 enum class SharedAuthErrorCode {
     Validation,
@@ -2307,7 +2371,13 @@ data class AuthLogoutRequestBody(
     val refreshToken: String
 )
 
-private fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failure {
+/**
+ * A failed auth request as the user reads it. The server's `error` / `message` is shown as sent
+ * (web `authServerErrorMessage` does the same) except for the codes web maps; without one, the
+ * client's localized copy for the HTTP status. A contract code (a response the client could not
+ * read) is for logs only.
+ */
+internal fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failure {
     val errorDto = errorBodyText?.let { body ->
         runCatching { authJson.decodeFromString(AuthErrorBodyDto.serializer(), body) }.getOrNull()
     }
@@ -2317,44 +2387,62 @@ private fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failur
         return SharedAuthResult.Failure(
             SharedAuthErrorCode.Unknown,
             challenge.serverMessage ?: message ?: SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
-            secondFactorStepUp = challenge
+            secondFactorStepUp = challenge,
+            display = if (challenge.serverMessage == null && message == null) Res.string.auth_error_sign_in_failed.desc() else null
         )
     }
+    // web authErrors.ts: the server's English for wrong credentials reads as the client's copy.
+    val incorrectCredentials =
+        (errorDto?.code as? JsonPrimitive)?.takeIf { it.isString }?.content == "AUTH_INVALID_CREDENTIALS" ||
+            message == "Invalid email or password"
     return when {
         code == 422 && errorDto?.error in setOf("LEGAL_ACCEPTANCE_REQUIRED", "TERMS_CHANGED") ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.LegalAcceptanceRequired,
-                "Review and accept Raft's Terms of Service and Privacy Policy to continue."
+                "Review and accept Raft's Terms of Service and Privacy Policy to continue.",
+                display = Res.string.auth_error_legal_acceptance_required.desc()
             )
         contractCode != null ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Unknown,
-                contractCode
+                contractCode,
+                display = Res.string.auth_error_sign_in_failed.desc()
             )
         code == 0 ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Network,
-                message ?: "Network unavailable. Check your connection."
+                message ?: "Network unavailable. Check your connection.",
+                display = if (message == null) Res.string.error_network_connection_failed.desc() else null
             )
         code == 400 ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
-                message ?: "Check the fields and try again."
+                message ?: "Check the fields and try again.",
+                display = if (message == null) Res.string.auth_error_check_fields.desc() else null
             )
         code == 401 ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.InvalidCredentials,
-                message ?: "Email or password is incorrect."
+                message ?: "Email or password is incorrect.",
+                display =
+                    if (message == null || incorrectCredentials) Res.string.auth_error_incorrect_credentials.desc() else null
             )
         code in 500..599 ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Server,
-                message ?: "Raft is unavailable. Try again soon."
+                message ?: "Raft is unavailable. Try again soon.",
+                display = if (message == null) Res.string.error_server_unavailable.desc() else null
             )
         else ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Unknown,
-                message ?: "Sign in failed. Try again."
+                message ?: "Sign in failed. Try again.",
+                display =
+                    when {
+                        incorrectCredentials -> Res.string.auth_error_incorrect_credentials.desc()
+                        message == null -> Res.string.auth_error_sign_in_failed.desc()
+                        else -> null
+                    }
             )
     }
 }
@@ -2528,6 +2616,8 @@ private data class AuthOkResponseDto(
 private data class AuthErrorBodyDto(
     val error: String? = null,
     val message: String? = null,
+    /** Any JSON shape: a non-string `code` must not fail the decode and drop [error]. */
+    val code: JsonElement? = null,
 )
 
 private fun StoredAuthSession.bearer(): String = "Bearer $accessToken"

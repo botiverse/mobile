@@ -54,7 +54,7 @@ final class RaftIosOAuthRouteStore: ObservableObject {
                 )
             case "login_error":
                 self.replaceWithLoginError(
-                    result.message ?? "Mobile sign-in failed. Try again.",
+                    result.message ?? RaftHostStrings.shared.signInFailed(),
                     shellInstanceId: shellInstanceId
                 )
             case "settings_account":
@@ -78,7 +78,7 @@ final class RaftIosOAuthRouteStore: ObservableObject {
                 break
             default:
                 self.replaceWithLoginError(
-                    "Mobile sign-in failed. Try again.",
+                    RaftHostStrings.shared.signInFailed(),
                     shellInstanceId: shellInstanceId
                 )
             }
@@ -567,7 +567,7 @@ final class RaftIosMobileOAuthHost: NSObject,
                 return
             }
             let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            alert.addAction(UIAlertAction(title: RaftHostStrings.shared.ok(), style: .default))
             controller.present(alert, animated: true)
         }
     }
@@ -653,7 +653,7 @@ final class RaftIosMobileOAuthHost: NSObject,
             if let generation = deferred.expectedGeneration, !generation.isEmpty {
                 cancelPending(generation: generation, error: "runtime_not_ready", applyRoute: true)
             } else {
-                RaftIosOAuthRouteStore.shared.showLoginError("Raft is still starting. Try sign-in again.")
+                RaftIosOAuthRouteStore.shared.showLoginError(RaftHostStrings.shared.runtimeStarting())
             }
             return
         }

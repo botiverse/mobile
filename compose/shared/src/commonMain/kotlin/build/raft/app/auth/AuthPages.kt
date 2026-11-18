@@ -20,6 +20,7 @@ import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.userMessage
 import build.raft.app.data.SharedAuthRuntimeCapabilities
 import build.raft.app.data.SharedAuthRuntimeCapabilityStore
 import build.raft.app.data.SharedSettingsActionState
@@ -124,15 +125,12 @@ private fun rememberCurrentEnvironmentAuthDataSource(bridge: BridgeModule): Shar
 }
 
 private sealed interface AuthErrorPresentation {
-    data class Dynamic(val message: String) : AuthErrorPresentation
-
     data class Static(val message: StringDesc) : AuthErrorPresentation
 }
 
 @Composable
 private fun AuthErrorPresentation?.localizedMessage(): String? =
     when (this) {
-        is AuthErrorPresentation.Dynamic -> message
         is AuthErrorPresentation.Static -> message.localized()
         null -> null
     }
@@ -282,7 +280,7 @@ private fun AuthProfileSetupScreen() {
             SharedAuthResult.Unauthenticated -> pager.openAuthPage(LOGIN_PAGE)
             is SharedAuthResult.Failure -> {
                 loaded = true
-                errorPresentation = AuthErrorPresentation.Dynamic(current.message)
+                errorPresentation = AuthErrorPresentation.Static(current.userMessage)
             }
         }
     }
@@ -298,7 +296,7 @@ private fun AuthProfileSetupScreen() {
             is SharedAuthResult.Success -> pager.openPostAuthRoute(result.data)
             is SharedAuthResult.Failure -> {
                 state = state.copy(submitting = false)
-                errorPresentation = AuthErrorPresentation.Dynamic(result.message)
+                errorPresentation = AuthErrorPresentation.Static(result.userMessage)
             }
             SharedAuthResult.Unauthenticated -> pager.openAuthPage(LOGIN_PAGE)
             null -> {

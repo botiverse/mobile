@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.markdown.RaftCleanCopyClipboardScope
 import build.raft.app.resources.*
+import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftSegment
 import build.raft.designsystem.components.RaftSegmentedControl
@@ -2845,25 +2846,35 @@ private fun RaftFilePreviewStandalonePageContent() {
                 if (!exportPrivateDownload) activeDownloadId = null
                 if (exportPrivateDownload) null else downloadStopped
             }
-            "storage_failed" ->
-                if (exportPrivateDownload) {
-                    fileExportFailed
-                } else {
-                    result?.optString("message").orEmpty().ifBlank { storageUnavailable }
+            else -> {
+                val status = result?.optString("status").orEmpty()
+                val failure =
+                    raftAttachmentSaveFailure(
+                        status = status,
+                        destination =
+                            when {
+                                exportPrivateDownload -> RaftAttachmentSaveDestination.FilesExport
+                                toPhotos -> RaftAttachmentSaveDestination.Photos
+                                else -> RaftAttachmentSaveDestination.Downloads
+                            }
+                    ) ?: RaftAttachmentSaveFailure.UnableToDownload
+                bridge.log(
+                    "file_preview_save_failed attachment=${currentPayload.attachmentId.take(8)} " +
+                        "status=${raftAttachmentOpenDiagnosticStatus(status)} " +
+                        "errorKind=${raftAttachmentOpenDiagnosticErrorKind(result?.optString("errorKind"))} " +
+                        "failure=${failure.name} message=${raftAttachmentHostMessageForLog(result?.optString("message"))}"
+                )
+                when (failure) {
+                    RaftAttachmentSaveFailure.DownloadFailed -> downloadFailed
+                    RaftAttachmentSaveFailure.StorageUnavailable -> storageUnavailable
+                    RaftAttachmentSaveFailure.UnableToDownload -> unableToDownloadAttachment
+                    RaftAttachmentSaveFailure.FilesExportFailed -> fileExportFailed
+                    RaftAttachmentSaveFailure.PhotosPermissionDenied -> imagePhotosPermissionDenied
+                    RaftAttachmentSaveFailure.PhotosPermissionRestricted -> imagePhotosPermissionRestricted
+                    RaftAttachmentSaveFailure.PhotosUnsupportedImage -> imagePhotosUnsupported
+                    RaftAttachmentSaveFailure.PhotosSaveFailed -> imagePhotosSaveFailed
                 }
-            "download_failed" -> downloadFailed
-            "permission_denied" -> imagePhotosPermissionDenied
-            "permission_restricted" -> imagePhotosPermissionRestricted
-            "unsupported_image" -> imagePhotosUnsupported
-            "photos_failed" -> imagePhotosSaveFailed
-            else ->
-                result?.optString("message").orEmpty().ifBlank {
-                    when {
-                        exportPrivateDownload -> fileExportFailed
-                        toPhotos -> imagePhotosSaveFailed
-                        else -> unableToDownloadAttachment
-                    }
-                }
+            }
         }
     }
     /** task #360: hand the short-lived disposition=attachment URL to the system browser, so
@@ -3214,8 +3225,11 @@ private fun RaftFilePreviewStandalonePageContent() {
                 downloadProgress = null
                 bridge.toast(downloadedFileDeleted)
             } else {
-                val error = result?.optString("message").orEmpty().ifBlank { unableToDeleteDownload }
-                bridge.toast(error)
+                bridge.log(
+                    "file_preview_delete_download_failed status=${raftAttachmentOpenDiagnosticStatus(status)} " +
+                        "message=${raftAttachmentHostMessageForLog(result?.optString("message"))}"
+                )
+                bridge.toast(unableToDeleteDownload)
             }
         }
     }
@@ -10720,6 +10734,67 @@ internal fun raftAttachmentOpenResultMessage(
         "download_failed" -> terms.downloadFailed
         else -> terms.unableToOpenAttachment
     }
+
+/** Where a save puts the attachment: Downloads (or the platform's save sheet), Photos, or a Files export. */
+internal enum class RaftAttachmentSaveDestination { Downloads, Photos, FilesExport }
+
+/** What a failed attachment save tells the user; one catalog string each ([messageRes]). */
+internal enum class RaftAttachmentSaveFailure(val messageRes: StringResource) {
+    DownloadFailed(Res.string.file_preview_download_failed),
+    StorageUnavailable(Res.string.file_preview_error_storage_unavailable),
+    UnableToDownload(Res.string.file_preview_error_download_attachment),
+    FilesExportFailed(Res.string.file_preview_export_failed),
+    PhotosPermissionDenied(Res.string.thread_image_preview_photos_permission_denied),
+    PhotosPermissionRestricted(Res.string.thread_image_preview_photos_permission_restricted),
+    PhotosUnsupportedImage(Res.string.thread_image_preview_photos_unsupported),
+    PhotosSaveFailed(Res.string.thread_image_preview_photos_save_failed),
+}
+
+/**
+ * The failure a host save result reports, by its status word only, or null when the save did not
+ * fail ("saved" / "exported" / "cancelled"). The host's `message` is the platform's own English
+ * ("Unable to create Downloads file", "Another file save is already active") and goes to the log,
+ * never to the user.
+ */
+internal fun raftAttachmentSaveFailure(
+    status: String,
+    destination: RaftAttachmentSaveDestination,
+): RaftAttachmentSaveFailure? =
+    when (status) {
+        "saved", "exported", "cancelled" -> null
+        "download_failed" -> RaftAttachmentSaveFailure.DownloadFailed
+        "storage_failed" ->
+            when (destination) {
+                RaftAttachmentSaveDestination.Downloads -> RaftAttachmentSaveFailure.StorageUnavailable
+                RaftAttachmentSaveDestination.Photos -> RaftAttachmentSaveFailure.PhotosSaveFailed
+                RaftAttachmentSaveDestination.FilesExport -> RaftAttachmentSaveFailure.FilesExportFailed
+            }
+        "permission_denied" -> RaftAttachmentSaveFailure.PhotosPermissionDenied
+        "permission_restricted" -> RaftAttachmentSaveFailure.PhotosPermissionRestricted
+        "unsupported_image" -> RaftAttachmentSaveFailure.PhotosUnsupportedImage
+        "photos_failed" -> RaftAttachmentSaveFailure.PhotosSaveFailed
+        else ->
+            when (destination) {
+                RaftAttachmentSaveDestination.Downloads -> RaftAttachmentSaveFailure.UnableToDownload
+                RaftAttachmentSaveDestination.Photos -> RaftAttachmentSaveFailure.PhotosSaveFailed
+                RaftAttachmentSaveDestination.FilesExport -> RaftAttachmentSaveFailure.FilesExportFailed
+            }
+    }
+
+/**
+ * A host's free-text failure message for a log line: one line, URLs dropped, bounded. The message
+ * is the platform's own words, kept for diagnosis since the user only sees catalog copy.
+ */
+internal fun raftAttachmentHostMessageForLog(message: String?): String =
+    message
+        ?.replace(RaftAttachmentLogUrl, "<url>")
+        ?.replace(Regex("\\s+"), " ")
+        ?.trim()
+        ?.take(160)
+        ?.ifBlank { null }
+        ?: "none"
+
+private val RaftAttachmentLogUrl = Regex("[a-zA-Z][a-zA-Z0-9+.-]*://\\S+")
 
 internal fun raftAttachmentOpenDiagnosticStatus(status: String?): String {
     val normalized = status?.trim()?.lowercase().orEmpty()

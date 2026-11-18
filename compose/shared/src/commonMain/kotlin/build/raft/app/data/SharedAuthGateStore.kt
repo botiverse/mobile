@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import build.raft.app.resources.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -110,7 +111,7 @@ class SharedAuthGateStore(
                 when (val result = restoreSession()) {
                     is SharedAuthResult.Success -> result.data.asGateState()
                     SharedAuthResult.Unauthenticated -> SharedAuthGateState.AuthRequired
-                    is SharedAuthResult.Failure -> SharedAuthGateState.Error(result.message)
+                    is SharedAuthResult.Failure -> SharedAuthGateState.Error(result.userMessage)
                 },
                 source = "restore_result"
             )
@@ -121,7 +122,7 @@ class SharedAuthGateStore(
                 "auth_gate_restore_exception errorType=${throwable.safeAuthGateDiagnosticsType()} mapped=restore_error"
             )
             setGateState(
-                SharedAuthGateState.Error("Could not restore session. Retry or sign in again."),
+                SharedAuthGateState.Error(Res.string.auth_error_restore_session.desc()),
                 source = "restore_exception"
             )
         }
@@ -272,7 +273,8 @@ sealed interface SharedAuthGateState {
         val phase: SharedAuthReadyPhase = SharedAuthReadyPhase.Confirmed
     ) : SharedAuthGateState
     data class BootstrapRecoveryRequired(val session: StoredAuthSession) : SharedAuthGateState
-    data class Error(val message: String) : SharedAuthGateState
+    /** Restore failed; [message] is what the error page says, in the app language. */
+    data class Error(val message: StringDesc) : SharedAuthGateState
 }
 
 enum class SharedAuthReadyPhase {

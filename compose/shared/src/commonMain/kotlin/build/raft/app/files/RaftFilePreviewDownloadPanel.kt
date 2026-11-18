@@ -104,7 +104,8 @@ internal fun RaftDownloadEntry.toFilePreviewDownloadView(): RaftFilePreviewDownl
                 else -> RaftFilePreviewDownloadPhase.Idle
             },
         transfer = transfer ?: RaftTransferProgress.notStarted(totalBytes),
-        errorMessage = errorMessage
+        // The row's errorMessage is the host's own English, kept for diagnosis: the page says its copy.
+        errorMessage = null
     )
 
 /** Shortest time the downloading panel stays up, so a fast download does not just flash. */
