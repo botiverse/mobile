@@ -42,63 +42,115 @@ export function bucketFor(delaySec) {
   return BUCKETS[delaySec] ?? { lo: delaySec * 0.5, hi: delaySec * 1.5 };
 }
 
+/** `[user,pid,process,...]` of an events-buffer am_kill / am_proc_died line → {pid, name}, or null. */
+export function parseEventPid(message) {
+  const m = /^\[(\d+),(\d+),([^,\]]+)/.exec(message);
+  return m ? { pid: Number(m[2]), name: m[3] } : null;
+}
+
+const round3 = (v) => (v == null ? null : Math.round(v * 1000) / 1000);
+
 /**
- * Decides one kill run from the logcat lines captured around it.
+ * When the old process exited, as an interval on the device's monotonic clock:
+ * - lower: the latest line system_server writes right before it signals the process
+ *   (ActivityManager "Killing <pid>:<pkg>", events am_kill). The signal comes after both.
+ * - upper: the earliest evidence the process is gone: the device-side poller's
+ *   `run=<n> pid_gone` probe line (it polls /proc/<pid> every ~5 ms from just before the
+ *   force-stop), events am_proc_died, ActivityManager "Process <pkg> (pid <pid>) has died".
+ */
+export function exitInterval(parsed, { pkg, oldPid, runIndex }) {
+  const lowers = parsed.filter((l) =>
+    (l.tag === "ActivityManager" && parseKillLine(l.message, pkg) === oldPid) ||
+    (l.tag === "am_kill" && parseEventPid(l.message)?.pid === oldPid && parseEventPid(l.message)?.name === pkg));
+  const lower = lowers.length ? Math.max(...lowers.map((l) => l.tsMs)) : null;
+  const uppers = parsed.filter((l) =>
+    (l.tag === "RaftDraftTimingProbe" && new RegExp(`^run=${runIndex} pid_gone\\b`).test(l.message)) ||
+    (l.tag === "am_proc_died" && parseEventPid(l.message)?.pid === oldPid && parseEventPid(l.message)?.name === pkg) ||
+    (l.tag === "ActivityManager" && l.message.startsWith(`Process ${pkg} (pid ${oldPid}) has died`)));
+  const valid = uppers.filter((l) => lower == null || l.tsMs >= lower);
+  const upper = valid.length ? Math.min(...valid.map((l) => l.tsMs)) : null;
+  const sources = (list, at) => [...new Set(list.filter((l) => l.tsMs === at).map((l) => (l.tag === "RaftDraftTimingProbe" ? "pid_gone poll" : l.tag === "ActivityManager" ? (l.message.startsWith("Killing") ? "AM Killing" : "AM has died") : l.tag)))];
+  return {
+    lower_ms: lower,
+    upper_ms: upper,
+    width_ms: lower != null && upper != null ? round3(upper - lower) : null,
+    lower_source: lower != null ? sources(lowers, lower).join("+") : null,
+    upper_source: upper != null ? sources(valid, upper).join("+") : null,
+  };
+}
+
+/** Hit only when the whole possible exit interval, measured from [refMs], is inside the bucket. */
+function classify(result, delaySec) {
+  if (result.reason) return;
+  if (delaySec == null) {
+    result.timing = "measured";
+    return;
+  }
+  const { lo, hi } = bucketFor(delaySec);
+  if (result.delta_lower_ms > lo * 1000 && result.delta_upper_ms <= hi * 1000) result.timing = "hit";
+  else result.reason = `exit Δ [${result.delta_lower_ms}, ${result.delta_upper_ms}] ms not inside bucket (${lo}, ${hi}] s`;
+}
+
+/**
+ * Decides one kill run from the logcat lines captured around it (main, system, crash and events
+ * buffers, `-v monotonic`).
  *
  * @param {object} input
  * @param {string[]} input.lines raw logcat lines from before the last keystroke to after the kill
  * @param {string} input.pkg app package
  * @param {number} input.oldPid app pid read right before the kill command
+ * @param {boolean} input.samePid the old pid's start time was unchanged in the kill shell (not a recycled pid)
+ * @param {number} input.runIndex run number used in the probe lines
  * @param {number} input.expectedLen length of the full marker text (with the last character)
  * @param {number|null} input.delaySec D, the device-side sleep between last keystroke and kill (null: no bucket)
  * @param {boolean} input.pidGone the old pid was gone after the kill
+ * @param {string|null} [input.refProbe] measure from this probe line (`run=<n> <refProbe>`) instead of the last change
  */
-export function analyzeKillRun({ lines, pkg, oldPid, expectedLen, delaySec, pidGone }) {
+export function analyzeKillRun({ lines, pkg, oldPid, samePid = true, runIndex, expectedLen, delaySec, pidGone, refProbe = null }) {
   const parsed = lines.map(parseLogcatLine).filter(Boolean);
   const timing = parsed
     .filter((l) => l.tag === "RaftDraftTiming")
     .map((l) => ({ ...l, ...parseTimingMessage(l.message) }))
     .filter((l) => l.kind);
-  const killLine = parsed.find((l) => l.tag === "ActivityManager" && parseKillLine(l.message, pkg) === oldPid) ?? null;
-  const killMs = killLine?.tsMs ?? null;
+  const exit = exitInterval(parsed, { pkg, oldPid, runIndex });
+  const lower = exit.lower_ms;
 
-  const beforeKill = (l) => killMs == null || l.tsMs <= killMs;
-  const lastChange = [...timing].reverse().find((l) => l.kind === "change_received" && l.len === expectedLen && l.pid === oldPid && beforeKill(l)) ?? null;
-  const written = lastChange
-    ? timing.find((l) => l.kind === "draft_written" && l.seq >= lastChange.seq && l.len === expectedLen && l.pid === oldPid && beforeKill(l)) ?? null
-    : null;
-  const lateChange = timing.find((l) => l.kind === "change_received" && l.len === expectedLen && killMs != null && l.tsMs > killMs) ?? null;
+  const beforeSignal = (l) => lower == null || l.tsMs <= lower;
+  const lastChange = [...timing].reverse().find((l) => l.kind === "change_received" && l.len === expectedLen && l.pid === oldPid && beforeSignal(l)) ?? null;
+  const written = timing.find((l) => l.kind === "draft_written" && l.len === expectedLen && l.pid === oldPid && beforeSignal(l) && (!lastChange || l.seq >= lastChange.seq)) ?? null;
+  const lateChange = timing.find((l) => l.kind === "change_received" && l.len === expectedLen && lower != null && l.tsMs > lower) ?? null;
+  const probe = refProbe ? parsed.find((l) => l.tag === "RaftDraftTimingProbe" && l.message.startsWith(`run=${runIndex} ${refProbe}`)) ?? null : null;
+  const refMs = refProbe ? probe?.tsMs ?? null : lastChange?.uptimeMs ?? null;
 
   const result = {
     old_pid: oldPid,
-    kill_pid: killLine ? parseKillLine(killLine.message, pkg) : null,
     pid_gone: Boolean(pidGone),
+    same_process: Boolean(samePid),
+    measured_from: refProbe ?? "last change_received",
     last_change_seq: lastChange?.seq ?? null,
     last_change_uptime_ms: lastChange?.uptimeMs ?? null,
-    kill_monotonic_ms: killMs,
-    delta_ms: null,
+    exit_lower_ms: exit.lower_ms,
+    exit_upper_ms: exit.upper_ms,
+    exit_width_ms: exit.width_ms,
+    exit_lower_source: exit.lower_source,
+    exit_upper_source: exit.upper_source,
+    delta_lower_ms: refMs != null && exit.lower_ms != null ? round3(exit.lower_ms - refMs) : null,
+    delta_upper_ms: refMs != null && exit.upper_ms != null ? round3(exit.upper_ms - refMs) : null,
     // logcat's own stamp of the change line minus the app's uptimeMs: both CLOCK_MONOTONIC, so ~0.
-    clock_skew_ms: lastChange ? Math.round((lastChange.tsMs - lastChange.uptimeMs) * 1000) / 1000 : null,
+    clock_skew_ms: lastChange ? round3(lastChange.tsMs - lastChange.uptimeMs) : null,
     written_before_kill: Boolean(written),
     write_after_change_ms: written && lastChange ? written.uptimeMs - lastChange.uptimeMs : null,
     timing: "unconfirmed",
     reason: null,
   };
-  if (!killLine) result.reason = "no ActivityManager kill line for the old pid";
-  else if (!lastChange) result.reason = lateChange ? "last keystroke reached the composer only after the kill line" : "no change_received for the full text before the kill";
+  if (exit.lower_ms == null) result.reason = "no pre-signal kill line (AM Killing / am_kill) for the old pid";
+  else if (exit.upper_ms == null) result.reason = "exit not bounded above (no pid_gone poll, am_proc_died or has-died line)";
+  else if (!samePid) result.reason = "old pid's start time changed: not the same process";
   else if (!pidGone) result.reason = "old pid still alive after the kill";
-  else if (result.clock_skew_ms == null || Math.abs(result.clock_skew_ms) > MAX_CLOCK_SKEW_MS) result.reason = `logcat and uptime clocks disagree (skew ${result.clock_skew_ms} ms)`;
-  if (killLine && lastChange) result.delta_ms = Math.round((killMs - lastChange.uptimeMs) * 1000) / 1000;
-  if (!result.reason) {
-    if (delaySec == null) {
-      result.timing = "measured";
-    } else {
-      const { lo, hi } = bucketFor(delaySec);
-      const deltaSec = result.delta_ms / 1000;
-      if (deltaSec > lo && deltaSec <= hi) result.timing = "hit";
-      else result.reason = `Δ ${result.delta_ms} ms outside bucket (${lo}, ${hi}] s`;
-    }
-  }
+  else if (refProbe && !probe) result.reason = `no ${refProbe} probe line`;
+  else if (!refProbe && !lastChange) result.reason = lateChange ? "last keystroke reached the composer only after the kill signal could have been sent" : "no change_received for the full text before the kill";
+  else if (!refProbe && (result.clock_skew_ms == null || Math.abs(result.clock_skew_ms) > MAX_CLOCK_SKEW_MS)) result.reason = `logcat and uptime clocks disagree (skew ${result.clock_skew_ms} ms)`;
+  classify(result, delaySec);
   return result;
 }
 
@@ -107,7 +159,7 @@ export function summarize(runs) {
   const groups = new Map();
   for (const run of runs) {
     const key = run.group;
-    if (!groups.has(key)) groups.set(key, { group: key, runs: 0, hits: 0, unconfirmed: 0, restored: 0, restored_when_hit: 0, written_before_kill: 0, delta_ms: [] });
+    if (!groups.has(key)) groups.set(key, { group: key, runs: 0, hits: 0, unconfirmed: 0, restored: 0, restored_when_hit: 0, written_before_kill: 0, delta_ms: [], width_ms: [] });
     const g = groups.get(key);
     g.runs += 1;
     if (run.timing === "hit" || run.timing === "measured") g.hits += 1;
@@ -115,24 +167,41 @@ export function summarize(runs) {
     if (run.pass) g.restored += 1;
     if (run.pass && (run.timing === "hit" || run.timing === "measured")) g.restored_when_hit += 1;
     if (run.written_before_kill) g.written_before_kill += 1;
-    if (run.delta_ms != null) g.delta_ms.push(run.delta_ms);
+    if (run.delta_upper_ms != null) g.delta_ms.push(run.delta_upper_ms);
+    if (run.exit_width_ms != null) g.width_ms.push(run.exit_width_ms);
   }
+  const stats = (values) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    return { min: sorted[0] ?? null, median: sorted.length ? sorted[Math.floor(sorted.length / 2)] : null, max: sorted.at(-1) ?? null };
+  };
   return [...groups.values()].map((g) => {
-    const sorted = [...g.delta_ms].sort((a, b) => a - b);
-    const { delta_ms, ...rest } = g;
-    return { ...rest, delta_min_ms: sorted[0] ?? null, delta_median_ms: sorted.length ? sorted[Math.floor(sorted.length / 2)] : null, delta_max_ms: sorted.at(-1) ?? null };
+    const { delta_ms, width_ms, ...rest } = g;
+    const d = stats(delta_ms);
+    const w = stats(width_ms);
+    return { ...rest, delta_upper_min_ms: d.min, delta_upper_median_ms: d.median, delta_upper_max_ms: d.max, exit_width_median_ms: w.median, exit_width_max_ms: w.max };
   });
 }
 
+const cell = (v) => (v == null ? "-" : String(v).replace(/\|/g, "/"));
+
 export function markdownTable(runs, summary) {
   const out = [];
-  out.push("### Per bucket", "", "| group | runs | timing hits | unconfirmed | pass (restored / expected) | pass when hit | written before kill | Δ min / median / max (ms) |", "|---|---|---|---|---|---|---|---|");
+  out.push(
+    "### Per bucket", "",
+    "| group | runs | timing hits | unconfirmed | pass (restored / expected) | pass when hit | written before kill | exit Δ upper min / median / max (ms) | exit interval width median / max (ms) |",
+    "|---|---|---|---|---|---|---|---|---|",
+  );
   for (const g of summary) {
-    out.push(`| ${g.group} | ${g.runs} | ${g.hits} | ${g.unconfirmed} | ${g.restored} | ${g.restored_when_hit} | ${g.written_before_kill} | ${g.delta_min_ms ?? "-"} / ${g.delta_median_ms ?? "-"} / ${g.delta_max_ms ?? "-"} |`);
+    out.push(`| ${g.group} | ${g.runs} | ${g.hits} | ${g.unconfirmed} | ${g.restored} | ${g.restored_when_hit} | ${g.written_before_kill} | ${cell(g.delta_upper_min_ms)} / ${cell(g.delta_upper_median_ms)} / ${cell(g.delta_upper_max_ms)} | ${cell(g.exit_width_median_ms)} / ${cell(g.exit_width_max_ms)} |`);
   }
-  out.push("", "### Per run", "", "| # | group | D (s) | Δ (ms) | timing | written before kill | expected | composer after relaunch | pass | old pid | kill pid | pid gone | note |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+  out.push(
+    "", "### Per run", "",
+    "| # | group | D (s) | exit Δ lower (ms) | exit Δ upper (ms) | width (ms) | bounds | timing | written before kill | expected | composer after relaunch | pass | old pid | new pid | pid gone | note |",
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+  );
   runs.forEach((r, i) => {
-    out.push(`| ${i + 1} | ${r.group} | ${r.delay_sec ?? "-"} | ${r.delta_ms ?? "-"} | ${r.timing} | ${r.written_before_kill ? "yes" : "no"} | ${r.expected_desc} | ${r.observed_desc} | ${r.pass ? "yes" : "no"} | ${r.old_pid ?? "-"} | ${r.kill_pid ?? "-"} | ${r.pid_gone ? "yes" : "no"} | ${(r.reason ?? "").replace(/\|/g, "/")} |`);
+    const bounds = r.exit_lower_source ? `${r.exit_lower_source} .. ${r.exit_upper_source ?? "?"}` : "-";
+    out.push(`| ${i + 1} | ${r.group} | ${cell(r.delay_sec)} | ${cell(r.delta_lower_ms)} | ${cell(r.delta_upper_ms)} | ${cell(r.exit_width_ms)} | ${bounds} | ${r.timing} | ${r.written_before_kill ? "yes" : "no"} | ${cell(r.expected_desc)} | ${cell(r.observed_desc)} | ${r.pass ? "yes" : "no"} | ${cell(r.old_pid)} | ${cell(r.new_pid)} | ${r.pid_gone ? "yes" : "no"} | ${cell(r.reason)} |`);
   });
   return `${out.join("\n")}\n`;
 }

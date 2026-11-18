@@ -22,7 +22,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
-import { analyzeKillRun, bucketFor, markdownTable, parseKillLine, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
+import { analyzeKillRun, bucketFor, markdownTable, summarize } from "./draft_kill_timing_analysis.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, value, index, all) => {
@@ -34,8 +34,9 @@ const OUT = args.out ?? "draft-kill-timing-evidence";
 const PKG = args.package ?? "build.raft.app.alpha";
 const APK = args.apk;
 const SERVER = args.server ?? "OranixSlockTest";
-// The QA test channel of the QA server (docs/qa-acceptance/release-auto-login.md); never a work channel.
-const CHANNEL = args.channel ?? "qa-test-create-7842";
+// A new private channel per run, created here, used for nothing else and archived at the end: never a
+// shared QA channel (clearing its composer could clobber another run's draft) and never a work channel.
+const CHANNEL = `qa-draft-246-${process.env.GITHUB_RUN_ID ?? Date.now()}-${process.env.GITHUB_RUN_ATTEMPT ?? "1"}`;
 const RUNS_PER_BUCKET = Number(args["runs-per-bucket"] ?? 10);
 const FAST_RUNS = Number(args["fast-runs"] ?? Math.min(5, RUNS_PER_BUCKET));
 const DELAYS = (args.delays ?? "0.05,0.1,0.3,0.7").split(",").map(Number).filter((d) => d > 0);
@@ -190,7 +191,7 @@ const LOGCAT_RAW = path.join(OUT, "logcat-raw.txt");
 function startCapture() {
   adb(["logcat", "-c"], { allowFailure: true });
   const fd = fs.openSync(LOGCAT_RAW, "w");
-  logcatChild = spawn("adb", ["logcat", "-v", "monotonic", "-b", "main", "-b", "system", "-b", "crash"], { stdio: ["ignore", fd, fd] });
+  logcatChild = spawn("adb", ["logcat", "-v", "monotonic", "-b", "main", "-b", "system", "-b", "crash", "-b", "events"], { stdio: ["ignore", fd, fd] });
 }
 
 const logcatText = () => {
@@ -207,7 +208,8 @@ const linesSince = (mark) => logcatText().slice(mark).split("\n");
 const isTimingEvidence = (line) =>
   /\bRaftDraftTiming(Probe)?\s*:/.test(line) ||
   (/\bActivityManager\s*:/.test(line) && line.includes(PKG)) ||
-  /\blibprocessgroup\s*:/.test(line);
+  /\blibprocessgroup\s*:/.test(line) ||
+  (/\b(am_kill|am_proc_died)\s*:/.test(line) && line.includes(PKG));
 
 async function waitForTiming(description, predicate, { fromMark, timeoutMs = 15_000 }) {
   const deadline = Date.now() + timeoutMs;
@@ -258,20 +260,54 @@ async function apiLogin() {
 
 const listOf = (body, key) => (Array.isArray(body) ? body : body?.[key]) ?? [];
 
-async function namedChannel(token, server, name) {
-  let channels = listOf((await raftJson("GET", "channels", { token, serverId: server.id })).json, "channels");
-  if (!channels.length) {
-    const inbox = (await raftJson("GET", "channels/inbox?limit=50&offset=0", { token, serverId: server.id })).json;
-    channels = listOf(inbox, "items").map((row) => row?.channel ?? row);
+/** Creates the run's own channel (private first; public on the QA server if private is refused). */
+async function createRunChannel(api) {
+  const attempts = [];
+  for (const visibility of ["private", "public"]) {
+    const res = await raftJson("POST", "channels", {
+      token: api.token, serverId: api.server.id,
+      body: { name: CHANNEL, description: "Task #246 draft-kill timing acceptance (CI); archived when the run ends.", visibility },
+    });
+    const channel = res.json?.channel ?? res.json;
+    attempts.push({ visibility, status: res.status, code: res.json?.code ?? null });
+    if (res.status < 300 && channel?.id) return { id: channel.id, name: channel.name ?? CHANNEL, visibility, attempts };
   }
-  // Exactly the named QA test channel: never fall back to another (possibly a work) channel.
-  return channels.find((c) => c?.id && c?.name === name && c?.type !== "dm") ?? null;
+  fail(`could not create channel #${CHANNEL}: ${JSON.stringify(attempts)}`);
+}
+
+async function archiveRunChannel(api) {
+  if (!api.channel?.id) return { archived: false, reason: "no channel was created" };
+  try {
+    const res = await raftJson("POST", `channels/${api.channel.id}/archive`, { token: api.token, serverId: api.server.id });
+    return { archived: res.status < 300, status: res.status, code: res.json?.code ?? null };
+  } catch (error) {
+    return { archived: false, error: redact(error.message).slice(0, 200) };
+  }
+}
+
+async function channelMessages(api, limit = 100) {
+  const res = await raftJson("GET", `messages/channel/${api.channel.id}?limit=${limit}`, { token: api.token, serverId: api.server.id });
+  return { status: res.status, rows: listOf(res.json, "messages") };
 }
 
 async function recentMessageTexts(api) {
-  const res = await raftJson("GET", `messages/channel/${api.channel.id}?limit=30`, { token: api.token, serverId: api.server.id });
-  const rows = listOf(res.json, "messages");
-  return rows.map((m) => String(m?.content ?? ""));
+  return (await channelMessages(api, 30)).rows.map((m) => String(m?.content ?? ""));
+}
+
+/**
+ * Concurrency check: anything in the run's channel that this run did not post (the shared QA account may
+ * be in use elsewhere). Only counts, kinds and sender ids are recorded, never other content.
+ */
+async function channelActivityCheck(api) {
+  const { status, rows } = await channelMessages(api);
+  const ours = (m) => String(m?.content ?? "").includes(`dk${RUN_TAG}`) && (api.selfId == null || m?.senderId === api.selfId);
+  const others = rows.filter((m) => !ours(m));
+  const kinds = {};
+  for (const m of others) {
+    const kind = `${m?.type ?? m?.messageType ?? "message"}${m?.senderId === api.selfId ? " (QA account)" : ""}`;
+    kinds[kind] = (kinds[kind] ?? 0) + 1;
+  }
+  return { http: status, messages: rows.length, ours: rows.length - others.length, other_activity: others.length, other_kinds: kinds };
 }
 
 // ---------- sign-in (as android_realtime_e2e.mjs) ----------
@@ -395,6 +431,52 @@ async function composerAfterRelaunch(api, expected, timeoutMs = 15_000) {
 
 const describeText = (text) => (text === "" ? "(empty)" : /^[a-z0-9]+$/.test(text) ? `${text} (len ${text.length})` : `(other text, len ${text.length})`);
 
+// ---------- the kill (one device-side shell) ----------
+/** Field 22 of /proc/<pid>/stat: the process start time in clock ticks since boot (identifies the process, not just the pid). */
+function startTimeOf(pid) {
+  return shell(`cut -d' ' -f22 /proc/${pid}/stat 2>/dev/null`, { allowFailure: true }).trim() || null;
+}
+
+/**
+ * The device-side script of one kill: [before] (keystrokes), sleep, then a background poller on
+ * /proc/<pid> (every ~5 ms, bounded to ~20 s) started right before the force-stop, which logs
+ * `run=<n> pid_gone` the moment the old process is gone: the upper bound of its exit on the device clock.
+ * The start time of the pid is checked before the keystrokes, so a recycled pid cannot pass for the old process.
+ */
+function killScript({ oldPid, startTime, before, sleepSec, probeLabel = null }) {
+  const P = `/proc/${oldPid}`;
+  return (
+    `if [ "$(cut -d' ' -f22 ${P}/stat 2>/dev/null)" = "${startTime}" ]; then echo SAME_PROCESS; else echo OTHER_PROCESS; fi; ` +
+    `log -t RaftDraftTimingProbe "run=${runIndex} start"; ` +
+    (probeLabel ? `log -t RaftDraftTimingProbe "run=${runIndex} ${probeLabel}"; ` : "") +
+    `${before}sleep ${sleepSec}; ` +
+    `( i=0; while [ -d ${P} ] && [ $i -lt 4000 ]; do sleep 0.005; i=$((i+1)); done; ` +
+    `if [ -d ${P} ]; then log -t RaftDraftTimingProbe "run=${runIndex} pid_alive polls=$i"; else log -t RaftDraftTimingProbe "run=${runIndex} pid_gone polls=$i"; fi ) & ` +
+    `${FORCE_STOP} ${PKG}; wait; ` +
+    `if [ -d ${P} ]; then echo PID_ALIVE; else echo PID_GONE; fi`
+  );
+}
+
+/** Runs [script] for the old process, then decides the run (exit interval, timing) and the relaunch pid. */
+async function killAndAnalyze({ oldPid, startTime, script, expectedLen, delaySec, refProbe = null, mark }) {
+  const out = shell(script, { timeoutMs: 90_000 });
+  await sleep(1500);
+  const pidGone = !shell(`ls -d /proc/${oldPid} 2>/dev/null`, { allowFailure: true }).trim();
+  const lines = linesSince(mark);
+  const analysis = analyzeKillRun({
+    lines, pkg: PKG, oldPid, samePid: out.includes("SAME_PROCESS"), runIndex, expectedLen, delaySec, pidGone, refProbe,
+  });
+  return { analysis: { ...analysis, old_start_time: startTime, pid_gone_after_poll: out.includes("PID_GONE") }, lines };
+}
+
+/** After relaunch: a new process (pid or start time differs from the killed one). */
+function relaunchIdentity(record, oldPid, oldStart) {
+  record.new_pid = pidOf();
+  const newStart = record.new_pid ? startTimeOf(record.new_pid) : null;
+  record.new_process = Boolean(record.new_pid) && (record.new_pid !== oldPid || newStart !== oldStart);
+  if (!record.new_process) record.reason = `${record.reason ? `${record.reason}; ` : ""}relaunch is not a new process`;
+}
+
 // ---------- runs ----------
 let runIndex = 0;
 const markerPrefix = () => `dk${RUN_TAG}r${String(runIndex).padStart(2, "0")}x`;
@@ -427,35 +509,21 @@ async function killRun(api, { group, mode, delaySec }) {
       if (!send) fail("no enabled Send button");
       const [x, y] = center(send);
       const oldPid = pidOf();
+      if (!oldPid) fail("the app has no pid before the kill");
+      const startTime = startTimeOf(oldPid);
       mark = logcatMark();
-      const out = shell(
-        `log -t RaftDraftTimingProbe "run=${runIndex} send_tap"; ${INPUT} tap ${x} ${y}; sleep 0.1; ${FORCE_STOP} ${PKG}; ` +
-          `if [ -d /proc/${oldPid} ]; then echo PID_ALIVE; else echo PID_GONE; fi`,
-        { timeoutMs: 30_000 },
-      );
-      await sleep(2000);
-      const pidGone = !shell(`ls -d /proc/${oldPid} 2>/dev/null`, { allowFailure: true }).trim();
-      // The text was typed (and written) before the mark, so Δ here is the Send tap → kill: the probe line
-      // logged right before the tap to ActivityManager's kill line, both on the device's monotonic clock.
-      const parsed = linesSince(mark).map(parseLogcatLine).filter(Boolean);
-      const probe = parsed.find((l) => l.tag === "RaftDraftTimingProbe" && l.message.includes(`run=${runIndex} send_tap`));
-      const kill = parsed.find((l) => l.tag === "ActivityManager" && parseKillLine(l.message, PKG) === oldPid);
-      Object.assign(record, {
-        old_pid: oldPid,
-        kill_pid: kill ? oldPid : null,
-        pid_gone: pidGone,
-        pid_gone_immediately: out.includes("PID_GONE"),
-        delta_ms: probe && kill ? Math.round((kill.tsMs - probe.tsMs) * 1000) / 1000 : null,
-        delta_from: "send tap",
-        timing: probe && kill && pidGone ? "measured" : "unconfirmed",
-        reason: !kill ? "no ActivityManager kill line for the old pid" : !probe ? "no send_tap probe line" : !pidGone ? "old pid still alive after the kill" : null,
+      // Δ is measured from the send_tap probe (logged right before the tap) to the exit interval.
+      const { analysis } = await killAndAnalyze({
+        oldPid, startTime, mark, expectedLen: expected.length, delaySec: null, refProbe: "send_tap",
+        script: killScript({ oldPid, startTime, before: `${INPUT} tap ${x} ${y}; `, sleepSec: 0.1, probeLabel: "send_tap" }),
       });
+      Object.assign(record, analysis);
       const seen = await composerAfterRelaunch(api, "", 8_000);
       const sentOnServer = (await recentMessageTexts(api)).some((t) => t.includes(expected));
       record.sent_on_server = sentOnServer;
       record.expected_desc = sentOnServer ? "(empty)" : `(empty) or ${expected} (not sent)`;
       record.observed_desc = describeText(seen);
-      record.new_pid = pidOf();
+      relaunchIdentity(record, oldPid, startTime);
       record.pass = sentOnServer ? seen === "" : seen === "" || seen === expected;
       if (!sentOnServer) record.reason = `${record.reason ? `${record.reason}; ` : ""}message not on server after the kill`;
       return record;
@@ -475,21 +543,16 @@ async function killRun(api, { group, mode, delaySec }) {
     }
     const oldPid = pidOf();
     if (!oldPid) fail("the app has no pid before the kill");
+    const startTime = startTimeOf(oldPid);
     mark = logcatMark();
     const typeFast = mode === "fast" ? `for c in ${fastChars.split("").join(" ")}; do ${INPUT} text $c; sleep 0.03; done; ` : "";
     const home = mode === "home" ? `${INPUT} keyevent KEYCODE_HOME; ` : "";
     const sleepSec = mode === "home" ? 0.1 : delaySec;
-    const out = shell(
-      `log -t RaftDraftTimingProbe "run=${runIndex} mode=${mode} D=${sleepSec} start"; ${typeFast}` +
-        `${INPUT} keyevent ${LAST_KEY}; ${home}sleep ${sleepSec}; ${FORCE_STOP} ${PKG}; ` +
-        `if [ -d /proc/${oldPid} ]; then echo PID_ALIVE; else echo PID_GONE; fi`,
-      { timeoutMs: 60_000 },
-    );
-    await sleep(2000);
-    const pidGone = !shell(`ls -d /proc/${oldPid} 2>/dev/null`, { allowFailure: true }).trim();
-    const lines = linesSince(mark);
-    const analysis = analyzeKillRun({ lines, pkg: PKG, oldPid, expectedLen: expected.length, delaySec: mode === "home" ? null : delaySec, pidGone });
-    Object.assign(record, analysis, { pid_gone_immediately: out.includes("PID_GONE") });
+    const { analysis, lines } = await killAndAnalyze({
+      oldPid, startTime, mark, expectedLen: expected.length, delaySec: mode === "home" ? null : delaySec,
+      script: killScript({ oldPid, startTime, before: `${typeFast}${INPUT} keyevent ${LAST_KEY}; ${home}`, sleepSec }),
+    });
+    Object.assign(record, analysis);
     if (mode === "fast") {
       const changes = lines.filter((l) => l.includes("RaftDraftTiming") && l.includes("change_received")).map((l) => Number(/uptimeMs=(\d+)/.exec(l)?.[1]));
       record.typing_ms = changes.length > 1 ? changes.at(-1) - changes[0] : null;
@@ -497,7 +560,7 @@ async function killRun(api, { group, mode, delaySec }) {
     const seen = await composerAfterRelaunch(api, expected);
     record.expected_desc = describeText(expected);
     record.observed_desc = describeText(seen);
-    record.new_pid = pidOf();
+    relaunchIdentity(record, oldPid, startTime);
     record.pass = seen === expected;
     return record;
   } catch (error) {
@@ -510,7 +573,7 @@ async function killRun(api, { group, mode, delaySec }) {
     screenshot(`run-${runIndex}-ERROR`);
     return record;
   } finally {
-    log(`run ${runIndex} ${group}: timing=${record.timing} Δ=${record.delta_ms ?? "-"}ms written=${record.written_before_kill} pass=${record.pass}${record.reason ? ` (${record.reason})` : ""}`);
+    log(`run ${runIndex} ${group}: timing=${record.timing} exitΔ=[${record.delta_lower_ms ?? "-"}, ${record.delta_upper_ms ?? "-"}]ms written=${record.written_before_kill} pass=${record.pass}${record.reason ? ` (${record.reason})` : ""}`);
   }
 }
 
@@ -543,7 +606,7 @@ async function positiveControl(api) {
 async function main() {
   if (!APK) fail("--apk is required");
   if (!process.env.QA_TEST_EMAIL || !process.env.QA_TEST_PASSWORD) fail("QA_TEST_EMAIL / QA_TEST_PASSWORD are not set");
-  const api = { token: "", server: null, channel: null };
+  const api = { token: "", server: null, channel: null, selfId: null };
   try {
     await step("prepare-device", async () => {
       adb(["root"], { allowFailure: true });
@@ -571,9 +634,11 @@ async function main() {
       const servers = listOf((await raftJson("GET", "servers", { token: api.token })).json, "servers");
       api.server = servers.find((s) => s?.name === SERVER) ?? null;
       if (!api.server?.id || !api.server.slug) fail(`the QA account does not see server ${SERVER} (with a slug)`);
-      api.channel = await namedChannel(api.token, api.server, CHANNEL);
-      if (!api.channel?.id) fail(`no channel #${CHANNEL} on ${SERVER}`);
-      return { channel: api.channel.name };
+      const me = (await raftJson("GET", "auth/me", { token: api.token })).json;
+      api.selfId = me?.id ?? me?.user?.id ?? null;
+      api.channel = await createRunChannel(api);
+      summary.channel_created = { name: api.channel.name, visibility: api.channel.visibility };
+      return { channel: api.channel.name, visibility: api.channel.visibility };
     });
 
     await step("install", async () => {
@@ -619,6 +684,15 @@ async function main() {
     summary.error = redact(error.message);
     console.error(`::error title=Draft kill timing failed at ${currentStep}::${redact(error.message).split("\n")[0]}`);
   } finally {
+    if (api.channel?.id) {
+      try {
+        summary.channel_activity = await channelActivityCheck(api);
+      } catch (error) {
+        summary.channel_activity = { error: redact(error.message).slice(0, 200) };
+      }
+      summary.channel_archive = await archiveRunChannel(api);
+      if (!summary.channel_archive.archived) console.error(`::warning::channel #${CHANNEL} was not archived: ${JSON.stringify(summary.channel_archive)}`);
+    }
     await stopCapture();
     summary.buckets = Object.fromEntries([...DELAYS, ...FAST_DELAYS, 1].map((d) => [d, bucketFor(d)]));
     summary.summary = summarize(summary.runs);
@@ -627,6 +701,9 @@ async function main() {
       `## Draft kill timing (task #246)\n\nResult: **${summary.result}**${summary.failed_step ? ` (failed at ${summary.failed_step}: ${summary.error})` : ""}\n\n` +
       `Δ = ActivityManager "Killing <old pid>" (logcat -v monotonic) − last change_received uptimeMs. Hit = Δ inside the bucket window ` +
       `(${Object.entries(summary.buckets).map(([d, b]) => `D=${d}: (${b.lo}, ${b.hi}] s`).join("; ")}); Δ for b/c is measured, not bucketed.\n\n` +
+      `Channel: #${CHANNEL} (created for this run; archived: ${summary.channel_archive?.archived ?? "n/a"}). ` +
+      `Other activity in it during the run: ${summary.channel_activity?.other_activity ?? "unknown"}` +
+      `${summary.channel_activity?.other_kinds ? ` ${JSON.stringify(summary.channel_activity.other_kinds)}` : ""}.\n\n` +
       (summary.control ? `Positive control: change_received ${summary.control.last_change_received ? "present" : "missing"}, draft_written ${summary.control.draft_written ? "present" : "missing"} (write ${summary.control.write_after_change_ms ?? "-"} ms after the change).\n\n` : "");
     fs.writeFileSync(path.join(OUT, "results.md"), header + markdownTable(summary.runs, summary.summary));
   }
