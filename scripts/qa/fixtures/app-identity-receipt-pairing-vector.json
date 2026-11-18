@@ -1,0 +1,43 @@
+{
+  "scope": "Synthetic only. Values and signer are fictitious. Version code is a sample, not an APK record.",
+  "input": {
+    "subject": "qa-user",
+    "server_id": "server-1",
+    "server_slug": "test",
+    "nonce": "abababababababababababababababababababababababababababababababab"
+  },
+  "pairing_salt": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+  "receipt": {
+    "contract": "raft-app-identity-receipt/v1",
+    "attempt_id": "pla_0123456789abcdef0123456789abcdef",
+    "nonce": "abababababababababababababababababababababababababababababababab",
+    "request_id": "fefefefefefefefefefefefefefefefe",
+    "package": "build.raft.app",
+    "version_name": "1.26.0",
+    "version_code": 12600,
+    "signer_sha256": "852f8fe90e49a916c8e1168c9be4243e0ae3bf748e731cee550a541ba2045a25",
+    "debuggable": false,
+    "pid": 4242,
+    "process_start_ticks": "987654",
+    "signed_in": true,
+    "session_origin": "app_login",
+    "user_ref": "4f03b8f8508f164d9c23fdb270c60455643d04a4d0582e28c052bbf0e7602757",
+    "server_ref": "854ed829a6e63652261c9f10507447deb0f2427c4a67bb061f64b303d7bc17e3",
+    "user_pair_ref": "2aa1bd3a65e67c2b74295faa25d754e57cbb7c37abd5482fb988e5d5ec1cefe6",
+    "server_pair_ref": "fbf2f66bd79f88be2bb2d3d371d7dba1d553873c0f41edae477df3390baaab7c"
+  },
+  "original_bytes": 638,
+  "extended_bytes": 806,
+  "different_attempt_same_secret_version": {
+    "nonce": "0101010101010101010101010101010101010101010101010101010101010101",
+    "user_ref": "b043287c27468f2496c47c502774b0bfdcd9c8f882f8ce6c050bc65e1289e81c",
+    "server_ref": "0dd52cd09a1388f34690a2a78529a191cecf8de59371cc9e90c84b4326e90256",
+    "user_pair_ref": "2aa1bd3a65e67c2b74295faa25d754e57cbb7c37abd5482fb988e5d5ec1cefe6",
+    "server_pair_ref": "fbf2f66bd79f88be2bb2d3d371d7dba1d553873c0f41edae477df3390baaab7c"
+  },
+  "same_target_after_rotation": {
+    "pairing_salt": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+    "user_pair_ref": "e66e92f36593494fe41f2b00fdc8ea5589d307a8bc44bdea2ef70e60a1338e28",
+    "server_pair_ref": "a3970e37785d3d60dba90a233799f42d49d175e2921d62e3b932bb08cf9c28c9"
+  }
+}

@@ -32,6 +32,14 @@
 //     [--strict-cleanup] [--revoke-app-session] [--keep-capture-browser]
 //     [--scenario scripts/qa/scenarios/<name>.mjs [its options, e.g. --server-name X]]
 //   (or --credential-file <testbed qa-account get --out file>)
+//   [--identity-receipt]  with QA_ATTEMPT_ID / QA_ATTEMPT_NONCE (Testbed's attempt) and optionally
+//     QA_EXPECTED_USER_REF / QA_EXPECTED_SERVER_REF, and optionally Testbed's pairing salt in the
+//     file QA_PAIRING_SALT_FILE (never argv/env value) with QA_IDENTITY_PRIVATE_OUT (the 0600 file
+//     that alone receives user_pair_ref/server_pair_ref): before any account is used, check the build
+//     has the app identity receipt provider (fail "this build does not support the identity
+//     receipt" otherwise) and `pm enable` it; after sign-in ask it once and cross-check it with
+//     dumpsys/apksigner (summary.json `identity_receipt`); `pm disable` it in cleanup (a failed
+//     disable is an ::error:: and a non-zero exit). scripts/qa/app_identity_receipt_lib.mjs.
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
@@ -47,6 +55,19 @@ import {
   validateCallbackUrl,
   validateCapturedLoginUrl,
 } from "./release_auto_login_lib.mjs";
+import {
+  UnsupportedBuildError,
+  apkSignerForDeviceSdk,
+  createIdentityReceiptRunner,
+  crossCheckReceipt,
+  disableFailureAnnotation,
+  fileSha256,
+  newReceiptRequest,
+  readPairingSaltFile,
+  splitPrivateReceipt,
+  writePrivateReceipt,
+} from "./app_identity_receipt_lib.mjs";
+import { apksignerVerifyArgs } from "./mobile_login_bootstrap_lib.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(`--${name}`);
@@ -64,6 +85,7 @@ const OUT = option("out", "release-auto-login-evidence");
 const KEEP_STUB = flag("keep-capture-browser");
 const STRICT_CLEANUP = flag("strict-cleanup");
 const REVOKE_APP_SESSION = flag("revoke-app-session");
+const IDENTITY_RECEIPT = flag("identity-receipt");
 // Optional: a module whose run(ctx) drives the signed-in app (and the QA account's web session)
 // before cleanup; docs/qa-acceptance/release-auto-login.md "Scenarios".
 const SCENARIO = option("scenario", "");
@@ -294,6 +316,7 @@ const cleanupStatus = {
   capture_browser: "not_installed_by_run",
   web_session: "not_opened",
   app_session: REVOKE_APP_SESSION ? "not_signed_in" : "not_requested",
+  ...(IDENTITY_RECEIPT ? { identity_receipt_provider: "not_enabled" } : {}),
 };
 const cleanupDetail = {};
 async function cleanupStep(key, body) {
@@ -593,11 +616,98 @@ async function runScenario(webSession) {
   }
 }
 
+// ---------- app identity receipt (--identity-receipt) ----------
+const identity = IDENTITY_RECEIPT
+  ? createIdentityReceiptRunner({
+      pkg: PKG,
+      shell: (command) => {
+        const r = spawnSync("adb", ["shell", command], { encoding: "utf8", timeout: 60_000 });
+        return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? String(r.error ?? "") };
+      },
+      // The pairing salt rides on adb's stdin (no pty), never on a command line.
+      shellPrivate: (command) => {
+        const r = spawnSync("adb", ["shell", "-T"], { encoding: "utf8", timeout: 60_000, input: `${command}; exit\n` });
+        return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? String(r.error ?? "") };
+      },
+    })
+  : null;
+
+function identityReceiptRequest() {
+  const pairingSalt = readPairingSaltFile(process.env.QA_PAIRING_SALT_FILE || "");
+  if (pairingSalt) {
+    redact.add(pairingSalt);
+    if (!process.env.QA_IDENTITY_PRIVATE_OUT) stop("QA_PAIRING_SALT_FILE needs QA_IDENTITY_PRIVATE_OUT (the Testbed-private output for the pair refs)");
+  }
+  return newReceiptRequest({ attemptId: process.env.QA_ATTEMPT_ID, nonce: process.env.QA_ATTEMPT_NONCE, pairingSalt: pairingSalt || null });
+}
+
+function buildTool(name) {
+  const root = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
+  if (!root) throw new Error("ANDROID_HOME/ANDROID_SDK_ROOT is required for apksigner");
+  const versions = fs.readdirSync(path.join(root, "build-tools")).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return path.join(root, "build-tools", versions.at(-1), name);
+}
+
+// What the OS says about the installed package, never what the app says.
+function installedPackageFacts() {
+  const dump = shell(`dumpsys package ${PKG}`, { allowFailure: true });
+  const flags = /pkgFlags=\[([^\]]*)\]/.exec(dump)?.[1] ?? "";
+  const deviceSdk = Number(shell("getprop ro.build.version.sdk", { allowFailure: true }).trim());
+  const apkPaths = shell(`pm path ${PKG}`, { allowFailure: true }).split("\n").map((l) => l.trim()).filter((l) => l.startsWith("package:")).map((l) => l.slice(8));
+  const base = apkPaths.find((p) => p.endsWith("/base.apk"));
+  if (!base) throw new Error(`pm path ${PKG} lists no base.apk`);
+  const local = path.join(OUT, ".identity-base.apk");
+  try {
+    adb(["pull", base, local], { timeoutMs: 120_000 });
+    const signer = spawnSync(buildTool("apksigner"), apksignerVerifyArgs(local, deviceSdk), { encoding: "utf8" });
+    if (signer.status !== 0) throw new Error(`apksigner verify failed: ${String(signer.stderr).trim().slice(0, 200)}`);
+    return {
+      packageName: PKG,
+      versionCode: /versionCode=(\d+)/.exec(dump)?.[1] ?? null,
+      debuggable: /\bDEBUGGABLE\b/.test(flags),
+      deviceSdk,
+      signerSha256: apkSignerForDeviceSdk(signer.stdout, deviceSdk),
+      installedApkSha256: fileSha256(local),
+      splitApks: apkPaths.length - 1,
+    };
+  } finally {
+    fs.rmSync(local, { force: true });
+  }
+}
+
+async function identityReceiptStep(request) {
+  const answer = identity.call(request);
+  if (answer.error) {
+    const problem = `provider answered ${answer.error}${answer.detail ? `: ${answer.detail}` : ""}`;
+    summary.identity_receipt = { verdict: "unknown", problems: [problem] };
+    stop(`identity receipt check failed: ${problem}`);
+  }
+  // The pair refs are Testbed's alone: out of every log line, the summary and the evidence.
+  const { shareable, private: pair } = splitPrivateReceipt(answer.receipt);
+  if (pair) {
+    redact.add(pair.user_pair_ref ?? "");
+    redact.add(pair.server_pair_ref ?? "");
+  }
+  const facts = installedPackageFacts();
+  const os = { ...facts, ...answer.os };
+  const expected = { userRef: process.env.QA_EXPECTED_USER_REF || "", serverRef: process.env.QA_EXPECTED_SERVER_REF || "" };
+  const { verdict, problems, pending } = crossCheckReceipt({ receipt: answer.receipt, request, os, expected });
+  if (APK && fs.existsSync(APK) && fileSha256(APK) !== facts.installedApkSha256) problems.push("installed base.apk differs from --apk");
+  const finalVerdict = problems.length ? "unknown" : verdict;
+  summary.identity_receipt = { verdict: finalVerdict, problems, pending, receipt: shareable, os };
+  if (pair) writePrivateReceipt(process.env.QA_IDENTITY_PRIVATE_OUT, pair);
+  log(`identity receipt: ${finalVerdict}${problems.length ? ` (${problems.join("; ")})` : ""}`);
+  if (finalVerdict === "unknown") stop(`identity receipt check failed: ${problems.join("; ")}`);
+  return { verdict: finalVerdict };
+}
+
 // ---------- the flow ----------
 async function main() {
   if (!preset && !(option("web-url") && option("api-url"))) stop(`unknown --env ${ENV_NAME}; use staging|production or pass --web-url and --api-url`);
   if (!STUB_APK && !shell(`pm path ${STUB_PKG}`, { allowFailure: true }).trim()) stop("--capture-browser-apk is required (build it with scripts/qa/capture-browser/build.sh)");
-  const account = credentials();
+  // With --identity-receipt the account is read only after the build is known to have the provider.
+  const receiptRequest = IDENTITY_RECEIPT ? identityReceiptRequest() : null;
+  let account = IDENTITY_RECEIPT ? null : credentials();
   let webSession = null;
   let callbackSent = false;
   let logcat = null;
@@ -637,6 +747,19 @@ async function main() {
       }
       const dump = shell(`dumpsys package ${PKG}`, { allowFailure: true });
       if (!dump.includes("versionCode=")) stop(`${PKG} is not installed`);
+      if (identity) {
+        // Before any account is used, and before the app first starts: enabling kills the process.
+        try {
+          identity.probe();
+          identity.enable();
+        } catch (error) {
+          if (error instanceof UnsupportedBuildError) {
+            summary.identity_receipt = { verdict: "unsupported_build", reason: error.message };
+            console.error(`::error title=identity receipt unsupported::${error.message}`);
+          }
+          stop(error.message);
+        }
+      }
       const flags = /pkgFlags=\[([^\]]*)\]/.exec(dump)?.[1] ?? "";
       return {
         sdk: shell("getprop ro.build.version.sdk").trim(),
@@ -649,6 +772,8 @@ async function main() {
       };
     });
 
+    account ??= credentials();
+    identity?.markSignInStarted();
     adb(["logcat", "-c"], { allowFailure: true });
     logcat = spawn("adb", ["logcat", "-v", "threadtime", "-s", "SlockAppLogin:*"], { stdio: ["ignore", fs.openSync(logcatFile, "w"), "ignore"] });
 
@@ -801,6 +926,8 @@ async function main() {
       stop(`still not signed in after 120s; on screen: ${lastLabels || "(nothing labelled)"}`);
     });
 
+    if (identity) await step("identity-receipt", () => identityReceiptStep(receiptRequest), { screenshot: false });
+
     if (SCENARIO) await runScenario(webSession);
   } finally {
     // Every cleanup step runs whatever happened above; each records its own status.
@@ -812,6 +939,17 @@ async function main() {
     }
     await revokeAppSession(callbackSent);
     await cleanupDevice();
+    // Last: disabling the provider kills the app process.
+    if (identity) {
+      await cleanupStep("identity_receipt_provider", async () => {
+        const disabled = identity.disable();
+        if (!disabled.ok) {
+          console.error(disableFailureAnnotation(PKG, disabled.detail));
+          throw new Error(`pm disable failed: ${disabled.detail}`);
+        }
+        return disabled.status;
+      });
+    }
     summary.cleanup = { ...cleanupStatus, ...cleanupDetail };
   }
 }

@@ -399,6 +399,9 @@ internal interface RaftAuthSessionTerminalSource {
         }
 }
 
+/** See [KeyValueAuthSessionStore.readInMemorySessionSnapshot]; `session == null` is signed out. */
+data class InMemoryAuthSessionSnapshot(val session: StoredAuthSession?)
+
 @Serializable
 data class StoredAuthServerSelection(
     val serverId: String,
@@ -1007,6 +1010,15 @@ class KeyValueAuthSessionStore(
         // Not loaded in this process yet: the store holds the last committed record.
         return store.getString(RAFT_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
     }
+
+    /**
+     * The session this process has ALREADY loaded into memory, without the lock and without
+     * touching storage: `null` when the record has not been loaded in this process yet, otherwise
+     * [InMemoryAuthSessionSnapshot.session] (itself `null` when signed out). For strictly read-only
+     * observers (the app identity receipt) that must not cause a storage read.
+     */
+    fun readInMemorySessionSnapshot(): InMemoryAuthSessionSnapshot? =
+        cachedSessionRecords[store]?.let { InMemoryAuthSessionSnapshot(it.session) }
 
     override suspend fun readAuthSessionTerminalSnapshot(): AuthSessionTerminalSnapshot =
         mutex.withLock {

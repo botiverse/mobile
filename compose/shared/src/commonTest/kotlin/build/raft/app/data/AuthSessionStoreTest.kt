@@ -820,6 +820,25 @@ class AuthSessionStoreTest {
     }
 
     @Test
+    fun inMemorySessionSnapshotNeverReadsStorage() = runBlocking {
+        val keyValue = InMemoryRaftKeyValueStore()
+        keyValue.putString(
+            RAFT_AUTH_SESSION_RECORD_KEY,
+            Json { ignoreUnknownKeys = true }.encodeToString(StoredAuthSession.serializer(), sampleSession()),
+        )
+        val store = KeyValueAuthSessionStore(keyValue)
+        // Stored by an earlier process but not loaded in this one: not loaded, not decoded.
+        assertNull(store.readInMemorySessionSnapshot())
+
+        assertEquals("token-a", store.readSession()?.accessToken)
+        assertEquals("token-a", store.readInMemorySessionSnapshot()?.session?.accessToken)
+
+        store.clearSession(reason = "test", source = "test")
+        val signedOut = assertNotNull(store.readInMemorySessionSnapshot())
+        assertNull(signedOut.session)
+    }
+
+    @Test
     fun committedSessionSnapshotOfAnUndecodableRecordIsSignedOut() {
         val keyValue = InMemoryRaftKeyValueStore()
         keyValue.putString(RAFT_AUTH_SESSION_RECORD_KEY, "{not json")

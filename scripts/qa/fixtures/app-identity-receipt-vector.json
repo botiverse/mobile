@@ -1,0 +1,39 @@
+{
+  "contract": "raft-app-identity-receipt/v1",
+  "source": "task227-mobile-target-vector-20261118.json (Testbed 8ab846b2a0479f9f2a6d3dae053fb9e8338f454e, mobile 15c313a50b902c14f10ba52f45221b7f6cb37e2c); fake values only",
+  "user_ref_domain": "raft-qa-readiness-user/v1",
+  "server_ref_domain": "raft-qa-readiness-server/v1",
+  "fixture": {
+    "nonce": "abababababababababababababababababababababababababababababababab",
+    "subject": "qa-user",
+    "server_id": "server-1",
+    "server_slug": "test",
+    "user_ref": "4f03b8f8508f164d9c23fdb270c60455643d04a4d0582e28c052bbf0e7602757",
+    "server_ref": "854ed829a6e63652261c9f10507447deb0f2427c4a67bb061f64b303d7bc17e3"
+  },
+  "controls": [
+    { "name": "different subject", "ref": "user", "nonce": "abababababababababababababababababababababababababababababababab", "subject": "qa-user-2" },
+    { "name": "different nonce (user)", "ref": "user", "nonce": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd", "subject": "qa-user" },
+    { "name": "different server ID", "ref": "server", "nonce": "abababababababababababababababababababababababababababababababab", "server_id": "server-2", "server_slug": "test" },
+    { "name": "different slug", "ref": "server", "nonce": "abababababababababababababababababababababababababababababababab", "server_id": "server-1", "server_slug": "test2" },
+    { "name": "missing slug", "ref": "server", "nonce": "abababababababababababababababababababababababababababababababab", "server_id": "server-1", "server_slug": "" },
+    { "name": "different nonce (server)", "ref": "server", "nonce": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd", "server_id": "server-1", "server_slug": "test" }
+  ],
+  "sample_receipt": {
+    "contract": "raft-app-identity-receipt/v1",
+    "attempt_id": "pla_0123456789abcdef0123456789abcdef",
+    "nonce": "abababababababababababababababababababababababababababababababab",
+    "request_id": "fefefefefefefefefefefefefefefefe",
+    "package": "build.raft.app",
+    "version_name": "1.26.0",
+    "version_code": 12600,
+    "signer_sha256": "852f8fe90e49a916c8e1168c9be4243e0ae3bf748e731cee550a541ba2045a25",
+    "debuggable": false,
+    "pid": 4242,
+    "process_start_ticks": "987654",
+    "signed_in": true,
+    "session_origin": "app_login",
+    "user_ref": "4f03b8f8508f164d9c23fdb270c60455643d04a4d0582e28c052bbf0e7602757",
+    "server_ref": "854ed829a6e63652261c9f10507447deb0f2427c4a67bb061f64b303d7bc17e3"
+  }
+}

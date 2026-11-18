@@ -108,11 +108,16 @@ export const CLEANUP_OK = {
   app_session: ["app_reported_server_logout_2xx", "not_signed_in"],
 };
 
+export const IDENTITY_PROVIDER_CLEANUP_OK = ["disabled", "not_enabled"];
+
 /** Which cleanup steps failed, and whether the run may still exit 0. */
 export function summarizeCleanup(cleanup = {}) {
   const failures = Object.keys(CLEANUP_OK)
     .filter((key) => !CLEANUP_OK[key].includes(cleanup[key]))
     .map((key) => ({ step: key, status: cleanup[key] ?? "missing" }));
+  // --identity-receipt only (absent otherwise): the provider the run enabled must be disabled again.
+  const provider = cleanup.identity_receipt_provider;
+  if (provider !== undefined && !IDENTITY_PROVIDER_CLEANUP_OK.includes(provider)) failures.push({ step: "identity_receipt_provider", status: provider });
   return { ok: failures.length === 0, failures };
 }
 
@@ -122,6 +127,9 @@ export function summarizeCleanup(cleanup = {}) {
  */
 export function runOutcome({ signedIn, cleanup, strict }) {
   const { ok, failures } = summarizeCleanup(cleanup);
+  // A provider left enabled is never tolerated, strict or not: it would answer on this device
+  // after the run (shell callers only, but nobody asked for that).
+  if (failures.some((f) => f.step === "identity_receipt_provider")) return { result: signedIn ? "cleanup_failed" : "failed", exitCode: 1, cleanupOk: false, cleanupFailures: failures };
   if (!signedIn) return { result: "failed", exitCode: 1, cleanupOk: ok, cleanupFailures: failures };
   if (!ok && strict) return { result: "cleanup_failed", exitCode: 1, cleanupOk: ok, cleanupFailures: failures };
   return { result: "signed_in", exitCode: 0, cleanupOk: ok, cleanupFailures: failures };
