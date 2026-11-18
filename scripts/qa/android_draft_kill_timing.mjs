@@ -24,7 +24,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createLogcatStats, forEachLogLine, isEvidenceLine, wrapUpVerdict, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
+import { channelActivityReport, createLogcatStats, forEachLogLine, isEvidenceLine, wrapUpVerdict, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, value, index, all) => {
@@ -226,7 +226,6 @@ const linesSince = (mark) => {
   return lines;
 };
 
-const isTimingEvidence = (line) => isEvidenceLine(line, PKG);
 
 async function waitForTiming(description, predicate, { fromMark, timeoutMs = 15_000 }) {
   const deadline = Date.now() + timeoutMs;
@@ -250,6 +249,7 @@ async function stopCapture() {
   await sleep(1000);
   if (!fs.existsSync(LOGCAT_RAW)) return null;
   const stats = createLogcatStats();
+  const appPids = { has: (pid) => APP_PIDS.has(pid) || stats.appPids.has(pid) };
   // Written to a temporary name in OUT and renamed only when complete; the upload allow-list does not
   // include the temporary name, and every line in it is already filtered and redacted.
   const partial = path.join(OUT, "timing-lines.txt.partial");
@@ -257,7 +257,8 @@ async function stopCapture() {
   try {
     const read = forEachLogLine(LOGCAT_RAW, 0, (line) => {
       stats.add(line);
-      if (isTimingEvidence(line)) fs.writeSync(out, `${redact(line)}\n`);
+      // The app's pids: those the script saw plus every pid that logged a RaftDraftTiming line before this one.
+      if (isEvidenceLine(line, PKG, appPids)) fs.writeSync(out, `${redact(line)}\n`);
     });
     summary.logcat_wrap_up = read;
   } finally {
@@ -383,19 +384,13 @@ async function markerMessage(api, marker) {
 
 /**
  * Concurrency check: anything in the run's channel that this run did not post (the shared QA account may
- * be in use elsewhere). Only counts, kinds and sender ids are recorded, never other content.
+ * be in use elsewhere), and how much of the channel the read covered (channelActivityReport). Only
+ * counts, kinds and the covered window are recorded, never other content.
  */
+const ACTIVITY_LIMIT = 100;
 async function channelActivityCheck(api) {
-  const { status, rows } = await channelMessages(api);
-  if (status !== 200) return { http: status, other_activity: null, note: "could not read the channel: activity unknown" };
-  const ours = (m) => String(m?.content ?? "").includes(`dk${RUN_TAG}`) && (api.selfId == null || m?.senderId === api.selfId);
-  const others = rows.filter((m) => !ours(m));
-  const kinds = {};
-  for (const m of others) {
-    const kind = `${m?.type ?? m?.messageType ?? "message"}${m?.senderId === api.selfId ? " (QA account)" : ""}`;
-    kinds[kind] = (kinds[kind] ?? 0) + 1;
-  }
-  return { http: status, messages: rows.length, ours: rows.length - others.length, other_activity: others.length, other_kinds: kinds };
+  const { status, rows } = await channelMessages(api, ACTIVITY_LIMIT);
+  return channelActivityReport({ status, rows, limit: ACTIVITY_LIMIT, runTag: `dk${RUN_TAG}`, selfId: api.selfId });
 }
 
 // ---------- sign-in (as android_realtime_e2e.mjs) ----------
@@ -493,8 +488,11 @@ async function openChannel(api) {
   }
 }
 
+/** Every pid the app had during the run: evidence lines of other processes are never kept. */
+const APP_PIDS = new Set();
 function pidOf() {
   const out = shell(`pidof ${PKG}`, { allowFailure: true }).trim().split(/\s+/).filter(Boolean).map(Number);
+  out.forEach((pid) => APP_PIDS.add(pid));
   return out.length === 1 ? out[0] : out[0] ?? null;
 }
 
@@ -1031,6 +1029,9 @@ async function main() {
     const header =
       `## Draft kill timing (task #246)\n\nResult: **${summary.result}**${summary.failed_step ? ` (failed at ${summary.failed_step}: ${summary.error})` : ""}\n\n` +
       (summary.unmet?.length ? `Unmet conditions:\n${summary.unmet.map((u) => `- ${u}`).join("\n")}\n\n` : "") +
+      (summary.unconfirmed?.length ? `Unconfirmed (no pass without them):\n${summary.unconfirmed.map((u) => `- ${u}`).join("\n")}\n\n` : "") +
+      (summary.journal_coverage ? `Crash-journal coverage: ${summary.journal_coverage.edits} edits (change_received), ${summary.journal_coverage.samples} cost samples, ` +
+        `${summary.journal_coverage.failures} write failures, ${summary.journal_coverage.missing} missing (allowed ${summary.journal_coverage.allowed_missing}).\n\n` : "") +
       `Exit interval on the device clock (logcat -v monotonic): lower = latest pre-signal line of the run's own kill (AM "Killing" / am_kill "stop <pkg>"; ` +
       `recents swipe: also "remove task"), upper = earliest evidence of death (device-side /proc poll: gone or zombie; am_proc_died; cgroup empty). ` +
       `Exit Δ = interval − last change_received uptimeMs (b: − the send_tap probe logged right before the tap). A sample is valid for a bucket only when ` +
@@ -1060,7 +1061,8 @@ async function main() {
       })() +
       `Channel: #${CHANNEL} (created for this run; archived: ${summary.channel_archive?.archived ?? "n/a"}). ` +
       `Other activity in it during the run: ${summary.channel_activity?.other_activity ?? "unknown"}` +
-      `${summary.channel_activity?.other_kinds ? ` ${JSON.stringify(summary.channel_activity.other_kinds)}` : ""}.\n\n` +
+      `${summary.channel_activity?.other_kinds ? ` ${JSON.stringify(summary.channel_activity.other_kinds)}` : ""}; ` +
+      `coverage of that check: ${JSON.stringify(summary.channel_activity?.coverage ?? null)}.\n\n` +
       (summary.control ? `Positive control: change_received ${summary.control.last_change_received ? "present" : "missing"}, draft_written ${summary.control.draft_written ? "present" : "missing"} (write ${summary.control.write_after_change_ms ?? "-"} ms after the change).\n\n` : "");
     fs.writeFileSync(path.join(OUT, "results.md"), header + markdownTable(summary.runs, summary.summary));
   }

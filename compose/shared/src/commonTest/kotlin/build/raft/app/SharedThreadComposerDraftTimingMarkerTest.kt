@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.InMemoryRaftKeyValueStore
+import build.raft.app.data.SharedPreferenceStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -132,6 +133,36 @@ class SharedThreadComposerDraftTimingMarkerTest {
             "draft_journal_written path=sync costUs=1234 len=7",
             raftDraftJournalCostLine(1234.microseconds, 7),
         )
+    }
+
+    @Test
+    fun aFailedJournalWriteIsLoggedSoTheAcceptanceCanCountIt() {
+        val lines = mutableListOf<String>()
+        val clock = VirtualDraftWriteClock()
+        val storage = InMemoryRaftKeyValueStore()
+        val failingJournal =
+            object : SharedPreferenceStore {
+                override fun getString(key: String): String? = storage.getString(key)
+
+                override fun putString(key: String, value: String?) {
+                    if (key == SharedThreadComposerDraftPersistence.journalRowKey(draftKey) && value != null) error("disk full")
+                    storage.putString(key, value)
+                }
+            }
+        val slice =
+            SharedThreadComposerDraftPersistSlice(
+                persistence = SharedThreadComposerDraftPersistence(failingJournal),
+                scheduler = clock,
+                changeWriteIntervalMillis = IntervalMillis,
+                monotonicMillis = clock::now,
+                timingSink = sinkInto(lines),
+            )
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(slice))
+        store.dispatch(SharedThreadComposerDraftIntent.Start(RaftThreadComposerPayload(instanceId = "composer-timing"), draftKey))
+
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "secret"))
+
+        assertEquals(listOf("draft_journal_write_failed len=6", "change_received seq=1 len=6"), lines)
     }
 
     /** The change / durable-write lines, without the crash journal's cost lines. */

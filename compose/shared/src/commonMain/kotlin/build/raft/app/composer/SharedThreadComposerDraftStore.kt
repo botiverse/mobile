@@ -2123,6 +2123,8 @@ internal class SharedThreadComposerDraftPersistSlice(
             seq
         }.getOrElse { error ->
             safeDiagnostics("thread_composer_draft_journal_write_failed key=$key error=${error::class.simpleName.orEmpty()}")
+            // The acceptance counts these against the edits (journal sample coverage).
+            runCatching { timingSink()?.invoke("draft_journal_write_failed len=${state.seedText.length}") }
             0L
         }
     }

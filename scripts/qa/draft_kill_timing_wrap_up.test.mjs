@@ -6,13 +6,19 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { acceptanceUnmet, createLogcatStats, forEachLogLine, isEvidenceLine, wrapUpVerdict } from "./draft_kill_timing_analysis.mjs";
+import { acceptanceUnmet, channelActivityReport, createLogcatStats, forEachLogLine, isEvidenceLine, journalCoverage, wrapUpVerdict } from "./draft_kill_timing_analysis.mjs";
 
 const PKG = "build.raft.app.alpha";
 const PID = 4242;
 const line = (sec, pid, tag, message) => `${sec.toFixed(3).padStart(10)}  ${pid}  ${pid} I ${tag}: ${message}`;
 const journal = (sec, costUs) => line(sec, PID, "RaftDraftTiming", `draft_journal_written path=sync costUs=${costUs} len=3 uptimeMs=${Math.round(sec * 1000)}`);
+const change = (sec, seq) => line(sec, PID, "RaftDraftTiming", `change_received seq=${seq} len=3 uptimeMs=${Math.round(sec * 1000)}`);
+/** One typed edit as the app logs it: the journal's cost line, then change_received, from the same call. */
+const edit = (sec, seq, costUs) => [journal(sec, costUs), change(sec, seq)];
 const config = { runsPerBucket: 1, fastRuns: 1, env: {} };
+const RUN_TAG = "dk12345";
+const ourMessage = (i) => ({ id: `m${i}`, content: `${RUN_TAG} send ${i}`, senderId: "qa", createdAt: `2026-11-18T10:00:0${i}Z` });
+const cleanChannel = () => channelActivityReport({ status: 200, rows: [ourMessage(1), ourMessage(2)], limit: 100, runTag: RUN_TAG, selfId: "qa" });
 
 /** A finished run whose timing conditions all hold; only the logcat-derived statistics are missing. */
 const timingsPass = () => ({
@@ -25,6 +31,7 @@ const timingsPass = () => ({
   bucket_progress: { 0.05: { valid: 1, attempted: 1 } },
   fast_progress: { 0.05: { valid: 1, attempted: 1 } },
   apk: { file_sha256: "aa", installed_base_apk_sha256: "aa" },
+  channel_activity: cleanChannel(),
 });
 const statsOf = (lines) => {
   const stats = createLogcatStats();
@@ -36,7 +43,7 @@ test("the crash-journal gate sees the cost measured at wrap-up (timings pass -> 
   const summary = timingsPass();
   // The bug this guards: deciding before the capture is read always finds no journal samples.
   assert.deepEqual(acceptanceUnmet(summary, config), ["no draft_journal_written lines: the crash journal's cost was not measured"]);
-  wrapUpVerdict(summary, statsOf([journal(1, 120), journal(2, 300)]), config);
+  wrapUpVerdict(summary, statsOf([...edit(1, 1, 120), ...edit(2, 2, 300)]), config);
   assert.equal(summary.result, "pass");
   assert.deepEqual(summary.unmet, []);
   assert.equal(summary.journal_write_cost.samples, 2);
@@ -44,7 +51,7 @@ test("the crash-journal gate sees the cost measured at wrap-up (timings pass -> 
 });
 
 test("the crash-journal gate still fails a slow journal, an unread capture and keeps a step failure", () => {
-  const slow = wrapUpVerdict(timingsPass(), statsOf([journal(1, 1000)]), config);
+  const slow = wrapUpVerdict(timingsPass(), statsOf(edit(1, 1, 1000)), config);
   assert.equal(slow.result, "fail");
   assert.deepEqual(slow.unmet, ["crash-journal write p95 1000 µs is not below 1000 µs"]);
 
@@ -52,7 +59,7 @@ test("the crash-journal gate still fails a slow journal, an unread capture and k
   assert.equal(unread.result, "fail");
   assert.deepEqual(unread.unmet, ["no draft_journal_written lines: the crash journal's cost was not measured"]);
 
-  const stepFailed = wrapUpVerdict({ ...timingsPass(), result: "fail", failed_step: "kill-runs" }, statsOf([journal(1, 10)]), config);
+  const stepFailed = wrapUpVerdict({ ...timingsPass(), result: "fail", failed_step: "kill-runs" }, statsOf(edit(1, 1, 10)), config);
   assert.equal(stepFailed.result, "fail");
   assert.equal(stepFailed.failed_step, "kill-runs");
   assert.equal(stepFailed.journal_write_cost.samples, 1);
@@ -112,17 +119,71 @@ test("wrap-up over a logcat far larger than the heap finishes with bounded memor
   assert.ok(out.rss < 96 * (1 << 20), `rss ${out.rss}`);
 });
 
-test("only allow-listed lines become evidence: no other app, framework chatter or credentials", () => {
-  const raw = [
+test("only allow-listed lines of the app's own processes become evidence", () => {
+  const appPids = new Set([PID]);
+  const kept = [
     line(1, PID, "RaftDraftTiming", "change_received seq=1 len=1 uptimeMs=1000"),
     line(1.1, 9000, "RaftDraftTimingProbe", "run=1 pid_gone polls=3"),
     line(2, 600, "ActivityManager", `Killing ${PID}:${PKG}/u0a190 (adj 0): stop ${PKG}`),
-    line(2, 600, "ActivityManager", "Killing 77:com.other/u0a1 (adj 0): stop com.other"),
     line(2.1, 600, "am_proc_died", `[0,${PID},${PKG},0,17]`),
-    line(2.2, 600, "libprocessgroup", "Successfully killed process cgroup uid 10190 pid 4242 in 3ms"),
+    line(2.2, 600, "libprocessgroup", `Successfully killed process cgroup uid 10190 pid ${PID} in 3ms`),
+    line(4, PID, "AndroidRuntime", "FATAL EXCEPTION: main"),
+    line(4, PID, "AndroidRuntime", `Process: ${PKG}, PID: ${PID}`),
+  ];
+  const dropped = [
+    line(2, 600, "ActivityManager", "Killing 77:com.other/u0a1 (adj 0): stop com.other"),
+    line(2.2, 600, "libprocessgroup", "Successfully killed process cgroup uid 10077 pid 77 in 2ms"),
+    line(2.3, 600, "libprocessgroup", "Failed to kill process cgroup uid 10077 pid 77 in 251ms, 1 processes remain"),
+    line(4, 77, "AndroidRuntime", "FATAL EXCEPTION: main"),
+    line(4, 77, "AndroidRuntime", "Process: com.other, PID: 77"),
+    line(4, PID, "AndroidRuntime", "java.lang.IllegalStateException: token=secret"),
     line(3, PID, "OkHttp", "Authorization: Bearer secret-token"),
     line(3, PID, "chromium", "login code 123456"),
-    line(4, PID, "AndroidRuntime", "FATAL EXCEPTION: main"),
   ];
-  assert.deepEqual(raw.filter((l) => isEvidenceLine(l, PKG)), [raw[0], raw[1], raw[2], raw[4], raw[5], raw[8]]);
+  assert.deepEqual([...kept, ...dropped].filter((l) => isEvidenceLine(l, PKG, appPids)), kept);
+});
+
+test("the channel concurrency check gates the run: other activity, a failed or a full-page read is unconfirmed", () => {
+  const verdict = (channel_activity) => wrapUpVerdict({ ...timingsPass(), channel_activity }, statsOf(edit(1, 1, 100)), config);
+
+  assert.equal(verdict(cleanChannel()).result, "pass");
+  assert.equal(cleanChannel().coverage.complete, true);
+
+  const other = verdict(channelActivityReport({ status: 200, rows: [ourMessage(1), { id: "x", content: "hello", senderId: "someone" }], limit: 100, runTag: RUN_TAG, selfId: "qa" }));
+  assert.equal(other.result, "unconfirmed");
+  assert.match(other.unconfirmed.join("\n"), /other activity in the run's channel: 1 item/);
+
+  const unauthorized = verdict(channelActivityReport({ status: 401, limit: 100, runTag: RUN_TAG, selfId: "qa" }));
+  assert.equal(unauthorized.result, "unconfirmed");
+  assert.match(unauthorized.unconfirmed.join("\n"), /HTTP 401/);
+
+  // A full page: older items may be cut off, so even an all-ours page is not "no other activity".
+  const full = channelActivityReport({ status: 200, rows: Array.from({ length: 5 }, (_, i) => ourMessage(i)), limit: 5, runTag: RUN_TAG, selfId: "qa" });
+  assert.equal(full.other_activity, 0);
+  assert.equal(full.coverage.complete, false);
+  assert.equal(full.coverage.oldest_created_at, "2026-11-18T10:00:00Z");
+  assert.equal(verdict(full).result, "unconfirmed");
+
+  assert.equal(verdict(undefined).result, "unconfirmed");
+  assert.equal(verdict({ error: "fetch failed" }).result, "unconfirmed");
+});
+
+test("the crash-journal gate needs samples for the edits: missing samples are unconfirmed, a write failure fails", () => {
+  assert.deepEqual(journalCoverage({ edits: 200, samples: 198, failures: 0 }), { edits: 200, samples: 198, failures: 0, missing: 2, allowed_missing: 2, covered: true });
+  assert.equal(journalCoverage({ edits: 200, samples: 197, failures: 0 }).covered, false);
+  assert.equal(journalCoverage({ edits: 0, samples: 0, failures: 0 }).covered, false);
+
+  // Three edits, one cost sample: more than 1% missing.
+  const sparse = wrapUpVerdict(timingsPass(), statsOf([...edit(1, 1, 100), change(2, 2), change(3, 3)]), config);
+  assert.equal(sparse.result, "unconfirmed");
+  assert.deepEqual(sparse.journal_coverage, { edits: 3, samples: 1, failures: 0, missing: 2, allowed_missing: 0, covered: false });
+  assert.match(sparse.unconfirmed.join("\n"), /1 samples for 3 edits, 2 missing/);
+
+  const failed = wrapUpVerdict(
+    timingsPass(),
+    statsOf([...edit(1, 1, 100), line(2, PID, "RaftDraftTiming", "draft_journal_write_failed len=4 uptimeMs=2000"), change(2, 2)]),
+    config,
+  );
+  assert.equal(failed.result, "fail");
+  assert.deepEqual(failed.unmet, ["crash-journal write failed 1 time(s) (draft_journal_write_failed)"]);
 });
