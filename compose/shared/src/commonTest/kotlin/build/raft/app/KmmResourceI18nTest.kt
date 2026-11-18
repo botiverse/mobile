@@ -565,6 +565,7 @@ class KmmResourceI18nTest {
         listOf(
             Res.string.settings_about_title,
             Res.string.settings_about_action_check_update,
+            Res.string.settings_about_state_update_available,
             Res.string.settings_storage_loading,
             Res.string.settings_storage_clear_image_cache,
             Res.string.settings_developer_api_environment,

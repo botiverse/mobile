@@ -9,6 +9,7 @@ import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsOpenSourceLicenseItem
 import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
+import build.raft.app.data.SharedSettingsUpdateTransactionState
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.StoredAuthSession
 import androidx.compose.runtime.Composable
@@ -221,6 +222,15 @@ internal data class SettingsAboutPayloadCopy(
     val checkUpdateDetail: String = "Checks for a newer mobile build and opens the installer when available.",
     val checking: String = "Checking",
     val check: String = "Check",
+    val updateAvailable: String = "Update available",
+    val preparing: String = "Preparing",
+    val downloading: String = "Downloading",
+    val installing: String = "Installing",
+    val install: String = "Install",
+    val installed: String = "Installed",
+    val retry: String = "Retry",
+    val permissionRequired: String = "Permission Required",
+    val updateUnavailable: String = "Update information is temporarily unavailable.",
     val sourceCode: String = "Source code",
     val licenses: String = "Open Source Licenses",
     val licensesDetail: String = "Review third-party libraries included in the app package.",
@@ -252,6 +262,15 @@ private fun settingsAboutPayloadCopy(resolvedWebUrl: String): SettingsAboutPaylo
         checkUpdateDetail = stringResource(Res.string.settings_about_check_update_detail, raftPlatformProductName()),
         checking = stringResource(Res.string.settings_about_state_checking),
         check = stringResource(Res.string.settings_about_action_check),
+        updateAvailable = stringResource(Res.string.settings_about_state_update_available),
+        preparing = stringResource(Res.string.app_update_preparing),
+        downloading = stringResource(Res.string.app_update_downloading),
+        installing = stringResource(Res.string.app_update_installing),
+        install = stringResource(Res.string.app_update_install),
+        installed = stringResource(Res.string.app_update_installed),
+        retry = stringResource(Res.string.app_update_retry),
+        permissionRequired = stringResource(Res.string.settings_state_permission_required),
+        updateUnavailable = stringResource(Res.string.app_update_unavailable),
         sourceCode = stringResource(Res.string.settings_about_source_code),
         licenses = stringResource(Res.string.settings_open_source_licenses_title),
         licensesDetail = stringResource(Res.string.settings_about_licenses_detail, raftPlatformProductName()),
@@ -317,16 +336,16 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                         iconName = RaftLucideIconName.Download,
                                         title = copy.checkUpdate,
                                         detail =
-                                            updateCheck.detail.ifBlank {
-                                                updateCheck.screenError?.userFacingMessage(errorStrings)
-                                                    ?: copy.checkUpdateDetail
-                                            },
-                                        status =
                                             when {
-                                                updateCheckBusy -> copy.checking
-                                                updateCheck.statusLabel.isNotBlank() -> updateCheck.statusLabel
-                                                else -> copy.check
+                                                // The settings store's empty-answer fallback carries English detail.
+                                                updateCheck.errorCode == SETTINGS_ABOUT_UPDATE_CHECK_EMPTY -> copy.updateUnavailable
+                                                else ->
+                                                    updateCheck.detail.ifBlank {
+                                                        updateCheck.screenError?.userFacingMessage(errorStrings)
+                                                            ?: copy.checkUpdateDetail
+                                                    }
                                             },
+                                        status = settingsAboutUpdateStatus(updateCheck, updateCheckBusy, copy),
                                         enabled = !updateCheckBusy
                                     )
                                 )
@@ -370,6 +389,56 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
             )
     )
 }
+
+internal const val SETTINGS_ABOUT_UPDATE_CHECK_EMPTY = "update_check_empty"
+
+/**
+ * The Check for update row's trailing text. The host's `statusLabel` is an untranslated English
+ * word ("Current", "Ready", "Downloading", ...), so the row never shows it: it maps the update's
+ * state onto localized labels, worded like the update page. Up to date shows nothing, since the
+ * description already says Raft is up to date.
+ */
+internal fun settingsAboutUpdateStatus(
+    updateCheck: SharedSettingsUpdateCheckSnapshot,
+    busy: Boolean,
+    copy: SettingsAboutPayloadCopy
+): String {
+    val label = updateCheck.statusLabel.trim().lowercase()
+    val failed =
+        updateCheck.errorCode.isNotBlank() ||
+            updateCheck.screenError != null ||
+            label in setOf("failed", "check failed", "install failed")
+    return when {
+        busy -> copy.checking
+        updateCheck.errorCode == "install_permission_required" || label == "permission required" ->
+            copy.permissionRequired
+        updateCheck.transactionState == SharedSettingsUpdateTransactionState.Checking -> copy.checking
+        updateCheck.transactionState == SharedSettingsUpdateTransactionState.Patching -> copy.preparing
+        updateCheck.transactionState == SharedSettingsUpdateTransactionState.Downloading -> copy.downloading
+        updateCheck.transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall ||
+            updateCheck.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened -> copy.install
+        updateCheck.transactionState == SharedSettingsUpdateTransactionState.Installed -> copy.installed
+        updateCheck.transactionState == SharedSettingsUpdateTransactionState.Failed ||
+            updateCheck.transactionState == SharedSettingsUpdateTransactionState.Stale -> copy.retry
+        failed -> copy.retry
+        label == "checking" -> copy.checking
+        label == "preparing" -> copy.preparing
+        label == "downloading" -> copy.downloading
+        label == "installing" -> copy.installing
+        label == "install" -> copy.install
+        label == "installed" -> copy.installed
+        updateCheck.updateAvailable -> copy.updateAvailable
+        settingsAboutUpdateIsCurrent(updateCheck, label) -> ""
+        else -> copy.check
+    }
+}
+
+/** A check ran and found nothing newer: the row's description already says so. */
+private fun settingsAboutUpdateIsCurrent(updateCheck: SharedSettingsUpdateCheckSnapshot, label: String): Boolean =
+    !updateCheck.updateAvailable &&
+        (label == "current" ||
+            updateCheck.checkedAtLabel.isNotBlank() ||
+            (updateCheck.storeChannel.isNotBlank() && updateCheck.detail.isNotBlank()))
 
 private fun SharedSettingsAboutSnapshot.buildSummary(): String =
     buildString {
