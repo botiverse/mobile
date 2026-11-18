@@ -84,14 +84,8 @@ def capture(tree):
     if not app_anr['main_present']: write('QA231_TRACE',latest_anr())
 
 
-before = adb('exec-out','uiautomator','dump','/dev/tty',check=False)
-write('QA231_BEFORE_LAUNCH',{'dialog':'android:id/aerr_close' in before})
-if 'android:id/aerr_close' in before:
-    capture(before)
-
-for launch in range(1, 4):
-    if launch > 1:
-        adb('shell', 'am', 'force-stop', 'build.raft.app')
+# Launch at the same point as the standard job. A pre-launch UI Automator dump waits for idle.
+for launch in range(1, 2):
     # Use the same launcher/fallback as qa-acceptance. The emulator is unique to this job.
     result = subprocess.run(['adb','shell','monkey','-p','build.raft.app','-c','android.intent.category.LAUNCHER','1'],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
@@ -109,6 +103,6 @@ for launch in range(1, 4):
             raise SystemExit(2)
         if observation < 2:
             time.sleep(4)
-    if not signed_out:
-        write('QA231_CRASH_BUFFER', crash_report(adb('logcat','-b','crash','-d', check=False)))
-        raise SystemExit(3)
+    # Android may remove a dialog before the next sample. Preserve the same OS-level classification on both paths.
+    capture(tree)
+    if not signed_out: raise SystemExit(3)

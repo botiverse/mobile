@@ -7,6 +7,11 @@ permissions:
   actions: read
 jobs:
   startup:
+    name: Signed-out Pixel ${{ matrix.sample }}
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [1, 2]
     runs-on: ubuntu-latest
     timeout-minutes: 22
     steps:
