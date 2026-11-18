@@ -1564,7 +1564,9 @@ data class AccountSettingsSnapshot(
     val canUploadAvatar: Boolean = true,
     val canChangePassword: Boolean = true,
     /** Settings › Account "Share usage data"; null hides the row (flag off, or not loaded from the server). */
-    val usageData: AccountUsageDataSnapshot? = null
+    val usageData: AccountUsageDataSnapshot? = null,
+    /** `GET /api/auth/identities` `passwordConfigured`: whether the account has a password; null until read. */
+    val passwordConfigured: Boolean? = null
 )
 
 /**

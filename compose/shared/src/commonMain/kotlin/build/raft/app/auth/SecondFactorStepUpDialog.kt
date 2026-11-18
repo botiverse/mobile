@@ -17,6 +17,11 @@ import build.raft.app.data.SecondFactorStepUpDialogState
 import build.raft.app.data.SecondFactorStepUpFieldError
 import build.raft.app.data.SecondFactorStepUpIntent
 import build.raft.app.data.SecondFactorStepUpMethod
+import build.raft.app.data.SecondFactorRecoveryEmailResult
+import build.raft.app.data.SecondFactorStepUpLostDevice
+import build.raft.app.data.SecondFactorStepUpRecovery
+import build.raft.app.data.SecondFactorStepUpSignOutScope
+import build.raft.app.data.SecondFactorStepUpView
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.resources.*
@@ -32,7 +37,10 @@ import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
+import build.raft.designsystem.components.appendRaftTextLink
+import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import androidx.compose.ui.text.buildAnnotatedString
 import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -45,7 +53,9 @@ internal const val SECOND_FACTOR_STEP_UP_DIALOG_TAG = "second-factor-step-up-dia
  * as a link under the field); a wrong or used code under the field, a lock, Sign In Again or
  * any other refusal in a warning banner. Only a passkey listed: a banner saying to do this on
  * the web and Close. A scrim tap does not close it; Cancel, the close button and Back do (not
- * while the answer is being checked).
+ * while the answer is being checked). With a [SecondFactorStepUpDialogState.recovery] (signing out
+ * a lost device) it also offers "Lost the device with your authenticator?"
+ * ([SecondFactorStepUpRecoveryPage]).
  */
 @Composable
 internal fun SecondFactorStepUpDialog(
@@ -55,6 +65,12 @@ internal fun SecondFactorStepUpDialog(
     description: String = stringResource(Res.string.settings_step_up_description),
     formatClock: (Long) -> String = ::secondFactorStepUpLocalClock,
 ) {
+    // Signing out a lost device: "Lost the device with your authenticator?" and its pages.
+    val recovery = state.recovery
+    if (recovery != null && state.view != SecondFactorStepUpView.Answer) {
+        SecondFactorStepUpRecoveryPage(state, recovery, onIntent)
+        return
+    }
     val dismiss = { if (!state.submitting) onIntent(SecondFactorStepUpIntent.Cancel) }
     val method = state.method
     RaftDialog(
@@ -119,9 +135,246 @@ internal fun SecondFactorStepUpDialog(
                     )
                 }
             }
+            if (recovery != null) {
+                RaftTextLink(
+                    text = stringResource(Res.string.settings_step_up_lost_authenticator),
+                    onClick = { onIntent(SecondFactorStepUpIntent.ShowLost) },
+                    modifier = Modifier.testTag(SECOND_FACTOR_STEP_UP_LOST_LINK_TAG),
+                    variant = RaftTextLinkVariant.Strong,
+                    style = RaftTheme.typography.callout,
+                    enabled = !state.submitting
+                )
+            }
             state.banner?.let { banner -> SecondFactorStepUpBannerView(banner, formatClock, onIntent) }
         }
     }
+}
+
+internal const val SECOND_FACTOR_STEP_UP_LOST_LINK_TAG = "step-up-lost-authenticator"
+internal const val SECOND_FACTOR_STEP_UP_SIGN_OUT_INSTEAD_TAG = "step-up-sign-out-instead"
+
+/**
+ * Web VerifyItsYouDialog's other pages for a lost device: "Can't verify?" (a backup code first;
+ * with a lost device, the password email, Sign it out now with your password, the passkey warning
+ * and the two-step reset as a link; without, the two-step reset by email) and the emails' "Check
+ * your email". Back returns to the answer; Done and the close button end it like Cancel.
+ */
+@Composable
+private fun SecondFactorStepUpRecoveryPage(
+    state: SecondFactorStepUpDialogState,
+    recovery: SecondFactorStepUpRecovery,
+    onIntent: (SecondFactorStepUpIntent) -> Unit,
+) {
+    val dismiss = { if (!state.submitting) onIntent(SecondFactorStepUpIntent.Cancel) }
+    when (state.view) {
+        SecondFactorStepUpView.RecoverySent,
+        SecondFactorStepUpView.PasswordEmailSent -> {
+            val twoStep = state.view == SecondFactorStepUpView.RecoverySent
+            RaftDialog(
+                onDismissRequest = dismiss,
+                title = stringResource(Res.string.settings_step_up_check_email_title),
+                modifier = Modifier.testTag(SECOND_FACTOR_STEP_UP_DIALOG_TAG),
+                size = RaftDialogSize.Sm,
+                description =
+                    if (twoStep) {
+                        stringResource(Res.string.settings_step_up_recovery_sent, recovery.email)
+                    } else {
+                        stringResource(Res.string.settings_step_up_password_email_sent, recovery.email)
+                    },
+                dismissOnClickOutside = false,
+                closeLabel = stringResource(Res.string.common_close),
+                footer = {
+                    RaftButton(
+                        text = stringResource(Res.string.common_done),
+                        onClick = dismiss,
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Lg
+                    )
+                }
+            ) {
+                if (twoStep) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        RaftBanner(
+                            description = stringResource(Res.string.settings_step_up_recovery_sent_notice),
+                            status = RaftBannerStatus.Info,
+                            size = RaftBannerSize.Sm
+                        )
+                        RaftText(
+                            stringResource(Res.string.settings_step_up_recovery_signs_out_all),
+                            style = RaftTheme.typography.footnote,
+                            color = RaftTheme.colors.foregroundMuted
+                        )
+                    }
+                }
+            }
+        }
+        else -> {
+            val lostDevice = recovery.lostDevice
+            RaftDialog(
+                onDismissRequest = dismiss,
+                title = stringResource(Res.string.settings_step_up_recovery_title),
+                modifier = Modifier.testTag(SECOND_FACTOR_STEP_UP_DIALOG_TAG),
+                size = RaftDialogSize.Sm,
+                dismissOnClickOutside = false,
+                closeLabel = stringResource(Res.string.common_close),
+                footer = {
+                    RaftButton(
+                        text = stringResource(Res.string.common_back),
+                        onClick = { onIntent(SecondFactorStepUpIntent.ShowAnswer) },
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftButtonSize.Lg,
+                        enabled = !state.submitting
+                    )
+                    RaftButton(
+                        text =
+                            stringResource(
+                                when {
+                                    lostDevice == null -> Res.string.settings_step_up_recovery_reset_by_email
+                                    lostDevice.password -> Res.string.settings_step_up_reset_password_by_email
+                                    else -> Res.string.settings_step_up_set_password_by_email
+                                }
+                            ),
+                        onClick = {
+                            onIntent(
+                                if (lostDevice == null) {
+                                    SecondFactorStepUpIntent.RequestTwoStepReset
+                                } else {
+                                    SecondFactorStepUpIntent.RequestPasswordEmail
+                                }
+                            )
+                        },
+                        variant = RaftButtonVariant.Primary,
+                        size = RaftButtonSize.Lg,
+                        enabled = !state.submitting,
+                        loading = state.submitting
+                    )
+                }
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (SecondFactorStepUpMethod.BackupCode in state.methods) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            RaftText(
+                                stringResource(Res.string.settings_step_up_recovery_backup_codes_first),
+                                style = RaftTheme.typography.subhead,
+                                color = RaftTheme.colors.foregroundMuted
+                            )
+                            RaftTextLink(
+                                text = stringResource(Res.string.settings_step_up_use_backup_code),
+                                onClick = { onIntent(SecondFactorStepUpIntent.SwitchMethod(SecondFactorStepUpMethod.BackupCode)) },
+                                variant = RaftTextLinkVariant.Strong,
+                                style = RaftTheme.typography.callout,
+                                enabled = !state.submitting
+                            )
+                        }
+                    }
+                    if (lostDevice != null) {
+                        SecondFactorStepUpLostDeviceBody(state, lostDevice, onIntent)
+                    } else {
+                        RaftText(
+                            stringResource(Res.string.settings_step_up_recovery_email_description),
+                            style = RaftTheme.typography.subhead,
+                            color = RaftTheme.colors.foregroundMuted
+                        )
+                    }
+                    state.recoveryFailure?.let { failure ->
+                        RaftBanner(
+                            description =
+                                stringResource(
+                                    if (failure == SecondFactorRecoveryEmailResult.TooManyRequests) {
+                                        Res.string.settings_step_up_recovery_too_many_requests
+                                    } else {
+                                        Res.string.settings_step_up_recovery_request_failed
+                                    }
+                                ),
+                            status = RaftBannerStatus.Warning,
+                            size = RaftBannerSize.Sm
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The lost page with a lost device: the password email's consequence, Sign out instead, the passkey warning, the two-step reset link. */
+@Composable
+private fun SecondFactorStepUpLostDeviceBody(
+    state: SecondFactorStepUpDialogState,
+    lostDevice: SecondFactorStepUpLostDevice,
+    onIntent: (SecondFactorStepUpIntent) -> Unit,
+) {
+    RaftText(
+        stringResource(
+            if (lostDevice.password) Res.string.settings_step_up_reset_password_body else Res.string.settings_step_up_set_password_body
+        ),
+        style = RaftTheme.typography.subhead,
+        color = RaftTheme.colors.foreground
+    )
+    lostDevice.signOut?.let { scope ->
+        val many = scope == SecondFactorStepUpSignOutScope.Others
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            RaftText(
+                stringResource(
+                    if (many) {
+                        Res.string.settings_step_up_sign_out_all_with_password_body
+                    } else {
+                        Res.string.settings_step_up_sign_out_with_password_body
+                    }
+                ),
+                style = RaftTheme.typography.subhead,
+                color = RaftTheme.colors.foreground
+            )
+            RaftButton(
+                text =
+                    stringResource(
+                        if (many) Res.string.settings_step_up_sign_out_all_with_password else Res.string.settings_step_up_sign_out_with_password
+                    ),
+                onClick = { onIntent(SecondFactorStepUpIntent.SignOutInstead) },
+                modifier = Modifier.testTag(SECOND_FACTOR_STEP_UP_SIGN_OUT_INSTEAD_TAG),
+                variant = RaftButtonVariant.Default,
+                size = RaftButtonSize.Md,
+                enabled = !state.submitting
+            )
+        }
+    }
+    if (state.passkeyListed) {
+        RaftBanner(
+            description = stringResource(Res.string.settings_step_up_lost_passkey_warning),
+            status = RaftBannerStatus.Warning,
+            size = RaftBannerSize.Sm
+        )
+    }
+    val linkText = stringResource(Res.string.settings_step_up_lost_two_step_reset_link)
+    val sentence = stringResource(Res.string.settings_step_up_lost_two_step_reset, RAFT_LINK_SLOT)
+    val enabled = !state.submitting
+    RaftText(
+        raftSentenceWithLink(sentence, linkText, enabled) { onIntent(SecondFactorStepUpIntent.RequestTwoStepReset) },
+        style = RaftTheme.typography.footnote,
+        color = RaftTheme.colors.foregroundMuted
+    )
+}
+
+/** Where a sentence's link goes: the `%1$s` filled with this, then split around it. */
+internal const val RAFT_LINK_SLOT = "\u0000"
+
+/**
+ * A web `<link>` sentence: [sentence] (its `%1$s` already filled with [RAFT_LINK_SLOT]) with
+ * [linkText] as a strong text link where the slot was.
+ */
+internal fun raftSentenceWithLink(
+    sentence: String,
+    linkText: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) = buildAnnotatedString {
+    val at = sentence.indexOf(RAFT_LINK_SLOT)
+    if (at < 0) {
+        append(sentence)
+        return@buildAnnotatedString
+    }
+    append(sentence.substring(0, at))
+    appendRaftTextLink(linkText, onClick = onClick, enabled = enabled)
+    append(sentence.substring(at + RAFT_LINK_SLOT.length))
 }
 
 @Composable

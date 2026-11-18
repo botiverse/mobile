@@ -21,6 +21,7 @@ import build.raft.app.data.MOBILE_ACTION_TEST_NOTIFICATION
 import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.ServerPublicVisibilityRepository
+import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.ServerAppearanceRepository
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SERVER_ACTION_PROFILE_SAVE
@@ -225,6 +226,7 @@ internal fun SettingsNativeDetailScreen() {
         serverAppearanceRepository = environment.serverAppearanceRepository,
         memberRemovalImpactRepository = environment.memberRemovalImpactRepository,
         authStore = environment.authStore,
+        networkClient = remember(sharedStores, environment.storeScope) { sharedStores.networkClient(environment.storeScope) },
         // Only the Pro theme gate opens it: the upgrade dialog (`pro_theme`) where the app offers
         // upgrades, the view-only Plan & Billing page on iOS.
         onOpenBillingPage = {
@@ -314,6 +316,8 @@ internal fun SettingsNativeDetailPageContent(
     /** Leave server's confirmation reads what leaving takes offline; null says nothing about Computers. */
     memberRemovalImpactRepository: MemberRemovalImpactRepository? = null,
     authStore: RaftAuthSessionStore? = null,
+    /** The shared network client: Server's archived channels and agents; null hides them. */
+    networkClient: RaftNetworkClient? = null,
     onOpenBillingPage: () -> Unit = {},
     webBaseUrl: String = "",
     onLogout: () -> Unit
@@ -644,6 +648,7 @@ internal fun SettingsNativeDetailPageContent(
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     publicAccess = publicAccess,
+                    archive = rememberSettingsServerArchive(networkClient, currentServer?.id?.value, currentServer?.role),
                     leaveImpact =
                         memberRemovalImpactRepository?.let { repository ->
                             SettingsServerLeaveImpactBinding(

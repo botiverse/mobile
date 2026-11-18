@@ -90,6 +90,7 @@ import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.SecondFactorStepUpCoordinator
 import build.raft.app.data.SecondFactorStepUpOutcome
 import build.raft.app.data.SecondFactorStepUpRepository
+import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.RaftIntegrationsActionsPushNetworkApi
 import build.raft.app.data.RaftHostInUse
 import build.raft.app.data.isRaftHostVisible
@@ -3894,8 +3895,7 @@ private fun SharedThreadRouteContentContent(
     // card runs once more. One dialog for the typed commit, the install confirmation and spec cards.
     val actionCardStepUp =
         remember(sharedStores, storeScope, threadInstanceKey) {
-            val repository = SecondFactorStepUpRepository(sharedStores.networkClient(storeScope))
-            SecondFactorStepUpCoordinator(stepUp = repository::stepUp)
+            threadActionCardStepUpCoordinator(sharedStores.networkClient(storeScope))
         }
     val actionCardStepUpState by actionCardStepUp.state.collectAsState()
     // web InstallAppCardDialog: an install card's button opens this; only its Install executes.
@@ -10160,4 +10160,13 @@ private fun FlushComposerDraftOnLeave(
             composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
         }
     }
+}
+
+/**
+ * The thread's action-card step-up (out of SharedThreadRouteContentContent, whose JVM method size
+ * is ratcheted: scripts/ci/check_jvm_method_size.py).
+ */
+private fun threadActionCardStepUpCoordinator(networkClient: RaftNetworkClient): SecondFactorStepUpCoordinator {
+    val repository = SecondFactorStepUpRepository(networkClient)
+    return SecondFactorStepUpCoordinator(stepUp = repository::stepUp)
 }

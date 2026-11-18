@@ -233,6 +233,10 @@ internal fun SettingsAppearanceContent(
                 }
             }
         }
+        // Web: the Help menu's Keyboard shortcuts; here where a hardware keyboard is plausible.
+        if (preferenceVisibility.keyboardShortcuts) {
+            item { SettingsKeyboardShortcutsSection() }
+        }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SettingsFormSection(iconName = RaftLucideIconName.Eye, title = stringResource(Res.string.settings_appearance_section_display)) {

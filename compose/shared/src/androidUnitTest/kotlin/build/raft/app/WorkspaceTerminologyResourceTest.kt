@@ -205,7 +205,8 @@ class WorkspaceTerminologyResourceTest {
                 "agent_migration_",
                 "raft_pro_migration_",
                 "settings_computers_",
-                "settings_computer_detail_"
+                "settings_computer_detail_",
+                "settings_archived_agents_workspace_"
             )
 
         // Keys inside those domains that still mean the Raft server ("connect the daemon to this
