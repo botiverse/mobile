@@ -2835,7 +2835,7 @@
     <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">上限到達</string>
     <string name="settings_computers_runtime_usage_window_on_credits">上限到達 · クレジット使用中 · リセット：%1$s</string>
     <string name="settings_computers_runtime_usage_window_on_credits_reset_unavailable">上限到達 · クレジット使用中</string>
-    <string name="settings_computers_runtime_usage_credits_balance">クレジット %1$s</string>
+    <string name="settings_computers_runtime_usage_credits_balance">%1$s クレジット</string>
     <string name="settings_computers_runtime_usage_credits_unlimited">クレジット無制限</string>
     <string name="settings_computers_runtime_usage_credits_available">クレジット利用可能</string>
     <string name="settings_computers_runtime_usage_later">後ほど</string>

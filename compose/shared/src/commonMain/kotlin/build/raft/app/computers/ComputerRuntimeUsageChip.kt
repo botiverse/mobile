@@ -1370,10 +1370,35 @@ internal fun computerRuntimeUsageResetText(resetsAt: String, timeContext: RaftTi
 @Composable
 internal fun computerRuntimeUsageCreditsText(line: RuntimeAccountUsageCreditsLine): String =
     when (line) {
-        is RuntimeAccountUsageCreditsLine.Balance -> stringResource(Res.string.settings_computers_runtime_usage_credits_balance, line.balance)
+        is RuntimeAccountUsageCreditsLine.Balance ->
+            stringResource(
+                Res.string.settings_computers_runtime_usage_credits_balance,
+                computerRuntimeUsageCreditsBalanceDisplay(line.balance, androidx.compose.ui.text.intl.Locale.current.language),
+            )
         RuntimeAccountUsageCreditsLine.Unlimited -> stringResource(Res.string.settings_computers_runtime_usage_credits_unlimited)
         RuntimeAccountUsageCreditsLine.Available -> stringResource(Res.string.settings_computers_runtime_usage_credits_available)
     }
+
+/**
+ * Web runtimeUsageCredits.ts: a plain integer balance (`^-?\d{1,15}$`) is shown with the locale's digit
+ * grouping ("30,784"); anything else is shown as the runtime sent it. Separators follow the web's ICU output
+ * for the app's languages: "," (en, zh, ja, ko), "." (es, pt), a no-break space (ru); Spanish keeps four digits ungrouped.
+ */
+internal fun computerRuntimeUsageCreditsBalanceDisplay(balance: String, language: String): String {
+    if (!Regex("^-?\\d{1,15}$").matches(balance)) return balance
+    val negative = balance.startsWith("-")
+    val digits = balance.removePrefix("-").trimStart('0').ifEmpty { "0" }
+    val separator =
+        when (language.lowercase()) {
+            "es", "pt" -> "."
+            "ru" -> "\u00A0"
+            else -> ","
+        }
+    // ICU's Spanish leaves a four-digit number ungrouped ("1234", "12.345").
+    if (language.lowercase() == "es" && digits.length == 4) return balance.trimStart('0').ifEmpty { "0" }.let { if (negative) "-${it.removePrefix("-")}" else it }
+    val grouped = digits.reversed().chunked(3).joinToString(separator).reversed()
+    return if (negative && grouped != "0") "-$grouped" else grouped
+}
 
 internal const val COMPUTER_RUNTIME_USAGE_CREDITS_TAG = "runtime-usage-credits"
 

@@ -178,11 +178,11 @@ class RuntimeUsageCreditsTest {
             return runtimeQuotaLineParts(summary, zh) { "3 小时后" }
         }
         assertEquals(
-            listOf(RuntimeQuotaLinePart("Codex Pro"), RuntimeQuotaLinePart("本周 已达上限 · 正在使用积分")),
+            listOf(RuntimeQuotaLinePart("Codex Pro"), RuntimeQuotaLinePart("本周 已用完 · 正在使用 credits")),
             parts(RuntimeAccountUsageCredits(available = true, balance = "30784")),
         )
         assertEquals(
-            listOf(RuntimeQuotaLinePart("Codex Pro"), RuntimeQuotaLinePart("本周 已达上限 · 正在使用积分")),
+            listOf(RuntimeQuotaLinePart("Codex Pro"), RuntimeQuotaLinePart("本周 已用完 · 正在使用 credits")),
             parts(RuntimeAccountUsageCredits(available = true, unlimited = true)),
         )
         assertEquals(
@@ -213,7 +213,7 @@ class RuntimeUsageCreditsTest {
             usedUp = { window, reset -> "$window 已用完，${reset}恢复" },
             usedUpNoReset = { window -> "$window 已用完" },
             attention = { plan -> "$plan · 需要处理" },
-            onCredits = { window -> "$window 已达上限 · 正在使用积分" },
+            onCredits = { window -> "$window 已用完 · 正在使用 credits" },
         )
 
     /** One Codex account parsed from the wire, `credits` as given (null: no key). */
@@ -270,5 +270,21 @@ class RuntimeUsageCreditsTest {
             calls += "$method $path" to headers
             return HomeNetworkResponse(200, "{}")
         }
+    }
+
+    @Test
+    fun aPlainIntegerBalanceIsGroupedLikeTheWeb() {
+        assertEquals("30,784", computerRuntimeUsageCreditsBalanceDisplay("30784", "zh"))
+        assertEquals("30,784", computerRuntimeUsageCreditsBalanceDisplay("30784", "en"))
+        assertEquals("1,234,567", computerRuntimeUsageCreditsBalanceDisplay("1234567", "ja"))
+        assertEquals("30.784", computerRuntimeUsageCreditsBalanceDisplay("30784", "pt"))
+        assertEquals("1234", computerRuntimeUsageCreditsBalanceDisplay("1234", "es"))
+        assertEquals("12.345", computerRuntimeUsageCreditsBalanceDisplay("12345", "es"))
+        assertEquals("30\u00A0784", computerRuntimeUsageCreditsBalanceDisplay("30784", "ru"))
+        assertEquals("-1,200", computerRuntimeUsageCreditsBalanceDisplay("-1200", "en"))
+        assertEquals("999", computerRuntimeUsageCreditsBalanceDisplay("999", "en"))
+        // Not a plain integer: shown as the runtime sent it.
+        assertEquals("12.5", computerRuntimeUsageCreditsBalanceDisplay("12.5", "en"))
+        assertEquals("about 30k", computerRuntimeUsageCreditsBalanceDisplay("about 30k", "en"))
     }
 }
