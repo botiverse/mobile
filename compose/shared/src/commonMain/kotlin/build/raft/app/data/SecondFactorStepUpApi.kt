@@ -149,6 +149,24 @@ fun parseSharedSecondFactorStepUpResult(statusCode: Int, bodyText: String?): Sec
     }
 }
 
+/**
+ * A refused request's [DataResult] when it is a 403 `second_factor_step_up_required`, else null:
+ * the one error shape [SecondFactorStepUpCoordinator.run] recognises, so a repository maps the
+ * refusal before its own 403 handling (which would otherwise show the server's English sentence).
+ */
+internal fun <T> HomeNetworkResponse.secondFactorStepUpErrorOrNull(serverMessage: String? = null): DataResult<T>? {
+    val challenge = secondFactorStepUpChallengeOrNull() ?: return null
+    return DataResult.Error(
+        ScreenError(
+            code = SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
+            retryable = false,
+            serverMessage = challenge.serverMessage ?: serverMessage,
+            serverCode = SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
+            secondFactorStepUp = challenge
+        )
+    )
+}
+
 /** The step-up challenge an action's refusal carries, if it is one. */
 fun DataResult<*>.secondFactorStepUpChallengeOrNull(): SecondFactorStepUpChallenge? =
     (this as? DataResult.Error)?.error?.secondFactorStepUp

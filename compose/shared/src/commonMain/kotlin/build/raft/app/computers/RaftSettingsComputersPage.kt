@@ -654,6 +654,8 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     settingsState.addComputerDialog?.let { dialog ->
         AddComputerDialog(state = dialog, onIntent = settingsViewModel::dispatch, runtimeCatalog = runtimeCatalog)
     }
+    // Registering the computer with two-step verification on: "Verify it's you" over the sheet.
+    SettingsSecondFactorStepUpHost(settingsState.secondFactorStepUp, settingsViewModel::dispatch)
     // A card's ⋯ → Delete computer (web RackRowMenu → DeleteComputerDialog): the Computer page's
     // confirm; the agents on it are the ones the cards show.
     deleteComputerId?.let { machineId ->
@@ -2827,6 +2829,8 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
             onUpgrade = { pager.openRaftUpgradeDialog(RaftUpgradeGate.SeatLimitAgentCreate, environment.storeScope) },
         )
     }
+    // A new machine key with two-step verification on (RotateComputerKey): "Verify it's you".
+    SettingsSecondFactorStepUpHost(settingsState.secondFactorStepUp, settingsViewModel::dispatch)
 }
 
 @Composable
