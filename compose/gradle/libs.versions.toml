@@ -13,7 +13,7 @@ cmpNavigation3 = "1.2.0"
 androidxNavigation3 = "1.2.1"
 androidxComposeRuntime = "1.12.1"
 kotlinxCoroutines = "1.11.0"
-kotlinxSerialization = "1.12.0"
+kotlinxSerialization = "1.13.0"
 # Time zones (kotlin.time.Instant API, Kotlin 2.2+).
 kotlinxDatetime = "0.8.0"
 atomicfu = "0.33.0"
@@ -65,7 +65,7 @@ coil = "3.6.3"
 # built against CMP 1.12.1 / Kotlin 2.4.20; Android, iOS and desktop artifacts.
 zoomable = "2.16.0"
 # huarangmeng/latex: message math (task #775). Pure Kotlin, MIT.
-hrmLatex = "1.7.0"
+hrmLatex = "1.7.2"
 # dev.snipme:highlights: message code block syntax colours (artin task #20 lane K). Pure Kotlin
 # Multiplatform (jvm + iosArm64/iosSimulatorArm64 klibs), Apache-2.0.
 snipmeHighlights = "1.2.0"
@@ -80,8 +80,8 @@ qrose = "1.3.1"
 store5 = "5.1.0-beta01"
 androidsvg = "1.4"
 mmkv = "2.4.3"
-firebaseBom = "35.1.0"
-googleServices = "4.5.0"
+firebaseBom = "35.2.0"
+googleServices = "4.6.0"
 # Google Play In-App Review (the store rating prompt; `play` build type only, RaftAndroidStoreReview).
 playReview = "2.0.2"
 playAppUpdate = "2.1.0"
@@ -92,9 +92,9 @@ profileinstaller = "1.4.1"
 uiautomator = "2.4.1"
 # Roborazzi: record / verify / compare tasks and diff reports for the design system's desktop
 # screenshot tests (compose/designsystem) and :shared's Robolectric ones (roborazzi-android).
-# 1.77.0 is the latest release; its Compose Desktop module is built against CMP 1.10.3, aligned
+# Its Compose Desktop module (checked at 1.77.0) is built against CMP 1.10.3, aligned
 # to composePlugin by cmp-ui-test-junit4 below.
-roborazzi = "1.77.0"
+roborazzi = "1.79.0"
 
 [libraries]
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
