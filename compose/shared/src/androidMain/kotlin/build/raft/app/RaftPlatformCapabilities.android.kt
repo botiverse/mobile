@@ -1,5 +1,7 @@
 package build.raft.app
 
+import android.content.pm.PackageManager
+import android.content.res.Resources
 import android.os.Build
 import java.text.BreakIterator
 import java.util.Locale
@@ -7,6 +9,8 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
+import build.raft.app.data.RaftAndroidSqlDatabaseContext
+import build.raft.app.network.RAFT_ANDROID_TABLET_SMALLEST_WIDTH_DP
 
 internal actual fun raftPlatformIsiOSAppOnMac(): Boolean = false
 
@@ -27,6 +31,21 @@ internal actual fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPag
     AppShellChildPagePrewarmMode.Canary
 
 internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = true
+
+/**
+ * A tablet (the smallest width at least 600dp, Android's `sw600dp`, the same line the User-Agent
+ * draws) or a foldable (a hinge sensor: folded, its outer screen is phone-sized, unfolded it is
+ * large). Read at each call: a foldable's smallest width follows its fold.
+ */
+internal actual fun raftPlatformLargeScreenPossible(): Boolean {
+    // Plain JVM unit tests have no Android framework: no large screen there.
+    val smallestWidthDp = runCatching { Resources.getSystem().configuration.smallestScreenWidthDp }.getOrNull() ?: return false
+    if (smallestWidthDp >= RAFT_ANDROID_TABLET_SMALLEST_WIDTH_DP) return true
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+    return runCatching {
+        RaftAndroidSqlDatabaseContext.require().packageManager.hasSystemFeature(PackageManager.FEATURE_SENSOR_HINGE_ANGLE)
+    }.getOrDefault(false)
+}
 
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = false
 

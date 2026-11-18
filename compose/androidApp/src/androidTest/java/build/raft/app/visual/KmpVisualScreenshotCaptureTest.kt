@@ -42,7 +42,6 @@ import org.json.JSONObject
 import org.junit.Assert.fail
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
-import org.junit.Assume.assumeTrue
 import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
@@ -2891,94 +2890,6 @@ class KmpVisualScreenshotCaptureTest {
             pageName = "compose_home_titlebar_visual",
             crop = FULL_VIEWPORT_CROP
         )
-    }
-
-    @Test
-    fun captureHomeTitlebarPreferencePersistenceStates() {
-        val store = raftSharedPreferenceStore()
-        val previous = store.getString(HOME_SERVER_AVATAR_PREFERENCE_KEY)
-        try {
-            store.putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
-            assertTrue(
-                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
-                    .readHomeServerAvatarEnabledSync()
-            )
-            captureKmpComponentCase(
-                caseId = "components.home.titlebar.preference-fresh-on",
-                pageName = "compose_home_titlebar_preference_visual",
-                crop = HOME_TITLEBAR_PREFERENCE_CROP
-            )
-
-            runBlocking {
-                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
-                    .saveHomeServerAvatarEnabled(true)
-            }
-            assertTrue(
-                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
-                    .readHomeServerAvatarEnabledSync()
-            )
-            captureKmpComponentCase(
-                caseId = "components.home.titlebar.preference-relaunch-on",
-                pageName = "compose_home_titlebar_preference_visual",
-                crop = HOME_TITLEBAR_PREFERENCE_CROP
-            )
-
-            runBlocking {
-                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
-                    .saveHomeServerAvatarEnabled(false)
-            }
-            assertFalse(
-                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
-                    .readHomeServerAvatarEnabledSync()
-            )
-            captureKmpComponentCase(
-                caseId = "components.home.titlebar.preference-relaunch-off",
-                pageName = "compose_home_titlebar_preference_visual",
-                crop = HOME_TITLEBAR_PREFERENCE_CROP
-            )
-        } finally {
-            store.putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, previous)
-        }
-    }
-
-    @Test
-    fun captureHomeTitlebarPreferenceAcrossProcessRestartPhase() {
-        // VISUAL_CANONICAL_EXCLUDED: requires the external three-phase process-restart driver.
-        val phase =
-            InstrumentationRegistry.getArguments()
-                .getString(HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG)
-                .orEmpty()
-        assumeTrue("process-restart phase is opt-in", phase.isNotBlank())
-        val preferenceStore = KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
-        when (phase) {
-            "seed-on" -> {
-                raftSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
-                assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
-                runBlocking { preferenceStore.saveHomeServerAvatarEnabled(true) }
-                assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
-            }
-            "assert-on-seed-off" -> {
-                assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
-                captureKmpComponentCase(
-                    caseId = "components.home.titlebar.preference-process-restart-on",
-                    pageName = "compose_home_titlebar_preference_visual",
-                    crop = HOME_TITLEBAR_PREFERENCE_CROP
-                )
-                runBlocking { preferenceStore.saveHomeServerAvatarEnabled(false) }
-                assertFalse(preferenceStore.readHomeServerAvatarEnabledSync())
-            }
-            "assert-off-reset" -> {
-                assertFalse(preferenceStore.readHomeServerAvatarEnabledSync())
-                captureKmpComponentCase(
-                    caseId = "components.home.titlebar.preference-process-restart-off",
-                    pageName = "compose_home_titlebar_preference_visual",
-                    crop = HOME_TITLEBAR_PREFERENCE_CROP
-                )
-                raftSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
-                assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
-            }
-            else -> error("Unknown $HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG=$phase")
-        }
     }
 
     @Test
@@ -6580,15 +6491,6 @@ class KmpVisualScreenshotCaptureTest {
                 contract = "viewport-bounds",
                 captureMethod = "pixel-copy-app-window-viewport-crop"
             )
-        private val HOME_TITLEBAR_PREFERENCE_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 390,
-                heightDp = 64
-            )
-        private const val HOME_SERVER_AVATAR_PREFERENCE_KEY = "mobile:home_server_avatar_enabled"
-        private const val HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG = "homeServerAvatarProcessRestartPhase"
         private const val NEW_MESSAGE_MENU_PREFERENCE_KEY = "mobile:new_message_menu_enabled"
         private val HOME_SAVED_RESULTS_CROP =
             VisualCrop(

@@ -523,7 +523,6 @@ internal fun InboxItem.activityConversationRowModel(
     selectedFilter: InboxFilter,
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
     dmPeerNames: Map<String, String> = emptyMap(),
-    activityTaskStatusBadgesEnabled: Boolean = true,
 ): ActivityConversationRowModel {
     if (kind == InboxItemKind.Object) return activityObjectRowModel(selectedFilter, senderProfiles, context.jointChannelIds)
     val directMessage = isActivityDirectMessageConversation()
@@ -624,8 +623,8 @@ internal fun InboxItem.activityConversationRowModel(
         showUnreadCount = !muted && unread > 0,
         showMarkedUnreadDot = !muted && markedDot,
         hasDraft = hasDraft,
-        taskNumber = taskNumber.takeIf { activityTaskStatusBadgesEnabled && kind == InboxItemKind.Thread && !taskConversationRow && taskStatus != null },
-        taskStatus = taskStatus.takeIf { activityTaskStatusBadgesEnabled && kind == InboxItemKind.Thread && !taskConversationRow && taskNumber != null },
+        taskNumber = taskNumber.takeIf { kind == InboxItemKind.Thread && !taskConversationRow && taskStatus != null },
+        taskStatus = taskStatus.takeIf { kind == InboxItemKind.Thread && !taskConversationRow && taskNumber != null },
         delegatedBy = previewDelegatedBy(),
         taskConversation = taskConversationRow,
         taskStatusMark = taskStatus.takeIf { taskConversationRow },

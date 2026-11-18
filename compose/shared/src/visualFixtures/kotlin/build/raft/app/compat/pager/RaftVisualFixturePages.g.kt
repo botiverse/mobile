@@ -51,7 +51,6 @@ internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
         "compose_home_sidebar_row_states_visual" to { build.raft.app.ComposeHomeSidebarRowStatesVisualPage() },
         "compose_home_titlebar_error_visual" to { build.raft.app.ComposeHomeTitlebarErrorVisualPage() },
         "compose_home_titlebar_loading_visual" to { build.raft.app.ComposeHomeTitlebarLoadingVisualPage() },
-        "compose_home_titlebar_preference_visual" to { build.raft.app.ComposeHomeTitlebarPreferenceVisualPage() },
         "compose_home_titlebar_resize_visual" to { build.raft.app.ComposeHomeTitlebarResizeVisualPage() },
         "compose_home_titlebar_server_switch_visual" to { build.raft.app.ComposeHomeTitlebarServerSwitchVisualPage() },
         "compose_home_titlebar_visual" to { build.raft.app.ComposeHomeTitlebarVisualPage() },

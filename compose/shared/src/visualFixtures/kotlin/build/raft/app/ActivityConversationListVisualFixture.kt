@@ -186,7 +186,6 @@ internal fun HomeActivityConversationListVisualContent(withPins: Boolean) {
             onOpenItem = {},
             onClose = {},
             timeContext = homeVisualFixtureTimeContext,
-            activityTaskStatusBadgesEnabled = true,
             draftProjection = activityConversationListVisualDraftProjection,
             foregroundEpoch = 0L,
             conversationList = ActivityConversationListPresentation(context = activityConversationListVisualContext(withPins)),

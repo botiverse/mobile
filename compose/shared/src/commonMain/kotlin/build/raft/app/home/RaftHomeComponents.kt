@@ -1305,26 +1305,6 @@ internal fun HomeTitlebarVisualScreen() {
 }
 
 @Composable
-internal fun HomeTitlebarPreferenceVisualScreen(enabled: Boolean) {
-    val server =
-        RaftServerSwitcherItem(
-            id = "srv_persisted",
-            name = "Raft Product Design Workspace",
-            slug = "raft-design",
-            avatarUrl = "pixel:paint"
-        )
-    RaftStructuralHomeShell(
-        currentServerName = server.name,
-        currentServerId = server.id,
-        servers = listOf(server),
-        homeServerAvatarEnabled = enabled,
-        applyTopSafeArea = false,
-        showBottomBar = false,
-        outerPadding = 0.dp
-    )
-}
-
-@Composable
 internal fun HomeTitlebarServerSwitchVisualScreen() {
     val servers =
         remember {

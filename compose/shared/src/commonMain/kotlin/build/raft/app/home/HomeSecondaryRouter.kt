@@ -16,7 +16,6 @@ import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftStroke
-import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -123,7 +122,6 @@ private data class HomeSecondaryRouteEnvironment(
     val alignOwnMessagesRight: Boolean,
     val compactConsecutiveMessages: Boolean,
     val foregroundMessageBannersEnabled: Boolean,
-    val activityTaskStatusBadgesEnabled: Boolean,
     val storeScope: RaftShellStoreScope,
     val hasExplicitShellScope: Boolean,
     val adaptivePane: RaftAdaptivePaneState,
@@ -197,13 +195,11 @@ private fun rememberHomeSecondaryRouteEnvironment(
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
-    var activityTaskStatusBadgesEnabled by remember { mutableStateOf(DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED) }
     LaunchedEffect(chatLayoutPreferenceRepository) {
         val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
         myMessageAlignment = chatLayout.myMessageAlignment
         compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
         foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
-        activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
     }
     val timeCapabilities =
         remember(pager.pageData.params.toString()) {
@@ -239,7 +235,6 @@ private fun rememberHomeSecondaryRouteEnvironment(
         myMessageAlignment,
         compactConsecutiveMessages,
         foregroundMessageBannersEnabled,
-        activityTaskStatusBadgesEnabled,
         storeScope,
         hasExplicitShellScope,
         adaptivePane,
@@ -265,7 +260,6 @@ private fun rememberHomeSecondaryRouteEnvironment(
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
             compactConsecutiveMessages = compactConsecutiveMessages,
             foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
-            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
             storeScope = storeScope,
             hasExplicitShellScope = hasExplicitShellScope,
             adaptivePane = adaptivePane,
@@ -471,7 +465,6 @@ private fun HomeActivityRouterContent(
             bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
             timeContext = environment.timeContext,
             shellScope = environment.shellScope,
-            activityTaskStatusBadgesEnabled = environment.activityTaskStatusBadgesEnabled,
             refreshOnAppLifecycleResume = true,
             externalSelectedThreadId = activityWorkspace?.selection?.identity?.threadId,
             storeScope = environment.storeScope

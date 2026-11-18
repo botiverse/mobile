@@ -152,12 +152,9 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.newMessageMenuEnabled)
         assertEquals(false, snapshot.conversationForwardGestureEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
-        assertEquals(true, snapshot.activityTaskStatusBadgesEnabled)
-        assertEquals(false, snapshot.activitySenderAvatarsEnabled)
         assertEquals(false, snapshot.composerSendKeyEnabled)
         assertEquals(false, snapshot.multiShellHostEnabled)
         assertEquals(false, snapshot.serverDrawerEnabled)
-        assertEquals(true, snapshot.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(TranslationTargetLanguages.Browser, snapshot.translationTargetLanguage)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
@@ -300,25 +297,6 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun homeServerAvatarPreferenceDefaultsOnAndKeepsAnExplicitOff() = runBlocking {
-        // Task #470: on for anyone without a stored choice; a user who turned it off stays off.
-        val key = "mobile:home_server_avatar_enabled"
-        val store = InMemoryRaftKeyValueStore()
-        val preferenceStore = KeyValueChatLayoutPreferenceStore(store)
-
-        assertEquals(true, preferenceStore.readHomeServerAvatarEnabled())
-
-        preferenceStore.saveHomeServerAvatarEnabled(false)
-        assertEquals(false, preferenceStore.readHomeServerAvatarEnabled())
-
-        preferenceStore.saveHomeServerAvatarEnabled(true)
-        assertEquals(true, preferenceStore.readHomeServerAvatarEnabled())
-
-        store.putString(key, null)
-        assertEquals(true, preferenceStore.readHomeServerAvatarEnabled())
-    }
-
-    @Test
     fun conversationForwardGestureDefaultsOffFailsClosedAndPersistsIndependently() = runBlocking {
         val key = "mobile:conversation_forward_gesture_enabled"
         val store = InMemoryRaftKeyValueStore()
@@ -358,17 +336,12 @@ class LocalPreferencesTest {
         val newMessageMenu = repository.setNewMessageMenuEnabled(true)
         val conversationForwardGesture = repository.setConversationForwardGestureEnabled(true)
         val foregroundMessageBanners = repository.setForegroundMessageBannersEnabled(true)
-        val activityTaskStatusBadges = repository.setActivityTaskStatusBadgesEnabled(true)
-        val activitySenderAvatars = repository.setActivitySenderAvatarsEnabled(true)
         val composerSendKey = repository.setComposerSendKeyEnabled(false)
         val multiShellHost = repository.setMultiShellHostEnabled(true)
         val serverDrawer = repository.setServerDrawerEnabled(true)
-        val homeServerAvatar = repository.setHomeServerAvatarEnabled(true)
         val translationMode = repository.setTranslationMode(TranslationModePreference.Manual)
         val translationTarget = repository.setTranslationTargetLanguage("zh-Hans")
         val restored = repository.getChatLayoutPreference()
-        val disabledActivityTaskStatusBadges = repository.setActivityTaskStatusBadgesEnabled(false)
-        val disabledActivitySenderAvatars = repository.setActivitySenderAvatarsEnabled(false)
         val disabledCompact = repository.setCompactConsecutiveMessages(false)
         val enabledComposerSendKey = repository.setComposerSendKeyEnabled(true)
         val restoredDisabledCompact = repository.getChatLayoutPreference()
@@ -380,12 +353,9 @@ class LocalPreferencesTest {
         assertEquals(true, newMessageMenu.newMessageMenuEnabled)
         assertEquals(true, conversationForwardGesture.conversationForwardGestureEnabled)
         assertEquals(true, foregroundMessageBanners.foregroundMessageBannersEnabled)
-        assertEquals(true, activityTaskStatusBadges.activityTaskStatusBadgesEnabled)
-        assertEquals(true, activitySenderAvatars.activitySenderAvatarsEnabled)
         assertEquals(false, composerSendKey.composerSendKeyEnabled)
         assertEquals(true, multiShellHost.multiShellHostEnabled)
         assertEquals(true, serverDrawer.serverDrawerEnabled)
-        assertEquals(true, homeServerAvatar.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, translationMode.translationMode)
         assertEquals("zh-cn", translationTarget.translationTargetLanguage)
         assertEquals(MyMessageAlignmentPreference.Right, restored.myMessageAlignment)
@@ -395,24 +365,18 @@ class LocalPreferencesTest {
         assertEquals(true, restored.newMessageMenuEnabled)
         assertEquals(true, restored.conversationForwardGestureEnabled)
         assertEquals(true, restored.foregroundMessageBannersEnabled)
-        assertEquals(true, restored.activityTaskStatusBadgesEnabled)
-        assertEquals(true, restored.activitySenderAvatarsEnabled)
         assertEquals(false, restored.composerSendKeyEnabled)
         assertEquals(true, restored.multiShellHostEnabled)
         assertEquals(true, restored.serverDrawerEnabled)
-        assertEquals(true, restored.homeServerAvatarEnabled)
         assertEquals(TranslationModePreference.Manual, restored.translationMode)
         assertEquals("zh-cn", restored.translationTargetLanguage)
         assertEquals(false, repository.setForegroundMessageBannersEnabled(false).foregroundMessageBannersEnabled)
-        assertEquals(false, disabledActivityTaskStatusBadges.activityTaskStatusBadgesEnabled)
-        assertEquals(false, disabledActivitySenderAvatars.activitySenderAvatarsEnabled)
         assertEquals(false, disabledCompact.compactConsecutiveMessages)
         assertEquals(true, enabledComposerSendKey.composerSendKeyEnabled)
         assertEquals(false, restoredDisabledCompact.compactConsecutiveMessages)
         assertEquals(true, restoredDisabledCompact.composerSendKeyEnabled)
         assertEquals(true, restoredDisabledCompact.multiShellHostEnabled)
         assertEquals(true, restoredDisabledCompact.serverDrawerEnabled)
-        assertEquals(true, restoredDisabledCompact.homeServerAvatarEnabled)
         assertEquals(true, restoredDisabledCompact.newMessageMenuEnabled)
     }
 

@@ -16,7 +16,6 @@ class SettingsWorkspaceRowsAccessTest {
     private fun rows(role: String?) =
         settingsHomeRowKeys(
             hasThemeServer = true,
-            appPreferencesUnderAppearance = false,
             serverPanelPages = true,
             guest = role == "guest",
             billing = settingsHomeBillingVisible(role),

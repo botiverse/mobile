@@ -39,6 +39,14 @@ internal expect fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPag
 
 internal expect fun raftPlatformSupportsMultiShellHost(): Boolean
 
+/**
+ * This device can show Raft on a large screen: a tablet, a foldable, an iPad or a Mac, the desktop
+ * app. Settings > Appearance shows its Windows group ("Desktop layout on large screens", Multiple
+ * app windows) only there; an ordinary phone has no such screen, so the rows would do nothing it
+ * can see (settings cleanup, 1.27.0).
+ */
+internal expect fun raftPlatformLargeScreenPossible(): Boolean
+
 /** iOS is currently the only host with a native right-edge Forward recognizer. */
 internal expect fun raftPlatformSupportsConversationForwardGesture(): Boolean
 

@@ -50,10 +50,19 @@ internal val SettingsThemePageSections: List<SettingsThemePageSection> =
 
 /**
  * The sections Settings > Theme shows: all of them with a current server; without one (a stale
- * route), only light and dark, which belongs to the device rather than to a server.
+ * route), only light and dark, which belongs to the device rather than to a server. The frame's
+ * pixel art shows on wide screens only, so a device that can't have one ([largeScreen] false, an
+ * ordinary phone) has no switch for it (settings cleanup, 1.27.0).
  */
-internal fun settingsThemePageSections(hasServer: Boolean): List<SettingsThemePageSection> =
-    if (hasServer) SettingsThemePageSections else listOf(SettingsThemePageSection.Mode)
+internal fun settingsThemePageSections(
+    hasServer: Boolean,
+    largeScreen: Boolean = raftPlatformLargeScreenPossible(),
+): List<SettingsThemePageSection> =
+    when {
+        !hasServer -> listOf(SettingsThemePageSection.Mode)
+        largeScreen -> SettingsThemePageSections
+        else -> SettingsThemePageSections - SettingsThemePageSection.Decor
+    }
 
 /** Settings > Theme. [serverTheme] null (fixtures without a store) shows light and dark only. */
 @Composable

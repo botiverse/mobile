@@ -72,14 +72,6 @@ private val Server = on(SettingsNativeDetailPage.Server.key)
 private val Billing = on(SettingsDestinationBilling)
 private val Administration = on(SettingsDestinationAdministration)
 
-/**
- * The composer key is a Mobile card on a phone; on a fine pointer the Mobile cards sit at the end of
- * Appearance and there is no Mobile row ([settingsAppPreferencesUnderAppearance]).
- */
-private val MobileOrAppearance: (RaftSettingsSearchContext) -> String? = { context ->
-    SettingsNativeDetailPage.Mobile.key.takeIf { it in context.rowKeys } ?: Appearance(context)
-}
-
 /** Light and dark are on the Theme page; with no current server (no Theme row) on Appearance. */
 private val ThemeOrAppearance: (RaftSettingsSearchContext) -> String? = { context -> Theme(context) ?: Appearance(context) }
 
@@ -165,7 +157,7 @@ internal val RaftSettingsSearchEntries: List<RaftSettingsSearchEntry> =
         RaftSettingsSearchEntry(
             "hide-empty-sidebar-sections",
             "appearance",
-            words(listOf("sidebar", "empty sections"), listOf("侧栏", "空分组", "隐藏分组")),
+            words(listOf("sidebar", "home", "empty sections"), listOf("侧栏", "首页", "空分组", "空分区", "隐藏分组")),
             Appearance,
         ),
         RaftSettingsSearchEntry(
@@ -175,7 +167,7 @@ internal val RaftSettingsSearchEntries: List<RaftSettingsSearchEntry> =
                 listOf("enter", "return", "send key", "new line", "shortcut", "cmd enter", "ctrl enter"),
                 listOf("回车", "换行", "发送键", "发送方式", "快捷键"),
             ),
-            MobileOrAppearance,
+            Appearance,
         ),
         RaftSettingsSearchEntry(
             "push-notifications",

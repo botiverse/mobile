@@ -127,15 +127,15 @@ internal fun SettingsAppShellHomeContent(
  * Personal; "On {server}", the member's own settings in the current server: Theme and the server's
  * Notifications (its level alone; the personal Notifications page shows it too); Workspace;
  * Resources, with Documentation leaving Raft for the docs site. The "On {server}" group is there
- * only with a current server ([hasThemeServer]), as is the web's. The app's own rows stay: Mobile
- * and Storage (this device's settings, which the web has not).
+ * only with a current server ([hasThemeServer]), as is the web's. The app's own row stays:
+ * Storage (this device's storage, which the web has not). The app's own preferences (the former
+ * Mobile page) are part of Appearance, as on the web (1.27.0).
  * On the phone ([serverPanelPages]) the list is the web phone's (artin 2026-11-05, dm task #17):
  * Computers is not a row, it is a page on the server panel (web MobileServerTab), and Applications
  * is a row only for a guest ([guest]; web useSidebarRoute `currentRole === "guest"`): a guest has
  * no Apps page, and their Applications holds only their own link previews; everyone else opens
  * Apps from the server panel. The wide list keeps both rows, next to the rail's Computers and Apps.
- * Mobile is a phone page: with [appPreferencesUnderAppearance] (the desktop app) its cards are part
- * of Appearance, the web's home for them, and there is no Mobile row. IM Bridges follows
+ * IM Bridges follows
  * Administration, as on the web (settingsNavigation.ts, Sidebar.tsx), only with [imBridges]: the
  * server's `slack_bridge_v0` flag (web `isSlackBridgeSurfaceEnabled`). Plan & Billing ([billing]) and
  * Administration ([administration]) are rows only for who may open them, as on the web
@@ -146,7 +146,6 @@ internal fun SettingsAppShellHomeContent(
  */
 internal fun settingsHomeRowKeys(
     hasThemeServer: Boolean,
-    appPreferencesUnderAppearance: Boolean = settingsAppPreferencesUnderAppearance(),
     imBridges: Boolean = false,
     labs: Boolean = false,
     releaseNotes: Boolean = settingsReleaseNotesAvailable(),
@@ -161,7 +160,6 @@ internal fun settingsHomeRowKeys(
         SettingsNativeDetailPage.LanguageRegion.key,
         SettingsNativeDetailPage.Appearance.key,
         SettingsNativeDetailPage.Notifications.key,
-        SettingsNativeDetailPage.Mobile.key.takeUnless { appPreferencesUnderAppearance },
         SettingsDestinationStorage.takeIf { storage },
         SettingsNativeDetailPage.Theme.key.takeIf { hasThemeServer },
         SettingsNativeDetailPage.ServerNotifications.key.takeIf { hasThemeServer },
@@ -193,17 +191,9 @@ internal fun settingsReleaseNotesAvailable(appSlug: String = raftReleaseNotesApp
 /** Settings › Storage shows only where the host reports local storage ([raftPlatformHasStorageInfo]). */
 internal fun settingsStorageAvailable(hasStorageInfo: Boolean = raftPlatformHasStorageInfo()): Boolean = hasStorageInfo
 
-/**
- * Whether the app preferences (message alignment, compact messages, composer key, ...) sit under
- * Appearance, as on the web (packages/web SettingsPanel AppearanceSection), instead of a "Mobile"
- * page: on a fine pointer, the desktop app. Phones keep Mobile.
- */
-internal fun settingsAppPreferencesUnderAppearance(finePointer: Boolean = raftPlatformHasFinePointer()): Boolean = finePointer
-
 @Composable
 internal fun appShellSettingsHomePayload(
     session: StoredAuthSession?,
-    appPreferencesUnderAppearance: Boolean = settingsAppPreferencesUnderAppearance(),
     /** The server's `slack_bridge_v0` flag: the IM Bridges row ([settingsHomeRowKeys]). */
     imBridgesEnabled: Boolean = false,
     /** The server's `server_labs_ui_v0` flag: the Labs row ([settingsHomeRowKeys]). */
@@ -250,13 +240,6 @@ internal fun appShellSettingsHomePayload(
                 title = stringResource(Res.string.settings_notifications_title),
                 subtitle = stringResource(Res.string.settings_notifications_subtitle),
                 iconName = RaftLucideIconName.Bell,
-                section = personalSection
-            ),
-            SettingsHomePageLinkPayload(
-                key = SettingsNativeDetailPage.Mobile.key,
-                title = stringResource(Res.string.settings_mobile_title),
-                subtitle = stringResource(Res.string.settings_mobile_subtitle),
-                iconName = RaftLucideIconName.Smartphone,
                 section = personalSection
             ),
             SettingsHomePageLinkPayload(
@@ -369,7 +352,6 @@ internal fun appShellSettingsHomePayload(
         items =
             settingsHomeRowKeys(
                 hasThemeServer = themeServer != null,
-                appPreferencesUnderAppearance = appPreferencesUnderAppearance,
                 imBridges = imBridgesEnabled,
                 labs = labsEnabled,
                 serverPanelPages = serverPanelPages,

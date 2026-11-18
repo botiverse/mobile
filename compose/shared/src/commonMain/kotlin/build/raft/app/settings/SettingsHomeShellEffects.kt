@@ -812,9 +812,7 @@ internal fun AppShellRuntimeAuthorityEffects(
     myMessageAlignmentState: MutableState<MyMessageAlignmentPreference>,
     compactConsecutiveMessagesState: MutableState<Boolean>,
     foregroundMessageBannersEnabledState: MutableState<Boolean>,
-    activityTaskStatusBadgesEnabledState: MutableState<Boolean>,
     serverDrawerEnabledState: MutableState<Boolean>,
-    homeServerAvatarEnabledState: MutableState<Boolean>,
     conversationForwardGestureEnabledState: MutableState<Boolean>,
     foregroundBannerStore: SharedForegroundBannerStore,
 ) {
@@ -822,9 +820,7 @@ internal fun AppShellRuntimeAuthorityEffects(
     var myMessageAlignment by myMessageAlignmentState
     var compactConsecutiveMessages by compactConsecutiveMessagesState
     var foregroundMessageBannersEnabled by foregroundMessageBannersEnabledState
-    var activityTaskStatusBadgesEnabled by activityTaskStatusBadgesEnabledState
     var serverDrawerEnabled by serverDrawerEnabledState
-    var homeServerAvatarEnabled by homeServerAvatarEnabledState
     var conversationForwardGestureEnabled by conversationForwardGestureEnabledState
     val conversationForwardGestureRuntimeAuthority =
         remember(
@@ -855,9 +851,7 @@ internal fun AppShellRuntimeAuthorityEffects(
                 if (!chatLayout.foregroundMessageBannersEnabled) {
                     foregroundBannerStore.dismiss()
                 }
-                activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
                 serverDrawerEnabled = chatLayout.serverDrawerEnabled
-                homeServerAvatarEnabled = chatLayout.homeServerAvatarEnabled
                     }
         }
     DisposableEffect(

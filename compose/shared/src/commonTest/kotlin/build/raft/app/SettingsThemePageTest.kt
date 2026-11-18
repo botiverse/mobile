@@ -23,14 +23,23 @@ class SettingsThemePageTest {
                 SettingsThemePageSection.Avatars,
                 SettingsThemePageSection.Decor,
             ),
-            settingsThemePageSections(hasServer = true),
+            settingsThemePageSections(hasServer = true, largeScreen = true),
         )
         assertEquals(SettingsThemePageSection.Mode, SettingsThemePageSections.first())
     }
 
     @Test
+    fun aPhoneHasNoPixelArtSwitch() {
+        // The frame's pixel art shows on wide screens only: an ordinary phone never sees it.
+        assertEquals(
+            listOf(SettingsThemePageSection.Mode, SettingsThemePageSection.Basics, SettingsThemePageSection.Avatars),
+            settingsThemePageSections(hasServer = true, largeScreen = false),
+        )
+    }
+
+    @Test
     fun themePageWithoutAServerKeepsOnlyLightAndDark() {
-        assertEquals(listOf(SettingsThemePageSection.Mode), settingsThemePageSections(hasServer = false))
+        assertEquals(listOf(SettingsThemePageSection.Mode), settingsThemePageSections(hasServer = false, largeScreen = true))
     }
 
     @Test

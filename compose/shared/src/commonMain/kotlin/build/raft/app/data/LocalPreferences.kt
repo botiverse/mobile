@@ -8,11 +8,6 @@ import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
 internal const val DEFAULT_SERVER_DRAWER_ENABLED = false
-/**
- * Task #470 (artin 2026-10-11): the workspace avatar in the Home header is on by default. Only a user
- * who has no stored choice gets it; an explicit "off" is kept.
- */
-internal const val DEFAULT_HOME_SERVER_AVATAR_ENABLED = true
 
 /**
  * The app UI languages. Entries after [System] are in the web's Settings picker order
@@ -247,9 +242,6 @@ enum class MyMessageAlignmentPreference(val storageKey: String) {
 
 const val DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN = true
 
-/** Task status badges on Activity rows (Settings > Mobile); on unless the user turned it off (1.13.0, artin). */
-const val DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED = true
-
 enum class TranslationModePreference(val storageKey: String) {
     Automatic("automatic"),
     Manual("manual"),
@@ -330,12 +322,9 @@ data class ChatLayoutPreferenceSnapshot(
     val newMessageMenuEnabled: Boolean = false,
     val conversationForwardGestureEnabled: Boolean = false,
     val foregroundMessageBannersEnabled: Boolean = false,
-    val activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
-    val activitySenderAvatarsEnabled: Boolean = false,
     val composerSendKeyEnabled: Boolean = false,
     val multiShellHostEnabled: Boolean = false,
     val serverDrawerEnabled: Boolean = DEFAULT_SERVER_DRAWER_ENABLED,
-    val homeServerAvatarEnabled: Boolean = DEFAULT_HOME_SERVER_AVATAR_ENABLED,
     val translationMode: TranslationModePreference = TranslationModePreference.Default,
     val translationTargetLanguage: String = TranslationTargetLanguages.Browser,
     val supportedTranslationModes: List<TranslationModePreference> =
@@ -364,12 +353,6 @@ interface ChatLayoutPreferenceStore {
     fun readForegroundMessageBannersEnabledSync(): Boolean
     suspend fun readForegroundMessageBannersEnabled(): Boolean
     suspend fun saveForegroundMessageBannersEnabled(enabled: Boolean)
-    fun readActivityTaskStatusBadgesEnabledSync(): Boolean
-    suspend fun readActivityTaskStatusBadgesEnabled(): Boolean
-    suspend fun saveActivityTaskStatusBadgesEnabled(enabled: Boolean)
-    fun readActivitySenderAvatarsEnabledSync(): Boolean
-    suspend fun readActivitySenderAvatarsEnabled(): Boolean
-    suspend fun saveActivitySenderAvatarsEnabled(enabled: Boolean)
     fun readComposerSendKeyEnabledSync(): Boolean
     suspend fun readComposerSendKeyEnabled(): Boolean
     suspend fun saveComposerSendKeyEnabled(enabled: Boolean)
@@ -387,9 +370,6 @@ interface ChatLayoutPreferenceStore {
     fun readServerDrawerEnabledSync(): Boolean
     suspend fun readServerDrawerEnabled(): Boolean
     suspend fun saveServerDrawerEnabled(enabled: Boolean)
-    fun readHomeServerAvatarEnabledSync(): Boolean
-    suspend fun readHomeServerAvatarEnabled(): Boolean
-    suspend fun saveHomeServerAvatarEnabled(enabled: Boolean)
     fun readTranslationModeSync(): TranslationModePreference
     suspend fun readTranslationMode(): TranslationModePreference
     suspend fun saveTranslationMode(mode: TranslationModePreference)
@@ -518,26 +498,6 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, enabled)
     }
 
-    override fun readActivityTaskStatusBadgesEnabledSync(): Boolean =
-        store.getBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED)
-
-    override suspend fun readActivityTaskStatusBadgesEnabled(): Boolean =
-        readActivityTaskStatusBadgesEnabledSync()
-
-    override suspend fun saveActivityTaskStatusBadgesEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, enabled)
-    }
-
-    override fun readActivitySenderAvatarsEnabledSync(): Boolean =
-        store.getBoolean(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, false)
-
-    override suspend fun readActivitySenderAvatarsEnabled(): Boolean =
-        readActivitySenderAvatarsEnabledSync()
-
-    override suspend fun saveActivitySenderAvatarsEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, enabled)
-    }
-
     override fun readComposerSendKeyEnabledSync(): Boolean =
         store.getBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, raftPlatformComposerEnterSendsByDefault())
 
@@ -575,16 +535,6 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_SERVER_DRAWER_ENABLED, enabled)
     }
 
-    override fun readHomeServerAvatarEnabledSync(): Boolean =
-        store.getBoolean(KEY_HOME_SERVER_AVATAR_ENABLED, DEFAULT_HOME_SERVER_AVATAR_ENABLED)
-
-    override suspend fun readHomeServerAvatarEnabled(): Boolean =
-        readHomeServerAvatarEnabledSync()
-
-    override suspend fun saveHomeServerAvatarEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_HOME_SERVER_AVATAR_ENABLED, enabled)
-    }
-
     override fun readTranslationModeSync(): TranslationModePreference =
         TranslationModePreference.fromStorageKey(store.getString(KEY_TRANSLATION_MODE))
 
@@ -619,13 +569,10 @@ class KeyValueChatLayoutPreferenceStore(
             "mobile:inline_selection_toolbar_enabled"
         const val KEY_CONVERSATION_FORWARD_GESTURE_ENABLED = "mobile:conversation_forward_gesture_enabled"
         const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "chatLayout:foreground_message_banners_enabled"
-        const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "chatLayout:activity_task_status_badges_enabled"
-        const val KEY_ACTIVITY_SENDER_AVATARS_ENABLED = "chatLayout:activity_sender_avatars_enabled"
         const val KEY_COMPOSER_SEND_KEY_ENABLED = "chatLayout:composer_send_key_enabled"
         const val KEY_MULTI_SHELL_HOST_ENABLED = "mobile:multi_shell_host_enabled"
         const val KEY_MULTI_SERVER_REALTIME_ENABLED = "mobile:multi_server_realtime_enabled"
         const val KEY_SERVER_DRAWER_ENABLED = "mobile:server_drawer_enabled"
-        const val KEY_HOME_SERVER_AVATAR_ENABLED = "mobile:home_server_avatar_enabled"
         const val KEY_TRANSLATION_MODE = "settings.translationMode"
         const val KEY_TRANSLATION_TARGET_LANGUAGE = "settings.translationTargetLanguage"
     }
@@ -642,12 +589,9 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setNewMessageMenuEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setConversationForwardGestureEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
-    suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
-    suspend fun setActivitySenderAvatarsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setMultiShellHostEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setServerDrawerEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
-    suspend fun setHomeServerAvatarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot
     suspend fun setTranslationTargetLanguage(language: String): ChatLayoutPreferenceSnapshot
 }
@@ -664,12 +608,9 @@ class PersistentChatLayoutPreferenceRepository(
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
-            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
-            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
-            homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
         )
@@ -686,12 +627,9 @@ class PersistentChatLayoutPreferenceRepository(
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
-            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
-            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
-            homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
         )
@@ -707,12 +645,9 @@ class PersistentChatLayoutPreferenceRepository(
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
-            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
-            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
-            homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
         )
@@ -728,12 +663,9 @@ class PersistentChatLayoutPreferenceRepository(
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
-            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
-            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
-            homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
         )
@@ -764,41 +696,12 @@ class PersistentChatLayoutPreferenceRepository(
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = enabled,
-            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
-            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
-            homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = store.readTranslationMode(),
             translationTargetLanguage = store.readTranslationTargetLanguage(),
         )
-    }
-
-    override suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
-        store.saveActivityTaskStatusBadgesEnabled(enabled)
-        return ChatLayoutPreferenceSnapshot(
-            myMessageAlignment = store.readMyMessageAlignment(),
-            desktopModeOnLargeScreen = store.readDesktopModeOnLargeScreen(),
-            compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
-            longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
-            newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
-            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
-            foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
-            activityTaskStatusBadgesEnabled = enabled,
-            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
-            composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
-            multiShellHostEnabled = store.readMultiShellHostEnabled(),
-            serverDrawerEnabled = store.readServerDrawerEnabled(),
-            homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
-            translationMode = store.readTranslationMode(),
-            translationTargetLanguage = store.readTranslationTargetLanguage(),
-        )
-    }
-
-    override suspend fun setActivitySenderAvatarsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
-        store.saveActivitySenderAvatarsEnabled(enabled)
-        return getChatLayoutPreference()
     }
 
     override suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
@@ -816,11 +719,6 @@ class PersistentChatLayoutPreferenceRepository(
         return getChatLayoutPreference()
     }
 
-    override suspend fun setHomeServerAvatarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
-        store.saveHomeServerAvatarEnabled(enabled)
-        return getChatLayoutPreference()
-    }
-
     override suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot {
         store.saveTranslationMode(mode)
         return ChatLayoutPreferenceSnapshot(
@@ -831,12 +729,9 @@ class PersistentChatLayoutPreferenceRepository(
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
-            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
-            activitySenderAvatarsEnabled = store.readActivitySenderAvatarsEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
-            homeServerAvatarEnabled = store.readHomeServerAvatarEnabled(),
             translationMode = mode,
             translationTargetLanguage = store.readTranslationTargetLanguage(),
         )

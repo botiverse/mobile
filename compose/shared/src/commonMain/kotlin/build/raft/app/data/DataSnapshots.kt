@@ -2271,13 +2271,6 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Show an in-app banner for new messages while Raft is open. When off, foreground messages stay quiet."
         ),
-    val activityTaskStatusBadges: SettingsMobileToggleSnapshot =
-        SettingsMobileToggleSnapshot(
-            enabled = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
-            available = true,
-            statusLabel = if (DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED) "Enabled" else "Off",
-            detail = "Show task status badges at the bottom of Activity rows. Keep this off for a quieter Activity list."
-        ),
     val composerSendKey: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,
@@ -2305,13 +2298,6 @@ data class SettingsMobileSnapshot(
             available = true,
             statusLabel = "Enabled",
             detail = "On large screens, show the left rail with the list and detail side by side. Turn off to keep the single-pane mobile layout with the bottom tab bar."
-        ),
-    val homeServerAvatar: SettingsMobileToggleSnapshot =
-        SettingsMobileToggleSnapshot(
-            enabled = DEFAULT_HOME_SERVER_AVATAR_ENABLED,
-            available = true,
-            statusLabel = if (DEFAULT_HOME_SERVER_AVATAR_ENABLED) "Enabled" else "Off",
-            detail = "Show the current workspace avatar in the Home header. When off, keep the existing compact title badge."
         ),
     val linkOpenMode: SettingsMobileSelectionSnapshot =
         SettingsMobileSelectionSnapshot(

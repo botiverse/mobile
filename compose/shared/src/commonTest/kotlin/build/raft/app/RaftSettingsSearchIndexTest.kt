@@ -34,7 +34,6 @@ class RaftSettingsSearchIndexTest {
     private val phoneRows =
         settingsHomeRowKeys(
             hasThemeServer = true,
-            appPreferencesUnderAppearance = false,
             releaseNotes = true,
             serverPanelPages = true,
         )
@@ -135,10 +134,11 @@ class RaftSettingsSearchIndexTest {
     @Test
     fun theComposerKeyAndLightAndDarkMoveWithTheirCards() {
         val phone = raftSettingsSearchPlacements(RaftSettingsSearchContext(phoneRows)).associate { it.entry.id to it.rowKey }
-        assertEquals(SettingsNativeDetailPage.Mobile.key, phone["send-with"])
+        // Enter to send is on Appearance everywhere (1.27.0: no Mobile page).
+        assertEquals(SettingsNativeDetailPage.Appearance.key, phone["send-with"])
         assertEquals(SettingsNativeDetailPage.Theme.key, phone["theme"])
-        // The desktop app has no Mobile row (its cards are on Appearance), and no server no Theme page.
-        val desktopRows = settingsHomeRowKeys(hasThemeServer = false, appPreferencesUnderAppearance = true)
+        // No server: no Theme page, so light and dark is on Appearance.
+        val desktopRows = settingsHomeRowKeys(hasThemeServer = false)
         val desktop = raftSettingsSearchPlacements(RaftSettingsSearchContext(desktopRows)).associate { it.entry.id to it.rowKey }
         assertEquals(SettingsNativeDetailPage.Appearance.key, desktop["send-with"])
         assertEquals(SettingsNativeDetailPage.Appearance.key, desktop["theme"])
@@ -157,14 +157,14 @@ class RaftSettingsSearchIndexTest {
         val settings =
             raftSearchableSettings(
                 context = RaftSettingsSearchContext(phoneRows, role = "member"),
-                pageTitles = mapOf(SettingsNativeDetailPage.Mobile.key to "Mobile"),
+                pageTitles = mapOf(SettingsNativeDetailPage.Appearance.key to "Appearance"),
                 serverName = "Acme",
                 aliasLocale = "zh-cn",
                 resolve = { res, arg -> if (arg != null) "${res.key}($arg)" else res.key },
             ).associateBy { it.id }
         val send = settings.getValue("send-with")
         assertEquals("settings_mobile_composer_key", send.name)
-        assertEquals("Mobile", send.pageLabel)
+        assertEquals("Appearance", send.pageLabel)
         assertEquals(listOf("回车", "换行", "发送键", "发送方式", "快捷键", "enter"), send.aliases.take(6))
         // Pages on the server are named after it, as their links are.
         assertEquals("settings_appearance_server_theme_link_title(Acme)", settings.getValue("server-theme").pageLabel)
