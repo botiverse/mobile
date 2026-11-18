@@ -310,7 +310,11 @@ function main() {
       const pic = pn.find((n) => /Photo taken|qa-fixture|Image|photo/i.test(n.desc) && n.w > 80 && n.pkg !== PKG);
       if (!pic) { misses++; log("picker item not found", i); back(); sleep(1500); continue; }
       if (i % 4 === 1) sh(`input tap ${pic.x} ${pic.y} & input tap ${pic.x} ${pic.y}; wait`); else tap(pic.x, pic.y);
-      sleep(i % 3 === 0 ? 400 : 2500); // some pops land while the preview push is still sliding
+      sleep(700);
+      // The system photo picker is multi-select: confirm with Done (the preview page is pushed after it).
+      const dn = nodes(); const done = dn.find((n) => /^Done$/.test(n.text || n.desc) && n.pkg !== PKG && n.w > 0);
+      if (done) tap(done.x, done.y); else log("picker Done not found", i);
+      sleep(i % 3 === 0 ? 300 : 2500); // some pops land while the preview push is still sliding
       if (i === 0) { sleep(1000); shot("composer-preview-open"); nodes("composer-preview-open"); }
       back(); sleep(1500);
       const top = nodes(); if (!find(top, /^Add image$/)) { back(); sleep(1200); } // a double tap may have stacked a second page
@@ -569,7 +573,7 @@ function membersScenario() {
   if (!openMembers()) { note("members", "opened", false); return; }
   const before = membersState("open-unfolded"); note("members", "open_unfolded", before);
   // Bring rows that carry a badge AND a subtitle (agents: model/description line) into view.
-  { const [W, H] = size(); for (let i = 0; i < 2; i++) { sh(`input swipe ${Math.round(W * 0.25)} ${Math.round(H * 0.8)} ${Math.round(W * 0.25)} ${Math.round(H * 0.45)} 400`); sleep(1200); } shot("m-scrolled-to-agents"); }
+  { const [W, H] = size(); sh(`input swipe ${Math.round(W * 0.25)} ${Math.round(H * 0.8)} ${Math.round(W * 0.25)} ${Math.round(H * 0.62)} 600`); sleep(1200); shot("m-scrolled-to-agents"); }
   // Record the texts on each badge's line and the line below it (name | badge | subtitle).
   const ns = nodes("m-rows");
   const rows = ns.filter((n) => BADGE.test(n.text)).slice(0, 6).map((b) => ns.filter((n) => n.text && n.y > b.y - 60 && n.y < b.y + 110 && n.b[0] < b.b[2] + 600 && n.w > 0).map((n) => n.text.slice(0, 60)).join(" | "));
