@@ -1,6 +1,9 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -38,7 +41,8 @@ class MembersAgentRawLogStatusUiTest {
             assertEquals(listOf("Thinking", "Working", "Output", "Error", "Idle", "Stopped", "Crashed"), log.map { it.title })
             setContent {
                 RaftDesignSystemTheme {
-                    Column {
+                    // Scrollable, so the rows below the window are measured at full height.
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
                         log.forEach { MembersAgentActivityRow(it, SubagentsFixtureTimeContext, onOpenUrl = {}) }
                     }
                 }
