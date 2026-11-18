@@ -556,8 +556,9 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   with a click target over its words on each line it takes (one node for focus and
   screen readers, on its first line), and its underline and focus ring drawn under the
   text. The text is measured with the constraints it is given, so `fillMaxWidth` with
-  `TextAlign.Center` / `End` aligns as plain `RaftText` does. Its spaces are no-break spaces, as raft-ui's inline-block button
-  doesn't wrap. A `RaftText` with such links drops any other link or string
+  `TextAlign.Center` / `End` aligns as plain `RaftText` does. It wraps between its words with
+  the sentence, as raft-ui's in-sentence TextLink (`nativeButton={false}`, raft-ui 0.102.3,
+  raft-design #1306), each line with its own underline and focus ring. A `RaftText` with such links drops any other link or string
   annotations; don't mix them.
 - **Busy button keeps its colour.** button.tsx sets `disabled` while `loading`, which
   greys it; the Button doc ("keeps the button's width and color") and the States rule

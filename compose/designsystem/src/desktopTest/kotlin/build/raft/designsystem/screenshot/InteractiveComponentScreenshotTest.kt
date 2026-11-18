@@ -662,7 +662,7 @@ class InteractiveComponentScreenshotTest {
                 listOf(false to false, true to false, false to true).forEach { (pressed, focused) ->
                     StateCell(pressed = pressed, focused = focused) { Sentence(type.footnote, colors.foregroundMuted) }
                 }
-                Caption("In body text, wrapping at 240dp: the link stays on one line and the line keeps its height")
+                Caption("In body text, wrapping at 240dp: the link wraps with the words (raft-design #1306) and the line keeps its height")
                 RaftText(
                     buildAnnotatedString {
                         append("Your trial ends in three days. To keep your agents running, ")

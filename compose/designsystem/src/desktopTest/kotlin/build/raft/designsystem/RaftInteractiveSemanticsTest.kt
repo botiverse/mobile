@@ -596,9 +596,9 @@ class RaftInteractiveSemanticsTest {
                     }
                 },
             )
-            onNodeWithText("Create\u00A0One").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
+            onNodeWithText("Create One").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
             assertEquals(1, created, "the inline link ran its action")
-            onNodeWithText("Log\u00A0Out").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
+            onNodeWithText("Log Out").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
             onNodeWithText("Forgot Password").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
             assertEquals(1, forgot)
         }
@@ -624,7 +624,7 @@ class RaftInteractiveSemanticsTest {
                     }
                 },
             )
-            val link = onNodeWithText("Create\u00A0One").fetchSemanticsNode()
+            val link = onNodeWithText("Create One").fetchSemanticsNode()
             val right = (link.positionInRoot.x + link.size.width) / density.density
             assertTrue(abs(right - 320f) <= 1f, "the end-aligned link ends at the 320dp container's end, not at ${right}dp")
         }
@@ -660,7 +660,7 @@ class RaftInteractiveSemanticsTest {
             assertEquals(0, taps, "a tap past the link on its last line misses it")
             text.performTouchInput { click(Offset(4.dp.toPx(), height - 9.dp.toPx())) }
             assertEquals(1, taps, "a tap on the link's last line hits it")
-            onNodeWithText("Choose\u00A0a\u00A0Plan\u00A0for\u00A0Your\u00A0Whole\u00A0Team").performClick()
+            onNodeWithText("Choose a Plan for Your Whole Team").performClick()
             assertEquals(2, taps, "the link's one node (its first line) hits it")
         }
 
