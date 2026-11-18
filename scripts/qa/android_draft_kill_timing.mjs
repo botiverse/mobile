@@ -686,16 +686,19 @@ async function killRun(api, { group, mode, delaySec }) {
       // The app's own trace of a re-send by the pending-send journal after the restart.
       const drained = linesSince(relaunchMark).filter((l) => l.includes("thread_pending_send_drained "));
       record.drainer_trace = drained.map((l) => /thread_pending_send_drained .*$/.exec(l)?.[0] ?? l.trim());
-      const drainedMatches = found?.random_id ? drained.some((l) => l.includes(`randomId=${found.random_id}`)) : null;
+      // Only an explicit id correspondence (the server message's randomId in the app's drain line) names the mechanism.
+      const drainedMatches = found?.random_id ? drained.some((l) => l.includes(`randomId=${found.random_id}`)) : false;
       record.delivery = found
         ? beforeRelaunch.message
           ? "observed before the relaunch"
-          : drained.length && (drainedMatches ?? drained.length === 1)
+          : drainedMatches
             ? `observed after the relaunch, re-sent by the pending-send journal (drainer trace: ${record.drainer_trace.join(" | ")})`
             : "observed after the relaunch (mechanism unconfirmed)"
         : allQueriesFailed
           ? "query unavailable"
-          : "not observed by the deadline (15 s after relaunch)";
+          : queries.at(-1)?.http === 200 && queries.filter((q) => q.phase === "after relaunch").every((q) => q.http === 200)
+            ? "not observed by the deadline (15 s after relaunch; every query succeeded)"
+            : `unknown (queries unavailable after ${queries.filter((q) => q.http === 200).at(-1)?.at ?? "the start"})`;
       record.sent_on_server = Boolean(found);
       record.observed_desc = describeText(seen);
       relaunchIdentity(record, oldPid, startTime, mark);
@@ -818,6 +821,8 @@ async function positiveControl(api) {
 // ---------- the flow ----------
 async function main() {
   if (!APK) fail("--apk is required");
+  // Acceptance needs to know which code it ran: the APK's source must be checked against a required commit.
+  if (!process.env.REQUIRE_COMMIT) fail("REQUIRE_COMMIT (workflow input require_commit) is required for draft-kill-timing");
   if (!process.env.QA_TEST_EMAIL || !process.env.QA_TEST_PASSWORD) fail("QA_TEST_EMAIL / QA_TEST_PASSWORD are not set");
   const api = { token: "", server: null, channel: null, selfId: null };
   try {
