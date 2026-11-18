@@ -123,7 +123,7 @@ internal class SharedSearchCoreGroupsStore(
         asked = normalized
         generation++
         cancelAll()
-        if (!normalized.enabled || words == null) {
+        if (!normalized.enabled || words == null || serverId == null) {
             mutableState.value = SearchCoreGroupsState(serverId = serverId)
             return
         }
