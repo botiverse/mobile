@@ -5,6 +5,7 @@ import build.raft.app.data.JOINT_CHANNEL_FREE_LIMIT_REACHED
 import build.raft.app.data.JOINT_FREE_SERVER_LIMIT
 import build.raft.app.data.JointChannelErrorDetails
 import build.raft.app.data.ScreenError
+import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -50,6 +51,7 @@ class RaftUpgradeDialogTest {
             RaftUpgradeGate.JointChannelOverLimit,
             RaftUpgradeGate.JointChannelReadOnly,
             RaftUpgradeGate.ExternalChannelFreeLimit,
+            RaftUpgradeGate.ExternalChannelFrozen,
             RaftUpgradeGate.General,
         ).forEach { gate ->
             assertEquals(RaftUpgradeOutcome.OpenBilling, raftUpgradeOutcome(gate, plan = "pro", linksOut = true), gate.wire)
@@ -178,14 +180,37 @@ class RaftUpgradeDialogTest {
     }
 
     @Test
-    fun theExternalChannelLimitIsTheWebsGateAndReadsAsGeneral() {
-        // shared upgradeGates.ts UPGRADE_GATES; web upgradeGateCopy.ts GATE_COPY and UpgradeDialog
-        // GATE_HIGHLIGHT map it to the general copy and the offer's own order (#14034).
-        val gate = RaftUpgradeGate.ExternalChannelFreeLimit
-        assertEquals("external_channel_free_limit", gate.wire)
-        assertEquals("external_channel_free_limit", gate.webDialogGate)
-        assertFalse(gate.isSeatLimit)
-        assertEquals(raftUpgradeGateCopy(RaftUpgradeGate.General), raftUpgradeGateCopy(gate))
-        assertEquals(RaftUpgradeBenefit.entries, raftUpgradeBenefits(raftUpgradeGateCopy(gate).first))
+    fun theExternalChannelGatesHaveTheirOwnCopyAndLeadWithExternalChannels() {
+        // shared upgradeGates.ts UPGRADE_GATES; web upgradeGateCopy.ts GATE_COPY (upgradeDialog.externalLimit.*,
+        // upgradeDialog.externalFrozen.*) and UpgradeDialog GATE_HIGHLIGHT `joint` (botiverse/slock #14533).
+        val limit = RaftUpgradeGate.ExternalChannelFreeLimit
+        assertEquals("external_channel_free_limit", limit.wire)
+        assertEquals("external_channel_free_limit", limit.webDialogGate)
+        assertFalse(limit.isSeatLimit)
+        assertEquals(
+            RaftUpgradeGateCopy(
+                Res.string.upgrade_dialog_external_limit_title,
+                Res.string.upgrade_dialog_external_limit_hint,
+                Res.string.upgrade_dialog_limit_external_limit,
+                RaftUpgradeBenefit.Joint,
+            ),
+            raftUpgradeGateCopy(limit),
+        )
+        val frozen = RaftUpgradeGate.ExternalChannelFrozen
+        assertEquals("external_channel_frozen", frozen.wire)
+        assertEquals("external_channel_frozen", frozen.webDialogGate)
+        assertFalse(frozen.isSeatLimit)
+        assertEquals(
+            RaftUpgradeGateCopy(
+                Res.string.upgrade_dialog_external_frozen_title,
+                Res.string.upgrade_dialog_external_frozen_hint,
+                Res.string.upgrade_dialog_limit_external_frozen,
+                RaftUpgradeBenefit.Joint,
+            ),
+            raftUpgradeGateCopy(frozen),
+        )
+        listOf(limit, frozen).forEach { gate ->
+            assertEquals(RaftUpgradeBenefit.Joint, raftUpgradeBenefits(raftUpgradeGateCopy(gate).first).first(), gate.wire)
+        }
     }
 }

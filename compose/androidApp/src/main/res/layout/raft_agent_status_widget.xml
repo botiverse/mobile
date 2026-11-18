@@ -23,7 +23,7 @@
             android:ellipsize="end"
             android:fontFamily="@font/space_grotesk_bold"
             android:maxLines="1"
-            android:text="Live Agents"
+            android:text="@string/raft_agent_widget_title"
             android:textColor="@color/black"
             android:textSize="15sp" />
 
@@ -37,7 +37,7 @@
             android:minWidth="64dp"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
-            android:text="Refresh"
+            android:text="@string/raft_widget_refresh"
             android:textColor="@color/black"
             android:textSize="11sp" />
     </LinearLayout>
@@ -111,7 +111,7 @@
                         android:ellipsize="end"
                         android:fontFamily="@font/space_grotesk_medium"
                         android:maxLines="1"
-                        android:text="Offline"
+                        android:text="@string/raft_agent_widget_offline"
                         android:textColor="#99000000"
                         android:textSize="13sp" />
                 </LinearLayout>
@@ -173,7 +173,7 @@
                         android:ellipsize="end"
                         android:fontFamily="@font/space_grotesk_medium"
                         android:maxLines="1"
-                        android:text="Offline"
+                        android:text="@string/raft_agent_widget_offline"
                         android:textColor="#99000000"
                         android:textSize="13sp" />
                 </LinearLayout>
@@ -235,7 +235,7 @@
                         android:ellipsize="end"
                         android:fontFamily="@font/space_grotesk_medium"
                         android:maxLines="1"
-                        android:text="Offline"
+                        android:text="@string/raft_agent_widget_offline"
                         android:textColor="#99000000"
                         android:textSize="13sp" />
                 </LinearLayout>
@@ -250,7 +250,7 @@
             android:ellipsize="end"
             android:fontFamily="@font/space_grotesk_regular"
             android:maxLines="1"
-            android:text="Open Raft to start"
+            android:text="@string/raft_widget_open_raft_to_start"
             android:textColor="#99000000"
             android:textSize="10sp" />
     </LinearLayout>

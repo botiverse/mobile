@@ -130,8 +130,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                 ?: return RaftWidgetState.SignedOut
             val selectedServer = RaftWidgetServerConfigStore(context).resolveServer(appWidgetId, session)
                 ?: return RaftWidgetState.Error(
-                    title = "Choose a server",
-                    detail = "Tap and hold the widget, then edit it to select a server.",
+                    kind = RaftWidgetErrorKind.ChooseServer,
                     lastUpdatedAtMillis = previous.lastUpdatedAtMillis
                 )
             val scopedSession = session.copy(
@@ -155,7 +154,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                 runCatching { RealChannelRepository(sessionStore, networkClient).getHome(serverId) }
                     .onFailure { throwable -> RaftAppLog.w(TAG, "home refresh failed: ${throwable.javaClass.simpleName}") }
                     .getOrNull()
-            var homeResult = fetchHome() ?: return previous.asStale("Could not refresh")
+            var homeResult = fetchHome() ?: return previous.asStale(RaftWidgetStaleReason.CouldNotRefresh)
             var attempt = 1
             while (attempt < WIDGET_HOME_ATTEMPTS) {
                 val errorCode = (homeResult as? DataResult.Error)?.error?.code ?: break
@@ -165,13 +164,13 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                 RaftAppLog.d(TAG, "home refresh cancelled code=$errorCode attempt=$attempt; retrying")
                 delay(WIDGET_HOME_RETRY_DELAY_MS)
                 attempt++
-                homeResult = fetchHome() ?: return previous.asStale("Could not refresh")
+                homeResult = fetchHome() ?: return previous.asStale(RaftWidgetStaleReason.CouldNotRefresh)
             }
             val home = when (homeResult) {
                 is DataResult.Content -> homeResult.data
-                is DataResult.Empty -> return previous.asStale("No conversations yet")
-                is DataResult.Error -> return previous.asStale(homeResult.error.code)
-                is DataResult.NoPermission -> return previous.asStale(homeResult.blocker.code)
+                is DataResult.Empty -> return previous.asStale(RaftWidgetStaleReason.NoConversations)
+                is DataResult.Error -> return previous.asStale(RaftWidgetStaleReason.Code(homeResult.error.code))
+                is DataResult.NoPermission -> return previous.asStale(RaftWidgetStaleReason.Code(homeResult.blocker.code))
             }
             val inboxUnread =
                 when (val result = runCatching {
@@ -227,20 +226,19 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, R.layout.raft_activity_widget)
             views.setOnClickPendingIntent(R.id.raft_widget_root, launchAppIntent(context))
             views.setOnClickPendingIntent(R.id.raft_widget_refresh, refreshIntent(context, appWidgetId))
-            views.setTextViewText(R.id.raft_widget_title, state.title)
-            views.setTextViewText(R.id.raft_widget_detail, state.detail)
-            views.setTextViewText(R.id.raft_widget_updated, state.updatedLabel(context))
-            views.setTextViewText(R.id.raft_widget_refresh, if (state.refreshing) "Refreshing" else "Refresh")
+            views.setTextViewText(R.id.raft_widget_title, state.titleText().resolve(context))
+            views.setTextViewText(R.id.raft_widget_detail, state.detailText().resolve(context))
+            views.setTextViewText(
+                R.id.raft_widget_updated,
+                state.updatedText { state.lastUpdatedAtMillis.widgetTimeLabel() }.resolve(context)
+            )
+            views.setTextViewText(R.id.raft_widget_refresh, raftWidgetRefreshText(state.refreshing).resolve(context))
             val showStats = state is RaftWidgetState.Content
             views.setViewVisibility(R.id.raft_widget_stats, if (showStats) View.VISIBLE else View.GONE)
             views.setViewVisibility(R.id.raft_widget_rows, if (showStats) View.VISIBLE else View.GONE)
             if (state is RaftWidgetState.Content) {
                 views.setTextViewText(R.id.raft_widget_activity_value, state.activityUnreadCount.displayCount())
                 views.setTextViewText(R.id.raft_widget_saved_value, state.savedCount.displayCount())
-                views.setTextViewText(
-                    R.id.raft_widget_detail,
-                    if (state.rows.isEmpty()) "No unread rows" else "Rows with messages"
-                )
                 bindHomeRows(views, state.rows)
             }
             return views
@@ -364,17 +362,16 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                 }
 
         private suspend fun ConversationSummary.toWidgetRow(context: Context, member: MemberProfile?): RaftWidgetHomeRow {
-            val title = name.ifBlank { "Conversation" }
+            // Resolved now, like the agent widget's status words: the row is cached as text.
+            val title = raftWidgetRowTitle(name).resolve(context)
             val detail =
-                lastMessagePreview?.let(::markdownToPreviewText)?.takeIf { it.isNotBlank() }
-                    ?: lastMessageSenderName?.takeIf { it.isNotBlank() }?.let { "Latest from $it" }
+                raftWidgetRowDetail(
+                    preview = lastMessagePreview?.let(::markdownToPreviewText),
+                    senderName = lastMessageSenderName,
                     // A thread's subtitle is its root message's Markdown.
-                    ?: subtitle?.let { if (kind == ConversationKind.Thread) markdownToPreviewText(it) else it }?.takeIf { it.isNotBlank() }
-                    ?: when (kind) {
-                        ConversationKind.DirectMessage -> "Direct message"
-                        ConversationKind.Thread -> "Thread"
-                        else -> "Channel"
-                    }
+                    subtitle = subtitle?.let { if (kind == ConversationKind.Thread) markdownToPreviewText(it) else it },
+                    kind = kind
+                ).resolve(context)
             val avatarWireValue = member?.avatarWireValueForRenderedAvatar()
             val imagePath = avatarWireValue?.let { context.cacheRaftWidgetAvatarPath(it) }
             return RaftWidgetHomeRow(
@@ -388,16 +385,8 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             )
         }
 
-        private fun RaftWidgetState.updatedLabel(context: Context): String {
-            if (refreshing) return "Updating..."
-            if (lastUpdatedAtMillis <= 0L) return "Open Raft to start"
-            val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(lastUpdatedAtMillis))
-            return if (this is RaftWidgetState.Content && staleReason != null) {
-                "Stale at $time"
-            } else {
-                context.getString(R.string.slock_status_widget_updated, time)
-            }
-        }
+        private fun Long.widgetTimeLabel(): String =
+            DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(this))
     }
 }
 

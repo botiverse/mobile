@@ -37,7 +37,7 @@
             android:minWidth="64dp"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
-            android:text="Refresh"
+            android:text="@string/raft_widget_refresh"
             android:textColor="@color/black"
             android:textSize="11sp" />
     </LinearLayout>
@@ -82,7 +82,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:fontFamily="@font/space_grotesk_bold"
-                    android:text="ACTIVITY"
+                    android:text="@string/raft_widget_activity"
+                    android:textAllCaps="true"
                     android:textColor="@color/black"
                     android:textSize="9sp" />
             </LinearLayout>
@@ -113,7 +114,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:fontFamily="@font/space_grotesk_bold"
-                    android:text="SAVED"
+                    android:text="@string/raft_widget_saved"
+                    android:textAllCaps="true"
                     android:textColor="@color/black"
                     android:textSize="9sp" />
             </LinearLayout>
@@ -127,7 +129,7 @@
             android:ellipsize="end"
             android:fontFamily="@font/space_grotesk_medium"
             android:maxLines="1"
-            android:text="Rows with messages"
+            android:text="@string/raft_widget_rows_with_messages"
             android:textColor="@color/black"
             android:textSize="11sp" />
 
@@ -184,7 +186,7 @@
                         android:ellipsize="end"
                         android:fontFamily="@font/space_grotesk_bold"
                         android:maxLines="1"
-                        android:text="Channel"
+                        android:text="@string/raft_widget_channel"
                         android:textColor="@color/black"
                         android:textSize="11sp" />
 
@@ -195,7 +197,7 @@
                         android:ellipsize="end"
                         android:fontFamily="@font/space_grotesk_regular"
                         android:maxLines="1"
-                        android:text="Latest message"
+                        android:text="@string/raft_widget_latest_message"
                         android:textColor="#99000000"
                         android:textSize="9sp" />
                 </LinearLayout>
@@ -261,7 +263,7 @@
                         android:ellipsize="end"
                         android:fontFamily="@font/space_grotesk_bold"
                         android:maxLines="1"
-                        android:text="Channel"
+                        android:text="@string/raft_widget_channel"
                         android:textColor="@color/black"
                         android:textSize="11sp" />
 
@@ -272,7 +274,7 @@
                         android:ellipsize="end"
                         android:fontFamily="@font/space_grotesk_regular"
                         android:maxLines="1"
-                        android:text="Latest message"
+                        android:text="@string/raft_widget_latest_message"
                         android:textColor="#99000000"
                         android:textSize="9sp" />
                 </LinearLayout>
@@ -338,7 +340,7 @@
                         android:ellipsize="end"
                         android:fontFamily="@font/space_grotesk_bold"
                         android:maxLines="1"
-                        android:text="Channel"
+                        android:text="@string/raft_widget_channel"
                         android:textColor="@color/black"
                         android:textSize="11sp" />
 
@@ -349,7 +351,7 @@
                         android:ellipsize="end"
                         android:fontFamily="@font/space_grotesk_regular"
                         android:maxLines="1"
-                        android:text="Latest message"
+                        android:text="@string/raft_widget_latest_message"
                         android:textColor="#99000000"
                         android:textSize="9sp" />
                 </LinearLayout>
@@ -378,7 +380,7 @@
             android:ellipsize="end"
             android:fontFamily="@font/space_grotesk_regular"
             android:maxLines="1"
-            android:text="Open Raft to start"
+            android:text="@string/raft_widget_open_raft_to_start"
             android:textColor="#99000000"
             android:textSize="10sp" />
     </LinearLayout>

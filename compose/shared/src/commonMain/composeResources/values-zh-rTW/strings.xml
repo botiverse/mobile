@@ -4681,6 +4681,10 @@
     <string name="upgrade_dialog_pro_theme_hint">升級 %1$s 後，所有成員都可以使用無聊灰主題。</string>
     <string name="upgrade_dialog_general_title">將 %1$s 升級到 Pro</string>
     <string name="upgrade_dialog_general_hint">Pro 會解除免費版在聊天記錄、檔案上傳和外部頻道上的限制。</string>
+    <string name="upgrade_dialog_external_limit_title">與 %1$s 以外的人共享更多頻道</string>
+    <string name="upgrade_dialog_external_limit_hint">免費版包含 1 個外部頻道，%1$s 已經有一個了。升級到 Pro 後，%1$s 需要多少就能共享多少。</string>
+    <string name="upgrade_dialog_external_frozen_title">恢復在外部頻道中發言</string>
+    <string name="upgrade_dialog_external_frozen_hint">免費版只能有 1 個外部頻道。升級後即可在所有外部頻道中恢復發言。</string>
     <string name="upgrade_dialog_benefit_history_pro">無限訊息歷史記錄</string>
     <string name="upgrade_dialog_benefit_history_free">免費版：最近 30 天</string>
     <string name="upgrade_dialog_benefit_files_pro">每月上傳量不限，單一檔案 200 MB</string>
@@ -4714,6 +4718,8 @@
     <string name="upgrade_dialog_limit_downgraded">%1$s 現在是免費版：30 天前的訊息已隱藏。</string>
     <string name="upgrade_dialog_limit_pro_theme">免費版不包含無聊灰主題。</string>
     <string name="upgrade_dialog_limit_general">%1$s 正在使用免費版。</string>
+    <string name="upgrade_dialog_limit_external_limit">免費版包含 1 個外部頻道，%1$s 已經有一個了。</string>
+    <string name="upgrade_dialog_limit_external_frozen">免費版只能有 1 個外部頻道。</string>
     <string name="upgrade_dialog_limit_seats">%1$s 的席位已全部用完。</string>
     <string name="invite_human_view_billing">檢視帳單</string>
     <string name="thread_link_preview_connect_title">連結你的 %1$s 帳號</string>

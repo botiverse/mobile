@@ -4657,6 +4657,10 @@
     <string name="upgrade_dialog_pro_theme_hint">Переведите сервер %1$s на Pro, и тема «Скучный серый» станет доступна всем его участникам.</string>
     <string name="upgrade_dialog_general_title">Перевести сервер %1$s на Pro</string>
     <string name="upgrade_dialog_general_hint">Pro снимает ограничения тарифа Free на историю чата, загрузку файлов и внешние каналы.</string>
+    <string name="upgrade_dialog_external_limit_title">Больше каналов для людей вне сервера %1$s</string>
+    <string name="upgrade_dialog_external_limit_hint">Тариф Free включает 1 внешний канал, и у сервера %1$s он уже есть. На Pro сервер %1$s может открыть для людей извне столько каналов, сколько нужно.</string>
+    <string name="upgrade_dialog_external_frozen_title">Вернуть возможность писать во внешних каналах</string>
+    <string name="upgrade_dialog_external_frozen_hint">На тарифе Free может быть только 1 внешний канал. Повысьте тариф, чтобы снова писать во всех внешних каналах.</string>
     <string name="upgrade_dialog_benefit_history_pro">Неограниченная история сообщений</string>
     <string name="upgrade_dialog_benefit_history_free">Free: последние 30 дней</string>
     <string name="upgrade_dialog_benefit_files_pro">Без месячного лимита, до 200 МБ на файл</string>
@@ -4690,6 +4694,8 @@
     <string name="upgrade_dialog_limit_downgraded">Сервер %1$s теперь на тарифе Free: сообщения старше 30 дней скрыты.</string>
     <string name="upgrade_dialog_limit_pro_theme">Тема «Скучный серый» не входит в тариф Free.</string>
     <string name="upgrade_dialog_limit_general">Сервер %1$s на тарифе Free.</string>
+    <string name="upgrade_dialog_limit_external_limit">Тариф Free включает 1 внешний канал, и у сервера %1$s он уже есть.</string>
+    <string name="upgrade_dialog_limit_external_frozen">На тарифе Free может быть только 1 внешний канал.</string>
     <string name="upgrade_dialog_limit_seats">Все места сервера %1$s заняты.</string>
     <string name="invite_human_view_billing">Открыть настройки оплаты</string>
     <string name="thread_link_preview_connect_title">Подключите аккаунт %1$s</string>

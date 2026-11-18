@@ -14,19 +14,33 @@ data class RaftAgentWidgetRow(
     val avatarImagePath: String? = null
 )
 
+/**
+ * The Live Agents widget's state. Its rows carry the agents' names and their status words
+ * (resolved when the refresh loaded them); without rows, [placeholder] says which line to show,
+ * drawn from the app's Android strings by the provider ([placeholderName] / [placeholderDetail]).
+ */
 data class RaftAgentWidgetState(
-    val title: String = "Live Agents",
-    val agentName: String = "No active agent",
-    val avatarLabel: String = "A",
-    val statusLabel: String = "Offline",
-    val statusTone: RaftAgentWidgetTone = RaftAgentWidgetTone.Offline,
+    val placeholder: RaftAgentWidgetPlaceholder = RaftAgentWidgetPlaceholder.NoActiveAgent,
     val rows: List<RaftAgentWidgetRow> = emptyList(),
     val lastUpdatedAtMillis: Long = 0L,
-    val staleReason: String? = null,
+    val staleReason: RaftWidgetStaleReason? = null,
     val refreshing: Boolean = false
-) {
-    val updatedDetail: String
-        get() = staleReason?.let { "Last refresh failed: $it" } ?: statusLabel
+)
+
+/** What the widget says when it has no agent row to show. */
+enum class RaftAgentWidgetPlaceholder(val wire: String) {
+    /** Before the first refresh: "No active agent" · "Offline". */
+    NoActiveAgent("no_active_agent"),
+
+    /** Signed out: "No active agent" · "Sign in to see agent activity". */
+    SignedOut("signed_out"),
+
+    /** No agent has a status or anything else to show: "No agents yet" · "No live agent activity". */
+    NoAgents("no_agents");
+
+    companion object {
+        fun fromWire(value: String?): RaftAgentWidgetPlaceholder? = entries.firstOrNull { it.wire == value }
+    }
 }
 
 /** The row's status dot, one per colour of the app's agent status dot (RaftAgentStatusDotKind). */
@@ -44,7 +58,7 @@ enum class RaftAgentWidgetTone {
     Offline
 }
 
-fun RaftAgentWidgetState.asStale(reason: String): RaftAgentWidgetState =
+fun RaftAgentWidgetState.asStale(reason: RaftWidgetStaleReason): RaftAgentWidgetState =
     copy(staleReason = reason, refreshing = false)
 
 class RaftAgentWidgetCache(context: Context) {
@@ -53,34 +67,16 @@ class RaftAgentWidgetCache(context: Context) {
 
     fun read(appWidgetId: Int, refreshing: Boolean = false): RaftAgentWidgetState {
         val encoded = store.getString(stateKey(appWidgetId)) ?: store.getString(KEY_STATE) ?: return RaftAgentWidgetState()
-        return runCatching {
-            val json = JSONObject(encoded)
-            RaftAgentWidgetState(
-                title = json.optString("title", "Live Agents"),
-                agentName = json.optString("agentName", "No active agent"),
-                avatarLabel = json.optString("avatarLabel", "A"),
-                statusLabel = json.optString("statusLabel", "Offline"),
-                statusTone = runCatching {
-                    RaftAgentWidgetTone.valueOf(json.optString("statusTone", RaftAgentWidgetTone.Offline.name))
-                }.getOrDefault(RaftAgentWidgetTone.Offline),
-                rows = json.optJSONArray("rows").toAgentRows(),
-                lastUpdatedAtMillis = json.optLong("lastUpdatedAtMillis", 0L),
-                staleReason = json.optString("staleReason").takeIf { it.isNotBlank() },
-                refreshing = refreshing
-            )
-        }.getOrElse { RaftAgentWidgetState(refreshing = refreshing) }
+        return runCatching { JSONObject(encoded).toRaftAgentWidgetState(refreshing) }
+            .getOrElse { RaftAgentWidgetState(refreshing = refreshing) }
     }
 
     fun write(appWidgetId: Int, state: RaftAgentWidgetState) {
         val json = JSONObject()
-            .put("title", state.title)
-            .put("agentName", state.agentName)
-            .put("avatarLabel", state.avatarLabel)
-            .put("statusLabel", state.statusLabel)
-            .put("statusTone", state.statusTone.name)
+            .put("placeholder", state.placeholder.wire)
             .put("rows", state.rows.toJsonArray())
             .put("lastUpdatedAtMillis", state.lastUpdatedAtMillis)
-            .put("staleReason", state.staleReason)
+            .put("staleReason", state.staleReason?.wire)
         store.putString(stateKey(appWidgetId), json.toString())
     }
 
@@ -93,26 +89,6 @@ class RaftAgentWidgetCache(context: Context) {
         private const val KEY_STATE = "state"
 
         private fun stateKey(appWidgetId: Int): String = "state:$appWidgetId"
-
-        private fun JSONArray?.toAgentRows(): List<RaftAgentWidgetRow> {
-            if (this == null) return emptyList()
-            return buildList {
-                for (index in 0 until length()) {
-                    val item = optJSONObject(index) ?: continue
-                    add(
-                        RaftAgentWidgetRow(
-                            name = item.optString("name"),
-                            detail = item.optString("detail"),
-                            avatarLabel = item.optString("avatarLabel", "A"),
-                            statusTone = runCatching {
-                                RaftAgentWidgetTone.valueOf(item.optString("statusTone", RaftAgentWidgetTone.Offline.name))
-                            }.getOrDefault(RaftAgentWidgetTone.Offline),
-                            avatarImagePath = item.optString("avatarImagePath").takeIf { it.isNotBlank() }
-                        )
-                    )
-                }
-            }
-        }
 
         private fun List<RaftAgentWidgetRow>.toJsonArray(): JSONArray =
             JSONArray().also { array ->
@@ -127,5 +103,44 @@ class RaftAgentWidgetCache(context: Context) {
                     )
                 }
             }
+    }
+}
+
+/**
+ * The cached state; a cache written before 1.27 holds the English placeholder lines instead of
+ * `placeholder` ("Sign in to see agent activity" signed out, "No agents yet" none to show).
+ */
+internal fun JSONObject.toRaftAgentWidgetState(refreshing: Boolean): RaftAgentWidgetState =
+    RaftAgentWidgetState(
+        placeholder =
+            RaftAgentWidgetPlaceholder.fromWire(optNullableString("placeholder"))
+                ?: when {
+                    optNullableString("statusLabel") == "Sign in to see agent activity" -> RaftAgentWidgetPlaceholder.SignedOut
+                    optNullableString("agentName") == "No agents yet" -> RaftAgentWidgetPlaceholder.NoAgents
+                    else -> RaftAgentWidgetPlaceholder.NoActiveAgent
+                },
+        rows = optJSONArray("rows").toAgentRows(),
+        lastUpdatedAtMillis = optLong("lastUpdatedAtMillis", 0L),
+        staleReason = RaftWidgetStaleReason.fromWire(optNullableString("staleReason")),
+        refreshing = refreshing
+    )
+
+private fun JSONArray?.toAgentRows(): List<RaftAgentWidgetRow> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            add(
+                RaftAgentWidgetRow(
+                    name = item.optString("name"),
+                    detail = item.optString("detail"),
+                    avatarLabel = item.optString("avatarLabel", "A"),
+                    statusTone = runCatching {
+                        RaftAgentWidgetTone.valueOf(item.optString("statusTone", RaftAgentWidgetTone.Offline.name))
+                    }.getOrDefault(RaftAgentWidgetTone.Offline),
+                    avatarImagePath = item.optString("avatarImagePath").takeIf { it.isNotBlank() }
+                )
+            )
+        }
     }
 }

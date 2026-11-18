@@ -4864,6 +4864,10 @@
     <string name="upgrade_dialog_pro_theme_hint">Upgrade %1$s to Pro and everyone in it can use Boring Gray.</string>
     <string name="upgrade_dialog_general_title">Upgrade %1$s to Pro</string>
     <string name="upgrade_dialog_general_hint">Pro lifts the Free limits on chat history, file uploads and external channels.</string>
+    <string name="upgrade_dialog_external_limit_title">Share more channels outside %1$s</string>
+    <string name="upgrade_dialog_external_limit_hint">Free includes 1 external channel, and %1$s already has one. On Pro, %1$s can share as many as it needs.</string>
+    <string name="upgrade_dialog_external_frozen_title">Post in your external channels again</string>
+    <string name="upgrade_dialog_external_frozen_hint">Free allows 1 external channel. Upgrade to post in all of them again.</string>
     <string name="upgrade_dialog_benefit_history_pro">Unlimited message history</string>
     <string name="upgrade_dialog_benefit_history_free">Free: Last 30 days</string>
     <string name="upgrade_dialog_benefit_files_pro">No monthly limit, 200 MB per file</string>
@@ -4897,6 +4901,8 @@
     <string name="upgrade_dialog_limit_downgraded">%1$s is on Free now: messages older than 30 days are hidden.</string>
     <string name="upgrade_dialog_limit_pro_theme">Boring Gray isn't included in Free.</string>
     <string name="upgrade_dialog_limit_general">%1$s is on the Free plan.</string>
+    <string name="upgrade_dialog_limit_external_limit">Free includes 1 external channel, and %1$s already has one.</string>
+    <string name="upgrade_dialog_limit_external_frozen">Free allows 1 external channel.</string>
     <string name="upgrade_dialog_limit_seats">All of %1$s's seats are taken.</string>
     <string name="invite_human_view_billing">View billing</string>
     <string name="member_app_grant_source_person">Granted by a person</string>
