@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { acceptanceUnmet, channelActivityReport, createLogcatStats, forEachLogLine, isEvidenceLine, journalCoverage, parseMessagesResponse, wrapUpVerdict } from "./draft_kill_timing_analysis.mjs";
+import { JOURNAL_MISSING_TOLERANCE, acceptanceUnmet, channelActivityReport, createLogcatStats, forEachLogLine, isEvidenceLine, journalCoverage, parseMessagesResponse, wrapUpVerdict } from "./draft_kill_timing_analysis.mjs";
 
 const PKG = "build.raft.app.alpha";
 const PID = 4242;
@@ -172,9 +172,15 @@ test("the channel concurrency check gates the run: other activity, a failed or a
 const killedAt = (sec, pid = PID) => line(sec, 600, "ActivityManager", `Killing ${pid}:${PKG}/u0a190 (adj 0): stop ${PKG} due to from pid 9000`);
 const procDied = (sec, pid = PID) => line(sec, 600, "am_proc_died", `[0,${pid},${PKG},0,17]`);
 
-test("journal coverage: tolerance, and an empty run is never covered", () => {
-  assert.deepEqual(journalCoverage({ edits: 200, paired: 198, failures: 0, missing: 2 }), { edits: 200, paired: 198, failures: 0, likely_interrupted: 0, missing: 2, unpaired: 0, allowed_missing: 2, covered: true });
-  assert.equal(journalCoverage({ edits: 200, paired: 197, failures: 0, missing: 3 }).covered, false);
+test("journal coverage has zero tolerance: one input without a result in many is not covered; an empty run never is", () => {
+  assert.equal(JOURNAL_MISSING_TOLERANCE, 0);
+  assert.deepEqual(journalCoverage({ edits: 1000, paired: 999, failures: 0, missing: 1 }), { edits: 1000, paired: 999, failures: 0, likely_interrupted: 0, missing: 1, unpaired: 0, allowed_missing: 0, covered: false });
+  assert.equal(journalCoverage({ edits: 1000, paired: 999, failures: 0, likely_interrupted: 1, missing: 0 }).covered, true);
+  // 1 of 101 inputs without a result and without death evidence: unconfirmed, not pass.
+  const edits = Array.from({ length: 100 }, (_, i) => edit(1 + i * 0.01, i + 1, 100)).flat();
+  const oneOfMany = wrapUpVerdict(timingsPass(), statsOf([change(0.5, 0), ...edits]), config);
+  assert.equal(oneOfMany.result, "unconfirmed");
+  assert.equal(oneOfMany.journal_coverage.missing, 1);
   assert.equal(journalCoverage({ edits: 0, paired: 0, failures: 0, missing: 0 }).covered, false);
 });
 
