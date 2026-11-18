@@ -55,7 +55,10 @@ function xml(s) {
   const button = (text, y) => n(text, CHROME, "[100," + y + "][900," + (y + 80) + "]", "android.widget.Button");
   const nodes = s.screen === "signin" ? n("Sign in to Raft", APP, "[100,1000][900,1100]")
     : s.screen === "form" ? n(s.form.email, CHROME, "[100,300][900,400]", "android.widget.EditText", 'resource-id="login-email" password="false"') + n("*".repeat(s.form.password.length), CHROME, "[100,500][900,600]", "android.widget.EditText", 'resource-id="login-password" password="true"') + button("Sign in", s.fills ? 700 : 900)
-    : s.screen === "save-prompt" ? n("Save password?", CHROME, "[100,280][900,380]", "android.widget.TextView", 'resource-id="com.android.chrome:id/message_title"') + n("Not now", CHROME, "[100,400][900,480]", "android.widget.Button", 'resource-id="com.android.chrome:id/negative_button"')
+    : s.screen === "save-prompt" ? n("Save password?", CHROME, "[100,280][900,380]", "android.widget.TextView", 'resource-id="com.android.chrome:id/title"') + n("Not now", CHROME, "[100,400][900,480]", "android.widget.Button", 'resource-id="com.android.chrome:id/negative_button"')
+    : s.screen === "save-banner" ? n("Save password?", CHROME, "[100,80][700,180]", "android.widget.TextView", 'resource-id="com.android.chrome:id/message_title"')
+      + n("Save", CHROME, "[700,120][900,200]", "android.widget.Button", 'resource-id="com.android.chrome:id/message_primary_button"')
+      + n("Not now", CHROME, "[700,220][900,300]", "android.widget.Button", 'resource-id="com.android.chrome:id/negative_button"') + button("Confirm sign-in", 800)
     : s.screen === "approval" ? button("Allow", 100) + button("Confirm sign-in", 800)
     : s.screen === "return" ? button("Open", 150) + button("Open the app", 850)
     : n("Home", APP, "[0,0][1080,200]") + n("#all", APP, "[0,300][1080,400]");
@@ -99,6 +102,10 @@ if (a === "shell dumpsys window") {
 if (a === "exec-out uiautomator dump /dev/tty") {
   out(D.xml(s) + "UI hierchary dumped to: /dev/tty\n");
   if (s.saveDismissed && s.screen === "save-prompt") s.screen = "approval";
+  if (s.screen === "save-banner") {
+    s.bannerReads = (s.bannerReads || 0) + 1;
+    if (s.bannerReads >= 2 && !s.stickyBanner) s.screen = "approval";
+  }
   end();
 }
 if (a.startsWith("shell uiautomator dump")) { s.files.dump = D.xml(s); end(); }
@@ -122,7 +129,11 @@ if (a.startsWith("shell -T uiautomator runtest ") && args.includes("RaftQaLoginF
 if (args[1] === "input" && args[2] === "tap") {
   const y = Number(args[4]);
   if (s.screen === "signin" && y >= 1000 && y <= 1100) { s.screen = "form"; D.log(s, "SlockAppLogin", "web_login_attempt phase=opening"); }
-  else if (s.screen === "form" && y === 740 && s.form.email === "fake.qa@example.test" && s.form.password === "FAKE-pw-7Qz") s.screen = "approval";
+  else if (s.screen === "form" && y === 740 && s.form.email === "fake.qa@example.test" && s.form.password === "FAKE-pw-7Qz") {
+    s.formSubmits = (s.formSubmits || 0) + 1;
+    s.screen = s.bannerAfterSubmit ? "save-banner" : "approval";
+  }
+  else if (s.screen === "save-banner") s.bannerTaps = (s.bannerTaps || 0) + 1;
   else if (s.screen === "approval" && y === 840) {
     s.confirmTaps = (s.confirmTaps || 0) + 1;
     s.screen = s.interceptConfirm && s.confirmTaps === 1 ? "save-prompt" : "return";
@@ -291,6 +302,33 @@ test("unknown site, partial fill and missing driver markers all refuse submissio
     assert.deepEqual(w.state().cleared, ["com.android.chrome", "com.google.android.inputmethod.latin"]);
     assert.deepEqual(w.state().form, { email: "", password: "" });
     w.close();
+  }
+});
+
+test("a Chrome save-password banner over the web confirmation receives no taps", async () => {
+  for (const stickyBanner of [false, true]) {
+    const w = fakeWorld({ screen: "form", bannerAfterSubmit: true, stickyBanner });
+    const out = path.join(w.root, "ev");
+    const summary = path.join(w.root, "summary.md");
+    try {
+      const result = await phase.androidPasswordLogin({ out,
+        env: { ...w.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, GITHUB_STEP_SUMMARY: summary },
+        pollMs: 10, timeoutMs: stickyBanner ? 4000 : 15000 });
+      const state = w.state();
+      assert.equal(state.formSubmits, 1);
+      assert.ok(state.bannerReads >= 2);
+      assert.equal(state.bannerTaps ?? 0, 0);
+      assert.equal(result.ok, !stickyBanner);
+      if (stickyBanner) {
+        assert.equal(state.confirmTaps ?? 0, 0);
+        assert.match(result.reason, /save-password prompt/);
+        assert.match(fs.readFileSync(summary, "utf8"), /wait-save-password/);
+        assert.equal(gate.gate(out, RUN).ok, false);
+      } else {
+        assert.equal(state.confirmTaps, 1);
+        assert.equal(state.screen, "home");
+      }
+    } finally { w.close(); }
   }
 });
 
