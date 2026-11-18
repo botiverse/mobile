@@ -37,7 +37,7 @@ const SERVER = args.server ?? "OranixSlockTest";
 // The QA test channel of the QA server (docs/qa-acceptance/release-auto-login.md); never a work channel.
 const CHANNEL = args.channel ?? "qa-test-create-7842";
 const RUNS_PER_BUCKET = Number(args["runs-per-bucket"] ?? 10);
-const FAST_RUNS = Number(args["fast-runs"] ?? 5);
+const FAST_RUNS = Number(args["fast-runs"] ?? Math.min(5, RUNS_PER_BUCKET));
 const DELAYS = (args.delays ?? "0.05,0.1,0.3,0.7").split(",").map(Number).filter((d) => d > 0);
 const FAST_DELAYS = [0.05, 0.1];
 const RAFT_API = (process.env.QA_API_BASE || "https://api.raft.build/api/").replace(/\/?$/, "/");
