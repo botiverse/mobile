@@ -3946,7 +3946,13 @@ internal class RaftSharedStoreProvider private constructor(
                         ),
                     // Account-scoped: nothing is read until the binding follower below binds an
                     // account (or finds nobody signed in), so "no drafts" is not known before.
-                    recordsKnownAtStart = false
+                    recordsKnownAtStart = false,
+                    // Acceptance build only: the crash journal's input-thread cost on the debug timing marker.
+                    journalWriteCost = { cost, textLength ->
+                        build.raft.app.RaftDraftTimingMarker.installedSink?.invoke(
+                            "draft_journal_written path=sync costUs=${cost.inWholeMicroseconds} len=$textLength"
+                        )
+                    },
                 )
             CoroutineScope(SupervisorJob()).launch {
                 composerDraftAccounts.onStoredSessionReadAtStart(authStore)
