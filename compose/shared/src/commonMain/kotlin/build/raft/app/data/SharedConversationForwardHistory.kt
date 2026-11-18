@@ -103,6 +103,32 @@ internal fun appShellConversationForwardGestureArmed(
         homeContentReady &&
         canForward
 
+/**
+ * The app shell's "back on screen" signals, each consumed once by the Forward history's
+ * [SharedConversationForwardHistory.recordHomeVisible]:
+ * - `pageVisibleTick`: the shell page's pageDidAppear (Compose lifecycle of its host);
+ * - `hostDidAppearTick`: iOS only, the shell view controller's own viewDidAppear
+ *   (`slockAppShellHostDidAppear`).
+ *
+ * On iPhone the first one never advanced across a native push/pop of a conversation, so the
+ * conversation just left was never offered to Forward (`conversation_forward_arm ...
+ * available=false`). Either signal now counts; both arriving for one return is harmless because
+ * recordHomeVisible is idempotent.
+ */
+internal class ConversationForwardHomeReturnSignals {
+    private var handledPageVisibleTick = 0
+    private var handledHostDidAppearTick = 0
+
+    /** True when either tick advanced since the last call. */
+    fun consume(pageVisibleTick: Int, hostDidAppearTick: Int): Boolean {
+        val returned =
+            pageVisibleTick > handledPageVisibleTick || hostDidAppearTick > handledHostDidAppearTick
+        if (pageVisibleTick > handledPageVisibleTick) handledPageVisibleTick = pageVisibleTick
+        if (hostDidAppearTick > handledHostDidAppearTick) handledHostDidAppearTick = hostDidAppearTick
+        return returned
+    }
+}
+
 internal sealed interface ConversationForwardAction {
     data class Open(
         val entry: ConversationForwardEntry,

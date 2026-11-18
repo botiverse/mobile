@@ -80,6 +80,7 @@ import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
 import build.raft.app.data.ConversationForwardAction
+import build.raft.app.data.ConversationForwardHomeReturnSignals
 import build.raft.app.data.appShellConversationForwardGestureArmed
 import build.raft.app.data.toConversationForwardEntry
 import build.raft.app.data.realtime.RealtimeCursorPolicy
@@ -236,6 +237,12 @@ const val AUTH_CHOOSE_SERVER_PAGE = "compose_auth_choose_server"
 const val RAFT_APP_SHELL_PAGE = "compose_slock_app_shell"
 internal const val RAFT_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
 internal const val RAFT_CONVERSATION_FORWARD_PAGER_EVENT = "slockConversationForwardRequested"
+/**
+ * iOS host: the app shell's view controller appeared on top of its navigation stack (a pushed
+ * page was popped). Sent by RaftPageViewController.viewDidAppear, independent of the Compose
+ * lifecycle that drives pageDidAppear.
+ */
+internal const val RAFT_APP_SHELL_HOST_DID_APPEAR_PAGER_EVENT = "slockAppShellHostDidAppear"
 internal const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
 internal const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
 internal const val APP_SHELL_SUPPRESS_RESTORE_LANDING = "slockSuppressRestoreLanding"
@@ -542,6 +549,8 @@ internal fun RaftAppShellContent(
     pageVisible: Boolean = true,
     adaptivePane: RaftAdaptivePaneState = RaftAdaptivePaneState(),
     conversationForwardRequestTick: Int = 0,
+    /** Advances with each [RAFT_APP_SHELL_HOST_DID_APPEAR_PAGER_EVENT] (iOS). */
+    hostDidAppearTick: Int = 0,
     /** A desktop shortcut or mouse button's step through the wide layout's history. */
     wideHistoryRequest: RaftWideNavRequest? = null,
     searchHandoff: RaftSearchTabQueryRequest? = null,
@@ -566,6 +575,7 @@ internal fun RaftAppShellContent(
         pageVisible = pageVisible,
         adaptivePane = adaptivePane,
         conversationForwardRequestTick = conversationForwardRequestTick,
+        hostDidAppearTick = hostDidAppearTick,
         wideHistoryRequest = wideHistoryRequest,
         searchHandoff = searchHandoff,
         onSearchHandoffApplied = onSearchHandoffApplied,
@@ -581,6 +591,7 @@ private fun RaftAppShellReadyContent(
     pageVisible: Boolean,
     adaptivePane: RaftAdaptivePaneState,
     conversationForwardRequestTick: Int,
+    hostDidAppearTick: Int,
     wideHistoryRequest: RaftWideNavRequest? = null,
     searchHandoff: RaftSearchTabQueryRequest? = null,
     onSearchHandoffApplied: () -> Unit = {},
@@ -723,7 +734,7 @@ private fun RaftAppShellReadyContent(
         remember(sharedStores, storeScope) { sharedStores.windowNavigationCoordinator(storeScope) }
     val conversationForwardHistory =
         remember(sharedStores, storeScope) { sharedStores.conversationForwardHistory(storeScope) }
-    var handledConversationForwardHomeVisibleTick by remember { mutableStateOf(0) }
+    val conversationForwardHomeReturns = remember { ConversationForwardHomeReturnSignals() }
     var handledConversationForwardRequestTick by remember { mutableStateOf(0) }
     AppShellAppearanceEffects(
         sharedStores = sharedStores,
@@ -2860,16 +2871,18 @@ private fun RaftAppShellReadyContent(
         serverLastConversationOwnerKey = serverLastConversationOwnerKey,
     )
 
-    LaunchedEffect(pageVisibleTick, authoritativeHomeStartAllowed) {
+    // Back on Home from a pushed conversation: the conversation it left becomes the Forward
+    // entry. On iOS the shell's Compose pageDidAppear (pageVisibleTick) does not reliably follow a
+    // native push/pop, so the host's own viewDidAppear (hostDidAppearTick) counts as well.
+    LaunchedEffect(pageVisibleTick, hostDidAppearTick, authoritativeHomeStartAllowed) {
         if (!authoritativeHomeStartAllowed) {
             bridge.setConversationForwardGestureEnabled(false)
             return@LaunchedEffect
         }
-        if (pageVisibleTick > handledConversationForwardHomeVisibleTick) {
-            handledConversationForwardHomeVisibleTick = pageVisibleTick
+        if (conversationForwardHomeReturns.consume(pageVisibleTick, hostDidAppearTick)) {
             conversationForwardHistory.recordHomeVisible()
             bridge.log(
-                "conversation_forward_home_visible tick=$pageVisibleTick " +
+                "conversation_forward_home_visible tick=$pageVisibleTick hostTick=$hostDidAppearTick " +
                     "available=${conversationForwardHistory.canForward}"
             )
         }

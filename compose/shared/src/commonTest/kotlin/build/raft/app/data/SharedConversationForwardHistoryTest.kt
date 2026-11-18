@@ -372,6 +372,87 @@ class SharedConversationForwardHistoryTest {
         assertFalse(armed(homeContentReady = true))
     }
 
+    @Test
+    fun iPhoneBackToHomeOffersTheConversationOnTheHostSignalAlone() {
+        // QA, iPhone, main 1083462a: setting on, #all opened from Home, Back, right-edge swipe did
+        // nothing; the log read `conversation_forward_arm ... available=false`. The shell's
+        // Compose pageDidAppear (pageVisibleTick) never advanced across the native push/pop, and
+        // it was the only signal that promoted the conversation left to the Forward entry.
+        val history = enabledHistory()
+        val returns = ConversationForwardHomeReturnSignals()
+        fun armed() =
+            appShellConversationForwardGestureArmed(
+                preferenceEnabled = true,
+                authoritativeHomeStartAllowed = true,
+                homeSurfaceVisible = true,
+                homeContentReady = true,
+                canForward = history.canForward,
+            )
+        fun shellAppeared(pageVisibleTick: Int, hostDidAppearTick: Int) {
+            if (returns.consume(pageVisibleTick, hostDidAppearTick)) history.recordHomeVisible()
+        }
+
+        // Cold start: the shell's first viewDidAppear; nothing to reopen (no crash, no arm).
+        shellAppeared(pageVisibleTick = 0, hostDidAppearTick = 1)
+        assertFalse(armed())
+
+        val channel = entry("server-a", "channel-all", ConversationKind.Channel)
+        history.recordNewOpen(channel)
+        assertFalse(armed(), "The conversation on screen is not a Forward target")
+
+        // Back: only the iOS host's viewDidAppear advances.
+        shellAppeared(pageVisibleTick = 0, hostDidAppearTick = 2)
+        assertTrue(armed())
+        assertEquals(channel.key, history.forwardEntryForTest()?.key)
+
+        // The Compose signal arriving late for the same return changes nothing.
+        shellAppeared(pageVisibleTick = 1, hostDidAppearTick = 2)
+        assertTrue(armed())
+        assertEquals(channel.key, history.forwardEntryForTest()?.key)
+
+        val reopened =
+            assertIs<ConversationForwardAction.Open>(
+                history.requestForward(ready("server-a", projection("server-a", "channel-all")))
+            )
+        assertEquals("channel-all", reopened.request.conversationIdentity.channelId?.value)
+        assertFalse(armed(), "Reopened: nothing to go Forward to while it is on screen")
+
+        // Back again from the reopened conversation: Forward is offered again.
+        shellAppeared(pageVisibleTick = 1, hostDidAppearTick = 3)
+        assertTrue(armed())
+    }
+
+    @Test
+    fun homeReturnSignalsAreEachConsumedOnce() {
+        val returns = ConversationForwardHomeReturnSignals()
+        assertFalse(returns.consume(pageVisibleTick = 0, hostDidAppearTick = 0))
+        assertTrue(returns.consume(pageVisibleTick = 0, hostDidAppearTick = 1))
+        assertFalse(returns.consume(pageVisibleTick = 0, hostDidAppearTick = 1))
+        assertTrue(returns.consume(pageVisibleTick = 1, hostDidAppearTick = 1))
+        assertFalse(returns.consume(pageVisibleTick = 1, hostDidAppearTick = 1))
+        assertTrue(returns.consume(pageVisibleTick = 2, hostDidAppearTick = 2))
+        assertFalse(returns.consume(pageVisibleTick = 2, hostDidAppearTick = 2))
+    }
+
+    @Test
+    fun settingOffNeverOffersForwardOnAnyHomeReturn() {
+        val history = SharedConversationForwardHistory()
+        val returns = ConversationForwardHomeReturnSignals()
+        history.recordNewOpen(entry("server-a", "channel-all", ConversationKind.Channel))
+        assertTrue(returns.consume(pageVisibleTick = 0, hostDidAppearTick = 1))
+        assertFalse(history.recordHomeVisible())
+        assertFalse(history.canForward)
+        assertFalse(
+            appShellConversationForwardGestureArmed(
+                preferenceEnabled = false,
+                authoritativeHomeStartAllowed = true,
+                homeSurfaceVisible = true,
+                homeContentReady = true,
+                canForward = history.canForward,
+            )
+        )
+    }
+
     private fun enabledHistory(): SharedConversationForwardHistory =
         SharedConversationForwardHistory().also { it.setEnabled(true) }
 

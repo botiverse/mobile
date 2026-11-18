@@ -83,6 +83,7 @@
 		FF6B714729A2A315009349F1 /* RaftPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714629A2A315009349F1 /* RaftPageView.swift */; };
 		J0NY00010000000000000001 /* RaftShareControllerFailureReasonTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00020000000000000001 /* RaftShareControllerFailureReasonTests.m */; };
 		A19300010000000000000001 /* RaftInteractivePopGestureTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A19300020000000000000001 /* RaftInteractivePopGestureTests.m */; };
+		A19300030000000000000001 /* RaftConversationForwardGestureTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A19300040000000000000001 /* RaftConversationForwardGestureTests.m */; };
 		A20500010000000000000001 /* RaftRouterLoginTransitionTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A20500020000000000000001 /* RaftRouterLoginTransitionTests.m */; };
 		RCB100010000000000000001 /* RaftCmpBridgeSelectorTests.m in Sources */ = {isa = PBXBuildFile; fileRef = RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */; };
 		J0NY00030000000000000001 /* RaftIosOpenAttachmentTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */; };
@@ -209,6 +210,7 @@
 		FF6B714C29A2A45D009349F1 /* iosApp-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "iosApp-Bridging-Header.h"; sourceTree = "<group>"; };
 		J0NY00020000000000000001 /* RaftShareControllerFailureReasonTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftShareControllerFailureReasonTests.m; sourceTree = "<group>"; };
 		A19300020000000000000001 /* RaftInteractivePopGestureTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftInteractivePopGestureTests.m; sourceTree = "<group>"; };
+		A19300040000000000000001 /* RaftConversationForwardGestureTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftConversationForwardGestureTests.m; sourceTree = "<group>"; };
 		A20500020000000000000001 /* RaftRouterLoginTransitionTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftRouterLoginTransitionTests.m; sourceTree = "<group>"; };
 		RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftCmpBridgeSelectorTests.m; sourceTree = "<group>"; };
 		J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftIosOpenAttachmentTests.m; sourceTree = "<group>"; };
@@ -408,6 +410,7 @@
 				A42700020000000000000001 /* RaftAdaptiveEditorSnapshotTests.m */,
 				J0NY00020000000000000001 /* RaftShareControllerFailureReasonTests.m */,
 				A19300020000000000000001 /* RaftInteractivePopGestureTests.m */,
+				A19300040000000000000001 /* RaftConversationForwardGestureTests.m */,
 				A20500020000000000000001 /* RaftRouterLoginTransitionTests.m */,
 				RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */,
 				J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */,
@@ -883,6 +886,7 @@
 				A62600010000000000000001 /* RaftIosComposerPasteTests.swift in Sources */,
 				J0NY00010000000000000001 /* RaftShareControllerFailureReasonTests.m in Sources */,
 				A19300010000000000000001 /* RaftInteractivePopGestureTests.m in Sources */,
+				A19300030000000000000001 /* RaftConversationForwardGestureTests.m in Sources */,
 				A20500010000000000000001 /* RaftRouterLoginTransitionTests.m in Sources */,
 				RCB100010000000000000001 /* RaftCmpBridgeSelectorTests.m in Sources */,
 				J0NY00030000000000000001 /* RaftIosOpenAttachmentTests.m in Sources */,
