@@ -193,7 +193,7 @@ class RaftSidebarItemBaselineReuseUiTest {
             val listState = LazyListState()
             var landscape by mutableStateOf(false)
             var placed by mutableStateOf(true)
-            val members = List(80) { index -> Triple("Member $index", "Description $index", if (index % 2 == 0) "Owner" else "Guest") }
+            val members = List(80) { index -> Triple("Member $index", "Description $index", if (index % 2 == 0) "Owner $index" else "Guest $index") }
             setContent {
                 RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
                     Box(Modifier.size(if (landscape) 640.dp else 360.dp, if (landscape) 360.dp else 640.dp)) {
