@@ -677,6 +677,37 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
+    fun copyDiagnosticsRecordsCallerLocalizedLabel() {
+        val s = store()
+        var copied: String? = null
+        val actions = object : SharedAgentDetailActions {
+            override suspend fun runLifecycleAction(
+                agentId: MemberId,
+                action: MembersAgentLifecycleAction,
+                workspaceChoice: AgentArchiveWorkspaceChoice
+            ): DataResult<AgentLifecycleActionResult> = DataResult.Empty(EmptyReason.NoMembers)
+
+            override fun copyDiagnostics(diagnostics: String) {
+                copied = diagnostics
+            }
+
+            override suspend fun reportIssue(
+                request: SharedAgentIssueReportRequest
+            ): DataResult<AgentIssueReportResult> = DataResult.Empty(EmptyReason.NoMembers)
+
+            override suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile> =
+                DataResult.Empty(EmptyReason.NoMembers)
+        }
+
+        s.copyDiagnostics("agentId=agent-1", actions, successLabel = "已复制诊断信息")
+
+        assertEquals("agentId=agent-1", copied)
+        assertNull(s.state.value.diagnosticActionInFlight)
+        assertEquals("copy", s.state.value.lastActionResult?.actionKey)
+        assertEquals("已复制诊断信息", s.state.value.lastActionResult?.successLabel)
+    }
+
+    @Test
     fun reportIssueForwardsTypedRequestAndRecordsSuccess() = runBlocking {
         val s = store()
         val request = SharedAgentIssueReportRequest(
@@ -713,12 +744,12 @@ class SharedAgentDetailStoreTest {
                 DataResult.Empty(EmptyReason.NoMembers)
         }
 
-        val result = s.reportIssue(request, actions)
+        val result = s.reportIssue(request, actions, successLabel = "已报告问题")
         assertTrue(result is DataResult.Content)
         assertEquals("report-12345678", (result as DataResult.Content).data.reportId)
         assertEquals(request, forwarded)
         assertNull(s.state.value.diagnosticActionInFlight)
-        assertEquals("Issue reported", s.state.value.lastActionResult?.successLabel)
+        assertEquals("已报告问题", s.state.value.lastActionResult?.successLabel)
         assertNull(s.state.value.lastActionResult?.error)
     }
 

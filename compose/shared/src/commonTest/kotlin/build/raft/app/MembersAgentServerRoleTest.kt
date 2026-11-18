@@ -210,9 +210,10 @@ class MembersAgentServerRoleTest {
 
     @Test
     fun marksSelectedAgentServerRoleOption() {
-        val options = membersAgentServerRoleOptions(MembersAgentServerRole.Member)
+        val options = membersAgentServerRoleOptions(MembersAgentServerRole.Member) { "label:${it.wireValue}" }
 
         assertEquals(listOf("admin", "member"), options.map { it.id })
+        assertEquals(listOf("label:admin", "label:member"), options.map { it.label })
         assertTrue(options.first { it.id == "member" }.selected)
         assertFalse(options.first { it.id == "admin" }.selected)
     }

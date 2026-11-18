@@ -26,6 +26,8 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
+import build.raft.app.model.RaftRelativeTimeLabel
+import build.raft.app.model.RaftRelativeTimeUnit
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
@@ -519,13 +521,15 @@ internal fun membersAgentDisplayServerRole(
         ?: MembersAgentServerRoleDisplay.Unrecognized(rawRole)
 }
 
+/** [label] is the role's localized name ([MembersAgentServerRole.localizedLabel]), never the enum's English. */
 internal fun membersAgentServerRoleOptions(
-    selectedRole: MembersAgentServerRole?
+    selectedRole: MembersAgentServerRole?,
+    label: (MembersAgentServerRole) -> String
 ): List<RaftUiSelectionOption> =
     MembersAgentServerRole.entries.map { role ->
         RaftUiSelectionOption(
             id = role.wireValue,
-            label = role.label,
+            label = label(role),
             selected = role == selectedRole
         )
     }
@@ -1365,6 +1369,12 @@ internal fun RaftAgentStatusIndicatorState.toMembersAgentStatusDisplayState(): M
         external = external
     )
 
+/**
+ * The reminder's fire time relative to now, in this locale (the shared relative-time catalog):
+ * "in 3 hours", "5 minutes ago", "now"; the short date-time without a clock, the raw value when
+ * it does not parse.
+ */
+@Composable
 internal fun String?.membersReminderRelativeTime(timeContext: RaftTimeContext): String {
     val trimmed = this?.trim().orEmpty()
     if (trimmed.isEmpty()) return ""
@@ -1373,23 +1383,16 @@ internal fun String?.membersReminderRelativeTime(timeContext: RaftTimeContext): 
     val nowMillis = timeContext.nowEpochMillis ?: return trimmed.membersReminderShortDateTime(timeContext)
     val diffMillis = fireAtMillis - nowMillis
     val absMillis = abs(diffMillis)
-    val unitMillis =
+    val (unitMillis, unit) =
         when {
-            absMillis < MembersReminderMillisPerHour -> MembersReminderMillisPerMinute
-            absMillis < MembersReminderMillisPerDay -> MembersReminderMillisPerHour
-            else -> MembersReminderMillisPerDay
-        }
-    val unit =
-        when (unitMillis) {
-            MembersReminderMillisPerMinute -> "minute"
-            MembersReminderMillisPerHour -> "hour"
-            else -> "day"
+            absMillis < MembersReminderMillisPerHour -> MembersReminderMillisPerMinute to RaftRelativeTimeUnit.Minute
+            absMillis < MembersReminderMillisPerDay -> MembersReminderMillisPerHour to RaftRelativeTimeUnit.Hour
+            else -> MembersReminderMillisPerDay to RaftRelativeTimeUnit.Day
         }
     val amount = (diffMillis.toDouble() / unitMillis.toDouble()).roundToLong()
-    val absoluteAmount = abs(amount)
-    if (absoluteAmount == 0L) return "now"
-    val label = "$absoluteAmount $unit${if (absoluteAmount == 1L) "" else "s"}"
-    return if (amount > 0L) "in $label" else "$label ago"
+        .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
+        .toInt()
+    return RaftRelativeTimeLabel.Relative(amount, unit).localized()
 }
 
 internal fun String?.membersReminderShortDateTime(timeContext: RaftTimeContext): String {

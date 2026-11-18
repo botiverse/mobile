@@ -1424,13 +1424,14 @@ private fun MembersAgentInfoSection(
             }
         ) {
             if (editingServerRole) {
+                val serverRoleLabels = MembersAgentServerRole.entries.associateWith { it.localizedLabel() }
                 MembersServerRoleEditor(
                     displayValue = draftServerRole.localizedLabel(),
                     expanded = serverRoleMenuExpanded,
                     enabled = !savingServerRole,
                     saving = savingServerRole,
                     saveEnabled = draftServerRole != currentServerRole,
-                    options = membersAgentServerRoleOptions(draftServerRole),
+                    options = membersAgentServerRoleOptions(draftServerRole) { serverRoleLabels.getValue(it) },
                     selectedId = draftServerRole.wireValue,
                     error = serverRoleError,
                     onToggle = { serverRoleMenuExpanded = !serverRoleMenuExpanded },
