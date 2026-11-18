@@ -92,6 +92,7 @@ internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
         "compose_raft_ui_wip_overlay_shells_visual" to { build.raft.app.ComposeRaftUiWipOverlayShellsVisualPage() },
         "compose_raft_ui_wip_toggle_group_visual" to { build.raft.app.ComposeRaftUiWipToggleGroupVisualPage() },
         "compose_realtime_canonical_final_actual_host" to { build.raft.app.RealtimeCanonicalFinalActualHostPage() },
+        "compose_runtime_form_visual" to { build.raft.app.ComposeRuntimeFormVisualPage() },
         "compose_search_recovery_visual" to { build.raft.app.SearchRecoveryVisualPage() },
         "compose_settings_computers_visual" to { build.raft.app.SettingsComputersVisualFixture() },
         "compose_settings_page_visual" to { build.raft.app.ComposeSettingsPageVisualPage() },

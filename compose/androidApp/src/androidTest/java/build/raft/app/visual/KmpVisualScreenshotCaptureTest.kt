@@ -3428,6 +3428,89 @@ class KmpVisualScreenshotCaptureTest {
 
 
 
+    // Runtime form cases (slock packages/runtime-form/fixtures/visual-cases.v3.json): the generated
+    // kitchen sink pages and each runtime's real v3 create form, drawn by RuntimeFormV2Fields from the
+    // synced fixtures (compose_runtime_form_visual). Full length: slock sharedCases capture.fullLength.
+    @Test
+    fun captureRuntimeFormKitchenSinkInputs() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.kitchen-sink.inputs",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.kitchen-sink.inputs"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormKitchenSinkChoices() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.kitchen-sink.choices",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.kitchen-sink.choices"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormBuiltin() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.create.builtin",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.create.builtin"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormClaude() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.create.claude",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.create.claude"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormCodex() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.create.codex",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.create.codex"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormGrok() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.create.grok",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.create.grok"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormKimiSdk() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.create.kimi-sdk",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.create.kimi-sdk"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormPi() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.create.pi",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.create.pi"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
     private fun captureMembersCreateAgentStateCase(
         caseId: String,
         variant: String,
