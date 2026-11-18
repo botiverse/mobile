@@ -8,6 +8,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { loginLike, parseUiNodes } from "./login_phase.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
@@ -41,11 +42,18 @@ function shot(name) {
   try { fs.writeFileSync(f, execFileSync("adb", ["exec-out", "screencap", "-p"], { maxBuffer: 64 << 20, timeout: 30000 })); } catch (e) { log("shot failed", name, e.message); }
   return path.basename(f);
 }
+// Saved dumps keep only this app's nodes, and nothing from a login-like screen (the evidence gate
+// withholds everything if a credential shows up in any file).
+function saveDump(name, xml) {
+  if (loginLike(parseUiNodes(xml))) { log("dump not saved (login-like):", name); return; }
+  const keep = [...xml.matchAll(/<node[^>]*>/g)].map((m) => m[0]).filter((t) => t.includes(`package="${PKG}"`));
+  fs.writeFileSync(path.join(OUT, `${String(shotN).padStart(3, "0")}-${name}.app-nodes.xml`), keep.join("\n"));
+}
 function nodes(saveAs) {
   for (let i = 0; i < 3; i++) {
     const r = sh("uiautomator dump /data/local/tmp/qa_dump.xml >/dev/null 2>&1; cat /data/local/tmp/qa_dump.xml", { timeout: 40000 });
     if (r.includes("<hierarchy")) {
-      if (saveAs) fs.writeFileSync(path.join(OUT, `${String(shotN).padStart(3, "0")}-${saveAs}.xml`), r);
+      if (saveAs) saveDump(saveAs, r);
       return [...r.matchAll(/<node[^>]*>/g)].map((m) => {
         const t = m[0]; const g = (k) => new RegExp(`${k}="([^"]*)"`).exec(t)?.[1] ?? "";
         const b = /bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(t)?.slice(1).map(Number) ?? [0, 0, 0, 0];
@@ -120,10 +128,10 @@ function findFixtureImage(maxScrolls = 12) {
   for (let i = 0; i <= maxScrolls; i++) {
     const ns = nodes(i === 0 ? "conversation" : undefined);
     const marker = ns.find((n) => /qa-fixture-image/.test(n.text + n.desc));
-    const img = ns.find((n) => /qa-fixture-image\.png|^Image|image/i.test(n.desc) && n.w > 40 && n.h > 40 && n.x > W * 0.3);
+    const img = ns.find((n) => /qa-fixture-image\.png|^Image|image/i.test(n.desc) && !/^(Add|Attach|Insert)\b/i.test(n.desc) && n.y < H * 0.85 && n.w > 40 && n.h > 40 && n.x > W * 0.3);
     if (marker || img) {
       // Prefer an image node whose bounds sit below/near the marker text.
-      const near = marker ? ns.filter((n) => n.w > 60 && n.h > 60 && n.w < W * 0.7 && n.b[1] >= marker.b[1] - 20 && n.b[1] < marker.b[3] + 500 && n.x > marker.b[0] - 50 && /image|png|photo/i.test(n.desc + n.cls + n.text)) : [];
+      const near = marker ? ns.filter((n) => n.w > 60 && n.h > 60 && n.w < W * 0.7 && n.b[1] >= marker.b[1] - 20 && n.b[1] < marker.b[3] + 500 && n.x > marker.b[0] - 50 && /image|png|photo/i.test(n.desc + n.cls + n.text) && !/^(Add|Attach|Insert)\b/i.test(n.desc)) : [];
       const target = near[0] || img;
       if (target) { log("fixture image at", target.x, target.y, label(target), target.cls); return target; }
       if (marker) {
