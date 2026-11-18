@@ -31,8 +31,8 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The agent Activity › Raw log's status rows (Kirby, raft-design): the status on the title line,
  * its explanation on its own line in the detail style every other row uses, and a status with
- * no explanation on one line. Thinking and Output rows sit beside them for comparison. Light
- * and dark at phone width. Verify / record as [RaftRobolectricScreenshot].
+ * no explanation on one line; Stopped and Crashed carry their reason. Thinking and Output rows
+ * sit beside them for comparison. Light and dark at phone width. Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -76,7 +76,8 @@ class MembersAgentRawLogStatusScreenshotTest {
 
 /**
  * A raw log in the daemon's wire shape: Thinking, "Working" with "Tool finished", Output,
- * "Error" with "No runtime output for 15 min", and "Idle" with no explanation.
+ * "Error" with "No runtime output for 15 min", "Idle" with no explanation, "Stopped" with
+ * "Computer stopped" and "Crashed" with "exit code 1" (each reason alone, no " - " lead-in).
  */
 internal fun rawLogStatusFixtureLog(): List<AgentActivityEntry> {
     val t0 = SubagentsFixtureNowMillis - 20 * 60_000L
@@ -87,6 +88,8 @@ internal fun rawLogStatusFixtureLog(): List<AgentActivityEntry> {
         row(20, """{"kind":"text","text":"Found 3 call sites in packages/web."}"""),
         row(40, """{"kind":"status","activity":"error","detail":"No runtime output for 15 min"}"""),
         row(55, """{"kind":"status","activity":"online","detail":""}"""),
+        row(70, """{"kind":"status","activity":"offline","detail":"Computer stopped","detailKind":"stopped"}"""),
+        row(90, """{"kind":"status","activity":"offline","detail":"Crashed (exit code 1)","detailKind":"runtime_crashed"}"""),
     )
     return parseSharedAgentActivity(rows.joinToString(",", "[", "]"), MemberId("agent-raw-log-status"))!!.activity
 }

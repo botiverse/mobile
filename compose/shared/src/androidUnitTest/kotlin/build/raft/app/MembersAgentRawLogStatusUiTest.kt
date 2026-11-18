@@ -30,7 +30,7 @@ class MembersAgentRawLogStatusUiTest {
     fun aStatusExplanationIsItsOwnLineUnderTheStatus() =
         runRobolectricComposeUiTest {
             val log = rawLogStatusFixtureLog()
-            assertEquals(listOf("Thinking", "Working", "Output", "Error", "Idle"), log.map { it.title })
+            assertEquals(listOf("Thinking", "Working", "Output", "Error", "Idle", "Stopped", "Crashed"), log.map { it.title })
             setContent {
                 RaftDesignSystemTheme {
                     Column {
@@ -38,7 +38,13 @@ class MembersAgentRawLogStatusUiTest {
                     }
                 }
             }
-            for ((status, explanation) in listOf("Working" to "Tool finished", "Error" to "No runtime output for 15 min")) {
+            for ((status, explanation) in listOf(
+                "Working" to "Tool finished",
+                "Error" to "No runtime output for 15 min",
+                // web #15326: the reason alone on its line, no " - " lead-in.
+                "Stopped" to "Computer stopped",
+                "Crashed" to "exit code 1",
+            )) {
                 val title = onNodeWithText(status).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
                 val detail = onNodeWithText(explanation).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
                 assertTrue(detail.top >= title.bottom, "$explanation sits under $status")
