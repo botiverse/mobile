@@ -1978,7 +1978,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                                 routineDiagnostics = routine,
                                 onlyLogRecordsWhenChanged = true,
                                 waitForStoreLock = false,
-                            ).also { if (it == PersistOutcome.Written) markDraftWritten(timingSeq, state.seedText.length) } != PersistOutcome.Busy
+                            ).also { if (it == PersistOutcome.Written) markDraftWritten(timingSeq, state.seedText.length, "sync") } != PersistOutcome.Busy
                     } catch (error: Throwable) {
                         safeDiagnostics(
                             "thread_composer_draft_sync_write_failed key=$key error=${error::class.simpleName.orEmpty()}"
@@ -1986,6 +1986,9 @@ internal class SharedThreadComposerDraftPersistSlice(
                         false
                     }
                 if (!written) {
+                    if (timingSeq > 0L) timingSink()?.let { sink ->
+                        runCatching { sink("sync_write_fallback seq=$timingSeq len=${state.seedText.length}") }
+                    }
                     if (syncWriteFallbackLoggedKeys.add(key)) {
                         safeDiagnostics("thread_composer_draft_sync_write_fallback key=$key reason=store_busy_or_failed")
                     }
@@ -2125,7 +2128,7 @@ internal class SharedThreadComposerDraftPersistSlice(
         pending.cancellation?.cancel()
         try {
             if (persistStateLocked(key, pending.state, "ChangeFlush") == PersistOutcome.Written) {
-                markDraftWritten(pending.timingSeq, pending.state.seedText.length)
+                markDraftWritten(pending.timingSeq, pending.state.seedText.length, "flush")
             }
         } catch (error: Throwable) {
             // A synchronous Flush must report the primary persistence failure to the transition,
@@ -2249,7 +2252,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                         routineDiagnostics = firstOfBurst,
                         onlyLogRecordsWhenChanged = true,
                     )
-                if (written == PersistOutcome.Written) markDraftWritten(timingSeq, state.seedText.length)
+                if (written == PersistOutcome.Written) markDraftWritten(timingSeq, state.seedText.length, "background")
             }
         }
     }
@@ -2262,11 +2265,11 @@ internal class SharedThreadComposerDraftPersistSlice(
         return timingSeq
     }
 
-    /** `draft_written` once the change [seq] carried is in the durable draft. */
-    private fun markDraftWritten(seq: Long, textLength: Int) {
+    /** `draft_written` once the change [seq] carried is in the durable draft; [path] says which write did it. */
+    private fun markDraftWritten(seq: Long, textLength: Int, path: String) {
         if (seq <= 0L) return
         val sink = timingSink() ?: return
-        runCatching { sink("draft_written seq=$seq len=$textLength") }
+        runCatching { sink("draft_written seq=$seq len=$textLength path=$path") }
     }
 
     /** True when this typed-text write starts a burst and logs; false when it is only counted. */

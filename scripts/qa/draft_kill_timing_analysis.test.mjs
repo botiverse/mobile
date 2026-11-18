@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { writeLatencyStats, analyzeKillRun, measuredBucket, summarizeByMeasuredBucket, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
+import { writePathCounts, writeLatencyStats, analyzeKillRun, measuredBucket, summarizeByMeasuredBucket, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
 
 const PKG = "build.raft.app.alpha";
 const PID = 4242;
@@ -147,4 +147,16 @@ test("the send regression has its own 100 ms window; a recents swipe may kill by
 test("write latency pairs each change with its own write", () => {
   const stats = writeLatencyStats([change(1, 1, 1), written(1.02, 1, 1), change(2, 2, 2), change(2.01, 3, 3), written(2.05, 3, 3), change(3, 4, 4)]);
   assert.deepEqual(stats, { samples: 2, min_ms: 20, p50_ms: 40, p95_ms: 40, p99_ms: 40, max_ms: 40 });
+});
+
+test("write paths are counted from the marker lines", () => {
+  const l = (sec, msg) => line(sec, PID, "RaftDraftTiming", msg);
+  const counts = writePathCounts([
+    l(1, "draft_written seq=1 len=1 path=sync uptimeMs=1000"),
+    l(2, "draft_written seq=2 len=2 path=background uptimeMs=2000"),
+    l(3, "sync_write_fallback seq=3 len=3 uptimeMs=3000"),
+    l(4, "draft_written seq=3 len=3 path=background uptimeMs=4000"),
+    l(5, "draft_written seq=4 len=4 uptimeMs=5000"),
+  ]);
+  assert.deepEqual(counts, { sync: 1, background: 2, flush: 0, unlabeled: 1, sync_write_fallback: 1 });
 });

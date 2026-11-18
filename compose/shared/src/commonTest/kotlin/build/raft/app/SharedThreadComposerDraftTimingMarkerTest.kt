@@ -24,7 +24,7 @@ class SharedThreadComposerDraftTimingMarkerTest {
         assertEquals(listOf("change_received seq=1 len=12"), lines)
         clock.advanceBy(0L)
 
-        assertEquals(listOf("change_received seq=1 len=12", "draft_written seq=1 len=12"), lines)
+        assertEquals(listOf("change_received seq=1 len=12", "draft_written seq=1 len=12 path=background"), lines)
         assertTrue(lines.none { "secret" in it }, "lines=$lines")
     }
 
@@ -45,10 +45,10 @@ class SharedThreadComposerDraftTimingMarkerTest {
         assertEquals(
             listOf(
                 "change_received seq=1 len=1",
-                "draft_written seq=1 len=1",
+                "draft_written seq=1 len=1 path=background",
                 "change_received seq=2 len=2",
                 "change_received seq=3 len=3",
-                "draft_written seq=3 len=3",
+                "draft_written seq=3 len=3 path=background",
             ),
             lines,
         )
@@ -66,9 +66,9 @@ class SharedThreadComposerDraftTimingMarkerTest {
         // Backgrounded before the interval ends (Home): the flush writes it.
         store.dispatch(SharedThreadComposerDraftIntent.Flush)
 
-        assertEquals("draft_written seq=2 len=2", lines.last(), "lines=$lines")
+        assertEquals("draft_written seq=2 len=2 path=flush", lines.last(), "lines=$lines")
         clock.runEverythingIncludingCancelled()
-        assertEquals(1, lines.count { it == "draft_written seq=2 len=2" }, "lines=$lines")
+        assertEquals(1, lines.count { it == "draft_written seq=2 len=2 path=flush" }, "lines=$lines")
     }
 
     @Test
@@ -100,7 +100,7 @@ class SharedThreadComposerDraftTimingMarkerTest {
             assertTrue(RaftDraftTimingMarker.installIfEnabled(buildConfigDebug = true, appDebuggable = true, factory))
             store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "debug"))
             clock.advanceBy(IntervalMillis)
-            assertEquals(listOf("change_received seq=1 len=5", "draft_written seq=1 len=5"), factoryLines)
+            assertEquals(listOf("change_received seq=1 len=5", "draft_written seq=1 len=5 path=background"), factoryLines)
         } finally {
             RaftDraftTimingMarker.installIfEnabled(buildConfigDebug = false, appDebuggable = false, factory)
         }
