@@ -245,10 +245,10 @@ const quantiles = (values, unit) => {
  * - missing: every other edit with neither line, including a last edit with no death evidence.
  * - unpaired: cost / failure lines with no edit of that (process, seq), and repeats of one edit's cost
  *   line; never counted for an edit and never in the cost percentiles.
- * Logcat can lose a line under load, so up to JOURNAL_MISSING_TOLERANCE of the edits (rounded down) may
- * be missing; more is "unconfirmed". Any failure fails the run.
+ * Zero tolerance: a single missing input makes the run "unconfirmed" (a lost logcat line cannot be told
+ * apart from a journal write that never ran). Any failure fails the run.
  */
-export const JOURNAL_MISSING_TOLERANCE = 0.01;
+export const JOURNAL_MISSING_TOLERANCE = 0;
 export function journalCoverage({ edits, paired, failures, likely_interrupted = 0, missing, unpaired = 0 }) {
   const allowed = Math.floor(edits * JOURNAL_MISSING_TOLERANCE);
   return { edits, paired, failures, likely_interrupted, missing, unpaired, allowed_missing: allowed, covered: edits > 0 && missing <= allowed };
