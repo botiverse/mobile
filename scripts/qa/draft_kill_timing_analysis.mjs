@@ -130,6 +130,19 @@ export function exitInterval(parsed, { pkg, oldPid, runIndex, extraReasons = [] 
 }
 
 /** The tightest bucket whose window holds the whole exit Δ interval [lowerMs, upperMs], or null. */
+/**
+ * The bucket a kill run counts for: the one it aimed at ([aimedSec]) when the WHOLE exit interval lies in
+ * that bucket's window, else the tightest bucket among [enabledSecs] whose window holds the whole
+ * interval, else null (the sample counts nowhere). Buckets not in this round never get credit.
+ */
+export function creditedBucket(lowerMs, upperMs, aimedSec, enabledSecs) {
+  if (lowerMs == null || upperMs == null) return null;
+  const enabled = enabledSecs.filter((d) => BUCKETS[d]);
+  if (aimedSec != null && enabled.includes(aimedSec) && insideWindow(lowerMs, upperMs, BUCKETS[aimedSec])) return aimedSec;
+  const fits = enabled.filter((d) => insideWindow(lowerMs, upperMs, BUCKETS[d])).sort((a, b) => BUCKETS[a].hi_ms - BUCKETS[b].hi_ms);
+  return fits.length ? fits[0] : null;
+}
+
 export function measuredBucket(lowerMs, upperMs) {
   if (lowerMs == null || upperMs == null) return null;
   const fits = Object.entries(BUCKETS)
@@ -224,7 +237,9 @@ export function analyzeKillRun({ lines, pkg, oldPid, samePid = true, runIndex, e
     else result.reason = `exit Δ [${result.delta_lower_ms}, ${result.delta_upper_ms}] ms not inside required [${window.lo_ms}, ${window.hi_ms}] ms`;
   } else classify(result, delaySec);
   // Whatever D was asked for, the bucket the measured interval actually proves (bucketed modes only).
-  result.measured_bucket = !result.reason || /not inside bucket/.test(result.reason ?? "") ? (delaySec == null ? null : measuredBucket(result.delta_lower_ms, result.delta_upper_ms)) : null;
+  // The exit interval is trustworthy (own kill, bounds measured, clocks agree): only then can it count for a bucket.
+  result.interval_trusted = !result.reason || /not inside bucket/.test(result.reason ?? "");
+  result.measured_bucket = result.interval_trusted ? (delaySec == null ? null : measuredBucket(result.delta_lower_ms, result.delta_upper_ms)) : null;
   return result;
 }
 
@@ -263,10 +278,13 @@ export function pairJournalLines(editsByPid, costLines, failureKeys, deathsByPid
   const editKeys = new Set();
   for (const [pid, list] of editsByPid) for (const e of list) editKeys.add(`${pid}:${e.seq}`);
   const costByKey = new Map();
+  const partsByKey = new Map();
   let unpaired = 0;
-  for (const { key, costUs } of costLines) {
-    if (editKeys.has(key) && !costByKey.has(key)) costByKey.set(key, costUs);
-    else unpaired += 1;
+  for (const { key, costUs, parts } of costLines) {
+    if (editKeys.has(key) && !costByKey.has(key)) {
+      costByKey.set(key, costUs);
+      if (parts) partsByKey.set(key, parts);
+    } else unpaired += 1;
   }
   let edits = 0;
   let failures = 0;
@@ -291,7 +309,12 @@ export function pairJournalLines(editsByPid, costLines, failureKeys, deathsByPid
     missing,
     unpaired: unpaired + unpairedFailures,
   });
-  return { coverage, pairedCostsUs: [...costByKey.values()] };
+  // ENCODE / STORE (index + put) halves of the paired samples that carry them.
+  const pairedPartsUs = {};
+  for (const name of ["encode", "store", "index", "put"]) {
+    pairedPartsUs[name] = [...partsByKey.values()].map((p) => p[name]).filter((v) => v != null);
+  }
+  return { coverage, pairedCostsUs: [...costByKey.values()], pairedPartsUs };
 }
 
 /** The pid a death-evidence line names (AM Killing / has died, am_kill / am_proc_died, cgroup killed), or null. */
@@ -348,7 +371,15 @@ export function createLogcatStats() {
       const cost = /^draft_journal_written\b.*\bcostUs=(\d+)/.exec(l.message);
       if (cost) {
         const seq = /\bseq=(\d+)/.exec(l.message);
-        costLines.push({ key: seq ? `${l.pid}:${seq[1]}` : `${l.pid}:noseq`, costUs: Number(cost[1]) });
+        const part = (name) => {
+          const m = new RegExp(`\\b${name}Us=(\\d+)`).exec(l.message);
+          return m ? Number(m[1]) : null;
+        };
+        costLines.push({
+          key: seq ? `${l.pid}:${seq[1]}` : `${l.pid}:noseq`,
+          costUs: Number(cost[1]),
+          parts: { encode: part("encode"), store: part("store"), index: part("index"), put: part("put") },
+        });
         return;
       }
       if (/^draft_journal_write_failed\b/.test(l.message)) {
@@ -375,6 +406,8 @@ export function createLogcatStats() {
         write_paths: { ...paths },
         // Percentiles of PAIRED samples only (a cost line matched to its change_received by process + seq).
         journal_write_cost: { ...quantiles([...journal.pairedCostsUs], "us"), basis: "paired samples only", unpaired_excluded: journal.coverage.unpaired },
+        // The same paired samples split: ENCODE (entry to JSON) and STORE (index + put), each with its parts.
+        journal_write_cost_parts: Object.fromEntries(Object.entries(journal.pairedPartsUs).map(([name, values]) => [name, quantiles([...values], "us")])),
         journal_coverage: journal.coverage,
       };
     },
@@ -472,7 +505,8 @@ export function isEvidenceLine(line, pkg, appPids = new Set()) {
 }
 
 /** Every acceptance condition the finished [summary] does not meet (empty = pass). */
-export function acceptanceUnmet(summary, { runsPerBucket, fastRuns, env = {} }) {
+export function acceptanceUnmet(summary, config) {
+  const { runsPerBucket, fastRuns, env = {} } = config;
   const unmet = [];
   for (const [d, p] of Object.entries(summary.bucket_progress ?? {})) if (p.valid < runsPerBucket) unmet.push(`bucket ${d} s: ${p.valid}/${runsPerBucket} valid in ${p.attempted} attempts`);
   for (const r of summary.runs) if (!r.pass) unmet.push(`run ${r.run} (${r.group}): not restored as expected${r.reason ? ` - ${r.reason}` : ""}`);
@@ -486,7 +520,7 @@ export function acceptanceUnmet(summary, { runsPerBucket, fastRuns, env = {} }) 
   if (!summary.apk || summary.apk.file_sha256 !== summary.apk.installed_base_apk_sha256) unmet.push("installed base.apk SHA-256 differs from the downloaded APK (or was not read)");
   if (summary.apk?.downloaded_sha256_from_workflow && summary.apk.downloaded_sha256_from_workflow !== summary.apk.file_sha256) unmet.push("APK SHA-256 differs from the one the workflow downloaded");
   if (env.REQUIRE_COMMIT && !["identical", "ahead"].includes(env.REQUIRE_COMMIT_STATUS ?? "")) unmet.push(`APK source ${env.APK_SOURCE_SHA} does not contain ${env.REQUIRE_COMMIT} (compare: ${env.REQUIRE_COMMIT_STATUS || "unavailable"})`);
-  if (!summary.runs.some((r) => r.mode === "recents" && r.recents_swipe_killed)) unmet.push("recents regression: the swipe did not remove the task / kill the process");
+  if (config.recents !== false && !summary.runs.some((r) => r.mode === "recents" && r.recents_swipe_killed)) unmet.push("recents regression: the swipe did not remove the task / kill the process");
   return unmet;
 }
 
@@ -527,6 +561,72 @@ export function parseMessagesResponse(status, json, parseError = false) {
   const rows = Array.isArray(json) ? json : Array.isArray(json?.messages) ? json.messages : null;
   if (rows == null) return { status, ok: false, rows: [], problem: "HTTP 200 without a messages array" };
   return { status, ok: true, rows };
+}
+
+/**
+ * A short, token-free summary of an error response body: only `error`, `code`, `message`, `statusCode`
+ * and `reason` (strings cut at 120 characters), so a 401 from an expired token can be told from another
+ * auth failure without logging anything else the body carries.
+ */
+export function errorBodySummary(json) {
+  if (json == null || typeof json !== "object" || Array.isArray(json)) return null;
+  const out = {};
+  for (const key of ["error", "code", "message", "statusCode", "reason"]) {
+    const v = json[key];
+    if (v == null) continue;
+    out[key] = typeof v === "string" ? v.slice(0, 120) : typeof v === "number" || typeof v === "boolean" ? v : "[object]";
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * One server query of the send regression, re-authenticating at most ONCE per run: on HTTP 401 (and only
+ * if [state].reauthed is still false) [reauth] signs the same test identity in again and the QUERY alone
+ * is retried once. Nothing is ever re-sent. Returns the last answer and the query records (phase, time,
+ * status, ok, problem / body summary, matches), the retry marked as such; [state] records the re-auth.
+ */
+export async function queryWithReauth(phase, runQuery, reauth, state) {
+  const record = (p, q) => ({
+    phase: p,
+    at: q.at,
+    http: q.http,
+    ok: q.ok,
+    ...(q.problem ? { problem: q.problem } : {}),
+    ...(q.body_summary ? { body_summary: q.body_summary } : {}),
+    found: Boolean(q.message),
+    matches: q.matches ?? (q.message ? 1 : 0),
+  });
+  let q = await runQuery();
+  const records = [record(phase, q)];
+  if (q.http === 401 && !state.reauthed) {
+    state.reauthed = true;
+    try {
+      await reauth();
+      state.reauth = "ok";
+    } catch (error) {
+      state.reauth = "failed";
+      state.reauth_error = String(error?.message ?? error).slice(0, 120);
+    }
+    if (state.reauth === "ok") {
+      q = await runQuery();
+      records.push(record(`${phase}: retry after re-auth`, q));
+    }
+  }
+  return { q, records };
+}
+
+/**
+ * How the sent message reached the server, from the query records: "exactly once" (the run's unique text
+ * seen once), "more than once" (a duplicate send), else "unknown": not seen by the deadline, or no query
+ * succeeded. A query that answered but did not show it never proves it was lost.
+ */
+export function sendDeliveryCount(queries) {
+  const ok = queries.filter((q) => q.ok);
+  if (!ok.length) return { delivered: "unknown", reason: "no query succeeded" };
+  const maxMatches = Math.max(...ok.map((q) => q.matches ?? 0));
+  if (maxMatches === 1) return { delivered: "exactly once", matches: 1 };
+  if (maxMatches > 1) return { delivered: "more than once", matches: maxMatches };
+  return { delivered: "unknown", matches: 0, reason: `not found by the deadline (last successful query at ${ok.at(-1).at})` };
 }
 
 /**
