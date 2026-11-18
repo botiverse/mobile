@@ -104,6 +104,7 @@ import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.LocalRaftListRowIconSize
 import build.raft.designsystem.components.RaftRiskTone
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftTextLink
@@ -2080,7 +2081,10 @@ internal fun ChannelActionsSection(
     }
 }
 
-/** One action row: its 20dp icon and its name, both in the risk's ink. */
+/**
+ * One action row: its icon and its name, both in the risk's ink. The icon is 18dp on a row with a
+ * risk and 20dp on Unarchive (raft-design #1296), as the row provides it.
+ */
 @Composable
 private fun ChannelActionRow(
     text: String,
@@ -2097,7 +2101,7 @@ private fun ChannelActionRow(
         risk = risk,
         enabled = enabled,
         divider = divider,
-        leading = { RaftComputersIcon(icon, size = 20.dp) },
+        leading = { RaftComputersIcon(icon, size = LocalRaftListRowIconSize.current) },
     )
 }
 
