@@ -46,14 +46,13 @@ on:
         type: string
         default: ""
       ios_runner:
-        description: "Runner for the default iOS compile lane (dispatch only). xcode-27 (default) = GitHub's standard Xcode 27 image, free on this public repo but limited to 5 concurrent macOS jobs org-wide. blacksmith-6vcpu-macos-latest = billed fallback when GitHub's macOS queue is backed up (has Xcode 27.0, not 27.1). blacksmith-6vcpu-macos-27 = billed Blacksmith macOS 27 image (Xcode 27.0/27.1/27.2). The Xcode 27.1 lane always runs on xcode-27."
+        description: "Runner for the default iOS compile lane (dispatch only). xcode-27 (default) = GitHub's standard Xcode 27 image, free on this public repo but limited to 5 concurrent macOS jobs org-wide. blacksmith-6vcpu-macos-latest = billed fallback when GitHub's macOS queue is backed up (Xcode 27.0 only). The Xcode 27.1 lane always runs on xcode-27."
         required: false
         type: choice
         default: xcode-27
         options:
           - xcode-27
           - blacksmith-6vcpu-macos-latest
-          - blacksmith-6vcpu-macos-27
   # Nightly run so the (slow, macOS) iOS compile still runs on a schedule even
   # though it no longer gates pull requests. See the `ios` job's `if:` guard.
   schedule:
@@ -1151,10 +1150,10 @@ jobs:
     # - github-xcode27.0, every iOS run: GitHub's standard `xcode-27` image (3-core M1, 7 GB,
     #   free on this public repo; free runners first, 2026-11-18) with Xcode 27.0 (iOS 27 SDK).
     #   Was blacksmith-6vcpu-macos-latest, billed per minute. GitHub caps standard + larger
-    #   macOS at 5 concurrent jobs per org; ios-release.yml's IPA build moved to Blacksmith
-    #   macOS in the same change, so a burst of iOS compiles can no longer delay a release
-    #   build. If the GitHub macOS queue backs up, dispatch with ios_runner=blacksmith-6vcpu-
-    #   macos-latest (the old billed lane).
+    #   macOS at 5 concurrent jobs per org (Free/Team), shared with ios-release.yml's
+    #   xcode-27-xlarge IPA build, ios-simulator-app.yml and qa-acceptance-ios.yml. The lane
+    #   averages about one Mac; if the queue backs up (or a release is waiting), dispatch with
+    #   ios_runner=blacksmith-6vcpu-macos-latest (the old billed lane).
     # - github-xcode27.1, only on the nightly schedule and release-* pushes: GitHub xcode-27 with
     #   Xcode 27.1, so code using 27.1-only SDK APIs (iPhone Duo: UIViewReservedRegion, UIHinge)
     #   compiles before release. It is ~48 min on a 3-core Mac, so full-ci PRs,

@@ -6,7 +6,7 @@ description: Use when building an iOS release of Raft (ios-release.yml) into a H
 # Raft iOS release + TestFlight
 
 Follow `docs/mobile-release-sop.md`: §0 release issue, §2 build numbers, §5.2
-`ios-release.yml` inputs (Xcode 27.1 on `blacksmith-6vcpu-macos-27`,
+`ios-release.yml` inputs (Xcode 27.1 on `xcode-27-xlarge`,
 `testflight_internal`), §6 smoke, §7.4 TestFlight states and audit tag, §7.5
 App Store, §8 interval reminder.
 
