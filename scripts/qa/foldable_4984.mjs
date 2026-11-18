@@ -124,20 +124,47 @@ function pickServerIfAsked(ns) {
   }
   log("server picker still shown"); return false;
 }
-function tabNode(ns, name) { return find(ns, new RegExp(`^${name}$`), (n) => n.y > 0); }
+// Wide layout: an icon rail whose items carry content-desc (Chat, Activity, Tasks, Artifacts, Members, ...).
+// Narrow layout: bottom tabs (Home/Chat, Activity, ..., More).
+const TAB_ALIASES = { Home: "(Home|Chat)", Chat: "(Chat|Home)" };
+function tabNode(ns, name) { const re = new RegExp(`^${TAB_ALIASES[name] || name}$`); return ns.find((n) => (re.test(n.text) || re.test(n.desc)) && n.w > 0 && n.h > 0 && n.w < 400); }
 function gotoTab(name) {
-  let ns = nodes(); const t = tabNode(ns, name);
+  let ns = nodes(); let t = tabNode(ns, name);
+  if (!t) { const more = tabNode(ns, "More"); if (more) { tap(more.x, more.y); sleep(1800); ns = nodes(); t = find(ns, new RegExp(`^${TAB_ALIASES[name] || name}$`)); } }
   if (!t) { log("tab not found", name); return false; }
-  tap(t.x, t.y); sleep(1500); return true;
+  tap(t.x, t.y); sleep(2000); return true;
 }
-function channelRows(ns) { return ns.filter((n) => /^#\s?\S+/.test(n.text) && n.w > 0 && n.h > 0); }
+function hideIme() { if (/mInputShown=true/.test(sh("dumpsys input_method | grep mInputShown"))) { sh("input keyevent 111"); sleep(600); if (/mInputShown=true/.test(sh("dumpsys input_method | grep mInputShown"))) { back(); sleep(600); } } }
+function channelRows(ns) { const [W] = size(); return ns.filter((n) => n.text && n.w > 0 && n.h > 30 && n.b[0] > 150 && n.b[2] < W * 0.4 && n.y > 600 && !/^(Pinned|Joint Channels|Channels|Saved|Drafts|Direct Messages|\d+)$/.test(n.text)); }
 function openChannel() {
+  gotoTab("Chat"); hideIme();
   let ns = nodes("home");
-  const rows = channelRows(ns);
-  const row = rows.find((n) => /^#\s?all$/i.test(n.text)) || rows[0] || find(ns, /^all$/i);
+  const [W] = size();
+  const row = ns.find((n) => /^#?\s?all$/i.test(n.text) && n.x < W * 0.45 && n.w > 0) || channelRows(ns)[0];
   if (!row) { log("no channel row"); return null; }
-  log("opening channel", label(row)); tap(row.x, row.y); sleep(3500);
+  log("opening channel", label(row)); tap(row.x, row.y); sleep(3500); hideIme();
   return label(row);
+}
+// Push target for steps 2-10: an Artifact card on the Artifacts rail page opens the Artifact viewer
+// (Hands 0ac26a92 path). Returns centre coordinates after navigating there.
+let TARGET_KIND = "artifact";
+function retarget() { return TARGET_KIND === "image" ? findFixtureImage(3) : findTarget(); }
+function findTarget() {
+  if (TARGET_KIND === "chip") { const c = composerChip(); if (c) return c; }
+  gotoTab("Artifacts"); sleep(1500); hideIme();
+  const ns = nodes("artifacts");
+  const card = ns.find((n) => /, v\d+, /.test(n.desc) && n.w > 100 && n.h > 100);
+  if (!card) { log("no artifact card"); return null; }
+  // tap the upper part of the card (its preview), staying inside the visible area
+  const [, H] = size();
+  return { x: card.x, y: Math.min(card.b[1] + 150, Math.round((card.b[1] + Math.min(card.b[3], H)) / 2)), kind: "artifact", label: card.desc.split(",")[0] };
+}
+function composerChip() {
+  const ns = nodes("composer-chip-search"); const [W, H] = size();
+  const send = find(ns, /^Send$/); if (!send) return null;
+  const KNOWN = /^(Add image|Take photo|Attach file|Send|Remove.*|Message .*)$/;
+  const c = ns.find((n) => n.w > 40 && n.h > 40 && n.w < W * 0.3 && n.b[3] <= send.b[1] && n.b[1] > send.b[1] - 450 && n.x > W * 0.3 && !KNOWN.test(n.desc + n.text) && (/image|png|photo|qa-fixture|preview/i.test(n.desc + n.text) || /Image/.test(n.cls)));
+  return c ? { x: c.x, y: c.y, kind: "chip", label: label(c) } : null;
 }
 // The seeded fixture message ([qa-fixture-image]) carries an image; find a tappable image near it.
 function findFixtureImage(maxScrolls = 12) {
@@ -201,7 +228,7 @@ function main() {
   // Relaunch to see the flag decision line.
   sh("logcat -G 16M"); sh(`am force-stop ${PKG}`); sh("logcat -c"); logMark = 0;
   launch(); sleep(4000);
-  let ns = nodes("launch"); pickServerIfAsked(ns); ns = nodes("home0");
+  let ns = nodes("launch"); pickServerIfAsked(ns); hideIme(); ns = nodes("home0");
   const boot = newLog();
   const flagLine = boot.find((l) => /nav3_stack_on/.test(l));
   note("env", "nav3_flag_line", flagLine ? flagLine.replace(/^.*nav3_stack_on/, "nav3_stack_on") : "MISSING (flag OFF or not logged)");
@@ -213,11 +240,11 @@ function main() {
   try { membersScenario(); } catch (e) { log("members scenario error", e.stack); note("members", "driver_error", String(e.stack).slice(0, 1500)); }
   // Reset to a clean unfolded shell for the #4984 steps.
   emu("unfold"); sh("settings put system user_rotation 0"); sleep(2000);
-  sh(`am force-stop ${PKG}`); launch(); sleep(3000); pickServerIfAsked(nodes()); newLog();
+  sh(`am force-stop ${PKG}`); launch(); sleep(3000); pickServerIfAsked(nodes()); hideIme(); newLog();
 
   // ---- Step 1a: image preview from the seeded image message, unfolded, 20x incl. double tap ----
   const ch = openChannel(); note("1", "channel", ch); shot("conversation-unfolded");
-  const img = findFixtureImage(); note("1", "fixture_image", img ? `${img.x},${img.y}${img.guess ? " (guess)" : ""}` : "NOT FOUND");
+  const img = findFixtureImage(3); note("1", "fixture_image", img ? `${img.x},${img.y}${img.guess ? " (guess)" : ""}` : "NOT FOUND");
   if (img) {
     shot("before-preview");
     const ops = openPreview(img, 2500); note("1", "first_open_ops", ops.map((l) => l.replace(/^.*nav3_stack /, "")));
@@ -243,48 +270,47 @@ function main() {
     if (!foreground()) { launch(); }
   }
 
-  // ---- Step 1b: Activity row -> page (Artifact viewer if the QA account has one) ----
-  if (gotoTab("Activity")) {
-    sleep(2000); let an = nodes("activity-tab"); shot("activity-tab");
-    const art = an.find((n) => /artifact/i.test(n.text + n.desc) && n.w > 0) ;
-    const rows = an.filter((n) => n.clickable && n.h > 80 && n.h < 600 && n.w > W * 0.25 && n.y > 250 && n.y < H - 250);
-    const target = art || rows[0];
-    note("1", "activity_artifact_row", art ? label(art) : "none with 'artifact' text");
-    note("1", "activity_rows_seen", rows.length);
-    if (target) {
+  // ---- Step 1b: Artifact viewer from the Artifacts rail page (Activity rows open conversations in place) ----
+  {
+    const t = findTarget(); shot("artifacts-page");
+    note("1", "artifact_card", t ? t.label : "NOT FOUND");
+    if (t) {
       let o = 0, c = 0; newLog();
-      for (let i = 0; i < ITER; i++) { if (i % 5 === 2) sh(`input tap ${target.x} ${target.y} & input tap ${target.x} ${target.y}; wait`); else tap(target.x, target.y); sleep(i === 0 ? 2500 : (i % 3 === 0 ? 200 : 900)); if (i === 0) { shot("activity-row-opened"); nodes("activity-row-opened"); } back(); sleep(700); }
+      for (let i = 0; i < ITER; i++) { if (i % 5 === 2) sh(`input tap ${t.x} ${t.y} & input tap ${t.x} ${t.y}; wait`); else tap(t.x, t.y); sleep(i === 0 ? 3000 : (i % 3 === 0 ? 200 : 900)); if (i === 0) { shot("artifact-opened"); nodes("artifact-opened"); } back(); sleep(800); }
+      sleep(1500); const ns2 = nodes(); if (!find(ns2, /^Artifacts$/)) { back(); sleep(1200); }
       const f = newLog(); for (const l of f) { if (/nav3_stack open page=/.test(l)) o++; if (/nav3_stack close page=/.test(l)) c++; }
-      note("1", "activity_pages_opened", f.filter((l) => /nav3_stack open page=/.test(l)).slice(0, 3).map((l) => l.replace(/^.*nav3_stack /, "").slice(0, 160)));
-      note("1", "activity_opens", o); note("1", "activity_closes", c);
-      const hits = f.filter((l) => CRASH.test(l)); if (hits.length) crashes.push({ step: "1-activity", lines: hits });
-      note("1", "activity_crash_lines", hits.slice(0, 10)); note("1", "activity_foreground_after", foreground());
-      shot("activity-after-rapid");
+      note("1", "artifact_pages_opened", [...new Set(f.filter((l) => /nav3_stack open page=/.test(l)).map((l) => l.replace(/^.*nav3_stack open page=(\S+).*$/, "$1")))]);
+      note("1", "artifact_opens", o); note("1", "artifact_closes", c);
+      const hits = f.filter((l) => CRASH.test(l)); if (hits.length) crashes.push({ step: "1-artifact", lines: hits });
+      note("1", "artifact_crash_lines", hits.slice(0, 10)); note("1", "artifact_foreground_after", foreground());
+      shot("artifact-after-rapid");
       if (!foreground()) launch();
     }
-    gotoTab("Home"); sleep(1500);
+    openChannel();
   }
 
   // ---- Step 1c: composer attach photo -> preview of the attachment ----
   {
     let cn = nodes("composer-search");
-    const attach = find(cn, /attach|add (file|photo|attachment)|^add$|plus|more options/i, (n) => n.y > H * 0.6);
+    const attach = find(cn, /^Add image$/) || find(cn, /attach|add (file|photo|attachment)|^add$|plus|more options/i, (n) => n.y > H * 0.6);
     note("1", "composer_attach_button", attach ? label(attach) : "NOT FOUND");
     if (attach) {
       tap(attach.x, attach.y); sleep(2000); let an = nodes("attach-menu"); shot("attach-menu");
-      const photo = find(an, /^(Photos?|Gallery|Photo library|Images?|Choose photo|Photos & videos|Library)$/i) || find(an, /photo|gallery|image/i);
+      const inPicker = an.some((n) => n.pkg && n.pkg !== PKG && /media|photopicker|documentsui|gallery|photos/i.test(n.pkg));
+      const photo = inPicker ? { x: -1, y: -1, text: "(system picker opened directly)" } : (find(an, /^(Photos?|Gallery|Photo library|Images?|Choose photo|Photos & videos|Library)$/i) || find(an, /photo|gallery|image/i));
       note("1", "attach_menu_photo_entry", photo ? label(photo) : "NOT FOUND");
       if (photo) {
-        tap(photo.x, photo.y); sleep(3500); let pn = nodes("photo-picker"); shot("photo-picker");
+        if (photo.x >= 0) { tap(photo.x, photo.y); sleep(3500); } let pn = nodes("photo-picker"); shot("photo-picker");
         const pic = pn.find((n) => /Photo taken|qa-fixture|Image|photo/i.test(n.desc) && n.w > 80) || pn.find((n) => n.pkg && !n.pkg.includes(PKG) && n.clickable && n.w > 150 && n.w < W / 2 && n.y > H * 0.2);
         note("1", "picker_item", pic ? `${label(pic)} pkg=${pic.pkg}` : "NOT FOUND");
         if (pic) {
           tap(pic.x, pic.y); sleep(1500); let dn = nodes("picker-after-select");
           const done = find(dn, /^(Done|Add|Select|Add \(1\)|Open)$/i); if (done) { tap(done.x, done.y); }
           sleep(3500); let cn2 = nodes("composer-with-attachment"); shot("composer-with-attachment");
-          const chip = cn2.find((n) => /qa-fixture|\.png|image|photo/i.test(n.desc + n.text) && n.y > H * 0.45 && n.w > 40 && n.w < W * 0.6 && !/attach|add/i.test(n.desc));
+          const chip = composerChip();
           note("1", "composer_chip", chip ? label(chip) : "NOT FOUND");
           if (chip) {
+            TARGET_KIND = "chip";
             let o = 0; newLog();
             for (let i = 0; i < ITER; i++) { if (i % 4 === 1) sh(`input tap ${chip.x} ${chip.y} & input tap ${chip.x} ${chip.y}; wait`); else tap(chip.x, chip.y); sleep(i === 0 ? 2500 : (i % 3 === 0 ? 150 : 800)); if (i === 0) { shot("composer-preview-open"); nodes("composer-preview-open"); } back(); sleep(700); }
             const f = newLog(); for (const l of f) if (/nav3_stack open page=/.test(l)) o++;
@@ -300,9 +326,11 @@ function main() {
   }
   checkCrash("1-end");
 
-  if (!img) { log("no image target: steps 2-10 need a page to push; using Activity row fallback is not implemented"); finish(); return; }
-  // Re-locate the image (layouts may have moved).
-  const img2 = findFixtureImage(4) || img;
+  // Steps 2-10 push the composer attachment preview when it worked, else the Artifact viewer.
+  if (img) TARGET_KIND = "image";
+  const img2 = (TARGET_KIND === "image" ? findFixtureImage(3) || img : findTarget());
+  note("env", "push_target", img2 ? `${TARGET_KIND} ${img2.label || ""}` : "NONE");
+  if (!img2) { log("no push target"); finish(); return; }
 
   // ---- Step 2: recordings of push/pop, unfolded and folded ----
   {
@@ -418,7 +446,7 @@ function main() {
   // ---- Step 7: fold/unfold and rotate with a page on top and mid-push ----
   {
     const r = recStart("step7-fold-rotate", 170);
-    const img3 = findFixtureImage(4) || img2;
+    const img3 = retarget() || img2;
     newLog(); tap(img3.x, img3.y); sleep(2500); shot("s7-page-unfolded");
     emu("fold"); sleep(3500); shot("s7-page-folded"); note("7", "wm_size_folded", sh("wm size").trim());
     emu("unfold"); sleep(3500); shot("s7-page-unfolded-again");
@@ -431,12 +459,12 @@ function main() {
     back(); sleep(2500); a = nodes("s7-folded-after-pop"); shot("s7-folded-after-pop");
     note("7", "folded_after_pop", `home_tab=${!!tabNode(a, "Home")} channel_rows=${channelRows(a).length} composer=${!!a.find((n) => /EditText/.test(n.cls))}`);
     // In the folded (narrow) layout open the image again if visible, then unfold mid-push.
-    const imgF = findFixtureImage(3);
+    const imgF = retarget();
     if (imgF) { tap(imgF.x, imgF.y); emu("unfold"); sleep(3500); shot("s7-midpush-unfolded"); back(); sleep(2500); }
     else { emu("unfold"); sleep(3500); }
     a = nodes("s7-unfolded-after"); shot("s7-unfolded-after");
     // Back out of a narrow-layout conversation page if it is still stacked.
-    const img4 = findFixtureImage(3) || img3;
+    const img4 = retarget() || img3;
     tap(img4.x, img4.y); sh("settings put system user_rotation 1"); sleep(3500); shot("s7-midpush-rotated");
     back(); sleep(2000); sh("settings put system user_rotation 0"); sleep(3000);
     a = nodes("s7-final"); shot("s7-final");
@@ -455,7 +483,7 @@ function main() {
   // ---- Step 2b: folded push/pop recording ----
   {
     emu("fold"); sleep(3500);
-    const imgF = findFixtureImage(4);
+    const imgF = retarget();
     const r = recStart("step2-folded-pushpop", 40);
     if (imgF) for (let i = 0; i < 3; i++) { tap(imgF.x, imgF.y); sleep(2500); back(); sleep(2500); }
     recStop(r); note("2", "folded_recording", imgF ? path.basename(r.f) : "image not found in folded layout");
@@ -468,7 +496,7 @@ function main() {
 
   // ---- Step 9: process death with a page over the shell ----
   {
-    const img5 = findFixtureImage(4) || img2;
+    const img5 = retarget() || img2;
     tap(img5.x, img5.y); sleep(2500); shot("s9-page-before-kill");
     const before = pid();
     sh("input keyevent 3"); sleep(2500);
@@ -490,7 +518,7 @@ function main() {
   // ---- Step 10: resize (wm size) and freeform with a page on top ----
   {
     const r = recStart("step10-resize", 120);
-    const img6 = findFixtureImage(4) || img2;
+    const img6 = retarget() || img2;
     newLog(); tap(img6.x, img6.y); sleep(2500);
     for (const s of ["1100x1840", "1600x1840", "2208x1000", "reset"]) { sh(`wm size ${s}`); sleep(3000); shot(`s10-page-wm-${s}`); }
     back(); sleep(2000); shot("s10-after-pop"); nodes("s10-after-pop");
@@ -520,13 +548,13 @@ function main() {
 
 // Members page: rows with a subtitle and a badge (Bot / App Bot / Owner / Admin / You). Then background ->
 // foreground, fold/unfold and rotate a few times each; logcat for "not found in RectList" / FATAL / ANR.
-const BADGE = /^(App Bot|Bot|Owner|Admin|You)( · .*)?$/;
+const BADGE = /^(App Bot|Bot|Agent|Owner|Admin|You)( · .*)?$/;
 function openMembers() {
   let ns = nodes("m-before");
   let t = find(ns, /^Members$/);
   if (!t) { const more = find(ns, /^More$/); if (more) { tap(more.x, more.y); sleep(2000); ns = nodes("m-more"); shot("m-more"); t = find(ns, /^Members$/); } }
   if (!t) { log("Members entry not found"); return false; }
-  tap(t.x, t.y); sleep(3500); return true;
+  tap(t.x, t.y); sleep(3500); hideIme(); return true;
 }
 function membersState(name) {
   const ns = nodes(`m-${name}`); const f = shot(`m-${name}`);
@@ -542,9 +570,11 @@ function membersScenario() {
   newLog();
   if (!openMembers()) { note("members", "opened", false); return; }
   const before = membersState("open-unfolded"); note("members", "open_unfolded", before);
-  // A row with a subtitle: record the texts of the first rows that hold a badge (badge + name + subtitle).
+  // Bring rows that carry a badge AND a subtitle (agents: model/description line) into view.
+  { const [W, H] = size(); for (let i = 0; i < 2; i++) { sh(`input swipe ${Math.round(W * 0.25)} ${Math.round(H * 0.8)} ${Math.round(W * 0.25)} ${Math.round(H * 0.45)} 400`); sleep(1200); } shot("m-scrolled-to-agents"); }
+  // Record the texts on each badge's line and the line below it (name | badge | subtitle).
   const ns = nodes("m-rows");
-  const rows = ns.filter((n) => BADGE.test(n.text)).slice(0, 4).map((b) => ns.filter((n) => n.text && Math.abs(n.y - b.y) < 90 && n.w > 0).map((n) => n.text).join(" | "));
+  const rows = ns.filter((n) => BADGE.test(n.text)).slice(0, 6).map((b) => ns.filter((n) => n.text && n.y > b.y - 60 && n.y < b.y + 110 && n.b[0] < b.b[2] + 600 && n.w > 0).map((n) => n.text.slice(0, 60)).join(" | "));
   note("members", "badge_rows", rows);
   note("members", "open_crash", mCheck("open"));
   const pid0 = pid();
