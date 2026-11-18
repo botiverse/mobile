@@ -1,12 +1,12 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -181,46 +181,37 @@ internal fun MembersAgentRecentActivityCard(
     }
 }
 
-/** Web AgentNowCard `RecentTurnRow`: its time, who woke it, what it did, and its compact badges. */
+/**
+ * Web AgentNowCard `RecentTurnRow`: its time, who woke it, what it did, and its compact badges.
+ * artin 2026-11-18 (#wg-mobile-sync:c1493fb5): on a phone the row wraps instead of truncating, so
+ * nothing is cut to "…" (web keeps one truncated line); the badges move to the next line whole.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MembersAgentRecentTurnRow(turn: AgentActivityTurn, timeContext: RaftTimeContext) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val trigger = membersActivityOverviewCompactTriggerText(turn.trigger)
-    BoxWithConstraints(Modifier.fillMaxWidth().testTag("agent-now-row")) {
-        val triggerMaxWidth = maxWidth * 0.45f
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RaftText(
-                text = membersActivityOverviewClock(turn.startedAtEpochMillis, timeContext),
-                style = typography.monoMeta,
-                color = colors.foregroundHint,
-                maxLines = 1,
-            )
-            if (trigger != null) {
-                RaftText(
-                    text = trigger,
-                    style = typography.callout,
-                    color = colors.foreground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    // The badges keep their whole width (web `shrink-0`); on a narrow row the
-                    // trigger gives way too, up to its 45% cap, instead of a badge shrinking to "…".
-                    modifier = Modifier.widthIn(max = triggerMaxWidth).weight(1f, fill = false),
-                )
-            }
-            RaftText(
-                text = membersActivityOverviewActionsText(turn.actions, turn.messagesSent),
-                style = typography.callout,
-                color = colors.foregroundMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            MembersAgentActivityTurnBadges(turn, compact = true)
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().testTag("agent-now-row"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        RaftText(
+            text = membersActivityOverviewClock(turn.startedAtEpochMillis, timeContext),
+            style = typography.monoMeta,
+            color = colors.foregroundHint,
+            maxLines = 1,
+        )
+        if (trigger != null) {
+            RaftText(text = trigger, style = typography.callout, color = colors.foreground)
         }
+        RaftText(
+            text = membersActivityOverviewActionsText(turn.actions, turn.messagesSent),
+            style = typography.callout,
+            color = colors.foregroundMuted,
+        )
+        MembersAgentActivityTurnBadges(turn, compact = true)
     }
 }
