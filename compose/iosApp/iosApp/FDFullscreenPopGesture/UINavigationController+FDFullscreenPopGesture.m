@@ -26,6 +26,7 @@
 #import "RaftConversationForwardGestureAdmission.h"
 #import "RaftInteractivePopGestureAdmission.h"
 #import <objc/runtime.h>
+#import <UIKit/UIGestureRecognizerSubclass.h>
 
 void RaftConversationForwardLog(NSString *message)
 {
@@ -79,13 +80,15 @@ static NSString *RaftGestureCompetitors(NSArray<UIGestureRecognizer *> *recogniz
 /// after a touch logs only when nothing decided that touch (the recognizer never asked to begin).
 @property (nonatomic, assign) NSUInteger touchGeneration;
 @property (nonatomic, assign) BOOL shouldBeginAsked;
+/// The current touch started in the trailing-edge strip (set in shouldReceiveTouch).
+@property (nonatomic, assign) BOOL touchStartedAtTrailingEdge;
 
 @end
 
 @interface UINavigationController (FDConversationForwardGesturePrivate)
 
 @property (nonatomic, strong, readonly) _FDConversationForwardGestureRecognizerDelegate *fd_conversationForwardGestureRecognizerDelegate;
-- (void)fd_handleConversationForwardGesture:(UIScreenEdgePanGestureRecognizer *)gestureRecognizer;
+- (void)fd_handleConversationForwardGesture:(UIPanGestureRecognizer *)gestureRecognizer;
 
 @end
 
@@ -184,6 +187,19 @@ static BOOL RaftConversationForwardHasActiveTextInput(UIView *view)
     return NO;
 }
 
+@implementation RaftConversationForwardPanGestureRecognizer
+
+// Compose's touch recognizer (CMP TouchesGestureRecognizer) can prevent every recognizer outside
+// its own view hierarchy except a screen-edge pan; this pan only ever sees touches that start in
+// the trailing-edge strip, so nothing else may fail it (CMP's own UIKitBackGestureRecognizer does
+// the same). Once it begins, Compose's sequence is cancelled by Compose's own rules.
+- (BOOL)canBePreventedByGestureRecognizer:(UIGestureRecognizer *)preventingGestureRecognizer
+{
+    return NO;
+}
+
+@end
+
 @implementation _FDConversationForwardGestureRecognizerDelegate
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
@@ -191,6 +207,17 @@ static BOOL RaftConversationForwardHasActiveTextInput(UIView *view)
     CGPoint location = [touch locationInView:gestureRecognizer.view];
     CGFloat width = CGRectGetWidth(gestureRecognizer.view.bounds);
     NSString *touchView = touch.view ? NSStringFromClass(touch.view.class) : @"nil";
+    // Only touches that start in the trailing-edge strip belong to Forward; every other touch
+    // (vertical scrolling, the left-edge back swipe, taps) never reaches this recognizer.
+    if (gestureRecognizer.numberOfTouches == 0) {
+        self.touchStartedAtTrailingEdge = RaftConversationForwardTouchStartsInEdgeZone(
+            location.x, width, RaftConversationForwardIsLeftToRight());
+    }
+    if (!self.touchStartedAtTrailingEdge) {
+        RaftConversationForwardLog([NSString stringWithFormat:
+            @"gesture_touch_ignored reason=not_edge_start x=%.1f width=%.1f", location.x, width]);
+        return NO;
+    }
     if (RaftConversationForwardChildGestureConflict(touch.view, gestureRecognizer.view)) {
         RaftConversationForwardLog([NSString stringWithFormat:
             @"gesture_touch_rejected reason=child_conflict x=%.1f width=%.1f view=%@",
@@ -200,8 +227,8 @@ static BOOL RaftConversationForwardHasActiveTextInput(UIView *view)
     RaftConversationForwardLog([NSString stringWithFormat:
         @"gesture_touch_received x=%.1f y=%.1f width=%.1f view=%@ kind=%@",
         location.x, location.y, width, touchView, NSStringFromClass(gestureRecognizer.class)]);
-    // A touch near the trailing edge that never reaches gestureRecognizerShouldBegin: log who
-    // else held it, once the swipe has had time to move past the edge recognizer's threshold.
+    // An edge touch that never reaches gestureRecognizerShouldBegin (held still, or another
+    // recognizer took it): log who else held it once the swipe has had time to move.
     NSUInteger generation = ++self.touchGeneration;
     self.shouldBeginAsked = NO;
     __weak typeof(self) weakSelf = self;
@@ -226,7 +253,7 @@ static BOOL RaftConversationForwardHasActiveTextInput(UIView *view)
     return YES;
 }
 
-- (BOOL)gestureRecognizerShouldBegin:(UIScreenEdgePanGestureRecognizer *)gestureRecognizer
+- (BOOL)gestureRecognizerShouldBegin:(UIPanGestureRecognizer *)gestureRecognizer
 {
     self.shouldBeginAsked = YES;
     UINavigationController *navigationController = self.navigationController;
@@ -249,6 +276,7 @@ static BOOL RaftConversationForwardHasActiveTextInput(UIView *view)
         .interactivePopActive = interactivePopActive,
         .childGestureConflict = NO,
         .textInputActive = RaftConversationForwardHasActiveTextInput(navigationController.view),
+        .startedAtTrailingEdge = self.touchStartedAtTrailingEdge,
         .translationX = translation.x,
         .translationY = translation.y,
         .velocityX = velocity.x,
@@ -266,6 +294,17 @@ static BOOL RaftConversationForwardHasActiveTextInput(UIView *view)
         translation.x,
         velocity.x]);
     return begins;
+}
+
+/// A native scroll view's own pan waits for Forward to decide on a touch that started in the
+/// trailing-edge strip (Forward fails at once for a vertical or rightward move, so scrolling
+/// only waits for the pan's first movement there). Everything else keeps its arbitration.
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
+{
+    if (!self.touchStartedAtTrailingEdge) return NO;
+    UIScrollView *scrollView =
+        [otherGestureRecognizer.view isKindOfClass:UIScrollView.class] ? (UIScrollView *)otherGestureRecognizer.view : nil;
+    return scrollView != nil && otherGestureRecognizer == scrollView.panGestureRecognizer;
 }
 
 @end
@@ -482,7 +521,7 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
     }
 }
 
-- (void)fd_handleConversationForwardGesture:(UIScreenEdgePanGestureRecognizer *)gestureRecognizer
+- (void)fd_handleConversationForwardGesture:(UIPanGestureRecognizer *)gestureRecognizer
 {
     if (gestureRecognizer.state != UIGestureRecognizerStateEnded) {
         if (gestureRecognizer.state != UIGestureRecognizerStateChanged) {
@@ -517,7 +556,7 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
 
 - (void)fd_setConversationForwardGestureEnabled:(BOOL)enabled
 {
-    UIScreenEdgePanGestureRecognizer *gestureRecognizer =
+    RaftConversationForwardPanGestureRecognizer *gestureRecognizer =
         objc_getAssociatedObject(self, @selector(fd_conversationForwardGestureRecognizer));
     if (!enabled) {
         if (gestureRecognizer.view != nil) {
@@ -531,7 +570,6 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
     }
 
     gestureRecognizer = self.fd_conversationForwardGestureRecognizer;
-    gestureRecognizer.edges = RaftConversationForwardIsLeftToRight() ? UIRectEdgeRight : UIRectEdgeLeft;
     if (gestureRecognizer.view != self.view) {
         if (gestureRecognizer.view != nil) {
             [gestureRecognizer.view removeGestureRecognizer:gestureRecognizer];
@@ -540,8 +578,9 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
     }
     gestureRecognizer.enabled = YES;
     RaftConversationForwardLog([NSString stringWithFormat:
-        @"recognizer_attach edges=%lu inWindow=%d stack=%lu",
-        (unsigned long)gestureRecognizer.edges,
+        @"recognizer_attach kind=pan zone=%.0f ltr=%d inWindow=%d stack=%lu",
+        RAFT_CONVERSATION_FORWARD_EDGE_ZONE,
+        RaftConversationForwardIsLeftToRight(),
         self.view.window != nil,
         (unsigned long)self.viewControllers.count]);
 }
@@ -607,12 +646,11 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
     return delegate;
 }
 
-- (UIScreenEdgePanGestureRecognizer *)fd_conversationForwardGestureRecognizer
+- (RaftConversationForwardPanGestureRecognizer *)fd_conversationForwardGestureRecognizer
 {
-    UIScreenEdgePanGestureRecognizer *gestureRecognizer = objc_getAssociatedObject(self, _cmd);
+    RaftConversationForwardPanGestureRecognizer *gestureRecognizer = objc_getAssociatedObject(self, _cmd);
     if (!gestureRecognizer) {
-        gestureRecognizer = [[UIScreenEdgePanGestureRecognizer alloc] init];
-        gestureRecognizer.edges = RaftConversationForwardIsLeftToRight() ? UIRectEdgeRight : UIRectEdgeLeft;
+        gestureRecognizer = [[RaftConversationForwardPanGestureRecognizer alloc] init];
         gestureRecognizer.maximumNumberOfTouches = 1;
         gestureRecognizer.cancelsTouchesInView = NO;
         gestureRecognizer.delegate = self.fd_conversationForwardGestureRecognizerDelegate;

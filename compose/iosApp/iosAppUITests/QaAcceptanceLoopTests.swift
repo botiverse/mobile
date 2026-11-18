@@ -685,8 +685,9 @@ final class SignedInHomeShotTests: XCTestCase {
 
 // The conversation forward gesture (Beta) on a signed-in phone, as QA runs it:
 //   Settings > Appearance > "Conversation forward gesture" on -> back to Home -> open a channel ->
-//   back to Home -> drag left from the right screen edge (start at dx 0.995) -> the channel must
-//   be open again (the system tab bar is gone, as on any pushed conversation).
+//   back to Home -> a leftward drag from mid-screen must NOT reopen it; a fast and a slow drag
+//   left from the right screen edge (start at dx 0.995) must each reopen it (the system tab bar is
+//   gone, as on any pushed conversation).
 // Writes forward-probe.json {ok, reopened, steps} and fails the test when the channel did not
 // reopen. The host (ios_home_shot_host.mjs --forward-probe) adds the app's
 // SlockConversationForward diagnostics lines, which say where the swipe stopped.
@@ -709,21 +710,38 @@ private struct ConversationForwardGestureProbe {
         do {
             try enableSetting()
             try openChannelAndReturn()
-            var reopened = false
-            for (index, slow) in [false, true].enumerated() {
+            // Forward: a fast fling and a slow drag (QA's agent-device `gesture pan` is ~600 ms),
+            // both from 2 pt inside the right edge; each must reopen the channel.
+            var results: [String: Bool] = [:]
+            for slow in [false, true] {
                 rightEdgeDrag(slow: slow)
-                reopened = waitUntil(8) { !self.onHome }
-                steps.append("right-edge drag \(slow ? "slow" : "fast"): reopened=\(reopened)")
-                test.probeAttach(app, name: "forward-after-drag-\(index + 1)")
-                if reopened { break }
-                if index == 0 {
-                    // Second chance with a slow drag, from a fresh return to Home.
-                    try openChannelAndReturn()
+                let reopened = waitUntil(8) { !self.onHome }
+                let name = slow ? "slow" : "fast"
+                results[name] = reopened
+                steps.append("right-edge drag \(name): reopened=\(reopened)")
+                test.probeAttach(app, name: "forward-after-\(name)-drag")
+                if reopened {
+                    Thread.sleep(forTimeInterval: 2)
+                    goBack()
+                    guard waitUntil(10, { self.onHome }) else { throw ProbeError.missing("Home after Forward") }
+                    Thread.sleep(forTimeInterval: 3)
                 }
             }
-            test.probeWrite("forward-probe", ["ok": reopened, "reopened": reopened, "steps": steps])
-            if !reopened {
-                XCTFail("conversation forward gesture did not reopen the channel (\(steps.joined(separator: "; ")))")
+            // Not Forward: a leftward drag that starts mid-screen (outside the edge strip). Last,
+            // so whatever it does on Home cannot disturb the edge drags above.
+            var midOpened = false
+            if onHome {
+                midScreenDrag()
+                midOpened = waitUntil(4) { !self.onHome }
+                steps.append("mid-screen leftward drag: reopened=\(midOpened)")
+            }
+            let ok = results["fast"] == true && results["slow"] == true && !midOpened
+            test.probeWrite("forward-probe", [
+                "ok": ok, "reopened": results["fast"] == true, "reopenedSlow": results["slow"] == true,
+                "midScreenOpened": midOpened, "steps": steps,
+            ])
+            if !ok {
+                XCTFail("conversation forward gesture probe failed (\(steps.joined(separator: "; ")))")
             }
         } catch {
             test.probeAttach(app, name: "forward-probe-failure")
@@ -787,12 +805,19 @@ private struct ConversationForwardGestureProbe {
         test.probeAttach(app, name: "forward-home-armed")
     }
 
+    private func midScreenDrag() {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
+        start.press(forDuration: 0.01, thenDragTo: end)
+    }
+
     private func rightEdgeDrag(slow: Bool) {
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.995, dy: 0.5))
         let end = app.coordinate(withNormalizedOffset: CGVector(dx: slow ? 0.12 : 0.1, dy: 0.5))
         if slow {
+            // ~350 pt in ~0.6 s, like QA's slow pan.
             start.press(forDuration: 0.01, thenDragTo: end,
-                        withVelocity: XCUIGestureVelocity(rawValue: 400), thenHoldForDuration: 0.05)
+                        withVelocity: XCUIGestureVelocity(rawValue: 580), thenHoldForDuration: 0.05)
         } else {
             start.press(forDuration: 0.01, thenDragTo: end)
         }

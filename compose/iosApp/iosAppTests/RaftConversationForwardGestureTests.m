@@ -1,4 +1,5 @@
 #import <XCTest/XCTest.h>
+#import <UIKit/UIGestureRecognizerSubclass.h>
 #import "../iosApp/Cmp/RaftPageViewController.h"
 #import "../iosApp/FDFullscreenPopGesture/UINavigationController+FDFullscreenPopGesture.h"
 
@@ -36,7 +37,7 @@
 }
 
 - (BOOL)forwardRecognizerLive {
-    UIScreenEdgePanGestureRecognizer *recognizer = self.navigation.fd_conversationForwardGestureRecognizer;
+    RaftConversationForwardPanGestureRecognizer *recognizer = self.navigation.fd_conversationForwardGestureRecognizer;
     return recognizer.enabled && recognizer.view == self.navigation.view;
 }
 
@@ -62,6 +63,22 @@
                   @"The push detached the recognizer; the shell's own bit must re-attach it on return");
     XCTAssertTrue([self.shellEvents containsObject:@"slockAppShellHostDidAppear"],
                   @"Shared promotes the conversation just left to Forward on this event");
+}
+
+// QA run 44356101019 / artin on an iPhone: a UIScreenEdgePanGestureRecognizer never began for a
+// swipe that started 2 pt from the right edge (it stayed `possible`, or `failed` while Compose's
+// recognizers were `possible`). Forward is a plain pan admitted by where the touch starts, and no
+// other recognizer (Compose's touch recognizer included) may prevent it.
+- (void)testForwardRecognizerIsAnEdgeAdmittedPanThatNothingPrevents {
+    self.shell.raftConversationForwardGestureEnabled = YES;
+    RaftConversationForwardPanGestureRecognizer *recognizer = self.navigation.fd_conversationForwardGestureRecognizer;
+    XCTAssertFalse([recognizer isKindOfClass:UIScreenEdgePanGestureRecognizer.class]);
+    XCTAssertTrue([recognizer isKindOfClass:UIPanGestureRecognizer.class]);
+    XCTAssertEqual(recognizer.maximumNumberOfTouches, 1u);
+    XCTAssertFalse(recognizer.cancelsTouchesInView);
+    UIPanGestureRecognizer *other = [[UIPanGestureRecognizer alloc] init];
+    XCTAssertFalse([recognizer canBePreventedByGestureRecognizer:other]);
+    XCTAssertNotNil(recognizer.delegate);
 }
 
 - (void)testSettingOffKeepsTheRecognizerDetachedAfterReturning {
