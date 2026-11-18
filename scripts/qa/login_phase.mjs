@@ -119,6 +119,7 @@ export function parseReceipt(logText) {
 }
 
 const CHROME = "com.android.chrome";
+const SAVE_PROMPT_BLOCKED = "Chrome's save-password prompt is blocking the return to the app";
 const FORM_JAR = "qa-login-form.jar";
 const APP_REFUSALS = new Set([
   "ignored/no_pending", "ignored/return_uri_mismatch", "stale/request_id_mismatch",
@@ -146,12 +147,13 @@ function loginControls(nodes, pkg) {
   const chrome = screen.filter((n) => n.pkg === CHROME);
   const chromeSetup = chrome.filter((n) => n.enabled && n.id.startsWith(`${CHROME}:id/`));
   const button = (label) => chrome.find((n) => n.cls === "android.widget.Button" && !n.id.startsWith(`${CHROME}:id/`) && labelIs(n, label));
-  const savePasswordPrompt = chromeSetup.some((n) => labelIs(n, /^(Save (?:this )?password(?: to Google(?: Password Manager)?)?\??)$/i));
+  const saveTitle = chromeSetup.find((n) => labelIs(n, /^(Save (?:this )?password(?: to Google(?: Password Manager)?)?\??)$/i));
   const crashDialog = screen.some((n) => n.pkg === "android" && n.id === "android:id/aerr_close");
   return {
     surface: crashDialog ? "system-app-error" : chrome.length ? "chrome" : screen.some((n) => n.pkg === pkg) ? "app" : screen.length ? "other" : "unreadable",
-    savePasswordPrompt,
-    dismissSave: savePasswordPrompt && chromeSetup.find((n) => labelIs(n, /^(Never|Not now|No,? thanks|Cancel|Close|Dismiss)$/i)),
+    savePasswordPrompt: Boolean(saveTitle),
+    dismissSave: saveTitle && saveTitle.id !== `${CHROME}:id/message_title` && chromeSetup.find((n) =>
+      n.id === `${CHROME}:id/negative_button` && n.cls === "android.widget.Button" && labelIs(n, /^(Never|Not now|No,? thanks|Cancel|Dismiss)$/i)),
     passwordInputVisible: chrome.some((n) => n.editable && n.password),
     message: chrome.map((n) => FORM_MESSAGES.get(n.text) || FORM_MESSAGES.get(n.desc)).find(Boolean) || "none-recognized",
     consent: screen.find((n) => n.pkg === pkg && n.checkable && !n.checked && n.enabled),
@@ -256,7 +258,8 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
     let submittedAt = 0;
     const followed = new Set();
     let confirmAfterDismissal = false;
-    let dismissedSaveAt = 0;
+    let savePromptSince = 0;
+    let tappedSaveDismissal = false;
     let stamp;
     for (const deadline = Date.now() + timeoutMs; !stamp; await sleep(pollMs)) {
       const receipt = parseReceipt(adb("logcat", "-d", "-v", "threadtime", "-s", "SlockAppLogin:I"));
@@ -272,18 +275,25 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
       controls = undefined;
       controls = loginControls(parseUiNodes(adb("exec-out", "uiautomator", "dump", "/dev/tty")), pkg);
       if (controls.surface === "system-app-error") return unknown("Android is showing an app crash dialog");
-      if (Date.now() > deadline) return unknown("no login-complete receipt");
+      if (Date.now() > deadline) return unknown(submittedAt && controls.savePasswordPrompt ? SAVE_PROMPT_BLOCKED : "no login-complete receipt");
       if (submittedAt) {
-        if (controls.password && Date.now() - submittedAt > 20000) return unknown("the login form is still there after submitting");
         if (controls.savePasswordPrompt) {
-          if (dismissedSaveAt && Date.now() - dismissedSaveAt < 3000) continue;
-          if (dismissedSaveAt || !controls.dismissSave?.enabled) return unknown("Chrome's save-password prompt is blocking the return to the app");
-          confirmAfterDismissal = followed.has("confirm-sign-in");
-          lastAction = "dismiss-save-password";
-          tap(controls.dismissSave);
-          dismissedSaveAt = Date.now();
+          if (!savePromptSince) {
+            savePromptSince = Date.now();
+            confirmAfterDismissal = followed.has("confirm-sign-in");
+            lastAction = "wait-save-password";
+          }
+          // Chrome's message banner offers Save and a settings menu. It dismisses itself.
+          // Leave both the banner and the page underneath untouched until a fresh observation clears it.
+          if (Date.now() - savePromptSince >= 45000) return unknown(SAVE_PROMPT_BLOCKED);
+          if (!tappedSaveDismissal && controls.dismissSave) {
+            lastAction = "dismiss-save-password";
+            tap(controls.dismissSave);
+            tappedSaveDismissal = true;
+          }
           continue;
         }
+        if (controls.password && Date.now() - submittedAt > 20000) return unknown("the login form is still there after submitting");
         const next = [["confirm-sign-in", controls.confirm], ["open-app", controls.openApp], ["return-to-app", controls.systemReturn]]
           .find(([, node]) => node?.enabled);
         if (!controls.password && next) {
