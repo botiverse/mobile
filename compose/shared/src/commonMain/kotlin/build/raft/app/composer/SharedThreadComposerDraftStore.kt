@@ -113,8 +113,9 @@ internal data class SharedThreadComposerPersistedDraft(
 )
 
 /**
- * The composer's crash journal (task #246): the newest typed text of one draft, written on the input
- * thread with a single store write before the full draft write runs in the background.  [seq] orders
+ * The composer's crash journal (task #246): the newest typed text of one draft, in that draft's own
+ * row, written on the input thread with a single store write before the full draft write runs in the
+ * background.  [seq] orders
  * entries across processes; [generation] and [process] fence a stale entry within one process.
  */
 @Serializable
@@ -760,44 +761,79 @@ internal class SharedThreadComposerDraftPersistence(
         setOf(textKey(key), asTaskKey(key), attachmentsKey(key), sourcesKey(key), mentionsKey(key), editedAtKey(key))
 
     /**
-     * Writes the crash journal: exactly one store write of [entry] under [JournalKey], no transaction,
-     * no active-index work, not under [lock].  Returns the time it took (encode + write).
+     * Writes the crash journal of [entry]'s draft: one row per draft key ([journalRowKey]), so two
+     * composers typing at once (a channel and a thread, two windows) never overwrite each other's
+     * entry.  One store write, no transaction, no active-index work, not under [lock]; the first
+     * entry of a draft key not yet listed in [JournalIndexKey] also writes that list first (so a
+     * listed key may have no row, never the reverse).  Returns the time it took (encode + writes).
      */
     fun writeJournal(entry: SharedThreadComposerDraftJournalEntry): kotlin.time.Duration {
         val started = TimeSource.Monotonic.markNow()
         val encoded = ComposerDraftJson.encodeToString(entry)
-        synchronized(lockEntry.journalLock) { store.putString(JournalKey, encoded) }
+        synchronized(lockEntry.journalLock) {
+            val listed = journalIndexLocked()
+            if (entry.key !in listed) store.putString(JournalIndexKey, (listed + entry.key).joinToString("\n"))
+            store.putString(journalRowKey(entry.key), encoded)
+        }
         return started.elapsedNow()
     }
 
-    internal fun readJournalRaw(): String? = synchronized(lockEntry.journalLock) { store.getString(JournalKey) }
+    /** The raw journal rows of [keys] (null: no row), for a transition's rollback image. */
+    internal fun readJournalRaw(keys: Collection<String>): Map<String, String?> =
+        synchronized(lockEntry.journalLock) { keys.associateWith { key -> store.getString(journalRowKey(key)) } }
 
-    internal fun restoreJournalRaw(value: String?) {
-        synchronized(lockEntry.journalLock) { store.putString(JournalKey, value) }
+    internal fun restoreJournalRaw(rows: Map<String, String?>) {
+        synchronized(lockEntry.journalLock) {
+            val listed = journalIndexLocked()
+            val missing = rows.filter { (key, value) -> value != null && key !in listed }.keys
+            if (missing.isNotEmpty()) store.putString(JournalIndexKey, (listed + missing).joinToString("\n"))
+            rows.forEach { (key, value) -> store.putString(journalRowKey(key), value) }
+        }
     }
 
-    fun readJournal(): SharedThreadComposerDraftJournalEntry? =
-        store.getString(JournalKey)?.let { encoded ->
-            runCatching { ComposerDraftJson.decodeFromString<SharedThreadComposerDraftJournalEntry>(encoded) }.getOrNull()
+    /** The journal entry of draft [key], or null (none, or unreadable). */
+    fun readJournal(key: String): SharedThreadComposerDraftJournalEntry? =
+        store.getString(journalRowKey(key))?.let { encoded ->
+            runCatching { ComposerDraftJson.decodeFromString<SharedThreadComposerDraftJournalEntry>(encoded) }
+                .getOrNull()
+                ?.takeIf { entry -> entry.key == key }
         }
 
-    /** Drops the journal when it belongs to [key] (a write or clear of that draft that did not come from typing). */
-    fun clearJournalFor(key: String) = clearJournalWhere { entry -> entry.key == key }
+    /** Drops the journal of [key] (a write or clear of that draft that did not come from typing). */
+    fun clearJournalFor(key: String) = clearJournalWhere(key) { true }
 
     /** Drops the journal of [key] when the full draft write of change [seq] covers it (same or newer change). */
-    fun clearJournalIfCovered(key: String, seq: Long) = clearJournalWhere { entry -> entry.key == key && entry.seq <= seq }
+    fun clearJournalIfCovered(key: String, seq: Long) = clearJournalWhere(key) { entry -> entry.seq <= seq }
 
-    /** Drops the journal whatever it holds (account retired, every draft cleared). */
-    fun clearJournal() = clearJournalWhere { true }
-
-    private fun clearJournalWhere(predicate: (SharedThreadComposerDraftJournalEntry) -> Boolean) {
+    /** Drops every journal row and the list of them (account retired, every draft cleared). */
+    fun clearJournal() {
         synchronized(lockEntry.journalLock) {
-            val encoded = store.getString(JournalKey) ?: return@synchronized
-            val entry = runCatching { ComposerDraftJson.decodeFromString<SharedThreadComposerDraftJournalEntry>(encoded) }.getOrNull()
-            // An unreadable journal is dropped: it can never be applied.
-            if (entry == null || predicate(entry)) store.putString(JournalKey, null)
+            journalIndexLocked().forEach { key -> store.putString(journalRowKey(key), null) }
+            store.putString(JournalIndexKey, null)
         }
     }
+
+    private fun clearJournalWhere(key: String, predicate: (SharedThreadComposerDraftJournalEntry) -> Boolean) {
+        synchronized(lockEntry.journalLock) {
+            val row = journalRowKey(key)
+            val encoded = store.getString(row) ?: return@synchronized
+            val entry = runCatching { ComposerDraftJson.decodeFromString<SharedThreadComposerDraftJournalEntry>(encoded) }.getOrNull()
+            // An unreadable journal is dropped: it can never be applied.
+            if (entry == null || predicate(entry)) {
+                store.putString(row, null)
+                // The list keeps keys between bursts (so typing again costs one write); keys whose rows
+                // are gone are dropped here, off the input thread, once it grows past a few.
+                val listed = journalIndexLocked()
+                if (listed.size > JournalIndexCompactAbove) {
+                    val live = listed.filter { listedKey -> store.getString(journalRowKey(listedKey)) != null }
+                    store.putString(JournalIndexKey, live.takeIf { it.isNotEmpty() }?.joinToString("\n"))
+                }
+            }
+        }
+    }
+
+    private fun journalIndexLocked(): List<String> =
+        store.getString(JournalIndexKey)?.lineSequence()?.map(String::trim)?.filter(String::isNotEmpty)?.distinct()?.toList().orEmpty()
 
     fun read(key: String): SharedThreadComposerPersistedDraft? = lock.withLock {
         val text = store.getString(textKey(key)) ?: return@withLock null
@@ -1525,8 +1561,26 @@ internal class SharedThreadComposerDraftPersistence(
     internal companion object {
         const val ActiveIndexKey = "threadComposerDraft:v1:activeKeys"
         const val DraftStoragePrefix = "threadComposerDraft:v1:"
-        /** The crash journal's single row (account-scoped like every row of the facade's store). */
-        const val JournalKey = "threadComposerDraft:v1:journal"
+        /**
+         * The draft keys that may have a crash-journal row (account-scoped like every row of the
+         * facade's store); each row is [journalRowKey].
+         */
+        const val JournalIndexKey = "threadComposerDraft:v1:journalKeys"
+        const val JournalSuffix = ":journal"
+        private const val JournalIndexCompactAbove = 16
+
+        /** The crash-journal row of draft [key]: one per draft, so composers never share one. */
+        fun journalRowKey(key: String): String = "$DraftStoragePrefix$key$JournalSuffix"
+
+        /** Every crash-journal row listed in [view] plus the list itself (account purge). */
+        fun journalRowKeys(view: SharedPreferenceStore): List<String> =
+            view.getString(JournalIndexKey)
+                ?.lineSequence()
+                ?.map(String::trim)
+                ?.filter(String::isNotEmpty)
+                ?.map(::journalRowKey)
+                ?.toList()
+                .orEmpty() + JournalIndexKey
         const val TextSuffix = ":text"
         const val AsTaskSuffix = ":asTask"
         const val AttachmentsSuffix = ":attachments"
@@ -1619,9 +1673,10 @@ internal class SharedThreadComposerDraftPersistSlice(
     recordsKnownAtStart: Boolean = true,
     /**
      * Crash journal (task #246): every typed change is first written, on the input thread, as one
-     * store row (draft key, generation, text, seq) before the transition returns; the full draft
-     * write still runs on [scheduler].  A kill before the full write lands restores the journal's
-     * text.  The background write it backs up was logged 20-30 ms (p50) and 100+ ms (p95) after the
+     * store row of its own draft (draft key, generation, text, seq) before the transition returns;
+     * the full draft write still runs on [scheduler].  A kill before the full write lands restores
+     * the journal's text into that draft only, and the restore writes it as the durable draft.
+     * Composers open at once (this slice is shared by all of them) each keep their own row.  The background write it backs up was logged 20-30 ms (p50) and 100+ ms (p95) after the
      * change on an emulator.  The journal write's own cost is reported to [journalWriteCost].
      */
     private val crashJournal: Boolean = true,
@@ -1675,7 +1730,7 @@ internal class SharedThreadComposerDraftPersistSlice(
     /** Advanced each time the signed-in account changes; guarded by [stateLock]. */
     private var accountEpoch = 0L
     /** Last journal seq issued; guarded by [stateLock]. */
-    private var lastJournalSeq = -1L
+    private var lastJournalSeq = 0L
 
     /**
      * Slice-local undo record.  Keeping this type inside the slice is intentional: rollback must
@@ -1689,8 +1744,8 @@ internal class SharedThreadComposerDraftPersistSlice(
         val writeGenerationByDraftKey: Map<String, Long>,
         val activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
         val durableTransaction: SharedThreadComposerDraftPersistenceTransaction,
-        /** The crash journal row before the transition: a rolled-back Change must not leave its text there. */
-        val journalBefore: String? = null,
+        /** The crash-journal rows of the transition's draft keys before it: a rolled-back Change must not leave its text there. */
+        val journalBefore: Map<String, String?> = emptyMap(),
     ) : MviPersistSliceTransitionSnapshot {
         private var restored = false
 
@@ -1775,7 +1830,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                 writeGenerationByDraftKey = writeGenerationByDraftKey.toMap(),
                 activeDraftRecords = SharedActiveDraftRecordsState.value,
                 durableTransaction = durableTransaction,
-                journalBefore = if (crashJournal) persistence.readJournalRaw() else null,
+                journalBefore = if (crashJournal) persistence.readJournalRaw(keys) else emptyMap(),
             )
         } catch (error: Throwable) {
             // This method is itself part of transition admission; if the projection read fails,
@@ -1961,6 +2016,22 @@ internal class SharedThreadComposerDraftPersistSlice(
                             persistence.clear(fallbackSourceKey)
                             refreshActiveDraftRecords(reason = "StartFallbackRestore")
                         }
+                    } else if (isCurrentAccount(next) && crashJournalFor(key) != null) {
+                        // The composer now shows the journal's text (reduce applied it): make it the
+                        // durable draft, which also drops the journal row.  Otherwise the Drafts list
+                        // keeps the older text and a later clean exit could leave the journal as the
+                        // only copy.
+                        persistenceWriteLock.withLock {
+                            persistence.save(
+                                key = key,
+                                text = next.seedText,
+                                asTask = next.seedAsTask,
+                                uploadedAttachments = next.visiblePersistableThreadComposerDraftAttachments(),
+                                externalShareSources = next.externalShareSources,
+                                structuredMentions = next.structuredMentions,
+                            )
+                            refreshActiveDraftRecords(reason = "StartJournalRestore")
+                        }
                     }
                 }
             is SharedThreadComposerDraftIntent.Change,
@@ -2025,7 +2096,6 @@ internal class SharedThreadComposerDraftPersistSlice(
      * leaves the background write as the sole copy, as before).  Returns the seq, 0 when not written.
      */
     private fun writeCrashJournalLocked(key: String, generation: Long, state: SharedThreadComposerDraftState): Long {
-        if (lastJournalSeq < 0L) lastJournalSeq = runCatching { persistence.readJournal()?.seq }.getOrNull() ?: 0L
         val seq = maxOf(lastJournalSeq + 1L, epochMillis() * 1_000L)
         lastJournalSeq = seq
         return runCatching {
@@ -2054,7 +2124,7 @@ internal class SharedThreadComposerDraftPersistSlice(
      */
     private fun crashJournalFor(key: String): SharedThreadComposerDraftJournalEntry? {
         if (!crashJournal) return null
-        val entry = runCatching { persistence.readJournal() }.getOrNull()?.takeIf { it.key == key } ?: return null
+        val entry = runCatching { persistence.readJournal(key) }.getOrNull() ?: return null
         val stale = entry.process == journalProcess && entry.generation < (writeGenerationByDraftKey[key] ?: 0L)
         return entry.takeUnless { stale }
     }

@@ -370,7 +370,7 @@ internal class SharedThreadComposerDraftAccounts(
                 SharedThreadComposerDraftPersistence.draftRowKeys(draftKey).forEach { row -> view.putString(row, null) }
             }
         view.putString(indexKey, null)
-        view.putString(SharedThreadComposerDraftPersistence.JournalKey, null)
+        SharedThreadComposerDraftPersistence.journalRowKeys(view).forEach { row -> view.putString(row, null) }
         store.forgetOwner(token)
         safeDiagnostics("thread_composer_draft_account_purged")
     }
