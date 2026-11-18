@@ -1,5 +1,11 @@
 package build.raft.app.nav
 
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.activity.BackEventCompat
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedDispatcher
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -20,7 +26,11 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
@@ -90,6 +100,11 @@ class RaftMobileStackShellOnceUiTest {
     private val onArtifactDetached: () -> Unit = { artifactDetached++ }
     private val onOtherPageDetached: () -> Unit = {}
     private var shellActive: Boolean? = null
+    private var shellTaps = 0
+    private var shellWidth = -1
+    private var pageInMotion: Boolean? = null
+    private var pageWidth = -1
+    private var dispatcher: OnBackPressedDispatcher? = null
     private var shellLifecycle: Lifecycle.State? = null
     private var shellSaved: String? = null
 
@@ -98,6 +113,7 @@ class RaftMobileStackShellOnceUiTest {
         val host = ThreadInPlaceTextSelectionHost(enabled = true, copyText = {})
         val stack = RaftPageStack()
         setContent {
+            dispatcher = LocalContext.current.componentActivity().onBackPressedDispatcher
             LaunchedEffect(ticking) {
                 while (ticking) withFrameNanos { tick++ }
             }
@@ -117,12 +133,24 @@ class RaftMobileStackShellOnceUiTest {
                         LocalThreadInPlaceTextSelectionHost provides host,
                     ) {
                         RaftDesignSystemTheme {
-                            Box(Modifier.fillMaxSize().testTag(SHELL).then(DetachCounter(onShellDetached))) { shell() }
+                            Box(
+                                Modifier.fillMaxSize()
+                                    .testTag(SHELL)
+                                    .then(DetachCounter(onShellDetached))
+                                    .onSizeChanged { shellWidth = it.width }
+                                    .clickable { shellTaps++ },
+                            ) { shell() }
                         }
                     }
                 } else {
                     val detached = if (page.args.pageName == ARTIFACT_PAGE) onArtifactDetached else onOtherPageDetached
-                    Box(Modifier.fillMaxSize().testTag(page.args.pageName).then(DetachCounter(detached))) {
+                    if (page.args.pageName == ARTIFACT_PAGE) pageInMotion = LocalRaftStackPageInMotion.current
+                    Box(
+                        Modifier.fillMaxSize()
+                            .testTag(page.args.pageName)
+                            .then(DetachCounter(detached))
+                            .onSizeChanged { if (page.args.pageName == ARTIFACT_PAGE) pageWidth = it.width },
+                    ) {
                         BasicText("page ${page.contentKey} $tick")
                     }
                 }
@@ -269,6 +297,91 @@ class RaftMobileStackShellOnceUiTest {
             assertTrue(artifactDetached > before, "the covered page was not moved")
             assertShellComposedOnceInPlace()
         }
+
+    /**
+     * A predictive back gesture from a page over the shell shows the shell under the dragged page for
+     * the whole drag (the gesture holds the pop mid motion), hides it again when cancelled, and a
+     * committed gesture leaves a shell that takes taps through NavDisplay's empty slot.
+     */
+    @Test
+    fun aPredictiveBackShowsTheShellWhileDraggedAndTheShellTakesTapsAfterIt() =
+        runRobolectricComposeUiTest {
+            val stack = showShell { Box(Modifier.fillMaxSize()) }
+            runOnIdle { stack.push() }
+            waitForIdle()
+            onNodeWithTag(SHELL).assertIsNotDisplayed()
+
+            runOnIdle {
+                dispatcher!!.dispatchOnBackStarted(BackEventCompat(10f, 500f, 0f, BackEventCompat.EDGE_LEFT))
+                dispatcher!!.dispatchOnBackProgressed(BackEventCompat(200f, 500f, 0.4f, BackEventCompat.EDGE_LEFT))
+            }
+            waitForIdle()
+            onNodeWithTag(SHELL).assertIsDisplayed()
+            onNodeWithTag(ARTIFACT_PAGE).assertExists()
+
+            runOnIdle { dispatcher!!.dispatchOnBackCancelled() }
+            waitForIdle()
+            assertEquals(2, stack.pages.size, "a cancelled gesture keeps the page")
+            onNodeWithTag(SHELL).assertIsNotDisplayed()
+            onNodeWithTag(ARTIFACT_PAGE).assertIsDisplayed()
+
+            runOnIdle {
+                dispatcher!!.dispatchOnBackStarted(BackEventCompat(10f, 500f, 0f, BackEventCompat.EDGE_LEFT))
+                dispatcher!!.dispatchOnBackProgressed(BackEventCompat(300f, 500f, 0.6f, BackEventCompat.EDGE_LEFT))
+            }
+            waitForIdle()
+            onNodeWithTag(SHELL).assertIsDisplayed()
+            runOnIdle { dispatcher!!.onBackPressed() }
+            waitForIdle()
+            assertEquals(1, stack.pages.size, "a released gesture pops the page")
+            onNodeWithTag(SHELL).performTouchInput { click(center) }
+            waitForIdle()
+            assertEquals(1, shellTaps, "the shell takes a tap after the committed gesture")
+            assertShellComposedOnceInPlace()
+        }
+
+    /** After a plain pop the shell, drawn under NavDisplay, takes a real tap through the empty slot. */
+    @Test
+    fun theShellTakesATapAfterAPop() =
+        runRobolectricComposeUiTest {
+            val stack = showShell { Box(Modifier.fillMaxSize()) }
+            onNodeWithTag(SHELL).performTouchInput { click(center) }
+            waitForIdle()
+            assertEquals(1, shellTaps)
+            runOnIdle { stack.push() }
+            waitForIdle()
+            runOnIdle { stack.back() }
+            waitForIdle()
+            onNodeWithTag(SHELL).performTouchInput { click(center) }
+            waitForIdle()
+            assertEquals(2, shellTaps, "the shell takes a tap after the pop")
+        }
+
+    /**
+     * Mid push, at a point the page itself reports (composed, laid out, still in motion), the shell
+     * is still drawn under it at full size; once settled it is 0x0.
+     */
+    @Test
+    fun theShellStaysDrawnUnderAPushStillInMotion() =
+        runRobolectricComposeUiTest {
+            val stack = showShell { Box(Modifier.fillMaxSize()) }
+            val full = shellWidth
+            assertTrue(full > 0)
+            mainClock.autoAdvance = false
+            runOnIdle { stack.push() }
+            mainClock.advanceTimeUntil(timeoutMillis = 2_000) { pageInMotion == true && pageWidth > 0 }
+            assertEquals(full, shellWidth, "the shell is drawn under the page still sliding in")
+            mainClock.autoAdvance = true
+            waitForIdle()
+            assertEquals(false, pageInMotion)
+            assertEquals(0, shellWidth, "covered once the push settled")
+        }
+
+    private fun Context.componentActivity(): ComponentActivity {
+        var context: Context = this
+        while (context !is ComponentActivity) context = (context as ContextWrapper).baseContext
+        return context
+    }
 
     private class DetachCounter(private val onDetached: () -> Unit) : ModifierNodeElement<DetachCounterNode>() {
         override fun create() = DetachCounterNode(onDetached)

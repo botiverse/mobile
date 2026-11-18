@@ -116,7 +116,10 @@ class RaftMobileStackScene<T : Any>(
         // 1dd76297); this scene's entry for it is an empty slot. Navigation 3 renders an entry only
         // in the transition's target scene, so the target scene says whether the root page shows:
         // on top, or under the push slide. Written while composing, before the display composes the
-        // root page, so it follows in the same frame.
+        // root page, so it follows in the same frame. This relies on NavDisplay (and so this scene)
+        // composing before RaftMobileStackRootPage in the same composition: keep that order, and keep
+        // scenes out of a subcomposition, or the root page reads this a frame late
+        // (RaftMobileStackShellOnceUiTest covers push, pop and predictive back).
         if (scope.transition.targetState == EnterExitState.Visible) {
             val root = entries.first()
             motion.rootShown = root === top || (root === below && pushed && (entering || sliding))
