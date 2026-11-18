@@ -370,11 +370,14 @@ internal class SharedThreadComposerDraftAccounts(
                 SharedThreadComposerDraftPersistence.draftRowKeys(draftKey).forEach { row -> view.putString(row, null) }
             }
         view.putString(indexKey, null)
+        SharedThreadComposerDraftPersistence.journalRowKeys(view).forEach { row -> view.putString(row, null) }
         store.forgetOwner(token)
         safeDiagnostics("thread_composer_draft_account_purged")
     }
 
     private fun clearEveryDraft(persistence: SharedThreadComposerDraftPersistence) {
+        // The crash journal may hold a draft that never got a full write (no active record).
+        runCatching { persistence.clearJournal() }
         persistence.activeDraftRecords().forEach { record ->
             runCatching { persistence.clear(record.key) }
                 .onFailure { error ->
