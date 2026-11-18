@@ -2274,7 +2274,7 @@
     <string name="auth_error_mobile_oauth_link_sign_in_again">請重新登入以連結 %1$s。</string>
     <string name="auth_error_mobile_oauth_link_failed">無法連結 %1$s，請再試一次。</string>
     <string name="auth_error_mobile_oauth_sign_in_failed">%1$s 登入失敗，請再試一次。</string>
-    <string name="auth_notice_mobile_oauth_link_cancelled">已取消連結 %1$s 帳號。</string>
+    <string name="auth_notice_mobile_oauth_link_cancelled">已取消，未連結 %1$s 帳號。</string>
     <string name="auth_notice_mobile_oauth_sign_in_cancelled">已取消 %1$s 登入。</string>
     <string name="auth_error_registration_disabled">目前暫不開放註冊新帳號。</string>
     <string name="auth_error_mobile_oauth_link_no_browser">沒有可以開啟 %1$s 帳號連結頁面的瀏覽器。</string>
@@ -3733,7 +3733,7 @@
     <string name="app_update_detail_downloading">正在下載更新，下載完成後按鈕會變成「安裝」。</string>
     <string name="app_update_detail_downloaded">更新已下載。點選「安裝」開啟 Android 安裝程式。</string>
     <string name="app_update_detail_installer_opened">已為下載的更新開啟 Android 安裝程式。</string>
-    <string name="app_update_detail_install_permission_required">更新已下載。請允許 Raft 安裝未知應用程式，然後返回繼續安裝。</string>
+    <string name="app_update_detail_install_permission_required">更新已下載。請允許 Raft 安裝不明應用程式，然後返回繼續安裝。</string>
     <string name="app_update_detail_installer_failed">更新已下載，但無法開啟 Android 安裝程式。</string>
     <string name="app_update_detail_install_failed">無法下載或安裝更新，請再試一次。</string>
     <string name="thread_audio_playback_position">播放位置</string>

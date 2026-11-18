@@ -2256,9 +2256,9 @@
     <string name="auth_error_mobile_oauth_account_conflict">Ya existe una cuenta de Raft con este correo. Inicia sesión con tu contraseña y luego conecta %1$s en Configuración.</string>
     <string name="auth_error_mobile_oauth_provider_conflict">Esta cuenta de %1$s ya está vinculada a otro usuario.</string>
     <string name="auth_error_restore_local_storage">No se pudo leer la sesión guardada en este dispositivo. Vuelve a intentarlo o inicia sesión de nuevo.</string>
-    <string name="auth_validation_email_password_required">Introduce tu correo electrónico y tu contraseña.</string>
-    <string name="auth_validation_server_name_required">Introduce un nombre para el servidor.</string>
-    <string name="auth_validation_profile_required">Introduce un nombre de usuario y un nombre visible.</string>
+    <string name="auth_validation_email_password_required">Ingresa tu correo electrónico y tu contraseña.</string>
+    <string name="auth_validation_server_name_required">Ingresa un nombre para el servidor.</string>
+    <string name="auth_validation_profile_required">Ingresa un nombre de usuario y un nombre visible.</string>
     <string name="auth_error_server_not_found">No se encontró este servidor.</string>
     <string name="auth_error_legal_acceptance_required">Para continuar, revisa y acepta los Términos del servicio y la Política de privacidad de Raft.</string>
     <string name="auth_error_check_fields">Revisa los campos e inténtalo de nuevo.</string>
