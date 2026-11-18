@@ -79,7 +79,7 @@ on:
       # Identity of the server environment under test, recorded in perf.json
       # (task #14 self-describing header). Free-form label, e.g. OranixSlockTest.
       environment:
-        description: "Server environment label for the perf.json identity header"
+        description: "Performance report label only. Password-mode QA uses the production account API and web origin."
         required: false
         default: "unspecified-ci"
 # Minimal token scopes: contents to check out, actions to read ANOTHER run's

@@ -1,5 +1,6 @@
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.accessibility.AccessibilityNodeInfo;
 import com.android.uiautomator.core.UiObject;
 import com.android.uiautomator.core.UiSelector;
@@ -53,9 +54,15 @@ public final class RaftQaLoginForm extends UiAutomatorTestCase {
         // direct the password into the address bar, the email field, or a different window.
         if (!field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return false;
         if (password) return true; // A password field can deliberately conceal its value.
-        AccessibilityNodeInfo populated = new ChromeNode(id).current();
-        return populated != null && populated.getWindowId() == field.getWindowId()
-                && populated.getText() != null && value.contentEquals(populated.getText());
+        // Chrome updates the accessibility tree asynchronously after accepting the input action.
+        long deadline = SystemClock.uptimeMillis() + 3000;
+        do {
+            AccessibilityNodeInfo populated = new ChromeNode(id).current();
+            if (populated != null && populated.refresh() && populated.getWindowId() == field.getWindowId()
+                    && populated.getText() != null && value.contentEquals(populated.getText())) return true;
+            SystemClock.sleep(100);
+        } while (SystemClock.uptimeMillis() < deadline);
+        return false;
     }
 
     public void testFill() throws Exception {

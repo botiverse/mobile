@@ -1,4 +1,4 @@
-// #222 login protection, end to end with FAKE values only (no device, no network, no account).
+// #222 login protection, end to end with fake values, a loopback server and no external account.
 // A fake `adb` and its stdin-only form driver share one device model: the app's sign-in button opens
 // a browser login form that shows what is typed, the screen recorder records every frame while it
 // runs, logcat keeps timestamped lines, uiautomator writes its dump to a device file unless read
@@ -11,6 +11,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -23,6 +24,14 @@ const RUN = { GITHUB_RUN_ID: "4242", GITHUB_RUN_ATTEMPT: "1" };
 const hasLoginPhase = fs.existsSync(path.join(here, "login_phase.mjs"));
 const phase = hasLoginPhase ? await import("./login_phase.mjs") : null;
 const gate = fs.existsSync(path.join(here, "secure_evidence.mjs")) ? await import("./secure_evidence.mjs") : null;
+
+// Only Chrome's read-only tab metadata crosses this local socket; the form values use adb stdin.
+const tabMetadata = http.createServer((req, res) => {
+  res.writeHead(req.url === "/json/list" ? 200 : 404);
+  res.end(JSON.stringify([{ type: "page", url: "https://app.raft.build/login/app" }]));
+});
+await new Promise((resolve) => tabMetadata.listen(0, "127.0.0.1", resolve));
+test.after(() => new Promise((resolve) => tabMetadata.close(resolve)));
 
 const DEVICE = String.raw`
 const fs = require("fs");
@@ -46,8 +55,9 @@ function xml(s) {
   const button = (text, y) => n(text, CHROME, "[100," + y + "][900," + (y + 80) + "]", "android.widget.Button");
   const nodes = s.screen === "signin" ? n("Sign in to Raft", APP, "[100,1000][900,1100]")
     : s.screen === "form" ? n(s.form.email, CHROME, "[100,300][900,400]", "android.widget.EditText", 'resource-id="login-email" password="false"') + n("*".repeat(s.form.password.length), CHROME, "[100,500][900,600]", "android.widget.EditText", 'resource-id="login-password" password="true"') + button("Sign in", s.fills ? 700 : 900)
-    : s.screen === "approval" ? button("Confirm sign-in", 800)
-    : s.screen === "return" ? button("Open the app", 850)
+    : s.screen === "save-prompt" ? n("Save password?", CHROME, "[100,280][900,380]", "android.widget.TextView", 'resource-id="com.android.chrome:id/message_title"') + n("Not now", CHROME, "[100,400][900,480]", "android.widget.Button", 'resource-id="com.android.chrome:id/negative_button"')
+    : s.screen === "approval" ? button("Allow", 100) + button("Confirm sign-in", 800)
+    : s.screen === "return" ? button("Open", 150) + button("Open the app", 850)
     : n("Home", APP, "[0,0][1080,200]") + n("#all", APP, "[0,300][1080,400]");
   return '<?xml version="1.0"?><hierarchy>' + (s.uiBroken ? "" : nodes) + "</hierarchy>";
 }
@@ -70,6 +80,7 @@ if (args[0] === "-s") args = args.slice(2);
 const s = D.load(f), a = args.join(" "), out = (x) => process.stdout.write(x);
 const end = (code = 0) => { D.frame(s); D.save(f, s); process.exit(code); };
 if (s.adbDown) { process.stderr.write("error: device offline\n"); process.exit(1); }
+if (a === "forward tcp:0 localabstract:chrome_devtools_remote") { out(process.env.FAKE_TAB_PORT); end(); }
 if (a === "get-serialno") { out(s.serial + "\n"); end(); }
 if (a.startsWith("shell cat /data/local/tmp/qa-run-owner")) { out((s.owner || "") + "\n"); end(); }
 if (a === "shell pidof screenrecord; echo rc=$?") { out(s.recording ? "999\nrc=0\n" : "rc=1\n"); end(); }
@@ -80,8 +91,16 @@ if (args[0] === "logcat") { if (s.logcatBroken) end(1); out(s.logs.filter((l) =>
 if (a === "shell settings put secure autofill_service null") { s.autofill = false; end(); }
 if (a === "shell settings get secure default_input_method") { out("com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME\n"); end(); }
 if (args[1] === "pm" && args[2] === "clear") { if (args[3] === D.CHROME) s.form = { email: "", password: "" }; else s.ime = ""; s.cleared.push(args[3]); out("Success\n"); end(); }
-if (a === "shell dumpsys window") { out("  mCurrentFocus=Window{1a u0 " + (s.screen === "form" ? D.CHROME : D.APP) + "/x.Main}\n"); end(); }
-if (a === "exec-out uiautomator dump /dev/tty") { out(D.xml(s) + "UI hierchary dumped to: /dev/tty\n"); end(); }
+if (a === "shell dumpsys window") {
+  const waiting = s.screen === "home" && s.focusWaits > 0;
+  if (waiting) s.focusWaits--;
+  out("  mCurrentFocus=Window{1a u0 " + (waiting || s.screen === "form" ? D.CHROME : D.APP) + "/x.Main}\n"); end();
+}
+if (a === "exec-out uiautomator dump /dev/tty") {
+  out(D.xml(s) + "UI hierchary dumped to: /dev/tty\n");
+  if (s.saveDismissed && s.screen === "save-prompt") s.screen = "approval";
+  end();
+}
 if (a.startsWith("shell uiautomator dump")) { s.files.dump = D.xml(s); end(); }
 if (a.startsWith("exec-out cat /sdcard/qa_window_dump.xml")) { out(s.files.dump || ""); end(); }
 if (a === "exec-out screencap -p") {
@@ -93,8 +112,10 @@ if (args[1] === "input" && args[2] === "text") { D.type(s, args.slice(3).join(" 
 if (a.startsWith("shell -T uiautomator runtest ") && args.includes("RaftQaLoginForm#testFill")) {
   if (process.env.QA_TEST_PASSWORD || process.env.QA_TEST_EMAIL) end(1);
   const [email, password] = fs.readFileSync(0, "utf8").split("\n");
-  if (s.screen !== "form" || s.refuseField) end();
+  if (s.driverResult === "site-unverified") { out("QA_LOGIN_SITE_UNVERIFIED\n"); end(); }
+  if (s.screen !== "form" || s.refuseField || s.driverResult === "no-markers") end();
   s.field = "email"; D.type(s, email); out("QA_LOGIN_EMAIL_SET\n");
+  if (s.driverResult === "email-only") end();
   s.field = "password"; D.type(s, password); out("QA_LOGIN_PASSWORD_SET\n");
   s.fills = (s.fills || 0) + 1; end();
 }
@@ -102,7 +123,10 @@ if (args[1] === "input" && args[2] === "tap") {
   const y = Number(args[4]);
   if (s.screen === "signin" && y >= 1000 && y <= 1100) { s.screen = "form"; D.log(s, "SlockAppLogin", "web_login_attempt phase=opening"); }
   else if (s.screen === "form" && y === 740 && s.form.email === "fake.qa@example.test" && s.form.password === "FAKE-pw-7Qz") s.screen = "approval";
-  else if (s.screen === "approval" && y === 840) s.screen = "return";
+  else if (s.screen === "approval" && y === 840) {
+    s.confirmTaps = (s.confirmTaps || 0) + 1;
+    s.screen = s.interceptConfirm && s.confirmTaps === 1 ? "save-prompt" : "return";
+  } else if (s.screen === "save-prompt" && y === 440) s.saveDismissed = true;
   else if (s.screen === "return" && y === 890) D.submit(s);
   end();
 }
@@ -154,7 +178,7 @@ exit 0
     ime: "", autofill: true, recording: false, frames: [], logs: [], files: {}, cleared: [], ...state });
   const env = {
     PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: root, RUNNER_TEMP: root, ...RUN,
-    FAKE_DEVICE: files.device, FAKE_STATE: files.state, FAKE_ARGV: files.argv, FAKE_MODEL_LOG: files.modelLog,
+    FAKE_TAB_PORT: String(tabMetadata.address().port), FAKE_DEVICE: files.device, FAKE_STATE: files.state, FAKE_ARGV: files.argv, FAKE_MODEL_LOG: files.modelLog,
   };
   return { root, files, env, D, state: () => D.load(files.state), close: () => fs.rmSync(root, { recursive: true, force: true }) };
 }
@@ -171,7 +195,7 @@ const allBytes = (dir) => fs.readdirSync(dir, { withFileTypes: true, recursive: 
   .filter((e) => e.isFile()).map((e) => fs.readFileSync(path.join(e.parentPath ?? e.path, e.name), "latin1")).join("\n");
 
 test("the fake password and email appear nowhere: argv, device files, screenshots, recording, logs, model payloads, upload", async () => {
-  const w = fakeWorld();
+  const w = fakeWorld({ focusWaits: 2, interceptConfirm: true });
   const ev = path.join(w.root, "qa-evidence");
   const creds = { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD };
   const outputs = [];
@@ -219,6 +243,8 @@ test("the fake password and email appear nowhere: argv, device files, screenshot
     // The form driver submitted once, then both web buttons returned to the app.
     assert.equal(w.state().screen, "home");
     assert.equal(w.state().fills, 1);
+    assert.equal(w.state().focusWaits, 0);
+    assert.equal(w.state().confirmTaps, 2);
     assert.deepEqual(w.state().cleared, ["com.android.chrome", "com.google.android.inputmethod.latin"]);
     assert.equal(w.state().ime, "");
     assert.equal(w.state().autofill, false);
@@ -239,7 +265,7 @@ test("a failed form driver retains only the allowlisted UI summary and keeps the
     { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, GITHUB_STEP_SUMMARY: summary });
   assert.equal(result.status, 1);
   const json = JSON.parse(fs.readFileSync(summary, "utf8").split("```json\n")[1].split("\n```")[0]);
-  assert.deepEqual(json, { format: "android-login-ui/v1", lastAction: "fill-email", reason: "could not fill the expected browser email field", surface: "chrome", message: "none-recognized", passwordInputVisible: true, consent: "absent", launch: "absent", setup: "absent", email: "visible", password: "visible", submit: "visible", confirm: "absent", openApp: "absent", systemReturn: "absent" });
+  assert.deepEqual(json, { format: "android-login-ui/v1", lastAction: "fill-email", reason: "could not fill the expected browser email field", surface: "chrome", message: "none-recognized", savePasswordPrompt: false, passwordInputVisible: true, consent: "absent", launch: "absent", setup: "absent", email: "visible", password: "visible", submit: "visible", confirm: "absent", openApp: "absent", systemReturn: "absent" });
   fs.writeFileSync(path.join(out, "raw.xml"), EMAIL + PASSWORD);
   assert.equal(gate.gate(out, RUN).ok, false);
   assert.ok(!fs.existsSync(path.join(out, "raw.xml")));
@@ -248,6 +274,38 @@ test("a failed form driver retains only the allowlisted UI summary and keeps the
   }
   assert.ok(!fs.readFileSync(w.files.argv, "utf8").includes("screencap"));
   w.close();
+});
+
+test("unknown site, partial fill and missing driver markers all refuse submission and clear owned input stores", async () => {
+  for (const [driverResult, expectedReason] of [
+    ["site-unverified", /browser address could not be matched/],
+    ["email-only", /expected browser password field/],
+    ["no-markers", /expected browser email field/],
+  ]) {
+    const w = fakeWorld({ screen: "form", driverResult });
+    const out = path.join(w.root, "ev");
+    const result = await phase.androidPasswordLogin({ out, env: { ...w.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }, pollMs: 5 });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, expectedReason);
+    assert.equal(w.state().confirmTaps, undefined);
+    assert.deepEqual(w.state().cleared, ["com.android.chrome", "com.google.android.inputmethod.latin"]);
+    assert.deepEqual(w.state().form, { email: "", password: "" });
+    w.close();
+  }
+});
+
+test("a matching browser hostname with a different scheme cannot receive credentials", async () => {
+  const w = fakeWorld({ screen: "form" });
+  try {
+    const result = await phase.androidPasswordLogin({ out: path.join(w.root, "ev"), expectedOrigin: "http://app.raft.build",
+      env: { ...w.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }, pollMs: 5 });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /could not confirm the login page origin/);
+    const calls = fs.readFileSync(w.files.argv, "utf8");
+    assert.match(calls, /"forward","--remove"/);
+    assert.doesNotMatch(calls, /"runtest"|"push"/);
+    assert.deepEqual(w.state().cleared, []);
+  } finally { w.close(); }
 });
 
 test("an exchange before a form submission cannot unlock capture", async () => {
@@ -429,7 +487,7 @@ test("rule 3: a refused, missing or unreadable receipt ends UNKNOWN; nothing is 
     const result = await phase.androidPasswordLogin({ out: path.join(w.root, "ev"), device: "emulator-5554", env: { ...w.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }, pollMs: 50, timeoutMs });
     assert.equal(result.ok, false, name);
     assert.equal(phase.readRecord(path.join(w.root, "ev"), RUN).ok, false, name);
-    assert.deepEqual(w.state().cleared, [], name);
+    assert.deepEqual(w.state().cleared, w.state().fills ? ["com.android.chrome", "com.google.android.inputmethod.latin"] : [], name);
     w.close();
   }
 });

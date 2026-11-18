@@ -134,7 +134,7 @@ const SYSTEM_RETURN = /^(Open|Always|Just once)$/i;
 const labelIs = (node, re) => [node.text, node.desc].some((value) => re.test(value.replaceAll("&amp;", "&").trim()));
 const FORM_MESSAGES = new Map([
   ["Invalid email format", "invalid-email"], ["Password is required", "missing-password"],
-  ["Sign-in failed", "sign-in-failed"],
+  ["Sign-in failed", "sign-in-failed"], ["Incorrect email or password.", "incorrect-credentials"],
   ["This sign-in request has expired. Start sign-in again from the app.", "request-expired"],
   ["This sign-in request was already handled. Start sign-in again from the app if needed.", "request-already-handled"],
   ["This sign-in link isn't valid. Start sign-in again from the app.", "request-invalid"],
@@ -145,10 +145,13 @@ function loginControls(nodes, pkg) {
   const screen = nodes.filter(visible);
   const chrome = screen.filter((n) => n.pkg === CHROME);
   const chromeSetup = chrome.filter((n) => n.enabled && n.id.startsWith(`${CHROME}:id/`));
-  const button = (label) => chrome.find((n) => n.cls === "android.widget.Button" && labelIs(n, label));
+  const button = (label) => chrome.find((n) => n.cls === "android.widget.Button" && !n.id.startsWith(`${CHROME}:id/`) && labelIs(n, label));
+  const savePasswordPrompt = chromeSetup.some((n) => labelIs(n, /^(Save (?:this )?password(?: to Google(?: Password Manager)?)?\??)$/i));
   const crashDialog = screen.some((n) => n.pkg === "android" && n.id === "android:id/aerr_close");
   return {
     surface: crashDialog ? "system-app-error" : chrome.length ? "chrome" : screen.some((n) => n.pkg === pkg) ? "app" : screen.length ? "other" : "unreadable",
+    savePasswordPrompt,
+    dismissSave: savePasswordPrompt && chromeSetup.find((n) => labelIs(n, /^(Never|Not now|No,? thanks|Cancel|Close|Dismiss)$/i)),
     passwordInputVisible: chrome.some((n) => n.editable && n.password),
     message: chrome.map((n) => FORM_MESSAGES.get(n.text) || FORM_MESSAGES.get(n.desc)).find(Boolean) || "none-recognized",
     consent: screen.find((n) => n.pkg === pkg && n.checkable && !n.checked && n.enabled),
@@ -157,8 +160,8 @@ function loginControls(nodes, pkg) {
     email: chrome.find((n) => n.id === "login-email" && n.editable && !n.password),
     password: chrome.find((n) => n.id === "login-password" && n.editable && n.password),
     submit: button(/^Sign in$/i),
-    confirm: button(/^(Confirm sign-in|Confirm|Approve|Allow)$/i),
-    openApp: button(/^(Open the app|Open)$/i),
+    confirm: button(/^Confirm sign-in$/i),
+    openApp: button(/^Open the app$/i),
     systemReturn: screen.find((n) => ["android", "com.android.intentresolver"].includes(n.pkg) && n.enabled && labelIs(n, SYSTEM_RETURN)),
   };
 }
@@ -170,6 +173,7 @@ function failureUi(controls, lastAction, reason) {
   const dump = { format: "android-login-ui/v1", lastAction, reason, surface: controls?.surface ?? "unobserved" };
   if (controls) {
     dump.message = controls.message;
+    dump.savePasswordPrompt = controls.savePasswordPrompt;
     dump.passwordInputVisible = controls.passwordInputVisible;
     for (const key of ["consent", "launch", "setup", "email", "password", "submit", "confirm", "openApp", "systemReturn"]) dump[key] = state(controls[key]);
   }
@@ -179,6 +183,36 @@ function failureUi(controls, lastAction, reason) {
 function loginOrigin(env) {
   const api = (env.QA_API_BASE || ENVIRONMENTS.production.apiBaseUrl).replace(/\/$/, "");
   return Object.values(ENVIRONMENTS).find((e) => e.apiBaseUrl.replace(/\/$/, "") === api)?.webUrl;
+}
+
+// Chrome elides schemes in its toolbar. Corroborate it with the actual origin of tabs at the displayed host
+// on this job emulator. Neither URLs nor debugging data leave this process.
+async function chromeAtOrigin(adb, origin) {
+  const port = adb("forward", "tcp:0", "localabstract:chrome_devtools_remote").trim();
+  if (!/^[1-9]\d{0,4}$/.test(port) || Number(port) > 65535) return false;
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/json/list`, { redirect: "error", signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return false;
+    const host = new URL(origin).hostname;
+    const atHost = (await res.json()).filter((tab) => tab.type === "page")
+      .map((tab) => new URL(tab.url)).filter((url) => url.hostname === host);
+    return atHost.length > 0 && atHost.every((url) => url.origin === origin);
+  } catch {
+    return false;
+  } finally {
+    adb("forward", "--remove", `tcp:${port}`);
+  }
+}
+
+function clearLoginStores(adb) {
+  let ok = true;
+  let ime;
+  try { ime = adb("shell", "settings", "get", "secure", "default_input_method").trim().split("/")[0]; } catch { /* Still clear Chrome. */ }
+  for (const target of [CHROME, ime]) {
+    if (!target || !/^[A-Za-z][\w]*(?:\.[A-Za-z][\w]*)+$/.test(target)) { ok = false; continue; }
+    try { if (adb("shell", "pm", "clear", target).trim() !== "Success") ok = false; } catch { ok = false; }
+  }
+  return ok;
 }
 
 export async function androidPasswordLogin({ out, pkg = "build.raft.app", device = "", env = process.env, timeoutMs = 180000, pollMs = 2000, expectedOrigin = loginOrigin(env) }) {
@@ -193,6 +227,8 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
   let lastAction = "before-form";
   let controls;
   let installedDriver = false;
+  let inputMayRemain = false;
+  const owned = () => adb("shell", `cat ${OWNER_MARKER} 2>/dev/null`).trim() === runId(env);
   const unknown = (reason) => {
     markUnknown(out, reason, env);
     const dump = failureUi(controls, lastAction, reason);
@@ -209,7 +245,7 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
     if (!expectedOrigin) return unknown("unknown QA account environment");
     serial ||= adb("get-serialno").trim();
     if (!/^emulator-\d+$/.test(serial)) return unknown("not an emulator; cannot tell the device is this run's own");
-    if (adb("shell", `cat ${OWNER_MARKER} 2>/dev/null`).trim() !== runId(env)) return unknown("cannot tell the emulator is this run's own");
+    if (!owned()) return unknown("cannot tell the emulator is this run's own");
     adb("shell", "pkill -INT screenrecord; true");
     for (let i = 0; i < 5 && !recorderGone(); i++) await sleep(1000);
     if (!recorderGone()) return unknown("screen recorder did not stop before the login window");
@@ -219,6 +255,8 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
     let filled = false;
     let submittedAt = 0;
     const followed = new Set();
+    let confirmAfterDismissal = false;
+    let dismissedSaveAt = 0;
     let stamp;
     for (const deadline = Date.now() + timeoutMs; !stamp; await sleep(pollMs)) {
       const receipt = parseReceipt(adb("logcat", "-d", "-v", "threadtime", "-s", "SlockAppLogin:I"));
@@ -230,19 +268,32 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
         stamp = receipt.stamp;
         break;
       }
+      // If the read throws, the failure dump must not present the preceding screen as current.
       controls = undefined;
       controls = loginControls(parseUiNodes(adb("exec-out", "uiautomator", "dump", "/dev/tty")), pkg);
       if (controls.surface === "system-app-error") return unknown("Android is showing an app crash dialog");
       if (Date.now() > deadline) return unknown("no login-complete receipt");
       if (submittedAt) {
         if (controls.password && Date.now() - submittedAt > 20000) return unknown("the login form is still there after submitting");
-        const next = controls.confirm?.enabled ? controls.confirm : controls.openApp?.enabled ? controls.openApp : controls.systemReturn;
-        if (next && !controls.password) {
-          const action = next === controls.confirm ? "confirm-sign-in" : next === controls.openApp ? "open-app" : "return-to-app";
-          if (!followed.has(action)) {
+        if (controls.savePasswordPrompt) {
+          if (dismissedSaveAt && Date.now() - dismissedSaveAt < 3000) continue;
+          if (dismissedSaveAt || !controls.dismissSave?.enabled) return unknown("Chrome's save-password prompt is blocking the return to the app");
+          confirmAfterDismissal = followed.has("confirm-sign-in");
+          lastAction = "dismiss-save-password";
+          tap(controls.dismissSave);
+          dismissedSaveAt = Date.now();
+          continue;
+        }
+        const next = [["confirm-sign-in", controls.confirm], ["open-app", controls.openApp], ["return-to-app", controls.systemReturn]]
+          .find(([, node]) => node?.enabled);
+        if (!controls.password && next) {
+          const [action, node] = next;
+          // Retry confirmation only when a known, dismissed native prompt intercepted the first tap.
+          if (!followed.has(action) || (action === "confirm-sign-in" && confirmAfterDismissal)) {
+            confirmAfterDismissal = false;
             lastAction = action;
             followed.add(action);
-            tap(next);
+            tap(node);
           }
         }
         continue;
@@ -258,9 +309,11 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
       if (controls.email?.enabled && controls.password?.enabled) {
         lastAction = "fill-email";
         if (!env.RUNNER_TEMP || !fs.existsSync(path.join(env.RUNNER_TEMP, FORM_JAR))) return unknown("protected login form driver missing");
+        if (!await chromeAtOrigin(adb, expectedOrigin)) return unknown("Chrome could not confirm the login page origin");
         adb("push", path.join(env.RUNNER_TEMP, FORM_JAR), DEVICE_JAR);
         installedDriver = true;
         adb("shell", "chmod", "444", DEVICE_JAR);
+        inputMayRemain = true;
         const result = execAdb(["shell", "-T", "uiautomator", "runtest", "/system/framework/android.test.base.jar", "/system/framework/android.test.runner.jar", DEVICE_JAR,
           "-c", "RaftQaLoginForm#testFill", "-e", "origin", expectedOrigin], `${email}\n${password}\n`);
         if (/^QA_LOGIN_SITE_UNVERIFIED\r?$/m.test(result)) return unknown("the browser address could not be matched to the QA environment");
@@ -277,21 +330,34 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
       }
     }
 
-    // Clear what the browser and keyboard learned. Owned emulator only (checked above).
-    const ime = adb("shell", "settings", "get", "secure", "default_input_method").trim().split("/")[0];
-    for (const target of [CHROME, ime]) {
-      if (!target || !/Success/.test(adb("shell", "pm", "clear", target))) return unknown("could not clear the browser or keyboard");
+    if (!owned() || !clearLoginStores(adb)) return unknown("could not clear the browser or keyboard on the owned emulator");
+    inputMayRemain = false;
+    lastAction = "verify-app-focus";
+    const appFocused = () => (/mCurrentFocus=Window\{[^}]*\}/.exec(adb("shell", "dumpsys", "window"))?.[0] ?? "").includes(` ${pkg}/`);
+    // Android can log the callback before it finishes handing the window back from Chrome.
+    const focusDeadline = Date.now() + 10000;
+    while (!appFocused()) {
+      if (Date.now() >= focusDeadline) {
+        controls = loginControls(parseUiNodes(adb("exec-out", "uiautomator", "dump", "/dev/tty")), pkg);
+        return unknown("the app is not in front after login");
+      }
+      await sleep(250);
     }
     if (!recorderGone()) return unknown("a screen recorder ran during the login window");
-    const focus = /mCurrentFocus=Window\{[^}]*\}/.exec(adb("shell", "dumpsys", "window"))?.[0] ?? "";
-    if (!focus.includes(` ${pkg}/`)) return unknown("the app is not in front after login");
     writeRecord(out, { mode: "password", status: "complete", login_end: stamp, reason: "app_login_complete result=app_shell reason=exchanged" }, env);
     return { ok: true, stamp };
   } catch {
     return unknown("login probe failed");
   } finally {
     if (installedDriver) {
-      try { adb("shell", "rm", "-f", DEVICE_JAR); } catch { /* The jar contains only code on the ephemeral emulator. */ }
+      let cleared = false;
+      try {
+        if (owned()) {
+          if (inputMayRemain) cleared = clearLoginStores(adb);
+          adb("shell", "rm", "-f", DEVICE_JAR);
+        }
+      } catch { /* The job discards its emulator. */ }
+      if (inputMayRemain) console.log(`Protected login local cleanup: ${cleared ? "cleared" : "unconfirmed"}`);
     }
   }
 }
