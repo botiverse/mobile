@@ -326,6 +326,15 @@
     <string name="settings_archived_agents_workspace_deleted">워크스페이스 삭제됨</string>
     <string name="settings_archived_agents_workspace_unknown">워크스페이스 위치 알 수 없음</string>
     <string name="settings_archived_agents_workspace_deleting">워크스페이스 삭제 중…</string>
+    <string name="settings_keyboard_shortcuts_title">키보드 단축키</string>
+    <string name="settings_keyboard_shortcuts_group_global">전체</string>
+    <string name="settings_keyboard_shortcuts_group_channels_threads">채널과 스레드</string>
+    <string name="settings_keyboard_shortcuts_search">검색</string>
+    <string name="settings_keyboard_shortcuts_search_where">어디서나, 입력 중에도</string>
+    <string name="settings_keyboard_shortcuts_sidebar">사이드바 접기 / 펼치기</string>
+    <string name="settings_keyboard_shortcuts_sidebar_where">넓은 창에서</string>
+    <string name="settings_keyboard_shortcuts_previous_match">이전 일치 항목</string>
+    <string name="settings_keyboard_shortcuts_previous_match_where">스레드 검색에서, Enter는 다음 항목</string>
     <string name="settings_usage_data_title">사용 데이터 공유</string>
     <string name="settings_account_login_security_title">로그인 및 보안</string>
     <string name="settings_account_two_step_title">2단계 인증</string>

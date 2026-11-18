@@ -326,6 +326,15 @@
     <string name="settings_archived_agents_workspace_deleted">工作區已刪除</string>
     <string name="settings_archived_agents_workspace_unknown">工作區位置不明</string>
     <string name="settings_archived_agents_workspace_deleting">正在刪除工作區…</string>
+    <string name="settings_keyboard_shortcuts_title">鍵盤快速鍵</string>
+    <string name="settings_keyboard_shortcuts_group_global">全域</string>
+    <string name="settings_keyboard_shortcuts_group_channels_threads">頻道與討論串</string>
+    <string name="settings_keyboard_shortcuts_search">搜尋</string>
+    <string name="settings_keyboard_shortcuts_search_where">任何地方，輸入時也可以</string>
+    <string name="settings_keyboard_shortcuts_sidebar">收合 / 展開側邊欄</string>
+    <string name="settings_keyboard_shortcuts_sidebar_where">寬視窗中</string>
+    <string name="settings_keyboard_shortcuts_previous_match">上一個符合項目</string>
+    <string name="settings_keyboard_shortcuts_previous_match_where">討論串搜尋框中，Enter 是下一個</string>
     <string name="settings_usage_data_title">分享使用資料</string>
     <string name="settings_account_login_security_title">登入與安全</string>
     <string name="settings_account_two_step_title">兩步驟驗證</string>

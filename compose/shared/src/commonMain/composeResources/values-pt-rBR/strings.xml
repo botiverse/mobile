@@ -326,6 +326,15 @@
     <string name="settings_archived_agents_workspace_deleted">Espaço de trabalho excluído</string>
     <string name="settings_archived_agents_workspace_unknown">Local do espaço de trabalho desconhecido</string>
     <string name="settings_archived_agents_workspace_deleting">Excluindo espaço de trabalho…</string>
+    <string name="settings_keyboard_shortcuts_title">Atalhos de teclado</string>
+    <string name="settings_keyboard_shortcuts_group_global">Gerais</string>
+    <string name="settings_keyboard_shortcuts_group_channels_threads">Canais e threads</string>
+    <string name="settings_keyboard_shortcuts_search">Pesquisar</string>
+    <string name="settings_keyboard_shortcuts_search_where">Em qualquer lugar, mesmo digitando</string>
+    <string name="settings_keyboard_shortcuts_sidebar">Recolher ou expandir a barra lateral</string>
+    <string name="settings_keyboard_shortcuts_sidebar_where">Em uma janela larga</string>
+    <string name="settings_keyboard_shortcuts_previous_match">Correspondência anterior</string>
+    <string name="settings_keyboard_shortcuts_previous_match_where">Na pesquisa da thread; Enter vai para a próxima</string>
     <string name="settings_usage_data_title">Compartilhar dados de uso</string>
     <string name="settings_account_login_security_title">Login e segurança</string>
     <string name="settings_account_two_step_title">Verificação em duas etapas</string>

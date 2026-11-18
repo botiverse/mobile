@@ -87,6 +87,8 @@ internal data class SettingsAppPreferenceVisibility(
     val iosNativeNav: Boolean = false,
     /** A large screen is possible here ([raftPlatformLargeScreenPossible]): the Windows group. */
     val largeScreen: Boolean = false,
+    /** A hardware keyboard is plausible here ([settingsKeyboardShortcutsVisible]): the Keyboard shortcuts group. */
+    val keyboardShortcuts: Boolean = false,
 ) {
     /**
      * "Desktop layout on large screens": on every device. A large phone held sideways is wide enough
@@ -118,6 +120,7 @@ internal fun settingsAppPreferenceVisibility(
         hardwareKeyboardComposerCopy = finePointer,
         iosNativeNav = supportsIosNativeNav,
         largeScreen = largeScreenPossible,
+        keyboardShortcuts = settingsKeyboardShortcutsVisible(finePointer, largeScreenPossible),
     )
 
 /** The Enter-to-send row's description: Enter / Shift+Enter with a hardware keyboard, else the soft keyboard's key. */
