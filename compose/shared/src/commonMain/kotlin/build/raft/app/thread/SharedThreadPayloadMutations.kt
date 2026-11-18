@@ -6,9 +6,11 @@ import build.raft.app.data.EmptyReason
 import build.raft.app.data.MessageMutationSummary
 import build.raft.app.data.MessageReactionSummary
 import build.raft.app.data.map
+import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageReaction
+import build.raft.app.model.RealtimeRefreshRequired
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 
@@ -107,6 +109,55 @@ internal fun RaftThreadScreenPayload.withChannelLeft(channelId: String): RaftThr
             composer = composer.copy(enabled = false)
         )
     }
+
+/**
+ * `channel:updated` names the channel this page shows: the channel itself, or a reply thread's
+ * parent channel (archiving a channel archives its threads; the server refuses their replies too).
+ */
+internal fun RaftThreadScreenPayload.followsChannelUpdate(event: RealtimeRefreshRequired): Boolean {
+    if (event.reason != RealtimeSocketEvents.ChannelUpdated) return false
+    val channelId = event.channelId?.value?.takeIf { it.isNotBlank() } ?: return false
+    if (surfaceKind == RaftThreadSurfaceKind.DirectMessage) return false
+    return joinChannelTargetId()?.value == channelId
+}
+
+/**
+ * [channelId] was archived or unarchived while its page (or a reply thread in it) is open: the
+ * composer gives way to the archived banner, or comes back (web ChatPanel `isArchived` follows
+ * the channel store's live row).
+ */
+internal fun RaftThreadScreenPayload.withChannelArchived(channelId: String, archived: Boolean): RaftThreadScreenPayload =
+    if (channelArchived == archived || surfaceKind == RaftThreadSurfaceKind.DirectMessage ||
+        joinChannelTargetId()?.value != channelId
+    ) {
+        this
+    } else {
+        copy(channelArchived = archived)
+    }
+
+/** The server's refusal of a write into an archived channel (slock routes/messages.ts). */
+internal const val ThreadSendChannelArchivedErrorCode = "channel_archived"
+
+/**
+ * A send the server refused because the channel is archived (archived elsewhere before this page
+ * heard of it): the page now knows, so the archived banner replaces the composer. The failed
+ * message stays on the timeline.
+ */
+internal fun RaftThreadScreenPayload.withSendRefusedAsArchived(errorCode: String?): RaftThreadScreenPayload =
+    if (errorCode?.trim() != ThreadSendChannelArchivedErrorCode || channelArchived ||
+        surfaceKind == RaftThreadSurfaceKind.DirectMessage
+    ) {
+        this
+    } else {
+        copy(channelArchived = true)
+    }
+
+/** A live `channel:updated` row's archive state, applied where it names this page's channel. */
+internal fun RaftThreadScreenPayload.withChannelUpdateArchiveState(event: RealtimeRefreshRequired): RaftThreadScreenPayload {
+    val archived = event.channelArchived ?: return this
+    if (!followsChannelUpdate(event)) return this
+    return withChannelArchived(event.channelId?.value ?: return this, archived)
+}
 
 internal fun RaftThreadScreenPayload.withCanonicalConversationAccessFrom(
     patch: RaftThreadScreenPayload

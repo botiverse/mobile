@@ -1318,7 +1318,13 @@ data class RealtimeRefreshRequired(
      * a reload already in flight, and it will not come again, so that reload is replaced instead of
      * joined (latest request wins, Tenny 10-27). Realtime socket refreshes keep coalescing.
      */
-    val supersedesInFlightLoad: Boolean = false
+    val supersedesInFlightLoad: Boolean = false,
+    /**
+     * `channel:updated` carrying the channel's row (slock channelRealtimeEvents.ts
+     * publishChannelUpdate, emitted by archive and unarchive): whether [channelId] is archived
+     * (`archivedAt` set). Null when the frame did not say (an id-only `{ channelId }` frame).
+     */
+    val channelArchived: Boolean? = null,
 ) : RealtimeEvent
 
 @Serializable
