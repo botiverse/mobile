@@ -47,9 +47,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftEmptyState
@@ -356,12 +353,7 @@ internal fun MembersAgentActivityRow(
         }
     val colors = RaftTheme.colors
     val detailStyle = RaftTheme.typography.monoMeta
-    val titleText = memoryLimit?.title ?: activity.title
-    // Web StatusEntry: a status row is one wrapping line, the status in the title's ink and its
-    // detail after it (`ml-1.5 text-foreground-hint`) in the same type. A detail carrying a
-    // channel / thread ref keeps the ref-rendering body under the title.
-    val inlineStatusDetail =
-        displayBody.takeIf { activity.type == "status" && !longBody && it.isNotBlank() && !it.membersActivityMayHoldRef() }
+    val titleText = memoryLimit?.title ?: membersActivityStatusTitle(activity) ?: activity.title
     // raft-ui Timeline as an activity log: presence-coloured pixels, title and detail in
     // Space Mono, the time on the right, a `subagent` tag on a subagent's step. The title is
     // web LOG_TITLE_CLASS: `text-foreground-muted wrap-anywhere`, wrapping instead of clipping.
@@ -376,25 +368,12 @@ internal fun MembersAgentActivityRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (inlineStatusDetail != null) {
-                    RaftText(
-                        text = buildAnnotatedString {
-                            append(titleText)
-                            append(' ')
-                            withStyle(SpanStyle(color = colors.foregroundHint)) { append(inlineStatusDetail) }
-                        },
-                        style = raftTimelineMonoTitleStyle(),
-                        color = colors.foregroundMuted,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                } else {
-                    RaftText(
-                        text = titleText,
-                        style = raftTimelineMonoTitleStyle(),
-                        color = colors.foregroundMuted,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                }
+                RaftText(
+                    text = titleText,
+                    style = raftTimelineMonoTitleStyle(),
+                    color = colors.foregroundMuted,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
                 membersActivitySubagentBadgeLabel(activity)?.let { subagentLabel ->
                     // Web SubagentBadge (#13029): the marker opens that sub-agent's own run.
                     val openSubagent: (() -> Unit)? =
@@ -409,13 +388,21 @@ internal fun MembersAgentActivityRow(
             }
         }
     ) {
-        if (displayBody.isNotBlank() && inlineStatusDetail == null) {
+        // Every row type, a status included (Kirby, raft-design: "Working" over "Tool finished"),
+        // puts its detail on its own line under the title: web LOG_DETAIL_CLASS
+        // `mt-0.5 font-mono text-mono-meta text-foreground-hint` (the timeline's 2dp gap).
+        if (displayBody.isNotBlank()) {
             // #64 owner override (artin 06-23 17:41): '改成用 RaftMarkdownBody
             // 比较好，它能展示出来 #xxx 这些东西'. Restore the markdown branch so
             // the activity body can render task refs / issue refs (e.g. `#225`,
             // `#task-7`) as styled inline text + clickable onOpenUrl links
             // when `refTextEnabled` is true.
-            if (activity.refTextEnabled) {
+            // A status detail with no channel / thread ref takes the plain detail text below, so
+            // its line box is exactly the other rows' (the markdown body's inline-chip line floor
+            // would push it down); one that may hold a ref keeps the ref-rendering body.
+            val markdownDetail =
+                activity.refTextEnabled && (activity.type != "status" || displayBody.membersActivityMayHoldRef())
+            if (markdownDetail) {
                 RaftMarkdownBody(
                     body = displayBody,
                     textStyle = detailStyle.copy(color = colors.foregroundHint),
@@ -470,7 +457,7 @@ private fun membersActivityRowMemoryLimitText(activity: AgentActivityEntry): Mem
         // botiverse/slock #12892 (web StatusEntry): "Crashed" with how to fix the root refusal in
         // this locale instead of the daemon's English detail.
         if (activity.statusDetailKind == AgentActivityDetailKindClaudeRootPrivileges) {
-            return MembersActivityRowText(activity.title, stringResource(Res.string.agent_runtime_error_root_privileges))
+            return MembersActivityRowText(membersActivityStatusTitle(activity) ?: activity.title, stringResource(Res.string.agent_runtime_error_root_privileges))
         }
         val exit = if (activity.statusDetailKind == "runtime_crashed") agentMemoryLimitExit(activity.statusDetail, "runtime_crashed") else null
         if (exit != null) {
@@ -495,6 +482,34 @@ private fun membersActivityRowMemoryLimitText(activity: AgentActivityEntry): Mem
         return MembersActivityRowText(stringResource(Res.string.agent_activity_log_background_oom_title), body)
     }
     return null
+}
+
+/**
+ * Web AgentActivityLog `ACTIVITY_LABEL_IDS` / `activity.log.status.*` (#proj-raft-ui:#267, slock
+ * #15327): a status row's word in this locale. The parsers keep the English word as the row's
+ * identifier; it is translated only here. Null for other rows and for a status the web shows raw.
+ */
+@Composable
+private fun membersActivityStatusTitle(activity: AgentActivityEntry): String? {
+    if (activity.type != "status") return null
+    val resource = when (activity.title) {
+        "Idle" -> Res.string.member_activity_log_status_idle
+        "Thinking" -> Res.string.member_activity_log_status_thinking
+        "Working" -> Res.string.member_activity_log_status_working
+        "Starting" -> Res.string.member_activity_log_status_starting
+        "Started" -> Res.string.member_activity_log_status_started
+        "Restarted" -> Res.string.member_activity_log_status_restarted
+        "Upgraded" -> Res.string.member_activity_log_status_upgraded
+        "Stopped" -> Res.string.member_activity_log_status_stopped
+        "Disconnected" -> Res.string.member_activity_log_status_disconnected
+        "Crashed" -> Res.string.member_activity_log_status_crashed
+        "Offline" -> Res.string.member_activity_log_status_offline
+        "Computer operation failed" -> Res.string.member_activity_log_status_computer_operation_failed
+        // Web `activity.status.error`: the member list's translated "Error".
+        "Error" -> Res.string.member_row_status_error
+        else -> return null
+    }
+    return stringResource(resource)
 }
 
 @Composable
