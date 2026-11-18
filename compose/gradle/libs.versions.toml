@@ -13,7 +13,7 @@ cmpNavigation3 = "1.2.0"
 androidxNavigation3 = "1.2.1"
 androidxComposeRuntime = "1.12.1"
 kotlinxCoroutines = "1.11.0"
-kotlinxSerialization = "1.12.0"
+kotlinxSerialization = "1.13.0"
 # Time zones (kotlin.time.Instant API, Kotlin 2.2+).
 kotlinxDatetime = "0.8.0"
 atomicfu = "0.33.0"

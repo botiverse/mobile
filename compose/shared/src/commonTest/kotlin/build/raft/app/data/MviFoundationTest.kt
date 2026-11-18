@@ -8,7 +8,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encoding.Encoder
-import kotlinx.serialization.json.JsonEncodingException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -244,10 +243,9 @@ class MviFoundationTest {
                 .exceptionOrNull()
 
         assertIs<MviPersistFailure>(failure)
-        // kotlinx-serialization 1.12 wraps any exception a serializer throws while encoding in a
-        // JsonEncodingException; the serializer's own exception stays the cause.
-        val encodingFailure = assertIs<JsonEncodingException>(failure.cause)
-        assertIs<NumberFormatException>(encodingFailure.cause)
+        // kotlinx-serialization 1.13 reverted 1.12's JsonEncodingException wrapper: the
+        // serializer's own exception is the failure's direct cause again.
+        assertIs<NumberFormatException>(failure.cause)
         assertEquals(PersistState(value = 0, transientLabel = "initial"), runtime.state.value)
         assertEquals(previousSnapshot, storage.getString("persist:test"))
         assertTrue(
@@ -257,7 +255,7 @@ class MviFoundationTest {
         )
         assertTrue(
             failures.any {
-                it == "mvi_persist_failure name=test key=persist:test reason=encode_error type=JsonEncodingException"
+                it == "mvi_persist_failure name=test key=persist:test reason=encode_error type=NumberFormatException"
             }
         )
         scope.cancel()
