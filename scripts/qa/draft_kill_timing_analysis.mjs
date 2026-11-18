@@ -235,6 +235,21 @@ const quantiles = (values, unit) => {
 };
 
 /**
+ * Whether the crash journal's cost samples cover the typed edits. Every typed change logs
+ * `change_received` and, from the same synchronous call on the input thread, either one
+ * `draft_journal_written` (the cost sample) or one `draft_journal_write_failed`. So
+ * missing = edits − samples − failures should be 0; logcat can still lose a line under load, so up to
+ * JOURNAL_MISSING_TOLERANCE of the edits (rounded down) may be missing. More than that: the cost is not
+ * known for every edit ("unconfirmed"). Any write failure fails the run.
+ */
+export const JOURNAL_MISSING_TOLERANCE = 0.01;
+export function journalCoverage({ edits, samples, failures }) {
+  const missing = Math.max(0, edits - samples - failures);
+  const allowed = Math.floor(edits * JOURNAL_MISSING_TOLERANCE);
+  return { edits, samples, failures, missing, allowed_missing: allowed, covered: edits > 0 && missing <= allowed };
+}
+
+/**
  * The wrap-up statistics of a whole run, fed one logcat line at a time ([add]) so the raw logcat is never
  * held in memory: what it keeps grows with the app's own RaftDraftTiming lines (one number per keystroke),
  * not with the size of the logcat.
@@ -250,26 +265,44 @@ export function createLogcatStats() {
   const latencies = [];
   const costs = [];
   const paths = { sync: 0, background: 0, flush: 0, unlabeled: 0, sync_write_fallback: 0 };
+  let edits = 0;
+  let journalFailures = 0;
+  const appPids = new Set();
   return {
+    /** Pids that logged RaftDraftTiming lines: the app's own processes. */
+    appPids,
     add(raw) {
       if (!raw.includes("RaftDraftTiming")) return;
       const l = parseLogcatLine(raw);
       if (!l || l.tag !== "RaftDraftTiming") return;
+      appPids.add(l.pid);
       const cost = /^draft_journal_written\b.*\bcostUs=(\d+)/.exec(l.message);
       if (cost) {
         costs.push(Number(cost[1]));
         return;
       }
+      if (/^draft_journal_write_failed\b/.test(l.message)) {
+        journalFailures += 1;
+        return;
+      }
       const t = parseTimingMessage(l.message);
       if (!t) return;
       const key = `${l.pid}:${t.seq}`;
-      if (t.kind === "change_received") changes.set(key, t.uptimeMs);
+      if (t.kind === "change_received") {
+        edits += 1;
+        changes.set(key, t.uptimeMs);
+      }
       else if (changes.has(key)) latencies.push(t.uptimeMs - changes.get(key));
       if (t.kind === "sync_write_fallback") paths.sync_write_fallback += 1;
       else if (t.kind === "draft_written") paths[t.path && t.path in paths ? t.path : "unlabeled"] += 1;
     },
     result() {
-      return { write_latency: quantiles([...latencies], "ms"), write_paths: { ...paths }, journal_write_cost: quantiles([...costs], "us") };
+      return {
+        write_latency: quantiles([...latencies], "ms"),
+        write_paths: { ...paths },
+        journal_write_cost: quantiles([...costs], "us"),
+        journal_coverage: journalCoverage({ edits, samples: costs.length, failures: journalFailures }),
+      };
     },
   };
 }
@@ -340,15 +373,29 @@ export function forEachLogLine(file, from, onLine, { chunkBytes = 1 << 20, maxLi
 }
 
 /**
- * Lines kept as evidence (timing-lines.txt): the app's timing markers, the system's lines about [pkg]'s own
- * process, and crash headers. No other app or framework chatter, nothing that could carry a token.
+ * Lines kept as evidence (timing-lines.txt): the app's timing markers and the probe's, ActivityManager /
+ * am_kill / am_proc_died lines naming [pkg], the cgroup line of a killed pid in [appPids] and the crash
+ * headers (`FATAL EXCEPTION`, `Process: <pkg>, PID`) logged by a pid in [appPids]. No other process's
+ * lines, no stack traces, nothing that could carry a token.
  */
-export const isEvidenceLine = (line, pkg) =>
-  /\bRaftDraftTiming(Probe)?\s*:/.test(line) ||
-  (/\bActivityManager\s*:/.test(line) && line.includes(pkg)) ||
-  /\blibprocessgroup\s*:/.test(line) ||
-  (/\b(am_kill|am_proc_died)\s*:/.test(line) && line.includes(pkg)) ||
-  /\bAndroidRuntime\s*:\s*(FATAL EXCEPTION|Process: )/.test(line);
+export function isEvidenceLine(line, pkg, appPids = new Set()) {
+  if (/\bRaftDraftTiming(Probe)?\s*:/.test(line)) return true;
+  if (/\bActivityManager\s*:/.test(line) || /\b(am_kill|am_proc_died)\s*:/.test(line)) return line.includes(pkg);
+  const l = /\b(libprocessgroup|AndroidRuntime)\s*:/.test(line) ? parseLogcatLine(line) : null;
+  if (!l) return false;
+  // Only the app's own processes: the cgroup line of a killed app pid, and crash headers the app logged.
+  if (l.tag === "libprocessgroup") {
+    const m = /^Successfully killed process cgroup uid \d+ pid (\d+) /.exec(l.message);
+    return m != null && appPids.has(Number(m[1]));
+  }
+  if (l.tag === "AndroidRuntime") {
+    if (!appPids.has(l.pid)) return false;
+    if (/^FATAL EXCEPTION: /.test(l.message)) return true;
+    const p = /^Process: ([^,\s]+), PID: (\d+)/.exec(l.message);
+    return p != null && p[1] === pkg;
+  }
+  return false;
+}
 
 /** Every acceptance condition the finished [summary] does not meet (empty = pass). */
 export function acceptanceUnmet(summary, { runsPerBucket, fastRuns, env = {} }) {
@@ -361,6 +408,7 @@ export function acceptanceUnmet(summary, { runsPerBucket, fastRuns, env = {} }) 
   if (!summary.runs.some((r) => r.mode === "send" && r.timing === "hit" && r.pass)) unmet.push("send regression: no attempt with the exit inside [0, 100] ms of the tap and the message delivered");
   if (!summary.journal_write_cost?.samples) unmet.push("no draft_journal_written lines: the crash journal's cost was not measured");
   else if (summary.journal_write_cost.p95_us >= 1000) unmet.push(`crash-journal write p95 ${summary.journal_write_cost.p95_us} µs is not below 1000 µs`);
+  if (summary.journal_coverage?.failures > 0) unmet.push(`crash-journal write failed ${summary.journal_coverage.failures} time(s) (draft_journal_write_failed)`);
   if (!summary.apk || summary.apk.file_sha256 !== summary.apk.installed_base_apk_sha256) unmet.push("installed base.apk SHA-256 differs from the downloaded APK (or was not read)");
   if (summary.apk?.downloaded_sha256_from_workflow && summary.apk.downloaded_sha256_from_workflow !== summary.apk.file_sha256) unmet.push("APK SHA-256 differs from the one the workflow downloaded");
   if (env.REQUIRE_COMMIT && !["identical", "ahead"].includes(env.REQUIRE_COMMIT_STATUS ?? "")) unmet.push(`APK source ${env.APK_SOURCE_SHA} does not contain ${env.REQUIRE_COMMIT} (compare: ${env.REQUIRE_COMMIT_STATUS || "unavailable"})`);
@@ -369,10 +417,64 @@ export function acceptanceUnmet(summary, { runsPerBucket, fastRuns, env = {} }) 
 }
 
 /**
+ * Conditions that keep a run from passing without making it a failure: the evidence does not cover what
+ * the pass would claim.
+ * - Channel concurrency: the check must have read the run's channel completely (see channelActivityReport)
+ *   and found nothing this run did not post. Other activity is not verified to be harmless, so it is
+ *   unconfirmed, as is a failed or incomplete read.
+ * - Crash-journal cost: the samples must cover the typed edits (journalCoverage).
+ */
+export function acceptanceUnconfirmed(summary) {
+  const unconfirmed = [];
+  const a = summary.channel_activity;
+  if (!a || a.error) unconfirmed.push(`channel concurrency not checked${a?.error ? ` (${a.error})` : ""}`);
+  else {
+    if (!a.coverage?.complete) unconfirmed.push(`channel concurrency check incomplete: ${a.coverage?.reason ?? "coverage unknown"}`);
+    if (a.other_activity == null) unconfirmed.push("other activity in the run's channel unknown");
+    else if (a.other_activity > 0) unconfirmed.push(`other activity in the run's channel: ${a.other_activity} item(s) ${JSON.stringify(a.other_kinds ?? {})}, not verified to be harmless`);
+  }
+  const c = summary.journal_coverage;
+  if (!c) unconfirmed.push("crash-journal sample coverage unknown");
+  else if (!c.covered && c.failures === 0) {
+    unconfirmed.push(`crash-journal cost samples do not cover the edits: ${c.samples} samples for ${c.edits} edits, ${c.missing} missing (allowed ${c.allowed_missing})`);
+  }
+  return unconfirmed;
+}
+
+/**
+ * The run's channel as the concurrency check read it ([status], [rows] newest first, at most [limit]).
+ * The channel is created by this run, so a page shorter than [limit] is its whole history ("complete");
+ * a full page may have cut older items off, so it is "incomplete", never "no other activity". Ours =
+ * content carrying this run's marker tag and posted by the QA account. Only counts, kinds and the
+ * covered createdAt window are kept, never other content.
+ */
+export function channelActivityReport({ status, rows = [], limit, runTag, selfId = null }) {
+  if (status !== 200) return { http: status, other_activity: null, coverage: { complete: false, reason: `the channel query failed (HTTP ${status})` } };
+  const created = rows.map((m) => m?.createdAt ?? m?.created_at ?? null).filter(Boolean).sort();
+  const complete = rows.length < limit;
+  const coverage = {
+    complete,
+    limit,
+    items: rows.length,
+    oldest_created_at: created[0] ?? null,
+    newest_created_at: created.at(-1) ?? null,
+    ...(complete ? {} : { reason: `a full page of ${limit} items was read; anything older is not covered` }),
+  };
+  const ours = (m) => String(m?.content ?? "").includes(runTag) && (selfId == null || m?.senderId === selfId);
+  const others = rows.filter((m) => !ours(m));
+  const kinds = {};
+  for (const m of others) {
+    const kind = `${m?.type ?? m?.messageType ?? "message"}${selfId != null && m?.senderId === selfId ? " (QA account)" : ""}`;
+    kinds[kind] = (kinds[kind] ?? 0) + 1;
+  }
+  return { http: status, messages: rows.length, ours: rows.length - others.length, other_activity: others.length, other_kinds: kinds, coverage };
+}
+
+/**
  * The verdict, decided at wrap-up AFTER the whole-run logcat statistics exist: [logcatStats] (or null when
  * the capture could not be read) is merged into [summary] first, so the crash-journal gate sees the measured
- * cost. A run that already failed at a step keeps that failure; otherwise result is pass only with no unmet
- * condition.
+ * cost. A run that already failed at a step keeps that failure; otherwise the result is "fail" with any
+ * unmet condition, else "unconfirmed" with any unconfirmed one, else "pass".
  */
 export function wrapUpVerdict(summary, logcatStats, config) {
   if (logcatStats) Object.assign(summary, logcatStats);
@@ -381,7 +483,8 @@ export function wrapUpVerdict(summary, logcatStats, config) {
     return summary;
   }
   summary.unmet = acceptanceUnmet(summary, config);
-  summary.result = summary.unmet.length ? "fail" : "pass";
+  summary.unconfirmed = acceptanceUnconfirmed(summary);
+  summary.result = summary.unmet.length ? "fail" : summary.unconfirmed.length ? "unconfirmed" : "pass";
   return summary;
 }
 
