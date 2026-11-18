@@ -14,7 +14,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AgentActivityOverviewStatus
 import build.raft.app.data.AgentActivityTurn
@@ -159,8 +158,6 @@ internal fun MembersAgentRecentActivityCard(
                             ),
                             style = typography.callout,
                             color = colors.foregroundMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
