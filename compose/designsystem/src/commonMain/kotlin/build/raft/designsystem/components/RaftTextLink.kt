@@ -171,10 +171,12 @@ internal data class RaftInlineTextLink(
  * ```
  *
  * The link takes the sentence's size and line height, so it never makes the line taller,
- * and sits on its baseline. Like raft-ui's inline-block button it doesn't break across
- * lines (its spaces are no-break spaces). It is [RaftTextLinkVariant.Strong] by default,
- * as a link inside a sentence should be. Looks and states are those of [RaftTextLink]:
- * the focus ring goes round the link's own words. Its target is only its words.
+ * and sits on its baseline. It is raft-ui's in-sentence TextLink (`nativeButton={false}`,
+ * raft-ui 0.102.3, raft-design #1306): it wraps with the words around it, so a link at the
+ * end of a sentence ("Don't have an account? Create One") never jumps whole to the next line
+ * and leaves the line before it short. Each line it wraps onto gets its own underline, focus
+ * ring and tap target. It is [RaftTextLinkVariant.Strong] by default, as a link inside a
+ * sentence should be. Looks and states are those of [RaftTextLink]. Its target is only its words.
  */
 fun AnnotatedString.Builder.appendRaftTextLink(
     text: String,
@@ -188,7 +190,8 @@ fun AnnotatedString.Builder.appendRaftTextLink(
             linkInteractionListener = { if (enabled) onClick() },
         )
     pushLink(link)
-    append(text.replace(' ', ' '))
+    // Plain spaces: the link breaks between its words as the sentence does (raft-design #1306).
+    append(text)
     pop()
 }
 

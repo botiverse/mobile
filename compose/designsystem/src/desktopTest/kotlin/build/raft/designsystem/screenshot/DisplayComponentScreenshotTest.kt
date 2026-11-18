@@ -38,6 +38,7 @@ import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.components.RaftConversationKindIcon
+import build.raft.designsystem.components.LocalRaftListRowIconSize
 import build.raft.designsystem.components.RaftRiskTone
 import build.raft.designsystem.components.RaftInboxItemLeadingDefaults
 import build.raft.designsystem.components.RaftInboxItemLeadingBadge
@@ -1086,7 +1087,8 @@ class DisplayComponentScreenshotTest {
     /**
      * raft-ui 0.87.0 ListRow risk: a channel's danger zone. Archive and Leave (can be undone) in
      * `warning-strong`, Delete (cannot) in `danger-strong`, title and icon only; the description and
-     * chevron stay ink-2 / ink-3. A disabled Delete greys it.
+     * chevron stay ink-2 / ink-3. A disabled Delete greys it. The icons are 18dp, the disabled one
+     * too (raft-ui 0.102.2, raft-design #1296).
      */
     @Test
     fun listRowRisk() =
@@ -1098,7 +1100,7 @@ class DisplayComponentScreenshotTest {
                         variant = RaftListRowVariant.Plain,
                         risk = RaftRiskTone.Warning,
                         onClick = {},
-                        leading = { RaftGlyphIcon(RaftGlyph.Clock, size = 20.dp) },
+                        leading = { RaftGlyphIcon(RaftGlyph.Clock, size = LocalRaftListRowIconSize.current) },
                         description = "Read-only for everyone; you can unarchive it.",
                         wrapDescription = true,
                         trailing = { RaftListRowChevron() },
@@ -1109,7 +1111,7 @@ class DisplayComponentScreenshotTest {
                         risk = RaftRiskTone.Warning,
                         divider = true,
                         onClick = {},
-                        leading = { RaftGlyphIcon(RaftGlyph.ArrowUpRight, size = 20.dp) },
+                        leading = { RaftGlyphIcon(RaftGlyph.ArrowUpRight, size = LocalRaftListRowIconSize.current) },
                     )
                     RaftListRow(
                         "Delete channel",
@@ -1117,7 +1119,7 @@ class DisplayComponentScreenshotTest {
                         risk = RaftRiskTone.Danger,
                         divider = true,
                         onClick = {},
-                        leading = { RaftGlyphIcon(RaftGlyph.OctagonAlert, size = 20.dp) },
+                        leading = { RaftGlyphIcon(RaftGlyph.OctagonAlert, size = LocalRaftListRowIconSize.current) },
                         description = "Removes every message. This can't be undone.",
                         wrapDescription = true,
                     )
@@ -1128,7 +1130,7 @@ class DisplayComponentScreenshotTest {
                         divider = true,
                         enabled = false,
                         onClick = {},
-                        leading = { RaftGlyphIcon(RaftGlyph.OctagonAlert, size = 20.dp) },
+                        leading = { RaftGlyphIcon(RaftGlyph.OctagonAlert, size = LocalRaftListRowIconSize.current) },
                     )
                 }
             }

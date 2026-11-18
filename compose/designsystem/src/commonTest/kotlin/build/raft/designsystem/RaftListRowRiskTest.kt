@@ -1,7 +1,9 @@
 package build.raft.designsystem
 
+import build.raft.designsystem.components.RaftListRowIconSize
 import build.raft.designsystem.components.RaftRiskTone
 import build.raft.designsystem.components.RaftRowTone
+import build.raft.designsystem.components.raftListRowIconSize
 import build.raft.designsystem.components.raftListRowInks
 import build.raft.designsystem.tokens.RaftThemeId
 import build.raft.designsystem.tokens.RaftUiThemeColors
@@ -37,5 +39,19 @@ class RaftListRowRiskTest {
         val disabled = raftListRowInks(RaftRowTone.Default, enabled = false, colors = colors, risk = RaftRiskTone.Danger)
         assertNull(disabled.riskInk)
         assertEquals(colors.foregroundDisabled, disabled.ink)
+    }
+
+    /** raft-ui 0.102.2 (raft-design #1296): an action row's icon is a labelled `lg` button's, 18dp. */
+    @Test
+    fun anActionRowsIconIs18dpAndOtherRowsKeep20dp() {
+        assertEquals(18f, RaftListRowIconSize.Action.value)
+        assertEquals(20f, RaftListRowIconSize.Default.value)
+        RaftRiskTone.entries.forEach { risk ->
+            assertEquals(RaftListRowIconSize.Action, raftListRowIconSize(risk, interactive = true))
+            // A display-only row takes no risk, so no action size either.
+            assertEquals(RaftListRowIconSize.Default, raftListRowIconSize(risk, interactive = false))
+        }
+        // Unarchive: an action without a risk keeps a list row's icon.
+        assertEquals(RaftListRowIconSize.Default, raftListRowIconSize(null, interactive = true))
     }
 }

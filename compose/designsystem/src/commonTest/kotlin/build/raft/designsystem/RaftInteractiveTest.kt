@@ -227,7 +227,7 @@ class RaftNavigationItemTest {
     }
 
     @Test
-    fun anInlineTextLinkIsFoundWithItsVariantAndKeepsToOneLine() {
+    fun anInlineTextLinkIsFoundWithItsVariantAndWrapsWithTheSentence() {
         var clicked = 0
         val text =
             buildAnnotatedString {
@@ -238,7 +238,7 @@ class RaftNavigationItemTest {
             }
         val links = raftTextLinks(text)
         assertEquals(2, links.size)
-        assertEquals("Create\u00A0One", text.text.substring(links[0].start, links[0].end), "no-break spaces keep it on one line")
+        assertEquals("Create One", text.text.substring(links[0].start, links[0].end), "plain spaces: it wraps with the sentence (raft-design #1306)")
         assertEquals(RaftTextLinkVariant.Strong, links[0].variant, "strong by default inside a sentence")
         assertTrue(links[0].enabled)
         assertEquals(RaftTextLinkVariant.Muted, links[1].variant)

@@ -150,6 +150,33 @@ internal fun raftListRowInks(
 /** The inks of the enclosing [RaftListRow], for parts placed in its slots. */
 val LocalRaftListRowInks = staticCompositionLocalOf<RaftListRowInks?> { null }
 
+/** raft-ui `ListRowIcon` sizes. */
+object RaftListRowIconSize {
+    /** A list row's leading icon (`[&>svg]:size-5`). */
+    val Default: Dp = 20.dp
+
+    /**
+     * An action row's leading icon: an interactive row with a risk (raft-design #1296, raft-ui
+     * 0.102.2, `size-4.5`). A row that does one thing is a labelled `lg` button, so it takes that
+     * button's 18px icon, not a list row's 20px.
+     */
+    val Action: Dp = 18.dp
+}
+
+/**
+ * The leading icon size of a [RaftListRow] (raft-design #1296): [RaftListRowIconSize.Action] on an
+ * interactive row with a [risk], disabled or not (so the row doesn't shift when it greys);
+ * [RaftListRowIconSize.Default] on every other row, a display-only one with a risk included.
+ */
+internal fun raftListRowIconSize(risk: RaftRiskTone?, interactive: Boolean): Dp =
+    if (interactive && risk != null) RaftListRowIconSize.Action else RaftListRowIconSize.Default
+
+/**
+ * The size to draw a [RaftListRow]'s leading icon at, read inside its `leading` slot (web
+ * `ListRowIcon` sizes its svg from the row). Outside a row: [RaftListRowIconSize.Default].
+ */
+val LocalRaftListRowIconSize = staticCompositionLocalOf { RaftListRowIconSize.Default }
+
 /**
  * raft-ui ListRowGroup, the inset list: rows flush inside one card (`layer-card`, 1dp
  * `line-hairline` border the rows sit inside, container radius, clipped, no padding of
@@ -188,7 +215,8 @@ fun RaftListRowGroup(
  * and trailing parts on the first line, raft `align=start`). A [RaftListRowVariant.Plain] row
  * centres them on the whole row too, description or not (raft-ui 0.21.1).
  *
- * - [leading]: a 35dp avatar or tile, or a 20dp icon (drawn in ink-3).
+ * - [leading]: a 35dp avatar or tile, or an icon (drawn in ink-3) at [LocalRaftListRowIconSize]:
+ *   20dp, 18dp on an action row with a [risk].
  * - Text column: [title] 16/24 semibold on one line (bold when [RaftRowTone.Unread]) with
  *   [titleTrailing] right after the name (6dp; a Bot badge; the name truncates first) and
  *   [meta] (the time, Space Mono 12 ink-3) at the end; [subtitle] on its own line in Space
@@ -212,7 +240,8 @@ fun RaftListRowGroup(
  *
  * [risk] (raft-ui 0.87.0): an action row's risk colors its title and its [leading] icon
  * `warning-strong` (it can be undone) or `danger-strong` (it cannot); only an interactive row
- * takes it, and a disabled row greys it as every tone.
+ * takes it, and a disabled row greys it as every tone. Its leading icon is 18dp, not 20dp
+ * (raft-ui 0.102.2, raft-design #1296), disabled too: draw it at [LocalRaftListRowIconSize].
  *
  * [text]: [RaftListRowText.Member] sets the title and subtitle as the web members page does.
  *
@@ -326,8 +355,12 @@ fun RaftListRow(
         ) {
             if (leading != null) {
                 Box(contentAlignment = Alignment.Center) {
-                    // A risk colors the leading icon too (`--list-row-risk-ink`); an avatar ignores it.
-                    CompositionLocalProvider(LocalRaftContentColor provides (inks.riskInk ?: inks.ink3)) { leading() }
+                    // A risk colors the leading icon too (`--list-row-risk-ink`) and makes it 18dp
+                    // (raft-design #1296); an avatar ignores both.
+                    CompositionLocalProvider(
+                        LocalRaftContentColor provides (inks.riskInk ?: inks.ink3),
+                        LocalRaftListRowIconSize provides raftListRowIconSize(risk, interactive),
+                    ) { leading() }
                 }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (alignTop) 4.dp else 2.dp)) {
