@@ -3614,6 +3614,7 @@
     <string name="runtime_form_v2_effort_unreadable">Can't read the effort levels: %1$s</string>
     <string name="runtime_form_v2_use_custom">Use “%1$s”</string>
     <string name="runtime_form_v2_custom_value">Custom</string>
+    <string name="runtime_form_v2_saved_value_not_in_list">The saved value %1$s is not in the current list. It stays selected until you pick another.</string>
     <string name="runtime_form_v2_secret_keep_hint">Leave blank to keep the current value.</string>
     <string name="runtime_form_v2_load_failed">Couldn't load the runtime form (%1$s).</string>
     <string name="runtime_form_v2_unavailable">Runtime configuration is unavailable.</string>

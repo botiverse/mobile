@@ -1391,6 +1391,10 @@ private fun CreateAgentSuggestedRuntimeNotice(
     )
 }
 
+/**
+ * The "Advanced" disclosure as web RuntimeDisclosureToggle (a SectionEyebrow button): `text-footnote`
+ * bold in `foreground-hint`, a 14dp chevron 8dp before it.
+ */
 @Composable
 internal fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
     Row(
@@ -1399,17 +1403,17 @@ internal fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
             .raftClickable(onClick = onToggle, shape = RoundedCornerShape(RaftRadius.Control))
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         RaftLucideIcon(
             if (open) RaftLucideIconName.ChevronDown else RaftLucideIconName.ChevronRight,
-            modifier = Modifier.size(16.dp),
-            color = RaftColor.TextMutedGrayArgb
+            modifier = Modifier.size(14.dp),
+            color = raftArgbHex(RaftColor.ForegroundHint)
         )
         Text(
             text = stringResource(Res.string.agent_create_label_advanced),
-            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextMutedGray
+            style = RaftType.Footnote.withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.ForegroundHint
         )
     }
 }
@@ -1427,22 +1431,33 @@ internal fun CreateAgentSectionLabelWithAction(
         verticalAlignment = Alignment.CenterVertically
     ) {
         RaftFieldLabel(text = label, modifier = Modifier.weight(1f))
-        Box(
-            modifier =
-                Modifier
-                    .size(22.dp)
-                    .raftClickable(onClick = onAction, enabled = actionEnabled, shape = RoundedCornerShape(RaftRadius.Chip)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (loading) {
-                RaftCreateAgentSpinnerIcon()
-            } else {
-                RaftLucideIcon(
-                    actionIcon,
-                    modifier = Modifier.size(13.dp),
-                    color = if (actionEnabled) RaftColor.TextMutedGrayArgb else if (RaftAppThemeState.isDark) raftArgbHex(RaftColor.ForegroundDisabled) else "#33000000"
-                )
-            }
+        CreateAgentLabelAction(actionIcon, actionEnabled, loading, onAction)
+    }
+}
+
+/** The small action at the end of a field's label row (refresh / rescan), spinning while [loading]. */
+@Composable
+internal fun CreateAgentLabelAction(
+    actionIcon: RaftLucideIconName,
+    actionEnabled: Boolean,
+    loading: Boolean = false,
+    onAction: () -> Unit
+) {
+    Box(
+        modifier =
+            Modifier
+                .size(22.dp)
+                .raftClickable(onClick = onAction, enabled = actionEnabled, shape = RoundedCornerShape(RaftRadius.Chip)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (loading) {
+            RaftCreateAgentSpinnerIcon()
+        } else {
+            RaftLucideIcon(
+                actionIcon,
+                modifier = Modifier.size(13.dp),
+                color = if (actionEnabled) RaftColor.TextMutedGrayArgb else if (RaftAppThemeState.isDark) raftArgbHex(RaftColor.ForegroundDisabled) else "#33000000"
+            )
         }
     }
 }
@@ -1492,7 +1507,9 @@ internal fun EnvVarsEditor(
     onChange: (List<Pair<String, String>>) -> Unit,
     enabled: Boolean,
     label: String? = null,
-    required: Boolean = false
+    required: Boolean = false,
+    /** Help under the label, above the rows (web RuntimeEnvVarsField). */
+    hint: (@Composable () -> Unit)? = null
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         val groupLabel = label ?: stringResource(Res.string.agent_create_label_environment_variables)
@@ -1503,6 +1520,7 @@ internal fun EnvVarsEditor(
             modifier = if (required && spokenLabel != null) Modifier.semantics { contentDescription = spokenLabel } else Modifier,
             optional = !required
         )
+        hint?.invoke()
         entries.forEachIndexed { idx, (key, value) ->
             Row(
                 modifier = Modifier.fillMaxWidth(),

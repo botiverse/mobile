@@ -3443,6 +3443,7 @@
     <string name="runtime_form_v2_effort_unreadable">無法讀取推理強度等級：%1$s</string>
     <string name="runtime_form_v2_use_custom">使用「%1$s」</string>
     <string name="runtime_form_v2_custom_value">自訂</string>
+    <string name="runtime_form_v2_saved_value_not_in_list">已儲存的值 %1$s 不在目前的清單中。在你改選其他項目之前，會繼續保持選取。</string>
     <string name="runtime_form_v2_secret_keep_hint">留空即可保留目前的值。</string>
     <string name="runtime_form_v2_load_failed">無法載入執行環境表單（%1$s）。</string>
     <string name="runtime_form_v2_unavailable">無法取得執行環境設定。</string>
