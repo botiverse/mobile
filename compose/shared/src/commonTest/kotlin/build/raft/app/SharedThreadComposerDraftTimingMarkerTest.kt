@@ -124,14 +124,19 @@ class SharedThreadComposerDraftTimingMarkerTest {
         assertEquals(2, journal.size, "lines=$lines")
         assertTrue(journal.all { JournalCostLine.matches(it) }, "lines=$journal")
         assertEquals(listOf("len=12", "len=13"), journal.map { it.substringAfterLast(' ') })
+        // Each change's marker comes first (the moment it arrived), then its journal line with the same seq.
+        assertEquals(
+            listOf("change_received seq=1", "draft_journal_written seq=1", "change_received seq=2", "draft_journal_written seq=2"),
+            lines.filter { it.startsWith("change_received ") || it.startsWith("draft_journal_written ") }.map { it.split(' ').take(2).joinToString(" ") },
+        )
         assertTrue(lines.none { "secret" in it }, "lines=$lines")
     }
 
     @Test
     fun theJournalCostLineHasTheShapeTheAcceptanceScriptParses() {
         assertEquals(
-            "draft_journal_written path=sync costUs=1234 len=7",
-            raftDraftJournalCostLine(1234.microseconds, 7),
+            "draft_journal_written seq=3 path=sync costUs=1234 len=7",
+            raftDraftJournalCostLine(3, 1234.microseconds, 7),
         )
     }
 
@@ -162,7 +167,7 @@ class SharedThreadComposerDraftTimingMarkerTest {
 
         store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "secret"))
 
-        assertEquals(listOf("draft_journal_write_failed len=6", "change_received seq=1 len=6"), lines)
+        assertEquals(listOf("change_received seq=1 len=6", "draft_journal_write_failed seq=1 len=6"), lines)
     }
 
     /** The change / durable-write lines, without the crash journal's cost lines. */
@@ -204,6 +209,6 @@ class SharedThreadComposerDraftTimingMarkerTest {
 
     private companion object {
         const val IntervalMillis = 40L
-        val JournalCostLine = Regex("""^draft_journal_written path=sync costUs=\d+ len=\d+$""")
+        val JournalCostLine = Regex("""^draft_journal_written seq=\d+ path=sync costUs=\d+ len=\d+$""")
     }
 }

@@ -24,7 +24,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { channelActivityReport, createLogcatStats, forEachLogLine, isEvidenceLine, wrapUpVerdict, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
+import { channelActivityReport, parseMessagesResponse, createLogcatStats, forEachLogLine, isEvidenceLine, wrapUpVerdict, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, value, index, all) => {
@@ -281,11 +281,17 @@ async function raftJson(method, pathname, { token, serverId, body } = {}) {
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(30_000),
   });
+  // Text first: an empty or unparsable body is reported as such (parseError), never as an empty list.
   let json = null;
+  let parseError = false;
   try {
-    json = await response.json();
-  } catch {}
-  return { status: response.status, json };
+    const text = await response.text();
+    json = text.trim() ? JSON.parse(text) : null;
+    if (json == null) parseError = true;
+  } catch {
+    parseError = true;
+  }
+  return { status: response.status, json, parseError };
 }
 
 async function apiLogin() {
@@ -362,23 +368,25 @@ async function archiveRunChannel(api) {
 
 async function channelMessages(api, limit = 100) {
   const res = await raftJson("GET", `messages/channel/${api.channel.id}?limit=${limit}`, { token: api.token, serverId: api.server.id });
-  return { status: res.status, rows: listOf(res.json, "messages") };
+  return parseMessagesResponse(res.status, res.json, res.parseError);
 }
 
 /** The server's copy of this run's marker message: id, exact text and createdAt (the marker is ours, not user content). */
 async function markerMessage(api, marker) {
   const at = new Date().toISOString();
   try {
-    const { status, rows } = await channelMessages(api, 30);
-    if (status !== 200) return { at, http: status, message: null };
+    const { status, ok, rows, problem } = await channelMessages(api, 30);
+    // Only a recognisable messages array is a successful query; anything else is "unavailable".
+    if (!ok) return { at, http: status, ok: false, problem, message: null };
     const m = rows.find((r) => String(r?.content ?? "").includes(marker));
     return {
       at,
       http: status,
+      ok: true,
       message: m ? { id: m.id ?? null, text: String(m.content), created_at: m.createdAt ?? m.created_at ?? null, random_id: m.randomId ?? null } : null,
     };
   } catch (error) {
-    return { at, http: `error: ${String(error?.name ?? "error")}`, message: null };
+    return { at, http: `error: ${String(error?.name ?? "error")}`, ok: false, message: null };
   }
 }
 
@@ -389,8 +397,8 @@ async function markerMessage(api, marker) {
  */
 const ACTIVITY_LIMIT = 100;
 async function channelActivityCheck(api) {
-  const { status, rows } = await channelMessages(api, ACTIVITY_LIMIT);
-  return channelActivityReport({ status, rows, limit: ACTIVITY_LIMIT, runTag: `dk${RUN_TAG}`, selfId: api.selfId });
+  const { status, ok, problem, rows } = await channelMessages(api, ACTIVITY_LIMIT);
+  return channelActivityReport({ status, ok, problem, rows, limit: ACTIVITY_LIMIT, runTag: `dk${RUN_TAG}`, selfId: api.selfId });
 }
 
 // ---------- sign-in (as android_realtime_e2e.mjs) ----------
@@ -684,7 +692,7 @@ async function killRun(api, { group, mode, delaySec }) {
       const queries = [];
       const query = async (phase) => {
         const q = await markerMessage(api, expected);
-        queries.push({ phase, at: q.at, http: q.http, found: Boolean(q.message) });
+        queries.push({ phase, at: q.at, http: q.http, ok: q.ok, ...(q.problem ? { problem: q.problem } : {}), found: Boolean(q.message) });
         return q;
       };
       const beforeRelaunch = await query("before relaunch");
@@ -700,7 +708,7 @@ async function killRun(api, { group, mode, delaySec }) {
       }
       record.server_queries = queries;
       record.server_message = found ?? null;
-      const allQueriesFailed = queries.every((q) => q.http !== 200);
+      const allQueriesFailed = queries.every((q) => !q.ok);
       // The app's own trace of a re-send by the pending-send journal after the restart.
       const drained = linesSince(relaunchMark).filter((l) => l.includes("thread_pending_send_drained "));
       record.drainer_trace = drained.map((l) => /thread_pending_send_drained .*$/.exec(l)?.[0] ?? l.trim());
@@ -714,9 +722,9 @@ async function killRun(api, { group, mode, delaySec }) {
             : "observed after the relaunch (mechanism unconfirmed)"
         : allQueriesFailed
           ? "query unavailable"
-          : queries.at(-1)?.http === 200 && queries.filter((q) => q.phase === "after relaunch").every((q) => q.http === 200)
+          : queries.at(-1)?.ok && queries.filter((q) => q.phase === "after relaunch").every((q) => q.ok)
             ? "not observed by the deadline (15 s after relaunch; every query succeeded)"
-            : `unknown (queries unavailable after ${queries.filter((q) => q.http === 200).at(-1)?.at ?? "the start"})`;
+            : `unknown (queries unavailable after ${queries.filter((q) => q.ok).at(-1)?.at ?? "the start"})`;
       record.sent_on_server = Boolean(found);
       record.observed_desc = describeText(seen);
       relaunchIdentity(record, oldPid, startTime, mark);
@@ -1030,8 +1038,10 @@ async function main() {
       `## Draft kill timing (task #246)\n\nResult: **${summary.result}**${summary.failed_step ? ` (failed at ${summary.failed_step}: ${summary.error})` : ""}\n\n` +
       (summary.unmet?.length ? `Unmet conditions:\n${summary.unmet.map((u) => `- ${u}`).join("\n")}\n\n` : "") +
       (summary.unconfirmed?.length ? `Unconfirmed (no pass without them):\n${summary.unconfirmed.map((u) => `- ${u}`).join("\n")}\n\n` : "") +
-      (summary.journal_coverage ? `Crash-journal coverage: ${summary.journal_coverage.edits} edits (change_received), ${summary.journal_coverage.samples} cost samples, ` +
-        `${summary.journal_coverage.failures} write failures, ${summary.journal_coverage.missing} missing (allowed ${summary.journal_coverage.allowed_missing}).\n\n` : "") +
+      (summary.journal_coverage ? `Crash-journal coverage, paired by (process, seq): ${summary.journal_coverage.edits} edits (change_received), ` +
+        `${summary.journal_coverage.paired} with a cost line, ${summary.journal_coverage.failures} write failures, ${summary.journal_coverage.interrupted} interrupted by a kill ` +
+        `(last edit of a process, no journal line), ${summary.journal_coverage.missing} missing (allowed ${summary.journal_coverage.allowed_missing}), ` +
+        `${summary.journal_coverage.unpaired} unpaired journal lines.\n\n` : "") +
       `Exit interval on the device clock (logcat -v monotonic): lower = latest pre-signal line of the run's own kill (AM "Killing" / am_kill "stop <pkg>"; ` +
       `recents swipe: also "remove task"), upper = earliest evidence of death (device-side /proc poll: gone or zombie; am_proc_died; cgroup empty). ` +
       `Exit Δ = interval − last change_received uptimeMs (b: − the send_tap probe logged right before the tap). A sample is valid for a bucket only when ` +

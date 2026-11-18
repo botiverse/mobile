@@ -6,15 +6,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { acceptanceUnmet, channelActivityReport, createLogcatStats, forEachLogLine, isEvidenceLine, journalCoverage, wrapUpVerdict } from "./draft_kill_timing_analysis.mjs";
+import { acceptanceUnmet, channelActivityReport, createLogcatStats, forEachLogLine, isEvidenceLine, journalCoverage, parseMessagesResponse, wrapUpVerdict } from "./draft_kill_timing_analysis.mjs";
 
 const PKG = "build.raft.app.alpha";
 const PID = 4242;
 const line = (sec, pid, tag, message) => `${sec.toFixed(3).padStart(10)}  ${pid}  ${pid} I ${tag}: ${message}`;
-const journal = (sec, costUs) => line(sec, PID, "RaftDraftTiming", `draft_journal_written path=sync costUs=${costUs} len=3 uptimeMs=${Math.round(sec * 1000)}`);
-const change = (sec, seq) => line(sec, PID, "RaftDraftTiming", `change_received seq=${seq} len=3 uptimeMs=${Math.round(sec * 1000)}`);
-/** One typed edit as the app logs it: the journal's cost line, then change_received, from the same call. */
-const edit = (sec, seq, costUs) => [journal(sec, costUs), change(sec, seq)];
+const journal = (sec, costUs, seq = 1, pid = PID) => line(sec, pid, "RaftDraftTiming", `draft_journal_written seq=${seq} path=sync costUs=${costUs} len=3 uptimeMs=${Math.round(sec * 1000)}`);
+const journalFailed = (sec, seq, pid = PID) => line(sec, pid, "RaftDraftTiming", `draft_journal_write_failed seq=${seq} len=3 uptimeMs=${Math.round(sec * 1000)}`);
+const change = (sec, seq, pid = PID) => line(sec, pid, "RaftDraftTiming", `change_received seq=${seq} len=3 uptimeMs=${Math.round(sec * 1000)}`);
+/** One typed edit as the app logs it: change_received (the arrival), then its journal cost line, same seq. */
+const edit = (sec, seq, costUs, pid = PID) => [change(sec, seq, pid), journal(sec, costUs, seq, pid)];
 const config = { runsPerBucket: 1, fastRuns: 1, env: {} };
 const RUN_TAG = "dk12345";
 const ourMessage = (i) => ({ id: `m${i}`, content: `${RUN_TAG} send ${i}`, senderId: "qa", createdAt: `2026-11-18T10:00:0${i}Z` });
@@ -168,22 +169,63 @@ test("the channel concurrency check gates the run: other activity, a failed or a
   assert.equal(verdict({ error: "fetch failed" }).result, "unconfirmed");
 });
 
-test("the crash-journal gate needs samples for the edits: missing samples are unconfirmed, a write failure fails", () => {
-  assert.deepEqual(journalCoverage({ edits: 200, samples: 198, failures: 0 }), { edits: 200, samples: 198, failures: 0, missing: 2, allowed_missing: 2, covered: true });
-  assert.equal(journalCoverage({ edits: 200, samples: 197, failures: 0 }).covered, false);
-  assert.equal(journalCoverage({ edits: 0, samples: 0, failures: 0 }).covered, false);
+test("journal coverage pairs by (process, seq): a kill during the last journal write is not a missing sample", () => {
+  assert.deepEqual(journalCoverage({ edits: 200, paired: 198, failures: 0, missing: 2 }), { edits: 200, paired: 198, failures: 0, interrupted: 0, missing: 2, unpaired: 0, allowed_missing: 2, covered: true });
+  assert.equal(journalCoverage({ edits: 200, paired: 197, failures: 0, missing: 3 }).covered, false);
+  assert.equal(journalCoverage({ edits: 0, paired: 0, failures: 0, missing: 0 }).covered, false);
 
-  // Three edits, one cost sample: more than 1% missing.
-  const sparse = wrapUpVerdict(timingsPass(), statsOf([...edit(1, 1, 100), change(2, 2), change(3, 3)]), config);
-  assert.equal(sparse.result, "unconfirmed");
-  assert.deepEqual(sparse.journal_coverage, { edits: 3, samples: 1, failures: 0, missing: 2, allowed_missing: 0, covered: false });
-  assert.match(sparse.unconfirmed.join("\n"), /1 samples for 3 edits, 2 missing/);
+  // Killed during the journal write of its last edit: the marker is there, the cost line is not.
+  const killed = wrapUpVerdict(timingsPass(), statsOf([...edit(1, 1, 100), ...edit(2, 2, 110), change(3, 3), ...edit(4, 1, 90, 5000)]), config);
+  assert.equal(killed.result, "pass", JSON.stringify(killed.unconfirmed));
+  assert.deepEqual(killed.journal_coverage, { edits: 4, paired: 3, failures: 0, interrupted: 1, missing: 0, unpaired: 0, allowed_missing: 0, covered: true });
+});
 
-  const failed = wrapUpVerdict(
-    timingsPass(),
-    statsOf([...edit(1, 1, 100), line(2, PID, "RaftDraftTiming", "draft_journal_write_failed len=4 uptimeMs=2000"), change(2, 2)]),
-    config,
-  );
+test("journal coverage: a missing sample mid-run is unconfirmed even when extra lines of other changes make the totals match", () => {
+  // Edit 2 has no cost line; edit 1 logged two and a line of seq 9 has no edit. Totals: 3 edits, 3 cost lines.
+  const lines = [change(1, 1), journal(1, 100, 1), journal(1.1, 100, 1), change(2, 2), journal(2.5, 100, 9), ...edit(3, 3, 100)];
+  const masked = wrapUpVerdict(timingsPass(), statsOf(lines), config);
+  assert.equal(masked.result, "unconfirmed");
+  assert.deepEqual(masked.journal_coverage, { edits: 3, paired: 2, failures: 0, interrupted: 0, missing: 1, unpaired: 1, allowed_missing: 0, covered: false });
+  assert.match(masked.unconfirmed.join("\n"), /2 paired of 3 edits, 1 missing/);
+
+  // The same seq in another process is another change.
+  const otherProcess = statsOf([...edit(1, 1, 100), change(2, 2), journal(2, 100, 2, 5000), ...edit(3, 3, 100)]).journal_coverage;
+  assert.equal(otherProcess.missing, 1);
+  assert.equal(otherProcess.unpaired, 1);
+});
+
+test("a failed journal write fails the run, paired or not", () => {
+  const failed = wrapUpVerdict(timingsPass(), statsOf([...edit(1, 1, 100), change(2, 2), journalFailed(2, 2), ...edit(3, 3, 100)]), config);
   assert.equal(failed.result, "fail");
   assert.deepEqual(failed.unmet, ["crash-journal write failed 1 time(s) (draft_journal_write_failed)"]);
+  assert.equal(failed.journal_coverage.missing, 0);
+});
+
+test("a channel read counts only as a messages array: empty body, malformed JSON and other shapes are unavailable", () => {
+  const read = (status, json, parseError) => {
+    const r = parseMessagesResponse(status, json, parseError);
+    return channelActivityReport({ ...r, limit: 100, runTag: RUN_TAG, selfId: "qa" });
+  };
+  const emptyBody = read(200, null, true);
+  // raftJson reads the body as text: an empty one and malformed JSON both arrive as json=null, parseError=true.
+  const malformed = read(200, null, true);
+  const wrongShape = read(200, { items: [] });
+  const nullMessages = read(200, { messages: null });
+  for (const r of [emptyBody, malformed, wrongShape, nullMessages]) {
+    assert.equal(r.other_activity, null);
+    assert.equal(r.coverage.complete, false);
+    assert.equal(wrapUpVerdict({ ...timingsPass(), channel_activity: r }, statsOf(edit(1, 1, 100)), config).result, "unconfirmed");
+  }
+  assert.match(emptyBody.coverage.reason, /empty or unparsable body/);
+  assert.match(wrongShape.coverage.reason, /without a messages array/);
+
+  // Only a real (empty) array is an empty channel.
+  for (const body of [[], { messages: [] }]) {
+    const empty = read(200, body);
+    assert.equal(empty.other_activity, 0);
+    assert.equal(empty.coverage.complete, true);
+    assert.equal(wrapUpVerdict({ ...timingsPass(), channel_activity: empty }, statsOf(edit(1, 1, 100)), config).result, "pass");
+  }
+  assert.deepEqual(parseMessagesResponse(200, [], false), { status: 200, ok: true, rows: [] });
+  assert.equal(parseMessagesResponse(500, [], false).ok, false);
 });
