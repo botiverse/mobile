@@ -32,6 +32,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { ENVIRONMENTS } from "./release_auto_login_lib.mjs";
+import { detectForeignAndroidSystemBlocker } from "./system_blocker.mjs";
 
 export const RECORD = "login-record.json";
 const CONTRACT = "qa-login-record/v1";
@@ -148,9 +149,14 @@ function loginControls(nodes, pkg) {
   const chromeSetup = chrome.filter((n) => n.enabled && n.id.startsWith(`${CHROME}:id/`));
   const button = (label) => chrome.find((n) => n.cls === "android.widget.Button" && !n.id.startsWith(`${CHROME}:id/`) && labelIs(n, label));
   const saveTitle = chromeSetup.find((n) => labelIs(n, /^(Save (?:this )?password(?: to Google(?: Password Manager)?)?\??)$/i));
-  const crashDialog = screen.some((n) => n.pkg === "android" && n.id === "android:id/aerr_close");
+  const systemDialog = screen.filter((n) => n.pkg === "android");
+  const errorDialog = systemDialog.some((n) => n.id === "android:id/aerr_close");
+  const waitControl = systemDialog.some((n) => n.id === "android:id/aerr_wait");
+  const errorSurface = waitControl ? "system-app-anr" : "system-app-error";
+  const systemBlocker = errorDialog && waitControl && detectForeignAndroidSystemBlocker(systemDialog.map((n) => ({ ...n, resourceId: n.id })));
   return {
-    surface: crashDialog ? "system-app-error" : chrome.length ? "chrome" : screen.some((n) => n.pkg === pkg) ? "app" : screen.length ? "other" : "unreadable",
+    systemBlocker: systemBlocker?.code,
+    surface: errorDialog ? errorSurface : chrome.length ? "chrome" : screen.some((n) => n.pkg === pkg) ? "app" : screen.length ? "other" : "unreadable",
     savePasswordPrompt: Boolean(saveTitle),
     dismissSave: saveTitle && saveTitle.id !== `${CHROME}:id/message_title` && chromeSetup.find((n) =>
       n.id === `${CHROME}:id/negative_button` && n.cls === "android.widget.Button" && labelIs(n, /^(Never|Not now|No,? thanks|Cancel|Dismiss)$/i)),
@@ -175,6 +181,8 @@ function failureUi(controls, lastAction, reason) {
   const dump = { format: "android-login-ui/v1", lastAction, reason, surface: controls?.surface ?? "unobserved" };
   if (controls) {
     dump.message = controls.message;
+    if (controls.affectedProcess) dump.affectedProcess = controls.affectedProcess;
+    if (controls.systemBlocker) dump.systemBlocker = controls.systemBlocker;
     dump.savePasswordPrompt = controls.savePasswordPrompt;
     dump.passwordInputVisible = controls.passwordInputVisible;
     for (const key of ["consent", "launch", "setup", "email", "password", "submit", "confirm", "openApp", "systemReturn"]) dump[key] = state(controls[key]);
@@ -204,6 +212,21 @@ async function chromeAtOrigin(adb, origin) {
   } finally {
     adb("forward", "--remove", `tcp:${port}`);
   }
+}
+
+function androidErrorOwner(adb, pkg) {
+  // Android names the affected process in the focused framework dialog's window title.
+  // An arbitrary process name or an unrelated foreground application must never enter the report.
+  let focus;
+  try { focus = adb("shell", "dumpsys", "window").split("\n").find((l) => l.includes("mCurrentFocus=Window{")); } catch { return "unknown"; }
+  const owner = / u\d+ Application (?:Not Responding|Error): ([A-Za-z][\w.:_-]*)\}/.exec(focus ?? "")?.[1];
+  if (!owner) return "unknown";
+  if (owner === pkg || owner.startsWith(`${pkg}:`)) return "app";
+  if (owner === CHROME || owner.startsWith(`${CHROME}:`)) return "chrome";
+  if (owner === "com.android.systemui") return "system-ui";
+  if (owner === "system" || owner === "system_server") return "android-system";
+  if (owner === "com.google.android.apps.nexuslauncher") return "pixel-launcher";
+  return "other";
 }
 
 function clearLoginStores(adb) {
@@ -274,7 +297,10 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
       // If the read throws, the failure dump must not present the preceding screen as current.
       controls = undefined;
       controls = loginControls(parseUiNodes(adb("exec-out", "uiautomator", "dump", "/dev/tty")), pkg);
-      if (controls.surface === "system-app-error") return unknown("Android is showing an app crash dialog");
+      if (controls.surface === "system-app-error" || controls.surface === "system-app-anr") {
+        controls.affectedProcess = androidErrorOwner(adb, pkg);
+        return unknown(controls.surface === "system-app-anr" ? "Android is showing an app-not-responding dialog" : "Android is showing an app error dialog");
+      }
       if (Date.now() > deadline) return unknown(submittedAt && controls.savePasswordPrompt ? SAVE_PROMPT_BLOCKED : "no login-complete receipt");
       if (submittedAt) {
         if (controls.savePasswordPrompt) {
