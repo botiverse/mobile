@@ -1,5 +1,10 @@
 package build.raft.app.data
 
+import build.raft.app.resources.RawStringDesc
+import build.raft.app.resources.ResourceFormattedStringDesc
+import build.raft.app.resources.ResourceStringDesc
+import build.raft.app.resources.StringDesc
+import build.raft.app.resources.desc
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -195,7 +200,7 @@ class IosMobileOAuthCoordinatorTest {
             identityToken = "expired-token",
         )
         assertEquals("settings_account", expired.status)
-        assertTrue(expired.message.orEmpty().contains("expired", ignoreCase = true))
+        assertEquals("auth_error_mobile_oauth_request_expired", expired.message)
         assertNull(runtime.authorizedNativeApple)
 
         nowMillis = 1_000L
@@ -212,7 +217,7 @@ class IosMobileOAuthCoordinatorTest {
             identityToken = "environment-token",
         )
         assertEquals("settings_account", wrongEnvironment.status)
-        assertTrue(wrongEnvironment.message.orEmpty().contains("environment", ignoreCase = true))
+        assertEquals("auth_error_mobile_oauth_environment_changed", wrongEnvironment.message)
         assertNull(runtime.authorizedNativeApple)
         assertNull(fixture.pendingStore.read())
     }
@@ -291,7 +296,7 @@ class IosMobileOAuthCoordinatorTest {
         val result = fixture.coordinator.complete(fixture.callback(code = "expired-handoff"))
 
         assertEquals("settings_account", result.status)
-        assertTrue(result.message.orEmpty().contains("expired", ignoreCase = true))
+        assertEquals("auth_error_mobile_oauth_request_expired", result.message)
         assertEquals(0, runtime.linkCompleteCount)
         assertNull(fixture.pendingStore.read())
     }
@@ -299,17 +304,58 @@ class IosMobileOAuthCoordinatorTest {
     @Test
     fun typedConflictCodesKeepExistingAccountGuidanceDistinctFromOtherUserConflict() {
         fun message(error: String, provider: String = "google"): String =
-            iosMobileOAuthProviderErrorMessage(
-                provider = provider,
-                mode = "link",
-                error = error,
-                accountConflictMessage = { providerName -> "password_then_settings:$providerName" },
-                providerConflictMessage = { providerName -> "other_user:$providerName" },
+            testMessageKey(
+                iosMobileOAuthProviderErrorMessage(
+                    provider = provider,
+                    mode = "link",
+                    error = error,
+                    accountConflictMessage = { providerName -> "password_then_settings:$providerName" },
+                    providerConflictMessage = { providerName -> "other_user:$providerName" },
+                )
             )
 
         assertEquals("password_then_settings:Google", message("account_conflict"))
         assertEquals("other_user:Google", message("provider_conflict"))
         assertEquals("password_then_settings:Social", message("account_conflict", "unexpected"))
+    }
+
+    @Test
+    fun providerErrorCodesReadAsCatalogCopyNeverAsTheCode() {
+        fun message(error: String, mode: String = "link"): String =
+            testMessageKey(iosMobileOAuthProviderErrorMessage(provider = "github", mode = mode, error = error))
+
+        assertEquals("auth_notice_mobile_oauth_link_cancelled(GitHub)", message("access_denied"))
+        assertEquals("auth_notice_mobile_oauth_sign_in_cancelled(GitHub)", message("user_cancelled", mode = "login"))
+        assertEquals("auth_error_mobile_oauth_request_expired", message("handoff_code_consumed"))
+        assertEquals("auth_error_registration_disabled", message("registration_disabled"))
+        assertEquals("auth_error_runtime_starting", message("runtime_not_ready"))
+        assertEquals("auth_error_mobile_oauth_link_failed(GitHub)", message("provider_failed"))
+        assertEquals("auth_error_mobile_oauth_sign_in_failed(GitHub)", message("browser_failed", mode = "login"))
+    }
+
+    @Test
+    fun linkResultsCarryLocalizedCopyAndTheServersOwnWordsOnlyWhenItSentSome() = runBlocking {
+        val runtime = FakeRuntime(environmentKey = "production")
+        val fixture = fixture(runtime)
+        fixture.startLink()
+        assertEquals(
+            "auth_notice_mobile_oauth_linked(Google)",
+            fixture.coordinator.complete(fixture.callback(code = "linked-handoff")).message
+        )
+
+        fixture.startLink()
+        runtime.linkOutcome = IosMobileOAuthLinkOutcome.Unauthenticated
+        assertEquals(
+            "auth_error_mobile_oauth_link_sign_in_again(Google)",
+            fixture.coordinator.complete(fixture.callback(code = "signed-out-handoff")).message
+        )
+
+        fixture.startLink()
+        runtime.linkOutcome = IosMobileOAuthLinkOutcome.Failure("Handoff code already used".desc())
+        assertEquals(
+            "Handoff code already used",
+            fixture.coordinator.complete(fixture.callback(code = "server-message-handoff")).message
+        )
     }
 
     @Test
@@ -363,7 +409,7 @@ class IosMobileOAuthCoordinatorTest {
         val result = fixture.coordinator.complete(fixture.callback(code = "wrong-environment-handoff"))
 
         assertEquals("settings_account", result.status)
-        assertTrue(result.message.orEmpty().contains("environment", ignoreCase = true))
+        assertEquals("auth_error_mobile_oauth_environment_changed", result.message)
         assertEquals(0, runtime.linkCompleteCount)
         assertNull(fixture.pendingStore.read())
     }
@@ -377,6 +423,7 @@ class IosMobileOAuthCoordinatorTest {
             pendingStore = pendingStore,
             runtimeProvider = { availableRuntime },
             nowMillis = { 1_000L },
+            resolveMessage = ::testMessageKey,
         )
         val start = coordinator.startBrowser(
             provider = "google",
@@ -406,7 +453,7 @@ class IosMobileOAuthCoordinatorTest {
         assertEquals("generation-1", pendingStore.read()?.generation)
         val cancelled = coordinator.cancel(retry.generation.orEmpty(), "runtime_not_ready")
         assertEquals("settings_account", cancelled.status)
-        assertTrue(cancelled.message.orEmpty().contains("still starting", ignoreCase = true))
+        assertEquals("auth_error_runtime_starting", cancelled.message)
         assertNull(pendingStore.read())
     }
 
@@ -420,6 +467,7 @@ class IosMobileOAuthCoordinatorTest {
                 pendingStore = pendingStore,
                 runtimeProvider = { availableRuntime },
                 nowMillis = { 1_000L },
+                resolveMessage = ::testMessageKey,
             )
         val start =
             coordinator.startNativeApple(
@@ -465,7 +513,7 @@ class IosMobileOAuthCoordinatorTest {
         assertEquals("generation-1", fixture.pendingStore.read()?.generation)
         val cancelled = fixture.coordinator.cancel("generation-1", "provider_cancelled")
         assertEquals("settings_account", cancelled.status)
-        assertTrue(cancelled.message.orEmpty().contains("cancelled", ignoreCase = true))
+        assertEquals("auth_notice_mobile_oauth_link_cancelled(Google)", cancelled.message)
         assertNull(fixture.pendingStore.read())
     }
 
@@ -480,6 +528,7 @@ class IosMobileOAuthCoordinatorTest {
                 pendingStore = pendingStore,
                 runtimeProvider = { runtime },
                 nowMillis = nowMillis,
+                resolveMessage = ::testMessageKey,
             ),
         )
     }
@@ -626,3 +675,11 @@ class IosMobileOAuthCoordinatorTest {
         val Challenge = "b".repeat(43)
     }
 }
+
+/** The resource key a message names (with its arguments), so assertions need no string catalog. */
+private fun testMessageKey(desc: StringDesc): String =
+    when (desc) {
+        is ResourceStringDesc -> desc.stringRes.key
+        is ResourceFormattedStringDesc -> desc.stringRes.key + desc.args.joinToString(prefix = "(", postfix = ")")
+        is RawStringDesc -> desc.string
+    }

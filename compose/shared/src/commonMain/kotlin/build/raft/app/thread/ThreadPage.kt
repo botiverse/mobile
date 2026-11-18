@@ -4629,14 +4629,22 @@ private fun SharedThreadRouteContentContent(
                         attachmentOpenStates +
                             (attachment.id to ThreadAttachmentOpenUiState(
                                 status = result.status,
-                                message = result.message,
                                 downloadId = downloadId
                             ))
+                    val failure =
+                        raftAttachmentSaveFailure(result.status, RaftAttachmentSaveDestination.Downloads)
+                            ?: RaftAttachmentSaveFailure.UnableToDownload
+                    bridge.log(
+                        "thread_attachment_save_failed attachment=${attachment.id.take(8)} " +
+                            "status=${raftAttachmentOpenDiagnosticStatus(result.status)} " +
+                            "errorKind=${raftAttachmentOpenDiagnosticErrorKind(result.errorKind)} " +
+                            "failure=${failure.name} message=${raftAttachmentHostMessageForLog(result.message)}"
+                    )
                     bridge.toast(
-                        when (result.status) {
-                            "download_failed" -> attachmentOpenResultTerms.downloadFailed
-                            "storage_failed" -> attachmentOpenResultTerms.storageUnavailable
-                            else -> result.message.ifBlank { unableToDownloadAttachmentLabel }
+                        when (failure) {
+                            RaftAttachmentSaveFailure.DownloadFailed -> attachmentOpenResultTerms.downloadFailed
+                            RaftAttachmentSaveFailure.StorageUnavailable -> attachmentOpenResultTerms.storageUnavailable
+                            else -> unableToDownloadAttachmentLabel
                         }
                     )
                     attachmentOperationTokens = attachmentOperationTokens - attachment.id

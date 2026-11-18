@@ -61,7 +61,10 @@ data class RaftDownloadEntry(
     /** Bytes are being copied into the public Downloads folder after the transfer. */
     val saving: Boolean = false,
     val errorKind: RaftDownloadErrorKind? = null,
+    /** The host's own words for a failure (platform English): kept for diagnosis, never shown. */
     val errorMessage: String? = null,
+    /** The host's status word for a failure (`download_failed`, `storage_failed`): what the row says. */
+    val errorHostStatus: String? = null,
     /** Host location of the finished file (Android `content://` URI in Downloads), if known. */
     val localUri: String? = null,
     val createdAtMillis: Long,
@@ -327,6 +330,7 @@ class RaftDownloadCenter internal constructor(
                         saving = false,
                         errorKind = null,
                         errorMessage = null,
+                        errorHostStatus = null,
                         updatedAtMillis = nowMillis()
                     )
                 }
@@ -344,6 +348,7 @@ class RaftDownloadCenter internal constructor(
                         saving = false,
                         errorKind = RaftDownloadErrorKind.Failed,
                         errorMessage = outcome.message?.takeIf { it.isNotBlank() },
+                        errorHostStatus = outcome.hostStatus,
                         updatedAtMillis = nowMillis()
                     )
             }
@@ -375,7 +380,8 @@ class RaftDownloadCenter internal constructor(
                 status = RaftDownloadStatus.Failed,
                 saving = false,
                 errorKind = RaftDownloadErrorKind.Interrupted,
-                errorMessage = null
+                errorMessage = null,
+                errorHostStatus = null
             )
         } else {
             entry

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.resources.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.SupervisorJob
@@ -672,7 +673,7 @@ class SharedAuthGateStoreTest {
 
         val state = store.state.value
         assertTrue(state is SharedAuthGateState.Error)
-        assertEquals("Could not restore session. Retry or sign in again.", state.message)
+        assertEquals(Res.string.auth_error_restore_session.desc(), state.message)
         assertContains(logs, "auth_gate_restore_exception errorType=IllegalStateException mapped=restore_error")
         assertContains(logs, "auth_gate_state source=restore_exception state=error selectedServer=false")
         scope.cancel()

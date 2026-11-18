@@ -5475,9 +5475,9 @@ internal class RaftBridgeModule(
                                 AndroidMobileOAuthPendingStore(appContext).clear()
                                 val message =
                                         if (throwable is ActivityNotFoundException) {
-                                            "No browser can open ${provider.socialProviderDisplayName()} account linking"
+                                            RaftHostStrings.mobileOAuthLinkNoBrowser(provider.socialProviderDisplayName())
                                         } else {
-                                            "Unable to open ${provider.socialProviderDisplayName()} account linking"
+                                            RaftHostStrings.mobileOAuthLinkOpenFailed(provider.socialProviderDisplayName())
                                         }
                                 showRaftHostToast(appContext, message)
                                 callback?.invoke(
@@ -6219,7 +6219,7 @@ internal class RaftBridgeModule(
                                 DownloadManager.STATUS_PAUSED -> {
                                     HandsInstallResult(
                                             statusLabel = "Downloading",
-                                            detail = "Raft is downloading the update APK. The button will change to Install when the download is ready.",
+                                            detail = RaftHostStrings.appUpdateDownloading(),
                                             actionLabel = "Downloading"
                                     )
                                 }
@@ -6236,11 +6236,13 @@ internal class RaftBridgeModule(
                 .getOrElse { error ->
                     RaftAppLog.record(
                             "SlockHandsUpdate",
-                            "install_failed slug=${BuildConfig.HANDS_APP_SLUG} latest=${response.latest?.version_code ?: 0} error=${error.javaClass.simpleName}"
+                            "install_failed slug=${BuildConfig.HANDS_APP_SLUG} latest=${response.latest?.version_code ?: 0} " +
+                                    "error=${error.javaClass.simpleName} message=${error.message ?: "-"}"
                     )
                     HandsInstallResult(
                             statusLabel = "Install failed",
-                            detail = error.message ?: "Unable to download or install the Hands APK.",
+                            // The platform's own words (English) stay in the log above.
+                            detail = RaftHostStrings.appUpdateInstallFailed(),
                             actionLabel = "Download",
                             errorCode = error.javaClass.simpleName
                     )
@@ -6337,7 +6339,7 @@ internal class RaftBridgeModule(
                 tracked.completed = true
                 HandsInstallResult(
                         statusLabel = "Install",
-                        detail = "Raft update downloaded. Tap Install to open Android installer.",
+                        detail = RaftHostStrings.appUpdateDownloaded(),
                         actionLabel = "Install"
                 )
             }
@@ -6346,7 +6348,7 @@ internal class RaftBridgeModule(
             DownloadManager.STATUS_PAUSED ->
                 HandsInstallResult(
                         statusLabel = "Downloading",
-                        detail = "Raft is downloading the update APK. The button will change to Install when the download is ready.",
+                        detail = RaftHostStrings.appUpdateDownloading(),
                         actionLabel = "Downloading"
                 )
             else -> {
@@ -6386,7 +6388,7 @@ internal class RaftBridgeModule(
         emitHandsUpdateStatusEvent()
         return HandsInstallResult(
                 statusLabel = "Downloading",
-                detail = "Raft update download started. The button will change to Install when the APK is ready.",
+                detail = RaftHostStrings.appUpdateDownloading(),
                 actionLabel = "Downloading"
         )
     }
@@ -6411,20 +6413,20 @@ internal class RaftBridgeModule(
                 HANDS_INSTALL_OPENED ->
                     HandsInstallResult(
                             statusLabel = "Install",
-                            detail = "Android installer opened for the downloaded Raft update.",
+                            detail = RaftHostStrings.appUpdateInstallerOpened(),
                             actionLabel = "Install"
                     )
                 HANDS_INSTALL_PERMISSION_REQUIRED ->
                     HandsInstallResult(
                             statusLabel = "Permission required",
-                            detail = "Raft update is downloaded. Allow Raft to install unknown apps, then return to continue installation.",
+                            detail = RaftHostStrings.appUpdateInstallPermissionRequired(),
                             actionLabel = "Install",
                             errorCode = "install_permission_required"
                     )
                 else ->
                     HandsInstallResult(
                             statusLabel = "Install failed",
-                            detail = "Raft update is downloaded, but Android installer could not be opened.",
+                            detail = RaftHostStrings.appUpdateInstallerFailed(),
                             actionLabel = "Install",
                             errorCode = "install_intent_failed"
                     )

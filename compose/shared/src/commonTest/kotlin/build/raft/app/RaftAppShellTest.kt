@@ -8,6 +8,9 @@ import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.AuthAuthorityChangedMessage
+import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.SharedAuthErrorCode
+import build.raft.app.resources.*
 import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.AuthSessionTerminalSnapshot
 import build.raft.app.data.HomeDirectMessageRow
@@ -4692,17 +4695,37 @@ class RaftAppShellTest {
 
     @Test
     fun createServerAuthorityDriftUsesLocalizedStaticMessage() {
-        assertTrue(
-            serverGateActionFailureMessage("__create__", AuthAuthorityChangedMessage) is
-                AuthGateMessage.Static
+        fun failure(message: String) = SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, message)
+        assertEquals(
+            AuthGateMessage.Static(Res.string.auth_error_session_changed_retry_create_server.desc()),
+            serverGateActionFailureMessage("__create__", failure(AuthAuthorityChangedMessage))
         )
         assertTrue(
-            serverGateActionFailureMessage("__create__", "network_timeout") is
+            serverGateActionFailureMessage("__create__", failure("network_timeout")) is
                 AuthGateMessage.Dynamic
         )
         assertTrue(
-            serverGateActionFailureMessage("server-1", AuthAuthorityChangedMessage) is
+            serverGateActionFailureMessage("server-1", failure(AuthAuthorityChangedMessage)) is
                 AuthGateMessage.Dynamic
+        )
+    }
+
+    @Test
+    fun serverGateShowsTheClientsLocalizedCopyOverItsLogMessage() {
+        // The client's own copy (display) wins; a server's words without it show as sent.
+        val localized =
+            SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "Server name is required.",
+                display = Res.string.auth_validation_server_name_required.desc()
+            )
+        assertEquals(
+            AuthGateMessage.Static(Res.string.auth_validation_server_name_required.desc()),
+            serverGateActionFailureMessage("__create__", localized)
+        )
+        assertEquals(
+            AuthGateMessage.Dynamic("Slug already taken"),
+            serverGateActionFailureMessage("__create__", SharedAuthResult.Failure(SharedAuthErrorCode.Validation, "Slug already taken"))
         )
     }
 

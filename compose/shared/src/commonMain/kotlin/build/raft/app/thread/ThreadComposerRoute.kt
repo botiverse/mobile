@@ -1039,7 +1039,12 @@ internal fun threadComposerImageAnnotationPayload(
                 firstFile.mimeType.orEmpty()
             ).filter { it.isNotBlank() }.joinToString(" · "),
         imageUrl = previewUri.takeIf { it.isNotBlank() },
-        message = if (previewUri.isBlank()) "Image preview is unavailable." else "",
+        messageDesc =
+            if (previewUri.isBlank()) {
+                Res.string.file_preview_error_image_unavailable.desc()
+            } else {
+                Res.string.file_preview_no_preview.desc()
+            },
         externalFileName = firstFile.fileName,
         externalMimeType = firstFile.mimeType.orEmpty(),
         imageGallery = files.map { file -> file.toComposerImageGalleryImage() },

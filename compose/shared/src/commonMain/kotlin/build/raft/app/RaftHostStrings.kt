@@ -74,6 +74,32 @@ object RaftHostStrings {
 
     fun ok(): String = resolve(Res.string.common_ok)
 
+    /** Sign-in fallback when a sign-in or linking result carries no message. */
+    fun signInFailed(): String = resolve(Res.string.auth_error_sign_in_failed)
+
+    fun runtimeStarting(): String = resolve(Res.string.auth_error_runtime_starting)
+
+    fun mobileOAuthLinkNoBrowser(providerName: String): String =
+        resolve(Res.string.auth_error_mobile_oauth_link_no_browser.format(listOf(providerName)))
+
+    fun mobileOAuthLinkOpenFailed(providerName: String): String =
+        resolve(Res.string.auth_error_mobile_oauth_link_open_failed.format(listOf(providerName)))
+
+    fun appUpdateDownloading(): String = resolve(Res.string.app_update_detail_downloading)
+
+    fun appUpdateDownloaded(): String = resolve(Res.string.app_update_detail_downloaded)
+
+    fun appUpdateInstallerOpened(): String = resolve(Res.string.app_update_detail_installer_opened)
+
+    fun appUpdateInstallPermissionRequired(): String = resolve(Res.string.app_update_detail_install_permission_required)
+
+    fun appUpdateInstallerFailed(): String = resolve(Res.string.app_update_detail_installer_failed)
+
+    fun appUpdateInstallFailed(): String = resolve(Res.string.app_update_detail_install_failed)
+
+    /** [desc] in the app language, for shared code that hands text to a native host. */
+    internal fun text(desc: StringDesc): String = resolve(desc)
+
     fun shareOpenFailed(): String = resolve(Res.string.share_open_failed)
 
     private fun resolve(resource: StringResource): String {

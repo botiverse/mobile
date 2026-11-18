@@ -42,7 +42,10 @@ import kotlinx.coroutines.channels.Channel
 
 internal data class ThreadAttachmentOpenResult(
     val status: String,
-    val message: String = ""
+    /** The host's own words (platform English), for the log only: the UI maps [status]. */
+    val message: String = "",
+    /** The host's failure category (`http_status`, `storage_publish`...), for the log. */
+    val errorKind: String = ""
 )
 
 @Composable
@@ -169,7 +172,7 @@ internal suspend fun saveSharedThreadAttachment(
     onProgress: ((build.raft.app.base.BridgeAttachmentDownloadProgress) -> Unit)? = null
 ): ThreadAttachmentOpenResult {
     val attachmentId = attachment.id.takeIf { it.isNotBlank() }
-        ?: return ThreadAttachmentOpenResult(status = "failed", message = "Unable to download attachment")
+        ?: return ThreadAttachmentOpenResult(status = "failed", message = "attachment_id_missing")
     return when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "attachment")) {
         is ThreadApiResult.Success -> {
             val nativeResult =
@@ -182,29 +185,20 @@ internal suspend fun saveSharedThreadAttachment(
                     downloadId = downloadId,
                     onProgress = onProgress
                 )
-            when (nativeResult?.optString("status").orEmpty()) {
+            val nativeMessage = nativeResult?.optString("message").orEmpty()
+            val nativeErrorKind = nativeResult?.optString("errorKind").orEmpty()
+            when (val status = nativeResult?.optString("status").orEmpty()) {
                 "saved" ->
                     ThreadAttachmentOpenResult(status = "saved")
                 "cancelled" -> ThreadAttachmentOpenResult(status = "cancelled")
-                "storage_failed" ->
-                    ThreadAttachmentOpenResult(
-                        status = "storage_failed",
-                        message = nativeResult?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
-                    )
-                "download_failed" ->
-                    ThreadAttachmentOpenResult(
-                        status = "download_failed",
-                        message = nativeResult?.optString("message").orEmpty()
-                    )
+                "storage_failed", "download_failed" ->
+                    ThreadAttachmentOpenResult(status = status, message = nativeMessage, errorKind = nativeErrorKind)
                 else ->
-                    ThreadAttachmentOpenResult(
-                        status = "failed",
-                        message = nativeResult?.optString("message").orEmpty().ifBlank { "Unable to download attachment" }
-                    )
+                    ThreadAttachmentOpenResult(status = "failed", message = nativeMessage, errorKind = nativeErrorKind)
             }
         }
         is ThreadApiResult.Failure ->
-            ThreadAttachmentOpenResult(status = "failed", message = "Unable to download attachment")
+            ThreadAttachmentOpenResult(status = "failed", message = "attachment_url_failed code=${response.code}")
     }
 }
 

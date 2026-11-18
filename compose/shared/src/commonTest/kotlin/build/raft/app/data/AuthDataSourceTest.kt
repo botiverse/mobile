@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.resources.*
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -470,6 +471,8 @@ class AuthDataSourceTest {
         assertTrue(result is SharedAuthResult.Failure)
         assertEquals(SharedAuthErrorCode.Unknown, result.code)
         assertEquals("auth_login_contract_mismatch", result.message)
+        // The contract code is for logs; the user reads the sign-in failure.
+        assertEquals(Res.string.auth_error_sign_in_failed.desc(), result.userMessage)
         assertEquals(null, store.readSession())
     }
 
@@ -488,6 +491,8 @@ class AuthDataSourceTest {
         assertTrue(result is SharedAuthResult.Failure)
         assertEquals(SharedAuthErrorCode.Unknown, result.code)
         assertTrue(result.message.contains("session_persist"))
+        // The stage id stays in the log message; the user's sentence names no stage.
+        assertEquals(Res.string.auth_error_sign_in_setup_failed.desc(), result.userMessage)
         assertTrue(logs.any { it.contains("auth_login_servers_result result=success stage=servers_parse serversCount=1") })
         assertTrue(logs.any { it.contains("auth_session_persist_result result=failure stage=session_persist") })
         assertTrue(logs.none { it.contains("Network unavailable") })
@@ -565,6 +570,7 @@ class AuthDataSourceTest {
         assertTrue(result is SharedAuthResult.Failure)
         assertEquals(SharedAuthErrorCode.Unknown, result.code)
         assertTrue(result.message.contains("Local storage setup failed."))
+        assertEquals(Res.string.auth_error_restore_local_storage.desc(), result.userMessage)
         assertTrue(
             logs.any {
                 it.contains("auth_restore_result result=failure stage=session_restore") &&
