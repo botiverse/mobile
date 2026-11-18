@@ -991,7 +991,7 @@ private fun ThreadPageContentContent(
         if (selection.forwardableMessages.isEmpty()) {
             onThreadEvent(
                 "forwardMessagesFailed",
-                selection.threadForwardSelectionFailureMessage(),
+                selection.threadForwardSelectionFailureCode(),
                 null,
                 null
             )
@@ -2095,11 +2095,11 @@ private fun ThreadPageContentContent(
                         val selectedReceipts = forwardSelectedReceipts
                         when {
                             repository == null ->
-                                onThreadEvent("forwardMessagesFailed", "Forward API unavailable", null, null)
+                                onThreadEvent("forwardMessagesFailed", ThreadForwardFailureCodeUnavailable, null, null)
                             sourceChannelId == null ->
-                                onThreadEvent("forwardMessagesFailed", "Source conversation unavailable", null, null)
+                                onThreadEvent("forwardMessagesFailed", ThreadForwardFailureCodeSourceUnavailable, null, null)
                             selectedReceipts.isEmpty() ->
-                                onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
+                                onThreadEvent("forwardMessagesFailed", ThreadForwardFailureCodeTargetUnavailable, null, null)
                             !forwardSending -> {
                                 forwardSending = true
                                 shareExportScope.launch {
@@ -2171,7 +2171,7 @@ private fun ThreadPageContentContent(
                                             }
                                             onThreadEvent(
                                                 "forwardMessagesFailed",
-                                                (outcome.failureCode ?: "forward_partial_failure").threadForwardErrorMessage(),
+                                                outcome.failureCode ?: ThreadForwardFailureCodePartial,
                                                 null,
                                                 null
                                             )

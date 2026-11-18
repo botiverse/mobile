@@ -23,7 +23,6 @@ import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentActivitySubagentGroup
 import build.raft.app.data.AgentActivitySubagentState
 import build.raft.app.data.agentActivitySubagentKeyResolver
-import build.raft.app.data.agentToolLogLabel
 import build.raft.app.model.AgentActivitySubagentLineage
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampClockWithSeconds
@@ -159,7 +158,7 @@ private fun MembersAgentSubagentRow(
         if (group.title != null) group.subagentType else null,
         membersSubagentSteps(group),
         if (running && lastTool != null) {
-            stringResource(Res.string.member_activity_subagents_now, agentToolLogLabel(lastTool))
+            stringResource(Res.string.member_activity_subagents_now, localizedAgentToolLogLabel(lastTool))
         } else {
             membersSubagentDuration(group, nowEpochMillis)
         },

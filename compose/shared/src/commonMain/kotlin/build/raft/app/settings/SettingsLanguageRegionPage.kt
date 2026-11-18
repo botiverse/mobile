@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.data.LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
@@ -383,11 +384,13 @@ internal fun settingsLanguageRegionApplyIntent(
     }
 }
 
+@Composable
 private fun SettingsMobileSelectionSnapshot.toTranslationModeOptions(): List<SegmentedControlOption> =
     options.map { option ->
         SegmentedControlOption(
             value = option.key,
-            label = option.label,
+            // Web `settings.language.modeAuto` / `modeManual` / `modeOff`; the store's label is its id.
+            label = settingsTranslationModeLabelRes(option.key)?.let { stringResource(it) } ?: option.label,
             iconName =
                 when (option.key) {
                     "automatic" -> RaftLucideIconName.Languages
@@ -403,10 +406,43 @@ private fun SettingsMobileSelectionSnapshot.toComboboxOptions(): List<RaftCombob
     return if (selectedKey.isBlank() || options.any { it.key == selectedKey }) listed else listed + RaftComboboxOption(selectedKey, selectedLabel.ifBlank { selectedKey })
 }
 
+/**
+ * Each translation target named in the UI language (web `getTranslationLanguageOptions`, which
+ * reads CLDR through `Intl.DisplayNames`): the store keeps the English name only as an id.
+ */
 @Composable
 private fun SettingsMobileSelectionSnapshot.toTranslationTargetOptions(): List<RaftComboboxOption<String>> {
     val systemLanguageLabel = stringResource(Res.string.settings_translation_target_follow_display_language)
     return toComboboxOptions().map { option ->
-        if (option.value == TranslationTargetLanguages.System) option.copy(label = systemLanguageLabel) else option
+        when {
+            option.value == TranslationTargetLanguages.System -> option.copy(label = systemLanguageLabel)
+            else -> settingsTranslationTargetLanguageRes(option.value)?.let { option.copy(label = stringResource(it)) } ?: option
+        }
     }
 }
+
+/** The translation mode's word in this locale, by its storage key; null for a key Raft doesn't know. */
+internal fun settingsTranslationModeLabelRes(key: String): StringResource? =
+    when (key) {
+        "automatic" -> Res.string.settings_translation_mode_auto
+        "manual" -> Res.string.settings_translation_mode_manual
+        "original" -> Res.string.settings_translation_mode_off
+        else -> null
+    }
+
+/** A translation target's name in this locale, by its code; null for a code Raft doesn't offer. */
+internal fun settingsTranslationTargetLanguageRes(code: String): StringResource? =
+    when (code) {
+        "en" -> Res.string.settings_translation_target_language_en
+        "zh-cn" -> Res.string.settings_translation_target_language_zh_cn
+        "zh-tw" -> Res.string.settings_translation_target_language_zh_tw
+        "ja" -> Res.string.settings_translation_target_language_ja
+        "ko" -> Res.string.settings_translation_target_language_ko
+        "es" -> Res.string.settings_translation_target_language_es
+        "fr" -> Res.string.settings_translation_target_language_fr
+        "de" -> Res.string.settings_translation_target_language_de
+        "pt-br" -> Res.string.settings_translation_target_language_pt_br
+        "it" -> Res.string.settings_translation_target_language_it
+        "ru" -> Res.string.settings_translation_target_language_ru
+        else -> null
+    }

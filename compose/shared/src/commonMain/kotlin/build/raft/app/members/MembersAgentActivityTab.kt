@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import org.jetbrains.compose.resources.StringResource
+import build.raft.app.data.agentToolLogLabel
+import build.raft.app.data.agentToolSemantic
 import build.raft.designsystem.gesture.raftSwipesBetweenSegments
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.setValue
@@ -246,7 +249,11 @@ internal fun MembersAgentActivityTab(
         }
         val rows =
             remember(activityLog) {
-                activityLog.filterNot { it.type == "tool_start" && it.toolName?.normalizedMembersToolName() == "send_message" }
+                // Web isVisibleTrajectoryEntry: a freshness hold says itself in its action row.
+                activityLog.filterNot {
+                    (it.type == "tool_start" && it.toolName?.normalizedMembersToolName() == "send_message") ||
+                        (it.type == "status" && it.statusDetailKind == AgentActivityDetailKindFreshnessHold)
+                }
             }
         val hasRows = rows.isNotEmpty()
         if (hasRows && (loadState is MembersAgentActivityLoadState.Refreshing || loadState is MembersAgentActivityLoadState.Error)) {
@@ -332,7 +339,7 @@ internal fun MembersAgentActivityRow(
     val key = activity.activityTimelineKey()
     var expanded by remember(key) { mutableStateOf(false) }
     val memoryLimit = membersActivityRowMemoryLimitText(activity)
-    val body = memoryLimit?.body ?: activity.activityPrimaryDetail().orEmpty()
+    val body = memoryLimit?.body ?: membersActivityLocalizedDetail(activity, activity.activityPrimaryDetail().orEmpty())
     val longBody = body.length > 200 || body.count { it == '\n' } > 2
     val displayBody =
         if (!expanded && longBody) {
@@ -343,7 +350,8 @@ internal fun MembersAgentActivityRow(
     val colors = RaftTheme.colors
     val detailStyle = RaftTheme.typography.monoMeta
     val titleText =
-        memoryLimit?.title ?: membersActivityStatusTitle(activity) ?: membersActivityTrajectoryTitle(activity) ?: activity.title
+        memoryLimit?.title ?: membersActivityStatusTitle(activity) ?: membersActivityTrajectoryTitle(activity)
+            ?: membersActivityFixedTitleRes(activity)?.let { stringResource(it) } ?: activity.title
     // raft-ui Timeline as an activity log: presence-coloured pixels, title and detail in
     // Space Mono, the time on the right, a `subagent` tag on a subagent's step. The title is
     // web LOG_TITLE_CLASS: `text-foreground-muted wrap-anywhere`, wrapping instead of clipping.
@@ -519,6 +527,98 @@ private fun membersActivityTrajectoryTitle(activity: AgentActivityEntry): String
     }
     return stringResource(resource)
 }
+
+/**
+ * The title of a row whose words the client chose, in this locale: a tool call's log label (web
+ * `getToolLogLabel`, by the tool's semantic), a freshness hold (web `FRESHNESS_HOLD_LABELS`), and
+ * the parsers' fallbacks for a row without a title ("Raft action", "System", "Status",
+ * "Agent activity"). The parsers keep the English words as the row's identifier. Null for a title
+ * from the server or a tool Raft doesn't know, which show as they are.
+ */
+internal fun membersActivityFixedTitleRes(activity: AgentActivityEntry): StringResource? {
+    if (activity.type == "tool_start") {
+        activity.toolName?.let(::agentToolLogLabelRes)?.let { return it }
+    }
+    if (activity.type == "slock_action") {
+        agentFreshnessHold(activity.title)?.let { return it.labelRes }
+    }
+    return when {
+        activity.type == "slock_action" && activity.title == "Raft action" -> Res.string.member_activity_log_raft_action
+        activity.type == "system" && activity.title == "System" -> Res.string.activity_list_system_sender
+        activity.type == "status" && activity.title == "Status" -> Res.string.member_label_status
+        activity.title == "Agent activity" -> Res.string.member_activity_log_agent_activity
+        else -> null
+    }
+}
+
+/**
+ * A row's detail in this locale where the client wrote it: a freshness hold's "N new messages in
+ * #x" (web `activity.log.freshnessHold.detail`) and a tool's "Structured input" summary. Anything
+ * else is [raw], as written.
+ */
+@Composable
+private fun membersActivityLocalizedDetail(activity: AgentActivityEntry, raw: String): String {
+    if (activity.type == "slock_action" && agentFreshnessHold(activity.title) != null) {
+        parseAgentFreshnessHoldText(raw)?.let { return stringResource(it.messageRes(), it.count, it.target) }
+    }
+    if (activity.type == "tool_start") {
+        when {
+            raw == MembersActivityStructuredInput -> return stringResource(Res.string.member_activity_log_structured_input)
+            raw.startsWith(MembersActivityStructuredInputKeysPrefix) ->
+                return stringResource(
+                    Res.string.member_activity_log_structured_input_keys,
+                    raw.removePrefix(MembersActivityStructuredInputKeysPrefix)
+                )
+        }
+    }
+    return raw
+}
+
+/** The parsers' summary of an object tool input (`MemberAgentParser` / `RealtimeEventMapper`). */
+private const val MembersActivityStructuredInput = "Structured input"
+private const val MembersActivityStructuredInputKeysPrefix = "Structured input: "
+
+/** Web `getToolLogLabel`, translated: a known tool's log label by its semantic; null for any other tool. */
+internal fun agentToolLogLabelRes(toolName: String): StringResource? =
+    when (agentToolSemantic(toolName.trim())) {
+        "send_message" -> Res.string.member_activity_log_tool_send_message
+        "check_messages", "receive_message" -> Res.string.member_activity_log_tool_check_messages
+        "wait_for_message" -> Res.string.member_activity_log_tool_wait_for_message
+        "read_history" -> Res.string.member_activity_log_tool_read_history
+        "search_messages" -> Res.string.member_activity_log_tool_search_messages
+        "list_server" -> Res.string.member_activity_log_tool_list_server
+        "list_tasks" -> Res.string.member_activity_log_tool_list_tasks
+        "create_tasks" -> Res.string.member_activity_log_tool_create_tasks
+        "claim_tasks" -> Res.string.member_activity_log_tool_claim_tasks
+        "unclaim_task" -> Res.string.member_activity_log_tool_unclaim_task
+        "update_task_status" -> Res.string.member_activity_log_tool_update_task_status
+        "add_channel_member" -> Res.string.member_activity_log_tool_add_channel_member
+        "join_channel" -> Res.string.member_activity_log_tool_join_channel
+        "leave_channel" -> Res.string.member_activity_log_tool_leave_channel
+        "upload_file" -> Res.string.member_activity_log_tool_upload_file
+        "view_file" -> Res.string.member_activity_log_tool_view_file
+        "read_file" -> Res.string.member_activity_log_tool_read_file
+        "write_file" -> Res.string.member_activity_log_tool_write_file
+        "edit_file" -> Res.string.member_activity_log_tool_edit_file
+        "bash" -> Res.string.member_activity_log_tool_bash
+        "glob" -> Res.string.member_activity_log_tool_glob
+        "grep" -> Res.string.member_activity_log_tool_grep
+        "web_fetch" -> Res.string.member_activity_log_tool_web_fetch
+        "web_search" -> Res.string.member_activity_log_tool_web_search
+        "todo_write" -> Res.string.member_activity_log_tool_todo_write
+        "schedule_reminder" -> Res.string.member_activity_log_tool_schedule_reminder
+        "list_reminders" -> Res.string.member_activity_log_tool_list_reminders
+        "cancel_reminder" -> Res.string.member_activity_log_tool_cancel_reminder
+        "collab_tool_call" -> Res.string.member_activity_log_tool_collab_tool_call
+        "spawn_subagent" -> Res.string.member_activity_log_tool_spawn_subagent
+        else -> null
+    }
+
+/** A tool call's log label in this locale; a tool Raft doesn't know keeps its own name. */
+@Composable
+internal fun localizedAgentToolLogLabel(toolName: String): String =
+    agentToolLogLabelRes(toolName)?.let { stringResource(it) }
+        ?: agentToolLogLabel(toolName.trim()).ifBlank { stringResource(Res.string.member_activity_log_agent_activity) }
 
 @Composable
 private fun membersActivitySubagentBadgeLabel(activity: AgentActivityEntry): String? {

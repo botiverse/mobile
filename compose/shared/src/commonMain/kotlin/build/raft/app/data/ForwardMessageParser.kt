@@ -102,7 +102,8 @@ internal fun WireForwardMessageBundle?.toForwardMessageBundle(): ForwardMessageB
     if (forwardedMessages.isEmpty()) return null
     return ForwardMessageBundle(
         id = source.id?.takeIf { it.isNotBlank() },
-        title = source.title.takeIf { it.isNotBlank() } ?: "Chat history",
+        // No title of its own: the page names it in the reader's language (thread_forward_chat_history).
+        title = source.title.takeIf { it.isNotBlank() }.orEmpty(),
         sourceTitle = source.sourceTitle,
         totalCount = source.totalCount?.takeIf { it > 0 } ?: forwardedMessages.size,
         messages = forwardedMessages
@@ -125,7 +126,7 @@ internal fun WireActionCardMetadata?.toForwardMessageBundle(): ForwardMessageBun
         ?.takeIf { it.isNotBlank() }
         .orEmpty()
     return ForwardMessageBundle(
-        title = "Forwarded",
+        // An action-card bundle has no title: the page names it in the reader's language.
         sourceTitle = sourceTitle,
         totalCount = forwardedMessages.size,
         messages = forwardedMessages,

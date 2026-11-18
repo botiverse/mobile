@@ -317,11 +317,6 @@ internal fun ThreadForwardBundleCard(
     }
 }
 
-private fun ForwardMessageBundle.forwardTitle(): String =
-    title.takeIf { it.isNotBlank() }
-        ?: sourceTitle.takeIf { it.isNotBlank() }?.let { "$it chat history" }
-        ?: "Chat history"
-
 @Composable
 private fun ForwardMessageBundle.localizedForwardTitle(): String =
     title.takeIf { it.isNotBlank() }
@@ -1068,9 +1063,9 @@ internal fun <T> RaftForwardTargetPicker(
                 }
             )
             topContent?.invoke()
-            threadForwardSkippedWarning(skippedCount, nestedForwardCount)?.let { warning ->
+            threadForwardSkippedWarningRes(skippedCount)?.let { warning ->
                 RaftBanner(
-                    description = warning,
+                    description = stringResource(warning, skippedCount),
                     status = RaftBannerStatus.Warning,
                     modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp),
                     size = RaftBannerSize.Sm,

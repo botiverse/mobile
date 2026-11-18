@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.app.components.RaftUiControlledMenu
@@ -156,19 +157,6 @@ internal fun ThreadTimelineSlice.threadSelectedShareMessages(
         .distinctBy { message -> message.id }
 }
 
-internal const val ThreadNestedForwardUnsupportedMessage =
-    "Forwarded messages can't be forwarded. Select the original message instead."
-internal const val ThreadUnsupportedSourceMessage =
-    "System messages and action messages can't be forwarded. Select an ordinary message instead."
-internal const val ThreadForwardSourceTargetForbiddenMessage =
-    "Choose a different destination from the conversation you are forwarding."
-internal const val ThreadForwardCrossServerUnavailableMessage =
-    "This destination is not available from the source server. Choose its joint-channel projection or another destination."
-internal const val ThreadForwardServerUnauthorizedMessage =
-    "You no longer have access to the source or destination server. Refresh and choose another destination."
-internal const val ThreadForwardTargetChangedMessage =
-    "The destination list changed before sending. Nothing was forwarded — please reselect the destination."
-
 internal data class ThreadForwardMessageSelection(
     val forwardableMessages: List<RaftThreadMessageItem>,
     val skippedCount: Int,
@@ -199,45 +187,96 @@ internal fun RaftThreadMessageItem.isForwardableOrdinaryChatMessage(): Boolean =
 internal fun RaftThreadMessageItem.isThreadActionCardMessage(): Boolean =
     messageMetadataHasActionCard(metadata) || metadata["kind"] == "action-card"
 
-internal fun String.threadForwardErrorMessage(): String =
-    when (trim().lowercase()) {
+/**
+ * Why a forward did not go out, as its toast says it. Codes from the server (web
+ * `forwardRequestFailureMessage`) and from this client's own gates map to one; any other code
+ * reads as the generic "Unable to forward" (the code itself only goes to the log).
+ */
+internal enum class ThreadForwardFailure {
+    NestedForward,
+    UnsupportedSource,
+    CrossSource,
+    SourceNotFound,
+    CrossServerSource,
+    SourceTargetForbidden,
+    CrossServerUnavailable,
+    ServerUnauthorized,
+    TargetChanged,
+    DestinationsUnavailable,
+    PartialFailure,
+    Generic
+}
+
+/** The forward repository was gone when Send was tapped (a generic toast; the code is logged). */
+internal const val ThreadForwardFailureCodeUnavailable = "forward_api_unavailable"
+/** The source conversation was gone when Send was tapped (a generic toast; the code is logged). */
+internal const val ThreadForwardFailureCodeSourceUnavailable = "forward_source_unavailable"
+/** No destination was selected when Send was tapped. */
+internal const val ThreadForwardFailureCodeTargetUnavailable = "forward_target_unavailable"
+/** Some destinations took the forward and others did not. */
+internal const val ThreadForwardFailureCodePartial = "forward_partial_failure"
+
+internal fun threadForwardFailure(code: String?): ThreadForwardFailure =
+    when (code?.trim()?.lowercase()) {
         "unsupport",
         "unsupported",
-        "forwarded_source_not_supported" -> ThreadNestedForwardUnsupportedMessage
-        "unsupported_source_message" -> ThreadUnsupportedSourceMessage
-        "forward_source_target_forbidden" -> ThreadForwardSourceTargetForbiddenMessage
+        "forwarded_source_not_supported" -> ThreadForwardFailure.NestedForward
+        "unsupported_source_message",
+        "unsupported_source" -> ThreadForwardFailure.UnsupportedSource
+        "cross_source_bundle" -> ThreadForwardFailure.CrossSource
+        "source_not_found" -> ThreadForwardFailure.SourceNotFound
+        "cross_server_source" -> ThreadForwardFailure.CrossServerSource
+        "forward_source_target_forbidden" -> ThreadForwardFailure.SourceTargetForbidden
         "forward_cross_server_target_unsupported",
         "forward_cross_server_batch_unsupported",
-        "forward_joint_projection_unavailable" -> ThreadForwardCrossServerUnavailableMessage
+        "forward_joint_projection_unavailable" -> ThreadForwardFailure.CrossServerUnavailable
         "forward_source_server_unauthorized",
         "forward_target_server_unauthorized",
-        "forward_target_server_not_selected" -> ThreadForwardServerUnauthorizedMessage
+        "forward_target_server_not_selected" -> ThreadForwardFailure.ServerUnauthorized
         // task #803: identity-drift gates fail closed; the user re-selects.
         "forward_destination_identity_mismatch",
         "forward_source_server_changed",
-        "forward_directory_refreshed" -> ThreadForwardTargetChangedMessage
-        else -> this
+        "forward_directory_refreshed" -> ThreadForwardFailure.TargetChanged
+        ThreadForwardFailureCodeTargetUnavailable -> ThreadForwardFailure.DestinationsUnavailable
+        ThreadForwardFailureCodePartial -> ThreadForwardFailure.PartialFailure
+        else -> ThreadForwardFailure.Generic
     }
 
-internal fun ThreadForwardMessageSelection.threadForwardSelectionFailureMessage(): String =
+/** The toast for [ThreadForwardFailure], in the catalog (web `message.forwardComposer.*` where web has it). */
+internal val ThreadForwardFailure.messageRes: StringResource
+    get() =
+        when (this) {
+            ThreadForwardFailure.NestedForward -> Res.string.thread_forward_error_nested
+            ThreadForwardFailure.UnsupportedSource -> Res.string.thread_forward_error_unsupported_source
+            ThreadForwardFailure.CrossSource -> Res.string.thread_forward_error_cross_source
+            ThreadForwardFailure.SourceNotFound -> Res.string.thread_forward_error_source_not_found
+            ThreadForwardFailure.CrossServerSource -> Res.string.thread_forward_error_cross_server_source
+            ThreadForwardFailure.SourceTargetForbidden -> Res.string.thread_forward_error_source_target_forbidden
+            ThreadForwardFailure.CrossServerUnavailable -> Res.string.thread_forward_error_cross_server_unavailable
+            ThreadForwardFailure.ServerUnauthorized -> Res.string.thread_forward_error_server_unauthorized
+            ThreadForwardFailure.TargetChanged -> Res.string.thread_forward_error_target_changed
+            ThreadForwardFailure.DestinationsUnavailable -> Res.string.thread_forward_error_destinations_unavailable
+            ThreadForwardFailure.PartialFailure -> Res.string.thread_forward_error_retry_remaining
+            ThreadForwardFailure.Generic -> Res.string.thread_error_forward
+        }
+
+/** The failure code when nothing selected can be forwarded: only bundles, or anything else. */
+internal fun ThreadForwardMessageSelection.threadForwardSelectionFailureCode(): String =
     when {
-        nestedForwardCount == skippedCount -> ThreadNestedForwardUnsupportedMessage
-        else -> ThreadUnsupportedSourceMessage
+        nestedForwardCount == skippedCount -> "forwarded_source_not_supported"
+        else -> "unsupported_source_message"
     }
 
-internal fun threadForwardSkippedWarning(
-    skippedCount: Int,
-    nestedForwardCount: Int
-): String? {
-    if (skippedCount <= 0) return null
-    val skippedLabel = if (skippedCount == 1) "1 selected message was" else "$skippedCount selected messages were"
-    return when {
-        nestedForwardCount == skippedCount ->
-            "$skippedLabel skipped because forwarded messages can't be forwarded again."
-        else ->
-            "$skippedLabel skipped. Forwarded bundles, system messages, and action messages can't be forwarded."
+/**
+ * Web `message.forwardComposer.skippedUnsupported`: the picker's note that some selected messages
+ * were left out, as the `_one` / `_other` catalog string for [skippedCount]; null when none were.
+ */
+internal fun threadForwardSkippedWarningRes(skippedCount: Int): StringResource? =
+    when {
+        skippedCount <= 0 -> null
+        skippedCount == 1 -> Res.string.thread_forward_skipped_one
+        else -> Res.string.thread_forward_skipped_other
     }
-}
 
 /**
  * What a thread's select-all checkbox selects (web `threadSelectableIds`, botiverse/slock #12681

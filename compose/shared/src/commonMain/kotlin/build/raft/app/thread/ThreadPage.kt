@@ -8313,16 +8313,28 @@ private fun SharedThreadRouteContentContent(
                     bridge.toast(unableToExportImageLabel)
                 }
                 action == "forwardMessagesSent" -> {
-                    val target = itemId?.takeIf { it.isNotBlank() } ?: "selected target"
-                    val modeLabel = localizedForwardModeLabel(tab)
-                    bridge.toast(localizedForwardCompleted(modeLabel, target))
+                    val target = itemId?.takeIf { it.isNotBlank() }
+                    bridge.toast(
+                        if (target != null) {
+                            localizedForwardCompleted(localizedForwardModeLabel(tab), target)
+                        } else {
+                            Res.string.thread_forward_badge.desc().resolve()
+                        }
+                    )
                 }
                 action == "forwardMessagesFailed" -> {
-                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: unableToForwardLabel)
+                    // The event carries a failure code; the toast says it in this locale and only
+                    // the log keeps the code itself.
+                    val failure = threadForwardFailure(itemId)
+                    if (failure == ThreadForwardFailure.Generic) {
+                        bridge.log("thread_forward_failed code=${itemId.orEmpty()}")
+                    }
+                    bridge.toast(failure.messageRes.desc().resolve())
                 }
                 action == "forwardJoinConfirmationRequired" -> {
-                    val target = itemId?.takeIf { it.isNotBlank() } ?: "that channel"
-                    bridge.toast(localizedForwardJoinFirst(target))
+                    bridge.toast(
+                        itemId?.takeIf { it.isNotBlank() }?.let { localizedForwardJoinFirst(it) } ?: unableToForwardLabel
+                    )
                 }
                 action == "copyMessageLink" && !itemId.isNullOrBlank() -> {
                     val message =

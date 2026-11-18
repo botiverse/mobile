@@ -3044,9 +3044,9 @@ private fun RaftAppShellReadyContent(
                 }
                 bridge.toast(
                     if (action.reason == "server_unavailable") {
-                        "Notification server unavailable"
+                        Res.string.home_error_notification_server_unavailable.desc().resolve()
                     } else {
-                        "Notification conversation unavailable"
+                        Res.string.home_error_conversation_unavailable.desc().resolve()
                     }
                 )
             }

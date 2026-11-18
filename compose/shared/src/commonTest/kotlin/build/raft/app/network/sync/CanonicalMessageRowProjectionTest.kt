@@ -168,7 +168,7 @@ class CanonicalMessageRowProjectionTest {
         val message = assertNotNull(row(actionMetadata = actionMetadata).toAppMessage())
 
         assertTrue(message.metadata.isEmpty())
-        assertEquals("Forwarded", message.forwardBundle?.title)
+        assertEquals("", message.forwardBundle?.title)
         assertEquals("source-m", message.forwardBundle?.messages?.single()?.id)
         assertEquals("forwarded body", message.forwardBundle?.messages?.single()?.body)
     }
