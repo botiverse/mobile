@@ -9,10 +9,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The string catalogs. values (en), values-ja and values-zh-rCN stay in lockstep: the same keys.
- * The later catalogs (values-es, values-pt-rBR, values-ko, values-zh-rTW, values-ru; the web's es,
- * pt-br, ko, zh-tw and ru) may lag behind, as the web's `Partial` catalogs do: a key one lacks shows
- * the English (RaftNewLocaleCatalogTest), so a new string does not need eight translations in the same PR.
+ * The string catalogs. All eight stay in lockstep: values (en), values-ja, values-zh-rCN, values-zh-rTW,
+ * values-ko, values-es, values-pt-rBR and values-ru have the same keys, so a new string is added to every
+ * catalog in the same PR (a key a catalog lacks would show the English, RaftNewLocaleCatalogTest).
+ * [PARTIAL_DIRS] is for a catalog that is allowed to lag behind; none is now.
  * None may hold a key English lacks. In every catalog a key has the same format placeholders as in
  * English. Compose resources only substitutes positional `%N$s` / `%N$d` placeholders and does not
  * decode Android-only escapes (`\'`, `\"`, `\@`, `\?`), so neither may appear.
@@ -89,8 +89,9 @@ class ComposeResourcesCatalogParityTest {
     }
 
     internal companion object {
-        val COMPLETE_DIRS = listOf("values", "values-ja", "values-zh-rCN")
-        val PARTIAL_DIRS = listOf("values-es", "values-pt-rBR", "values-ko", "values-zh-rTW", "values-ru")
+        val COMPLETE_DIRS =
+            listOf("values", "values-ja", "values-zh-rCN", "values-es", "values-pt-rBR", "values-ko", "values-zh-rTW", "values-ru")
+        val PARTIAL_DIRS = emptyList<String>()
         val POSITIONAL = Regex("%\\d+\\$[sd]")
         val ANDROID_ONLY_ESCAPE = Regex("""\\['"@?]""")
     }

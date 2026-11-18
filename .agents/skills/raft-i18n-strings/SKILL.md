@@ -1,29 +1,40 @@
 ---
 name: raft-i18n-strings
-description: Use when adding or changing user-visible text in Raft Mobile (any label, toast, dialog, empty state) — adding the string resource in all three locales (en base, zh-CN, ja), choosing canonical terms, and running the i18n checks instead of a visual capture.
+description: Use when adding or changing user-visible text in Raft Mobile (any label, toast, dialog, empty state) — adding the string resource in all eight locales (en base, zh-CN, ja, zh-TW, ko, es, pt-BR, ru), choosing canonical terms, and running the i18n checks instead of a visual capture.
 ---
 
-# User-visible strings (en / zh-CN / ja)
+# User-visible strings (en / zh-CN / ja / zh-TW / ko / es / pt-BR / ru)
 
 Every user-visible string is a Compose Multiplatform string resource (`Res.string.<key>`,
 package `build.raft.app.resources`); no English literals in production UI.
 
-## 1. Add the key in all three files
+## 1. Add the key in all eight files
 
 ```
 compose/shared/src/commonMain/composeResources/values/strings.xml    # en
 compose/shared/src/commonMain/composeResources/values-zh-rCN/strings.xml
 compose/shared/src/commonMain/composeResources/values-ja/strings.xml
+compose/shared/src/commonMain/composeResources/values-zh-rTW/strings.xml
+compose/shared/src/commonMain/composeResources/values-ko/strings.xml
+compose/shared/src/commonMain/composeResources/values-es/strings.xml
+compose/shared/src/commonMain/composeResources/values-pt-rBR/strings.xml
+compose/shared/src/commonMain/composeResources/values-ru/strings.xml
 ```
+- Every new key goes into all eight catalogs in the same PR, at the same position as in
+  `values/` (next to its neighbours). CI enforces it: `ComposeResourcesCatalogParityTest`
+  fails when any catalog lacks a key of `values/` or holds one `values/` lacks.
+- Translate from the web catalog first: for the same English sentence, copy the web's wording
+  for that language verbatim from `$SLOCK_SOURCE_REPO/packages/web/src/i18n/messages/`
+  (`zh-tw.ts`, `ko.ts`, `es.ts`, `pt-br.ts`, `ru.ts`); otherwise translate with its terms.
+- If you can't translate a language in the PR, say so in the PR description; the i18n 3-day
+  sync (Hasaki, #proj-i18n) fills it. The key must still exist: put the English text there
+  as an explicit temporary placeholder (the tests accept a value identical to the English).
+  Never leave the key out.
 - Key: `<area>_<thing>` in snake_case, following neighbours
   (`thread_audio_file_label`, `common_copied`). Reuse `common_*` keys.
 - No ASCII leading/trailing spaces (Android trims them, iOS keeps them): use
   `&#160;`. Fix automatically with
   `python3 scripts/ci/check_string_edge_spaces.py --fix`.
-- The later catalogs `values-es`, `values-pt-rBR`, `values-ru`, `values-ko`, `values-zh-rTW` (the web's es,
-  pt-br, ru, ko, zh-tw) are partial like the web's: add the key there too when you can (copy the web's
-  wording from the same message id), but a key they lack shows the English
-  (`RaftNewLocaleCatalogTest`). They may never hold a key `values/` lacks.
 - Placeholders: positional only (`%1$s`, `%2$d`), the same set in every locale
   (`ComposeResourcesCatalogParityTest` checks keys and placeholders).
 - Plain XML text: write `'` and `"` as is (no Android `\'` escapes); `\n` is a newline.

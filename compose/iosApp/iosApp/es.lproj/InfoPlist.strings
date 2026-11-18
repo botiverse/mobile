@@ -1,1 +1,3 @@
+"NSPhotoLibraryUsageDescription" = "Raft usa el acceso a la fototeca cuando eliges imágenes para adjuntarlas a mensajes.";
 "NSCameraUsageDescription" = "Raft usa el acceso a la cámara cuando tomas una foto para adjuntarla a un mensaje.";
+"NSPhotoLibraryAddUsageDescription" = "Raft guarda las imágenes adjuntas de los mensajes en tu fototeca cuando eliges Guardar en Fotos.";

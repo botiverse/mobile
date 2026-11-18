@@ -285,6 +285,12 @@
     <string name="settings_notification_channel_name">Тестовые уведомления из настроек</string>
     <string name="settings_notification_channel_description">Локальные тестовые уведомления из мобильных настроек.</string>
     <string name="notification_unread_default_text">У вас новое непрочитанное сообщение.</string>
+    <plurals name="notification_unread_message_count">
+        <item quantity="one">%1$d новое сообщение</item>
+        <item quantity="few">%1$d новых сообщения</item>
+        <item quantity="many">%1$d новых сообщений</item>
+        <item quantity="other">%1$d нового сообщения</item>
+    </plurals>
     <string name="push_preview_hidden_message">У вас новое сообщение</string>
     <string name="push_preview_hidden_mention">Вас упомянули</string>
     <string name="push_preview_sender_only_message">%1$s: новое сообщение</string>
