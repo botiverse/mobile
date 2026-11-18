@@ -1,0 +1,165 @@
+name: App link diagnose
+
+# One-click check that Raft links open the app: iOS Universal Links (AASA on the origin and on
+# Apple's CDN, URL matrix through Apple's own `swcutil verify`) and Android App Links
+# (assetlinks.json, Google's Digital Asset Links API, intent filters), plus the latest shipped
+# builds when a Hands token is available. Result: a table in the job summary of the `report` job
+# and the `app-link-diagnose` artifact (summary.md, diagnose.json, the AASA files read).
+# Script and URL matrix: scripts/app_links/.
+
+on:
+  workflow_dispatch:
+    inputs:
+      check_builds:
+        description: "Also download the latest published Hands APK/IPA and check them"
+        type: boolean
+        default: true
+      fail_on_fail:
+        description: "Make the run red when any check FAILs (the daily schedule always does)"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "17 1 * * *" # daily 01:17 UTC
+  pull_request:
+    paths:
+      - ".github/workflows/app-link-diagnose.yml"
+      - "scripts/app_links/**"
+      - "scripts/verify_android_apk_with_rotation.sh"
+      - "compose/iosApp/iosApp/*.entitlements"
+      - "compose/androidApp/src/*/AndroidManifest.xml"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/app-link-diagnose.yml"
+      - "scripts/app_links/**"
+      - "scripts/verify_android_apk_with_rotation.sh"
+      - "compose/iosApp/iosApp/*.entitlements"
+      - "compose/androidApp/src/*/AndroidManifest.xml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-link-diagnose-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: AASA, Apple CDN, assetlinks, Android matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Unit tests
+        run: python3 -I scripts/app_links/test_diagnose.py
+
+      - name: Fetch and check
+        run: python3 -I scripts/app_links/diagnose.py web --out results/web
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-link-web
+          path: results/web
+          retention-days: 14
+
+  ios:
+    name: iOS URL matrix (swcutil)
+    needs: web
+    # Standard GitHub-hosted macOS (free for this public repo); no Xcode build.
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/app_links
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-link-web
+          path: results/web
+
+      - name: swcutil verify
+        run: |
+          sw_vers
+          python3 -I scripts/app_links/diagnose.py ios --web results/web --out results/ios.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-link-ios
+          path: results/ios.json
+          retention-days: 14
+
+  builds:
+    name: Latest shipped builds (Hands)
+    needs: web
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.check_builds }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/app_links
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-link-web
+          path: results/web
+
+      # Existing repository secrets only (the ones github-release.yml reads); empty on fork PRs,
+      # which turns the rows into WARN "skipped". Nothing here is written to GITHUB_ENV/OUTPUT.
+      - name: Check latest APK and IPA
+        env:
+          HANDS_ANDROID_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
+          HANDS_IOS_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
+        run: python3 -I scripts/app_links/diagnose.py builds --web results/web --out results/builds.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-link-builds
+          path: results/builds.json
+          retention-days: 14
+
+  report:
+    name: Report
+    needs: [web, ios, builds]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/app_links
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: app-link-*
+          path: results
+
+      # The daily run goes red on any FAIL row so it is noticed; a manual run does when asked
+      # (fail_on_fail). Otherwise (manual, PRs, pushes) the table is the result and the live server
+      # state does not turn the job red: only a failed swcutil self-test or a missing step does.
+      - name: Summary
+        env:
+          FAIL_ON_FAIL: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.fail_on_fail) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set +e
+          args=()
+          [ "${FAIL_ON_FAIL}" = "true" ] && args+=(--fail-on-fail)
+          python3 -I scripts/app_links/diagnose.py report results \
+            --summary summary.md --json diagnose.json \
+            --when "$(date -u +'%Y-%m-%d %H:%MZ') · ${GITHUB_EVENT_NAME} · ${GITHUB_SHA::10}" \
+            --run-url "${RUN_URL}" "${args[@]}" > /dev/null
+          rc=$?
+          cat summary.md >> "${GITHUB_STEP_SUMMARY}"
+          mkdir -p out && cp summary.md diagnose.json out/ && cp -R results/app-link-web/aasa out/aasa 2>/dev/null
+          exit "${rc}"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ always() }}
+        with:
+          name: app-link-diagnose
+          path: out
+          retention-days: 30
