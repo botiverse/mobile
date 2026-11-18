@@ -3684,6 +3684,14 @@
     <string name="member_activity_overview_trigger_unresolved">ativado por uma mensagem</string>
     <string name="member_activity_overview_trigger_open">Abrir mensagem</string>
     <string name="member_activity_overview_outcome_running">Em andamento</string>
+    <string name="member_recent_activity_title">Atividade recente</string>
+    <string name="member_recent_activity_this_turn">%1$s · neste turno: %2$s</string>
+    <string name="member_recent_activity_last_turn">Último turno: %1$s · %2$s</string>
+    <string name="member_recent_activity_trigger_in_channel">%1$s · #%2$s</string>
+    <string name="member_recent_activity_trigger_dm">DM de %1$s</string>
+    <string name="member_recent_activity_trigger_private">um canal privado</string>
+    <string name="member_recent_activity_trigger_some_dm">uma DM</string>
+    <string name="member_recent_activity_trigger_unknown">uma mensagem</string>
     <string name="member_activity_overview_sent_title_one">Enviou 1 mensagem</string>
     <string name="member_activity_overview_sent_title_other">Enviou %1$d mensagens</string>
     <string name="member_activity_overview_sent_more">Mostrar mais %1$d</string>

@@ -3855,6 +3855,14 @@
     <string name="member_activity_overview_trigger_unresolved">woken by a message</string>
     <string name="member_activity_overview_trigger_open">Open message</string>
     <string name="member_activity_overview_outcome_running">In progress</string>
+    <string name="member_recent_activity_title">Recent activity</string>
+    <string name="member_recent_activity_this_turn">%1$s · %2$s</string>
+    <string name="member_recent_activity_last_turn">Last turn: %1$s · %2$s</string>
+    <string name="member_recent_activity_trigger_in_channel">%1$s · #%2$s</string>
+    <string name="member_recent_activity_trigger_dm">DM from %1$s</string>
+    <string name="member_recent_activity_trigger_private">a private channel</string>
+    <string name="member_recent_activity_trigger_some_dm">a DM</string>
+    <string name="member_recent_activity_trigger_unknown">a message</string>
     <string name="member_activity_overview_sent_title_one">Sent 1 message</string>
     <string name="member_activity_overview_sent_title_other">Sent %1$d messages</string>
     <string name="member_activity_overview_sent_more">Show %1$d More</string>

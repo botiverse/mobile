@@ -16,6 +16,7 @@ import build.raft.app.data.parseAgentBackgroundOomActivityText
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.MemberId
 import build.raft.app.data.AgentActivityDetailKindClaudeRootPrivileges
 import build.raft.app.model.Presence
 import build.raft.app.model.RaftTimeContext
@@ -114,19 +115,7 @@ internal fun MembersAgentActivityTab(
         openSubagentKey = null
     }
     if (overview != null && detail != null) {
-        val agentId = detail.agentId
-        LaunchedEffect(agentId) { overview.onIntent(AgentActivityOverviewIntent.Open(agentId)) }
-        // A finished turn arrives with the agent leaving a busy state (web reloads on the
-        // agent:activity push). The store keeps the last-seen activity, so a revisit after the
-        // pager dropped this page still sees the edge; it debounces and coalesces the reload.
-        val liveActivity = detail.summary?.activity
-        LaunchedEffect(agentId, liveActivity) {
-            overview.onIntent(AgentActivityOverviewIntent.LiveActivityObserved(agentId, liveActivity))
-        }
-        // Pushes missed in the background or while the socket was down: catch up on return.
-        RaftLiveCatchUpEffect(serverId = serverId, visible = true) {
-            overview.onIntent(AgentActivityOverviewIntent.CatchUp)
-        }
+        MembersAgentActivityOverviewEffects(overview, detail.agentId, detail.summary?.activity, serverId)
     }
     // Web AgentActivityLog: without the Overview flag the tab is the raw log alone, no toolbar
     // (Copy info lives in the profile's Actions and the runtime-error notice, as on the web);
@@ -596,3 +585,30 @@ internal fun membersAgentActivityNextBottomAnchor(
         isScrollInProgress -> false
         else -> current
     }
+
+/**
+ * Keeps the overview's turns current while it is on screen (the Activity tab's Overview, or the
+ * profile's Recent activity): loads them for [agentId], reloads when a turn finishes, and catches
+ * up on what was missed in the background (web `registerActivityTrajectoryLiveReload` /
+ * `registerActivityTrajectoryReconnectReload`).
+ */
+@Composable
+internal fun MembersAgentActivityOverviewEffects(
+    overview: MembersAgentActivityOverviewBinding,
+    agentId: MemberId,
+    /** The agent's live activity (`working`, `online`, ...), as its detail reads it. */
+    liveActivity: String?,
+    serverId: String?,
+) {
+    LaunchedEffect(agentId) { overview.onIntent(AgentActivityOverviewIntent.Open(agentId)) }
+    // A finished turn arrives with the agent leaving a busy state (web reloads on the
+    // agent:activity push). The store keeps the last-seen activity, so a revisit after the
+    // pager dropped this page still sees the edge; it debounces and coalesces the reload.
+    LaunchedEffect(agentId, liveActivity) {
+        overview.onIntent(AgentActivityOverviewIntent.LiveActivityObserved(agentId, liveActivity))
+    }
+    // Pushes missed in the background or while the socket was down: catch up on return.
+    RaftLiveCatchUpEffect(serverId = serverId, visible = true) {
+        overview.onIntent(AgentActivityOverviewIntent.CatchUp)
+    }
+}

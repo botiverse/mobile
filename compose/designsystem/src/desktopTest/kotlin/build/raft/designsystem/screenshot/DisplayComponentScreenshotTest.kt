@@ -114,6 +114,7 @@ import build.raft.designsystem.components.RaftTaskStatusBadge
 import build.raft.designsystem.components.RaftTaskStatusBadgeSize
 import build.raft.designsystem.components.RaftStep
 import build.raft.designsystem.components.RaftStepStatus
+import build.raft.designsystem.components.RaftOtterIndicator
 import build.raft.designsystem.components.RaftSteps
 import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.components.RaftStatusVariant
@@ -772,6 +773,30 @@ class DisplayComponentScreenshotTest {
                     RaftSteps(plain, current = 1, status = RaftStepStatus.Wait)
                     Caption("Finish")
                     RaftSteps(plain, current = 5, status = RaftStepStatus.Finish)
+                }
+            }
+        }
+
+    /** Ottie, one still pose per step status, at the 40dp minimum and at 64dp, on the canvas and on a card. */
+    @Test
+    fun otterIndicator() =
+        capture("otter_indicator") {
+            val colors = RaftTheme.colors
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                listOf(colors.layerCanvas, colors.layerCard).forEach { surface ->
+                    Row(
+                        Modifier.background(surface).padding(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RaftStepStatus.entries.forEach { status ->
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                RaftOtterIndicator(status)
+                                RaftOtterIndicator(status, size = 64.dp)
+                                Caption(status.name)
+                            }
+                        }
+                    }
                 }
             }
         }

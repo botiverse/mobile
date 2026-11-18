@@ -213,6 +213,9 @@ internal val MembersProfileEyebrowGap = 12.dp // web SectionEyebrow mb-3
 // web hero `py-5` + description `py-3` = 32dp, less the hero's own 8dp and the profile column's 16dp
 private val MembersProfileHeroToDescriptionGap = 8.dp
 
+// web Recent activity `py-4` under the hero's `py-5` = 36dp, less the hero's own 8dp and the column's 16dp
+private val MembersProfileRecentActivityTopGap = 12.dp
+
 internal val MembersProfileEnvVarsGap = 12.dp // web runtime config `mt-3` above Environment Variables
 
 /**
@@ -432,84 +435,13 @@ internal fun MembersAgentProfileHeader(
      * Opens the agent's Computer: the link beside "Computer update required" (raft-design
      * identity-and-presence, the step links to the computer); null when there is none to open.
      */
-    onOpenComputer: (() -> Unit)? = null
+    onOpenComputer: (() -> Unit)? = null,
+    /**
+     * Web AgentDetailPanel: the status sits under the tags unless the profile shows the Recent
+     * activity card, whose first line it is then ([MembersAgentProfileStatus]).
+     */
+    showStatus: Boolean = true
 ) {
-    val appBot = !member.managedByAppInstallId.isNullOrBlank()
-    // Web AgentDisplayState.blocked (botiverse/slock #13575): held agents say why, not their activity.
-    val blocked = (agentStatusIndicatorState ?: agentStatusObservedState)?.blocked?.takeIf { !appBot }
-    // Web AgentStatusBadge: a failed start's typed copy stands in for the daemon's detail
-    // (botiverse/slock #13460). It gets its own lines under the chip (as the stuck-tool notice
-    // does), so the chip keeps the status words and never cuts the copy.
-    val spawnFailureStatus =
-        spawnFailure?.takeIf {
-            showActivityDetail &&
-                !appBot &&
-                blocked == null &&
-                agentSpawnFailureCopy(it.spawnFailure, it.daemonDetail, nowMs = Long.MIN_VALUE) != null
-        }
-    val external = member.isExternal || summary?.isExternal == true || agentStatusIndicatorState?.external == true
-    // Web AgentStatusBadge `credentialReason` (botiverse/slock #13276): an unusable sign-in, plan or
-    // balance reads as the error light; the reason is a detail of the error, for its managers only.
-    val credentialReason =
-        if (appBot) {
-            null
-        } else {
-            membersAgentCredentialInvalidReason(
-                indicator = agentStatusIndicatorState,
-                summary = summary,
-                external = external,
-                blocked = blocked,
-            )
-        }
-    val showRetry =
-        onRetry != null &&
-            !appBot &&
-            agentNeedsManualRestart(
-                status = agentStatusIndicatorState?.status,
-                detailKind =
-                    membersAgentStatusDetailKind(
-                        indicator = agentStatusIndicatorState,
-                        summaryStatus = summary?.status,
-                        summaryActivity = summary?.activity,
-                        summaryDetailKind = summary?.activityDetailKind,
-                    ),
-                spawnFailure = spawnFailure?.spawnFailure,
-                runtimeErrorClass = summary?.lastRuntimeErrorClass,
-                external = external,
-                blocked = blocked,
-                likelyOnline = agentStatusIndicatorState?.likelyOnline == true,
-                credentialReason = credentialReason,
-            )
-    val rawStatusLabel = membersHeroAgentStatusLabel(
-        indicatorState = agentStatusIndicatorState,
-        summaryStatus = summary?.status,
-        summaryActivity = summary?.activity,
-        summaryActivityDetail = summary?.activityDetail,
-        showActivityDetail = showActivityDetail && spawnFailureStatus == null
-    )
-    // SSOT audit: the badge words localize like every other live-status caption. A held agent's
-    // sentence does not fit the one-line chip: the chip reads Error (its light) and the sentence
-    // follows under it ([AgentBlockedStatusNotice]). "Computer update required" is already the
-    // short form (raft-design identity-and-presence): the chip says it, with no sentence under it.
-    val statusLabel =
-        if (blocked == AgentBlockedState.ComputerUpdateRequired) {
-            AgentBlockedState.ComputerUpdateRequired.localizedStatusLabel()
-        } else if (blocked != null) {
-            stringResource(Res.string.member_row_status_error)
-        } else if (credentialReason != null) {
-            if (showActivityDetail) {
-                agentCredentialInvalidText(
-                    reason = credentialReason,
-                    runtime = summary?.runtime ?: agentStatusIndicatorState?.runtime,
-                    model = summary?.model,
-                )
-            } else {
-                stringResource(Res.string.member_row_status_error)
-            }
-        } else {
-            agentStatusIndicatorState?.copy(label = rawStatusLabel)?.localizedMemberStatusLabel() ?: rawStatusLabel
-        }
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -610,85 +542,206 @@ internal fun MembersAgentProfileHeader(
                         )
                     }
                 }
-                // A null resolution is Unknown/not-ready, and PresenceOffline is the
-                // Offline/Disconnected colour — falling back to it makes the dot claim
-                // offline while the label beside it says Unknown, the disagreement
-                // RaftAgentStatusIndicator's own contract forbids. Render no light until
-                // something authoritative arrives (task #253/#256).
-                // An App Bot renders no presence (web: always-offline on a signal that does
-                // not apply to it).
-                // Web: held or not, an invalid credential cannot run until someone acts: the error light.
-                val chipStatus = if (credentialReason != null) AgentStatus.Error else agentStatusObservedState?.status
-                val chipColor = if (credentialReason != null) RaftColor.AccentOrange else agentStatusObservedState?.color
-                val statusChip: @Composable (Modifier) -> Unit = { chipModifier ->
-                    RaftBadge(
-                        text = statusLabel,
-                        appearance = RaftBadgeAppearance.Soft,
-                        variant = chipStatus.membersStatusBadgeVariant(),
-                        modifier = chipModifier,
-                        icon = if (chipColor != null) {
-                            {
-                                // raft-ui Status in a Badge (`lead-dot`): the 10dp light, never an animation.
-                                RaftStatusIndicator(color = chipColor)
-                            }
-                        } else {
-                            null
-                        }
-                    )
-                }
-                val openComputer = onOpenComputer?.takeIf { blocked == AgentBlockedState.ComputerUpdateRequired }
-                // Nothing known about its presence (e.g. a joint channel's agent of another server
-                // whose profile read failed): no chip, never an empty "—" one.
-                if (!appBot && statusLabel != MembersUnknownAgentStatusLabel) {
-                    if (openComputer != null) {
-                        // The step is on the Computer: the chip itself opens it (web #14585
-                        // AgentStatusBadge `agent-status-computer-too-old`).
-                        statusChip(
-                            Modifier
-                                .padding(top = 6.dp)
-                                .raftClickable(
-                                    onClick = openComputer,
-                                    onClickLabel = stringResource(Res.string.agent_status_open_computer),
-                                    shape = RoundedCornerShape(RaftAppRadius.Control)
-                                )
-                        )
-                    } else if (showRetry && onRetry != null) {
-                        // Web `flex items-center gap-1.5`: the quiet Retry right after the chip.
-                        Row(
-                            modifier = Modifier.padding(top = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            statusChip(Modifier.weight(1f, fill = false))
-                            AgentStatusRetryLink(inProgress = retryInProgress, onRetry = onRetry)
-                        }
-                    } else {
-                        statusChip(Modifier.padding(top = 6.dp))
-                    }
-                }
-                if (blocked != null && blocked != AgentBlockedState.ComputerUpdateRequired) {
-                    AgentBlockedStatusNotice(blocked = blocked, modifier = Modifier.padding(top = 6.dp))
-                }
-                // Web #10446: stuck on one tool call: its own lines under the status chip, so the
-                // chip never truncates it, with the way out for whoever can stop the turn.
-                if (spawnFailureStatus != null) {
-                    AgentSpawnFailureStatusNotice(
-                        status = spawnFailureStatus,
-                        timeContext = timeContext,
-                        onChangeModel = onChangeModel,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                }
-                if (toolStuck != null && member.managedByAppInstallId.isNullOrBlank()) {
-                    AgentToolStuckNotice(
+                if (showStatus) {
+                    MembersAgentProfileStatus(
+                        member = member,
+                        summary = summary,
+                        agentStatusObservedState = agentStatusObservedState,
+                        agentStatusIndicatorState = agentStatusIndicatorState,
                         toolStuck = toolStuck,
                         onStopTurn = onStopTurn,
-                        stopTurnEnabled = !stopTurnInProgress,
-                        modifier = Modifier.padding(top = 6.dp)
+                        stopTurnInProgress = stopTurnInProgress,
+                        showActivityDetail = showActivityDetail,
+                        spawnFailure = spawnFailure,
+                        onChangeModel = onChangeModel,
+                        timeContext = timeContext,
+                        onRetry = onRetry,
+                        retryInProgress = retryInProgress,
+                        onOpenComputer = onOpenComputer,
                     )
                 }
             }
         }
+    }
+}
+
+/**
+ * The agent's status as the profile shows it (web AgentStatusBadge): the status chip, with Retry
+ * or the Computer link beside it, then a held agent's sentence, a failed start and a tool call it
+ * is stuck on, each on its own lines. It sits in the hero, or first in the Recent activity card
+ * when the profile shows one ([MembersAgentRecentActivity]). Each part is [itemTop] below the one
+ * above it.
+ */
+@Composable
+internal fun MembersAgentProfileStatus(
+    member: MemberProfile,
+    summary: AgentDetailSummary?,
+    agentStatusObservedState: RaftAgentStatusIndicatorState?,
+    agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
+    toolStuck: AgentToolStuck? = null,
+    onStopTurn: (() -> Unit)? = null,
+    stopTurnInProgress: Boolean = false,
+    showActivityDetail: Boolean = false,
+    spawnFailure: AgentStatusSpawnFailure? = null,
+    onChangeModel: (() -> Unit)? = null,
+    timeContext: RaftTimeContext? = null,
+    onRetry: (() -> Unit)? = null,
+    retryInProgress: Boolean = false,
+    onOpenComputer: (() -> Unit)? = null,
+    itemTop: Dp = 6.dp,
+) {
+    val appBot = !member.managedByAppInstallId.isNullOrBlank()
+    // Web AgentDisplayState.blocked (botiverse/slock #13575): held agents say why, not their activity.
+    val blocked = (agentStatusIndicatorState ?: agentStatusObservedState)?.blocked?.takeIf { !appBot }
+    // Web AgentStatusBadge: a failed start's typed copy stands in for the daemon's detail
+    // (botiverse/slock #13460). It gets its own lines under the chip (as the stuck-tool notice
+    // does), so the chip keeps the status words and never cuts the copy.
+    val spawnFailureStatus =
+        spawnFailure?.takeIf {
+            showActivityDetail &&
+                !appBot &&
+                blocked == null &&
+                agentSpawnFailureCopy(it.spawnFailure, it.daemonDetail, nowMs = Long.MIN_VALUE) != null
+        }
+    val external = member.isExternal || summary?.isExternal == true || agentStatusIndicatorState?.external == true
+    // Web AgentStatusBadge `credentialReason` (botiverse/slock #13276): an unusable sign-in, plan or
+    // balance reads as the error light; the reason is a detail of the error, for its managers only.
+    val credentialReason =
+        if (appBot) {
+            null
+        } else {
+            membersAgentCredentialInvalidReason(
+                indicator = agentStatusIndicatorState,
+                summary = summary,
+                external = external,
+                blocked = blocked,
+            )
+        }
+    val showRetry =
+        onRetry != null &&
+            !appBot &&
+            agentNeedsManualRestart(
+                status = agentStatusIndicatorState?.status,
+                detailKind =
+                    membersAgentStatusDetailKind(
+                        indicator = agentStatusIndicatorState,
+                        summaryStatus = summary?.status,
+                        summaryActivity = summary?.activity,
+                        summaryDetailKind = summary?.activityDetailKind,
+                    ),
+                spawnFailure = spawnFailure?.spawnFailure,
+                runtimeErrorClass = summary?.lastRuntimeErrorClass,
+                external = external,
+                blocked = blocked,
+                likelyOnline = agentStatusIndicatorState?.likelyOnline == true,
+                credentialReason = credentialReason,
+            )
+    val rawStatusLabel = membersHeroAgentStatusLabel(
+        indicatorState = agentStatusIndicatorState,
+        summaryStatus = summary?.status,
+        summaryActivity = summary?.activity,
+        summaryActivityDetail = summary?.activityDetail,
+        showActivityDetail = showActivityDetail && spawnFailureStatus == null
+    )
+    // SSOT audit: the badge words localize like every other live-status caption. A held agent's
+    // sentence does not fit the one-line chip: the chip reads Error (its light) and the sentence
+    // follows under it ([AgentBlockedStatusNotice]). "Computer update required" is already the
+    // short form (raft-design identity-and-presence): the chip says it, with no sentence under it.
+    val statusLabel =
+        if (blocked == AgentBlockedState.ComputerUpdateRequired) {
+            AgentBlockedState.ComputerUpdateRequired.localizedStatusLabel()
+        } else if (blocked != null) {
+            stringResource(Res.string.member_row_status_error)
+        } else if (credentialReason != null) {
+            if (showActivityDetail) {
+                agentCredentialInvalidText(
+                    reason = credentialReason,
+                    runtime = summary?.runtime ?: agentStatusIndicatorState?.runtime,
+                    model = summary?.model,
+                )
+            } else {
+                stringResource(Res.string.member_row_status_error)
+            }
+        } else {
+            agentStatusIndicatorState?.copy(label = rawStatusLabel)?.localizedMemberStatusLabel() ?: rawStatusLabel
+        }
+
+    // A null resolution is Unknown/not-ready, and PresenceOffline is the
+    // Offline/Disconnected colour — falling back to it makes the dot claim
+    // offline while the label beside it says Unknown, the disagreement
+    // RaftAgentStatusIndicator's own contract forbids. Render no light until
+    // something authoritative arrives (task #253/#256).
+    // An App Bot renders no presence (web: always-offline on a signal that does
+    // not apply to it).
+    // Web: held or not, an invalid credential cannot run until someone acts: the error light.
+    val chipStatus = if (credentialReason != null) AgentStatus.Error else agentStatusObservedState?.status
+    val chipColor = if (credentialReason != null) RaftColor.AccentOrange else agentStatusObservedState?.color
+    val statusChip: @Composable (Modifier) -> Unit = { chipModifier ->
+        RaftBadge(
+            text = statusLabel,
+            appearance = RaftBadgeAppearance.Soft,
+            variant = chipStatus.membersStatusBadgeVariant(),
+            modifier = chipModifier,
+            icon = if (chipColor != null) {
+                {
+                    // raft-ui Status in a Badge (`lead-dot`): the 10dp light, never an animation.
+                    RaftStatusIndicator(color = chipColor)
+                }
+            } else {
+                null
+            }
+        )
+    }
+    val openComputer = onOpenComputer?.takeIf { blocked == AgentBlockedState.ComputerUpdateRequired }
+    // Nothing known about its presence (e.g. a joint channel's agent of another server
+    // whose profile read failed): no chip, never an empty "—" one.
+    if (!appBot && statusLabel != MembersUnknownAgentStatusLabel) {
+        if (openComputer != null) {
+            // The step is on the Computer: the chip itself opens it (web #14585
+            // AgentStatusBadge `agent-status-computer-too-old`).
+            statusChip(
+                Modifier
+                    .padding(top = itemTop)
+                    .raftClickable(
+                        onClick = openComputer,
+                        onClickLabel = stringResource(Res.string.agent_status_open_computer),
+                        shape = RoundedCornerShape(RaftAppRadius.Control)
+                    )
+            )
+        } else if (showRetry && onRetry != null) {
+            // Web `flex items-center gap-1.5`: the quiet Retry right after the chip.
+            Row(
+                modifier = Modifier.padding(top = itemTop),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                statusChip(Modifier.weight(1f, fill = false))
+                AgentStatusRetryLink(inProgress = retryInProgress, onRetry = onRetry)
+            }
+        } else {
+            statusChip(Modifier.padding(top = itemTop))
+        }
+    }
+    if (blocked != null && blocked != AgentBlockedState.ComputerUpdateRequired) {
+        AgentBlockedStatusNotice(blocked = blocked, modifier = Modifier.padding(top = itemTop))
+    }
+    // Web #10446: stuck on one tool call: its own lines under the status chip, so the
+    // chip never truncates it, with the way out for whoever can stop the turn.
+    if (spawnFailureStatus != null) {
+        AgentSpawnFailureStatusNotice(
+            status = spawnFailureStatus,
+            timeContext = timeContext,
+            onChangeModel = onChangeModel,
+            modifier = Modifier.padding(top = itemTop)
+        )
+    }
+    if (toolStuck != null && member.managedByAppInstallId.isNullOrBlank()) {
+        AgentToolStuckNotice(
+            toolStuck = toolStuck,
+            onStopTurn = onStopTurn,
+            stopTurnEnabled = !stopTurnInProgress,
+            modifier = Modifier.padding(top = itemTop)
+        )
     }
 }
 
@@ -764,7 +817,12 @@ internal class MembersAgentLifecycleInputs(
      * `restartResetOffered(canControlAgentRuntime, computerOffline)`); null otherwise.
      */
     val onRetryRestart: (() -> Unit)? = null,
-    val retryRestartInProgress: Boolean = false
+    val retryRestartInProgress: Boolean = false,
+    /**
+     * Web AgentDetailPanel `AgentRecentActivity` under the hero, with the status as its first line;
+     * null where the profile shows none (the status stays in the hero).
+     */
+    val recentActivity: MembersAgentRecentActivityInputs? = null
 )
 
 /**
@@ -1688,6 +1746,15 @@ private fun MembersAgentProfileIdentity(
         sharedAgentDetailStore = sharedAgentDetailStore,
         storeState = storeState,
         hero = { onEditDisplayName ->
+            val toolStuck = membersAgentToolStuck(agentStatusIndicatorState, summary?.toolStuck)
+            val spawnFailure =
+                membersAgentStatusSpawnFailure(
+                    indicator = agentStatusIndicatorState,
+                    summaryDetailKind = summary?.activityDetailKind,
+                    summaryActivityDetail = summary?.activityDetail,
+                    summarySpawnFailure = summary?.spawnFailure,
+                )
+            val recentActivity = lifecycle.recentActivity
             MembersAgentProfileHeader(
                 member = member,
                 summary = summary,
@@ -1696,25 +1763,59 @@ private fun MembersAgentProfileIdentity(
                 agentStatusObservedState = agentStatusObservedState,
                 memberAvatarResolver = memberAvatarResolver,
                 onChangeAvatar = onChangeAvatar,
-                toolStuck = membersAgentToolStuck(agentStatusIndicatorState, summary?.toolStuck),
+                toolStuck = toolStuck,
                 onStopTurn = lifecycle.onStopTurn,
                 stopTurnInProgress = lifecycle.stopTurnInProgress,
                 // Web: `canManageAgent && !agent.deletedAt && !agent.managedByAppInstallId`.
                 onEditDisplayName = onEditDisplayName?.takeIf { member.managedByAppInstallId.isNullOrBlank() },
                 showActivityDetail = lifecycle.showActivityDetail,
-                spawnFailure =
-                    membersAgentStatusSpawnFailure(
-                        indicator = agentStatusIndicatorState,
-                        summaryDetailKind = summary?.activityDetailKind,
-                        summaryActivityDetail = summary?.activityDetail,
-                        summarySpawnFailure = summary?.spawnFailure,
-                    ),
+                spawnFailure = spawnFailure,
                 onChangeModel = lifecycle.onOpenModelSettings,
                 timeContext = lifecycle.timeContext,
                 onRetry = lifecycle.onRetryRestart,
                 retryInProgress = lifecycle.retryRestartInProgress,
-                onOpenComputer = lifecycle.onOpenComputer
+                onOpenComputer = lifecycle.onOpenComputer,
+                // With Recent activity the status is the card's first line (web).
+                showStatus = recentActivity == null
             )
+            if (recentActivity != null) {
+                // Web `px-5 py-4` then a full-bleed Separator, before AgentProfileInfo: 36dp from
+                // the hero (its 8dp, the column's 16dp, 12dp here), 12dp from the separator to
+                // the description (the column's 16dp and the description's 8dp, less 12dp).
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = MembersProfileRecentActivityTopGap)
+                        .membersOverlapNextSection(MembersProfileRecentActivityTopGap)
+                ) {
+                    MembersAgentRecentActivity(
+                        agentId = member.id,
+                        liveActivity = summary?.activity,
+                        inputs = recentActivity,
+                        otter = membersAgentRecentActivityOtter(agentStatusObservedState?.status),
+                    ) {
+                        MembersAgentProfileStatus(
+                            member = member,
+                            summary = summary,
+                            agentStatusObservedState = agentStatusObservedState,
+                            agentStatusIndicatorState = agentStatusIndicatorState,
+                            toolStuck = toolStuck,
+                            onStopTurn = lifecycle.onStopTurn,
+                            stopTurnInProgress = lifecycle.stopTurnInProgress,
+                            showActivityDetail = lifecycle.showActivityDetail,
+                            spawnFailure = spawnFailure,
+                            onChangeModel = lifecycle.onOpenModelSettings,
+                            timeContext = lifecycle.timeContext,
+                            onRetry = lifecycle.onRetryRestart,
+                            retryInProgress = lifecycle.retryRestartInProgress,
+                            onOpenComputer = lifecycle.onOpenComputer,
+                            itemTop = 0.dp
+                        )
+                    }
+                    Spacer(Modifier.height(MembersProfileSectionPaddingY))
+                    MembersProfileFullBleedDivider()
+                }
+            }
         }
     )
     // Web AgentDetailPanel: under the hero, the owner's paused notice with Start. Here, not in
