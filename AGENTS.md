@@ -19,7 +19,7 @@ summarizes.
 - `raft-ui-follow` — catching `compose/designsystem` up with a new raft-ui
   release (changelog verdicts, token bump, hand-matched values, RGB golden
   checks, small PRs).
-- `raft-i18n-strings` — adding or changing user-visible text in en/zh-CN/ja.
+- `raft-i18n-strings` — adding or changing user-visible text in all eight locales (en/zh-CN/ja/zh-TW/ko/es/pt-BR/ru).
 - `raft-api-endpoint` — calling a new/changed server endpoint or DTO field.
 - `raft-realtime-event` — adding a Socket.IO event or `RealtimeEvent` subtype.
 - `raft-bug-triage` — stale/wrong data, missing realtime updates, scroll

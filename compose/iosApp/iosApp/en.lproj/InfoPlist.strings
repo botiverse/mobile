@@ -1,1 +1,3 @@
+"NSPhotoLibraryUsageDescription" = "Raft uses photo library access when you choose images to attach to messages.";
 "NSCameraUsageDescription" = "Raft uses camera access when you take a photo to attach to a message.";
+"NSPhotoLibraryAddUsageDescription" = "Raft saves message image attachments to your Photos library when you choose Save to Photos.";
