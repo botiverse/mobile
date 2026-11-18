@@ -151,7 +151,8 @@ let TARGET_KIND = "artifact";
 function retarget() { return TARGET_KIND === "image" ? findFixtureImage(3) : findTarget(); }
 function findTarget() {
   if (TARGET_KIND === "chip") { const c = composerChip(); if (c) return c; }
-  gotoTab("Artifacts"); sleep(1500); hideIme();
+  for (let i = 0; i < 3 && !gotoTab("Artifacts"); i++) { shot(`artifacts-tab-missing-${i}`); nodes(`artifacts-tab-missing-${i}`); if (!foreground()) launch(); else back(); sleep(1500); hideIme(); }
+  sleep(1500); hideIme();
   const ns = nodes("artifacts");
   const card = ns.find((n) => /, v\d+, /.test(n.desc) && n.w > 100 && n.h > 100);
   if (!card) { log("no artifact card"); return null; }

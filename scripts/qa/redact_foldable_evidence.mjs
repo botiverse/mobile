@@ -5,7 +5,7 @@
 // The gate (secure_evidence.mjs) still runs unchanged afterwards.
 import fs from "node:fs";
 import path from "node:path";
-const dir = process.argv[2] || "qa-evidence/foldable";
+const dir = process.argv[2] || "qa-evidence/foldable"; // or the whole qa-evidence dir
 const secrets = [process.env.QA_TEST_PASSWORD, process.env.QA_TEST_EMAIL].filter((v) => v && v.length >= 4);
 const TEXT = /\.(txt|log|json|jsonl|xml|md|csv)$/i;
 const hits = [];
