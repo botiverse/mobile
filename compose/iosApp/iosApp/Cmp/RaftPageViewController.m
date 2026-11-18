@@ -150,11 +150,19 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
 
 - (void)setRaftConversationForwardGestureEnabled:(BOOL)enabled {
     _raftConversationForwardGestureEnabled = enabled;
-    if (enabled && self.navigationController == nil) {
+    UINavigationController *navigationController = self.navigationController;
+    if (enabled && navigationController == nil) {
         RaftConversationForwardLog(@"recognizer_not_attached reason=no_navigation_controller");
     }
-    [self.navigationController fd_setConversationForwardGestureEnabled:
-        enabled && self.raftIsAppShellPage];
+    // Attach only while this shell is the top page. Armed while a pushed page is on top (shared's
+    // page visibility can lag a native push), the bit is kept and the shell's viewDidAppear
+    // (raftAppShellDidAppear) attaches it once Home is back.
+    BOOL onTop = navigationController.topViewController == self;
+    if (enabled && navigationController != nil && !onTop) {
+        RaftConversationForwardLog(@"recognizer_not_attached reason=shell_not_top");
+    }
+    [navigationController fd_setConversationForwardGestureEnabled:
+        enabled && self.raftIsAppShellPage && onTop];
 }
 
 - (void)raftRequestConversationForward {

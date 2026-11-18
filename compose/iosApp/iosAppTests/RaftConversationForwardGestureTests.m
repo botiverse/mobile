@@ -81,6 +81,42 @@
     XCTAssertNotNil(recognizer.delegate);
 }
 
+// Review F2: armed while a conversation is on top (shared's page visibility can lag a native
+// push), Forward stays detached over the conversation and attaches once Home is back.
+- (void)testArmingWhileAConversationIsOnTopWaitsForHome {
+    RaftPageViewController *conversation =
+        [[RaftPageViewController alloc] initWithPageName:@"compose_thread" pageData:@{}];
+    [self.navigation pushViewController:conversation animated:NO];
+
+    self.shell.raftConversationForwardGestureEnabled = YES;
+    XCTAssertFalse([self forwardRecognizerLive], @"No Forward over a pushed conversation");
+
+    [self.navigation popViewControllerAnimated:NO];
+    [self.shell raftAppShellDidAppear];
+    XCTAssertTrue([self forwardRecognizerLive]);
+}
+
+// Review F6: a native scroll view's own pan waits for Forward only for a touch that started in
+// the trailing-edge strip; other recognizers never wait.
+- (void)testScrollViewsWaitForForwardOnlyForStripTouches {
+    self.shell.raftConversationForwardGestureEnabled = YES;
+    RaftConversationForwardPanGestureRecognizer *recognizer = self.navigation.fd_conversationForwardGestureRecognizer;
+    NSObject<UIGestureRecognizerDelegate> *delegate = (NSObject<UIGestureRecognizerDelegate> *)recognizer.delegate;
+    UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 0, 402, 400)];
+    [self.navigation.view addSubview:scrollView];
+    UIPanGestureRecognizer *unrelated = [[UIPanGestureRecognizer alloc] init];
+
+    [delegate setValue:@NO forKey:@"touchStartedAtTrailingEdge"];
+    XCTAssertFalse([delegate gestureRecognizer:recognizer
+        shouldBeRequiredToFailByGestureRecognizer:scrollView.panGestureRecognizer]);
+
+    [delegate setValue:@YES forKey:@"touchStartedAtTrailingEdge"];
+    XCTAssertTrue([delegate gestureRecognizer:recognizer
+        shouldBeRequiredToFailByGestureRecognizer:scrollView.panGestureRecognizer]);
+    XCTAssertFalse([delegate gestureRecognizer:recognizer
+        shouldBeRequiredToFailByGestureRecognizer:unrelated]);
+}
+
 - (void)testSettingOffKeepsTheRecognizerDetachedAfterReturning {
     self.shell.raftConversationForwardGestureEnabled = NO;
 
