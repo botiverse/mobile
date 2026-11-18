@@ -1513,7 +1513,9 @@ private object ImmediateThreadComposerDraftPersistenceScheduler : SharedThreadCo
 private data class PendingThreadComposerDraftWrite(
     val generation: Long,
     val state: SharedThreadComposerDraftState,
-    var cancellation: SharedThreadComposerDraftPersistenceCancellation? = null
+    var cancellation: SharedThreadComposerDraftPersistenceCancellation? = null,
+    /** [RaftDraftTimingMarker] sequence of the change this write carries; 0 when no marker. */
+    val timingSeq: Long = 0L,
 )
 
 /** Immutable copy used by a transition snapshot; cancellation handles are one-way and cannot be restored. */
@@ -1541,7 +1543,9 @@ internal class SharedThreadComposerDraftPersistSlice(
      * Production passes false: the drafts are account-scoped and read nothing until the account
      * binding is known (architecture review B, site 7).
      */
-    recordsKnownAtStart: Boolean = true
+    recordsKnownAtStart: Boolean = true,
+    /** QA timing lines (task #246); null unless a debuggable build installed [RaftDraftTimingMarker]. */
+    private val timingSink: () -> ((String) -> Unit)? = { RaftDraftTimingMarker.installedSink },
 ) : MviPersistSlice<SharedThreadComposerDraftState, SharedThreadComposerDraftIntent> {
     /** Runtimes using this slice serialize their transitions on it; see [SharedThreadComposerDraftStore]. */
     internal val transitionAdmissionLock: ReentrantLock
@@ -1585,6 +1589,8 @@ internal class SharedThreadComposerDraftPersistSlice(
     }
     /** Advanced each time the signed-in account changes; guarded by [stateLock]. */
     private var accountEpoch = 0L
+    /** Last [RaftDraftTimingMarker] sequence number; guarded by [stateLock]. */
+    private var timingSeq = 0L
 
     /**
      * Slice-local undo record.  Keeping this type inside the slice is intentional: rollback must
@@ -1901,7 +1907,8 @@ internal class SharedThreadComposerDraftPersistSlice(
             val next =
                 PendingThreadComposerDraftWrite(
                     generation = advanceWriteGenerationLocked(key),
-                    state = state
+                    state = state,
+                    timingSeq = markChangeReceivedLocked(state.seedText.length),
                 )
             next to pendingWritesByDraftKey.put(key, next)
         }
@@ -1936,7 +1943,8 @@ internal class SharedThreadComposerDraftPersistSlice(
                         persistStateIfGenerationCurrent(
                             key = key,
                             generation = claimed.generation,
-                            state = claimed.state
+                            state = claimed.state,
+                            timingSeq = claimed.timingSeq,
                         )
                     } catch (error: Throwable) {
                         restorePendingWriteAfterFailure(
@@ -2027,7 +2035,9 @@ internal class SharedThreadComposerDraftPersistSlice(
         } ?: return
         pending.cancellation?.cancel()
         try {
-            persistStateLocked(key, pending.state, "ChangeFlush")
+            if (persistStateLocked(key, pending.state, "ChangeFlush")) {
+                markDraftWritten(pending.timingSeq, pending.state.seedText.length)
+            }
         } catch (error: Throwable) {
             // A synchronous Flush must report the primary persistence failure to the transition,
             // but it must also retain the latest draft for a later retry.  The generation is
@@ -2039,7 +2049,8 @@ internal class SharedThreadComposerDraftPersistSlice(
                     pendingWritesByDraftKey[key] =
                         PendingThreadComposerDraftWrite(
                             generation = nextGeneration,
-                            state = pending.state
+                            state = pending.state,
+                            timingSeq = pending.timingSeq,
                         )
                     true
                 } else {
@@ -2090,12 +2101,12 @@ internal class SharedThreadComposerDraftPersistSlice(
         reason: String,
         routineDiagnostics: Boolean = true,
         onlyLogRecordsWhenChanged: Boolean = false,
-    ) {
+    ): Boolean {
         if (!isCurrentAccount(state)) {
             // Text typed for an account that has since signed out (or been replaced) is dropped,
             // never written into whoever is signed in now.
             safeDiagnostics("thread_composer_draft_persist_skipped key=$key reason=account_retired")
-            return
+            return false
         }
         persistence.save(
             key = key,
@@ -2107,27 +2118,46 @@ internal class SharedThreadComposerDraftPersistSlice(
             routineDiagnostics = routineDiagnostics,
         )
         refreshActiveDraftRecords(reason = reason, onlyLogWhenChanged = onlyLogRecordsWhenChanged)
+        return true
     }
 
     private fun persistStateIfGenerationCurrent(
         key: String,
         generation: Long,
-        state: SharedThreadComposerDraftState
+        state: SharedThreadComposerDraftState,
+        timingSeq: Long,
     ) {
         stateLock.withLock {
             persistenceWriteLock.withLock {
                 val isCurrent = writeGenerationByDraftKey[key] == generation
                 if (!isCurrent) return@withLock
                 val firstOfBurst = admitChangeWriteToLogBurst(key, state.seedText.length)
-                persistStateLocked(
-                    key,
-                    state,
-                    "ChangeDebounced",
-                    routineDiagnostics = firstOfBurst,
-                    onlyLogRecordsWhenChanged = true,
-                )
+                val written =
+                    persistStateLocked(
+                        key,
+                        state,
+                        "ChangeDebounced",
+                        routineDiagnostics = firstOfBurst,
+                        onlyLogRecordsWhenChanged = true,
+                    )
+                if (written) markDraftWritten(timingSeq, state.seedText.length)
             }
         }
+    }
+
+    /** `change_received` for a typed-text change ([RaftDraftTimingMarker]); 0 when no sink. */
+    private fun markChangeReceivedLocked(textLength: Int): Long {
+        val sink = timingSink() ?: return 0L
+        timingSeq += 1L
+        runCatching { sink("change_received seq=$timingSeq len=$textLength") }
+        return timingSeq
+    }
+
+    /** `draft_written` once the change [seq] carried is in the durable draft. */
+    private fun markDraftWritten(seq: Long, textLength: Int) {
+        if (seq <= 0L) return
+        val sink = timingSink() ?: return
+        runCatching { sink("draft_written seq=$seq len=$textLength") }
     }
 
     /** True when this typed-text write starts a burst and logs; false when it is only counted. */

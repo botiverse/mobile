@@ -9,6 +9,10 @@ name: Android Realtime E2E
 # APK: an Android Alpha Validation (android-alpha.yml) artifact. Dispatch with alpha_run_id (that run's
 # android-alpha-* artifact), or label a pull request `realtime-e2e`: the newest successful
 # android-alpha.yml run for the PR head is used (dispatch android-alpha.yml with ref=<head> first).
+#
+# scenario=draft-kill-timing (dispatch only) runs scripts/qa/android_draft_kill_timing.mjs instead on the same
+# emulator, APK and QA sign-in: a composer draft must survive a force-stop shortly after the last keystroke,
+# timed on the device's own monotonic clock (task #246). Its result table is results.md in the evidence.
 on:
   workflow_dispatch:
     inputs:
@@ -16,6 +20,17 @@ on:
         description: "android-alpha.yml run id whose android-alpha-* APK artifact to test"
         required: true
         type: string
+      scenario:
+        description: "realtime (default) or draft-kill-timing"
+        required: false
+        type: choice
+        options: [realtime, draft-kill-timing]
+        default: realtime
+      runs_per_bucket:
+        description: "draft-kill-timing: kill runs per delay bucket (0.05/0.1/0.3/0.7 s)"
+        required: false
+        type: string
+        default: "10"
   pull_request:
     types: [labeled]
 
@@ -31,9 +46,11 @@ jobs:
   e2e:
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'realtime-e2e'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: ${{ inputs.scenario == 'draft-kill-timing' && 150 || 60 }}
     env:
-      EVIDENCE: realtime-e2e-evidence
+      EVIDENCE: ${{ inputs.scenario == 'draft-kill-timing' && 'draft-kill-timing-evidence' || 'realtime-e2e-evidence' }}
+      SCENARIO: ${{ inputs.scenario || 'realtime' }}
+      RUNS_PER_BUCKET: ${{ inputs.runs_per_bucket || '10' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -85,7 +102,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run realtime e2e on the emulator
+      - name: Run the scenario on the emulator
         uses: reactivecircus/android-emulator-runner@v2
         env:
           QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
@@ -101,18 +118,21 @@ jobs:
           emulator-boot-timeout: 1200
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: node scripts/qa/android_realtime_e2e.mjs --apk "${{ steps.apk.outputs.apk }}" --package "${{ steps.apk.outputs.package }}" --out "${{ env.EVIDENCE }}"
+          # The action runs each script line in its own shell: keep this one line.
+          script: if [ "$SCENARIO" = draft-kill-timing ]; then node scripts/qa/android_draft_kill_timing.mjs --apk "${{ steps.apk.outputs.apk }}" --package "${{ steps.apk.outputs.package }}" --out "${{ env.EVIDENCE }}" --runs-per-bucket "$RUNS_PER_BUCKET"; else node scripts/qa/android_realtime_e2e.mjs --apk "${{ steps.apk.outputs.apk }}" --package "${{ steps.apk.outputs.package }}" --out "${{ env.EVIDENCE }}"; fi
 
       - name: Summary
         if: always()
         run: |
           {
-            echo "## Android realtime e2e"
+            echo "## Android ${SCENARIO} (emulator)"
             echo "| | |"; echo "|---|---|"
             echo "| APK | \`${{ steps.apk.outputs.artifact }}\` (run ${{ steps.apk.outputs.run_id }}) |"
             echo "| SHA-256 | \`${{ steps.apk.outputs.sha256 }}\` |"
             echo "| Emulator | API 34 google_apis x86_64, pixel_6 |"
-            if [ -f "${EVIDENCE}/summary.json" ]; then
+            if [ -f "${EVIDENCE}/results.md" ]; then
+              echo; cat "${EVIDENCE}/results.md"
+            elif [ -f "${EVIDENCE}/summary.json" ]; then
               echo; echo '```json'; cat "${EVIDENCE}/summary.json"; echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
@@ -121,7 +141,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: android-realtime-e2e-evidence
+          name: ${{ env.SCENARIO == 'draft-kill-timing' && 'android-draft-kill-timing-evidence' || 'android-realtime-e2e-evidence' }}
           path: ${{ env.EVIDENCE }}
           if-no-files-found: warn
           retention-days: 30

@@ -212,7 +212,7 @@ class SharedThreadComposerDraftCrashSurvivalTest {
 }
 
 /** Virtual time: scheduled blocks run when [advanceBy] reaches their due time. */
-private class VirtualDraftWriteClock : SharedThreadComposerDraftPersistenceScheduler {
+internal class VirtualDraftWriteClock : SharedThreadComposerDraftPersistenceScheduler {
     private class Task(val dueAt: Long, val order: Long, val block: () -> Unit) {
         var cancelled = false
     }
