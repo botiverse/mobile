@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
  * Settings cleanup (1.27.0): there is no "Mobile" Settings page on any platform. Its rows are part
  * of Appearance (Messages, Home, Windows), as the web keeps its device preferences in
  * AppearanceSection. Desktop hides "Open web links" (no embedded web view) and links open in the
- * default browser there; the Windows group shows only where a large screen is possible.
+ * default browser there; the Windows group shows the desktop layout switch on every device (a large phone held sideways reaches it), multiple windows only where a large screen is possible.
  */
 class SettingsAppPreferencesPlacementTest {
     @Test
@@ -52,7 +52,7 @@ class SettingsAppPreferencesPlacementTest {
     }
 
     @Test
-    fun phoneKeepsLinkModeAndActionKeyCopyButHasNoWindowsGroup() {
+    fun phoneKeepsLinkModeAndActionKeyCopyAndTheDesktopLayoutSwitch() {
         val phone =
             settingsAppPreferenceVisibility(
                 finePointer = false,
@@ -63,9 +63,10 @@ class SettingsAppPreferencesPlacementTest {
             )
         assertTrue(phone.linkOpenMode)
         assertFalse(phone.hardwareKeyboardComposerCopy)
-        assertFalse(phone.desktopMode, "a normal phone has no large screen: no desktop layout switch")
+        // A large phone held sideways reaches the desktop layout: the switch shows so it can be turned off.
+        assertTrue(phone.desktopMode)
         assertFalse(phone.multiShellHostRow(enabled = false))
-        assertFalse(phone.windowsGroup(multiShellHostEnabled = false))
+        assertTrue(phone.windowsGroup(multiShellHostEnabled = false))
         // Turned on before 1.27.0: it still shows, so it can be turned off.
         assertTrue(phone.multiShellHostRow(enabled = true))
         assertTrue(phone.windowsGroup(multiShellHostEnabled = true))

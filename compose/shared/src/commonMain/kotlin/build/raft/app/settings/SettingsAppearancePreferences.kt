@@ -88,8 +88,12 @@ internal data class SettingsAppPreferenceVisibility(
     /** A large screen is possible here ([raftPlatformLargeScreenPossible]): the Windows group. */
     val largeScreen: Boolean = false,
 ) {
-    /** "Desktop layout on large screens": only where there can be a large screen. */
-    val desktopMode: Boolean get() = largeScreen
+    /**
+     * "Desktop layout on large screens": on every device. A large phone held sideways is wide enough
+     * for the desktop layout too, so it needs the switch to turn it off (artin 2026-11-18,
+     * #proj-mobile:d36389d7, option A).
+     */
+    val desktopMode: Boolean get() = true
 
     /**
      * Multiple app windows: where the host has them and the screen can be large. A phone that has
