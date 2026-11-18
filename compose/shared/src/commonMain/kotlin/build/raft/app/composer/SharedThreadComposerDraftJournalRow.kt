@@ -18,8 +18,9 @@ import kotlin.concurrent.Volatile
  * either has the old value or the new one: MMKV (Android) appends one key/value record and drops a torn
  * record on load, and the other platforms' stores replace a value whole.  Writing the fields to separate
  * keys would take several writes, and a kill between them could pair new text with an old seq/generation
- * (or the reverse), which this format cannot.  The two lengths make a truncated or mangled value
- * unreadable instead of restoring part of it: a row is applied only when it parses exactly.
+ * (or the reverse), which this format cannot.  The header fields are parsed and both lengths must
+ * match the rest of the value exactly, so a truncated value is never applied in part; there is no
+ * checksum (the store's own record integrity is relied on for corrupted bytes).
  *
  * Older rows are the JSON of [SharedThreadComposerDraftJournalEntry] (a `{` first); they are still read
  * (migration on read) and are replaced by the current format on the draft's next journal write.

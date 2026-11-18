@@ -36,7 +36,7 @@ class SharedThreadComposerDraftJournalRowTest {
     }
 
     @Test
-    fun aTruncatedOrMangledRowIsNeverAppliedInPart() {
+    fun aTruncatedRowOrABrokenHeaderIsNeverApplied() {
         val row = SharedThreadComposerDraftJournalRow.encode(entry(text = "the whole text"))
         for (cut in 1 until row.length) assertNull(SharedThreadComposerDraftJournalRow.decode(row.substring(0, cut)), "cut=$cut")
         assertNull(SharedThreadComposerDraftJournalRow.decode(row + "x"))
@@ -226,6 +226,86 @@ class SharedThreadComposerDraftJournalRowTest {
         assertEquals("the last text", restart(storage, draftKey))
     }
 
+    /**
+     * The index write of a registration is dropped (the account was not bound at that instant): the key
+     * must not be cached as listed, so the next write registers it for real.
+     */
+    @Test
+    fun aDroppedIndexWriteIsNeverCachedAsListed() {
+        val view = ScopedView(token = "account-a")
+        val persistence = SharedThreadComposerDraftPersistence(view)
+        view.dropIndexWrites = true
+        persistence.writeJournal(entry(seq = 1L))
+        assertNull(view.getString(SharedThreadComposerDraftPersistence.JournalIndexKey))
+
+        view.dropIndexWrites = false
+        assertTrue(persistence.writeJournal(entry(seq = 2L)).indexWrite, "registered on the next write")
+        assertEquals(listOf(draftKey), view.getString(SharedThreadComposerDraftPersistence.JournalIndexKey)?.lines())
+    }
+
+    /** The account changed between reading the index and the writes: nothing is cached for either. */
+    @Test
+    fun anAccountChangeDuringTheWriteIsNeverCached() {
+        val view = ScopedView(token = "account-a")
+        val persistence = SharedThreadComposerDraftPersistence(view)
+        // The account flips to B while the index is read, and is A again before the next keystroke.
+        view.tokenAfterNextIndexRead = "account-b"
+        persistence.writeJournal(entry(seq = 1L))
+        view.resetToken("account-a")
+        val reads = view.indexReads
+
+        persistence.writeJournal(entry(seq = 2L))
+        assertTrue(view.indexReads > reads, "the second write read the index again")
+    }
+
+    /** More than 16 listed keys: a clear compacts the index, and the cache must not keep a compacted key. */
+    @Test
+    fun indexCompactionInvalidatesTheCache() {
+        val storage = InMemoryRaftKeyValueStore()
+        val persistence = SharedThreadComposerDraftPersistence(storage)
+        val keys = (1..17).map { "send=channel-$it|parent=_|mention=channel-$it" }
+        keys.forEachIndexed { i, key -> persistence.writeJournal(entry(key = key, seq = i + 1L)) }
+        // The first clear sees 17 listed keys and rewrites the index to the keys that still have a row.
+        persistence.clearJournalFor(keys.first())
+        assertFalse(keys.first() in indexOf(storage))
+        assertEquals(16, indexOf(storage).size)
+
+        val again = persistence.writeJournal(entry(key = keys.first(), seq = 100L))
+        assertTrue(again.indexWrite, "a key compacted out of the index is registered again")
+        assertTrue(keys.first() in indexOf(storage))
+        // So a clear-all still finds its row.
+        persistence.clearJournal()
+        assertNull(storage.getString(SharedThreadComposerDraftPersistence.journalRowKey(keys.first())))
+    }
+
+    /**
+     * The account purge deletes another account's rows directly (no account switch of the facade that
+     * cached them): that purge alone must void the cache.
+     */
+    @Test
+    fun theAccountPurgeAloneInvalidatesTheCache() {
+        val base = InMemoryRaftKeyValueStore()
+        var live: SharedThreadComposerDraftAccount? = null
+        val accountStore = SharedThreadComposerDraftAccountStore(base, liveAccount = { live })
+        // No cleanup facade: only the purge's own direct deletion (and its own invalidation) runs.
+        val accounts =
+            SharedThreadComposerDraftAccounts(base = base, store = accountStore, persistenceFor = { error("no cleanup facade in this test") })
+        // Account B's rows are on the device (a session that ended), written through B's own view.
+        val viewB = AccountView(base, accountB)
+        val persistenceB = SharedThreadComposerDraftPersistence(viewB)
+        persistenceB.writeJournal(entry(seq = 1L, text = "B"))
+        base.putString(SharedThreadComposerDraftAccountKeys.OwnersKey, accountB.storageToken)
+
+        // A signs in: B's rows are purged (deleteOwner), the cache of B's view is not touched otherwise.
+        live = accountA
+        accounts.onAccountBinding(accountA, SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(accountStore), scheduler = VirtualDraftWriteClock()))
+        assertNull(viewB.getString(SharedThreadComposerDraftPersistence.JournalIndexKey))
+
+        val again = persistenceB.writeJournal(entry(seq = 2L, text = "B again"))
+        assertTrue(again.indexWrite, "B's key is registered again after the purge")
+        assertEquals(listOf(draftKey), viewB.getString(SharedThreadComposerDraftPersistence.JournalIndexKey)?.lines())
+    }
+
     private fun slice(storage: SharedPreferenceStore, process: Long, clock: VirtualDraftWriteClock = VirtualDraftWriteClock()) =
         SharedThreadComposerDraftPersistSlice(
             persistence = SharedThreadComposerDraftPersistence(storage),
@@ -246,6 +326,44 @@ class SharedThreadComposerDraftJournalRowTest {
 
     private fun indexOf(storage: SharedPreferenceStore): List<String> =
         storage.getString(SharedThreadComposerDraftPersistence.JournalIndexKey)?.lines()?.filter(String::isNotBlank).orEmpty()
+
+    /** An account-scoped view of [base] keyed as the account store keys it, scoped to [account]. */
+    private class AccountView(private val base: SharedPreferenceStore, private val account: SharedThreadComposerDraftAccount) :
+        SharedPreferenceStore, SharedThreadComposerDraftJournalScope {
+        override fun journalScopeToken(): String = account.storageToken
+
+        override fun getString(key: String): String? = base.getString(SharedThreadComposerDraftAccountKeys.scopedKey(account, key))
+
+        override fun putString(key: String, value: String?) = base.putString(SharedThreadComposerDraftAccountKeys.scopedKey(account, key), value)
+    }
+
+    /** A scoped store whose index writes can be dropped and whose scope can change after an index read. */
+    private class ScopedView(private var token: String) : SharedPreferenceStore, SharedThreadComposerDraftJournalScope {
+        private val values = mutableMapOf<String, String>()
+        var dropIndexWrites = false
+        var tokenAfterNextIndexRead: String? = null
+        var indexReads = 0
+
+        override fun journalScopeToken(): String = token
+
+        fun resetToken(value: String) {
+            token = value
+        }
+
+        override fun getString(key: String): String? {
+            if (key == SharedThreadComposerDraftPersistence.JournalIndexKey) {
+                indexReads += 1
+                tokenAfterNextIndexRead?.let { token = it }
+                tokenAfterNextIndexRead = null
+            }
+            return values[key]
+        }
+
+        override fun putString(key: String, value: String?) {
+            if (dropIndexWrites && key == SharedThreadComposerDraftPersistence.JournalIndexKey) return
+            if (value == null) values.remove(key) else values[key] = value
+        }
+    }
 
     private class CountingStore : SharedPreferenceStore {
         private val values = mutableMapOf<String, String>()

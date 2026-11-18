@@ -801,12 +801,19 @@ internal class SharedThreadComposerDraftPersistence(
             val epoch = SharedThreadComposerDraftJournalIndexEpoch.value
             val cached = scope?.let { lockEntry.journalIndexCache[it] }?.takeIf { (at, _) -> at == epoch }?.second
             if (cached == null || entry.key !in cached) {
-                val listed = journalIndexLocked()
+                var listed = journalIndexLocked()
                 if (entry.key !in listed) {
                     store.putString(JournalIndexKey, (listed + entry.key).joinToString("\n"))
                     indexWrite = true
+                    // Registration only (rare): read back, since the store may have dropped the write (no
+                    // account bound at that instant).
+                    listed = journalIndexLocked()
                 }
-                if (scope != null) lockEntry.journalIndexCache[scope] = epoch to (listed + entry.key).toMutableSet()
+                // Cache "listed" only when the index as read lists the key AND the account is the same one
+                // after the writes; otherwise the next write reads the index again.
+                if (scope != null && entry.key in listed && journalIndexScopeOf(store) == scope) {
+                    lockEntry.journalIndexCache[scope] = epoch to listed.toMutableSet()
+                }
             }
             index = indexStarted.elapsedNow()
             val putStarted = TimeSource.Monotonic.markNow()
