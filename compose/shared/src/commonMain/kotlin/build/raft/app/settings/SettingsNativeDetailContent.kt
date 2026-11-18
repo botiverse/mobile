@@ -25,6 +25,7 @@ import build.raft.app.data.ServerPublicVisibilityRepository
 import build.raft.app.data.ServerAppearanceRepository
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SERVER_ACTION_PROFILE_SAVE
+import build.raft.app.data.SERVER_ACTION_DELETE
 import build.raft.app.data.SERVER_ACTION_LEAVE
 import build.raft.app.data.MemberRemovalImpactRepository
 import build.raft.app.data.NotificationPreferenceSnapshot
@@ -48,6 +49,7 @@ import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataResult
 import build.raft.app.data.SettingsAppearanceUpdateRequest
+import build.raft.app.data.SettingsServerDeleteRequest
 import build.raft.app.data.SettingsServerProfileUpdateRequest
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.SharedRealtimeDomainEventOwner
@@ -659,10 +661,10 @@ internal fun SettingsNativeDetailPageContent(
             }
             SettingsNativeDetailPage.Server -> {
                 val currentServer = session?.currentServerSummary()
-                // Left the server (web `handleLeave` then selects another): re-read the server list,
-                // which drops this one and moves the selection, then close the page.
-                val leaveAction = settingsState.actionState?.takeIf { it.action == SERVER_ACTION_LEAVE }
-                val left = leaveAction != null && !leaveAction.inProgress && !leaveAction.hasUserFacingError()
+                // Left or deleted the server (web DangerZoneSection `handleLeave` / DeleteServerConfirmDialog
+                // `handleDelete`, then serverStore drops the membership and selects another): re-read the
+                // server list, which drops this one and moves the selection, then close the page.
+                val left = settingsServerLeftOrDeleted(settingsState.actionState)
                 LaunchedEffect(left) {
                     if (left) {
                         runCatchingPreservingCancellation { authDataSource.loadServers() }
@@ -689,6 +691,7 @@ internal fun SettingsNativeDetailPageContent(
                     onProfileNameChange = { serverProfileName = it },
                     serverSnapshot = currentServerSnapshot,
                     serverRole = session?.currentServerSummary()?.role.orEmpty(),
+                    expectedServerSlug = currentServer?.slug.orEmpty(),
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     publicAccess = publicAccess,
@@ -708,6 +711,9 @@ internal fun SettingsNativeDetailPageContent(
                             }
                         // Leave server's dialog confirmed (web DangerZoneSection `handleLeave`).
                         SERVER_ACTION_LEAVE -> onSettingsIntent(SharedSettingsIntent.LeaveServer)
+                        // Delete Server's dialog confirmed with the typed slug (web DeleteServerConfirmDialog).
+                        SERVER_ACTION_DELETE ->
+                            onSettingsIntent(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest(confirmationName = itemId.orEmpty())))
                         "openAdministration" -> onOpenAdministrationPage()
                         else -> Unit
                     }

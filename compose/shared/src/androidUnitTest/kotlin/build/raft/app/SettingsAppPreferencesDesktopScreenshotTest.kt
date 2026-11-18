@@ -45,7 +45,7 @@ class SettingsAppPreferencesDesktopScreenshotTest {
     fun appearanceWithAppPreferencesLight() =
         capture("settings.wide.appearance.desktop", RaftAppAppearance.Light) {
             SettingsWideListDetail(
-                payload = appShellSettingsHomePayload(session = null, appPreferencesUnderAppearance = true),
+                payload = appShellSettingsHomePayload(session = null, appPreferencesUnderAppearance = true, serverRole = "owner"),
                 widths = remember { RaftListPaneWidths(store = null) },
                 active = true,
                 picked = SettingsNativeDetailPage.Appearance.key,

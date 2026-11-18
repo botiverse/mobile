@@ -62,6 +62,25 @@ internal fun serverPermissionsForRole(role: String?): ServerPermissions {
     )
 }
 
+/**
+ * Web `canOpenSettingsTab("billing", capabilities)` (settingsNavigation.ts): the `viewBilling`
+ * capability, which serverPermissions.ts grants owners and admins (members and guests have none).
+ */
+internal fun serverRoleCanViewBillingSettings(role: String?): Boolean = role.isServerOwnerOrAdmin()
+
+/**
+ * Web `canOpenSettingsTab("administration", capabilities)`: `changeMemberRoles ||
+ * changeChannelVisibility || inviteMembers || editServerSettings`. In serverPermissions.ts each is
+ * an owner/admin capability, none a member's or a guest's.
+ */
+internal fun serverRoleCanViewAdministrationSettings(role: String?): Boolean = role.isServerOwnerOrAdmin()
+
+private fun String?.isServerOwnerOrAdmin(): Boolean =
+    when (this?.trim()?.lowercase()) {
+        "owner", "admin" -> true
+        else -> false
+    }
+
 fun ServerSummary.hidesHumanDirectoryForViewer(): Boolean =
     hideHumansFromMembers && role != "owner" && role != "admin"
 

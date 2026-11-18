@@ -123,10 +123,30 @@ internal fun raftSettingsLinkTarget(
     currentServerId: String?,
     servers: List<StoredAuthServer>,
 ): RaftSettingsLinkTarget? {
-    val slug = link.serverSlug ?: return RaftSettingsLinkTarget(switchToServerId = null, destinationKey = link.destinationKey)
+    val slug = link.serverSlug
+    if (slug == null) {
+        val current = servers.firstOrNull { it.id == currentServerId }
+        return RaftSettingsLinkTarget(
+            switchToServerId = null,
+            destinationKey = raftSettingsLinkDestinationForRole(link.destinationKey, current?.role),
+        )
+    }
     val server = servers.firstOrNull { it.slug?.equals(slug, ignoreCase = true) == true } ?: return null
     return RaftSettingsLinkTarget(
         switchToServerId = server.id.takeIf { it != currentServerId },
-        destinationKey = link.destinationKey,
+        destinationKey = raftSettingsLinkDestinationForRole(link.destinationKey, server.role),
     )
 }
+
+/**
+ * Web SettingsPanel: a tab the viewer may not open on that server (`!canOpenSettingsTab`: Plan &
+ * Billing, Administration) opens Account instead, so a link never lands on a page the Settings
+ * list does not offer them ([settingsHomeBillingVisible], [settingsHomeAdministrationVisible]).
+ */
+internal fun raftSettingsLinkDestinationForRole(destinationKey: String?, role: String?): String? =
+    when (destinationKey) {
+        SettingsDestinationBilling -> destinationKey.takeIf { settingsHomeBillingVisible(role) } ?: SettingsDestinationAccount
+        SettingsDestinationAdministration ->
+            destinationKey.takeIf { settingsHomeAdministrationVisible(role) } ?: SettingsDestinationAccount
+        else -> destinationKey
+    }
