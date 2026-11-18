@@ -231,14 +231,15 @@ class RaftMobileStackShellOnceUiTest {
             mainClock.autoAdvance = false
             runOnIdle { stack.push() }
             frames(3)
-            // Under the page sliding in: still drawn, no longer active.
+            // Under the page sliding in: still drawn.
+            onNodeWithTag(ARTIFACT_PAGE).assertExists()
             onNodeWithTag(SHELL).assertIsDisplayed()
-            assertFalse(shellActive == true, "covered by a push: inactive")
             mainClock.autoAdvance = true
             waitForIdle()
-            // The push settled: covered, laid out at 0x0 as any covered page.
+            // The push settled: covered, laid out at 0x0 as any covered page, inactive and stopped.
             onNodeWithTag(SHELL).assertIsNotDisplayed()
             onNodeWithTag(ARTIFACT_PAGE).assertIsDisplayed()
+            assertFalse(shellActive == true, "covered: inactive")
             assertEquals(Lifecycle.State.CREATED, shellLifecycle)
 
             mainClock.autoAdvance = false
