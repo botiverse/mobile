@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyzeKillRun, measuredBucket, summarizeByMeasuredBucket, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
+import { writeLatencyStats, analyzeKillRun, measuredBucket, summarizeByMeasuredBucket, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
 
 const PKG = "build.raft.app.alpha";
 const PID = 4242;
@@ -142,4 +142,9 @@ test("the send regression has its own 100 ms window; a recents swipe may kill by
   assert.equal(swipe.kill_reason, "remove task");
   // Without the swipe allowance the same exit is not this run's force-stop.
   assert.equal(analyzeKillRun({ ...base, expectedLen: 5, delaySec: null, lines: [change(10, 1, 5), removeTask, gone(10.21)] }).timing, "excluded");
+});
+
+test("write latency pairs each change with its own write", () => {
+  const stats = writeLatencyStats([change(1, 1, 1), written(1.02, 1, 1), change(2, 2, 2), change(2.01, 3, 3), written(2.05, 3, 3), change(3, 4, 4)]);
+  assert.deepEqual(stats, { samples: 2, min_ms: 20, p50_ms: 40, p95_ms: 40, p99_ms: 40, max_ms: 40 });
 });

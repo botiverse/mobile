@@ -220,6 +220,28 @@ export function analyzeKillRun({ lines, pkg, oldPid, samePid = true, runIndex, e
   return result;
 }
 
+/**
+ * The real persistence window on this device: change_received → draft_written of the same change (same pid
+ * and seq), over every change the run logged. draft_written is logged after the durable write and the
+ * active-draft-records refresh, so this is an upper bound on when the text became durable.
+ */
+export function writeLatencyStats(lines) {
+  const changes = new Map();
+  const latencies = [];
+  for (const raw of lines) {
+    const l = parseLogcatLine(raw);
+    if (!l || l.tag !== "RaftDraftTiming") continue;
+    const t = parseTimingMessage(l.message);
+    if (!t) continue;
+    const key = `${l.pid}:${t.seq}`;
+    if (t.kind === "change_received") changes.set(key, t.uptimeMs);
+    else if (changes.has(key)) latencies.push(t.uptimeMs - changes.get(key));
+  }
+  latencies.sort((a, b) => a - b);
+  const at = (q) => (latencies.length ? latencies[Math.min(latencies.length - 1, Math.floor(q * latencies.length))] : null);
+  return { samples: latencies.length, min_ms: latencies[0] ?? null, p50_ms: at(0.5), p95_ms: at(0.95), p99_ms: at(0.99), max_ms: latencies.at(-1) ?? null };
+}
+
 /** Per-bucket counts for the result table. */
 export function summarize(runs) {
   const groups = new Map();
@@ -276,7 +298,7 @@ export function markdownTable(runs, summary) {
   );
   out.push(
     "### Per bucket", "",
-    "| group | runs | timing hits | unconfirmed | excluded (exit not by force-stop) | pass (restored / expected) | pass when hit | written before kill | exit Δ upper min / median / max (ms) | exit interval width median / max (ms) |",
+    "| group | runs | timing hits | unconfirmed | excluded (exit not by force-stop) | restored as expected | restored when hit | written before kill | exit Δ upper min / median / max (ms) | exit interval width median / max (ms) |",
     "|---|---|---|---|---|---|---|---|---|---|",
   );
   for (const g of summary) {
@@ -284,7 +306,7 @@ export function markdownTable(runs, summary) {
   }
   out.push(
     "", "### Per run", "",
-    "| # | group | D (s) | sleep (s) | measured bucket | exit Δ lower (ms) | exit Δ upper (ms) | width (ms) | bounds | timing | written before kill | expected | composer after relaunch | pass | old pid | new pid | pid gone | note |",
+    "| # | group | D (s) | sleep (s) | measured bucket | exit Δ lower (ms) | exit Δ upper (ms) | width (ms) | bounds | timing | written before kill | expected | composer after relaunch | restored as expected | old pid | new pid | pid gone | note |",
     "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
   );
   runs.forEach((r, i) => {

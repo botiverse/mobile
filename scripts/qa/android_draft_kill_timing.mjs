@@ -23,7 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
+import { writeLatencyStats, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, value, index, all) => {
@@ -240,6 +240,7 @@ async function stopCapture() {
   } catch {}
   await sleep(1000);
   if (fs.existsSync(LOGCAT_RAW)) {
+    summary.write_latency = writeLatencyStats(fs.readFileSync(LOGCAT_RAW, "utf8").split("\n"));
     const kept = redact(fs.readFileSync(LOGCAT_RAW, "utf8")).split("\n").filter(isTimingEvidence);
     fs.writeFileSync(path.join(OUT, "timing-lines.txt"), `${kept.join("\n")}\n`);
     fs.rmSync(LOGCAT_RAW);
@@ -314,8 +315,11 @@ async function channelMessages(api, limit = 100) {
   return { status: res.status, rows: listOf(res.json, "messages") };
 }
 
-async function recentMessageTexts(api) {
-  return (await channelMessages(api, 30)).rows.map((m) => String(m?.content ?? ""));
+/** The server's copy of this run's marker message: id, exact text and createdAt (the marker is ours, not user content). */
+async function markerMessage(api, marker) {
+  const { status, rows } = await channelMessages(api, 30);
+  const m = rows.find((r) => String(r?.content ?? "").includes(marker));
+  return { http: status, message: m ? { id: m.id ?? null, text: String(m.content), created_at: m.createdAt ?? m.created_at ?? null } : null };
 }
 
 /**
@@ -562,6 +566,8 @@ function learn(mode, analysis, sleepSec) {
 let fastKeyCount = 45;
 const FAST_TARGET_MS = 4000;
 const FAST_ALPHABET = "abcdefghijklmnoprstuvwxyz0123456789"; // no q: q is the last key
+/** KEYCODE_ name of a marker character ([a-z0-9]). */
+const keycodeOf = (c) => (/[0-9]/.test(c) ? `KEYCODE_${c}` : `KEYCODE_${c.toUpperCase()}`);
 const markerPrefix = () => `dk${RUN_TAG}r${String(runIndex).padStart(2, "0")}x`;
 let SCREEN = { w: 1080, h: 2400 };
 
@@ -605,20 +611,48 @@ async function killRun(api, { group, mode, delaySec }) {
       record.sleep_sec = sleepSec;
       mark = logcatMark();
       // Tap and force-stop in the same device-side shell; Δ from the send_tap probe logged right before the tap.
+      const killStartedAtMs = Date.now();
       const { analysis } = await killAndAnalyze({
         oldPid, startTime, mark, expectedLen: expected.length, delaySec: null, refProbe: "send_tap", window: SEND_WINDOW,
         script: killScript({ oldPid, startTime, before: `${INPUT} tap ${x} ${y}; `, sleepSec, probeLabel: "send_tap" }),
       });
       Object.assign(record, analysis);
       learn("send", analysis, sleepSec);
+      // Host wall clock (UTC) around the kill: comparable with the server's createdAt to within clock skew.
+      record.kill_shell_started_at = new Date(killStartedAtMs).toISOString();
+      const beforeRelaunch = await markerMessage(api, expected);
+      record.server_before_relaunch = beforeRelaunch.message ? "present" : beforeRelaunch.http === 200 ? "absent" : `unknown (HTTP ${beforeRelaunch.http})`;
+      const relaunchedAtMs = Date.now();
+      record.relaunched_at = new Date(relaunchedAtMs).toISOString();
       const seen = await composerAfterRelaunch(api, "", 8_000);
-      const sentOnServer = (await recentMessageTexts(api)).some((t) => t.includes(expected));
-      record.sent_on_server = sentOnServer;
-      record.expected_desc = sentOnServer ? "(empty)" : `(empty) or ${expected} (not sent)`;
+      // The send journal row survives the kill and the restarted thread store re-sends it (same randomId):
+      // poll the server for up to 15 s after the relaunch, then call it delivered / delivered late / lost.
+      let found = beforeRelaunch.message;
+      let foundAtMs = found ? relaunchedAtMs : null;
+      const deadline = Date.now() + 15_000;
+      while (!found && Date.now() < deadline) {
+        await sleep(1000);
+        const now = await markerMessage(api, expected);
+        if (now.message) {
+          found = now.message;
+          foundAtMs = Date.now();
+        }
+      }
+      record.server_message = found ?? null;
+      record.server_message_seen_at = foundAtMs ? new Date(foundAtMs).toISOString() : null;
+      const createdMs = found?.created_at ? Date.parse(found.created_at) : NaN;
+      record.delivery = !found
+        ? "lost (not on the server 15 s after relaunch)"
+        : beforeRelaunch.message
+          ? Number.isFinite(createdMs) && createdMs <= relaunchedAtMs ? "delivered before the relaunch" : "delivered (present before the relaunch)"
+          : "delivered late (after the relaunch: pending-send journal re-sent it)";
+      record.sent_on_server = Boolean(found);
       record.observed_desc = describeText(seen);
       relaunchIdentity(record, oldPid, startTime, mark);
-      record.pass = sentOnServer ? seen === "" : seen === "" || seen === expected;
-      if (!sentOnServer) record.reason = `${record.reason ? `${record.reason}; ` : ""}message not on server after the kill`;
+      // Composer must be empty (the journal owns the text) and the text must reach the server.
+      record.expected_desc = "composer (empty); message on the server (possibly late)";
+      record.pass = seen === "" && Boolean(found);
+      if (!found) record.reason = `${record.reason ? `${record.reason}; ` : ""}message lost: not on the server 15 s after relaunch`;
       return record;
     }
 
@@ -636,7 +670,8 @@ async function killRun(api, { group, mode, delaySec }) {
     let sleepSec;
     let extraReasons = [];
     if (mode === "fast") {
-      before = `for c in ${fastChars.split("").join(" ")}; do ${INPUT} text $c; done; ${before}`;
+      // One key event per character, on the device, back to back (no host round trip).
+      before = `for k in ${fastChars.split("").map(keycodeOf).join(" ")}; do ${INPUT} keyevent $k; done; ${before}`;
       sleepSec = aimedSleepSec("fast", bucketFor(delaySec));
     } else if (mode === "home") {
       before += `${INPUT} keyevent KEYCODE_HOME; `;
@@ -805,6 +840,25 @@ async function main() {
       return { channel: CHANNEL };
     });
     await step("positive-control", () => positiveControl(api));
+    // The device's own `sleep` accuracy (probe line to probe line, device clock), so the aim is not a guess.
+    await step("sleep-calibration", async () => {
+      const result = {};
+      for (const d of [0, 0.02, 0.05, 0.1]) {
+        const mark = logcatMark();
+        for (let i = 0; i < 5; i += 1) shell(`log -t RaftDraftTimingProbe "cal d=${d} i=${i} a"; sleep ${d}; log -t RaftDraftTimingProbe "cal d=${d} i=${i} b"`);
+        await sleep(500);
+        const parsed = linesSince(mark).map(parseLogcatLine).filter((l) => l?.tag === "RaftDraftTimingProbe" && l.message.startsWith(`cal d=${d} `));
+        const overshoot = [];
+        for (let i = 0; i < 5; i += 1) {
+          const a = parsed.find((l) => l.message === `cal d=${d} i=${i} a`);
+          const b = parsed.find((l) => l.message === `cal d=${d} i=${i} b`);
+          if (a && b) overshoot.push(Math.round(b.tsMs - a.tsMs - d * 1000));
+        }
+        result[`sleep_${d}_overshoot_ms`] = overshoot;
+      }
+      summary.sleep_calibration = result;
+      return result;
+    });
 
     // Bucket runs go on until each bucket has RUNS_PER_BUCKET valid samples (the whole measured exit interval
     // inside that bucket's tolerance, whatever D was aimed at) or its attempts run out.
@@ -845,7 +899,16 @@ async function main() {
       return { runs: summary.runs.length };
     });
 
-    summary.result = summary.runs.every((r) => r.pass) ? "pass" : "fail";
+    // "pass" only when every measured condition holds; each unmet one is listed.
+    const unmet = [];
+    for (const [d, p] of Object.entries(summary.bucket_progress ?? {})) if (p.valid < RUNS_PER_BUCKET) unmet.push(`bucket ${d} s: ${p.valid}/${RUNS_PER_BUCKET} valid in ${p.attempted} attempts`);
+    for (const r of summary.runs) if (!r.pass) unmet.push(`run ${r.run} (${r.group}): not restored as expected${r.reason ? ` - ${r.reason}` : ""}`);
+    const fast = summary.runs.filter((r) => r.mode === "fast");
+    if (fast.some((r) => !r.typing_in_3_to_5_s)) unmet.push(`fast typing outside 3-5 s: ${fast.filter((r) => !r.typing_in_3_to_5_s).map((r) => `${r.typing_span_ms ?? "?"} ms`).join(", ")}`);
+    if (!summary.runs.some((r) => r.mode === "send" && r.timing === "hit" && r.pass)) unmet.push("send regression: no attempt with the exit inside [0, 100] ms of the tap and the message delivered");
+    if (!summary.runs.some((r) => r.mode === "recents" && r.recents_swipe_killed)) unmet.push("recents regression: the swipe did not remove the task / kill the process");
+    summary.unmet = unmet;
+    summary.result = unmet.length ? "fail" : "pass";
   } catch (error) {
     summary.result = "fail";
     summary.failed_step = currentStep;
@@ -870,12 +933,16 @@ async function main() {
     fs.writeFileSync(path.join(OUT, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
     const header =
       `## Draft kill timing (task #246)\n\nResult: **${summary.result}**${summary.failed_step ? ` (failed at ${summary.failed_step}: ${summary.error})` : ""}\n\n` +
+      (summary.unmet?.length ? `Unmet conditions:\n${summary.unmet.map((u) => `- ${u}`).join("\n")}\n\n` : "") +
       `Exit interval on the device clock (logcat -v monotonic): lower = latest pre-signal line of the run's own kill (AM "Killing" / am_kill "stop <pkg>"; ` +
       `recents swipe: also "remove task"), upper = earliest evidence of death (device-side /proc poll: gone or zombie; am_proc_died; cgroup empty). ` +
       `Exit Δ = interval − last change_received uptimeMs (b: − the send_tap probe logged right before the tap). A sample is valid for a bucket only when ` +
       `the WHOLE exit Δ interval is inside its tolerance: ${Object.entries(BUCKETS).map(([d, b]) => `${d} s = [${b.lo_ms}, ${b.hi_ms}] ms`).join("; ")}; ` +
       `b: [${SEND_WINDOW.lo_ms}, ${SEND_WINDOW.hi_ms}] ms after the tap. The device-side sleep is only aim (window centre minus measured overhead), never counted as measured. ` +
       `Exits not caused by the run's own kill (dependency_died, crash, ANR) are "excluded".\n\n` +
+      (summary.write_latency ? `Persistence window on this device (change_received → draft_written of the same change, all changes of the run): ` +
+        `n=${summary.write_latency.samples}, min ${summary.write_latency.min_ms}, p50 ${summary.write_latency.p50_ms}, p95 ${summary.write_latency.p95_ms}, p99 ${summary.write_latency.p99_ms}, max ${summary.write_latency.max_ms} ms.\n\n` : "") +
+      (summary.sleep_calibration ? `Device sleep overshoot (ms, 5 each): ${JSON.stringify(summary.sleep_calibration)}.\n\n` : "") +
       (summary.apk ? `APK: sha256 ${summary.apk.file_sha256}; installed base.apk sha256 ${summary.apk.installed_base_apk_sha256}; versionName ${summary.apk.version_name}; versionCode ${summary.apk.version_code}; debuggable ${summary.apk.debuggable}.\n\n` : "") +
       (summary.bucket_progress ? `Valid / attempted per bucket (target ${RUNS_PER_BUCKET} valid): ${Object.entries(summary.bucket_progress).map(([d, p]) => `${d} s: ${p.valid} / ${p.attempted}`).join("; ")} ` +
         `(a sample counts for the bucket its measured interval proves, so "attempted" is runs aimed at that bucket).\n\n` : "") +
