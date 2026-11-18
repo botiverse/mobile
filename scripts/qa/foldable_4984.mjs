@@ -82,6 +82,8 @@ const label = (n) => `${n.text || n.desc || n.id}`;
 function find(ns, re, extra = () => true) { return ns.find((n) => (re.test(n.text) || re.test(n.desc) || re.test(n.id)) && n.w > 0 && n.h > 0 && extra(n)); }
 const tap = (x, y) => sh(`input tap ${x} ${y}`);
 const back = () => sh("input keyevent 4");
+// user_rotation alone did not rotate the unfolded pixel_fold; lock through the window manager and record the result.
+function rotate(r) { sh("settings put system accelerometer_rotation 0"); sh(`settings put system user_rotation ${r}`); sh(`cmd window user-rotation lock ${r}`); sleep(800); const m = /mCurrentRotation=(\S+)|mRotation=(\d)/.exec(sh("dumpsys window displays | grep -E 'mCurrentRotation|mRotation=' | head -1")); log(`rotate ${r} -> ${m ? (m[1] || m[2]) : "?"}`); }
 
 // ---- device facts ----
 function size() { const m = /(?:Override|Physical) size: (\d+)x(\d+)/g; const s = sh("wm size"); let last; for (const x of s.matchAll(m)) last = x; return last ? [Number(last[1]), Number(last[2])] : [1080, 2400]; }
@@ -138,9 +140,12 @@ function gotoTab(name) {
   if (!t) { log("tab not found", name); return false; }
   tap(t.x, t.y); sleep(2000); return true;
 }
+// The app back on the launcher (an extra Back on the shell): bring it back and wait for the shell.
+function ensureForeground() { if (!foreground()) { log("app not in front: relaunching"); launch(); waitShell(); } }
 function hideIme() { if (/mInputShown=true/.test(sh("dumpsys input_method | grep mInputShown"))) { sh("input keyevent 111"); sleep(600); if (/mInputShown=true/.test(sh("dumpsys input_method | grep mInputShown"))) { back(); sleep(600); } } }
 function channelRows(ns) { const [W] = size(); return ns.filter((n) => n.text && n.w > 0 && n.h > 30 && n.b[0] > 150 && n.b[2] < W * 0.4 && n.y > 600 && !/^(Pinned|Joint Channels|Channels|Saved|Drafts|Direct Messages|\d+)$/.test(n.text)); }
 function openChannel() {
+  ensureForeground();
   gotoTab("Chat"); hideIme();
   let ns = nodes("home");
   const [W] = size();
@@ -228,7 +233,7 @@ function main() {
   emu("unfold"); sleep(3000);
   note("env", "wm_size_unfolded", sh("wm size").trim());
   note("env", "display_unfolded", sh("dumpsys display | grep -E 'mBaseDisplayInfo|DisplayDeviceInfo' | head -4").trim().slice(0, 1200));
-  sh("settings put system accelerometer_rotation 0"); sh("settings put system user_rotation 0");
+  sh("settings put system accelerometer_rotation 0"); rotate(0);
 
   // Relaunch to see the flag decision line.
   sh("logcat -G 16M"); sh(`am force-stop ${PKG}`); sh("logcat -c"); logMark = 0;
@@ -245,7 +250,7 @@ function main() {
   // ---- Separate scenario: Members list (mobile #4991, Hands 52b93946) ----
   try { membersScenario(); } catch (e) { log("members scenario error", e.stack); note("members", "driver_error", String(e.stack).slice(0, 1500)); }
   // Reset to a clean unfolded shell for the #4984 steps.
-  emu("unfold"); sh("settings put system user_rotation 0"); sleep(2000);
+  emu("unfold"); rotate(0); sleep(2000);
   sh(`am force-stop ${PKG}`); launch(); sleep(3000); pickServerIfAsked(nodes()); hideIme(); newLog();
 
   // ---- Step 1a: image preview from the seeded image message, unfolded, 20x incl. double tap ----
@@ -282,7 +287,7 @@ function main() {
     note("1", "artifact_card", t ? t.label : "NOT FOUND");
     if (t) {
       let o = 0, c = 0; newLog();
-      for (let i = 0; i < ITER; i++) { if (i % 5 === 2) sh(`input tap ${t.x} ${t.y} & input tap ${t.x} ${t.y}; wait`); else tap(t.x, t.y); sleep(i === 0 ? 3000 : (i % 3 === 0 ? 200 : 900)); if (i === 0) { shot("artifact-opened"); nodes("artifact-opened"); } back(); sleep(800); }
+      for (let i = 0; i < ITER; i++) { if (i % 5 === 2) sh(`input tap ${t.x} ${t.y} & input tap ${t.x} ${t.y}; wait`); else tap(t.x, t.y); sleep(i === 0 ? 3000 : (i % 3 === 0 ? 200 : 900)); if (i === 0) { shot("artifact-opened"); nodes("artifact-opened"); } back(); sleep(800); if (!foreground()) { ensureForeground(); findTarget(); } }
       sleep(1500); const ns2 = nodes(); if (!find(ns2, /^Artifacts$/)) { back(); sleep(1200); }
       const f = newLog(); for (const l of f) { if (/nav3_stack open page=/.test(l)) o++; if (/nav3_stack close page=/.test(l)) c++; }
       note("1", "artifact_pages_opened", [...new Set(f.filter((l) => /nav3_stack open page=/.test(l)).map((l) => l.replace(/^.*nav3_stack open page=(\S+).*$/, "$1")))]);
@@ -304,7 +309,7 @@ function main() {
     for (let i = 0; i < ITER; i++) {
       const cn = nodes(i === 0 ? "composer-search" : undefined);
       const attach = find(cn, /^Add image$/);
-      if (!attach) { misses++; log("Add image not found", i); if (i === 0) shot("composer-no-add-image"); back(); sleep(1200); openChannel(); continue; }
+      if (!attach) { misses++; log("Add image not found", i); if (i === 0) shot("composer-no-add-image"); ensureForeground(); openChannel(); continue; }
       tap(attach.x, attach.y); sleep(2500);
       const pn = nodes(i === 0 ? "photo-picker" : undefined); if (i === 0) shot("photo-picker");
       const pic = pn.find((n) => /Photo taken|qa-fixture|Image|photo/i.test(n.desc) && n.w > 80 && n.pkg !== PKG);
@@ -317,7 +322,8 @@ function main() {
       sleep(i % 3 === 0 ? 300 : 2500); // some pops land while the preview push is still sliding
       if (i === 0) { sleep(1000); shot("composer-preview-open"); nodes("composer-preview-open"); }
       back(); sleep(1500);
-      const top = nodes(); if (!find(top, /^Add image$/)) { back(); sleep(1200); } // a double tap may have stacked a second page
+      const top = nodes(); if (!find(top, /^Add image$/) && foreground()) { back(); sleep(1200); } // a double tap may have stacked a second page
+      ensureForeground();
     }
     recStop(rec);
     const f = newLog(); for (const l of f) { if (/nav3_stack open page=compose_file_preview/.test(l)) opens++; if (/nav3_stack close page=compose_file_preview/.test(l)) closes++; }
@@ -452,8 +458,8 @@ function main() {
     newLog(); tap(img3.x, img3.y); sleep(2500); shot("s7-page-unfolded");
     emu("fold"); sleep(3500); shot("s7-page-folded"); note("7", "wm_size_folded", sh("wm size").trim());
     emu("unfold"); sleep(3500); shot("s7-page-unfolded-again");
-    sh("settings put system user_rotation 1"); sleep(3500); shot("s7-page-rotated");
-    sh("settings put system user_rotation 0"); sleep(3000);
+    rotate(1); sleep(3500); shot("s7-page-rotated");
+    rotate(0); sleep(3000);
     back(); sleep(2000); let a = nodes("s7-after-pop-unfolded"); shot("s7-after-pop-unfolded");
     note("7", "after_pop_unfolded_tabs", !!tabNode(a, "Home")); note("7", "after_pop_conversation_visible", !!a.find((n) => /qa-fixture-image/.test(n.text)) || !!a.find((n) => /EditText/.test(n.cls)));
     // Mid-push fold and rotate.
@@ -467,8 +473,8 @@ function main() {
     a = nodes("s7-unfolded-after"); shot("s7-unfolded-after");
     // Back out of a narrow-layout conversation page if it is still stacked.
     const img4 = retarget() || img3;
-    tap(img4.x, img4.y); sh("settings put system user_rotation 1"); sleep(3500); shot("s7-midpush-rotated");
-    back(); sleep(2000); sh("settings put system user_rotation 0"); sleep(3000);
+    tap(img4.x, img4.y); rotate(1); sleep(3500); shot("s7-midpush-rotated");
+    back(); sleep(2000); rotate(0); sleep(3000);
     a = nodes("s7-final"); shot("s7-final");
     // Tabletop posture (hinge half-open), page on top.
     tap(img4.x, img4.y); sleep(2500);
@@ -592,8 +598,8 @@ function membersScenario() {
     res.fold.push({ i, folded: a, unfolded: b, crash: mCheck(`fold-${i + 1}`) });
   }
   for (let i = 0; i < 3; i++) {
-    sh("settings put system user_rotation 1"); sleep(3000); const a = membersState(`rot90-${i + 1}`);
-    sh("settings put system user_rotation 0"); sleep(3000); const b = membersState(`rot0-${i + 1}`);
+    rotate(1); sleep(3000); const a = membersState(`rot90-${i + 1}`);
+    rotate(0); sleep(3000); const b = membersState(`rot0-${i + 1}`);
     res.rotate.push({ i, rotated: a, back: b, crash: mCheck(`rotate-${i + 1}`) });
   }
   // Rows reused while scrolling after the size changes.
