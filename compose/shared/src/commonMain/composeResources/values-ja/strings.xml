@@ -3496,13 +3496,11 @@
     <string name="settings_about_version_build_source">バージョン、ビルド、ソース</string>
     <string name="settings_about_section_application">アプリケーション</string>
     <string name="settings_about_section_actions">アクション</string>
-    <string name="settings_about_label_application">アプリケーション</string>
     <string name="settings_about_label_version">バージョン</string>
-    <string name="settings_about_label_build_time">ビルド時刻</string>
-    <string name="settings_about_label_git_commit">Git コミット</string>
-    <string name="settings_about_label_package">パッケージ</string>
+    <string name="settings_about_version_copy_hint">長押しでコピー</string>
+    <string name="settings_about_label_connected_server">接続先サーバー</string>
+    <string name="settings_about_action_change">変更</string>
     <string name="settings_about_state_unknown">不明</string>
-    <string name="settings_about_state_build_unknown">ビルド不明</string>
     <string name="settings_about_state_none">なし</string>
     <string name="settings_about_state_signed_in">ログイン中</string>
     <string name="settings_about_state_signed_out">ログアウト済み</string>

@@ -11,6 +11,7 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsAboutSnapshot
+import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -19,7 +20,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * raft-ui 0.26 (#758), links that leave Raft end in ↗, light and dark:
- * - Settings > About: the Source code row (github.com/botiverse/mobile, FSL-1.1-ALv2) ends in ↗,
+ * - Settings > About (also on a self-hosted server, with its Connected server row): the Source code row (github.com/botiverse/mobile, FSL-1.1-ALv2) ends in ↗,
  *   as does Open Raft (the web app in the system browser), now just below the fold;
  * - the in-app browser's load error: Open in System Browser with ↗ in its trailing icon's place.
  * A 390dp-wide phone. Reports land in `build/reports/home-screenshots/`; verify / record as
@@ -35,6 +36,9 @@ class ExternalLinkMarksScreenshotTest {
     @Test fun aboutLight() = capture("settings.about", RaftAppAppearance.Light) { AboutFixture() }
 
     @Test fun aboutDark() = capture("settings.about.dark", RaftAppAppearance.Dark) { AboutFixture() }
+
+    /** On a self-hosted server: Application also shows Connected server (its host) with Change. */
+    @Test fun aboutSelfHosted() = capture("settings.about.self-hosted", RaftAppAppearance.Light) { AboutFixture(selfHosted = true) }
 
     @Test fun browserErrorLight() = capture("browser.error", RaftAppAppearance.Light) { BrowserErrorFixture() }
 
@@ -60,11 +64,21 @@ private val aboutFixture =
         packageName = "build.raft.app",
     )
 
+private val selfHostedDeveloperFixture =
+    SharedSettingsDeveloperSnapshot(
+        environmentKey = "custom",
+        environmentLabel = "Custom",
+        apiBaseUrl = "https://raft.example.com/api/",
+        socketBaseUrl = "https://raft.example.com",
+        webUrl = "https://raft.example.com",
+    )
+
 @Composable
-private fun AboutFixture() {
+private fun AboutFixture(selfHosted: Boolean = false) {
     SharedSettingsAboutContent(
         state = ScreenLoadState.Content(aboutFixture),
         fallback = aboutFixture,
+        developerState = if (selfHosted) ScreenLoadState.Content(selfHostedDeveloperFixture) else ScreenLoadState.Loading,
         updateCheck = null,
         actionState = null,
         onCopyBuild = {},
