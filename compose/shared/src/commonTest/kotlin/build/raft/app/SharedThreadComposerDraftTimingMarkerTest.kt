@@ -123,6 +123,13 @@ class SharedThreadComposerDraftTimingMarkerTest {
         val journal = lines.filter { it.startsWith("draft_journal_written ") }
         assertEquals(2, journal.size, "lines=$lines")
         assertTrue(journal.all { JournalCostLine.matches(it) }, "lines=$journal")
+        // STORE is index + put, and the whole write is at least ENCODE + STORE.
+        journal.forEach { journalLine ->
+            val us = Regex("""(\w+)Us=(\d+)""").findAll(journalLine).associate { it.groupValues[1] to it.groupValues[2].toLong() }
+            // Each part is truncated to whole µs on its own: allow 1-2 µs of rounding.
+            assertTrue(kotlin.math.abs(us.getValue("index") + us.getValue("put") - us.getValue("store")) <= 1, journalLine)
+            assertTrue(us.getValue("cost") >= us.getValue("encode") + us.getValue("store") - 2, journalLine)
+        }
         assertEquals(listOf("len=12", "len=13"), journal.map { it.substringAfterLast(' ') })
         // Each change's marker comes first (the moment it arrived), then its journal line with the same seq.
         assertEquals(
@@ -135,8 +142,12 @@ class SharedThreadComposerDraftTimingMarkerTest {
     @Test
     fun theJournalCostLineHasTheShapeTheAcceptanceScriptParses() {
         assertEquals(
-            "draft_journal_written seq=3 path=sync costUs=1234 len=7",
-            raftDraftJournalCostLine(3, 1234.microseconds, 7),
+            "draft_journal_written seq=3 path=sync costUs=1234 encodeUs=200 storeUs=1000 indexUs=100 putUs=900 len=7",
+            raftDraftJournalCostLine(
+                3,
+                SharedThreadComposerDraftJournalWriteCost(encode = 200.microseconds, index = 100.microseconds, put = 900.microseconds, total = 1234.microseconds),
+                7,
+            ),
         )
     }
 
@@ -209,6 +220,6 @@ class SharedThreadComposerDraftTimingMarkerTest {
 
     private companion object {
         const val IntervalMillis = 40L
-        val JournalCostLine = Regex("""^draft_journal_written seq=\d+ path=sync costUs=\d+ len=\d+$""")
+        val JournalCostLine = Regex("""^draft_journal_written seq=\d+ path=sync costUs=\d+ encodeUs=\d+ storeUs=\d+ indexUs=\d+ putUs=\d+ len=\d+$""")
     }
 }

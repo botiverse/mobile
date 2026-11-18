@@ -24,7 +24,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { channelActivityReport, parseMessagesResponse, createLogcatStats, forEachLogLine, isEvidenceLine, wrapUpVerdict, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
+import { channelActivityReport, errorBodySummary, parseMessagesResponse, queryWithReauth, sendDeliveryCount, creditedBucket, createLogcatStats, forEachLogLine, isEvidenceLine, wrapUpVerdict, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, value, index, all) => {
@@ -41,8 +41,16 @@ const SERVER = args.server ?? "OranixSlockTest";
 const CHANNEL = `qa-draft-246-${process.env.GITHUB_RUN_ID ?? Date.now()}-${process.env.GITHUB_RUN_ATTEMPT ?? "1"}`;
 const RUNS_PER_BUCKET = Number(args["runs-per-bucket"] ?? 10);
 const FAST_RUNS = Number(args["fast-runs"] ?? Math.min(5, RUNS_PER_BUCKET));
-const DELAYS = (args.delays ?? "0.05,0.1,0.3,0.7").split(",").map(Number).filter((d) => d > 0);
-const FAST_DELAYS = [0.05, 0.1];
+// Emulator round (task #246 phase 2): 100 / 300 / 700 ms normal input, 100 ms fast input. 50 ms and the
+// recents swipe are not reachable on the emulator; they belong to the real-device round (PENDING_REAL_DEVICE).
+const DELAYS = (args.delays ?? "0.1,0.3,0.7").split(",").map(Number).filter((d) => d > 0);
+const FAST_DELAYS = (args["fast-delays"] ?? "0.1").split(",").map(Number).filter((d) => d > 0);
+const RECENTS = args.recents === "yes";
+const PENDING_REAL_DEVICE = [
+  ...(DELAYS.includes(0.05) ? [] : ["normal input, 50 ms bucket"]),
+  ...(FAST_DELAYS.includes(0.05) ? [] : ["fast input, 50 ms bucket"]),
+  ...(RECENTS ? [] : ["c2: recents swipe"]),
+];
 const RAFT_API = (process.env.QA_API_BASE || "https://api.raft.build/api/").replace(/\/?$/, "/");
 const APP_LINK_BASE = (process.env.QA_APP_LINK_BASE || "https://app.raft.build").replace(/\/$/, "");
 const RUN_TAG = (process.env.GITHUB_RUN_ID ?? String(Date.now())).slice(-5);
@@ -368,21 +376,24 @@ async function archiveRunChannel(api) {
 
 async function channelMessages(api, limit = 100) {
   const res = await raftJson("GET", `messages/channel/${api.channel.id}?limit=${limit}`, { token: api.token, serverId: api.server.id });
-  return parseMessagesResponse(res.status, res.json, res.parseError);
+  const read = parseMessagesResponse(res.status, res.json, res.parseError);
+  return read.ok ? read : { ...read, body_summary: errorBodySummary(res.json) };
 }
 
 /** The server's copy of this run's marker message: id, exact text and createdAt (the marker is ours, not user content). */
 async function markerMessage(api, marker) {
   const at = new Date().toISOString();
   try {
-    const { status, ok, rows, problem } = await channelMessages(api, 30);
+    const { status, ok, rows, problem, body_summary: bodySummary } = await channelMessages(api, 30);
     // Only a recognisable messages array is a successful query; anything else is "unavailable".
-    if (!ok) return { at, http: status, ok: false, problem, message: null };
-    const m = rows.find((r) => String(r?.content ?? "").includes(marker));
+    if (!ok) return { at, http: status, ok: false, problem, ...(bodySummary ? { body_summary: JSON.parse(redact(JSON.stringify(bodySummary))) } : {}), message: null };
+    const all = rows.filter((r) => String(r?.content ?? "").includes(marker));
+    const m = all[0];
     return {
       at,
       http: status,
       ok: true,
+      matches: all.length,
       message: m ? { id: m.id ?? null, text: String(m.content), created_at: m.createdAt ?? m.created_at ?? null, random_id: m.randomId ?? null } : null,
     };
   } catch (error) {
@@ -688,11 +699,15 @@ async function killRun(api, { group, mode, delaySec }) {
       learn("send", analysis, sleepSec);
       // Host wall clock (UTC) around the kill: comparable with the server's createdAt to within clock skew.
       record.kill_shell_started_at = new Date(killStartedAtMs).toISOString();
-      // Every server query is kept with its time and HTTP status.
+      // Every server query is kept with its time and HTTP status. On HTTP 401 the same QA identity signs in
+      // again ONCE and only the query is retried (queryWithReauth); nothing is ever re-sent.
       const queries = [];
+      const auth = { reauthed: false };
       const query = async (phase) => {
-        const q = await markerMessage(api, expected);
-        queries.push({ phase, at: q.at, http: q.http, ok: q.ok, ...(q.problem ? { problem: q.problem } : {}), found: Boolean(q.message) });
+        const { q, records } = await queryWithReauth(phase, () => markerMessage(api, expected), async () => {
+          api.token = await apiLogin();
+        }, auth);
+        queries.push(...records);
         return q;
       };
       const beforeRelaunch = await query("before relaunch");
@@ -707,7 +722,10 @@ async function killRun(api, { group, mode, delaySec }) {
         found = (await query("after relaunch")).message;
       }
       record.server_queries = queries;
+      record.server_reauth = auth.reauthed ? { reauth: auth.reauth, ...(auth.reauth_error ? { error: redact(auth.reauth_error) } : {}) } : null;
       record.server_message = found ?? null;
+      // The run's unique text must be on the server exactly once.
+      record.delivery_count = sendDeliveryCount(queries);
       const allQueriesFailed = queries.every((q) => !q.ok);
       // The app's own trace of a re-send by the pending-send journal after the restart.
       const drained = linesSince(relaunchMark).filter((l) => l.includes("thread_pending_send_drained "));
@@ -730,8 +748,11 @@ async function killRun(api, { group, mode, delaySec }) {
       relaunchIdentity(record, oldPid, startTime, mark);
       // Composer must be empty (the journal owns the text) and the text must reach the server.
       record.expected_desc = "composer (empty); message on the server (possibly late)";
-      record.pass = seen === "" && Boolean(found);
+      record.pass = seen === "" && record.delivery_count.delivered === "exactly once";
       if (!found) record.reason = `${record.reason ? `${record.reason}; ` : ""}message ${record.delivery}`;
+      else if (record.delivery_count.delivered !== "exactly once") {
+        record.reason = `${record.reason ? `${record.reason}; ` : ""}message delivered ${record.delivery_count.delivered} (${record.delivery_count.matches} copies)`;
+      }
       return record;
     }
 
@@ -961,7 +982,8 @@ async function main() {
     fixed.push({ group: "a: wait 1 s", mode: "bucket", delaySec: 1 });
     for (let i = 0; i < 5; i += 1) fixed.push({ group: "b: send, kill within 100 ms", mode: "send", delaySec: null, untilHit: true });
     fixed.push({ group: "c1: Home, kill", mode: "home", delaySec: null });
-    fixed.push({ group: "c2: recents swipe (task removed)", mode: "recents", delaySec: null });
+    if (RECENTS) fixed.push({ group: "c2: recents swipe (task removed)", mode: "recents", delaySec: null });
+    summary.pending_real_device = PENDING_REAL_DEVICE;
 
     await step("kill-runs", async () => {
       let consecutiveErrors = 0;
@@ -977,7 +999,9 @@ async function main() {
         for (const d of open()) {
           progress[d].attempted += 1;
           const record = await killRun(api, { group: `D=${d}`, mode: "bucket", delaySec: d });
-          if (record.measured_bucket != null && progress[record.measured_bucket]) progress[record.measured_bucket].valid += 1;
+          // Valid only when the WHOLE exit interval (device clock) lies in a window of this round.
+          record.credited_bucket = record.interval_trusted ? creditedBucket(record.delta_lower_ms, record.delta_upper_ms, d, DELAYS) : null;
+          if (record.credited_bucket != null) progress[record.credited_bucket].valid += 1;
           keep(record);
         }
       }
@@ -989,7 +1013,8 @@ async function main() {
         for (const d of fastOpen()) {
           fast[d].attempted += 1;
           const record = await killRun(api, { group: `fast D=${d}`, mode: "fast", delaySec: d });
-          if (record.measured_bucket != null && fast[record.measured_bucket] && record.typing_in_3_to_5_s) fast[record.measured_bucket].valid += 1;
+          record.credited_bucket = record.interval_trusted && record.typing_in_3_to_5_s ? creditedBucket(record.delta_lower_ms, record.delta_upper_ms, d, FAST_DELAYS) : null;
+          if (record.credited_bucket != null) fast[record.credited_bucket].valid += 1;
           keep(record);
         }
       }
@@ -1029,7 +1054,7 @@ async function main() {
       summary.logcat_wrap_up = { error: redact(error.message).slice(0, 200) };
     }
     // "pass" only when every measured condition holds; each unmet one is listed.
-    wrapUpVerdict(summary, logcatStats, { runsPerBucket: RUNS_PER_BUCKET, fastRuns: FAST_RUNS, env: process.env });
+    wrapUpVerdict(summary, logcatStats, { runsPerBucket: RUNS_PER_BUCKET, fastRuns: FAST_RUNS, env: process.env, recents: RECENTS });
     summary.buckets = BUCKETS;
     summary.send_window = SEND_WINDOW;
     summary.summary = summarize(summary.runs);
@@ -1037,6 +1062,7 @@ async function main() {
     const header =
       `## Draft kill timing (task #246)\n\nResult: **${summary.result}**${summary.failed_step ? ` (failed at ${summary.failed_step}: ${summary.error})` : ""}\n\n` +
       (summary.unmet?.length ? `Unmet conditions:\n${summary.unmet.map((u) => `- ${u}`).join("\n")}\n\n` : "") +
+      (summary.pending_real_device?.length ? `Pending (real-device round, not run here): ${summary.pending_real_device.join("; ")}.\n\n` : "") +
       (summary.unconfirmed?.length ? `Unconfirmed (no pass without them):\n${summary.unconfirmed.map((u) => `- ${u}`).join("\n")}\n\n` : "") +
       (summary.journal_coverage ? `Crash-journal coverage, paired by (process, seq): ${summary.journal_coverage.edits} edits (change_received), ` +
         `${summary.journal_coverage.paired} with a cost line, ${summary.journal_coverage.failures} write failures, ${summary.journal_coverage.likely_interrupted} likely interrupted ` +
@@ -1060,6 +1086,9 @@ async function main() {
       (summary.journal_write_cost ? `Crash-journal write on the input thread (draft_journal_written costUs, encode + one store write; paired completed samples only, ${summary.journal_write_cost.unpaired_excluded ?? 0} unpaired lines excluded): ` +
         `n=${summary.journal_write_cost.samples}, min ${summary.journal_write_cost.min_us}, p50 ${summary.journal_write_cost.p50_us}, p95 ${summary.journal_write_cost.p95_us}, ` +
         `p99 ${summary.journal_write_cost.p99_us}, max ${summary.journal_write_cost.max_us} µs (target p95 < 1000 µs).\n\n` : "") +
+      (summary.journal_write_cost_parts ? `Split of the same paired samples (µs): ${Object.entries(summary.journal_write_cost_parts)
+        .map(([name, q]) => `${name.toUpperCase()} n=${q.samples} p50 ${q.p50_us} p95 ${q.p95_us} p99 ${q.p99_us} max ${q.max_us}`)
+        .join("; ")} (STORE = INDEX + PUT).\n\n` : "") +
       (summary.write_paths ? `Draft writes by path (app marker lines): ${JSON.stringify(summary.write_paths)}.\n\n` : "") +
       (summary.fast_progress ? `Fast typing valid / attempted (target ${FAST_RUNS} each; valid = whole exit interval inside the tolerance and burst 3-5 s): ` +
         `${Object.entries(summary.fast_progress).map(([d, p]) => `${d} s: ${p.valid} / ${p.attempted}`).join("; ")}.\n\n` : "") +

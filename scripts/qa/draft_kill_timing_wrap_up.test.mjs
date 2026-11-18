@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { JOURNAL_MISSING_TOLERANCE, acceptanceUnmet, channelActivityReport, createLogcatStats, forEachLogLine, isEvidenceLine, journalCoverage, parseMessagesResponse, wrapUpVerdict } from "./draft_kill_timing_analysis.mjs";
+import { JOURNAL_MISSING_TOLERANCE, acceptanceUnmet, channelActivityReport, creditedBucket, errorBodySummary, queryWithReauth, sendDeliveryCount, createLogcatStats, forEachLogLine, isEvidenceLine, journalCoverage, parseMessagesResponse, wrapUpVerdict } from "./draft_kill_timing_analysis.mjs";
 
 const PKG = "build.raft.app.alpha";
 const PID = 4242;
@@ -261,4 +261,86 @@ test("a channel read counts only as a messages array: empty body, malformed JSON
   }
   assert.deepEqual(parseMessagesResponse(200, [], false), { status: 200, ok: true, rows: [] });
   assert.equal(parseMessagesResponse(500, [], false).ok, false);
+});
+
+test("a kill run counts for a bucket only when the whole exit interval lies in an enabled window", () => {
+  const round = [0.1, 0.3, 0.7];
+  assert.equal(creditedBucket(80, 120, 0.1, round), 0.1);
+  // Partly outside the aimed window: no credit there; credit elsewhere only if wholly inside another window.
+  assert.equal(creditedBucket(60, 120, 0.1, round), null);
+  assert.equal(creditedBucket(260, 340, 0.1, round), 0.3);
+  assert.equal(creditedBucket(120, 260, 0.3, round), null);
+  // 50 ms is not in this round: an interval inside [20, 80] counts nowhere, even though it fits 0.05.
+  assert.equal(creditedBucket(30, 60, 0.1, round), null);
+  // Inside both 0.05 and 0.1 windows ([70, 80]): credited to 0.1, the aimed and enabled one.
+  assert.equal(creditedBucket(72, 78, 0.1, round), 0.1);
+  assert.equal(creditedBucket(null, 100, 0.1, round), null);
+});
+
+test("the send query re-authenticates once on 401 and retries only the query", async () => {
+  const answers = [
+    { at: "t1", http: 401, ok: false, problem: "HTTP 401", body_summary: { error: "token expired" }, message: null },
+    { at: "t2", http: 200, ok: true, matches: 1, message: { id: "m1" } },
+    { at: "t3", http: 401, ok: false, problem: "HTTP 401", message: null },
+  ];
+  let queries = 0;
+  let reauths = 0;
+  const run = async () => answers[queries++];
+  const state = { reauthed: false };
+  const first = await queryWithReauth("before relaunch", run, async () => { reauths += 1; }, state);
+  assert.equal(queries, 2);
+  assert.equal(reauths, 1);
+  assert.deepEqual(first.records.map((r) => [r.phase, r.http, r.matches]), [["before relaunch", 401, 0], ["before relaunch: retry after re-auth", 200, 1]]);
+  assert.deepEqual(first.records[0].body_summary, { error: "token expired" });
+  assert.equal(state.reauth, "ok");
+  // A later 401 never signs in again.
+  const later = await queryWithReauth("after relaunch", run, async () => { reauths += 1; }, state);
+  assert.equal(reauths, 1);
+  assert.equal(later.records.length, 1);
+
+  // A failed re-auth: recorded, no retry.
+  const failing = { reauthed: false };
+  let n = 0;
+  const r = await queryWithReauth("before relaunch", async () => (n++, answers[0]), async () => { throw new Error("HTTP 403"); }, failing);
+  assert.equal(n, 1);
+  assert.equal(r.records.length, 1);
+  assert.deepEqual(failing, { reauthed: true, reauth: "failed", reauth_error: "HTTP 403" });
+});
+
+test("delivery must be exactly once; a duplicate fails, not found or no answer is unknown", () => {
+  const q = (phase, ok, matches) => ({ phase, at: `${phase}-${matches}`, ok, matches, http: ok ? 200 : 401 });
+  assert.deepEqual(sendDeliveryCount([q("before relaunch", false, 0), q("before relaunch: retry after re-auth", true, 1)]), { delivered: "exactly once", matches: 1 });
+  assert.deepEqual(sendDeliveryCount([q("before relaunch", true, 0), q("after relaunch", true, 2)]), { delivered: "more than once", matches: 2 });
+  assert.equal(sendDeliveryCount([q("before relaunch", true, 0), q("after relaunch", true, 0)]).delivered, "unknown");
+  assert.equal(sendDeliveryCount([q("before relaunch", false, 0)]).delivered, "unknown");
+});
+
+test("error bodies are summarised without tokens", () => {
+  assert.deepEqual(errorBodySummary({ error: "unauthorized", code: "TOKEN_EXPIRED", accessToken: "secret", nested: { a: 1 } }), { error: "unauthorized", code: "TOKEN_EXPIRED" });
+  assert.equal(errorBodySummary(null), null);
+  assert.equal(errorBodySummary([1]), null);
+  assert.equal(errorBodySummary({ message: "x".repeat(500) }).message.length, 120);
+});
+
+test("the journal cost splits into ENCODE and STORE over the paired samples only", () => {
+  const split = (sec, seq, e, i, p) => [
+    change(sec, seq),
+    line(sec, PID, "RaftDraftTiming", `draft_journal_written seq=${seq} path=sync costUs=${e + i + p + 5} encodeUs=${e} storeUs=${i + p} indexUs=${i} putUs=${p} len=3 uptimeMs=1`),
+  ];
+  const stats = statsOf([
+    ...split(1, 1, 100, 50, 300),
+    ...split(2, 2, 120, 60, 2000),
+    line(3, PID, "RaftDraftTiming", "draft_journal_written seq=99 path=sync costUs=9 encodeUs=9000 storeUs=9000 indexUs=1 putUs=1 len=3 uptimeMs=1"),
+  ]);
+  assert.equal(stats.journal_write_cost_parts.encode.samples, 2);
+  assert.equal(stats.journal_write_cost_parts.encode.max_us, 120);
+  assert.equal(stats.journal_write_cost_parts.store.p50_us, 2060);
+  assert.equal(stats.journal_write_cost_parts.put.max_us, 2000);
+  assert.equal(stats.journal_write_cost.unpaired_excluded, 1);
+});
+
+test("the recents gate applies only when the round runs the recents swipe", () => {
+  const noRecents = { ...timingsPass(), runs: timingsPass().runs.filter((r) => r.mode !== "recents") };
+  assert.equal(wrapUpVerdict(structuredClone(noRecents), statsOf(edit(1, 1, 100)), { ...config, recents: false }).result, "pass");
+  assert.equal(wrapUpVerdict(structuredClone(noRecents), statsOf(edit(1, 1, 100)), config).result, "fail");
 });

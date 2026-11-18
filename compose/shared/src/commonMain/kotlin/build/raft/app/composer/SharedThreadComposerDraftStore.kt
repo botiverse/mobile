@@ -118,6 +118,18 @@ internal data class SharedThreadComposerPersistedDraft(
  * background.  [seq] orders
  * entries across processes; [generation] and [process] fence a stale entry within one process.
  */
+/**
+ * What one crash-journal write cost on the calling thread: [encode] (entry to JSON), [index] (reading,
+ * and on a draft's first entry writing, the list of journaled drafts), [put] (the row's store write) and
+ * [total] (all of it, including the journal lock).  STORE = index + put.
+ */
+internal data class SharedThreadComposerDraftJournalWriteCost(
+    val encode: kotlin.time.Duration,
+    val index: kotlin.time.Duration,
+    val put: kotlin.time.Duration,
+    val total: kotlin.time.Duration,
+)
+
 @Serializable
 internal data class SharedThreadComposerDraftJournalEntry(
     val key: String,
@@ -765,17 +777,24 @@ internal class SharedThreadComposerDraftPersistence(
      * composers typing at once (a channel and a thread, two windows) never overwrite each other's
      * entry.  One store write, no transaction, no active-index work, not under [lock]; the first
      * entry of a draft key not yet listed in [JournalIndexKey] also writes that list first (so a
-     * listed key may have no row, never the reverse).  Returns the time it took (encode + writes).
+     * listed key may have no row, never the reverse).  Returns the time each part took.
      */
-    fun writeJournal(entry: SharedThreadComposerDraftJournalEntry): kotlin.time.Duration {
+    fun writeJournal(entry: SharedThreadComposerDraftJournalEntry): SharedThreadComposerDraftJournalWriteCost {
         val started = TimeSource.Monotonic.markNow()
         val encoded = ComposerDraftJson.encodeToString(entry)
+        val encode = started.elapsedNow()
+        var index = kotlin.time.Duration.ZERO
+        var put = kotlin.time.Duration.ZERO
         synchronized(lockEntry.journalLock) {
+            val indexStarted = TimeSource.Monotonic.markNow()
             val listed = journalIndexLocked()
             if (entry.key !in listed) store.putString(JournalIndexKey, (listed + entry.key).joinToString("\n"))
+            index = indexStarted.elapsedNow()
+            val putStarted = TimeSource.Monotonic.markNow()
             store.putString(journalRowKey(entry.key), encoded)
+            put = putStarted.elapsedNow()
         }
-        return started.elapsedNow()
+        return SharedThreadComposerDraftJournalWriteCost(encode = encode, index = index, put = put, total = started.elapsedNow())
     }
 
     /** The raw journal rows of [keys] (null: no row), for a transition's rollback image. */
@@ -2388,10 +2407,10 @@ internal class SharedThreadComposerDraftPersistSlice(
      * The crash journal's input-thread cost: to [journalWriteCost] when one is injected, else as a
      * `draft_journal_written` line to the [timingSink] (debuggable builds only; none in release).
      */
-    private fun reportJournalWriteCost(cost: kotlin.time.Duration, textLength: Int, timingSeq: Long) {
+    private fun reportJournalWriteCost(cost: SharedThreadComposerDraftJournalWriteCost, textLength: Int, timingSeq: Long) {
         runCatching {
             val hook = journalWriteCost
-            if (hook != null) hook(cost, textLength) else timingSink()?.invoke(raftDraftJournalCostLine(timingSeq, cost, textLength))
+            if (hook != null) hook(cost.total, textLength) else timingSink()?.invoke(raftDraftJournalCostLine(timingSeq, cost, textLength))
         }
     }
 
