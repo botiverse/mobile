@@ -583,7 +583,8 @@ final class SignedInHomeShotTests: XCTestCase {
 
         // 5. Optional: the conversation forward gesture end to end (HOME_SHOT_FORWARD_PROBE=1).
         if env["HOME_SHOT_FORWARD_PROBE"] == "1" {
-            ConversationForwardGestureProbe(test: self, app: app, ioDir: ioDir).run()
+            var probe = ConversationForwardGestureProbe(test: self, app: app, ioDir: ioDir)
+            probe.run()
         }
     }
 
