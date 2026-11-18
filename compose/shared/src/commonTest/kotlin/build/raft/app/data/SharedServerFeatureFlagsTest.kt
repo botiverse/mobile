@@ -171,6 +171,8 @@ class SharedServerFeatureFlagsTest {
         assertEquals("drafts_section_v0", DRAFTS_SECTION_FEATURE_FLAG_KEY)
         // New mobile switch for server setup.
         assertEquals("mobile_server_setup_v1", MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY)
+        // botiverse/slock packages/shared/src/featureFlags.ts SERVER_LABS_UI_FEATURE_FLAG_KEY (default off).
+        assertEquals("server_labs_ui_v0", SERVER_LABS_UI_FEATURE_FLAG_KEY)
         for (
             key in listOf(
                 MOBILE_SERVER_SETUP_V1_FEATURE_FLAG_KEY,
@@ -178,6 +180,7 @@ class SharedServerFeatureFlagsTest {
                 SLACK_BRIDGE_FEATURE_FLAG_KEY,
                 PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
                 DRAFTS_SECTION_FEATURE_FLAG_KEY,
+                SERVER_LABS_UI_FEATURE_FLAG_KEY,
             )
         ) {
             assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)

@@ -66,6 +66,7 @@ internal val SettingsWideNativeDetailKeys: Set<String> =
         SettingsNativeDetailPage.ServerNotifications.key,
         SettingsNativeDetailPage.Server.key,
         SettingsDestinationComputers,
+        SettingsDestinationLabs,
         SettingsNativeDetailPage.About.key,
     )
 
@@ -136,6 +137,7 @@ private fun settingsWideDetailPageWithoutAnchor(
         SettingsDestinationAccount -> SETTINGS_ACCOUNT_PAGE to settingsStandalonePageData(SETTINGS_ACCOUNT_PAGE, storeScope)
         SettingsDestinationStorage -> SETTINGS_STORAGE_PAGE to settingsStandalonePageData(SETTINGS_STORAGE_PAGE, storeScope)
         SettingsDestinationComputers -> SETTINGS_COMPUTERS_PAGE to settingsComputersPageData(storeScope)
+        SettingsDestinationLabs -> SETTINGS_LABS_PAGE to settingsLabsPageData(storeScope)
         else ->
             SettingsNativeDetailPage.fromKey(key)
                 ?.takeIf { key in SettingsWideNativeDetailKeys }

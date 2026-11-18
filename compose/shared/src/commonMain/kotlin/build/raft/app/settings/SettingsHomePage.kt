@@ -267,6 +267,8 @@ internal const val SettingsDestinationComputers = "computers"
 internal const val SettingsDestinationAdministration = "administration"
 /** IM Bridges, the web section `/settings/im-bridges`; a row only while `slack_bridge_v0` is on. */
 internal const val SettingsDestinationImBridges = "im-bridges"
+/** Labs, the web section `/settings/labs`; a row only while `server_labs_ui_v0` is on. */
+internal const val SettingsDestinationLabs = "labs"
 internal const val SettingsDestinationConnectedApps = "connected-apps"
 internal const val SettingsDestinationBilling = "billing"
 internal const val SettingsDestinationStorage = "storage"
@@ -4802,6 +4804,7 @@ private fun RaftAppShellReadyContent(
             }
             SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope, anchor)
             SettingsDestinationImBridges -> pager.openSettingsImBridgesPage(storeScope)
+            SettingsDestinationLabs -> pager.openSettingsLabsPage(storeScope)
             SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
             // The native ticket list, on every platform.
             SettingsDestinationHandsFeedback -> pager.openSettingsFeedbackPage(storeScope)
@@ -6389,6 +6392,11 @@ private fun RaftAppShellReadyContent(
                             remember(readyServerId, settingsFeatureFlagRevision) {
                                 settingsImBridgesEnabled(sharedStores.serverFeatureFlags, readyServerId)
                             }
+                        // Labs row: the server's server_labs_ui_v0 (web `labsUiEnabled`).
+                        val labsEnabled =
+                            remember(readyServerId, settingsFeatureFlagRevision) {
+                                settingsLabsEnabled(sharedStores.serverFeatureFlags, readyServerId)
+                            }
                         // Search settings (raft-design settings.md#searching-settings): the query
                         // stays while Settings stays on one server; who can find what follows the
                         // role and the server flags the pages read themselves.
@@ -6413,7 +6421,7 @@ private fun RaftAppShellReadyContent(
                             // section opens beside the list (SettingsWideSplit.kt). Feedback is pushed.
                             SettingsWideListDetail(
                                 payload =
-                                    appShellSettingsHomePayload(settingsSession, imBridgesEnabled = imBridgesEnabled)
+                                    appShellSettingsHomePayload(settingsSession, imBridgesEnabled = imBridgesEnabled, labsEnabled = labsEnabled)
                                         .withAttentionRows(settingsWideAttentionRowKeys(moreAttention)),
                                 widths = adaptiveListPaneWidths,
                                 active = active,
@@ -6500,6 +6508,7 @@ private fun RaftAppShellReadyContent(
                             onBack = stackPageClose ?: moreChildBack,
                             session = settingsSession,
                             imBridgesEnabled = imBridgesEnabled,
+                            labsEnabled = labsEnabled,
                             bottomContentPadding =
                                 if (stackPageClose != null) shellScope.contentBottomInset(false) else appShellBottomContentInset,
                             scrollToTopRequest = tabScrollToTopRequests.more,

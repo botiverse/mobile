@@ -131,6 +131,8 @@ val RaftMobileStackPages: RaftStackPageAllowlist =
                 RaftStackPageRule(pageName = build.raft.app.SETTINGS_STORAGE_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.RELEASE_NOTES_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.SETTINGS_COMPUTERS_PAGE),
+                // Settings > Labs (server_labs_ui_v0).
+                RaftStackPageRule(pageName = build.raft.app.SETTINGS_LABS_PAGE),
                 // The Artifacts home, from the server panel (task #proj-mobile:#62).
                 RaftStackPageRule(pageName = build.raft.app.ARTIFACTS_HOME_PAGE),
                 // The personal assistant's page, from the phone Home's Assistant row (1.27).

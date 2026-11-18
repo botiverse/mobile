@@ -139,6 +139,7 @@ class RaftProductPageRoutesTest {
         )
         assertEquals(view(RaftPageRoute.Settings, RaftSettingsTab.Account), page(AuthenticatedProductRoute.SettingsAccount))
         assertEquals(view(RaftPageRoute.Settings, RaftSettingsTab.Storage), page(AuthenticatedProductRoute.SettingsStorage))
+        assertEquals(view(RaftPageRoute.Settings, RaftSettingsTab.Labs), page(AuthenticatedProductRoute.SettingsLabs))
         assertEquals(view(RaftPageRoute.Settings, RaftSettingsTab.Feedback), page(AuthenticatedProductRoute.SettingsHandsFeedback))
         listOf(
             AuthenticatedProductRoute.ThreadMembers,

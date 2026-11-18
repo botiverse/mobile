@@ -44,6 +44,7 @@ internal val raftProductPageFactories: Map<String, () -> Pager> =
         "compose_settings_feedback_tickets" to { build.raft.app.ComposeSettingsFeedbackTicketsPage() },
         "compose_settings_hands_feedback" to { build.raft.app.ComposeSettingsHandsFeedbackPage() },
         "compose_settings_home" to { build.raft.app.ComposeSettingsHomePage() },
+        "compose_settings_labs" to { build.raft.app.ComposeSettingsLabsPage() },
         "compose_settings_native_detail" to { build.raft.app.ComposeSettingsNativeDetailPage() },
         "compose_settings_storage" to { build.raft.app.ComposeSettingsStoragePage() },
         "compose_settings_tabbar_smoke" to { build.raft.app.ComposeSettingsTabBarSmokePage() },

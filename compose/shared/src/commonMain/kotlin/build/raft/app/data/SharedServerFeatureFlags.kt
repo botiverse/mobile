@@ -214,6 +214,13 @@ const val CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY: String = "channel_announcement_
  */
 const val EXTERNAL_CHANNELS_FEATURE_FLAG_KEY: String = "external_channels_v1"
 
+/**
+ * Server Labs UI (botiverse/slock `packages/shared/src/featureFlags.ts` `SERVER_LABS_UI_FEATURE_FLAG_KEY`,
+ * drizzle 0192): per server, default off. On, Settings shows Labs (web `labsUiEnabled`); the Labs
+ * routes stay the authority on who may change what.
+ */
+const val SERVER_LABS_UI_FEATURE_FLAG_KEY: String = "server_labs_ui_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -235,6 +242,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_IOS_NATIVE_NAV_FEATURE_FLAG_KEY,
     // Slack Bridge (slock `SLACK_BRIDGE_FEATURE_FLAG_KEYS.master`): the Settings IM Bridges row.
     SLACK_BRIDGE_FEATURE_FLAG_KEY,
+    // Server Labs UI: the Settings Labs row and page.
+    SERVER_LABS_UI_FEATURE_FLAG_KEY,
     AGENT_LOUNGE_FEATURE_FLAG_KEY,
     // Settings search: who finds Public access and Single sign-on.
     PUBLIC_SERVER_FEATURE_FLAG_KEY,
