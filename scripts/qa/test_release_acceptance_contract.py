@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from release_acceptance_contract import ContractError, DEFAULT_CASE_DIR, load_contract
+from release_acceptance_contract import ContractError, DEFAULT_CASE_DIR, load_contract, load_yaml
 
 
 class ReleaseAcceptanceContractTest(unittest.TestCase):
@@ -97,6 +97,38 @@ class ReleaseAcceptanceContractTest(unittest.TestCase):
         path.write_text(duplicate, encoding="utf-8")
         with self.assertRaisesRegex(ContractError, "duplicate JSON key 'schema_version'"):
             load_contract(self.case_dir)
+
+
+class ReleaseBuildSettingsCaseTest(unittest.TestCase):
+    """Testbed #228: the release-build settings case never enters Account."""
+
+    PATH = DEFAULT_CASE_DIR.parent / "release-build" / "settings-open-and-navigate-release.yaml"
+
+    def test_release_case_is_release_only_and_never_taps_account(self) -> None:
+        case = load_yaml(self.PATH)
+        self.assertEqual("release", case["build_variant"])
+        self.assertEqual("none", case["auth_fixture"])
+        self.assertEqual("release-prelogin", case["auth_mode"])
+        self.assertEqual("build.raft.app", case["app_package"])
+        self.assertEqual(["android", "ios"], case["platforms"])
+        self.assertNotIn("ohos", case)
+        self.assertEqual(
+            ["settings-list-visible", "appearance-page-loaded", "storage-page-loaded"],
+            [a["id"] for a in case["assertions"]],
+        )
+        self.assertIn("settings-account", [s["id"] for s in case["forbidden_screens"]])
+        for platform in ("android", "ios"):
+            goals = [step["goal"] for step in case[platform]["steps"]]
+            self.assertTrue(any("Tap Appearance" in g for g in goals), platform)
+            self.assertTrue(any("Tap Storage" in g for g in goals), platform)
+            for goal in goals:
+                if "Account" in goal:
+                    self.assertRegex(goal, r"\b(NOT|not) (tap (the )?)?Account", goal)
+
+    def test_release_case_stays_out_of_the_alpha_release_set(self) -> None:
+        ids = load_contract().sources
+        self.assertNotIn("settings-open-and-navigate-release", ids)
+        self.assertEqual("alpha-qa", ids["settings-open-and-navigate"][1]["auth_fixture"])
 
 
 if __name__ == "__main__":

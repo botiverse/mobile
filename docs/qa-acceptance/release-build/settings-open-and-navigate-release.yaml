@@ -1,0 +1,106 @@
+id: settings-open-and-navigate-release
+title: "设置页-打开设置并浏览子页面（Release 包，不进 Account）"
+goal: "On the RELEASE build, verify Settings opens and the Appearance and Storage sub-pages load, without ever entering Account"
+description: |
+  Release-build variant of `settings-open-and-navigate`
+  (docs/qa-acceptance/cases/case-05-settings-open-and-navigate.yaml, which
+  stays the Alpha case, unchanged). Decided with Tenny and Argus on Testbed
+  task #228 as the first case to run on a release build (1.26.0).
+
+  Why Appearance instead of Account: the release build's Account page shows
+  the signed-in email, and the evidence gate (scripts/qa/secure_evidence.mjs)
+  only redacts TEXT files. Screenshots and the screen recording are never
+  scanned, so the email would leave the runner inside images/video.
+
+  This file lives outside docs/qa-acceptance/cases/ on purpose: that folder is
+  the frozen Alpha release set checked by
+  scripts/qa/check_release_acceptance_cases.py (every case there must use
+  auth_fixture alpha-qa and be listed in release-1.7.0-android.json).
+tier: L1
+version: "0.1"
+tags: [settings, navigation, release-build, read-only]
+platforms: [android, ios]   # no OHOS
+max_retries: 1
+
+# Release build: no QA bootstrap exists in it (QaSessionBootstrapActivity is
+# debuggable-only), so no auth fixture. See case-schema.md "Release-build cases".
+build_variant: release
+app_package: build.raft.app   # Android package of the release build
+auth_fixture: none
+auth_mode: release-prelogin   # Testbed: signed in before capture; old executors refuse this case
+launch_route: compose_slock_app_shell
+environment:
+  server: production
+  credentials_ref: qa-account:production   # the existing production QA account
+read_only: true   # change nothing: no setting toggled, nothing saved, no sign-out
+
+# Screens this case must never show. Entering any of them invalidates the
+# run (see `on_forbidden_screen`). The markers are what the screen shows;
+# the settings-root row titled "Account" is NOT a marker (it is on the root).
+forbidden_screens:
+  - id: settings-account
+    why: "shows the signed-in email (and profile / connected accounts)"
+    markers: ["Save profile", "Connected accounts", "Login & security", "Change Password", "Delete account", "Display name"]
+  - id: any-screen-showing-account-email
+    why: "e.g. Choose server \"Signed in as <email>\"; any page that prints the account email"
+    markers: ["Signed in as"]
+on_forbidden_screen: |
+  INVALID RUN. If the agent enters the Account page (or any screen above) for
+  any reason, even for one frame: stop, delete every screenshot and the
+  recording of this run, upload nothing, and report the run as invalid
+  (not pass, not fail, not "marked"). A fresh run is required. Detection is a
+  manual / agent rule today: the evidence gate cannot see images or video and
+  nothing passes this list to it (see case-schema.md).
+
+evidence:
+  recording: continuous   # stays on for the whole run
+  screenshots: [settings-root, appearance, storage]
+
+assertions:
+  - id: settings-list-visible
+    goal: "Settings root shows its navigation rows"
+    type: visual_check
+    severity: major
+  - id: appearance-page-loaded
+    goal: "Appearance page loads (theme options visible)"
+    type: visual_check
+    severity: major
+  - id: storage-page-loaded
+    goal: "Storage page loads"
+    type: visual_check
+    severity: major
+
+android:
+  device: { type: emulator, api_level: 34 }
+  steps:
+    - goal: "Open Settings (settings root). Do NOT tap the Account row — not now, not later in this run."
+      capture: [screenshot]
+    - goal: "Tap Appearance (NOT Account; Account is the FIRST row of the Personal group, Appearance is two rows below it, after Language & region)"
+      hint: "wait 1.5s after the tap"
+    - goal: "Screenshot the Appearance page"
+      capture: [screenshot]
+    - goal: "Go back to the settings root"
+      hint: "BACK key, once"
+    - goal: "Tap Storage (do NOT tap Account)"
+      hint: "wait 1.5s after the tap"
+    - goal: "Screenshot the Storage page"
+      capture: [screenshot, dump_layout]
+ios:
+  device: { type: ios-simulator, device_name: "iPhone 14" }
+  steps:
+    - goal: "Open Settings (settings root). Do NOT tap the Account row — not now, not later in this run."
+      capture: [screenshot]
+    - goal: "Tap Appearance (NOT Account; Account is the FIRST row of the Personal group, Appearance is two rows below it, after Language & region)"
+      hint: "wait 1.5s after the tap"
+    - goal: "Screenshot the Appearance page"
+      capture: [screenshot]
+    - goal: "Go back to the settings root"
+      hint: "top-left back button or edge swipe, once"
+    - goal: "Tap Storage (do NOT tap Account)"
+      hint: "wait 1.5s after the tap"
+    - goal: "Screenshot the Storage page"
+      capture: [screenshot]
+
+expected:
+  result: pass
+  notes: "Read-only. Account is never opened; if it was, the run is invalid and its media is deleted, not uploaded."
