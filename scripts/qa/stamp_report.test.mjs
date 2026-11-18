@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -119,8 +120,9 @@ cp "\${payload#@}" "${payloadLog}"
   assert.equal(fs.existsSync(payloadLog), false);
 });
 
-test("claim payload uses frozen artifact identity overrides", () => {
+test("claim binds frozen builds and reports direct APK provenance separately", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-claim-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const evidence = path.join(root, "qa-evidence");
   const bin = path.join(root, "bin");
   const runnerTemp = path.join(root, "runner-temp");
@@ -141,25 +143,27 @@ cp "\${payload#@}" "${payloadLog}"
 printf '{"claim_token":"lease-token"}' > "$out"
 `, { mode: 0o755 });
 
-  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "claim", "qa-evidence"], {
-    cwd: root,
-    env: {
-      ...process.env,
-      PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
-      RUNNER_TEMP: runnerTemp,
-      STAMP_RUN_CASE_ID: "rc-frozen",
-      STAMP_URL: "https://stamp.test",
-      STAMP_TOKEN: "test-token",
-      GITHUB_SHA: "workflow-head",
-      GITHUB_RUN_ID: "123",
-      GITHUB_REPOSITORY: "botiverse/mobile",
-      STAMP_VERIFIED_SOURCE_COMMIT: "frozen-source",
-      STAMP_VERIFIED_ARTIFACT_SHA256: "frozen-sha",
-      STAMP_VERIFIED_APP_VERSION: "1.0",
-      STAMP_VERIFIED_VERSION_CODE: "1",
-      STAMP_VERIFIED_PACKAGE_ID: "build.raft.app",
-    },
+  const env = {
+    ...process.env,
+    PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+    RUNNER_TEMP: runnerTemp,
+    STAMP_RUN_CASE_ID: "rc-frozen",
+    STAMP_URL: "https://stamp.test",
+    STAMP_TOKEN: "test-token",
+    GITHUB_SHA: "workflow-head",
+    GITHUB_RUN_ID: "123",
+    GITHUB_REPOSITORY: "botiverse/mobile",
+    STAMP_VERIFIED_SOURCE_COMMIT: "frozen-source",
+    STAMP_VERIFIED_ARTIFACT_SHA256: "frozen-sha",
+    STAMP_VERIFIED_APP_VERSION: "1.0",
+    STAMP_VERIFIED_VERSION_CODE: "1",
+    STAMP_VERIFIED_PACKAGE_ID: "build.raft.app",
+  };
+  const reporter = new URL("./stamp_report.sh", import.meta.url).pathname;
+  const claim = (extra = {}) => execFileSync("bash", [reporter, "claim", "qa-evidence"], {
+    cwd: root, env: { ...env, ...extra }, stdio: "pipe",
   });
+  claim();
   assert.deepEqual(JSON.parse(fs.readFileSync(payloadLog, "utf8")), {
     ci_job_ref: "https://github.com/botiverse/mobile/actions/runs/123",
     source_commit: "frozen-source",
@@ -169,6 +173,26 @@ printf '{"claim_token":"lease-token"}' > "$out"
     package_id: "build.raft.app",
   });
   assert.equal(fs.readFileSync(path.join(runnerTemp, "stamp-claim-rc-frozen"), "utf8"), "lease-token");
+
+  const apks = path.join(root, "apks");
+  fs.mkdirSync(apks);
+  const apk = Buffer.from("downloaded APK fixture");
+  fs.writeFileSync(path.join(apks, "pinned.apk"), apk);
+  const digest = createHash("sha256").update(apk).digest("hex");
+  const info = { platform: "android", source_commit_verified: false, apk_sha256: digest,
+    package: "build.raft.app", app_version: "1.26.0", version_code: "12600002" };
+  const metadata = path.join(apks, "build-info.json");
+  fs.writeFileSync(metadata, JSON.stringify(info));
+  const direct = { STAMP_DIRECT_ANDROID_APK: "true", GITHUB_SHA: "b".repeat(40) };
+  claim(direct);
+  assert.deepEqual(JSON.parse(fs.readFileSync(payloadLog, "utf8")), {
+    ci_job_ref: "https://github.com/botiverse/mobile/actions/runs/123", workflow_source_commit: direct.GITHUB_SHA,
+    source_commit: null, apk_sha256: digest, app_version: "1.26.0", version_code: 12600002, package_id: "build.raft.app",
+  });
+  fs.rmSync(payloadLog);
+  fs.writeFileSync(metadata, JSON.stringify({ ...info, apk_sha256: "0".repeat(64) }));
+  assert.throws(() => claim(direct), /direct APK does not match/);
+  assert.equal(fs.existsSync(payloadLog), false);
 });
 
 test("legacy credential phase freezes the actual CI login email after claim without exposing password", () => {
@@ -1022,6 +1046,7 @@ test("READY response loss resolves server authority before choosing completed ve
   fs.writeFileSync(serverState, "ready");
   fs.writeFileSync(path.join(root, "mobile_login_bootstrap.mjs"), `
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 const args=process.argv.slice(2); const value=(n)=>args[args.indexOf(n)+1];
 fs.appendFileSync("${calls}", "cleanup:"+value("--outcome")+"\\n");
 fs.writeFileSync(value("--output"), JSON.stringify({force_stopped:true,package_data_cleared:true}));
