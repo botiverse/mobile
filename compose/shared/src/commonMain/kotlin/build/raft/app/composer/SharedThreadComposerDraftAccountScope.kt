@@ -67,9 +67,12 @@ internal class SharedThreadComposerDraftAccountStore(
     private val base: SharedPreferenceStore,
     private val liveAccount: () -> SharedThreadComposerDraftAccount?,
     private val diagnosticsLogger: ((String) -> Unit)? = null
-) : SharedPreferenceStore {
+) : SharedPreferenceStore, SharedThreadComposerDraftJournalScope {
     private val lock = SynchronizedObject()
     private var bound: SharedThreadComposerDraftAccount? = null
+
+    /** The journal index cache follows the account the rows go to; none while no account is bound. */
+    override fun journalScopeToken(): String? = currentAccount()?.storageToken
     private val registeredOwners = mutableSetOf<String>()
 
     /** The account reads and writes go to right now; null fails closed. */
@@ -217,7 +220,9 @@ internal class SharedThreadComposerDraftAccountStore(
 private class SharedThreadComposerDraftFixedAccountStore(
     private val base: SharedPreferenceStore,
     private val storageToken: String
-) : SharedPreferenceStore {
+) : SharedPreferenceStore, SharedThreadComposerDraftJournalScope {
+    override fun journalScopeToken(): String = storageToken
+
     private fun scoped(key: String): String =
         "${SharedThreadComposerDraftAccountKeys.ScopedPrefix}$storageToken:" +
             key.removePrefix(SharedThreadComposerDraftPersistence.DraftStoragePrefix)
@@ -371,6 +376,8 @@ internal class SharedThreadComposerDraftAccounts(
             }
         view.putString(indexKey, null)
         SharedThreadComposerDraftPersistence.journalRowKeys(view).forEach { row -> view.putString(row, null) }
+        // Rows and index written directly (not through a facade): no cached index may outlive them.
+        SharedThreadComposerDraftJournalIndexEpoch.bump()
         store.forgetOwner(token)
         safeDiagnostics("thread_composer_draft_account_purged")
     }

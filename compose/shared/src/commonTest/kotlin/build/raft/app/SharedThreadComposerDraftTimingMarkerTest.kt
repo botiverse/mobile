@@ -142,10 +142,10 @@ class SharedThreadComposerDraftTimingMarkerTest {
     @Test
     fun theJournalCostLineHasTheShapeTheAcceptanceScriptParses() {
         assertEquals(
-            "draft_journal_written seq=3 path=sync costUs=1234 encodeUs=200 storeUs=1000 indexUs=100 putUs=900 len=7",
+            "draft_journal_written seq=3 path=sync costUs=1234 encodeUs=200 storeUs=1000 indexUs=100 putUs=900 indexWrite=1 len=7",
             raftDraftJournalCostLine(
                 3,
-                SharedThreadComposerDraftJournalWriteCost(encode = 200.microseconds, index = 100.microseconds, put = 900.microseconds, total = 1234.microseconds),
+                SharedThreadComposerDraftJournalWriteCost(encode = 200.microseconds, index = 100.microseconds, put = 900.microseconds, total = 1234.microseconds, indexWrite = true),
                 7,
             ),
         )
@@ -220,6 +220,6 @@ class SharedThreadComposerDraftTimingMarkerTest {
 
     private companion object {
         const val IntervalMillis = 40L
-        val JournalCostLine = Regex("""^draft_journal_written seq=\d+ path=sync costUs=\d+ encodeUs=\d+ storeUs=\d+ indexUs=\d+ putUs=\d+ len=\d+$""")
+        val JournalCostLine = Regex("""^draft_journal_written seq=\d+ path=sync costUs=\d+ encodeUs=\d+ storeUs=\d+ indexUs=\d+ putUs=\d+ indexWrite=[01] len=\d+$""")
     }
 }

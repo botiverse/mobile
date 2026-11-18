@@ -41,12 +41,14 @@ fun raftDraftTimingMarkerEnabled(buildConfigDebug: Boolean, appDebuggable: Boole
 
 /**
  * The crash journal's input-thread write cost as a timing line (task #246):
- * `draft_journal_written seq=<change seq> path=sync costUs=<total µs> encodeUs=<µs> storeUs=<µs> indexUs=<µs> putUs=<µs> len=<text length>`,
+ * `draft_journal_written seq=<change seq> path=sync costUs=<total µs> encodeUs=<µs> storeUs=<µs> indexUs=<µs> putUs=<µs> indexWrite=<0|1> len=<text length>`,
  * [seq] being the `change_received` seq of the same change (logged just before the journal write).
  * ENCODE = the entry to JSON; STORE = index (the journaled-drafts list) + put (the row's store write);
- * costUs = the whole write including the journal lock. Never the text.
+ * costUs = the whole write including the journal lock; indexWrite=1 when the write also registered the
+ * draft key in the journal index. Never the text.
  */
 internal fun raftDraftJournalCostLine(seq: Long, cost: SharedThreadComposerDraftJournalWriteCost, textLength: Int): String =
     "draft_journal_written seq=$seq path=sync costUs=${cost.total.inWholeMicroseconds} " +
         "encodeUs=${cost.encode.inWholeMicroseconds} storeUs=${(cost.index + cost.put).inWholeMicroseconds} " +
-        "indexUs=${cost.index.inWholeMicroseconds} putUs=${cost.put.inWholeMicroseconds} len=$textLength"
+        "indexUs=${cost.index.inWholeMicroseconds} putUs=${cost.put.inWholeMicroseconds} " +
+        "indexWrite=${if (cost.indexWrite) 1 else 0} len=$textLength"
