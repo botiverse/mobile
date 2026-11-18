@@ -114,10 +114,14 @@ class SharedHomeSearchSenderFiltersFollowDirectoryTest {
      */
     @Test
     fun theMentionListHidesDirectoryGuestsButKeepsAGuestOfTheMentionChannel() = runBlocking {
-        for ((viewerRole, expected) in listOf("member" to setOf("user-a", "gina"), "admin" to setOf("user-a", "gina", "gwen"))) {
+        for ((viewerRole, expected) in listOf("member" to setOf("artin", "gina"), "admin" to setOf("artin", "gina", "gwen"))) {
             val repository =
                 MutableMemberRepository(
-                    listOf(member("user-a", "Artin", MemberKind.Human), guest("guest-g", "Gwen"), guest("guest-c", "Gina")),
+                    listOf(
+                        member("user-a", "Artin", MemberKind.Human).copy(handle = "artin"),
+                        guest("guest-g", "Gwen"),
+                        guest("guest-c", "Gina"),
+                    ),
                     viewerRole = viewerRole,
                     channelMembers = listOf(guest("guest-c", "Gina")),
                 )
