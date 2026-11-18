@@ -247,6 +247,10 @@ function main() {
   const [W, H] = size(); note("env", "size_now", `${W}x${H}`);
 
   waitShell();
+  // Single-scenario mode (scripts/qa/foldable_only.txt, e.g. "9"): used to run step 9 alone on a baseline build.
+  const ONLY = fs.existsSync("scripts/qa/foldable_only.txt") ? fs.readFileSync("scripts/qa/foldable_only.txt", "utf8").trim() : "";
+  note("env", "only", ONLY || "all");
+  if (ONLY === "9") { step9Only(); finish(); return; }
   // ---- Separate scenario: Members list (mobile #4991, Hands 52b93946) ----
   try { membersScenario(); } catch (e) { log("members scenario error", e.stack); note("members", "driver_error", String(e.stack).slice(0, 1500)); }
   // Reset to a clean unfolded shell for the #4984 steps.
@@ -610,6 +614,27 @@ function membersScenario() {
   note("members", "cycles", res);
   note("members", "pid_start_end", `${pid0} -> ${pid()}`);
   note("members", "final", membersState("final"));
+}
+
+// Step 9 alone: shell on the Artifacts rail page, Artifact viewer on top, HOME, am kill, relaunch, pop.
+function step9Only() {
+  const t = findTarget(); shot("s9o-shell-artifacts-before"); nodes("s9o-shell-artifacts-before");
+  if (!t) { note("9only", "target", "NOT FOUND"); return; }
+  for (let round = 1; round <= 2; round++) {
+    const tt = findTarget() || t;
+    newLog(); tap(tt.x, tt.y); sleep(3000); shot(`s9o-r${round}-page-before-kill`);
+    const opened = stackOps(newLog()).map((l) => l.replace(/^.*nav3_stack /, "").slice(0, 60));
+    sh("input keyevent 3"); sleep(2500); const before = pid(); sh(`am kill ${PKG}`); sleep(2500);
+    note("9only", `r${round}_kill`, `${before} -> ${pid() || "(dead)"}; opened=${JSON.stringify(opened)}`);
+    fs.writeFileSync(path.join(OUT, `logcat-driver-r${round}.txt`), logcat()); sh("logcat -c"); logMark = 0;
+    launch(); sleep(5000); const a = nodes(`s9o-r${round}-restored`); shot(`s9o-r${round}-restored`);
+    const f = newLog();
+    note("9only", `r${round}_restore_line`, f.find((l) => /nav3_stack_restore/.test(l))?.replace(/^.*nav3_stack_restore/, "nav3_stack_restore") ?? "none");
+    note("9only", `r${round}_page_on_top_after_restore`, !find(a, /^(Chat|Home)$/));
+    back(); sleep(2500); const b = nodes(`s9o-r${round}-after-pop`); shot(`s9o-r${round}-after-pop`);
+    note("9only", `r${round}_after_pop`, `artifacts_page=${!!find(b, /^Artifacts$/, (n) => n.x > 150) && !!b.find((n) => /, v\d+, /.test(n.desc))} select_conversation=${!!find(b, /^Select a conversation$/)} members=${!!find(b, /^Members$/, (n) => n.x > 150)} foreground=${foreground()}`);
+    const hits = f.filter((l) => CRASH.test(l)); note("9only", `r${round}_crash_lines`, hits.slice(0, 5));
+  }
 }
 
 function finish() {
