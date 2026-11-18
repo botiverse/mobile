@@ -45,6 +45,14 @@ class RaftApplication : Application() {
         // Page routing: every :shared page renders through RaftPageRegistry; debug builds also
         // admit the debug-only :ui-cmp pages.
         RaftCmpRouter.configure(debugBuild = BuildConfig.DEBUG)
+        // Composer-draft timing lines for the draft-kill acceptance (task #246): debuggable
+        // builds only; release and Play never install the logcat sink.
+        if (BuildConfig.DEBUG) {
+            RaftDraftTimingLogcat.install(
+                buildConfigDebug = BuildConfig.DEBUG,
+                appDebuggable = applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0,
+            )
+        }
         RaftPageRegistry.install()
         RaftAndroidHostHooks.install(this)
         // The Google Play rating prompt for RaftRatingPrompt (`play` builds only).
