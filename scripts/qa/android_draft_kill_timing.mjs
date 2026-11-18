@@ -20,6 +20,7 @@
 // ActivityManager lines of the package, libprocessgroup), step screenshots of failures. Never written:
 // QA credentials, tokens, the app-login request id, account emails.
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -198,7 +199,9 @@ const serverVisible = (list, name = SERVER) => list.some((n) => n.pkg === PKG &&
 
 // ---------- logcat (-v monotonic: CLOCK_MONOTONIC seconds, the clock of SystemClock.uptimeMillis) ----------
 let logcatChild = null;
-const LOGCAT_RAW = path.join(OUT, "logcat-raw.txt");
+// Outside the evidence directory: if the process dies before stopCapture, the unfiltered logcat is not
+// uploaded (only the filtered timing lines are evidence).
+const LOGCAT_RAW = path.join(os.tmpdir(), `draft-kill-logcat-raw-${process.pid}.txt`);
 
 function startCapture() {
   adb(["logcat", "-c"], { allowFailure: true });
@@ -206,15 +209,29 @@ function startCapture() {
   logcatChild = spawn("adb", ["logcat", "-v", "monotonic", "-b", "main", "-b", "system", "-b", "crash", "-b", "events"], { stdio: ["ignore", fd, fd] });
 }
 
-const logcatText = () => {
+/** A mark is a byte offset into the raw logcat file: cheap, no read of the whole file. */
+const logcatMark = () => {
   try {
-    return fs.readFileSync(LOGCAT_RAW, "utf8");
+    return fs.statSync(LOGCAT_RAW).size;
   } catch {
-    return "";
+    return 0;
   }
 };
-const logcatMark = () => logcatText().length;
-const linesSince = (mark) => logcatText().slice(mark).split("\n");
+/** Only the bytes written since [mark] (a run's window), never the whole growing file. */
+const linesSince = (mark) => {
+  let fd;
+  try {
+    fd = fs.openSync(LOGCAT_RAW, "r");
+    const length = Math.max(0, fs.fstatSync(fd).size - mark);
+    const buffer = Buffer.alloc(length);
+    fs.readSync(fd, buffer, 0, length, mark);
+    return buffer.toString("utf8").split("\n");
+  } catch {
+    return [];
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+};
 
 /** Lines kept as evidence: no other app or framework chatter, nothing that could carry a token. */
 const isTimingEvidence = (line) =>
@@ -240,10 +257,10 @@ async function stopCapture() {
   } catch {}
   await sleep(1000);
   if (fs.existsSync(LOGCAT_RAW)) {
-    const rawLines = fs.readFileSync(LOGCAT_RAW, "utf8").split("\n");
+    const rawLines = linesSince(0);
     summary.write_latency = writeLatencyStats(rawLines);
     summary.write_paths = writePathCounts(rawLines);
-    const kept = redact(fs.readFileSync(LOGCAT_RAW, "utf8")).split("\n").filter(isTimingEvidence);
+    const kept = rawLines.filter(isTimingEvidence).map(redact);
     fs.writeFileSync(path.join(OUT, "timing-lines.txt"), `${kept.join("\n")}\n`);
     fs.rmSync(LOGCAT_RAW);
   }
