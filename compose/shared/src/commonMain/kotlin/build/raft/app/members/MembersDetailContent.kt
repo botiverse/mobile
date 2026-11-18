@@ -1249,7 +1249,21 @@ internal fun MembersDetailContent(
                                                 onRetryRestart = if (canRetryRestart) ({ retryRestart() }) else null,
                                                 retryRestartInProgress =
                                                     retryRestartInFlight ||
-                                                        lifecycleInFlight == MembersAgentLifecycleAction.Restart.actionKey
+                                                        lifecycleInFlight == MembersAgentLifecycleAction.Restart.actionKey,
+                                                recentActivity =
+                                                    // Web `showRecentActivity`; its turns are the overview's.
+                                                    activityOverview?.takeIf {
+                                                        membersAgentShowsRecentActivity(visibleTabs = visibleTabs, deleted = deleted)
+                                                    }?.let { overview ->
+                                                        MembersAgentRecentActivityInputs(
+                                                            overview = overview,
+                                                            serverId = currentServerId,
+                                                            timeContext = timeContext,
+                                                            onOpenActivity = {
+                                                                selectedTabOverride = MembersAgentDetailTab.Activity
+                                                            }
+                                                        )
+                                                    }
                                             ),
                                             machineStatusRow = machineStatusRow,
                                             timeContext = timeContext,

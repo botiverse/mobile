@@ -3849,6 +3849,14 @@
     <string name="member_activity_overview_trigger_unresolved">被一条消息叫醒</string>
     <string name="member_activity_overview_trigger_open">查看这条消息</string>
     <string name="member_activity_overview_outcome_running">进行中</string>
+    <string name="member_recent_activity_title">最近动态</string>
+    <string name="member_recent_activity_this_turn">%1$s · 这一轮%2$s</string>
+    <string name="member_recent_activity_last_turn">上一轮：%1$s · %2$s</string>
+    <string name="member_recent_activity_trigger_in_channel">%1$s · #%2$s</string>
+    <string name="member_recent_activity_trigger_dm">%1$s 的私信</string>
+    <string name="member_recent_activity_trigger_private">一个私有频道</string>
+    <string name="member_recent_activity_trigger_some_dm">一条私信</string>
+    <string name="member_recent_activity_trigger_unknown">一条消息</string>
     <string name="member_activity_overview_sent_title_one">这一轮发了 1 条消息</string>
     <string name="member_activity_overview_sent_title_other">这一轮发了 %1$d 条消息</string>
     <string name="member_activity_overview_sent_more">还有 %1$d 条</string>

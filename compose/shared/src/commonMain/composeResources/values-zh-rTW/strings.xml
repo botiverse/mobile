@@ -3637,6 +3637,14 @@
     <string name="member_activity_overview_trigger_unresolved">被一則訊息喚醒</string>
     <string name="member_activity_overview_trigger_open">查看這則訊息</string>
     <string name="member_activity_overview_outcome_running">進行中</string>
+    <string name="member_recent_activity_title">最近動態</string>
+    <string name="member_recent_activity_this_turn">%1$s · 這一輪%2$s</string>
+    <string name="member_recent_activity_last_turn">上一輪：%1$s · %2$s</string>
+    <string name="member_recent_activity_trigger_in_channel">%1$s · #%2$s</string>
+    <string name="member_recent_activity_trigger_dm">%1$s 的私訊</string>
+    <string name="member_recent_activity_trigger_private">一個私人頻道</string>
+    <string name="member_recent_activity_trigger_some_dm">一則私訊</string>
+    <string name="member_recent_activity_trigger_unknown">一則訊息</string>
     <string name="member_activity_overview_sent_title_one">這一輪傳送了 1 則訊息</string>
     <string name="member_activity_overview_sent_title_other">這一輪傳送了 %1$d 則訊息</string>
     <string name="member_activity_overview_sent_more">再顯示 %1$d 則</string>

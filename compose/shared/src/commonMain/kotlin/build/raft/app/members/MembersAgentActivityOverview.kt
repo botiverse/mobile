@@ -44,6 +44,7 @@ import build.raft.app.data.AgentActivityTriggerDescription
 import build.raft.app.data.AgentActivityTurn
 import build.raft.app.data.AgentActivityTurnOutcome
 import build.raft.app.data.AgentActivityTurnProblem
+import build.raft.app.data.AgentActivityTurnTrigger
 import build.raft.app.data.AgentActivityTurnReply
 import build.raft.app.data.describe
 import build.raft.app.markdown.RaftMarkdownBody
@@ -679,9 +680,11 @@ private fun MembersAgentActivityTurnOutput(text: String) {
 /**
  * Only a turn that needs a look gets a badge (web TurnBadges): the running turn, steps that went
  * wrong, an error ending, a stop or an unknown ending; a turn that sent nothing gets a muted one.
+ * [compact] (web AgentNowCard `TurnRowBadges`, a finished turn's line in the profile's Recent
+ * activity): the same badges without their status lights.
  */
 @Composable
-private fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: Modifier = Modifier) {
+internal fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: Modifier = Modifier, compact: Boolean = false) {
     if (turn.running) {
         RaftBadge(
             text = stringResource(Res.string.member_activity_overview_outcome_running),
@@ -701,14 +704,14 @@ private fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: Mo
                     else stringResource(Res.string.member_activity_overview_outcome_problems_other, problems),
                     appearance = RaftBadgeAppearance.Soft,
                     variant = RaftBadgeVariant.Warning,
-                    icon = { RaftStatusDot(presence = RaftPresence.Error, size = RaftStatusSize.Sm) },
+                    icon = turnBadgeLight(RaftPresence.Error, compact),
                 )
             turn.outcome == AgentActivityTurnOutcome.Failed ->
                 RaftBadge(
                     text = stringResource(Res.string.member_activity_overview_outcome_failed),
                     appearance = RaftBadgeAppearance.Soft,
                     variant = RaftBadgeVariant.Warning,
-                    icon = { RaftStatusDot(presence = RaftPresence.Error, size = RaftStatusSize.Sm) },
+                    icon = turnBadgeLight(RaftPresence.Error, compact),
                 )
             turn.outcome != AgentActivityTurnOutcome.Completed ->
                 RaftBadge(
@@ -718,7 +721,7 @@ private fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: Mo
                     ),
                     appearance = RaftBadgeAppearance.Soft,
                     variant = RaftBadgeVariant.Muted,
-                    icon = { RaftStatusDot(presence = RaftPresence.Offline, size = RaftStatusSize.Sm) },
+                    icon = turnBadgeLight(RaftPresence.Offline, compact),
                 )
         }
         if (turn.lastReplyMessageId == null) {
@@ -729,6 +732,12 @@ private fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: Mo
             )
         }
     }
+}
+
+/** A turn badge's status light (web OutcomePixel); none on the compact badges. */
+private fun turnBadgeLight(presence: RaftPresence, compact: Boolean): (@Composable () -> Unit)? {
+    if (compact) return null
+    return { RaftStatusDot(presence = presence, size = RaftStatusSize.Sm) }
 }
 
 @Composable
@@ -1068,8 +1077,36 @@ private fun membersActivityOverviewTriggerText(description: AgentActivityTrigger
             stringResource(Res.string.member_activity_overview_trigger_thread, description.sender, description.channel)
     }
 
+/**
+ * Web `formatCompactTrigger` (AgentNowCard): who woke a turn and where, short ("@Remy · #deploy",
+ * "DM from @xxchan", the app's name); the overview's sentence when the server named no place.
+ */
 @Composable
-private fun membersActivityOverviewActionsText(actions: List<AgentActivityActionCount>, messagesSent: Int): String {
+internal fun membersActivityOverviewCompactTriggerText(trigger: AgentActivityTurnTrigger?): String? =
+    when (trigger) {
+        null -> null
+        is AgentActivityTurnTrigger.Hidden ->
+            stringResource(
+                if (trigger.place == AgentActivityTurnTrigger.HiddenPlace.Dm) Res.string.member_recent_activity_trigger_some_dm
+                else Res.string.member_recent_activity_trigger_private
+            )
+        AgentActivityTurnTrigger.Unresolved -> stringResource(Res.string.member_recent_activity_trigger_unknown)
+        is AgentActivityTurnTrigger.Visible -> {
+            val display = trigger.display
+            val dmName = (display as? AgentActivityTurnTrigger.Display.Dm)?.let { it.senderName ?: it.peerName }
+            val channelSender = (display as? AgentActivityTurnTrigger.Display.Channel)?.senderName
+            when {
+                trigger.appEvent != null -> trigger.appEvent.appName
+                dmName != null -> stringResource(Res.string.member_recent_activity_trigger_dm, "@$dmName")
+                display is AgentActivityTurnTrigger.Display.Channel && channelSender != null ->
+                    stringResource(Res.string.member_recent_activity_trigger_in_channel, "@$channelSender", display.channelName)
+                else -> membersActivityOverviewTriggerText(trigger.describe())
+            }
+        }
+    }
+
+@Composable
+internal fun membersActivityOverviewActionsText(actions: List<AgentActivityActionCount>, messagesSent: Int): String {
     if (actions.isEmpty()) return stringResource(Res.string.member_activity_overview_actions_none)
     // One send command can post several messages (web): count what was sent, not the commands.
     val parts = actions.map {
