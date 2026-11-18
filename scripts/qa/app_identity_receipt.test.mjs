@@ -18,10 +18,16 @@ import {
   parseReceipt,
   procStartTicks,
   providerDeclared,
+  afterSignIn,
+  createCaptureGate,
+  guardedCapture,
+  parseTestbedVerdict,
   readPairingSaltFile,
+  runIdentityGate,
   serverRef,
   splitPrivateReceipt,
   userRef,
+  verificationStatus,
   writePrivateReceipt,
 } from "./app_identity_receipt_lib.mjs";
 import os_ from "node:os";
@@ -343,32 +349,119 @@ test("the salt goes over the private channel only; pair refs go only to the 0600
   assert.match(privateCommands[0], new RegExp(`--extra pairing_salt:s:${salt}$`));
   assert.ok(!pairedJson.includes(salt), "the receipt does not echo the salt");
 
-  const { shareable, private: secret } = splitPrivateReceipt(answer.receipt);
-  assert.deepEqual(Object.keys(shareable), Object.keys(sample));
-  assert.ok(!JSON.stringify(shareable).includes(pairing.receipt.user_pair_ref));
-  assert.ok(!JSON.stringify(shareable).includes(pairing.receipt.server_pair_ref));
-  assert.deepEqual(secret, { attempt_id: sample.attempt_id, request_id: sample.request_id, user_pair_ref: pairing.receipt.user_pair_ref, server_pair_ref: pairing.receipt.server_pair_ref });
-  assert.equal(splitPrivateReceipt(sample).private, null);
+  assert.ok(argvCommands.every((c) => !c.includes(sample.nonce)), "nonce never on an adb argv");
+
+  // Without a salt no pair extra is sent (the call still goes over the private channel).
+  assert.ok(!contentCallCommand(PKG, request).includes("pairing_salt"));
+
+  const source = fs.readFileSync(new URL("./release_auto_login.mjs", import.meta.url), "utf8");
+  assert.match(source, /readPairingSaltFile\(process\.env\.QA_PAIRING_SALT_FILE/);
+  assert.match(source, /spawnSync\("adb", \["shell", "-T"\], \{[^}]*input: `\$\{command\}; exit\\n`/);
+  assert.match(source, /for \(const secret of \[pairingSalt, process\.env\.QA_ATTEMPT_NONCE, process\.env\.QA_EXPECTED_USER_REF, process\.env\.QA_EXPECTED_SERVER_REF\]\)/);
+  assert.match(source, /publish: \(result\) => \{ summary\.identity_receipt = result; \}/);
+});
+
+// The five values that are Testbed's comparison baseline (synthetic pairing vector).
+const FIVE = ["nonce", "user_ref", "server_ref", "user_pair_ref", "server_pair_ref"];
+
+function gateFixture({ answer = { receipt: pairing.receipt }, osFacts = { ...os }, testbed = "matched", expectedRefs = {} } = {}) {
+  const published = [];
+  const privateWrites = [];
+  const counts = { screenshots: 0, uiFiles: 0, scenarios: 0, testbedAsked: 0 };
+  const gate = createCaptureGate({ identityMode: true });
+  const evidence = guardedCapture(gate, () => { counts.screenshots += 1; counts.uiFiles += 1; });
+  const fakeRunner = { call: () => ({ ...answer, ...(answer.receipt ? { receipt: JSON.parse(JSON.stringify(answer.receipt)) } : {}), os: { pidBefore: "4242", pidAfter: "4242", startTicksBefore: "987654", startTicksAfter: "987654" } }) };
+  const run = () =>
+    afterSignIn({
+      identityGate: async () => {
+        // Same order as release_auto_login.mjs: verify-signed-in's default capture comes first.
+        evidence("verify-signed-in");
+        return runIdentityGate({
+          runner: fakeRunner,
+          request: pairedRequest,
+          gate,
+          expected: expectedRefs,
+          readOsFacts: () => osFacts,
+          writePrivate: (secret) => privateWrites.push(secret),
+          publish: (result) => published.push(result),
+          awaitTestbedVerdict: async () => { counts.testbedAsked += 1; return testbed; },
+        });
+      },
+      runScenario: async () => { counts.scenarios += 1; evidence("scenario-step"); },
+    });
+  return { run, counts, published, privateWrites };
+}
+
+test("public output carries none of the five baseline values; the private output carries all five", async () => {
+  const fixture = gateFixture();
+  const outcome = await fixture.run();
+  assert.equal(outcome.matched, true);
+  const publicText = JSON.stringify(fixture.published);
+  for (const key of FIVE) {
+    assert.ok(!publicText.includes(pairing.receipt[key]), `public output must not contain ${key}`);
+    assert.ok(!publicText.includes(`"${key}"`), `public output must not name ${key}`);
+  }
+  assert.ok(!publicText.includes(pairing.pairing_salt));
+  assert.deepEqual(fixture.published.at(-1).checks, { user_check: "pending", server_check: "pending", pair_check: "pending" });
+  assert.equal(fixture.privateWrites.length, 1);
+  const secret = fixture.privateWrites[0];
+  for (const key of FIVE) assert.equal(secret[key], pairing.receipt[key], key);
+  assert.deepEqual(Object.keys(secret), ["attempt_id", "request_id", ...FIVE]);
+  // Status with frozen refs: pass / fail, never the value.
+  assert.deepEqual(verificationStatus({ receipt: pairing.receipt, request: pairedRequest, expected }), { user_check: "pass", server_check: "pass", pair_check: "pending" });
+  assert.equal(verificationStatus({ receipt: pairing.receipt, request, expected: { userRef: "0".repeat(64), serverRef: expected.serverRef } }).user_check, "fail");
+  assert.equal(verificationStatus({ receipt: { ...sample, server_ref: null }, request, expected: {} }).server_check, "fail");
 
   const dir = fs.mkdtempSync(path.join(os_.tmpdir(), "identity-private-"));
   const file = path.join(dir, "private.json");
   writePrivateReceipt(file, secret);
   assert.equal(fs.statSync(file).mode & 0o777, 0o600);
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")), secret);
+  const raw = fs.readFileSync(file, "utf8");
+  for (const key of FIVE) assert.ok(raw.includes(pairing.receipt[key]), key);
   fs.rmSync(dir, { recursive: true });
+  // Without a salt the private part still holds the nonce and both refs.
+  assert.deepEqual(Object.keys(splitPrivateReceipt(sample).private), ["attempt_id", "request_id", "nonce", "user_ref", "server_ref"]);
+  assert.ok(!Object.keys(splitPrivateReceipt(sample).shareable).some((k) => FIVE.includes(k)));
+});
 
-  // Without a salt the ordinary channel is used and no pair extra is sent.
-  assert.ok(!contentCallCommand(PKG, request).includes("pairing_salt"));
+test("nothing is captured and no scenario runs unless Testbed answers matched", async () => {
+  const cases = {
+    "first-time pending": gateFixture({ testbed: "pending" }),
+    "Testbed mismatch": gateFixture({ testbed: "mismatch" }),
+    "runner-side mismatch": gateFixture({ osFacts: { ...os, signerSha256: "0".repeat(64) } }),
+    "unclear receipt": gateFixture({ answer: { error: "no_answer", detail: "Error while accessing provider" } }),
+    "missing pair refs": gateFixture({ answer: { receipt: { ...pairing.receipt, server_pair_ref: null } } }),
+  };
+  for (const [name, fixture] of Object.entries(cases)) {
+    const outcome = await fixture.run();
+    assert.equal(outcome.matched, false, name);
+    assert.equal(outcome.scenarioRan, false, name);
+    assert.deepEqual([fixture.counts.screenshots, fixture.counts.uiFiles, fixture.counts.scenarios], [0, 0, 0], name);
+  }
+  assert.equal(cases["runner-side mismatch"].counts.testbedAsked, 0, "a runner-side mismatch never asks Testbed");
 
-  // The runner: summary gets the shareable part only, the private part goes to its own file,
-  // both pair refs and the salt are redacted from every log/summary line, and the salt is read from a file.
+  const matched = gateFixture({ testbed: "matched" });
+  const outcome = await matched.run();
+  assert.deepEqual(outcome, { matched: true, scenarioRan: true });
+  // Captures only after matched: the scenario's capture, not verify-signed-in's.
+  assert.deepEqual([matched.counts.screenshots, matched.counts.uiFiles, matched.counts.scenarios], [1, 1, 1]);
+});
+
+test("Testbed verdicts bind to this attempt and request; runs without the receipt capture as before", () => {
+  const answer = (o) => JSON.stringify({ attempt_id: pairedRequest.attemptId, request_id: pairedRequest.requestId, ...o });
+  assert.equal(parseTestbedVerdict(answer({ verdict: "matched" }), pairedRequest), "matched");
+  assert.equal(parseTestbedVerdict(answer({ verdict: "mismatch" }), pairedRequest), "mismatch");
+  assert.equal(parseTestbedVerdict(answer({ verdict: "ok" }), pairedRequest), "pending");
+  assert.equal(parseTestbedVerdict(answer({ verdict: "matched", request_id: "00".repeat(16) }), pairedRequest), "pending");
+  assert.equal(parseTestbedVerdict("", pairedRequest), "pending");
+  let captured = 0;
+  assert.equal(guardedCapture(createCaptureGate({ identityMode: false }), () => { captured += 1; })("x"), true);
+  assert.equal(captured, 1);
+  // The runner routes every capture (step screenshots, failure shots) through the gate, and the
+  // scenario only through afterSignIn after the identity gate.
   const source = fs.readFileSync(new URL("./release_auto_login.mjs", import.meta.url), "utf8");
-  assert.match(source, /summary\.identity_receipt = \{[^}]*receipt: shareable/);
-  assert.doesNotMatch(source, /summary\.identity_receipt = \{[^}]*receipt: answer\.receipt/);
-  assert.match(source, /writePrivateReceipt\(process\.env\.QA_IDENTITY_PRIVATE_OUT, pair\)/);
-  assert.match(source, /redact\.add\(pairingSalt\)/);
-  assert.match(source, /redact\.add\(pair\.user_pair_ref/);
-  assert.match(source, /redact\.add\(pair\.server_pair_ref/);
-  assert.match(source, /readPairingSaltFile\(process\.env\.QA_PAIRING_SALT_FILE/);
-  assert.match(source, /spawnSync\("adb", \["shell", "-T"\], \{[^}]*input: `\$\{command\}; exit\\n`/);
+  assert.match(source, /const evidence = guardedCapture\(captureGate, captureEvidence\);/);
+  assert.equal((source.match(/captureEvidence\(/g) ?? []).length, 1, "captureEvidence is only reached through the gate");
+  assert.doesNotMatch(source, /if \(SCENARIO\) await runScenario/);
+  assert.match(source, /runScenario: SCENARIO \? \(\) => runScenario\(webSession\) : null/);
 });

@@ -33,9 +33,10 @@
 //     [--scenario scripts/qa/scenarios/<name>.mjs [its options, e.g. --server-name X]]
 //   (or --credential-file <testbed qa-account get --out file>)
 //   [--identity-receipt]  with QA_ATTEMPT_ID / QA_ATTEMPT_NONCE (Testbed's attempt) and optionally
-//     QA_EXPECTED_USER_REF / QA_EXPECTED_SERVER_REF, and optionally Testbed's pairing salt in the
-//     file QA_PAIRING_SALT_FILE (never argv/env value) with QA_IDENTITY_PRIVATE_OUT (the 0600 file
-//     that alone receives user_pair_ref/server_pair_ref): before any account is used, check the build
+//     QA_EXPECTED_USER_REF / QA_EXPECTED_SERVER_REF, optionally Testbed's pairing salt in the file
+//     QA_PAIRING_SALT_FILE (never argv/env value), and QA_IDENTITY_PRIVATE_OUT (the 0600 file that
+//     alone receives the nonce and user_ref/server_ref/user_pair_ref/server_pair_ref; the summary
+//     has only their check status): before any account is used, check the build
 //     has the app identity receipt provider (fail "this build does not support the identity
 //     receipt" otherwise) and `pm enable` it; after sign-in ask it once and cross-check it with
 //     dumpsys/apksigner (summary.json `identity_receipt`); `pm disable` it in cleanup (a failed
@@ -57,15 +58,18 @@ import {
 } from "./release_auto_login_lib.mjs";
 import {
   UnsupportedBuildError,
+  afterSignIn,
   apkSignerForDevice,
   apksignerDeviceArgs,
+  createCaptureGate,
   createIdentityReceiptRunner,
-  crossCheckReceipt,
+  guardedCapture,
+  parseTestbedVerdict,
+  runIdentityGate,
   disableFailureAnnotation,
   fileSha256,
   newReceiptRequest,
   readPairingSaltFile,
-  splitPrivateReceipt,
   writePrivateReceipt,
 } from "./app_identity_receipt_lib.mjs";
 
@@ -223,7 +227,10 @@ async function typeInto(fieldIndex, value) {
 
 // ---------- evidence ----------
 fs.mkdirSync(OUT, { recursive: true });
-function evidence(name) {
+// --identity-receipt: nothing is captured (screenshot or UI tree) until Testbed answers "matched".
+const captureGate = createCaptureGate({ identityMode: IDENTITY_RECEIPT });
+const evidence = guardedCapture(captureGate, captureEvidence);
+function captureEvidence(name) {
   const base = path.join(OUT, `step-${String(stepIndex).padStart(2, "0")}-${name}`);
   try {
     fs.writeFileSync(`${base}.png`, adb(["exec-out", "screencap", "-p"], { binary: true, allowFailure: true }));
@@ -633,10 +640,11 @@ const identity = IDENTITY_RECEIPT
   : null;
 
 function identityReceiptRequest() {
+  if (!process.env.QA_IDENTITY_PRIVATE_OUT) stop("--identity-receipt needs QA_IDENTITY_PRIVATE_OUT (the Testbed-private output for the nonce and refs)");
   const pairingSalt = readPairingSaltFile(process.env.QA_PAIRING_SALT_FILE || "");
-  if (pairingSalt) {
-    redact.add(pairingSalt);
-    if (!process.env.QA_IDENTITY_PRIVATE_OUT) stop("QA_PAIRING_SALT_FILE needs QA_IDENTITY_PRIVATE_OUT (the Testbed-private output for the pair refs)");
+  // Never in a log line or the summary: the nonce, the salt, Testbed's frozen refs.
+  for (const secret of [pairingSalt, process.env.QA_ATTEMPT_NONCE, process.env.QA_EXPECTED_USER_REF, process.env.QA_EXPECTED_SERVER_REF]) {
+    if (secret) redact.add(secret);
   }
   return newReceiptRequest({ attemptId: process.env.QA_ATTEMPT_ID, nonce: process.env.QA_ATTEMPT_NONCE, pairingSalt: pairingSalt || null });
 }
@@ -679,30 +687,41 @@ function installedPackageFacts() {
   }
 }
 
-async function identityReceiptStep(request) {
-  const answer = identity.call(request);
-  if (answer.error) {
-    const problem = `provider answered ${answer.error}${answer.detail ? `: ${answer.detail}` : ""}`;
-    summary.identity_receipt = { verdict: "unknown", problems: [problem] };
-    stop(`identity receipt check failed: ${problem}`);
+// Testbed's verdict for this attempt: QA_IDENTITY_TESTBED_VERDICT_FILE, written by Testbed after it
+// compared the private output; polled up to QA_IDENTITY_TESTBED_TIMEOUT_S (default 300) seconds.
+async function awaitTestbedVerdict(request) {
+  const file = process.env.QA_IDENTITY_TESTBED_VERDICT_FILE || "";
+  if (!file) return "pending";
+  const deadline = Date.now() + 1000 * Number(process.env.QA_IDENTITY_TESTBED_TIMEOUT_S || 300);
+  for (;;) {
+    const verdict = fs.existsSync(file) ? parseTestbedVerdict(fs.readFileSync(file, "utf8"), request) : "pending";
+    if (verdict !== "pending" || Date.now() >= deadline) return verdict;
+    await sleep(2000);
   }
-  // The pair refs are Testbed's alone: out of every log line, the summary and the evidence.
-  const { shareable, private: pair } = splitPrivateReceipt(answer.receipt);
-  if (pair) {
-    redact.add(pair.user_pair_ref ?? "");
-    redact.add(pair.server_pair_ref ?? "");
-  }
-  const facts = installedPackageFacts();
-  const os = { ...facts, ...answer.os };
-  const expected = { userRef: process.env.QA_EXPECTED_USER_REF || "", serverRef: process.env.QA_EXPECTED_SERVER_REF || "" };
-  const { verdict, problems, pending } = crossCheckReceipt({ receipt: answer.receipt, request, os, expected });
-  if (APK && fs.existsSync(APK) && fileSha256(APK) !== facts.installedApkSha256) problems.push("installed base.apk differs from --apk");
-  const finalVerdict = problems.length ? "unknown" : verdict;
-  summary.identity_receipt = { verdict: finalVerdict, problems, pending, receipt: shareable, os };
-  if (pair) writePrivateReceipt(process.env.QA_IDENTITY_PRIVATE_OUT, pair);
-  log(`identity receipt: ${finalVerdict}${problems.length ? ` (${problems.join("; ")})` : ""}`);
-  if (finalVerdict === "unknown") stop(`identity receipt check failed: ${problems.join("; ")}`);
-  return { verdict: finalVerdict };
+}
+
+function identityGate(request) {
+  return () =>
+    step("identity-receipt", async () => {
+      const outcome = await runIdentityGate({
+        runner: identity,
+        request,
+        gate: captureGate,
+        expected: { userRef: process.env.QA_EXPECTED_USER_REF || "", serverRef: process.env.QA_EXPECTED_SERVER_REF || "" },
+        readOsFacts: installedPackageFacts,
+        extraProblems: (facts) => (APK && fs.existsSync(APK) && fileSha256(APK) !== facts.installedApkSha256 ? ["installed base.apk differs from --apk"] : []),
+        // The nonce and every ref are Testbed's alone: out of every log line, the summary and the evidence.
+        writePrivate: (secret) => {
+          for (const value of Object.values(secret)) if (typeof value === "string" && /^[0-9a-f]{64}$/.test(value)) redact.add(value);
+          writePrivateReceipt(process.env.QA_IDENTITY_PRIVATE_OUT, secret);
+        },
+        publish: (result) => { summary.identity_receipt = result; },
+        awaitTestbedVerdict,
+      });
+      log(`identity receipt: ${outcome.matched ? "matched" : outcome.reason}`);
+      if (!outcome.matched) stop(`identity receipt not matched (${outcome.reason}); nothing captured, no scenario`);
+      return { testbed: "matched" };
+    }, { screenshot: false });
 }
 
 // ---------- the flow ----------
@@ -930,9 +949,11 @@ async function main() {
       stop(`still not signed in after 120s; on screen: ${lastLabels || "(nothing labelled)"}`);
     });
 
-    if (identity) await step("identity-receipt", () => identityReceiptStep(receiptRequest), { screenshot: false });
-
-    if (SCENARIO) await runScenario(webSession);
+    // The identity gate strictly before any scenario: a scenario runs only after Testbed's "matched".
+    await afterSignIn({
+      identityGate: identity ? identityGate(receiptRequest) : null,
+      runScenario: SCENARIO ? () => runScenario(webSession) : null,
+    });
   } finally {
     // Every cleanup step runs whatever happened above; each records its own status.
     await signOutWebSession(webSession);

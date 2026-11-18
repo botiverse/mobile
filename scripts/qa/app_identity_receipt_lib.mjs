@@ -17,9 +17,10 @@
 // user_ref / server_ref are verification digests salted with the attempt nonce (same vector as
 // Testbed): they confirm the expected account and server without the receipt carrying either.
 // With Testbed's optional pairing salt the receipt also has user_pair_ref / server_pair_ref (same
-// formulas, salted with it) for cross-run comparison. The salt and the pair refs are private to
-// Testbed: the salt reaches the device over adb's stdin (never argv), and the pair refs go only to
-// the Testbed-private output file (0600), never to stdout, the summary or the evidence.
+// formulas, salted with it) for cross-run comparison. The nonce, the salt and all four refs are
+// private to Testbed: the request reaches the device over adb's stdin (never argv), and the
+// nonce + refs go only to the Testbed-private output file (0600). stdout, the summary and the
+// evidence carry only verification STATUS (user_check / server_check / pair_check).
 // What the app reports is not proof on its own; the OS-side cross-check is.
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -146,17 +147,112 @@ export function crossCheckReceipt({ receipt, request, os, expected = {} }) {
   return { verdict, problems, pending };
 }
 
+/** Receipt fields that are Testbed's comparison baseline: private output only. */
+export const PRIVATE_RECEIPT_KEYS = ["nonce", "user_ref", "server_ref", "user_pair_ref", "server_pair_ref"];
+
 /**
- * Splits a receipt into what may go to the summary/evidence (no pair refs) and the Testbed-private
- * part (the pair refs, bound to this attempt and request).
+ * Splits a receipt into what may go to the summary/evidence (no nonce, no ref) and the
+ * Testbed-private part (nonce + every ref present, bound to this attempt and request).
  */
 export function splitPrivateReceipt(receipt) {
-  const { user_pair_ref, server_pair_ref, ...shareable } = receipt;
-  const hasPair = user_pair_ref !== undefined || server_pair_ref !== undefined;
+  const shareable = {};
+  const secret = { attempt_id: receipt.attempt_id, request_id: receipt.request_id };
+  for (const [key, value] of Object.entries(receipt)) {
+    if (PRIVATE_RECEIPT_KEYS.includes(key)) secret[key] = value;
+    else shareable[key] = value;
+  }
+  return { shareable, private: secret };
+}
+
+/**
+ * The public verdict per digest, without the digest: pass/fail against Testbed's frozen value when
+ * the runner has it, "pending" (Testbed compares) when it does not, "fail" when the app gave none.
+ */
+export function verificationStatus({ receipt, request, expected = {} }) {
+  const judge = (value, frozen) => (!HEX64.test(value ?? "") ? "fail" : !frozen ? "pending" : value === frozen ? "pass" : "fail");
+  const checks = { user_check: judge(receipt.user_ref, expected.userRef), server_check: judge(receipt.server_ref, expected.serverRef) };
+  if (request.pairingSalt) {
+    checks.pair_check = HEX64.test(receipt.user_pair_ref ?? "") && HEX64.test(receipt.server_pair_ref ?? "") ? "pending" : "fail";
+  }
+  return checks;
+}
+
+/**
+ * Capture gate for --identity-receipt runs: no screenshot, UI tree, recording or scenario until
+ * Testbed has answered "matched" for this attempt. Runs without the receipt start open.
+ */
+export function createCaptureGate({ identityMode }) {
+  let open = !identityMode;
   return {
-    shareable,
-    private: hasPair ? { attempt_id: receipt.attempt_id, request_id: receipt.request_id, user_pair_ref, server_pair_ref } : null,
+    allows: () => open,
+    open: () => { open = true; },
   };
+}
+
+/** Wraps a capture function so it does nothing (and returns false) while the gate is closed. */
+export function guardedCapture(gate, capture) {
+  return (...args) => {
+    if (!gate.allows()) return false;
+    capture(...args);
+    return true;
+  };
+}
+
+/**
+ * Testbed's answer for this attempt and request: `{"attempt_id","request_id","verdict"}` with
+ * verdict "matched" or "mismatch". Anything else, or an answer for another request, is "pending".
+ */
+export function parseTestbedVerdict(text, request) {
+  let answer;
+  try {
+    answer = JSON.parse(String(text ?? ""));
+  } catch {
+    return "pending";
+  }
+  if (answer?.attempt_id !== request.attemptId || answer?.request_id !== request.requestId) return "pending";
+  return answer.verdict === "matched" || answer.verdict === "mismatch" ? answer.verdict : "pending";
+}
+
+/**
+ * After sign-in in --identity-receipt mode: ask the provider, cross-check with the OS, write the
+ * private part for Testbed, publish only statuses, then wait for Testbed's verdict. Only
+ * "matched" opens the capture gate; every other outcome (unclear/missing receipt, runner-side
+ * mismatch, Testbed mismatch, still pending) returns `{ matched: false }` with nothing captured.
+ */
+export async function runIdentityGate({ runner, request, readOsFacts, expected = {}, extraProblems = () => [], writePrivate, publish, awaitTestbedVerdict, gate }) {
+  const answer = runner.call(request);
+  if (answer.error) {
+    publish({ verdict: "unknown", problems: [`provider answered ${answer.error}${answer.detail ? `: ${answer.detail}` : ""}`] });
+    return { matched: false, reason: "receipt_unavailable" };
+  }
+  const { shareable, private: secret } = splitPrivateReceipt(answer.receipt);
+  writePrivate(secret);
+  const facts = readOsFacts();
+  const os = { ...facts, ...answer.os };
+  const { verdict, problems, pending } = crossCheckReceipt({ receipt: answer.receipt, request, os, expected });
+  problems.push(...extraProblems(facts));
+  const checks = verificationStatus({ receipt: answer.receipt, request, expected });
+  const runnerVerdict = problems.length ? "unknown" : verdict;
+  publish({ verdict: runnerVerdict, problems, pending, checks, receipt: shareable, os });
+  if (runnerVerdict === "unknown") return { matched: false, reason: "mismatch", problems };
+  const testbed = await awaitTestbedVerdict(request);
+  publish({ verdict: runnerVerdict, problems, pending, checks, receipt: shareable, os, testbed });
+  if (testbed !== "matched") return { matched: false, reason: testbed === "mismatch" ? "mismatch" : "pending" };
+  gate.open();
+  return { matched: true };
+}
+
+/**
+ * The post-sign-in order: the identity gate (when enabled) strictly before any scenario. A
+ * scenario runs only when there is no identity check or Testbed answered "matched".
+ */
+export async function afterSignIn({ identityGate, runScenario }) {
+  if (identityGate) {
+    const outcome = await identityGate();
+    if (!outcome.matched) return { ...outcome, scenarioRan: false };
+  }
+  if (runScenario) await runScenario();
+  return { matched: true, scenarioRan: Boolean(runScenario) };
 }
 
 /** Writes the Testbed-private part, readable by the runner user only. */
@@ -221,14 +317,14 @@ export function createIdentityReceiptRunner({ shell, shellPrivate = shell, pkg }
       if (!state.enabled) throw new Error("identity receipt: the provider is not enabled");
       const pidBefore = pidOf();
       const startTicksBefore = startTicks(pidBefore);
-      // With a pairing salt the command goes over stdin (shellPrivate), never adb's argv.
-      const run = request.pairingSalt ? shellPrivate : shell;
-      const answer = parseContentCallOutput(out(run(contentCallCommand(pkg, request))));
+      // The nonce (and any pairing salt) are private: the command goes over stdin, never adb's argv.
+      const answer = parseContentCallOutput(out(shellPrivate(contentCallCommand(pkg, request))));
       const pidAfter = pidOf();
       const startTicksAfter = startTicks(pidAfter);
       const os = { pidBefore, pidAfter, startTicksBefore, startTicksAfter };
       if (answer.error) {
-        const detail = request.pairingSalt ? String(answer.detail ?? "").replaceAll(request.pairingSalt, "[salt]") : answer.detail;
+        let detail = String(answer.detail ?? "").replaceAll(request.nonce, "[nonce]");
+        if (request.pairingSalt) detail = detail.replaceAll(request.pairingSalt, "[salt]");
         return { error: answer.error, detail, os };
       }
       return { receipt: parseReceipt(answer.receipt, { paired: Boolean(request.pairingSalt) }), os };
