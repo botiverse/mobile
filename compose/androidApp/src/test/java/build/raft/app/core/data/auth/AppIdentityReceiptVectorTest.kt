@@ -173,9 +173,10 @@ class AppIdentityReceiptVectorTest {
             )
         forbiddenValues.forEach { assertFalse("receipt must not contain $it", text.contains(it)) }
         val keys = JSONObject(text).keys().asSequence().toList()
-        listOf("email", "token", "cookie", "name\"", "user_id", "server_id", "slug").forEach { word ->
-            assertTrue("no key may name $word", keys.none { "$it\"".contains(word) })
-        }
+        // No key names an email, token, cookie, person/server name, raw id or slug ("version_name" is the build's).
+        val forbiddenKeyWords = listOf("email", "token", "cookie", "display", "user_id", "server_id", "slug")
+        forbiddenKeyWords.forEach { word -> assertTrue("no key may name $word", keys.none { it.contains(word) }) }
+        assertTrue("only version_name may be a name", keys.filter { it.endsWith("name") } == listOf("version_name"))
     }
 
     @Test
