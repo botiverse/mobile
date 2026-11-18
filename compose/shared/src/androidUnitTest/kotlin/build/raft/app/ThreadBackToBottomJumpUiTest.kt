@@ -126,7 +126,19 @@ class ThreadBackToBottomJumpUiTest {
         RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
     }
 
-    /** The page's store over a network whose tail request waits for [release]. */
+    /**
+     * The page's store over a network whose tail request waits for [release].
+     *
+     * The response is decoded inline ([Dispatchers.Unconfined]), not on the production parse pool:
+     * the button's coroutine runs on the Compose test's unconfined dispatcher, so after a decode on
+     * the pool everything after it (the store's result line, the button back from loading, the
+     * failure toast, the 64 ms release of the button's one-jump guard) ran on the pool thread
+     * while the test went on. A test that saw "result=failed" could read the toasts before the
+     * toast was posted (CI: `but was:<[]>`), or tap Back to Bottom before the guard's release was
+     * even scheduled, so the retry tap was ignored as in flight and never landed (CI: "timed out
+     * waiting for the retry to land"). Inline, a release runs the whole jump on the test thread,
+     * inside the test's own `runOnIdle`/`performClick`.
+     */
     private class Harness {
         val log = java.util.concurrent.CopyOnWriteArrayList<String>()
         val api = TailApi()
@@ -146,6 +158,7 @@ class ThreadBackToBottomJumpUiTest {
                                 )
                             ),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                        threadParseDispatcher = Dispatchers.Unconfined,
                     ),
                 scope = CoroutineScope(scopeJob + Dispatchers.Unconfined),
                 initialPayload = window(),
@@ -230,7 +243,7 @@ class ThreadBackToBottomJumpUiTest {
         waitForIdle()
     }
 
-    /** The store finishes its request off the main thread (parsing, persistence): wait for it in real time. */
+    /** Waits (bounded, in real time as well as on the test clock) for the store's request to end. */
     private fun ComposeUiTest.awaitStore(description: String, condition: () -> Boolean) {
         val deadline = System.nanoTime() + 10_000_000_000L
         while (!condition()) {

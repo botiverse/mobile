@@ -73,6 +73,14 @@ internal fun testSharedThreadDataSource(
      * on the test scheduler. Ignored for a store the caller passes explicitly.
      */
     storeScope: CoroutineScope? = null,
+    /**
+     * Where the thread API decodes its responses. Default: [storeScope]'s dispatcher, else the
+     * production [RaftJsonParseDispatcher] (a real thread pool). A Compose UI test passes
+     * `Dispatchers.Unconfined`: its effects run on an unconfined test dispatcher, so after a decode
+     * on the pool the rest of the caller (the store's result, the button's state, its toast) would
+     * run on the pool thread, racing the test thread.
+     */
+    threadParseDispatcher: CoroutineDispatcher? = null,
 ): SharedThreadDataSource =
     SharedThreadDataSource(
     networkApi = networkApi,
@@ -103,7 +111,7 @@ internal fun testSharedThreadDataSource(
     canonicalConversationIdentityPublisher = canonicalConversationIdentityPublisher,
     createAgentCoordinator = createAgentCoordinator,
     diagnosticsLogger = diagnosticsLogger,
-    threadParseDispatcher = storeScope?.testDispatcher() ?: RaftJsonParseDispatcher,
+    threadParseDispatcher = threadParseDispatcher ?: storeScope?.testDispatcher() ?: RaftJsonParseDispatcher,
     replyCacheIdentityAuthority = {
         testThreadReplyCacheIdentityAuthority(
                 sessionStore = sessionStore,
