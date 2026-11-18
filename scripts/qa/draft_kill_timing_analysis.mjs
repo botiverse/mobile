@@ -15,9 +15,24 @@ export function parseLogcatLine(line) {
 
 /** `change_received seq=3 len=12 uptimeMs=123456` → {kind, seq, len, uptimeMs}. */
 export function parseTimingMessage(message) {
-  const m = /^(change_received|draft_written) seq=(\d+) len=(\d+) uptimeMs=(\d+)\s*$/.exec(message);
+  // `path=` (sync | background | flush) and `sync_write_fallback` come from builds with the synchronous first write.
+  const m = /^(change_received|draft_written|sync_write_fallback) seq=(\d+) len=(\d+)(?: path=(\w+))? uptimeMs=(\d+)\s*$/.exec(message);
   if (!m) return null;
-  return { kind: m[1], seq: Number(m[2]), len: Number(m[3]), uptimeMs: Number(m[4]) };
+  return { kind: m[1], seq: Number(m[2]), len: Number(m[3]), path: m[4] ?? null, uptimeMs: Number(m[5]) };
+}
+
+/** How typed-text writes were made: counts of draft_written by path, and of synchronous-write fallbacks. */
+export function writePathCounts(lines) {
+  const counts = { sync: 0, background: 0, flush: 0, unlabeled: 0, sync_write_fallback: 0 };
+  for (const raw of lines) {
+    const l = parseLogcatLine(raw);
+    if (!l || l.tag !== "RaftDraftTiming") continue;
+    const t = parseTimingMessage(l.message);
+    if (!t) continue;
+    if (t.kind === "sync_write_fallback") counts.sync_write_fallback += 1;
+    else if (t.kind === "draft_written") counts[t.path && t.path in counts ? t.path : "unlabeled"] += 1;
+  }
+  return counts;
 }
 
 /** The pid an ActivityManager line says it is killing for [pkg] (main process only), or null. */

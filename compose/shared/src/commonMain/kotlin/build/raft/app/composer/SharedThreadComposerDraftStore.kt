@@ -2036,7 +2036,7 @@ internal class SharedThreadComposerDraftPersistSlice(
         pending.cancellation?.cancel()
         try {
             if (persistStateLocked(key, pending.state, "ChangeFlush")) {
-                markDraftWritten(pending.timingSeq, pending.state.seedText.length)
+                markDraftWritten(pending.timingSeq, pending.state.seedText.length, "flush")
             }
         } catch (error: Throwable) {
             // A synchronous Flush must report the primary persistence failure to the transition,
@@ -2140,7 +2140,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                         routineDiagnostics = firstOfBurst,
                         onlyLogRecordsWhenChanged = true,
                     )
-                if (written) markDraftWritten(timingSeq, state.seedText.length)
+                if (written) markDraftWritten(timingSeq, state.seedText.length, "background")
             }
         }
     }
@@ -2153,11 +2153,11 @@ internal class SharedThreadComposerDraftPersistSlice(
         return timingSeq
     }
 
-    /** `draft_written` once the change [seq] carried is in the durable draft. */
-    private fun markDraftWritten(seq: Long, textLength: Int) {
+    /** `draft_written` once the change [seq] carried is in the durable draft; [path] says which write did it. */
+    private fun markDraftWritten(seq: Long, textLength: Int, path: String) {
         if (seq <= 0L) return
         val sink = timingSink() ?: return
-        runCatching { sink("draft_written seq=$seq len=$textLength") }
+        runCatching { sink("draft_written seq=$seq len=$textLength path=$path") }
     }
 
     /** True when this typed-text write starts a burst and logs; false when it is only counted. */

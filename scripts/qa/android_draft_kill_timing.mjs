@@ -23,7 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { writeLatencyStats, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
+import { writePathCounts, writeLatencyStats, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, value, index, all) => {
@@ -240,7 +240,9 @@ async function stopCapture() {
   } catch {}
   await sleep(1000);
   if (fs.existsSync(LOGCAT_RAW)) {
-    summary.write_latency = writeLatencyStats(fs.readFileSync(LOGCAT_RAW, "utf8").split("\n"));
+    const rawLines = fs.readFileSync(LOGCAT_RAW, "utf8").split("\n");
+    summary.write_latency = writeLatencyStats(rawLines);
+    summary.write_paths = writePathCounts(rawLines);
     const kept = redact(fs.readFileSync(LOGCAT_RAW, "utf8")).split("\n").filter(isTimingEvidence);
     fs.writeFileSync(path.join(OUT, "timing-lines.txt"), `${kept.join("\n")}\n`);
     fs.rmSync(LOGCAT_RAW);
@@ -345,9 +347,19 @@ async function channelMessages(api, limit = 100) {
 
 /** The server's copy of this run's marker message: id, exact text and createdAt (the marker is ours, not user content). */
 async function markerMessage(api, marker) {
-  const { status, rows } = await channelMessages(api, 30);
-  const m = rows.find((r) => String(r?.content ?? "").includes(marker));
-  return { http: status, message: m ? { id: m.id ?? null, text: String(m.content), created_at: m.createdAt ?? m.created_at ?? null } : null };
+  const at = new Date().toISOString();
+  try {
+    const { status, rows } = await channelMessages(api, 30);
+    if (status !== 200) return { at, http: status, message: null };
+    const m = rows.find((r) => String(r?.content ?? "").includes(marker));
+    return {
+      at,
+      http: status,
+      message: m ? { id: m.id ?? null, text: String(m.content), created_at: m.createdAt ?? m.created_at ?? null, random_id: m.randomId ?? null } : null,
+    };
+  } catch (error) {
+    return { at, http: `error: ${String(error?.name ?? "error")}`, message: null };
+  }
 }
 
 /**
@@ -596,6 +608,8 @@ const FAST_TARGET_MS = 4000;
 const FAST_ALPHABET = "abcdefghijklmnoprstuvwxyz0123456789"; // no q: q is the last key
 /** KEYCODE_ name of a marker character ([a-z0-9]). */
 const keycodeOf = (c) => (/[0-9]/.test(c) ? `KEYCODE_${c}` : `KEYCODE_${c.toUpperCase()}`);
+/** Types [text] as one key event per character in one device-side command (no `input text`). */
+const typeKeys = (text) => shell(`${INPUT} keyevent ${text.split("").map(keycodeOf).join(" ")}`);
 const markerPrefix = () => `dk${RUN_TAG}r${String(runIndex).padStart(2, "0")}x`;
 let SCREEN = { w: 1080, h: 2400 };
 
@@ -625,7 +639,7 @@ async function killRun(api, { group, mode, delaySec }) {
     }
     if (mode === "send") {
       let mark = logcatMark();
-      shell(`${INPUT} text ${expected}`);
+      typeKeys(expected);
       if (!(await waitForTiming("the full text written", (l) => l.includes(`draft_written`) && l.includes(` len=${expected.length} `), { fromMark: mark }))) {
         record.note = "full text never reported written before send";
       }
@@ -648,44 +662,52 @@ async function killRun(api, { group, mode, delaySec }) {
       learn("send", analysis, sleepSec);
       // Host wall clock (UTC) around the kill: comparable with the server's createdAt to within clock skew.
       record.kill_shell_started_at = new Date(killStartedAtMs).toISOString();
-      const beforeRelaunch = await markerMessage(api, expected);
-      record.server_before_relaunch = beforeRelaunch.message ? "present" : beforeRelaunch.http === 200 ? "absent" : `unknown (HTTP ${beforeRelaunch.http})`;
+      // Every server query is kept with its time and HTTP status.
+      const queries = [];
+      const query = async (phase) => {
+        const q = await markerMessage(api, expected);
+        queries.push({ phase, at: q.at, http: q.http, found: Boolean(q.message) });
+        return q;
+      };
+      const beforeRelaunch = await query("before relaunch");
       const relaunchedAtMs = Date.now();
       record.relaunched_at = new Date(relaunchedAtMs).toISOString();
+      const relaunchMark = logcatMark();
       const seen = await composerAfterRelaunch(api, "", 8_000);
-      // The send journal row survives the kill and the restarted thread store re-sends it (same randomId):
-      // poll the server for up to 15 s after the relaunch, then call it delivered / delivered late / lost.
       let found = beforeRelaunch.message;
-      let foundAtMs = found ? relaunchedAtMs : null;
       const deadline = Date.now() + 15_000;
       while (!found && Date.now() < deadline) {
         await sleep(1000);
-        const now = await markerMessage(api, expected);
-        if (now.message) {
-          found = now.message;
-          foundAtMs = Date.now();
-        }
+        found = (await query("after relaunch")).message;
       }
+      record.server_queries = queries;
       record.server_message = found ?? null;
-      record.server_message_seen_at = foundAtMs ? new Date(foundAtMs).toISOString() : null;
-      const createdMs = found?.created_at ? Date.parse(found.created_at) : NaN;
-      record.delivery = !found
-        ? "lost (not on the server 15 s after relaunch)"
-        : beforeRelaunch.message
-          ? Number.isFinite(createdMs) && createdMs <= relaunchedAtMs ? "delivered before the relaunch" : "delivered (present before the relaunch)"
-          : "delivered late (after the relaunch: pending-send journal re-sent it)";
+      const allQueriesFailed = queries.every((q) => q.http !== 200);
+      // The app's own trace of a re-send by the pending-send journal after the restart.
+      const drained = linesSince(relaunchMark).filter((l) => l.includes("thread_pending_send_drained "));
+      record.drainer_trace = drained.map((l) => /thread_pending_send_drained .*$/.exec(l)?.[0] ?? l.trim());
+      const drainedMatches = found?.random_id ? drained.some((l) => l.includes(`randomId=${found.random_id}`)) : null;
+      record.delivery = found
+        ? beforeRelaunch.message
+          ? "observed before the relaunch"
+          : drained.length && (drainedMatches ?? drained.length === 1)
+            ? `observed after the relaunch, re-sent by the pending-send journal (drainer trace: ${record.drainer_trace.join(" | ")})`
+            : "observed after the relaunch (mechanism unconfirmed)"
+        : allQueriesFailed
+          ? "query unavailable"
+          : "not observed by the deadline (15 s after relaunch)";
       record.sent_on_server = Boolean(found);
       record.observed_desc = describeText(seen);
       relaunchIdentity(record, oldPid, startTime, mark);
       // Composer must be empty (the journal owns the text) and the text must reach the server.
       record.expected_desc = "composer (empty); message on the server (possibly late)";
       record.pass = seen === "" && Boolean(found);
-      if (!found) record.reason = `${record.reason ? `${record.reason}; ` : ""}message lost: not on the server 15 s after relaunch`;
+      if (!found) record.reason = `${record.reason ? `${record.reason}; ` : ""}message ${record.delivery}`;
       return record;
     }
 
     let mark = logcatMark();
-    shell(`${INPUT} text ${prefix}`);
+    typeKeys(prefix);
     if (!(await waitForTiming("the prefix", (l) => l.includes("change_received") && l.includes(` len=${prefix.length} `), { fromMark: mark }))) {
       record.note = "no change_received for the prefix";
     }
@@ -773,7 +795,7 @@ async function positiveControl(api) {
   runIndex += 1;
   const text = `${markerPrefix()}${LAST_CHAR}`;
   const mark = logcatMark();
-  shell(`${INPUT} text ${text}`);
+  typeKeys(text);
   await sleep(2500);
   const lines = linesSince(mark).filter((l) => l.includes("RaftDraftTiming"));
   const change = lines.filter((l) => l.includes("change_received") && l.includes(` len=${text.length} `)).at(-1);
@@ -856,6 +878,11 @@ async function main() {
         installed_base_apk_sha256: basePath ? shell(`sha256sum ${basePath}`, { allowFailure: true }).trim().split(/\s+/)[0] : null,
         version_name: version,
         version_code: /versionCode=(\d+)/.exec(dump)?.[1] ?? null,
+        downloaded_sha256_from_workflow: process.env.APK_SHA256 || null,
+        artifact: process.env.APK_ARTIFACT || null,
+        source_commit: process.env.APK_SOURCE_SHA || null,
+        required_commit: process.env.REQUIRE_COMMIT || null,
+        required_commit_compare: process.env.REQUIRE_COMMIT_STATUS || null,
         debuggable: /pkgFlags=\[[^\]]*DEBUGGABLE/.test(dump),
       };
       return summary.apk;
@@ -897,8 +924,9 @@ async function main() {
     // inside that bucket's tolerance, whatever D was aimed at) or its attempts run out.
     const maxAttempts = Math.max(RUNS_PER_BUCKET * 3, RUNS_PER_BUCKET + 5);
     summary.bucket_progress = Object.fromEntries(DELAYS.map((d) => [d, { valid: 0, attempted: 0, max_attempts: maxAttempts }]));
+    const fastMaxAttempts = Math.max(FAST_RUNS * 3, FAST_RUNS + 5);
+    summary.fast_progress = Object.fromEntries(FAST_DELAYS.map((d) => [d, { valid: 0, attempted: 0, max_attempts: fastMaxAttempts }]));
     const fixed = [];
-    for (let i = 0; i < FAST_RUNS; i += 1) for (const d of FAST_DELAYS) fixed.push({ group: `fast D=${d}`, mode: "fast", delaySec: d });
     fixed.push({ group: "a: wait 1 s", mode: "bucket", delaySec: 1 });
     for (let i = 0; i < 5; i += 1) fixed.push({ group: "b: send, kill within 100 ms", mode: "send", delaySec: null, untilHit: true });
     fixed.push({ group: "c1: Home, kill", mode: "home", delaySec: null });
@@ -922,6 +950,18 @@ async function main() {
           keep(record);
         }
       }
+      // Fast typing: per bucket until FAST_RUNS valid samples (whole exit interval inside the tolerance and
+      // the burst on the device clock within 3-5 s), or the attempts run out.
+      const fast = summary.fast_progress;
+      const fastOpen = () => FAST_DELAYS.filter((d) => fast[d].valid < FAST_RUNS && fast[d].attempted < fastMaxAttempts);
+      while (fastOpen().length) {
+        for (const d of fastOpen()) {
+          fast[d].attempted += 1;
+          const record = await killRun(api, { group: `fast D=${d}`, mode: "fast", delaySec: d });
+          if (record.measured_bucket != null && fast[record.measured_bucket] && record.typing_in_3_to_5_s) fast[record.measured_bucket].valid += 1;
+          keep(record);
+        }
+      }
       let sendHit = false;
       for (const item of fixed) {
         if (item.untilHit && sendHit) continue;
@@ -936,9 +976,13 @@ async function main() {
     const unmet = [];
     for (const [d, p] of Object.entries(summary.bucket_progress ?? {})) if (p.valid < RUNS_PER_BUCKET) unmet.push(`bucket ${d} s: ${p.valid}/${RUNS_PER_BUCKET} valid in ${p.attempted} attempts`);
     for (const r of summary.runs) if (!r.pass) unmet.push(`run ${r.run} (${r.group}): not restored as expected${r.reason ? ` - ${r.reason}` : ""}`);
+    for (const [d, p] of Object.entries(summary.fast_progress ?? {})) if (p.valid < FAST_RUNS) unmet.push(`fast typing bucket ${d} s: ${p.valid}/${FAST_RUNS} valid in ${p.attempted} attempts`);
     const fast = summary.runs.filter((r) => r.mode === "fast");
     if (fast.some((r) => !r.typing_in_3_to_5_s)) unmet.push(`fast typing outside 3-5 s: ${fast.filter((r) => !r.typing_in_3_to_5_s).map((r) => `${r.typing_span_ms ?? "?"} ms`).join(", ")}`);
     if (!summary.runs.some((r) => r.mode === "send" && r.timing === "hit" && r.pass)) unmet.push("send regression: no attempt with the exit inside [0, 100] ms of the tap and the message delivered");
+    if (!summary.apk || summary.apk.file_sha256 !== summary.apk.installed_base_apk_sha256) unmet.push("installed base.apk SHA-256 differs from the downloaded APK (or was not read)");
+    if (summary.apk?.downloaded_sha256_from_workflow && summary.apk.downloaded_sha256_from_workflow !== summary.apk.file_sha256) unmet.push("APK SHA-256 differs from the one the workflow downloaded");
+    if (process.env.REQUIRE_COMMIT && !["identical", "ahead"].includes(process.env.REQUIRE_COMMIT_STATUS ?? "")) unmet.push(`APK source ${process.env.APK_SOURCE_SHA} does not contain ${process.env.REQUIRE_COMMIT} (compare: ${process.env.REQUIRE_COMMIT_STATUS || "unavailable"})`);
     if (!summary.runs.some((r) => r.mode === "recents" && r.recents_swipe_killed)) unmet.push("recents regression: the swipe did not remove the task / kill the process");
     summary.unmet = unmet;
     summary.result = unmet.length ? "fail" : "pass";
@@ -978,7 +1022,13 @@ async function main() {
       (summary.write_latency ? `Persistence window on this device (change_received → draft_written of the same change, all changes of the run): ` +
         `n=${summary.write_latency.samples}, min ${summary.write_latency.min_ms}, p50 ${summary.write_latency.p50_ms}, p95 ${summary.write_latency.p95_ms}, p99 ${summary.write_latency.p99_ms}, max ${summary.write_latency.max_ms} ms.\n\n` : "") +
       (summary.sleep_calibration ? `Device sleep overshoot (ms, 5 each): ${JSON.stringify(summary.sleep_calibration)}.\n\n` : "") +
-      (summary.apk ? `APK: sha256 ${summary.apk.file_sha256}; installed base.apk sha256 ${summary.apk.installed_base_apk_sha256}; versionName ${summary.apk.version_name}; versionCode ${summary.apk.version_code}; debuggable ${summary.apk.debuggable}.\n\n` : "") +
+      (summary.apk ? `APK: ${summary.apk.artifact ?? "?"}; downloaded sha256 ${summary.apk.file_sha256}; installed base.apk sha256 ${summary.apk.installed_base_apk_sha256} ` +
+        `(${summary.apk.file_sha256 === summary.apk.installed_base_apk_sha256 ? "match" : "MISMATCH"}); versionName ${summary.apk.version_name}; versionCode ${summary.apk.version_code}; ` +
+        `debuggable ${summary.apk.debuggable}; source commit ${summary.apk.source_commit ?? "?"}` +
+        `${summary.apk.required_commit ? `; contains ${summary.apk.required_commit}: ${summary.apk.required_commit_compare ?? "unknown"}` : ""}.\n\n` : "") +
+      (summary.write_paths ? `Draft writes by path (app marker lines): ${JSON.stringify(summary.write_paths)}.\n\n` : "") +
+      (summary.fast_progress ? `Fast typing valid / attempted (target ${FAST_RUNS} each; valid = whole exit interval inside the tolerance and burst 3-5 s): ` +
+        `${Object.entries(summary.fast_progress).map(([d, p]) => `${d} s: ${p.valid} / ${p.attempted}`).join("; ")}.\n\n` : "") +
       (summary.bucket_progress ? `Valid / attempted per bucket (target ${RUNS_PER_BUCKET} valid): ${Object.entries(summary.bucket_progress).map(([d, p]) => `${d} s: ${p.valid} / ${p.attempted}`).join("; ")} ` +
         `(a sample counts for the bucket its measured interval proves, so "attempted" is runs aimed at that bucket).\n\n` : "") +
       (() => {
