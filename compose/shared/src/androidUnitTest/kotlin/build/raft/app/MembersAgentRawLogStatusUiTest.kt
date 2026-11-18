@@ -1,7 +1,10 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -18,6 +21,9 @@ import org.robolectric.annotation.Config
  * A raw-log status row (Kirby, raft-design) puts its explanation on its own line under the
  * status, as every other row puts its detail, instead of inline after the status word.
  */
+/** The node's box in the root, not clipped to the window (the last rows sit below it). */
+private fun SemanticsNode.unclippedBounds(): Rect = Rect(positionInRoot, size.toSize())
+
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -38,9 +44,9 @@ class MembersAgentRawLogStatusUiTest {
                 }
             }
             // A Thinking row's title-to-detail step, which a status's explanation must match.
-            val thinking = onNodeWithText("Thinking").fetchSemanticsNode().boundsInRoot
+            val thinking = onNodeWithText("Thinking").fetchSemanticsNode().unclippedBounds()
             val thinkingDetail =
-                onNodeWithText("Checking which call sites still read the old thread id.").fetchSemanticsNode().boundsInRoot
+                onNodeWithText("Checking which call sites still read the old thread id.").fetchSemanticsNode().unclippedBounds()
             val detailStep = thinkingDetail.top - thinking.bottom
             for ((status, explanation) in listOf(
                 "Working" to "Tool finished",
@@ -49,8 +55,8 @@ class MembersAgentRawLogStatusUiTest {
                 "Stopped" to "Computer stopped",
                 "Crashed" to "exit code 1",
             )) {
-                val title = onNodeWithText(status).assertExists().fetchSemanticsNode().boundsInRoot
-                val detail = onNodeWithText(explanation).assertExists().fetchSemanticsNode().boundsInRoot
+                val title = onNodeWithText(status).assertExists().fetchSemanticsNode().unclippedBounds()
+                val detail = onNodeWithText(explanation).assertExists().fetchSemanticsNode().unclippedBounds()
                 assertTrue(detail.top >= title.bottom, "$explanation sits under $status")
                 assertEquals(detailStep, detail.top - title.bottom, 0.5f, "$explanation: the detail step of other rows")
                 onAllNodesWithText("$status $explanation", substring = true).assertCountEquals(0)
