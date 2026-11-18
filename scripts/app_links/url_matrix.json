@@ -120,6 +120,15 @@
       "informational": true
     },
     {
+      "id": "signup-verify-real",
+      "label": "sign-up verify link exactly as the email sends it (64-hex token, returnTo percent-encoded by URLSearchParams, request UUID)",
+      "path": "/?verify=3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a&returnTo=%2Flogin%2Fapp%3Frequest%3D9b2f0c1e-6d0a-4c3b-8f7e-2a1d5c4b3e10",
+      "expect": {
+        "ios": "app",
+        "android": "web"
+      }
+    },
+    {
       "id": "dm-extra",
       "label": "DM + extra segment (must not open on iOS)",
       "path": "/s/oranixslocktest/dm/5e6f7a8b-9c0d-4e1f-a2b3-c4d5e6f7a8b9/extra",
