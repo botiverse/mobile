@@ -156,7 +156,7 @@ QA_SECRET_STEPS: dict[str, dict[str, dict[str, dict]]] = {
     }},
     "android-realtime-e2e.yml": {"e2e": {
         PREFLIGHT: {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
-        "Run realtime e2e on the emulator": {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        "Run the scenario on the emulator": {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
     }},
     "android-update-e2e.yml": {"e2e": {
         PREFLIGHT: {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
