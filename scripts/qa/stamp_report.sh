@@ -175,7 +175,8 @@ if [ "$PHASE" = "bootstrap-login" ]; then
   # already be live. Mechanism (local only):
   #   1. an exclusive lock: `mkdir` of the lock directory is atomic, so of any number of concurrent
   #      invocations exactly one proceeds; the lock is never released or broken automatically;
-  #   2. BEFORE calling the endpoint, an `in_flight` intent is persisted atomically (temp + rename);
+  #   2. BEFORE calling the endpoint, hard-link the fully written temp file as the initial intent.
+  #      A runner filesystem that refuses hard links stops before the request.
   #   3. after the call the intent is atomically replaced by the outcome.
   # A sender killed at any point leaves the lock and the in_flight intent: the next invocation refuses
   # to issue again, and bootstrap-failure-terminal refuses the "no material" terminal. Nothing ever
