@@ -32,7 +32,8 @@ import org.robolectric.annotation.GraphicsMode
  * The agent Activity › Raw log's status rows (Kirby, raft-design): the status on the title line,
  * its explanation on its own line in the detail style every other row uses, and a status with
  * no explanation on one line; Stopped and Crashed carry their reason. Thinking and Output rows
- * sit beside them for comparison. Light and dark at phone width. Verify / record as [RaftRobolectricScreenshot].
+ * sit beside them for comparison. Light and dark at phone width, and light in zh-CN
+ * (translated status words). Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -46,6 +47,11 @@ class MembersAgentRawLogStatusScreenshotTest {
 
     @Test
     fun rawLogStatusRowsDark() = capture("members.agent-activity.raw-log-status.dark", RaftAppAppearance.Dark)
+
+    /** #proj-raft-ui:#267: the status words in this locale (web `activity.log.status.*`). */
+    @Test
+    @Config(qualifiers = "zh-rCN-w390dp-h900dp-xxhdpi")
+    fun rawLogStatusRowsZhLight() = capture("members.agent-activity.raw-log-status.zh-CN", RaftAppAppearance.Light)
 
     private fun capture(name: String, appearance: RaftAppAppearance) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

@@ -4683,6 +4683,18 @@
     <string name="member_activity_subagents_detail_time">걸린 시간</string>
     <string name="member_activity_log_subagent">서브에이전트</string>
     <string name="member_activity_log_subagent_with_type">서브에이전트: %1$s</string>
+    <string name="member_activity_log_status_idle">대기 중</string>
+    <string name="member_activity_log_status_thinking">생각 중</string>
+    <string name="member_activity_log_status_working">작업 중</string>
+    <string name="member_activity_log_status_starting">시작 중</string>
+    <string name="member_activity_log_status_started">시작됨</string>
+    <string name="member_activity_log_status_restarted">재시작됨</string>
+    <string name="member_activity_log_status_upgraded">업그레이드됨</string>
+    <string name="member_activity_log_status_stopped">중지됨</string>
+    <string name="member_activity_log_status_disconnected">연결 끊김</string>
+    <string name="member_activity_log_status_crashed">비정상 종료</string>
+    <string name="member_activity_log_status_offline">오프라인</string>
+    <string name="member_activity_log_status_computer_operation_failed">컴퓨터 작업 실패</string>
     <!-- A task handed to someone with a reason (web task.handoff.*, botiverse/slock #13927). -->
     <string name="task_handoff_label">%1$s님이 #%2$d을(를) %3$s님에게 넘겼습니다</string>
     <string name="task_handoff_returned">%1$s님이 다시 맡음 · %2$s</string>

@@ -353,7 +353,7 @@ internal fun MembersAgentActivityRow(
         }
     val colors = RaftTheme.colors
     val detailStyle = RaftTheme.typography.monoMeta
-    val titleText = memoryLimit?.title ?: activity.title
+    val titleText = memoryLimit?.title ?: membersActivityStatusTitle(activity) ?: activity.title
     // raft-ui Timeline as an activity log: presence-coloured pixels, title and detail in
     // Space Mono, the time on the right, a `subagent` tag on a subagent's step. The title is
     // web LOG_TITLE_CLASS: `text-foreground-muted wrap-anywhere`, wrapping instead of clipping.
@@ -452,7 +452,7 @@ private fun membersActivityRowMemoryLimitText(activity: AgentActivityEntry): Mem
         // botiverse/slock #12892 (web StatusEntry): "Crashed" with how to fix the root refusal in
         // this locale instead of the daemon's English detail.
         if (activity.statusDetailKind == AgentActivityDetailKindClaudeRootPrivileges) {
-            return MembersActivityRowText(activity.title, stringResource(Res.string.agent_runtime_error_root_privileges))
+            return MembersActivityRowText(membersActivityStatusTitle(activity) ?: activity.title, stringResource(Res.string.agent_runtime_error_root_privileges))
         }
         val exit = if (activity.statusDetailKind == "runtime_crashed") agentMemoryLimitExit(activity.statusDetail, "runtime_crashed") else null
         if (exit != null) {
@@ -477,6 +477,34 @@ private fun membersActivityRowMemoryLimitText(activity: AgentActivityEntry): Mem
         return MembersActivityRowText(stringResource(Res.string.agent_activity_log_background_oom_title), body)
     }
     return null
+}
+
+/**
+ * Web AgentActivityLog `ACTIVITY_LABEL_IDS` / `activity.log.status.*` (#proj-raft-ui:#267, slock
+ * #15327): a status row's word in this locale. The parsers keep the English word as the row's
+ * identifier; it is translated only here. Null for other rows and for a status the web shows raw.
+ */
+@Composable
+private fun membersActivityStatusTitle(activity: AgentActivityEntry): String? {
+    if (activity.type != "status") return null
+    val resource = when (activity.title) {
+        "Idle" -> Res.string.member_activity_log_status_idle
+        "Thinking" -> Res.string.member_activity_log_status_thinking
+        "Working" -> Res.string.member_activity_log_status_working
+        "Starting" -> Res.string.member_activity_log_status_starting
+        "Started" -> Res.string.member_activity_log_status_started
+        "Restarted" -> Res.string.member_activity_log_status_restarted
+        "Upgraded" -> Res.string.member_activity_log_status_upgraded
+        "Stopped" -> Res.string.member_activity_log_status_stopped
+        "Disconnected" -> Res.string.member_activity_log_status_disconnected
+        "Crashed" -> Res.string.member_activity_log_status_crashed
+        "Offline" -> Res.string.member_activity_log_status_offline
+        "Computer operation failed" -> Res.string.member_activity_log_status_computer_operation_failed
+        // Web `activity.status.error`: the member list's translated "Error".
+        "Error" -> Res.string.member_row_status_error
+        else -> return null
+    }
+    return stringResource(resource)
 }
 
 @Composable
