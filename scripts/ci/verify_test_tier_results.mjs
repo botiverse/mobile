@@ -3,7 +3,7 @@
 const DEVICE_SUITE_JOB = "android-device";
 const CANONICAL_FINAL_JOB = "android-canonical-final-actual-host";
 const ATTACHMENT_JOB = "android-minimum-supported-attachment-runtime";
-const IOS_DEFAULT_LANE = "blacksmith-xcode27.0";
+const IOS_DEFAULT_LANE = "github-xcode27.0";
 const IOS_XCODE271_LANE = "github-xcode27.1";
 
 function requireBoolean(value, name) {

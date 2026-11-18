@@ -11,7 +11,7 @@ name: Visual Testing
 
 on:
   # No nightly schedule (CI cost cut, artin 2026-11-10, #wg-cost): the full
-  # round (several Blacksmith 8/16-core runners plus a macOS capture) runs by
+  # round (an Android build, 8 emulator shards and a macOS capture) runs by
   # hand before a release: dispatch with publish=true and include_ios=true.
   # The `schedule` branches below stay so a re-enabled cron keeps working.
   workflow_dispatch:
@@ -60,8 +60,9 @@ jobs:
   react-capture:
     if: ${{ !inputs.site_only }}
     name: React capture (playwright)
-    runs-on: blacksmith-8vcpu-ubuntu-2204
-    timeout-minutes: 45
+    # GitHub standard runner (4 vCPU / 16 GB), free on this public repo (was Blacksmith 8 vCPU).
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: slock-source
@@ -154,11 +155,11 @@ jobs:
   android-build:
     if: ${{ !inputs.site_only }}
     name: Android build (connected test APKs)
-    # ubuntu-latest-m (org larger runner, 4 cores / 15GB): the standard 7GB
-    # runner forces emulator and gradle to fight for memory. (task #418)
-    # Gradle is CPU-bound: a large Blacksmith runner (as android-release.yml) cuts the build most.
-    runs-on: blacksmith-16vcpu-ubuntu-2204
-    timeout-minutes: 60
+    # GitHub standard runner (4 vCPU / 16 GB, free on this public repo; was Blacksmith 16 vCPU,
+    # 2026-11-18). Gradle is CPU-bound, so the build is slower here: the timeout has headroom,
+    # and the disk cleanup below frees the room the Android build needs on the 14 GB SSD.
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
     outputs:
       method_filter: ${{ steps.methods.outputs.filter }}
       full_length_cases: ${{ steps.full_length.outputs.cases }}
@@ -350,9 +351,9 @@ jobs:
 
   android-capture:
     name: Android capture (shard ${{ matrix.shard }}/8)
-    # See android-build: emulator boot + render are the slow path on 7GB. (task #418)
-    # Blacksmith runners expose /dev/kvm for the emulator (the Enable KVM step below still applies).
-    runs-on: blacksmith-4vcpu-ubuntu-2204
+    # GitHub standard runner (4 vCPU / 16 GB, same size as the Blacksmith 4 vCPU it replaced).
+    # It exposes /dev/kvm once the Enable KVM step below opens up the device permissions.
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: android-build
     # Build once, capture many: shards skip Gradle entirely — install the
@@ -374,7 +375,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
           df -h /
 
-      # sdkmanager needs JDK 17+; Blacksmith images default to 11.
+      # sdkmanager needs JDK 17+; pin it rather than rely on the image default.
       - name: Setup JDK 17
         if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
         uses: actions/setup-java@v6
@@ -507,11 +508,14 @@ jobs:
     # macOS minutes are the expensive part: nightly runs always capture iOS,
     # dispatched rounds only when include_ios is set (report degrades to react__android).
     if: ${{ !inputs.site_only && (github.event_name == 'schedule' || inputs.include_ios) }}
-    # Blacksmith macOS pool (ios-release.yml's Xcode 26.6 fallback pool). Not yet on the
-    # Xcode 27.1 default (2026-10-28): that needs GitHub's billed xcode-27 image and would move
-    # the capture SDK; it uses the image's default Xcode.
-    runs-on: blacksmith-12vcpu-macos-latest
-    timeout-minutes: 75
+    # GitHub standard macos-26 (3-core M1 / 7 GB, free on this public repo; was
+    # blacksmith-12vcpu-macos-latest, 2026-11-18). Same macOS 26 image family and the same
+    # default Xcode 26.6 the capture always used (it takes the image's default Xcode; moving
+    # the capture SDK to 27.1 is a separate decision). Pinned to macos-26, not macos-latest, so
+    # a GitHub label migration cannot move the SDK. ios-kn-gradle sizes the K/N link heap for
+    # the 7 GB runner; the slower Mac gets a longer timeout. Keep ios_shards low (1-2) here.
+    runs-on: macos-26
+    timeout-minutes: 120
     env:
       # iPhone 14: 390x844pt @3x = 1170x2532 px, the exact android/react
       # baseline geometry — no crop step needed before diffing.
@@ -795,10 +799,11 @@ jobs:
     # with an empty android side (react__android missing 89). iOS stays
     # tolerated (red/skipped degrades to fewer pairs, never blocks).
     if: ${{ !cancelled() && (inputs.site_only || (needs.react-capture.result == 'success' && needs.android-capture.result == 'success')) }}
-    runs-on: blacksmith-8vcpu-ubuntu-2204
+    # GitHub standard runner (4 vCPU / 16 GB), free on this public repo (was Blacksmith 8 vCPU).
+    runs-on: ubuntu-latest
     # AI analysis moved to the ai-analysis job (images publish first, per
-    # artin 2026-07-09); without it diff/report/site fits well inside 30.
-    timeout-minutes: 30
+    # artin 2026-07-09); diff/report/site fit inside 30 on 8 vCPU; headroom for 4 vCPU.
+    timeout-minutes: 45
     outputs:
       run_id: ${{ steps.pairs.outputs.run_id }}
       pairs: ${{ steps.pairs.outputs.pairs }}
@@ -995,7 +1000,7 @@ jobs:
     needs: [report]
     # Only meaningful when the report actually published a site to update.
     if: ${{ !cancelled() && needs.report.result == 'success' && needs.report.outputs.published == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2204
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     # A rerun/new publish supersedes the in-flight analysis of the previous
     # one: cancel it instead of letting it burn model calls and a runner

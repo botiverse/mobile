@@ -28,11 +28,14 @@ job (`scripts/ci/plan_test_tier.sh`) picks jobs:
 | `workflow_dispatch` `scope=premerge` (`base_ref`, default `main`) | **no** (fail-closed: yes if the diff is unavailable) | only if the diff vs merge-base can affect iOS | no |
 | `workflow_dispatch` `scope=premerge` with `base_ref=release/*` | yes | yes | yes (= `scope=full`) |
 
-iOS compile runs on Blacksmith with Xcode 27.0. A second lane, `iOS compile
-(Xcode 27.1)` on GitHub `xcode-27` (~48 min, the most expensive runner), runs
-only on the nightly schedule and `release-*` pushes (planner output
-`run_ios_xcode271`) — not on full-ci PRs, `compose/iosApp/**` changes, main
-pushes or any dispatch scope. 27.1-only SDK breakage surfaces in the nightly
+iOS compile runs on GitHub's standard `xcode-27` image with Xcode 27.0
+(free on this public repo since 2026-11-18; was Blacksmith macOS). GitHub
+allows 5 concurrent macOS jobs org-wide; if that queue is backed up, a
+`scope=ios` dispatch can take `-f ios_runner=blacksmith-6vcpu-macos-latest`
+(billed). A second lane, `iOS compile (Xcode 27.1)` on the same `xcode-27`
+image (~48 min on its 3-core Mac), runs only on the nightly schedule and
+`release-*` pushes (planner output `run_ios_xcode271`) — not on full-ci PRs,
+`compose/iosApp/**` changes, main pushes or any dispatch scope. 27.1-only SDK breakage surfaces in the nightly
 and in `ios-release.yml`'s 27.1 build.
 
 The iOS compile job runs the iOS tests (planner output `run_ios_tests`) only
@@ -51,7 +54,9 @@ tests on a PR before merge, add the `full-ci` label; do not dispatch
 `scope=full` for that (see below, it is for release candidates).
 
 So an ordinary PR never proves the iOS build, and that is intended
-(wg-cost, 2026-11-12: about $1 per iOS compile; 76 a day was 5x the budget).
+(wg-cost, 2026-11-12: about $1 per iOS compile on Blacksmith; 76 a day was 5x
+the budget. The lane is free on GitHub now, but GitHub's 5-job macOS cap is
+shared with ios-simulator-app.yml and qa-acceptance-ios.yml.)
 Do not dispatch `scope=ios` by hand before merge. Stamp's ready-to-merge check
 dispatches `-f scope=premerge -f base_ref=<PR base>` on the PR head: same path
 classification as a pull_request against the merge-base with

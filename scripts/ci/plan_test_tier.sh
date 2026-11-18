@@ -176,9 +176,9 @@ emit_plan() {
   local run_device_suite=false
   local run_canonical_final=false
   local attachment_api_levels="[]"
-  # The GitHub-hosted Xcode 27.1 iOS compile lane runs only on the nightly
-  # schedule and release-* pushes (cost cut 2026-11-05: ~48 min on the most
-  # expensive runner). 27.1-only SDK breakage is caught by the nightly within
+  # The Xcode 27.1 iOS compile lane runs only on the nightly schedule and
+  # release-* pushes (cost cut 2026-11-05: ~48 min of GitHub macOS time; free on
+  # this public repo since 2026-11-18, but it holds one of the 5 macOS slots). 27.1-only SDK breakage is caught by the nightly within
   # 24h and by ios-release.yml's 27.1 build before any release.
   local run_ios_xcode271=false
   # iOS tests in the iOS compile job (step 1 of the mobile test prune, Lagoon
@@ -302,7 +302,7 @@ emit_plan() {
       # dispatch has no trustworthy PR diff, so the pr tier is a fixed set:
       # Linux gates + Android compile, no iOS, no device suite. scope=full
       # keeps the deliberate full readback. scope=ios (2026-11-05) is the
-      # pre-merge iOS check: plan + the Blacksmith Xcode 27.0 iOS compile only
+      # pre-merge iOS check: plan + the Xcode 27.0 iOS compile only
       # (Android is already covered by the PR-tier run), compile + link + host
       # app build without the iOS tests (run_ios_tests=false). An empty/unknown scope
       # is rejected so the choice is always explicit in the workflow input.
@@ -420,10 +420,11 @@ emit_plan() {
   fi
 
   # iOS compile lanes (matrix of the test.yml `ios` job). Every iOS run gets the
-  # Blacksmith Xcode 27.0 lane. The GitHub-hosted Xcode 27.1 lane is added only
-  # on the nightly schedule and release-* pushes (run_ios_xcode271 above); GitHub
-  # Macs are the most expensive runner and share one concurrency cap with
-  # ios-release.yml / ios-simulator-app.yml.
+  # Xcode 27.0 lane (GitHub standard xcode-27, free on this public repo). The
+  # Xcode 27.1 lane (same free image) is added only on the nightly schedule and
+  # release-* pushes (run_ios_xcode271 above): it is ~48 min on a 3-core Mac and
+  # GitHub's standard Macs share a 5-job concurrency cap with
+  # ios-simulator-app.yml / qa-acceptance-ios.yml.
   # Defensive clamp: no branch above sets run_ios_xcode271/run_ios_tests
   # without iOS today, but both only make sense inside the iOS job, so a future
   # branch that drops iOS cannot leave them true (verify_test_tier_results.mjs
@@ -433,9 +434,9 @@ emit_plan() {
     run_ios_tests=false
   fi
   if test "$run_ios_xcode271" = true; then
-    ios_lanes='["blacksmith-xcode27.0","github-xcode27.1"]'
+    ios_lanes='["github-xcode27.0","github-xcode27.1"]'
   elif test "$run_ios" = true; then
-    ios_lanes='["blacksmith-xcode27.0"]'
+    ios_lanes='["github-xcode27.0"]'
   fi
 
   printf 'run_android=%s\n' "$run_android"

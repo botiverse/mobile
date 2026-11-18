@@ -30,8 +30,8 @@ docs="$(paths docs docs/readme.md)"
 unknown="$(paths unknown __CI_CHANGED_PATHS_UNKNOWN__)"
 ci_control="$(paths ci_control .github/workflows/test.yml)"
 
-B='["blacksmith-xcode27.0"]'
-BG='["blacksmith-xcode27.0","github-xcode27.1"]'
+B='["github-xcode27.0"]'
+BG='["github-xcode27.0","github-xcode27.1"]'
 
 # expect <name> <expected "android ios xcode271 lanes device canonical attachment ios-tests"> -- planner args
 expect() {

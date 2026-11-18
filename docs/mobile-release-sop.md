@@ -369,7 +369,7 @@ stamp workflow run ios-release.yml --repo botiverse/mobile --ref release/X.Y.Z \
   -f release_notes_version=X.Y.Z \
   -f hands_channel=main -f export_method=app-store-connect \
   -f release_mode=draft \
-  -f macos_runner=xcode-27-xlarge \
+  -f macos_runner=blacksmith-6vcpu-macos-27 \
   -f xcode_app_path=/Applications/Xcode_27.1.app \
   -f testflight_internal=true \
   -f testflight_what_to_test=""
@@ -379,10 +379,13 @@ stamp workflow run ios-release.yml --repo botiverse/mobile --ref release/X.Y.Z \
 
 - `release_notes_version`: the `change-logs/` directory; independent of the
   marketing version.
-- Xcode: all iOS builds use Xcode 27.1 on GitHub `xcode-27-xlarge` (owner
-  decision 2026-10-28; iOS 27.1 SDK, iPhone Duo edge-to-edge; billed minutes).
-  Avoid `xcode-27` (7 GB, the K/N link may OOM). Fallback only when the
-  `xcode-27*` pool is unavailable:
+- Xcode: all iOS builds use Xcode 27.1 (owner decision 2026-10-28; iOS 27.1
+  SDK, iPhone Duo edge-to-edge) on Blacksmith `blacksmith-6vcpu-macos-27`
+  (M4, 24 GB, $0.08/min; default since 2026-11-18, replacing GitHub
+  `xcode-27-xlarge`, 14 GB, billed as macOS XLarge). If the K/N release link
+  runs short of memory, use `blacksmith-12vcpu-macos-27` (48 GB); GitHub
+  `xcode-27-xlarge` stays selectable. Avoid `xcode-27` (7 GB, the K/N link may
+  OOM). Fallback only when no macOS 27 pool is available:
   `-f macos_runner=blacksmith-12vcpu-macos-latest -f xcode_app_path=/Applications/Xcode_26.6.app`
   (iOS 26.5 SDK, letterboxed on iPhone Duo, recorded as `xcode_lane=opt-in`).
 - `testflight_internal=true`: after the draft, upload to ASC and assign the

@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile, no iOS, no device suite); ios = pre-merge iOS check (plan + Blacksmith 'iOS compile' only; no Android, no Xcode 27.1 lane, no device suite); premerge = Stamp's ready-to-merge check (diff vs merge-base with base_ref; Blacksmith 'iOS compile' only when the diff can affect iOS, no Android rerun; a release/* or release-* base_ref runs the full tier); full = release-candidate / deliberate full readback (all platforms + device suite + canonical-final; the Xcode 27.1 lane stays nightly/release-* only)."
+        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile, no iOS, no device suite); ios = pre-merge iOS check (plan + 'iOS compile' only; no Android, no Xcode 27.1 lane, no device suite); premerge = Stamp's ready-to-merge check (diff vs merge-base with base_ref; 'iOS compile' only when the diff can affect iOS, no Android rerun; a release/* or release-* base_ref runs the full tier); full = release-candidate / deliberate full readback (all platforms + device suite + canonical-final; the Xcode 27.1 lane stays nightly/release-* only)."
         type: choice
         options:
           - pr
@@ -41,10 +41,19 @@ on:
         type: boolean
         default: false
       xcode_app_path:
-        description: "Opt-in Xcode for the Blacksmith iOS compile lane only; requires a plan that runs iOS: scope=ios, scope=full, or a premerge whose diff selects iOS (the plan fails otherwise). Empty = /Applications/Xcode_27.0.app (iOS 27.0 SDK) on Blacksmith macOS; symlinked bundles are resolved to their real path under /Applications. The extra 'iOS compile (Xcode 27.1)' lane (GitHub xcode-27, nightly and release-* pushes only, never on dispatch) always uses /Applications/Xcode_27.1.app, like ios-release.yml."
+        description: "Opt-in Xcode for the default iOS compile lane only; requires a plan that runs iOS: scope=ios, scope=full, or a premerge whose diff selects iOS (the plan fails otherwise). Empty = /Applications/Xcode_27.0.app (iOS 27.0 SDK); symlinked bundles are resolved to their real path under /Applications. The extra 'iOS compile (Xcode 27.1)' lane (GitHub xcode-27, nightly and release-* pushes only, never on dispatch) always uses /Applications/Xcode_27.1.app, like ios-release.yml."
         required: false
         type: string
         default: ""
+      ios_runner:
+        description: "Runner for the default iOS compile lane (dispatch only). xcode-27 (default) = GitHub's standard Xcode 27 image, free on this public repo but limited to 5 concurrent macOS jobs org-wide. blacksmith-6vcpu-macos-latest = billed fallback when GitHub's macOS queue is backed up (has Xcode 27.0, not 27.1). blacksmith-6vcpu-macos-27 = billed Blacksmith macOS 27 image (Xcode 27.0/27.1/27.2). The Xcode 27.1 lane always runs on xcode-27."
+        required: false
+        type: choice
+        default: xcode-27
+        options:
+          - xcode-27
+          - blacksmith-6vcpu-macos-latest
+          - blacksmith-6vcpu-macos-27
   # Nightly run so the (slow, macOS) iOS compile still runs on a schedule even
   # though it no longer gates pull requests. See the `ios` job's `if:` guard.
   schedule:
@@ -1139,15 +1148,19 @@ jobs:
     # host build runs when iOS-specific code is changed, on explicit full-ci PRs,
     # or on nightly/release readbacks.
     # Lanes come from the plan (`ios_lanes`):
-    # - blacksmith-xcode27.0, every iOS run: Blacksmith with Xcode 27.0 (iOS 27 SDK). GitHub's
-    #   Macs share one concurrency cap with ios-release.yml and ios-simulator-app.yml (27.1,
-    #   xcode-27*), so routine checks stay off it and releases do not queue behind them.
+    # - github-xcode27.0, every iOS run: GitHub's standard `xcode-27` image (3-core M1, 7 GB,
+    #   free on this public repo; free runners first, 2026-11-18) with Xcode 27.0 (iOS 27 SDK).
+    #   Was blacksmith-6vcpu-macos-latest, billed per minute. GitHub caps standard + larger
+    #   macOS at 5 concurrent jobs per org; ios-release.yml's IPA build moved to Blacksmith
+    #   macOS in the same change, so a burst of iOS compiles can no longer delay a release
+    #   build. If the GitHub macOS queue backs up, dispatch with ios_runner=blacksmith-6vcpu-
+    #   macos-latest (the old billed lane).
     # - github-xcode27.1, only on the nightly schedule and release-* pushes: GitHub xcode-27 with
     #   Xcode 27.1, so code using 27.1-only SDK APIs (iPhone Duo: UIViewReservedRegion, UIHinge)
-    #   compiles before release. It is ~48 min on the most expensive runner, so full-ci PRs,
+    #   compiles before release. It is ~48 min on a 3-core Mac, so full-ci PRs,
     #   compose/iosApp changes, main pushes and every dispatch scope skip it (2026-11-05); 27.1
     #   breakage still surfaces in the nightly within 24h and in ios-release.yml's 27.1 build.
-    # workflow_dispatch scope=ios runs plan + this job's Blacksmith lane only (no Android jobs):
+    # workflow_dispatch scope=ios runs plan + this job's Xcode 27.0 lane only (no Android jobs):
     # the pre-merge iOS check. The CI gate expects android and the emulator jobs skipped.
     # workflow_dispatch scope=premerge (Stamp's ready-to-merge check) runs this lane only when
     # the PR diff can affect iOS; otherwise every job but plan and the CI gate is skipped.
@@ -1172,27 +1185,29 @@ jobs:
         lane: ${{ fromJSON(needs.plan.outputs.ios_lanes) }}
     env:
       IOS_LANE_XCODE_REQUEST: ${{ matrix.lane == 'github-xcode27.1' && '/Applications/Xcode_27.1.app' || '/Applications/Xcode_27.0.app' }}
-    runs-on: ${{ matrix.lane == 'github-xcode27.1' && 'xcode-27' || 'blacksmith-6vcpu-macos-latest' }}
-    timeout-minutes: 75
+    runs-on: ${{ matrix.lane == 'github-xcode27.1' && 'xcode-27' || (inputs.ios_runner || 'xcode-27') }}
+    # The 3-core GitHub Mac is slower than the 6-vCPU Blacksmith one; the 27.1 lane already
+    # takes ~48 min there, so keep headroom.
+    timeout-minutes: 90
     steps:
       # Blacksmith macOS starts its local Actions-results proxy with the job (see ios-release.yml).
       - name: Warm macOS artifact proxy
-        if: ${{ matrix.lane == 'blacksmith-xcode27.0' }}
+        if: ${{ matrix.lane == 'github-xcode27.0' && startsWith(inputs.ios_runner || '', 'blacksmith') }}
         shell: bash
         run: sleep 5
 
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Blacksmith exposes Xcode 27.0 only through symlinks (Xcode_27.0.app ->
-      # Xcode_27_Release_Candidate.app), which select_ios_xcode.sh rejects. Resolve the
-      # requested path to its real bundle directly under /Applications first (on GitHub
-      # xcode-27, Xcode_27.1.app is already a real directory). The xcode_app_path dispatch
-      # input overrides the Blacksmith lane only; the 27.1 lane stays pinned to 27.1.
+      # Xcode 27.0 is a symlink on both images (GitHub xcode-27: Xcode_27.0.app ->
+      # Xcode_27.app; Blacksmith: -> Xcode_27_Release_Candidate.app), which select_ios_xcode.sh
+      # rejects. Resolve the requested path to its real bundle directly under /Applications
+      # first (on GitHub xcode-27, Xcode_27.1.app is already a real directory). The
+      # xcode_app_path dispatch input overrides the 27.0 lane only; the 27.1 lane stays on 27.1.
       - name: Resolve Xcode bundle
         shell: bash
         env:
-          XCODE_REQUEST: ${{ matrix.lane == 'blacksmith-xcode27.0' && inputs.xcode_app_path || env.IOS_LANE_XCODE_REQUEST }}
+          XCODE_REQUEST: ${{ matrix.lane == 'github-xcode27.0' && inputs.xcode_app_path || env.IOS_LANE_XCODE_REQUEST }}
         run: |
           set -euo pipefail
           real="$(realpath "$XCODE_REQUEST")"
@@ -1208,7 +1223,7 @@ jobs:
         # Build with a chosen Xcode, not the runner image's default: the SDK decides how iOS
         # lays the app out (the iOS 27.1 SDK makes it edge-to-edge on iPhone Duo, status bar on
         # the right edge). Moving SDKs is a deliberate change (iPhone Duo audit, 2026-10-27).
-        # `xcode_app_path` (workflow_dispatch only) picks another Xcode for the Blacksmith lane;
+        # `xcode_app_path` (workflow_dispatch only) picks another Xcode for the 27.0 lane;
         # empty keeps Xcode 27.0. The 27.1 lane and releases (ios-release.yml) build with 27.1.
         env:
           XCODE_APP_PATH: ${{ env.RAFT_IOS_COMPILE_XCODE }}
