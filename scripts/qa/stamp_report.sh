@@ -208,7 +208,14 @@ if [ "$PHASE" = "bootstrap-login" ]; then
       node -e 'const fs=require("fs"),e=process.env,file=process.argv[1],tmp=`${file}.tmp-${process.pid}`;
         const v={contract:"qa-bootstrap-login-outcome/v1",outcome:e.OUTCOME,run_case_id:e.RUN_CASE,github_run_id:e.RUN_ID,github_run_attempt:e.RUN_ATTEMPT,retried:false};
         if(e.OUTCOME!=="in_flight"){v.http_status=Number(e.HTTP_CODE);v.curl_exit=Number(e.CURL_RC);v.detail=e.DETAIL}
-        const fd=fs.openSync(tmp,"wx",0o600);fs.writeSync(fd,JSON.stringify(v,null,2)+"\n");fs.fsyncSync(fd);fs.closeSync(fd);fs.renameSync(tmp,file)' "$BOOTSTRAP_LOGIN_OUTCOME_FILE"
+        const fd=fs.openSync(tmp,"wx",0o600);
+        try { fs.writeFileSync(fd,JSON.stringify(v,null,2)+"\n");fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+        if (e.OUTCOME==="in_flight") {
+          // Publish the complete initial intent only if this run case still has none.
+          try { fs.linkSync(tmp,file); } finally { fs.unlinkSync(tmp); }
+        } else {
+          fs.renameSync(tmp,file);
+        }' "$BOOTSTRAP_LOGIN_OUTCOME_FILE"
   }
   write_login_outcome in_flight 0 0 "" || { echo "stamp: could not persist the bootstrap login intent; not calling issuance" >&2; exit 1; }
   install -m 600 /dev/null "$BOOTSTRAP_LOGIN_PARTIAL_FILE"
