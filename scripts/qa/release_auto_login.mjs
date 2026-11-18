@@ -57,7 +57,8 @@ import {
 } from "./release_auto_login_lib.mjs";
 import {
   UnsupportedBuildError,
-  apkSignerForDeviceSdk,
+  apkSignerForDevice,
+  apksignerDeviceArgs,
   createIdentityReceiptRunner,
   crossCheckReceipt,
   disableFailureAnnotation,
@@ -67,7 +68,6 @@ import {
   splitPrivateReceipt,
   writePrivateReceipt,
 } from "./app_identity_receipt_lib.mjs";
-import { apksignerVerifyArgs } from "./mobile_login_bootstrap_lib.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(`--${name}`);
@@ -653,20 +653,24 @@ function installedPackageFacts() {
   const dump = shell(`dumpsys package ${PKG}`, { allowFailure: true });
   const flags = /pkgFlags=\[([^\]]*)\]/.exec(dump)?.[1] ?? "";
   const deviceSdk = Number(shell("getprop ro.build.version.sdk", { allowFailure: true }).trim());
+  // A preview (codename) build takes dev-release rotation blocks one SDK early.
+  const codename = shell("getprop ro.build.version.codename", { allowFailure: true }).trim();
+  const preview = Boolean(codename) && codename !== "REL";
   const apkPaths = shell(`pm path ${PKG}`, { allowFailure: true }).split("\n").map((l) => l.trim()).filter((l) => l.startsWith("package:")).map((l) => l.slice(8));
   const base = apkPaths.find((p) => p.endsWith("/base.apk"));
   if (!base) throw new Error(`pm path ${PKG} lists no base.apk`);
   const local = path.join(OUT, ".identity-base.apk");
   try {
     adb(["pull", base, local], { timeoutMs: 120_000 });
-    const signer = spawnSync(buildTool("apksigner"), apksignerVerifyArgs(local, deviceSdk), { encoding: "utf8" });
+    const signer = spawnSync(buildTool("apksigner"), apksignerDeviceArgs(local, deviceSdk), { encoding: "utf8" });
     if (signer.status !== 0) throw new Error(`apksigner verify failed: ${String(signer.stderr).trim().slice(0, 200)}`);
     return {
       packageName: PKG,
       versionCode: /versionCode=(\d+)/.exec(dump)?.[1] ?? null,
       debuggable: /\bDEBUGGABLE\b/.test(flags),
       deviceSdk,
-      signerSha256: apkSignerForDeviceSdk(signer.stdout, deviceSdk),
+      devicePreview: preview,
+      signerSha256: apkSignerForDevice(signer.stdout, { sdk: deviceSdk, preview }),
       installedApkSha256: fileSha256(local),
       splitApks: apkPaths.length - 1,
     };

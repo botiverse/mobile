@@ -6,7 +6,8 @@ import {
   PROVIDER_CLASS,
   UNSUPPORTED_MESSAGE,
   UnsupportedBuildError,
-  apkSignerForDeviceSdk,
+  apkSignerForDevice,
+  apksignerDeviceArgs,
   componentFor,
   contentCallCommand,
   createIdentityReceiptRunner,
@@ -101,21 +102,57 @@ test("without frozen refs everything else is checked and the refs are left to Te
   assert.equal(crossCheckReceipt({ receipt: { ...sample, pid: 1 }, request, os, expected: {} }).verdict, "unknown");
 });
 
-test("a rotated signer lineage picks the certificate for the device SDK (API 33+ entry on API 34/36)", () => {
-  const legacy = "b4919381d8f9cede4f8eb8f6d132f6dfe0d6d15bf6d1f63057d5eba045161a45";
-  const current = "5f08bbe82a27ccdad26c13523a60b5670d3aa7633e8ed2fd71fa6b5751f9b0b1";
-  const rotated = [
-    `Signer (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: ${legacy}`,
-    `Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: ${current}`,
-  ].join("\n");
-  assert.equal(apkSignerForDeviceSdk(rotated, 34), current);
-  assert.equal(apkSignerForDeviceSdk(rotated, 36), current);
-  assert.equal(apkSignerForDeviceSdk(rotated, 30), legacy);
-  // The receipt (apkContentsSigners on an API 34 device) is the current certificate, never the lineage's old one.
-  const receipt = { ...sample, signer_sha256: current };
-  assert.equal(crossCheckReceipt({ receipt, request, os: { ...os, signerSha256: apkSignerForDeviceSdk(rotated, 34) }, expected }).verdict, "ok");
-  assert.equal(crossCheckReceipt({ receipt: { ...sample, signer_sha256: legacy }, request, os: { ...os, signerSha256: apkSignerForDeviceSdk(rotated, 34) }, expected }).verdict, "unknown");
-  assert.equal(apkSignerForDeviceSdk(`Signer #1 certificate SHA-256 digest: ${current}`, 34), current);
+// Signer fixtures: verified v3/v3.1 blocks per SDK range, plus apksigner's summary line, which
+// must never decide (it is the 2nd certificate of a 3-generation rotation).
+const certA = "a1".repeat(32);
+const certB = "b2".repeat(32);
+const certC = "c3".repeat(32);
+const lines = (...l) => l.join("\n");
+const twoCertRotation = lines(
+  `Signer #1 certificate SHA-256 digest: ${certA}`,
+  `V3.1 Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: ${certB}`,
+  `V3 Signer (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: ${certA}`,
+);
+const threeCertRotation = lines(
+  `Signer #1 certificate SHA-256 digest: ${certB}`,
+  `V3.1 Signer (minSdkVersion=35, maxSdkVersion=2147483647) certificate SHA-256 digest: ${certC}`,
+  `V3 Signer (minSdkVersion=24, maxSdkVersion=34) certificate SHA-256 digest: ${certB}`,
+);
+// rotation-min-sdk-version=35 + the dev-release flag: the v3.0 block reaches up to 35.
+const devReleaseRotation = lines(
+  `Signer #1 certificate SHA-256 digest: ${certA}`,
+  `V3.1 Signer (minSdkVersion=35, maxSdkVersion=2147483647, targetsDevRelease=true) certificate SHA-256 digest: ${certB}`,
+  `V3 Signer (minSdkVersion=24, maxSdkVersion=35) certificate SHA-256 digest: ${certA}`,
+);
+
+test("2-cert rotation: API 34/35/36 use the rotated certificate, API 30 the original", () => {
+  for (const sdk of [34, 35, 36]) assert.equal(apkSignerForDevice(twoCertRotation, { sdk }), certB, `API ${sdk}`);
+  assert.equal(apkSignerForDevice(twoCertRotation, { sdk: 30 }), certA);
+});
+
+test("3-cert rotation: API 35/36 use the 3rd certificate (not apksigner's summary), API 34 the 2nd", () => {
+  assert.equal(apkSignerForDevice(threeCertRotation, { sdk: 34 }), certB);
+  assert.equal(apkSignerForDevice(threeCertRotation, { sdk: 35 }), certC);
+  assert.equal(apkSignerForDevice(threeCertRotation, { sdk: 36 }), certC);
+});
+
+test("dev-release flag moves only the lower bound: release API 35 keeps the old certificate", () => {
+  assert.equal(apkSignerForDevice(devReleaseRotation, { sdk: 35 }), certA);
+  assert.equal(apkSignerForDevice(devReleaseRotation, { sdk: 36 }), certB);
+  assert.equal(apkSignerForDevice(devReleaseRotation, { sdk: 34 }), certA);
+  // A preview device on SDK 35 (the codename build of 36) already takes the new certificate.
+  assert.equal(apkSignerForDevice(devReleaseRotation, { sdk: 35, preview: true }), certB);
+});
+
+test("the summary certificate is used only without any v3 block; ambiguity is an error", () => {
+  assert.equal(apkSignerForDevice(`Signer #1 certificate SHA-256 digest: ${certA}`, { sdk: 34 }), certA);
+  assert.throws(() => apkSignerForDevice(lines(`Signer #1 certificate SHA-256 digest: ${certA}`, `Signer #2 certificate SHA-256 digest: ${certB}`), { sdk: 34 }), /2 summary/);
+  assert.throws(() => apkSignerForDevice(`V3 Signer (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: ${certA}`, { sdk: 34 }), /0 certificates/);
+  assert.deepEqual(apksignerDeviceArgs("app.apk", 35), ["verify", "-v", "--min-sdk-version", "35", "--max-sdk-version", "35", "--print-certs", "app.apk"]);
+  // The receipt (apkContentsSigners on the device) is compared with that selection.
+  const deviceCert = apkSignerForDevice(threeCertRotation, { sdk: 36 });
+  assert.equal(crossCheckReceipt({ receipt: { ...sample, signer_sha256: certC }, request, os: { ...os, signerSha256: deviceCert }, expected }).verdict, "ok");
+  assert.equal(crossCheckReceipt({ receipt: { ...sample, signer_sha256: certB }, request, os: { ...os, signerSha256: deviceCert }, expected }).verdict, "unknown");
 });
 
 test("request needs Testbed's attempt id and nonce; the request id is fresh each time", () => {

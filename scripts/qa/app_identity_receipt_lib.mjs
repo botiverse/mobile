@@ -24,7 +24,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
-import { apksignerVerifyArgs, selectApkSigningCertificateSha256 } from "./mobile_login_bootstrap_lib.mjs";
 
 export const RECEIPT_CONTRACT = "raft-app-identity-receipt/v1";
 export const PROVIDER_CLASS = "build.raft.app.core.data.auth.AppIdentityReceiptProvider";
@@ -254,9 +253,62 @@ export function disableFailureAnnotation(pkg, detail) {
   return `::error title=identity receipt provider left enabled::pm disable ${componentFor(pkg)} failed (${String(detail ?? "").replace(/[\r\n]+/g, " ")}); disable it by hand before reusing this device`;
 }
 
-/** The signer the device uses: apksigner's certificate for exactly the device SDK. */
-export function apkSignerForDeviceSdk(apksignerOutput, deviceSdk) {
-  return selectApkSigningCertificateSha256(apksignerOutput, deviceSdk).slice("sha256:".length);
+const V3_SIGNER_LINE = /^(V3(?:\.0|\.1)?\s+)?Signer:?\s*\(([^)]*)\)\s+certificate SHA-256 digest:\s*([0-9A-Fa-f]{64})$/;
+const SUMMARY_SIGNER_LINE = /^Signer #[1-9][0-9]* certificate SHA-256 digest:\s*([0-9A-Fa-f]{64})$/;
+
+/**
+ * The certificate the device actually uses (what SigningInfo.apkContentsSigners reports), from
+ * `apksigner verify -v --print-certs` output. Taken ONLY from the verified v3/v3.1 signer blocks
+ * whose SDK range holds the device SDK, never from apksigner's summary "Signer #N" certificates
+ * (with a three-generation rotation the summary is the 2nd certificate while API 35/36 devices
+ * use the 3rd). A v3.1 block wins over a v3.0 block on the same SDK.
+ *
+ * A block signed for a dev release (rotation-min-sdk-version + the dev-release flag) shifts only
+ * its LOWER bound: a preview device whose SDK is minSdk (the codename build of minSdk + 1) takes
+ * it, a release device only from minSdk + 1. So rotation-min-sdk-version=35 + flag selects the old
+ * certificate on release API 35 and the new one on release API 36.
+ *
+ * The summary line is used only when the output has no v3 block at all (a v1/v2-only APK) and
+ * names exactly one certificate.
+ */
+export function apkSignerForDevice(apksignerOutput, { sdk, preview = false }) {
+  if (!Number.isInteger(sdk) || sdk < 1) throw new Error("device SDK is invalid");
+  const blocks = [];
+  const summary = [];
+  for (const raw of String(apksignerOutput ?? "").split(/\r?\n/)) {
+    const line = raw.trim();
+    const block = V3_SIGNER_LINE.exec(line);
+    if (block) {
+      const attrs = block[2];
+      const min = Number(/minSdkVersion=([0-9]+)/.exec(attrs)?.[1]);
+      const max = Number(/maxSdkVersion=([0-9]+)/.exec(attrs)?.[1]);
+      if (!Number.isInteger(min) || !Number.isInteger(max) || max < min) throw new Error(`apksigner signer range is invalid: ${line.slice(0, 120)}`);
+      const devRelease = /targets\s*dev\s*release\s*=?\s*true/i.test(attrs.replace(/[_-]/g, ""));
+      blocks.push({ v31: /^V3\.1/.test(block[1] ?? ""), min, max, devRelease, digest: block[3].toLowerCase() });
+      continue;
+    }
+    const sum = SUMMARY_SIGNER_LINE.exec(line);
+    if (sum) summary.push(sum[1].toLowerCase());
+  }
+  if (!blocks.length) {
+    if (summary.length !== 1) throw new Error(`no v3 signer block and ${summary.length} summary certificates`);
+    return summary[0];
+  }
+  const applies = (b) => {
+    const lower = b.devRelease && !preview ? b.min + 1 : b.min;
+    return sdk >= lower && sdk <= b.max;
+  };
+  const candidates = blocks.filter(applies);
+  const preferred = candidates.some((b) => b.v31) ? candidates.filter((b) => b.v31) : candidates;
+  const digests = [...new Set(preferred.map((b) => b.digest))];
+  if (digests.length !== 1) throw new Error(`apksigner lists ${digests.length} certificates for device SDK ${sdk}${preview ? " (preview)" : ""}`);
+  return digests[0];
+}
+
+/** `apksigner verify` arguments: verbose, certificates, verified for exactly the device SDK. */
+export function apksignerDeviceArgs(apk, sdk) {
+  if (!Number.isInteger(sdk) || sdk < 1) throw new Error("device SDK is invalid");
+  return ["verify", "-v", "--min-sdk-version", String(sdk), "--max-sdk-version", String(sdk), "--print-certs", apk];
 }
 
 /** sha256 of a local file (the APK pulled from `pm path`). */
