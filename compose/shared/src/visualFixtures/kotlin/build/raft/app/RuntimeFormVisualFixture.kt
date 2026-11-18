@@ -37,7 +37,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Runtime form visual cases (slock packages/runtime-form/fixtures/visual-cases.v3.json): the
- * generated kitchen sink (every field kind in every state) and each runtime's real v3 create
+ * generated kitchen sink pages (every field kind in every state) and each runtime's real v3 create
  * form, drawn by the production [RuntimeFormV2Fields] straight from the shared fixtures
  * (RuntimeFormVisualFixtures.g.kt, synced by scripts/runtime_form/sync_v2_fixtures.py), no API.
  * The React side (slock packages/web/visual-testing/RuntimeFormCases.tsx) renders the same

@@ -3429,14 +3429,24 @@ class KmpVisualScreenshotCaptureTest {
 
 
     // Runtime form cases (slock packages/runtime-form/fixtures/visual-cases.v3.json): the generated
-    // kitchen sink and each runtime's real v3 create form, drawn by RuntimeFormV2Fields from the
+    // kitchen sink pages and each runtime's real v3 create form, drawn by RuntimeFormV2Fields from the
     // synced fixtures (compose_runtime_form_visual). Full length: slock sharedCases capture.fullLength.
     @Test
-    fun captureRuntimeFormKitchenSink() {
+    fun captureRuntimeFormKitchenSinkInputs() {
         captureKmpComponentCase(
-            caseId = "components.runtime-form.kitchen-sink",
+            caseId = "components.runtime-form.kitchen-sink.inputs",
             pageName = "compose_runtime_form_visual",
-            pageData = JSONObject().put("caseId", "components.runtime-form.kitchen-sink"),
+            pageData = JSONObject().put("caseId", "components.runtime-form.kitchen-sink.inputs"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormKitchenSinkChoices() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.kitchen-sink.choices",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.kitchen-sink.choices"),
             crop = FULL_VIEWPORT_CROP
         )
     }
