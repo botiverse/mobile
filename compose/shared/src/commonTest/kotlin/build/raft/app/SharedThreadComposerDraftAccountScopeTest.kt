@@ -141,6 +141,26 @@ class SharedThreadComposerDraftAccountScopeTest {
     }
 
     @Test
+    fun theCrashJournalOfARetiredAccountIsClearedAndNeverRestoredForTheNextAccount() {
+        val h = Harness()
+        h.bind(accountA)
+        val composer = h.composer()
+        composer.dispatch(SharedThreadComposerDraftIntent.Start(RaftThreadComposerPayload(instanceId = "a"), draftKey))
+        // Journaled on the input thread; the full write is still pending.
+        composer.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "journal of A"))
+        val journalRow = SharedThreadComposerDraftAccountKeys.scopedKey(accountA, SharedThreadComposerDraftPersistence.JournalKey)
+        assertTrue(h.base.getString(journalRow) != null)
+
+        h.bind(accountB)
+        h.scheduler.runAll()
+
+        assertNull(h.base.getString(journalRow))
+        val next = h.composer()
+        next.dispatch(SharedThreadComposerDraftIntent.Start(RaftThreadComposerPayload(instanceId = "b"), draftKey))
+        assertEquals("", next.state.value.seedText)
+    }
+
+    @Test
     fun accountSwitchDeletesThePreviousAccountsDrafts() {
         val h = Harness()
         h.bind(accountA)

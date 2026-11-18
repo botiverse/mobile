@@ -26,8 +26,7 @@ class SharedThreadComposerDraftCrashSurvivalTest {
         // Nothing of the virtual clock passes: only work that is due now runs before the kill.
         clock.advanceBy(0L)
 
-        // Written synchronously in the transition: nothing was even scheduled.
-        assertEquals(emptyList<Long>(), clock.requestedDelays)
+        assertEquals(listOf(0L), clock.requestedDelays)
         assertEquals("hello", restartAndRestore(storage).seedText)
     }
 
