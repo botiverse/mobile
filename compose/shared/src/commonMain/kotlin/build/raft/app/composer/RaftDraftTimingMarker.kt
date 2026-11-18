@@ -41,7 +41,8 @@ fun raftDraftTimingMarkerEnabled(buildConfigDebug: Boolean, appDebuggable: Boole
 
 /**
  * The crash journal's input-thread write cost as a timing line (task #246):
- * `draft_journal_written path=sync costUs=<µs> len=<text length>`. Never the text.
+ * `draft_journal_written seq=<change seq> path=sync costUs=<µs> len=<text length>`, [seq] being the
+ * `change_received` seq of the same change (logged just before the journal write). Never the text.
  */
-internal fun raftDraftJournalCostLine(cost: kotlin.time.Duration, textLength: Int): String =
-    "draft_journal_written path=sync costUs=${cost.inWholeMicroseconds} len=$textLength"
+internal fun raftDraftJournalCostLine(seq: Long, cost: kotlin.time.Duration, textLength: Int): String =
+    "draft_journal_written seq=$seq path=sync costUs=${cost.inWholeMicroseconds} len=$textLength"

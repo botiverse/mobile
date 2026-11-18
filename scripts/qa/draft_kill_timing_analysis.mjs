@@ -235,18 +235,47 @@ const quantiles = (values, unit) => {
 };
 
 /**
- * Whether the crash journal's cost samples cover the typed edits. Every typed change logs
- * `change_received` and, from the same synchronous call on the input thread, either one
- * `draft_journal_written` (the cost sample) or one `draft_journal_write_failed`. So
- * missing = edits − samples − failures should be 0; logcat can still lose a line under load, so up to
- * JOURNAL_MISSING_TOLERANCE of the edits (rounded down) may be missing. More than that: the cost is not
- * known for every edit ("unconfirmed"). Any write failure fails the run.
+ * Whether the crash journal's cost samples cover the typed edits, paired by (process, seq). Every typed
+ * change logs `change_received seq=N` first (the moment it arrived) and then, from the same synchronous
+ * call, `draft_journal_written seq=N ...` (the cost sample) or `draft_journal_write_failed seq=N`.
+ * - paired: an edit with its cost line; failed: an edit with its failure line.
+ * - interrupted: the LAST edit of a process with neither line: the kill can land during that journal
+ *   write, so it is not counted missing (the keystroke did arrive: its marker is there).
+ * - missing: any other edit with neither line.
+ * - unpaired: cost / failure lines with no edit of that (process, seq) (reported; they never make up for
+ *   a missing one).
+ * Logcat can still lose a line under load, so up to JOURNAL_MISSING_TOLERANCE of the edits (rounded
+ * down) may be missing; more is "unconfirmed". Any failure fails the run.
  */
 export const JOURNAL_MISSING_TOLERANCE = 0.01;
-export function journalCoverage({ edits, samples, failures }) {
-  const missing = Math.max(0, edits - samples - failures);
+export function journalCoverage({ edits, paired, failures, interrupted = 0, missing, unpaired = 0 }) {
   const allowed = Math.floor(edits * JOURNAL_MISSING_TOLERANCE);
-  return { edits, samples, failures, missing, allowed_missing: allowed, covered: edits > 0 && missing <= allowed };
+  return { edits, paired, failures, interrupted, missing, unpaired, allowed_missing: allowed, covered: edits > 0 && missing <= allowed };
+}
+
+/** journalCoverage from the edits (pid -> seqs in order) and the (pid:seq) keys of cost and failure lines. */
+export function pairJournalLines(editsByPid, sampleKeys, failureKeys) {
+  let edits = 0;
+  let paired = 0;
+  let failures = 0;
+  let interrupted = 0;
+  let missing = 0;
+  const editKeys = new Set();
+  for (const [pid, seqs] of editsByPid) {
+    seqs.forEach((seq, index) => {
+      const key = `${pid}:${seq}`;
+      editKeys.add(key);
+      edits += 1;
+      if (sampleKeys.has(key)) paired += 1;
+      else if (failureKeys.has(key)) failures += 1;
+      else if (index === seqs.length - 1) interrupted += 1;
+      else missing += 1;
+    });
+  }
+  const unpaired = [...sampleKeys, ...failureKeys].filter((key) => !editKeys.has(key)).length;
+  // A failure line counts as a failure even when unpaired.
+  const unpairedFailures = [...failureKeys].filter((key) => !editKeys.has(key)).length;
+  return journalCoverage({ edits, paired, failures: failures + unpairedFailures, interrupted, missing, unpaired });
 }
 
 /**
@@ -265,8 +294,9 @@ export function createLogcatStats() {
   const latencies = [];
   const costs = [];
   const paths = { sync: 0, background: 0, flush: 0, unlabeled: 0, sync_write_fallback: 0 };
-  let edits = 0;
-  let journalFailures = 0;
+  const editsByPid = new Map();
+  const sampleKeys = new Set();
+  const failureKeys = new Set();
   const appPids = new Set();
   return {
     /** Pids that logged RaftDraftTiming lines: the app's own processes. */
@@ -279,17 +309,21 @@ export function createLogcatStats() {
       const cost = /^draft_journal_written\b.*\bcostUs=(\d+)/.exec(l.message);
       if (cost) {
         costs.push(Number(cost[1]));
+        const seq = /\bseq=(\d+)/.exec(l.message);
+        sampleKeys.add(seq ? `${l.pid}:${seq[1]}` : `${l.pid}:noseq:${sampleKeys.size}`);
         return;
       }
       if (/^draft_journal_write_failed\b/.test(l.message)) {
-        journalFailures += 1;
+        const seq = /\bseq=(\d+)/.exec(l.message);
+        failureKeys.add(seq ? `${l.pid}:${seq[1]}` : `${l.pid}:noseq:${failureKeys.size}`);
         return;
       }
       const t = parseTimingMessage(l.message);
       if (!t) return;
       const key = `${l.pid}:${t.seq}`;
       if (t.kind === "change_received") {
-        edits += 1;
+        if (!editsByPid.has(l.pid)) editsByPid.set(l.pid, []);
+        editsByPid.get(l.pid).push(t.seq);
         changes.set(key, t.uptimeMs);
       }
       else if (changes.has(key)) latencies.push(t.uptimeMs - changes.get(key));
@@ -301,7 +335,7 @@ export function createLogcatStats() {
         write_latency: quantiles([...latencies], "ms"),
         write_paths: { ...paths },
         journal_write_cost: quantiles([...costs], "us"),
-        journal_coverage: journalCoverage({ edits, samples: costs.length, failures: journalFailures }),
+        journal_coverage: pairJournalLines(editsByPid, sampleKeys, failureKeys),
       };
     },
   };
@@ -436,20 +470,38 @@ export function acceptanceUnconfirmed(summary) {
   const c = summary.journal_coverage;
   if (!c) unconfirmed.push("crash-journal sample coverage unknown");
   else if (!c.covered && c.failures === 0) {
-    unconfirmed.push(`crash-journal cost samples do not cover the edits: ${c.samples} samples for ${c.edits} edits, ${c.missing} missing (allowed ${c.allowed_missing})`);
+    unconfirmed.push(`crash-journal cost samples do not cover the edits: ${c.paired} paired of ${c.edits} edits, ${c.missing} missing (allowed ${c.allowed_missing}), ${c.interrupted} interrupted by a kill`);
   }
   return unconfirmed;
 }
 
 /**
- * The run's channel as the concurrency check read it ([status], [rows] newest first, at most [limit]).
+ * A channel-messages response as a usable read, or not: only HTTP 200 whose body parsed to a messages
+ * array (the array itself, or `{ messages: [...] }`) counts, and only then is an empty array an empty
+ * channel. A 200 with an empty or unparsable body ([json] null / [parseError]) or another shape is
+ * "unavailable", never an empty channel.
+ */
+export function parseMessagesResponse(status, json, parseError = false) {
+  if (status !== 200) return { status, ok: false, rows: [], problem: `HTTP ${status}` };
+  if (parseError || json == null) return { status, ok: false, rows: [], problem: "HTTP 200 with an empty or unparsable body" };
+  const rows = Array.isArray(json) ? json : Array.isArray(json?.messages) ? json.messages : null;
+  if (rows == null) return { status, ok: false, rows: [], problem: "HTTP 200 without a messages array" };
+  return { status, ok: true, rows };
+}
+
+/**
+ * The run's channel as the concurrency check read it ([status], [ok] / [problem] from parseMessagesResponse,
+ * [rows] newest first, at most [limit]).
  * The channel is created by this run, so a page shorter than [limit] is its whole history ("complete");
  * a full page may have cut older items off, so it is "incomplete", never "no other activity". Ours =
  * content carrying this run's marker tag and posted by the QA account. Only counts, kinds and the
  * covered createdAt window are kept, never other content.
  */
-export function channelActivityReport({ status, rows = [], limit, runTag, selfId = null }) {
-  if (status !== 200) return { http: status, other_activity: null, coverage: { complete: false, reason: `the channel query failed (HTTP ${status})` } };
+export function channelActivityReport({ status, ok = status === 200, problem = null, rows = [], limit, runTag, selfId = null }) {
+  if (!ok) {
+    const why = problem ?? `HTTP ${status}`;
+    return { http: status, other_activity: null, coverage: { complete: false, reason: `the channel query is unavailable (${why})` } };
+  }
   const created = rows.map((m) => m?.createdAt ?? m?.created_at ?? null).filter(Boolean).sort();
   const complete = rows.length < limit;
   const coverage = {

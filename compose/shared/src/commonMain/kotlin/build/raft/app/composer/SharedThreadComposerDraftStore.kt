@@ -2086,12 +2086,15 @@ internal class SharedThreadComposerDraftPersistSlice(
     ) {
         val (pending, previous) = stateLock.withLock {
             val generation = advanceWriteGenerationLocked(key)
+            // The device-clock marker first: it is the moment the change arrived, before any store
+            // write of it (the journal below), so a kill during the journal write still shows it.
+            val timingSeq = markChangeReceivedLocked(state.seedText.length)
             val next =
                 PendingThreadComposerDraftWrite(
                     generation = generation,
                     state = state,
-                    journalSeq = if (crashJournal) writeCrashJournalLocked(key, generation, state) else 0L,
-                    timingSeq = markChangeReceivedLocked(state.seedText.length),
+                    journalSeq = if (crashJournal) writeCrashJournalLocked(key, generation, state, timingSeq) else 0L,
+                    timingSeq = timingSeq,
                 )
             next to pendingWritesByDraftKey.put(key, next)
         }
@@ -2104,7 +2107,13 @@ internal class SharedThreadComposerDraftPersistSlice(
      * One store write on the calling thread; never fails the transition (a failed journal write only
      * leaves the background write as the sole copy, as before).  Returns the seq, 0 when not written.
      */
-    private fun writeCrashJournalLocked(key: String, generation: Long, state: SharedThreadComposerDraftState): Long {
+    private fun writeCrashJournalLocked(
+        key: String,
+        generation: Long,
+        state: SharedThreadComposerDraftState,
+        /** The change's [RaftDraftTimingMarker] seq (0: no marker), carried on its cost / failure line. */
+        timingSeq: Long,
+    ): Long {
         val seq = maxOf(lastJournalSeq + 1L, epochMillis() * 1_000L)
         lastJournalSeq = seq
         return runCatching {
@@ -2119,12 +2128,12 @@ internal class SharedThreadComposerDraftPersistSlice(
                         asTask = state.seedAsTask,
                     )
                 )
-            reportJournalWriteCost(cost, state.seedText.length)
+            reportJournalWriteCost(cost, state.seedText.length, timingSeq)
             seq
         }.getOrElse { error ->
             safeDiagnostics("thread_composer_draft_journal_write_failed key=$key error=${error::class.simpleName.orEmpty()}")
             // The acceptance counts these against the edits (journal sample coverage).
-            runCatching { timingSink()?.invoke("draft_journal_write_failed len=${state.seedText.length}") }
+            runCatching { timingSink()?.invoke("draft_journal_write_failed seq=$timingSeq len=${state.seedText.length}") }
             0L
         }
     }
@@ -2379,10 +2388,10 @@ internal class SharedThreadComposerDraftPersistSlice(
      * The crash journal's input-thread cost: to [journalWriteCost] when one is injected, else as a
      * `draft_journal_written` line to the [timingSink] (debuggable builds only; none in release).
      */
-    private fun reportJournalWriteCost(cost: kotlin.time.Duration, textLength: Int) {
+    private fun reportJournalWriteCost(cost: kotlin.time.Duration, textLength: Int, timingSeq: Long) {
         runCatching {
             val hook = journalWriteCost
-            if (hook != null) hook(cost, textLength) else timingSink()?.invoke(raftDraftJournalCostLine(cost, textLength))
+            if (hook != null) hook(cost, textLength) else timingSink()?.invoke(raftDraftJournalCostLine(timingSeq, cost, textLength))
         }
     }
 
