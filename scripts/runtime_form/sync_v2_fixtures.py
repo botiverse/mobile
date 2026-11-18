@@ -82,6 +82,8 @@ FIXTURES_V3 = [
     ("CODEX_V3_FORM_JSON", "codex.form.v3.json"),
     ("CODEX_V3_EDIT_JSON", "codex.edit.v3.json"),
     ("CODEX_V3_REASONING_EFFORT_SOURCE_JSON", "codex.option-source.reasoning-effort.v3.json"),
+    # Codex speed (slock #15382): dependent_select on the model, shown while fastMode is const true.
+    ("CODEX_V3_SPEED_SOURCE_JSON", "codex.option-source.speed.v3.json"),
     ("GROK_V3_FORM_JSON", "grok.form.v3.json"),
     ("CLAUDE_V3_FORM_JSON", "claude.form.v3.json"),
     ("CLAUDE_V3_EDIT_JSON", "claude.edit.v3.json"),

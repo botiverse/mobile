@@ -202,9 +202,64 @@ class RuntimeFormV3StateTest {
         assertEquals(JsonPrimitive("high"), runtimeFormV2Submission(edit, stored, codexSources)["reasoningEffort"], "an edit submits the stored effort unchanged")
     }
 
+    /**
+     * Codex speed (slock #15382, README "Codex speed"): a dependent_select on the model, SHOWN while
+     * fastMode is `const: true`. Only a model whose Computer names two or more fast tiers has a key; the
+     * model list is the bundled fallback, the one Codex source fixture that lists GPT-6.2 Astra.
+     */
+    private val codexSpeedSources: RuntimeFormV2Sources = codexSources + mapOf(
+        "model" to source(CODEX_V2_FALLBACK_SOURCE_JSON),
+        "speed" to source(CODEX_V3_SPEED_SOURCE_JSON)
+    )
+
+    @Test
+    fun codexSpeedShowsItsTiersOnlyWhileFastModeIsOnForAModelThatHasThem() {
+        val speed = codex.field("speed")
+        assertEquals(RuntimeFormV2FieldKind.DependentSelect, speed.kind)
+        assertEquals("model", speed.dependsOn)
+        assertFalse(speed.required, "speed is optional")
+        assertEquals(RuntimeFormV3Effect.Show, speed.rule?.effect)
+        assertEquals(RuntimeFormV3Scope("fastMode"), speed.rule?.condition?.scope)
+
+        val initial = initialRuntimeFormV2Values(codex, codexSpeedSources)
+        val astra = applyRuntimeFormV2Change(codex, codexSpeedSources, initial, "model", JsonPrimitive("gpt-6.2-astra"))
+        assertEquals("gpt-6.2-astra", astra.text("model"))
+        val unset = astra - "fastMode"
+        val off = applyRuntimeFormV2Change(codex, codexSpeedSources, astra, "fastMode", JsonPrimitive(false))
+        for ((name, values) in listOf("fastMode unset" to unset, "fastMode false" to off)) {
+            assertFalse(isRuntimeFormV2FieldVisible(speed, values, codexSpeedSources), "$name: speed hidden")
+            assertEquals(emptyMap(), validateRuntimeFormV2(codex, codexSpeedSources, values), name)
+            assertFalse("speed" in runtimeFormV2Submission(codex, values, codexSpeedSources), "$name: hidden speed is not submitted")
+        }
+
+        val on = applyRuntimeFormV2Change(codex, codexSpeedSources, astra, "fastMode", JsonPrimitive(true))
+        assertTrue(isRuntimeFormV2FieldVisible(speed, on, codexSpeedSources), "fastMode true: speed shown")
+        val tiers = runtimeFormV2Choices(speed, codexSpeedSources, on) as RuntimeFormV2Choices.Select
+        assertEquals(
+            listOf(
+                "" to "Fast · 2x speed, increased usage",
+                "ultrafast" to "Ultrafast · Up to 4.5x speed, uses more of your plan"
+            ),
+            tiers.options.map { it.value to it.label },
+            "the primary tier as \"\" first, then the others, labelled as Codex names them"
+        )
+        assertEquals("", on.text("speed"), "the model's default tier is the primary one")
+        assertEquals(emptyMap(), validateRuntimeFormV2(codex, codexSpeedSources, on))
+        assertEquals(JsonPrimitive(""), runtimeFormV2Submission(codex, on, codexSpeedSources)["speed"])
+        val ultra = applyRuntimeFormV2Change(codex, codexSpeedSources, on, "speed", JsonPrimitive("ultrafast"))
+        assertEquals(JsonPrimitive("ultrafast"), runtimeFormV2Submission(codex, ultra, codexSpeedSources)["speed"])
+
+        for (model in listOf("gpt-6.2-sol", "gpt-5.6-sol", "my-org/typed-model")) {
+            val other = applyRuntimeFormV2Change(codex, codexSpeedSources, on, "model", JsonPrimitive(model))
+            assertEquals(JsonPrimitive(true), other["fastMode"], "$model: fast mode stays on")
+            assertFalse(isRuntimeFormV2FieldVisible(speed, other, codexSpeedSources), "$model has no speed key: hidden even with fast mode on")
+            assertEquals(emptyMap(), validateRuntimeFormV2(codex, codexSpeedSources, other), model)
+        }
+    }
+
     @Test
     fun refreshingASourceNamesTheSourcesKeyedByItsField() {
-        assertEquals(listOf("reasoningEffort"), runtimeFormV2DependentSourceIds(codex, "model"))
+        assertEquals(listOf("reasoningEffort", "speed"), runtimeFormV2DependentSourceIds(codex, "model").sorted())
         assertEquals(emptyList(), runtimeFormV2DependentSourceIds(codex, "reasoningEffort"))
         val pi = form(PI_V3_FORM_JSON)
         assertEquals(listOf("providerModel"), runtimeFormV2DependentSourceIds(pi, "provider"))

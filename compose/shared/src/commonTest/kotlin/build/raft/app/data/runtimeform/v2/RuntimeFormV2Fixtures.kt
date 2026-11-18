@@ -1108,7 +1108,7 @@ internal const val GEMINI_V2_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/antigravity.edit.json, sha256 2bc48e2f7dedb69aba9eaeb6f9e42066b6b4be75f68fa98123b919ae40560855 */
+/** fixtures/antigravity.edit.json, sha256 8cd407b00c8b7c782342d8a235f3cc615fc121f91787bdf86ec863716130effb */
 internal const val ANTIGRAVITY_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "antigravity",
@@ -1162,7 +1162,7 @@ internal const val ANTIGRAVITY_V2_EDIT_JSON: String = """{
     "localization": {
       "model": {
         "label": "Model",
-        "hint": "Models available to this computer's Antigravity login. AGY configured default lets Antigravity choose. You can also type a model ID."
+        "hint": "Models available to this computer's Antigravity login; the one Antigravity starts on is preselected. You can also type a model ID."
       },
       "reasoningEffort": {
         "label": "Reasoning",
@@ -1226,7 +1226,7 @@ internal const val ANTIGRAVITY_V2_EDIT_JSON: String = """{
     }
   },
   "values": {
-    "model": "default",
+    "model": "",
     "reasoningEffort": "",
     "envVars": {
       "EXAMPLE_FLAG": "1"
@@ -1654,7 +1654,7 @@ internal const val CODEX_V2_LIVE_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/codex.option-source.fallback.json, sha256 1c3ed2ce1633ff77c36d9a06eab53ad6634b8b2576c871f3e3f305ae80f78829 */
+/** fixtures/codex.option-source.fallback.json, sha256 dc3a1aea26b38395fd8440870bb855e9b8fdad4412a17a960790534bdb3d6413 */
 internal const val CODEX_V2_FALLBACK_SOURCE_JSON: String = """{
   "protocolVersion": 1,
   "runtimeId": "codex",
@@ -1663,6 +1663,32 @@ internal const val CODEX_V2_FALLBACK_SOURCE_JSON: String = """{
   "kind": "select",
   "pointer": "/model",
   "options": [
+    {
+      "value": "gpt-6.2-sol",
+      "label": "GPT-6.2 Sol",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultReasoningEffort": "low"
+    },
+    {
+      "value": "gpt-6.2-astra",
+      "label": "GPT-6.2 Astra",
+      "supportedReasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultReasoningEffort": "low"
+    },
     {
       "value": "gpt-6.1-sol",
       "label": "GPT-6.1 Sol",
@@ -1853,7 +1879,7 @@ internal const val CODEX_V2_FALLBACK_SOURCE_JSON: String = """{
       ]
     }
   ],
-  "defaultValue": "gpt-6.1-sol",
+  "defaultValue": "gpt-6.2-sol",
   "customValueAllowed": true,
   "status": "fallback",
   "reason": "missing_config",
