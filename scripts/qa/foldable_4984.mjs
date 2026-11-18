@@ -225,6 +225,10 @@ function main() {
   log("device", sh("getprop ro.product.model").trim(), "sdk", sh("getprop ro.build.version.sdk").trim(), "pkg", PKG);
   note("env", "model", sh("getprop ro.product.model").trim());
   note("env", "sdk", sh("getprop ro.build.version.sdk").trim());
+  // Installed-APK identity read back from the device (base.apk path from pm, hashed on the device).
+  { const apkPath = (/package:(\S+base\.apk)/.exec(sh(`pm path ${PKG}`)) || [])[1];
+    note("env", "installed_apk_path", apkPath || "n/a");
+    note("env", "installed_apk_sha256", apkPath ? sh(`sha256sum ${apkPath}`).trim().split(/\s+/)[0] : "n/a"); }
   // Real animations (the workflow's emulator-runner zeroes them).
   sh("settings put system fold_lock_behavior_setting stay_awake_on_fold_key"); sh("svc power stayon true");
   for (const k of ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]) sh(`settings put global ${k} 1`);
