@@ -290,12 +290,40 @@ async function createRunChannel(api) {
 }
 
 /** Channels an earlier run of this scenario created and could not archive (`qa-draft-246-*`): archive them now. */
+/** Status of GitHub Actions run [runId] of this repository (read-only, the job's GITHUB_TOKEN), or null. */
+async function githubRunStatus(runId) {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GH_RUN_STATUS_TOKEN;
+  if (!repo || !token) return null;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repo}/actions/runs/${runId}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.status !== 200) return `http_${res.status}`;
+    return (await res.json())?.status ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Channels an earlier run of this scenario created and left unarchived (`qa-draft-246-<run>-<attempt>`):
+ * archived only when that GitHub run has completed, so a parallel run's live channel is never closed.
+ * Each candidate is recorded: name, id, run id, run status, archive result.
+ */
 async function archiveLeftoverRunChannels(api) {
   const list = listOf((await raftJson("GET", "channels", { token: api.token, serverId: api.server.id })).json, "channels");
   const results = [];
   for (const c of list.filter((c) => c?.id && /^qa-draft-246-\d+-\d+$/.test(c?.name ?? "") && c?.name !== CHANNEL && !c?.archivedAt && !c?.archived)) {
+    const runId = /^qa-draft-246-(\d+)-\d+$/.exec(c.name)[1];
+    const runStatus = await githubRunStatus(runId);
+    if (runStatus !== "completed") {
+      results.push({ name: c.name, id: c.id, run_id: runId, run_status: runStatus ?? "unknown", archive: "skipped: run in progress/unknown" });
+      continue;
+    }
     const res = await raftJson("POST", `channels/${c.id}/archive`, { token: api.token, serverId: api.server.id });
-    results.push({ name: c.name, archived: res.status < 300, status: res.status });
+    results.push({ name: c.name, id: c.id, run_id: runId, run_status: runStatus, archive: res.status < 300 ? "archived" : "failed", http: res.status });
   }
   return results;
 }
@@ -804,10 +832,15 @@ async function main() {
       if (!api.server?.id || !api.server.slug) fail(`the QA account does not see server ${SERVER} (with a slug)`);
       const me = (await raftJson("GET", "auth/me", { token: api.token })).json;
       api.selfId = me?.id ?? me?.user?.id ?? null;
-      summary.leftover_channels_archived = await archiveLeftoverRunChannels(api);
       api.channel = await createRunChannel(api);
       summary.channel_created = { name: api.channel.name, visibility: api.channel.visibility };
       return { channel: api.channel.name, visibility: api.channel.visibility };
+    });
+
+    await step("archive-leftover-run-channels", async () => {
+      api.token = await apiLogin();
+      summary.leftover_channels = await archiveLeftoverRunChannels(api);
+      return { candidates: summary.leftover_channels.length };
     });
 
     await step("install", async () => {
@@ -940,6 +973,8 @@ async function main() {
       `the WHOLE exit Δ interval is inside its tolerance: ${Object.entries(BUCKETS).map(([d, b]) => `${d} s = [${b.lo_ms}, ${b.hi_ms}] ms`).join("; ")}; ` +
       `b: [${SEND_WINDOW.lo_ms}, ${SEND_WINDOW.hi_ms}] ms after the tap. The device-side sleep is only aim (window centre minus measured overhead), never counted as measured. ` +
       `Exits not caused by the run's own kill (dependency_died, crash, ANR) are "excluded".\n\n` +
+      `Leftover run channels: ${summary.leftover_channels?.length ? summary.leftover_channels.map((c) => `#${c.name} (id ${c.id}, run ${c.run_id} ${c.run_status}): ${c.archive}${c.http ? ` HTTP ${c.http}` : ""}`).join("; ") : "none"}.\n\n` +
+      `Final channel archive: ${JSON.stringify(summary.channel_archive ?? null)}; concurrency check: ${JSON.stringify(summary.channel_activity ?? null)}.\n\n` +
       (summary.write_latency ? `Persistence window on this device (change_received → draft_written of the same change, all changes of the run): ` +
         `n=${summary.write_latency.samples}, min ${summary.write_latency.min_ms}, p50 ${summary.write_latency.p50_ms}, p95 ${summary.write_latency.p95_ms}, p99 ${summary.write_latency.p99_ms}, max ${summary.write_latency.max_ms} ms.\n\n` : "") +
       (summary.sleep_calibration ? `Device sleep overshoot (ms, 5 each): ${JSON.stringify(summary.sleep_calibration)}.\n\n` : "") +
