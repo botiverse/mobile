@@ -62,7 +62,7 @@ test("a run is a hit only when the whole exit interval is inside the bucket", ()
 
 test("missing bounds, a changed process, a surviving pid or a skewed clock are unconfirmed", () => {
   const cases = [
-    [{ lines: [change(10, 1, 5), killing(10.05, 1111), gone(10.06)] }, /no pre-signal kill line/],
+    [{ lines: [change(10, 1, 5), killing(10.05, 1111), gone(10.06)] }, /no pre-signal force-stop kill line/],
     [{ lines: [change(10, 1, 5), killing(10.05)] }, /not bounded above/],
     [{ lines: [change(10, 1, 5), killing(10.05), gone(10.06)], samePid: false }, /not the same process/],
     [{ lines: [change(10, 1, 5), killing(10.05), gone(10.06)], pidGone: false }, /still alive/],
@@ -97,9 +97,23 @@ test("summary counts hits, unconfirmed and passes per group and renders a table"
   ];
   const s = summarize(runs);
   assert.deepEqual(s.find((g) => g.group === "D=0.05"), {
-    group: "D=0.05", runs: 2, hits: 1, unconfirmed: 1, restored: 2, restored_when_hit: 1, written_before_kill: 1,
+    group: "D=0.05", runs: 2, hits: 1, unconfirmed: 1, excluded: 0, restored: 2, restored_when_hit: 1, written_before_kill: 1,
     delta_upper_min_ms: 60, delta_upper_median_ms: 60, delta_upper_max_ms: 60, exit_width_median_ms: 5, exit_width_max_ms: 5,
   });
   assert.equal(s.find((g) => g.group === "D=0.1").restored, 0);
-  assert.match(markdownTable(runs, s), /\| D=0\.05 \| 2 \| 1 \| 1 \| 2 \| 1 \| 1 \|/);
+  assert.match(markdownTable(runs, s), /\| D=0\.05 \| 2 \| 1 \| 1 \| 0 \| 2 \| 1 \| 1 \|/);
+});
+
+test("an exit that is not the force-stop is excluded, not a hit or a miss", () => {
+  const dependency = line(10.03, 600, "ActivityManager", `Killing ${PID}:${PKG}/u0a192 (adj 0): depends on provider com.google.android.gms/.fonts.provider.FontsProvider in dying proc com.google.android.gms.persistent (adj -10000)`);
+  const dep = analyzeKillRun({ ...base, expectedLen: 5, delaySec: 0.05, lines: [change(10, 1, 5), dependency, procDied(10.04), killing(10.05), gone(10.06)] });
+  assert.equal(dep.timing, "excluded");
+  assert.match(dep.reason, /exit not by force-stop \(system kill: depends on provider/);
+  const crash = analyzeKillRun({ ...base, expectedLen: 5, delaySec: 0.05, lines: [change(10, 1, 5), line(10.02, PID, "AndroidRuntime", "FATAL EXCEPTION: main"), gone(10.06)] });
+  assert.equal(crash.timing, "excluded");
+  assert.match(crash.reason, /app crash/);
+  // The force-stop's own lines still decide an ordinary run.
+  const ok = analyzeKillRun({ ...base, expectedLen: 5, delaySec: 0.05, lines: [change(10, 1, 5), killing(10.05), amKill(10.051), gone(10.06)] });
+  assert.equal(ok.timing, "hit");
+  assert.equal(summarize([{ group: "g", ...dep, pass: true }])[0].excluded, 1);
 });

@@ -22,7 +22,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
-import { analyzeKillRun, bucketFor, markdownTable, summarize } from "./draft_kill_timing_analysis.mjs";
+import { analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, value, index, all) => {
@@ -220,7 +220,8 @@ const isTimingEvidence = (line) =>
   /\bRaftDraftTiming(Probe)?\s*:/.test(line) ||
   (/\bActivityManager\s*:/.test(line) && line.includes(PKG)) ||
   /\blibprocessgroup\s*:/.test(line) ||
-  (/\b(am_kill|am_proc_died)\s*:/.test(line) && line.includes(PKG));
+  (/\b(am_kill|am_proc_died)\s*:/.test(line) && line.includes(PKG)) ||
+  /\bAndroidRuntime\s*:\s*(FATAL EXCEPTION|Process: )/.test(line);
 
 async function waitForTiming(description, predicate, { fromMark, timeoutMs = 15_000 }) {
   const deadline = Date.now() + timeoutMs;
@@ -495,8 +496,25 @@ async function killAndAnalyze({ oldPid, startTime, script, expectedLen, delaySec
   return { analysis: { ...analysis, old_start_time: startTime, pid_gone_after_poll: out.includes("PID_GONE") }, lines };
 }
 
-/** After relaunch: a new process (pid or start time differs from the killed one). */
-function relaunchIdentity(record, oldPid, oldStart) {
+/**
+ * After relaunch: a new process (pid or start time differs from the killed one), and any death of an app
+ * process during the run that was not this run's force-stop (e.g. dependency_died when Play services'
+ * FontsProvider process dies) is named in the run, so it can never pass for a force-stop sample.
+ */
+function foreignAppDeaths(mark, oldPid) {
+  const foreign = [];
+  for (const l of linesSince(mark).map(parseLogcatLine).filter(Boolean)) {
+    const ev = l.tag === "am_kill" ? parseEventPid(l.message) : null;
+    if (!ev || ev.name !== PKG) continue;
+    const reason = killReason(l, PKG, ev.pid);
+    if (!isForceStopReason(reason, PKG)) foreign.push(`pid ${ev.pid}${ev.pid === oldPid ? " (old)" : ""}: ${reason}`);
+  }
+  return foreign;
+}
+
+function relaunchIdentity(record, oldPid, oldStart, mark) {
+  const foreign = foreignAppDeaths(mark, oldPid);
+  if (foreign.length) record.foreign_app_deaths = foreign;
   record.new_pid = pidOf();
   const newStart = record.new_pid ? startTimeOf(record.new_pid) : null;
   record.new_process = Boolean(record.new_pid) && (record.new_pid !== oldPid || newStart !== oldStart);
@@ -522,6 +540,7 @@ const markerPrefix = () => `dk${RUN_TAG}r${String(runIndex).padStart(2, "0")}x`;
 async function killRun(api, { group, mode, delaySec }) {
   runIndex += 1;
   const record = { group, mode, delay_sec: delaySec, run: runIndex };
+  const runMark = logcatMark();
   try {
     const composer = await readyEmptyComposer(api);
     const prefix = markerPrefix();
@@ -556,7 +575,7 @@ async function killRun(api, { group, mode, delaySec }) {
       record.sent_on_server = sentOnServer;
       record.expected_desc = sentOnServer ? "(empty)" : `(empty) or ${expected} (not sent)`;
       record.observed_desc = describeText(seen);
-      relaunchIdentity(record, oldPid, startTime);
+      relaunchIdentity(record, oldPid, startTime, mark);
       record.pass = sentOnServer ? seen === "" : seen === "" || seen === expected;
       if (!sentOnServer) record.reason = `${record.reason ? `${record.reason}; ` : ""}message not on server after the kill`;
       return record;
@@ -599,13 +618,15 @@ async function killRun(api, { group, mode, delaySec }) {
     const seen = await composerAfterRelaunch(api, expected);
     record.expected_desc = describeText(expected);
     record.observed_desc = describeText(seen);
-    relaunchIdentity(record, oldPid, startTime);
+    relaunchIdentity(record, oldPid, startTime, mark);
     record.pass = seen === expected;
     return record;
   } catch (error) {
     record.timing = record.timing ?? "unconfirmed";
     record.pass = false;
     record.error = redact(error.message).slice(0, 400);
+    const foreign = foreignAppDeaths(runMark, record.old_pid ?? -1);
+    if (foreign.length) record.foreign_app_deaths = foreign;
     record.reason = record.reason ?? "run error";
     record.expected_desc = record.expected_desc ?? "-";
     record.observed_desc = record.observed_desc ?? "-";

@@ -59,10 +59,37 @@ const round3 = (v) => (v == null ? null : Math.round(v * 1000) / 1000);
  *   force-stop), events am_proc_died, ActivityManager "Process <pkg> (pid <pid>) has died",
  *   libprocessgroup "Successfully killed process cgroup ... pid <pid>".
  */
+/** The reason system_server gave for killing [oldPid] of [pkg] on this line, or null if the line is not such a kill. */
+export function killReason(l, pkg, oldPid) {
+  if (l.tag === "ActivityManager" && parseKillLine(l.message, pkg) === oldPid) return /\):\s*(.*)$/.exec(l.message)?.[1] ?? "";
+  if (l.tag === "am_kill") {
+    const ev = parseEventPid(l.message);
+    if (ev?.pid === oldPid && ev.name === pkg) return l.message.split(",").slice(4).join(",").replace(/\]$/, "");
+  }
+  return null;
+}
+
+/** A force-stop kill: "stop <pkg> due to ..." (cmd activity force-stop / am force-stop). */
+export const isForceStopReason = (reason, pkg) => reason != null && reason.startsWith(`stop ${pkg}`);
+
+/**
+ * How the old process ended other than by the force-stop, if it did: a system kill for another reason
+ * (dependency_died / "depends on provider ...", low memory, ANR), an app crash (AndroidRuntime FATAL in
+ * the old pid) or an ANR line. Such a sample is excluded, never counted as a hit or a miss.
+ */
+export function foreignExit(parsed, { pkg, oldPid }) {
+  for (const l of parsed) {
+    const reason = killReason(l, pkg, oldPid);
+    if (reason != null && !isForceStopReason(reason, pkg)) return { tsMs: l.tsMs, what: `system kill: ${reason}` };
+    if (l.tag === "AndroidRuntime" && l.pid === oldPid && /FATAL EXCEPTION/.test(l.message)) return { tsMs: l.tsMs, what: "app crash" };
+    if (l.tag === "ActivityManager" && new RegExp(`^ANR in ${pkg.replace(/\./g, "\\.")}\\b`).test(l.message)) return { tsMs: l.tsMs, what: "ANR" };
+  }
+  return null;
+}
+
 export function exitInterval(parsed, { pkg, oldPid, runIndex }) {
-  const lowers = parsed.filter((l) =>
-    (l.tag === "ActivityManager" && parseKillLine(l.message, pkg) === oldPid) ||
-    (l.tag === "am_kill" && parseEventPid(l.message)?.pid === oldPid && parseEventPid(l.message)?.name === pkg));
+  // Only the force-stop's own kill lines bound the exit from below.
+  const lowers = parsed.filter((l) => isForceStopReason(killReason(l, pkg, oldPid), pkg));
   const lower = lowers.length ? Math.max(...lowers.map((l) => l.tsMs)) : null;
   const uppers = parsed.filter((l) =>
     (l.tag === "RaftDraftTimingProbe" && new RegExp(`^run=${runIndex} pid_gone\\b`).test(l.message)) ||
@@ -116,6 +143,7 @@ export function analyzeKillRun({ lines, pkg, oldPid, samePid = true, runIndex, e
     .map((l) => ({ ...l, ...parseTimingMessage(l.message) }))
     .filter((l) => l.kind);
   const exit = exitInterval(parsed, { pkg, oldPid, runIndex });
+  const foreign = foreignExit(parsed, { pkg, oldPid });
   const lower = exit.lower_ms;
 
   const beforeSignal = (l) => lower == null || l.tsMs <= lower;
@@ -146,7 +174,14 @@ export function analyzeKillRun({ lines, pkg, oldPid, samePid = true, runIndex, e
     timing: "unconfirmed",
     reason: null,
   };
-  if (exit.lower_ms == null) result.reason = "no pre-signal kill line (AM Killing / am_kill) for the old pid";
+  if (foreign && (exit.lower_ms == null || foreign.tsMs <= exit.lower_ms)) {
+    // Not a sample of the force-stop at all.
+    result.timing = "excluded";
+    result.reason = `exit not by force-stop (${foreign.what})`;
+    return result;
+  }
+  if (foreign) result.note = `after the force-stop: ${foreign.what}`;
+  if (exit.lower_ms == null) result.reason = "no pre-signal force-stop kill line (AM Killing / am_kill \"stop <pkg>\") for the old pid";
   else if (exit.upper_ms == null) result.reason = "exit not bounded above (no pid_gone poll, am_proc_died or has-died line)";
   else if (!samePid) result.reason = "old pid's start time changed: not the same process";
   else if (!pidGone) result.reason = "old pid still alive after the kill";
@@ -162,10 +197,11 @@ export function summarize(runs) {
   const groups = new Map();
   for (const run of runs) {
     const key = run.group;
-    if (!groups.has(key)) groups.set(key, { group: key, runs: 0, hits: 0, unconfirmed: 0, restored: 0, restored_when_hit: 0, written_before_kill: 0, delta_ms: [], width_ms: [] });
+    if (!groups.has(key)) groups.set(key, { group: key, runs: 0, hits: 0, unconfirmed: 0, excluded: 0, restored: 0, restored_when_hit: 0, written_before_kill: 0, delta_ms: [], width_ms: [] });
     const g = groups.get(key);
     g.runs += 1;
     if (run.timing === "hit" || run.timing === "measured") g.hits += 1;
+    else if (run.timing === "excluded") g.excluded += 1;
     else g.unconfirmed += 1;
     if (run.pass) g.restored += 1;
     if (run.pass && (run.timing === "hit" || run.timing === "measured")) g.restored_when_hit += 1;
@@ -191,11 +227,11 @@ export function markdownTable(runs, summary) {
   const out = [];
   out.push(
     "### Per bucket", "",
-    "| group | runs | timing hits | unconfirmed | pass (restored / expected) | pass when hit | written before kill | exit Δ upper min / median / max (ms) | exit interval width median / max (ms) |",
-    "|---|---|---|---|---|---|---|---|---|",
+    "| group | runs | timing hits | unconfirmed | excluded (exit not by force-stop) | pass (restored / expected) | pass when hit | written before kill | exit Δ upper min / median / max (ms) | exit interval width median / max (ms) |",
+    "|---|---|---|---|---|---|---|---|---|---|",
   );
   for (const g of summary) {
-    out.push(`| ${g.group} | ${g.runs} | ${g.hits} | ${g.unconfirmed} | ${g.restored} | ${g.restored_when_hit} | ${g.written_before_kill} | ${cell(g.delta_upper_min_ms)} / ${cell(g.delta_upper_median_ms)} / ${cell(g.delta_upper_max_ms)} | ${cell(g.exit_width_median_ms)} / ${cell(g.exit_width_max_ms)} |`);
+    out.push(`| ${g.group} | ${g.runs} | ${g.hits} | ${g.unconfirmed} | ${g.excluded} | ${g.restored} | ${g.restored_when_hit} | ${g.written_before_kill} | ${cell(g.delta_upper_min_ms)} / ${cell(g.delta_upper_median_ms)} / ${cell(g.delta_upper_max_ms)} | ${cell(g.exit_width_median_ms)} / ${cell(g.exit_width_max_ms)} |`);
   }
   out.push(
     "", "### Per run", "",
@@ -204,7 +240,7 @@ export function markdownTable(runs, summary) {
   );
   runs.forEach((r, i) => {
     const bounds = r.exit_lower_source ? `${r.exit_lower_source} .. ${r.exit_upper_source ?? "?"}` : "-";
-    out.push(`| ${i + 1} | ${r.group} | ${cell(r.delay_sec)} | ${cell(r.delta_lower_ms)} | ${cell(r.delta_upper_ms)} | ${cell(r.exit_width_ms)} | ${bounds} | ${r.timing} | ${r.written_before_kill ? "yes" : "no"} | ${cell(r.expected_desc)} | ${cell(r.observed_desc)} | ${r.pass ? "yes" : "no"} | ${cell(r.old_pid)} | ${cell(r.new_pid)} | ${r.pid_gone ? "yes" : "no"} | ${cell(r.reason)} |`);
+    out.push(`| ${i + 1} | ${r.group} | ${cell(r.delay_sec)} | ${cell(r.delta_lower_ms)} | ${cell(r.delta_upper_ms)} | ${cell(r.exit_width_ms)} | ${bounds} | ${r.timing} | ${r.written_before_kill ? "yes" : "no"} | ${cell(r.expected_desc)} | ${cell(r.observed_desc)} | ${r.pass ? "yes" : "no"} | ${cell(r.old_pid)} | ${cell(r.new_pid)} | ${r.pid_gone ? "yes" : "no"} | ${cell([r.reason, r.note, r.error, r.foreign_app_deaths?.length ? `other app deaths: ${r.foreign_app_deaths.join("; ")}` : null].filter(Boolean).join("; ") || null)} |`);
   });
   return `${out.join("\n")}\n`;
 }
