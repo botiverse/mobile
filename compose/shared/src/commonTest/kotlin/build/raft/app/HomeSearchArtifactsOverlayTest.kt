@@ -27,8 +27,8 @@ class HomeSearchArtifactsOverlayTest {
         val content = content(SearchArtifactsState(query = "plan", status = SearchArtifactsStatus.Ok, hits = (1..7).map { hit("pt_$it") }))
 
         val entries = content.entries()
-        val headings = entries.map { it.itemKey }.filter { it.endsWith("-heading") }
-        assertEquals(listOf("entities-heading", "artifacts-heading", "messages-heading"), headings)
+        val headings = entries.map { it.itemKey }.filter { it.contains("-heading") }
+        assertEquals(listOf("entities-heading:channels", "artifacts-heading", "messages-heading"), headings)
         assertEquals(HomeSearchOverlayMessagePreviewCount, entries.count { it is HomeSearchOverlayEntry.Artifact }, "a preview, like its messages")
         assertEquals(
             listOf(HomeSearchOverlaySection.SearchFor, HomeSearchOverlaySection.Entities) +
@@ -69,8 +69,12 @@ class HomeSearchArtifactsOverlayTest {
             typed = true,
             recent = emptyList(),
             exact = null,
-            entities = if (entities) listOf(channelEntity("plan-room")) else emptyList(),
-            entitiesExpanded = false,
+            entityGroups =
+                if (entities) {
+                    listOf(HomeSearchEntityGroupView(HomeSearchEntityGroupId.Channels, listOf(channelEntity("plan-room")), total = 1, fromServer = false))
+                } else {
+                    emptyList()
+                },
             messages =
                 if (messages) {
                     listOf(HomeSearchResultGroup.Message(build.raft.app.data.InboxItem(key = "m1", kind = build.raft.app.model.InboxItemKind.Channel, channelId = ChannelId("c"), channelName = "launch")))

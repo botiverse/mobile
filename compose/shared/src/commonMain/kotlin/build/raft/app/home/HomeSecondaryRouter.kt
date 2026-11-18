@@ -68,6 +68,8 @@ import build.raft.app.data.SearchArtifactsIntent
 import build.raft.app.data.SharedSearchArtifactsStore
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.asSearchArtifactsSource
+import build.raft.app.data.asSearchCoreGroupsSource
+import build.raft.app.data.SearchCoreGroupsIntent
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.mergedSharedConversationDirectoryState
@@ -1042,6 +1044,21 @@ private fun HomeSearchRouterContent(
             }
         }
     }
+    // Core's channels and people groups (web useCoreSearchGroups): asked whatever the app flags,
+    // not in a conversation's own search (they are server-wide).
+    val coreGroupsViewModel: HomeSearchCoreGroupsViewModel =
+        viewModel(key = if (overlay != null) "home-secondary-search-core-groups-overlay" else "home-secondary-search-core-groups") {
+            HomeSearchCoreGroupsViewModel(
+                source = NetworkRaftWebSearchApi(environment.networkClient).asSearchCoreGroupsSource(),
+                logger = { line -> environment.bridge.log(line) },
+            )
+        }
+    val coreGroupsState by coreGroupsViewModel.state.collectAsState()
+    LaunchedEffect(coreGroupsViewModel, searchScopeServerId, searchQuery, conversationScopedSearch) {
+        coreGroupsViewModel.store.dispatch(
+            SearchCoreGroupsIntent.Query(searchScopeServerId, searchQuery, enabled = !conversationScopedSearch)
+        )
+    }
     val openArtifactWebPage = rememberRaftWebPageOpener()
     val artifactsWebBaseUrl = remember(sharedStores) { standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore) }
     // The Artifacts home page's opener: the in-app viewer, not opened from a conversation.
@@ -1221,6 +1238,8 @@ private fun HomeSearchRouterContent(
             val target = ArtifactLinkTarget(hit.id)
             artifactOpener.open(target, RaftArtifactViewerHeader.of(hit.row.summary, target), "home_search")
         },
+        coreGroups = coreGroupsState.takeIf { !conversationScopedSearch },
+        onCoreGroupsIntent = coreGroupsViewModel.store::dispatch,
     )
 }
 

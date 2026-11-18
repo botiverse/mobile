@@ -269,8 +269,8 @@ internal data class ThreadComposerSuggestionSearchEntry<T>(
     /**
      * Ranked within a match band, lowest first (web `ComposerSuggestionSearchEntry.tier`, slock
      * #14228): among the strong matches a lower tier comes first, but an exact name always leads and
-     * a loose fuzzy match always trails ([threadComposerMatchBand]). Search uses it so an archived
-     * channel never goes above a live one on a comparable match ([HomeSearchEntityTier]).
+     * a loose fuzzy match always trails ([threadComposerMatchBand]). (Global search no longer sets
+     * it: the server ranks channels and people by their status, docs/contracts/web-search.md.)
      */
     val tier: Int = 0,
 )

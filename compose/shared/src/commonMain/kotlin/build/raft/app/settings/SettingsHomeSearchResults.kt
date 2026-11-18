@@ -55,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,7 +80,14 @@ private fun SharedHomeSearchEntityLeadingAvatar(
         SearchEntityType.Channel ->
             RaftIconTile(size = RaftIconTileSize.Sm) {
                 RaftChannelKindIcon(
-                    result.homeSearchChannelGlyph(currentRaftChannelKinds()),
+                    // A row of core's search carries its status: External (`external || guest`)
+                    // draws the external icon even for a channel the app hasn't loaded (web
+                    // `SearchChannelIcon`).
+                    if (result.homeSearchExternalChannel) {
+                        raftChannelKindGlyph(result.homeSearchChannelWireType(), external = true)
+                    } else {
+                        result.homeSearchChannelGlyph(currentRaftChannelKinds())
+                    },
                     size = RaftIconTileSize.Sm.icon,
                     color = raftArgbHex(RaftColor.TextMuted),
                 )
@@ -343,10 +351,12 @@ internal fun SharedHomeSearchSectionLabel(
     label: String,
     visualTextScale: Float = 1f,
     count: Int? = null,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     RaftSearchSectionHeading(
         label = label,
         count = count,
+        trailing = trailing,
         countStyle = RaftTheme.typography.monoMeta.withHomeSearchVisualTextScale(visualTextScale),
         style =
             RaftTheme.typography.footnote
@@ -369,8 +379,10 @@ internal fun sharedHomeSearchTimestampTextStyle() =
 
 // raft-ui search-entity: a flat list-cell row, `py-3` (min 64dp) with its content 20dp in,
 // `gap-3` between a 27dp leading avatar / IconTile and the text; `text-body` semibold title with
-// its type Badge, `text-callout` `foreground-muted` description; 2dp between rows, no line;
-// pressed fills the cell shape. An archived channel mutes its title and description.
+// at most one mark ([homeSearchEntityBadge]), `text-callout` `foreground-muted` description; 2dp
+// between rows, no line; pressed fills the cell shape. One tappable row, no Join: a channel the
+// reader hasn't joined says "Not joined" and opens on its preview. An archived channel mutes its
+// title and description.
 @Composable
 internal fun SharedHomeSearchEntityRow(
     result: SearchEntityResult,
@@ -395,7 +407,7 @@ internal fun SharedHomeSearchEntityRow(
     // the tap timeout never flashes the pressed fill.
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val mutedArchived = result.archived && result.type == SearchEntityType.Channel
+    val mutedArchived = result.archivedNow && result.type == SearchEntityType.Channel
     val typography = RaftTheme.typography
     Row(
         modifier =
@@ -456,24 +468,38 @@ internal fun SharedHomeSearchEntityRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                // The Bot tag in the kind tags' outline look (web `AppBotBadge appearance="outline"`).
+                // One mark at most (web EntityResultRow): an App Bot's is its Bot badge in the
+                // outline look (web `AppBotBadge appearance="outline"`).
                 if (appBot != null) {
                     RaftAppBotBadge(identity = appBot, botName = result.title, appearance = RaftBadgeAppearance.Outline)
                 } else {
-                    SharedHomeEntityTypeBadge(result.type, agent = result.showPresence, muted = mutedArchived)
-                }
-                if (result.archived) {
-                    RaftBadge(
-                        text = stringResource(Res.string.channel_settings_status_archived),
-                        appearance = RaftBadgeAppearance.Soft,
-                        variant = if (mutedArchived) RaftBadgeVariant.Muted else RaftBadgeVariant.Warning
-                    )
+                    result.homeSearchEntityBadge()?.let { SharedHomeSearchEntityBadge(it) }
                 }
             }
             // A channel says "Channel" (web `searchEntities` subtitle `{ kind: "channel" }`); one
             // matched by its description shows that instead, cut like a message snippet (web
             // `searchEntitySubtitleForQuery`): only when the description holds a hit.
             val channelLabel = stringResource(Res.string.search_entity_channel)
+            if (shown.homeSearchNotJoined) {
+                // web EntityResultRow `notJoined`: "Not joined" in ink, then what the channel is
+                // about (the query's snippet when it hit the description), never the "Channel" label.
+                val notJoined = stringResource(Res.string.search_not_joined)
+                val description =
+                    shown.description?.let { if (homeSearchHighlightRanges(it, query).isEmpty()) it else channelDescriptionSnippet(it, query) }
+                val line = if (description == null) notJoined else "$notJoined · $description"
+                RaftSearchHitText(
+                    text = line,
+                    query = query,
+                    highlightRange = if (description == null) IntRange.EMPTY else (line.length - description.length) until line.length,
+                    prefixLength = notJoined.length,
+                    prefixStyle = SpanStyle(color = RaftColor.TextBlack),
+                    style = typography.callout.withHomeSearchVisualTextScale(visualTextScale),
+                    color = RaftColor.TextMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag(HomeSearchEntityGroupTags.NotJoined),
+                )
+            } else {
             val channelDescriptionHit =
                 shown.type == SearchEntityType.Channel &&
                     shown.subtitleDataRange == null &&
@@ -499,6 +525,7 @@ internal fun SharedHomeSearchEntityRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            }
         }
     }
 }
@@ -516,7 +543,7 @@ internal data class SearchEntityPinTarget(
 )
 
 internal fun searchEntityPinTarget(result: SearchEntityResult): SearchEntityPinTarget? {
-    if (result.archived) return null
+    if (result.archivedNow) return null
     val threadId = result.threadId?.trim()?.takeIf { it.isNotBlank() }
     val memberId = result.memberId?.trim()?.takeIf { it.isNotBlank() }
     return when (result.type) {
@@ -572,24 +599,21 @@ internal fun SettingsServerSidebarOrderSnapshot?.pinnedChannelConversationIds():
         .filter { it.isNotBlank() }
         .toSet()
 
-// raft-ui search-entity Badge: `solid` `default`, or `soft` `muted` on an archived channel.
+// web EntityResultRow's one mark: Archived `soft` `muted`; External (with the external icon on
+// the tile), Agent and Guest in the outline look. No kind tag: the group heading says it.
 @Composable
-// web EntityResultRow: the kind is a machine label after the name in the outline badge
-// (DS `rf-tag`) — Channel, Computer, Agent, or Human; a DM says who it is with (an agent's DM
-// is Agent, a person's Human).
-private fun SharedHomeEntityTypeBadge(type: SearchEntityType, agent: Boolean, muted: Boolean = false) {
+private fun SharedHomeSearchEntityBadge(badge: HomeSearchEntityBadge) {
     RaftBadge(
         text =
-            when (type) {
-                SearchEntityType.Channel -> stringResource(Res.string.search_entity_channel)
-                SearchEntityType.Computer -> stringResource(Res.string.search_entity_computer)
-                SearchEntityType.Agent -> stringResource(Res.string.search_entity_agent)
-                SearchEntityType.Human -> stringResource(Res.string.search_badge_human)
-                SearchEntityType.DirectMessage ->
-                    stringResource(if (agent) Res.string.search_entity_agent else Res.string.search_badge_human)
+            when (badge) {
+                HomeSearchEntityBadge.Archived -> stringResource(Res.string.channel_settings_status_archived)
+                HomeSearchEntityBadge.External -> stringResource(Res.string.search_badge_external)
+                HomeSearchEntityBadge.Agent -> stringResource(Res.string.search_entity_agent)
+                HomeSearchEntityBadge.Guest -> stringResource(Res.string.search_badge_guest)
             },
-        appearance = RaftBadgeAppearance.Outline,
-        variant = if (muted) RaftBadgeVariant.Muted else RaftBadgeVariant.Default
+        modifier = Modifier.testTag("${HomeSearchEntityGroupTags.Badge}-${badge.name.lowercase()}"),
+        appearance = if (badge == HomeSearchEntityBadge.Archived) RaftBadgeAppearance.Soft else RaftBadgeAppearance.Outline,
+        variant = if (badge == HomeSearchEntityBadge.Archived) RaftBadgeVariant.Muted else RaftBadgeVariant.Default
     )
 }
 

@@ -57,8 +57,8 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Search parity with the web (botiverse/slock staging `packages/web/src/features/search`), on the
  * phone search page:
- * - `search.entities.show-all`: seven destinations match; five show, then "Show all 7"
- *   (`SearchEntityResultsSection`);
+ * - `search.entities.show-all`: seven channels match; "Channels 7" with "Show all" at the heading's
+ *   end, five rows (`SearchEntityResultsSection`);
  * - `search.incomplete`: a Free server's history notice (`HistoryWindowBanner`), then "No matches
  *   yet", where the search got to and Continue searching (`SearchNoResultsState` `searchIncomplete`);
  * - `search.hit-rows.retracted`: a retracted hit shows the muted retracted line, not its text
@@ -124,7 +124,7 @@ class SearchParityScreenshotTest {
             setContent { Host { EntitiesPanel() } }
             onAllNodesWithText("eng-0", substring = true, useUnmergedTree = true).assertCountEquals(5)
 
-            onNodeWithText("Show all 7").performClick()
+            onNodeWithText("Show all").performClick()
             waitForIdle()
             onAllNodesWithText("eng-0", substring = true, useUnmergedTree = true).assertCountEquals(7)
 

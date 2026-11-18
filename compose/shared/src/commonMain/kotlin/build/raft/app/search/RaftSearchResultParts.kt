@@ -165,29 +165,38 @@ internal fun RaftSearchSectionHeading(
     modifier: Modifier = Modifier,
     count: Int? = null,
     countStyle: TextStyle = style,
+    // At the heading's end: a group's "Show all" / "Show fewer" (web SearchEntityResultsSection).
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().padding(start = RaftSearchMetrics.Inset, top = 12.dp, end = RaftSearchMetrics.Inset, bottom = RaftSearchMetrics.ListPaddingVertical),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RaftText(
-            text = label,
-            modifier = Modifier.weight(1f, fill = false),
-            style = style,
-            color = RaftColor.ForegroundHint,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        // web SearchResultsSectionHeading's count: `font-mono text-mono-meta font-normal`.
-        if (count != null) {
+        Row(
+            Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             RaftText(
-                text = count.toString(),
-                style = countStyle,
+                text = label,
+                modifier = Modifier.weight(1f, fill = false),
+                style = style,
                 color = RaftColor.ForegroundHint,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
+            // web SearchResultsSectionHeading's count: `font-mono text-mono-meta font-normal`.
+            if (count != null) {
+                RaftText(
+                    text = count.toString(),
+                    style = countStyle,
+                    color = RaftColor.ForegroundHint,
+                    maxLines = 1,
+                )
+            }
         }
+        trailing?.invoke()
     }
 }
 
@@ -289,9 +298,24 @@ internal fun RaftSearchHitText(
     overflow: TextOverflow = TextOverflow.Clip,
     // Only this part of [text] can hold a hit (a row's fixed label stays unmarked); null = all.
     highlightRange: IntRange? = null,
+    // The first [prefixLength] chars in [prefixStyle] ("Not joined" in ink before a description).
+    prefixLength: Int = 0,
+    prefixStyle: SpanStyle? = null,
 ) {
     val ranges = remember(text, query, highlightRange) { homeSearchHighlightRanges(text, query, highlightRange) }
-    val annotated = remember(text, ranges) { raftSearchHitAnnotatedString(text, ranges) }
+    val annotated =
+        remember(text, ranges, prefixLength, prefixStyle) {
+            val hits = raftSearchHitAnnotatedString(text, ranges)
+            val end = prefixLength.coerceAtMost(text.length)
+            if (prefixStyle == null || end <= 0) {
+                hits
+            } else {
+                buildAnnotatedString {
+                    append(hits)
+                    addStyle(prefixStyle, 0, end)
+                }
+            }
+        }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val fill = RaftColor.You
     RaftText(

@@ -675,8 +675,9 @@ class ChannelRepositoryDataSourceTest {
     }
 
     @Test
-    fun homeAsksForArchivedChannelsAndKeepsThemOutOfTheSidebar() = runBlocking {
-        // web channelStore: `GET /channels?archived=include`; Home keeps the archived ones for search only.
+    fun onlyTheComposerChannelListAsksForArchivedChannels() = runBlocking {
+        // Home keeps the server's default (archived left out): global search finds archived
+        // channels through core's search (`GET /api/search?app=channels`), not the Home list.
         val channels =
             """[{"id":"channel-1","name":"general","type":"channel","joined":true},""" +
                 """{"id":"channel-old","name":"old","type":"channel","joined":true,"archivedAt":"2026-11-01T00:00:00.000Z"}]"""
@@ -693,9 +694,8 @@ class ChannelRepositoryDataSourceTest {
         val repository = RealChannelRepository(sampleStore(), network)
 
         val home = assertIs<DataResult.Content<HomeSnapshot>>(repository.getHome(ServerId("server-1"))).data
-        assertEquals(listOf("archived" to "include"), network.queriesByPath["channels"])
+        assertEquals(emptyList(), network.queriesByPath["channels"])
         assertEquals(listOf("channel-1"), home.channels.map { it.channelId.value })
-        assertEquals(listOf("channel-old"), home.archivedChannels.map { it.channelId.value })
 
         // Other channel lists keep the server's default (archived left out)...
         network.queriesByPath.clear()

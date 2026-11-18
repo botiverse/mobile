@@ -394,7 +394,8 @@ fun RaftSearchResultIcon(glyph: RaftGlyph, modifier: Modifier = Modifier) {
 /**
  * raft-ui `SearchResultsSectionHeading`: [label] in `text-footnote` bold `foreground-hint`,
  * after an optional 14dp [icon] (Recent conversations' clock) and before an optional [count]
- * (`text-mono-meta`), 8dp apart; `px-5 pt-3 pb-2`. A heading for screen readers.
+ * (`text-mono-meta`), 8dp apart; `px-5 pt-3 pb-2`. A heading for screen readers. [trailing] sits
+ * at the heading's end (a group's "Show all": raft-design list-row.md › Group headings).
  */
 @Composable
 fun RaftSearchSectionHeader(
@@ -402,27 +403,34 @@ fun RaftSearchSectionHeader(
     modifier: Modifier = Modifier,
     icon: RaftGlyph? = null,
     count: Int? = null,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     Row(
         modifier
             .fillMaxWidth()
-            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 8.dp)
-            .semantics(mergeDescendants = true) { heading() },
+            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (icon != null) RaftGlyphIcon(icon, size = 14.dp, color = colors.foregroundHint)
-        RaftText(
-            label,
-            modifier = Modifier.weight(1f, fill = false),
-            style = typography.footnote.copy(fontWeight = FontWeight.Bold),
-            color = colors.foregroundHint,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (count != null) RaftText(count.toString(), style = typography.monoMeta, color = colors.foregroundHint, maxLines = 1)
+        Row(
+            Modifier.weight(1f).semantics(mergeDescendants = true) { heading() },
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) RaftGlyphIcon(icon, size = 14.dp, color = colors.foregroundHint)
+            RaftText(
+                label,
+                modifier = Modifier.weight(1f, fill = false),
+                style = typography.footnote.copy(fontWeight = FontWeight.Bold),
+                color = colors.foregroundHint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (count != null) RaftText(count.toString(), style = typography.monoMeta, color = colors.foregroundHint, maxLines = 1)
+        }
+        trailing?.invoke()
     }
 }
 

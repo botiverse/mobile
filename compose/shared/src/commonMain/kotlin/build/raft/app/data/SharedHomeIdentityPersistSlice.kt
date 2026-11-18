@@ -118,7 +118,6 @@ internal fun HomeSnapshot.pruneForHomeIdentityPersist(): HomeSnapshot =
     copy(
         channels = channels.map { it.pruneForHomeIdentityPersist() },
         directMessages = directMessages.map { it.pruneForHomeIdentityPersist() },
-        archivedChannels = archivedChannels.map { it.pruneForHomeIdentityPersist() },
         unreadTotal = 0,
         unreadSource = AppBadgeSource.UNKNOWN,
         serverUnreadCounts = emptyMap(),

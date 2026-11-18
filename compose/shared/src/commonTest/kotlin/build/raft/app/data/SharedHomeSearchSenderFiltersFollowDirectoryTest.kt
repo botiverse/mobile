@@ -72,42 +72,6 @@ class SharedHomeSearchSenderFiltersFollowDirectoryTest {
     }
 
     /**
-     * The Members page lists a guest only to owners and admins (`listedForMembersReader`); search's
-     * people and From filter follow the same rule, whichever directory the app holds.
-     */
-    @Test
-    fun aGuestIsSearchableOnlyByReadersTheMembersPageShowsGuestsTo() = runBlocking {
-        val cases =
-            listOf(
-                "member" to listOf("user-a"),
-                null to listOf("user-a"),
-                "admin" to listOf("user-a", "guest-g"),
-                "owner" to listOf("user-a", "guest-g"),
-            )
-        for ((viewerRole, expected) in cases) {
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-            val repository =
-                MutableMemberRepository(
-                    listOf(member("user-a", "Artin", MemberKind.Human), guest("guest-g", "Gwen")),
-                    viewerRole = viewerRole,
-                )
-            val store =
-                SharedHomeSearchSavedStore(
-                    authStore = InMemoryRaftAuthSessionStore(session()),
-                    savedRepository = EmptySavedRepository,
-                    searchRepository = EmptySearchRepository,
-                    serverMembersStore = SharedServerMembersStore(repository),
-                    scope = scope,
-                )
-
-            store.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
-
-            awaitSenderFilterIds(store, expected)
-            scope.cancel()
-        }
-    }
-
-    /**
      * The `@` list matches the web: its directory part hides a guest from a reader who may not see
      * guests (the server's member list leaves them out for such a reader), while a guest in the
      * mention channel's own roster is offered, as the web's channel candidates are.

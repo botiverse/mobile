@@ -117,36 +117,22 @@ class SettingsHomeSearchEntityRankingTest {
     }
 
     @Test
-    fun archivedChannelsRankBelowLiveOnesAndNotJoinedBelowJoinedWhateverTheMatch() {
-        // slock #14228 (xxchan, #triage:666d1506): "onboarding" put archived onboarding-<name>
-        // channels above wg-onboarding-v3.
-        fun channel(id: String, name: String, subtitle: String? = null, joined: Boolean = true, archived: Boolean = false) =
-            HomeChannelRow(threadId = ThreadId(id), channelId = ChannelId(id), name = name, subtitle = subtitle, joined = joined, archived = archived)
+    fun theLocalFirstPaintRanksByMatchAloneWithNoStatusTier() {
+        // The server ranks channels by their status (docs/contracts/web-search.md "Ranking"); the
+        // local rows that show before it answers are the composer ranker's, with no tier: archived
+        // and not-joined channels of an equal match keep the loaded order.
+        fun channel(id: String, name: String, joined: Boolean = true, archived: Boolean = false) =
+            HomeChannelRow(threadId = ThreadId(id), channelId = ChannelId(id), name = name, joined = joined, archived = archived)
         val keys =
             resultsWithChannels(
-                "onboarding",
+                "ops",
                 listOf(
-                    channel("a1", "onboarding-xxchan02", archived = true),
-                    channel("a2", "onboarding-qizhi-wang", joined = false, archived = true),
-                    channel("p1", "onboarding-zhiqiang-zhou", joined = false),
-                    channel("w1", "wg-onboarding-v3"),
-                    channel("t1", "team-management", subtitle = "Team organization and onboarding."),
+                    channel("a1", "ops-alpha", archived = true),
+                    channel("n1", "ops-bravo", joined = false),
+                    channel("j1", "ops-charlie"),
                 ),
             ).map { it.key }
-        // Joined and live (name before description), then live but not joined, then archived.
-        assertEquals(
-            listOf("conversation:w1", "conversation:t1", "conversation:p1", "conversation:a1", "conversation:a2"),
-            keys,
-        )
-
-        // An exact name still comes first whatever its tier (Enter goes to it), and a loose fuzzy
-        // match in a live channel still trails a strong one elsewhere.
-        val exact =
-            resultsWithChannels(
-                "design",
-                listOf(channel("j1", "dev-sign-off"), channel("u1", "design", joined = false, archived = true), channel("s1", "design-system", joined = false)),
-            ).map { it.key }
-        assertEquals(listOf("conversation:u1", "conversation:s1", "conversation:j1"), exact)
+        assertEquals(listOf("conversation:a1", "conversation:n1", "conversation:j1"), keys)
     }
 
     private fun resultsWithChannels(query: String, channels: List<HomeChannelRow>): List<SearchEntityResult> {

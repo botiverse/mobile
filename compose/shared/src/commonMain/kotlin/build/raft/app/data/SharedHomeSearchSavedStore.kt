@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.listedForMembersReaderRole
 import build.raft.app.withKnownLatestDelegatedLabelsFrom
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberKind
@@ -150,11 +149,7 @@ internal class SharedHomeSearchSavedStore(
             scope.launch {
                 members.state
                     .map { current ->
-                        senderFiltersOwner?.let { owner ->
-                            val entry = current.entryFor(owner.serverId)
-                            // The reader's role too: it decides whether guests are listed.
-                            owner to (entry?.members to entry?.server?.role)
-                        }
+                        senderFiltersOwner?.let { owner -> owner to current.entryFor(owner.serverId)?.members }
                     }
                     .distinctUntilChanged()
                     .collect { followed -> followed?.first?.let(::followMemberDirectory) }
@@ -183,7 +178,7 @@ internal class SharedHomeSearchSavedStore(
         // An in-flight load publishes the same directory itself; before the first load there is
         // nothing to follow, and a different owner means a server switch is being handled.
         if (!searchOpened || senderFiltersOwner != owner || senderFiltersJob?.isActive == true) return
-        val directory = members.searchDirectoryMembers(owner.serverId)
+        val directory = members.currentServerMembers(owner.serverId)
         if (directory.isEmpty()) return
         val next = directory.toSearchSenderFilters(owner.principalId, owner.serverId)
         val current = _state.value.search
@@ -1125,7 +1120,7 @@ internal class SharedHomeSearchSavedStore(
             return when (val result = store.refreshMembers(serverId, priority)) {
                 is DataResult.Content ->
                     DataResult.Content(
-                        store.searchDirectoryMembers(serverId)
+                        store.currentServerMembers(serverId)
                             .toSearchSenderFilters(currentUserId, serverId)
                     )
                 is DataResult.Empty -> DataResult.Empty(result.reason)
@@ -1135,11 +1130,7 @@ internal class SharedHomeSearchSavedStore(
         }
         return when (val result = memberRepository?.getMembers(priority, serverId)) {
             is DataResult.Content ->
-                DataResult.Content(
-                    result.data.members
-                        .listedForMembersReaderRole(result.data.server.role)
-                        .toSearchSenderFilters(currentUserId, serverId)
-                )
+                DataResult.Content(result.data.members.toSearchSenderFilters(currentUserId, serverId))
             is DataResult.Empty -> DataResult.Empty(result.reason)
             is DataResult.Error -> DataResult.Error(result.error)
             is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
@@ -1935,13 +1926,6 @@ data class SearchSenderFilterItem(
     val isSelf: Boolean = false,
     val avatarWireValue: String? = null
 )
-
-/**
- * The directory search lists (results and the From filter): the Members page's guest rule
- * ([listedForMembersReaderRole]), so a guest shows only to owners and admins.
- */
-private fun SharedServerMembersStore.searchDirectoryMembers(serverId: ServerId): List<MemberProfile> =
-    currentServerMembers(serverId).listedForMembersReaderRole(currentServerMembersEntry(serverId).server?.role)
 
 internal fun List<MemberProfile>.toSearchSenderFilters(
     currentUserId: String,

@@ -76,6 +76,11 @@ data class ArtifactHomeConversationWireDto(
     val type: String,
     /** A DM's peer by display name, as the reader's sidebar shows it (absent for other types). */
     val peerDisplayName: String? = null,
+    /**
+     * `true`: the conversation is archived (slock `workspaceArtifacts.ts` `ArtifactHome`, part of the
+     * search contract). Absent when it isn't, and from older servers: read absent as not archived.
+     */
+    val archived: Boolean? = null,
 )
 
 /** `ArtifactFacts`: raw counts for a card's fact line (web `artifactFacts.ts` formats them). */
@@ -197,6 +202,8 @@ sealed interface ArtifactHome {
         val dm: Boolean,
         val private: Boolean = false,
         val peerDisplayName: String? = null,
+        /** The conversation is archived (search's Artifact row says so). */
+        val archived: Boolean = false,
     ) : ArtifactHome
     data object Server : ArtifactHome
     data object Public : ArtifactHome
@@ -356,6 +363,7 @@ internal fun ArtifactCardWireDto.toArtifactSummaryOrNull(): ArtifactSummary? {
                         dm = it.type == "dm",
                         private = it.type == "private",
                         peerDisplayName = it.peerDisplayName?.takeIf { peer -> peer.isNotBlank() },
+                        archived = it.archived == true,
                     )
                 } ?: run {
                     reportProjectionRowDropped("artifact_summary", "conversation_home_missing")
