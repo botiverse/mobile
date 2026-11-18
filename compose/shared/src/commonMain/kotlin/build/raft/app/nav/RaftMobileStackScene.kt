@@ -54,6 +54,9 @@ import androidx.navigation3.ui.LocalNavAnimatedContentScope
  * draws nothing and takes no input, but its list viewport never shrinks to nothing and grows back
  * (an Activity under another keeps its size; the chat's viewport intents and scroll restore rely
  * on that). A page opened without the push ([RaftStackOpensWithoutMotionKey]) appears in place.
+ *
+ * The root page's entry is an empty slot: [RaftMobilePageStackDisplay] composes the root page itself
+ * and draws it under the scenes when the target scene says so ([RaftMobileStackMotion.rootShown]).
  */
 class RaftMobileStackScene<T : Any>(
     override val entries: List<NavEntry<T>>,
@@ -108,6 +111,18 @@ class RaftMobileStackScene<T : Any>(
                         }
                     }
             }
+        }
+        // The root page is not drawn here but by RaftMobilePageStackDisplay, outside NavDisplay (Hands
+        // 1dd76297); this scene's entry for it is an empty slot. Navigation 3 renders an entry only
+        // in the transition's target scene, so the target scene says whether the root page shows:
+        // on top, or under the push slide. Written while composing, before the display composes the
+        // root page, so it follows in the same frame. This relies on NavDisplay (and so this scene)
+        // composing before RaftMobileStackRootPage in the same composition: keep that order, and keep
+        // scenes out of a subcomposition, or the root page reads this a frame late
+        // (RaftMobileStackShellOnceUiTest covers push, pop and predictive back).
+        if (scope.transition.targetState == EnterExitState.Visible) {
+            val root = entries.first()
+            motion.rootShown = root === top || (root === below && pushed && (entering || sliding))
         }
         entries.forEach { entry ->
             key(entry.contentKey) {
@@ -170,6 +185,12 @@ class RaftMobileStackMotion {
      * loads) only once its push / pop has settled, so that work never lands mid slide.
      */
     var settledTop: Any? by mutableStateOf(null)
+
+    /**
+     * Whether the root page (the app shell) is drawn: on top, or covered by a push still sliding in.
+     * Set by the transition's target [RaftMobileStackScene]; the display draws the root page itself.
+     */
+    var rootShown: Boolean by mutableStateOf(true)
 
     private val slides = HashMap<Any, Animatable<Float, AnimationVector1D>>()
 
