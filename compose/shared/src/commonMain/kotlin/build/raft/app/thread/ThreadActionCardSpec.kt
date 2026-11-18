@@ -57,11 +57,12 @@ internal val ThreadActionCardTypedOnlyTypes: Set<String> = setOf("integration:co
  * The one line a phone shows instead of [this] card, or null to draw the card. `plan:trial` (Cindy's
  * Pro free trial in the owner's DM) is started from Raft on a computer, so by design a phone shows
  * no buttons or fields for it, only "You can try Pro for free. Start it from Raft on your computer."
- * (the web's mobile layout). Keyed on the type, never the spec: its card (an `upgrade_dialog`
- * button) is not drawn. Every other type, known or not, keeps its spec or typed card.
+ * (the web's mobile layout, catalog key `actionCard.trial.onComputer`, botiverse/slock #15450).
+ * Keyed on the type, never the spec: its card (an `upgrade_dialog` button) is not drawn. The Compose desktop app ([desktopHost], `raftPlatformHasFinePointer`)
+ * draws the card as the web on a computer does; so does every other type, known or not.
  */
-internal fun ThreadActionCard.actionCardMobileLine(): StringResource? =
-    if (type.equals(PlanTrialActionCardType, ignoreCase = true)) Res.string.thread_action_card_plan_trial_mobile_line else null
+internal fun ThreadActionCard.actionCardMobileLine(desktopHost: Boolean = raftPlatformHasFinePointer()): StringResource? =
+    if (!desktopHost && type.equals(PlanTrialActionCardType, ignoreCase = true)) Res.string.thread_action_card_plan_trial_mobile_line else null
 
 /**
  * The spec card to draw for [this] card (web `ActionCard` + `readActionCardSpec`), or null for the

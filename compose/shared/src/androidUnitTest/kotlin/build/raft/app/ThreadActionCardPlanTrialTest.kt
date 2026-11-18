@@ -16,6 +16,7 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.app.data.ActionCardSpecButton
 import build.raft.app.data.PlanTrialActionCardType
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.ThreadActionCard
@@ -39,7 +40,7 @@ import org.robolectric.annotation.Config
 
 /**
  * `plan:trial` (Cindy's Pro free trial in the owner's DM): the card's intent is the existing
- * `upgrade_dialog`, but a phone shows none of its controls, only the web mobile layout's one line
+ * `upgrade_dialog`, but a phone (Android, iOS) shows none of its controls, only the web mobile layout's one line
  * "You can try Pro for free. Start it from Raft on your computer.". The card here is the vendored
  * vector's `open_upgrade_dialog_gate` (a reason, a gate notice and an Open button for
  * `upgrade_dialog`), sent as the wire `metadata` (`kind: "action-card"`, `action.type`).
@@ -76,6 +77,7 @@ class ThreadActionCardPlanTrialTest {
     fun aPlanTrialCardIsTheOneLineAndNoCard() {
         val trial = card(PlanTrialActionCardType)
         assertEquals("plan:trial", trial.type)
+        // The Android unit host is a phone (raftPlatformHasFinePointer() is false).
         assertEquals(Res.string.thread_action_card_plan_trial_mobile_line, trial.actionCardMobileLine())
         // Done or ended, still the line: a phone never draws this card.
         assertEquals(Res.string.thread_action_card_plan_trial_mobile_line, card(PlanTrialActionCardType, state = "executed").actionCardMobileLine())
@@ -83,10 +85,20 @@ class ThreadActionCardPlanTrialTest {
     }
 
     @Test
+    fun theDesktopAppDrawsThePlanTrialCard() {
+        val trial = card(PlanTrialActionCardType)
+        // Phones (Android, iOS): the line. The Compose desktop app, like the web on a computer: the card.
+        assertEquals(Res.string.thread_action_card_plan_trial_mobile_line, trial.actionCardMobileLine(desktopHost = false))
+        assertNull(trial.actionCardMobileLine(desktopHost = true))
+        val spec = assertNotNull(trial.actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES))
+        assertTrue(spec.spec.elements.values.any { it is ActionCardSpecButton }, "the desktop card keeps its button")
+    }
+
+    @Test
     fun otherTypesKeepTheirCardKnownOrNot() {
         for (type in listOf("plan:upgrade", "plan:future_kind", "seats:add")) {
             val other = card(type)
-            assertNull(other.actionCardMobileLine(), type)
+            assertNull(other.actionCardMobileLine(desktopHost = false), type)
             // The spec still draws, with its button (no silent drop of a type this build doesn't know).
             assertNotNull(other.actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES), type)
         }
