@@ -24,6 +24,14 @@ timeout_seconds: int          # Max execution time (default: 120)
 max_retries: int              # Retry on flaky failure (default: 2)
 auth_fixture: string          # Canonical bootstrap fixture; `none` disables bootstrap
 launch_route: string          # Route Stamp verifies after canonical bootstrap
+build_variant: alpha | release  # Default alpha. `release`: see "Release-build cases" below
+app_package: string           # Android package under test (release: build.raft.app)
+read_only: bool               # The case changes no account/server state
+forbidden_screens:            # Screens the run must never show (see below)
+  - id: string
+    why: string
+    markers: [string]         # Exact on-screen texts that identify the screen
+on_forbidden_screen: string   # What happens if one is shown (release: run invalid)
 
 # Device requirements
 device:
@@ -70,6 +78,40 @@ expected:
   result: pass | fail | known_issue
   notes: string                # Context for known issues
 ```
+
+## Release-build cases
+
+A case with `build_variant: release` runs on the release build (Android
+package `build.raft.app`), not Alpha. The release build has no QA session
+bootstrap (`QaSessionBootstrapActivity` is debuggable-only), so:
+
+- `auth_fixture` must be `none`; never `alpha-qa`.
+- The runner signs the app in through the product's own login **before** the
+  agent, the recorder or any capture starts (Android:
+  `scripts/qa/release_auto_login.mjs`, see `release-auto-login.md`). The agent
+  never signs in. `environment.credentials_ref` names the QA account.
+- Release cases live in `docs/qa-acceptance/release-build/`, not `cases/`:
+  `cases/` is the frozen Alpha release set, and
+  `scripts/qa/check_release_acceptance_cases.py` rejects any case there that
+  is not `alpha-qa` or not listed in `release-1.7.0-android.json`.
+
+**Forbidden screens.** The evidence gate (`scripts/qa/secure_evidence.mjs`)
+only scans and redacts text files; it never looks at screenshots or video.
+A release run is signed in to a real account, so any screen that shows
+account information (Settings > Account shows the email; Choose server shows
+"Signed in as <email>") must never be screenshotted or recorded. A case lists
+those screens in `forbidden_screens`. If a run shows one anyway, even by a
+mis-tap, the run is **invalid**: its screenshots and recording are deleted,
+nothing is uploaded, and it is re-run. It is not reported as pass or fail,
+and keeping the media with a note is not allowed.
+
+Detection is a manual / agent rule today, not automatic. The natural hook is
+the evidence gate, which already has the "delete everything, upload nothing"
+path, but no case data reaches it (it only gets `--dir`), and the executor
+does not keep a UI dump per turn, so a text check there could not see a
+visit that left only images. An automatic check would need both: the case's
+`forbidden_screens[].markers` passed to the gate, and a per-turn UI dump to
+match them against.
 
 ## Action Reference (android-use CLI mapping)
 

@@ -61,6 +61,14 @@ consumers keep this in sync:
   captures nothing and ends UNKNOWN; `scripts/qa/secure_evidence.mjs` gates
   both evidence uploads. A password field or "Continue as" on screen stops the
   run UNKNOWN.
+- **The evidence gate only scans text files.** `secure_evidence.mjs` redacts
+  the QA email from text evidence (logs, dumps, JSON) and checks for the
+  password; it does **not** cover screenshots or the screen recording. So a
+  page that displays account information (Settings > Account shows the email;
+  "Signed in as <email>") must never be screenshotted or recorded. On a
+  release build (`build_variant: release`, see `qa-acceptance/case-schema.md`)
+  entering such a page makes the run invalid: delete its screenshots and
+  recording, upload nothing, re-run.
 
 ## Timing
 
