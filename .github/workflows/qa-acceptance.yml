@@ -82,6 +82,19 @@ on:
         description: "Performance report label only. Password-mode QA uses the production account API and web origin."
         required: false
         default: "unspecified-ci"
+      # qa/4984-foldable only (never merged): emulator shape and a deterministic driver.
+      emulator_profile:
+        description: "AVD device profile (pixel_6, pixel_fold, pixel_tablet, resizable)"
+        required: false
+        default: "pixel_6"
+      emulator_api:
+        description: "Emulator API level"
+        required: false
+        default: "34"
+      driver:
+        description: "Run this node script (repo path) instead of the M3 agent, e.g. scripts/qa/foldable_4984.mjs"
+        required: false
+        default: ""
 # Minimal token scopes: contents to check out, actions to read ANOTHER run's
 # artifacts for the pinned-bits path (403 'Resource not accessible by
 # integration' on the first --apk-run use, run 29546757069). No write scopes.
@@ -179,7 +192,7 @@ jobs:
   acceptance:
     name: Acceptance run (M3 agent on emulator)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     needs: build
     # Run when build succeeded OR was skipped (pinned-bits inputs replace it).
     if: ${{ always() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
@@ -570,11 +583,12 @@ jobs:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id || '' }}
           STAMP_URL: ${{ inputs.stamp_run_case_id != '' && secrets.STAMP_URL || '' }}
           STAMP_TOKEN: ${{ inputs.stamp_run_case_id != '' && secrets.STAMP_TOKEN || '' }}
+          QA_DRIVER: ${{ inputs.driver || '' }}
         with:
-          api-level: 34
+          api-level: ${{ inputs.emulator_api || '34' }}
           arch: x86_64
           target: google_apis
-          profile: pixel_6
+          profile: ${{ inputs.emulator_profile || 'pixel_6' }}
           ram-size: 4096M
           cores: 2
           emulator-boot-timeout: 1200
@@ -595,7 +609,8 @@ jobs:
             # This run's own emulator (login_phase.mjs): only a device carrying this run's id is typed into or cleared.
             adb shell "echo $GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT > /data/local/tmp/qa-run-owner" || true
             # task #354 fixture seed: give the photo picker a real image.
-            if [ -s qa-fixture-image.png ]; then adb push qa-fixture-image.png /sdcard/Pictures/qa-fixture-image.png && { adb shell cmd media_scanner scan /sdcard/Pictures/qa-fixture-image.png || adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Pictures/qa-fixture-image.png || true; }; fi
+            adb shell 'for i in $(seq 1 60); do [ -d /sdcard/Android ] && touch /sdcard/.qa-probe 2>/dev/null && break; sleep 2; done; mkdir -p /sdcard/Pictures' || true
+            if [ -s qa-fixture-image.png ]; then adb push qa-fixture-image.png /sdcard/Pictures/qa-fixture-image.png && { adb shell cmd media_scanner scan /sdcard/Pictures/qa-fixture-image.png || adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Pictures/qa-fixture-image.png || true; } || true; fi
             bash scripts/qa/install_acceptance_apk.sh
             mkdir -p qa-evidence
             if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then APK="$(find apks -name '*.apk' | head -1)"; node scripts/qa/mobile_login_bootstrap.mjs binding --apk "$APK" --output "$RUNNER_TEMP/stamp-bootstrap-device-binding.json"; bash scripts/qa/stamp_report.sh bootstrap-login "$RUNNER_TEMP/stamp-bootstrap-device-binding.json"; prep_rc=0; timeout --kill-after=10s 180s node scripts/qa/mobile_login_bootstrap.mjs prepare --response "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" --binding "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" --run-case-id "$STAMP_RUN_CASE_ID" --ci-job-ref "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --ready-output "$RUNNER_TEMP/stamp-bootstrap-ready.json" || prep_rc=$?; if [ "$prep_rc" = "0" ]; then bash scripts/qa/stamp_report.sh bootstrap-ready "$RUNNER_TEMP/stamp-bootstrap-ready.json" || prep_rc=$?; fi; if [ "$prep_rc" != "0" ]; then timeout --kill-after=5s 90s node scripts/qa/capture_bootstrap_diagnostics.mjs --out qa-evidence/bootstrap-diagnostics --label failure || true; if ! timeout --kill-after=10s 120s bash scripts/qa/stamp_report.sh bootstrap-failure-terminal "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" "$RUNNER_TEMP/stamp-bootstrap-ready.json"; then PKG="$(cat qa-app-package.txt)"; timeout --kill-after=5s 20s adb shell am force-stop "$PKG" || true; timeout --kill-after=5s 20s adb shell pm clear "$PKG" || true; printf '%s\n' '{"contract":"qa-bootstrap-operator-recovery/v1","reason":"bounded failure-terminal did not confirm cleanup","product_verdict":"NOT_RUN"}' > qa-evidence/bootstrap-operator-recovery-required.json; fi; exit "$prep_rc"; fi; else sleep 8; fi
@@ -607,6 +622,7 @@ jobs:
             if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then timeout --kill-after=5s 90s node scripts/qa/capture_bootstrap_diagnostics.mjs --out qa-evidence/bootstrap-diagnostics --label ready || true; fi
             # Login phase (#222), before the recorder and the agent: the form receives values via stdin.
             # Failures publish a structural UI summary; bootstrap runs record "no login". Only a complete record of this run creates qa-login-ok.
+            if [ -n "$QA_DRIVER" ]; then adb shell settings put system fold_lock_behavior_setting stay_awake_on_fold_key || true; adb shell svc power stayon true || true; adb emu fold || true; sleep 5; adb shell input keyevent 224 || true; adb shell wm dismiss-keyguard || true; adb shell wm size || true; adb shell monkey -p "$(cat qa-app-package.txt)" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true; sleep 3; fi
             rm -f qa-login-ok; PW=true; [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ] && PW=false; node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence && touch qa-login-ok || echo "::error::login phase UNKNOWN: see the protected login UI summary; acceptance evidence withheld"
             adb logcat -c
             # task #14 perf v1: reset gfxinfo counters and stamp the capture
@@ -614,8 +630,8 @@ jobs:
             # advisory — no thresholds).
             adb shell dumpsys gfxinfo "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" reset || true
             date +%s%3N > qa-evidence/perf-started.txt
-            [ -f qa-login-ok ] && adb shell "nohup sh -c 'i=1; while [ \$i -le 8 ]; do screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 180 /sdcard/qa-rec-\$(printf %02d \$i).mp4; i=\$((i+1)); done' >/dev/null 2>&1 &"
-            if [ ! -f qa-login-ok ]; then echo 2 > qa-evidence/agent-rc.txt; exit 0; fi; if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then . "$RUNNER_TEMP/stamp-bootstrap-capture-env-${STAMP_RUN_CASE_ID}.sh"; fi; export MINIMAX_API_KEY="$PI_API_KEY"; env -u QA_TEST_EMAIL -u QA_TEST_PASSWORD node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --max-minutes "$QA_MAX_MINUTES" --no-progress-turns "$QA_NO_PROGRESS_TURNS" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
+            [ -f qa-login-ok ] && [ -z "$QA_DRIVER" ] && adb shell "nohup sh -c 'i=1; while [ \$i -le 8 ]; do screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 180 /sdcard/qa-rec-\$(printf %02d \$i).mp4; i=\$((i+1)); done' >/dev/null 2>&1 &" || true
+            if [ ! -f qa-login-ok ]; then echo 2 > qa-evidence/agent-rc.txt; exit 0; fi; if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then . "$RUNNER_TEMP/stamp-bootstrap-capture-env-${STAMP_RUN_CASE_ID}.sh"; fi; if [ -n "$QA_DRIVER" ]; then env -u QA_TEST_EMAIL -u QA_TEST_PASSWORD timeout --kill-after=20s 3000s node "$QA_DRIVER" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo '{"verdict":"unknown","reason":"deterministic driver: observations only, judged by a human"}' > qa-evidence/verdict.json; node scripts/qa/redact_foldable_evidence.mjs qa-evidence/foldable || true; exit 0; fi; export MINIMAX_API_KEY="$PI_API_KEY"; env -u QA_TEST_EMAIL -u QA_TEST_PASSWORD node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --max-minutes "$QA_MAX_MINUTES" --no-progress-turns "$QA_NO_PROGRESS_TURNS" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
             [ -f qa-login-ok ] && adb logcat -d -v threadtime > qa-evidence/logcat-full.txt 2>&1 || true
             [ -f qa-login-ok ] || exit 0; if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then . "$RUNNER_TEMP/stamp-bootstrap-capture-env-${STAMP_RUN_CASE_ID}.sh"; fi; PKG="$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)"; adb shell pidof "$PKG" >> qa-evidence/app-pids.txt 2>/dev/null || true; node scripts/qa/scope_logcat.mjs --input qa-evidence/logcat-full.txt --output qa-evidence/logcat.txt --verdict qa-evidence/verdict.json --pids qa-evidence/app-pids.txt --package "$PKG" --generation "${QA_CAPTURE_SCOPE_GENERATION:-${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}}" || true
             [ -f qa-login-ok ] && adb shell dumpsys activity top > qa-evidence/activity-top.txt 2>&1 || true
@@ -624,6 +640,7 @@ jobs:
             adb shell pkill -INT screenrecord 2>/dev/null || true
             sleep 3
             adb shell ls /sdcard/qa-rec-*.mp4 2>/dev/null | tr -d '\r' | while read f; do adb pull "$f" qa-evidence/ || true; done
+            if [ -n "$QA_DRIVER" ]; then node scripts/qa/redact_foldable_evidence.mjs qa-evidence || true; fi
             node scripts/qa/secure_evidence.mjs --dir qa-evidence || true
             evidence_rc=0; bash scripts/qa/stamp_report.sh report-evidence qa-evidence || evidence_rc=$?; echo "$evidence_rc" > qa-evidence/stamp-evidence.rc
             if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then cleanup_rc=0; node scripts/qa/mobile_login_bootstrap.mjs cleanup --response "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" --binding "$RUNNER_TEMP/stamp-bootstrap-device-binding.json" --ready "$RUNNER_TEMP/stamp-bootstrap-ready.json" --outcome completed --output "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" --run-case-id "$STAMP_RUN_CASE_ID" --ci-job-ref "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" || cleanup_rc=$?; rc="$cleanup_rc"; if [ "$cleanup_rc" = "0" ]; then cp "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" qa-evidence/bootstrap-cleanup.json; bash scripts/qa/stamp_report.sh bootstrap-terminal completed "$RUNNER_TEMP/stamp-bootstrap-cleanup.json" || rc=$?; else PKG="$(cat qa-app-package.txt)"; adb shell am force-stop "$PKG" || true; adb shell pm clear "$PKG" || true; rm -f "$RUNNER_TEMP/stamp-bootstrap-login-${STAMP_RUN_CASE_ID}.json" "$RUNNER_TEMP/stamp-bootstrap-ready-${STAMP_RUN_CASE_ID}.json"; fi; echo "$rc" > qa-evidence/bootstrap-terminal.rc; fi
@@ -632,6 +649,36 @@ jobs:
       # must appear in logcat, a violation overrides the agent verdict to
       # coverage-invalid (3) — never a product FAIL. Runs after logcat.txt is
       # captured and before upload so the report lands in the artifact.
+      - name: Frame stats for driver recordings
+        if: ${{ always() && inputs.driver != '' }}
+        run: |
+          shopt -s nullglob
+          for f in qa-evidence/foldable/*.mp4; do
+            out="${f%.mp4}.framestats.txt"
+            ffmpeg -hide_banner -loglevel error -i "$f" -vf "signalstats,metadata=print:key=lavfi.signalstats.YAVG:key=lavfi.signalstats.YMIN:key=lavfi.signalstats.YMAX:file=$out.raw" -f null - || true
+            python3 - "$out.raw" "$out" <<'PY' || true
+          import re, sys
+          raw, out = sys.argv[1], sys.argv[2]
+          frames, cur = [], {}
+          for line in open(raw):
+              m = re.match(r"frame:(\d+)\s+pts:(\S+)\s+pts_time:(\S+)", line)
+              if m:
+                  if cur: frames.append(cur)
+                  cur = {"n": int(m.group(1)), "t": float(m.group(3))}
+              m = re.match(r"lavfi\.signalstats\.(\w+)=(\S+)", line)
+              if m: cur[m.group(1)] = float(m.group(2))
+          if cur: frames.append(cur)
+          flat = [f for f in frames if f.get("YMAX", 255) - f.get("YMIN", 0) < 12]
+          with open(out, "w") as o:
+              o.write(f"frames={len(frames)} flat_frames={len(flat)} (YMAX-YMIN<12: blank/solid)\n")
+              if len(frames) > 1:
+                  d = frames[-1]["t"] - frames[0]["t"]
+                  o.write(f"duration={d:.2f}s avg_fps={len(frames)/max(d,0.001):.1f}\n")
+              for f in flat: o.write(f"FLAT frame {f['n']} t={f['t']:.3f} yavg={f.get('YAVG')}\n")
+          PY
+            rm -f "$out.raw"; cat "$out" | head -20
+          done
+
       - name: Required-marker gate
         if: ${{ always() && inputs.require_markers != '' }}
         env:
