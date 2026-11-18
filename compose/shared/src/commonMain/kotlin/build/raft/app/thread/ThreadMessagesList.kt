@@ -960,32 +960,12 @@ private fun ThreadMessagesListContent(
         } else {
             0
         }
-    var actionMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf<RaftPopoverAnchor?>(null) }
-    // A double tap's quick reaction bar (stdrc, 2026-10-29, #proj-raft-ui:911ccc08).
-    var quickReactionBar by remember(threadInstanceKey) { mutableStateOf<ThreadQuickReactionBarRequest?>(null) }
-    // The message row whose hover toolbar shows (web MessageHoverToolbar): drawn over its neighbours.
-    var hoverToolbarMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var classicMenuOverrideMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    // Product analytics: the open menu came from a long press (not the reaction "+" chip), so its
-    // chosen items are `message_action_selected` with surface long_press.
-    var actionMenuFromLongPress by remember(threadInstanceKey) { mutableStateOf(false) }
-    var authorDescriptionPopover by remember(threadInstanceKey) {
-        mutableStateOf<ThreadAuthorDescriptionPopoverRequest?>(null)
-    }
+    val menuState = remember(threadInstanceKey) { ThreadMessageMenuState() }
     LaunchedEffect(listState.isScrollInProgress) {
         if (listState.isScrollInProgress) {
-            authorDescriptionPopover = null
+            menuState.authorDescriptionPopover = null
         }
     }
-    var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    // A move into Backlog picked from a message's task menu: its reason is asked first (web TaskBacklogReasonPopover).
-    var taskBacklogReasonTarget by remember(threadInstanceKey) { mutableStateOf<ThreadTaskBacklogReasonTarget?>(null) }
-    // Add Reaction: the message whose full emoji picker is open (web hover-toolbar picker).
-    var reactionPickerMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    // Where the message menu was, kept for the picker: on wide screens it opens there, like web's.
-    var reactionPickerAnchor by remember(threadInstanceKey) { mutableStateOf<RaftPopoverAnchor?>(null) }
-    var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf<RaftPopoverAnchor?>(null) }
 
     // Long-message collapse: expanded ids, one-way collapsible latch and threshold live for the
     // whole thread open, so a row keeps its state when it scrolls away and back.
@@ -3668,32 +3648,32 @@ private fun ThreadMessagesListContent(
                         onExternalAuthor = onExternalAuthor,
                         showReactionReactors = true,
                         onShowAuthorDescription = { description, anchor ->
-                            authorDescriptionPopover =
+                            menuState.authorDescriptionPopover =
                                 ThreadAuthorDescriptionPopoverRequest(
                                     description = description,
                                     anchor = anchor
                                 )
                         },
                         onShowActions = { message, anchor ->
-                            actionMenuAnchor = anchor
-                            actionMessageId = message.id
-                            classicMenuOverrideMessageId = null
-                            actionMenuFromLongPress = false
+                            menuState.actionMenuAnchor = anchor
+                            menuState.actionMessageId = message.id
+                            menuState.classicMenuOverrideMessageId = null
+                            menuState.actionMenuFromLongPress = false
                             diagnosticsLogger("thread_origin_menu_tap messageId=${message.id}")
                         },
                         writeActionsEnabled = writeActionsEnabled,
                         onShowQuickReactions = { message, anchor ->
-                            quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
+                            menuState.quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
                         },
                         onLongPressMenuOpened = { message ->
-                            if (actionMessageId == message.id) {
-                                actionMenuFromLongPress = true
+                            if (menuState.actionMessageId == message.id) {
+                                menuState.actionMenuFromLongPress = true
                                 RaftProductEvents.messageActionSelected(RaftMessageAction.OpenMenu, inThread = false)
                             }
                         },
                         onOpenTaskStatusMenu = { message, anchor ->
-                            taskStatusMenuMessageId = message.id
-                            taskStatusMenuAnchor = anchor
+                            menuState.taskStatusMenuMessageId = message.id
+                            menuState.taskStatusMenuAnchor = anchor
                         },
                         onMentionAuthor = onMentionAuthor,
                         agentStatusResolver = agentStatusResolver,
@@ -3713,7 +3693,7 @@ private fun ThreadMessagesListContent(
                         },
                         popupOpen =
                             renderPayload.originMessage?.id?.let { originId ->
-                                actionMessageId == originId || quickReactionBar?.messageId == originId
+                                menuState.actionMessageId == originId || menuState.quickReactionBar?.messageId == originId
                             } == true,
                         hoverToolbar =
                             renderPayload.originMessage?.let { origin ->
@@ -3727,7 +3707,7 @@ private fun ThreadMessagesListContent(
                                             writeActionsEnabled = writeActionsEnabled
                                         ),
                                     onShowReactions = { anchor ->
-                                        quickReactionBar =
+                                        menuState.quickReactionBar =
                                             ThreadQuickReactionBarRequest(origin.id, anchor, fromHoverToolbar = true)
                                     },
                                     onForward = { onForwardMessage(origin.id) },
@@ -3949,7 +3929,7 @@ private fun ThreadMessagesListContent(
                 // The row showing its hover toolbar draws over its neighbours: the toolbar reaches
                 // 18dp into the row above, which a reversed list draws later.
                 val raisedForHoverToolbar by remember(message.id) {
-                    derivedStateOf { hoverToolbarMessageId == message.id }
+                    derivedStateOf { menuState.hoverToolbarMessageId == message.id }
                 }
                 Column(
                     modifier =
@@ -4066,7 +4046,7 @@ private fun ThreadMessagesListContent(
                                     inlineReplyParticipantsById = inlineReplyParticipantsById,
                                     focused = activeFocusedMessageId == message.id,
                                     searchMatch = activeInlineSearchMessageId == message.id,
-                                    popupOpen = actionMessageId == message.id || quickReactionBar?.messageId == message.id,
+                                    popupOpen = menuState.actionMessageId == message.id || menuState.quickReactionBar?.messageId == message.id,
                                     hoverToolbar =
                                         threadMessageHoverToolbarActions(
                                             message = message,
@@ -4078,16 +4058,16 @@ private fun ThreadMessagesListContent(
                                                     writeActionsEnabled = writeActionsEnabled
                                                 ),
                                             onShowReactions = { anchor ->
-                                                quickReactionBar =
+                                                menuState.quickReactionBar =
                                                     ThreadQuickReactionBarRequest(message.id, anchor, fromHoverToolbar = true)
                                             },
                                             onForward = { onForwardMessage(message.id) },
                                             onToggleSave = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
                                             onShownChange = { shown ->
                                                 if (shown) {
-                                                    hoverToolbarMessageId = message.id
-                                                } else if (hoverToolbarMessageId == message.id) {
-                                                    hoverToolbarMessageId = null
+                                                    menuState.hoverToolbarMessageId = message.id
+                                                } else if (menuState.hoverToolbarMessageId == message.id) {
+                                                    menuState.hoverToolbarMessageId = null
                                                 }
                                             }
                                         ),
@@ -4113,16 +4093,16 @@ private fun ThreadMessagesListContent(
                                     isMarkdownTagValid = isMarkdownTagValid,
                                     onShowActions = { anchor ->
                                         if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
-                                            actionMenuAnchor = anchor
-                                            actionMessageId = message.id
-                                            classicMenuOverrideMessageId = null
-                                            actionMenuFromLongPress = false
+                                            menuState.actionMenuAnchor = anchor
+                                            menuState.actionMessageId = message.id
+                                            menuState.classicMenuOverrideMessageId = null
+                                            menuState.actionMenuFromLongPress = false
                                             diagnosticsLogger("thread_message_menu_tap messageId=${message.id}")
                                         }
                                     },
                                     onLongPressMenuOpened = {
-                                        if (actionMessageId == message.id) {
-                                            actionMenuFromLongPress = true
+                                        if (menuState.actionMessageId == message.id) {
+                                            menuState.actionMenuFromLongPress = true
                                             RaftProductEvents.messageActionSelected(
                                                 RaftMessageAction.OpenMenu,
                                                 threadMessageIsReplyInThread(
@@ -4137,18 +4117,18 @@ private fun ThreadMessagesListContent(
                                     onExternalAuthor = onExternalAuthor,
                                     onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                                     onShowQuickReactions = { anchor ->
-                                        quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
+                                        menuState.quickReactionBar = ThreadQuickReactionBarRequest(message.id, anchor)
                                     },
                                     onOpenTask = { onThreadEvent("openTask", it, null, null) },
                                     onOpenTaskStatusMenu = { anchor ->
-                                        taskStatusMenuMessageId = message.id
-                                        taskStatusMenuAnchor = anchor
+                                        menuState.taskStatusMenuMessageId = message.id
+                                        menuState.taskStatusMenuAnchor = anchor
                                     },
                                     onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
                                     onToggleSave = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
                                     showReactionReactors = true,
                                     onShowAuthorDescription = { description, anchor ->
-                                        authorDescriptionPopover =
+                                        menuState.authorDescriptionPopover =
                                             ThreadAuthorDescriptionPopoverRequest(
                                                 description = description,
                                                 anchor = anchor
@@ -4540,16 +4520,16 @@ private fun ThreadMessagesListContent(
             onThreadEvent = onThreadEvent,
             diagnosticsLogger = diagnosticsLogger,
         )
-        authorDescriptionPopover?.let { request ->
+        menuState.authorDescriptionPopover?.let { request ->
             ThreadAuthorDescriptionPopover(
                 request = request,
-                onDismiss = { authorDescriptionPopover = null }
+                onDismiss = { menuState.authorDescriptionPopover = null }
             )
         }
         // Product analytics: one chosen long-press menu item (`message_action_selected`, surface
         // long_press). Nothing is sent for a menu that did not come from a long press.
         fun trackLongPressMenuAction(message: RaftThreadMessageItem, action: RaftMessageAction?) {
-            if (action == null || !actionMenuFromLongPress) return
+            if (action == null || !menuState.actionMenuFromLongPress) return
             RaftProductEvents.messageActionSelected(
                 action,
                 threadMessageIsReplyInThread(renderPayload.replyThreadSurface, renderPayload.originMessage?.id, message.id)
@@ -4619,8 +4599,8 @@ private fun ThreadMessagesListContent(
                         onAddReaction = {
                             close()
                             trackTool(ThreadNewMessageMenuTool.AddReaction)
-                            reactionPickerAnchor = anchor
-                            reactionPickerMessageId = message.id
+                            menuState.reactionPickerAnchor = anchor
+                            menuState.reactionPickerMessageId = message.id
                         },
                         onCopyLink = {
                             close()
@@ -4727,9 +4707,9 @@ private fun ThreadMessagesListContent(
             // Stable slot reference: rows never read this, so republishing does not recompose them.
             SideEffect { inPlaceSelectionMenuHost.selectionMenu.publish(selectionMenu) }
         }
-        actionMessageId?.let { messageId ->
+        menuState.actionMessageId?.let { messageId ->
             val resolvedActionAnchor =
-                actionMenuAnchor?.takeIf { it.belongsTo(threadMessageMenuOwnerIdentity(messageId)) }
+                menuState.actionMenuAnchor?.takeIf { it.belongsTo(threadMessageMenuOwnerIdentity(messageId)) }
                     ?: return@let
             ThreadMessageMenuKeepsComposerFocus(messageId)
             renderPayload.threadActionMessage(messageId, linkedTasksProjection)?.let { message ->
@@ -4751,8 +4731,8 @@ private fun ThreadMessagesListContent(
                         originReplyMetadata = renderPayload.originMessage?.let(replyMetadataByParentId::threadReplyMetadataFor)
                     )
                 val closeActionMenu: () -> Unit = {
-                    actionMessageId = null
-                    classicMenuOverrideMessageId = null
+                    menuState.actionMessageId = null
+                    menuState.classicMenuOverrideMessageId = null
                     inPlaceSelectionMenuHost?.contextMenuSelectionCopy = null
                     inPlaceSelectionMenuHost?.contextMenuLink = null
                 }
@@ -4791,8 +4771,8 @@ private fun ThreadMessagesListContent(
                 val onAddReaction: () -> Unit = {
                     closeActionMenu()
                     trackLongPressMenuAction(message, RaftMessageAction.OpenReactionPicker)
-                    reactionPickerAnchor = resolvedActionAnchor
-                    reactionPickerMessageId = message.id
+                    menuState.reactionPickerAnchor = resolvedActionAnchor
+                    menuState.reactionPickerMessageId = message.id
                 }
                 val onTranslate: () -> Unit = {
                     closeActionMenu()
@@ -4820,7 +4800,7 @@ private fun ThreadMessagesListContent(
                     onThreadEvent("convertMessageToTask", message.id, null, null)
                 }
                 val variant =
-                    if (classicMenuOverrideMessageId == message.id) {
+                    if (menuState.classicMenuOverrideMessageId == message.id) {
                         ThreadMessageMenuVariant.Classic
                     } else {
                         threadMessageMenuVariant(
@@ -4845,7 +4825,7 @@ private fun ThreadMessagesListContent(
                         onTranslate = actions.tools.onTranslate,
                         onSelect = actions.tools.onSelect,
                         onMore = {
-                            classicMenuOverrideMessageId = message.id
+                            menuState.classicMenuOverrideMessageId = message.id
                             diagnosticsLogger("thread_message_menu_compact_more messageId=${message.id}")
                         },
                         onAddReaction = actions.tools.onAddReaction,
@@ -4963,8 +4943,8 @@ private fun ThreadMessagesListContent(
                 }
             }
         }
-        quickReactionBar?.let { request ->
-            val closeQuickReactionBar: () -> Unit = { quickReactionBar = null }
+        menuState.quickReactionBar?.let { request ->
+            val closeQuickReactionBar: () -> Unit = { menuState.quickReactionBar = null }
             val message =
                 request.anchor.takeIf { it.belongsTo(threadMessageMenuOwnerIdentity(request.messageId)) }
                     ?.let { renderPayload.threadActionMessage(request.messageId, linkedTasksProjection) }
@@ -4987,10 +4967,10 @@ private fun ThreadMessagesListContent(
                 diagnosticsLogger = diagnosticsLogger
             )
         }
-        reactionPickerMessageId?.let { messageId ->
+        menuState.reactionPickerMessageId?.let { messageId ->
             val closeReactionPicker: () -> Unit = {
-                reactionPickerMessageId = null
-                reactionPickerAnchor = null
+                menuState.reactionPickerMessageId = null
+                menuState.reactionPickerAnchor = null
             }
             val onPickReaction: (String) -> Unit = { emoji ->
                 closeReactionPicker()
@@ -4999,7 +4979,7 @@ private fun ThreadMessagesListContent(
             // Read here: the shell host and the dialog host compose the picker outside this page.
             val emojiPickerPreferences = rememberRaftEmojiPickerPreferences()
             val windowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
-            val pickerAnchor = reactionPickerAnchor
+            val pickerAnchor = menuState.reactionPickerAnchor
             if (raftEmojiPickerUsesPopover(windowWidthDp, hasAnchor = pickerAnchor != null) && pickerAnchor != null) {
                 ThreadMessageEmojiPickerPopover(
                     messageId = messageId,
@@ -5018,9 +4998,9 @@ private fun ThreadMessagesListContent(
                 )
             }
         }
-        taskStatusMenuMessageId?.let { messageId ->
+        menuState.taskStatusMenuMessageId?.let { messageId ->
             val resolvedTaskStatusAnchor =
-                taskStatusMenuAnchor?.takeIf { it.belongsTo(threadMessageMenuOwnerIdentity(messageId)) }
+                menuState.taskStatusMenuAnchor?.takeIf { it.belongsTo(threadMessageMenuOwnerIdentity(messageId)) }
                     ?: return@let
             renderPayload.threadActionMessage(messageId, linkedTasksProjection)?.let { message ->
                 val selectedStatus = message.taskStatus.threadTaskStatusOption()
@@ -5042,14 +5022,14 @@ private fun ThreadMessagesListContent(
                                 )
                             ),
                         selectedId = selectedStatus.key,
-                        onDismiss = { taskStatusMenuMessageId = null },
+                        onDismiss = { menuState.taskStatusMenuMessageId = null },
                         onSelect = { selectedId ->
-                            taskStatusMenuMessageId = null
+                            menuState.taskStatusMenuMessageId = null
                             val taskId = message.taskId?.takeIf { it.isNotBlank() }
                             val status = selectedId.toSharedThreadTaskStatus()
                             if (taskId != null && status != null && status.name != selectedStatus.key) {
                                 if (taskStatusPickAsksBacklogReason(selectedStatus.status, status)) {
-                                    taskBacklogReasonTarget = ThreadTaskBacklogReasonTarget(taskId, message.taskNumber)
+                                    menuState.taskBacklogReasonTarget = ThreadTaskBacklogReasonTarget(taskId, message.taskNumber)
                                 } else {
                                     onThreadEvent("setTaskStatus", taskId, null, selectedId)
                                 }
@@ -5062,21 +5042,21 @@ private fun ThreadMessagesListContent(
                         taskV2Enabled = linkedTasksProjection.taskV2Enabled,
                         assigneeOptions = taskAssigneeOptions,
                         agentStatusResolver = agentStatusResolver,
-                        onDismiss = { taskStatusMenuMessageId = null },
+                        onDismiss = { menuState.taskStatusMenuMessageId = null },
                         onStatusSelect = { selectedId ->
-                            taskStatusMenuMessageId = null
+                            menuState.taskStatusMenuMessageId = null
                             val taskId = linkedTask.id.value
                             val status = selectedId.toSharedThreadTaskStatus()
                             if (taskId.isNotBlank() && status != null && status.name != selectedStatus.key) {
                                 if (taskStatusPickAsksBacklogReason(linkedTask.status, status)) {
-                                    taskBacklogReasonTarget = ThreadTaskBacklogReasonTarget(taskId, linkedTask.taskNumber ?: message.taskNumber)
+                                    menuState.taskBacklogReasonTarget = ThreadTaskBacklogReasonTarget(taskId, linkedTask.taskNumber ?: message.taskNumber)
                                 } else {
                                     onThreadEvent("setTaskStatus", taskId, null, selectedId)
                                 }
                             }
                         },
                         onAssigneeSelect = { assignee ->
-                            taskStatusMenuMessageId = null
+                            menuState.taskStatusMenuMessageId = null
                             val taskId = linkedTask.id.value
                             if (taskId.isNotBlank()) {
                                 onThreadEvent(
@@ -5091,12 +5071,12 @@ private fun ThreadMessagesListContent(
                 }
             }
         }
-        taskBacklogReasonTarget?.let { target ->
+        menuState.taskBacklogReasonTarget?.let { target ->
             TaskBacklogReasonDialog(
                 taskNumber = target.taskNumber,
-                onDismiss = { taskBacklogReasonTarget = null },
+                onDismiss = { menuState.taskBacklogReasonTarget = null },
                 onConfirm = { reason ->
-                    taskBacklogReasonTarget = null
+                    menuState.taskBacklogReasonTarget = null
                     // The reason rides in `tab` ("" for none), as setTaskAssignee's member id does.
                     onThreadEvent("moveTaskToBacklog", target.taskId, null, reason.orEmpty())
                 }
