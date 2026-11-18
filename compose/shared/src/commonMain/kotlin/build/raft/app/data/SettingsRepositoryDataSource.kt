@@ -480,7 +480,12 @@ class RealSettingsRepository(
             warningLogger("settings_account_connected_accounts_parse_failed")
             return this
         }
-        return DataResult.Content(data.copy(connectedAccounts = accounts))
+        return DataResult.Content(
+            data.copy(
+                connectedAccounts = accounts,
+                passwordConfigured = parseSharedAccountPasswordConfigured(identities.bodyText.orEmpty())
+            )
+        )
     }
 
     override suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> {

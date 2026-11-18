@@ -53,6 +53,7 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SecondFactorStepUpDialogState
 import build.raft.app.data.SecondFactorStepUpIntent
 import build.raft.app.data.SharedAccountLoginSecurityIntent
+import build.raft.app.data.SharedSignedInDevicesIntent
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsState
@@ -289,6 +290,17 @@ private fun SettingsAccountScreen() {
         remember(bridge, environment.storeScope) { RaftSharedStoreRegistry.get(bridge).networkClient(environment.storeScope) }
     val loginSecurityStore = rememberSettingsAccountLoginSecurityStore(loginSecurityNetworkClient)
     val loginSecurityState by loginSecurityStore.state.collectAsState()
+    val signedInDevicesStore = rememberSettingsSignedInDevicesStore(loginSecurityNetworkClient)
+    val signedInDevicesState by signedInDevicesStore.state.collectAsState()
+    val appLoginsStore = rememberSettingsAppLoginsStore(loginSecurityNetworkClient)
+    val appLoginsState by appLoginsStore.state.collectAsState()
+    // The proof dialogs need the account's password state (GET /auth/identities) and its address.
+    val accountSnapshot = (settingsState.account as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
+    val accountPasswordConfigured = accountSnapshot?.passwordConfigured
+    val accountEmail = accountSnapshot?.profile?.email ?: session.value?.user?.email
+    LaunchedEffect(signedInDevicesStore, accountPasswordConfigured, accountEmail) {
+        signedInDevicesStore.dispatch(SharedSignedInDevicesIntent.AccountKnown(accountPasswordConfigured, accountEmail))
+    }
     // A Settings search result opened this page at a setting: its row is brought into view and located.
     ProvideSettingsSearchLocator(pager.pageData.params) {
     SettingsDetailShell(
@@ -346,6 +358,13 @@ private fun SettingsAccountScreen() {
                         ),
                     onRetry = { loginSecurityStore.dispatch(SharedAccountLoginSecurityIntent.Refresh) },
                 ),
+            signedInDevices =
+                SettingsSignedInDevicesUi(
+                    state = signedInDevicesState,
+                    dispatch = signedInDevicesStore::dispatch,
+                    onOpenComputers = { pager.openSettingsComputersPage(environment.storeScope) },
+                ),
+            appLogins = SettingsAppLoginsUi(state = appLoginsState, dispatch = appLoginsStore::dispatch),
             onEvent = { action, value ->
                 handleStandaloneAccountAction(
                     action = action,
@@ -439,6 +458,10 @@ internal fun SettingsAccountContent(
     secondFactorStepUp: SettingsSecondFactorStepUpUi? = null,
     /** Login & security (passkeys, two-step verification); null hides the group (visual fixtures). */
     loginSecurity: SettingsAccountLoginSecurityUi? = null,
+    /** Signed-in devices (web SignedInDevicesSection); null hides it (visual fixtures). */
+    signedInDevices: SettingsSignedInDevicesUi? = null,
+    /** Apps you signed in to with Raft (web AppLoginsSection); null hides it. */
+    appLogins: SettingsAppLoginsUi? = null,
     onEvent: (String, String?) -> Unit
 ) {
     val localizedPayload = payload.localizedPresentationCopy()
@@ -480,6 +503,14 @@ internal fun SettingsAccountContent(
             // auth_second_factor_v1 is off for the person, or before the first read answers).
             if (loginSecurity != null && loginSecurity.state.visible) {
                 item(key = SettingsAccountLoginSecurityGroupTag) { SettingsAccountLoginSecurityGroup(loginSecurity) }
+            }
+            // Web: Signed-in devices after the ways the person signs in, then the Apps they signed in to
+            // (each only while it has something to show; their dialogs are composed after the list).
+            if (signedInDevices != null && signedInDevices.state.visible) {
+                item(key = SettingsSignedInDevicesSectionTag) { SettingsSignedInDevicesSection(signedInDevices) }
+            }
+            if (appLogins != null && appLogins.state.logins.isNotEmpty()) {
+                item(key = SettingsAppLoginsSectionTag) { SettingsAppLoginsSection(appLogins) }
             }
             // Web order: the Account card, Session (Sign out), then Share usage data.
             item {
@@ -532,6 +563,8 @@ internal fun SettingsAccountContent(
                 onDismiss = { if (!busy) pendingDisconnect.value = null }
             )
         }
+        signedInDevices?.let { SettingsSignedInDevicesOverlays(it) }
+        appLogins?.let { SettingsAppLoginsOverlays(it) }
         // Last, so it opens over the Disconnect confirm that asked for it.
         if (secondFactorStepUp != null) {
             SecondFactorStepUpDialog(secondFactorStepUp.state, secondFactorStepUp.onIntent)

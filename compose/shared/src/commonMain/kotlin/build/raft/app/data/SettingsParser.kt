@@ -63,7 +63,9 @@ private data class WireAuthProvider(
 
 @Serializable
 private data class WireAuthIdentitiesResponse(
-    val identities: List<WireAuthIdentity> = emptyList()
+    val identities: List<WireAuthIdentity> = emptyList(),
+    /** slock `userService` `passwordConfigured`: the account has a password (web AccountSection). */
+    val passwordConfigured: Boolean? = null
 )
 
 @Serializable
@@ -140,6 +142,11 @@ fun parseSharedAccountProviderUnlinkResult(bodyText: String): AccountProviderUnl
         linkedProviderIds = response.identities.map { it.provider.trim().lowercase() },
         passwordConfigured = response.passwordConfigured
     )
+}.getOrNull()
+
+/** `GET /api/auth/identities`'s `passwordConfigured`; null when the body is not that shape or lacks it. */
+fun parseSharedAccountPasswordConfigured(identitiesBodyText: String): Boolean? = runCatching {
+    settingsJson.decodeFromString(WireAuthIdentitiesResponse.serializer(), identitiesBodyText).passwordConfigured
 }.getOrNull()
 
 fun parseSharedAccountConnectedAccounts(

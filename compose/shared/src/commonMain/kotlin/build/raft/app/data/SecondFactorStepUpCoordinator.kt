@@ -16,10 +16,50 @@ sealed interface SecondFactorStepUpBanner {
     data class Failed(val serverMessage: String?) : SecondFactorStepUpBanner
 }
 
+/** Can't verify? › Sign it out now with your password: one device, or every other one (web `LostDeviceStepUp.signOut`). */
+enum class SecondFactorStepUpSignOutScope { One, Others }
+
+/**
+ * Can't verify? for a lost device's `lost_device` revoke (web `LostDeviceStepUp`, slock #triage:#386):
+ * what it may sign out with the password alone ([signOut]; null: no password, or nothing left to
+ * sign out), and whether the account has a password ([password] false: the email sets a first one).
+ */
+data class SecondFactorStepUpLostDevice(
+    val signOut: SecondFactorStepUpSignOutScope?,
+    val password: Boolean,
+)
+
+/**
+ * Signing out a lost device (web SecondFactorStepUpHost `recoveryEmail` for the `signOutDevice`
+ * reason): the authenticator may have gone with it, so the dialog offers "Lost the device with your
+ * authenticator?" for the person's own [email]. With [lostDevice] it offers the password email and
+ * Sign it out now with your password; without, the two-step reset by email.
+ */
+data class SecondFactorStepUpRecovery(
+    val email: String,
+    val lostDevice: SecondFactorStepUpLostDevice? = null,
+)
+
+/** Which page of the dialog shows (web VerifyItsYouDialog `view`). */
+enum class SecondFactorStepUpView {
+    Answer,
+    /** "Lost the device with your authenticator?" */
+    Lost,
+    /** The two-step reset email went out. */
+    RecoverySent,
+    /** The password reset (or set) email went out. */
+    PasswordEmailSent,
+}
+
+/** A recovery email's answer (POST /auth/second-factor/recovery, POST /auth/forgot-password). */
+enum class SecondFactorRecoveryEmailResult { Sent, TooManyRequests, Failed }
+
 /**
  * The open "Verify it's you" dialog (web VerifyItsYouDialog): one way to answer at a time, the
  * others as links. [method] is null when the server listed only a passkey: the dialog then says
- * to do this on the web and has no field.
+ * to do this on the web and has no field. [recovery]: signing out a lost device (see
+ * [SecondFactorStepUpRecovery]); [passkeyListed]: the server listed a passkey (the lost page warns
+ * that a passkey on the lost device still signs in).
  */
 data class SecondFactorStepUpDialogState(
     val methods: List<SecondFactorStepUpMethod>,
@@ -28,6 +68,11 @@ data class SecondFactorStepUpDialogState(
     val submitting: Boolean = false,
     val fieldError: SecondFactorStepUpFieldError? = null,
     val banner: SecondFactorStepUpBanner? = null,
+    val recovery: SecondFactorStepUpRecovery? = null,
+    val passkeyListed: Boolean = false,
+    val view: SecondFactorStepUpView = SecondFactorStepUpView.Answer,
+    /** The last recovery email that failed, shown on the lost page. */
+    val recoveryFailure: SecondFactorRecoveryEmailResult? = null,
 ) {
     val canSubmit: Boolean
         get() = method != null && !submitting && normalizedSecondFactorAnswer(input).isNotEmpty()
@@ -44,6 +89,16 @@ sealed interface SecondFactorStepUpIntent {
     data object Cancel : SecondFactorStepUpIntent
     /** Sign In Again (after `session_family_required`): closes like Cancel; the host signs out. */
     data object SignInAgain : SecondFactorStepUpIntent
+    /** "Lost the device with your authenticator?" (only with a [SecondFactorStepUpDialogState.recovery]). */
+    data object ShowLost : SecondFactorStepUpIntent
+    /** Back, from the lost page. */
+    data object ShowAnswer : SecondFactorStepUpIntent
+    /** Reset (or set) your password by email, for the person's own address. */
+    data object RequestPasswordEmail : SecondFactorStepUpIntent
+    /** Reset two-step verification by email, for the person's own address. */
+    data object RequestTwoStepReset : SecondFactorStepUpIntent
+    /** Sign it (them) out now with your password: the caller sends `sign_out` instead. */
+    data object SignOutInstead : SecondFactorStepUpIntent
 }
 
 sealed interface SecondFactorStepUpOutcome<out T> {
@@ -52,6 +107,17 @@ sealed interface SecondFactorStepUpOutcome<out T> {
     /** The dialog was closed: the caller shows nothing. */
     data object Cancelled : SecondFactorStepUpOutcome<Nothing>
 }
+
+/** [SecondFactorStepUpCoordinator.runSigningOut]'s outcome: [SecondFactorStepUpOutcome]'s two, and Sign out instead. */
+sealed interface SecondFactorStepUpSigningOutOutcome<out T> {
+    data class Completed<T>(val result: DataResult<T>) : SecondFactorStepUpSigningOutOutcome<T>
+    data object Cancelled : SecondFactorStepUpSigningOutOutcome<Nothing>
+    /** Can't verify? › Sign it out now with your password: nothing was sent the second time. */
+    data object SignOutInstead : SecondFactorStepUpSigningOutOutcome<Nothing>
+}
+
+/** How the open dialog ended. */
+internal enum class SecondFactorStepUpSettle { Verified, Cancelled, SignOutInstead }
 
 /** Spaces are never part of a code (web `normalizeEnteredCode`). */
 internal fun normalizedSecondFactorAnswer(value: String): String = value.filterNot { it.isWhitespace() }
@@ -67,22 +133,44 @@ private const val TOTP_CODE_LENGTH = 6
  * once share one dialog.
  *
  * The host store forwards the dialog's intents to [accept] and mirrors [state] into its own
- * state through [onStateChange].
+ * state through [onStateChange]. [requestPasswordEmail] and [requestTwoStepReset] send the lost
+ * page's emails (only [runSigningOut] opens that page).
  */
 class SecondFactorStepUpCoordinator(
     private val stepUp: suspend (SecondFactorStepUpAnswer) -> SecondFactorStepUpResult,
     private val onStateChange: (SecondFactorStepUpDialogState?) -> Unit = {},
+    private val requestPasswordEmail: suspend (String) -> SecondFactorRecoveryEmailResult = { SecondFactorRecoveryEmailResult.Failed },
+    private val requestTwoStepReset: suspend (String) -> SecondFactorRecoveryEmailResult = { SecondFactorRecoveryEmailResult.Failed },
 ) {
     private val _state = MutableStateFlow<SecondFactorStepUpDialogState?>(null)
     val state: StateFlow<SecondFactorStepUpDialogState?> = _state.asStateFlow()
 
-    private var pending: CompletableDeferred<Boolean>? = null
+    private var pending: CompletableDeferred<SecondFactorStepUpSettle>? = null
 
     suspend fun <T> run(request: suspend () -> DataResult<T>): SecondFactorStepUpOutcome<T> {
         val first = request()
         val challenge = first.secondFactorStepUpChallengeOrNull() ?: return SecondFactorStepUpOutcome.Completed(first)
-        if (!awaitVerified(challenge)) return SecondFactorStepUpOutcome.Cancelled
+        if (awaitSettled(challenge, recovery = null) != SecondFactorStepUpSettle.Verified) return SecondFactorStepUpOutcome.Cancelled
         return SecondFactorStepUpOutcome.Completed(request())
+    }
+
+    /**
+     * [run] for signing out a lost device (web `withSecondFactorStepUp(request, "signOutDevice",
+     * { lostDevice })`): the dialog also offers [recovery]'s "Lost the device with your
+     * authenticator?", whose Sign it out now with your password ends it with
+     * [SecondFactorStepUpSigningOutOutcome.SignOutInstead] (the caller sends `sign_out`).
+     */
+    suspend fun <T> runSigningOut(
+        recovery: SecondFactorStepUpRecovery,
+        request: suspend () -> DataResult<T>,
+    ): SecondFactorStepUpSigningOutOutcome<T> {
+        val first = request()
+        val challenge = first.secondFactorStepUpChallengeOrNull() ?: return SecondFactorStepUpSigningOutOutcome.Completed(first)
+        return when (awaitSettled(challenge, recovery)) {
+            SecondFactorStepUpSettle.Verified -> SecondFactorStepUpSigningOutOutcome.Completed(request())
+            SecondFactorStepUpSettle.Cancelled -> SecondFactorStepUpSigningOutOutcome.Cancelled
+            SecondFactorStepUpSettle.SignOutInstead -> SecondFactorStepUpSigningOutOutcome.SignOutInstead
+        }
     }
 
     suspend fun accept(intent: SecondFactorStepUpIntent) {
@@ -98,24 +186,84 @@ class SecondFactorStepUpCoordinator(
                 if (text == current.input) current else current.copy(input = text, fieldError = null)
             }
             is SecondFactorStepUpIntent.SwitchMethod -> update { current ->
-                if (current.submitting || intent.method == current.method || intent.method !in current.methods) {
+                val sameAnswer = intent.method == current.method && current.view == SecondFactorStepUpView.Answer
+                if (current.submitting || sameAnswer || intent.method !in current.methods) {
                     current
                 } else {
-                    current.copy(method = intent.method, input = "", fieldError = null, banner = null)
+                    // The lost page's "Use a backup code" comes back to the answer page too.
+                    current.copy(
+                        method = intent.method,
+                        input = "",
+                        fieldError = null,
+                        banner = null,
+                        view = SecondFactorStepUpView.Answer,
+                    )
                 }
             }
             SecondFactorStepUpIntent.Submit -> submit()
             SecondFactorStepUpIntent.Cancel,
-            SecondFactorStepUpIntent.SignInAgain -> if (_state.value?.submitting != true) settle(verified = false)
+            SecondFactorStepUpIntent.SignInAgain ->
+                if (_state.value?.submitting != true) settle(SecondFactorStepUpSettle.Cancelled)
+            SecondFactorStepUpIntent.ShowLost -> update { current ->
+                if (current.submitting || current.recovery == null) {
+                    current
+                } else {
+                    current.copy(view = SecondFactorStepUpView.Lost, recoveryFailure = null)
+                }
+            }
+            SecondFactorStepUpIntent.ShowAnswer -> update { current ->
+                if (current.submitting) current else current.copy(view = SecondFactorStepUpView.Answer)
+            }
+            SecondFactorStepUpIntent.RequestPasswordEmail -> sendRecoveryEmail(password = true)
+            SecondFactorStepUpIntent.RequestTwoStepReset -> sendRecoveryEmail(password = false)
+            SecondFactorStepUpIntent.SignOutInstead -> {
+                val current = _state.value
+                if (current != null && !current.submitting && current.recovery?.lostDevice?.signOut != null) {
+                    settle(SecondFactorStepUpSettle.SignOutInstead)
+                }
+            }
         }
     }
 
-    private suspend fun awaitVerified(challenge: SecondFactorStepUpChallenge): Boolean {
+    /** The lost page's emails: the password one (with a lost device) or the two-step reset. */
+    private suspend fun sendRecoveryEmail(password: Boolean) {
+        val current = _state.value ?: return
+        val recovery = current.recovery ?: return
+        if (current.submitting) return
+        if (password && recovery.lostDevice == null) return
+        val deferred = pending ?: return
+        publish(current.copy(submitting = true, recoveryFailure = null))
+        val result = if (password) requestPasswordEmail(recovery.email) else requestTwoStepReset(recovery.email)
+        if (pending !== deferred) return
+        val shown = _state.value ?: return
+        publish(
+            when (result) {
+                SecondFactorRecoveryEmailResult.Sent ->
+                    shown.copy(
+                        submitting = false,
+                        view = if (password) SecondFactorStepUpView.PasswordEmailSent else SecondFactorStepUpView.RecoverySent,
+                    )
+                else -> shown.copy(submitting = false, recoveryFailure = result)
+            }
+        )
+    }
+
+    private suspend fun awaitSettled(
+        challenge: SecondFactorStepUpChallenge,
+        recovery: SecondFactorStepUpRecovery?,
+    ): SecondFactorStepUpSettle {
         pending?.let { return it.await() }
-        val deferred = CompletableDeferred<Boolean>()
+        val deferred = CompletableDeferred<SecondFactorStepUpSettle>()
         pending = deferred
         val methods = challenge.usableMethods
-        publish(SecondFactorStepUpDialogState(methods = methods, method = methods.firstOrNull()))
+        publish(
+            SecondFactorStepUpDialogState(
+                methods = methods,
+                method = methods.firstOrNull(),
+                recovery = recovery,
+                passkeyListed = "passkey" in challenge.methods,
+            )
+        )
         return try {
             deferred.await()
         } finally {
@@ -130,7 +278,7 @@ class SecondFactorStepUpCoordinator(
     private suspend fun submit() {
         val current = _state.value ?: return
         val method = current.method ?: return
-        if (!current.canSubmit) return
+        if (current.view != SecondFactorStepUpView.Answer || !current.canSubmit) return
         val deferred = pending ?: return
         val entered = normalizedSecondFactorAnswer(current.input)
         val answer =
@@ -145,7 +293,7 @@ class SecondFactorStepUpCoordinator(
         val next = shown.copy(submitting = false)
         when (result) {
             is SecondFactorStepUpResult.Verified,
-            SecondFactorStepUpResult.NotEnabled -> settle(verified = true)
+            SecondFactorStepUpResult.NotEnabled -> settle(SecondFactorStepUpSettle.Verified)
             SecondFactorStepUpResult.CodeInvalid ->
                 publish(
                     next.copy(
@@ -168,11 +316,11 @@ class SecondFactorStepUpCoordinator(
         }
     }
 
-    private fun settle(verified: Boolean) {
+    private fun settle(outcome: SecondFactorStepUpSettle) {
         val deferred = pending ?: return
         pending = null
         publish(null)
-        deferred.complete(verified)
+        deferred.complete(outcome)
     }
 
     private inline fun update(transform: (SecondFactorStepUpDialogState) -> SecondFactorStepUpDialogState) {
