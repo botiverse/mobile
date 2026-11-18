@@ -759,8 +759,8 @@ private struct ConversationForwardGestureProbe {
         steps.append("toggled forward gesture (value before=\(before) after=\(row.value as? String ?? ""))")
         test.probeAttach(app, name: "forward-setting")
         // Back to Home: two pages (Appearance, Settings).
-        for _ in 0..<3 where !onHome {
-            leftEdgeBack()
+        for _ in 0..<4 where !onHome {
+            goBack()
             _ = waitUntil(4) { self.onHome }
         }
         guard waitUntil(10, { self.onHome }) else { throw ProbeError.missing("Home after Settings") }
@@ -776,7 +776,7 @@ private struct ConversationForwardGestureProbe {
         guard waitUntil(10, { !self.onHome }) else { throw ProbeError.missing("conversation after tapping \(row.label)") }
         steps.append("opened \(row.label)")
         Thread.sleep(forTimeInterval: 3)
-        leftEdgeBack()
+        goBack()
         guard waitUntil(10, { self.onHome }) else { throw ProbeError.missing("Home after back") }
         steps.append("back on Home from \(row.label)")
         // Let the shell register the return and arm the recognizer.
@@ -793,6 +793,17 @@ private struct ConversationForwardGestureProbe {
         } else {
             start.press(forDuration: 0.01, thenDragTo: end)
         }
+    }
+
+    /// The page's own Back button when it shows one (Settings pages keep the edge swipe for
+    /// their own back handlers), else the left-edge back swipe.
+    private func goBack() {
+        let back = app.buttons.matching(NSPredicate(format: "label == %@", "Back")).firstMatch
+        if back.exists && back.frame.height > 0 {
+            test.probeTap(app, x: back.frame.midX, y: back.frame.midY)
+            return
+        }
+        leftEdgeBack()
     }
 
     private func leftEdgeBack() {
