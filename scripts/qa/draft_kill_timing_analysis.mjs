@@ -680,6 +680,86 @@ export function wrapUpVerdict(summary, logcatStats, config) {
   return summary;
 }
 
+/**
+ * The journal write cost, sample by sample, as timing-lines.txt has it (reproducible from that file alone):
+ * 1. A sample is a `draft_journal_written seq=N ... costUs encodeUs storeUs indexUs putUs` line whose
+ *    (logcat pid, seq) matches a `change_received seq=N` line of the same pid; the first such line per
+ *    (pid, seq) counts, repeats and lines without a matching input are excluded (counted as unpaired).
+ * 2. Percentiles: nearest-rank on the sorted values, index floor(q * n) clamped to n - 1 (as quantiles()).
+ * 3. Registration vs update: a line with `indexWrite=1` (the write also registered the draft key in the
+ *    journal index) is "registration", `indexWrite=0` "update". Lines of builds that do not log the field
+ *    are "unlabelled": which of them registered a key cannot be told from the line, so it is not guessed.
+ * 4. Slow = total costUs >= [slowUs]. For each slow sample the dominant part is the one of ENCODE / INDEX /
+ *    PUT holding >= 50% of the total, else "none"; share = sum of a part / sum of totals over slow samples.
+ */
+export function costSplitReport(lines, { slowUs = 1000, listSlowest = 50 } = {}) {
+  const inputs = new Set();
+  const seen = new Set();
+  const samples = [];
+  let unpaired = 0;
+  for (const raw of lines) {
+    if (!raw.includes("RaftDraftTiming")) continue;
+    const l = parseLogcatLine(raw);
+    if (!l || l.tag !== "RaftDraftTiming") continue;
+    const input = /^change_received seq=(\d+) /.exec(l.message);
+    if (input) {
+      inputs.add(`${l.pid}:${input[1]}`);
+      continue;
+    }
+    if (!l.message.startsWith("draft_journal_written ")) continue;
+    const field = (name) => {
+      const m = new RegExp(`\\b${name}=(\\d+)`).exec(l.message);
+      return m ? Number(m[1]) : null;
+    };
+    const key = `${l.pid}:${field("seq")}`;
+    if (field("seq") == null || !inputs.has(key) || seen.has(key)) {
+      unpaired += 1;
+      continue;
+    }
+    seen.add(key);
+    const indexWrite = field("indexWrite");
+    samples.push({
+      key,
+      ts_ms: l.tsMs,
+      total: field("costUs"),
+      encode: field("encodeUs"),
+      index: field("indexUs"),
+      put: field("putUs"),
+      len: field("len"),
+      group: indexWrite == null ? "unlabelled" : indexWrite === 1 ? "registration" : "update",
+    });
+  }
+  const q = (values) => quantiles(values.filter((v) => v != null), "us");
+  const parts = (list) => Object.fromEntries(["total", "encode", "index", "put"].map((k) => [k, q(list.map((s) => s[k]))]));
+  const groups = {};
+  for (const g of ["registration", "update", "unlabelled"]) {
+    const list = samples.filter((s) => s.group === g);
+    if (list.length) groups[g] = parts(list);
+  }
+  const slow = samples.filter((s) => s.total >= slowUs).sort((a, b) => b.total - a.total);
+  const dominant = { encode: 0, index: 0, put: 0, none: 0 };
+  for (const s of slow) {
+    const top = ["encode", "index", "put"].map((k) => [k, s[k] ?? 0]).sort((a, b) => b[1] - a[1])[0];
+    dominant[top[1] >= s.total * 0.5 ? top[0] : "none"] += 1;
+  }
+  const sum = (k) => slow.reduce((a, s) => a + (s[k] ?? 0), 0);
+  const totalSlow = sum("total");
+  return {
+    method: "paired by (pid, seq); first line per input; nearest-rank percentiles; slow = costUs >= slowUs; dominant part >= 50% of the total",
+    slow_us: slowUs,
+    samples: samples.length,
+    unpaired,
+    all: parts(samples),
+    groups,
+    slow: {
+      count: slow.length,
+      share_pct: totalSlow ? { encode: Math.round((100 * sum("encode")) / totalSlow), index: Math.round((100 * sum("index")) / totalSlow), put: Math.round((100 * sum("put")) / totalSlow) } : null,
+      dominant,
+      slowest: slow.slice(0, listSlowest),
+    },
+  };
+}
+
 /** Per-bucket counts for the result table. */
 export function summarize(runs) {
   const groups = new Map();

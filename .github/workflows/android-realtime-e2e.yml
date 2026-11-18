@@ -186,6 +186,7 @@ jobs:
             ${{ env.EVIDENCE }}/results.md
             ${{ env.EVIDENCE }}/runs.jsonl
             ${{ env.EVIDENCE }}/timing-lines.txt
+            ${{ env.EVIDENCE }}/cost-split.json
             ${{ env.EVIDENCE }}/*.png
           if-no-files-found: warn
           retention-days: 30

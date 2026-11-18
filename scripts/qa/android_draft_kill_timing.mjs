@@ -24,7 +24,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { channelActivityReport, errorBodySummary, parseMessagesResponse, queryWithReauth, sendDeliveryCount, creditedBucket, createLogcatStats, forEachLogLine, isEvidenceLine, wrapUpVerdict, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
+import { costSplitReport, channelActivityReport, errorBodySummary, parseMessagesResponse, queryWithReauth, sendDeliveryCount, creditedBucket, createLogcatStats, forEachLogLine, isEvidenceLine, wrapUpVerdict, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, value, index, all) => {
@@ -274,6 +274,14 @@ async function stopCapture() {
   }
   fs.renameSync(partial, path.join(OUT, "timing-lines.txt"));
   fs.rmSync(LOGCAT_RAW);
+  // The journal cost split per sample, from the filtered evidence file only (scripts/qa/draft_kill_cost_split.mjs
+  // gives the same from a downloaded timing-lines.txt).
+  try {
+    const report = costSplitReport(fs.readFileSync(path.join(OUT, "timing-lines.txt"), "utf8").split("\n"));
+    fs.writeFileSync(path.join(OUT, "cost-split.json"), `${JSON.stringify(report, null, 1)}\n`);
+  } catch (error) {
+    summary.cost_split_error = redact(String(error?.message ?? error)).slice(0, 200);
+  }
   return stats.result();
 }
 

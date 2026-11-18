@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { JOURNAL_MISSING_TOLERANCE, acceptanceUnmet, channelActivityReport, creditedBucket, errorBodySummary, queryWithReauth, sendDeliveryCount, createLogcatStats, forEachLogLine, isEvidenceLine, journalCoverage, parseMessagesResponse, wrapUpVerdict } from "./draft_kill_timing_analysis.mjs";
+import { JOURNAL_MISSING_TOLERANCE, acceptanceUnmet, costSplitReport, channelActivityReport, creditedBucket, errorBodySummary, queryWithReauth, sendDeliveryCount, createLogcatStats, forEachLogLine, isEvidenceLine, journalCoverage, parseMessagesResponse, wrapUpVerdict } from "./draft_kill_timing_analysis.mjs";
 
 const PKG = "build.raft.app.alpha";
 const PID = 4242;
@@ -343,4 +343,28 @@ test("the recents gate applies only when the round runs the recents swipe", () =
   const noRecents = { ...timingsPass(), runs: timingsPass().runs.filter((r) => r.mode !== "recents") };
   assert.equal(wrapUpVerdict(structuredClone(noRecents), statsOf(edit(1, 1, 100)), { ...config, recents: false }).result, "pass");
   assert.equal(wrapUpVerdict(structuredClone(noRecents), statsOf(edit(1, 1, 100)), config).result, "fail");
+});
+
+test("the cost split report is reproducible from timing lines: pairing, groups, slow-sample dominance", () => {
+  const cost = (sec, seq, t, e, i, p, indexWrite) =>
+    line(sec, PID, "RaftDraftTiming", `draft_journal_written seq=${seq} path=sync costUs=${t} encodeUs=${e} storeUs=${i + p} indexUs=${i} putUs=${p}${indexWrite == null ? "" : ` indexWrite=${indexWrite}`} len=3 uptimeMs=1`);
+  const lines = [
+    change(1, 1), cost(1, 1, 1500, 100, 1200, 150, 1),
+    change(2, 2), cost(2, 2, 400, 100, 100, 150, 0),
+    change(3, 3), cost(3, 3, 5000, 4000, 300, 500, 0),
+    cost(3.1, 3, 9999, 9000, 1, 1, 0), // repeat of seq 3: excluded
+    cost(4, 77, 8000, 1, 1, 7000, 0), // no input 77: excluded
+    change(5, 5), cost(5, 5, 2000, 600, 600, 700, 0),
+  ];
+  const r = costSplitReport(lines);
+  assert.equal(r.samples, 4);
+  assert.equal(r.unpaired, 2);
+  assert.equal(r.groups.registration.total.samples, 1);
+  assert.equal(r.groups.update.total.samples, 3);
+  assert.equal(r.groups.update.total.max_us, 5000);
+  assert.equal(r.slow.count, 3);
+  assert.deepEqual(r.slow.dominant, { encode: 1, index: 1, put: 0, none: 1 });
+  assert.deepEqual(r.slow.slowest.map((s) => s.key), [`${PID}:3`, `${PID}:5`, `${PID}:1`]);
+  // Lines without indexWrite (older builds) are unlabelled, never guessed.
+  assert.equal(costSplitReport([change(1, 1), cost(1, 1, 500, 100, 200, 200, null)]).groups.unlabelled.total.samples, 1);
 });
