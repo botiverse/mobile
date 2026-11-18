@@ -353,7 +353,8 @@ internal fun MembersAgentActivityRow(
         }
     val colors = RaftTheme.colors
     val detailStyle = RaftTheme.typography.monoMeta
-    val titleText = memoryLimit?.title ?: membersActivityStatusTitle(activity) ?: activity.title
+    val titleText =
+        memoryLimit?.title ?: membersActivityStatusTitle(activity) ?: membersActivityTrajectoryTitle(activity) ?: activity.title
     // raft-ui Timeline as an activity log: presence-coloured pixels, title and detail in
     // Space Mono, the time on the right, a `subagent` tag on a subagent's step. The title is
     // web LOG_TITLE_CLASS: `text-foreground-muted wrap-anywhere`, wrapping instead of clipping.
@@ -512,6 +513,24 @@ private fun membersActivityStatusTitle(activity: AgentActivityEntry): String? {
     return stringResource(resource)
 }
 
+/**
+ * Web AgentActivityLog ThinkingEntry / OutputEntry / CompactionEntry (`activity.log.thinking`,
+ * `activity.log.output`, `activity.log.compactionStarted` / `compactionFinished`): the fixed
+ * title of a thinking, output or compaction row in this locale. The parsers keep the English
+ * title; it is translated only here. Null for every other row.
+ */
+@Composable
+private fun membersActivityTrajectoryTitle(activity: AgentActivityEntry): String? {
+    val resource = when (activity.type) {
+        "thinking" -> Res.string.member_activity_log_thinking
+        "text" -> Res.string.member_activity_log_output
+        "compaction_started" -> Res.string.member_activity_log_compaction_started
+        "compaction_finished" -> Res.string.member_activity_log_compaction_finished
+        else -> return null
+    }
+    return stringResource(resource)
+}
+
 @Composable
 private fun membersActivitySubagentBadgeLabel(activity: AgentActivityEntry): String? {
     if (!activity.membersActivityHasSubagentBadge()) return null
@@ -529,10 +548,11 @@ private fun AgentActivityEntry.activityTimelineKey(): String =
 private fun String?.membersActivitySortKey(): Long =
     parseRaftTimestampEpochMillisOrNull(this) ?: Long.MIN_VALUE
 
+@Composable
 private fun String?.membersActivityDisplayTime(timeContext: RaftTimeContext): String =
     formatRaftTimestampClockWithSeconds(this, timeContext)
         .takeIf { it.isNotBlank() }
-        ?: "No time"
+        ?: stringResource(Res.string.member_activity_log_no_time)
 
 // raft-ui Timeline > Activity log: the presence colours (busy yellow while working,
 // error orange, online lime when done), `info` for output, stone when offline.

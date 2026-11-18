@@ -569,20 +569,23 @@ internal class SharedAgentDetailStore(
         return result
     }
 
-    fun copyDiagnostics(diagnostics: String, actions: SharedAgentDetailActions) {
+    /** [successLabel] is the caller's localized confirmation; the store carries no UI text of its own. */
+    fun copyDiagnostics(diagnostics: String, actions: SharedAgentDetailActions, successLabel: String) {
         dispatch(SharedAgentDetailIntent.StartDiagnosticAction("copy"))
         actions.copyDiagnostics(diagnostics)
         dispatch(
             SharedAgentDetailIntent.FinishDiagnosticAction(
                 actionKey = "copy",
-                successLabel = "Diagnostics copied"
+                successLabel = successLabel
             )
         )
     }
 
+    /** [successLabel] is the caller's localized confirmation; the store carries no UI text of its own. */
     suspend fun reportIssue(
         request: SharedAgentIssueReportRequest,
-        actions: SharedAgentDetailActions
+        actions: SharedAgentDetailActions,
+        successLabel: String
     ): DataResult<AgentIssueReportResult> {
         dispatch(SharedAgentDetailIntent.StartDiagnosticAction("report"))
         val result =
@@ -603,7 +606,7 @@ internal class SharedAgentDetailStore(
         dispatch(
             SharedAgentDetailIntent.FinishDiagnosticAction(
                 actionKey = "report",
-                successLabel = "Issue reported".takeIf { error == null },
+                successLabel = successLabel.takeIf { error == null },
                 error = error
             )
         )

@@ -805,7 +805,8 @@ internal fun MembersHumanCreatedAgentRow(
         onClick = onClick,
         divider = divider,
         subtitle = agent.runtime?.takeIf { it.isNotBlank() }?.let { runtimeLabelWithStatus(it, serverId) }
-            ?: profile.detailRoleLabel,
+            ?: profile.roleDescription?.takeIf { it.isNotBlank() }
+            ?: stringResource(Res.string.member_label_agent),
         leading = { MembersStickerAvatar(profile, RaftAvatarSize.Md, memberAvatarResolver) },
         trailing = observedDisplayState?.let { observed ->
             {

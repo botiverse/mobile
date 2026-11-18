@@ -5006,6 +5006,11 @@
     <string name="member_activity_subagents_detail_started">開始</string>
     <string name="member_activity_subagents_detail_time">所要時間</string>
     <string name="member_activity_log_subagent">サブエージェント</string>
+    <string name="member_activity_log_no_time">時刻なし</string>
+    <string name="member_activity_log_thinking">思考</string>
+    <string name="member_activity_log_output">出力</string>
+    <string name="member_activity_log_compaction_started">コンテキストの圧縮を開始</string>
+    <string name="member_activity_log_compaction_finished">コンテキストの圧縮が完了</string>
     <string name="member_activity_log_subagent_with_type">サブエージェント：%1$s</string>
     <string name="member_activity_log_status_idle">待機中</string>
     <string name="member_activity_log_status_thinking">思考中</string>

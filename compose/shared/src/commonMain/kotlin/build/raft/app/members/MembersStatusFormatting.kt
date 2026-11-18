@@ -65,16 +65,6 @@ internal fun MemberProfile.toFixtureRaftAgentStatusIndicatorState(
 internal val MemberProfile.detailHandle: String
     get() = handle.takeIf { it.isNotBlank() }?.let { if (it.startsWith("@")) it else "@$it" } ?: id.value
 
-internal val MemberProfile.detailRoleLabel: String
-    get() =
-        roleDescription?.takeIf { it.isNotBlank() }
-            ?: when (kind) {
-                MemberKind.Agent -> "Agent"
-                MemberKind.Human -> "Human member"
-                MemberKind.System -> "System"
-                MemberKind.External -> "External"
-            }
-
 private fun MemberProfile.membersResolvedAgentStatus(
     summaryStatus: String?,
     summaryActivity: String?

@@ -5006,6 +5006,11 @@
     <string name="member_activity_subagents_detail_started">开始于</string>
     <string name="member_activity_subagents_detail_time">用时</string>
     <string name="member_activity_log_subagent">Subagent</string>
+    <string name="member_activity_log_no_time">无时间</string>
+    <string name="member_activity_log_thinking">思考中</string>
+    <string name="member_activity_log_output">输出</string>
+    <string name="member_activity_log_compaction_started">上下文压缩已开始</string>
+    <string name="member_activity_log_compaction_finished">上下文压缩已完成</string>
     <string name="member_activity_log_subagent_with_type">Subagent：%1$s</string>
     <string name="member_activity_log_status_idle">空闲</string>
     <string name="member_activity_log_status_thinking">思考中</string>

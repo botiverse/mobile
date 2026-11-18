@@ -864,7 +864,7 @@ internal fun MembersDetailContent(
     fun copyDiagnostics() {
         val diagnostics = buildMembersAgentDiagnostics(member, detail, agentStatusIndicatorState)
         if (sharedAgentDetailStore != null && agentDetailActions != null) {
-            sharedAgentDetailStore.copyDiagnostics(diagnostics, agentDetailActions)
+            sharedAgentDetailStore.copyDiagnostics(diagnostics, agentDetailActions, diagnosticsCopied)
         } else {
             onCopyAgentDiagnostics(diagnostics)
             diagnosticActionState =
@@ -903,7 +903,7 @@ internal fun MembersDetailContent(
                     )
                 val result =
                     if (sharedAgentDetailStore != null && agentDetailActions != null) {
-                        sharedAgentDetailStore.reportIssue(request, agentDetailActions)
+                        sharedAgentDetailStore.reportIssue(request, agentDetailActions, issueReported)
                     } else {
                         try {
                             requireNotNull(callback).invoke(request)
