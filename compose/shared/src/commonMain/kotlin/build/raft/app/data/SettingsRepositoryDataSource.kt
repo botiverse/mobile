@@ -2563,17 +2563,7 @@ private fun DataResult<*>.settingsDiagnosticsResult(): String =
     }
 
 private fun <T> HomeNetworkResponse.toSettingsDataError(serverMessage: String? = null): DataResult<T> {
-    secondFactorStepUpChallengeOrNull()?.let { challenge ->
-        return DataResult.Error(
-            ScreenError(
-                code = SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
-                retryable = false,
-                serverMessage = challenge.serverMessage ?: serverMessage,
-                serverCode = SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
-                secondFactorStepUp = challenge
-            )
-        )
-    }
+    secondFactorStepUpErrorOrNull<T>(serverMessage)?.let { return it }
     return when (code) {
         401 -> authRequired(serverMessage)
         403 ->

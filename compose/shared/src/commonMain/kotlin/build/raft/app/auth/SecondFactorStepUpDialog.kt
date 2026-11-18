@@ -17,6 +17,8 @@ import build.raft.app.data.SecondFactorStepUpDialogState
 import build.raft.app.data.SecondFactorStepUpFieldError
 import build.raft.app.data.SecondFactorStepUpIntent
 import build.raft.app.data.SecondFactorStepUpMethod
+import build.raft.app.data.SharedSettingsIntent
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
@@ -198,6 +200,28 @@ private fun SecondFactorStepUpBannerView(
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm
             )
+    }
+}
+
+/**
+ * A settings store's open step-up (`SharedSettingsState.secondFactorStepUp`, any action the store
+ * runs through its [build.raft.app.data.SecondFactorStepUpCoordinator]) on a page that is not
+ * Account: the dialog in the design-system theme with the generic reason (web
+ * SecondFactorStepUpHost `other`), its intents back to the same store. Compose it after the sheet
+ * or dialog whose action asked, so it opens over it.
+ */
+@Composable
+internal fun SettingsSecondFactorStepUpHost(
+    state: SecondFactorStepUpDialogState?,
+    dispatch: (SharedSettingsIntent) -> Unit,
+) {
+    val dialog = state ?: return
+    RaftDesignSystemTheme {
+        SecondFactorStepUpDialog(
+            state = dialog,
+            onIntent = { intent -> dispatch(SharedSettingsIntent.SecondFactorStepUp(intent)) },
+            description = stringResource(Res.string.settings_step_up_generic_description),
+        )
     }
 }
 

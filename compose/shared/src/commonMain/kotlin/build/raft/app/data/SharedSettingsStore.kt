@@ -2402,7 +2402,9 @@ class SharedSettingsStore(
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.OpenUrl(COMPUTER_INSTALL_DOCS_URL))
             is SharedSettingsIntent.RotateComputerKey -> {
                 runAction(COMPUTER_ACTION_ROTATE_KEY, intent.machineId) {
-                    dataSource.rotateComputerKey(intent.machineId).applyComputerRotateKeyActionResult(COMPUTER_ACTION_ROTATE_KEY, intent.machineId)
+                    withSecondFactorStepUp(COMPUTER_ACTION_ROTATE_KEY, intent.machineId) {
+                        dataSource.rotateComputerKey(intent.machineId)
+                    }?.applyComputerRotateKeyActionResult(COMPUTER_ACTION_ROTATE_KEY, intent.machineId)
                 }
             }
             is SharedSettingsIntent.RegisterComputer -> {
@@ -2421,7 +2423,16 @@ class SharedSettingsStore(
                             baseline = baseline
                         )
                     )
-                    val result = dataSource.registerComputer(intent.request)
+                    // Two-step verification on: "Verify it's you" first, then the same registration
+                    // once more (web machineStore `withSecondFactorStepUp`). Closing it ends quietly.
+                    val result =
+                        withSecondFactorStepUp(COMPUTER_ACTION_REGISTER) { dataSource.registerComputer(intent.request) }
+                            ?: run {
+                                _state.value = _state.value.copy(
+                                    addComputerDialog = _state.value.addComputerDialog?.copy(registering = false)
+                                )
+                                return@runAction
+                            }
                     when (result) {
                         is DataResult.Content -> {
                             val state = _state.value.addComputerDialog

@@ -1044,6 +1044,9 @@ private inline fun <Wire, T> HomeNetworkResponse.mapComputersBody(
 
 private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> {
     val serverMessage = computersRouteErrorTextOrNull()
+    // Registering a machine or creating a new machine key with two-step verification on: the
+    // caller asks for the second step and retries (SharedSettingsStore), never this 403's English.
+    secondFactorStepUpErrorOrNull<T>(serverMessage)?.let { return it }
     return when (code) {
         401 ->
             DataResult.NoPermission(
