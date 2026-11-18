@@ -238,44 +238,74 @@ const quantiles = (values, unit) => {
  * Whether the crash journal's cost samples cover the typed edits, paired by (process, seq). Every typed
  * change logs `change_received seq=N` first (the moment it arrived) and then, from the same synchronous
  * call, `draft_journal_written seq=N ...` (the cost sample) or `draft_journal_write_failed seq=N`.
- * - paired: an edit with its cost line; failed: an edit with its failure line.
- * - interrupted: the LAST edit of a process with neither line: the kill can land during that journal
- *   write, so it is not counted missing (the keystroke did arrive: its marker is there).
- * - missing: any other edit with neither line.
- * - unpaired: cost / failure lines with no edit of that (process, seq) (reported; they never make up for
- *   a missing one).
- * Logcat can still lose a line under load, so up to JOURNAL_MISSING_TOLERANCE of the edits (rounded
- * down) may be missing; more is "unconfirmed". Any failure fails the run.
+ * - paired: an edit with its cost line; failures: an edit with its failure line (or an unpaired one).
+ * - likely_interrupted: the LAST edit of a process with neither line, AND evidence that this process
+ *   died at or after that edit's marker (AM "Killing <pid>", am_kill / am_proc_died of the pid, its cgroup
+ *   killed, AM "has died"): the kill most likely landed during that journal write. Listed apart.
+ * - missing: every other edit with neither line, including a last edit with no death evidence.
+ * - unpaired: cost / failure lines with no edit of that (process, seq), and repeats of one edit's cost
+ *   line; never counted for an edit and never in the cost percentiles.
+ * Logcat can lose a line under load, so up to JOURNAL_MISSING_TOLERANCE of the edits (rounded down) may
+ * be missing; more is "unconfirmed". Any failure fails the run.
  */
 export const JOURNAL_MISSING_TOLERANCE = 0.01;
-export function journalCoverage({ edits, paired, failures, interrupted = 0, missing, unpaired = 0 }) {
+export function journalCoverage({ edits, paired, failures, likely_interrupted = 0, missing, unpaired = 0 }) {
   const allowed = Math.floor(edits * JOURNAL_MISSING_TOLERANCE);
-  return { edits, paired, failures, interrupted, missing, unpaired, allowed_missing: allowed, covered: edits > 0 && missing <= allowed };
+  return { edits, paired, failures, likely_interrupted, missing, unpaired, allowed_missing: allowed, covered: edits > 0 && missing <= allowed };
 }
 
-/** journalCoverage from the edits (pid -> seqs in order) and the (pid:seq) keys of cost and failure lines. */
-export function pairJournalLines(editsByPid, sampleKeys, failureKeys) {
-  let edits = 0;
-  let paired = 0;
-  let failures = 0;
-  let interrupted = 0;
-  let missing = 0;
+/**
+ * Pairs the journal lines with the edits. [editsByPid]: pid -> [{ seq, tsMs }] in log order;
+ * [costLines]: [{ key: "pid:seq", costUs }] in log order; [failureKeys]: "pid:seq" keys; [deathsByPid]:
+ * pid -> logcat times of death evidence. Returns { coverage, pairedCostsUs }.
+ */
+export function pairJournalLines(editsByPid, costLines, failureKeys, deathsByPid = new Map()) {
   const editKeys = new Set();
-  for (const [pid, seqs] of editsByPid) {
-    seqs.forEach((seq, index) => {
-      const key = `${pid}:${seq}`;
-      editKeys.add(key);
+  for (const [pid, list] of editsByPid) for (const e of list) editKeys.add(`${pid}:${e.seq}`);
+  const costByKey = new Map();
+  let unpaired = 0;
+  for (const { key, costUs } of costLines) {
+    if (editKeys.has(key) && !costByKey.has(key)) costByKey.set(key, costUs);
+    else unpaired += 1;
+  }
+  let edits = 0;
+  let failures = 0;
+  let likelyInterrupted = 0;
+  let missing = 0;
+  for (const [pid, list] of editsByPid) {
+    list.forEach((e, index) => {
+      const key = `${pid}:${e.seq}`;
       edits += 1;
-      if (sampleKeys.has(key)) paired += 1;
-      else if (failureKeys.has(key)) failures += 1;
-      else if (index === seqs.length - 1) interrupted += 1;
+      if (costByKey.has(key)) return;
+      if (failureKeys.has(key)) failures += 1;
+      else if (index === list.length - 1 && (deathsByPid.get(pid) ?? []).some((at) => at >= e.tsMs)) likelyInterrupted += 1;
       else missing += 1;
     });
   }
-  const unpaired = [...sampleKeys, ...failureKeys].filter((key) => !editKeys.has(key)).length;
-  // A failure line counts as a failure even when unpaired.
   const unpairedFailures = [...failureKeys].filter((key) => !editKeys.has(key)).length;
-  return journalCoverage({ edits, paired, failures: failures + unpairedFailures, interrupted, missing, unpaired });
+  const coverage = journalCoverage({
+    edits,
+    paired: costByKey.size,
+    failures: failures + unpairedFailures,
+    likely_interrupted: likelyInterrupted,
+    missing,
+    unpaired: unpaired + unpairedFailures,
+  });
+  return { coverage, pairedCostsUs: [...costByKey.values()] };
+}
+
+/** The pid a death-evidence line names (AM Killing / has died, am_kill / am_proc_died, cgroup killed), or null. */
+export function deathEvidencePid(l) {
+  if (l.tag === "ActivityManager") {
+    const m = /^Killing (\d+):/.exec(l.message) ?? /^Process \S+ \(pid (\d+)\) has died/.exec(l.message);
+    return m ? Number(m[1]) : null;
+  }
+  if (l.tag === "am_kill" || l.tag === "am_proc_died") return parseEventPid(l.message)?.pid ?? null;
+  if (l.tag === "libprocessgroup") {
+    const m = /^Successfully killed process cgroup uid \d+ pid (\d+) /.exec(l.message);
+    return m ? Number(m[1]) : null;
+  }
+  return null;
 }
 
 /**
@@ -292,25 +322,33 @@ export function pairJournalLines(editsByPid, sampleKeys, failureKeys) {
 export function createLogcatStats() {
   const changes = new Map();
   const latencies = [];
-  const costs = [];
   const paths = { sync: 0, background: 0, flush: 0, unlabeled: 0, sync_write_fallback: 0 };
   const editsByPid = new Map();
-  const sampleKeys = new Set();
+  const costLines = [];
   const failureKeys = new Set();
+  const deathsByPid = new Map();
   const appPids = new Set();
   return {
     /** Pids that logged RaftDraftTiming lines: the app's own processes. */
     appPids,
     add(raw) {
-      if (!raw.includes("RaftDraftTiming")) return;
+      if (!raw.includes("RaftDraftTiming")) {
+        if (!/Killing |has died|am_kill|am_proc_died|libprocessgroup/.test(raw)) return;
+        const d = parseLogcatLine(raw);
+        const pid = d ? deathEvidencePid(d) : null;
+        if (pid != null) {
+          if (!deathsByPid.has(pid)) deathsByPid.set(pid, []);
+          deathsByPid.get(pid).push(d.tsMs);
+        }
+        return;
+      }
       const l = parseLogcatLine(raw);
       if (!l || l.tag !== "RaftDraftTiming") return;
       appPids.add(l.pid);
       const cost = /^draft_journal_written\b.*\bcostUs=(\d+)/.exec(l.message);
       if (cost) {
-        costs.push(Number(cost[1]));
         const seq = /\bseq=(\d+)/.exec(l.message);
-        sampleKeys.add(seq ? `${l.pid}:${seq[1]}` : `${l.pid}:noseq:${sampleKeys.size}`);
+        costLines.push({ key: seq ? `${l.pid}:${seq[1]}` : `${l.pid}:noseq`, costUs: Number(cost[1]) });
         return;
       }
       if (/^draft_journal_write_failed\b/.test(l.message)) {
@@ -323,7 +361,7 @@ export function createLogcatStats() {
       const key = `${l.pid}:${t.seq}`;
       if (t.kind === "change_received") {
         if (!editsByPid.has(l.pid)) editsByPid.set(l.pid, []);
-        editsByPid.get(l.pid).push(t.seq);
+        editsByPid.get(l.pid).push({ seq: t.seq, tsMs: l.tsMs });
         changes.set(key, t.uptimeMs);
       }
       else if (changes.has(key)) latencies.push(t.uptimeMs - changes.get(key));
@@ -331,11 +369,13 @@ export function createLogcatStats() {
       else if (t.kind === "draft_written") paths[t.path && t.path in paths ? t.path : "unlabeled"] += 1;
     },
     result() {
+      const journal = pairJournalLines(editsByPid, costLines, failureKeys, deathsByPid);
       return {
         write_latency: quantiles([...latencies], "ms"),
         write_paths: { ...paths },
-        journal_write_cost: quantiles([...costs], "us"),
-        journal_coverage: pairJournalLines(editsByPid, sampleKeys, failureKeys),
+        // Percentiles of PAIRED samples only (a cost line matched to its change_received by process + seq).
+        journal_write_cost: { ...quantiles([...journal.pairedCostsUs], "us"), basis: "paired samples only", unpaired_excluded: journal.coverage.unpaired },
+        journal_coverage: journal.coverage,
       };
     },
   };
@@ -470,7 +510,7 @@ export function acceptanceUnconfirmed(summary) {
   const c = summary.journal_coverage;
   if (!c) unconfirmed.push("crash-journal sample coverage unknown");
   else if (!c.covered && c.failures === 0) {
-    unconfirmed.push(`crash-journal cost samples do not cover the edits: ${c.paired} paired of ${c.edits} edits, ${c.missing} missing (allowed ${c.allowed_missing}), ${c.interrupted} interrupted by a kill`);
+    unconfirmed.push(`crash-journal cost samples do not cover the edits: ${c.paired} paired of ${c.edits} edits, ${c.missing} without a result (allowed ${c.allowed_missing}), ${c.likely_interrupted} likely interrupted by the process's death`);
   }
   return unconfirmed;
 }
