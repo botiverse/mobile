@@ -28,11 +28,12 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * artin 2026-10-29: the desktop app (a fine pointer) has no "Mobile" Settings section. Its cards
- * sit at the end of Appearance, where the web keeps its device preferences (packages/web
- * SettingsPanel AppearanceSection), with pointer-neutral copy; "Open web links" (no embedded web
- * view on desktop), the forward swipe and multiple windows are not shown there. Wide list with
- * Appearance picked, as the desktop app shows it. Verify / record as [RaftRobolectricScreenshot].
+ * The desktop app's Appearance (settings cleanup, 1.27.0: no "Mobile" section anywhere; the app's
+ * preferences are Appearance's Messages, Home and Windows groups, where the web keeps its device
+ * preferences, packages/web SettingsPanel AppearanceSection) with pointer-neutral copy; "Open web
+ * links" (no embedded web view on desktop), the forward swipe and multiple windows are not shown
+ * there, the desktop layout switch is (a desktop window can be wide). Wide list with Appearance
+ * picked, as the desktop app shows it. Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -45,7 +46,7 @@ class SettingsAppPreferencesDesktopScreenshotTest {
     fun appearanceWithAppPreferencesLight() =
         capture("settings.wide.appearance.desktop", RaftAppAppearance.Light) {
             SettingsWideListDetail(
-                payload = appShellSettingsHomePayload(session = null, appPreferencesUnderAppearance = true, serverRole = "owner"),
+                payload = appShellSettingsHomePayload(session = null, serverRole = "owner"),
                 widths = remember { RaftListPaneWidths(store = null) },
                 active = true,
                 picked = SettingsNativeDetailPage.Appearance.key,
@@ -60,26 +61,20 @@ class SettingsAppPreferencesDesktopScreenshotTest {
                                 state = ScreenLoadState.Content(SettingsAppearanceSnapshot()),
                                 actionState = null,
                                 fontSizeDraft = "md",
-                                activitySenderAvatarsEnabled = true,
                                 bottomContentPadding = 0.dp,
                                 onFontSizeDraftChange = {},
-                                onActivitySenderAvatarsChange = {},
                                 onSave = {},
                                 onRetry = {},
                                 showModeCard = false,
-                                appPreferenceItems = {
-                                    settingsAppPreferenceItems(
-                                        state = ScreenLoadState.Content(desktopAppPreferencesFixture),
-                                        actionState = null,
-                                        actions = SettingsAppPreferenceActions(),
-                                        visibility =
-                                            settingsAppPreferenceVisibility(
-                                                finePointer = true,
-                                                supportsInAppBrowser = false,
-                                                supportsMultiShellHost = false,
-                                            ),
-                                    )
-                                },
+                                preferences = desktopAppPreferencesFixture,
+                                preferenceVisibility =
+                                    settingsAppPreferenceVisibility(
+                                        finePointer = true,
+                                        supportsInAppBrowser = false,
+                                        supportsMultiShellHost = false,
+                                        supportsIosNativeNav = false,
+                                        largeScreenPossible = true,
+                                    ),
                             )
                         }
                     }

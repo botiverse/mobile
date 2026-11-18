@@ -50,9 +50,7 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftCardVariant
 import build.raft.designsystem.components.RaftListRow
-import build.raft.designsystem.components.RaftListRowChevron
 import build.raft.designsystem.components.RaftListRowGroup
-import build.raft.designsystem.components.RaftListRowValue
 import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftSelect
@@ -525,28 +523,6 @@ internal fun SettingsNotificationCurrentServerCard(server: SettingsNotificationS
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
             SettingsNotificationServerRow(server, levels[server.id] ?: RaftServerNotificationLevels(server.id))
         }
-    }
-}
-
-/**
- * The personal page's way to the current server's own page (web `ServerNotificationsLink`):
- * "Notifications on {server}", its level, and a chevron.
- */
-@Composable
-internal fun SettingsNotificationServerLink(server: SettingsNotificationServer, onClick: () -> Unit) {
-    val levels by RaftNotificationLevelStore.state.collectAsState()
-    val level = (levels[server.id] ?: RaftServerNotificationLevels(server.id)).server
-    RaftListRowGroup {
-        RaftListRow(
-            title = stringResource(Res.string.settings_server_notifications_subtitle, server.name),
-            variant = RaftListRowVariant.Plain,
-            titleMaxLines = 2,
-            onClick = onClick,
-            trailing = {
-                RaftListRowValue(level.localizedNotificationLevelLabel())
-                RaftListRowChevron()
-            }
-        )
     }
 }
 

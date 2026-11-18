@@ -9,9 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import build.raft.app.base.BasePager
 import build.raft.app.data.AppLocale
-import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.stringDescLocaleType
-import build.raft.app.data.raftSharedPreferenceStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,17 +31,6 @@ internal class ComposeHomeTitlebarVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { HomeTitlebarVisualScreen() }
-    }
-}
-
-@Page("compose_home_titlebar_preference_visual", supportInLocal = true)
-internal class ComposeHomeTitlebarPreferenceVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        val enabled =
-            KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
-                .readHomeServerAvatarEnabledSync()
-        setContent { HomeTitlebarPreferenceVisualScreen(enabled) }
     }
 }
 

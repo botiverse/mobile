@@ -18,12 +18,9 @@ private const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "compactConsecutiveMessages
 private const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "longMessageCollapseEnabled"
 private const val KEY_NEW_MESSAGE_MENU_ENABLED = "newMessageMenuEnabled"
 private const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "foregroundMessageBannersEnabled"
-private const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "activityTaskStatusBadgesEnabled"
-private const val KEY_ACTIVITY_SENDER_AVATARS_ENABLED = "activitySenderAvatarsEnabled"
 private const val KEY_COMPOSER_SEND_KEY_ENABLED = "composerSendKeyEnabled"
 private const val KEY_MULTI_SHELL_HOST_ENABLED = "multiShellHostEnabled"
 private const val KEY_SERVER_DRAWER_ENABLED = "serverDrawerEnabled"
-private const val KEY_HOME_SERVER_AVATAR_ENABLED = "homeServerAvatarEnabled"
 private const val KEY_TRANSLATION_MODE = "translationMode"
 private const val KEY_TRANSLATION_TARGET_LANGUAGE = "translationTargetLanguage"
 private val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS =
@@ -34,12 +31,9 @@ private val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS =
         KEY_NEW_MESSAGE_MENU_ENABLED,
         KEY_CONVERSATION_FORWARD_GESTURE_ENABLED,
         KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED,
-        KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
-        KEY_ACTIVITY_SENDER_AVATARS_ENABLED,
         KEY_COMPOSER_SEND_KEY_ENABLED,
         KEY_MULTI_SHELL_HOST_ENABLED,
         KEY_SERVER_DRAWER_ENABLED,
-        KEY_HOME_SERVER_AVATAR_ENABLED,
         KEY_TRANSLATION_MODE,
         KEY_TRANSLATION_TARGET_LANGUAGE,
     )
@@ -125,12 +119,6 @@ fun raftChatLayoutPreferenceRepository(
         override suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setForegroundMessageBannersEnabled(enabled) }
 
-        override suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
-            persistAndPublish { delegate.setActivityTaskStatusBadgesEnabled(enabled) }
-
-        override suspend fun setActivitySenderAvatarsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
-            persistAndPublish { delegate.setActivitySenderAvatarsEnabled(enabled) }
-
         override suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setComposerSendKeyEnabled(enabled) }
 
@@ -139,9 +127,6 @@ fun raftChatLayoutPreferenceRepository(
 
         override suspend fun setServerDrawerEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setServerDrawerEnabled(enabled) }
-
-        override suspend fun setHomeServerAvatarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
-            persistAndPublish { delegate.setHomeServerAvatarEnabled(enabled) }
 
         override suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setTranslationMode(mode) }
@@ -160,12 +145,9 @@ private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JsonObject =
         put(KEY_NEW_MESSAGE_MENU_ENABLED, newMessageMenuEnabled)
         put(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, conversationForwardGestureEnabled)
         put(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, foregroundMessageBannersEnabled)
-        put(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, activityTaskStatusBadgesEnabled)
-        put(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, activitySenderAvatarsEnabled)
         put(KEY_COMPOSER_SEND_KEY_ENABLED, composerSendKeyEnabled)
         put(KEY_MULTI_SHELL_HOST_ENABLED, multiShellHostEnabled)
         put(KEY_SERVER_DRAWER_ENABLED, serverDrawerEnabled)
-        put(KEY_HOME_SERVER_AVATAR_ENABLED, homeServerAvatarEnabled)
         put(KEY_TRANSLATION_MODE, translationMode.storageKey)
         put(KEY_TRANSLATION_TARGET_LANGUAGE, translationTargetLanguage)
     }
@@ -180,12 +162,9 @@ internal fun JsonObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPrefer
         newMessageMenuEnabled = optBoolean(KEY_NEW_MESSAGE_MENU_ENABLED, false),
         conversationForwardGestureEnabled = optBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, false),
         foregroundMessageBannersEnabled = optBoolean(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, false),
-        activityTaskStatusBadgesEnabled = optBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED),
-        activitySenderAvatarsEnabled = optBoolean(KEY_ACTIVITY_SENDER_AVATARS_ENABLED, false),
         composerSendKeyEnabled = optBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, false),
         multiShellHostEnabled = optBoolean(KEY_MULTI_SHELL_HOST_ENABLED, false),
         serverDrawerEnabled = optBoolean(KEY_SERVER_DRAWER_ENABLED, false),
-        homeServerAvatarEnabled = optBoolean(KEY_HOME_SERVER_AVATAR_ENABLED, DEFAULT_HOME_SERVER_AVATAR_ENABLED),
         translationMode = TranslationModePreference.fromStorageKey(optString(KEY_TRANSLATION_MODE)),
         translationTargetLanguage =
             optString(KEY_TRANSLATION_TARGET_LANGUAGE).ifBlank { TranslationTargetLanguages.Browser },

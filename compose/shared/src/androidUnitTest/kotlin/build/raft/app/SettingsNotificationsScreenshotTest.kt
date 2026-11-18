@@ -160,11 +160,9 @@ private fun NotificationsFixture(pausedUntil: String? = null, serverOnly: Boolea
         notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
         preferenceBusy = false,
         foregroundKeepAliveBusy = false,
-        offlineComputerAlertsBusy = false,
         foregroundMessageBannersBusy = false,
         onNotificationPreferenceChange = {},
         onForegroundKeepAlivePreferenceChange = {},
-        onOfflineComputerAlertsChange = {},
         onForegroundMessageBannersChange = {},
         onServerNotificationModeChange = {},
         onPushPreviewModeChange = {},
@@ -189,7 +187,6 @@ private fun NotificationsFixture(pausedUntil: String? = null, serverOnly: Boolea
                 followedThreadReplies = true,
                 version = 3
             ),
-        onOpenServerNotifications = {}
     )
 }
 

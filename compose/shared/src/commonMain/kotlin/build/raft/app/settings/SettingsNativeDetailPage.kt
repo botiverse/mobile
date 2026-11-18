@@ -34,7 +34,6 @@ internal enum class SettingsNativeDetailPage(
      * Notifications snapshot, which holds that level.
      */
     ServerNotifications("server-notifications", SharedSettingsDestination.Notifications),
-    Mobile("mobile", SharedSettingsDestination.Mobile),
     Server("server", SharedSettingsDestination.Server),
     About("about", SharedSettingsDestination.About),
     Developer("developer", SharedSettingsDestination.Developer),
@@ -46,8 +45,17 @@ internal enum class SettingsNativeDetailPage(
     ;
 
     companion object {
-        fun fromKey(key: String): SettingsNativeDetailPage? =
-            entries.firstOrNull { page -> page.key == key.trim() }
+        /**
+         * The former Settings > Mobile page (gone in 1.27.0, its rows are under Appearance): an old
+         * link or restored route to it opens Appearance.
+         */
+        internal const val LegacyMobileKey = "mobile"
+
+        fun fromKey(key: String): SettingsNativeDetailPage? {
+            val trimmed = key.trim()
+            if (trimmed == LegacyMobileKey) return Appearance
+            return entries.firstOrNull { page -> page.key == trimmed }
+        }
     }
 }
 

@@ -10,6 +10,8 @@ import platform.CoreFoundation.kCFStringEncodingUTF8
 import platform.Foundation.NSNumber
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.valueForKey
+import platform.UIKit.UIDevice
+import platform.UIKit.UIUserInterfaceIdiomPad
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.platform.ClipEntry
 import androidx.lifecycle.Lifecycle
@@ -44,6 +46,10 @@ internal actual fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPag
 // supportsMultipleScenes, iPad takes the same path). Off here, a stored "on" is ignored and every
 // switch happens in place. Return to supportsMultipleScenes once the host activates a scene.
 internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = false
+
+// An iPad, or the iPad app on a Mac. An iPhone held sideways is still a phone.
+internal actual fun raftPlatformLargeScreenPossible(): Boolean =
+    isiOSAppOnMac || UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad
 
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = true
 

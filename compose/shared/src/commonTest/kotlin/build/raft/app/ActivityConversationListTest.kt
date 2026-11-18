@@ -204,14 +204,6 @@ class ActivityConversationListTest {
     }
 
     @Test
-    fun taskBadgeFollowsTheTaskStatusBadgeGate() {
-        val model =
-            thread.activityConversationRowModel(context, InboxFilter.All, activityTaskStatusBadgesEnabled = false)
-        assertNull(model.taskNumber)
-        assertNull(model.taskStatus)
-    }
-
-    @Test
     fun mutedConversationShowsNoCountAndStaysQuietButKeepsTheMention() {
         // web: channels by `channels.find(...).activityMuted`, DMs by their `dmChannels` row; a thread
         // follows its parent channel, or the DM it lives in (`?? threadDmChannel`).

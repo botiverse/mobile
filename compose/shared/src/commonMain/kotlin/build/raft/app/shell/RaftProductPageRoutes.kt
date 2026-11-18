@@ -54,7 +54,6 @@ internal fun SettingsNativeDetailPage.productSettingsTab(): RaftSettingsTab? =
         SettingsNativeDetailPage.LanguageRegion -> RaftSettingsTab.LanguageRegion
         SettingsNativeDetailPage.Appearance -> RaftSettingsTab.Appearance
         SettingsNativeDetailPage.Notifications -> RaftSettingsTab.Notifications
-        SettingsNativeDetailPage.Mobile -> RaftSettingsTab.Mobile
         SettingsNativeDetailPage.Server -> RaftSettingsTab.Server
         SettingsNativeDetailPage.About -> RaftSettingsTab.About
         // The shared contract has `theme` (SETTINGS_PAGE_TABS); RaftSettingsTab does not mirror it yet,

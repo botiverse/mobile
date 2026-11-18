@@ -114,7 +114,7 @@ class SettingsNativeDetailPageTest {
         val pageData =
             assertNotNull(
                 settingsNativeDetailPageData(
-                    page = SettingsNativeDetailPage.Mobile,
+                    page = SettingsNativeDetailPage.Appearance,
                     itemId = "must-not-cross-page-boundary",
                     storeScope = storeScope,
                 )
@@ -148,7 +148,7 @@ class SettingsNativeDetailPageTest {
         val pageData =
             assertNotNull(
                 settingsNativeDetailPageData(
-                    page = SettingsNativeDetailPage.Mobile,
+                    page = SettingsNativeDetailPage.Appearance,
                     storeScope = storeScope,
                     launchIntent =
                         SettingsNativeDetailLaunchIntent(

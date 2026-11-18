@@ -57,7 +57,7 @@ class SettingsSearchUiTest {
             items =
                 listOf(
                     SettingsHomePageLinkPayload(SettingsDestinationAccount, "Account", section = "Personal"),
-                    SettingsHomePageLinkPayload(SettingsNativeDetailPage.Mobile.key, "Mobile", section = "Personal"),
+                    SettingsHomePageLinkPayload(SettingsNativeDetailPage.Appearance.key, "Appearance", section = "Personal"),
                     SettingsHomePageLinkPayload(SettingsDestinationBilling, "Plan & Billing", section = "Workspace"),
                     SettingsHomePageLinkPayload(SettingsDestinationAdministration, "Administration", section = "Workspace"),
                 ),
@@ -98,10 +98,10 @@ class SettingsSearchUiTest {
         onNode(hasSetTextAction()).assertExists()
         state.query = "ENTER"
         advance()
-        // Found by another word for it ("enter"), on the phone's Mobile page.
+        // Found by another word for it ("enter"), on Appearance.
         onNodeWithTag(settingsSearchResultTag("send-with")).assertExists().performClick()
         advance()
-        assertEquals(listOf("send-with" to SettingsNativeDetailPage.Mobile.key), opened.map { it.id to it.rowKey })
+        assertEquals(listOf("send-with" to SettingsNativeDetailPage.Appearance.key), opened.map { it.id to it.rowKey })
 
         // "invite" is Invite links' word, but invite links are an admin's: No match.
         state.query = "invite"

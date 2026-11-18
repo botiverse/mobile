@@ -36,7 +36,6 @@ import build.raft.app.components.raftCardSurface
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
-import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
 import build.raft.app.data.MOBILE_ACTION_PERMISSION
 import build.raft.app.data.MOBILE_ACTION_PUSH_PREVIEW_MODE
 import build.raft.app.data.MOBILE_ACTION_SERVER_MUTE
@@ -88,11 +87,9 @@ internal fun SettingsNotificationsContent(
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
     preferenceBusy: Boolean,
     foregroundKeepAliveBusy: Boolean,
-    offlineComputerAlertsBusy: Boolean,
     foregroundMessageBannersBusy: Boolean,
     onNotificationPreferenceChange: (Boolean) -> Unit,
     onForegroundKeepAlivePreferenceChange: (Boolean) -> Unit,
-    onOfflineComputerAlertsChange: (Boolean) -> Unit,
     onForegroundMessageBannersChange: (Boolean) -> Unit,
     onServerNotificationModeChange: (String) -> Unit,
     onPushPreviewModeChange: (String) -> Unit,
@@ -107,8 +104,6 @@ internal fun SettingsNotificationsContent(
     timeZoneId: String? = null,
     /** Fixture account settings in place of the store's (screenshot and visual fixtures). */
     accountSettingsOverride: RaftNotificationAccountSettings? = null,
-    /** Opens Settings › On {server} › Notifications (web `ServerNotificationsLink`); null: no link. */
-    onOpenServerNotifications: (() -> Unit)? = null
 ) {
     // The account settings (`me/notification-settings`): null on an older server or before they
     // load, which keeps the previous workspace and preview cards instead of controls that could
@@ -218,11 +213,9 @@ internal fun SettingsNotificationsContent(
                         notificationPreferenceSnapshot = notificationPreferenceSnapshot,
                         preferenceBusy = preferenceBusy,
                         foregroundKeepAliveBusy = foregroundKeepAliveBusy,
-                        offlineComputerAlertsBusy = offlineComputerAlertsBusy,
                         foregroundMessageBannersBusy = foregroundMessageBannersBusy,
                         onNotificationPreferenceChange = onNotificationPreferenceChange,
                         onForegroundKeepAlivePreferenceChange = onForegroundKeepAlivePreferenceChange,
-                        onOfflineComputerAlertsChange = onOfflineComputerAlertsChange,
                         onForegroundMessageBannersChange = onForegroundMessageBannersChange,
                         onPermission = onPermission,
                         onSettings = onSettings,
@@ -265,9 +258,6 @@ internal fun SettingsNotificationsContent(
                     }
                     if (servers.isNotEmpty()) {
                         item { SettingsNotificationServersSection(servers) }
-                    }
-                    if (currentServer != null && onOpenServerNotifications != null) {
-                        item { SettingsNotificationServerLink(currentServer, onOpenServerNotifications) }
                     }
                 } else {
                     item {
@@ -314,11 +304,9 @@ private fun SettingsPushStatusCard(
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
     preferenceBusy: Boolean,
     foregroundKeepAliveBusy: Boolean,
-    offlineComputerAlertsBusy: Boolean,
     foregroundMessageBannersBusy: Boolean,
     onNotificationPreferenceChange: (Boolean) -> Unit,
     onForegroundKeepAlivePreferenceChange: (Boolean) -> Unit,
-    onOfflineComputerAlertsChange: (Boolean) -> Unit,
     onForegroundMessageBannersChange: (Boolean) -> Unit,
     onPermission: () -> Unit,
     onSettings: () -> Unit,
@@ -395,13 +383,6 @@ private fun SettingsPushStatusCard(
                 )
             }
             SettingsNotificationSwitchRow(
-                title = stringResource(Res.string.settings_notifications_offline_computers_title),
-                detail = stringResource(Res.string.settings_notifications_offline_computers_detail),
-                checked = notificationPreferenceSnapshot.offlineComputerAlertsEnabled,
-                enabled = !offlineComputerAlertsBusy,
-                onCheckedChange = onOfflineComputerAlertsChange
-            )
-            SettingsNotificationSwitchRow(
                 title = stringResource(Res.string.settings_foreground_banners_title),
                 detail = stringResource(Res.string.settings_foreground_banners_detail),
                 checked = snapshot.foregroundMessageBanners.enabled,
@@ -448,7 +429,6 @@ private fun SettingsPushStatusCard(
         if (actionState?.action in setOf(
                 MOBILE_ACTION_NOTIFICATION_PREFERENCE,
                 MOBILE_ACTION_FOREGROUND_KEEP_ALIVE,
-                MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS,
                 MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS,
                 MOBILE_ACTION_TEST_NOTIFICATION
             ) && actionState?.errorCode != null

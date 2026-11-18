@@ -496,8 +496,17 @@ internal fun SettingsAccountContent(
                     )
                 }
             }
+            // Web DeleteAccountSection: its own Danger zone group, the last thing on the page,
+            // apart from Session's Sign out.
             if (accountDeletion != null) {
-                item { SettingsDeleteAccountRow(onClick = accountDeletion.onOpen) }
+                item {
+                    SettingsFormSection(
+                        iconName = RaftLucideIconName.TriangleAlert,
+                        title = stringResource(Res.string.settings_section_danger_zone_title)
+                    ) {
+                        SettingsDeleteAccountRow(onClick = accountDeletion.onOpen)
+                    }
+                }
             }
             item { Spacer(Modifier.height(bottomContentPadding)) }
         }
@@ -543,7 +552,7 @@ internal class SettingsAccountDeletionUi(
 
 /**
  * Delete account (App Store 5.1.1(v)): a plain setting row in its own inset group, the red
- * button its target. Mobile-only; the web has no equivalent row yet.
+ * button its target, under the Danger zone header (web DeleteAccountSection).
  */
 @Composable
 private fun SettingsDeleteAccountRow(onClick: () -> Unit) {

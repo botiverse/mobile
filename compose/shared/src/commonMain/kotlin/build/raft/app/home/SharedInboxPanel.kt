@@ -10,7 +10,6 @@ import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.raftSharedPreferenceStore
-import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.RaftStaleReadRecoverySignals
@@ -186,7 +185,6 @@ internal fun SharedHomeActivityScreen(
     timeContext: RaftTimeContext? = null,
     shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
     storeScope: RaftShellStoreScope = RaftShellStoreScope.Legacy,
-    activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
     // task #383: secondary-route pages (ComposeHomeActivityPage) never see a
     // Kuikly pageDidAppear on app foreground, so they opt into refreshing on
     // the app-scope appLifecycle resume/show broadcast. Shell surfaces leave
@@ -637,7 +635,6 @@ internal fun SharedHomeActivityScreen(
         bottomContentPadding = bottomContentPadding,
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
-        activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
         draftProjection = draftProjection,
         stableOrderEnabled = stableOrderEnabledAtRouteEntry,
         stableOrderDecisionRevision = diagnosticOverrideRevision,
@@ -864,7 +861,6 @@ internal fun SharedHomeActivityScreen(
     includeTopSafeArea: Boolean = true,
     timeContext: RaftTimeContext? = null,
     shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
-    activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     stableOrderEnabled: Boolean = true,
     stableOrderDecisionRevision: Long = 0L,
@@ -890,7 +886,6 @@ internal fun SharedHomeActivityScreen(
         bottomContentPadding = bottomContentPadding,
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
-        activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
         draftProjection = draftProjection,
         stableOrderEnabled = stableOrderEnabled,
         stableOrderDecisionRevision = stableOrderDecisionRevision,
@@ -916,7 +911,6 @@ internal fun SharedHomeActivityPanel(
     pullRefreshing: Boolean = false,
     timeContext: RaftTimeContext? = null,
     shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
-    activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     stableOrderEnabled: Boolean = true,
     stableOrderDecisionRevision: Long = 0L,
@@ -952,7 +946,6 @@ internal fun SharedHomeActivityPanel(
             bottomContentPadding = bottomContentPadding,
             topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
             timeContext = timeContext,
-            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
             draftProjection = draftProjection,
             stableOrderEnabled = stableOrderEnabled,
             stableOrderDecisionRevision = stableOrderDecisionRevision,
@@ -976,7 +969,6 @@ private fun SharedActivityPanelContent(
     bottomContentPadding: Dp,
     topSafeAreaPadding: Dp,
     timeContext: RaftTimeContext?,
-    activityTaskStatusBadgesEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection,
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
@@ -1083,7 +1075,6 @@ private fun SharedActivityPanelContent(
                         bottomContentPadding = bottomContentPadding,
                         timeContext = timeContext,
                         listState = activityScrollToTopTarget(state.selectedFilter, pageListStates),
-                        activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                         draftProjection = draftProjection,
                         presentationAccountId = state.ownerUserId.orEmpty(),
                         stableOrderEnabled = stableOrderEnabled,
@@ -1132,7 +1123,6 @@ private fun SharedActivityBodyContent(
     bottomContentPadding: Dp,
     timeContext: RaftTimeContext?,
     listState: LazyListState,
-    activityTaskStatusBadgesEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection,
     presentationAccountId: String,
     stableOrderEnabled: Boolean,
@@ -1226,7 +1216,6 @@ private fun SharedActivityBodyContent(
                     bottomContentPadding = bottomContentPadding,
                     timeContext = timeContext,
                     listState = listState,
-                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                     presentationAccountId = presentationAccountId,
                     stableOrderEnabled = stableOrderEnabled,
                     stableOrderDecisionRevision = stableOrderDecisionRevision,
@@ -1419,7 +1408,6 @@ internal fun SharedActivityList(
     bottomContentPadding: Dp,
     timeContext: RaftTimeContext?,
     listState: LazyListState = rememberLazyListState(),
-    activityTaskStatusBadgesEnabled: Boolean,
     presentationAccountId: String,
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
@@ -2151,13 +2139,12 @@ internal fun SharedActivityList(
                             is ActivityConversationListEntry.Row -> item(key = entry.key, contentType = "activity_row") {
                                 val item = entry.item
                                 val model =
-                                    remember(item, conversationList, selectedFilter, senderProfiles, dmPeerNames, activityTaskStatusBadgesEnabled) {
+                                    remember(item, conversationList, selectedFilter, senderProfiles, dmPeerNames) {
                                         item.activityConversationRowModel(
                                             context = conversationList.context,
                                             selectedFilter = selectedFilter,
                                             senderProfiles = senderProfiles,
                                             dmPeerNames = dmPeerNames,
-                                            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                                         )
                                     }
                                 ActivityConversationListRow(

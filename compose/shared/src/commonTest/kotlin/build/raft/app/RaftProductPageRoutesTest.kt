@@ -158,7 +158,6 @@ class RaftProductPageRoutesTest {
                 SettingsNativeDetailPage.LanguageRegion to RaftSettingsTab.LanguageRegion,
                 SettingsNativeDetailPage.Appearance to RaftSettingsTab.Appearance,
                 SettingsNativeDetailPage.Notifications to RaftSettingsTab.Notifications,
-                SettingsNativeDetailPage.Mobile to RaftSettingsTab.Mobile,
                 SettingsNativeDetailPage.Server to RaftSettingsTab.Server,
                 SettingsNativeDetailPage.About to RaftSettingsTab.About,
             )

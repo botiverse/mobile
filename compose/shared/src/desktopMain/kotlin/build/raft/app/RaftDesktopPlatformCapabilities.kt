@@ -27,6 +27,9 @@ internal actual fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPag
 
 internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = false
 
+// A desktop window can always be made wide.
+internal actual fun raftPlatformLargeScreenPossible(): Boolean = true
+
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = false
 
 internal actual fun raftPlatformComposerEnterSendsByDefault(): Boolean = true

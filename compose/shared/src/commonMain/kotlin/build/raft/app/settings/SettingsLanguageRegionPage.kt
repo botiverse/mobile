@@ -6,7 +6,9 @@ import build.raft.app.resources.*
 import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.app.components.SegmentedControlOption
+import build.raft.app.data.AppLocale
 import build.raft.app.data.LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
+import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_LANGUAGE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
@@ -446,3 +448,48 @@ internal fun settingsTranslationTargetLanguageRes(code: String): StringResource?
         "ru" -> Res.string.settings_translation_target_language_ru
         else -> null
     }
+
+/** The app's display language (Settings > Language & region), applied when picked. */
+@Composable
+internal fun SettingsAppLanguageCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onLocaleChange: (String) -> Unit
+) {
+    val preference = snapshot.localePreference
+    val busy = actionState?.action == MOBILE_ACTION_LANGUAGE && actionState.inProgress
+    // The app language applies when picked (web display language, slock #11858): its SaveStatus
+    // says only what failed, while the control stays on the stored language (raft-ui 0.84).
+    val selectedLocale = preference.selectedKey.ifBlank { AppLocale.System.languageTag }
+    var pick by remember { mutableStateOf<SettingsLanguageRegionPick?>(null, referentialEqualityPolicy()) }
+    val saveStatus =
+        rememberSettingsPickSaveStatus(MOBILE_ACTION_LANGUAGE, pick, actionState, stringResource(Res.string.settings_language_update_failed))
+    SettingsFormSectionCard(
+        iconName = RaftLucideIconName.Languages,
+        title = stringResource(Res.string.settings_app_language_title)
+    ) {
+        // The web's display-language select (botiverse/slock DISPLAY_LOCALES): every language by its
+        // own name, in the web's order, after the app-only System choice.
+        val systemLabel = stringResource(Res.string.settings_app_language_system)
+        SettingsComboboxField(
+            label = null,
+            description = stringResource(Res.string.settings_app_language_detail),
+            value = selectedLocale,
+            options =
+                AppLocale.entries.map { locale ->
+                    RaftComboboxOption(
+                        locale.languageTag,
+                        if (locale == AppLocale.System) systemLabel else locale.nativeLabel
+                    )
+                },
+            onValueChange = { selected ->
+                selected.takeIf { it != selectedLocale }?.let {
+                    pick = SettingsLanguageRegionPick(MOBILE_ACTION_LANGUAGE, it, actionState)
+                    onLocaleChange(it)
+                }
+            },
+            enabled = preference.available && !busy,
+            saveStatus = saveStatus
+        )
+    }
+}

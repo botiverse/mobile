@@ -13,15 +13,14 @@ import kotlin.test.assertTrue
 class SettingsHubServerPanelPagesTest {
     @Test
     fun phoneHasNoComputersRowAndApplicationsOnlyForAGuest() {
-        val member = settingsHomeRowKeys(hasThemeServer = true, appPreferencesUnderAppearance = false, serverPanelPages = true)
+        val member = settingsHomeRowKeys(hasThemeServer = true, serverPanelPages = true)
         assertFalse(SettingsDestinationComputers in member)
         assertFalse(SettingsDestinationConnectedApps in member)
-        // The app's own rows stay: Mobile and Storage.
-        assertTrue(SettingsNativeDetailPage.Mobile.key in member)
+        // The app's own row stays: Storage (the former Mobile page is part of Appearance).
         assertTrue(SettingsDestinationStorage in member)
 
         val guest =
-            settingsHomeRowKeys(hasThemeServer = true, appPreferencesUnderAppearance = false, serverPanelPages = true, guest = true)
+            settingsHomeRowKeys(hasThemeServer = true, serverPanelPages = true, guest = true)
         assertFalse(SettingsDestinationComputers in guest)
         assertEquals(guest.indexOf(SettingsDestinationAdministration) + 1, guest.indexOf(SettingsDestinationConnectedApps))
         assertEquals(member, guest - SettingsDestinationConnectedApps)

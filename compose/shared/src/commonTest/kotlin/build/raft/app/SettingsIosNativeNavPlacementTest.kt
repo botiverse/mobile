@@ -18,12 +18,13 @@ import kotlin.test.assertTrue
 /**
  * artin, task #98: the iOS native navigation switch moved from the hidden Developer page to
  * Settings > Mobile (Beta, off by default), on the same stored key so a choice made there stays.
+ * Since 1.27.0 (no Mobile page) it is in Settings > Appearance > Home, still iPhone only.
  */
 class SettingsIosNativeNavPlacementTest {
     @BeforeTest @AfterTest fun reset() = RaftIosNativeNavFlag.resetForTests()
 
     @Test
-    fun mobileShowsTheSwitchOnAnIPhoneOnly() {
+    fun appearanceShowsTheSwitchOnAnIPhoneOnly() {
         assertTrue(settingsAppPreferenceVisibility(finePointer = false, supportsIosNativeNav = true).iosNativeNav)
         assertFalse(settingsAppPreferenceVisibility(finePointer = false, supportsIosNativeNav = false).iosNativeNav)
         // The default follows the host: off until the iOS app says it is an iPhone.
@@ -53,13 +54,13 @@ class SettingsIosNativeNavPlacementTest {
         val store = InMemoryRaftKeyValueStore()
         assertFalse(RaftIosNativeNavFlag.stored(store), "off by default")
         store.putString(RaftIosNativeNavFlag.KEY_LOCAL_OVERRIDE, "true")
-        assertTrue(RaftIosNativeNavFlag.stored(store), "a 1.22 Developer choice reads on in Mobile")
+        assertTrue(RaftIosNativeNavFlag.stored(store), "a 1.22 Developer choice reads on in Appearance")
         RaftIosNativeNavFlag.setLocalOverride(store, false)
         assertEquals("false", store.getString(RaftIosNativeNavFlag.KEY_LOCAL_OVERRIDE))
     }
 
     @Test
-    fun theRowHasItsMobileStrings() {
+    fun theRowKeepsItsStrings() {
         assertNotNull(Res.string.settings_mobile_ios_native_nav)
         assertNotNull(Res.string.settings_mobile_ios_native_nav_detail)
     }

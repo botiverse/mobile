@@ -13,7 +13,6 @@ import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.RaftNotificationPreferenceEvents
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
-import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
 import build.raft.app.data.MOBILE_ACTION_PERMISSION
 import build.raft.app.data.MOBILE_ACTION_SERVER_MUTE
@@ -64,7 +63,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
@@ -82,7 +80,6 @@ import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @Composable
 internal fun SettingsNativeDetailScreen() {
@@ -125,8 +122,6 @@ internal fun SettingsNativeDetailScreen() {
     var notificationPreferenceSnapshot by remember {
         mutableStateOf(NotificationPreferenceSnapshot(enabled = true))
     }
-    var activitySenderAvatarsEnabled by remember { mutableStateOf(false) }
-    val pageScope = rememberCoroutineScope()
     val notificationEvents = remember(sharedStores.eventBus) {
         RaftNotificationPreferenceEvents(sharedStores.eventBus)
     }
@@ -164,12 +159,6 @@ internal fun SettingsNativeDetailScreen() {
                 },
         dispatch = settingsViewModel::dispatch,
     )
-    LaunchedEffect(environment.chatLayoutPreferenceRepository) {
-        activitySenderAvatarsEnabled =
-            environment.chatLayoutPreferenceRepository
-                .getChatLayoutPreference()
-                .activitySenderAvatarsEnabled
-    }
     LaunchedEffect(route.page, route.itemId, route.launchIntent) {
         runSettingsNativeDetailLaunchSequence(
             route = route,
@@ -224,21 +213,11 @@ internal fun SettingsNativeDetailScreen() {
             openNativePage(SettingsNativeDetailPage.LocalFeatureOverride, key)
         },
         onOpenThemePage = { openNativePage(SettingsNativeDetailPage.Theme) },
-        onOpenServerNotificationsPage = { openNativePage(SettingsNativeDetailPage.ServerNotifications) },
         onMessageAlignmentSelected = {},
         onCompactConsecutiveMessagesSelected = {},
         onForegroundMessageBannersSelected = {},
-        onActivityTaskStatusBadgesSelected = {},
         onConversationForwardGestureSelected = {},
-        activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
-        onActivitySenderAvatarsSelected = { enabled ->
-            activitySenderAvatarsEnabled = enabled
-            pageScope.launch {
-                environment.chatLayoutPreferenceRepository.setActivitySenderAvatarsEnabled(enabled)
-            }
-        },
         onServerDrawerSelected = {},
-        onHomeServerAvatarSelected = {},
         bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
         timeContext = null,
         diagnosticsLogger = { message -> bridge.log("settings_native_detail $message") },
@@ -320,16 +299,11 @@ internal fun SettingsNativeDetailPageContent(
     onOpenLocalFeatureOverridePage: (String) -> Unit,
     /** Appearance's "Theme on <server>" row (Web `ServerThemeLink`): Settings > Theme. */
     onOpenThemePage: () -> Unit = {},
-    onOpenServerNotificationsPage: () -> Unit = {},
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onForegroundMessageBannersSelected: (Boolean) -> Unit,
-    onActivityTaskStatusBadgesSelected: (Boolean) -> Unit,
     onConversationForwardGestureSelected: (Boolean) -> Unit,
-    activitySenderAvatarsEnabled: Boolean,
-    onActivitySenderAvatarsSelected: (Boolean) -> Unit,
     onServerDrawerSelected: (Boolean) -> Unit,
-    onHomeServerAvatarSelected: (Boolean) -> Unit,
     bottomContentPadding: Dp,
     timeContext: RaftTimeContext?,
     diagnosticsLogger: (String) -> Unit = {},
@@ -493,13 +467,8 @@ internal fun SettingsNativeDetailPageContent(
         }
     }
 
-    // `app_setting_changed.surface`: the cards sit under Appearance on a fine pointer, on Mobile otherwise.
-    val appSettingSurface =
-        if (route.page == SettingsNativeDetailPage.Appearance) {
-            RaftAppSettingSurface.SettingsAppearance
-        } else {
-            RaftAppSettingSurface.SettingsMobile
-        }
+    // `app_setting_changed.surface`: the app preference rows are all under Appearance (1.27.0).
+    val appSettingSurface = RaftAppSettingSurface.SettingsAppearance
     val appPreferenceActions =
         SettingsAppPreferenceActions(
             surface = appSettingSurface,
@@ -529,10 +498,6 @@ internal fun SettingsNativeDetailPageContent(
                 onSettingsIntent(SharedSettingsIntent.SetConversationForwardGestureEnabled(enabled, appSettingSurface))
                 onConversationForwardGestureSelected(enabled)
             },
-            onActivityTaskStatusBadgesChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetActivityTaskStatusBadges(enabled, appSettingSurface))
-                onActivityTaskStatusBadgesSelected(enabled)
-            },
             onComposerSendKeyChange = { enabled ->
                 onSettingsIntent(SharedSettingsIntent.SetComposerSendKey(enabled, appSettingSurface))
             },
@@ -545,10 +510,6 @@ internal fun SettingsNativeDetailPageContent(
             onServerDrawerChange = { enabled ->
                 onSettingsIntent(SharedSettingsIntent.SetServerDrawerEnabled(enabled, appSettingSurface))
                 onServerDrawerSelected(enabled)
-            },
-            onHomeServerAvatarChange = { enabled ->
-                onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled, appSettingSurface))
-                onHomeServerAvatarSelected(enabled)
             },
             diagnosticsLogger = diagnosticsLogger,
         )
@@ -613,10 +574,8 @@ internal fun SettingsNativeDetailPageContent(
                     state = settingsState.appearance,
                     actionState = settingsState.actionState,
                     fontSizeDraft = appearanceMessageFontSizeDraft,
-                    activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                     bottomContentPadding = bottomContentPadding,
                     onFontSizeDraftChange = { appearanceMessageFontSizeDraft = it },
-                    onActivitySenderAvatarsChange = onActivitySenderAvatarsSelected,
                     onSave = {
                         onSettingsIntent(
                             SharedSettingsIntent.UpdateAppearance(
@@ -626,21 +585,11 @@ internal fun SettingsNativeDetailPageContent(
                     },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) },
                     showModeCard = settingsAppearanceShowsModeCard(session),
+                    preferences = settingsState.mobile.currentContent(),
+                    preferenceActions = appPreferenceActions,
+                    preferenceVisibility = appPreferenceVisibility,
                     themeServerName = session?.settingsThemeServer()?.name,
                     onOpenTheme = onOpenThemePage,
-                    appPreferenceItems =
-                        if (settingsAppPreferencesUnderAppearance()) {
-                            {
-                                settingsAppPreferenceItems(
-                                    settingsState.mobile,
-                                    settingsState.actionState,
-                                    appPreferenceActions,
-                                    appPreferenceVisibility,
-                                )
-                            }
-                        } else {
-                            null
-                        },
                 )
             SettingsNativeDetailPage.Theme -> {
                 val serverTheme =
@@ -735,10 +684,6 @@ internal fun SettingsNativeDetailPageContent(
                         settingsState.actionState?.inProgress == true &&
                             settingsState.actionState.action in
                             setOf(MOBILE_ACTION_FOREGROUND_KEEP_ALIVE, MOBILE_ACTION_SERVER_MUTE),
-                    offlineComputerAlertsBusy =
-                        settingsState.actionState?.inProgress == true &&
-                            settingsState.actionState.action in
-                            setOf(MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS, MOBILE_ACTION_SERVER_MUTE),
                     foregroundMessageBannersBusy =
                         settingsState.actionState?.inProgress == true &&
                             settingsState.actionState.action in
@@ -755,9 +700,6 @@ internal fun SettingsNativeDetailPageContent(
                             onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission)
                         }
                     },
-                    onOfflineComputerAlertsChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetOfflineComputerAlertsPreference(enabled))
-                    },
                     onForegroundMessageBannersChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetForegroundMessageBanners(enabled))
                         onForegroundMessageBannersSelected(enabled)
@@ -773,16 +715,6 @@ internal fun SettingsNativeDetailPageContent(
                     onTest = { onSettingsIntent(SharedSettingsIntent.SendTestNotification) },
                     onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) },
                     servers = remember(session) { settingsNotificationServers(session) },
-                    onOpenServerNotifications =
-                        if (route.page == SettingsNativeDetailPage.Notifications) onOpenServerNotificationsPage else null
-                )
-            SettingsNativeDetailPage.Mobile ->
-                SettingsMobileContent(
-                    state = settingsState.mobile,
-                    actionState = settingsState.actionState,
-                    bottomContentPadding = bottomContentPadding,
-                    actions = appPreferenceActions,
-                    visibility = appPreferenceVisibility,
                 )
             SettingsNativeDetailPage.About ->
                 SharedSettingsAboutContent(
@@ -902,7 +834,6 @@ private fun settingsNativeDetailPageTitle(route: SettingsNativeDetailRoute): Str
         SettingsNativeDetailPage.Notifications -> stringResource(Res.string.settings_notifications_title)
         SettingsNativeDetailPage.Theme -> stringResource(Res.string.settings_theme_title)
         SettingsNativeDetailPage.ServerNotifications -> stringResource(Res.string.settings_notifications_title)
-        SettingsNativeDetailPage.Mobile -> stringResource(Res.string.settings_mobile_title)
         SettingsNativeDetailPage.Server -> stringResource(Res.string.settings_server_profile_title)
         SettingsNativeDetailPage.About -> stringResource(Res.string.settings_about_title)
         SettingsNativeDetailPage.Developer -> stringResource(Res.string.settings_developer_title)
@@ -928,7 +859,6 @@ private fun settingsNativeDetailPageIcon(page: SettingsNativeDetailPage): RaftLu
         SettingsNativeDetailPage.Notifications -> RaftLucideIconName.Bell
         SettingsNativeDetailPage.Theme -> RaftLucideIconName.Palette
         SettingsNativeDetailPage.ServerNotifications -> RaftLucideIconName.BellDot
-        SettingsNativeDetailPage.Mobile -> RaftLucideIconName.Smartphone
         SettingsNativeDetailPage.Server -> RaftLucideIconName.Building2
         SettingsNativeDetailPage.About -> RaftLucideIconName.BadgeInfo
         SettingsNativeDetailPage.OpenSourceLicenses -> RaftLucideIconName.FileText

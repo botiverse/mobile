@@ -604,10 +604,6 @@ sealed interface SharedSettingsIntent {
         val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
     ) : SharedSettingsIntent
     data class SetForegroundMessageBanners(val enabled: Boolean) : SharedSettingsIntent
-    data class SetActivityTaskStatusBadges(
-        val enabled: Boolean,
-        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
-    ) : SharedSettingsIntent
     data class SetComposerSendKey(
         val enabled: Boolean,
         val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
@@ -621,10 +617,6 @@ sealed interface SharedSettingsIntent {
         val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
     ) : SharedSettingsIntent
     data class SetServerDrawerEnabled(
-        val enabled: Boolean,
-        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
-    ) : SharedSettingsIntent
-    data class SetHomeServerAvatarEnabled(
         val enabled: Boolean,
         val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
     ) : SharedSettingsIntent
@@ -1438,14 +1430,6 @@ class SharedSettingsDataSource(
         return loadMobile()
     }
 
-    suspend fun setActivityTaskStatusBadges(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
-        val repository =
-            chatLayoutPreferenceRepository
-                ?: return DataResult.Error(ScreenError("settings_activity_task_status_badges_unavailable", retryable = false))
-        repository.setActivityTaskStatusBadgesEnabled(enabled)
-        return loadMobilePreferences()
-    }
-
     suspend fun setComposerSendKey(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1478,14 +1462,6 @@ class SharedSettingsDataSource(
             chatLayoutPreferenceRepository
                 ?: return DataResult.Error(ScreenError("settings_server_drawer_unavailable", retryable = false))
         repository.setServerDrawerEnabled(enabled)
-        return loadMobilePreferences()
-    }
-
-    suspend fun setHomeServerAvatarEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
-        val repository =
-            chatLayoutPreferenceRepository
-                ?: return DataResult.Error(ScreenError("settings_home_server_avatar_unavailable", retryable = false))
-        repository.setHomeServerAvatarEnabled(enabled)
         return loadMobilePreferences()
     }
 
@@ -1802,13 +1778,6 @@ class SharedSettingsDataSource(
                         statusLabel = "Unsupported",
                         detail = "Foreground message banner preference is not available on this platform."
                     ),
-            activityTaskStatusBadges =
-                chatLayout?.toSettingsMobileActivityTaskStatusBadgesSnapshot()
-                    ?: activityTaskStatusBadges.copy(
-                        available = false,
-                        statusLabel = "Unsupported",
-                        detail = "Activity task status badge preference is not available on this platform."
-                    ),
             composerSendKey =
                 chatLayout?.toSettingsMobileComposerSendKeySnapshot()
                     ?: composerSendKey.copy(
@@ -1836,13 +1805,6 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "The large-screen desktop mode preference is not available on this platform."
-                    ),
-            homeServerAvatar =
-                chatLayout?.toSettingsMobileHomeServerAvatarSnapshot()
-                    ?: homeServerAvatar.copy(
-                        available = false,
-                        statusLabel = "Unsupported",
-                        detail = "The Home workspace avatar preference is not available on this platform."
                     ),
         ).withPushPreviewModePreference()
     }
@@ -2770,14 +2732,6 @@ class SharedSettingsStore(
                 dataSource.setForegroundMessageBanners(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS)
             }
-            is SharedSettingsIntent.SetActivityTaskStatusBadges -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES, inProgress = true)
-                    )
-                dataSource.setActivityTaskStatusBadges(intent.enabled)
-                    .applyMobileActionResult(MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES)
-            }
             is SharedSettingsIntent.SetComposerSendKey -> {
                 _state.value =
                     _state.value.copy(
@@ -2816,14 +2770,6 @@ class SharedSettingsStore(
                     )
                 dataSource.setServerDrawerEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_SERVER_DRAWER)
-            }
-            is SharedSettingsIntent.SetHomeServerAvatarEnabled -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_HOME_SERVER_AVATAR, inProgress = true)
-                    )
-                dataSource.setHomeServerAvatarEnabled(intent.enabled)
-                    .applyMobileActionResult(MOBILE_ACTION_HOME_SERVER_AVATAR)
             }
             SharedSettingsIntent.RefreshStorage -> {
                 _state.value = _state.value.copy(route = SharedSettingsRoute(SharedSettingsDestination.Storage))
@@ -4273,12 +4219,10 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetNewMessageMenuEnabled,
             is SharedSettingsIntent.SetConversationForwardGestureEnabled,
             is SharedSettingsIntent.SetForegroundMessageBanners,
-            is SharedSettingsIntent.SetActivityTaskStatusBadges,
             is SharedSettingsIntent.SetComposerSendKey,
             is SharedSettingsIntent.SetMultiShellHostEnabled,
             is SharedSettingsIntent.SetDesktopModeOnLargeScreen,
             is SharedSettingsIntent.SetServerDrawerEnabled,
-            is SharedSettingsIntent.SetHomeServerAvatarEnabled,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
@@ -4597,12 +4541,10 @@ internal const val MOBILE_ACTION_LONG_MESSAGE_COLLAPSE = "longMessageCollapse"
 internal const val MOBILE_ACTION_NEW_MESSAGE_MENU = "newMessageMenu"
 internal const val MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE = "conversationForwardGesture"
 internal const val MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS = "foregroundMessageBanners"
-internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStatusBadges"
 internal const val MOBILE_ACTION_COMPOSER_SEND_KEY = "composerSendKey"
 internal const val MOBILE_ACTION_MULTI_SHELL_HOST = "multiShellHost"
 internal const val MOBILE_ACTION_SERVER_DRAWER = "serverDrawer"
 internal const val MOBILE_ACTION_DESKTOP_MODE = "desktopModeOnLargeScreen"
-internal const val MOBILE_ACTION_HOME_SERVER_AVATAR = "homeServerAvatar"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
 /** Computer owner v1: transfer owner, make Public, or Make it mine. */
@@ -4851,14 +4793,6 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileForegroundMessageBanner
         detail = "Show an in-app banner for new messages while Raft is open. When off, foreground messages stay quiet."
     )
 
-private fun ChatLayoutPreferenceSnapshot.toSettingsMobileActivityTaskStatusBadgesSnapshot(): SettingsMobileToggleSnapshot =
-    SettingsMobileToggleSnapshot(
-        enabled = activityTaskStatusBadgesEnabled,
-        available = true,
-        statusLabel = if (activityTaskStatusBadgesEnabled) "Enabled" else "Off",
-        detail = "Show task status badges at the bottom of Activity rows. Keep this off for a quieter Activity list."
-    )
-
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileComposerSendKeySnapshot(): SettingsMobileToggleSnapshot =
     SettingsMobileToggleSnapshot(
         enabled = composerSendKeyEnabled,
@@ -4889,14 +4823,6 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileServerDrawerSnapshot():
         available = true,
         statusLabel = if (serverDrawerEnabled) "Enabled" else "Off",
         detail = "Use the new multi-server left drawer on Home. When off, keep the current server switcher popover."
-    )
-
-private fun ChatLayoutPreferenceSnapshot.toSettingsMobileHomeServerAvatarSnapshot(): SettingsMobileToggleSnapshot =
-    SettingsMobileToggleSnapshot(
-        enabled = homeServerAvatarEnabled,
-        available = true,
-        statusLabel = if (homeServerAvatarEnabled) "Enabled" else "Off",
-        detail = "Show the current workspace avatar in the Home header. When off, keep the existing compact title badge."
     )
 
 
@@ -4983,7 +4909,6 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(): SharedSettingsHom
                 nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", RaftLucideIconName.Languages, null),
                 nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", RaftLucideIconName.Type, null),
                 nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", RaftLucideIconName.Bell, null),
-                nav(SharedSettingsDestination.Mobile, "Mobile", "Links, conversations, and composer", RaftLucideIconName.Smartphone, null),
                 nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", RaftLucideIconName.Archive, null),
                 nav(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", RaftLucideIconName.Building2, server?.role?.titleLabel()),
                 nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", RaftLucideIconName.CreditCard, server?.plan?.titleLabel()),
@@ -5052,12 +4977,10 @@ private fun SharedSettingsIntent.appSettingChange(): Pair<RaftAppSettingKey, Raf
         is SharedSettingsIntent.SetLongMessageCollapseEnabled -> RaftAppSettingKey.LongMessageCollapse to surface
         is SharedSettingsIntent.SetNewMessageMenuEnabled -> RaftAppSettingKey.NewMessageMenu to surface
         is SharedSettingsIntent.SetConversationForwardGestureEnabled -> RaftAppSettingKey.ConversationForwardGesture to surface
-        is SharedSettingsIntent.SetActivityTaskStatusBadges -> RaftAppSettingKey.ActivityTaskStatusBadges to surface
         is SharedSettingsIntent.SetComposerSendKey -> RaftAppSettingKey.ComposerEnterSends to surface
         is SharedSettingsIntent.SetMultiShellHostEnabled -> RaftAppSettingKey.MultiShellHost to surface
         is SharedSettingsIntent.SetDesktopModeOnLargeScreen -> RaftAppSettingKey.DesktopModeLargeScreen to surface
         is SharedSettingsIntent.SetServerDrawerEnabled -> RaftAppSettingKey.ServerDrawer to surface
-        is SharedSettingsIntent.SetHomeServerAvatarEnabled -> RaftAppSettingKey.HomeServerAvatar to surface
         else -> null
     }
 
@@ -5076,14 +4999,14 @@ internal fun SettingsMobileSnapshot.appSettingValue(setting: RaftAppSettingKey):
         RaftAppSettingKey.LongMessageCollapse -> longMessageCollapse.appSettingToggleValue()
         RaftAppSettingKey.NewMessageMenu -> newMessageMenu.appSettingToggleValue()
         RaftAppSettingKey.ConversationForwardGesture -> conversationForwardGesture.appSettingToggleValue()
-        RaftAppSettingKey.ActivityTaskStatusBadges -> activityTaskStatusBadges.appSettingToggleValue()
         RaftAppSettingKey.ComposerEnterSends -> composerSendKey.appSettingToggleValue()
         RaftAppSettingKey.MultiShellHost -> multiShellHost.appSettingToggleValue()
         RaftAppSettingKey.DesktopModeLargeScreen -> desktopModeOnLargeScreen.appSettingToggleValue()
         RaftAppSettingKey.ServerDrawer -> serverDrawer.appSettingToggleValue()
-        RaftAppSettingKey.HomeServerAvatar -> homeServerAvatar.appSettingToggleValue()
         // Not in this snapshot: the card writes RaftIosNativeNavFlag itself and reports its own change.
         RaftAppSettingKey.IosNativeNav -> null
+        // No longer settings (1.27.0): task status on Activity and the Home workspace avatar are always on.
+        RaftAppSettingKey.ActivityTaskStatusBadges, RaftAppSettingKey.HomeServerAvatar -> null
     }
 
 private fun SettingsMobileToggleSnapshot.appSettingToggleValue(): RaftAppSettingValue? =

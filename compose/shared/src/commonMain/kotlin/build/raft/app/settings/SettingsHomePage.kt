@@ -20,7 +20,6 @@ import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
 import build.raft.app.data.SHELL_OVERLAY_REQUEST_ID
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.normalizedOrNull
-import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.backFromDetail
 import build.raft.app.data.closeFromDetailPage
 import build.raft.app.data.backClosesSideThreadFirst
@@ -66,7 +65,6 @@ import build.raft.app.data.KeyValueNotificationPreferenceStore
 import build.raft.app.data.PersistentNotificationPreferenceRepository
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
 import build.raft.app.data.DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN
-import build.raft.app.data.DEFAULT_HOME_SERVER_AVATAR_ENABLED
 import build.raft.app.data.DEFAULT_SERVER_DRAWER_ENABLED
 import build.raft.app.data.raftChatLayoutPreferenceRepository
 import build.raft.app.data.authSessionTerminalSourceOrNull
@@ -1260,12 +1258,8 @@ private fun RaftAppShellReadyContent(
     var compactConsecutiveMessages by compactConsecutiveMessagesState
     val foregroundMessageBannersEnabledState = remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by foregroundMessageBannersEnabledState
-    val activityTaskStatusBadgesEnabledState = remember { mutableStateOf(DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED) }
-    var activityTaskStatusBadgesEnabled by activityTaskStatusBadgesEnabledState
     val serverDrawerEnabledState = remember { mutableStateOf(DEFAULT_SERVER_DRAWER_ENABLED) }
     var serverDrawerEnabled by serverDrawerEnabledState
-    val homeServerAvatarEnabledState = remember { mutableStateOf(DEFAULT_HOME_SERVER_AVATAR_ENABLED) }
-    var homeServerAvatarEnabled by homeServerAvatarEnabledState
     val conversationForwardGestureEnabledState = remember { mutableStateOf(false) }
     var conversationForwardGestureEnabled by conversationForwardGestureEnabledState
     val serverDrawerProgrammaticCloseFenceState = remember { mutableStateOf<((String) -> Unit)?>(null) }
@@ -2509,9 +2503,7 @@ private fun RaftAppShellReadyContent(
         myMessageAlignmentState = myMessageAlignmentState,
         compactConsecutiveMessagesState = compactConsecutiveMessagesState,
         foregroundMessageBannersEnabledState = foregroundMessageBannersEnabledState,
-        activityTaskStatusBadgesEnabledState = activityTaskStatusBadgesEnabledState,
         serverDrawerEnabledState = serverDrawerEnabledState,
-        homeServerAvatarEnabledState = homeServerAvatarEnabledState,
         conversationForwardGestureEnabledState = conversationForwardGestureEnabledState,
         foregroundBannerStore = foregroundBannerStore,
     )
@@ -6066,7 +6058,8 @@ private fun RaftAppShellReadyContent(
                                 savedCount = homeSearchSavedState.saved.totalCount,
                                 prefersChineseCommunity = prefersChineseCommunity,
                                 serverDrawerEnabled = serverDrawerEnabled,
-                                homeServerAvatarEnabled = homeServerAvatarEnabled,
+                                // The workspace avatar is always in the Home header (no longer a setting, 1.27.0).
+                                homeServerAvatarEnabled = true,
                                 // artin task #8: on a wide screen the top bar holds the server.
                                 serverSwitcherInTopBar = navRailActive,
                                 // The phone bar or the wide rail carries Search and Activity (nav
@@ -6289,7 +6282,6 @@ private fun RaftAppShellReadyContent(
                             timeContext = threadTimeContext,
                             shellScope = shellScope,
                             storeScope = navigationStoreScope,
-                            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                             externalSelectedThreadId =
                                 adaptiveWorkspaceState?.selection?.identity?.threadId,
                             // The two-pane layout owns the highlight: none once the detail closes.

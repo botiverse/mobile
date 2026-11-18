@@ -103,7 +103,6 @@ class ActivityListTopEdgeUiTest {
                     bottomContentPadding = 0.dp,
                     timeContext = timeContext,
                     listState = harness.listState,
-                    activityTaskStatusBadgesEnabled = false,
                     presentationAccountId = "account-1",
                     stableOrderEnabled = false,
                     stableOrderDecisionRevision = 0L,

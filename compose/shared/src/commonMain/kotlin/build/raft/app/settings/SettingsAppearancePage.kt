@@ -12,6 +12,7 @@ import build.raft.app.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsAppearanceSnapshot
+import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.StoredAuthSession
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,7 +28,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
 import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
@@ -62,9 +62,9 @@ internal val LocalSettingsAppearancePreviewTimeLabel = staticCompositionLocalOf<
 
 /**
  * The screenshot host's device switches: the web case's fresh browser, where nothing is saved
- * yet (Live agent activity on, Show agent model on, Show member descriptions on, Hide empty sidebar sections off, the web's
- * own default) and the app's own Activity sender avatars row does not exist. Null: the saved
- * values and every row, as in the app.
+ * yet (Live agent activity on, Show agent model on, Show member descriptions on, Hide empty Home
+ * sections off, the web's own default) and the app's own rows (Messages, Home and Windows
+ * preferences) do not exist. Null: the saved values and every row, as in the app.
  */
 internal class SettingsAppearanceVisualSwitches(
     val showLiveAgentActivity: Boolean,
@@ -78,22 +78,28 @@ internal val LocalSettingsAppearanceVisualSwitches =
     staticCompositionLocalOf<SettingsAppearanceVisualSwitches?> { null }
 
 /**
- * Settings > Appearance, in the Web's order (`AppearanceSection`): the way to this server's theme
- * ("Theme on <server>"), the "Appearance" header over the message font size card (title,
- * description, size and a real message row as the preview), then the device display switches,
- * 12dp apart (raft-ui 0.84: groups by topic, `stack-y-3`). "Activity sender avatars" is the app's
- * own and comes last. Where they are stored ("Saved on this device.") is said once, under the
- * groups, not on every row (slock #14041).
+ * Settings > Appearance (settings cleanup, 1.27.0: the former "Mobile" page lives here): the way to
+ * this server's theme ("Theme on <server>", web `ServerThemeLink`), then groups by topic, 24dp
+ * apart (raft-ui 0.84 `stack-y-6`):
+ * - Messages: the message font size card (its preview a real message row), then my message
+ *   alignment, compact consecutive messages, collapse long messages, Enter to send, open web links
+ *   (Android, iOS) and the Beta new message menu and conversation forward gesture (iOS);
+ * - Home: hide empty Home sections, the Beta multi-server Home drawer and, on an iPhone, the Beta
+ *   iOS native navigation;
+ * - Windows, only where a large screen is possible: desktop layout on large screens, the Beta
+ *   multiple app windows (Android);
+ * - Display: the web's live agent activity, show agent model, show member descriptions.
+ * Where they are stored ("Saved on this device.") is said once, under the groups (slock #14041).
+ * The app's rows need [preferences] (the store's app preference snapshot); until it is read only
+ * the web's rows show.
  */
 @Composable
 internal fun SettingsAppearanceContent(
     state: ScreenLoadState<SettingsAppearanceSnapshot>,
     actionState: SharedSettingsActionState?,
     fontSizeDraft: String,
-    activitySenderAvatarsEnabled: Boolean,
     bottomContentPadding: Dp,
     onFontSizeDraftChange: (String) -> Unit,
-    onActivitySenderAvatarsChange: (Boolean) -> Unit,
     onSave: () -> Unit,
     onRetry: () -> Unit,
     /**
@@ -101,36 +107,34 @@ internal fun SettingsAppearanceContent(
      * it only where there is no Theme page, so it has one place: [settingsAppearanceShowsModeCard].
      */
     showModeCard: Boolean,
-    /**
-     * On a fine pointer, the app preference cards ([settingsAppPreferenceItems]) after the
-     * appearance ones: the web keeps its device preferences in AppearanceSection, and the app has
-     * no "Mobile" page there.
-     */
-    appPreferenceItems: (LazyListScope.() -> Unit)? = null,
+    /** The app preference snapshot (alignment, Enter to send, ...); null: not read yet, no app rows. */
+    preferences: SettingsMobileSnapshot? = null,
+    preferenceActions: SettingsAppPreferenceActions = SettingsAppPreferenceActions(),
+    preferenceVisibility: SettingsAppPreferenceVisibility = settingsAppPreferenceVisibility(),
     /** The current server's name for the "Theme on <server>" row (Web `ServerThemeLink`); null hides it. */
     themeServerName: String? = null,
     onOpenTheme: () -> Unit = {},
 ) {
+    val visual = LocalSettingsAppearanceVisualSwitches.current
+    val appRows = preferences?.takeIf { visual?.showAppOnlyRows != false }
+    val fontSizeSnapshot = (state as? ScreenLoadState.Content)?.data
     LazyColumn(
         state = rememberSettingsSearchListState(),
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).raftSafeAreaHorizontalPadding().padding(horizontal = 16.dp),
         // The top and bottom inset inside the list, so a located section first on the page has room
         // for its highlight (SettingsSearchSectionShape) instead of being cut where the list starts.
         contentPadding = PaddingValues(vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         if (showModeCard) {
             item {
                 Box(Modifier.fillMaxWidth().settingsSearchAnchor("theme", SettingsSearchSectionShape)) {
                     SettingsAppearanceThemeCard(title = stringResource(Res.string.settings_appearance_theme_title))
                 }
-                Spacer(Modifier.height(24.dp))
             }
         }
         if (themeServerName != null) {
-            item {
-                SettingsAppearanceServerThemeLink(serverName = themeServerName, onClick = onOpenTheme)
-                Spacer(Modifier.height(24.dp))
-            }
+            item { SettingsAppearanceServerThemeLink(serverName = themeServerName, onClick = onOpenTheme) }
         }
         when (state) {
             ScreenLoadState.Loading ->
@@ -176,33 +180,76 @@ internal fun SettingsAppearanceContent(
                         traceId = state.blocker.traceId
                     )
                 }
-            is ScreenLoadState.Content ->
-                item {
-                    Box(Modifier.fillMaxWidth().settingsSearchAnchor("message-font-size", SettingsSearchSectionShape)) {
-                        SettingsAppearanceFontSizeCard(
-                            snapshot = state.data,
-                            fontSizeDraft = fontSizeDraft,
-                            actionState = actionState,
-                            onFontSizeDraftChange = onFontSizeDraftChange,
-                            onSubmit = onSave
-                        )
+            is ScreenLoadState.Content -> Unit
+        }
+        if (fontSizeSnapshot != null || appRows != null) {
+            item {
+                SettingsFormSection(
+                    iconName = RaftLucideIconName.MessageSquare,
+                    title = stringResource(Res.string.settings_appearance_section_messages)
+                ) {
+                    fontSizeSnapshot?.let { snapshot ->
+                        Box(Modifier.fillMaxWidth().settingsSearchAnchor("message-font-size", SettingsSearchCardShape)) {
+                            SettingsAppearanceFontSizeCard(
+                                snapshot = snapshot,
+                                fontSizeDraft = fontSizeDraft,
+                                actionState = actionState,
+                                onFontSizeDraftChange = onFontSizeDraftChange,
+                                onSubmit = onSave
+                            )
+                        }
+                    }
+                    appRows?.let { snapshot ->
+                        SettingsAppearanceGroup {
+                            SettingsAppearanceMessageRows(snapshot, actionState, preferenceActions, preferenceVisibility)
+                        }
                     }
                 }
+            }
         }
         item {
-            Spacer(Modifier.height(12.dp))
-            SettingsAppearanceDisplaySwitches(
-                activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
-                onActivitySenderAvatarsChange = onActivitySenderAvatarsChange
-            )
-            Spacer(Modifier.height(12.dp))
-            SettingsAppearanceSavedOnDevice()
+            SettingsFormSection(iconName = RaftLucideIconName.House, title = stringResource(Res.string.settings_appearance_section_home)) {
+                SettingsAppearanceGroup {
+                    SettingsAppearanceSwitchRow(
+                        anchorId = "hide-empty-sidebar-sections",
+                        title = stringResource(Res.string.settings_appearance_hide_empty_sidebar_sections_title),
+                        description = stringResource(Res.string.settings_appearance_hide_empty_sidebar_sections_description),
+                        checked = visual?.hideEmptySidebarSections ?: RaftDisplayPreferenceRuntime.hideEmptySidebarSections,
+                        onCheckedChange = RaftDisplayPreferenceRuntime::setHideEmptySidebarSections,
+                        divider = false
+                    )
+                    appRows?.let { snapshot ->
+                        SettingsAppearanceHomeRows(snapshot, actionState, preferenceActions, preferenceVisibility)
+                    }
+                }
+            }
         }
-        appPreferenceItems?.let { preferenceItems ->
-            item { Spacer(Modifier.height(12.dp)) }
-            preferenceItems()
+        appRows?.takeIf { preferenceVisibility.windowsGroup(it.multiShellHost.enabled) }?.let { snapshot ->
+            item {
+                SettingsFormSection(iconName = RaftLucideIconName.AppWindow, title = stringResource(Res.string.settings_appearance_section_windows)) {
+                    SettingsAppearanceGroup {
+                        SettingsAppearanceWindowRows(snapshot, actionState, preferenceActions, preferenceVisibility)
+                    }
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SettingsFormSection(iconName = RaftLucideIconName.Eye, title = stringResource(Res.string.settings_appearance_section_display)) {
+                    SettingsAppearanceDisplaySwitches()
+                }
+                SettingsAppearanceSavedOnDevice()
+            }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+/** An Appearance group: raft-ui `ListRowGroup`, its rows on one inset card. */
+@Composable
+private fun SettingsAppearanceGroup(content: @Composable () -> Unit) {
+    RaftDesignSystemTheme {
+        RaftListRowGroup(Modifier.fillMaxWidth()) { content() }
     }
 }
 
@@ -240,93 +287,37 @@ private fun SettingsAppearanceSavedOnDevice() {
 }
 
 /**
- * The Web's device switches (`ListRowGroup` of plain rows: title, description, the switch its
- * target) in the Web's order (Live agent activity, Show agent model, Show member descriptions,
- * Hide empty sidebar sections), plus the app's Activity sender avatars last.
+ * The Web's device display switches (`ListRowGroup` of plain rows: title, description, the switch
+ * its target) in the Web's order: Live agent activity, Show agent model, Show member descriptions.
  */
 @Composable
-private fun SettingsAppearanceDisplaySwitches(
-    activitySenderAvatarsEnabled: Boolean,
-    onActivitySenderAvatarsChange: (Boolean) -> Unit
-) {
+private fun SettingsAppearanceDisplaySwitches() {
     val visual = LocalSettingsAppearanceVisualSwitches.current
-    RaftDesignSystemTheme {
-        RaftListRowGroup(Modifier.fillMaxWidth()) {
-            SettingsAppearanceSwitchRow(
-                anchorId = "live-agent-activity",
-                title = stringResource(Res.string.settings_appearance_live_agent_activity_title),
-                description = stringResource(Res.string.settings_appearance_live_agent_activity_description),
-                checked = visual?.showLiveAgentActivity ?: RaftDisplayPreferenceRuntime.showLiveAgentActivity,
-                onCheckedChange = RaftDisplayPreferenceRuntime::setShowLiveAgentActivity,
-                divider = false
-            )
-            SettingsAppearanceSwitchRow(
-                anchorId = "show-agent-model",
-                title = stringResource(Res.string.settings_appearance_show_agent_model_title),
-                description = stringResource(Res.string.settings_appearance_show_agent_model_description),
-                checked = visual?.showAgentModelName ?: RaftDisplayPreferenceRuntime.showAgentModelName,
-                onCheckedChange = RaftDisplayPreferenceRuntime::setShowAgentModelName,
-                divider = true
-            )
-            SettingsAppearanceSwitchRow(
-                anchorId = "show-sender-description",
-                title = stringResource(Res.string.settings_appearance_show_sender_description_title),
-                description = stringResource(Res.string.settings_appearance_show_sender_description_description),
-                checked = visual?.showSenderDescription ?: RaftDisplayPreferenceRuntime.showSenderDescription,
-                onCheckedChange = RaftDisplayPreferenceRuntime::setShowSenderDescription,
-                divider = true
-            )
-            SettingsAppearanceSwitchRow(
-                anchorId = "hide-empty-sidebar-sections",
-                title = stringResource(Res.string.settings_appearance_hide_empty_sidebar_sections_title),
-                description = stringResource(Res.string.settings_appearance_hide_empty_sidebar_sections_description),
-                checked = visual?.hideEmptySidebarSections ?: RaftDisplayPreferenceRuntime.hideEmptySidebarSections,
-                onCheckedChange = RaftDisplayPreferenceRuntime::setHideEmptySidebarSections,
-                divider = true
-            )
-            if (visual?.showAppOnlyRows != false) {
-                SettingsAppearanceSwitchRow(
-                    title = stringResource(Res.string.settings_appearance_activity_sender_avatars),
-                    description = stringResource(Res.string.settings_appearance_activity_sender_avatars_detail),
-                    checked = activitySenderAvatarsEnabled,
-                    onCheckedChange = onActivitySenderAvatarsChange,
-                    divider = true
-                )
-            }
-        }
-    }
-}
-
-/** raft-ui ListRow `plain` (px 16, py 12, gap 12): the title and its description. */
-@Composable
-private fun SettingsAppearanceSwitchRow(
-    title: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    divider: Boolean,
-    /** The Settings search id of the row ([settingsSearchAnchor]); null: not in the index. */
-    anchorId: String? = null,
-) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
-    Column(Modifier.fillMaxWidth().then(if (anchorId != null) Modifier.settingsSearchAnchor(anchorId) else Modifier)) {
-        if (divider) {
-            Box(
-                Modifier.fillMaxWidth().padding(start = 16.dp).height(RaftAppStroke.Thin).background(colors.lineHairline)
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                RaftText(title, style = typography.body.copy(fontWeight = FontWeight.SemiBold), color = colors.foreground)
-                RaftText(description, style = typography.callout, color = colors.foregroundMuted)
-            }
-            RaftSwitch(checked = checked, onCheckedChange = onCheckedChange, label = title)
-        }
+    SettingsAppearanceGroup {
+        SettingsAppearanceSwitchRow(
+            anchorId = "live-agent-activity",
+            title = stringResource(Res.string.settings_appearance_live_agent_activity_title),
+            description = stringResource(Res.string.settings_appearance_live_agent_activity_description),
+            checked = visual?.showLiveAgentActivity ?: RaftDisplayPreferenceRuntime.showLiveAgentActivity,
+            onCheckedChange = RaftDisplayPreferenceRuntime::setShowLiveAgentActivity,
+            divider = false
+        )
+        SettingsAppearanceSwitchRow(
+            anchorId = "show-agent-model",
+            title = stringResource(Res.string.settings_appearance_show_agent_model_title),
+            description = stringResource(Res.string.settings_appearance_show_agent_model_description),
+            checked = visual?.showAgentModelName ?: RaftDisplayPreferenceRuntime.showAgentModelName,
+            onCheckedChange = RaftDisplayPreferenceRuntime::setShowAgentModelName,
+            divider = true
+        )
+        SettingsAppearanceSwitchRow(
+            anchorId = "show-sender-description",
+            title = stringResource(Res.string.settings_appearance_show_sender_description_title),
+            description = stringResource(Res.string.settings_appearance_show_sender_description_description),
+            checked = visual?.showSenderDescription ?: RaftDisplayPreferenceRuntime.showSenderDescription,
+            onCheckedChange = RaftDisplayPreferenceRuntime::setShowSenderDescription,
+            divider = true
+        )
     }
 }
 
@@ -386,48 +377,46 @@ private fun SettingsAppearanceFontSizeCard(
         if (!dirty) return@LaunchedEffect
         onSubmit()
     }
-    SettingsFormSection(iconName = RaftLucideIconName.Type, title = stringResource(Res.string.settings_appearance_title)) {
-        RaftDesignSystemTheme {
-            val colors = RaftTheme.colors
-            val typography = RaftTheme.typography
-            RaftCard(modifier = Modifier.fillMaxWidth()) {
-                // Web `Card className="stack-y-4 p-4"`.
-                Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        RaftText(
-                            stringResource(Res.string.settings_appearance_message_font_size_title),
-                            style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
-                            color = colors.foreground
-                        )
-                        RaftText(
-                            stringResource(Res.string.settings_appearance_message_font_size_description),
-                            style = typography.footnote,
-                            color = colors.foregroundMuted
-                        )
-                    }
-                    SettingsSegmentedControlField(
-                        selectedValue = selected,
-                        options =
-                            snapshot.messageBodyFontSize.options.map {
-                                SegmentedControlOption(
-                                    it.key,
-                                    settingsMessageFontSizeLabelRes(it.key)?.let { res -> stringResource(res) } ?: it.label
-                                )
-                            },
-                        onValueSelected = onFontSizeDraftChange,
-                        enabled = snapshot.messageBodyFontSize.available && !busy
+    RaftDesignSystemTheme {
+        val colors = RaftTheme.colors
+        val typography = RaftTheme.typography
+        RaftCard(modifier = Modifier.fillMaxWidth()) {
+            // Web `Card className="stack-y-4 p-4"`.
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    RaftText(
+                        stringResource(Res.string.settings_appearance_message_font_size_title),
+                        style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.foreground
                     )
-                    if (actionState?.action == APPEARANCE_ACTION_MESSAGE_FONT_SIZE && actionState.errorCode != null) {
-                        SettingsFormErrorText(actionState)
-                    }
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            stringResource(Res.string.settings_appearance_preview),
-                            style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
-                            color = RaftColor.TextMutedGray
-                        )
-                        SettingsAppearancePreview(fontSizeKey = selected)
-                    }
+                    RaftText(
+                        stringResource(Res.string.settings_appearance_message_font_size_description),
+                        style = typography.footnote,
+                        color = colors.foregroundMuted
+                    )
+                }
+                SettingsSegmentedControlField(
+                    selectedValue = selected,
+                    options =
+                        snapshot.messageBodyFontSize.options.map {
+                            SegmentedControlOption(
+                                it.key,
+                                settingsMessageFontSizeLabelRes(it.key)?.let { res -> stringResource(res) } ?: it.label
+                            )
+                        },
+                    onValueSelected = onFontSizeDraftChange,
+                    enabled = snapshot.messageBodyFontSize.available && !busy
+                )
+                if (actionState?.action == APPEARANCE_ACTION_MESSAGE_FONT_SIZE && actionState.errorCode != null) {
+                    SettingsFormErrorText(actionState)
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        stringResource(Res.string.settings_appearance_preview),
+                        style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
+                        color = RaftColor.TextMutedGray
+                    )
+                    SettingsAppearancePreview(fontSizeKey = selected)
                 }
             }
         }

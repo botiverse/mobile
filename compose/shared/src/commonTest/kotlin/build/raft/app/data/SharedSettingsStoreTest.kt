@@ -1004,11 +1004,9 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetNewMessageMenuEnabled(true))
         store.accept(SharedSettingsIntent.SetConversationForwardGestureEnabled(true))
         store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
-        store.accept(SharedSettingsIntent.SetActivityTaskStatusBadges(true))
         store.accept(SharedSettingsIntent.SetComposerSendKey(false))
         store.accept(SharedSettingsIntent.SetMultiShellHostEnabled(true))
         store.accept(SharedSettingsIntent.SetServerDrawerEnabled(true))
-        store.accept(SharedSettingsIntent.SetHomeServerAvatarEnabled(true))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals(true, notificationRepository.enabled)
@@ -1021,11 +1019,9 @@ class SharedSettingsStoreTest {
         assertEquals(true, chatLayoutRepository.newMessageMenuEnabled)
         assertEquals(true, chatLayoutRepository.conversationForwardGestureEnabled)
         assertEquals(true, chatLayoutRepository.foregroundMessageBannersEnabled)
-        assertEquals(true, chatLayoutRepository.activityTaskStatusBadgesEnabled)
         assertEquals(false, chatLayoutRepository.composerSendKeyEnabled)
         assertEquals(true, chatLayoutRepository.multiShellHostEnabled)
         assertEquals(true, chatLayoutRepository.serverDrawerEnabled)
-        assertEquals(true, chatLayoutRepository.homeServerAvatarEnabled)
         assertEquals("Enabled", mobile.pushNotifications.statusLabel)
         assertEquals("Simplified Chinese / 简体中文", mobile.localePreference.statusLabel)
         assertEquals(
@@ -1046,16 +1042,12 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.conversationForwardGesture.statusLabel)
         assertEquals(true, mobile.foregroundMessageBanners.enabled)
         assertEquals("Enabled", mobile.foregroundMessageBanners.statusLabel)
-        assertEquals(true, mobile.activityTaskStatusBadges.enabled)
-        assertEquals("Enabled", mobile.activityTaskStatusBadges.statusLabel)
         assertEquals(false, mobile.composerSendKey.enabled)
         assertEquals("New line", mobile.composerSendKey.statusLabel)
         assertEquals(true, mobile.multiShellHost.enabled)
         assertEquals("Enabled", mobile.multiShellHost.statusLabel)
         assertEquals(true, mobile.serverDrawer.enabled)
         assertEquals("Enabled", mobile.serverDrawer.statusLabel)
-        assertEquals(true, mobile.homeServerAvatar.enabled)
-        assertEquals("Enabled", mobile.homeServerAvatar.statusLabel)
         assertNull(store.state.value.actionState?.errorCode)
 
         store.accept(SharedSettingsIntent.SetLocale("system"))
@@ -4264,12 +4256,9 @@ class SharedSettingsStoreTest {
         var newMessageMenuEnabled: Boolean = false,
         var conversationForwardGestureEnabled: Boolean = false,
         var foregroundMessageBannersEnabled: Boolean = false,
-        var activityTaskStatusBadgesEnabled: Boolean = false,
-        var activitySenderAvatarsEnabled: Boolean = false,
         var composerSendKeyEnabled: Boolean = true,
         var multiShellHostEnabled: Boolean = false,
         var serverDrawerEnabled: Boolean = false,
-        var homeServerAvatarEnabled: Boolean = false,
         var translationMode: TranslationModePreference = TranslationModePreference.Automatic,
         var translationTargetLanguage: String = TranslationTargetLanguages.Browser
     ) : ChatLayoutPreferenceRepository {
@@ -4281,12 +4270,9 @@ class SharedSettingsStoreTest {
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 conversationForwardGestureEnabled = conversationForwardGestureEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
-                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-                activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 multiShellHostEnabled = multiShellHostEnabled,
                 serverDrawerEnabled = serverDrawerEnabled,
-                homeServerAvatarEnabled = homeServerAvatarEnabled,
                 translationMode = translationMode,
                 translationTargetLanguage = translationTargetLanguage,
             )
@@ -4299,7 +4285,6 @@ class SharedSettingsStoreTest {
                 myMessageAlignment = this.alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
-                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
             )
@@ -4311,7 +4296,6 @@ class SharedSettingsStoreTest {
                 desktopModeOnLargeScreen = enabled,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
-                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
             )
@@ -4322,7 +4306,6 @@ class SharedSettingsStoreTest {
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
-                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
             )
@@ -4349,27 +4332,9 @@ class SharedSettingsStoreTest {
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
-                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
             )
-        }
-
-        override suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
-            activityTaskStatusBadgesEnabled = enabled
-            return ChatLayoutPreferenceSnapshot(
-                myMessageAlignment = alignment,
-                compactConsecutiveMessages = compactConsecutiveMessages,
-                foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
-                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-                composerSendKeyEnabled = composerSendKeyEnabled,
-                translationMode = translationMode,
-            )
-        }
-
-        override suspend fun setActivitySenderAvatarsEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
-            activitySenderAvatarsEnabled = enabled
-            return getChatLayoutPreference()
         }
 
         override suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
@@ -4378,7 +4343,6 @@ class SharedSettingsStoreTest {
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
-                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
             )
@@ -4394,18 +4358,12 @@ class SharedSettingsStoreTest {
             return getChatLayoutPreference()
         }
 
-        override suspend fun setHomeServerAvatarEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
-            homeServerAvatarEnabled = enabled
-            return getChatLayoutPreference()
-        }
-
         override suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot {
             translationMode = mode
             return ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
-                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
             )

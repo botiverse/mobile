@@ -151,12 +151,6 @@ internal val settingsTabBarSmokePayload = RaftSettingsHomePayload(
             iconName = RaftLucideIconName.Languages
         ),
         SettingsHomePageLinkPayload(
-            key = "mobile",
-            title = "Mobile",
-            subtitle = "Push notifications, language, layout",
-            iconName = RaftLucideIconName.Smartphone
-        ),
-        SettingsHomePageLinkPayload(
             key = "storage",
             title = "Storage",
             subtitle = "Local cache and diagnostics",
@@ -681,10 +675,8 @@ private fun SettingsVisualAppearanceContent() {
         state = ScreenLoadState.Content(snapshot),
         actionState = null,
         fontSizeDraft = snapshot.messageBodyFontSize.selectedKey,
-        activitySenderAvatarsEnabled = false,
         bottomContentPadding = RaftAppSpacing.Lg,
         onFontSizeDraftChange = {},
-        onActivitySenderAvatarsChange = {},
         onSave = {},
         onRetry = {},
         // The fixture has a current server, so light and dark is on the Theme page.
@@ -701,11 +693,9 @@ private fun SettingsVisualNotificationsContent() {
         notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
         preferenceBusy = false,
         foregroundKeepAliveBusy = false,
-        offlineComputerAlertsBusy = false,
         foregroundMessageBannersBusy = false,
         onNotificationPreferenceChange = {},
         onForegroundKeepAlivePreferenceChange = {},
-        onOfflineComputerAlertsChange = {},
         onForegroundMessageBannersChange = {},
         onServerNotificationModeChange = {},
         onPushPreviewModeChange = {},
@@ -1198,7 +1188,6 @@ internal fun HomeActivityVisualContent() {
             includeTopSafeArea = params.optBoolean("task797IncludeTopSafeArea", false),
             pullRefreshing = params.optBoolean("task797Refreshing", false),
             timeContext = homeVisualFixtureTimeContext,
-            activityTaskStatusBadgesEnabled = true,
             foregroundEpoch = 0L,
             modifier = Modifier.fillMaxSize()
         )
@@ -1243,7 +1232,6 @@ internal fun RaftActivityTabVisualContent(
                 onClose = null,
                 includeTopSafeArea = protoFullScreen,
                 timeContext = homeVisualFixtureTimeContext,
-                activityTaskStatusBadgesEnabled = true,
                 draftProjection = homeActivityVisualDraftProjection,
                 foregroundEpoch = 0L,
                 mainTab = true,
@@ -1453,12 +1441,8 @@ private fun SettingsRouteVisualFixtureDetailContent(
             onMessageAlignmentSelected = {},
             onCompactConsecutiveMessagesSelected = {},
             onForegroundMessageBannersSelected = {},
-            onActivityTaskStatusBadgesSelected = {},
             onConversationForwardGestureSelected = {},
-            activitySenderAvatarsEnabled = false,
-            onActivitySenderAvatarsSelected = {},
             onServerDrawerSelected = {},
-            onHomeServerAvatarSelected = {},
                 bottomContentPadding = bottomContentPadding,
             timeContext = timeContext,
             onLogout = onLogout,
@@ -1636,7 +1620,6 @@ internal fun settingsRouteVisualState(route: SettingsRouteVisualPayload): Shared
         mobile =
             if (
                 destination == SharedSettingsDestination.Notifications ||
-                    destination == SharedSettingsDestination.Mobile ||
                     destination == SharedSettingsDestination.Appearance
             ) {
                 ScreenLoadState.Content(settingsVisualMobileSnapshot())

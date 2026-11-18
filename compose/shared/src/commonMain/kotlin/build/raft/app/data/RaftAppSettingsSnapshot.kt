@@ -56,7 +56,7 @@ internal fun raftAppSettingsSnapshotReady(
         RaftIosNativeNavFlag.localOverrideSetting(store) != null ||
         store.getString(RaftIosNativeNavFlag.KEY_SERVER_LAST) != null
 
-/** `app_settings_snapshot` from the stored preferences (the same keys the Settings > Mobile cards write). */
+/** `app_settings_snapshot` from the stored preferences (the same keys the app preference rows under Settings > Appearance write). */
 internal fun raftAppSettingsSnapshotProperties(
     store: SharedPreferenceStore,
     platform: RaftAppSettingsPlatform = currentRaftAppSettingsPlatform(),
@@ -73,12 +73,14 @@ internal fun raftAppSettingsSnapshotProperties(
             if (platform.conversationForwardGesture) chat.readConversationForwardGestureEnabledSync() else null,
         iosNativeNav = if (platform.iosNativeNav) RaftIosNativeNavFlag.stored(store, supported = true) else null,
         iosNativeNavChosen = if (platform.iosNativeNav) RaftIosNativeNavFlag.localOverrideSetting(store) != null else null,
-        activityTaskStatusBadges = chat.readActivityTaskStatusBadgesEnabledSync(),
+        // No longer a setting (settings cleanup, 1.27.0): Activity always shows task status, the
+        // Home header always the workspace avatar. The wire fields stay required, so they say so.
+        activityTaskStatusBadges = true,
         composerEnterSends = chat.readComposerSendKeyEnabledSync(),
         multiShellHost = if (platform.multiShellHost) chat.readMultiShellHostEnabledSync() else null,
         desktopModeLargeScreen = chat.readDesktopModeOnLargeScreenSync(),
         serverDrawer = chat.readServerDrawerEnabledSync(),
-        homeServerAvatar = chat.readHomeServerAvatarEnabledSync(),
+        homeServerAvatar = true,
     )
 }
 
