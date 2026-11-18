@@ -8,7 +8,8 @@ import kotlin.math.floor
  * (raft-ui 0.50, web #11855).
  *
  * - Only the 5-hour and the weekly window, always in that order; a missing one is left out.
- * - A used-up window reads "5 小时 已用完，3 小时后恢复" (without a reset time: "已用完").
+ * - A used-up window reads "5 小时 已用完，3 小时后恢复" (without a reset time: "已用完"); one the
+ *   account's credits carry reads "本周 已达上限 · 正在使用积分" (slock #15374).
  * - Per-model windows (Claude "Current week (Opus)", a Codex model bucket) stay in the full card.
  *
  * Window ids carry no "5h / week" meaning on the wire (the Computer derives them from a hash of
@@ -84,7 +85,9 @@ internal data class RuntimeQuotaSegment(
     val rawLabel: String,
     val percentUsed: Int,
     val usedUp: Boolean,
-    val resetsAt: String?
+    val resetsAt: String?,
+    /** Used up, but the account runs on its credits (slock #15374): "Week limit reached · using credits". */
+    val onCredits: Boolean = false,
 )
 
 /** The facts of a compact line; [formatRuntimeQuotaLine] turns them into text. */
@@ -118,7 +121,7 @@ internal fun summarizeRuntimeQuota(
     val classified = usable.map { it to runtimeQuotaWindowClass(provider, it.label) }
     val known =
         RuntimeQuotaWindowKind.entries.mapNotNull { kind ->
-            classified.firstOrNull { (_, cls) -> cls == RuntimeQuotaWindowClass.Known(kind) }?.first?.toSegment(kind)
+            classified.firstOrNull { (_, cls) -> cls == RuntimeQuotaWindowClass.Known(kind) }?.first?.toSegment(kind, account)
         }
     val segments =
         known.ifEmpty {
@@ -127,7 +130,7 @@ internal fun summarizeRuntimeQuota(
                 .filter { (_, cls) -> cls == RuntimeQuotaWindowClass.Other }
                 .maxByOrNull { (window, _) -> window.usedRatio ?: 0.0 }
                 ?.first
-                ?.toSegment(kind = null)
+                ?.toSegment(kind = null, account = account)
                 ?.let(::listOf)
                 .orEmpty()
         }
@@ -138,7 +141,7 @@ internal fun summarizeRuntimeQuota(
     return RuntimeQuotaSummary(provider, plan, segments, attention = false)
 }
 
-private fun RuntimeAccountUsageWindow.toSegment(kind: RuntimeQuotaWindowKind?): RuntimeQuotaSegment {
+private fun RuntimeAccountUsageWindow.toSegment(kind: RuntimeQuotaWindowKind?, account: RuntimeAccountUsageAccount): RuntimeQuotaSegment {
     val ratio = usedRatio ?: 0.0
     val usedUp = status == RuntimeAccountUsageWindowStatus.LimitReached || ratio >= 1.0
     return RuntimeQuotaSegment(
@@ -146,7 +149,8 @@ private fun RuntimeAccountUsageWindow.toSegment(kind: RuntimeQuotaWindowKind?): 
         rawLabel = label,
         percentUsed = if (usedUp) 100 else runtimeQuotaPercentUsed(ratio),
         usedUp = usedUp,
-        resetsAt = resetsAt
+        resetsAt = resetsAt,
+        onCredits = usedUp && account.carriedByCredits(this),
     )
 }
 
@@ -160,7 +164,9 @@ internal class RuntimeQuotaLineCopy(
     val usedUp: (window: String, reset: String) -> String,
     val usedUpNoReset: (window: String) -> String,
     /** "Claude Max · 需要处理": (plan). */
-    val attention: (plan: String) -> String
+    val attention: (plan: String) -> String,
+    /** "本周 已达上限 · 正在使用积分": (window); a full window the account's credits carry (slock #15374). */
+    val onCredits: (window: String) -> String = usedUpNoReset,
 )
 
 /** The brand name a line starts with ("Claude Max"): never translated. */
@@ -204,7 +210,10 @@ internal fun runtimeQuotaLineParts(
                     RuntimeQuotaWindowKind.Week -> copy.week
                     null -> segment.rawLabel
                 }
-            if (segment.usedUp) {
+            if (segment.onCredits) {
+                // Not drawn as used up: the account still runs.
+                RuntimeQuotaLinePart(copy.onCredits(name))
+            } else if (segment.usedUp) {
                 val reset = segment.resetsAt?.let(resetLabel)?.trim()?.takeIf { it.isNotEmpty() }
                 RuntimeQuotaLinePart(if (reset != null) copy.usedUp(name, reset) else copy.usedUpNoReset(name), usedUp = true)
             } else {

@@ -37,6 +37,7 @@ import build.raft.app.data.RuntimeAccountUsageRead
 import build.raft.app.data.RuntimeAccountUsageWindowScope
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.allModels
+import build.raft.app.data.carriedByCredits
 import build.raft.app.data.modelScoped
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.RealtimeEvent
@@ -441,6 +442,11 @@ internal sealed interface RaftRackUsageCell {
         override val attention: Boolean,
         val resetsAt: String? = null,
         val plan: String? = null,
+        /**
+         * Used up, but the account runs on its credits (slock #15374): the line says "On credits"
+         * instead of when it is back.
+         */
+        val onCredits: Boolean = false,
         /** The account reports a model's (or a group of models') own window: the cell's second line (web #14605). */
         val model: RaftRackModelLine? = null,
     ) : RaftRackUsageCell
@@ -566,7 +572,8 @@ private fun raftRackUsableAgainAt(resets: List<String?>): String? {
 
 /** Web `BulkRuntimeUsageSummary` of one account. */
 private sealed interface RaftRackAccountSummary {
-    data class Limit(val resetsAt: String?) : RaftRackAccountSummary
+    /** [onCredits]: the account's credits carry it past the limit (slock #15374). */
+    data class Limit(val resetsAt: String?, val onCredits: Boolean = false) : RaftRackAccountSummary
 
     data class Used(val percent: Int) : RaftRackAccountSummary
 
@@ -578,7 +585,9 @@ private fun RuntimeAccountUsageAccount.rackSummary(): RaftRackAccountSummary? = 
 
 private fun RuntimeAccountUsageAccount.allModelsRackSummary(): RaftRackAccountSummary? {
     val limited = windows.filter { it.status == RuntimeAccountUsageWindowStatus.LimitReached }
-    if (limited.isNotEmpty()) return RaftRackAccountSummary.Limit(raftRackUsableAgainAt(limited.map { it.resetsAt }))
+    if (limited.isNotEmpty()) {
+        return RaftRackAccountSummary.Limit(raftRackUsableAgainAt(limited.map { it.resetsAt }), onCredits = limited.all { carriedByCredits(it) })
+    }
     if (health != RuntimeAccountUsageHealth.Ok) return RaftRackAccountSummary.Attention
     val ratios = windows.filter { it.status == RuntimeAccountUsageWindowStatus.Ok }.mapNotNull { it.usedRatio }
     if (ratios.isEmpty()) return null
@@ -609,7 +618,9 @@ internal fun raftRackUsageCell(column: RaftRackUsageColumn, load: RuntimeAccount
             } ?: return@forEach
         val limit = summary as? RaftRackAccountSummary.Limit
         val current = tightestUsed
-        if (current == null || used > current || (used == current && limit != null)) {
+        // At a tie a reached limit wins, and one no credits carry over one they do.
+        val limitWins = limit != null && (tightestLimit == null || (tightestLimit?.onCredits == true && !limit.onCredits))
+        if (current == null || used > current || (used == current && limitWins)) {
             tightestUsed = used
             tightestLimit = limit
             tightestPlan = account.planLabel?.takeIf { it.isNotBlank() }
@@ -626,6 +637,7 @@ internal fun raftRackUsageCell(column: RaftRackUsageColumn, load: RuntimeAccount
         attention = attention,
         resetsAt = tightestLimit?.resetsAt,
         plan = tightestPlan,
+        onCredits = tightestLimit?.onCredits == true,
         model = tightestAccount?.rackModelLine(),
     )
 }

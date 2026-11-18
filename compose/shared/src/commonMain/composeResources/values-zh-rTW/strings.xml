@@ -2797,6 +2797,11 @@
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">已用 %1$s · 暫時無法取得重設時間</string>
     <string name="settings_computers_runtime_usage_window_used_up">已用完 · %1$s重設</string>
     <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">已用完</string>
+    <string name="settings_computers_runtime_usage_window_on_credits">已達上限 · 正在使用積分 · %1$s重設</string>
+    <string name="settings_computers_runtime_usage_window_on_credits_reset_unavailable">已達上限 · 正在使用積分</string>
+    <string name="settings_computers_runtime_usage_credits_balance">積分 %1$s</string>
+    <string name="settings_computers_runtime_usage_credits_unlimited">積分不限量</string>
+    <string name="settings_computers_runtime_usage_credits_available">有可用積分</string>
     <string name="settings_computers_runtime_usage_later">稍後</string>
     <string name="settings_computers_runtime_usage_metadata">整個帳號 · %1$s更新</string>
     <string name="settings_computers_runtime_usage_recently">剛剛</string>
@@ -2913,6 +2918,7 @@
     <string name="settings_computers_rack_resets_in_hours">%1$dh 後重設</string>
     <string name="settings_computers_rack_resets_in_days">%1$dd 後重設</string>
     <string name="settings_computers_rack_used_up_resets">已用完 · %1$s重設</string>
+    <string name="settings_computers_rack_on_credits">使用積分中</string>
     <string name="settings_computers_rack_model_usage">%1$s：%2$s</string>
     <string name="settings_computers_rack_model_resets_in_minutes">%1$d 分鐘</string>
     <string name="settings_computers_rack_model_resets_in_hours">%1$d 小時</string>
@@ -3496,6 +3502,7 @@
     <string name="runtime_quota_used">%1$s 已用 %2$s</string>
     <string name="runtime_quota_used_up">%1$s 已用完 · %2$s重設</string>
     <string name="runtime_quota_used_up_no_reset">%1$s 已用完</string>
+    <string name="runtime_quota_on_credits">%1$s 已達上限 · 正在使用積分</string>
     <string name="runtime_quota_attention">%1$s · 需要處理</string>
     <string name="runtime_picker_search">搜尋</string>
     <string name="runtime_picker_no_matches">沒有符合「%1$s」的結果</string>

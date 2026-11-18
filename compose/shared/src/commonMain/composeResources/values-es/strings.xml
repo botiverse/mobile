@@ -2797,6 +2797,11 @@
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">%1$s usado · hora de restablecimiento no disponible</string>
     <string name="settings_computers_runtime_usage_window_used_up">Agotado · se restablece %1$s</string>
     <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">Agotado</string>
+    <string name="settings_computers_runtime_usage_window_on_credits">Límite alcanzado · usando créditos · se restablece %1$s</string>
+    <string name="settings_computers_runtime_usage_window_on_credits_reset_unavailable">Límite alcanzado · usando créditos</string>
+    <string name="settings_computers_runtime_usage_credits_balance">%1$s créditos</string>
+    <string name="settings_computers_runtime_usage_credits_unlimited">Créditos ilimitados</string>
+    <string name="settings_computers_runtime_usage_credits_available">Créditos disponibles</string>
     <string name="settings_computers_runtime_usage_later">más tarde</string>
     <string name="settings_computers_runtime_usage_metadata">Toda la cuenta · actualizado %1$s</string>
     <string name="settings_computers_runtime_usage_recently">recientemente</string>
@@ -2913,6 +2918,7 @@
     <string name="settings_computers_rack_resets_in_hours">Renov. %1$dh</string>
     <string name="settings_computers_rack_resets_in_days">Renov. %1$dd</string>
     <string name="settings_computers_rack_used_up_resets">Agotado · se restablece %1$s</string>
+    <string name="settings_computers_rack_on_credits">Con créditos</string>
     <string name="settings_computers_rack_model_usage">%1$s: %2$s</string>
     <string name="settings_computers_rack_model_resets_in_minutes">%1$dm</string>
     <string name="settings_computers_rack_model_resets_in_hours">%1$dh</string>
@@ -3496,6 +3502,7 @@
     <string name="runtime_quota_used">%1$s: %2$s usado</string>
     <string name="runtime_quota_used_up">%1$s: agotado · se restablece %2$s</string>
     <string name="runtime_quota_used_up_no_reset">%1$s: agotado</string>
+    <string name="runtime_quota_on_credits">%1$s: límite alcanzado · usando créditos</string>
     <string name="runtime_quota_attention">%1$s · requiere atención</string>
     <string name="runtime_picker_search">Buscar</string>
     <string name="runtime_picker_no_matches">Nada coincide con “%1$s”</string>

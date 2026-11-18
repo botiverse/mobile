@@ -25,6 +25,7 @@ import build.raft.app.data.RuntimeLimitResetIdempotencyKey
 import build.raft.app.data.RuntimeLimitResetRefusal
 import build.raft.app.data.RuntimeLimitResetResult
 import build.raft.app.data.authRuntime
+import build.raft.app.data.carriedByCredits
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
@@ -43,7 +44,7 @@ import build.raft.designsystem.theme.RaftTheme
 
 /** The card's limit-reset action (web `SurfaceLimitReset`). */
 internal data class ComputerRuntimeLimitResetOffer(
-    /** The account is rate-limited right now: the reset is the card's main action then. */
+    /** The account is rate-limited right now (not running on credits): the reset is the card's main action then. */
     val primary: Boolean,
 )
 
@@ -67,9 +68,11 @@ internal fun computerRuntimeLimitResetOffer(
     if (authView == null || !authView.canAct || authView.availability != RuntimeAuthAvailability.Ok) return null
     if (authView.statusOf(provider.authRuntime) == RuntimeAuthStatus.LoggedOut) return null
     return ComputerRuntimeLimitResetOffer(
+        // A full window the account's credits carry (slock #15374) does not make the reset the
+        // main action: the account still runs. It stays offered.
         primary =
             account.health == RuntimeAccountUsageHealth.RateLimited ||
-                account.windows.any { it.status == RuntimeAccountUsageWindowStatus.LimitReached },
+                account.windows.any { it.status == RuntimeAccountUsageWindowStatus.LimitReached && !account.carriedByCredits(it) },
     )
 }
 
