@@ -198,11 +198,6 @@
     "PRESENCE_ACTIVITY_EVENT": "presence:activity",
     "PRODUCT_FEEDBACK_APP_UNREAD_EVENT": "product_feedback:app_unread",
     "PRODUCT_FEEDBACK_UNREAD_EVENT": "product_feedback:unread",
-    "READ_PROGRESS_DETAIL_CHANGED_EVENT": "read_progress:detail_changed",
-    "READ_PROGRESS_UNWATCH_EVENT": "read_progress:unwatch",
-    "READ_PROGRESS_UPDATED_EVENT": "read_progress:updated",
-    "READ_PROGRESS_WATCH_EVENT": "read_progress:watch",
-    "READ_PROGRESS_WATCHED_EVENT": "read_progress:watched",
     "SEAT_JOIN_BLOCKS_CHANGED_EVENT": "seat-join-blocks:changed",
     "SERVER_FEATURES_CHANGED_SOCKET_EVENT": "server:features-changed",
     "USER_PROFILE_UPDATED_EVENT": "user:profile-updated"
@@ -213,11 +208,6 @@
     "feedback_report:session_record": "Web feedback reporter only.",
     "notification:desktop": "Platform-scoped to clientKind desktop sockets and sent with an ack (emitDesktopNotificationWithAck); the desktop client adopts it in realtime unification phase 2.",
     "permission-updates:changed": "Permission updates panel is web-only; mobile has no consumer yet.",
-    "read_progress:detail_changed": "Agent read-progress detail is web-only; mobile has no consumer yet.",
-    "read_progress:unwatch": "Client-emitted read-progress watch; mobile does not watch yet.",
-    "read_progress:updated": "Agent read-progress push; mobile has no consumer yet.",
-    "read_progress:watch": "Client-emitted read-progress watch; mobile does not watch yet.",
-    "read_progress:watched": "Answer to read_progress:watch, which mobile does not send.",
     "seat-join-blocks:changed": "Seat join blocks are admin web only; mobile has no consumer yet."
   },
   "acknowledgedUnemittedServerWireEvents": {
