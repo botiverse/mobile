@@ -14,6 +14,10 @@ on:
         description: "Also download the latest published Hands APK/IPA and check them"
         type: boolean
         default: true
+      fail_on_fail:
+        description: "Make the run red when any check FAILs (the daily schedule always does)"
+        type: boolean
+        default: false
   schedule:
     - cron: "17 1 * * *" # daily 01:17 UTC
   pull_request:
@@ -133,12 +137,12 @@ jobs:
           pattern: app-link-*
           path: results
 
-      # Scheduled and manual runs go red on any FAIL row so the daily run is noticed. On PRs and
-      # pushes the live server state must not block the repo: there only a failed swcutil
-      # self-test or a missing step fails the job.
+      # The daily run goes red on any FAIL row so it is noticed; a manual run does when asked
+      # (fail_on_fail). Otherwise (manual, PRs, pushes) the table is the result and the live server
+      # state does not turn the job red: only a failed swcutil self-test or a missing step does.
       - name: Summary
         env:
-          FAIL_ON_FAIL: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+          FAIL_ON_FAIL: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.fail_on_fail) }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set +e
