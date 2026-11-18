@@ -79,7 +79,7 @@ on:
       # Identity of the server environment under test, recorded in perf.json
       # (task #14 self-describing header). Free-form label, e.g. OranixSlockTest.
       environment:
-        description: "Server environment label for the perf.json identity header"
+        description: "Performance report label only. Password-mode QA uses the production account API and web origin."
         required: false
         default: "unspecified-ci"
 # Minimal token scopes: contents to check out, actions to read ANOTHER run's
@@ -216,7 +216,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: platform-tools
+          packages: platform-tools platforms;android-34 build-tools;35.0.0
 
       - name: Download APK
         if: ${{ inputs.apk_run_id == '' && inputs.apk_url == '' }}
@@ -499,6 +499,10 @@ jobs:
             exit 1
           fi
 
+      - name: Build protected Android login form driver
+        if: ${{ steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        run: bash scripts/qa/build_login_form.sh "$RUNNER_TEMP/qa-login-form.jar"
+
       - name: Freeze legacy credential identity receipt
         if: ${{ inputs.stamp_run_case_id != '' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}
         env:
@@ -611,9 +615,9 @@ jobs:
             # passing bootstrap too, saved BEFORE logcat is cleared so pass and fail runs can be compared.
             # The failure bundle is saved in the line above before failure-terminal cleanup/pm clear.
             if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then timeout --kill-after=5s 90s node scripts/qa/capture_bootstrap_diagnostics.mjs --out qa-evidence/bootstrap-diagnostics --label ready || true; fi
-            # Login phase (#222), before the recorder and the agent: password login types through the emulator console
-            # and captures nothing; bootstrap runs record "no login". Only a complete record of this run creates qa-login-ok.
-            rm -f qa-login-ok; PW=true; [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ] && PW=false; node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence && touch qa-login-ok || echo "::error::login phase UNKNOWN: nothing is captured and no evidence is uploaded"
+            # Login phase (#222), before the recorder and the agent: the form receives values via stdin.
+            # Failures publish a structural UI summary; bootstrap runs record "no login". Only a complete record of this run creates qa-login-ok.
+            rm -f qa-login-ok; PW=true; [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ] && PW=false; node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence && touch qa-login-ok || echo "::error::login phase UNKNOWN: see the protected login UI summary; acceptance evidence withheld"
             adb logcat -c
             # task #14 perf v1: reset gfxinfo counters and stamp the capture
             # window start before the agent drives the app (record-only,

@@ -1,5 +1,5 @@
-// #222 login protection, end to end with FAKE values only (no device, no network, no account).
-// A fake `adb` and a fake emulator console share one device model: the app's sign-in button opens
+// #222 login protection, end to end with fake values, a loopback server and no external account.
+// A fake `adb` and its stdin-only form driver share one device model: the app's sign-in button opens
 // a browser login form that shows what is typed, the screen recorder records every frame while it
 // runs, logcat keeps timestamped lines, uiautomator writes its dump to a device file unless read
 // from /dev/tty. A fake model records every payload; a fake curl records every upload.
@@ -11,7 +11,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import net from "node:net";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -24,6 +24,14 @@ const RUN = { GITHUB_RUN_ID: "4242", GITHUB_RUN_ATTEMPT: "1" };
 const hasLoginPhase = fs.existsSync(path.join(here, "login_phase.mjs"));
 const phase = hasLoginPhase ? await import("./login_phase.mjs") : null;
 const gate = fs.existsSync(path.join(here, "secure_evidence.mjs")) ? await import("./secure_evidence.mjs") : null;
+
+// Only Chrome's read-only tab metadata crosses this local socket; the form values use adb stdin.
+const tabMetadata = http.createServer((req, res) => {
+  res.writeHead(req.url === "/json/list" ? 200 : 404);
+  res.end(JSON.stringify([{ type: "page", url: "https://app.raft.build/login/app" }]));
+});
+await new Promise((resolve) => tabMetadata.listen(0, "127.0.0.1", resolve));
+test.after(() => new Promise((resolve) => tabMetadata.close(resolve)));
 
 const DEVICE = String.raw`
 const fs = require("fs");
@@ -43,15 +51,20 @@ function type(s, text) {
   log(s, "chromium", "form field " + s.field + " changed value=" + s.form.email);
 }
 function xml(s) {
-  const n = (text, pkg, b, extra = "") => '<node text="' + text + '" class="' + (extra ? "android.widget.EditText" : "android.widget.TextView") + '" package="' + pkg + '" ' + extra + ' bounds="' + b + '" />';
+  const n = (text, pkg, b, cls = "android.widget.TextView", extra = "") => '<node text="' + text + '" class="' + cls + '" package="' + pkg + '" ' + extra + ' bounds="' + b + '" />';
+  const button = (text, y) => n(text, CHROME, "[100," + y + "][900," + (y + 80) + "]", "android.widget.Button");
   const nodes = s.screen === "signin" ? n("Sign in to Raft", APP, "[100,1000][900,1100]")
-    : s.screen === "form" ? n(s.form.email, CHROME, "[100,300][900,400]", 'password="false"') + n("*".repeat(s.form.password.length), CHROME, "[100,500][900,600]", 'password="true"')
+    : s.screen === "form" ? n(s.form.email, CHROME, "[100,300][900,400]", "android.widget.EditText", 'resource-id="login-email" password="false"') + n("*".repeat(s.form.password.length), CHROME, "[100,500][900,600]", "android.widget.EditText", 'resource-id="login-password" password="true"') + button("Sign in", s.fills ? 700 : 900)
+    : s.screen === "save-prompt" ? n("Save password?", CHROME, "[100,280][900,380]", "android.widget.TextView", 'resource-id="com.android.chrome:id/message_title"') + n("Not now", CHROME, "[100,400][900,480]", "android.widget.Button", 'resource-id="com.android.chrome:id/negative_button"')
+    : s.screen === "approval" ? button("Allow", 100) + button("Confirm sign-in", 800)
+    : s.screen === "return" ? button("Open", 150) + button("Open the app", 850)
     : n("Home", APP, "[0,0][1080,200]") + n("#all", APP, "[0,300][1080,400]");
   return '<?xml version="1.0"?><hierarchy>' + (s.uiBroken ? "" : nodes) + "</hierarchy>";
 }
 function submit(s) {
-  if (s.screen !== "form" || !s.form.email || !s.form.password || s.noReceipt) return;
+  if (s.screen !== "return" || !s.form.email || !s.form.password) return;
   s.screen = "home";
+  if (s.noReceipt) return;
   log(s, "SlockAppLogin", "app_login_complete result=" + (s.refuse ? "login_error reason=exchange_failed" : "app_shell reason=exchanged"));
 }
 module.exports = { APP, CHROME, load, save, log, screen, frame, type, xml, submit };
@@ -67,18 +80,27 @@ if (args[0] === "-s") args = args.slice(2);
 const s = D.load(f), a = args.join(" "), out = (x) => process.stdout.write(x);
 const end = (code = 0) => { D.frame(s); D.save(f, s); process.exit(code); };
 if (s.adbDown) { process.stderr.write("error: device offline\n"); process.exit(1); }
+if (a === "forward tcp:0 localabstract:chrome_devtools_remote") { out(process.env.FAKE_TAB_PORT); end(); }
 if (a === "get-serialno") { out(s.serial + "\n"); end(); }
 if (a.startsWith("shell cat /data/local/tmp/qa-run-owner")) { out((s.owner || "") + "\n"); end(); }
 if (a === "shell pidof screenrecord; echo rc=$?") { out(s.recording ? "999\nrc=0\n" : "rc=1\n"); end(); }
 if (a === "shell pkill -INT screenrecord; true" || a === "shell pkill -INT screenrecord") { s.recording = Boolean(s.recorderLoop); end(); }
 if (a.includes("screenrecord --size")) { s.recording = true; end(); }
-if (a === "logcat -c") { s.logs = []; end(); }
+if (a === "logcat -c") { s.logs = []; if (s.earlyReceipt) D.log(s, "SlockAppLogin", "app_login_complete result=app_shell reason=exchanged"); end(); }
 if (args[0] === "logcat") { if (s.logcatBroken) end(1); out(s.logs.filter((l) => !args.includes("-s") || l.includes("SlockAppLogin")).join("\n") + "\n"); end(); }
 if (a === "shell settings put secure autofill_service null") { s.autofill = false; end(); }
 if (a === "shell settings get secure default_input_method") { out("com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME\n"); end(); }
 if (args[1] === "pm" && args[2] === "clear") { if (args[3] === D.CHROME) s.form = { email: "", password: "" }; else s.ime = ""; s.cleared.push(args[3]); out("Success\n"); end(); }
-if (a === "shell dumpsys window") { out("  mCurrentFocus=Window{1a u0 " + (s.screen === "form" ? D.CHROME : D.APP) + "/x.Main}\n"); end(); }
-if (a === "exec-out uiautomator dump /dev/tty") { out(D.xml(s) + "UI hierchary dumped to: /dev/tty\n"); end(); }
+if (a === "shell dumpsys window") {
+  const waiting = s.screen === "home" && s.focusWaits > 0;
+  if (waiting) s.focusWaits--;
+  out("  mCurrentFocus=Window{1a u0 " + (waiting || s.screen === "form" ? D.CHROME : D.APP) + "/x.Main}\n"); end();
+}
+if (a === "exec-out uiautomator dump /dev/tty") {
+  out(D.xml(s) + "UI hierchary dumped to: /dev/tty\n");
+  if (s.saveDismissed && s.screen === "save-prompt") s.screen = "approval";
+  end();
+}
 if (a.startsWith("shell uiautomator dump")) { s.files.dump = D.xml(s); end(); }
 if (a.startsWith("exec-out cat /sdcard/qa_window_dump.xml")) { out(s.files.dump || ""); end(); }
 if (a === "exec-out screencap -p") {
@@ -87,11 +109,25 @@ if (a === "exec-out screencap -p") {
 }
 if (a === "shell wm size") { out("Physical size: 1080x2400\n"); end(); }
 if (args[1] === "input" && args[2] === "text") { D.type(s, args.slice(3).join(" ").replace(/%s/g, " ")); end(); }
-if (args[1] === "input" && args[2] === "keyevent" && args[3] === "66") { D.submit(s); end(); }
+if (a.startsWith("shell -T uiautomator runtest ") && args.includes("RaftQaLoginForm#testFill")) {
+  if (process.env.QA_TEST_PASSWORD || process.env.QA_TEST_EMAIL) end(1);
+  const [email, password] = fs.readFileSync(0, "utf8").split("\n");
+  if (s.driverResult === "site-unverified") { out("QA_LOGIN_SITE_UNVERIFIED\n"); end(); }
+  if (s.screen !== "form" || s.refuseField || s.driverResult === "no-markers") end();
+  s.field = "email"; D.type(s, email); out("QA_LOGIN_EMAIL_SET\n");
+  if (s.driverResult === "email-only") end();
+  s.field = "password"; D.type(s, password); out("QA_LOGIN_PASSWORD_SET\n");
+  s.fills = (s.fills || 0) + 1; end();
+}
 if (args[1] === "input" && args[2] === "tap") {
   const y = Number(args[4]);
   if (s.screen === "signin" && y >= 1000 && y <= 1100) { s.screen = "form"; D.log(s, "SlockAppLogin", "web_login_attempt phase=opening"); }
-  else if (s.screen === "form") s.field = y >= 500 && y <= 600 ? "password" : y >= 300 && y <= 400 ? "email" : s.field;
+  else if (s.screen === "form" && y === 740 && s.form.email === "fake.qa@example.test" && s.form.password === "FAKE-pw-7Qz") s.screen = "approval";
+  else if (s.screen === "approval" && y === 840) {
+    s.confirmTaps = (s.confirmTaps || 0) + 1;
+    s.screen = s.interceptConfirm && s.confirmTaps === 1 ? "save-prompt" : "return";
+  } else if (s.screen === "save-prompt" && y === 440) s.saveDismissed = true;
+  else if (s.screen === "return" && y === 890) D.submit(s);
   end();
 }
 if (a === "shell pidof build.raft.app") { out("1234\n"); end(); }
@@ -130,38 +166,23 @@ function fakeWorld(state = {}) {
   fs.writeFileSync(files.argv, "");
   fs.writeFileSync(files.modelLog, "");
   fs.mkdirSync(files.uploads);
+  fs.writeFileSync(path.join(root, "qa-login-form.jar"), "fake driver");
   // Fake Stamp: keeps every evidence body it is sent.
   fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
 url=""; for a in "$@"; do case "$a" in https://*) url="$a";; esac; done
 case "$url" in *"/evidence?"*) for a in "$@"; do case "$a" in @*) cp "\${a#@}" "${files.uploads}/$RANDOM-$(basename "\${a#@}")";; esac; done;; esac
 exit 0
 `, { mode: 0o755 });
-  fs.writeFileSync(path.join(root, ".emulator_console_auth_token"), "fake-console-token");
   const D = createRequire(import.meta.url)(files.device);
   D.save(files.state, { serial: "emulator-5554", owner: `${RUN.GITHUB_RUN_ID}:${RUN.GITHUB_RUN_ATTEMPT}`, screen: "signin", form: { email: "", password: "" },
     ime: "", autofill: true, recording: false, frames: [], logs: [], files: {}, cleared: [], ...state });
   const env = {
-    PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: root, ...RUN,
-    FAKE_DEVICE: files.device, FAKE_STATE: files.state, FAKE_ARGV: files.argv, FAKE_MODEL_LOG: files.modelLog,
+    PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: root, RUNNER_TEMP: root, ...RUN,
+    FAKE_TAB_PORT: String(tabMetadata.address().port), FAKE_DEVICE: files.device, FAKE_STATE: files.state, FAKE_ARGV: files.argv, FAKE_MODEL_LOG: files.modelLog,
   };
-  // The emulator console: auth, then `event text` types into the focused field.
-  const consoleLog = [];
-  const server = net.createServer((sock) => {
-    let authed = false;
-    sock.write("Android Console: type 'help'\r\nOK\r\n");
-    sock.on("data", (d) => String(d).split("\n").filter(Boolean).forEach((line) => {
-      consoleLog.push(line.replace(/^event text .*/, "event text <typed>"));
-      if (line === "auth fake-console-token") { authed = true; sock.write("OK\r\n"); }
-      else if (line.startsWith("event text ") && authed) { const s = D.load(files.state); D.type(s, line.slice(11)); D.save(files.state, s); sock.write("OK\r\n"); }
-      else if (line === "quit") sock.end();
-      else sock.write("KO: unknown command\r\n");
-    }));
-  });
-  const ready = new Promise((r) => server.listen(0, "127.0.0.1", () => r(server.address().port)));
-  return { root, files, env, D, state: () => D.load(files.state), set: (patch) => D.save(files.state, { ...D.load(files.state), ...patch }), ready, consoleLog, close: () => server.close() };
+  return { root, files, env, D, state: () => D.load(files.state), close: () => fs.rmSync(root, { recursive: true, force: true }) };
 }
 
-// spawnSync would block the console server living in this process: run children asynchronously.
 const runAsync = (world, args, extraEnv = {}) => new Promise((resolve) => {
   const child = spawn(process.execPath, args, { cwd: world.root, env: { ...world.env, ...extraEnv } });
   let stdout = "", stderr = "";
@@ -174,16 +195,14 @@ const allBytes = (dir) => fs.readdirSync(dir, { withFileTypes: true, recursive: 
   .filter((e) => e.isFile()).map((e) => fs.readFileSync(path.join(e.parentPath ?? e.path, e.name), "latin1")).join("\n");
 
 test("the fake password and email appear nowhere: argv, device files, screenshots, recording, logs, model payloads, upload", async () => {
-  const w = fakeWorld();
-  const port = await w.ready;
-  w.set({ serial: `emulator-${port}` });
+  const w = fakeWorld({ focusWaits: 2, interceptConfirm: true });
   const ev = path.join(w.root, "qa-evidence");
   const creds = { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD };
   const outputs = [];
   try {
     let loginOk = true;
     if (hasLoginPhase) {
-      const login = await runAsync(w, [path.join(here, "login_phase.mjs"), "login", "--platform", "android", "--password-login", "true", "--device", `emulator-${port}`, "--out", ev], creds);
+      const login = await runAsync(w, [path.join(here, "login_phase.mjs"), "login", "--platform", "android", "--password-login", "true", "--device", "emulator-5554", "--out", ev], creds);
       outputs.push(login.stdout, login.stderr);
       loginOk = login.status === 0;
       assert.equal(login.status, 0, login.stdout + login.stderr);
@@ -197,7 +216,7 @@ test("the fake password and email appear nowhere: argv, device files, screenshot
     ];
     // Worst case: the agent itself has the credentials (the workflow strips them with env -u).
     const agent = await runAsync(w, [path.join(here, "acceptance_agent.mjs"), "--goal", "open #all", "--out", ev, "--max-turns", "20",
-      "--max-minutes", "10", "--no-progress-turns", "3", "--playbook", "none.md", "--device", `emulator-${port}`],
+      "--max-minutes", "10", "--no-progress-turns", "3", "--playbook", "none.md", "--device", "emulator-5554"],
     { ...creds, PI_API_KEY: "fake-key", SLOCK_PI_AI_MODULE: w.files.model, FAKE_MODEL_SCRIPT: JSON.stringify(script) });
     outputs.push(agent.stdout, agent.stderr);
     // Post-run collection as in the workflow (no second `logcat -c`: the gate must drop window lines itself).
@@ -221,9 +240,11 @@ test("the fake password and email appear nowhere: argv, device files, screenshot
     };
     const leaks = Object.entries(places).flatMap(([where, text]) => [PASSWORD, EMAIL].filter((v) => text.includes(v)).map((v) => `${v === PASSWORD ? "password" : "email"} in ${where}`));
     assert.deepEqual(leaks, []);
-    // The login really happened, through the console, and left nothing learned behind.
+    // The form driver submitted once, then both web buttons returned to the app.
     assert.equal(w.state().screen, "home");
-    assert.deepEqual(w.consoleLog.filter((l) => l.startsWith("event text")), ["event text <typed>", "event text <typed>"]);
+    assert.equal(w.state().fills, 1);
+    assert.equal(w.state().focusWaits, 0);
+    assert.equal(w.state().confirmTaps, 2);
     assert.deepEqual(w.state().cleared, ["com.android.chrome", "com.google.android.inputmethod.latin"]);
     assert.equal(w.state().ime, "");
     assert.equal(w.state().autofill, false);
@@ -234,6 +255,67 @@ test("the fake password and email appear nowhere: argv, device files, screenshot
   } finally {
     w.close();
   }
+});
+
+test("a failed form driver retains only the allowlisted UI summary and keeps the evidence gate closed", async () => {
+  const w = fakeWorld({ screen: "form", refuseField: true, form: { email: EMAIL, password: PASSWORD } });
+  const out = path.join(w.root, "qa-evidence");
+  const summary = path.join(w.root, "summary.md");
+  const result = await runAsync(w, [path.join(here, "login_phase.mjs"), "login", "--password-login", "true", "--out", out],
+    { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, GITHUB_STEP_SUMMARY: summary });
+  assert.equal(result.status, 1);
+  const json = JSON.parse(fs.readFileSync(summary, "utf8").split("```json\n")[1].split("\n```")[0]);
+  assert.deepEqual(json, { format: "android-login-ui/v1", lastAction: "fill-email", reason: "could not fill the expected browser email field", surface: "chrome", message: "none-recognized", savePasswordPrompt: false, passwordInputVisible: true, consent: "absent", launch: "absent", setup: "absent", email: "visible", password: "visible", submit: "visible", confirm: "absent", openApp: "absent", systemReturn: "absent" });
+  fs.writeFileSync(path.join(out, "raw.xml"), EMAIL + PASSWORD);
+  assert.equal(gate.gate(out, RUN).ok, false);
+  assert.ok(!fs.existsSync(path.join(out, "raw.xml")));
+  for (const text of [fs.readFileSync(summary, "utf8"), result.stdout, result.stderr, allBytes(out)]) {
+    assert.ok(!text.includes(EMAIL) && !text.includes(PASSWORD));
+  }
+  assert.ok(!fs.readFileSync(w.files.argv, "utf8").includes("screencap"));
+  w.close();
+});
+
+test("unknown site, partial fill and missing driver markers all refuse submission and clear owned input stores", async () => {
+  for (const [driverResult, expectedReason] of [
+    ["site-unverified", /browser address could not be matched/],
+    ["email-only", /expected browser password field/],
+    ["no-markers", /expected browser email field/],
+  ]) {
+    const w = fakeWorld({ screen: "form", driverResult });
+    const out = path.join(w.root, "ev");
+    const result = await phase.androidPasswordLogin({ out, env: { ...w.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }, pollMs: 5 });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, expectedReason);
+    assert.equal(w.state().confirmTaps, undefined);
+    assert.deepEqual(w.state().cleared, ["com.android.chrome", "com.google.android.inputmethod.latin"]);
+    assert.deepEqual(w.state().form, { email: "", password: "" });
+    w.close();
+  }
+});
+
+test("a matching browser hostname with a different scheme cannot receive credentials", async () => {
+  const w = fakeWorld({ screen: "form" });
+  try {
+    const result = await phase.androidPasswordLogin({ out: path.join(w.root, "ev"), expectedOrigin: "http://app.raft.build",
+      env: { ...w.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }, pollMs: 5 });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /could not confirm the login page origin/);
+    const calls = fs.readFileSync(w.files.argv, "utf8");
+    assert.match(calls, /"forward","--remove"/);
+    assert.doesNotMatch(calls, /"runtest"|"push"/);
+    assert.deepEqual(w.state().cleared, []);
+  } finally { w.close(); }
+});
+
+test("an exchange before a form submission cannot unlock capture", async () => {
+  const w = fakeWorld({ earlyReceipt: true });
+  const out = path.join(w.root, "qa-evidence");
+  const result = await phase.androidPasswordLogin({ out, env: { ...w.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }, pollMs: 2 });
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /before this form was submitted/);
+  assert.equal(w.state().fills, undefined);
+  w.close();
 });
 
 // ---- Rule 1: the secret never goes into a process argument or a file --------------------------
@@ -251,8 +333,7 @@ test("rule 1: no safe path, no typing — iOS password login, a foreign device, 
     ["password with a space", {}, { QA_TEST_PASSWORD: "fake pw 7Q" }],
   ]) {
     const w = fakeWorld(patch);
-    const port = await w.ready;
-    const device = patch.serial || `emulator-${port}`;
+    const device = patch.serial || "emulator-5554";
     const result = await phase.androidPasswordLogin({ out: path.join(w.root, "ev"), device, env: { ...w.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, ...creds }, pollMs: 50 });
     assert.equal(result.ok, false, name);
     assert.equal(phase.readRecord(path.join(w.root, "ev"), RUN).ok, false, name);
@@ -284,8 +365,7 @@ test("rule 1: drivers refuse to put a secret into a process argument", async () 
 test("rule 2: a recorder that restarts after the stop, or appears during the window, ends UNKNOWN", async () => {
   for (const [name, patch, during] of [["recorder restarts after a pause", { recording: true, recorderLoop: true }, false], ["recorder starts inside the window", { recordOnType: true }, true]]) {
     const w = fakeWorld(patch);
-    const port = await w.ready;
-    const r = await runAsync(w, [path.join(here, "login_phase.mjs"), "login", "--platform", "android", "--password-login", "true", "--device", `emulator-${port}`, "--out", "ev"], { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD });
+    const r = await runAsync(w, [path.join(here, "login_phase.mjs"), "login", "--platform", "android", "--password-login", "true", "--device", "emulator-5554", "--out", "ev"], { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD });
     assert.equal(r.status, 1, name);
     assert.match(phase.readRecord(path.join(w.root, "ev"), RUN).reason, /recorder/, name);
     if (!during) assert.equal(w.state().form.email, "", `${name}: nothing typed while recording`);
@@ -404,11 +484,10 @@ test("rule 3: a refused, missing or unreadable receipt ends UNKNOWN; nothing is 
   assert.ok(phase.parseReceipt(line(1, "result=login_error reason=exchange_failed")).refused);
   for (const [name, patch, timeoutMs] of [["app refuses the login", { refuse: true }, 20000], ["no receipt", { noReceipt: true }, 1500], ["logcat unreadable", { logcatBroken: true }, 20000]]) {
     const w = fakeWorld(patch);
-    const port = await w.ready;
-    const result = await phase.androidPasswordLogin({ out: path.join(w.root, "ev"), device: `emulator-${port}`, env: { ...w.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }, pollMs: 50, timeoutMs });
+    const result = await phase.androidPasswordLogin({ out: path.join(w.root, "ev"), device: "emulator-5554", env: { ...w.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD }, pollMs: 50, timeoutMs });
     assert.equal(result.ok, false, name);
     assert.equal(phase.readRecord(path.join(w.root, "ev"), RUN).ok, false, name);
-    assert.deepEqual(w.state().cleared, [], name);
+    assert.deepEqual(w.state().cleared, w.state().fills ? ["com.android.chrome", "com.google.android.inputmethod.latin"] : [], name);
     w.close();
   }
 });
