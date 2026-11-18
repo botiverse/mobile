@@ -108,6 +108,7 @@ class ReleaseBuildSettingsCaseTest(unittest.TestCase):
         case = load_yaml(self.PATH)
         self.assertEqual("release", case["build_variant"])
         self.assertEqual("none", case["auth_fixture"])
+        self.assertEqual("release-prelogin", case["auth_mode"])
         self.assertEqual("build.raft.app", case["app_package"])
         self.assertEqual(["android", "ios"], case["platforms"])
         self.assertNotIn("ohos", case)

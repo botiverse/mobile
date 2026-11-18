@@ -27,6 +27,7 @@ max_retries: 1
 build_variant: release
 app_package: build.raft.app   # Android package of the release build
 auth_fixture: none
+auth_mode: release-prelogin   # Testbed: signed in before capture; old executors refuse this case
 launch_route: compose_slock_app_shell
 environment:
   server: production

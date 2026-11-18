@@ -23,6 +23,7 @@ baseline_ref: string          # Visual baseline key for screenshot assertions
 timeout_seconds: int          # Max execution time (default: 120)
 max_retries: int              # Retry on flaky failure (default: 2)
 auth_fixture: string          # Canonical bootstrap fixture; `none` disables bootstrap
+auth_mode: string             # release-prelogin for release-build cases (see below)
 launch_route: string          # Route Stamp verifies after canonical bootstrap
 build_variant: alpha | release  # Default alpha. `release`: see "Release-build cases" below
 app_package: string           # Android package under test (release: build.raft.app)
@@ -86,6 +87,9 @@ package `build.raft.app`), not Alpha. The release build has no QA session
 bootstrap (`QaSessionBootstrapActivity` is debuggable-only), so:
 
 - `auth_fixture` must be `none`; never `alpha-qa`.
+- `auth_mode` must be `release-prelogin`: the app is signed in before capture
+  starts. Testbed recognizes it and accepts the case into source; executors
+  that do not know it refuse the case before registration/dispatch.
 - The runner signs the app in through the product's own login **before** the
   agent, the recorder or any capture starts (Android:
   `scripts/qa/release_auto_login.mjs`, see `release-auto-login.md`). The agent
@@ -104,6 +108,14 @@ those screens in `forbidden_screens`. If a run shows one anyway, even by a
 mis-tap, the run is **invalid**: its screenshots and recording are deleted,
 nothing is uploaded, and it is re-run. It is not reported as pass or fail,
 and keeping the media with a note is not allowed.
+
+**Frames reach the model before the gate.** The executor sends the screen
+after each action to the model in the next turn, BEFORE the final evidence
+gate runs. Deleting media at the end therefore does not keep a forbidden
+screen away from the model. Required executor behaviour (not implemented
+yet): identify the page before sending a frame to the model; if the frame is
+a forbidden screen, or the page cannot be identified, void the whole capture
+(screenshots and recording) and block upload.
 
 Detection is a manual / agent rule today, not automatic. The natural hook is
 the evidence gate, which already has the "delete everything, upload nothing"

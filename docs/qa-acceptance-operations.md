@@ -69,6 +69,11 @@ consumers keep this in sync:
   release build (`build_variant: release`, see `qa-acceptance/case-schema.md`)
   entering such a page makes the run invalid: delete its screenshots and
   recording, upload nothing, re-run.
+  Today this rule is manual. The gate is also too late on its own: the screen
+  after each action goes to the model in the next turn, before the final
+  gate. Required executor behaviour (not built yet): identify the page before
+  sending a frame to the model; on a forbidden screen, or a page it cannot
+  identify, void the whole capture and block upload.
 
 ## Timing
 
