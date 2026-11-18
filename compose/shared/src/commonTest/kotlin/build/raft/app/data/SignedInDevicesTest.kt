@@ -191,6 +191,12 @@ class SignedInDevicesTest {
         store.dispatch(SharedSignedInDevicesIntent.ReauthSubmit)
         runCurrent()
         assertEquals(0, network.requests.count { it.path == "auth/second-factor/reauth/password" })
+
+        // Done: the waiting sign-out ends quietly (and no coroutine is left waiting on the dialog).
+        store.dispatch(SharedSignedInDevicesIntent.ReauthClose)
+        runCurrent()
+        assertNull(store.state.value.reauth)
+        assertFalse(store.state.value.signOut!!.submitting)
     }
 
     @Test
