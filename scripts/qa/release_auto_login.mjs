@@ -64,7 +64,6 @@ import {
   createCaptureGate,
   createIdentityReceiptRunner,
   guardedCapture,
-  parseTestbedVerdict,
   runIdentityGate,
   disableFailureAnnotation,
   fileSha256,
@@ -687,17 +686,12 @@ function installedPackageFacts() {
   }
 }
 
-// Testbed's verdict for this attempt: QA_IDENTITY_TESTBED_VERDICT_FILE, written by Testbed after it
-// compared the private output; polled up to QA_IDENTITY_TESTBED_TIMEOUT_S (default 300) seconds.
-async function awaitTestbedVerdict(request) {
-  const file = process.env.QA_IDENTITY_TESTBED_VERDICT_FILE || "";
-  if (!file) return "pending";
-  const deadline = Date.now() + 1000 * Number(process.env.QA_IDENTITY_TESTBED_TIMEOUT_S || 300);
-  for (;;) {
-    const verdict = fs.existsSync(file) ? parseTestbedVerdict(fs.readFileSync(file, "utf8"), request) : "pending";
-    if (verdict !== "pending" || Date.now() >= deadline) return verdict;
-    await sleep(2000);
-  }
+// Testbed's decision must be a reply to this authenticated job from the Testbed server. There is
+// no decision endpoint yet, and a locally supplied decision (file, env, flag) is never accepted:
+// until the endpoint exists every --identity-receipt run stops at the gate as "unknown".
+async function requestTestbedDecision() {
+  log("identity receipt: no Testbed decision endpoint yet; the decision stays unknown");
+  return null;
 }
 
 function identityGate(request) {
@@ -716,7 +710,7 @@ function identityGate(request) {
           writePrivateReceipt(process.env.QA_IDENTITY_PRIVATE_OUT, secret);
         },
         publish: (result) => { summary.identity_receipt = result; },
-        awaitTestbedVerdict,
+        requestTestbedDecision,
       });
       log(`identity receipt: ${outcome.matched ? "matched" : outcome.reason}`);
       if (!outcome.matched) stop(`identity receipt not matched (${outcome.reason}); nothing captured, no scenario`);

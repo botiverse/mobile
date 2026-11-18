@@ -198,28 +198,29 @@ export function guardedCapture(gate, capture) {
   };
 }
 
+export const TESTBED_DECISION_STATES = ["matched", "awaiting_confirmation", "identity_mismatch", "unknown"];
+
 /**
- * Testbed's answer for this attempt and request: `{"attempt_id","request_id","verdict"}` with
- * verdict "matched" or "mismatch". Anything else, or an answer for another request, is "pending".
+ * Testbed's private decision for this job: `{ state, attempt_id, request_id }`. It counts only when
+ * both ids are this attempt's app request; anything else (other attempt/request, unknown state, no
+ * reply, a transport failure) is "unknown". Only "matched" lets the run continue. The public
+ * summary may carry only the state.
  */
-export function parseTestbedVerdict(text, request) {
-  let answer;
-  try {
-    answer = JSON.parse(String(text ?? ""));
-  } catch {
-    return "pending";
-  }
-  if (answer?.attempt_id !== request.attemptId || answer?.request_id !== request.requestId) return "pending";
-  return answer.verdict === "matched" || answer.verdict === "mismatch" ? answer.verdict : "pending";
+export function parseTestbedDecision(reply, request) {
+  if (!reply || typeof reply !== "object") return "unknown";
+  if (reply.attempt_id !== request.attemptId || reply.request_id !== request.requestId) return "unknown";
+  return TESTBED_DECISION_STATES.includes(reply.state) ? reply.state : "unknown";
 }
 
 /**
  * After sign-in in --identity-receipt mode: ask the provider, cross-check with the OS, write the
- * private part for Testbed, publish only statuses, then wait for Testbed's verdict. Only
- * "matched" opens the capture gate; every other outcome (unclear/missing receipt, runner-side
- * mismatch, Testbed mismatch, still pending) returns `{ matched: false }` with nothing captured.
+ * private part for Testbed, publish only statuses, then ask Testbed for its decision
+ * (`requestTestbedDecision(request)` -> the job's private reply). Only a "matched" reply bound to
+ * this attempt and request opens the capture gate; every other outcome (unclear/missing receipt,
+ * runner-side mismatch, awaiting_confirmation, identity_mismatch, unknown, ids of another request)
+ * returns `{ matched: false }` with nothing captured.
  */
-export async function runIdentityGate({ runner, request, readOsFacts, expected = {}, extraProblems = () => [], writePrivate, publish, awaitTestbedVerdict, gate }) {
+export async function runIdentityGate({ runner, request, readOsFacts, expected = {}, extraProblems = () => [], writePrivate, publish, requestTestbedDecision, gate }) {
   const answer = runner.call(request);
   if (answer.error) {
     publish({ verdict: "unknown", problems: [`provider answered ${answer.error}${answer.detail ? `: ${answer.detail}` : ""}`] });
@@ -235,9 +236,14 @@ export async function runIdentityGate({ runner, request, readOsFacts, expected =
   const runnerVerdict = problems.length ? "unknown" : verdict;
   publish({ verdict: runnerVerdict, problems, pending, checks, receipt: shareable, os });
   if (runnerVerdict === "unknown") return { matched: false, reason: "mismatch", problems };
-  const testbed = await awaitTestbedVerdict(request);
-  publish({ verdict: runnerVerdict, problems, pending, checks, receipt: shareable, os, testbed });
-  if (testbed !== "matched") return { matched: false, reason: testbed === "mismatch" ? "mismatch" : "pending" };
+  let state = "unknown";
+  try {
+    state = parseTestbedDecision(await requestTestbedDecision(request), request);
+  } catch {
+    state = "unknown";
+  }
+  publish({ verdict: runnerVerdict, problems, pending, checks, receipt: shareable, os, testbed: { state } });
+  if (state !== "matched") return { matched: false, reason: state };
   gate.open();
   return { matched: true };
 }

@@ -21,7 +21,7 @@ import {
   afterSignIn,
   createCaptureGate,
   guardedCapture,
-  parseTestbedVerdict,
+  parseTestbedDecision,
   readPairingSaltFile,
   runIdentityGate,
   serverRef,
@@ -364,7 +364,9 @@ test("the salt goes over the private channel only; pair refs go only to the 0600
 // The five values that are Testbed's comparison baseline (synthetic pairing vector).
 const FIVE = ["nonce", "user_ref", "server_ref", "user_pair_ref", "server_pair_ref"];
 
-function gateFixture({ answer = { receipt: pairing.receipt }, osFacts = { ...os }, testbed = "matched", expectedRefs = {} } = {}) {
+const decisions = JSON.parse(fs.readFileSync(new URL("./fixtures/app-identity-testbed-decisions.json", import.meta.url), "utf8")).replies;
+
+function gateFixture({ answer = { receipt: pairing.receipt }, osFacts = { ...os }, testbed = decisions.matched, expectedRefs = {} } = {}) {
   const published = [];
   const privateWrites = [];
   const counts = { screenshots: 0, uiFiles: 0, scenarios: 0, testbedAsked: 0 };
@@ -384,7 +386,11 @@ function gateFixture({ answer = { receipt: pairing.receipt }, osFacts = { ...os 
           readOsFacts: () => osFacts,
           writePrivate: (secret) => privateWrites.push(secret),
           publish: (result) => published.push(result),
-          awaitTestbedVerdict: async () => { counts.testbedAsked += 1; return testbed; },
+          requestTestbedDecision: async () => {
+            counts.testbedAsked += 1;
+            if (testbed instanceof Error) throw testbed;
+            return testbed;
+          },
         });
       },
       runScenario: async () => { counts.scenarios += 1; evidence("scenario-step"); },
@@ -424,10 +430,16 @@ test("public output carries none of the five baseline values; the private output
   assert.ok(!Object.keys(splitPrivateReceipt(sample).shareable).some((k) => FIVE.includes(k)));
 });
 
-test("nothing is captured and no scenario runs unless Testbed answers matched", async () => {
+test("nothing is captured and no scenario runs unless Testbed's reply is matched for this attempt and request", async () => {
   const cases = {
-    "first-time pending": gateFixture({ testbed: "pending" }),
-    "Testbed mismatch": gateFixture({ testbed: "mismatch" }),
+    "awaiting_confirmation (first sample)": gateFixture({ testbed: decisions.awaiting_confirmation }),
+    "identity_mismatch": gateFixture({ testbed: decisions.identity_mismatch }),
+    "unknown": gateFixture({ testbed: decisions.unknown }),
+    "matched for another attempt": gateFixture({ testbed: decisions.matched_other_attempt }),
+    "matched for another request": gateFixture({ testbed: decisions.matched_other_request }),
+    "unrecognised state": gateFixture({ testbed: decisions.unrecognised_state }),
+    "no reply": gateFixture({ testbed: null }),
+    "transport failure": gateFixture({ testbed: new Error("ECONNRESET") }),
     "runner-side mismatch": gateFixture({ osFacts: { ...os, signerSha256: "0".repeat(64) } }),
     "unclear receipt": gateFixture({ answer: { error: "no_answer", detail: "Error while accessing provider" } }),
     "missing pair refs": gateFixture({ answer: { receipt: { ...pairing.receipt, server_pair_ref: null } } }),
@@ -439,27 +451,36 @@ test("nothing is captured and no scenario runs unless Testbed answers matched", 
     assert.deepEqual([fixture.counts.screenshots, fixture.counts.uiFiles, fixture.counts.scenarios], [0, 0, 0], name);
   }
   assert.equal(cases["runner-side mismatch"].counts.testbedAsked, 0, "a runner-side mismatch never asks Testbed");
+  assert.equal(cases["matched for another request"].published.at(-1).testbed.state, "unknown");
+  assert.equal(cases["identity_mismatch"].published.at(-1).testbed.state, "identity_mismatch");
 
-  const matched = gateFixture({ testbed: "matched" });
+  const matched = gateFixture({ testbed: decisions.matched });
   const outcome = await matched.run();
   assert.deepEqual(outcome, { matched: true, scenarioRan: true });
   // Captures only after matched: the scenario's capture, not verify-signed-in's.
   assert.deepEqual([matched.counts.screenshots, matched.counts.uiFiles, matched.counts.scenarios], [1, 1, 1]);
+  // The public summary carries only the decision state, not its ids.
+  assert.deepEqual(matched.published.at(-1).testbed, { state: "matched" });
 });
 
-test("Testbed verdicts bind to this attempt and request; runs without the receipt capture as before", () => {
-  const answer = (o) => JSON.stringify({ attempt_id: pairedRequest.attemptId, request_id: pairedRequest.requestId, ...o });
-  assert.equal(parseTestbedVerdict(answer({ verdict: "matched" }), pairedRequest), "matched");
-  assert.equal(parseTestbedVerdict(answer({ verdict: "mismatch" }), pairedRequest), "mismatch");
-  assert.equal(parseTestbedVerdict(answer({ verdict: "ok" }), pairedRequest), "pending");
-  assert.equal(parseTestbedVerdict(answer({ verdict: "matched", request_id: "00".repeat(16) }), pairedRequest), "pending");
-  assert.equal(parseTestbedVerdict("", pairedRequest), "pending");
+test("Testbed decisions bind to this attempt and request; release mode accepts no local decision", () => {
+  assert.equal(parseTestbedDecision(decisions.matched, pairedRequest), "matched");
+  assert.equal(parseTestbedDecision(decisions.matched_other_attempt, pairedRequest), "unknown");
+  assert.equal(parseTestbedDecision(decisions.matched_other_request, pairedRequest), "unknown");
+  assert.equal(parseTestbedDecision(decisions.unrecognised_state, pairedRequest), "unknown");
+  assert.equal(parseTestbedDecision(null, pairedRequest), "unknown");
+  assert.equal(parseTestbedDecision("matched", pairedRequest), "unknown");
   let captured = 0;
   assert.equal(guardedCapture(createCaptureGate({ identityMode: false }), () => { captured += 1; })("x"), true);
   assert.equal(captured, 1);
-  // The runner routes every capture (step screenshots, failure shots) through the gate, and the
-  // scenario only through afterSignIn after the identity gate.
   const source = fs.readFileSync(new URL("./release_auto_login.mjs", import.meta.url), "utf8");
+  // No endpoint yet: the runner's decision source returns nothing, and reads no file/env decision.
+  const decisionFn = source.slice(source.indexOf("async function requestTestbedDecision()"), source.indexOf("function identityGate(request)"));
+  assert.match(decisionFn, /return null;/);
+  assert.doesNotMatch(decisionFn, /process\.env|readFileSync|option\(|flag\(/);
+  assert.doesNotMatch(source, /VERDICT_FILE|DECISION_FILE/);
+  // Every capture (step screenshots, failure shots) goes through the gate; the scenario only
+  // through afterSignIn after the identity gate.
   assert.match(source, /const evidence = guardedCapture\(captureGate, captureEvidence\);/);
   assert.equal((source.match(/captureEvidence\(/g) ?? []).length, 1, "captureEvidence is only reached through the gate");
   assert.doesNotMatch(source, /if \(SCENARIO\) await runScenario/);
