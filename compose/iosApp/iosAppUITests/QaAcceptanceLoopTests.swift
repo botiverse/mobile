@@ -735,7 +735,9 @@ private struct ConversationForwardGestureProbe {
                 midOpened = waitUntil(4) { !self.onHome }
                 steps.append("mid-screen leftward drag: reopened=\(midOpened)")
             }
-            let ok = results["fast"] == true && results["slow"] == true && !midOpened
+            // The mid-screen drag is recorded, not asserted: it is not Forward's (no Forward log
+            // line can come from it), and Home may use a mid-screen swipe for its own content.
+            let ok = results["fast"] == true && results["slow"] == true
             test.probeWrite("forward-probe", [
                 "ok": ok, "reopened": results["fast"] == true, "reopenedSlow": results["slow"] == true,
                 "midScreenOpened": midOpened, "steps": steps,
@@ -771,10 +773,29 @@ private struct ConversationForwardGestureProbe {
             tries += 1
         }
         guard row.exists else { throw ProbeError.missing("forward gesture toggle row") }
-        let before = row.value as? String ?? ""
-        test.probeTap(app, x: row.frame.maxX - 30, y: row.frame.midY)
+        // Let the scroll settle: a tap on a still-moving list missed the toggle (run 44366573495).
         Thread.sleep(forTimeInterval: 1.5)
-        steps.append("toggled forward gesture (value before=\(before) after=\(row.value as? String ?? ""))")
+        var on = false
+        for attempt in 1...2 {
+            let frame = row.frame
+            let toggle = app.switches.allElementsBoundByIndex.first { candidate in
+                let f = candidate.frame
+                return f.height > 0 && f.midY >= frame.minY - 4 && f.midY <= frame.maxY + 4
+            }
+            let before = toggle?.value as? String ?? "?"
+            if let toggle {
+                test.probeTap(app, x: toggle.frame.midX, y: toggle.frame.midY)
+            } else {
+                test.probeTap(app, x: frame.maxX - 30, y: frame.midY)
+            }
+            Thread.sleep(forTimeInterval: 1.5)
+            let after = toggle?.value as? String ?? "?"
+            steps.append("toggle attempt \(attempt): switch=\(toggle != nil) before=\(before) after=\(after)")
+            // Without a readable switch, one tap is all we can do.
+            on = toggle == nil || after == "1"
+            if on { break }
+        }
+        if !on { throw ProbeError.missing("forward gesture switch did not turn on") }
         test.probeAttach(app, name: "forward-setting")
         // Back to Home: two pages (Appearance, Settings).
         for _ in 0..<4 where !onHome {
