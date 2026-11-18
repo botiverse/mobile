@@ -406,6 +406,41 @@ data class OssLicenseEntry(
     val sourceUrl: String?
 )
 
+/**
+ * Release pre-login readiness receiver scope (docs/qa-acceptance/release-prelogin-contract.md):
+ * fails when a store variant's merged manifest names QaReleaseReadinessReceiver, or when the QA
+ * candidate's does not declare it disabled and DUMP-protected.
+ */
+abstract class VerifyQaReadinessReceiverTask : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val mergedManifest: RegularFileProperty
+
+    @get:Input
+    abstract val expectPresent: Property<Boolean>
+
+    @get:OutputFile
+    abstract val report: RegularFileProperty
+
+    @TaskAction
+    fun verify() {
+        val manifest = mergedManifest.get().asFile
+        val text = manifest.readText()
+        val mentions = text.contains("QaReleaseReadinessReceiver")
+        if (!expectPresent.get()) {
+            if (mentions) throw GradleException("store manifest ${manifest.path} declares QaReleaseReadinessReceiver; it must be compiled out of release/play")
+        } else {
+            val receiver =
+                Regex("<receiver\\b[^>]*QaReleaseReadinessReceiver[^>]*>", RegexOption.DOT_MATCHES_ALL).find(text)?.value
+                    ?: throw GradleException("QA candidate manifest ${manifest.path} does not declare QaReleaseReadinessReceiver")
+            if (!receiver.contains("android:enabled=\"false\"") || !receiver.contains("android:permission=\"android.permission.DUMP\"")) {
+                throw GradleException("QaReleaseReadinessReceiver must be android:enabled=\"false\" and DUMP-protected in ${manifest.path}")
+            }
+        }
+        report.get().asFile.writeText("${manifest.name}: QaReleaseReadinessReceiver ${if (expectPresent.get()) "present (disabled, DUMP)" else "absent"}\n")
+    }
+}
+
 abstract class GenerateOssLicensesTask : DefaultTask() {
     @get:Input
     abstract val sourceConfigurations: ListProperty<String>
@@ -709,8 +744,16 @@ android {
             buildConfigField("Boolean", "HANDS_APK_UPDATE_ENABLED", "false")
             matchingFallbacks += listOf("release")
         }
+        // QA-instrumented release candidate for the release pre-login
+        // (docs/qa-acceptance/release-prelogin-contract.md): the `release` build plus the readiness
+        // receiver (src/qaReadiness + src/qaRelease/AndroidManifest.xml). Never published; NOT the
+        // store bytes. Same package and callback scheme as release, so it signs in the same way.
+        create("qaRelease") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+        }
         configureEach {
-            val callbackScheme = if (name == "release" || name == "play") "raft" else "raft-${name.lowercase()}"
+            val callbackScheme = if (name == "release" || name == "play" || name == "qaRelease") "raft" else "raft-${name.lowercase()}"
             buildConfigField("String", "OAUTH_CALLBACK_SCHEME", "\"$callbackScheme\"")
             manifestPlaceholders["oauthCallbackScheme"] = callbackScheme
         }
@@ -747,6 +790,17 @@ android {
     }
 }
 
+fun registerQaReadinessReceiverCheck(variant: com.android.build.api.variant.Variant, expectPresent: Boolean) {
+    val suffix = variant.name.replaceFirstChar { it.uppercase() }
+    tasks.register("verify${suffix}${if (expectPresent) "Has" else "HasNo"}QaReadinessReceiver", VerifyQaReadinessReceiverTask::class.java) {
+        group = "verification"
+        description = "Checks the ${variant.name} merged manifest ${if (expectPresent) "declares" else "does not declare"} QaReleaseReadinessReceiver."
+        mergedManifest.set(variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.MERGED_MANIFEST))
+        this.expectPresent.set(expectPresent)
+        report.set(layout.buildDirectory.file("reports/qaReadinessReceiver/${variant.name}.txt"))
+    }
+}
+
 // AGP 9 rejects Provider-backed directories in android.sourceSets; the generated licence asset
 // directory is added through the variant API instead (preBuild still runs the generator).
 androidComponents {
@@ -755,6 +809,34 @@ androidComponents {
             layout.buildDirectory.dir("generated/assets/ossLicenses/main").get().asFile.absolutePath
         )
     }
+    // The release pre-login readiness receiver's code (src/qaReadiness/kotlin): compiled by debug
+    // (so PR CI compiles and unit-tests it) and by the qaRelease candidate only. release / play
+    // never see this directory.
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.sources.kotlin?.addStaticSourceDirectory(file("src/qaReadiness/kotlin").absolutePath)
+    }
+    // Store builds must not carry the release pre-login readiness receiver; the QA candidate must.
+    // Checked on the MERGED manifest (what is packaged), wired into assemble/bundle below.
+    onVariants(selector().withBuildType("release")) { variant ->
+        registerQaReadinessReceiverCheck(variant, expectPresent = false)
+    }
+    onVariants(selector().withBuildType("play")) { variant ->
+        registerQaReadinessReceiverCheck(variant, expectPresent = false)
+    }
+    onVariants(selector().withBuildType("qaRelease")) { variant ->
+        variant.sources.kotlin?.addStaticSourceDirectory(file("src/qaReadiness/kotlin").absolutePath)
+        registerQaReadinessReceiverCheck(variant, expectPresent = true)
+    }
+}
+
+tasks.matching { it.name in setOf("assembleRelease", "bundleRelease") }.configureEach {
+    dependsOn("verifyReleaseHasNoQaReadinessReceiver")
+}
+tasks.matching { it.name in setOf("assemblePlay", "bundlePlay") }.configureEach {
+    dependsOn("verifyPlayHasNoQaReadinessReceiver")
+}
+tasks.matching { it.name in setOf("assembleQaRelease", "bundleQaRelease") }.configureEach {
+    dependsOn("verifyQaReleaseHasQaReadinessReceiver")
 }
 
 val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::class) {

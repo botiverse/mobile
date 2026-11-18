@@ -82,6 +82,9 @@ export function readRecord(out, env = process.env) {
   if (!r || typeof r !== "object" || Array.isArray(r) || r.contract !== CONTRACT) return { ok: false, reason: "login record malformed" };
   if (r.run !== runId(env)) return { ok: false, reason: "login record belongs to another run" };
   if (r.mode === "password" && r.status === "complete" && THREADTIME.test(`${r.login_end} `)) return { ok: true, record: r };
+  // Release pre-login (release_prelogin.mjs): complete only with all its receipts good; login_end is
+  // the device stamp of the app's own readiness line, after which evidence may be kept.
+  if (r.mode === "release-prelogin" && r.status === "complete" && THREADTIME.test(`${r.login_end} `) && /^pla_[0-9a-f]{32}$/.test(r.attempt_id ?? "")) return { ok: true, record: r };
   if (r.mode === "none" && r.status === "no-login") return { ok: true, record: r };
   return { ok: false, reason: `login ${r.status || "status missing"}${r.reason ? `: ${r.reason}` : ""}` };
 }

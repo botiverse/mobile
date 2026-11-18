@@ -557,6 +557,12 @@ jobs:
             :androidApp:compileDebugUnitTestKotlin
             :ui-cmp:compileAndroidHostTest
             :designsystem:compileTestKotlinDesktop
+            # Release pre-login receiver scope (docs/qa-acceptance/release-prelogin-contract.md):
+            # the store variants' merged manifests carry no QaReleaseReadinessReceiver; the QA
+            # candidate's declares it disabled + DUMP-protected. Manifest merge only, no R8.
+            :androidApp:verifyReleaseHasNoQaReadinessReceiver
+            :androidApp:verifyPlayHasNoQaReadinessReceiver
+            :androidApp:verifyQaReleaseHasQaReadinessReceiver
           )
           compile=("${tasks[@]}")
           if [ "$BUILD_CONNECTED_APKS" = true ]; then

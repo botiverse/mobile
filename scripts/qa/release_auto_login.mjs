@@ -30,12 +30,14 @@
 //     --capture-browser-apk build/capture-browser.apk [--apk app-release.apk] \
 //     [--env staging|production] [--package build.raft.app] [--out release-auto-login-evidence]
 //     [--strict-cleanup] [--revoke-app-session] [--keep-capture-browser]
+//     [--no-capture] [--defer-app-session] [--phase sign-in|sign-out] [--account-ref-nonce <hex>]
 //     [--scenario scripts/qa/scenarios/<name>.mjs [its options, e.g. --server-name X]]
 //   (or --credential-file <testbed qa-account get --out file>)
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import {
+  DEFERRED_APP_SESSION,
   ENVIRONMENTS,
   assessAppLogout,
   callbackSchemeFor,
@@ -47,6 +49,7 @@ import {
   validateCallbackUrl,
   validateCapturedLoginUrl,
 } from "./release_auto_login_lib.mjs";
+import { userRef } from "./release_prelogin_lib.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(`--${name}`);
@@ -64,6 +67,20 @@ const OUT = option("out", "release-auto-login-evidence");
 const KEEP_STUB = flag("keep-capture-browser");
 const STRICT_CLEANUP = flag("strict-cleanup");
 const REVOKE_APP_SESSION = flag("revoke-app-session");
+// Release pre-login for a Testbed case (scripts/qa/release_prelogin.mjs,
+// docs/qa-acceptance/release-prelogin-contract.md):
+//   --no-capture         nothing from the login is written to disk, on the device or here: no
+//                        screenshot, no UI dump (UI trees are read through uiautomator's stdout
+//                        into memory), no streamed login log (logcat dumps are read into memory).
+//                        Only summary.json is written, at the end (masked, non-sensitive);
+//   --defer-app-session  the app stays signed in for the case; its session is signed out by the
+//                        attempt's own cleanup, a later run with --phase sign-out;
+//   --phase sign-out     no sign-in: only the app's own Sign out (with its bound logout evidence)
+//                        of a session a deferred run left; no credentials needed.
+const NO_CAPTURE = flag("no-capture");
+const DEFER_APP_SESSION = flag("defer-app-session");
+const PHASE = option("phase", "sign-in");
+const ACCOUNT_REF_NONCE = option("account-ref-nonce", "");
 // Optional: a module whose run(ctx) drives the signed-in app (and the QA account's web session)
 // before cleanup; docs/qa-acceptance/release-auto-login.md "Scenarios".
 const SCENARIO = option("scenario", "");
@@ -81,6 +98,10 @@ const summary = {
   web_host: WEB_URL ? new URL(WEB_URL).host : "",
   strict_cleanup: STRICT_CLEANUP,
   revoke_app_session: REVOKE_APP_SESSION,
+  no_capture: NO_CAPTURE,
+  defer_app_session: DEFER_APP_SESSION,
+  phase: PHASE,
+  screenshots_written: 0,
   steps: [],
 };
 let stepIndex = 0;
@@ -108,6 +129,16 @@ const shell = (command, options) => adb(["shell", command], options);
 
 // ---------- UI (uiautomator) ----------
 function dumpXml() {
+  // --no-capture: the UI tree goes straight to this process's memory (uiautomator writes it to its
+  // own stdout); nothing is written on the device, so a killed run leaves no dump behind.
+  if (NO_CAPTURE) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const out = adb(["exec-out", "uiautomator", "dump", "/dev/tty"], { allowFailure: true, timeoutMs: 30_000 });
+      const xml = /<\?xml[\s\S]*<\/hierarchy>|<hierarchy[\s\S]*<\/hierarchy>/.exec(out)?.[0];
+      if (xml) return xml;
+    }
+    return "";
+  }
   for (let attempt = 0; attempt < 3; attempt += 1) {
     shell("uiautomator dump /sdcard/release-auto-login.xml >/dev/null 2>&1", { allowFailure: true, timeoutMs: 30_000 });
     const xml = adb(["exec-out", "cat", "/sdcard/release-auto-login.xml"], { allowFailure: true });
@@ -202,6 +233,8 @@ async function typeInto(fieldIndex, value) {
 // ---------- evidence ----------
 fs.mkdirSync(OUT, { recursive: true });
 function evidence(name) {
+  if (NO_CAPTURE) return;
+  summary.screenshots_written += 1;
   const base = path.join(OUT, `step-${String(stepIndex).padStart(2, "0")}-${name}`);
   try {
     fs.writeFileSync(`${base}.png`, adb(["exec-out", "screencap", "-p"], { binary: true, allowFailure: true }));
@@ -293,7 +326,8 @@ const cleanupStatus = {
   browser: "not_changed",
   capture_browser: "not_installed_by_run",
   web_session: "not_opened",
-  app_session: REVOKE_APP_SESSION ? "not_signed_in" : "not_requested",
+  // sign-out phase: a failure status until the Sign out has actually run.
+  app_session: PHASE === "sign-out" ? "not_requested" : REVOKE_APP_SESSION || DEFER_APP_SESSION ? "not_signed_in" : "not_requested",
 };
 const cleanupDetail = {};
 async function cleanupStep(key, body) {
@@ -355,9 +389,17 @@ async function cleanupDevice() {
 
 // The script's own web session: what the web's Sign out sends, then proof: the server must refuse
 // that refresh token (401). /auth/logout answers 200 even for an unknown token, so 200 alone is not.
+// web_login: not_initiated -> initiated -> succeeded | confirmed_rejected | unknown. A login that was
+// sent but got no clear answer (lost, 5xx, malformed 2xx) may still have opened a session: unknown,
+// never "not_opened". Only this run's own session is signed out; never other sessions of the account.
+let webLogin = "not_initiated";
 async function signOutWebSession(webSession) {
   await cleanupStep("web_session", async () => {
-    if (!webSession) return "not_opened";
+    if (!webSession) {
+      if (webLogin === "not_initiated") return "not_opened";
+      if (webLogin === "confirmed_rejected") return "login_rejected";
+      return "login_outcome_unknown";
+    }
     if (!webSession.refreshToken) throw new Error("the login returned no refresh token to sign out");
     const out = await web("POST", "auth/logout", { token: webSession.accessToken, body: { refreshToken: webSession.refreshToken } });
     if (out.status !== 200) throw new Error(`POST /auth/logout answered HTTP ${out.status}`);
@@ -517,6 +559,7 @@ async function appLogoutEvidence({ logcatCleared }) {
 
 async function revokeAppSession(appMayBeSignedIn) {
   await cleanupStep("app_session", async () => {
+    if (DEFER_APP_SESSION && PHASE === "sign-in") return appMayBeSignedIn ? DEFERRED_APP_SESSION : "not_signed_in";
     if (!REVOKE_APP_SESSION) return "not_requested";
     if (!appMayBeSignedIn) return "not_signed_in";
     let logcatCleared = true;
@@ -588,7 +631,23 @@ async function runScenario(webSession) {
 }
 
 // ---------- the flow ----------
+// --phase sign-out: the app's own Sign out of the session a --defer-app-session run left signed in
+// (for the Testbed case). No credentials, no browser change, no install; the device steps below
+// therefore record "not_changed" / "not_installed_by_run" unless something is left over.
+async function signOutPhase() {
+  if (!REVOKE_APP_SESSION) stop("--phase sign-out needs --revoke-app-session");
+  try {
+    await revokeAppSession(true);
+  } finally {
+    await cleanupDevice();
+    summary.cleanup = { ...cleanupStatus, ...cleanupDetail };
+  }
+}
+
 async function main() {
+  if (!["sign-in", "sign-out"].includes(PHASE)) stop(`unknown --phase ${PHASE}; use sign-in|sign-out`);
+  if (PHASE === "sign-out") return signOutPhase();
+  if (DEFER_APP_SESSION && REVOKE_APP_SESSION) stop("--defer-app-session and --revoke-app-session exclude each other in the sign-in phase");
   if (!preset && !(option("web-url") && option("api-url"))) stop(`unknown --env ${ENV_NAME}; use staging|production or pass --web-url and --api-url`);
   if (!STUB_APK && !shell(`pm path ${STUB_PKG}`, { allowFailure: true }).trim()) stop("--capture-browser-apk is required (build it with scripts/qa/capture-browser/build.sh)");
   const account = credentials();
@@ -644,7 +703,8 @@ async function main() {
     });
 
     adb(["logcat", "-c"], { allowFailure: true });
-    logcat = spawn("adb", ["logcat", "-v", "threadtime", "-s", "SlockAppLogin:*"], { stdio: ["ignore", fs.openSync(logcatFile, "w"), "ignore"] });
+    // --no-capture: no streamed copy on disk; verify-signed-in reads logcat dumps into memory only.
+    if (!NO_CAPTURE) logcat = spawn("adb", ["logcat", "-v", "threadtime", "-s", "SlockAppLogin:*"], { stdio: ["ignore", fs.openSync(logcatFile, "w"), "ignore"] });
 
     await step("open-sign-in-page", async () => {
       launchApp();
@@ -702,13 +762,26 @@ async function main() {
     });
 
     const callback = await step("web-login-and-confirm", async () => {
-      const login = await web("POST", "auth/login", { body: { email: account.email, password: account.password } });
+      // From here a server-side web session may exist even if no usable answer arrives: the state
+      // only leaves "unknown" on a clear answer (summary.web_login; signOutWebSession).
+      webLogin = "initiated";
+      let login;
+      try {
+        login = await web("POST", "auth/login", { body: { email: account.email, password: account.password } });
+      } catch (error) {
+        webLogin = error instanceof Stop && /HTTP 429/.test(error.message) ? "confirmed_rejected" : "unknown";
+        throw error;
+      }
+      if (login.status >= 400 && login.status < 500) webLogin = "confirmed_rejected";
+      else if (login.status !== 200 || !login.json?.accessToken) webLogin = "unknown";
       if (login.status === 401) stop("the QA account's email/password were refused (HTTP 401)");
       if (login.status !== 200) stop(`POST /auth/login answered HTTP ${login.status} ${login.json?.code ?? ""}`);
       if (login.json?.secondFactorRequired || login.json?.challenge) {
+        webLogin = "unknown";
         stop("the QA account has two-step verification on; this script does not answer second factors — use an account without it");
       }
       if (!login.json?.accessToken) stop("POST /auth/login answered without an access token");
+      webLogin = "succeeded";
       webSession = {
         accessToken: login.json.accessToken,
         refreshToken: login.json.refreshToken ?? "",
@@ -717,6 +790,9 @@ async function main() {
       };
       redact.add(webSession.accessToken);
       redact.add(webSession.refreshToken);
+      // The pre-login compares the account with the one Testbed froze, as a nonce-bound sha256
+      // (release_prelogin_lib.mjs userRef); the raw id is not written.
+      if (ACCOUNT_REF_NONCE) summary.account_user_ref = userRef(ACCOUNT_REF_NONCE, webSession.userId);
 
       const described = await web("GET", `auth/app-login/requests/${encodeURIComponent(requestId)}`, { token: webSession.accessToken });
       if (described.status !== 200) stop(`the app-login request is not usable (HTTP ${described.status} ${described.json?.code ?? ""})`);
@@ -791,27 +867,30 @@ async function main() {
     await signOutWebSession(webSession);
     try { logcat?.kill("SIGTERM"); } catch {}
     if (fs.existsSync(logcatFile)) {
-      fs.writeFileSync(path.join(OUT, "logcat-app-login.txt"), redact(fs.readFileSync(logcatFile, "utf8")));
+      // --no-capture: the login window's log lines are read for the verdict only, never kept.
+      if (!NO_CAPTURE) fs.writeFileSync(path.join(OUT, "logcat-app-login.txt"), redact(fs.readFileSync(logcatFile, "utf8")));
       fs.rmSync(logcatFile);
     }
     await revokeAppSession(callbackSent);
     await cleanupDevice();
     summary.cleanup = { ...cleanupStatus, ...cleanupDetail };
+    summary.web_login = webLogin;
+    summary.callback_delivery = callbackSent ? "attempted" : "not_attempted";
   }
 }
 
 let signedIn = false;
 main()
   .then(() => {
-    signedIn = true;
-    log("signed in");
+    signedIn = PHASE === "sign-in";
+    log(signedIn ? "signed in" : "sign-out phase finished");
   })
   .catch((error) => {
     summary.error = redact(error instanceof Stop ? error.message : error.stack ?? error.message);
     console.error(`[release-auto-login] FAILED: ${summary.error}`);
   })
   .finally(() => {
-    const outcome = runOutcome({ signedIn, cleanup: cleanupStatus, strict: STRICT_CLEANUP });
+    const outcome = runOutcome({ signedIn, cleanup: cleanupStatus, strict: STRICT_CLEANUP, deferAppSession: DEFER_APP_SESSION, phase: PHASE });
     summary.result = outcome.result;
     summary.cleanup_ok = outcome.cleanupOk;
     summary.cleanup_failures = outcome.cleanupFailures;
@@ -819,7 +898,8 @@ main()
       const list = outcome.cleanupFailures.map((f) => `${f.step}=${f.status}`).join(", ");
       console.error(`[release-auto-login] cleanup incomplete: ${list}${STRICT_CLEANUP ? " (strict: failing the run)" : ""}`);
     }
-    process.exitCode = outcome.exitCode || (scenarioFailed ? 1 : 0);
+    process.exitCode = outcome.exitCode || (scenarioFailed || (PHASE === "sign-out" && summary.error) ? 1 : 0);
+    if (PHASE === "sign-out" && summary.error) summary.result = "cleanup_failed";
     if (SCENARIO) summary.scenario_result = summary.scenario?.result ?? (scenarioFailed ? "fail" : "pass");
     fs.writeFileSync(path.join(OUT, "summary.json"), `${redact(JSON.stringify(summary, null, 2))}\n`);
   });

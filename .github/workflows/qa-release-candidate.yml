@@ -1,0 +1,123 @@
+name: QA release candidate (qaRelease) + receiver packaging check
+
+# Release pre-login (docs/qa-acceptance/release-prelogin-contract.md). Builds, in one job:
+#   - the store variants `release` and `play` (APK + AAB): their PACKAGED dex + manifests must not
+#     contain the readiness receiver (scripts/qa/check_qa_readiness_packaging.py --expect absent);
+#   - the QA-instrumented candidate `qaRelease` (APK): it must contain the receiver, disabled and
+#     DUMP-protected (--expect present). It is then signed with a THROWAWAY key made in this job.
+#
+# Nothing is published anywhere: the signed candidate and its identity record are only a workflow
+# artifact. The throwaway signer differs from the store signer, so this candidate is NOT the store
+# bytes, and these checks are not acceptance of the raw artifact a store serves.
+#
+# workflow_dispatch only: three R8 release builds are too heavy for every PR (PR CI runs the cheap
+# merged-manifest checks, test.yml). Not scheduled. No secrets are used.
+on:
+  workflow_dispatch:
+    inputs:
+      ref_note:
+        description: "Optional note recorded in build-info.json (why this candidate was built)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    name: Build qaRelease candidate + check store packaging
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout mobile
+        uses: actions/checkout@v7
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk \
+            /opt/hostedtoolcache/CodeQL /usr/local/.ghcup /opt/ghc \
+            /usr/local/share/boost /usr/local/lib/node_modules
+          df -h /
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build release, play and qaRelease
+        working-directory: ./compose
+        env:
+          SLOCK_VISUAL_FIXTURES: "false"
+        run: |
+          ./gradlew --no-daemon --console=plain --stacktrace -PslockVisualFixtures=false \
+            :androidApp:assembleRelease :androidApp:bundleRelease \
+            :androidApp:assemblePlay :androidApp:bundlePlay \
+            :androidApp:assembleQaRelease
+
+      - name: Check packaged store artifacts carry no readiness receiver
+        run: |
+          set -euo pipefail
+          out=compose/androidApp/build/outputs
+          mapfile -t store < <(find "$out/apk/release" "$out/apk/play" "$out/bundle/release" "$out/bundle/play" -type f \( -name '*.apk' -o -name '*.aab' \) | sort)
+          [ "${#store[@]}" -ge 4 ] || { echo "expected release + play APK and AAB, found ${#store[@]}"; exit 1; }
+          python3 scripts/qa/check_qa_readiness_packaging.py --expect absent "${store[@]}"
+
+      - name: Sign the qaRelease candidate with a throwaway key and check it
+        env:
+          REF_NOTE: ${{ inputs.ref_note }}
+        run: |
+          set -euo pipefail
+          bt="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          mapfile -t qa < <(find compose/androidApp/build/outputs/apk/qaRelease -type f -name '*.apk' | sort)
+          [ "${#qa[@]}" -eq 1 ] || { echo "expected exactly one qaRelease APK, found ${#qa[@]}"; exit 1; }
+          mkdir -p qa-release-candidate
+          ks="$RUNNER_TEMP/qa-throwaway.jks"
+          pw="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
+          echo "::add-mask::$pw"
+          keytool -genkeypair -keystore "$ks" -storepass "$pw" -keypass "$pw" -alias qa -keyalg RSA -keysize 3072 \
+            -validity 7 -dname "CN=Raft QA throwaway candidate signer" >/dev/null
+          "$bt/zipalign" -f -p 4 "${qa[0]}" "$RUNNER_TEMP/qa-aligned.apk"
+          "$bt/apksigner" sign --ks "$ks" --ks-pass "pass:$pw" --out qa-release-candidate/raft-qaRelease.apk "$RUNNER_TEMP/qa-aligned.apk"
+          rm -f "$ks"
+          "$bt/apksigner" verify qa-release-candidate/raft-qaRelease.apk
+          python3 scripts/qa/check_qa_readiness_packaging.py --expect present --aapt "$bt/aapt" qa-release-candidate/raft-qaRelease.apk
+          badging="$("$bt/aapt" dump badging qa-release-candidate/raft-qaRelease.apk)"
+          if printf '%s' "$badging" | grep -q '^application-debuggable'; then echo "qaRelease must not be debuggable"; exit 1; fi
+          cert="$("$bt/apksigner" verify --print-certs qa-release-candidate/raft-qaRelease.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          APK=qa-release-candidate/raft-qaRelease.apk CERT="$cert" BADGING="$badging" COMMIT="$GITHUB_SHA" NOTE="$REF_NOTE" RUN="$GITHUB_RUN_ID" python3 - <<'PY'
+          import hashlib, json, os, re
+          b = os.environ["BADGING"]
+          info = {
+              "kind": "qaRelease QA-instrumented candidate (throwaway signer; NOT store bytes; never published)",
+              "sha256": hashlib.sha256(open(os.environ["APK"], "rb").read()).hexdigest(),
+              "package_id": re.search(r"package: name='([^']+)'", b).group(1),
+              "version_name": re.search(r"versionName='([^']*)'", b).group(1),
+              "version_code": int(re.search(r"versionCode='(\d+)'", b).group(1)),
+              "signer_cert_sha256": os.environ["CERT"],
+              "source_commit": os.environ["COMMIT"],
+              "workflow_run_id": os.environ["RUN"],
+              "note": os.environ["NOTE"][:200],
+          }
+          open("qa-release-candidate/build-info.json", "w").write(json.dumps(info, indent=2) + "\n")
+          PY
+          cat qa-release-candidate/build-info.json
+
+      - name: Upload the candidate (workflow artifact only; not published)
+        uses: actions/upload-artifact@v7
+        with:
+          name: qa-release-candidate
+          path: qa-release-candidate
+          if-no-files-found: error
+          retention-days: 7

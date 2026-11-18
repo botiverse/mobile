@@ -76,6 +76,10 @@ if [ "$PHASE" = "claim" ]; then
     --data-binary @"$CLAIM_PAYLOAD" \
     -o "$CLAIM_RESPONSE"; then
     node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!v.claim_token)process.exit(2);fs.writeFileSync(process.argv[2],v.claim_token,{mode:0o600});const b=v.auth_bootstrap&&typeof v.auth_bootstrap==="object"?v.auth_bootstrap:{required:false};fs.writeFileSync(process.argv[3],JSON.stringify({...b,required:b.required===true,run_case_id:v.run_case_id},null,2),{mode:0o600})' "$CLAIM_RESPONSE" "$CLAIM_TOKEN_FILE" "$BOOTSTRAP_SPEC_FILE"
+    # Release pre-login (docs/qa-acceptance/release-prelogin-contract.md): keep ONLY the non-secret
+    # binding fields of this authenticated claim (spec sha256, Testbed attempt id, run case, the CI
+    # job that claimed), mode 0600, never the token or the response. Absent or malformed: no file.
+    RUN_CASE="$STAMP_RUN_CASE_ID" JOB_REF="$JOB_REF" node -e 'const fs=require("fs"),e=process.env;const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));const r=v.release_prelogin;fs.rmSync(process.argv[2],{force:true});if(!r||typeof r!=="object"||!/^[0-9a-f]{64}$/.test(r.spec_sha256??"")||!/^pla_[0-9a-f]{32}$/.test(r.attempt_id??"")||v.run_case_id!==e.RUN_CASE)process.exit(0);fs.writeFileSync(process.argv[2],JSON.stringify({contract:"raft-release-prelogin-claim-binding/v1",run_case_id:v.run_case_id,spec_sha256:r.spec_sha256,attempt_id:r.attempt_id,ci_job_ref:e.JOB_REF}),{mode:0o600})' "$CLAIM_RESPONSE" "${RUNNER_TEMP:-$EV}/stamp-release-prelogin-binding-$STAMP_RUN_CASE_ID.json" || true
     rm -f "$CLAIM_RESPONSE" "$CLAIM_PAYLOAD"
     echo "stamp: claimed (commit=${SOURCE_COMMIT:-?} artifact=${ARTIFACT_SHA:0:12})"
     exit 0
