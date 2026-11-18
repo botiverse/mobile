@@ -41,6 +41,9 @@ import {
   caseMetaFromYaml,
   componentStateFromDumpsys,
   installedFromDumpsys,
+  privateTargetFromSpec,
+  sealManifest,
+  verifySealed,
   preloginEligibility,
   receiptsLeak,
   reportGate,
@@ -58,13 +61,18 @@ const option = (name, fallback = "") => {
   return i >= 0 && argv[i + 1] !== undefined && !argv[i + 1].startsWith("--") ? argv[i + 1] : fallback;
 };
 const OUT = option("out", "qa-prelogin");
+const SEALED = option("sealed", `${OUT}-sealed`);
+const currentJobRef = () => `${process.env.GITHUB_SERVER_URL || "https://github.com"}/${process.env.GITHUB_REPOSITORY || ""}/actions/runs/${process.env.GITHUB_RUN_ID || ""}`;
 const PRIVATE = option("private-dir", path.join(process.env.RUNNER_TEMP || os.tmpdir(), "qa-prelogin-private"));
 const readJsonOr = (file, fallback = null) => { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return fallback; } };
 const secrets = () => [process.env.QA_PRELOGIN_EMAIL, process.env.QA_PRELOGIN_PASSWORD, process.env.QA_TEST_EMAIL, process.env.QA_TEST_PASSWORD, process.env.QA_LOGIN_EMAIL, process.env.QA_LOGIN_PASSWORD];
-// Every receipt write is checked against the secret values this process can see; a hit writes nothing.
+// Every receipt write is checked against its strict schema and the secret values this process can
+// see; a problem writes nothing (and the caller ends unknown).
 const writeJson = (name, value) => {
   const text = `${JSON.stringify(value, null, 2)}\n`;
   if (receiptsLeak([text], secrets())) throw new Error(`receipt ${name} carried a secret; not written`);
+  const problem = uploadProblem(name, text);
+  if (problem) throw new Error(`receipt ${name} does not match its schema (${problem}); not written`);
   fs.mkdirSync(OUT, { recursive: true });
   fs.writeFileSync(path.join(OUT, name), text, { mode: 0o600 });
 };
@@ -96,7 +104,10 @@ function apkIdentity(apk, aapt) {
 function plan() {
   let spec = null;
   try { spec = JSON.parse(process.env.RELEASE_PRELOGIN || "null"); } catch {}
-  const claim = readJsonOr(option("claim-response"));
+  // The minimal binding stamp_report.sh claim keeps from the authenticated claim response (never
+  // the token or the response): it must name this run case and the CI job that claimed.
+  const binding = readJsonOr(option("claim-binding"));
+  const bindingOk = binding && binding.contract === "raft-release-prelogin-claim-binding/v1" && binding.run_case_id === option("run-case-id") && binding.ci_job_ref === currentJobRef();
   const casesDir = option("cases-dir", path.join(HERE, "../../docs/qa-acceptance/cases"));
   const caseId = typeof spec?.case?.id === "string" ? spec.case.id : "";
   const matches = caseId && fs.existsSync(casesDir)
@@ -105,7 +116,7 @@ function plan() {
   const bootstrap = option("bootstrap-required");
   const eligibility = preloginEligibility({
     spec,
-    claimRelease: claim && typeof claim.release_prelogin === "object" ? claim.release_prelogin : null,
+    claimRelease: bindingOk ? { spec_sha256: binding.spec_sha256, attempt_id: binding.attempt_id } : null,
     runCaseId: option("run-case-id"),
     goal: process.env.QA_GOAL ?? "",
     artifactSha256Input: process.env.ARTIFACT_SHA256 ?? "",
@@ -122,6 +133,9 @@ function plan() {
   }
   const attempt = attemptFromSpec(spec, { workflow: { runId: process.env.GITHUB_RUN_ID ?? null, runAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null } });
   writeJson("attempt.json", attempt);
+  // Cleartext target (server name for the in-memory pick) only in the private runner dir.
+  fs.mkdirSync(PRIVATE, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(PRIVATE, "target.json"), JSON.stringify(privateTargetFromSpec(spec)), { mode: 0o600 });
   console.log(`release pre-login: Testbed attempt ${attempt.attempt_id} bound to workflow run ${attempt.workflow.run_id}/${attempt.workflow.run_attempt}`);
   return 0;
 }
@@ -195,6 +209,25 @@ function adbDevice({ pkg, serverEnv, nonce }) {
       if (!r.ok || !/rc=0\s*$/.test(r.out)) return null;
       return r.out.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("rc=")).map((l) => path.basename(l));
     },
+    // The capture browser's private pending-login-URL file. Uninstalling the stub removes its private
+    // data dir; otherwise delete the file and read its absence back. Any failed reading: unknown.
+    captureBrowserFile: async () => {
+      const stub = "build.qa.capturebrowser";
+      const listed = () => {
+        const r = shell(`pm list packages ${stub}; echo rc=$?`);
+        if (!/rc=0\s*$/.test(r.out)) return null;
+        return r.out.split("\n").some((l) => l.trim() === `package:${stub}`);
+      };
+      let present = listed();
+      if (present === null) return "unknown";
+      if (!present) return "stub_absent";
+      shell(`run-as ${stub} rm -f files/captured_url files/captured_url.tmp`);
+      const state = shell(`run-as ${stub} sh -c 'if [ -e files/captured_url ] || [ -e files/captured_url.tmp ]; then echo present; else echo absent; fi'`).out.trim();
+      shell(`pm uninstall ${stub}`);
+      present = listed();
+      if (present === false) return "stub_absent";
+      return state.endsWith("absent") ? "deleted_verified" : "unknown";
+    },
     enableReceiver: async () => {
       shell(`pm enable ${component}`);
       return componentState();
@@ -260,6 +293,7 @@ async function login() {
   const evidence = option("evidence", "qa-evidence");
   const attempt = validateAttempt(readJsonOr(path.join(OUT, "attempt.json")));
   if (!process.env.QA_PRELOGIN_EMAIL || !process.env.QA_PRELOGIN_PASSWORD) {
+    // Not wired in any workflow yet (Argus decision 8): this path always ends here today.
     writeJson("receipt-callback.json", { attempt_id: attempt.attempt_id, status: "unknown", reason: "prelogin_credentials_not_configured" });
     markUnknown(evidence, "release pre-login: no reviewed pre-login credential (QA_PRELOGIN_*) in this step");
     console.error("release pre-login: UNKNOWN (no reviewed pre-login credential configured; nothing on the device was touched)");
@@ -268,7 +302,9 @@ async function login() {
   // Intent first: if anything below is killed, finalize knows the device may hold a session.
   writeJson("login-started.json", { attempt_id: attempt.attempt_id, workflow: attempt.workflow, started_at: new Date().toISOString() });
   const device = adbDevice({ pkg: option("package", "build.raft.app"), serverEnv: attempt.target.env, nonce: attempt.nonce });
-  const result = await runPreloginLogin({ attempt, device });
+  const target = readJsonOr(path.join(PRIVATE, "target.json"));
+  if (!target || target.attempt_id !== attempt.attempt_id) throw new Error("private target missing or for another attempt");
+  const result = await runPreloginLogin({ attempt, serverName: target.server_name, device });
   fs.mkdirSync(PRIVATE, { recursive: true, mode: 0o700 });
   if (result.signInSummary) fs.writeFileSync(path.join(PRIVATE, "sign-in-summary.json"), JSON.stringify(result.signInSummary), { mode: 0o600 });
   writeJson("receipt-capture.json", { attempt_id: attempt.attempt_id, ...result.capture });
@@ -333,10 +369,11 @@ function finalize() {
       reason: "cleanup_not_reached_before_the_emulator_step_ended",
     });
   }
-  computeOutcome();
+  try { computeOutcome(); } catch (error) { console.error(`release pre-login outcome not written (${error.message})`); }
   return seal();
 }
 function seal() {
+  // 1. qa-prelogin/: drop everything that is not an allow-listed receipt passing its strict schema.
   const problems = [];
   for (const entry of fs.readdirSync(OUT, { withFileTypes: true })) {
     const full = path.join(OUT, entry.name);
@@ -345,18 +382,48 @@ function seal() {
       continue;
     }
     const problem = uploadProblem(entry.name, fs.readFileSync(full, "utf8"), secrets());
-    if (problem) problems.push(`${entry.name}: ${problem}`);
+    if (problem) {
+      problems.push(`${entry.name}: ${problem}`);
+      fs.rmSync(full, { force: true });
+    }
   }
+  // 2. A FRESH sealed directory: byte copies of the checked files + a sha256 manifest, read-only.
+  // Only this directory is uploaded (after verify-sealed); later writes to qa-prelogin/ never reach
+  // the artifact.
+  if (fs.existsSync(SEALED)) fs.chmodSync(SEALED, 0o700);
+  fs.rmSync(SEALED, { recursive: true, force: true });
+  fs.mkdirSync(SEALED, { recursive: true, mode: 0o700 });
+  let entries;
   if (problems.length) {
-    for (const e of fs.readdirSync(OUT)) fs.rmSync(path.join(OUT, e), { recursive: true, force: true });
     const attemptId = null;
-    fs.writeFileSync(path.join(OUT, "outcome.json"), `${JSON.stringify({ attempt_id: attemptId, outcome: "incomplete", rc: 3, reason: "receipts withheld at the upload boundary" }, null, 2)}\n`);
-    fs.writeFileSync(path.join(OUT, "outcome.rc"), "3\n");
+    entries = [
+      { name: "outcome.json", bytes: Buffer.from(`${JSON.stringify({ attempt_id: attemptId, outcome: "incomplete", rc: 3, reason: "receipts withheld at the upload boundary" }, null, 2)}\n`) },
+      { name: "outcome.rc", bytes: Buffer.from("3\n") },
+    ];
     console.error(`release pre-login receipts withheld (${problems.length} problem(s))`);
-    return 0;
+  } else {
+    entries = fs.readdirSync(OUT).filter((n) => UPLOAD_FILES.includes(n)).map((name) => ({ name, bytes: fs.readFileSync(path.join(OUT, name)) }));
   }
-  console.log("release pre-login receipts sealed for upload");
+  for (const e of entries) fs.writeFileSync(path.join(SEALED, e.name), e.bytes, { mode: 0o444 });
+  fs.writeFileSync(path.join(SEALED, "MANIFEST.sha256"), sealManifest(entries), { mode: 0o444 });
+  fs.chmodSync(SEALED, 0o555);
+  console.log(`release pre-login receipts sealed (${entries.length} file(s))`);
   return 0;
+}
+
+function verifySealedCommand() {
+  let entries = [];
+  let manifest = "";
+  try {
+    manifest = fs.readFileSync(path.join(SEALED, "MANIFEST.sha256"), "utf8");
+    entries = fs.readdirSync(SEALED).filter((n) => n !== "MANIFEST.sha256").map((name) => ({ name, bytes: fs.readFileSync(path.join(SEALED, name)) }));
+  } catch {
+    console.error("sealed receipts missing");
+    return 1;
+  }
+  const problem = verifySealed(entries, manifest);
+  if (problem) console.error(`sealed receipts rejected: ${problem}`);
+  return problem ? 1 : 0;
 }
 
 // ---------- report gate ----------
@@ -364,11 +431,15 @@ function gate() {
   const files = {};
   for (const name of UPLOAD_FILES) {
     if (name.endsWith(".json")) {
-      const v = readJsonOr(path.join(OUT, name));
+      const v = readJsonOr(path.join(SEALED, name));
       if (v) files[name] = v;
     }
   }
-  const { rc, reason } = reportGate({ files, ...agentResult() });
+  const { rc, reason } = reportGate({
+    files,
+    ...agentResult(),
+    current: { runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT, runCaseId: process.env.STAMP_RUN_CASE_ID },
+  });
   console.error(`release pre-login report gate: rc ${rc} (${reason})`);
   process.stdout.write(`${rc}\n`);
   return 0;
@@ -386,11 +457,11 @@ async function guardedLogin() {
   }
 }
 
-const commands = { plan, login: guardedLogin, cleanup, verdict, finalize, "report-gate": gate };
+const commands = { plan, login: guardedLogin, cleanup, verdict, finalize, "verify-sealed": verifySealedCommand, "report-gate": gate };
 if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
   const command = commands[argv[0]];
   if (!command) {
-    console.error("usage: release_prelogin.mjs plan|login|cleanup|verdict|finalize|report-gate [options]");
+    console.error("usage: release_prelogin.mjs plan|login|cleanup|verdict|finalize|verify-sealed|report-gate [options]");
     process.exit(2);
   }
   process.exitCode = await command();

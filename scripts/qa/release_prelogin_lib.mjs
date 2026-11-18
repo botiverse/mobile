@@ -19,6 +19,7 @@ export const EXTRA_ATTEMPT_ID = "qaAttemptId";
 export const EXTRA_NONCE = "qaNonce";
 export const EXTRA_REQUEST_ID = "qaRequestId";
 export const USER_REF_DOMAIN = "raft-qa-readiness-user/v1";
+export const SERVER_REF_DOMAIN = "raft-qa-readiness-server/v1";
 
 /**
  * Case classes that are NEVER switched to the release pre-login, whatever any list says: their
@@ -61,6 +62,16 @@ export const sha256Hex = (data) => crypto.createHash("sha256").update(data).dige
  */
 export function userRef(nonce, userId) {
   return sha256Hex(`${USER_REF_DOMAIN}\u0000${nonce}\u0000${userId}`);
+}
+
+/**
+ * Nonce-bound digest of the selected server (id AND slug), so uploads and logs never carry the
+ * stable server id/slug/name in clear (Argus: internal, potentially sensitive). Minimisation for
+ * equality checks only; not a signature, not anonymity. The cleartext target stays in the private
+ * runner dir (0600) for the in-memory server pick.
+ */
+export function serverRef(nonce, serverId, serverSlug) {
+  return sha256Hex(`${SERVER_REF_DOMAIN}\u0000${nonce}\u0000${serverId}\u0000${serverSlug}`);
 }
 
 /** JSON with object keys sorted at every level: the bytes Testbed hashes for spec_sha256. */
@@ -215,7 +226,13 @@ export function preloginEligibility({ spec, claimRelease, runCaseId, goal, artif
   return { eligible: true, reason: "testbed_frozen_and_mobile_compatible" };
 }
 
-/** The attempt record: Testbed's ids, bound to this workflow run/rerun. No randomness here. */
+/** The cleartext target, written ONLY to the private runner dir (0600): the server name is needed in memory to pick it. */
+export function privateTargetFromSpec(spec) {
+  const s = validateSpec(spec);
+  return { attempt_id: s.attempt.attempt_id, server_name: s.target.server_name };
+}
+
+/** The attempt record (uploaded): Testbed's ids, bound to this workflow run/rerun, digests only. No randomness here. */
 export function attemptFromSpec(spec, { workflow = {} } = {}) {
   const s = validateSpec(spec);
   return {
@@ -225,7 +242,7 @@ export function attemptFromSpec(spec, { workflow = {} } = {}) {
     run_case_id: s.run_case_id,
     spec_sha256: sha256Hex(canonicalJson(s)),
     case: { id: s.case.id, revision: s.case.revision, platform: s.case.platform, case_sha256: s.case.case_sha256, goal_sha256: s.case.goal_sha256 },
-    target: { env: s.target.env, account_user_ref: userRef(s.attempt.nonce, s.target.account_user_id), server_id: s.target.server_id, server_slug: s.target.server_slug, server_name: s.target.server_name },
+    target: { env: s.target.env, account_user_ref: userRef(s.attempt.nonce, s.target.account_user_id), server_ref: serverRef(s.attempt.nonce, s.target.server_id, s.target.server_slug) },
     artifact: { ...s.artifact },
     workflow: { run_id: workflow.runId ?? null, run_attempt: workflow.runAttempt ?? null },
   };
@@ -234,7 +251,7 @@ export function attemptFromSpec(spec, { workflow = {} } = {}) {
 export function validateAttempt(attempt) {
   if (!attempt || attempt.contract !== ATTEMPT_CONTRACT) throw new Error("attempt record malformed");
   if (!ATTEMPT_ID.test(attempt.attempt_id ?? "") || !NONCE.test(attempt.nonce ?? "")) throw new Error("attempt id / nonce malformed");
-  if (!HEX64.test(attempt.target?.account_user_ref ?? "") || !attempt.target?.server_id || !attempt.target?.server_slug) throw new Error("attempt target malformed");
+  if (!HEX64.test(attempt.target?.account_user_ref ?? "") || !HEX64.test(attempt.target?.server_ref ?? "")) throw new Error("attempt target malformed");
   return attempt;
 }
 
@@ -325,8 +342,7 @@ export function assessReadiness({ lines = [], attempt, requestId, processBefore,
   if (receipt.contract !== RECEIPT_CONTRACT) return unknown("receipt_contract_mismatch");
   const facts = {
     user_ref: receipt.user_ref ?? null,
-    selected_server_id: receipt.selected_server_id ?? null,
-    selected_server_slug: receipt.selected_server_slug ?? null,
+    server_ref: receipt.selected_server_id ? serverRef(attempt.nonce, receipt.selected_server_id, receipt.selected_server_slug ?? "") : null,
     version_name: receipt.version_name ?? null,
     version_code: receipt.version_code ?? null,
     package: receipt.package ?? null,
@@ -336,7 +352,7 @@ export function assessReadiness({ lines = [], attempt, requestId, processBefore,
   if (receipt.signed_in !== true || !receipt.user_ref) return unknown("app_not_signed_in", { facts });
   if (receipt.user_ref !== attempt.target.account_user_ref) return unknown("account_mismatch", { facts });
   if (!receipt.selected_server_id) return unknown("no_server_selected", { facts });
-  if (receipt.selected_server_id !== attempt.target.server_id || receipt.selected_server_slug !== attempt.target.server_slug) return unknown("server_mismatch", { facts });
+  if (facts.server_ref !== attempt.target.server_ref) return unknown("server_mismatch", { facts });
   if (receipt.package !== installed.package || receipt.version_name !== installed.version_name || Number(receipt.version_code) !== installed.version_code) return unknown("build_mismatch", { facts });
   return { status: "ok", reason: "app_reports_frozen_account_and_server", facts };
 }
@@ -360,102 +376,139 @@ export function assessCallback(summary, attempt) {
 }
 
 /**
- * Data capture during the login window. "off" only when ALL readings exist and are clean: the
- * recorder confirmed stopped before; no recorder seen by the poll during the window (and the poll
- * actually ran); no recorder after; no file written on the device's shared storage since the window
- * started (the scan ran); the harness made no capture call; the sign-in run used --no-capture and
- * wrote 0 screenshots. A missing reading is "unknown".
+ * The capture sources this harness declares and probes during the login window. Anything else
+ * (vendor/system capture, the host, app-private storage, Android/ on shared storage, short-lived
+ * recorders or files between samples, other processes' memory) is NOT covered.
+ */
+export const CAPTURE_SCOPE = {
+  declared_sources: ["screenrecord_process_sampled_1s", "shared_storage_files_newer_than_marker_excl_Android", "harness_adb_capture_calls", "sign_in_run_screenshots"],
+  not_covered: ["between_sample_recorders", "files_created_and_deleted_in_window", "shared_storage_Android_dir", "app_private_storage", "vendor_or_system_capture", "host_side_capture"],
+};
+
+/**
+ * Data capture during the login window: BOUNDED SAMPLED PROBES, not proof of no capture.
+ * "not_observed" only when every declared probe ran and saw nothing: the recorder confirmed
+ * stopped before; the 1 s watch polled and never saw a recorder; no recorder after; the shared
+ * storage scan ran and found no file newer than the window marker; the harness made no capture
+ * call; the sign-in run used --no-capture and wrote 0 screenshots. A missing reading or a hit is
+ * "unknown". `coverage_proven` is always false: the declared probes cannot prove the window was
+ * covered (see CAPTURE_SCOPE), so a capture receipt never by itself allows a product pass.
  */
 export function assessCaptureWindow({ recorderStoppedBefore, recorderWatch, recorderRunningAfter, filesWritten, signInSummary, harnessCaptures }) {
-  const unknown = (reason, extra = {}) => ({ status: "unknown", reason, ...extra });
+  const base = { coverage_proven: false, declared_sources: CAPTURE_SCOPE.declared_sources };
+  const unknown = (reason, extra = {}) => ({ status: "unknown", reason, ...base, ...extra });
   if (recorderStoppedBefore !== true) return unknown("recorder_not_stopped_before_login");
   if (harnessCaptures !== 0) return unknown(Number.isFinite(harnessCaptures) ? "harness_captured_during_login" : "harness_capture_count_unknown");
   if (!recorderWatch || !Number.isInteger(recorderWatch.polls) || recorderWatch.polls < 1 || recorderWatch.failed) return unknown("recorder_watch_missing");
-  if (recorderWatch.seen) return unknown("recorder_ran_during_login");
-  if (recorderRunningAfter !== false) return unknown(recorderRunningAfter === true ? "recorder_ran_during_login" : "recorder_state_unknown_after");
+  if (recorderWatch.seen) return unknown("recorder_seen_during_login");
+  if (recorderRunningAfter !== false) return unknown(recorderRunningAfter === true ? "recorder_seen_during_login" : "recorder_state_unknown_after");
   if (!Array.isArray(filesWritten)) return unknown("device_file_scan_missing");
-  if (filesWritten.length) return unknown("files_written_during_login", { files: filesWritten.slice(0, 20) });
-  if (signInSummary && (signInSummary.no_capture !== true || signInSummary.screenshots_written !== 0)) return unknown("sign_in_run_captured");
-  return { status: "off", reason: "no_capture_in_login_window" };
+  // Only a count: a file name itself could carry something.
+  if (filesWritten.length) return unknown("files_seen_during_login", { files_count: filesWritten.length });
+  if (!signInSummary) return unknown("sign_in_summary_missing");
+  if (signInSummary.no_capture !== true || signInSummary.screenshots_written !== 0) return unknown("sign_in_run_captured");
+  return { status: "not_observed", reason: "capture_not_observed_at_sample_times", ...base, recorder_polls: recorderWatch.polls };
 }
 
 /**
  * The cleanup receipt (Argus decision 4): three things recorded SEPARATELY.
  *   local_cleanup          what this attempt owns on the device, each item positively read back:
- *                          capture file / browser role / capture browser (sign-in run), the app
- *                          signed out on the device (sign-out run), the receipt writer disabled
- *                          (dumpsys read back "disabled"). status "complete" / "unknown"
- *                          ("not_started" when the login never started).
- *   web_session            the web session the sign-in opened: "signed_out_verified" only when its
- *                          refresh token was refused after logout; "not_opened"; else "unknown".
+ *                          capture_file / browser / capture_browser (sign-in run), the capture
+ *                          browser's private login-URL file (cleanup step: stub uninstalled or the
+ *                          file deleted and read back absent; else unknown), the app signed out on
+ *                          the device (sign-out run), the receipt writer disabled (dumpsys read back
+ *                          "disabled"). status "complete" / "unknown" ("not_started" when the login
+ *                          never started).
+ *   web_session            the web session the sign-in opened (summary.web_login):
+ *                          "signed_out_verified" (refresh refused after logout), "not_initiated"
+ *                          (the login request was never sent), "login_rejected" (a clear 4xx),
+ *                          else "unknown" (sent, no usable answer; or not signed out).
  *   app_server_revocation  "app_reported_2xx" (the app's own bounded report of a 2xx for its
- *                          POST /auth/logout; NEVER "revoked"/"ok"), "no_app_session", or "unknown".
+ *                          POST /auth/logout; NEVER "revoked"/"ok"), "no_app_session" (only when
+ *                          the sign-in run recorded the callback was never sent), or "unknown".
+ * Never a global sign-out of the shared QA account's other sessions.
  */
-export function assessCleanup({ loginStarted, signInSummary, signOutSummary, receiverState }) {
+export function assessCleanup({ loginStarted, signInSummary, signOutSummary, receiverState, captureBrowserFile }) {
   if (loginStarted !== true) {
-    return { local_cleanup: { status: "not_started", items: {} }, web_session: "not_opened", app_server_revocation: "no_app_session" };
+    return { local_cleanup: { status: "not_started", items: {}, unproven: [] }, web_session: "not_initiated", app_server_revocation: "no_app_session" };
   }
   const signIn = signInSummary?.cleanup ?? null;
   const signOut = signOutSummary?.cleanup ?? null;
-  const callbackSent = (signInSummary?.steps ?? []).some((s) => s.name === "deliver-callback-to-app");
+  const noCallback = signInSummary?.callback_delivery === "not_attempted";
   const items = {
     capture_file: signIn && ["deleted", "not_applicable"].includes(signIn.capture_file) ? "ok" : "unknown",
+    capture_browser_file: ["stub_absent", "deleted_verified"].includes(captureBrowserFile) ? "ok" : "unknown",
     browser: signIn && ["restored", "not_changed"].includes(signIn.browser) ? "ok" : "unknown",
     capture_browser: signIn && ["uninstalled", "not_installed_by_run"].includes(signIn.capture_browser) ? "ok" : "unknown",
     app_signed_out_on_device:
-      signInSummary && !callbackSent ? "no_app_session"
+      noCallback ? "no_app_session"
         : signOut && ["app_reported_server_logout_2xx", "local_cleared_server_unconfirmed"].includes(signOut.app_session) ? "ok" : "unknown",
     receipt_writer: receiverState === "disabled" ? "ok" : "unknown",
   };
   const open = Object.keys(items).filter((k) => !["ok", "no_app_session"].includes(items[k]));
+  const webLogin = signInSummary?.web_login;
   return {
     local_cleanup: { status: open.length ? "unknown" : "complete", items, unproven: open },
-    web_session: signIn?.web_session === "signed_out" ? "signed_out_verified" : signIn?.web_session === "not_opened" ? "not_opened" : "unknown",
-    app_server_revocation:
-      signInSummary && !callbackSent ? "no_app_session"
-        : signOut?.app_session === "app_reported_server_logout_2xx" ? "app_reported_2xx" : "unknown",
-    app_logout_evidence: signOut?.app_logout_evidence ?? null,
+    web_session:
+      signIn?.web_session === "signed_out" && webLogin === "succeeded" ? "signed_out_verified"
+        : signIn?.web_session === "not_opened" && webLogin === "not_initiated" ? "not_initiated"
+          : signIn?.web_session === "login_rejected" && webLogin === "confirmed_rejected" ? "login_rejected"
+            : "unknown",
+    app_server_revocation: noCallback ? "no_app_session" : signOut?.app_session === "app_reported_server_logout_2xx" ? "app_reported_2xx" : "unknown",
+    app_logout_evidence: typeof signOut?.app_logout_evidence === "string" ? signOut.app_logout_evidence : null,
   };
 }
 
 /**
- * The attempt's outcome (Argus decision 5). rc: 0 pass, 1 fail, 3 incomplete / not run.
+ * The attempt's outcome (Argus decision 5 + round-3 addendum). rc: 0 pass, 1 fail, 3 incomplete / not run.
  *  - not eligible: not_run.
- *  - capture, callback or readiness not good: incomplete (never a product fail or pass).
+ *  - capture not "not_observed", callback or readiness not good: incomplete (never fail or pass).
  *  - the agent's rc and verdict.json must agree (0 + "pass", 1 + "fail"); else incomplete.
- *  - fail on a correctly prepared app: fail, with cleanup statuses as notes.
- *  - pass: only when local cleanup is complete and the web session is signed_out_verified/not_opened;
- *    else incomplete. The app's server-side revocation is a note (app_reported_2xx or unknown),
- *    never a condition and never called revoked.
+ *  - fail on a verified preparation: fail; cleanup + capture assurance as notes.
+ *  - pass: only with capture COVERAGE PROVEN (declared sources proven covered for the whole
+ *    window), local cleanup complete and the web session signed_out_verified / not_initiated /
+ *    login_rejected. Today's probes never prove coverage, so a pass is reported "incomplete"
+ *    (capture_coverage_not_proven). App server revocation is a note, never a condition.
  */
 export function attemptOutcome({ eligibility, capture, callback, readiness, cleanup, agentRc, agentVerdict }) {
-  const notes = cleanup ? { local_cleanup: cleanup.local_cleanup?.status ?? "unknown", web_session: cleanup.web_session ?? "unknown", app_server_revocation: cleanup.app_server_revocation ?? "unknown" } : { local_cleanup: "unknown", web_session: "unknown", app_server_revocation: "unknown" };
-  const result = (outcome, rc, reason) => ({ outcome, rc, reason, agent_rc: Number.isFinite(agentRc) ? agentRc : null, agent_verdict: agentVerdict ?? null, notes });
+  const notes = {
+    local_cleanup: cleanup?.local_cleanup?.status ?? "unknown",
+    web_session: cleanup?.web_session ?? "unknown",
+    app_server_revocation: cleanup?.app_server_revocation ?? "unknown",
+    capture_assurance: capture?.status === "not_observed" ? (capture.coverage_proven === true ? "coverage_proven" : "sampled_not_observed") : "unknown",
+  };
+  const result = (outcome, rc, reason) => ({ outcome, rc, reason, agent_rc: Number.isFinite(agentRc) ? agentRc : null, agent_verdict: ["pass", "fail", "unknown"].includes(agentVerdict) ? agentVerdict : null, notes });
   if (!eligibility?.eligible) return result("not_run", 3, `refused: ${eligibility?.reason ?? "no eligibility"}`);
-  if (capture?.status !== "off") return result("incomplete", 3, `capture: ${capture?.reason ?? "missing"}`);
+  if (capture?.status !== "not_observed") return result("incomplete", 3, `capture: ${capture?.reason ?? "missing"}`);
   if (callback?.status !== "ok") return result("incomplete", 3, `callback: ${callback?.reason ?? "missing"}`);
   if (readiness?.status !== "ok") return result("incomplete", 3, `readiness: ${readiness?.reason ?? "missing"}`);
   if (agentRc === 1 && agentVerdict === "fail") return result("fail", 1, "agent: product fail after verified preparation");
   if (agentRc !== 0 || agentVerdict !== "pass") return result("incomplete", 3, `agent rc ${Number.isFinite(agentRc) ? agentRc : "missing"} / verdict ${agentVerdict ?? "missing"}`);
+  if (capture.coverage_proven !== true) return result("incomplete", 3, "pass not accepted: capture_coverage_not_proven (bounded sampled observation)");
   if (notes.local_cleanup !== "complete") return result("incomplete", 3, `pass not accepted: local cleanup ${notes.local_cleanup}`);
-  if (!["signed_out_verified", "not_opened"].includes(notes.web_session)) return result("incomplete", 3, `pass not accepted: web session ${notes.web_session}`);
-  return result("pass", 0, "all receipts ok, local cleanup complete, agent pass");
+  if (!["signed_out_verified", "not_initiated", "login_rejected"].includes(notes.web_session)) return result("incomplete", 3, `pass not accepted: web session ${notes.web_session}`);
+  return result("pass", 0, "all receipts ok, capture coverage proven, local cleanup complete, agent pass");
 }
 
 /**
- * What the workflow's "Report verdict" may use (fail closed): the outcome recomputed from the sealed
- * receipts must equal outcome.json; every receipt must carry the attempt id; the agent rc and
- * verdict.json read NOW must equal what the outcome was computed from. Any mismatch or missing
- * piece: rc 3. Returns { rc, reason }.
+ * What the workflow's "Report verdict" may use (fail closed). Recomputes the outcome from the
+ * sealed receipts plus the agent rc and verdict.json read NOW; it must equal outcome.json. Every
+ * receipt carries the attempt id; attempt.json and outcome.json must name THIS run case and THIS
+ * workflow run + run attempt (`current`), so receipts from another run or rerun never count. Any
+ * mismatch or missing piece: rc 3. Returns { rc, reason }.
  */
-export function reportGate({ files, agentRc, agentVerdict }) {
+export function reportGate({ files, agentRc, agentVerdict, current = {} }) {
   const bad = (reason) => ({ rc: 3, reason });
   const attempt = files["attempt.json"];
   const outcome = files["outcome.json"];
   if (!outcome) return bad("outcome missing");
   if (!files["eligibility.json"]?.eligible) return outcome.outcome === "not_run" ? { rc: 3, reason: "not run" } : bad("eligibility missing");
   if (!attempt || !ATTEMPT_ID.test(attempt.attempt_id ?? "")) return bad("attempt missing");
-  for (const name of ["receipt-capture.json", "receipt-callback.json", "receipt-ready.json", "receipt-cleanup.json", "outcome.json"]) {
+  if (!current.runId || !current.runAttempt || !current.runCaseId) return bad("current run identity missing");
+  const sameRun = (w) => w && String(w.run_id) === String(current.runId) && String(w.run_attempt) === String(current.runAttempt);
+  if (!sameRun(attempt.workflow) || !sameRun(outcome.workflow)) return bad("receipts belong to another workflow run or rerun");
+  if (attempt.run_case_id !== current.runCaseId) return bad("receipts belong to another run case");
+  for (const name of ["receipt-capture.json", "receipt-callback.json", "receipt-ready.json", "receipt-cleanup.json", "outcome.json", "login-started.json"]) {
     if (files[name] && files[name].attempt_id !== attempt.attempt_id) return bad(`${name} belongs to another attempt`);
   }
   const recomputed = attemptOutcome({
@@ -471,44 +524,117 @@ export function reportGate({ files, agentRc, agentVerdict }) {
   return { rc: recomputed.rc, reason: recomputed.reason };
 }
 
-// ---------- the upload boundary ----------
+// ---------- the upload boundary: strict per-file schemas ----------
 
-/** The only files that may leave the runner from qa-prelogin/. */
-export const UPLOAD_FILES = ["eligibility.json", "refusal.json", "attempt.json", "login-started.json", "receipt-capture.json", "receipt-callback.json", "receipt-ready.json", "receipt-cleanup.json", "outcome.json", "outcome.rc"];
-const UNSAFE_VALUE = /:\/\/|bearer|eyJ[A-Za-z0-9_-]{8}|code=|token|password|cookie|refresh_|set-cookie|@[a-z0-9-]+\.[a-z]/i;
+const v = {
+  hex64: (x) => typeof x === "string" && HEX64.test(x),
+  attemptId: (x) => typeof x === "string" && ATTEMPT_ID.test(x),
+  nonce: (x) => typeof x === "string" && NONCE.test(x),
+  word: (x) => typeof x === "string" && /^[a-z0-9_.:/ ()-]{1,160}$/i.test(x) && !/:\/\//.test(x),
+  reason: (x) => typeof x === "string" && x.length <= 240 && /^[A-Za-z0-9_.:,;/ ()=+'"-]*$/.test(x) && !/:\/\/|bearer|eyJ|code=|token|password|cookie|@/i.test(x),
+  bool: (x) => typeof x === "boolean",
+  int: (x) => Number.isInteger(x),
+  intOrNull: (x) => x === null || Number.isInteger(x),
+  stamp: (x) => typeof x === "string" && /^\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}$/.test(x),
+  iso: (x) => typeof x === "string" && /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(x),
+  runId: (x) => x === null || (typeof x === "string" && /^\d{1,20}$/.test(x)),
+  caseId: (x) => typeof x === "string" && /^[a-z0-9][a-z0-9-]{0,80}$/.test(x),
+  process: (x) => typeof x === "string" && PROCESS.test(x),
+  version: (x) => typeof x === "string" && /^[A-Za-z0-9._+-]{1,64}$/.test(x),
+  pkg: (x) => typeof x === "string" && /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/.test(x),
+  status: (...allowed) => (x) => allowed.includes(x),
+  list: (item, max = 12) => (x) => Array.isArray(x) && x.length <= max && x.every(item),
+  nullOr: (f) => (x) => x === null || f(x),
+};
+const obj = (shape, required = Object.keys(shape)) => ({ shape, required });
+const WORKFLOW = obj({ run_id: v.runId, run_attempt: v.runId });
+const NOTES = obj({ local_cleanup: v.word, web_session: v.word, app_server_revocation: v.word, capture_assurance: v.word });
+const ITEM = v.status("ok", "unknown", "no_app_session");
+
+/** Every key of every uploaded file, with its validator. Anything not listed is refused. */
+export const UPLOAD_SCHEMAS = {
+  "eligibility.json": obj({ eligible: v.bool, reason: v.reason, class: v.word }, ["eligible", "reason"]),
+  "refusal.json": obj({ eligible: v.bool, reason: v.reason, class: v.word, note: v.reason }, ["eligible", "reason"]),
+  "attempt.json": obj({
+    contract: v.status(ATTEMPT_CONTRACT), attempt_id: v.attemptId, nonce: v.nonce, run_case_id: v.word, spec_sha256: v.hex64,
+    case: obj({ id: v.caseId, revision: v.int, platform: v.status("android"), case_sha256: v.hex64, goal_sha256: v.hex64 }),
+    target: obj({ env: v.status("staging", "production"), account_user_ref: v.hex64, server_ref: v.hex64 }),
+    artifact: obj({ sha256: v.hex64, package_id: v.pkg, version_name: v.version, version_code: v.int }),
+    workflow: WORKFLOW,
+  }),
+  "login-started.json": obj({ attempt_id: v.attemptId, workflow: WORKFLOW, started_at: v.iso }),
+  "receipt-capture.json": obj({
+    attempt_id: v.attemptId, status: v.status("not_observed", "unknown"), reason: v.reason, coverage_proven: v.bool,
+    declared_sources: v.list(v.word), files_count: v.int, recorder_polls: v.int,
+  }, ["attempt_id", "status", "reason"]),
+  "receipt-callback.json": obj({ attempt_id: v.attemptId, status: v.status("ok", "unknown"), reason: v.reason, screen: v.nullOr(v.word) }, ["attempt_id", "status", "reason"]),
+  "receipt-ready.json": obj({
+    attempt_id: v.attemptId, status: v.status("ok", "unknown"), reason: v.reason, fields: v.list(v.word),
+    facts: obj({ user_ref: v.nullOr(v.hex64), server_ref: v.nullOr(v.hex64), version_name: v.nullOr(v.version), version_code: v.intOrNull, package: v.nullOr(v.pkg), process: v.process, receipt_stamp: v.stamp }),
+  }, ["attempt_id", "status", "reason"]),
+  "receipt-cleanup.json": obj({
+    attempt_id: v.nullOr(v.attemptId),
+    local_cleanup: obj({ status: v.status("complete", "unknown", "not_started"), items: obj({ capture_file: ITEM, capture_browser_file: ITEM, browser: ITEM, capture_browser: ITEM, app_signed_out_on_device: ITEM, receipt_writer: ITEM }, []), unproven: v.list(v.word) }, ["status"]),
+    web_session: v.status("signed_out_verified", "not_initiated", "login_rejected", "unknown"),
+    app_server_revocation: v.status("app_reported_2xx", "no_app_session", "unknown"),
+    app_logout_evidence: v.nullOr(v.word),
+    reason: v.reason,
+  }, ["local_cleanup", "web_session", "app_server_revocation"]),
+  "outcome.json": obj({
+    attempt_id: v.nullOr(v.attemptId), case_id: v.nullOr(v.caseId), workflow: { ...WORKFLOW, nullable: true },
+    outcome: v.status("pass", "fail", "incomplete", "not_run"), rc: v.status(0, 1, 3), reason: v.reason,
+    agent_rc: v.intOrNull, agent_verdict: v.nullOr(v.status("pass", "fail", "unknown")), notes: NOTES,
+  }, ["outcome", "rc", "reason"]),
+};
+export const UPLOAD_FILES = [...Object.keys(UPLOAD_SCHEMAS), "outcome.rc"];
+
+function checkShape(value, schema, at) {
+  if (typeof schema === "function") return schema(value) ? null : `bad value at ${at || "root"}`;
+  if (schema.nullable && value === null) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return `not an object at ${at || "root"}`;
+  for (const key of Object.keys(value)) {
+    if (!Object.hasOwn(schema.shape, key)) return `unexpected field ${at}${key}`;
+    const problem = checkShape(value[key], schema.shape[key], `${at}${key}.`);
+    if (problem) return problem;
+  }
+  for (const key of schema.required) if (!Object.hasOwn(value, key)) return `missing field ${at}${key}`;
+  return null;
+}
 
 /**
- * Checks one file for the upload boundary: allow-listed name, small, JSON (or a single rc digit),
- * no sensitive key, no value that looks like a URL, token, cookie, callback, email or long
- * non-hex secret, and none of the given secret values. Returns null when fine, else the reason.
+ * One file at the upload boundary: allow-listed name, at most 16 KiB, JSON matching its STRICT
+ * per-file schema (every key listed, every value validated; no extra field, no free-form opaque
+ * value), and none of the given secret values. Returns null when fine, else the reason. This is a
+ * schema allow-list, not a general secret scanner.
  */
 export function uploadProblem(name, text, secrets = []) {
   if (!UPLOAD_FILES.includes(name)) return "not_allow_listed";
-  if (text.length > 64 * 1024) return "too_large";
-  if (secrets.some((s) => typeof s === "string" && s.length >= 4 && text.includes(s))) return "secret_value";
+  if (text.length > 16 * 1024) return "too_large";
+  if (secrets.some((x) => typeof x === "string" && x.length >= 4 && text.includes(x))) return "secret_value";
   if (name === "outcome.rc") return /^[013]\n?$/.test(text) ? null : "rc_malformed";
   let value;
   try { value = JSON.parse(text); } catch { return "not_json"; }
-  let problem = null;
-  const walk = (v, at) => {
-    if (problem) return;
-    if (Array.isArray(v)) { v.forEach((x, i) => walk(x, `${at}[${i}]`)); return; }
-    if (v && typeof v === "object") {
-      for (const [k, x] of Object.entries(v)) {
-        if (SENSITIVE_KEY.test(k)) { problem = `sensitive_key ${at}${k}`; return; }
-        walk(x, `${at}${k}.`);
-      }
-      return;
-    }
-    if (typeof v !== "string") return;
-    if (UNSAFE_VALUE.test(v)) { problem = `unsafe_value at ${at}`; return; }
-    for (const run of v.match(/[A-Za-z0-9_\-+/=]{24,}/g) ?? []) {
-      // Hex ids/hashes and lowercase word-like identifiers are fine; anything else this long is opaque.
-      if (!/^(pla_)?[0-9a-f]+$/.test(run) && !/^[a-z]+([-_./][a-z0-9]+)*$/.test(run)) { problem = `opaque_value at ${at}`; return; }
-    }
-  };
-  walk(value, "");
-  return problem;
+  return checkShape(value, UPLOAD_SCHEMAS[name], "");
+}
+
+/** sha256 manifest lines ("<hex>  <name>") for the sealed upload set, sorted by name. */
+export function sealManifest(entries) {
+  return [...entries].sort((a, b) => a.name.localeCompare(b.name)).map((e) => `${sha256Hex(e.bytes)}  ${e.name}`).join("\n") + "\n";
+}
+
+/** Checks a sealed set against its manifest: exactly the listed files, same hashes, each still valid. */
+export function verifySealed(entries, manifestText) {
+  const lines = String(manifestText ?? "").trim().split("\n").filter(Boolean);
+  const listed = new Map(lines.map((l) => { const m = /^([0-9a-f]{64}) {2}(\S+)$/.exec(l); return m ? [m[2], m[1]] : [l, null]; }));
+  if ([...listed.values()].some((h) => !h)) return "manifest_malformed";
+  const names = entries.map((e) => e.name);
+  if (names.length !== listed.size || names.some((n) => !listed.has(n))) return "file_set_differs_from_manifest";
+  for (const e of entries) {
+    if (sha256Hex(e.bytes) !== listed.get(e.name)) return `hash_mismatch ${e.name}`;
+    const problem = uploadProblem(e.name, e.bytes.toString("utf8"));
+    if (problem) return `${e.name}: ${problem}`;
+  }
+  return null;
 }
 
 // ---------- orchestration (device injected) ----------
@@ -528,8 +654,9 @@ export const SIGN_IN_FLAGS = ["--no-capture", "--defer-app-session", "--strict-c
  *   requestReadiness({ attemptId, nonce, requestId })
  *   readReadinessLog() -> logcat threadtime text sleep(ms)
  */
-export async function runPreloginLogin({ attempt, device, readinessTries = 6, readinessWaitMs = 2000 }) {
+export async function runPreloginLogin({ attempt, serverName, device, readinessTries = 6, readinessWaitMs = 2000 }) {
   validateAttempt(attempt);
+  if (typeof serverName !== "string" || !serverName) throw new Error("private target (server name) missing");
   const out = { capture: null, callback: { status: "unknown", reason: "not_reached" }, readiness: { status: "unknown", reason: "not_reached" }, signInSummary: null, ok: false, loginEnd: null };
   const capturesBefore = device.captureCount();
   const recorderStoppedBefore = await device.stopRecorder();
@@ -551,7 +678,7 @@ export async function runPreloginLogin({ attempt, device, readinessTries = 6, re
     out.signInSummary = await device.runSignIn([...SIGN_IN_FLAGS, "--account-ref-nonce", attempt.nonce]);
     out.callback = assessCallback(out.signInSummary, attempt);
     if (out.callback.status !== "ok") return out;
-    await device.selectServer(attempt.target.server_name);
+    await device.selectServer(serverName);
     const installed = await device.installed();
     for (let i = 0; i < readinessTries; i += 1) {
       const requestId = device.newRequestId();
@@ -581,7 +708,7 @@ export async function runPreloginLogin({ attempt, device, readinessTries = 6, re
       signInSummary: out.signInSummary,
       harnessCaptures: device.captureCount() - capturesBefore,
     });
-    out.ok = out.capture.status === "off" && out.callback.status === "ok" && out.readiness.status === "ok" && Boolean(out.loginEnd);
+    out.ok = out.capture.status === "not_observed" && out.callback.status === "ok" && out.readiness.status === "ok" && Boolean(out.loginEnd);
   }
 }
 
@@ -594,9 +721,14 @@ export async function runPreloginCleanup({ loginStarted, signInSummary, device }
   if (loginStarted !== true) return assessCleanup({ loginStarted });
   let signOutSummary = null;
   let receiverState = "unknown";
+  let captureBrowserFile = "unknown";
   try { signOutSummary = await device.runSignOut(); } catch {}
   try { receiverState = await device.disableReceiver(); } catch {}
-  return assessCleanup({ loginStarted, signInSummary, signOutSummary, receiverState });
+  // The capture browser keeps the pending login URL in a private file between the app opening it
+  // and the sign-in run reading (and deleting) it. A killed sign-in run can leave it: delete it /
+  // remove the stub here, and only count it when read back.
+  try { captureBrowserFile = await device.captureBrowserFile(); } catch {}
+  return assessCleanup({ loginStarted, signInSummary, signOutSummary, receiverState, captureBrowserFile });
 }
 
 /** Secret values (from env) must not appear in any receipt; fails closed. */

@@ -183,15 +183,22 @@ class FinalizeAndUploadTest(unittest.TestCase):
         self.assertIn("always()", fin["if"])
         self.assertIn("release_prelogin.mjs finalize", fin["run"])
         self.assertNotIn("secrets.", str(fin.get("env", {})))
+        ver = step("Verify sealed release pre-login receipts")
+        self.assertIn("steps.prelogin-finalize.outcome == 'success'", ver["if"])
+        self.assertIn("verify-sealed --sealed qa-prelogin-sealed", ver["run"])
         up = step("Upload release pre-login receipts")
-        self.assertIn("steps.prelogin-finalize.outcome == 'success'", up["if"])
+        self.assertIn("steps.prelogin-verify.outcome == 'success'", up["if"])
+        self.assertEqual(up["with"]["path"], "qa-prelogin-sealed", "only the sealed set is uploaded")
         names = [s.get("name") for s in STEPS]
         self.assertLess(names.index("Run acceptance agent"), names.index("Finalize release pre-login receipts"))
-        self.assertLess(names.index("Finalize release pre-login receipts"), names.index("Upload release pre-login receipts"))
+        self.assertLess(names.index("Finalize release pre-login receipts"), names.index("Verify sealed release pre-login receipts"))
+        self.assertLess(names.index("Verify sealed release pre-login receipts"), names.index("Upload release pre-login receipts"))
+        self.assertIn("report-gate --sealed qa-prelogin-sealed", step("Report verdict")["run"])
 
     def test_plan_consumes_a_claim_bound_spec_and_mints_nothing(self):
         plan = step("Release pre-login plan")["run"]
-        self.assertIn("--claim-response", plan)
+        self.assertIn("--claim-binding", plan)
+        self.assertNotIn("--claim-response", plan, "the reporter deletes the claim response; plan reads the minimal binding")
         self.assertIn("--aapt", plan)
         self.assertNotIn("grep -q '^application-debuggable'", plan)
         for removed in ("--target", "--case-file", "--build-debuggable"):

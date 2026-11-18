@@ -81,7 +81,7 @@ one status in `summary.json` → `cleanup`. `cleanup_ok` is true only when every
 
 | Step (`cleanup.<key>`) | OK statuses | Failure statuses | What is checked |
 |---|---|---|---|
-| `web_session`: the web session the script opened to approve | `signed_out`, `not_opened` | `failed` | `POST /api/auth/logout` with its refresh token, then `POST /api/auth/refresh` with the same token must answer 401 (`web_session_refresh_check`, e.g. `401 session_revoked`). Logout alone answers 200 even for an unknown token, so it is not proof. |
+| `web_session`: the web session the script opened to approve | `signed_out`, `not_opened` (no login request sent), `login_rejected` (a clear 4xx / 429) | `failed`, `login_outcome_unknown` (sent, no usable answer: a session may exist) | `POST /api/auth/logout` with its refresh token, then `POST /api/auth/refresh` with the same token must answer 401 (`web_session_refresh_check`, e.g. `401 session_revoked`). Logout alone answers 200 even for an unknown token, so it is not proof. |
 | `app_session`: the app's own session (`--revoke-app-session`) | `app_reported_server_logout_2xx`, `not_signed_in` | `local_cleared_server_unconfirmed`, `not_requested`, `failed` | The app's own Sign out (Choose server → **Sign Out**; with a server selected: the server tab → server panel → **Settings** (scrolled into view) → **Account** → scroll → **Sign out** → confirm **Sign out**), then the app must be back on "Sign in to Raft" / "Sign in through …". The app sends `POST /api/auth/logout` with its refresh token itself. `app_reported_server_logout_2xx` needs ALL of: logcat cleared before the sign-out; one logout tap; the same app process (`pidof` + its `/proc` start time) at the start of the sign-out, at that tap and on the sign-in page; and, from that process only (`logcat --pid`) and after the tap, the HTTP layer's line for exactly `POST` to exactly the route `auth/logout` with a 2xx, `auth_logout_api_result result=success`, and nothing conflicting (`assessAppLogout`, `logoutProbeProblem` in `release_auto_login_lib.mjs`). Otherwise, or if the UI route fails (`pm clear build.raft.app` wipes the app's tokens), it is `local_cleared_server_unconfirmed`. `app_logout_log` keeps only rebuilt non-secret fields (result, method, route, status, trace id); `app_logout_evidence` says why it counted or not. |
 | `capture_file`: the captured login URL | `deleted`, `not_applicable` | `failed` | Removed, then checked absent with `run-as`. |
 | `browser`: the default browser | `restored`, `not_changed` | `failed` | Browser role back with the previous holder(s) and not with the stub; every browser disabled for the run is enabled again (`browser_role_holders`, `browsers_reenabled`). |
@@ -143,18 +143,22 @@ else `QA_TEST_EMAIL` / `QA_TEST_PASSWORD`. The account must not have two-step ve
 Evidence (`release-auto-login-evidence`): `summary.json`, a screenshot + UI dump per step,
 `logcat-app-login.txt` (only the `SlockAppLogin` tag, masked).
 
-## As a pre-login for Testbed cases
+## As a pre-login for Testbed cases (not runnable yet)
 
-`scripts/qa/release_prelogin.mjs` runs this script in two halves around a Testbed-admitted ordinary
-case on the QA-instrumented `qaRelease` candidate:
+`scripts/qa/release_prelogin.mjs` would run this script in two halves around a Testbed-admitted
+ordinary case on the QA-instrumented `qaRelease` candidate. Testbed does not implement its side
+yet, so that path is refused today.
 
 - **Sign in**, with `--no-capture --defer-app-session --strict-cleanup --account-ref-nonce <nonce>`:
-  - nothing from the login is written to disk: UI trees are read through `uiautomator dump
-    /dev/tty` and logcat dumps into memory, with no screenshots and no streamed log;
-  - the app stays signed in (`app_session: deferred_to_case_cleanup`);
-  - the summary carries a nonce-bound `account_user_ref`, not the account id.
-- **Sign out** later, with `--phase sign-out --revoke-app-session --strict-cleanup --no-capture`:
-  the app's own Sign out.
+  - UI trees (`uiautomator dump /dev/tty`) and login logs (`logcat -d`) are read into memory, with
+    no screenshots. The one remaining file is the capture browser's app-private login-URL file,
+    deleted on read and checked in cleanup;
+  - the app stays signed in;
+  - the summary carries `account_user_ref`, `web_login` (not_initiated / initiated / succeeded /
+    confirmed_rejected / unknown) and `callback_delivery`. A login sent without a clear answer
+    gives `web_session: login_outcome_unknown`, a cleanup failure;
+  - `login_rejected` (a clear 4xx) counts as clean.
+- **Sign out** later, with `--phase sign-out --revoke-app-session --strict-cleanup --no-capture`.
 
 See [release-prelogin-contract.md](release-prelogin-contract.md).
 

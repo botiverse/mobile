@@ -389,9 +389,17 @@ async function cleanupDevice() {
 
 // The script's own web session: what the web's Sign out sends, then proof: the server must refuse
 // that refresh token (401). /auth/logout answers 200 even for an unknown token, so 200 alone is not.
+// web_login: not_initiated -> initiated -> succeeded | confirmed_rejected | unknown. A login that was
+// sent but got no clear answer (lost, 5xx, malformed 2xx) may still have opened a session: unknown,
+// never "not_opened". Only this run's own session is signed out; never other sessions of the account.
+let webLogin = "not_initiated";
 async function signOutWebSession(webSession) {
   await cleanupStep("web_session", async () => {
-    if (!webSession) return "not_opened";
+    if (!webSession) {
+      if (webLogin === "not_initiated") return "not_opened";
+      if (webLogin === "confirmed_rejected") return "login_rejected";
+      return "login_outcome_unknown";
+    }
     if (!webSession.refreshToken) throw new Error("the login returned no refresh token to sign out");
     const out = await web("POST", "auth/logout", { token: webSession.accessToken, body: { refreshToken: webSession.refreshToken } });
     if (out.status !== 200) throw new Error(`POST /auth/logout answered HTTP ${out.status}`);
@@ -754,13 +762,26 @@ async function main() {
     });
 
     const callback = await step("web-login-and-confirm", async () => {
-      const login = await web("POST", "auth/login", { body: { email: account.email, password: account.password } });
+      // From here a server-side web session may exist even if no usable answer arrives: the state
+      // only leaves "unknown" on a clear answer (summary.web_login; signOutWebSession).
+      webLogin = "initiated";
+      let login;
+      try {
+        login = await web("POST", "auth/login", { body: { email: account.email, password: account.password } });
+      } catch (error) {
+        webLogin = error instanceof Stop && /HTTP 429/.test(error.message) ? "confirmed_rejected" : "unknown";
+        throw error;
+      }
+      if (login.status >= 400 && login.status < 500) webLogin = "confirmed_rejected";
+      else if (login.status !== 200 || !login.json?.accessToken) webLogin = "unknown";
       if (login.status === 401) stop("the QA account's email/password were refused (HTTP 401)");
       if (login.status !== 200) stop(`POST /auth/login answered HTTP ${login.status} ${login.json?.code ?? ""}`);
       if (login.json?.secondFactorRequired || login.json?.challenge) {
+        webLogin = "unknown";
         stop("the QA account has two-step verification on; this script does not answer second factors — use an account without it");
       }
       if (!login.json?.accessToken) stop("POST /auth/login answered without an access token");
+      webLogin = "succeeded";
       webSession = {
         accessToken: login.json.accessToken,
         refreshToken: login.json.refreshToken ?? "",
@@ -853,6 +874,8 @@ async function main() {
     await revokeAppSession(callbackSent);
     await cleanupDevice();
     summary.cleanup = { ...cleanupStatus, ...cleanupDetail };
+    summary.web_login = webLogin;
+    summary.callback_delivery = callbackSent ? "attempted" : "not_attempted";
   }
 }
 

@@ -104,7 +104,7 @@ export const CLEANUP_OK = {
   capture_file: ["deleted", "not_applicable"],
   browser: ["restored", "not_changed"],
   capture_browser: ["uninstalled", "kept", "not_installed_by_run"],
-  web_session: ["signed_out", "not_opened"],
+  web_session: ["signed_out", "not_opened", "login_rejected"],
   app_session: ["app_reported_server_logout_2xx", "not_signed_in"],
 };
 

@@ -533,7 +533,8 @@ jobs:
           [ "${#apk_candidates[@]}" -eq 1 ] || { echo "::error::release pre-login refused: exactly one APK required"; exit 3; }
           bt="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
           node scripts/qa/release_prelogin.mjs plan --out qa-prelogin --run-case-id "$STAMP_RUN_CASE_ID" \
-            --claim-response "$RUNNER_TEMP/stamp-claim-response-${STAMP_RUN_CASE_ID}.json" \
+            --claim-binding "$RUNNER_TEMP/stamp-release-prelogin-binding-${STAMP_RUN_CASE_ID}.json" \
+            --private-dir "$RUNNER_TEMP/qa-prelogin-private" \
             --bootstrap-required "${STAMP_BOOTSTRAP_REQUIRED:-unknown}" --apk "${apk_candidates[0]}" --aapt "$bt/aapt"
 
       - name: Build the QA capture browser (release pre-login)
@@ -717,14 +718,21 @@ jobs:
       - name: Finalize release pre-login receipts
         id: prelogin-finalize
         if: ${{ always() && inputs.release_prelogin != '' }}
-        run: node scripts/qa/release_prelogin.mjs finalize --out qa-prelogin --agent-rc qa-evidence/agent-rc.txt --verdict qa-evidence/verdict.json
+        run: node scripts/qa/release_prelogin.mjs finalize --out qa-prelogin --sealed qa-prelogin-sealed --agent-rc qa-evidence/agent-rc.txt --verdict qa-evidence/verdict.json
+
+      # Upload ONLY the sealed set, and only when it still matches its manifest (exact file set,
+      # sha256, strict per-file schema). Nothing written to qa-prelogin/ after finalize is uploaded.
+      - name: Verify sealed release pre-login receipts
+        id: prelogin-verify
+        if: ${{ always() && inputs.release_prelogin != '' && steps.prelogin-finalize.outcome == 'success' }}
+        run: node scripts/qa/release_prelogin.mjs verify-sealed --sealed qa-prelogin-sealed
 
       - name: Upload release pre-login receipts
-        if: ${{ always() && inputs.release_prelogin != '' && steps.prelogin-finalize.outcome == 'success' }}
+        if: ${{ always() && inputs.release_prelogin != '' && steps.prelogin-verify.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: qa-release-prelogin-receipts
-          path: qa-prelogin
+          path: qa-prelogin-sealed
           if-no-files-found: warn
 
       - name: Report verdict
@@ -755,8 +763,8 @@ jobs:
           # the sealed receipts and the agent result now; any mismatch or missing piece is 3 =
           # harness/incomplete, never a product verdict). Later gates may only escalate it.
           if [ -n "${RELEASE_PRELOGIN}" ]; then
-            prc="$(node scripts/qa/release_prelogin.mjs report-gate --out qa-prelogin --agent-rc qa-evidence/agent-rc.txt --verdict qa-evidence/verdict.json 2>>"$GITHUB_STEP_SUMMARY" | tail -1 || true)"
-            echo "Release pre-login outcome: $(cat qa-prelogin/outcome.json 2>/dev/null || echo missing)" >> "$GITHUB_STEP_SUMMARY"
+            prc="$(node scripts/qa/release_prelogin.mjs report-gate --sealed qa-prelogin-sealed --agent-rc qa-evidence/agent-rc.txt --verdict qa-evidence/verdict.json 2>>"$GITHUB_STEP_SUMMARY" | tail -1 || true)"
+            echo "Release pre-login outcome: $(cat qa-prelogin-sealed/outcome.json 2>/dev/null || echo missing)" >> "$GITHUB_STEP_SUMMARY"
             case "$prc" in
               0|1) rc="$prc" ;;
               *) rc=3; lifecycle_rc=1 ;;
