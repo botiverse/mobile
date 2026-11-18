@@ -5,7 +5,6 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.assertIsDisplayed
 import build.raft.app.components.RaftDesignSystemTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,6 +37,11 @@ class MembersAgentRawLogStatusUiTest {
                     }
                 }
             }
+            // A Thinking row's title-to-detail step, which a status's explanation must match.
+            val thinking = onNodeWithText("Thinking").fetchSemanticsNode().boundsInRoot
+            val thinkingDetail =
+                onNodeWithText("Checking which call sites still read the old thread id.").fetchSemanticsNode().boundsInRoot
+            val detailStep = thinkingDetail.top - thinking.bottom
             for ((status, explanation) in listOf(
                 "Working" to "Tool finished",
                 "Error" to "No runtime output for 15 min",
@@ -45,11 +49,12 @@ class MembersAgentRawLogStatusUiTest {
                 "Stopped" to "Computer stopped",
                 "Crashed" to "exit code 1",
             )) {
-                val title = onNodeWithText(status).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-                val detail = onNodeWithText(explanation).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+                val title = onNodeWithText(status).assertExists().fetchSemanticsNode().boundsInRoot
+                val detail = onNodeWithText(explanation).assertExists().fetchSemanticsNode().boundsInRoot
                 assertTrue(detail.top >= title.bottom, "$explanation sits under $status")
+                assertEquals(detailStep, detail.top - title.bottom, 0.5f, "$explanation: the detail step of other rows")
                 onAllNodesWithText("$status $explanation", substring = true).assertCountEquals(0)
             }
-            onNodeWithText("Idle").assertIsDisplayed()
+            onNodeWithText("Idle").assertExists()
         }
 }

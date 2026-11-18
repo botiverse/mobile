@@ -397,7 +397,12 @@ internal fun MembersAgentActivityRow(
             // the activity body can render task refs / issue refs (e.g. `#225`,
             // `#task-7`) as styled inline text + clickable onOpenUrl links
             // when `refTextEnabled` is true.
-            if (activity.refTextEnabled) {
+            // A status detail with no channel / thread ref takes the plain detail text below, so
+            // its line box is exactly the other rows' (the markdown body's inline-chip line floor
+            // would push it down); one that may hold a ref keeps the ref-rendering body.
+            val markdownDetail =
+                activity.refTextEnabled && (activity.type != "status" || displayBody.membersActivityMayHoldRef())
+            if (markdownDetail) {
                 RaftMarkdownBody(
                     body = displayBody,
                     textStyle = detailStyle.copy(color = colors.foregroundHint),
@@ -544,6 +549,9 @@ private fun String.membersActivityAccentColor(): Color =
         "system" -> RaftUiPalette.presenceError
         else -> RaftUiPalette.presenceBusy
     }
+
+/** A `#channel`, `#channel:thread` or `dm:@peer` ref the web RefText would render. */
+private fun String.membersActivityMayHoldRef(): Boolean = contains('#') || contains("dm:@")
 
 private fun String.membersActivityStatusKey(): String =
     trim().lowercase().replace('-', '_').replace('.', '_')
