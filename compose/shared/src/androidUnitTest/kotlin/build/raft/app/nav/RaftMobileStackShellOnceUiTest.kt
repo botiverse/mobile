@@ -2,26 +2,33 @@ package build.raft.app.nav
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.text.TextStyle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import build.raft.app.LocalThreadInPlaceTextSelectionHost
 import build.raft.app.RAFT_APP_SHELL_PAGE
 import build.raft.app.RobolectricComposeActivityRule
@@ -38,6 +45,9 @@ import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import build.raft.app.rememberThreadInPlaceSelectionController
 import build.raft.app.runRobolectricComposeUiTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Rule
@@ -47,9 +57,14 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * DIAGNOSTIC (Hands 1dd76297, 0ac26a92): "Key compose_slock_app_shell#0 was used multiple times"
- * on a wide window, a page pushed over the app shell. Each case pushes over a shell-like root
- * page and fails if the shell entry is composed twice.
+ * Hands 1dd76297 (1.26.0, OPPO PLP110 unfolded) and 0ac26a92 (1.25.1, Galaxy Fold unfolded):
+ * "IllegalArgumentException: Key compose_slock_app_shell#0 was used multiple times" as a page was
+ * pushed over the app shell on a wide window (the image preview after attaching a photo, the
+ * Artifact viewer from an Activity row). The shell was Navigation 3's root entry, composed as movable
+ * content and moved into the scene of every push and pop, with all it holds on the wide layout (the
+ * conversation, its lists and their selectable rows), and SaveableStateHolder found its key composed
+ * twice. [RaftMobilePageStackDisplay] now composes the root page once, outside NavDisplay: it is
+ * never moved, so it is never composed a second time, and it is drawn exactly where it was before.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -64,10 +79,20 @@ class RaftMobileStackShellOnceUiTest {
     private val tickStyle: TextStyle
         get() = TextStyle(color = if (tick % 2 == 0) Color.Black else Color.DarkGray)
 
-    private fun ComposeUiTest.showShell(
-        recomposeDisplayEveryFrame: Boolean = false,
-        shell: @Composable () -> Unit,
-    ): RaftPageStack {
+    /** How often the shell was created, how many instances were composed at most at once, its node detached. */
+    private var shellCreated = 0
+    private var shellAlive = 0
+    private var shellMostAlive = 0
+    private var shellDetached = 0
+    private val onShellDetached: () -> Unit = { shellDetached++ }
+    private var artifactDetached = 0
+    private val onArtifactDetached: () -> Unit = { artifactDetached++ }
+    private val onOtherPageDetached: () -> Unit = {}
+    private var shellActive: Boolean? = null
+    private var shellLifecycle: Lifecycle.State? = null
+    private var shellSaved: String? = null
+
+    private fun ComposeUiTest.showShell(shell: @Composable () -> Unit): RaftPageStack {
         RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
         val host = ThreadInPlaceTextSelectionHost(enabled = true, copyText = {})
         val stack = RaftPageStack()
@@ -75,19 +100,30 @@ class RaftMobileStackShellOnceUiTest {
             LaunchedEffect(ticking) {
                 while (ticking) withFrameNanos { tick++ }
             }
-            val frame = if (recomposeDisplayEveryFrame) tick else 0
             RaftMobilePageStackDisplay(stack) { page ->
-                check(frame >= 0)
                 if (page.args.pageName == RAFT_APP_SHELL_PAGE) {
                     val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
+                    remember { shellCreated++ }
+                    DisposableEffect(Unit) {
+                        shellMostAlive = maxOf(shellMostAlive, ++shellAlive)
+                        onDispose { shellAlive-- }
+                    }
+                    shellActive = LocalRaftPageActive.current
+                    shellLifecycle = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value
+                    shellSaved = rememberSaveable { "shell-${shellCreated}" }
                     CompositionLocalProvider(
                         LocalActivity provides RaftPageActivity(pager),
                         LocalThreadInPlaceTextSelectionHost provides host,
                     ) {
-                        RaftDesignSystemTheme { shell() }
+                        RaftDesignSystemTheme {
+                            Box(Modifier.fillMaxSize().testTag(SHELL).then(DetachCounter(onShellDetached))) { shell() }
+                        }
                     }
                 } else {
-                    BasicText("page ${page.contentKey} $tick")
+                    val detached = if (page.args.pageName == ARTIFACT_PAGE) onArtifactDetached else onOtherPageDetached
+                    Box(Modifier.fillMaxSize().testTag(page.args.pageName).then(DetachCounter(detached))) {
+                        BasicText("page ${page.contentKey} $tick")
+                    }
                 }
             }
         }
@@ -109,7 +145,7 @@ class RaftMobileStackShellOnceUiTest {
         }
     }
 
-    /** The wide shell: a list pane beside a conversation pane (measured in a subcomposition). */
+    /** The wide shell: the conversation list beside the open conversation, its rows changing. */
     @Composable
     private fun WideShell() {
         Row(Modifier.fillMaxSize()) {
@@ -123,6 +159,7 @@ class RaftMobileStackShellOnceUiTest {
 
     private fun ComposeUiTest.frames(count: Int) = repeat(count) { mainClock.advanceTimeByFrame() }
 
+    /** Runs [block] with the shell's rows changing on every frame, through its whole motion. */
     private fun ComposeUiTest.ticking(block: ComposeUiTest.() -> Unit) {
         mainClock.autoAdvance = false
         runOnIdle { ticking = true }
@@ -134,26 +171,31 @@ class RaftMobileStackShellOnceUiTest {
         waitForIdle()
     }
 
-    private fun RaftPageStack.push(name: String = COVERING_PAGE, data: JsonObject = JsonObject(emptyMap())) =
+    private fun RaftPageStack.push(name: String = ARTIFACT_PAGE, data: JsonObject = JsonObject(emptyMap())) =
         open(name, data, from = pages.last())
 
-    @Test
-    fun wideShellPush() =
-        runRobolectricComposeUiTest {
-            val stack = showShell { WideShell() }
-            ticking { runOnIdle { stack.push() } }
-        }
+    private fun assertShellComposedOnceInPlace() {
+        assertEquals(1, shellCreated, "the shell was created again")
+        assertEquals(1, shellMostAlive, "the shell was composed twice at once")
+        assertEquals(0, shellDetached, "the shell was moved (its layout node detached)")
+        assertEquals("shell-1", shellSaved)
+    }
 
     @Test
-    fun wideShellPushThenPop() =
+    fun aPushAndPopOverTheWideShellComposeTheShellOnceInPlace() =
         runRobolectricComposeUiTest {
             val stack = showShell { WideShell() }
-            ticking { runOnIdle { stack.push() } }
+            ticking { runOnIdle { stack.push(PREVIEW_PAGE) } }
             ticking { runOnIdle { stack.back() } }
+            ticking { runOnIdle { stack.push(ARTIFACT_PAGE) } }
+            ticking { runOnIdle { stack.push(PREVIEW_PAGE) } }
+            ticking { runOnIdle { stack.back() } }
+            ticking { runOnIdle { stack.back() } }
+            assertShellComposedOnceInPlace()
         }
 
     @Test
-    fun wideShellPushThenReplaceMidSlide() =
+    fun aReplaceOrAPopWhileThePushStillSlidesKeepsOneShell() =
         runRobolectricComposeUiTest {
             val stack = showShell { WideShell() }
             ticking {
@@ -161,67 +203,105 @@ class RaftMobileStackShellOnceUiTest {
                 frames(2)
                 runOnIdle { stack.push(PREVIEW_PAGE, JsonObject(mapOf(RAFT_REPLACE_CURRENT_PAGE to JsonPrimitive(true)))) }
             }
-        }
-
-    @Test
-    fun wideShellPushPopPushMidSlide() =
-        runRobolectricComposeUiTest {
-            val stack = showShell { WideShell() }
             ticking {
+                runOnIdle { stack.back() }
+                frames(2)
                 runOnIdle { stack.push() }
                 frames(2)
                 runOnIdle { stack.back() }
-                frames(2)
-                runOnIdle { stack.push(PREVIEW_PAGE) }
             }
-        }
-
-    @Test
-    fun wideShellPushWhileTheDisplayRecomposesEveryFrame() =
-        runRobolectricComposeUiTest {
-            val stack = showShell(recomposeDisplayEveryFrame = true) { WideShell() }
-            ticking { runOnIdle { stack.push() } }
-            ticking { runOnIdle { stack.back() } }
-        }
-
-    @Test
-    fun wideShellWithMovableContentFollowingPageActivePush() =
-        runRobolectricComposeUiTest {
-            val stack =
-                showShell {
-                    val body = remember { movableContentOf { WideShell() } }
-                    if (LocalRaftPageActive.current) Box(Modifier.fillMaxSize()) { body() } else Column(Modifier.fillMaxSize()) { body() }
-                }
-            ticking { runOnIdle { stack.push() } }
-            ticking { runOnIdle { stack.back() } }
-        }
-
-    @Test
-    fun wideShellWithMovableContentFollowingMotionPush() =
-        runRobolectricComposeUiTest {
-            val stack =
-                showShell {
-                    val body = remember { movableContentOf { WideShell() } }
-                    if (LocalRaftStackPageInMotion.current) Box(Modifier.fillMaxSize()) { body() } else Column(Modifier.fillMaxSize()) { body() }
-                }
-            ticking { runOnIdle { stack.push() } }
-            ticking { runOnIdle { stack.back() } }
-        }
-
-    @Test
-    fun wideShellTwoPushesInOneFrame() =
-        runRobolectricComposeUiTest {
-            val stack = showShell { WideShell() }
             ticking {
                 runOnIdle {
                     stack.push()
                     stack.push(PREVIEW_PAGE)
                 }
             }
+            assertEquals(3, stack.pages.size)
+            assertShellComposedOnceInPlace()
         }
 
+    @Test
+    fun theShellShowsWhereTheScenesDrewIt() =
+        runRobolectricComposeUiTest {
+            val stack = showShell { WideShell() }
+            onNodeWithTag(SHELL).assertIsDisplayed()
+            assertTrue(shellActive == true && shellLifecycle == Lifecycle.State.RESUMED, "on top: active, resumed")
+
+            mainClock.autoAdvance = false
+            runOnIdle { stack.push() }
+            frames(3)
+            // Under the page sliding in: still drawn, no longer active.
+            onNodeWithTag(SHELL).assertIsDisplayed()
+            assertFalse(shellActive == true, "covered by a push: inactive")
+            mainClock.autoAdvance = true
+            waitForIdle()
+            // The push settled: covered, laid out at 0x0 as any covered page.
+            onNodeWithTag(SHELL).assertIsNotDisplayed()
+            onNodeWithTag(ARTIFACT_PAGE).assertIsDisplayed()
+            assertEquals(Lifecycle.State.CREATED, shellLifecycle)
+
+            mainClock.autoAdvance = false
+            runOnIdle { stack.back() }
+            frames(3)
+            // The page slides out over the shell.
+            onNodeWithTag(SHELL).assertIsDisplayed()
+            mainClock.autoAdvance = true
+            waitForIdle()
+            onNodeWithTag(SHELL).assertIsDisplayed()
+            assertTrue(shellActive == true && shellLifecycle == Lifecycle.State.RESUMED, "back on top: active, resumed")
+
+            // Two pages over it: the one revealed by a pop is the page under it, not the shell.
+            runOnIdle { stack.push() }
+            waitForIdle()
+            runOnIdle { stack.push(PREVIEW_PAGE) }
+            waitForIdle()
+            mainClock.autoAdvance = false
+            runOnIdle { stack.back() }
+            frames(3)
+            onNodeWithTag(SHELL).assertIsNotDisplayed()
+            mainClock.autoAdvance = true
+            waitForIdle()
+            onNodeWithTag(SHELL).assertIsNotDisplayed()
+            onNodeWithTag(ARTIFACT_PAGE).assertIsDisplayed()
+            assertShellComposedOnceInPlace()
+        }
+
+    /**
+     * Control: a page over the shell is still NavDisplay's entry, moved into the scene of the push
+     * over it (its node detached and attached again). The detach count is what shows the shell moving.
+     */
+    @Test
+    fun controlAPageUnderAPushIsMovedByNavigation3() =
+        runRobolectricComposeUiTest {
+            val stack = showShell { WideShell() }
+            runOnIdle { stack.push(ARTIFACT_PAGE) }
+            waitForIdle()
+            val before = artifactDetached
+            runOnIdle { stack.push(PREVIEW_PAGE) }
+            waitForIdle()
+            assertTrue(artifactDetached > before, "the covered page was not moved")
+            assertShellComposedOnceInPlace()
+        }
+
+    private class DetachCounter(private val onDetached: () -> Unit) : ModifierNodeElement<DetachCounterNode>() {
+        override fun create() = DetachCounterNode(onDetached)
+
+        override fun update(node: DetachCounterNode) {
+            node.onDetached = onDetached
+        }
+
+        override fun equals(other: Any?): Boolean = other is DetachCounter && other.onDetached === onDetached
+
+        override fun hashCode(): Int = onDetached.hashCode()
+    }
+
+    private class DetachCounterNode(var onDetached: () -> Unit) : Modifier.Node() {
+        override fun onDetach() = onDetached()
+    }
+
     private companion object {
-        const val COVERING_PAGE = "compose_artifact_viewer"
+        const val SHELL = "shell"
+        const val ARTIFACT_PAGE = "compose_artifact_viewer"
         const val PREVIEW_PAGE = "compose_file_preview"
         const val BODY = "A selectable message body"
     }
