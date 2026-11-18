@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { writePathCounts, writeLatencyStats, analyzeKillRun, measuredBucket, summarizeByMeasuredBucket, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
+import { journalCostStats, writePathCounts, writeLatencyStats, analyzeKillRun, measuredBucket, summarizeByMeasuredBucket, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
 
 const PKG = "build.raft.app.alpha";
 const PID = 4242;
@@ -159,4 +159,14 @@ test("write paths are counted from the marker lines", () => {
     l(5, "draft_written seq=4 len=4 uptimeMs=5000"),
   ]);
   assert.deepEqual(counts, { sync: 1, background: 2, flush: 0, unlabeled: 1, sync_write_fallback: 1 });
+});
+
+test("journal write cost distribution comes from draft_journal_written lines", () => {
+  const l = (sec, msg) => line(sec, PID, "RaftDraftTiming", msg);
+  const stats = journalCostStats([
+    l(1, "draft_journal_written path=sync costUs=120 len=3 uptimeMs=1000"),
+    l(2, "draft_journal_written path=sync costUs=80 len=4 uptimeMs=2000"),
+    l(3, "change_received seq=1 len=4 uptimeMs=3000"),
+  ]);
+  assert.deepEqual(stats, { samples: 2, min_us: 80, p50_us: 120, p95_us: 120, p99_us: 120, max_us: 120 });
 });

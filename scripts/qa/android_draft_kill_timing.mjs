@@ -24,7 +24,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { writePathCounts, writeLatencyStats, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
+import { journalCostStats, writePathCounts, writeLatencyStats, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, value, index, all) => {
@@ -260,6 +260,7 @@ async function stopCapture() {
     const rawLines = linesSince(0);
     summary.write_latency = writeLatencyStats(rawLines);
     summary.write_paths = writePathCounts(rawLines);
+    summary.journal_write_cost = journalCostStats(rawLines);
     const kept = rawLines.filter(isTimingEvidence).map(redact);
     fs.writeFileSync(path.join(OUT, "timing-lines.txt"), `${kept.join("\n")}\n`);
     fs.rmSync(LOGCAT_RAW);
@@ -549,8 +550,9 @@ function killScript({ oldPid, startTime, before, sleepSec, probeLabel = null }) 
     `${before}sleep ${sleepSec}; ` +
     // Dead = /proc/<pid> gone or the process a zombie (Z/X: it runs no more code; only its parent has not
     // reaped it yet). `read` is a shell builtin, so a poll forks only the 5 ms sleep.
-    `( i=0; st=R; while [ $i -lt 4000 ]; do st=; read -r l 2>/dev/null < ${P}/stat && set -- $l && st=$3; ` +
-    `case "$st" in ""|Z|X) break;; esac; sleep 0.005; i=$((i+1)); done; ` +
+    // ~1 ms between polls (the fork of `sleep` dominates), bounded to ~20 s.
+    `( i=0; st=R; while [ $i -lt 20000 ]; do st=; read -r l 2>/dev/null < ${P}/stat && set -- $l && st=$3; ` +
+    `case "$st" in ""|Z|X) break;; esac; sleep 0.001; i=$((i+1)); done; ` +
     `case "$st" in ""|Z|X) log -t RaftDraftTimingProbe "run=${runIndex} pid_gone state=\${st:-none} polls=$i";; ` +
     `*) log -t RaftDraftTimingProbe "run=${runIndex} pid_alive polls=$i";; esac ) & ` +
     `${FORCE_STOP} ${PKG}; wait; ` +
@@ -1002,6 +1004,8 @@ async function main() {
     const fast = summary.runs.filter((r) => r.mode === "fast");
     if (fast.some((r) => !r.typing_in_3_to_5_s)) unmet.push(`fast typing outside 3-5 s: ${fast.filter((r) => !r.typing_in_3_to_5_s).map((r) => `${r.typing_span_ms ?? "?"} ms`).join(", ")}`);
     if (!summary.runs.some((r) => r.mode === "send" && r.timing === "hit" && r.pass)) unmet.push("send regression: no attempt with the exit inside [0, 100] ms of the tap and the message delivered");
+    if (!summary.journal_write_cost?.samples) unmet.push("no draft_journal_written lines: the crash journal's cost was not measured");
+    else if (summary.journal_write_cost.p95_us >= 1000) unmet.push(`crash-journal write p95 ${summary.journal_write_cost.p95_us} µs is not below 1000 µs`);
     if (!summary.apk || summary.apk.file_sha256 !== summary.apk.installed_base_apk_sha256) unmet.push("installed base.apk SHA-256 differs from the downloaded APK (or was not read)");
     if (summary.apk?.downloaded_sha256_from_workflow && summary.apk.downloaded_sha256_from_workflow !== summary.apk.file_sha256) unmet.push("APK SHA-256 differs from the one the workflow downloaded");
     if (process.env.REQUIRE_COMMIT && !["identical", "ahead"].includes(process.env.REQUIRE_COMMIT_STATUS ?? "")) unmet.push(`APK source ${process.env.APK_SOURCE_SHA} does not contain ${process.env.REQUIRE_COMMIT} (compare: ${process.env.REQUIRE_COMMIT_STATUS || "unavailable"})`);
@@ -1048,6 +1052,9 @@ async function main() {
         `(${summary.apk.file_sha256 === summary.apk.installed_base_apk_sha256 ? "match" : "MISMATCH"}); versionName ${summary.apk.version_name}; versionCode ${summary.apk.version_code}; ` +
         `debuggable ${summary.apk.debuggable}; source commit ${summary.apk.source_commit ?? "?"}` +
         `${summary.apk.required_commit ? `; contains ${summary.apk.required_commit}: ${summary.apk.required_commit_compare ?? "unknown"}` : ""}.\n\n` : "") +
+      (summary.journal_write_cost ? `Crash-journal write on the input thread (draft_journal_written costUs, encode + one store write): ` +
+        `n=${summary.journal_write_cost.samples}, min ${summary.journal_write_cost.min_us}, p50 ${summary.journal_write_cost.p50_us}, p95 ${summary.journal_write_cost.p95_us}, ` +
+        `p99 ${summary.journal_write_cost.p99_us}, max ${summary.journal_write_cost.max_us} µs (target p95 < 1000 µs).\n\n` : "") +
       (summary.write_paths ? `Draft writes by path (app marker lines): ${JSON.stringify(summary.write_paths)}.\n\n` : "") +
       (summary.fast_progress ? `Fast typing valid / attempted (target ${FAST_RUNS} each; valid = whole exit interval inside the tolerance and burst 3-5 s): ` +
         `${Object.entries(summary.fast_progress).map(([d, p]) => `${d} s: ${p.valid} / ${p.attempted}`).join("; ")}.\n\n` : "") +

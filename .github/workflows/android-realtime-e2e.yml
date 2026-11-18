@@ -162,6 +162,16 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.SCENARIO == 'draft-kill-timing' && 'android-draft-kill-timing-evidence' || 'android-realtime-e2e-evidence' }}
-          path: ${{ env.EVIDENCE }}
+          # An allow-list, never the whole directory: whatever else a crashed run left there stays on the runner.
+          path: |
+            ${{ env.EVIDENCE }}/summary.json
+            ${{ env.EVIDENCE }}/results.md
+            ${{ env.EVIDENCE }}/runs.jsonl
+            ${{ env.EVIDENCE }}/steps.jsonl
+            ${{ env.EVIDENCE }}/timing-lines.txt
+            ${{ env.EVIDENCE }}/realtime-lines.txt
+            ${{ env.EVIDENCE }}/logcat.txt
+            ${{ env.EVIDENCE }}/*.png
+            ${{ env.EVIDENCE }}/*.xml
           if-no-files-found: warn
           retention-days: 30

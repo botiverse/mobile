@@ -257,6 +257,20 @@ export function writeLatencyStats(lines) {
   return { samples: latencies.length, min_ms: latencies[0] ?? null, p50_ms: at(0.5), p95_ms: at(0.95), p99_ms: at(0.99), max_ms: latencies.at(-1) ?? null };
 }
 
+/** Distribution of the crash journal's input-thread write cost (`draft_journal_written ... costUs=N`). */
+export function journalCostStats(lines) {
+  const costs = [];
+  for (const raw of lines) {
+    const l = parseLogcatLine(raw);
+    if (!l || l.tag !== "RaftDraftTiming") continue;
+    const m = /^draft_journal_written\b.*\bcostUs=(\d+)/.exec(l.message);
+    if (m) costs.push(Number(m[1]));
+  }
+  costs.sort((a, b) => a - b);
+  const at = (q) => (costs.length ? costs[Math.min(costs.length - 1, Math.floor(q * costs.length))] : null);
+  return { samples: costs.length, min_us: costs[0] ?? null, p50_us: at(0.5), p95_us: at(0.95), p99_us: at(0.99), max_us: costs.at(-1) ?? null };
+}
+
 /** Per-bucket counts for the result table. */
 export function summarize(runs) {
   const groups = new Map();
