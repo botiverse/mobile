@@ -580,7 +580,17 @@ final class SignedInHomeShotTests: XCTestCase {
         attach(app, name: "home")
         // 4. Keep the app up until the host has its screenshot.
         _ = waitFor("shot-done", timeout: 120)
+
+        // 5. Optional: the conversation forward gesture end to end (HOME_SHOT_FORWARD_PROBE=1).
+        if env["HOME_SHOT_FORWARD_PROBE"] == "1" {
+            ConversationForwardGestureProbe(test: self, app: app, ioDir: ioDir).run()
+        }
     }
+
+    // Shared with ConversationForwardGestureProbe (same file on purpose, see the class comment).
+    fileprivate func probeAttach(_ app: XCUIApplication, name: String) { attach(app, name: name) }
+    fileprivate func probeWrite(_ name: String, _ json: [String: Any]) { write(name, json) }
+    fileprivate func probeTap(_ app: XCUIApplication, x: CGFloat, y: CGFloat) { tap(app, x: x, y: y) }
 
     // One system alert, if any: "Open in “Raft”?" (the callback) -> Open; the web sign-in
     // prompt "“Raft” Wants to Use … to Sign In" -> Cancel (no sheet needed: the request was
@@ -669,5 +679,154 @@ final class SignedInHomeShotTests: XCTestCase {
         try? data.write(to: URL(fileURLWithPath: path + ".tmp"))
         try? FileManager.default.removeItem(atPath: path)
         try? FileManager.default.moveItem(atPath: path + ".tmp", toPath: path)
+    }
+}
+
+// The conversation forward gesture (Beta) on a signed-in phone, as QA runs it:
+//   Settings > Appearance > "Conversation forward gesture" on -> back to Home -> open a channel ->
+//   back to Home -> drag left from the right screen edge (start at dx 0.995) -> the channel must
+//   be open again (the system tab bar is gone, as on any pushed conversation).
+// Writes forward-probe.json {ok, reopened, steps} and fails the test when the channel did not
+// reopen. The host (ios_home_shot_host.mjs --forward-probe) adds the app's
+// SlockConversationForward diagnostics lines, which say where the swipe stopped.
+private struct ConversationForwardGestureProbe {
+    let test: SignedInHomeShotTests
+    let app: XCUIApplication
+    let ioDir: String
+    private var steps: [String] = []
+
+    init(test: SignedInHomeShotTests, app: XCUIApplication, ioDir: String) {
+        self.test = test
+        self.app = app
+        self.ioDir = ioDir
+    }
+
+    private var tabBar: XCUIElement { app.tabBars.firstMatch }
+    private var onHome: Bool { tabBar.exists && tabBar.frame.height > 0 && tabBar.isHittable }
+
+    mutating func run() {
+        do {
+            try enableSetting()
+            try openChannelAndReturn()
+            var reopened = false
+            for (index, slow) in [false, true].enumerated() {
+                rightEdgeDrag(slow: slow)
+                reopened = waitUntil(8) { !self.onHome }
+                steps.append("right-edge drag \(slow ? "slow" : "fast"): reopened=\(reopened)")
+                test.probeAttach(app, name: "forward-after-drag-\(index + 1)")
+                if reopened { break }
+                if index == 0 {
+                    // Second chance with a slow drag, from a fresh return to Home.
+                    try openChannelAndReturn()
+                }
+            }
+            test.probeWrite("forward-probe", ["ok": reopened, "reopened": reopened, "steps": steps])
+            if !reopened {
+                XCTFail("conversation forward gesture did not reopen the channel (\(steps.joined(separator: "; ")))")
+            }
+        } catch {
+            test.probeAttach(app, name: "forward-probe-failure")
+            test.probeWrite("forward-probe", [
+                "ok": false, "reopened": false, "steps": steps,
+                "error": String(describing: error), "tree": String(app.debugDescription.prefix(60_000)),
+            ])
+            XCTFail("forward probe setup failed: \(error) (\(steps.joined(separator: "; ")))")
+        }
+    }
+
+    private enum ProbeError: Error { case missing(String) }
+
+    // Settings: the account tab (last tab bar button) opens the menu with "Settings";
+    // Settings > Appearance; the Beta toggle row carries an accessibility description.
+    private mutating func enableSetting() throws {
+        let buttons = tabBar.buttons.allElementsBoundByIndex
+        guard let account = buttons.last else { throw ProbeError.missing("tab bar buttons") }
+        account.tap()
+        steps.append("tapped tab \(account.label)")
+        try tapLabel(["Settings"], stage: "menu-settings")
+        try tapLabel(["Appearance"], stage: "settings-appearance")
+        let row = find(["Beta. Controls the conversation forward gesture"], prefix: true)
+        var tries = 0
+        while !(row.exists && row.isHittable) && tries < 8 {
+            app.swipeUp(velocity: .slow)
+            tries += 1
+        }
+        guard row.exists else { throw ProbeError.missing("forward gesture toggle row") }
+        let before = row.value as? String ?? ""
+        test.probeTap(app, x: row.frame.maxX - 30, y: row.frame.midY)
+        Thread.sleep(forTimeInterval: 1.5)
+        steps.append("toggled forward gesture (value before=\(before) after=\(row.value as? String ?? ""))")
+        test.probeAttach(app, name: "forward-setting")
+        // Back to Home: two pages (Appearance, Settings).
+        for _ in 0..<3 where !onHome {
+            leftEdgeBack()
+            _ = waitUntil(4) { self.onHome }
+        }
+        guard waitUntil(10, { self.onHome }) else { throw ProbeError.missing("Home after Settings") }
+        steps.append("back on Home")
+    }
+
+    private mutating func openChannelAndReturn() throws {
+        guard waitUntil(10, { self.onHome }) else { throw ProbeError.missing("Home before opening a channel") }
+        // A channel row under "Channels" (Home lists #all and #general on every QA server).
+        let row = find(["all", "general"], prefix: false)
+        guard row.waitForExistence(timeout: 10) else { throw ProbeError.missing("channel row") }
+        test.probeTap(app, x: row.frame.midX, y: row.frame.midY)
+        guard waitUntil(10, { !self.onHome }) else { throw ProbeError.missing("conversation after tapping \(row.label)") }
+        steps.append("opened \(row.label)")
+        Thread.sleep(forTimeInterval: 3)
+        leftEdgeBack()
+        guard waitUntil(10, { self.onHome }) else { throw ProbeError.missing("Home after back") }
+        steps.append("back on Home from \(row.label)")
+        // Let the shell register the return and arm the recognizer.
+        Thread.sleep(forTimeInterval: 3)
+        test.probeAttach(app, name: "forward-home-armed")
+    }
+
+    private func rightEdgeDrag(slow: Bool) {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.995, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: slow ? 0.12 : 0.1, dy: 0.5))
+        if slow {
+            start.press(forDuration: 0.01, thenDragTo: end,
+                        withVelocity: XCUIGestureVelocity(rawValue: 400), thenHoldForDuration: 0.05)
+        } else {
+            start.press(forDuration: 0.01, thenDragTo: end)
+        }
+    }
+
+    private func leftEdgeBack() {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: end)
+    }
+
+    private mutating func tapLabel(_ labels: [String], stage: String) throws {
+        let element = find(labels, prefix: false)
+        guard element.waitForExistence(timeout: 10) else {
+            test.probeAttach(app, name: "forward-missing-\(stage)")
+            throw ProbeError.missing(stage)
+        }
+        test.probeTap(app, x: element.frame.midX, y: element.frame.midY)
+        steps.append("tapped \(element.label)")
+        Thread.sleep(forTimeInterval: 2)
+    }
+
+    private func find(_ labels: [String], prefix: Bool) -> XCUIElement {
+        let predicates = labels.map { label in
+            prefix
+                ? NSPredicate(format: "label BEGINSWITH %@", label)
+                : NSPredicate(format: "label == %@ OR label == %@", label, "# " + label)
+        }
+        return app.descendants(matching: .any)
+            .matching(NSCompoundPredicate(orPredicateWithSubpredicates: predicates)).firstMatch
+    }
+
+    private func waitUntil(_ seconds: TimeInterval, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            if condition() { return true }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return condition()
     }
 }

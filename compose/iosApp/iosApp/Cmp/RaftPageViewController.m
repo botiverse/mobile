@@ -150,15 +150,22 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
 
 - (void)setRaftConversationForwardGestureEnabled:(BOOL)enabled {
     _raftConversationForwardGestureEnabled = enabled;
+    if (enabled && self.navigationController == nil) {
+        RaftConversationForwardLog(@"recognizer_not_attached reason=no_navigation_controller");
+    }
     [self.navigationController fd_setConversationForwardGestureEnabled:
         enabled && self.raftIsAppShellPage];
 }
 
 - (void)raftRequestConversationForward {
     if (!self.raftIsAppShellPage || !self.raftConversationForwardGestureEnabled) {
+        RaftConversationForwardLog([NSString stringWithFormat:
+            @"request_dropped reason=%@",
+            self.raftIsAppShellPage ? @"not_enabled" : @"not_app_shell"]);
         return;
     }
     self.raftConversationForwardGestureEnabled = NO;
+    RaftConversationForwardLog(@"request_sent");
     [self raftSendEvent:RaftConversationForwardPagerEvent data:@{}];
 }
 

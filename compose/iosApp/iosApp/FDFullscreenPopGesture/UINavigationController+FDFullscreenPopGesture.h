@@ -22,6 +22,10 @@
 
 #import <UIKit/UIKit.h>
 
+/// One `SlockConversationForward` diagnostics line, also written to the console (os_log), so a
+/// Simulator `log show` capture sees every step of the Forward recognizer path.
+FOUNDATION_EXTERN void RaftConversationForwardLog(NSString *message);
+
 /// "UINavigation+FDFullscreenPopGesture" extends UINavigationController's swipe-
 /// to-pop behavior in iOS 7+ by supporting fullscreen pan gesture. Instead of
 /// screen edge, you can now swipe from any place on the screen and the onboard

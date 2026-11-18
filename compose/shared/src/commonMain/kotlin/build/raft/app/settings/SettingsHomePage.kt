@@ -2902,6 +2902,9 @@ private fun RaftAppShellReadyContent(
         conversationForwardGestureEnabled,
     ) {
         if (!authoritativeHomeStartAllowed) {
+            if (conversationForwardRequestTick > handledConversationForwardRequestTick) {
+                bridge.log("conversation_forward_drop reason=home_start_not_authoritative")
+            }
             bridge.setConversationForwardGestureEnabled(false)
             return@LaunchedEffect
         }
