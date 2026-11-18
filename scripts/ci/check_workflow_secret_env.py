@@ -116,8 +116,8 @@ STEP_ALLOWLIST = {
         ("passwords go to `security` for a temp keychain; outputs are profile uuid/name/team and keychain path",
          "0a60acff7a5fd1b36afaafcaa0157ebbff6638e059f2aee1046f133197b40121"),
     ("qa-acceptance.yml", "acceptance", "Claim Stamp run case and resolve auth mode"):
-        ("STAMP_TOKEN is used by stamp_report.sh; writes only bootstrap_required / STAMP_BOOTSTRAP_REQUIRED (true|false)",
-         "862107c03608e2090a1a91a7ad9d2dd0da85bf2f228d379ca90e183917d096a8"),
+        ("STAMP_DIRECT_ANDROID_APK is an input-derived boolean. The existing token and bootstrap boolean env/output writes are unchanged.",
+         "35333d3a78792737446d37cbe9d159a1a3d4debf3c24d8c83c3be0232bc4f94e"),
     ("qa-acceptance-ios.yml", "acceptance", "Claim Stamp run case and resolve auth mode"):
         ("STAMP_TOKEN is used by stamp_report.sh; writes only bootstrap_required / STAMP_BOOTSTRAP_REQUIRED (true|false)",
          "862107c03608e2090a1a91a7ad9d2dd0da85bf2f228d379ca90e183917d096a8"),
