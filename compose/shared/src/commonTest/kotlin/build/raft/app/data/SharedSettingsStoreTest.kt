@@ -579,8 +579,8 @@ class SharedSettingsStoreTest {
                 "server",
                 "updateServerMemberRole:admin-1:member",
                 "server",
-                "deleteServer:slock",
-                "server"
+                // Deleted: the server is gone, so its snapshot is not read again.
+                "deleteServer:slock"
             ),
             repository.calls
         )
@@ -683,6 +683,61 @@ class SharedSettingsStoreTest {
         assertEquals(listOf("server", "createServerInvite:new@slock.ai", "server"), repository.calls)
         assertEquals(false, store.state.value.actionState?.inProgress)
         assertNull(store.state.value.actionState?.errorCode)
+        scope.cancel()
+    }
+
+    @Test
+    fun deleteServerSuccessSettlesWithoutReloadingTheDeletedServer() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initialServer = serverSnapshot()
+        val repository = FakeSettingsRepository(serverResult = DataResult.Content(initialServer))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Server))
+        // A reload after the delete would fail (the server is gone) and read as a failed delete.
+        repository.serverResult = DataResult.Error(ScreenError("settings_server_not_found"))
+        store.accept(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest("slock")))
+
+        assertEquals(listOf("server", "deleteServer:slock"), repository.calls)
+        // Settled with no error: the page reads this as deleted and leaves the server, as after Leave.
+        assertEquals(SharedSettingsActionState(SERVER_ACTION_DELETE, inProgress = false), store.state.value.actionState)
+        assertNull(store.state.value.routeErrorCode)
+        scope.cancel()
+    }
+
+    @Test
+    fun deleteServerPermissionRefusalSurfacesOnTheDeleteAction() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(serverResult = DataResult.Content(serverSnapshot())).also {
+                it.deleteServerResult =
+                    DataResult.NoPermission(PermissionBlocker(code = "server_owner_required", requiredCapability = "delete_server"))
+            }
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Server))
+        store.accept(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest("slock")))
+
+        val action = assertNotNull(store.state.value.actionState)
+        assertEquals(SERVER_ACTION_DELETE, action.action)
+        assertEquals(false, action.inProgress)
+        assertEquals("server_owner_required", action.permissionBlocker?.code)
         scope.cancel()
     }
 

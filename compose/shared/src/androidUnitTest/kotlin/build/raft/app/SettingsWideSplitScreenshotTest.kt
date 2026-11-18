@@ -95,6 +95,8 @@ class SettingsWideSplitScreenshotTest {
                     session = null,
                     imBridgesEnabled = imBridgesEnabled,
                     billingOpensExternally = iosBilling == IosBillingPresentation.External,
+                    // An owner: Plan & Billing and Administration are rows (web `canOpenSettingsTab`).
+                    serverRole = "owner",
                 ),
             widths = remember { RaftListPaneWidths(store = null) },
             active = true,

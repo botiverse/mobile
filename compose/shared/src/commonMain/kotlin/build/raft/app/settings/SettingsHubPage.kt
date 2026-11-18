@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.model.serverRoleCanViewAdministrationSettings
+import build.raft.app.model.serverRoleCanViewBillingSettings
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.RaftStatusDot
@@ -128,7 +130,11 @@ internal fun SettingsAppShellHomeContent(
  * Mobile is a phone page: with [appPreferencesUnderAppearance] (the desktop app) its cards are part
  * of Appearance, the web's home for them, and there is no Mobile row. IM Bridges follows
  * Administration, as on the web (settingsNavigation.ts, Sidebar.tsx), only with [imBridges]: the
- * server's `slack_bridge_v0` flag (web `isSlackBridgeSurfaceEnabled`).
+ * server's `slack_bridge_v0` flag (web `isSlackBridgeSurfaceEnabled`). Plan & Billing ([billing]) and
+ * Administration ([administration]) are rows only for who may open them, as on the web
+ * (useSidebarViewState `canViewBillingSettings` / `canViewAdministrationSettings`, from
+ * settingsNavigation.ts `canOpenSettingsTab`): [settingsHomeBillingVisible] and
+ * [settingsHomeAdministrationVisible] for the current server's role.
  */
 internal fun settingsHomeRowKeys(
     hasThemeServer: Boolean,
@@ -138,6 +144,8 @@ internal fun settingsHomeRowKeys(
     serverPanelPages: Boolean = false,
     guest: Boolean = false,
     storage: Boolean = settingsStorageAvailable(),
+    billing: Boolean = true,
+    administration: Boolean = true,
 ): List<String> =
     listOfNotNull(
         SettingsDestinationAccount,
@@ -149,8 +157,8 @@ internal fun settingsHomeRowKeys(
         SettingsNativeDetailPage.Theme.key.takeIf { hasThemeServer },
         SettingsNativeDetailPage.ServerNotifications.key.takeIf { hasThemeServer },
         SettingsNativeDetailPage.Server.key,
-        SettingsDestinationBilling,
-        SettingsDestinationAdministration,
+        SettingsDestinationBilling.takeIf { billing },
+        SettingsDestinationAdministration.takeIf { administration },
         SettingsDestinationImBridges.takeIf { imBridges },
         SettingsDestinationConnectedApps.takeIf { !serverPanelPages || guest },
         SettingsDestinationComputers.takeUnless { serverPanelPages },
@@ -159,6 +167,12 @@ internal fun settingsHomeRowKeys(
         SettingsDestinationHandsFeedback,
         SettingsDestinationReleaseNotes.takeIf { releaseNotes },
     )
+
+/** Plan & Billing is a Settings row (and a link's page) only with web's `viewBilling`: owners and admins. */
+internal fun settingsHomeBillingVisible(role: String?): Boolean = serverRoleCanViewBillingSettings(role)
+
+/** Administration is a Settings row (and a link's page) only with one of web's admin capabilities: owners and admins. */
+internal fun settingsHomeAdministrationVisible(role: String?): Boolean = serverRoleCanViewAdministrationSettings(role)
 
 /**
  * Release Notes is the platform's Hands release history, so the row shows only where the platform
@@ -186,6 +200,8 @@ internal fun appShellSettingsHomePayload(
     billingOpensExternally: Boolean = settingsBillingLeavesRaft(),
     /** The phone: Computers and Apps are on the server panel ([settingsHomeRowKeys]). */
     serverPanelPages: Boolean = false,
+    /** The viewer's role on the current server: which Workspace rows they may open ([settingsHomeRowKeys]). */
+    serverRole: String? = session?.currentServerSummary()?.role,
 ): RaftSettingsHomePayload {
     val personalSection = stringResource(Res.string.settings_navigation_section_personal)
     val workspaceSection = stringResource(Res.string.settings_navigation_section_workspace)
@@ -336,7 +352,9 @@ internal fun appShellSettingsHomePayload(
                 appPreferencesUnderAppearance = appPreferencesUnderAppearance,
                 imBridges = imBridgesEnabled,
                 serverPanelPages = serverPanelPages,
-                guest = session?.currentServerSummary()?.role.equals("guest", ignoreCase = true),
+                guest = serverRole.equals("guest", ignoreCase = true),
+                billing = settingsHomeBillingVisible(serverRole),
+                administration = settingsHomeAdministrationVisible(serverRole),
             ).mapNotNull(rows::get),
     )
 }

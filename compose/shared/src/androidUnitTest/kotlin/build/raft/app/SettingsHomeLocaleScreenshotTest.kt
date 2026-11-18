@@ -61,7 +61,7 @@ class SettingsHomeLocaleScreenshotTest {
                 CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                     RaftDesignSystemTheme {
                         SettingsHomeContent(
-                            payload = appShellSettingsHomePayload(session = null, appPreferencesUnderAppearance = false, billingOpensExternally = false),
+                            payload = appShellSettingsHomePayload(session = null, appPreferencesUnderAppearance = false, billingOpensExternally = false, serverRole = "owner"),
                             onBack = {},
                             onSelect = {},
                         )

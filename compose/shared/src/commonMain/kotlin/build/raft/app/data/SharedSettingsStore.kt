@@ -2595,7 +2595,16 @@ class SharedSettingsStore(
             }
             is SharedSettingsIntent.DeleteServer -> {
                 runAction(SERVER_ACTION_DELETE) {
-                    dataSource.deleteServer(intent.request).applyServerActionResult(SERVER_ACTION_DELETE)
+                    when (val result = dataSource.deleteServer(intent.request)) {
+                        // Deleted (web serverStore `deleteServer`: DELETE /servers/:id, then the same
+                        // membership-removed path as leaving): the server is gone, so its snapshot is
+                        // not reloaded (that read would fail and read as a failed delete); the page
+                        // reloads the server list and closes, as after Leave.
+                        is DataResult.Content ->
+                            _state.value =
+                                _state.value.copy(actionState = SharedSettingsActionState(SERVER_ACTION_DELETE, inProgress = false))
+                        else -> result.applyServerActionResult(SERVER_ACTION_DELETE)
+                    }
                 }
             }
             is SharedSettingsIntent.RequestServerConfirmation ->

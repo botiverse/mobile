@@ -601,7 +601,6 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
 private fun SettingsVisualServerFocusedContent(variant: String) {
     val snapshot = remember { settingsVisualServerSnapshot() }
     var profileName by remember { mutableStateOf(snapshot.profile.name) }
-    var deleteConfirmationName by remember { mutableStateOf("") }
     val serverPayload =
         ScreenLoadState.Content(snapshot).toServerPayload(
             session = homeSearchVisualSession,
@@ -618,8 +617,6 @@ private fun SettingsVisualServerFocusedContent(variant: String) {
         serverSnapshot = snapshot,
         serverRole = "owner",
         expectedServerSlug = snapshot.profile.slug,
-        deleteConfirmationName = deleteConfirmationName,
-        onDeleteConfirmationNameChange = { deleteConfirmationName = it },
         actionState = null,
         bottomContentPadding = RaftAppSpacing.Lg,
         onAction = { _, _ -> }
@@ -651,7 +648,7 @@ private fun SettingsServerDangerModalVisualContent() {
             expectedServerSlug = serverSlug,
             confirmationSlug = modalSlug,
             deleteBusy = false,
-            deleteEnabled = false,
+            deleteEnabled = settingsServerDeleteEnabled(canDelete = true, deleteBusy = false, expectedServerSlug = serverSlug, typedSlug = modalSlug),
             errorMessage = null,
             onDismiss = {},
             onConfirmationSlugChange = { modalSlug = it },

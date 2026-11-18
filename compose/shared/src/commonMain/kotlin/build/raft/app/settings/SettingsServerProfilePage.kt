@@ -137,9 +137,8 @@ internal fun SharedSettingsServerContent(
     serverRole: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     bottomContentPadding: Dp = RaftAppSpacing.Lg,
+    /** The current server's slug, what Delete Server's confirmation asks to be typed (web `server.slug`). */
     expectedServerSlug: String = "",
-    deleteConfirmationName: String = "",
-    onDeleteConfirmationNameChange: (String) -> Unit = {},
     showProfileCard: Boolean = true,
     /** Owner "Public access" section; null on surfaces that do not host it (Administration, fixtures). */
     publicAccess: SettingsServerPublicAccessBinding? = null,
@@ -193,14 +192,13 @@ internal fun SharedSettingsServerContent(
         item {
             SettingsServerDangerZoneCard(
                 serverName = serverSnapshot?.profile?.name ?: payload.heroLabel,
-                expectedServerSlug = expectedServerSlug,
+                // The loaded profile's slug, else the session's: the confirmation needs one to match.
+                expectedServerSlug = serverSnapshot?.profile?.slug?.trim()?.takeIf { it.isNotEmpty() } ?: expectedServerSlug.trim(),
                 role = serverRole,
                 dangerSection = serverSnapshot?.sections?.firstOrNull { it.key == "danger" },
-                confirmationSlug = deleteConfirmationName,
                 actionState = actionState,
-                onConfirmationSlugChange = onDeleteConfirmationNameChange,
                 onLeave = { onAction(SERVER_ACTION_LEAVE, null) },
-                onDelete = { onAction(SERVER_ACTION_DELETE, deleteConfirmationName.trim()) },
+                onDelete = { typedSlug -> onAction(SERVER_ACTION_DELETE, typedSlug.trim()) },
                 leaveImpact = leaveImpact
             )
         }
@@ -320,11 +318,10 @@ private fun SettingsServerDangerZoneCard(
     expectedServerSlug: String,
     role: String,
     dangerSection: SettingsServerSectionSnapshot?,
-    confirmationSlug: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
-    onConfirmationSlugChange: (String) -> Unit,
     onLeave: () -> Unit,
-    onDelete: () -> Unit,
+    /** Delete Server confirmed with the slug typed in its dialog. */
+    onDelete: (String) -> Unit,
     leaveImpact: SettingsServerLeaveImpactBinding? = null
 ) {
     val normalizedRole = role.lowercase()
@@ -339,8 +336,13 @@ private fun SettingsServerDangerZoneCard(
     val leaveConfirmed = actionState.isServerConfirmation(SERVER_ACTION_LEAVE)
     val deleteBusy = actionState?.action == SERVER_ACTION_DELETE && actionState.inProgress
     val leaveBusy = actionState?.action == SERVER_ACTION_LEAVE && actionState.inProgress
-    val trimmedModalSlug = modalConfirmationSlug.trim()
-    val deleteEnabled = canDelete && !deleteBusy && expectedServerSlug.isNotBlank() && trimmedModalSlug == expectedServerSlug
+    val deleteEnabled =
+        settingsServerDeleteEnabled(
+            canDelete = canDelete,
+            deleteBusy = deleteBusy,
+            expectedServerSlug = expectedServerSlug,
+            typedSlug = modalConfirmationSlug,
+        )
     // Web DangerZoneSection: Leave Server and Delete Server are cards of their own, 12dp apart.
     SettingsFormSection(iconName = RaftLucideIconName.TriangleAlert, title = stringResource(Res.string.settings_section_danger_zone_title)) {
         if (canLeave) {
@@ -405,7 +407,7 @@ private fun SettingsServerDangerZoneCard(
             deleteEnabled = deleteEnabled,
             errorMessage =
                 actionState
-                    ?.takeIf { it.action == SERVER_ACTION_DELETE }
+                    ?.takeIf { it.action == SERVER_ACTION_DELETE && !it.inProgress }
                     ?.userFacingErrorMessage(localizedErrorPresentationStrings()),
             onDismiss = {
                 if (!deleteBusy) {
@@ -420,17 +422,38 @@ private fun SettingsServerDangerZoneCard(
                     modalConfirmationSlug = ""
                 }
             },
-            onDelete = {
-                onConfirmationSlugChange(modalConfirmationSlug)
-                onDelete()
-                if (actionState?.action != SERVER_ACTION_DELETE || actionState.errorCode == null) {
-                    showDeleteModal = false
-                    modalConfirmationSlug = ""
-                }
-            }
+            // As Leave: the dialog stays up while deleting ("Deleting…") and shows a failure in
+            // place; once deleted the host reloads the server list and closes the page.
+            onDelete = { onDelete(modalConfirmationSlug) }
         )
     }
 }
+
+/**
+ * Web DeleteServerConfirmDialog `confirmDisabled={confirmSlug !== server.slug}`: Delete enables only
+ * for someone who may delete, not while a delete is running, once the typed slug is the server's.
+ * Without a known slug nothing can match, so it stays off.
+ */
+internal fun settingsServerDeleteEnabled(
+    canDelete: Boolean,
+    deleteBusy: Boolean,
+    expectedServerSlug: String,
+    typedSlug: String,
+): Boolean {
+    val expected = expectedServerSlug.trim()
+    return canDelete && !deleteBusy && expected.isNotEmpty() && typedSlug.trim() == expected
+}
+
+/**
+ * Whether Leave Server or Delete Server has just succeeded: the action settled with no error. Both
+ * end the same way (web serverStore `leaveServer` / `deleteServer`: membership removed, another
+ * server selected), so the page reloads the server list and closes for either.
+ */
+internal fun settingsServerLeftOrDeleted(actionState: SharedSettingsActionState?): Boolean =
+    actionState != null &&
+        (actionState.action == SERVER_ACTION_LEAVE || actionState.action == SERVER_ACTION_DELETE) &&
+        !actionState.inProgress &&
+        !actionState.hasUserFacingError()
 
 /** What Leave server's confirmation needs to read the Computers leaving takes offline. */
 internal data class SettingsServerLeaveImpactBinding(
