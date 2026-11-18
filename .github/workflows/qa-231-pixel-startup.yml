@@ -1,0 +1,45 @@
+name: Inspect signed-out Pixel startup
+on:
+  push:
+    branches: [agent/argus/231-pixel-startup]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  startup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: 14442775110
+          run-id: 44334613388
+          github-token: ${{ github.token }}
+          path: apks
+      - name: Verify the package used by both main runs
+        run: |
+          apk=$(find apks -name '*.apk' -type f)
+          test -f "$apk"
+          printf '%s  %s\n' ed593f2ec52055449153cfcc96d4f6783565a6de8f24644b88b26d3261431a26 "$apk" | sha256sum -c -
+          cp "$apk" "$RUNNER_TEMP/startup.apk"
+      - uses: android-actions/setup-android@v4
+      - run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          ram-size: 4096M
+          cores: 2
+          emulator-boot-timeout: 1200
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: |
+            test "$(adb shell getprop ro.product.cpu.abi | tr -d '\r')" = x86_64
+            adb shell input keyevent 82
+            adb install -r -g "$RUNNER_TEMP/startup.apk"
+            python3 .github/qa231_pixel_startup.py
