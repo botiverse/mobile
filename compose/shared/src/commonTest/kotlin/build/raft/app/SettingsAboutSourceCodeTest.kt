@@ -43,8 +43,8 @@ class SettingsAboutSourceCodeTest {
     }
 
     @Test
-    fun openRaftRowStillOpensTheWebAppAndOtherRowsOpenNothing() {
-        assertEquals("https://app.raft.build", settingsAboutExternalUrl("openSlock", null, webUrl = "https://app.raft.build"))
+    fun onlyTheSourceCodeRowLeavesRaft() {
+        assertNull(settingsAboutExternalUrl("openSlock", null, webUrl = "https://app.raft.build"))
         assertNull(settingsAboutExternalUrl("openSourceLicenses", null, webUrl = "https://app.raft.build"))
     }
 }

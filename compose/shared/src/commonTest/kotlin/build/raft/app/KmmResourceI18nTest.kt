@@ -580,9 +580,6 @@ class KmmResourceI18nTest {
             )
         }
 
-        assertTrue(
-            Res.string.settings_about_open_web_detail.format(listOf("https://app.raft.build")) is ResourceFormattedStringDesc
-        )
     }
 
     @Test

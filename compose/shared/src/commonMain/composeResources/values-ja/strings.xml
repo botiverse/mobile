@@ -3479,8 +3479,6 @@
     <string name="settings_about_action_copy_environment">環境情報をコピー</string>
     <string name="settings_about_action_copy">コピー</string>
     <string name="settings_about_source_code">ソースコード</string>
-    <string name="settings_about_action_open_raft">Raft を開く</string>
-    <string name="settings_about_open_web_detail">%1$s をシステムブラウザで開きます。</string>
     <string name="settings_developer_title">開発者</string>
     <string name="settings_developer_subtitle">API サーバー、診断、ルートランチャー</string>
     <string name="settings_developer_detail">API サーバーと診断</string>

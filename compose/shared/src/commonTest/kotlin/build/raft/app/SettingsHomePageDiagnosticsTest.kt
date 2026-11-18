@@ -794,7 +794,7 @@ class SettingsHomePageDiagnosticsTest {
                 .rows
 
         assertFalse(actionRows.any { it.key == DEVELOPER_ACTION_HANDS_UPDATE_CHECK })
-        assertTrue(actionRows.any { it.key == "openSlock" })
+        assertFalse(actionRows.any { it.key == "openSlock" })
     }
 
     @Test
@@ -817,7 +817,7 @@ class SettingsHomePageDiagnosticsTest {
                 .rows
 
         assertFalse(actionRows.any { it.key == DEVELOPER_ACTION_HANDS_UPDATE_CHECK })
-        assertTrue(actionRows.any { it.key == "openSlock" })
+        assertFalse(actionRows.any { it.key == "openSlock" })
     }
 
     @Test
