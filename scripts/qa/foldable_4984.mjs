@@ -37,9 +37,20 @@ const save = () => fs.writeFileSync(path.join(OUT, "results.json"), JSON.stringi
 
 // ---- screen + ui ----
 let shotN = 0;
+// pixel_fold has two physical displays; screencap/screenrecord need the active one's id.
+function displayIds() { return [...sh("dumpsys SurfaceFlinger --display-id").matchAll(/Display (\d+)/g)].map((m) => m[1]); }
+function pngSize(buf) { return buf.length > 24 ? [buf.readUInt32BE(16), buf.readUInt32BE(20)] : [0, 0]; }
+function activeDisplay() {
+  const [W, H] = size(); let best = null;
+  for (const id of displayIds()) {
+    try { const b = execFileSync("adb", ["exec-out", "screencap", "-p", "-d", id], { maxBuffer: 64 << 20, timeout: 30000 }); const [w, h] = pngSize(b);
+      if ((w === W && h === H) || (w === H && h === W)) return { id, b }; if (!best && w > 0) best = { id, b }; } catch {}
+  }
+  return best;
+}
 function shot(name) {
   const f = path.join(OUT, `${String(++shotN).padStart(3, "0")}-${name}.png`);
-  try { fs.writeFileSync(f, execFileSync("adb", ["exec-out", "screencap", "-p"], { maxBuffer: 64 << 20, timeout: 30000 })); } catch (e) { log("shot failed", name, e.message); }
+  const a = activeDisplay(); if (a) fs.writeFileSync(f, a.b); else log("shot failed", name);
   return path.basename(f);
 }
 // Saved dumps keep only this app's nodes, and nothing from a login-like screen (the evidence gate
@@ -94,7 +105,8 @@ const stackOps = (fresh) => fresh.filter((l) => /nav3_stack (open|close) page=/.
 let recN = 0;
 function recStart(name, secs = 60) {
   const f = `/data/local/tmp/fold-rec-${String(++recN).padStart(2, "0")}-${name}.mp4`;
-  const p = spawn("adb", ["shell", `screenrecord --bit-rate 8000000 --time-limit ${secs} ${f}`], { stdio: "ignore" });
+  const d = activeDisplay(); const disp = d ? `--display-id ${d.id} ` : "";
+  const p = spawn("adb", ["shell", `screenrecord ${disp}--bit-rate 8000000 --time-limit ${secs} ${f}`], { stdio: "ignore" });
   sleep(1200);
   return { f, p };
 }
@@ -102,10 +114,15 @@ function recStop(r) { sh("pkill -INT screenrecord"); sleep(1500); try { r.p.kill
 
 // ---- app navigation helpers ----
 function launch() { sh(`monkey -p ${PKG} -c android.intent.category.LAUNCHER 1`); sleep(4000); }
+// The server picker ("Choose server") can show "Loading your servers..." first: wait for the row.
 function pickServerIfAsked(ns) {
-  const s = find(ns, /OranixSlockTest/);
-  if (s && !find(ns, /^(Home|Activity)$/)) { log("server picker: tapping", label(s)); tap(s.x, s.y); sleep(4000); return true; }
-  return false;
+  for (let i = 0; i < 15; i++) {
+    if (!find(ns, /^Choose server$/)) return i > 0;
+    const s = find(ns, /^OranixSlockTest$/);
+    if (s) { log("server picker: tapping OranixSlockTest"); tap(s.x, s.y); sleep(5000); ns = nodes(); continue; }
+    sleep(2000); ns = nodes();
+  }
+  log("server picker still shown"); return false;
 }
 function tabNode(ns, name) { return find(ns, new RegExp(`^${name}$`), (n) => n.y > 0); }
 function gotoTab(name) {
