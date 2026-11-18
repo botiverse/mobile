@@ -3266,6 +3266,7 @@
     <string name="settings_about_action_check_update">Verificar atualizações</string>
     <string name="settings_about_check_update_detail">Verifica se há uma compilação mais recente do %1$s e abre o instalador quando disponível.</string>
     <string name="settings_about_action_check">Verificar</string>
+    <string name="settings_about_state_update_available">Atualização disponível</string>
     <string name="settings_about_licenses_detail">Veja as bibliotecas de terceiros incluídas no pacote do app %1$s.</string>
     <string name="settings_about_action_copy_environment">Copiar informações do ambiente</string>
     <string name="settings_about_action_copy">Copiar</string>
