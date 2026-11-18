@@ -3310,6 +3310,7 @@
     <string name="settings_about_action_check_update">업데이트 확인</string>
     <string name="settings_about_check_update_detail">최신 %1$s 빌드가 있는지 확인하고, 있으면 설치 프로그램을 열어요.</string>
     <string name="settings_about_action_check">확인</string>
+    <string name="settings_about_state_update_available">업데이트 가능</string>
     <string name="settings_about_licenses_detail">%1$s 앱 패키지에 포함된 서드파티 라이브러리를 확인해요.</string>
     <string name="settings_about_action_copy_environment">환경 정보 복사</string>
     <string name="settings_about_action_copy">복사</string>

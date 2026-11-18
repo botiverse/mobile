@@ -680,7 +680,7 @@ class SettingsHomePageDiagnosticsTest {
                 updateCheck =
                     SharedSettingsUpdateCheckSnapshot(
                         supported = true,
-                        statusLabel = "已是最新版本",
+                        statusLabel = "Current",
                         detail = "当前已是 Raft 最新版本，版本代码为 1000000。"
                     ),
                 actionState = null
@@ -690,7 +690,8 @@ class SettingsHomePageDiagnosticsTest {
         val updateRow = rows.first { it.key == DEVELOPER_ACTION_HANDS_UPDATE_CHECK }
 
         assertEquals("Check for update", updateRow.title)
-        assertEquals("已是最新版本", updateRow.status)
+        // Up to date: the description says so, the host's English "Current" never shows.
+        assertEquals("", updateRow.status)
         assertTrue(updateRow.enabled)
         assertFalse(updateRow.detail.contains("Hands"))
         assertTrue(updateRow.detail.contains("Raft"))
