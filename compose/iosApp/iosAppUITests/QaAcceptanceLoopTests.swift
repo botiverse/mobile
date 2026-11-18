@@ -773,7 +773,10 @@ private struct ConversationForwardGestureProbe {
         let row = find(["all", "general"], prefix: false)
         guard row.waitForExistence(timeout: 10) else { throw ProbeError.missing("channel row") }
         test.probeTap(app, x: row.frame.midX, y: row.frame.midY)
-        guard waitUntil(10, { !self.onHome }) else { throw ProbeError.missing("conversation after tapping \(row.label)") }
+        // A conversation's first load can keep the main thread too busy for an accessibility
+        // snapshot (run 44344874576, iOS 27.0: "Failed to get matching snapshot" ends the test).
+        Thread.sleep(forTimeInterval: 6)
+        guard waitUntil(15, { !self.onHome }) else { throw ProbeError.missing("conversation after tapping \(row.label)") }
         steps.append("opened \(row.label)")
         Thread.sleep(forTimeInterval: 3)
         goBack()
