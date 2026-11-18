@@ -43,32 +43,53 @@ class RaftNewLocaleCatalogTest {
         return resource.desc().resolve()
     }
 
-    // One test per language: resolving every key of the catalog is slow on a busy CI runner, and
-    // all five in one test passed the 60 s hang watchdog (test.yml runs 42579048771, 42581069497).
+    // Two tests per language, each resolving half of the keys: resolving every key of the catalog
+    // is slow on a busy CI runner. All five languages in one test passed the 60 s hang watchdog
+    // (test.yml runs 42579048771, 42581069497), and one language per test reached it again once
+    // the catalog grew (Russian took over 30 s on main, PR #4988 runs 44320202943).
     @Test
-    fun everyEnglishKeyResolvesInSpanish() = assertEveryEnglishKeyResolves("es", "values-es")
+    fun everyEnglishKeyResolvesInSpanishFirstHalf() = assertEveryEnglishKeyResolves("es", "values-es", half = 0)
 
     @Test
-    fun everyEnglishKeyResolvesInBrazilianPortuguese() = assertEveryEnglishKeyResolves("pt-BR", "values-pt-rBR")
+    fun everyEnglishKeyResolvesInSpanishSecondHalf() = assertEveryEnglishKeyResolves("es", "values-es", half = 1)
 
     @Test
-    fun everyEnglishKeyResolvesInKorean() = assertEveryEnglishKeyResolves("ko", "values-ko")
+    fun everyEnglishKeyResolvesInBrazilianPortugueseFirstHalf() = assertEveryEnglishKeyResolves("pt-BR", "values-pt-rBR", half = 0)
 
     @Test
-    fun everyEnglishKeyResolvesInTraditionalChinese() = assertEveryEnglishKeyResolves("zh-TW", "values-zh-rTW")
+    fun everyEnglishKeyResolvesInBrazilianPortugueseSecondHalf() = assertEveryEnglishKeyResolves("pt-BR", "values-pt-rBR", half = 1)
 
     @Test
-    fun everyEnglishKeyResolvesInRussian() = assertEveryEnglishKeyResolves("ru", "values-ru")
+    fun everyEnglishKeyResolvesInKoreanFirstHalf() = assertEveryEnglishKeyResolves("ko", "values-ko", half = 0)
+
+    @Test
+    fun everyEnglishKeyResolvesInKoreanSecondHalf() = assertEveryEnglishKeyResolves("ko", "values-ko", half = 1)
+
+    @Test
+    fun everyEnglishKeyResolvesInTraditionalChineseFirstHalf() = assertEveryEnglishKeyResolves("zh-TW", "values-zh-rTW", half = 0)
+
+    @Test
+    fun everyEnglishKeyResolvesInTraditionalChineseSecondHalf() = assertEveryEnglishKeyResolves("zh-TW", "values-zh-rTW", half = 1)
+
+    @Test
+    fun everyEnglishKeyResolvesInRussianFirstHalf() = assertEveryEnglishKeyResolves("ru", "values-ru", half = 0)
+
+    @Test
+    fun everyEnglishKeyResolvesInRussianSecondHalf() = assertEveryEnglishKeyResolves("ru", "values-ru", half = 1)
 
     @Test
     fun everyNewLocaleHasItsOwnTest() {
         assertEquals(NEW_LOCALES.map { it.first }, listOf("es", "pt-BR", "ko", "zh-TW", "ru"))
     }
 
-    private fun assertEveryEnglishKeyResolves(tag: String, dir: String) {
-        val resources = Res.allStringResources
+    /** Checks the keys of one [half] (0 or 1) of the catalog, in key order. */
+    private fun assertEveryEnglishKeyResolves(tag: String, dir: String, half: Int) {
+        val allResources = Res.allStringResources
         val english = parse("values")
-        assertEquals(english.keys, resources.keys, "Res.allStringResources is the values/ catalog")
+        assertEquals(english.keys, allResources.keys, "Res.allStringResources is the values/ catalog")
+        val keys = allResources.keys.sorted()
+        val halfKeys = (if (half == 0) keys.take(keys.size / 2) else keys.drop(keys.size / 2)).toSet()
+        val resources = allResources.filterKeys { it in halfKeys }
         val catalog = parse(dir)
         val englishTexts = resources.mapValues { (_, resource) -> resolveIn("en", resource) }
         val failures =
