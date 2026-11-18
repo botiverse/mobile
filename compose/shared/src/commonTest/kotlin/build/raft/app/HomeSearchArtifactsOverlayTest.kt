@@ -27,8 +27,8 @@ class HomeSearchArtifactsOverlayTest {
         val content = content(SearchArtifactsState(query = "plan", status = SearchArtifactsStatus.Ok, hits = (1..7).map { hit("pt_$it") }))
 
         val entries = content.entries()
-        val headings = entries.map { it.itemKey }.filter { it.endsWith("-heading") }
-        assertEquals(listOf("entities-heading", "artifacts-heading", "messages-heading"), headings)
+        val headings = entries.map { it.itemKey }.filter { it.contains("-heading") }
+        assertEquals(listOf("entities-heading:channels", "artifacts-heading", "messages-heading"), headings)
         assertEquals(HomeSearchOverlayMessagePreviewCount, entries.count { it is HomeSearchOverlayEntry.Artifact }, "a preview, like its messages")
         assertEquals(
             listOf(HomeSearchOverlaySection.SearchFor, HomeSearchOverlaySection.Entities) +
