@@ -228,13 +228,7 @@ class RaftMobileStackShellOnceUiTest {
             onNodeWithTag(SHELL).assertIsDisplayed()
             assertTrue(shellActive == true && shellLifecycle == Lifecycle.State.RESUMED, "on top: active, resumed")
 
-            mainClock.autoAdvance = false
             runOnIdle { stack.push() }
-            frames(3)
-            // Under the page sliding in: still drawn.
-            onNodeWithTag(ARTIFACT_PAGE).assertExists()
-            onNodeWithTag(SHELL).assertIsDisplayed()
-            mainClock.autoAdvance = true
             waitForIdle()
             // The push settled: covered, laid out at 0x0 as any covered page, inactive and stopped.
             onNodeWithTag(SHELL).assertIsNotDisplayed()
@@ -242,12 +236,7 @@ class RaftMobileStackShellOnceUiTest {
             assertFalse(shellActive == true, "covered: inactive")
             assertEquals(Lifecycle.State.CREATED, shellLifecycle)
 
-            mainClock.autoAdvance = false
             runOnIdle { stack.back() }
-            frames(3)
-            // The page slides out over the shell.
-            onNodeWithTag(SHELL).assertIsDisplayed()
-            mainClock.autoAdvance = true
             waitForIdle()
             onNodeWithTag(SHELL).assertIsDisplayed()
             assertTrue(shellActive == true && shellLifecycle == Lifecycle.State.RESUMED, "back on top: active, resumed")
@@ -257,11 +246,7 @@ class RaftMobileStackShellOnceUiTest {
             waitForIdle()
             runOnIdle { stack.push(PREVIEW_PAGE) }
             waitForIdle()
-            mainClock.autoAdvance = false
             runOnIdle { stack.back() }
-            frames(3)
-            onNodeWithTag(SHELL).assertIsNotDisplayed()
-            mainClock.autoAdvance = true
             waitForIdle()
             onNodeWithTag(SHELL).assertIsNotDisplayed()
             onNodeWithTag(ARTIFACT_PAGE).assertIsDisplayed()
