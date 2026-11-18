@@ -54,6 +54,9 @@ function xml(s) {
   const n = (text, pkg, b, cls = "android.widget.TextView", extra = "") => '<node text="' + text + '" class="' + cls + '" package="' + pkg + '" ' + extra + ' bounds="' + b + '" />';
   const button = (text, y) => n(text, CHROME, "[100," + y + "][900," + (y + 80) + "]", "android.widget.Button");
   const nodes = s.screen === "signin" ? n("Sign in to Raft", APP, "[100,1000][900,1100]")
+    : s.screen === "system-dialog" ? n("Close app", "android", "[100,400][900,480]", "android.widget.Button", 'resource-id="android:id/aerr_close"')
+      + n(s.dialogTitle || "", "android", "[100,200][900,280]", "android.widget.TextView", 'resource-id="android:id/alertTitle"')
+      + (s.anr ? n("Wait", "android", "[100,500][900,580]", "android.widget.Button", 'resource-id="android:id/aerr_wait"') : "")
     : s.screen === "form" ? n(s.form.email, CHROME, "[100,300][900,400]", "android.widget.EditText", 'resource-id="login-email" password="false"') + n("*".repeat(s.form.password.length), CHROME, "[100,500][900,600]", "android.widget.EditText", 'resource-id="login-password" password="true"') + button("Sign in", s.fills ? 700 : 900)
     : s.screen === "save-prompt" ? n("Save password?", CHROME, "[100,280][900,380]", "android.widget.TextView", 'resource-id="com.android.chrome:id/title"') + n("Not now", CHROME, "[100,400][900,480]", "android.widget.Button", 'resource-id="com.android.chrome:id/negative_button"')
     : s.screen === "save-banner" ? n("Save password?", CHROME, "[100,80][700,180]", "android.widget.TextView", 'resource-id="com.android.chrome:id/message_title"')
@@ -95,6 +98,7 @@ if (a === "shell settings put secure autofill_service null") { s.autofill = fals
 if (a === "shell settings get secure default_input_method") { out("com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME\n"); end(); }
 if (args[1] === "pm" && args[2] === "clear") { if (args[3] === D.CHROME) s.form = { email: "", password: "" }; else s.ime = ""; s.cleared.push(args[3]); out("Success\n"); end(); }
 if (a === "shell dumpsys window") {
+  if (s.screen === "system-dialog") { out("  mCurrentFocus=Window{1a u0 " + s.dialogFocus + "}\n"); end(); }
   const waiting = s.screen === "home" && s.focusWaits > 0;
   if (waiting) s.focusWaits--;
   out("  mCurrentFocus=Window{1a u0 " + (waiting || s.screen === "form" ? D.CHROME : D.APP) + "/x.Main}\n"); end();
@@ -287,6 +291,33 @@ test("a failed form driver retains only the allowlisted UI summary and keeps the
   w.close();
 });
 
+test("Android error dialogs report only the framework status and a known process category", async () => {
+  for (const [anr, focus, owner] of [
+    [true, "Application Not Responding: build.raft.app", "app"],
+    [true, "Application Not Responding: com.android.systemui", "system-ui"],
+    [false, "Application Error: com.android.chrome", "chrome"],
+    [true, "Application Not Responding: private.test.package", "other"],
+    [false, "build.raft.app/.MainActivity", "unknown"],
+  ]) {
+    const dialogTitle = owner === "system-ui" ? "System UI isn't responding" : "";
+    const w = fakeWorld({ screen: "system-dialog", anr, dialogFocus: focus, dialogTitle });
+    try {
+      const summary = path.join(w.root, "summary.md");
+      const result = await phase.androidPasswordLogin({ out: path.join(w.root, "ev"),
+        env: { ...w.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, GITHUB_STEP_SUMMARY: summary } });
+      assert.equal(result.ok, false);
+      const data = fs.readFileSync(summary, "utf8");
+      const json = JSON.parse(data.split("```json\n")[1].split("\n```")[0]);
+      assert.equal(json.surface, anr ? "system-app-anr" : "system-app-error");
+      assert.equal(json.affectedProcess, owner);
+      assert.equal(json.systemBlocker, dialogTitle ? "system_ui_anr" : undefined);
+      assert.equal(json.lastAction, "before-form");
+      for (const raw of [focus, dialogTitle, EMAIL, PASSWORD, "private.test.package"].filter(Boolean)) assert.ok(!data.includes(raw));
+      assert.doesNotMatch(fs.readFileSync(w.files.argv, "utf8"), /"tap"|"runtest"/);
+    } finally { w.close(); }
+  }
+});
+
 test("unknown site, partial fill and missing driver markers all refuse submission and clear owned input stores", async () => {
   for (const [driverResult, expectedReason] of [
     ["site-unverified", /browser address could not be matched/],
@@ -305,18 +336,21 @@ test("unknown site, partial fill and missing driver markers all refuse submissio
   }
 });
 
-test("a Chrome save-password banner over the web confirmation receives no taps", async () => {
-  for (const stickyBanner of [false, true]) {
+test("a Chrome save-password banner over the web confirmation receives no taps", async (t) => {
+  for (const [stickyBanner, timeoutMs, expectedReads] of [[false, 15000, 2], [true, 12000, 3], [true, 180000, 10]]) {
     const w = fakeWorld({ screen: "form", bannerAfterSubmit: true, stickyBanner });
     const out = path.join(w.root, "ev");
     const summary = path.join(w.root, "summary.md");
+    const start = Date.now();
+    // Each fresh banner observation advances five seconds on the host. Child adb and its device clock are independent.
+    const clock = stickyBanner && t.mock.method(Date, "now", () => start + (w.state().bannerReads || 0) * 5000);
     try {
       const result = await phase.androidPasswordLogin({ out,
         env: { ...w.env, QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, GITHUB_STEP_SUMMARY: summary },
-        pollMs: 10, timeoutMs: stickyBanner ? 4000 : 15000 });
+        pollMs: 10, timeoutMs });
       const state = w.state();
       assert.equal(state.formSubmits, 1);
-      assert.ok(state.bannerReads >= 2);
+      assert.equal(state.bannerReads, expectedReads);
       assert.equal(state.bannerTaps ?? 0, 0);
       assert.equal(result.ok, !stickyBanner);
       if (stickyBanner) {
@@ -328,7 +362,10 @@ test("a Chrome save-password banner over the web confirmation receives no taps",
         assert.equal(state.confirmTaps, 1);
         assert.equal(state.screen, "home");
       }
-    } finally { w.close(); }
+    } finally {
+      if (clock) clock.mock.restore();
+      w.close();
+    }
   }
 });
 
