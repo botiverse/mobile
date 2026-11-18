@@ -1569,12 +1569,12 @@ internal class SharedThreadComposerDraftPersistSlice(
     recordsKnownAtStart: Boolean = true,
     /**
      * Write the first typed change after a quiet period synchronously, before the transition
-     * returns (task #246).  The background write it replaces took 20-30 ms at p50 and over 100 ms at
-     * p95 on an emulator (dispatch to Dispatchers.Default, locks, MMKV), so a kill in that window lost
-     * the newest keystroke.  On the calling (input) thread the write is a few MMKV putString calls
-     * (text, asTask, attachments, sources, mentions, editedAt, the active index): copies into a
-     * memory-mapped file, microseconds each, no fsync.  Changes inside the write interval still
-     * coalesce on [scheduler].
+     * returns (task #246).  On an emulator the background write it replaces was logged 20-30 ms (p50)
+     * and over 100 ms (p95) after the change (dispatch to Dispatchers.Default, locks, MMKV); a kill in
+     * that window can lose the newest keystroke.  On the calling (input) thread the write is a few
+     * MMKV putString calls (text, asTask, attachments, sources, mentions, editedAt, the active index):
+     * copies into a memory-mapped file without fsync, expected to take microseconds (not yet
+     * measured).  Changes inside the write interval still coalesce on [scheduler].
      */
     private val syncFirstChangeWrite: Boolean = true,
     /** Test seam: false simulates another thread holding the draft store lock at the synchronous write. */
