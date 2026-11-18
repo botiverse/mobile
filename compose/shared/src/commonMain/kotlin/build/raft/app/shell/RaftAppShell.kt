@@ -216,6 +216,7 @@ internal fun RaftAppShellSurface(
                             ) {
                                 CompositionLocalProvider(
                                     LocalRaftAppShellBodyTopBanner provides bodyTopBanner,
+                                    LocalRaftAppShellNetworkOffline provides (networkStatus == RaftAppShellNetworkStatus.Offline),
                                     // The top bar above cleared the status bar: pages here (list
                                     // and detail panes) must not pad it again (xxchan 11-02).
                                     LocalRaftTopSafeAreaConsumed provides (topNavigation != null),
@@ -227,7 +228,11 @@ internal fun RaftAppShellSurface(
                     }
                 }
                 if (shellOverlay != null) {
-                    Box(modifier = Modifier.fillMaxSize().zIndex(RaftAppContentHostZIndex)) { shellOverlay() }
+                    Box(modifier = Modifier.fillMaxSize().zIndex(RaftAppContentHostZIndex)) {
+                        CompositionLocalProvider(
+                            LocalRaftAppShellNetworkOffline provides (networkStatus == RaftAppShellNetworkStatus.Offline),
+                        ) { shellOverlay() }
+                    }
                 }
                 if (showBottomTabs) {
                     // raft-design #620: gone at once when the keyboard opens, back with a short

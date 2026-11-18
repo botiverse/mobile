@@ -25,6 +25,8 @@ import build.raft.app.data.SharedHomeSearchPanelState
 import build.raft.app.data.SearchArtifactHit
 import build.raft.app.data.SearchArtifactsIntent
 import build.raft.app.data.SearchArtifactsState
+import build.raft.app.data.SearchCoreGroupsIntent
+import build.raft.app.data.SearchCoreGroupsState
 import build.raft.app.data.SharedHomeSearchSavedIntent
 import build.raft.app.data.hasMessageSearchIntent
 import build.raft.app.data.InboxItem
@@ -63,9 +65,9 @@ import androidx.compose.foundation.layout.widthIn
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.designsystem.components.RaftSearchShowAll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
@@ -214,6 +216,10 @@ internal fun SharedHomeSearchPanel(
     artifacts: SearchArtifactsState? = null,
     onArtifactsIntent: (SearchArtifactsIntent) -> Unit = {},
     onOpenArtifact: (SearchArtifactHit) -> Unit = {},
+    // Core's channels and people groups (web useCoreSearchGroups): when a group answers it replaces
+    // that group's local rows. Null: off (a conversation's own search), the local rows only.
+    coreGroups: SearchCoreGroupsState? = null,
+    onCoreGroupsIntent: (SearchCoreGroupsIntent) -> Unit = {},
 ) {
     val channelFilters = remember(homeState) { homeSearchChannelFilters(homeState) }
     val artifactsContext =
@@ -256,14 +262,49 @@ internal fun SharedHomeSearchPanel(
             computerDirectory = computerDirectory
         )
     }
+    // The local rows by key (every loaded destination, matched or not): a server row reuses the
+    // loaded channel's or DM's own identity, and its key, when the app holds it.
+    val localEntityByKey = remember(
+        homeState,
+        state.senderFilters,
+        channelEntityLabel,
+        dmEntityLabel,
+        agentEntityLabel,
+        personEntityLabel,
+        membersEntityLabel,
+    ) {
+        homeSearchEntityCandidates(
+            homeState = homeState,
+            senderFilters = state.senderFilters,
+            channelLabel = channelEntityLabel,
+            dmLabel = dmEntityLabel,
+            agentLabel = agentEntityLabel,
+            personLabel = personEntityLabel,
+            membersLabel = membersEntityLabel,
+        ).associate { it.result.key to it.result }
+    }
+    val entityServerId = (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
+    // web composeSearchEntityGroups: Channels, People, Computers; a group's server answer for these
+    // words replaces its local rows.
+    val entityGroups = remember(state.query, entityResults, coreGroups, localEntityByKey, entityServerId, channelEntityLabel, agentEntityLabel, personEntityLabel) {
+        composeHomeSearchEntityGroups(
+            query = state.query,
+            local = entityResults,
+            core = coreGroups,
+            toChannel = { hit -> hit.toHomeSearchEntityResult(localEntityByKey, channelEntityLabel) },
+            toPerson = { hit -> entityServerId?.let { hit.toHomeSearchEntityResult(localEntityByKey, it, agentEntityLabel, personEntityLabel) } },
+        )
+    }
+    val allEntityResults = entityGroups.results
+    val coreGroupsNote = entityGroups.note(offline = LocalRaftAppShellNetworkOffline.current)
+    val retryCoreGroups = { onCoreGroupsIntent(SearchCoreGroupsIntent.Retry) }
     // web MessageSearchPage `historyWindowed`: a Free server's search reaches back only 30 days.
     val historyWindowDays = remember(homeState) { homeState.homeSearchHistoryWindowDays() }
     // web `searchIncomplete` / `incompleteSearchNote`: the server stopped at its scan budget.
     val incompleteNote = if (state.searchIncomplete) homeSearchIncompleteNote(state.searchedThrough, timeContext) else null
     val continueSearching = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSearch) }
-    // web useSearchKeyboardSelection `entityListExpanded`: collapsed again for each server and query.
-    var entitiesExpanded by remember(state.serverId, state.query.trim()) { mutableStateOf(false) }
-    val shownEntityResults = remember(entityResults, entitiesExpanded) { entityResults.homeSearchShownEntities(entitiesExpanded) }
+    // web: each group's Show all, collapsed again for each server and query.
+    var expandedEntityGroups by remember(state.serverId, state.query.trim()) { mutableStateOf(emptySet<HomeSearchEntityGroupId>()) }
     val computerSearchEligible = state.query.trim().firstOrNull() !in setOf('#', '@') && state.query.trim().isNotBlank()
     val frequentEntityResults = remember(
         state.frequentEntityRanks,
@@ -350,9 +391,9 @@ internal fun SharedHomeSearchPanel(
     var channelSearch by remember { mutableStateOf("") }
     val pinLabel = stringResource(Res.string.home_action_pin)
     val unpinLabel = stringResource(Res.string.home_action_unpin)
-    LaunchedEffect(entityResults) {
+    LaunchedEffect(allEntityResults) {
         val activeKey = activePinMenu?.resultKey
-        if (activeKey != null && entityResults.none { it.key == activeKey }) {
+        if (activeKey != null && allEntityResults.none { it.key == activeKey }) {
             activePinMenu = null
         }
     }
@@ -582,7 +623,9 @@ internal fun SharedHomeSearchPanel(
                     overlay = overlay,
                     state = state,
                     homeState = homeState,
-                    entityResults = entityResults,
+                    entityGroups = entityGroups,
+                    coreGroupsNote = coreGroupsNote,
+                    onCoreGroupsIntent = onCoreGroupsIntent,
                     frequentEntityResults = frequentEntityResults,
                     groupedResults = groupedResults,
                     editor = searchEditor,
@@ -662,7 +705,7 @@ internal fun SharedHomeSearchPanel(
                         // One column: the history notice stacks above what the item shows.
                         Column(Modifier.fillMaxWidth()) {
                         // web `totalResults`: destinations, app hits and messages.
-                        val hasSearchRows = projectedItems.isNotEmpty() || entityResults.isNotEmpty() || artifactHits.isNotEmpty()
+                        val hasSearchRows = projectedItems.isNotEmpty() || !entityGroups.isEmpty || artifactHits.isNotEmpty()
                         // web `historyNotice`: on every search, before anything is typed too; not beside
                         // a failed search's own error.
                         val searchFailed =
@@ -685,7 +728,7 @@ internal fun SharedHomeSearchPanel(
                             )
                         } else if (showSearchHome) {
                             historyNotice()
-                        } else if ((state.loading || (computerSearchEligible && computerDirectory.initialLoadInFlight)) && !hasSearchRows) {
+                        } else if ((state.loading || entityGroups.pending || (computerSearchEligible && computerDirectory.initialLoadInFlight)) && !hasSearchRows) {
                             Column(Modifier.fillParentMaxSize()) {
                                 historyNotice()
                                 RaftCenteredLoading(modifier = Modifier.fillMaxWidth().weight(1f))
@@ -707,7 +750,7 @@ internal fun SharedHomeSearchPanel(
                                     }
                                 }
                             )
-                        } else if (!state.searched && projectedItems.isEmpty() && entityResults.isEmpty() && !artifactsShown) {
+                        } else if (!state.searched && projectedItems.isEmpty() && entityGroups.isEmpty && !artifactsShown) {
                             historyNotice()
                             SharedHomeSearchEmptyState(
                                 title = stringResource(Res.string.search_empty_title),
@@ -716,7 +759,7 @@ internal fun SharedHomeSearchPanel(
                         } else if (
                             (state.empty || state.searched) &&
                                 projectedItems.isEmpty() &&
-                                entityResults.isEmpty() &&
+                                entityGroups.isEmpty &&
                                 !artifactsShown &&
                                 incompleteNote != null
                         ) {
@@ -730,15 +773,21 @@ internal fun SharedHomeSearchPanel(
                         } else if (
                             (state.empty || state.searched) &&
                                 projectedItems.isEmpty() &&
-                                entityResults.isEmpty() &&
+                                entityGroups.isEmpty &&
                                 // web `showNoResults`: not while an app group waits, failed or has hits.
                                 !artifactsShown
                         ) {
                             val trimmedQuery = state.query.trim()
                             historyNotice()
+                            // web SearchNoResultsState `onlyLoadedEntities`: core's channels and
+                            // people couldn't be searched, so the line says why and the title says
+                            // only the loaded ones were.
+                            coreGroupsNote?.let { HomeSearchCoreGroupsNoteLine(it, entityGroups.error, retryCoreGroups) }
                             SharedHomeSearchEmptyState(
                                 title =
-                                    if (trimmedQuery.isNotBlank()) {
+                                    if (coreGroupsNote != null) {
+                                        stringResource(Res.string.search_core_groups_no_loaded_matches)
+                                    } else if (trimmedQuery.isNotBlank()) {
                                         Res.string.search_empty_results_query.format(listOf(trimmedQuery)).localized()
                                     } else {
                                         stringResource(Res.string.search_empty_results)
@@ -755,9 +804,12 @@ internal fun SharedHomeSearchPanel(
                             )
                         } else {
                             SharedHomeSearchResultsCount(
-                                totalResults = state.totalCount + entityResults.size + artifactHits.size,
-                                searching = state.querySearchPending || state.loading || state.refreshing
+                                totalResults = state.totalCount + entityGroups.total + artifactHits.size,
+                                // web: "Searching…" until every core group has answered too.
+                                searching = state.querySearchPending || state.loading || state.refreshing || entityGroups.pending
                             )
+                            // web SearchEntityResultsIncompleteNote: the summary's second line.
+                            coreGroupsNote?.let { HomeSearchCoreGroupsNoteLine(it, entityGroups.error, retryCoreGroups) }
                             historyNotice()
                         }
                         }
@@ -840,10 +892,30 @@ internal fun SharedHomeSearchPanel(
                             item(key = "search-home-frequent-end") { RaftSearchListEnd() }
                         }
                     }
-                    if (entityResults.isNotEmpty()) {
-                        item {
-                            // web SearchEntityResultsSection: "Server entities" and their count.
-                            SharedHomeSearchSectionLabel(stringResource(Res.string.search_section_entities), count = entityResults.size)
+                    // web SearchEntityResultsSection, one per group: the heading with its count
+                    // (the server's total; none while it is asked) and Show all at its end; the
+                    // first five rows, every loaded one when expanded, then Load more.
+                    entityGroups.groups.forEach { group ->
+                        val expanded = group.id in expandedEntityGroups
+                        val shownEntityResults = group.shown(expanded)
+                        item(key = "search-entity-group-${group.id.testTag}") {
+                            Box(Modifier.testTag("${HomeSearchEntityGroupTags.Group}-${group.id.testTag}")) {
+                                SharedHomeSearchSectionLabel(
+                                    group.id.label(),
+                                    count = group.count,
+                                    trailing =
+                                        if (group.showsToggle(expanded)) {
+                                            {
+                                                HomeSearchEntityShowAllToggle(expanded) {
+                                                    expandedEntityGroups =
+                                                        if (expanded) expandedEntityGroups - group.id else expandedEntityGroups + group.id
+                                                }
+                                            }
+                                        } else {
+                                            null
+                                        },
+                                )
+                            }
                         }
                         items(shownEntityResults.size, key = { index -> shownEntityResults[index].key }) { index ->
                             Box(
@@ -880,22 +952,12 @@ internal fun SharedHomeSearchPanel(
                             )
                             }
                         }
-                        if (homeSearchEntitiesCollapsible(entityResults.size)) {
-                            item(key = "search-entities-show-all") {
-                                // web SearchEntityResultsSection ShowMoreToggle: "Show all N" / "Show fewer".
-                                RaftSearchShowAll(
-                                    label =
-                                        if (entitiesExpanded) {
-                                            stringResource(Res.string.search_show_fewer_entities)
-                                        } else {
-                                            Res.string.search_show_all_entities.format(listOf(entityResults.size)).localized()
-                                        },
-                                    onClick = { entitiesExpanded = !entitiesExpanded },
-                                    modifier = Modifier.raftSafeAreaHorizontalPadding(),
-                                )
+                        if (group.showsMore(expanded)) {
+                            item(key = "search-entity-more-${group.id.testTag}") {
+                                HomeSearchEntityGroupMore(group) { group.id.loadMoreIntent()?.let(onCoreGroupsIntent) }
                             }
                         }
-                        item(key = "search-entities-end") { RaftSearchListEnd() }
+                        item(key = "search-entity-end-${group.id.testTag}") { RaftSearchListEnd() }
                     }
                     // web MessageSearchPage: the app groups between the destinations and the messages.
                     if (!showSearchHome) {
@@ -991,7 +1053,7 @@ internal fun SharedHomeSearchPanel(
                     if (groupedResults.isNotEmpty()) {
                         item(key = "search-messages-end") { RaftSearchListEnd() }
                     }
-                    if (incompleteNote != null && (projectedItems.isNotEmpty() || entityResults.isNotEmpty())) {
+                    if (incompleteNote != null && (projectedItems.isNotEmpty() || !entityGroups.isEmpty)) {
                         // web SearchLoadMoreFooter `searchIncomplete`: where the search got to, and
                         // Continue searching in place of Load more.
                         item(key = "search-continue") {

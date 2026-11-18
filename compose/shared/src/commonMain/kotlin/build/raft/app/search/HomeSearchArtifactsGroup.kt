@@ -27,6 +27,10 @@ import build.raft.app.data.SearchArtifactsStatus
 import build.raft.app.data.SharedSearchArtifactsStore
 import build.raft.app.markdown.lucideIcon
 import build.raft.app.resources.*
+import build.raft.app.data.ArtifactHome
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
@@ -58,6 +62,7 @@ internal object HomeSearchArtifactsTags {
     const val Failed = "search-artifacts-failed"
     const val Retry = "search-artifacts-retry"
     const val More = "search-artifacts-more"
+    const val Archived = "search-app-hit-archived"
 }
 
 /** One surface's store (the page or the wide panel): [limit] per page, null for the server's default. */
@@ -223,10 +228,25 @@ internal fun HomeSearchArtifactHitRow(
             artifactsHomeActorName(row.author, stringResource(Res.string.artifacts_dashboard_author_unknown)),
             raftRelativeTimestampLabel(row.summary.updatedAt, context.timeContext),
         ).filter { it.isNotBlank() }.joinToString(" · ")
+    // web ArtifactSearchHit: its home conversation is archived (`home.conversation.archived`).
+    val homeArchived = (row.summary.home as? ArtifactHome.Conversation)?.archived == true
     RaftSearchResultRow(
         onClick = onOpen,
         modifier = modifier.testTag(HomeSearchArtifactsTags.Hit),
         selected = selected,
+        badge =
+            if (homeArchived) {
+                {
+                    RaftBadge(
+                        text = stringResource(Res.string.channel_settings_status_archived),
+                        modifier = Modifier.testTag(HomeSearchArtifactsTags.Archived),
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = RaftBadgeVariant.Muted,
+                    )
+                }
+            } else {
+                null
+            },
         leading = {
             RaftIconTile(size = RaftIconTileSize.Sm) {
                 RaftLucideIcon(row.summary.kind.lucideIcon(), Modifier.size(RaftIconTileSize.Sm.icon), color = raftArgbHex(colors.foregroundMuted))

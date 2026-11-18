@@ -64,15 +64,16 @@ class HomeSearchParityTest {
     }
 
     @Test
-    fun theWidePanelOffersShowAllForMoreThanFiveDestinations() {
+    fun theWidePanelOffersShowAllAtTheGroupHeadingForMoreThanFiveDestinations() {
         val entities = (1..12).map { channelEntity("eng-$it") }
+        val group = HomeSearchEntityGroupView(HomeSearchEntityGroupId.Channels, entities, total = 12, fromServer = false)
         fun content(expanded: Boolean) =
             HomeSearchOverlayContent(
                 typed = true,
                 recent = emptyList(),
                 exact = null,
-                entities = entities,
-                entitiesExpanded = expanded,
+                entityGroups = listOf(group),
+                expandedGroups = if (expanded) setOf(HomeSearchEntityGroupId.Channels) else emptySet(),
                 messages = emptyList(),
                 messageCount = null,
                 searched = true,
@@ -81,14 +82,15 @@ class HomeSearchParityTest {
 
         val collapsed = content(expanded = false).entries()
         assertEquals(5, collapsed.count { it is HomeSearchOverlayEntry.Entity })
-        val showAll = assertIs<HomeSearchOverlayEntry.ShowAll>(collapsed.single { it is HomeSearchOverlayEntry.ShowAll })
-        assertEquals(12 to false, showAll.count to showAll.expanded)
+        val heading = assertIs<HomeSearchOverlayEntry.EntitiesHeading>(collapsed.single { it is HomeSearchOverlayEntry.EntitiesHeading })
+        assertEquals(12, heading.group.count)
+        assertTrue(heading.group.showsToggle(heading.expanded))
         // The cursor walks the shown rows only; "Show all" is a button, not a row.
         assertEquals(5, content(expanded = false).rows.count { it.section == HomeSearchOverlaySection.Entities })
 
         val expanded = content(expanded = true).entries()
         assertEquals(12, expanded.count { it is HomeSearchOverlayEntry.Entity })
-        assertEquals(true, expanded.filterIsInstance<HomeSearchOverlayEntry.ShowAll>().single().expanded)
+        assertEquals(true, expanded.filterIsInstance<HomeSearchOverlayEntry.EntitiesHeading>().single().expanded)
     }
 
     // --- 3./4. Incomplete search and the history notice in the wide panel ---
@@ -100,8 +102,7 @@ class HomeSearchParityTest {
                 typed = true,
                 recent = emptyList(),
                 exact = null,
-                entities = emptyList(),
-                entitiesExpanded = false,
+                entityGroups = emptyList(),
                 messages = emptyList(),
                 messageCount = null,
                 searched = true,

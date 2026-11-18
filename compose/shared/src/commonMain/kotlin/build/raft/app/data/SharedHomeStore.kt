@@ -4369,7 +4369,7 @@ internal class SharedHomeStore(
         val channelId = target.messageStreamChannelId()
         val previousState = _state.value
         dropChannelGuards(channelId)
-        applyHomeSnapshotLocally { it.withHomeChannelArchived(conversationId) }
+        applyHomeSnapshotLocally { it.withoutHomeConversation(conversationId) }
         if (_state.value.selectedConversationId == conversationId) {
             reduceState(_state.value.copy(selectedConversationId = null))
         }
@@ -5869,20 +5869,6 @@ private fun HomeSnapshot.withoutHomeConversation(conversationId: String): HomeSn
         server = server.copy(unreadCount = nextServerUnreadCount),
         unreadTotal = nextUnreadTotal,
         serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
-    )
-}
-
-/**
- * Archived from the row menu: the row leaves the sidebar and moves to [HomeSnapshot.archivedChannels],
- * so search keeps finding it (ranked last, badged) before the next fetch confirms it.
- */
-internal fun HomeSnapshot.withHomeChannelArchived(conversationId: String): HomeSnapshot {
-    val archivedRow =
-        channels.firstOrNull { it.matchesHomeConversation(conversationId) }?.copy(archived = true)
-    val without = withoutHomeConversation(conversationId)
-    if (archivedRow == null) return without
-    return without.copy(
-        archivedChannels = listOf(archivedRow) + without.archivedChannels.filterNot { it.threadId == archivedRow.threadId }
     )
 }
 

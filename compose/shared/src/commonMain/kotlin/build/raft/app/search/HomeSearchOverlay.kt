@@ -21,6 +21,8 @@ import build.raft.app.data.SearchArtifactHit
 import build.raft.app.data.SearchArtifactsIntent
 import build.raft.app.data.SearchArtifactsState
 import build.raft.app.data.SearchArtifactsStatus
+import build.raft.app.data.SearchCoreGroupsIntent
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedHomeSearchPanelState
 import build.raft.app.data.SharedHomeSearchSavedIntent
 import build.raft.app.data.SharedHomeState
@@ -40,6 +42,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftGlyph
@@ -50,7 +53,6 @@ import build.raft.designsystem.components.RaftSearchResultIcon
 import build.raft.designsystem.components.RaftSearchResultRow
 import build.raft.designsystem.components.RaftSearchResultTitle
 import build.raft.designsystem.components.RaftSearchSectionHeader
-import build.raft.designsystem.components.RaftSearchShowAll
 import build.raft.designsystem.components.raftSearchRowSelected
 import build.raft.designsystem.theme.RaftTheme
 
@@ -85,9 +87,14 @@ internal class HomeSearchOverlayContent(
     val typed: Boolean,
     val recent: List<SearchEntityResult>,
     val exact: SearchEntityResult?,
-    /** Every destination but the exact one; the panel shows [HomeSearchEntityPreviewCount] unless expanded. */
-    val entities: List<SearchEntityResult>,
-    val entitiesExpanded: Boolean,
+    /**
+     * The destinations by group (web composeSearchEntityGroups), the exact one left out; each shows
+     * [HomeSearchEntityPreviewCount] unless its group is in [expandedGroups].
+     */
+    val entityGroups: List<HomeSearchEntityGroupView>,
+    val expandedGroups: Set<HomeSearchEntityGroupId> = emptySet(),
+    /** Core's groups couldn't all be asked: the line under "Search for" (web incomplete note). */
+    val coreGroupsNote: HomeSearchCoreGroupsNote? = null,
     val messages: List<HomeSearchResultGroup>,
     val messageCount: Int?,
     val searched: Boolean,
@@ -99,7 +106,9 @@ internal class HomeSearchOverlayContent(
     /** The Artifacts group (web app group, previewed like the messages), or null: off. */
     val artifacts: SearchArtifactsState? = null,
 ) {
-    val shownEntities: List<SearchEntityResult> = entities.homeSearchShownEntities(entitiesExpanded)
+    val shownEntities: List<SearchEntityResult> = entityGroups.flatMap { it.shown(it.id in expandedGroups) }
+
+    val hasEntities: Boolean = entityGroups.isNotEmpty()
 
     /** The Artifacts the panel previews (the store asks for 5; web `appGroupPreviewLimit`). */
     val shownArtifacts: List<SearchArtifactHit> =
@@ -142,9 +151,10 @@ internal sealed class HomeSearchOverlayEntry(val itemKey: String, val rowKey: St
     class Recent(val result: SearchEntityResult) : HomeSearchOverlayEntry("recent:${result.key}", "recent:${result.key}")
     class Exact(val result: SearchEntityResult) : HomeSearchOverlayEntry("exact:${result.key}", result.key)
     object SearchFor : HomeSearchOverlayEntry(HomeSearchOverlaySearchForKey, HomeSearchOverlaySearchForKey)
-    class EntitiesHeading(val count: Int) : HomeSearchOverlayEntry("entities-heading")
+    class CoreGroupsNote(val note: HomeSearchCoreGroupsNote) : HomeSearchOverlayEntry("core-groups-note")
+    class EntitiesHeading(val group: HomeSearchEntityGroupView, val expanded: Boolean) : HomeSearchOverlayEntry("entities-heading:${group.id.testTag}")
     class Entity(val result: SearchEntityResult) : HomeSearchOverlayEntry("entity:${result.key}", result.key)
-    class ShowAll(val count: Int, val expanded: Boolean) : HomeSearchOverlayEntry("entities-show-all")
+    class EntitiesMore(val group: HomeSearchEntityGroupView) : HomeSearchOverlayEntry("entities-more:${group.id.testTag}")
     class ArtifactsHeading(val state: SearchArtifactsState) : HomeSearchOverlayEntry("artifacts-heading")
     object ArtifactsLoading : HomeSearchOverlayEntry("artifacts-loading")
     class ArtifactsFailed(val state: SearchArtifactsState) : HomeSearchOverlayEntry("artifacts-failed")
@@ -172,12 +182,12 @@ internal fun HomeSearchOverlayContent.entries(): List<HomeSearchOverlayEntry> =
         }
         exact?.let { add(HomeSearchOverlayEntry.Exact(it)) }
         add(HomeSearchOverlayEntry.SearchFor)
-        if (entities.isNotEmpty()) {
-            add(HomeSearchOverlayEntry.EntitiesHeading(entities.size))
-            shownEntities.forEach { add(HomeSearchOverlayEntry.Entity(it)) }
-            if (homeSearchEntitiesCollapsible(entities.size)) {
-                add(HomeSearchOverlayEntry.ShowAll(entities.size, entitiesExpanded))
-            }
+        coreGroupsNote?.let { add(HomeSearchOverlayEntry.CoreGroupsNote(it)) }
+        entityGroups.forEach { group ->
+            val expanded = group.id in expandedGroups
+            add(HomeSearchOverlayEntry.EntitiesHeading(group, expanded))
+            group.shown(expanded).forEach { add(HomeSearchOverlayEntry.Entity(it)) }
+            if (group.showsMore(expanded)) add(HomeSearchOverlayEntry.EntitiesMore(group))
         }
         // web MessageSearchPage: the app groups between the destinations and the messages.
         artifacts?.takeIf { artifactsShown }?.let { group ->
@@ -193,9 +203,9 @@ internal fun HomeSearchOverlayContent.entries(): List<HomeSearchOverlayEntry> =
                 add(HomeSearchOverlayEntry.MessagesHeading(messageCount))
                 messages.forEachIndexed { index, group -> add(HomeSearchOverlayEntry.Message(group, index)) }
             }
-            loading && entities.isEmpty() && exact == null && shownArtifacts.isEmpty() -> add(HomeSearchOverlayEntry.Loading)
+            loading && !hasEntities && exact == null && shownArtifacts.isEmpty() -> add(HomeSearchOverlayEntry.Loading)
             // web `showNoResults`: not while an app group waits, failed or has hits.
-            searched && entities.isEmpty() && exact == null && !artifactsShown ->
+            searched && !hasEntities && exact == null && !artifactsShown ->
                 // web SearchNoResultsState `searchIncomplete`: not "no results" while the server
                 // has more to read.
                 add(incompleteNote?.let(HomeSearchOverlayEntry::NoMatchesYet) ?: HomeSearchOverlayEntry.NoResults)
@@ -218,7 +228,7 @@ internal fun HomeSearchOverlayBody(
     memberAvatarResolver: RaftMemberAvatarResolver,
     cacheServerId: String?,
     timeContext: AppShellThreadTimeContext?,
-    onToggleEntities: () -> Unit,
+    onToggleEntities: (HomeSearchEntityGroupId) -> Unit,
     onOpenEntity: (SearchEntityResult) -> Unit,
     onOpenItem: (InboxItem) -> Unit,
     onOpenFullResults: () -> Unit,
@@ -229,6 +239,8 @@ internal fun HomeSearchOverlayBody(
     artifactsContext: HomeSearchArtifactsContext = HomeSearchArtifactsContext(query, null, timeContext),
     onArtifactsIntent: (SearchArtifactsIntent) -> Unit = {},
     onOpenArtifact: (SearchArtifactHit) -> Unit = {},
+    onCoreGroupsIntent: (SearchCoreGroupsIntent) -> Unit = {},
+    coreGroupsError: ScreenError? = null,
 ) {
     val entries = remember(content) { content.entries() }
     LazyColumn(state = listState, modifier = modifier.fillMaxWidth()) {
@@ -260,20 +272,24 @@ internal fun HomeSearchOverlayBody(
                     ) {
                         RaftSearchResultTitle(Res.string.search_overlay_search_for.format(listOf(query.trim())).localized())
                     }
+                is HomeSearchOverlayEntry.CoreGroupsNote ->
+                    HomeSearchCoreGroupsNoteLine(entry.note, coreGroupsError, onRetry = { onCoreGroupsIntent(SearchCoreGroupsIntent.Retry) })
                 is HomeSearchOverlayEntry.EntitiesHeading ->
-                    RaftSearchSectionHeader(stringResource(Res.string.search_section_entities), count = entry.count)
+                    RaftSearchSectionHeader(
+                        entry.group.id.label(),
+                        modifier = Modifier.testTag("${HomeSearchEntityGroupTags.Group}-${entry.group.id.testTag}"),
+                        count = entry.group.count,
+                        trailing =
+                            if (entry.group.showsToggle(entry.expanded)) {
+                                { HomeSearchEntityShowAllToggle(entry.expanded) { onToggleEntities(entry.group.id) } }
+                            } else {
+                                null
+                            },
+                    )
                 is HomeSearchOverlayEntry.Entity ->
                     OverlayEntityRow(entry.result, query, selected, agentStatusResolver, memberAvatarResolver) { onOpenEntity(entry.result) }
-                is HomeSearchOverlayEntry.ShowAll ->
-                    RaftSearchShowAll(
-                        label =
-                            if (entry.expanded) {
-                                stringResource(Res.string.search_show_fewer_entities)
-                            } else {
-                                Res.string.search_show_all_entities.format(listOf(entry.count)).localized()
-                            },
-                        onClick = onToggleEntities,
-                    )
+                is HomeSearchOverlayEntry.EntitiesMore ->
+                    HomeSearchEntityGroupMore(entry.group) { entry.group.id.loadMoreIntent()?.let(onCoreGroupsIntent) }
                 is HomeSearchOverlayEntry.ArtifactsHeading -> HomeSearchArtifactsHeading(entry.state, overlay = true)
                 HomeSearchOverlayEntry.ArtifactsLoading -> HomeSearchArtifactsSkeleton()
                 is HomeSearchOverlayEntry.ArtifactsFailed ->
@@ -316,7 +332,13 @@ internal fun HomeSearchOverlayBody(
                     )
                 HomeSearchOverlayEntry.NoResults ->
                     RaftSearchEmptyState(
-                        title = Res.string.search_empty_results_query.format(listOf(query.trim())).localized(),
+                        // web SearchNoResultsState `onlyLoadedEntities`.
+                        title =
+                            if (content.coreGroupsNote != null) {
+                                stringResource(Res.string.search_core_groups_no_loaded_matches)
+                            } else {
+                                Res.string.search_empty_results_query.format(listOf(query.trim())).localized()
+                            },
                         detail = stringResource(Res.string.search_empty_query_detail),
                         typography = RaftTheme.typography,
                     )
@@ -366,7 +388,7 @@ internal fun HomeSearchOverlayPanel(
     overlay: HomeSearchOverlayChrome,
     state: SharedHomeSearchPanelState,
     homeState: SharedHomeState,
-    entityResults: List<SearchEntityResult>,
+    entityGroups: HomeSearchEntityGroups,
     frequentEntityResults: List<SearchEntityResult>,
     groupedResults: List<HomeSearchResultGroup>,
     editor: SharedHomeSearchEditorOwner,
@@ -390,8 +412,11 @@ internal fun HomeSearchOverlayPanel(
     artifactsContext: HomeSearchArtifactsContext = HomeSearchArtifactsContext(state.query, null, timeContext),
     onArtifactsIntent: (SearchArtifactsIntent) -> Unit = {},
     onOpenArtifact: (SearchArtifactHit) -> Unit = {},
+    coreGroupsNote: HomeSearchCoreGroupsNote? = null,
+    onCoreGroupsIntent: (SearchCoreGroupsIntent) -> Unit = {},
 ) {
     val typed = state.query.isNotBlank()
+    val entityResults = entityGroups.results
     val channelLabel = stringResource(Res.string.search_entity_channel)
     val dmLabel = stringResource(Res.string.search_entity_dm)
     val agentLabel = stringResource(Res.string.search_entity_agent)
@@ -416,7 +441,7 @@ internal fun HomeSearchOverlayPanel(
             )
         }
     // Expanded for this server and query only: a new query starts collapsed (web).
-    var entitiesExpanded by remember(state.serverId, state.query.trim()) { mutableStateOf(false) }
+    var expandedGroups by remember(state.serverId, state.query.trim()) { mutableStateOf(emptySet<HomeSearchEntityGroupId>()) }
     val exactKey = homeSearchOverlayExactKey(state.query, entityResults)
     val exact = exactKey?.let { key -> entityResults.firstOrNull { it.key == key } }
     val content =
@@ -424,8 +449,12 @@ internal fun HomeSearchOverlayPanel(
             typed = typed,
             recent = recent,
             exact = exact,
-            entities = entityResults.filter { it.key != exactKey },
-            entitiesExpanded = entitiesExpanded,
+            entityGroups =
+                entityGroups.groups.mapNotNull { group ->
+                    group.copy(results = group.results.filter { it.key != exactKey }).takeIf { it.results.isNotEmpty() }
+                },
+            expandedGroups = expandedGroups,
+            coreGroupsNote = coreGroupsNote,
             // Flat message rows, as the web panel: a thread hit shows "#channel · thread" on its
             // own row rather than under its thread's heading (the full page groups them).
             messages =
@@ -438,7 +467,7 @@ internal fun HomeSearchOverlayPanel(
                     }.take(HomeSearchOverlayMessagePreviewCount),
             messageCount = state.totalCount.takeIf { it > 0 && !state.loading },
             searched = state.searched,
-            loading = state.loading || state.querySearchPending,
+            loading = state.loading || state.querySearchPending || entityGroups.pending,
             historyWindowDays = historyWindowDays,
             incompleteNote = incompleteNote,
             artifacts = artifacts,
@@ -534,7 +563,7 @@ internal fun HomeSearchOverlayPanel(
                 memberAvatarResolver = memberAvatarResolver,
                 cacheServerId = cacheServerId,
                 timeContext = timeContext,
-                onToggleEntities = { entitiesExpanded = !entitiesExpanded },
+                onToggleEntities = { id -> expandedGroups = if (id in expandedGroups) expandedGroups - id else expandedGroups + id },
                 onOpenEntity = openEntity,
                 onOpenItem = openItem,
                 onOpenFullResults = { overlay.onOpenFullResults(state.query) },
@@ -551,6 +580,8 @@ internal fun HomeSearchOverlayPanel(
                 artifactsContext = artifactsContext,
                 onArtifactsIntent = onArtifactsIntent,
                 onOpenArtifact = openArtifact,
+                onCoreGroupsIntent = onCoreGroupsIntent,
+                coreGroupsError = entityGroups.error,
             )
         }
         popups()

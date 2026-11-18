@@ -69,8 +69,12 @@ class HomeSearchArtifactsOverlayTest {
             typed = true,
             recent = emptyList(),
             exact = null,
-            entities = if (entities) listOf(channelEntity("plan-room")) else emptyList(),
-            entitiesExpanded = false,
+            entityGroups =
+                if (entities) {
+                    listOf(HomeSearchEntityGroupView(HomeSearchEntityGroupId.Channels, listOf(channelEntity("plan-room")), total = 1, fromServer = false))
+                } else {
+                    emptyList()
+                },
             messages =
                 if (messages) {
                     listOf(HomeSearchResultGroup.Message(build.raft.app.data.InboxItem(key = "m1", kind = build.raft.app.model.InboxItemKind.Channel, channelId = ChannelId("c"), channelName = "launch")))

@@ -286,9 +286,6 @@ fun parseRaftHome(
         .filter { it.archivedAt == null && !it.isAgentLoungeWire() }
         .map { it.toChannelRow() }
         .dedupeHomeChannels()
-    // The home list asks for archived channels too (`archived=include`, web channelStore): the
-    // sidebar still hides them, only search lists them ([HomeSnapshot.archivedChannels]).
-    val archivedChannels = payload.channels.homeArchivedChannelRows()
 
     val directMessages = payload.directMessages
         .map { it.toDirectMessageRow(warningLogger) }
@@ -344,17 +341,10 @@ fun parseRaftHome(
             unreadEnrichmentAvailable = payload.unreadEnrichmentAvailable,
             unreadStale = payload.unreadStale,
             unreadUnavailable = payload.unreadUnavailable,
-            unreadRetryAfterMillis = payload.unreadRetryAfterMillis,
-            archivedChannels = archivedChannels
+            unreadRetryAfterMillis = payload.unreadRetryAfterMillis
         )
     )
 }
-
-/** The archived rows of a `GET /channels?archived=include` answer (no Agent Lounge, no duplicates). */
-internal fun List<HomeChannelWireDto>.homeArchivedChannelRows(): List<HomeChannelRow> =
-    filter { it.archivedAt != null && !it.isAgentLoungeWire() }
-        .map { it.toChannelRow() }
-        .dedupeHomeChannels()
 
 fun parseSharedChannelSnapshot(
     bodyText: String,

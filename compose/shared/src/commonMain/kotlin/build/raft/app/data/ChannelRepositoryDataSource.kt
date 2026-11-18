@@ -28,17 +28,17 @@ private suspend fun RaftNetworkClient.channels(
     includeArchived: Boolean = false,
 ): HomeNetworkResponse =
     if (includeArchived) {
-        request(priority, "channels", query = HOME_CHANNELS_QUERY, serverIdOverride = serverId)
+        request(priority, "channels", query = CHANNELS_INCLUDING_ARCHIVED_QUERY, serverIdOverride = serverId)
     } else {
         request(priority, "channels", serverIdOverride = serverId)
     }
 
 /**
- * `GET /channels?archived=include` (slock routes/channels.ts; the default is `exclude`): the web
- * loads its channel list this way (channelStore) so search and `#` find archived channels. Home
- * keeps them out of the sidebar ([HomeSnapshot.archivedChannels]).
+ * `GET /channels?archived=include` (slock routes/channels.ts; the default is `exclude`): the
+ * composer's `#` list offers archived channels, as the web's does. Global search finds them through
+ * core's search (`GET /api/search?app=channels`), not this list.
  */
-internal val HOME_CHANNELS_QUERY: List<Pair<String, String>> = listOf("archived" to "include")
+internal val CHANNELS_INCLUDING_ARCHIVED_QUERY: List<Pair<String, String>> = listOf("archived" to "include")
 
 private suspend fun RaftNetworkClient.directMessages(
     priority: DataRequestPriority,
@@ -437,7 +437,7 @@ internal class NetworkRaftHomeApi(
     private val networkClient: RaftNetworkClient
 ) : RaftHomeApi {
     override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
-        networkClient.request(priority, "channels", query = HOME_CHANNELS_QUERY)
+        networkClient.channels(priority)
 
     override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.directMessages(priority)
@@ -449,7 +449,7 @@ internal class NetworkRaftHomeApi(
         networkClient.serverUnreadSummary(priority)
 
     override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
-        networkClient.request(priority, "channels", query = HOME_CHANNELS_QUERY, serverIdOverride = serverId)
+        networkClient.request(priority, "channels", serverIdOverride = serverId)
 
     override suspend fun directMessages(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.request(priority, "channels/dm", serverIdOverride = serverId)

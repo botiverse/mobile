@@ -9,8 +9,6 @@ import build.raft.app.data.ComputerSummary
 import build.raft.app.data.selectComputerServerSlice
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.HomeConversationRow
-import build.raft.app.data.HomeChannelRow
-import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SearchScope
@@ -122,7 +120,14 @@ internal data class SearchEntityResult(
     val showPresence: Boolean = false,
     val archived: Boolean = false,
     /** The part of [subtitle] that is real data (a handle, a description); the rest is a fixed label that is never marked. Null = all of it. */
-    val subtitleDataRange: IntRange? = null
+    val subtitleDataRange: IntRange? = null,
+    /**
+     * The server's status of a row of core's search (`GET /api/search` channels / people groups);
+     * null on the local first paint. Drawn as it is (docs/contracts/web-search.md: clients only draw it).
+     */
+    val status: SearchEntityStatus? = null,
+    /** A channel's description (a not-joined channel says what it is about under "Not joined"). */
+    val description: String? = null,
 ) {
     val memberId: String?
         get() = memberIdentity?.memberId?.value
@@ -175,8 +180,13 @@ internal fun SearchEntityResult.appBotLookupMemberId(): String? {
  */
 internal fun SearchEntityResult.homeSearchChannelGlyph(kinds: RaftChannelKinds = RaftChannelKinds.Empty): RaftChannelKindGlyph {
     val identity = conversationIdentity ?: return kinds.glyph(null, null)
-    val type = if (identity.kind == ConversationKind.Joint) JointChannelKindWireValue else identity.channelType
-    return kinds.glyph(identity.channelId?.value, type)
+    return kinds.glyph(identity.channelId?.value, homeSearchChannelWireType())
+}
+
+/** A channel result's wire type (`channel` / `private` / `joint`), from its launch identity. */
+internal fun SearchEntityResult.homeSearchChannelWireType(): String? {
+    val identity = conversationIdentity ?: return null
+    return if (identity.kind == ConversationKind.Joint) JointChannelKindWireValue else identity.channelType ?: "channel"
 }
 
 internal fun SearchEntityResult.homeSearchEntityLeadingIconName(kinds: RaftChannelKinds = RaftChannelKinds.Empty): RaftLucideIconName? =
@@ -311,9 +321,11 @@ internal fun homeSearchEntityResults(
                         candidate.searchFields.map { field ->
                             ThreadComposerSuggestionSearchField(field.value, priority = field.priority)
                         },
-                    tier = candidate.tier,
                 )
             }
+    // The local first paint (web `buildSearchEntityEntries`): the composer ranker's matching and
+    // order, no status rule (archived, joined, Guest) decides anything; core's groups replace
+    // these rows once they answer ([composeHomeSearchEntityGroups]).
     // web MAX_ENTITY_RESULTS: every reasonable match up to 50; the list shows 5, then "Show all N".
     return rankThreadComposerSuggestionEntries(query = trimmedQuery, entries = entries, limit = HomeSearchEntityResultLimit)
         .distinctBy { it.key }
@@ -323,28 +335,7 @@ internal fun homeSearchEntityResults(
 internal data class HomeSearchEntityCandidate(
     val result: SearchEntityResult,
     val searchFields: List<HomeSearchEntitySearchField>,
-    /** [HomeSearchEntityTier]: live results, then live channels not joined, then archived channels. */
-    val tier: Int = HomeSearchEntityTier.Live,
 )
-
-/**
- * The search ranker's tier ([ThreadComposerSuggestionSearchEntry.tier], web `SEARCH_ENTITY_TIER`,
- * slock #14228): live results, then live channels the reader has not joined, then archived
- * channels, among matches of comparable strength. An exact name still comes first whatever its tier.
- */
-internal object HomeSearchEntityTier {
-    const val Live = 0
-    const val NotJoined = 1
-    const val Archived = 2
-
-    fun of(conversation: HomeConversationRow): Int =
-        when {
-            conversation.kind == ConversationKind.DirectMessage -> Live
-            conversation.archived -> Archived
-            !conversation.joined -> NotJoined
-            else -> Live
-        }
-}
 
 internal data class HomeSearchEntitySearchField(
     val value: String,
@@ -363,7 +354,7 @@ internal fun homeSearchEntityCandidates(
     computerDirectory: HomeSearchComputerDirectory = HomeSearchComputerDirectory(),
 ): List<HomeSearchEntityCandidate> {
     val snapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
-    val conversations = snapshot.channels + snapshot.homeSearchArchivedChannels() + snapshot.directMessages
+    val conversations = snapshot.channels + snapshot.directMessages
     val homeServerId = snapshot.server.id.value
     // task #238: this map is an identity index, so it needs an owner scope and must reject blank
     // ids. Keyed by a bare memberId, a joint-channel member carried in from another server could
@@ -403,7 +394,8 @@ internal fun homeSearchEntityCandidates(
                         conversationIdentity = conversationIdentity,
                         avatarWireValue = null,
                         showPresence = conversation.isAgentDirectMessage(),
-                        archived = conversation.archived
+                        archived = conversation.archived,
+                        description = conversation.subtitle?.takeIf { type == SearchEntityType.Channel && it.isNotBlank() },
                     ),
                 searchFields =
                     listOf(
@@ -412,7 +404,6 @@ internal fun homeSearchEntityCandidates(
                         HomeSearchEntitySearchField(conversation.channelId?.value.orEmpty(), priority = 5),
                         HomeSearchEntitySearchField(conversation.threadId.value, priority = 5),
                     ),
-                tier = HomeSearchEntityTier.of(conversation),
             )
         }
     val dmCandidatesByThreadId =
@@ -498,19 +489,6 @@ internal fun homeSearchEntityCandidates(
                 candidate.result.threadId?.let { threadId -> threadId in absorbedDmThreadIds } == true
         }
     return (visibleConversationEntries + memberEntries + computerEntries).distinctBy { it.result.key }
-}
-
-/**
- * The archived channels search lists (web `searchEntities`: archived channels rank last, with an
- * "Archived" badge), never the sidebar. A channel the live list holds (unarchived since the last
- * load) is the live row.
- */
-internal fun HomeSnapshot.homeSearchArchivedChannels(): List<HomeChannelRow> {
-    if (archivedChannels.isEmpty()) return emptyList()
-    val live = channels.mapTo(HashSet()) { it.threadId }
-    return archivedChannels
-        .filter { it.threadId !in live }
-        .map { if (it.archived) it else it.copy(archived = true) }
 }
 
 /**
