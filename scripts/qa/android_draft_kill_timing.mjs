@@ -402,8 +402,18 @@ const isComposer = (n) => n.pkg === PKG && n.cls.includes("EditText");
 const composerText = (n) => (n.text === placeholder() || n.text === n.hint ? "" : n.text);
 
 async function openChannel(api) {
-  shell(`am start -W -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d '${APP_LINK_BASE}/s/${api.server.slug}/channel/${api.channel.id}' ${PKG} >/dev/null`, { allowFailure: true });
-  return waitFor(`the composer of #${CHANNEL}`, isComposer, { timeoutMs: 60_000, intervalMs: 1000 });
+  const link = `${APP_LINK_BASE}/s/${api.server.slug}/channel/${api.channel.id}`;
+  for (let attempt = 1; ; attempt += 1) {
+    shell(`am start -W -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d '${link}' ${PKG} >/dev/null`, { allowFailure: true });
+    try {
+      return await waitFor(`the composer of #${CHANNEL}`, isComposer, { timeoutMs: 20_000, intervalMs: 1000 });
+    } catch (error) {
+      if (attempt >= 3) throw error;
+      log(`composer not shown after the app link (attempt ${attempt}); retrying`);
+      // A browser left on top from sign-in must not take the link.
+      shell("am force-stop com.android.chrome", { allowFailure: true });
+    }
+  }
 }
 
 function pidOf() {
@@ -462,8 +472,12 @@ function killScript({ oldPid, startTime, before, sleepSec, probeLabel = null }) 
     `log -t RaftDraftTimingProbe "run=${runIndex} start"; ` +
     (probeLabel ? `log -t RaftDraftTimingProbe "run=${runIndex} ${probeLabel}"; ` : "") +
     `${before}sleep ${sleepSec}; ` +
-    `( i=0; while [ -d ${P} ] && [ $i -lt 4000 ]; do sleep 0.005; i=$((i+1)); done; ` +
-    `if [ -d ${P} ]; then log -t RaftDraftTimingProbe "run=${runIndex} pid_alive polls=$i"; else log -t RaftDraftTimingProbe "run=${runIndex} pid_gone polls=$i"; fi ) & ` +
+    // Dead = /proc/<pid> gone or the process a zombie (Z/X: it runs no more code; only its parent has not
+    // reaped it yet). `read` is a shell builtin, so a poll forks only the 5 ms sleep.
+    `( i=0; st=R; while [ $i -lt 4000 ]; do st=; read -r l 2>/dev/null < ${P}/stat && set -- $l && st=$3; ` +
+    `case "$st" in ""|Z|X) break;; esac; sleep 0.005; i=$((i+1)); done; ` +
+    `case "$st" in ""|Z|X) log -t RaftDraftTimingProbe "run=${runIndex} pid_gone state=\${st:-none} polls=$i";; ` +
+    `*) log -t RaftDraftTimingProbe "run=${runIndex} pid_alive polls=$i";; esac ) & ` +
     `${FORCE_STOP} ${PKG}; wait; ` +
     `if [ -d ${P} ]; then echo PID_ALIVE; else echo PID_GONE; fi`
   );
@@ -491,6 +505,13 @@ function relaunchIdentity(record, oldPid, oldStart) {
 
 // ---------- runs ----------
 let runIndex = 0;
+const overheadSamples = [];
+/** Median of (exit lower bound − last change) − sleep over earlier runs; 35 ms before any. */
+function killOverheadMs() {
+  if (!overheadSamples.length) return 35;
+  const sorted = [...overheadSamples].sort((a, b) => a - b);
+  return Math.max(0, sorted[Math.floor(sorted.length / 2)]);
+}
 const markerPrefix = () => `dk${RUN_TAG}r${String(runIndex).padStart(2, "0")}x`;
 
 /**
@@ -559,12 +580,18 @@ async function killRun(api, { group, mode, delaySec }) {
     mark = logcatMark();
     const typeFast = mode === "fast" ? `for c in ${fastChars.split("").join(" ")}; do ${INPUT} text $c; sleep 0.03; done; ` : "";
     const home = mode === "home" ? `${INPUT} keyevent KEYCODE_HOME; ` : "";
-    const sleepSec = mode === "home" ? 0.1 : delaySec;
+    // The force-stop lands some ms after the sleep ends (cmd start-up, system_server work): sleep D minus the
+    // overhead measured in earlier runs, so the exit interval is centred on D. Δ is always measured, never assumed.
+    const sleepSec = mode === "home" ? 0.1 : Math.max(0, Math.round((delaySec - killOverheadMs() / 1000) * 1000) / 1000);
+    record.sleep_sec = sleepSec;
     const { analysis, lines } = await killAndAnalyze({
       oldPid, startTime, mark, expectedLen: expected.length, delaySec: mode === "home" ? null : delaySec,
       script: killScript({ oldPid, startTime, before: `${typeFast}${INPUT} keyevent ${LAST_KEY}; ${home}`, sleepSec }),
     });
     Object.assign(record, analysis);
+    if (mode !== "home" && analysis.delta_lower_ms != null && analysis.last_change_seq != null && analysis.same_process) {
+      overheadSamples.push(analysis.delta_lower_ms - sleepSec * 1000);
+    }
     if (mode === "fast") {
       const changes = lines.filter((l) => l.includes("RaftDraftTiming") && l.includes("change_received")).map((l) => Number(/uptimeMs=(\d+)/.exec(l)?.[1]));
       record.typing_ms = changes.length > 1 ? changes.at(-1) - changes[0] : null;
@@ -663,7 +690,12 @@ async function main() {
     });
 
     startCapture();
-    await step("sign-in", () => signIn(api));
+    await step("sign-in", async () => {
+      const result = await signIn(api);
+      // The sign-in browser is done; it must not come back on top of a relaunch.
+      shell("am force-stop com.android.chrome", { allowFailure: true });
+      return result;
+    });
     await step("open-channel", async () => {
       await openChannel(api);
       return { channel: CHANNEL };
@@ -711,8 +743,10 @@ async function main() {
     fs.writeFileSync(path.join(OUT, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
     const header =
       `## Draft kill timing (task #246)\n\nResult: **${summary.result}**${summary.failed_step ? ` (failed at ${summary.failed_step}: ${summary.error})` : ""}\n\n` +
-      `Δ = ActivityManager "Killing <old pid>" (logcat -v monotonic) − last change_received uptimeMs. Hit = Δ inside the bucket window ` +
-      `(${Object.entries(summary.buckets).map(([d, b]) => `D=${d}: (${b.lo}, ${b.hi}] s`).join("; ")}); Δ for b/c is measured, not bucketed.\n\n` +
+      `Exit interval on the device clock (logcat -v monotonic): lower = latest pre-signal line (AM "Killing" / am_kill), upper = earliest evidence ` +
+      `of death (device-side /proc poll: gone or zombie; am_proc_died; cgroup empty). Exit Δ = interval − last change_received uptimeMs ` +
+      `(b: − the send_tap probe). Hit = the WHOLE exit Δ interval inside the bucket window ` +
+      `(${Object.entries(summary.buckets).map(([d, b]) => `D=${d}: (${b.lo}, ${b.hi}] s`).join("; ")}); b/c are measured, not bucketed. Sleep before the kill = D − measured kill overhead (median of earlier runs).\n\n` +
       `Channel: #${CHANNEL} (created for this run; archived: ${summary.channel_archive?.archived ?? "n/a"}). ` +
       `Other activity in it during the run: ${summary.channel_activity?.other_activity ?? "unknown"}` +
       `${summary.channel_activity?.other_kinds ? ` ${JSON.stringify(summary.channel_activity.other_kinds)}` : ""}.\n\n` +
