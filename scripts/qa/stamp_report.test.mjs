@@ -697,7 +697,8 @@ function bootstrapLoginHarness(name, curlBody) {
   fs.mkdirSync(bin); fs.mkdirSync(runnerTemp); fs.mkdirSync(path.join(root, "qa-evidence"));
   const calls = path.join(root, "calls");
   fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
-printf '%s\\n' "$*" >> "${calls}"
+printf -v call '%q ' "$@"
+printf '%s\\n' "$call" >> "${calls}"
 out=""; url=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -716,7 +717,7 @@ ${curlBody}
   const binding = path.join(root, "binding.json");
   fs.writeFileSync(binding, JSON.stringify({ signing_cert_sha256: `sha256:${"a".repeat(64)}`, boot_generation: "boot-1" }));
   const env = {
-    ...process.env, PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+    PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
     RUNNER_TEMP: runnerTemp, STAMP_RUN_CASE_ID: "rc-x", STAMP_URL: "https://stamp.test", STAMP_TOKEN: "t",
     GITHUB_RUN_ID: "1", GITHUB_RUN_ATTEMPT: "1", GITHUB_REPOSITORY: "botiverse/mobile",
   };
@@ -905,11 +906,15 @@ test("independent: killed curl after writing partial body must never invoke logo
 
 test("bootstrap login: concurrent invocations call issuance exactly once", async () => {
   const { spawn } = await import("node:child_process");
-  const h = bootstrapLoginHarness("concurrent", `sleep 1; printf '%s' '${ISSUED_BODY}' > "$out"; printf 200`);
-  const statuses = await Promise.all(Array.from({ length: 6 }, () => new Promise((resolve) => {
-    const child = spawn("bash", [h.reporter, "bootstrap-login", h.binding], { cwd: h.root, env: h.env, stdio: "ignore" });
-    child.on("exit", (code) => resolve(code));
+  const h = bootstrapLoginHarness("concurrent", `printf '%s %s\\n' "$FAKE_CALLER" "$url" >> "$RUNNER_TEMP/issuers"; sleep 1; printf '%s' '${ISSUED_BODY}' > "$out"; printf 200`);
+  const statuses = await Promise.all(Array.from({ length: 6 }, (_, index) => new Promise((resolve, reject) => {
+    const env = { ...h.env, FAKE_CALLER: String(index) };
+    const child = spawn("bash", [h.reporter, "bootstrap-login", h.binding], { cwd: h.root, env, stdio: "ignore" });
+    child.once("error", reject);
+    child.once("exit", resolve);
   })));
+  const issuers = fs.readFileSync(path.join(h.runnerTemp, "issuers"), "utf8").trim().split("\n");
+  assert.deepEqual(issuers, [`${statuses.indexOf(0)} https://stamp.test/login`], "record every sender that reached issuance");
   assert.equal(h.callLines().length, 1, "only one invocation may call the issuance endpoint");
   assert.deepEqual(statuses.slice().sort(), [0, 1, 1, 1, 1, 1]);
   assert.equal(h.outcome().outcome, "issued");

@@ -175,7 +175,8 @@ if [ "$PHASE" = "bootstrap-login" ]; then
   # already be live. Mechanism (local only):
   #   1. an exclusive lock: `mkdir` of the lock directory is atomic, so of any number of concurrent
   #      invocations exactly one proceeds; the lock is never released or broken automatically;
-  #   2. BEFORE calling the endpoint, an `in_flight` intent is persisted atomically (temp + rename);
+  #   2. BEFORE calling the endpoint, hard-link the fully written temp file as the initial intent.
+  #      A runner filesystem that refuses hard links stops before the request.
   #   3. after the call the intent is atomically replaced by the outcome.
   # A sender killed at any point leaves the lock and the in_flight intent: the next invocation refuses
   # to issue again, and bootstrap-failure-terminal refuses the "no material" terminal. Nothing ever
@@ -208,7 +209,14 @@ if [ "$PHASE" = "bootstrap-login" ]; then
       node -e 'const fs=require("fs"),e=process.env,file=process.argv[1],tmp=`${file}.tmp-${process.pid}`;
         const v={contract:"qa-bootstrap-login-outcome/v1",outcome:e.OUTCOME,run_case_id:e.RUN_CASE,github_run_id:e.RUN_ID,github_run_attempt:e.RUN_ATTEMPT,retried:false};
         if(e.OUTCOME!=="in_flight"){v.http_status=Number(e.HTTP_CODE);v.curl_exit=Number(e.CURL_RC);v.detail=e.DETAIL}
-        const fd=fs.openSync(tmp,"wx",0o600);fs.writeSync(fd,JSON.stringify(v,null,2)+"\n");fs.fsyncSync(fd);fs.closeSync(fd);fs.renameSync(tmp,file)' "$BOOTSTRAP_LOGIN_OUTCOME_FILE"
+        const fd=fs.openSync(tmp,"wx",0o600);
+        try { fs.writeFileSync(fd,JSON.stringify(v,null,2)+"\n");fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+        if (e.OUTCOME==="in_flight") {
+          // Publish the complete initial intent only if this run case still has none.
+          try { fs.linkSync(tmp,file); } finally { fs.unlinkSync(tmp); }
+        } else {
+          fs.renameSync(tmp,file);
+        }' "$BOOTSTRAP_LOGIN_OUTCOME_FILE"
   }
   write_login_outcome in_flight 0 0 "" || { echo "stamp: could not persist the bootstrap login intent; not calling issuance" >&2; exit 1; }
   install -m 600 /dev/null "$BOOTSTRAP_LOGIN_PARTIAL_FILE"
