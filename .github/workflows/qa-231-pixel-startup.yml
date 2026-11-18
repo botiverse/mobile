@@ -45,6 +45,7 @@ jobs:
           disable-animations: true
           script: |
             test "$(adb shell getprop ro.product.cpu.abi | tr -d '\r')" = x86_64
-            adb shell input keyevent 82
+            adb shell wm dismiss-keyguard
+            echo QA231_KEYGUARD_DISMISSED
             adb install -r -g "$RUNNER_TEMP/startup.apk"
             python3 .github/qa231_pixel_startup.py
