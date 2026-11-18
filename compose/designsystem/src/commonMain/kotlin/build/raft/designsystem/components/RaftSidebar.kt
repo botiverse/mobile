@@ -21,6 +21,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -32,6 +34,8 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.semantics.Role
@@ -50,7 +54,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.text.RaftCarriedBaseline
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.text.raftCarryFirstBaseline
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftPointerInput
@@ -58,6 +64,7 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
+import kotlin.math.min
 
 // raft-ui Sidebar (sidebar-item.recipe.ts, sidebar-section.recipe.ts) at its phone size:
 // below `md` a SidebarItem is at least 44px in `text-body` at 600 (raft-ui 0.8.1+), which is
@@ -441,21 +448,22 @@ private fun RaftSidebarItemLayout(
             ) {
                 // The title is measured first, so it keeps its width while the subtitle
                 // (weighted) takes what is left: the subtitle gives way first.
-                val titleModifier = if (subtitle == null) Modifier.weight(1f) else Modifier.alignByBaseline()
                 val titleStyle = typography.body.copy(fontWeight = titleWeight)
                 if (titleTrailing == null) {
-                    titleText(titleModifier, titleStyle, look.ink)
+                    // A single text: reading its own baseline lays out no children.
+                    titleText(if (subtitle == null) Modifier.weight(1f) else Modifier.alignByBaseline(), titleStyle, look.ink)
+                } else if (subtitle == null) {
+                    RaftSidebarItemTitleGroup(Modifier.weight(1f), titleText, titleStyle, look.ink, titleTrailing, lines = null)
                 } else {
-                    // The name and its slot as one piece (it keeps the name's baseline for the
-                    // subtitle): the slot is measured first, so only the name truncates.
-                    Row(
-                        titleModifier,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        titleText(Modifier.weight(1f, fill = false), titleStyle, look.ink)
-                        Box(contentAlignment = Alignment.Center) { titleTrailing() }
-                    }
+                    // The subtitle sits on the group's first baseline, but this row never reads
+                    // the group's line while it measures: that lays out the slot's badges before
+                    // a reused list row is placed, which Compose 1.12 mishandles (Android crash
+                    // 52b93946, "LayoutNode … not found in RectList" on the Members page; see
+                    // [build.raft.designsystem.text.RaftCarriedBaseline]). The line is put
+                    // together from the name's carried baseline and the slot's line as read once
+                    // it was placed ([RaftSidebarItemTitleLines]).
+                    val lines = remember { RaftSidebarItemTitleLines() }
+                    RaftSidebarItemTitleGroup(Modifier.alignBy { lines.firstBaseline(it.measuredHeight) }, titleText, titleStyle, look.ink, titleTrailing, lines)
                 }
                 if (subtitle != null) {
                     RaftText(
@@ -478,6 +486,77 @@ private fun RaftSidebarItemLayout(
         }
     }
 }
+
+/**
+ * The name and its slot ([RaftSidebarItem]'s `titleTrailing`) as one piece, centred on each other:
+ * the slot is measured first, so only the name truncates. With [lines] it keeps what the row needs
+ * to put the subtitle on the piece's first baseline without reading it while measuring.
+ */
+@Composable
+private fun RaftSidebarItemTitleGroup(
+    modifier: Modifier,
+    titleText: @Composable (modifier: Modifier, style: TextStyle, ink: Color) -> Unit,
+    style: TextStyle,
+    ink: Color,
+    titleTrailing: @Composable () -> Unit,
+    lines: RaftSidebarItemTitleLines?,
+) {
+    Row(
+        modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        titleText(
+            Modifier.weight(1f, fill = false).then(if (lines != null) Modifier.raftCarryFirstBaseline(lines.name) else Modifier),
+            style,
+            ink,
+        )
+        Box(if (lines != null) Modifier.raftSidebarSlotLine(lines) else Modifier, contentAlignment = Alignment.Center) { titleTrailing() }
+    }
+}
+
+/**
+ * The first baseline of a sidebar row's name-and-slot piece, as `Row` would merge it (the highest
+ * of its parts' first baselines, each part centred in the piece), but from values that need no
+ * layout while the row measures:
+ *  - the name's own baseline and height, carried up as the name text measures (same pass);
+ *  - the slot's first baseline (a badge's text), read when the slot is placed, never while it is
+ *    measured; before that, and for a slot without text (an icon), the name's alone. A slot whose
+ *    line moved from the one the row used lays the row out again.
+ * Same pixels as reading the piece's line: a text badge's baseline sits about 1.5dp above the
+ * name's (caption 12/16 centred beside body 16/24), so the subtitle keeps sitting on the badge's.
+ */
+@Stable
+private class RaftSidebarItemTitleLines {
+    val name = RaftCarriedBaseline()
+    val slotBaseline = mutableIntStateOf(AlignmentLine.Unspecified)
+    val slotHeight = mutableIntStateOf(0)
+
+    fun firstBaseline(groupHeight: Int): Int {
+        val nameLine =
+            name.px.takeIf { it != AlignmentLine.Unspecified }?.let { Alignment.CenterVertically.align(name.heightPx, groupHeight) + it }
+        val slotLine =
+            slotBaseline.intValue.takeIf { it != AlignmentLine.Unspecified }?.let { Alignment.CenterVertically.align(slotHeight.intValue, groupHeight) + it }
+        return when {
+            nameLine == null -> slotLine ?: AlignmentLine.Unspecified
+            slotLine == null -> nameLine
+            else -> min(nameLine, slotLine)
+        }
+    }
+}
+
+/** Keeps the slot's height as it measures and its first baseline once it is placed (safe then). */
+private fun Modifier.raftSidebarSlotLine(lines: RaftSidebarItemTitleLines): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        if (lines.slotHeight.intValue != placeable.height) lines.slotHeight.intValue = placeable.height
+        layout(placeable.width, placeable.height) {
+            placeable.place(0, 0)
+            // Placed: its content is laid out as part of this placement, not ahead of it.
+            val baseline = placeable[FirstBaseline]
+            if (lines.slotBaseline.intValue != baseline) lines.slotBaseline.intValue = baseline
+        }
+    }
 
 /**
  * A [glyph] for a sidebar row's leading slot (`SidebarItemIcon`), in the row's icon ink
