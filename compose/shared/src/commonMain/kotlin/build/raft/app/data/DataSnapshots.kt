@@ -657,7 +657,14 @@ data class HomeSnapshot(
     val unreadLatestActivitySeqs: Map<String, Long> = emptyMap(),
     /** The unread summary's read state per scope, by channel id value. Never persisted. */
     @Transient
-    val unreadReadFrontiers: Map<String, ReadReceiptFrontier> = emptyMap()
+    val unreadReadFrontiers: Map<String, ReadReceiptFrontier> = emptyMap(),
+    /**
+     * Archived channels the reader can still open (`GET /channels?archived=include`), kept apart
+     * from [channels] so the sidebar and every other reader of [channels] still leave them out.
+     * Only global search reads them (web `searchEntities`: ranked last with an "Archived" badge),
+     * until the server search contract replaces the client-side list.
+     */
+    val archivedChannels: List<HomeChannelRow> = emptyList()
 )
 
 @Serializable

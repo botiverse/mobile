@@ -562,6 +562,11 @@ interface MemberRepository {
 interface ChannelRepository {
     suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot>
     suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot>
+    /**
+     * [getChannels] with the archived channels too (`GET /channels?archived=include`): the
+     * composer's `#` list, which offers them like the web (MessageInput channel autocomplete).
+     */
+    suspend fun getChannelsIncludingArchived(serverId: ServerId): DataResult<ChannelSnapshot> = getChannels(serverId)
     suspend fun getDirectMessages(serverId: ServerId): DataResult<DirectMessageSnapshot>
     suspend fun openAgentDirectMessage(agentId: MemberId): DataResult<OpenDirectMessageResult>
     suspend fun openUserDirectMessage(userId: MemberId): DataResult<OpenDirectMessageResult>

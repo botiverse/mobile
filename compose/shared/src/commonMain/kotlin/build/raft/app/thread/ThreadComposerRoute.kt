@@ -806,6 +806,7 @@ private fun ThreadComposerContentWithSuggestions(
                     subtitle = suggestion.subtitle,
                     channelId = suggestion.channelId,
                     channelType = suggestion.channelType,
+                    archived = suggestion.archived,
                 )
             }
         }

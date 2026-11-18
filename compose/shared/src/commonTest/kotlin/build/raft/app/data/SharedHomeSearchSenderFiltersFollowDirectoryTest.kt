@@ -10,7 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
@@ -71,10 +71,75 @@ class SharedHomeSearchSenderFiltersFollowDirectoryTest {
         scope.cancel()
     }
 
+    /**
+     * The Members page lists a guest only to owners and admins (`listedForMembersReader`); search's
+     * people and From filter follow the same rule, whichever directory the app holds.
+     */
+    @Test
+    fun aGuestIsSearchableOnlyByReadersTheMembersPageShowsGuestsTo() = runBlocking {
+        val cases =
+            listOf(
+                "member" to listOf("user-a"),
+                null to listOf("user-a"),
+                "admin" to listOf("user-a", "guest-g"),
+                "owner" to listOf("user-a", "guest-g"),
+            )
+        for ((viewerRole, expected) in cases) {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val repository =
+                MutableMemberRepository(
+                    listOf(member("user-a", "Artin", MemberKind.Human), guest("guest-g", "Gwen")),
+                    viewerRole = viewerRole,
+                )
+            val store =
+                SharedHomeSearchSavedStore(
+                    authStore = InMemoryRaftAuthSessionStore(session()),
+                    savedRepository = EmptySavedRepository,
+                    searchRepository = EmptySearchRepository,
+                    serverMembersStore = SharedServerMembersStore(repository),
+                    scope = scope,
+                )
+
+            store.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
+
+            awaitSenderFilterIds(store, expected)
+            scope.cancel()
+        }
+    }
+
+    /**
+     * The `@` list matches the web: its directory part hides a guest from a reader who may not see
+     * guests (the server's member list leaves them out for such a reader), while a guest in the
+     * mention channel's own roster is offered, as the web's channel candidates are.
+     */
+    @Test
+    fun theMentionListHidesDirectoryGuestsButKeepsAGuestOfTheMentionChannel() = runBlocking {
+        for ((viewerRole, expected) in listOf("member" to setOf("artin", "gina"), "admin" to setOf("artin", "gina", "gwen"))) {
+            val repository =
+                MutableMemberRepository(
+                    listOf(
+                        member("user-a", "Artin", MemberKind.Human).copy(handle = "artin"),
+                        guest("guest-g", "Gwen"),
+                        guest("guest-c", "Gina"),
+                    ),
+                    viewerRole = viewerRole,
+                    channelMembers = listOf(guest("guest-c", "Gina")),
+                )
+            val members = SharedServerMembersStore(repository)
+
+            members.ensureMemberSuggestionsForServer(serverId = ServerId(ServerIdValue), mentionChannelId = "channel-1")
+
+            val suggestions =
+                members.state.value.memberSuggestionSlice(ServerId(ServerIdValue), mentionChannelId = "channel-1").suggestions
+            assertEquals(expected, suggestions.map { it.handle }.toSet(), "viewer role $viewerRole")
+            assertEquals(true, suggestions.single { it.handle == "gina" }.inMentionChannel)
+        }
+    }
+
     private suspend fun awaitSenderFilterIds(store: SharedHomeSearchSavedStore, expected: List<String>) {
         try {
             withTimeout(5_000) {
-                while (store.state.value.search.senderFilters.map { it.id }.sorted() != expected.sorted()) delay(10)
+                store.state.first { it.search.senderFilters.map { item -> item.id }.sorted() == expected.sorted() }
             }
         } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
             assertEquals(expected.sorted(), store.state.value.search.senderFilters.map { it.id }.sorted())
@@ -91,12 +156,20 @@ class SharedHomeSearchSenderFiltersFollowDirectoryTest {
     private fun member(id: String, displayName: String, kind: MemberKind): MemberProfile =
         MemberProfile(id = MemberId(id), displayName = displayName, handle = id, kind = kind)
 
-    private class MutableMemberRepository(var members: List<MemberProfile>) : MemberRepository {
+    private fun guest(id: String, displayName: String): MemberProfile =
+        MemberProfile(id = MemberId(id), displayName = displayName, handle = displayName.lowercase(), kind = MemberKind.Human, serverRole = "guest")
+
+    private class MutableMemberRepository(
+        var members: List<MemberProfile>,
+        /** The reader's role on the server (`ServerSummary.role`). */
+        private val viewerRole: String? = null,
+        private val channelMembers: List<MemberProfile> = emptyList(),
+    ) : MemberRepository {
         override suspend fun getMembers(
             priority: DataRequestPriority,
             serverId: ServerId,
         ): DataResult<MemberSnapshot> =
-            DataResult.Content(MemberSnapshot(server = ServerSummary(id = serverId, name = serverId.value), members = members))
+            DataResult.Content(MemberSnapshot(server = ServerSummary(id = serverId, name = serverId.value, role = viewerRole), members = members))
 
         override suspend fun getMemberProfile(priority: DataRequestPriority, memberId: MemberId, serverId: ServerId?): DataResult<MemberProfile> = error("unused")
         override suspend fun updateAgentProfile(priority: DataRequestPriority, request: AgentProfileUpdateRequest): DataResult<MemberProfile> = error("unused")
@@ -115,7 +188,8 @@ class SharedHomeSearchSenderFiltersFollowDirectoryTest {
         override suspend fun resetAgent(priority: DataRequestPriority, request: AgentResetRequest): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun deleteAgent(priority: DataRequestPriority, agentId: MemberId, workspaceChoice: AgentArchiveWorkspaceChoice): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun assignAgentMachine(priority: DataRequestPriority, request: AgentMachineAssignmentRequest): DataResult<AgentLifecycleActionResult> = error("unused")
-        override suspend fun getChannelMembers(priority: DataRequestPriority, channelId: ChannelId): DataResult<ChannelMemberSnapshot> = error("unused")
+        override suspend fun getChannelMembers(priority: DataRequestPriority, channelId: ChannelId): DataResult<ChannelMemberSnapshot> =
+            DataResult.Content(ChannelMemberSnapshot(channelId = channelId, members = channelMembers))
         override suspend fun addChannelMember(priority: DataRequestPriority, request: AddChannelMemberRequest): DataResult<ChannelMemberActionResult> = error("unused")
         override suspend fun removeChannelMember(priority: DataRequestPriority, request: RemoveChannelMemberRequest): DataResult<ChannelMemberActionResult> = error("unused")
     }

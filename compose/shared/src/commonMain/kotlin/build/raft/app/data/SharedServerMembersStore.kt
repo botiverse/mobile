@@ -1,6 +1,9 @@
 package build.raft.app.data
 
 import build.raft.app.toRaftAvatarLabel
+import build.raft.app.listedForMembersReader
+import build.raft.app.listedForMembersReaderRole
+import build.raft.app.membersShowGuests
 import build.raft.app.isConversationAccessLost
 import build.raft.app.base.putIfAbsent
 import build.raft.app.parseExternalAgentTimestampOrNull
@@ -1007,6 +1010,22 @@ class SharedServerMembersStore internal constructor(
     fun currentServerMembers(serverId: ServerId): List<MemberProfile> =
         _state.value.entryFor(serverId)?.visibleDirectoryMembers().orEmpty()
             .withServerMemberPresenceFacts(presenceFactsNow(serverId))
+
+    /** Whether this server's reader sees guests in the directory (owner/admin, [membersShowGuests]). */
+    private fun showsGuestsInDirectory(serverKey: String): Boolean =
+        membersShowGuests(_state.value.entryFor(ServerId(serverKey))?.server?.role)
+
+    /** The directory part of the `@` list: [currentServerMembers] under the Members page's guest rule. */
+    private fun mentionDirectoryMembers(serverKey: String): List<MemberProfile> =
+        currentServerMembers(ServerId(serverKey))
+            .listedForMembersReaderRole(_state.value.entryFor(ServerId(serverKey))?.server?.role)
+
+    /** A guest this reader may not see in the directory: out of the channel, it leaves the `@` list. */
+    private fun hiddenFromDirectoryReader(serverKey: String, memberKey: String): Boolean {
+        if (showsGuestsInDirectory(serverKey)) return false
+        val member = currentKnownMemberProfilesById(ServerId(serverKey))[memberKey] ?: return false
+        return !member.listedForMembersReader(showGuests = false)
+    }
 
     fun currentServerMemberCount(serverId: ServerId): Int =
         currentServerMembers(serverId).size
@@ -3396,7 +3415,7 @@ class SharedServerMembersStore internal constructor(
             current.suggestions.removeOrMarkMemberSuggestionOutsideMentionChannel(
                 memberId = memberKey,
                 memberKind = memberKind,
-                remove = memberScopedMentions || channelKey == null
+                remove = memberScopedMentions || channelKey == null || hiddenFromDirectoryReader(serverKey, memberKey)
             )
         setMemberSuggestionSlice(
             scope = scope,
@@ -3473,7 +3492,10 @@ class SharedServerMembersStore internal constructor(
             }
         when (result) {
             is DataResult.Content -> {
-                val serverMembers = currentServerMembers(ServerId(serverId))
+                // The directory part follows the Members page's guest rule; a guest still comes in
+                // through the mention channel's own roster below (web: the server lists guests only
+                // to owners and admins, a channel roster lists its guests to everyone in it).
+                val serverMembers = mentionDirectoryMembers(serverId)
                 val channelSnapshot =
                     mentionChannelId?.let { channelId ->
                         loadChannelMembersBestEffort(
@@ -3787,7 +3809,7 @@ class SharedServerMembersStore internal constructor(
                         slice.suggestions.removeOrMarkMemberSuggestionOutsideMentionChannel(
                             memberId = memberKey,
                             memberKind = memberKind,
-                            remove = scope.memberScopedMentions
+                            remove = scope.memberScopedMentions || hiddenFromDirectoryReader(serverKey, memberKey)
                         )
                     if (nextSuggestions != slice.suggestions) {
                         changed = true

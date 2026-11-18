@@ -8,6 +8,9 @@ import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftComposerUploadDisplay
 import build.raft.app.transfer.RaftComposerUploadPhase
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
@@ -1290,6 +1293,8 @@ internal data class RaftComposerChannelItem(
     /** The channel's id and wire type: its glyph comes from the one chooser ([RaftChannelKinds]). */
     val channelId: String? = null,
     val channelType: String? = null,
+    /** Archived: offered like the web's `#` list, with its "Archived" badge. */
+    val archived: Boolean = false,
 )
 
 data class SharedThreadComposerSnapshot(
@@ -5212,6 +5217,15 @@ private fun ComposerChannelSuggestionRow(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+            }
+            // web MessageInput `#` row: an archived channel's soft muted badge at the end.
+            if (channel.archived) {
+                Spacer(modifier = Modifier.width(ComposerSuggestionContentGap))
+                RaftBadge(
+                    text = stringResource(Res.string.channel_settings_status_archived),
+                    appearance = RaftBadgeAppearance.Soft,
+                    variant = RaftBadgeVariant.Muted
+                )
             }
         }
     }
