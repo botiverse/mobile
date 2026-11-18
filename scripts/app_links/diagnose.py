@@ -468,12 +468,12 @@ def cmd_web(args) -> int:
         cells = {}
         for host in verified_hosts:
             outcome, why = android_outcome(main_filters, f"https://{host}{u['path']}", dal_ok_hosts)
-            ok = outcome == u["expect"]["android"]
+            ok = None if u.get("informational") else outcome == u["expect"]["android"]
             cells[host] = {"outcome": outcome, "detail": why, "ok": ok}
-            if not ok:
+            if ok is False:
                 failures.append(f"{u['id']}@{host}")
         android_matrix.append({"id": u["id"], "label": u["label"], "path": u["path"], "expect": u["expect"]["android"], "cells": cells})
-    total = len(matrix) * len(verified_hosts)
+    total = sum(1 for u in matrix if not u.get("informational")) * len(verified_hosts)
     rows.append(row(
         "Android", "URL matrix vs main AndroidManifest.xml intent filters", ", ".join(verified_hosts),
         FAIL if failures else PASS,
@@ -551,7 +551,10 @@ def cmd_ios(args) -> int:
     app_id = web["meta"]["app_id"]
     matrix = load_json(HERE / "url_matrix.json")["urls"]
     rows = []
-    version = subprocess.run(["sw_vers"], capture_output=True, text=True).stdout.replace("\n", " ").strip() if shutil.which("sw_vers") else "not macOS"
+    version = "not macOS"
+    if shutil.which("sw_vers"):
+        sw = lambda flag: subprocess.run(["sw_vers", flag], capture_output=True, text=True).stdout.strip()
+        version = f"macOS {sw('-productVersion')} ({sw('-buildVersion')})"
 
     # Self-test: proves this swcutil reproduces the 11-17 bug class before trusting the matrix.
     st_fail = []
@@ -586,16 +589,18 @@ def cmd_ios(args) -> int:
         cells = {}
         for c in columns:
             outcome, line = results[(c["key"], u["id"])]
-            cells[c["key"]] = {"outcome": outcome, "detail": line, "ok": outcome == u["expect"]["ios"]}
+            ok = None if u.get("informational") else outcome == u["expect"]["ios"]
+            cells[c["key"]] = {"outcome": outcome, "detail": line, "ok": ok}
         matrix_rows.append({"id": u["id"], "label": u["label"], "path": u["path"], "expect": u["expect"]["ios"], "cells": cells})
     for c in columns:
-        wrong = [r["id"] for r in matrix_rows if not r["cells"][c["key"]]["ok"]]
-        errors = [r["id"] for r in matrix_rows if r["cells"][c["key"]]["outcome"] is None]
+        wrong = [r["id"] for r in matrix_rows if r["cells"][c["key"]]["ok"] is False]
+        errors = [r["id"] for r in matrix_rows if r["cells"][c["key"]]["outcome"] is None and r["cells"][c["key"]]["ok"] is not None]
+        counted = sum(1 for u in matrix if not u.get("informational"))
         status = PASS if not wrong else (FAIL if c["entitled"] and not errors else WARN)
         if not c["entitled"] and status == FAIL:
             status = WARN
         source = "Apple CDN copy (what devices install)" if c["source"] == "cdn" else "origin file"
-        detail = f"{len(matrix) - len(wrong)}/{len(matrix)} as expected"
+        detail = f"{counted - len(wrong)}/{counted} as expected"
         if wrong:
             detail += "; wrong: " + ", ".join(f"`{w}`" for w in wrong)
         if errors:
@@ -621,14 +626,14 @@ class Hands:
         with urllib.request.urlopen(req, timeout=60) as resp:
             return json.load(resp)
 
-    def latest_published(self, slug: str, filetype: str) -> tuple[dict, dict, Path]:
+    def latest_published(self, slug: str, filetype: str, statuses=("active", "superseded")) -> tuple[dict, dict, Path]:
         app = next((a for a in self.get("/api/apps").get("apps", []) if a.get("slug") == slug), None)
         if not app:
             raise RuntimeError(f"app {slug} not visible to this token")
         builds = {b["id"]: b for b in self.get(f"/api/apps/{app['id']}/builds?limit=200").get("builds", [])}
         releases = [
             r for r in self.get(f"/api/apps/{app['id']}/releases?limit=200").get("releases", [])
-            if r.get("status") in ("active", "superseded") and (r.get("channel") or "main") == "main" and r.get("build_id") in builds
+            if r.get("status") in statuses and (r.get("channel") or "main") == "main" and r.get("build_id") in builds
         ]
         if not releases:
             raise RuntimeError(f"no published main release of {slug}")
@@ -719,8 +724,10 @@ def cmd_builds(args) -> int:
         rows.append(row("Latest builds", "iOS IPA on Hands", "raft-ios", WARN, "skipped: no Hands token in this run (fork PR or secret not exposed)"))
     else:
         try:
-            build, release, ipa = Hands(token).latest_published("raft-ios", "ipa")
-            label = f"{build.get('version_name')} ({build.get('version_code')})"
+            # iOS ships through TestFlight / the App Store; its Hands release stays a draft
+            # (ios-release.yml SLOCK_HANDS_DRAFT=1), so drafts count here.
+            build, release, ipa = Hands(token).latest_published("raft-ios", "ipa", ("active", "superseded", "draft"))
+            label = f"{build.get('version_name')} ({build.get('version_code')}, Hands release {release.get('status')})"
             with zipfile.ZipFile(ipa) as z:
                 info_name = next(n for n in z.namelist() if re.fullmatch(r"Payload/[^/]+\.app/Info\.plist", n))
                 info = plistlib.loads(z.read(info_name))
@@ -791,8 +798,10 @@ def render(results: list[dict], context: dict) -> str:
             for c in cols:
                 cell = r["cells"].get(c, {})
                 outcome = cell.get("outcome") or "?"
-                cells.append(("✅ " if cell.get("ok") else "❌ ") + outcome)
-            lines.append(f"| `{md(r['path'])}`<br>{md(r['label'])} | {r['expect']} | " + " | ".join(cells) + " |")
+                mark = "ℹ️ " if cell.get("ok") is None else ("✅ " if cell["ok"] else "❌ ")
+                cells.append(mark + outcome)
+            expect = "probe" if all(c.get("ok") is None for c in r["cells"].values()) else r["expect"]
+            lines.append(f"| `{md(r['path'])}`<br>{md(r['label'])} | {expect} | " + " | ".join(cells) + " |")
 
     ios = next((r for r in results if r.get("step") == "ios"), {})
     matrix_table(

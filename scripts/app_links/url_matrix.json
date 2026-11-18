@@ -1,5 +1,5 @@
 {
-  "_comment": "Real-shaped Raft links and where they must open. Paths only: the diagnose script puts each claimed host in front. expect.ios / expect.android: app = opens the app as a Universal Link / verified App Link, web = stays in the browser. Android claims all of /s/ and lets the app validate the route, so nested /s/ paths open the app there by design.",
+  "_comment": "Real-shaped Raft links and where they must open. Paths only: the diagnose script puts each claimed host in front. expect.ios / expect.android: app = opens the app as a Universal Link / verified App Link, web = stays in the browser. Android claims all of /s/ and lets the app validate the route, so nested /s/ paths open the app there by design. informational: true rows are probes that explain a result; they are shown but never PASS/FAIL.",
   "urls": [
     {
       "id": "channel",
@@ -108,6 +108,16 @@
         "ios": "app",
         "android": "web"
       }
+    },
+    {
+      "id": "signup-verify-decoded",
+      "label": "probe: the same verify link with returnTo not percent-encoded (not what slock sends)",
+      "path": "/?verify=vt_4b5c6d7e8f9a&returnTo=/login/app?request=req_0a1b2c3d",
+      "expect": {
+        "ios": "app",
+        "android": "web"
+      },
+      "informational": true
     },
     {
       "id": "dm-extra",

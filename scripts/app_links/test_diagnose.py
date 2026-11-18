@@ -193,6 +193,11 @@ class ReportTest(unittest.TestCase):
         self.assertIn("### What this cannot check", text)
         self.assertIn("No result from step(s): builds", text)
 
+    def test_probe_rows_are_shown_but_not_judged(self):
+        results = self.results()
+        results[1]["ios_matrix"]["rows"].append({"id": "p", "label": "probe", "path": "/p", "expect": "app", "cells": {"h CDN": {"outcome": "web", "ok": None}}})
+        self.assertIn("| `/p`<br>probe | probe | ℹ️ web |", d.render(results, {}))
+
     def _report(self, results, fail_on_fail):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
