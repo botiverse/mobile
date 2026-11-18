@@ -1,7 +1,9 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
+import androidx.lifecycle.viewmodel.compose.viewModel
 import build.raft.app.base.BasePager
 import build.raft.app.base.Utils
 import build.raft.app.cmp.host.RaftCmpPageArgs
@@ -26,6 +28,7 @@ import build.raft.app.data.ThreadReplyCacheIdentityAuthority
 import build.raft.app.get
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.MessageNew
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskId
@@ -64,12 +67,43 @@ internal object TaskTapFixture {
     val openedConversations: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
     val openedProfiles: MutableList<MemberDetailIdentity> = java.util.concurrent.CopyOnWriteArrayList()
 
-    fun reset(messages: Int) {
+    /**
+     * Opt-in ([reset] `captureThreadViewModel = true`): the page's own [SharedThreadViewModel], the
+     * store its realtime sink feeds, so a test can deliver realtime frames ([pushRealtimeMessage]).
+     */
+    @Volatile
+    var captureThreadViewModel: Boolean = false
+
+    @Volatile
+    var threadViewModel: SharedThreadViewModel? = null
+
+    /** True when the fixture, not the route, created [threadViewModel]: the route's view model key changed. */
+    @Volatile
+    var threadViewModelCreatedByFixture: Boolean = false
+
+    fun reset(messages: Int, captureThreadViewModel: Boolean = false) {
         messageCount = messages
         threadServed = false
         taskServed = false
         openedConversations.clear()
         openedProfiles.clear()
+        this.captureThreadViewModel = captureThreadViewModel
+        threadViewModel = null
+        threadViewModelCreatedByFixture = false
+    }
+
+    /**
+     * A new message of this conversation arriving over realtime: the frame the route's guarded
+     * active-thread sink hands its store (ThreadPage `latestCoreThreadRealtimeEventHandler`:
+     * [SharedThreadIntent.ApplyRealtimeEvent]), without the socket and grant in front of it.
+     */
+    fun pushRealtimeMessage(id: String, seq: Long, body: String) {
+        val viewModel = checkNotNull(threadViewModel) { "open the page with reset(captureThreadViewModel = true)" }
+        viewModel.dispatch(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(SharedThreadStoreTest.message(threadId = TaskTapConversationId, id = id, seq = seq, body = body))
+            )
+        )
     }
 }
 
@@ -158,6 +192,17 @@ private fun TaskTapFixtureContent() {
         onOpenThreadPayload = { payload -> TaskTapFixture.openedConversations += payload.sourceThreadId.orEmpty() },
         onOpenMemberProfile = { _, _, identity -> TaskTapFixture.openedProfiles += identity },
     )
+    if (TaskTapFixture.captureThreadViewModel) {
+        // The route's own view model: the same owner and key as SharedThreadRouteContent's
+        // (ThreadPage: "shared-thread-" + the initial route identity's instance key).
+        val routeViewModelKey = remember(initialPayload) { "shared-thread-${initialPayload.resolveThreadRouteIdentity().instanceKey}" }
+        val threadViewModel =
+            viewModel<SharedThreadViewModel>(key = routeViewModelKey) {
+                TaskTapFixture.threadViewModelCreatedByFixture = true
+                SharedThreadViewModel(dataSource = dataSource, initialPayload = initialPayload)
+            }
+        SideEffect { TaskTapFixture.threadViewModel = threadViewModel }
+    }
 }
 
 private fun taskTapSession(): StoredAuthSession =
