@@ -64,7 +64,7 @@ internal fun SharedSettingsAboutContent(
             errorStrings = localizedErrorPresentationStrings(),
             updateCheck = updateCheck,
             actionState = actionState,
-            copy = settingsAboutPayloadCopy(sharedSettingsResolvedWebBaseUrl(webUrl))
+            copy = settingsAboutPayloadCopy()
         )
     val developer = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
     val environmentStatus =
@@ -104,7 +104,7 @@ internal fun SharedSettingsAboutContent(
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
-            "openSlock", SETTINGS_ABOUT_SOURCE_CODE_ACTION ->
+            SETTINGS_ABOUT_SOURCE_CODE_ACTION ->
                 settingsAboutExternalUrl(action, value, webUrl)?.let(onOpenUrl)
             DEVELOPER_ACTION_HANDS_UPDATE_CHECK -> onCheckHandsUpdate()
             "openSourceLicenses" -> onOpenSourceLicenses()
@@ -133,7 +133,6 @@ internal const val RAFT_MOBILE_SOURCE_LICENSE = "FSL-1.1-ALv2"
 /** The URL an About row opens in the system browser, or null for rows that don't leave Raft. */
 internal fun settingsAboutExternalUrl(action: String, value: String?, webUrl: String): String? =
     when (action) {
-        "openSlock" -> value.orEmpty().ifBlank { webUrl }
         SETTINGS_ABOUT_SOURCE_CODE_ACTION -> value.orEmpty().ifBlank { RAFT_MOBILE_SOURCE_CODE_URL }
         else -> null
     }
@@ -229,13 +228,10 @@ internal data class SettingsAboutPayloadCopy(
     /** The copy row carries the environment only; app logs go with Feedback. */
     val copyEnvironmentHint: String = "To include logs, send them with Feedback.",
     val copy: String = "Copy",
-    val openRaft: String = "Open Raft",
-    val openWebDetail: (String) -> String = { "Open $it in the system browser." }
 )
 
 @Composable
-private fun settingsAboutPayloadCopy(resolvedWebUrl: String): SettingsAboutPayloadCopy {
-    val localizedOpenWebDetail = Res.string.settings_about_open_web_detail.format(listOf(resolvedWebUrl)).localized()
+private fun settingsAboutPayloadCopy(): SettingsAboutPayloadCopy {
     return SettingsAboutPayloadCopy(
         title = stringResource(Res.string.settings_about_title),
         detail = stringResource(Res.string.settings_about_version_build_source),
@@ -259,8 +255,6 @@ private fun settingsAboutPayloadCopy(resolvedWebUrl: String): SettingsAboutPaylo
         copyEnvironment = stringResource(Res.string.settings_about_action_copy_environment),
         copyEnvironmentHint = stringResource(Res.string.settings_diagnostics_logs_via_feedback_hint),
         copy = stringResource(Res.string.settings_about_action_copy),
-        openRaft = stringResource(Res.string.settings_about_action_open_raft),
-        openWebDetail = { localizedOpenWebDetail }
     )
 }
 
@@ -283,7 +277,6 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
     actionState: SharedSettingsActionState? = null,
     copy: SettingsAboutPayloadCopy = SettingsAboutPayloadCopy()
 ): RaftSharedSettingsPayload {
-    val resolvedWebUrl = sharedSettingsResolvedWebBaseUrl(webUrl)
     val raftLabel = "Raft"
     val updateCheckBusy =
         actionState?.action == DEVELOPER_ACTION_HANDS_UPDATE_CHECK && actionState.inProgress
@@ -364,7 +357,6 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                     enabled = true
                                 )
                             )
-                            add(RaftSharedSettingsRow("openSlock", RaftLucideIconName.Globe, copy.openRaft, copy.openWebDetail(resolvedWebUrl), value = resolvedWebUrl, status = copy.open, enabled = true, external = true))
                         }
                 )
             )

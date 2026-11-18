@@ -3267,8 +3267,6 @@
     <string name="settings_about_action_copy_environment">Копировать сведения об окружении</string>
     <string name="settings_about_action_copy">Копировать</string>
     <string name="settings_about_source_code">Исходный код</string>
-    <string name="settings_about_action_open_raft">Открыть Raft</string>
-    <string name="settings_about_open_web_detail">Открыть %1$s в системном браузере.</string>
     <string name="settings_developer_title">Для разработчиков</string>
     <string name="settings_developer_subtitle">Сервер API, диагностика, запуск маршрутов</string>
     <string name="settings_developer_detail">Сервер API и диагностика</string>
