@@ -300,7 +300,7 @@ class RaftMobileStackShellOnceUiTest {
 
     /**
      * A predictive back gesture from a page over the shell shows the shell under the dragged page for
-     * the whole drag (the gesture holds the pop mid motion), hides it again when cancelled, and a
+     * the whole drag (the gesture holds the pop mid motion), keeps the page and the shell inactive when cancelled, and a
      * committed gesture leaves a shell that takes taps through NavDisplay's empty slot.
      */
     @Test
@@ -322,8 +322,11 @@ class RaftMobileStackShellOnceUiTest {
             runOnIdle { dispatcher!!.dispatchOnBackCancelled() }
             waitForIdle()
             assertEquals(2, stack.pages.size, "a cancelled gesture keeps the page")
-            onNodeWithTag(SHELL).assertIsNotDisplayed()
+            // The page is back on top and the shell stays inactive. (After a cancel the covered shell
+            // keeps the size it had under the drag until the next stack change, as the root entry's
+            // box did in the scene before; it is under the opaque page.)
             onNodeWithTag(ARTIFACT_PAGE).assertIsDisplayed()
+            assertFalse(shellActive == true, "covered again after the cancel: inactive")
 
             runOnIdle {
                 dispatcher!!.dispatchOnBackStarted(BackEventCompat(10f, 500f, 0f, BackEventCompat.EDGE_LEFT))
