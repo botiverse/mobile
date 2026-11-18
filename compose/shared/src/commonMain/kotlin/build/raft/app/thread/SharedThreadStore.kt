@@ -165,6 +165,16 @@ internal class SharedThreadStore(
     // re-runs the full seed chain right after and converges to the same payload.
     private val _state = MutableStateFlow(SharedThreadState(payload = initialPayload))
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
+    /** Channel name/description updates from the thread page; see [ThreadChannelProfileUpdater]. */
+    private val channelProfileUpdater =
+        ThreadChannelProfileUpdater(
+            dataSource = dataSource,
+            diagnosticsLogger = diagnosticsLogger,
+            currentState = { _state.value },
+            currentRouteStaleToken = { routeStaleToken },
+            reduceState = ::reduceState,
+            reducePayloadPatch = ::reducePayloadPatch,
+        )
 
     fun payloadFlow(): Flow<RaftThreadScreenPayload> =
         state
@@ -5901,137 +5911,12 @@ internal class SharedThreadStore(
         }
     }
 
-    private fun applyChannelProfile(intent: SharedThreadIntent.ApplyChannelProfile) {
-        val routeIdentity = _state.value.payload.resolveThreadRouteIdentity()
-        if (routeIdentity.surfaceKind != RaftThreadSurfaceKind.Channel || routeIdentity.timelineChannelId != intent.channelId) return
-        reducePayloadPatch(cachePayload = true) { payload ->
-            payload.copy(title = intent.name, subtitle = intent.description)
-        }
-    }
+    private fun applyChannelProfile(intent: SharedThreadIntent.ApplyChannelProfile) = channelProfileUpdater.applyChannelProfile(intent)
 
-    private suspend fun updateChannelProfile(intent: SharedThreadIntent.UpdateChannelProfile) {
-        val current = _state.value
-        val routeIdentity = current.payload.resolveThreadRouteIdentity()
-        val staleToken = routeStaleToken
-        if (
-            routeIdentity.surfaceKind != RaftThreadSurfaceKind.Channel ||
-            routeIdentity.timelineChannelId != intent.channelId ||
-            current.channelProfileUpdateStatus == ChannelProfileUpdateStatus.InFlight
-        ) {
-            return
-        }
-        val name = intent.name.trim()
-        val description = intent.description.trim()
-        val originalName = intent.originalName.trim()
-        val originalDescription = intent.originalDescription.trim()
-        if (name == originalName && description == originalDescription) {
-            diagnosticsLogger?.invoke(
-                "thread_channel_profile_update_skip channelId=${intent.channelId} reason=unchanged"
-            )
-            reduceState(
-                current.copy(
-                    channelProfileUpdateStatus = ChannelProfileUpdateStatus.Succeeded,
-                    channelProfileUpdateErrorCode = null
-                )
-            )
-            return
-        }
-        diagnosticsLogger?.invoke(
-            "thread_channel_profile_update_start channelId=${intent.channelId} " +
-                "nameChanged=${name != originalName} descriptionChanged=${description != originalDescription}"
-        )
-        reduceState(
-            current.copy(
-                channelProfileUpdateStatus = ChannelProfileUpdateStatus.InFlight,
-                channelProfileUpdateErrorCode = null
-            )
-        )
-        val result = dataSource.updateChannelProfile(ChannelId(intent.channelId), name, description)
-        if (!channelProfileUpdateStillCurrent(staleToken, routeIdentity, intent.channelId, "after_network")) {
-            return
-        }
-        when (result) {
-            is DataResult.Content -> {
-                val canonical = result.data
-                if (canonical.channelId != ChannelId(intent.channelId)) {
-                    diagnosticsLogger?.invoke(
-                        "thread_channel_profile_update_identity_mismatch requested=${intent.channelId} " +
-                            "response=${canonical.channelId.value}"
-                    )
-                    failChannelProfileUpdate("channel_update_identity_mismatch")
-                    return
-                }
-                reducePayloadPatch(cachePayload = true) { payload ->
-                    payload.copy(title = canonical.name, subtitle = canonical.description)
-                }
-                try {
-                    dataSource.publishChannelProfileUpdate(canonical)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (exception: Exception) {
-                    diagnosticsLogger?.invoke(
-                        "thread_channel_profile_update_projection_failed channelId=${canonical.channelId.value} " +
-                            "exception=${exception::class.simpleName}"
-                    )
-                }
-                if (!channelProfileUpdateStillCurrent(staleToken, routeIdentity, intent.channelId, "after_projection")) {
-                    return
-                }
-                diagnosticsLogger?.invoke(
-                    "thread_channel_profile_update_success channelId=${canonical.channelId.value}"
-                )
-                reduceState(
-                    _state.value.copy(
-                        channelProfileUpdateStatus = ChannelProfileUpdateStatus.Succeeded,
-                        channelProfileUpdateErrorCode = null
-                    )
-                )
-            }
-            is DataResult.Error -> failChannelProfileUpdate(result.error.code)
-            is DataResult.NoPermission -> failChannelProfileUpdate(result.blocker.code)
-            is DataResult.Empty -> failChannelProfileUpdate("channel_update_empty")
-        }
-    }
+    private suspend fun updateChannelProfile(intent: SharedThreadIntent.UpdateChannelProfile) =
+        channelProfileUpdater.updateChannelProfile(intent)
 
-    private fun channelProfileUpdateStillCurrent(
-        staleToken: MviStaleToken,
-        routeIdentity: ThreadRouteIdentity,
-        channelId: String,
-        stage: String
-    ): Boolean {
-        val currentPayload = _state.value.payload
-        if (
-            staleToken.isCurrent(routeStaleToken) &&
-            currentPayload.resolveThreadRouteIdentity() == routeIdentity
-        ) {
-            return true
-        }
-        diagnosticsLogger?.invoke(
-            "thread_channel_profile_update_stale_drop channelId=$channelId stage=$stage " +
-                "token=${staleToken.value} currentToken=${routeStaleToken.value} " +
-                "currentRoute=${currentPayload.resolveThreadRouteIdentity().instanceKey}"
-        )
-        return false
-    }
-
-    private fun failChannelProfileUpdate(errorCode: String) {
-        diagnosticsLogger?.invoke("thread_channel_profile_update_failed errorCode=$errorCode")
-        reduceState(
-            _state.value.copy(
-                channelProfileUpdateStatus = ChannelProfileUpdateStatus.Failed,
-                channelProfileUpdateErrorCode = errorCode
-            )
-        )
-    }
-
-    private fun clearChannelProfileUpdateStatus() {
-        reduceState(
-            _state.value.copy(
-                channelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
-                channelProfileUpdateErrorCode = null
-            )
-        )
-    }
+    private fun clearChannelProfileUpdateStatus() = channelProfileUpdater.clearChannelProfileUpdateStatus()
 
     private fun reduceState(nextState: SharedThreadState): Boolean {
         val previousState = _state.value
