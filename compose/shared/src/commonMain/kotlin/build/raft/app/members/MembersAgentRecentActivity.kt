@@ -184,7 +184,8 @@ internal fun MembersAgentRecentActivityCard(
 /**
  * Web AgentNowCard `RecentTurnRow`: its time, who woke it, what it did, and its compact badges.
  * artin 2026-11-18 (#wg-mobile-sync:c1493fb5): on a phone the row wraps instead of truncating, so
- * nothing is cut to "…" (web keeps one truncated line); the badges move to the next line whole.
+ * nothing is cut to "…"; the badges move to the next line whole, aligned with the text, not the
+ * clock (web slock #15377 does the same).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -192,26 +193,33 @@ private fun MembersAgentRecentTurnRow(turn: AgentActivityTurn, timeContext: Raft
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val trigger = membersActivityOverviewCompactTriggerText(turn.trigger)
-    FlowRow(
+    Row(
         modifier = Modifier.fillMaxWidth().testTag("agent-now-row"),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        itemVerticalAlignment = Alignment.CenterVertically,
     ) {
         RaftText(
             text = membersActivityOverviewClock(turn.startedAtEpochMillis, timeContext),
             style = typography.monoMeta,
             color = colors.foregroundHint,
             maxLines = 1,
+            // The clock sits on the first line's text, wrapped lines start under the text (web #15377).
+            modifier = Modifier.padding(top = 2.dp),
         )
-        if (trigger != null) {
-            RaftText(text = trigger, style = typography.callout, color = colors.foreground)
+        FlowRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (trigger != null) {
+                RaftText(text = trigger, style = typography.callout, color = colors.foreground)
+            }
+            RaftText(
+                text = membersActivityOverviewActionsText(turn.actions, turn.messagesSent),
+                style = typography.callout,
+                color = colors.foregroundMuted,
+            )
+            MembersAgentActivityTurnBadges(turn, compact = true)
         }
-        RaftText(
-            text = membersActivityOverviewActionsText(turn.actions, turn.messagesSent),
-            style = typography.callout,
-            color = colors.foregroundMuted,
-        )
-        MembersAgentActivityTurnBadges(turn, compact = true)
     }
 }
