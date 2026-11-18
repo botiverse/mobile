@@ -507,7 +507,7 @@
     <string name="raft_widget_refreshing">正在刷新…</string>
     <string name="raft_widget_updating">更新中…</string>
     <string name="raft_widget_open_raft_to_start">打开 Raft 开始使用</string>
-    <string name="raft_widget_stale_at">%1$s 后未更新</string>
+    <string name="raft_widget_stale_at">自 %1$s 起未更新</string>
     <string name="raft_widget_last_refresh_failed">上次刷新失败：%1$s</string>
     <string name="raft_widget_could_not_refresh">刷新失败</string>
     <string name="raft_widget_edit_to_choose_server">编辑小组件以选择服务器</string>

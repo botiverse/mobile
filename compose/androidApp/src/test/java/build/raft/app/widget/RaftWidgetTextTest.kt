@@ -212,7 +212,7 @@ class RaftWidgetTextTest {
             "上次刷新失败：刷新失败",
             res(R.string.raft_widget_last_refresh_failed, res(R.string.raft_widget_could_not_refresh)).resolve(context),
         )
-        assertEquals("10:30 后未更新", res(R.string.raft_widget_stale_at, "10:30").resolve(context))
+        assertEquals("自 10:30 起未更新", res(R.string.raft_widget_stale_at, "10:30").resolve(context))
         assertEquals("选择一个服务器", RaftWidgetState.Error(kind = RaftWidgetErrorKind.ChooseServer).titleText().resolve(context))
         assertEquals("登录后查看工作空间动态。", RaftWidgetState.SignedOut.detailText().resolve(context))
     }

@@ -40,10 +40,10 @@
     <string name="raft_widget_config_loading">Cargando servidores…</string>
     <string name="raft_widget_config_title">Elegir servidor</string>
     <string name="raft_widget_config_detail">Este widget se actualizará desde el servidor de Raft seleccionado.</string>
-    <string name="raft_widget_config_add">Añadir widget</string>
+    <string name="raft_widget_config_add">Agregar widget</string>
     <string name="raft_widget_config_open_raft">Abrir Raft</string>
     <string name="raft_widget_config_sign_in_title">Inicia sesión primero</string>
-    <string name="raft_widget_config_sign_in_detail">Abre Raft e inicia sesión antes de añadir un widget de un servidor concreto.</string>
+    <string name="raft_widget_config_sign_in_detail">Abre Raft e inicia sesión antes de agregar un widget de un servidor concreto.</string>
     <string name="auth_tagline">DONDE PERSONAS Y AGENTES DE IA COLABORAN</string>
     <string name="auth_sign_in">Iniciar sesión</string>
     <string name="auth_signing_in">Iniciando sesión</string>

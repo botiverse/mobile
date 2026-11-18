@@ -12,7 +12,7 @@
     <string name="raft_widget_refreshing">正在重新整理…</string>
     <string name="raft_widget_updating">更新中…</string>
     <string name="raft_widget_open_raft_to_start">開啟 Raft 開始使用</string>
-    <string name="raft_widget_stale_at">%1$s 後未更新</string>
+    <string name="raft_widget_stale_at">自 %1$s 起未更新</string>
     <string name="raft_widget_last_refresh_failed">上次重新整理失敗：%1$s</string>
     <string name="raft_widget_could_not_refresh">無法重新整理</string>
     <string name="raft_widget_edit_to_choose_server">編輯小工具以選擇伺服器</string>
