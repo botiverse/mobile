@@ -39,7 +39,7 @@ import kotlin.math.roundToInt
  * after its hop ([RaftStepStatus.Finish]). Decorative (no semantics): the status is said in text
  * beside it. Give it [size] 40dp or more (raft-ui: "40px or larger").
  *
- * The artwork is raft-ui's own sheets, byte for byte (`ottie-assets/*.webp`, 256px a frame: the
+ * The artwork is raft-ui's own sheets, byte for byte (the WebP sheets in `ottie-assets`, 256px a frame: the
  * resting pose alone, the others three by two). Fixed brand art, the same in light and dark.
  *
  * Difference from raft-ui: the poses are still, as raft-ui draws them with reduced motion (the
