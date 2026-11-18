@@ -19,6 +19,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.Text
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
+import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.RaftMessageActionCard
 import build.raft.designsystem.components.RaftMessageActionCardActions
 import build.raft.designsystem.components.RaftMessageActionCardDefaults
@@ -687,3 +691,23 @@ internal fun threadCreateAgentDialogErrorCopy(code: String, serverMessage: Strin
             serverMessage?.takeIf { it.isNotBlank() }
                 ?: stringResource(Res.string.thread_action_card_error_agent_create, code)
     }
+
+/**
+ * A card a phone shows as one line ([ThreadActionCard.actionCardMobileLine]): the line as message
+ * text, no frame, no buttons, no fields (the web's mobile layout for `plan:trial`).
+ */
+@Composable
+internal fun ThreadActionCardMobileLineView(
+    line: StringResource,
+    textStyle: TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = stringResource(line),
+        style = textStyle,
+        color = RaftColor.TextBlack,
+        modifier = modifier.testTag(ThreadActionCardMobileLineTestTag),
+    )
+}
+
+internal const val ThreadActionCardMobileLineTestTag = "thread_action_card_mobile_line"

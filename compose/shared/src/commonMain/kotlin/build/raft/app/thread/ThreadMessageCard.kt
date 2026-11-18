@@ -1370,14 +1370,22 @@ private fun ThreadMessageCardContent(
                             val shownActionCard = actionCard.expiredAsOf(actionCardNowMillis)
                             // A4: the spec card; for every card without a spec, the typed card.
                             val specHost = LocalThreadActionCardSpecHost.current
+                            // A card a phone shows as one line (plan:trial, web mobile): no card at all.
+                            val mobileLine = shownActionCard.actionCardMobileLine()
                             val viewerServerId = LocalThreadViewerServerId.current
                             val feedbackTicketVisible =
                                 shownActionCard.showsFeedbackTicket(specHost.viewerUserId, specHost.clientOs)
                             val specCard =
                                 remember(shownActionCard, specHost.capabilities, feedbackTicketVisible) {
-                                    shownActionCard.actionCardSpecToRender(specHost.capabilities, feedbackTicketVisible)
+                                    if (mobileLine != null) null else shownActionCard.actionCardSpecToRender(specHost.capabilities, feedbackTicketVisible)
                                 }
-                            if (specCard != null) {
+                            if (mobileLine != null) {
+                                ThreadActionCardMobileLineView(
+                                    line = mobileLine,
+                                    textStyle = messageBodyTextStyle,
+                                    modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                                )
+                            } else if (specCard != null) {
                                 ThreadActionCardSpecView(
                                     messageId = message.id,
                                     card = shownActionCard,

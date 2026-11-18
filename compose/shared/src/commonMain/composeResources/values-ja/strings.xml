@@ -1067,6 +1067,7 @@
     <string name="thread_action_card_expired_line_own">%1$s に期限切れになりました。新しいリクエストを送ってください。</string>
     <string name="thread_action_card_expired_line_from_person">%1$s に期限切れになりました。%2$s さんに新しいリクエストを送ってもらってください。</string>
     <string name="thread_action_card_seats_expired_line">7 日以内にオーナーからの対応がなかったため、何も変更されていません。</string>
+    <string name="thread_action_card_plan_trial_mobile_line">Pro を無料でお試しいただけます。パソコンの Raft から開始してください。</string>
     <string name="thread_action_card_reconfirm">再確認</string>
     <string name="thread_action_card_reconfirm_failed">再確認に失敗しました</string>
     <string name="thread_action_card_blocked_target_server">この操作は %1$s で実行されます。実行するには %1$s に切り替えてください。</string>

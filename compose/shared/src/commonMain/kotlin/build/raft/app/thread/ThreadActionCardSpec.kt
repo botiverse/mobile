@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.resources.*
+import org.jetbrains.compose.resources.StringResource
+import build.raft.app.data.PlanTrialActionCardType
 import build.raft.app.data.ActionCardExecuteOutcome
 import build.raft.app.data.SecondFactorStepUpCoordinator
 import build.raft.app.data.SecondFactorStepUpOutcome
@@ -49,6 +52,16 @@ import kotlinx.coroutines.launch
  * refusals into copy (ThreadInstallAppActionDialog); the spec has neither yet.
  */
 internal val ThreadActionCardTypedOnlyTypes: Set<String> = setOf("integration:connect_mcp", "integration:install_marketplace_app")
+
+/**
+ * The one line a phone shows instead of [this] card, or null to draw the card. `plan:trial` (Cindy's
+ * Pro free trial in the owner's DM) is started from Raft on a computer, so by design a phone shows
+ * no buttons or fields for it, only "You can try Pro for free. Start it from Raft on your computer."
+ * (the web's mobile layout). Keyed on the type, never the spec: its card (an `upgrade_dialog`
+ * button) is not drawn. Every other type, known or not, keeps its spec or typed card.
+ */
+internal fun ThreadActionCard.actionCardMobileLine(): StringResource? =
+    if (type.equals(PlanTrialActionCardType, ignoreCase = true)) Res.string.thread_action_card_plan_trial_mobile_line else null
 
 /**
  * The spec card to draw for [this] card (web `ActionCard` + `readActionCardSpec`), or null for the
