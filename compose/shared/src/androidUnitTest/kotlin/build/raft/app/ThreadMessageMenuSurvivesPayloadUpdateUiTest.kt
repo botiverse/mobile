@@ -53,6 +53,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * Characterizes where the message list keeps its open action menu (ThreadMessagesListContent's
@@ -63,6 +64,7 @@ import org.robolectric.annotation.Config
  * [ThreadBackToBottomJumpUiTest] does, over a payload the test replaces as the store would.
  */
 @OptIn(ExperimentalTestApi::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w400dp-h700dp")
 class ThreadMessageMenuSurvivesPayloadUpdateUiTest {
