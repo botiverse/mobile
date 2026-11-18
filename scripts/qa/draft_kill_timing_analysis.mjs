@@ -56,7 +56,8 @@ const round3 = (v) => (v == null ? null : Math.round(v * 1000) / 1000);
  *   (ActivityManager "Killing <pid>:<pkg>", events am_kill). The signal comes after both.
  * - upper: the earliest evidence the process is gone: the device-side poller's
  *   `run=<n> pid_gone` probe line (it polls /proc/<pid> every ~5 ms from just before the
- *   force-stop), events am_proc_died, ActivityManager "Process <pkg> (pid <pid>) has died".
+ *   force-stop), events am_proc_died, ActivityManager "Process <pkg> (pid <pid>) has died",
+ *   libprocessgroup "Successfully killed process cgroup ... pid <pid>".
  */
 export function exitInterval(parsed, { pkg, oldPid, runIndex }) {
   const lowers = parsed.filter((l) =>
@@ -66,10 +67,12 @@ export function exitInterval(parsed, { pkg, oldPid, runIndex }) {
   const uppers = parsed.filter((l) =>
     (l.tag === "RaftDraftTimingProbe" && new RegExp(`^run=${runIndex} pid_gone\\b`).test(l.message)) ||
     (l.tag === "am_proc_died" && parseEventPid(l.message)?.pid === oldPid && parseEventPid(l.message)?.name === pkg) ||
-    (l.tag === "ActivityManager" && l.message.startsWith(`Process ${pkg} (pid ${oldPid}) has died`)));
+    (l.tag === "ActivityManager" && l.message.startsWith(`Process ${pkg} (pid ${oldPid}) has died`)) ||
+    // system_server after the app's cgroup is empty: "Successfully killed process cgroup uid <uid> pid <pid> in <n>ms".
+    (l.tag === "libprocessgroup" && new RegExp(`^Successfully killed process cgroup uid \\d+ pid ${oldPid} `).test(l.message)));
   const valid = uppers.filter((l) => lower == null || l.tsMs >= lower);
   const upper = valid.length ? Math.min(...valid.map((l) => l.tsMs)) : null;
-  const sources = (list, at) => [...new Set(list.filter((l) => l.tsMs === at).map((l) => (l.tag === "RaftDraftTimingProbe" ? "pid_gone poll" : l.tag === "ActivityManager" ? (l.message.startsWith("Killing") ? "AM Killing" : "AM has died") : l.tag)))];
+  const sources = (list, at) => [...new Set(list.filter((l) => l.tsMs === at).map((l) => (l.tag === "RaftDraftTimingProbe" ? "pid_gone poll" : l.tag === "libprocessgroup" ? "cgroup empty" : l.tag === "ActivityManager" ? (l.message.startsWith("Killing") ? "AM Killing" : "AM has died") : l.tag)))];
   return {
     lower_ms: lower,
     upper_ms: upper,

@@ -36,6 +36,9 @@ test("the exit interval is the latest pre-signal line to the earliest evidence o
   // Another run's poller line is not evidence for this run.
   const other = exitInterval([killing(10.0), gone(10.005, 2), procDied(10.03)].map(parseLogcatLine), { pkg: PKG, oldPid: PID, runIndex: 1 });
   assert.equal(other.upper_ms, 10030);
+  const cgroup = exitInterval([killing(10.0), line(10.004, 519, "libprocessgroup", `Successfully killed process cgroup uid 10192 pid ${PID} in 3ms`), procDied(10.03)].map(parseLogcatLine), { pkg: PKG, oldPid: PID, runIndex: 1 });
+  assert.equal(cgroup.upper_ms, 10004);
+  assert.equal(cgroup.upper_source, "cgroup empty");
 });
 
 test("a run is a hit only when the whole exit interval is inside the bucket", () => {

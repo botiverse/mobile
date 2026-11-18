@@ -133,6 +133,16 @@ async function dismissSystemDialog(list) {
   return true;
 }
 
+/** One-off app sheets ("What's new" and the like) that cover the page after sign-in or relaunch. */
+async function dismissAppSheet(list) {
+  const button = find(list, (n) => n.pkg === PKG && n.enabled && ["Got It", "Got it", "Not now", "Maybe later", "Later"].includes(n.text.trim()));
+  if (!button) return false;
+  log(`dismissing app sheet button "${button.text}"`);
+  tapNode(button);
+  await sleep(1000);
+  return true;
+}
+
 async function waitFor(description, matcher, { timeoutMs = 60_000, intervalMs = 1500 } = {}) {
   const deadline = Date.now() + timeoutMs;
   let list = [];
@@ -141,6 +151,7 @@ async function waitFor(description, matcher, { timeoutMs = 60_000, intervalMs = 
     const hit = find(list, matcher);
     if (hit) return hit;
     if (await dismissSystemDialog(list)) continue;
+    if (await dismissAppSheet(list)) continue;
     await sleep(intervalMs);
   }
   const visible = list.map(label).filter(Boolean).slice(0, 40).join(" | ");
@@ -181,7 +192,7 @@ function launchApp() {
   shell(`monkey -p ${PKG} -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1`, { allowFailure: true });
 }
 
-const isHome = (n) => n.text === "Drafts" && n.pkg === PKG;
+const isHome = (n) => n.pkg === PKG && (n.text === "Drafts" || n.text === "Home");
 const serverVisible = (list, name = SERVER) => list.some((n) => n.pkg === PKG && label(n).includes(name));
 
 // ---------- logcat (-v monotonic: CLOCK_MONOTONIC seconds, the clock of SystemClock.uptimeMillis) ----------
@@ -372,6 +383,7 @@ async function signIn(api) {
   const deadline = Date.now() + 90_000;
   while (Date.now() < deadline) {
     const now = nodes();
+    if (await dismissAppSheet(now)) continue;
     if (find(now, isHome) && serverVisible(now)) return { via: request.via };
     const row = find(now, (n) => n.pkg === PKG && label(n).includes(SERVER) && !find(now, isHome));
     if (row) tapNode(row);
