@@ -329,8 +329,7 @@ class RealtimeEventMapper(
                 decodeOrNull(ThreadUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ThreadReplyUpdated ->
                 decodeOrNull(ThreadReplyUpdatedDto.serializer(), element)?.toDomain()
-            RealtimeSocketEvents.ChannelUpdated ->
-                decodeChannelRefresh(element, RealtimeRefreshScope.Home, RealtimeSocketEvents.ChannelUpdated)
+            RealtimeSocketEvents.ChannelUpdated -> decodeChannelUpdated(element)
             RealtimeSocketEvents.ChannelMembersUpdated ->
                 decodeChannelRefresh(element, RealtimeRefreshScope.ChannelMembers, RealtimeSocketEvents.ChannelMembersUpdated)
             // Mobile-local: the native host could not replay a reconnect gap (see RealtimeLocalEvents).
@@ -512,6 +511,29 @@ class RealtimeEventMapper(
                     ?.let(::ChannelId)
                     ?: stringField(element, "id")?.let(::ChannelId)
         )
+
+    /**
+     * `channel:updated` is `{ channel }` with the channel's row (slock channelRealtimeEvents.ts
+     * publishChannelUpdate / emitJointProjectionUpdates: archive, unarchive, edits) or an id-only
+     * `{ channelId }` (routes/channels.ts: joint disconnect, external relation). The row's `id`
+     * names the channel and its `archivedAt` says whether it is archived, so an open page can
+     * follow an archive without reloading.
+     */
+    private fun decodeChannelUpdated(element: JsonObject): RealtimeRefreshRequired {
+        val base = decodeChannelRefresh(element, RealtimeRefreshScope.Home, RealtimeSocketEvents.ChannelUpdated)
+        val row = element["channel"] as? JsonObject ?: return base
+        val archivedAt = row["archivedAt"]
+        return base.copy(
+            channelId = base.channelId ?: stringField(row, "id")?.let(::ChannelId),
+            channelArchived =
+                when {
+                    archivedAt == null -> null
+                    archivedAt is JsonNull -> false
+                    archivedAt is JsonPrimitive && archivedAt.isString -> archivedAt.content.isNotBlank()
+                    else -> null
+                },
+        )
+    }
 
     private fun decodeServerMemberRefresh(element: JsonObject, reason: String): RealtimeRefreshRequired =
         RealtimeRefreshRequired(

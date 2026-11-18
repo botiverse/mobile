@@ -36,6 +36,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.RealtimeEvent
+import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.ThreadReplyUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.SyncResumeResponse
@@ -458,6 +459,8 @@ internal class SharedThreadStore(
         val recoveryRequest: RealtimeVisibleStreamGapRequest? = null,
         val replyCountGap: ReplyCountRealtimeGap? = null,
         val dropped: Boolean = false,
+        /** An id-only `channel:updated` named this page's channel: re-read it (archive state included). */
+        val reloadForChannelUpdate: Boolean = false,
     )
 
     fun dispatch(intent: SharedThreadIntent) {
@@ -3297,6 +3300,36 @@ internal class SharedThreadStore(
                     return@withLock RealtimeEventDecision(source = "read_state_identity_mismatch",
                         messageCount = currentPayload.messages.size, dropped = true)
                 }
+                if (event is RealtimeRefreshRequired) {
+                    if (!currentPayload.followsChannelUpdate(event)) {
+                        return@withLock RealtimeEventDecision(source = "none", messageCount = currentPayload.messages.size)
+                    }
+                    val archived = event.channelArchived
+                        ?: return@withLock RealtimeEventDecision(
+                            source = "channel_updated_reload",
+                            messageCount = currentPayload.messages.size,
+                            reloadForChannelUpdate = true,
+                        )
+                    // Held for a load in flight too: its answer may predate the archive.
+                    recordInFlightRealtime(
+                        staleToken = eventStaleToken,
+                        event = event,
+                        currentUserId = currentUserId,
+                        activeReplyParentMessageId = activeReplyParentMessageId,
+                    )
+                    val emitted = reducePayloadPatch(cachePayload = true) { payload ->
+                        payload.withChannelUpdateArchiveState(event)
+                    }
+                    diagnosticsLogger?.invoke(
+                        "thread_channel_archive_live channelId=${event.channelId?.value.orEmpty()} " +
+                            "archived=$archived emitted=$emitted surface=${currentPayload.surfaceKind}"
+                    )
+                    return@withLock RealtimeEventDecision(
+                        source = "channel_archive",
+                        emitted = emitted,
+                        messageCount = currentPayload.messages.size,
+                    )
+                }
                 dataSource.seedRealtimeThreadAuthorProfiles(
                     serverId = currentSession?.currentServerId,
                     event = event,
@@ -3582,6 +3615,13 @@ internal class SharedThreadStore(
             }
 
         if (decision.dropped) return
+        if (decision.reloadForChannelUpdate) {
+            diagnosticsLogger?.invoke(
+                "thread_channel_updated_reload threadId=${acceptedPayload.sourceThreadId.orEmpty()} reason=id_only_frame"
+            )
+            dispatch(SharedThreadIntent.Refresh)
+            return
+        }
         val recoveryId = decision.recoveryId
         val recoveryInitial = decision.recoveryInitial
         val recoveryRequest = decision.recoveryRequest
@@ -5246,6 +5286,7 @@ internal class SharedThreadStore(
                 } else {
                     reducePayloadPatch { current ->
                         current.withLocalSendFailure(messageId, errorCode, errorMessage)
+                            .withSendRefusedAsArchived(errorCode)
                     }
                 }
             } ?: false

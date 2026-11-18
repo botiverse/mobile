@@ -14,6 +14,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.RealtimeEvent
+import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
@@ -157,6 +158,9 @@ internal fun RaftThreadScreenPayload.applyRealtimeEvent(
             applyThreadUpdated(event)
         is MemberPresenceUpdated ->
             this
+        // Also replayed onto a load that was in flight when the channel was (un)archived.
+        is RealtimeRefreshRequired ->
+            withChannelUpdateArchiveState(event)
         else -> this
     }
 
