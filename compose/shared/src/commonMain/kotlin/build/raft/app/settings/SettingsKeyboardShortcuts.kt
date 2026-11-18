@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
@@ -101,6 +102,7 @@ internal fun settingsKeyboardShortcutGroups(apple: Boolean): List<SettingsKeyboa
 internal fun SettingsKeyboardShortcutsSection(apple: Boolean = raftPlatformShortcutsUseCommand()) {
     var open by remember { mutableStateOf(false) }
     val title = stringResource(Res.string.settings_keyboard_shortcuts_title)
+    RaftDesignSystemTheme {
     SettingsFormSection(iconName = RaftLucideIconName.Type, title = title) {
         RaftListRowGroup(Modifier.fillMaxWidth().settingsSearchAnchor("keyboard-shortcuts")) {
             RaftListRow(
@@ -113,6 +115,7 @@ internal fun SettingsKeyboardShortcutsSection(apple: Boolean = raftPlatformShort
         }
     }
     if (open) SettingsKeyboardShortcutsDialog(apple = apple, onDismiss = { open = false })
+    }
 }
 
 @Composable

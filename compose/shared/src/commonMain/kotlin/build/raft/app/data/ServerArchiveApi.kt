@@ -236,11 +236,11 @@ internal class SharedServerArchiveStore(
             scope.launch {
                 val channels =
                     if (canArchiveChannels) {
-                        (dataSource.archivedChannels(ServerId(id)) as? DataResult.Content)?.data.orEmpty()
+                        (dataSource.archivedChannels(ServerId(id)) as? DataResult.Content<List<ArchivedChannel>>)?.data.orEmpty()
                     } else {
                         emptyList()
                     }
-                val agents = (dataSource.archivedAgents(ServerId(id)) as? DataResult.Content)?.data.orEmpty()
+                val agents = (dataSource.archivedAgents(ServerId(id)) as? DataResult.Content<List<ArchivedAgent>>)?.data.orEmpty()
                 if (mutableState.value.serverId == serverId) {
                     mutableState.value = mutableState.value.copy(channels = channels, agents = agents)
                 }

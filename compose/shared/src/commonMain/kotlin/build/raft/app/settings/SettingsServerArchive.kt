@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ArchivedAgent
 import build.raft.app.data.ArchivedAgentWorkspace
 import build.raft.app.data.ArchivedChannel
@@ -91,6 +92,7 @@ internal val SettingsServerArchiveUi.agentsVisible: Boolean
 internal fun SettingsArchivedChannelsSection(ui: SettingsServerArchiveUi) {
     if (!ui.channelsVisible) return
     val state = ui.state
+    RaftDesignSystemTheme {
     SettingsFormSection(iconName = RaftLucideIconName.Archive, title = stringResource(Res.string.settings_archived_channels_title)) {
         Column(
             Modifier.fillMaxWidth().testTag(SettingsArchivedChannelsSectionTag).settingsSearchAnchor("archived-channels"),
@@ -111,6 +113,7 @@ internal fun SettingsArchivedChannelsSection(ui: SettingsServerArchiveUi) {
             }
         }
     }
+}
 }
 
 /** External first (a guest, a guest server or an open invite), as the channel's header tags it. */
@@ -164,6 +167,7 @@ private fun SettingsArchivedChannelRow(
 @Composable
 internal fun SettingsArchivedAgentsSection(ui: SettingsServerArchiveUi) {
     if (!ui.agentsVisible) return
+    RaftDesignSystemTheme {
     SettingsFormSection(iconName = RaftLucideIconName.Archive, title = stringResource(Res.string.settings_archived_agents_title)) {
         RaftListRowGroup(Modifier.fillMaxWidth().testTag(SettingsArchivedAgentsSectionTag).settingsSearchAnchor("archived-agents")) {
             ui.state.agents.forEachIndexed { index, agent ->
@@ -171,6 +175,7 @@ internal fun SettingsArchivedAgentsSection(ui: SettingsServerArchiveUi) {
             }
         }
     }
+}
 }
 
 @Composable

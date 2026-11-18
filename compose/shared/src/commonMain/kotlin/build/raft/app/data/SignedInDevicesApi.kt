@@ -264,10 +264,10 @@ internal class NetworkSignedInDevicesDataSource(private val networkClient: RaftN
             // On-screen rows of the open Account page, read again after every sign-out.
             val response = networkClient.request(DataRequestPriority.Visible, MY_SESSIONS_PATH)
             when {
-                response.code == 404 -> DataResult.Content(null)
-                !response.isSuccessful -> response.signedInDevicesError("signed_in_devices")
+                response.code == 404 -> DataResult.Content<SignedInDeviceList?>(null)
+                !response.isSuccessful -> response.signedInDevicesError<SignedInDeviceList?>("signed_in_devices")
                 else ->
-                    parseSharedSignedInDevices(response.bodyText)?.let { DataResult.Content(it) }
+                    parseSharedSignedInDevices(response.bodyText)?.let { DataResult.Content<SignedInDeviceList?>(it) }
                         ?: DataResult.Error(
                             ScreenError(code = "signed_in_devices_contract_mismatch", retryable = false, traceId = response.traceId)
                         )
@@ -286,7 +286,7 @@ internal class NetworkSignedInDevicesDataSource(private val networkClient: RaftN
             if (response.isSuccessful) {
                 DataResult.Content(parseSharedSignedInDeviceCascade(response.bodyText))
             } else {
-                response.signedInDevicesError("signed_in_device_revoke")
+                response.signedInDevicesError<SignedInDeviceCascade>("signed_in_device_revoke")
             }
         }
 
@@ -302,7 +302,7 @@ internal class NetworkSignedInDevicesDataSource(private val networkClient: RaftN
             if (response.isSuccessful) {
                 DataResult.Content(parseSharedSignedInDevicesRevokedOthers(response.bodyText))
             } else {
-                response.signedInDevicesError("signed_in_devices_revoke_others")
+                response.signedInDevicesError<SignedInDevicesRevokedOthers>("signed_in_devices_revoke_others")
             }
         }
 

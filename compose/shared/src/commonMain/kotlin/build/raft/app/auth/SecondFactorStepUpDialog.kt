@@ -53,7 +53,9 @@ internal const val SECOND_FACTOR_STEP_UP_DIALOG_TAG = "second-factor-step-up-dia
  * as a link under the field); a wrong or used code under the field, a lock, Sign In Again or
  * any other refusal in a warning banner. Only a passkey listed: a banner saying to do this on
  * the web and Close. A scrim tap does not close it; Cancel, the close button and Back do (not
- * while the answer is being checked).
+ * while the answer is being checked). With a [SecondFactorStepUpDialogState.recovery] (signing out
+ * a lost device) it also offers "Lost the device with your authenticator?"
+ * ([SecondFactorStepUpRecoveryPage]).
  */
 @Composable
 internal fun SecondFactorStepUpDialog(
@@ -63,6 +65,12 @@ internal fun SecondFactorStepUpDialog(
     description: String = stringResource(Res.string.settings_step_up_description),
     formatClock: (Long) -> String = ::secondFactorStepUpLocalClock,
 ) {
+    // Signing out a lost device: "Lost the device with your authenticator?" and its pages.
+    val recovery = state.recovery
+    if (recovery != null && state.view != SecondFactorStepUpView.Answer) {
+        SecondFactorStepUpRecoveryPage(state, recovery, onIntent)
+        return
+    }
     val dismiss = { if (!state.submitting) onIntent(SecondFactorStepUpIntent.Cancel) }
     val method = state.method
     RaftDialog(
