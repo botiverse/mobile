@@ -222,8 +222,98 @@ internal data class RuntimeAccountUsageAccount(
      * null when the runtime reports none, the Computer predates it, or the value is not a whole
      * number in 0..[RUNTIME_LIMIT_RESETS_AVAILABLE_MAX] (the server's own bound).
      */
-    val limitResetsAvailable: Int? = null
+    val limitResetsAvailable: Int? = null,
+    /**
+     * Extra usage credits (slock #15374, Codex: OAR `credits`), which keep the account running
+     * after a window is used up. Null: unknown (the server or the Computer predates them, or the
+     * runtime did not say); the windows may then still read full, as before.
+     */
+    val credits: RuntimeAccountUsageCredits? = null,
 )
+
+/**
+ * slock `runtimeAccountUsageCreditsSchema` (#15374). [balance] is the runtime's own number string
+ * ("30784", "1,234.50"), with no unit; null when not said or not one the wire allows.
+ */
+internal data class RuntimeAccountUsageCredits(
+    val available: Boolean,
+    val unlimited: Boolean? = null,
+    val balance: String? = null,
+)
+
+/**
+ * The account can spend credits now (available, or unlimited): a window at its limit does not
+ * stop it (slock #15374: "a full window isn't reached while `credits.available`"). False when
+ * credits are unknown, so an older server or Computer reads as before.
+ */
+internal val RuntimeAccountUsageAccount.spendsCredits: Boolean
+    get() = credits?.let { it.available || it.unlimited == true } == true
+
+/** [window] is full but the account runs on credits past it: said as such, never "used up". */
+internal fun RuntimeAccountUsageAccount.carriedByCredits(window: RuntimeAccountUsageWindow): Boolean =
+    spendsCredits &&
+        (window.status == RuntimeAccountUsageWindowStatus.LimitReached ||
+            (window.status == RuntimeAccountUsageWindowStatus.Ok && (window.usedRatio ?: 0.0) >= 1.0))
+
+/** How the usage card reads a window it can read (`ComputerRuntimeUsageWindowRow`). */
+internal enum class RuntimeAccountUsageWindowFill {
+    /** "40% used · resets …". */
+    Used,
+
+    /** "Used up · resets …". */
+    UsedUp,
+
+    /** Full, but the account runs on its credits: "Limit reached · using credits" (slock #15374). */
+    OnCredits,
+}
+
+/**
+ * Used up by the provider's word or the ratio itself, not by rounding (0.4% left reads "100%
+ * used", as the web says); [RuntimeAccountUsageWindowFill.OnCredits] when the account's credits
+ * carry it. Null: a window that cannot be read.
+ */
+internal fun RuntimeAccountUsageAccount.windowFill(window: RuntimeAccountUsageWindow): RuntimeAccountUsageWindowFill? {
+    val ratio = window.usedRatio
+    if (window.status == RuntimeAccountUsageWindowStatus.Unavailable || ratio == null) return null
+    val usedUp = window.status == RuntimeAccountUsageWindowStatus.LimitReached || ratio >= 1.0
+    return when {
+        !usedUp -> RuntimeAccountUsageWindowFill.Used
+        carriedByCredits(window) -> RuntimeAccountUsageWindowFill.OnCredits
+        else -> RuntimeAccountUsageWindowFill.UsedUp
+    }
+}
+
+/** The account's credits line on the usage card, beside its limit resets; null says nothing. */
+internal sealed interface RuntimeAccountUsageCreditsLine {
+    /** "30784 credits": the runtime's own number, as it wrote it. */
+    data class Balance(val balance: String) : RuntimeAccountUsageCreditsLine
+
+    data object Unlimited : RuntimeAccountUsageCreditsLine
+
+    /** Credits to spend, how many not said. */
+    data object Available : RuntimeAccountUsageCreditsLine
+}
+
+/** Null when credits are unknown, or none are available and no balance is said. */
+internal val RuntimeAccountUsageAccount.creditsLine: RuntimeAccountUsageCreditsLine?
+    get() {
+        val credits = credits ?: return null
+        return when {
+            credits.unlimited == true -> RuntimeAccountUsageCreditsLine.Unlimited
+            credits.balance != null -> RuntimeAccountUsageCreditsLine.Balance(credits.balance)
+            credits.available -> RuntimeAccountUsageCreditsLine.Available
+            else -> null
+        }
+    }
+
+/**
+ * Whether the account asks for attention on the usage light (web `RuntimeAccountUsageChip`): not
+ * ok, or a window not ok. A full window the account's credits carry is no attention.
+ */
+internal val RuntimeAccountUsageAccount.needsUsageAttention: Boolean
+    get() =
+        health != RuntimeAccountUsageHealth.Ok ||
+            windows.any { it.status != RuntimeAccountUsageWindowStatus.Ok && !carriedByCredits(it) }
 
 /** slock `RUNTIME_LIMIT_RESETS_AVAILABLE_MAX`: a larger count is not a reading Raft trusts. */
 internal const val RUNTIME_LIMIT_RESETS_AVAILABLE_MAX: Int = 999
@@ -351,9 +441,29 @@ private fun JsonObject.toRuntimeAccountUsageAccount(): RuntimeAccountUsageAccoun
         identityLabel = stringOrNull("maskedLabel") ?: stringOrNull("displayName"),
         health = health,
         windows = windows,
-        limitResetsAvailable = limitResetsAvailableOrNull()
+        limitResetsAvailable = limitResetsAvailableOrNull(),
+        credits = (this["credits"] as? JsonObject)?.toRuntimeAccountUsageCredits(),
     )
 }
+
+/** slock `RUNTIME_ACCOUNT_USAGE_CREDITS_BALANCE_PATTERN`: digits with `.` or `,`, an optional leading `-`. */
+private val CreditsBalancePattern = Regex("^-?[0-9][0-9.,]{0,31}$")
+
+/**
+ * slock `runtimeAccountUsageCreditsSchema`: `available` must be a boolean, or the credits are
+ * unknown (null); an odd `unlimited` or `balance` is dropped on its own, never the credits.
+ */
+private fun JsonObject.toRuntimeAccountUsageCredits(): RuntimeAccountUsageCredits? {
+    val available = booleanOrNull("available") ?: return null
+    return RuntimeAccountUsageCredits(
+        available = available,
+        unlimited = booleanOrNull("unlimited"),
+        balance = stringOrNull("balance")?.takeIf { CreditsBalancePattern.matches(it) },
+    )
+}
+
+private fun JsonObject.booleanOrNull(key: String): Boolean? =
+    (this[key] as? JsonPrimitive)?.takeUnless { it.isString }?.contentOrNull?.toBooleanStrictOrNull()
 
 private fun JsonObject.limitResetsAvailableOrNull(): Int? {
     val primitive = (this["limitResetsAvailable"] as? JsonPrimitive)?.takeUnless { it.isString } ?: return null

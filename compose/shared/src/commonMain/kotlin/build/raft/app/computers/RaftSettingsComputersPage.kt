@@ -2234,7 +2234,8 @@ private data class RaftRackUsageWords(val value: String, val spoken: String)
 /**
  * Web `usedText` / `cellLabel` (slock #14058): "62% used"; used up, when it is back ("Back in
  * 3h", "3h 后重置") and, for its name, the plan and "used up, resets in 3 hours"; "Used up" when
- * the reset isn't known or has passed. Counted from [nowMillis] on each composition.
+ * the reset isn't known or has passed; full but running on credits, "On credits" (slock #15374).
+ * Counted from [nowMillis] on each composition.
  */
 @Composable
 private fun raftRackUsageWords(cell: RaftRackUsageCell.Value, nowMillis: Long): RaftRackUsageWords {
@@ -2243,6 +2244,17 @@ private fun raftRackUsageWords(cell: RaftRackUsageCell.Value, nowMillis: Long): 
         return RaftRackUsageWords(value, value)
     }
     val reset = raftRackReset(cell.resetsAt, nowMillis)
+    if (cell.onCredits) {
+        // Full, but running on credits (slock #15374): never "Used up" or when it is back.
+        val plan = cell.plan ?: stringResource(Res.string.settings_computers_runtime_usage_account_fallback)
+        val full =
+            if (reset == null) {
+                stringResource(Res.string.settings_computers_runtime_usage_window_on_credits_reset_unavailable)
+            } else {
+                stringResource(Res.string.settings_computers_runtime_usage_window_on_credits, RaftRelativeTimeLabel.Relative(reset.count, reset.unit).localized())
+            }
+        return RaftRackUsageWords(stringResource(Res.string.settings_computers_rack_on_credits), "$plan · $full")
+    }
     if (reset == null) {
         val value = stringResource(Res.string.settings_computers_rack_used_up)
         return RaftRackUsageWords(value, value)

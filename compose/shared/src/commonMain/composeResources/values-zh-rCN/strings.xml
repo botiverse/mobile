@@ -2833,6 +2833,11 @@
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">已用 %1$s · 重置时间暂不可用</string>
     <string name="settings_computers_runtime_usage_window_used_up">已用完 · %1$s重置</string>
     <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">已用完</string>
+    <string name="settings_computers_runtime_usage_window_on_credits">已达上限 · 正在使用积分 · %1$s重置</string>
+    <string name="settings_computers_runtime_usage_window_on_credits_reset_unavailable">已达上限 · 正在使用积分</string>
+    <string name="settings_computers_runtime_usage_credits_balance">积分 %1$s</string>
+    <string name="settings_computers_runtime_usage_credits_unlimited">积分不限量</string>
+    <string name="settings_computers_runtime_usage_credits_available">有可用积分</string>
     <string name="settings_computers_runtime_usage_later">稍后</string>
     <string name="settings_computers_runtime_usage_metadata">整个账户 · %1$s更新</string>
     <string name="settings_computers_runtime_usage_recently">刚刚</string>
@@ -3118,6 +3123,7 @@
     <string name="settings_computers_rack_resets_in_hours">%1$dh 后重置</string>
     <string name="settings_computers_rack_resets_in_days">%1$dd 后重置</string>
     <string name="settings_computers_rack_used_up_resets">已用完 · %1$s重置</string>
+    <string name="settings_computers_rack_on_credits">使用积分中</string>
     <string name="settings_computers_rack_model_usage">%1$s：%2$s</string>
     <string name="settings_computers_rack_model_resets_in_minutes">%1$d 分钟</string>
     <string name="settings_computers_rack_model_resets_in_hours">%1$d 小时</string>
@@ -3710,6 +3716,7 @@
     <string name="runtime_quota_used">%1$s 已用 %2$s</string>
     <string name="runtime_quota_used_up">%1$s 已用完 · %2$s重置</string>
     <string name="runtime_quota_used_up_no_reset">%1$s 已用完</string>
+    <string name="runtime_quota_on_credits">%1$s 已达上限 · 正在使用积分</string>
     <string name="runtime_quota_attention">%1$s · 需要处理</string>
     <string name="runtime_picker_search">搜索</string>
     <string name="runtime_picker_no_matches">没有与“%1$s”匹配的结果</string>

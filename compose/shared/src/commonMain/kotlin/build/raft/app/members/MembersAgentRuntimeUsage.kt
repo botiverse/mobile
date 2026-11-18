@@ -20,13 +20,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.RuntimeAccountUsageAccount
-import build.raft.app.data.RuntimeAccountUsageHealth
 import build.raft.app.data.RuntimeAccountUsageKey
 import build.raft.app.data.RuntimeAccountUsageLoad
 import build.raft.app.data.RuntimeAccountUsageProvider
 import build.raft.app.data.RuntimeAccountUsageRead
 import build.raft.app.data.RuntimeAccountUsageViewer
-import build.raft.app.data.RuntimeAccountUsageWindowStatus
+import build.raft.app.data.needsUsageAttention
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedRuntimeAccountUsageStore
 import build.raft.app.model.RaftTimeContext
@@ -162,10 +161,8 @@ internal fun RuntimeAccountUsageLoad?.runtimeAccountUsageNeedsAttention(): Boole
                 RuntimeAccountUsageRead.Unsupported -> false
                 is RuntimeAccountUsageRead.Available ->
                     read.stale ||
-                        read.snapshot.accounts.any { account ->
-                            account.health != RuntimeAccountUsageHealth.Ok ||
-                                account.windows.any { it.status != RuntimeAccountUsageWindowStatus.Ok }
-                        }
+                        // A full window the account's credits carry is not attention (slock #15374).
+                        read.snapshot.accounts.any { it.needsUsageAttention }
             }
     }
 

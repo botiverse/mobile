@@ -2794,6 +2794,11 @@
     <string name="settings_computers_runtime_usage_window_used_reset_unavailable">Использовано %1$s · время сброса неизвестно</string>
     <string name="settings_computers_runtime_usage_window_used_up">Исчерпано · сброс %1$s</string>
     <string name="settings_computers_runtime_usage_window_used_up_reset_unavailable">Исчерпано</string>
+    <string name="settings_computers_runtime_usage_window_on_credits">Лимит достигнут · используются кредиты · сброс %1$s</string>
+    <string name="settings_computers_runtime_usage_window_on_credits_reset_unavailable">Лимит достигнут · используются кредиты</string>
+    <string name="settings_computers_runtime_usage_credits_balance">Кредиты: %1$s</string>
+    <string name="settings_computers_runtime_usage_credits_unlimited">Безлимитные кредиты</string>
+    <string name="settings_computers_runtime_usage_credits_available">Кредиты доступны</string>
     <string name="settings_computers_runtime_usage_later">позже</string>
     <string name="settings_computers_runtime_usage_metadata">Весь аккаунт · обновлено %1$s</string>
     <string name="settings_computers_runtime_usage_recently">недавно</string>
@@ -2910,6 +2915,7 @@
     <string name="settings_computers_rack_resets_in_hours">Сброс %1$dч</string>
     <string name="settings_computers_rack_resets_in_days">Сброс %1$dд</string>
     <string name="settings_computers_rack_used_up_resets">Исчерпано · сброс %1$s</string>
+    <string name="settings_computers_rack_on_credits">На кредитах</string>
     <string name="settings_computers_rack_model_usage">%1$s: %2$s</string>
     <string name="settings_computers_rack_model_resets_in_minutes">%1$dм</string>
     <string name="settings_computers_rack_model_resets_in_hours">%1$dч</string>
@@ -3495,6 +3501,7 @@
     <string name="runtime_quota_used">%1$s: использовано %2$s</string>
     <string name="runtime_quota_used_up">%1$s: исчерпано · сброс %2$s</string>
     <string name="runtime_quota_used_up_no_reset">%1$s: исчерпано</string>
+    <string name="runtime_quota_on_credits">%1$s: лимит достигнут · используются кредиты</string>
     <string name="runtime_quota_attention">%1$s · требует внимания</string>
     <string name="runtime_picker_search">Поиск</string>
     <string name="runtime_picker_no_matches">По запросу «%1$s» ничего не найдено</string>

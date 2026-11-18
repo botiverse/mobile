@@ -73,14 +73,16 @@ internal fun rememberRuntimeQuotaLineCopy(): RuntimeQuotaLineCopy {
     val usedUp = stringResource(Res.string.runtime_quota_used_up, "\u0001", "\u0002")
     val usedUpNoReset = stringResource(Res.string.runtime_quota_used_up_no_reset, "\u0001")
     val attention = stringResource(Res.string.runtime_quota_attention, "\u0001")
-    return remember(fiveHour, week, used, usedUp, usedUpNoReset, attention) {
+    val onCredits = stringResource(Res.string.runtime_quota_on_credits, "\u0001")
+    return remember(fiveHour, week, used, usedUp, usedUpNoReset, attention, onCredits) {
         RuntimeQuotaLineCopy(
             fiveHour = fiveHour,
             week = week,
             used = { window, percent -> used.replace("\u0001", window).replace("\u0002", percent) },
             usedUp = { window, reset -> usedUp.replace("\u0001", window).replace("\u0002", reset) },
             usedUpNoReset = { window -> usedUpNoReset.replace("\u0001", window) },
-            attention = { plan -> attention.replace("\u0001", plan) }
+            attention = { plan -> attention.replace("\u0001", plan) },
+            onCredits = { window -> onCredits.replace("\u0001", window) },
         )
     }
 }
@@ -130,7 +132,7 @@ internal fun rememberRuntimeQuotaLineParts(quota: RuntimeQuotaLoads): Map<String
     // rack count them (web `usageResetText`, slock #14717): "in 5 days"; a reset already past "3 hours ago".
     val resetLabels =
         summaries
-            .flatMap { (_, summary) -> summary.segments.mapNotNull { if (it.usedUp) it.resetsAt else null } }
+            .flatMap { (_, summary) -> summary.segments.mapNotNull { if (it.usedUp && !it.onCredits) it.resetsAt else null } }
             .distinct()
             .associateWith { computerRuntimeUsageResetText(it, timeContext) }
     return summaries.associate { (optionId, summary) -> optionId to runtimeQuotaLineParts(summary, copy) { resetLabels[it] } }

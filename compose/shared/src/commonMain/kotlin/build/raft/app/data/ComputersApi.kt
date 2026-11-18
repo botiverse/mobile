@@ -355,7 +355,7 @@ internal class RaftComputersNetworkApi(
         networkClient.requestWithHeaders(
             priority = DataRequestPriority.Visible,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-account-usage/${provider.trim()}",
-            headers = RUNTIME_USAGE_WINDOW_SCOPE_HEADERS,
+            headers = RUNTIME_USAGE_CLIENT_CAPABILITY_HEADERS,
             serverIdOverride = serverId
         )
 
@@ -369,7 +369,7 @@ internal class RaftComputersNetworkApi(
         networkClient.requestWithHeaders(
             priority = priority,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-account-usage/${provider.trim()}/refresh",
-            headers = RUNTIME_USAGE_WINDOW_SCOPE_HEADERS,
+            headers = RUNTIME_USAGE_CLIENT_CAPABILITY_HEADERS,
             method = "POST",
             serverIdOverride = serverId,
             bodyText = body
@@ -464,8 +464,8 @@ internal class RaftComputersNetworkApi(
             // The person confirmed it and waits for the outcome.
             priority = DataRequestPriority.Foreground,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-account-usage/${provider.trim()}/limit-reset",
-            // The answer carries the usage read right after it: its windows' scope too.
-            headers = RUNTIME_USAGE_WINDOW_SCOPE_HEADERS,
+            // The answer carries the usage read right after it: its windows' scope and credits too.
+            headers = RUNTIME_USAGE_CLIENT_CAPABILITY_HEADERS,
             method = "POST",
             serverIdOverride = serverId,
             bodyText = body
@@ -1673,14 +1673,21 @@ private data class RuntimeFormV2MarkerDto(val protocolVersion: Int)
 internal const val RUNTIME_FORM_V2_MARKER_HEADER = "X-Raft-Runtime-Form-V2"
 
 /**
- * slock `RAFT_CLIENT_CAPABILITIES_HEADER` / `RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY` (#14605,
- * #14667): the server sends a usage window's `scope` (every kind, `models` too) only to a request
- * that declares it reads it; this app's parser does.
+ * slock `RAFT_CLIENT_CAPABILITIES_HEADER` (comma-separated tokens) on every request that answers
+ * with a usage snapshot (the read, the refresh, the limit reset):
+ * - `RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY` (#14605, #14667): the server sends a usage
+ *   window's `scope` (every kind, `models` too) only to a request that declares it reads it.
+ * - `RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY` (#15374): likewise an account's `credits`.
+ * This app's parser reads both; a server that predates a token ignores it.
  */
 internal const val RAFT_CLIENT_CAPABILITIES_HEADER = "X-Raft-Client-Capabilities"
 internal const val RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY = "runtime-usage-window-scope@2"
-internal val RUNTIME_USAGE_WINDOW_SCOPE_HEADERS: Map<String, String> =
-    mapOf(RAFT_CLIENT_CAPABILITIES_HEADER to RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY)
+internal const val RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY = "runtime-usage-credits@1"
+internal val RUNTIME_USAGE_CLIENT_CAPABILITY_HEADERS: Map<String, String> =
+    mapOf(
+        RAFT_CLIENT_CAPABILITIES_HEADER to
+            listOf(RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY, RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY).joinToString(", ")
+    )
 
 private fun ComputerRuntimeSelectionCatalogDto.toDomain(
     expectedMachineId: String

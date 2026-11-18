@@ -42,7 +42,11 @@ import build.raft.app.data.RuntimeAccountUsageRefreshLoad
 import build.raft.app.data.RuntimeAccountUsageRefreshReason
 import build.raft.app.data.RuntimeAccountUsageRefreshState
 import build.raft.app.data.RuntimeAccountUsageWindow
-import build.raft.app.data.RuntimeAccountUsageWindowStatus
+import build.raft.app.data.RuntimeAccountUsageWindowFill
+import build.raft.app.data.RuntimeAccountUsageCreditsLine
+import build.raft.app.data.creditsLine
+import build.raft.app.data.needsUsageAttention
+import build.raft.app.data.windowFill
 import build.raft.app.data.RuntimeAuthSignedInProvider
 import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.SettingsComputerAgentSnapshot
@@ -740,15 +744,14 @@ private fun RuntimeAccountUsageRefreshLoad.diagnosticsLabel(): String =
 
 /**
  * The chip's health pixel (web): none until a snapshot is known; `warning` when it is stale or
- * any account or window is not ok; `success` otherwise.
+ * any account or window is not ok (a full window the account's credits carry is ok, slock
+ * #15374); `success` otherwise.
  */
 internal fun RuntimeAccountUsageLoad?.computerRuntimeUsageHealth(): RaftStatusVariant? {
     val read = (this as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available ?: return null
     val attention =
         read.stale ||
-            read.snapshot.accounts.any { account ->
-                account.health != RuntimeAccountUsageHealth.Ok || account.windows.any { it.status != RuntimeAccountUsageWindowStatus.Ok }
-            }
+            read.snapshot.accounts.any { it.needsUsageAttention }
     return if (attention) RaftStatusVariant.Warning else RaftStatusVariant.Success
 }
 
@@ -1243,6 +1246,17 @@ internal fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccoun
                         )
                     }
                 }
+                // The account's credits (Codex, slock #15374), when the runtime says them.
+                account.creditsLine?.let { line ->
+                    RaftText(
+                        computerRuntimeUsageCreditsText(line),
+                        modifier = Modifier.testTag(COMPUTER_RUNTIME_USAGE_CREDITS_TAG),
+                        style = typography.caption,
+                        color = colors.foregroundMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             // Raft DS StatusChip: soft wash, a square pixel, one word. Used up on the all-models
             // basis only (web #14717): a model's own window at its limit says so on its own row.
@@ -1272,16 +1286,26 @@ internal fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccoun
                 )
             // Claude's OAuth apps' window (third-party apps' use) is never listed (web #14605).
             else ->
-                account.windows.filter { !it.claudeOAuthApps }.forEach { window -> ComputerRuntimeUsageWindowRow(window, timeContext) }
+                account.windows.filter { !it.claudeOAuthApps }.forEach { window ->
+                    ComputerRuntimeUsageWindowRow(window, timeContext, fill = account.windowFill(window))
+                }
         }
     }
 }
 
-/** One usage window: "X% used · resets …" or "Used up", as the web `RuntimeAccountUsageChip` (raft-ui 0.50). */
+/**
+ * One usage window: "X% used · resets …" or "Used up", as the web `RuntimeAccountUsageChip`
+ * (raft-ui 0.50); a full window the account's credits carry reads "Limit reached · using credits"
+ * (slock #15374). [fill] is the account's reading of it ([windowFill]).
+ */
 @Composable
-internal fun ComputerRuntimeUsageWindowRow(window: RuntimeAccountUsageWindow, timeContext: RaftTimeContext?) {
+internal fun ComputerRuntimeUsageWindowRow(
+    window: RuntimeAccountUsageWindow,
+    timeContext: RaftTimeContext?,
+    fill: RuntimeAccountUsageWindowFill?,
+) {
     val ratio = window.usedRatio
-    if (window.status == RuntimeAccountUsageWindowStatus.Unavailable || ratio == null) {
+    if (fill == null || ratio == null) {
         // Never a bar: a window we cannot read is not "0% used".
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             RaftText(
@@ -1302,7 +1326,7 @@ internal fun ComputerRuntimeUsageWindowRow(window: RuntimeAccountUsageWindow, ti
     }
     // Used up by the provider's word or the ratio itself, not by rounding: 0.4% left reads
     // "100% used" (rounded), not "Used up", as the web says.
-    val usedUp = window.status == RuntimeAccountUsageWindowStatus.LimitReached || ratio >= 1.0
+    val usedUp = fill != RuntimeAccountUsageWindowFill.Used
     val reset =
         window.resetsAt?.let { resetsAt ->
             computerRuntimeUsageResetText(resetsAt, timeContext) ?: stringResource(Res.string.settings_computers_runtime_usage_later)
@@ -1310,6 +1334,9 @@ internal fun ComputerRuntimeUsageWindowRow(window: RuntimeAccountUsageWindow, ti
     val percentUsed = "${runtimeUsagePercentUsed(ratio)}%"
     val valueText =
         when {
+            fill == RuntimeAccountUsageWindowFill.OnCredits && reset == null ->
+                stringResource(Res.string.settings_computers_runtime_usage_window_on_credits_reset_unavailable)
+            fill == RuntimeAccountUsageWindowFill.OnCredits -> stringResource(Res.string.settings_computers_runtime_usage_window_on_credits, reset.orEmpty())
             usedUp && reset == null -> stringResource(Res.string.settings_computers_runtime_usage_window_used_up_reset_unavailable)
             usedUp -> stringResource(Res.string.settings_computers_runtime_usage_window_used_up, reset.orEmpty())
             reset == null -> stringResource(Res.string.settings_computers_runtime_usage_window_used_reset_unavailable, percentUsed)
@@ -1338,6 +1365,17 @@ internal fun computerRuntimeUsageResetText(resetsAt: String, timeContext: RaftTi
     if (reset != null) return RaftRelativeTimeLabel.Relative(reset.count, reset.unit).localized()
     return raftRelativeTimestampLabel(resetsAt, timeContext).takeIf { it.isNotEmpty() }
 }
+
+/** The account's credits line: "30784 credits", "Unlimited credits" or "Credits available". */
+@Composable
+internal fun computerRuntimeUsageCreditsText(line: RuntimeAccountUsageCreditsLine): String =
+    when (line) {
+        is RuntimeAccountUsageCreditsLine.Balance -> stringResource(Res.string.settings_computers_runtime_usage_credits_balance, line.balance)
+        RuntimeAccountUsageCreditsLine.Unlimited -> stringResource(Res.string.settings_computers_runtime_usage_credits_unlimited)
+        RuntimeAccountUsageCreditsLine.Available -> stringResource(Res.string.settings_computers_runtime_usage_credits_available)
+    }
+
+internal const val COMPUTER_RUNTIME_USAGE_CREDITS_TAG = "runtime-usage-credits"
 
 /** Web `runtimeUsagePercentUsed`: `round(usedRatio * 100)`. */
 internal fun runtimeUsagePercentUsed(usedRatio: Double): Int = kotlin.math.round(usedRatio * 100.0).toInt()
