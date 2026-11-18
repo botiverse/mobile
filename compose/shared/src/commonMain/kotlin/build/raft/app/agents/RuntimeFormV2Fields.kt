@@ -5,9 +5,7 @@ import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftFieldLabel
-import build.raft.designsystem.components.LocalRaftFieldState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import build.raft.app.data.BundledRuntimeCatalog
 import build.raft.app.data.ServerRuntimeCatalog
@@ -27,6 +25,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import build.raft.designsystem.components.RaftCheckbox
+import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftCardVariant
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import build.raft.designsystem.tokens.RaftStroke
 import build.raft.app.data.DataResult
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Choice
@@ -64,7 +69,6 @@ import build.raft.app.data.runtimeform.v2.stringMapValue
 import build.raft.app.data.runtimeform.v2.text
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.text.style.TextAlign
 import build.raft.app.components.RaftDesignSystemTheme
@@ -72,13 +76,11 @@ import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -155,12 +157,26 @@ internal fun RuntimeFormV2Fields(
             // A field with an error opens the group so the error is never hidden.
             val forcedOpen = advanced.any { it.key in errors || it.key in serverErrorKeys }
             if (advancedOpen || forcedOpen) {
+                // Web: the group's fields sit behind a hairline on their left (`border-l pl-3 stack-y-3`).
+                val hairline = RaftTheme.colors.lineHairline
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp)
+                        .drawBehind {
+                            val x = RaftStroke.Hairline.toPx() / 2f
+                            drawLine(hairline, Offset(x, 0f), Offset(x, size.height), strokeWidth = RaftStroke.Hairline.toPx())
+                        }
+                        .padding(start = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                 advanced.forEach { field ->
                     key(field.key) {
                         RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, loaded, values, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint) {
                             focusManager.clearFocus(force = true)
                         }
                     }
+                }
                 }
             }
         }
@@ -352,22 +368,18 @@ private fun RuntimeFormV2FieldRow(
             }
         }
         RuntimeFormV2FieldKind.Boolean ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RaftCheckbox(
-                    checked = values[field.key].booleanValue(),
-                    onCheckedChange = { onChange(field.key, JsonPrimitive(it)) },
-                    enabled = fieldEnabled
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(field.label, style = RaftType.Caption, color = RaftColor.TextBlack)
-                    hint?.let { RuntimeFormV2HintText(it) }
-                    error?.let { Text(it, style = RaftType.Caption, color = RaftColor.AccentRed) }
-                }
-            }
+            RuntimeFormV2BooleanField(
+                label = field.label,
+                checked = values[field.key].booleanValue(),
+                onCheckedChange = {
+                    clearFocus()
+                    onChange(field.key, JsonPrimitive(it))
+                },
+                hint = hint,
+                error = error,
+                required = required,
+                enabled = fieldEnabled
+            )
         RuntimeFormV2FieldKind.StringMap -> {
             // Half-typed rows (blank key) stay on screen but never reach the value.
             val external = values[field.key].stringMapValue()
@@ -386,9 +398,10 @@ private fun RuntimeFormV2FieldRow(
                     },
                     enabled = fieldEnabled,
                     label = field.label,
-                    required = required
+                    required = required,
+                    // Web RuntimeEnvVarsField: the hint under the label, above the rows.
+                    hint = hint?.let { { RuntimeFormV2HintText(it) } }
                 )
-                hint?.let { RuntimeFormV2HintText(it) }
                 error?.let { Text(it, style = RaftType.Caption, color = RaftColor.AccentRed) }
             }
         }
@@ -468,23 +481,34 @@ private fun RuntimeFormV2FieldRow(
                     val refreshableSource = field.optionSourceId
                         ?.takeIf { field.kind != RuntimeFormV2FieldKind.DerivedSelect && sourceRefresh != null }
                         ?.takeIf { sourceStatus == null || sourceStatus.retryable }
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (refreshableSource != null && sourceRefresh != null) {
-                            CreateAgentSectionLabelWithAction(
-                                label = field.label,
-                                actionIcon = RaftLucideIconName.RefreshCw,
-                                actionEnabled = fieldEnabled && refreshableSource !in sourceRefresh.refreshing,
-                                loading = refreshableSource in sourceRefresh.refreshing,
-                                onAction = {
-                                    clearFocus()
-                                    sourceRefresh.onRefresh(refreshableSource)
+                    // Web StableField: the label row (with the refresh action), the control, the status line
+                    // (`belowControl`), then one message row where an error replaces the hint.
+                    RuntimeFormV2FieldFrame(
+                        label = field.label,
+                        description = hint?.takeIf { it.isNotBlank() },
+                        error = error?.takeIf { it.isNotBlank() },
+                        enabled = fieldEnabled,
+                        required = required,
+                        labelTrailing =
+                            if (refreshableSource != null && sourceRefresh != null) {
+                                {
+                                    CreateAgentLabelAction(
+                                        actionIcon = RaftLucideIconName.RefreshCw,
+                                        actionEnabled = fieldEnabled && refreshableSource !in sourceRefresh.refreshing,
+                                        loading = refreshableSource in sourceRefresh.refreshing,
+                                        onAction = {
+                                            clearFocus()
+                                            sourceRefresh.onRefresh(refreshableSource)
+                                        }
+                                    )
                                 }
-                            )
-                        } else {
-                            RaftFieldLabel(text = field.label)
-                        }
-                        // Required shows no mark: the picker says it to screen readers ("Model, Required").
-                        CompositionLocalProvider(LocalRaftFieldState provides LocalRaftFieldState.current.copy(required = required)) {
+                            } else {
+                                null
+                            }
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            // Required shows no mark: the picker says it to screen readers ("Model, Required"); the
+                            // field state also gives the picker the field type and the invalid border.
                             if (choices.allowCustom) {
                                 // `select.custom_value` is raft-ui's ComboboxSelect with `create`: the list
                                 // with search, and typed text that is not a choice offered as "Use “…”".
@@ -553,49 +577,109 @@ private fun RuntimeFormV2FieldRow(
                                     label = field.label
                                 )
                             }
-                        }
-                        // `choice.labels`: the selected choice's description (e.g. what a reasoning level does).
-                        choices.options.firstOrNull { it.value == current }?.description?.let {
-                            Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray)
-                        }
-                        hint?.let { RuntimeFormV2HintText(it) }
-                        sourceStatus?.let { status ->
-                            RuntimeFormV2SourceStatusLine(
-                                status = status,
-                                retrying = refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.refreshing,
-                                onRetry = if (refreshableSource != null && sourceRefresh != null && enabled) {
-                                    {
-                                        clearFocus()
-                                        sourceRefresh.onRefresh(refreshableSource)
+                            // A stored value the list no longer offers (not a typed custom one) says so (web
+                            // RuntimeChoiceCombobox `savedValueNotInList`).
+                            if (showsIdentifiers && !choices.allowCustom && unlisted && unavailableSelected == null) {
+                                Text(
+                                    stringResource(Res.string.runtime_form_v2_saved_value_not_in_list, current),
+                                    style = RaftType.Caption,
+                                    color = RaftColor.ForegroundHint
+                                )
+                            }
+                            // `choice.labels`: the selected choice's description (e.g. what a reasoning level does).
+                            choices.options.firstOrNull { it.value == current }?.description?.let {
+                                Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray)
+                            }
+                            sourceStatus?.let { status ->
+                                RuntimeFormV2SourceStatusLine(
+                                    status = status,
+                                    retrying = refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.refreshing,
+                                    onRetry = if (refreshableSource != null && sourceRefresh != null && enabled) {
+                                        {
+                                            clearFocus()
+                                            sourceRefresh.onRefresh(refreshableSource)
+                                        }
+                                    } else {
+                                        null
                                     }
-                                } else {
-                                    null
-                                }
-                            )
+                                )
+                            }
+                            if (refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.failed) {
+                                Text(
+                                    stringResource(Res.string.runtime_form_v2_source_refresh_failed),
+                                    style = RaftType.Caption,
+                                    color = RaftColor.AccentRed
+                                )
+                            }
                         }
-                        if (refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.failed) {
-                            Text(
-                                stringResource(Res.string.runtime_form_v2_source_refresh_failed),
-                                style = RaftType.Caption,
-                                color = RaftColor.AccentRed
-                            )
-                        }
-                        error?.let { Text(it, style = RaftType.Caption, color = RaftColor.AccentRed) }
                     }
                 }
                 null -> Unit
             }
+        // Web: the field's label over "update to edit" in callout muted ink (not an error until submit).
         RuntimeFormV2FieldKind.Unsupported ->
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                RaftFieldLabel(text = field.label)
-                Text(
-                    text = stringResource(Res.string.runtime_form_v2_update_required),
-                    style = RaftType.Caption,
-                    color = RaftColor.AccentRed
+            RuntimeFormV2FieldFrame(
+                label = field.label,
+                description = null,
+                error = error?.takeIf { it.isNotBlank() },
+                enabled = true,
+                required = required
+            ) {
+                RaftText(
+                    stringResource(Res.string.runtime_form_v2_update_required),
+                    style = RaftTheme.typography.callout,
+                    color = RaftTheme.colors.foregroundMuted
                 )
             }
     }
 }
+
+/**
+ * A boolean field as web RuntimeFormV2FieldControl draws it (slock #14981): a raft-ui option card, the
+ * checkbox leading, the label as its title and the hint as its description, so the field repeats
+ * neither label nor hint. The whole card is the one checkbox target (its checkbox is drawn, not
+ * tapped); an error sits under the card in the field's message row. Hint links read as their text:
+ * the design-system card description is plain text.
+ */
+@Composable
+internal fun RuntimeFormV2BooleanField(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    hint: String?,
+    error: String?,
+    required: Boolean,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    RaftField(
+        label = null,
+        modifier = modifier.fillMaxWidth(),
+        error = error?.takeIf { it.isNotBlank() },
+        enabled = enabled,
+        required = required
+    ) {
+        RaftCard(
+            modifier = Modifier.fillMaxWidth(),
+            variant = RaftCardVariant.Option,
+            title = label,
+            description = hint?.takeIf { it.isNotBlank() }?.let(::runtimeFormV2HintPlainText),
+            leading = { RaftCheckbox(checked = checked, onCheckedChange = null, enabled = enabled) },
+            onClick = { onCheckedChange(!checked) },
+            selected = checked,
+            role = Role.Checkbox,
+            enabled = enabled
+        )
+    }
+}
+
+/** A hint's words without its inline link markup (`[text](https://…)` reads as `text`). */
+internal fun runtimeFormV2HintPlainText(hint: String): String =
+    if (!runtimeFormV2HintHasLinks(hint)) {
+        hint
+    } else {
+        parseRuntimeFormV2Hint(hint).joinToString("") { it.text }
+    }
 
 /**
  * The line for why a source is not live (`option_source.status` reason), as the web's
@@ -615,26 +699,39 @@ internal fun runtimeFormV2SourceReasonText(reason: String?): StringResource =
         else -> Res.string.runtime_form_v2_source_status_unknown
     }
 
-/** Why a source is not live (`option_source.status`); an unknown reason gets the generic line. */
+/**
+ * Why a source is not live (`option_source.status`); an unknown reason gets the generic line. Web
+ * RuntimeFormV2SourceStatusLine: one caption sentence in muted ink behind a hairline on its left, the
+ * Retry link (only when the server says it may help) at the end of the sentence.
+ */
 @Composable
 private fun RuntimeFormV2SourceStatusLine(status: RuntimeFormV2SourceStatus, retrying: Boolean, onRetry: (() -> Unit)?) {
     val reason = stringResource(runtimeFormV2SourceReasonText(status.reason))
     val text = if (status.unavailable) reason else "$reason ${stringResource(Res.string.runtime_form_v2_source_status_fallback)}"
-    Text(text, style = RaftType.Caption, color = if (status.unavailable) RaftColor.AccentRed else RaftColor.TextMutedGray)
-    // Retry only when the server says it may help.
-    if (status.retryable && onRetry != null) {
-        RaftDesignSystemTheme {
-            RaftTextLink(
-                text = stringResource(Res.string.common_retry),
-                onClick = onRetry,
-                enabled = !retrying,
-                modifier = Modifier.fillMaxWidth(),
-                variant = RaftTextLinkVariant.Strong,
-                style = RaftTheme.typography.caption.copy(textAlign = TextAlign.Center),
-                maxLines = 1
-            )
+    val retryLabel = stringResource(Res.string.common_retry)
+    val retry = onRetry?.takeIf { status.retryable }
+    val line =
+        buildAnnotatedString {
+            append(text)
+            if (retry != null) {
+                append(" ")
+                appendRaftTextLink(retryLabel, onClick = retry, enabled = !retrying)
+            }
         }
-    }
+    val hairline = RaftTheme.colors.lineHairline
+    RaftText(
+        line,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .drawBehind {
+                    val x = RaftStroke.Hairline.toPx() / 2f
+                    drawLine(hairline, Offset(x, 0f), Offset(x, size.height), strokeWidth = RaftStroke.Hairline.toPx())
+                }
+                .padding(start = 8.dp),
+        style = RaftTheme.typography.caption,
+        color = RaftTheme.colors.foregroundMuted
+    )
 }
 
 /**
@@ -751,6 +848,8 @@ internal fun RuntimeFormV2RuntimeSection(
             options = options
         )
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Web Field: the label 6dp over its picker (`gap-1.5`).
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         RaftFieldLabel(text = stringResource(Res.string.agent_create_label_runtime))
         RuntimeSelectChoice(
             runtime = runtime,
@@ -781,6 +880,7 @@ internal fun RuntimeFormV2RuntimeSection(
                 style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
                 color = RaftColor.AccentRed
             )
+        }
         }
         if (runtimeAvailabilityError == null) content()
     }
@@ -841,8 +941,8 @@ private fun RuntimeFormV2EffortUnavailableField(field: RuntimeFormV2Field, unava
         RuntimeFormV2EffortUnavailable.None -> stringResource(Res.string.runtime_form_v2_effort_not_supported)
         is RuntimeFormV2EffortUnavailable.Unreadable -> stringResource(Res.string.runtime_form_v2_effort_unreadable, unavailable.reason)
     }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftFieldLabel(text = field.label)
+    // Web: the reason is the field's hint, in readable ink (the field is not disabled, only its picker).
+    RuntimeFormV2FieldFrame(label = field.label, description = reason, error = null, enabled = true, required = false) {
         RaftCombobox(
             value = "",
             options = listOf(RaftComboboxOption("", defaultLabel)),
@@ -853,7 +953,6 @@ private fun RuntimeFormV2EffortUnavailableField(field: RuntimeFormV2Field, unava
             enabled = false,
             label = field.label
         )
-        Text(reason, style = RaftType.Caption, color = RaftColor.TextMutedGray)
     }
 }
 
@@ -865,10 +964,10 @@ private fun RuntimeFormV2EffortUnavailableField(field: RuntimeFormV2Field, unava
 @Composable
 private fun RuntimeFormV2HintText(hint: String) {
     if (!runtimeFormV2HintHasLinks(hint)) {
-        Text(hint, style = RaftType.Caption, color = RaftColor.TextMutedGray)
+        Text(hint, style = RaftType.Caption, color = RaftColor.ForegroundHint)
         return
     }
-    RaftText(rememberRuntimeFormV2HintText(hint), style = RaftType.Caption, color = RaftColor.TextMutedGray)
+    RaftText(rememberRuntimeFormV2HintText(hint), style = RaftType.Caption, color = RaftColor.ForegroundHint)
 }
 
 @Composable
@@ -898,6 +997,7 @@ private fun RuntimeFormV2FieldFrame(
     error: String?,
     enabled: Boolean,
     required: Boolean,
+    labelTrailing: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     if (description == null || !runtimeFormV2HintHasLinks(description)) {
@@ -908,6 +1008,7 @@ private fun RuntimeFormV2FieldFrame(
             error = error,
             enabled = enabled,
             required = required,
+            labelTrailing = labelTrailing,
             content = content
         )
         return
@@ -921,6 +1022,7 @@ private fun RuntimeFormV2FieldFrame(
             error = error,
             enabled = enabled,
             required = required,
+            labelTrailing = labelTrailing,
             content = content
         )
         if (error == null) {

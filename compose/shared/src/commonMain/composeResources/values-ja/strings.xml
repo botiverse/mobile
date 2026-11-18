@@ -3629,6 +3629,7 @@
     <string name="runtime_form_v2_effort_unreadable">推論の強度を読み取れません：%1$s</string>
     <string name="runtime_form_v2_use_custom">「%1$s」を使う</string>
     <string name="runtime_form_v2_custom_value">カスタム</string>
+    <string name="runtime_form_v2_saved_value_not_in_list">保存済みの値 %1$s は現在の一覧にありません。別の値を選択するまで、選択されたままになります。</string>
     <string name="runtime_form_v2_secret_keep_hint">空欄のままにすると現在の値を保持します。</string>
     <string name="runtime_form_v2_load_failed">ランタイムフォームを読み込めませんでした（%1$s）。</string>
     <string name="runtime_form_v2_unavailable">ランタイム設定を利用できません。</string>

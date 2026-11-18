@@ -3458,6 +3458,7 @@
     <string name="runtime_form_v2_effort_unreadable">Не удалось прочитать уровни глубины рассуждений: %1$s</string>
     <string name="runtime_form_v2_use_custom">Использовать «%1$s»</string>
     <string name="runtime_form_v2_custom_value">Пользовательский</string>
+    <string name="runtime_form_v2_saved_value_not_in_list">Сохранённого значения %1$s нет в текущем списке. Оно останется выбранным, пока вы не выберете другое.</string>
     <string name="runtime_form_v2_secret_keep_hint">Оставьте пустым, чтобы сохранить текущее значение.</string>
     <string name="runtime_form_v2_load_failed">Не удалось загрузить форму среды выполнения (%1$s).</string>
     <string name="runtime_form_v2_unavailable">Конфигурация среды выполнения недоступна.</string>

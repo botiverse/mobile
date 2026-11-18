@@ -3458,6 +3458,7 @@
     <string name="runtime_form_v2_effort_unreadable">Não foi possível ler os níveis de esforço: %1$s</string>
     <string name="runtime_form_v2_use_custom">Usar “%1$s”</string>
     <string name="runtime_form_v2_custom_value">Personalizado</string>
+    <string name="runtime_form_v2_saved_value_not_in_list">O valor salvo %1$s não está na lista atual. Ele continuará selecionado até que você escolha outro.</string>
     <string name="runtime_form_v2_secret_keep_hint">Deixe em branco para manter o valor atual.</string>
     <string name="runtime_form_v2_load_failed">Não foi possível carregar o formulário do runtime (%1$s).</string>
     <string name="runtime_form_v2_unavailable">A configuração do runtime não está disponível.</string>

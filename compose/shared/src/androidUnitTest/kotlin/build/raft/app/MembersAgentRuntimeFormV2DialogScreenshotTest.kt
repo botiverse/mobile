@@ -16,6 +16,9 @@ import build.raft.app.data.runtimeform.v2.CLAUDE_MODEL_LIVE_SOURCE_JSON
 import build.raft.app.data.runtimeform.v2.CLAUDE_PROVIDER_SOURCE_JSON
 import build.raft.app.data.runtimeform.v2.CLAUDE_V3_EDIT_JSON
 import build.raft.app.data.runtimeform.v2.CLAUDE_V3_REASONING_EFFORT_SOURCE_JSON
+import build.raft.app.data.runtimeform.v2.CODEX_MODEL_LIVE_SOURCE_JSON
+import build.raft.app.data.runtimeform.v2.CODEX_V3_EDIT_JSON
+import build.raft.app.data.runtimeform.v2.CODEX_V3_REASONING_EFFORT_SOURCE_JSON
 import build.raft.app.data.runtimeform.v2.GEMINI_V2_EDIT_JSON
 import build.raft.app.data.runtimeform.v2.GEMINI_V2_SOURCE_JSON
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
@@ -38,6 +41,8 @@ import org.robolectric.shadows.ShadowDialog
  * `members.agent-runtime-form-v3`: a Claude agent's protocol v3 edit form (slock #14471 fixtures
  * claude.edit.v3 and its sources): fields shown by `uiSchema.rules` for the custom provider, and the
  * reasoning effort as a dependent select on the model with the source's fallback status.
+ * `members.agent-runtime-form-codex`: a Codex agent's v3 edit form (slock fixture codex.edit.v3) with
+ * its boolean field (Fast mode, on) drawn as web's option card (slock #14981).
  * Verify / record as [RaftRobolectricScreenshot]; reports land in `build/reports/home-screenshots/`.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -58,6 +63,12 @@ class MembersAgentRuntimeFormV2DialogScreenshotTest {
 
     @Test
     fun editV3Dark() = capture("members.agent-runtime-form-v3.dark", RaftAppAppearance.Dark, RuntimeFormV2DialogCase.ClaudeV3)
+
+    @Test
+    fun editCodexLight() = capture("members.agent-runtime-form-codex", RaftAppAppearance.Light, RuntimeFormV2DialogCase.CodexV3)
+
+    @Test
+    fun editCodexDark() = capture("members.agent-runtime-form-codex.dark", RaftAppAppearance.Dark, RuntimeFormV2DialogCase.CodexV3)
 
     private fun capture(name: String, appearance: RaftAppAppearance, case: RuntimeFormV2DialogCase) =
         RaftRobolectricScreenshot.capture(
@@ -113,6 +124,12 @@ private enum class RuntimeFormV2DialogCase(val agentId: String, val runtimeId: S
             "model" to CLAUDE_MODEL_LIVE_SOURCE_JSON,
             "reasoningEffort" to CLAUDE_V3_REASONING_EFFORT_SOURCE_JSON
         )
+    ),
+    CodexV3(
+        "agent-codex",
+        "codex",
+        CODEX_V3_EDIT_JSON,
+        mapOf("model" to CODEX_MODEL_LIVE_SOURCE_JSON, "reasoningEffort" to CODEX_V3_REASONING_EFFORT_SOURCE_JSON)
     )
 }
 
