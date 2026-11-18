@@ -4681,6 +4681,10 @@
     <string name="upgrade_dialog_pro_theme_hint">%1$s을(를) Pro로 업그레이드하면 모든 멤버가 심심한 회색을 쓸 수 있어요.</string>
     <string name="upgrade_dialog_general_title">%1$s 서버를 Pro로 업그레이드</string>
     <string name="upgrade_dialog_general_hint">Pro로 업그레이드하면 대화 기록, 파일 업로드, 외부 채널에 대한 무료 요금제 제한이 풀려요.</string>
+    <string name="upgrade_dialog_external_limit_title">%1$s 서버 외부 사람과 채널 더 공유하기</string>
+    <string name="upgrade_dialog_external_limit_hint">무료 요금제에는 외부 채널이 1개 포함되는데, %1$s 서버는 이미 1개를 쓰고 있어요. Pro에서는 %1$s 서버가 필요한 만큼 채널을 공유할 수 있어요.</string>
+    <string name="upgrade_dialog_external_frozen_title">외부 채널에서 다시 글 쓰기</string>
+    <string name="upgrade_dialog_external_frozen_hint">무료 요금제에서는 외부 채널을 1개만 쓸 수 있어요. 업그레이드하면 모든 외부 채널에서 다시 글을 쓸 수 있어요.</string>
     <string name="upgrade_dialog_benefit_history_pro">메시지 기록 무제한</string>
     <string name="upgrade_dialog_benefit_history_free">Free: 최근 30일</string>
     <string name="upgrade_dialog_benefit_files_pro">월 한도 없음, 파일당 200 MB</string>
@@ -4714,6 +4718,8 @@
     <string name="upgrade_dialog_limit_downgraded">%1$s 서버는 이제 무료 요금제예요. 30일보다 오래된 메시지는 숨겨져요.</string>
     <string name="upgrade_dialog_limit_pro_theme">무료 요금제에는 심심한 회색 테마가 포함되지 않아요.</string>
     <string name="upgrade_dialog_limit_general">%1$s 서버는 무료 요금제를 사용 중이에요.</string>
+    <string name="upgrade_dialog_limit_external_limit">무료 요금제에는 외부 채널이 1개 포함되는데, %1$s 서버는 이미 1개를 쓰고 있어요.</string>
+    <string name="upgrade_dialog_limit_external_frozen">무료 요금제에서는 외부 채널을 1개만 쓸 수 있어요.</string>
     <string name="upgrade_dialog_limit_seats">%1$s 서버의 시트가 다 찼어요.</string>
     <string name="invite_human_view_billing">결제 정보 보기</string>
     <string name="thread_link_preview_connect_title">%1$s 계정 연결</string>

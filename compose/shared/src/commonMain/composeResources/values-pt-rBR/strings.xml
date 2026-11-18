@@ -4681,6 +4681,10 @@
     <string name="upgrade_dialog_pro_theme_hint">Faça upgrade de %1$s para o Pro e todos os membros poderão usar Cinza sem graça.</string>
     <string name="upgrade_dialog_general_title">Fazer upgrade de %1$s para o Pro</string>
     <string name="upgrade_dialog_general_hint">O Pro remove os limites do plano gratuito para histórico de mensagens, envio de arquivos e canais externos.</string>
+    <string name="upgrade_dialog_external_limit_title">Compartilhar mais canais fora de %1$s</string>
+    <string name="upgrade_dialog_external_limit_hint">O plano gratuito inclui 1 canal externo, e %1$s já tem um. No Pro, %1$s pode compartilhar quantos precisar.</string>
+    <string name="upgrade_dialog_external_frozen_title">Voltar a publicar nos seus canais externos</string>
+    <string name="upgrade_dialog_external_frozen_hint">O plano gratuito permite 1 canal externo. Faça upgrade para voltar a publicar em todos eles.</string>
     <string name="upgrade_dialog_benefit_history_pro">Histórico de mensagens ilimitado</string>
     <string name="upgrade_dialog_benefit_history_free">Free: últimos 30 dias</string>
     <string name="upgrade_dialog_benefit_files_pro">Sem limite mensal, 200 MB por arquivo</string>
@@ -4714,6 +4718,8 @@
     <string name="upgrade_dialog_limit_downgraded">%1$s agora está no plano gratuito: mensagens com mais de 30 dias ficam ocultas.</string>
     <string name="upgrade_dialog_limit_pro_theme">O tema Cinza sem graça não está incluído no plano gratuito.</string>
     <string name="upgrade_dialog_limit_general">%1$s está no plano gratuito.</string>
+    <string name="upgrade_dialog_limit_external_limit">O plano gratuito inclui 1 canal externo, e %1$s já tem um.</string>
+    <string name="upgrade_dialog_limit_external_frozen">O plano gratuito permite 1 canal externo.</string>
     <string name="upgrade_dialog_limit_seats">Todas as licenças de %1$s estão em uso.</string>
     <string name="invite_human_view_billing">Ver cobrança</string>
     <string name="thread_link_preview_connect_title">Conecte sua conta do %1$s</string>

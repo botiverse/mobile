@@ -63,7 +63,7 @@ class RaftWidgetServerConfigureActivity : Activity() {
         val root = baseColumn()
         root.gravity = Gravity.CENTER
         root.addView(ProgressBar(this))
-        root.addView(label("Loading servers...", sizeSp = 16f, topDp = 16))
+        root.addView(label(getString(R.string.raft_widget_config_loading), sizeSp = 16f, topDp = 16))
         setContentView(root)
     }
 
@@ -77,10 +77,10 @@ class RaftWidgetServerConfigureActivity : Activity() {
         selectedServerId = currentSelection?.serverId ?: session.currentServerId ?: session.servers.first().id
 
         val root = baseColumn()
-        root.addView(label("Choose server", sizeSp = 24f, bold = true))
+        root.addView(label(getString(R.string.raft_widget_config_title), sizeSp = 24f, bold = true))
         root.addView(
             label(
-                "This widget will refresh from the selected Raft server.",
+                getString(R.string.raft_widget_config_detail),
                 sizeSp = 14f,
                 topDp = 8
             )
@@ -110,7 +110,7 @@ class RaftWidgetServerConfigureActivity : Activity() {
         }
         root.addView(radioGroup)
 
-        root.addView(actionButton("Add widget") {
+        root.addView(actionButton(getString(R.string.raft_widget_config_add)) {
             val selected = session.servers.firstOrNull { it.id == selectedServerId } ?: session.servers.first()
             configStore.saveSelection(appWidgetId, selected)
             refreshConfiguredWidget()
@@ -120,7 +120,7 @@ class RaftWidgetServerConfigureActivity : Activity() {
             )
             finish()
         })
-        root.addView(actionButton("Open Raft", topDp = 10) {
+        root.addView(actionButton(getString(R.string.raft_widget_config_open_raft), topDp = 10) {
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         })
 
@@ -130,9 +130,9 @@ class RaftWidgetServerConfigureActivity : Activity() {
     private fun showEmptyState() {
         val root = baseColumn()
         root.gravity = Gravity.CENTER
-        root.addView(label("Sign in first", sizeSp = 24f, bold = true))
-        root.addView(label("Open Raft and sign in before adding a server-specific widget.", sizeSp = 14f, topDp = 8))
-        root.addView(actionButton("Open Raft", topDp = 24) {
+        root.addView(label(getString(R.string.raft_widget_config_sign_in_title), sizeSp = 24f, bold = true))
+        root.addView(label(getString(R.string.raft_widget_config_sign_in_detail), sizeSp = 14f, topDp = 8))
+        root.addView(actionButton(getString(R.string.raft_widget_config_open_raft), topDp = 24) {
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         })
         setContentView(root)

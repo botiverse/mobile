@@ -4681,6 +4681,10 @@
     <string name="upgrade_dialog_pro_theme_hint">Mejora %1$s a Pro y todos sus miembros podrán usar Gris aburrido.</string>
     <string name="upgrade_dialog_general_title">Mejorar %1$s a Pro</string>
     <string name="upgrade_dialog_general_hint">Pro elimina los límites del plan Free en el historial de chat, la subida de archivos y los canales externos.</string>
+    <string name="upgrade_dialog_external_limit_title">Compartir más canales fuera de %1$s</string>
+    <string name="upgrade_dialog_external_limit_hint">El plan Free incluye 1 canal externo, y %1$s ya tiene uno. Con Pro, %1$s puede compartir todos los que necesite.</string>
+    <string name="upgrade_dialog_external_frozen_title">Volver a publicar en tus canales externos</string>
+    <string name="upgrade_dialog_external_frozen_hint">El plan Free permite 1 canal externo. Mejora el plan para volver a publicar en todos ellos.</string>
     <string name="upgrade_dialog_benefit_history_pro">Historial de mensajes ilimitado</string>
     <string name="upgrade_dialog_benefit_history_free">Free: últimos 30 días</string>
     <string name="upgrade_dialog_benefit_files_pro">Sin límite mensual, 200 MB por archivo</string>
@@ -4714,6 +4718,8 @@
     <string name="upgrade_dialog_limit_downgraded">%1$s ahora está en el plan Free: los mensajes de hace más de 30 días están ocultos.</string>
     <string name="upgrade_dialog_limit_pro_theme">El tema Gris aburrido no está incluido en el plan Free.</string>
     <string name="upgrade_dialog_limit_general">%1$s está en el plan Free.</string>
+    <string name="upgrade_dialog_limit_external_limit">El plan Free incluye 1 canal externo, y %1$s ya tiene uno.</string>
+    <string name="upgrade_dialog_limit_external_frozen">El plan Free permite 1 canal externo.</string>
     <string name="upgrade_dialog_limit_seats">Todos los puestos de %1$s están ocupados.</string>
     <string name="invite_human_view_billing">Ver facturación</string>
     <string name="thread_link_preview_connect_title">Conecta tu cuenta de %1$s</string>
