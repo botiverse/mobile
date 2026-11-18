@@ -351,9 +351,12 @@ jobs:
 
   android-capture:
     name: Android capture (shard ${{ matrix.shard }}/8)
-    # GitHub standard runner (4 vCPU / 16 GB, same size as the Blacksmith 4 vCPU it replaced).
-    # It exposes /dev/kvm once the Enable KVM step below opens up the device permissions.
-    runs-on: ubuntu-latest
+    # See android-build: emulator boot + render are the slow path on 7GB. (task #418)
+    # Blacksmith runners expose /dev/kvm for the emulator (the Enable KVM step below still applies).
+    # Stays on Blacksmith (2026-11-18): on GitHub ubuntu-latest the long-press search Pin-menu
+    # cases failed (changedRatio=0.0, run 44278219143) where the Blacksmith shards passed; the
+    # shards cost ~$2/week here.
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 45
     needs: android-build
     # Build once, capture many: shards skip Gradle entirely — install the
@@ -375,7 +378,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
           df -h /
 
-      # sdkmanager needs JDK 17+; pin it rather than rely on the image default.
+      # sdkmanager needs JDK 17+; Blacksmith images default to 11.
       - name: Setup JDK 17
         if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
         uses: actions/setup-java@v6
