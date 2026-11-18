@@ -50,6 +50,17 @@ private fun schemaWith(pattern: String) = JsonObject(mapOf("pattern" to JsonPrim
 internal fun runtimeFormV3CheckConformanceCases() {
     val cases = conformanceTable.getValue("cases").jsonArray
     assertTrue(cases.size > 20, "the table has its cases (${cases.size})")
+    // slock #15382: boolean `const` (Codex speed's `fastMode` rule); an absent value is "", never false.
+    val names = cases.map { it.jsonObject.getValue("name").jsonPrimitive.content }.toSet()
+    for (name in listOf(
+        "const boolean on false",
+        "const boolean on absent value (\"\") is false",
+        "not const boolean on false",
+        "not const boolean on absent value",
+        "not const boolean on true"
+    )) {
+        assertTrue(name in names, "the table has \"$name\"")
+    }
     for (entry in cases.map { it.jsonObject }) {
         val name = entry.getValue("name").jsonPrimitive.content
         val condition = entry.getValue("condition").jsonObject
