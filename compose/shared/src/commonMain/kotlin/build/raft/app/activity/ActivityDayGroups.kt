@@ -26,6 +26,7 @@ import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.*
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import org.jetbrains.compose.resources.StringResource
 
@@ -231,7 +232,7 @@ internal sealed interface ActivityRowTimeDay {
 /**
  * A row's time in a list grouped by day (web `formatRowTime`): "now" under a minute, whole minutes
  * under an hour on any day, whole hours while it is still today; an earlier day's row shows only its
- * clock, and only to a hovering pointer, since its heading names the day. Counts whole steps down
+ * clock, since its heading names the day ([shown]: to a hovering pointer, or always with a finger). Counts whole steps down
  * (1h 59m is 1h). Null without a clock or a readable time.
  */
 internal sealed interface ActivityRowTime {
@@ -267,7 +268,15 @@ internal fun activityRowTime(value: String?, timeContext: RaftTimeContext?): Act
     return ActivityRowTime.Older(clock, rowDay)
 }
 
-/** What the row shows; empty for an older row, which shows its clock only to a hovering pointer. */
+/**
+ * Whether the row shows its time (Jasper, #proj-raft-ui:#274): a recent row always does. An earlier
+ * day's row shows its clock only while a mouse or trackpad hovers it when one is in use
+ * ([RaftPointerInput.Fine]); with a finger, which never hovers, it always shows the clock.
+ */
+internal fun ActivityRowTime.shown(pointerInput: RaftPointerInput, pointerHovering: Boolean): Boolean =
+    this !is ActivityRowTime.Older || pointerInput != RaftPointerInput.Fine || pointerHovering
+
+/** What the row shows: the short time, or an earlier day's clock alone ("23:15", "11:15 PM"). */
 @Composable
 internal fun ActivityRowTime.shownLabel(): String =
     when (this) {
