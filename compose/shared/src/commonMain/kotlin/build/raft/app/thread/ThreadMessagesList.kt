@@ -1083,41 +1083,71 @@ private fun ThreadMessagesListContent(
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
-    // Save / unsave (artin #proj-mobile #201, ThreadSavedToggleTopKeep.kt): direct user action;
-    // the rows above the message keep their place while its footer's Saved indicator comes or
-    // goes, in the same measure that lays the new footer out.
-    val savedToggleTopKeeper = remember(threadInstanceKey) { ThreadSavedToggleTopKeeper() }
-    // Remembered (one instance per list): the rows' callbacks capture it.
-    val savedTogglePayloadState = rememberUpdatedState(renderPayload)
-    val savedToggleEventState = rememberUpdatedState(onThreadEvent)
-    val toggleMessageSaved: (String) -> Unit =
-        remember(savedToggleTopKeeper, userScrollGeneration) {
-            { messageId ->
-                savedTogglePayloadState.value.threadMessageById(messageId)?.let { message ->
-                    savedToggleTopKeeper.arm(messageId, saved = !message.isSaved, userScrollGeneration = userScrollGeneration.value)
-                }
-                savedToggleEventState.value.invoke("toggleMessageSaved", messageId, null, null)
+    // Reading anchor (artin #proj-mobile #201, ThreadReadingAnchorKeeper.kt): while the reader is
+    // not following the latest row, a visible row that changes height in place (Saved marker,
+    // reactions, edits, cards and images resolving) no longer moves the row being read. The one
+    // owner of that case; it runs after each layout pass, before the frame is drawn.
+    val readingAnchorOwner = remember(listState) { ThreadReadingAnchorOwner(listState, coroutineScope) }
+    val readingAnchorPayloadState = rememberUpdatedState(renderPayload)
+    val readingAnchorPageLeavingState = rememberUpdatedState(LocalRaftStackPageLeaving.current)
+    val readingAnchorPlacementSettledState =
+        rememberUpdatedState(initialBottomAnchorReady && !shareSelectionCaptureActive && !adaptiveAnchorRestoreInFlight)
+    val keepReadingAnchorAfterLayout: () -> Unit =
+        remember(readingAnchorOwner) {
+            {
+                readingAnchorOwner.afterLayout(
+                    owns = {
+                        threadReadingAnchorOwns(
+                            reverseLayout = listState.reverse,
+                            followingLatest = viewportControllerState.intent == LazyViewportIntent.FollowingLatest,
+                            scrollInProgress = listState.isScrollInProgress,
+                            ownerLive = !listState.isRetired && !readingAnchorPageLeavingState.value,
+                            placementSettled = readingAnchorPlacementSettledState.value,
+                        )
+                    },
+                    preferredMessageId = {
+                        ((viewportControllerState.intent as? LazyViewportIntent.Anchored)?.target as? LazyViewportAnchorTarget.Message)
+                            ?.messageId
+                    },
+                    messageIdAt = { index -> readingAnchorPayloadState.value.threadMessageIdAtListItemIndex(index) },
+                )
             }
         }
-    ThreadSavedToggleTopKeepEffect(
-        keeper = savedToggleTopKeeper,
-        listState = listState,
-        savedStateOf = { messageId -> renderPayload.threadMessageById(messageId)?.isSaved },
-        listItemIndexOf = { messageId -> renderPayload.threadMessageListItemIndex(messageId) },
-        userScrollGeneration = userScrollGeneration.value,
-        followingLatest = { viewportControllerState.intent == LazyViewportIntent.FollowingLatest },
-    ) { savedMessageId, forwardTop ->
-        // The controller is re-anchored on the row, so the HeightChange replay agrees.
-        dispatchViewportEvent(
-            LazyViewportEvent.Anchor(
-                target = LazyViewportAnchorTarget.Message(savedMessageId),
-                offset = forwardTop,
-                layoutGeneration = viewportLayoutGeneration,
-                fallback = LazyViewportAnchorFallback.Free
-            )
-        )
-        diagnosticsLogger("thread_saved_toggle_keep_top messageId=${savedMessageId.take(8)} top=$forwardTop")
-    }
+    // The row whose control the user just tapped becomes the reading anchor (the API the long-message
+    // expand/reveal path and any other in-place row action call): the viewport controller is
+    // anchored on its current top, so the keeper and the controller's HeightChange replay agree.
+    val keepReadingAnchorFor: (String) -> Unit =
+        remember(readingAnchorOwner) {
+            { messageId ->
+                val index = readingAnchorPayloadState.value.threadMessageListItemIndex(messageId)
+                val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+                if (
+                    item != null &&
+                    listState.reverse &&
+                    !listState.isScrollInProgress &&
+                    viewportControllerState.intent != LazyViewportIntent.FollowingLatest
+                ) {
+                    readingAnchorOwner.keeper.anchorOn(messageId)
+                    dispatchViewportEvent(
+                        LazyViewportEvent.Anchor(
+                            target = LazyViewportAnchorTarget.Message(messageId),
+                            offset = item.offset,
+                            layoutGeneration = viewportLayoutGeneration,
+                            fallback = LazyViewportAnchorFallback.Free
+                        )
+                    )
+                }
+            }
+        }
+    val latestOnThreadEventState = rememberUpdatedState(onThreadEvent)
+    // Row actions that change the tapped row in place keep that row as the reading anchor.
+    val onThreadEventKeepingAnchor =
+        remember(keepReadingAnchorFor) {
+            ThreadEventHandler { action, itemId, attachmentId, tab, markdownActionId, threadChannelId ->
+                if (itemId != null && action in ThreadReadingAnchorRowActions) keepReadingAnchorFor(itemId)
+                latestOnThreadEventState.value.invoke(action, itemId, attachmentId, tab, markdownActionId, threadChannelId)
+            }
+        }
     // A4 adoption (task #18): the viewport anchor provider is registered here — the only
     // place listState/timelineSlice/userScrollGeneration coexist. The page-level initiator
     // calls it under the request fence; a null holder (embedded detail child, or A4 gate
@@ -3516,6 +3546,8 @@ private fun ThreadMessagesListContent(
                                 (if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp).roundToPx()
                             }
                     )
+                    // Reading anchor: after every layout pass of the list (ThreadReadingAnchorKeeper.kt).
+                    .onGloballyPositioned { keepReadingAnchorAfterLayout() }
                     // The forward layout keeps the newest message on the composer in the same
                     // measure pass as an IME/composer resize or a realtime tail append, instead
                     // of a correction one frame later (see RaftThreadImeLayout.kt).
@@ -3615,6 +3647,13 @@ private fun ThreadMessagesListContent(
                                         ?.let { cycle ->
                                             newerPageCycle = cycle.copy(anchor = anchor)
                                         }
+                                    // The row being read (top in view), which the reading-anchor
+                                    // keeper and the HeightChange replays then hold in place.
+                                    val readingAnchor =
+                                        listState.threadReadingAnchorMessage(
+                                            timelineSlice = currentPayloadState.value,
+                                            userScrollGeneration = userScrollGeneration.value
+                                        )
                                     val settledAtBottom =
                                         listState.isLatestItemAtRenderedBottom(
                                             currentLatestItemIndexState.value
@@ -3623,8 +3662,8 @@ private fun ThreadMessagesListContent(
                                         LazyViewportEvent.PointerSettled(
                                             epoch = settlingEpoch,
                                             atRenderedBottom = settledAtBottom,
-                                            anchorMessageId = anchor?.messageId,
-                                            anchorOffset = anchor?.offset ?: 0,
+                                            anchorMessageId = readingAnchor?.messageId,
+                                            anchorOffset = readingAnchor?.offset ?: 0,
                                             layoutGeneration = viewportLayoutGeneration
                                         )
                                     )
@@ -3661,6 +3700,7 @@ private fun ThreadMessagesListContent(
                                     renderPayload.originMessage?.id?.let { messageId ->
                                         recordMessageItemHeight(messageId, coordinates.size.height)
                                     }
+                                    keepReadingAnchorAfterLayout()
                                 },
                         renderConfig = renderConfig,
                         messageBodyTextStyle = messageBodyTextStyle,
@@ -3678,7 +3718,7 @@ private fun ThreadMessagesListContent(
                         resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                         activeMarkdownTagKey = activeMarkdownTagKey,
                         diagnosticsLogger = diagnosticsLogger,
-                        onThreadEvent = onThreadEvent,
+                        onThreadEvent = onThreadEventKeepingAnchor,
                         onOpenMember = onOpenMember,
                         onExternalAuthor = onExternalAuthor,
                         showReactionReactors = true,
@@ -3746,7 +3786,7 @@ private fun ThreadMessagesListContent(
                                             ThreadQuickReactionBarRequest(origin.id, anchor, fromHoverToolbar = true)
                                     },
                                     onForward = { onForwardMessage(origin.id) },
-                                    onToggleSave = { toggleMessageSaved(origin.id) }
+                                    onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", origin.id, null, null) }
                                 )
                             }
                     )
@@ -3836,6 +3876,7 @@ private fun ThreadMessagesListContent(
                     Box(
                         Modifier.fillMaxWidth().onGloballyPositioned { coordinates ->
                             recordMessageItemHeight(message.id, coordinates.size.height)
+                            keepReadingAnchorAfterLayout()
                         }
                     )
                     return@items
@@ -3974,6 +4015,7 @@ private fun ThreadMessagesListContent(
                             .onGloballyPositioned { coordinates ->
                                 recordMessageItemHeight(message.id, coordinates.size.height)
                                 imeTailDrawProbe.recordPlaced(message.id)
+                                keepReadingAnchorAfterLayout()
                             }
                             .drawWithContent {
                                 imeTailDrawProbe.recordDraw(message.id)
@@ -4097,7 +4139,7 @@ private fun ThreadMessagesListContent(
                                                     ThreadQuickReactionBarRequest(message.id, anchor, fromHoverToolbar = true)
                                             },
                                             onForward = { onForwardMessage(message.id) },
-                                            onToggleSave = { toggleMessageSaved(message.id) },
+                                            onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", message.id, null, null) },
                                             onShownChange = { shown ->
                                                 if (shown) {
                                                     menuState.hoverToolbarMessageId = message.id
@@ -4159,8 +4201,8 @@ private fun ThreadMessagesListContent(
                                         menuState.taskStatusMenuMessageId = message.id
                                         menuState.taskStatusMenuAnchor = anchor
                                     },
-                                    onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
-                                    onToggleSave = { toggleMessageSaved(message.id) },
+                                    onToggleReaction = { emoji -> onThreadEventKeepingAnchor("toggleReaction", message.id, null, emoji) },
+                                    onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", message.id, null, null) },
                                     showReactionReactors = true,
                                     onShowAuthorDescription = { description, anchor ->
                                         menuState.authorDescriptionPopover =
@@ -4552,7 +4594,7 @@ private fun ThreadMessagesListContent(
             unreadThreadJump = unreadThreadJump,
             nextUnreadThread = nextUnreadThread,
             unreadThreadPill = unreadThreadPill,
-            onThreadEvent = onThreadEvent,
+            onThreadEvent = onThreadEventKeepingAnchor,
             diagnosticsLogger = diagnosticsLogger,
         )
         menuState.authorDescriptionPopover?.let { request ->
@@ -4597,7 +4639,7 @@ private fun ThreadMessagesListContent(
                 onReact = { emoji ->
                     close()
                     if (track) trackLongPressMenuAction(message, RaftMessageAction.ReactQuick)
-                    onThreadEvent("toggleReaction", message.id, null, emoji)
+                    onThreadEventKeepingAnchor("toggleReaction", message.id, null, emoji)
                 },
                 tools =
                     ThreadNewMessageMenuToolCallbacks(
@@ -4619,7 +4661,7 @@ private fun ThreadMessagesListContent(
                         onSave = {
                             close()
                             trackTool(ThreadNewMessageMenuTool.Save)
-                            toggleMessageSaved(message.id)
+                            onThreadEventKeepingAnchor("toggleMessageSaved", message.id, null, null)
                         },
                         onTranslate = {
                             close()
@@ -4926,14 +4968,14 @@ private fun ThreadMessagesListContent(
                                 message,
                                 if (message.isSaved) RaftMessageAction.Unsave else RaftMessageAction.Save
                             )
-                            toggleMessageSaved(message.id)
+                            onThreadEventKeepingAnchor("toggleMessageSaved", message.id, null, null)
                         },
                         onFollowThread = onFollowThread,
                         onUnfollowThread = onUnfollowThread,
                         onReact = { emoji ->
                             closeActionMenu()
                             trackLongPressMenuAction(message, RaftMessageAction.ReactQuick)
-                            onThreadEvent("toggleReaction", message.id, null, emoji)
+                            onThreadEventKeepingAnchor("toggleReaction", message.id, null, emoji)
                         },
                         onTaskStatusChange = onTaskStatusChange,
                         onConvertToTask = onConvertToTask,
@@ -4997,7 +5039,7 @@ private fun ThreadMessagesListContent(
                 onReact = { emoji ->
                     closeQuickReactionBar()
                     diagnosticsLogger("thread_message_double_tap_react messageId=${message.id} emoji=$emoji")
-                    onThreadEvent("toggleReaction", message.id, null, emoji)
+                    onThreadEventKeepingAnchor("toggleReaction", message.id, null, emoji)
                 },
                 diagnosticsLogger = diagnosticsLogger
             )
@@ -5009,7 +5051,7 @@ private fun ThreadMessagesListContent(
             }
             val onPickReaction: (String) -> Unit = { emoji ->
                 closeReactionPicker()
-                onThreadEvent("toggleReaction", messageId, null, emoji)
+                onThreadEventKeepingAnchor("toggleReaction", messageId, null, emoji)
             }
             // Read here: the shell host and the dialog host compose the picker outside this page.
             val emojiPickerPreferences = rememberRaftEmojiPickerPreferences()

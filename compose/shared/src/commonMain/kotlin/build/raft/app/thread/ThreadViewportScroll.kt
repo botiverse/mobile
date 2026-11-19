@@ -258,6 +258,30 @@ internal fun ThreadListViewport.threadFirstVisibleMessageAnchor(
     )
 }
 
+/**
+ * The reading anchor a settled drag hands the viewport controller ([threadReadingAnchorItem]): the
+ * topmost message whose top is in view, else the first visible message. The controller's
+ * HeightChange replays and the [ThreadReadingAnchorKeeper] then keep the same row.
+ */
+internal fun ThreadListViewport.threadReadingAnchorMessage(
+    timelineSlice: ThreadTimelineSlice,
+    userScrollGeneration: Int
+): ThreadVisibleMessageAnchor? {
+    val firstMessageListItemIndex = timelineSlice.firstMessageListItemIndex()
+    val messageCount = timelineSlice.messages.size
+    if (messageCount <= 0) return null
+    val item =
+        threadReadingAnchorItem(layoutInfo.visibleItemsInfo) { index ->
+            index >= firstMessageListItemIndex && index < firstMessageListItemIndex + messageCount
+        } ?: return null
+    val message = timelineSlice.messages.getOrNull(item.index - firstMessageListItemIndex) ?: return null
+    return ThreadVisibleMessageAnchor(
+        messageId = message.id,
+        offset = item.offset,
+        userScrollGeneration = userScrollGeneration
+    )
+}
+
 internal fun shouldRestoreThreadOlderPageAnchor(
     capturedUserScrollGeneration: Int,
     currentUserScrollGeneration: Int
