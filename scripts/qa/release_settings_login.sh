@@ -20,7 +20,7 @@ set -euo pipefail
 credential="$RUNNER_TEMP/release-login-credential/account"
 trap 'rm -f "$credential" "$RUNNER_TEMP/testbed-release-challenge-${STAMP_RUN_CASE_ID}.json"' EXIT
 mkdir -p qa-evidence
-rm -f qa-evidence/agent-rc.txt
+rm -f qa-evidence/agent-rc.txt qa-evidence/login-record.json
 touch qa-release-lane
 apk=$(find apks -type f -name '*.apk' -print -quit)
 [[ -s "$apk" ]] || { echo "::error::release login: no APK under apks/" >&2; echo 2 > qa-evidence/agent-rc.txt; exit 0; }
