@@ -3049,9 +3049,10 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // The entity row under the search header, whose filters sit on one line since #4807
-    // (two wrapped lines before, row at 260dp); the Pin item opens 30dp below the press.
-    private val SEARCH_PIN_ROW_Y_DP = 214f
+    // The first entity row under the search header: filters on one line since #4807 (row at
+    // 214dp), then the Free plan's 30-day history notice above the results since #4879 pushes
+    // it to 277dp (its avatar spans ~264-291dp). The Pin item opens 30dp below the press.
+    private val SEARCH_PIN_ROW_Y_DP = 277f
 
     private fun captureHomeSearchEntityPinMenu(
         caseId: String,
