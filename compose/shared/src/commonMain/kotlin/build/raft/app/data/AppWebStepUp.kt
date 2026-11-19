@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import androidx.compose.runtime.Composable
 import build.raft.app.raftLogInfo
+import build.raft.app.raftSha256Hex
 import kotlin.io.encoding.Base64
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
