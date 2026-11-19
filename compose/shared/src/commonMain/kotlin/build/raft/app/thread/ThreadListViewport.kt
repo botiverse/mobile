@@ -123,6 +123,17 @@ internal class ThreadListViewport(
         if (delta != 0) scrollBy(delta.toFloat())
     }
 
+    /**
+     * `scrollToItem` on [raw] in raw terms (physical index, offset from the bottom when reversed).
+     * It forces a remeasure, so started undispatched outside a layout pass it completes before the
+     * frame is drawn ([ThreadReadingAnchorKeeper]).
+     */
+    suspend fun scrollRawToItem(rawIndex: Int, scrollOffset: Int) {
+        if (rawIndex !in 0 until raw.layoutInfo.totalItemsCount) return
+        if (!admitScroll()) return
+        raw.scrollToItem(rawIndex, scrollOffset)
+    }
+
     suspend fun animateScrollToItem(index: Int, scrollOffset: Int = 0) {
         if (!reverse) {
             if (!admitScroll()) return
