@@ -486,7 +486,7 @@ private fun ThreadMessagesListContent(
             onThreadContentReady()
         }
         val emptyHiddenHistory = rememberThreadHiddenHistory(timelineSlice.historyChannelId)
-        // Task v2 on a phone: the head is the conversation's first row, so it stays above its
+        // Task v2: the head is the conversation's first row, so it stays above its
         // loading or empty state (web: the parent slot over the replies' placeholder).
         TaskConversationHeadAboveState(LocalTaskConversationHeadRow.current) {
         if (
@@ -3430,10 +3430,10 @@ private fun ThreadMessagesListContent(
                 )
             }
             val inPlaceSelectionViewportHost = LocalThreadInPlaceTextSelectionHost.current
-            // Task v2 on a phone: the head is the list's first row, at the top of the history
+            // Task v2 (every width): the head is the list's first row, at the top of the history
             // boundary row (web `mobile-modal`: the parent row over the history boundary), so it
             // moves with the conversation; the top bar summarizes the task while it is out of view.
-            val taskHeadRow = LocalTaskConversationHeadRow.current?.takeIf { !taskHeadPinned(maxWidth) }
+            val taskHeadRow = LocalTaskConversationHeadRow.current
             if (taskHeadRow != null) {
                 LaunchedEffect(taskHeadRow, listState) {
                     snapshotFlow { listState.threadTaskHeadRowInView(taskHeadRow.scrollState.rowHeadHeightPx) }

@@ -105,8 +105,8 @@ internal fun ThreadRouteAssistantPanel(
 }
 
 /**
- * A task conversation's head at [placement]: pinned above the conversation off a phone, its first
- * row on a phone, or pulled down from the bar ([TaskHeadPlacement]).
+ * A task conversation's head at [placement]: the page's effects (no room above the conversation),
+ * its first row, or pulled down from the bar ([TaskHeadPlacement]).
  */
 @Composable
 @NonRestartableComposable

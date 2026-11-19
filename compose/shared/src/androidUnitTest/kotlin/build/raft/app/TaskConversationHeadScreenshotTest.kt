@@ -11,7 +11,6 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.gestures.scrollBy
@@ -192,8 +191,8 @@ class TaskConversationHeadScreenshotTest {
 private const val HeadRowKey = "task-head-row"
 
 /**
- * A task conversation page on a phone as ThreadPage lays it out: the top bar; the head above the
- * messages ([TaskConversationHead], no room on a phone: it tells the state the page is a phone's,
+ * A task conversation page as ThreadPage lays it out (every width): the top bar; the page's
+ * placement ([TaskConversationHeadPageEffects], no room above the messages,
  * and the keyboard puts the panel up); the [messages] newest at the bottom with the head as their
  * first row, over "Beginning of conversation" (ThreadMessagesListContent's history boundary row),
  * the bar summarizing the task while that row is out of view; the head pulled down from the bar
@@ -260,32 +259,20 @@ private fun TaskPhonePage(
     Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         TaskHeader(chrome)
         Box(Modifier.weight(1f).fillMaxWidth().taskHeadFloatOutsidePress(scrollState)) {
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                // As ThreadMessagesListContent: the head is a row of the list unless the page pins it.
-                val headInList = !taskHeadPinned(maxWidth)
-                Column(Modifier.fillMaxSize().nestedScroll(scrollState.connection)) {
-                    TaskConversationHead(
-                        model = HeadModel,
-                        onSelectStatus = {},
-                        onOpenAssignee = {},
-                        onOpenSource = {},
-                        onOpenEarlierDiscussion = {},
-                        scrollState = scrollState,
-                        keyboardUp = keyboardUp,
-                    )
-                    LazyColumn(
-                        Modifier.weight(1f).fillMaxWidth(),
-                        state = listState,
-                        reverseLayout = true,
-                        verticalArrangement = Arrangement.Bottom,
-                    ) {
-                        messages.reversed().forEach { item -> item(key = item.id) { MessageCard(item) } }
-                        // Reversed: the last row is the top one, where the conversation begins.
-                        item(key = HeadRowKey) {
-                            Column(Modifier.fillMaxWidth()) {
-                                if (headInList) TaskConversationHeadRowContent(headRow)
-                                ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(canLoadMoreBefore = false))
-                            }
+            Column(Modifier.fillMaxSize().nestedScroll(scrollState.connection)) {
+                TaskConversationHeadPageEffects(scrollState = scrollState, keyboardUp = keyboardUp)
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    state = listState,
+                    reverseLayout = true,
+                    verticalArrangement = Arrangement.Bottom,
+                ) {
+                    messages.reversed().forEach { item -> item(key = item.id) { MessageCard(item) } }
+                    // Reversed: the last row is the top one, where the conversation begins.
+                    item(key = HeadRowKey) {
+                        Column(Modifier.fillMaxWidth()) {
+                            TaskConversationHeadRowContent(headRow)
+                            ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(canLoadMoreBefore = false))
                         }
                     }
                 }
@@ -603,18 +590,16 @@ class TaskConversationHeadFloatScreenshotTest {
 }
 
 /**
- * Task v2 on a tablet (artin 2026-11-19, a tablet in landscape: the pinned head took most of the
- * height and left the messages a strip). In a window shorter than [TaskHeadPinnedMinWindowHeight]
- * the head is the conversation's first row however wide the page is, as on a phone
- * ([taskHeadPinned]):
+ * Task v2 on a tablet (artin 2026-11-19): the head is never pinned. At every width and height it is
+ * the conversation's first row, as on a phone, and the bar pulls it down once it is out of view:
  * - `task.conversation.head.wide-landscape`: 1280x800dp, three messages: the head in the flow
  *   above "Beginning of conversation" and the messages, nothing pinned under the bar;
  * - `task.conversation.head.wide-landscape.long`: the same window, a conversation longer than the
  *   page as it opens at its newest message: the head out of view above, the bar summarizing the
  *   task, the messages using the whole height;
  * - `task.conversation.head.wide-landscape.pulled-down`: that bar tapped, the head pulled down;
- * - `task.conversation.head.wide-portrait`: the tablet upright (800x1280dp), tall enough that the
- *   head stays pinned above the conversation (web's desktop dialog).
+ * - `task.conversation.head.wide-portrait`: the tablet upright (800x1280dp): the head is the
+ *   conversation's first row there too, not pinned.
  * Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)

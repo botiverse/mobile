@@ -171,7 +171,7 @@ class TaskConversationHeadEditUiTest {
 
     /**
      * ThreadPage's task conversation on a phone: the top bar, the head above the messages
-     * ([TaskHeadPlacement.Page], no room on a phone: it only tells the state the page is a phone's),
+     * ([TaskHeadPlacement.Page], no room: it holds the page's effects),
      * the messages with the head as their first row ([TaskHeadPlacement.FirstRow]; a short
      * conversation, so it is in view), and the head pulled down from the bar over them
      * ([TaskHeadPlacement.PullDown], up while the row is in view).
