@@ -448,24 +448,22 @@ internal fun ThreadReactionAtlasProvider(content: @Composable () -> Unit) {
     // reaction rendering fall back to emoji glyphs.
     // An atlas an ancestor already holds ready (a host that decoded it, or an outer provider) is
     // reused as is: no second async load that may or may not have finished.
+    // [content] has one call site whichever atlas is used: an ancestor's atlas turning ready (or
+    // going away) must not rebuild the content, e.g. a thread message list under a LazyListState
+    // that outlives it (Hands 9e3ca082).
     val inheritedAtlas = LocalThreadReactionAtlasImage.current
-    if (inheritedAtlas != null) {
-        content()
-        return
-    }
-    val atlasDrawable = ThreadReactionSpriteAtlasDrawableResource
-    val threadReactionAtlasImage = if (atlasDrawable != null) imageResource(atlasDrawable) else null
-    val readyThreadReactionAtlas =
-        threadReactionAtlasImage?.takeIf { it.width > 0 && it.height > 0 }
-    if (readyThreadReactionAtlas != null) {
+    val atlasDrawable = if (inheritedAtlas == null) ThreadReactionSpriteAtlasDrawableResource else null
+    val ownAtlasImage = if (atlasDrawable != null) imageResource(atlasDrawable) else null
+    val ownReadyAtlas = ownAtlasImage?.takeIf { it.width > 0 && it.height > 0 }
+    if (ownReadyAtlas != null) {
         SideEffect {
             ThreadReactionGlyphDiagnostics.logAtlasReadyOnce(
-                readyThreadReactionAtlas.width,
-                readyThreadReactionAtlas.height
+                ownReadyAtlas.width,
+                ownReadyAtlas.height
             )
         }
     }
-    CompositionLocalProvider(LocalThreadReactionAtlasImage provides readyThreadReactionAtlas) {
+    CompositionLocalProvider(LocalThreadReactionAtlasImage provides (inheritedAtlas ?: ownReadyAtlas)) {
         content()
     }
 }

@@ -59,7 +59,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.rememberLazyListState
 import build.raft.app.compat.ui.keyboardDismissModeInteractiveIOS
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -619,7 +618,12 @@ private fun ThreadMessagesListContent(
     // Decided once per list instance: re-mapping indices under a live list would be wrong.
     val reverseLayoutRequested = LocalThreadReverseLayout.current
     val reverseLayout = remember(threadInstanceKey) { reverseLayoutRequested }
-    val rawListState = rememberLazyListState(
+    // Hands 9e3ca082: this state outlives the LazyColumn below (and its node); the LazyColumn's
+    // detachSafeLazyListPrefetch drops a detached node's pending prefetch, which a later scroll
+    // would otherwise cancel on that node and crash in requireOwner.
+    val threadListPrefetch = rememberDetachSafeLazyListPrefetch()
+    val rawListState = rememberDetachSafeLazyListState(
+        prefetch = threadListPrefetch,
         // Kuikly commits a non-top initial Compose viewport to native ScrollView
         // before its first child placement. Start at the final latest viewport;
         // the existing anchor owner only performs measured bottom correction.
@@ -3464,6 +3468,7 @@ private fun ThreadMessagesListContent(
                 state = listState.raw,
                 reverseLayout = reverseLayout,
                 modifier = Modifier.fillMaxSize()
+                    .detachSafeLazyListPrefetch(threadListPrefetch)
                     .then(
                         if (inPlaceSelectionViewportHost?.enabled == true) {
                             // In-place selection bar stays inside the list's visible viewport.
