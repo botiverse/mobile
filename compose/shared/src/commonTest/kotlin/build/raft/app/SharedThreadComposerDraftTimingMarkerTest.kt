@@ -69,7 +69,7 @@ class SharedThreadComposerDraftTimingMarkerTest {
 
         assertEquals("draft_written seq=2 len=2 path=flush", changeLines(lines).last(), "lines=$lines")
         clock.runEverythingIncludingCancelled()
-        assertEquals(1, lines.count { it == "draft_written seq=2 len=2 path=flush" }, "lines=$lines")
+        assertEquals(1, changeLines(lines).count { it == "draft_written seq=2 len=2 path=flush" }, "lines=$lines")
     }
 
     @Test
