@@ -595,7 +595,9 @@ class SecondFactorStepUpCoordinator(
 
     /** [state] with Continue in browser where it has no way to answer and the platform and server have one. */
     private fun SecondFactorStepUpDialogState.offeringWebStepUp(): SecondFactorStepUpDialogState =
-        if (method == null && webStepUp == null && this@SecondFactorStepUpCoordinator.webStepUp != null && !webStepUpUnavailable) {
+        // Start needs the action's key (400 `invalid_action` without): none, no Continue in browser.
+        val offered = this@SecondFactorStepUpCoordinator.webStepUp != null && openAction != null && !webStepUpUnavailable
+        if (method == null && webStepUp == null && offered) {
             copy(webStepUp = SecondFactorWebStepUpPhase.Ready)
         } else {
             this
@@ -607,13 +609,14 @@ class SecondFactorStepUpCoordinator(
         val web = webStepUp ?: return
         if (!current.continuesInBrowser || current.webStepUp != SecondFactorWebStepUpPhase.Ready || current.submitting) return
         val deferred = pending ?: return
+        val action = openAction ?: return
         publish(current.copy(webStepUp = SecondFactorWebStepUpPhase.Opening, webStepUpSession = null, banner = null))
         forgetWebRequest()
         val pkce = web.pkce()
         val generation = web.generation()
         val started =
             runCatchingPreservingCancellation {
-                web.start(AppWebStepUpStartBodyPending(returnUri = web.returnUri, codeChallenge = pkce.challenge, action = openAction))
+                web.start(AppWebStepUpStartBody(returnUri = web.returnUri, codeChallenge = pkce.challenge, action = action))
             }.getOrElse { AppWebStepUpStartResult.Failed(serverCode = "threw") }
         if (pending !== deferred) return
         val shown = _state.value ?: return
@@ -649,6 +652,8 @@ class SecondFactorStepUpCoordinator(
                 publish(shown.copy(webStepUp = null))
             }
             AppWebStepUpStartResult.NotEnabled -> settle(SecondFactorStepUpSettle.Verified)
+            AppWebStepUpStartResult.SessionFamilyRequired ->
+                publish(shown.copy(webStepUp = SecondFactorWebStepUpPhase.Ready, banner = SecondFactorStepUpBanner.SignInAgain))
             is AppWebStepUpStartResult.Failed -> {
                 web.log("app_web_step_up_start result=failed code=${started.serverCode}")
                 publish(
@@ -733,7 +738,7 @@ class SecondFactorStepUpCoordinator(
         )
         val result =
             runCatchingPreservingCancellation {
-                web.complete(AppWebStepUpCompleteBodyPending(code = callback.code, codeVerifier = onFile.verifier, returnUri = onFile.returnUri))
+                web.complete(AppWebStepUpCompleteBody(code = callback.code, codeVerifier = onFile.verifier, returnUri = onFile.returnUri))
             }.getOrElse { AppWebStepUpCompleteResult.Failed(serverCode = "threw") }
         if (pending !== deferred) return
         val shown = _state.value?.copy(submitting = false, webStepUp = SecondFactorWebStepUpPhase.Ready) ?: return
@@ -742,6 +747,10 @@ class SecondFactorStepUpCoordinator(
             AppWebStepUpCompleteResult.NotEnabled -> {
                 exit("verified")
                 settle(SecondFactorStepUpSettle.Verified)
+            }
+            AppWebStepUpCompleteResult.SessionFamilyRequired -> {
+                exit("exchange_session_family_required")
+                publish(shown.copy(banner = SecondFactorStepUpBanner.SignInAgain))
             }
             is AppWebStepUpCompleteResult.Expired -> {
                 exit("exchange_expired")

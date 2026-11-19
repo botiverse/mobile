@@ -31,10 +31,10 @@ interface SettingsRepository {
     /** `POST /api/auth/second-factor/passkeys/assertion/options` (SecondFactorPasskeyStepUpApi.kt). */
     suspend fun secondFactorPasskeyAssertionOptions(rp: String?): SecondFactorPasskeyOptionsResult =
         SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.Failed(serverCode = "second_factor_step_up_unavailable"))
-    /** `POST /api/auth/app-login/step-up/start` (AppWebStepUpApi.kt, pending contract verification). */
-    suspend fun appWebStepUpStart(body: AppWebStepUpStartBodyPending): AppWebStepUpStartResult = AppWebStepUpStartResult.Unavailable
-    /** `POST /api/auth/app-login/step-up/complete` (AppWebStepUpApi.kt, pending contract verification). */
-    suspend fun appWebStepUpComplete(body: AppWebStepUpCompleteBodyPending): AppWebStepUpCompleteResult =
+    /** `POST /api/auth/app-login/step-up/start` (AppWebStepUpApi.kt). */
+    suspend fun appWebStepUpStart(body: AppWebStepUpStartBody): AppWebStepUpStartResult = AppWebStepUpStartResult.Unavailable
+    /** `POST /api/auth/app-login/step-up/complete` (AppWebStepUpApi.kt). */
+    suspend fun appWebStepUpComplete(body: AppWebStepUpCompleteBody): AppWebStepUpCompleteResult =
         AppWebStepUpCompleteResult.Failed(serverCode = "second_factor_step_up_unavailable")
     /**
      * `PATCH /api/auth/me` `{ shareUsageData }` (RFC-067 "Share usage data"); the content is the choice the

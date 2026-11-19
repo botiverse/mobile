@@ -156,7 +156,7 @@ internal class SharedSignedInDevicesStore(
             webUrl = stepUpWebUrl,
             webTarget = { SecondFactorStepUpWebTarget.Account },
             webStepUp = dataSource.webStepUp(),
-            // slock stepUpGate.ts: a lost device's sign-out (pending contract verification).
+            // slock stepUpGate.ts: a lost device's sign-out.
             webStepUpAction = "session_revoke",
         )
 

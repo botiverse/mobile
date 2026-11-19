@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
  * Continue in browser (iOS, only legacy passkeys): "Verify it's you" reaches no way to answer
  * after `passkey_rp_unavailable`, starts the web step-up, has the dialog open its page, takes the
  * page's callback for that request only, exchanges the code with the verifier and retries the
- * refused action once. Wire shapes: AppWebStepUpApiTest (pending contract verification).
+ * refused action once. Wire shapes: AppWebStepUpApiTest.
  */
 class AppWebStepUpCoordinatorTest {
     private val passkeyOnly =
@@ -29,11 +29,11 @@ class AppWebStepUpCoordinatorTest {
         val completeResults: ArrayDeque<AppWebStepUpCompleteResult> = ArrayDeque(listOf(AppWebStepUpCompleteResult.Verified)),
         val store: InMemoryRaftKeyValueStore = InMemoryRaftKeyValueStore(),
         webUrl: String? = null,
-        action: String? = null,
+        action: String? = "computer_attach",
     ) {
         var clock = 1_000L
-        val starts = mutableListOf<AppWebStepUpStartBodyPending>()
-        val completes = mutableListOf<AppWebStepUpCompleteBodyPending>()
+        val starts = mutableListOf<AppWebStepUpStartBody>()
+        val completes = mutableListOf<AppWebStepUpCompleteBody>()
         val logs = mutableListOf<String>()
         private var generations = 0
         val pending = AppWebStepUpPendingStore({ store }, now = { clock })
@@ -61,7 +61,7 @@ class AppWebStepUpCoordinatorTest {
             )
     }
 
-    private fun started(id: String) = AppWebStepUpStartResult.Started(id, "https://app.raft.build/login/app?request=$id&purpose=step_up", "2026-11-19T10:05:00Z")
+    private fun started(id: String) = AppWebStepUpStartResult.Started(id, "https://app.raft.build/login/app/verify?request=$id", "2026-11-19T10:05:00Z")
 
     private fun refusal(): DataResult<String> =
         DataResult.Error(
@@ -111,7 +111,7 @@ class AppWebStepUpCoordinatorTest {
         harness.reachLegacyOnly()
 
         val session = harness.continueInBrowser()
-        assertEquals("https://app.raft.build/login/app?request=r-1&purpose=step_up", session.url)
+        assertEquals("https://app.raft.build/login/app/verify?request=r-1", session.url)
         assertEquals("raft", session.callbackScheme)
         val start = harness.starts.single()
         assertEquals(returnUri, start.returnUri)
@@ -127,7 +127,7 @@ class AppWebStepUpCoordinatorTest {
         harness.finish(session, RaftAppWebStepUpBrowserResult.Callback("$returnUri?requestId=r-1&code=k-1"))
         runCurrent()
 
-        assertEquals(listOf(AppWebStepUpCompleteBodyPending("k-1", verifier, returnUri)), harness.completes)
+        assertEquals(listOf(AppWebStepUpCompleteBody("k-1", verifier, returnUri)), harness.completes)
         assertEquals(SecondFactorStepUpOutcome.Completed(DataResult.Content("attached")), outcome.await())
         assertEquals(2, action.calls, "the refused action goes exactly once more")
         assertNull(harness.coordinator.state.value)
@@ -326,6 +326,40 @@ class AppWebStepUpCoordinatorTest {
         harness.coordinator.accept(SecondFactorStepUpIntent.ContinueInBrowser)
         assertEquals(SecondFactorStepUpOutcome.Completed(DataResult.Content("attached")), outcome.await())
         assertEquals(2, action.calls)
+    }
+
+    @Test
+    fun anActionTheServerCantBeToldAboutKeepsOpenOnTheWeb() = runTest {
+        val harness = Harness(ArrayDeque(listOf(started("r-x"))), webUrl = "https://app.raft.build/s/acme/computers", action = null)
+        val outcome = async { harness.coordinator.run(ScriptedAction(refusal())::invoke) }
+        runCurrent()
+        harness.coordinator.accept(SecondFactorStepUpIntent.Submit)
+        val dialog = assertNotNull(harness.coordinator.state.value)
+        assertNull(dialog.webStepUp, "start needs the action's key")
+        assertTrue(dialog.opensOnWeb)
+        harness.coordinator.accept(SecondFactorStepUpIntent.ContinueInBrowser)
+        assertTrue(harness.starts.isEmpty())
+        harness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        outcome.await()
+    }
+
+    @Test
+    fun aSignInThatCantBeVerifiedAsksToSignInAgain() = runTest {
+        val harness =
+            Harness(
+                ArrayDeque(listOf(AppWebStepUpStartResult.SessionFamilyRequired, started("r-11"))),
+                completeResults = ArrayDeque(listOf(AppWebStepUpCompleteResult.SessionFamilyRequired)),
+            )
+        val outcome = async { harness.coordinator.run(ScriptedAction(refusal())::invoke) }
+        runCurrent()
+        harness.reachLegacyOnly()
+        harness.coordinator.accept(SecondFactorStepUpIntent.ContinueInBrowser)
+        assertEquals(SecondFactorStepUpBanner.SignInAgain, harness.coordinator.state.value?.banner)
+        harness.finish(harness.continueInBrowser(), RaftAppWebStepUpBrowserResult.Callback("$returnUri?requestId=r-11&code=k-11"))
+        runCurrent()
+        assertEquals(SecondFactorStepUpBanner.SignInAgain, harness.coordinator.state.value?.banner)
+        harness.coordinator.accept(SecondFactorStepUpIntent.SignInAgain)
+        assertEquals(SecondFactorStepUpOutcome.Cancelled, outcome.await())
     }
 
     @Test

@@ -315,10 +315,10 @@ class RealSettingsRepository(
     override suspend fun secondFactorPasskeyAssertionOptions(rp: String?): SecondFactorPasskeyOptionsResult =
         secondFactorStepUpRepository.passkeyAssertionOptions(rp)
 
-    override suspend fun appWebStepUpStart(body: AppWebStepUpStartBodyPending): AppWebStepUpStartResult =
+    override suspend fun appWebStepUpStart(body: AppWebStepUpStartBody): AppWebStepUpStartResult =
         secondFactorStepUpRepository.webStepUpStart(body)
 
-    override suspend fun appWebStepUpComplete(body: AppWebStepUpCompleteBodyPending): AppWebStepUpCompleteResult =
+    override suspend fun appWebStepUpComplete(body: AppWebStepUpCompleteBody): AppWebStepUpCompleteResult =
         secondFactorStepUpRepository.webStepUpComplete(body)
 
     override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> {

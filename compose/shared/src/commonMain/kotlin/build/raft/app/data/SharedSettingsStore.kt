@@ -883,10 +883,10 @@ class SharedSettingsDataSource(
         settingsRepository?.secondFactorPasskeyAssertionOptions(rp)
             ?: SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.Failed(serverCode = "second_factor_step_up_unavailable"))
 
-    internal suspend fun appWebStepUpStart(body: AppWebStepUpStartBodyPending): AppWebStepUpStartResult =
+    internal suspend fun appWebStepUpStart(body: AppWebStepUpStartBody): AppWebStepUpStartResult =
         settingsRepository?.appWebStepUpStart(body) ?: AppWebStepUpStartResult.Unavailable
 
-    internal suspend fun appWebStepUpComplete(body: AppWebStepUpCompleteBodyPending): AppWebStepUpCompleteResult =
+    internal suspend fun appWebStepUpComplete(body: AppWebStepUpCompleteBody): AppWebStepUpCompleteResult =
         settingsRepository?.appWebStepUpComplete(body)
             ?: AppWebStepUpCompleteResult.Failed(serverCode = "second_factor_step_up_unavailable")
 
@@ -4504,7 +4504,7 @@ internal fun settingsSecondFactorStepUpWebTarget(action: String, itemId: String?
 
 /**
  * The server's `StepUpAction` key (slock `stepUpGate.ts`) of a Settings action, for Continue in
- * browser's page (pending contract verification: the web step-up's start takes it as `action`).
+ * browser (the web step-up's start takes it as `action`; slock docs/contracts/app-web-step-up.md).
  */
 internal fun settingsSecondFactorStepUpAction(action: String): String? =
     when (action) {

@@ -202,7 +202,7 @@ class SecondFactorStepUpPasskeyUiTest {
         assertEquals(listOf<SecondFactorStepUpIntent>(SecondFactorStepUpIntent.ContinueInBrowser), intents)
 
         // The coordinator asks for its page: opened once, and how it ended goes back.
-        val session = SecondFactorWebStepUpSession(3, "https://app.raft.build/login/app?request=r-1&purpose=step_up", "raft")
+        val session = SecondFactorWebStepUpSession(3, "https://app.raft.build/login/app/verify?request=r-1", "raft")
         runOnIdle { state.value = ready.copy(webStepUp = SecondFactorWebStepUpPhase.Waiting, webStepUpSession = session) }
         waitForIdle()
         onNodeWithText("Finish in the browser", substring = true).assertExists()

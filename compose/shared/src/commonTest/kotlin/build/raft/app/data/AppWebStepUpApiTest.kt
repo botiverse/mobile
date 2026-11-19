@@ -5,36 +5,48 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The web step-up's wire shapes (design §4; pending contract verification against the server PR)
- * and its PKCE.
+ * The web step-up's wire shapes (botiverse/slock docs/contracts/app-web-step-up.md, #15593 @
+ * 9fc79159) and its PKCE.
  */
 class AppWebStepUpApiTest {
     private val trace = "4bf92f3577b34da6a3ce929d0e0e4736"
 
     @Test
-    fun startSendsS256AndLeavesAnUnknownActionOut() {
+    fun startSendsS256AndTheAction() {
         assertEquals(
             """{"returnUri":"raft://login/callback","codeChallenge":"c","codeChallengeMethod":"S256","action":"password_change"}""",
-            buildAppWebStepUpStartBody(AppWebStepUpStartBodyPending("raft://login/callback", "c", action = "password_change")),
+            buildAppWebStepUpStartBody(AppWebStepUpStartBody("raft://login/callback", "c", action = "password_change")),
         )
         assertEquals(
-            """{"returnUri":"raft://login/callback","codeChallenge":"c","codeChallengeMethod":"S256"}""",
-            buildAppWebStepUpStartBody(AppWebStepUpStartBodyPending("raft://login/callback", "c")),
+            """{"returnUri":"raft://login/callback","codeChallenge":"c","codeChallengeMethod":"S256","clientId":"raft-app","action":"computer_attach"}""",
+            buildAppWebStepUpStartBody(AppWebStepUpStartBody("raft://login/callback", "c", clientId = "raft-app", action = "computer_attach")),
         )
         assertEquals(
             """{"code":"k","codeVerifier":"v","returnUri":"raft://login/callback"}""",
-            buildAppWebStepUpCompleteBody(AppWebStepUpCompleteBodyPending("k", "v", "raft://login/callback")),
+            buildAppWebStepUpCompleteBody(AppWebStepUpCompleteBody("k", "v", "raft://login/callback")),
         )
     }
 
     @Test
     fun startAnswers() {
         assertEquals(
-            AppWebStepUpStartResult.Started("r-1", "https://app.raft.build/login/app?request=r-1&purpose=step_up", "2026-11-19T10:05:00Z"),
+            AppWebStepUpStartResult.Started("r-1", "https://app.raft.build/login/app/verify?request=r-1", "2026-11-19T10:05:00Z"),
             parseAppWebStepUpStart(
                 201,
-                """{"requestId":"r-1","stepUpUrl":"https://app.raft.build/login/app?request=r-1&purpose=step_up","expiresAt":"2026-11-19T10:05:00Z"}""",
+                """{"requestId":"r-1","stepUpUrl":"https://app.raft.build/login/app/verify?request=r-1","expiresAt":"2026-11-19T10:05:00Z","client":{"id":"raft-app","name":"Raft"}}""",
             ),
+        )
+        assertEquals(
+            AppWebStepUpStartResult.Unavailable,
+            parseAppWebStepUpStart(404, """{"error":"No passkey","code":"passkey_not_found"}"""),
+        )
+        assertEquals(
+            AppWebStepUpStartResult.SessionFamilyRequired,
+            parseAppWebStepUpStart(403, """{"error":"Sign in again","code":"session_family_required"}"""),
+        )
+        assertEquals(
+            AppWebStepUpStartResult.Failed("Unknown action", "invalid_action", trace),
+            parseAppWebStepUpStart(400, """{"error":"Unknown action","code":"invalid_action"}""", trace),
         )
         // The flag off, or no legacy passkey: Open on the web instead.
         assertEquals(AppWebStepUpStartResult.Unavailable, parseAppWebStepUpStart(404, """{"error":"Not found","code":"not_enabled"}"""))
@@ -56,7 +68,20 @@ class AppWebStepUpApiTest {
 
     @Test
     fun completeAnswers() {
-        assertEquals(AppWebStepUpCompleteResult.Verified, parseAppWebStepUpComplete(200, """{"verified":true}"""))
+        assertEquals(
+            AppWebStepUpCompleteResult.Verified,
+            parseAppWebStepUpComplete(200, """{"verified":true,"verifiedAt":"2026-11-19T10:01:00Z"}"""),
+        )
+        assertEquals(AppWebStepUpCompleteResult.Expired(trace), parseAppWebStepUpComplete(410, """{"code":"code_expired"}""", trace))
+        // pkce_mismatch leaves the code unused on the server; here it is a failure with its trace ID.
+        assertEquals(
+            AppWebStepUpCompleteResult.Failed("PKCE mismatch", "pkce_mismatch", trace),
+            parseAppWebStepUpComplete(400, """{"error":"PKCE mismatch","code":"pkce_mismatch"}""", trace),
+        )
+        assertEquals(
+            AppWebStepUpCompleteResult.SessionFamilyRequired,
+            parseAppWebStepUpComplete(403, """{"code":"session_family_required"}"""),
+        )
         assertEquals(
             AppWebStepUpCompleteResult.Failed(serverCode = "app_web_step_up_contract_mismatch", traceId = trace),
             parseAppWebStepUpComplete(200, """{"verified":false}""", trace),
@@ -100,8 +125,8 @@ class AppWebStepUpApiTest {
 
     @Test
     fun onlyThisBuildsLoginCallbackCanCarryIt() {
-        val start: suspend (AppWebStepUpStartBodyPending) -> AppWebStepUpStartResult = { AppWebStepUpStartResult.Unavailable }
-        val complete: suspend (AppWebStepUpCompleteBodyPending) -> AppWebStepUpCompleteResult = { AppWebStepUpCompleteResult.Verified }
+        val start: suspend (AppWebStepUpStartBody) -> AppWebStepUpStartResult = { AppWebStepUpStartResult.Unavailable }
+        val complete: suspend (AppWebStepUpCompleteBody) -> AppWebStepUpCompleteResult = { AppWebStepUpCompleteResult.Verified }
         assertEquals(null, secondFactorWebStepUp(start, complete, returnUri = null))
         assertEquals(null, secondFactorWebStepUp(start, complete, returnUri = "raft-mac://login/callback"))
         assertEquals("raft-beta://login/callback", secondFactorWebStepUp(start, complete, returnUri = "raft-beta://login/callback")?.returnUri)

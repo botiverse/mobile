@@ -163,7 +163,9 @@ internal class ThreadActionCardCommands(
         stepUp: SecondFactorStepUpCoordinator,
         onChannelCreated: (HomeChannelRow) -> Unit = {},
     ): SecondFactorStepUpOutcome<ThreadActionCard> =
-        stepUp.run { commitThreadActionCard(payload, messageId, card, onChannelCreated) }
+        stepUp.run(webTarget = null, action = threadActionCardStepUpAction(card.type)) {
+            commitThreadActionCard(payload, messageId, card, onChannelCreated)
+        }
 
     /**
      * The Install of an `integration:install_marketplace_app` card's confirmation (web
@@ -485,3 +487,14 @@ internal class ThreadActionCardCommands(
             is DataResult.NoPermission -> result
         }
 }
+
+/**
+ * The server's `StepUpAction` key of an action card kind gated by step-up (slock
+ * `actionCardSecondFactor.ts`), for Continue in browser; null for any other kind (the dialog then
+ * keeps Open on the web).
+ */
+internal fun threadActionCardStepUpAction(type: String): String? =
+    when (type.trim().lowercase()) {
+        "integration:register_app" -> "integration_app_register"
+        else -> null
+    }

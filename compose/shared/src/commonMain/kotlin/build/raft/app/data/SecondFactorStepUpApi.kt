@@ -233,11 +233,11 @@ fun DataResult<*>.secondFactorStepUpChallengeOrNull(): SecondFactorStepUpChallen
 class SecondFactorStepUpRepository(private val networkClient: RaftNetworkClient) {
     private val web = AppWebStepUpRepository(networkClient)
 
-    /** The web step-up's start (AppWebStepUpApi.kt, pending contract verification). */
-    internal suspend fun webStepUpStart(body: AppWebStepUpStartBodyPending): AppWebStepUpStartResult = web.start(body)
+    /** The web step-up's start (AppWebStepUpApi.kt). */
+    internal suspend fun webStepUpStart(body: AppWebStepUpStartBody): AppWebStepUpStartResult = web.start(body)
 
-    /** The web step-up's code exchange (AppWebStepUpApi.kt, pending contract verification). */
-    internal suspend fun webStepUpComplete(body: AppWebStepUpCompleteBodyPending): AppWebStepUpCompleteResult = web.complete(body)
+    /** The web step-up's code exchange (AppWebStepUpApi.kt). */
+    internal suspend fun webStepUpComplete(body: AppWebStepUpCompleteBody): AppWebStepUpCompleteResult = web.complete(body)
 
     /** Continue in browser for this repository's sign-in, where the platform has it ([secondFactorWebStepUp]). */
     internal fun webStepUp(): SecondFactorWebStepUp? = secondFactorWebStepUp(::webStepUpStart, ::webStepUpComplete)

@@ -88,8 +88,8 @@ internal fun newAppWebStepUpGeneration(): String = "app-step-up-${Uuid.random()}
  * Only built where the platform runs the web session ([secondFactorWebStepUp]).
  */
 class SecondFactorWebStepUp internal constructor(
-    internal val start: suspend (AppWebStepUpStartBodyPending) -> AppWebStepUpStartResult,
-    internal val complete: suspend (AppWebStepUpCompleteBodyPending) -> AppWebStepUpCompleteResult,
+    internal val start: suspend (AppWebStepUpStartBody) -> AppWebStepUpStartResult,
+    internal val complete: suspend (AppWebStepUpCompleteBody) -> AppWebStepUpCompleteResult,
     internal val returnUri: String,
     internal val pending: AppWebStepUpPendingStore = RaftAppWebStepUp.pending,
     internal val pkce: () -> AppWebStepUpPkce = ::newAppWebStepUpPkce,
@@ -103,8 +103,8 @@ class SecondFactorWebStepUp internal constructor(
  * Open on the web). [returnUri]: the platform's browser-login callback.
  */
 internal fun secondFactorWebStepUp(
-    start: suspend (AppWebStepUpStartBodyPending) -> AppWebStepUpStartResult,
-    complete: suspend (AppWebStepUpCompleteBodyPending) -> AppWebStepUpCompleteResult,
+    start: suspend (AppWebStepUpStartBody) -> AppWebStepUpStartResult,
+    complete: suspend (AppWebStepUpCompleteBody) -> AppWebStepUpCompleteResult,
     returnUri: String? = raftAppWebStepUpReturnUri(),
 ): SecondFactorWebStepUp? {
     val uri = returnUri?.takeIf { it in APP_LOGIN_RETURN_URIS } ?: return null

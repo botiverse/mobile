@@ -424,7 +424,7 @@ private fun rememberExternalAgentStepUp(agentsApiClient: RaftAgentsApiClient): S
                     stepUp = repository::stepUp,
                     passkeyOptions = repository::passkeyAssertionOptions,
                     webStepUp = repository.webStepUp(),
-                    // slock stepUpGate.ts (pending contract verification).
+                    // slock stepUpGate.ts: an agent key.
                     webStepUpAction = "agent_credential_mint",
                 )
             }
