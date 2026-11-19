@@ -164,14 +164,31 @@ jobs:
       # Stamp merge queue: a main push that is exactly a tested queue fast-forward reuses that
       # run instead of re-running every tier on the same SHA. Fails to queue_tested=false
       # (full main-push tier) on any doubt. Nightly and release-* never consult it.
+      # The token stays in this step; it writes only a result file (queue_tested=true|false and
+      # the run id), which the next, credential-free step publishes as step outputs.
       - name: Check Stamp queue-tested status
-        id: queue_tested
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         env:
           GH_TOKEN: ${{ github.token }}
           PUSH_SHA: ${{ github.sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
+          QUEUE_TESTED_RESULT: ${{ runner.temp }}/queue-tested.txt
         run: python3 -I scripts/ci/check_queue_tested.py
+
+      - name: Publish queue-tested result
+        id: queue_tested
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        env:
+          QUEUE_TESTED_RESULT: ${{ runner.temp }}/queue-tested.txt
+        run: |
+          set -euo pipefail
+          if grep -qx 'queue_tested=true' "$QUEUE_TESTED_RESULT" 2>/dev/null; then
+            run_id="$(sed -n 's/^queue_tested_run=\([0-9][0-9]*\)$/\1/p' "$QUEUE_TESTED_RESULT")"
+            test -n "$run_id"
+            printf 'queue_tested=true\nqueue_tested_run=%s\n' "$run_id" >> "$GITHUB_OUTPUT"
+          else
+            printf 'queue_tested=false\nqueue_tested_run=\n' >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Resolve exact execution tier
         id: plan

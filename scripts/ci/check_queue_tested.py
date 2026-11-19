@@ -130,12 +130,17 @@ class Api:
 
 
 def write_outputs(ok: bool, reason: str, run_id: int | None) -> None:
+    """Print the verdict and, when QUEUE_TESTED_RESULT names a file, write it there.
+
+    The step that holds the API credential never writes step outputs itself
+    (check_workflow_secret_env.py); a later credential-free step copies this file.
+    """
     lines = [f"queue_tested={'true' if ok else 'false'}", f"queue_tested_run={run_id or ''}"]
     print("\n".join(lines))
     print(f"queue-tested: {reason}", file=sys.stderr)
-    output = os.environ.get("GITHUB_OUTPUT")
-    if output:
-        with open(output, "a", encoding="utf-8") as handle:
+    result = os.environ.get("QUEUE_TESTED_RESULT")
+    if result:
+        with open(result, "w", encoding="utf-8") as handle:
             handle.write("\n".join(lines) + "\n")
 
 
