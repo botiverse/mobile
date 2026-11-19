@@ -84,6 +84,8 @@ internal val RaftTopPageHeaderContentSpacing = 12.dp
 // After a 44dp Back: its 22dp arrow keeps 11dp of its own inset, so the title sits 17dp past it.
 private val RaftTopPageHeaderBackContentSpacing = 6.dp
 internal val RaftTopPageHeaderContentEndPadding = 16.dp
+// raft-ui `PanelHeaderContent` `md:gap-2`: between a one-line head's title and its meta.
+internal val RaftPanelHeadInlineMetaGap = 8.dp
 
 internal object RaftCollapsibleSectionTokens {
     const val AnimationDurationMillis: Int = 180
@@ -150,6 +152,11 @@ internal fun RaftTopPageHeader(
     trailingContent: (@Composable BoxScope.() -> Unit)? = null,
     onTitleClick: (() -> Unit)? = null,
     showBodyTopBanner: Boolean = true,
+    // raft-ui `PanelHeaderContent` from `md` up (`md:flex-row md:items-baseline md:gap-2`): the
+    // [subtitle] sits after the title on its baseline instead of under it, and gives up its room
+    // first (`md:shrink-1000`). The wide layout's column heads (raft-design desktop-density rule 2:
+    // "by touch from 768px a head is one line too").
+    subtitleInline: Boolean = false,
     // Long-press copy (raftCopyable) of the title when it is an identifier (a file name).
     titleCopyText: String? = null,
     // PROTOTYPE (native nav bar): what a host-drawn UINavigationBar shows for this head.
@@ -262,27 +269,54 @@ internal fun RaftTopPageHeader(
                         // never fired from the title.
                         Modifier
                     }
-                Column(
-                    modifier = Modifier.weight(1f).then(titleTapModifier),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(
-                        text = title,
-                        modifier = Modifier.raftCopyable(titleCopyText),
-                        style = titleStyle,
-                        color = RaftColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    subtitle?.takeIf { it.isNotBlank() }?.let {
+                val shownSubtitle = subtitle?.takeIf { it.isNotBlank() }
+                if (subtitleInline && shownSubtitle != null) {
+                    Row(
+                        modifier = Modifier.weight(1f).then(titleTapModifier),
+                        horizontalArrangement = Arrangement.spacedBy(RaftPanelHeadInlineMetaGap),
+                    ) {
+                        // The title is measured first and keeps its room; the meta takes what is left.
                         Text(
-                            text = it,
+                            text = title,
+                            modifier = Modifier.alignByBaseline().raftCopyable(titleCopyText),
+                            style = titleStyle,
+                            color = RaftColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = shownSubtitle,
+                            modifier = Modifier.weight(1f).alignByBaseline(),
                             // raft-ui PanelMeta: font-sans text-caption (12/16 500).
                             style = RaftType.Caption,
                             color = RaftColor.ForegroundHint,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier.weight(1f).then(titleTapModifier),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = title,
+                            modifier = Modifier.raftCopyable(titleCopyText),
+                            style = titleStyle,
+                            color = RaftColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        shownSubtitle?.let {
+                            Text(
+                                text = it,
+                                // raft-ui PanelMeta: font-sans text-caption (12/16 500).
+                                style = RaftType.Caption,
+                                color = RaftColor.ForegroundHint,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
