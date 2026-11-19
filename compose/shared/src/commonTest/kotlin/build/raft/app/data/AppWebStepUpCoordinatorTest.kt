@@ -304,7 +304,7 @@ class AppWebStepUpCoordinatorTest {
         assertEquals(SecondFactorStepUpOutcome.Cancelled, first.await())
 
         // The next refusal goes straight to Open on the web: no second start.
-        val second = async { harness.coordinator.run(action::invoke) }
+        val second = async { harness.coordinator.run(ScriptedAction(refusal())::invoke) }
         runCurrent()
         harness.coordinator.accept(SecondFactorStepUpIntent.Submit)
         val again = assertNotNull(harness.coordinator.state.value)

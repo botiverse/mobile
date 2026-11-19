@@ -205,7 +205,7 @@ class SecondFactorStepUpPasskeyUiTest {
         val session = SecondFactorWebStepUpSession(3, "https://app.raft.build/login/app/verify?request=r-1", "raft")
         runOnIdle { state.value = ready.copy(webStepUp = SecondFactorWebStepUpPhase.Waiting, webStepUpSession = session) }
         waitForIdle()
-        onNodeWithText("Finish in the browser", substring = true).assertExists()
+        onNodeWithText("Waiting for you to finish in the browser", substring = true).assertExists()
         assertEquals(listOf(session.url to "raft"), pages)
         assertEquals(
             SecondFactorStepUpIntent.WebStepUpBrowserFinished(3, RaftAppWebStepUpBrowserResult.Callback("raft://login/callback?requestId=r-1&code=k-1")),
