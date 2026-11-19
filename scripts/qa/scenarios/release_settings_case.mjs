@@ -5,9 +5,11 @@
 // provider, which kills the app) runs only after this returns.
 //
 // First it writes this run's qa-evidence/login-record.json (login_phase.mjs contract, mode
-// "password", status "complete"), which the agent and both evidence exits (secure_evidence.mjs:
-// the artifact upload and stamp_report.sh) require. It carries no account data: its login_end
-// is the device time at the match, so the evidence gate keeps only log lines after it. Then
+// "release-prelogin", status "matched"), which the agent and both evidence exits
+// (secure_evidence.mjs: the artifact upload and stamp_report.sh) require. It carries no account
+// data: the app's exchange line time and the device time at the match (login_end); the evidence
+// gate keeps only log lines after login_end. release_settings_terminal.mjs invalidates it when
+// the run cannot be vouched for, which withholds everything from both exits. Then
 // scripts/qa/release_settings_case.sh starts the recorder, runs the agent and takes every
 // post-run read; its verdict is qa-evidence/agent-rc.txt. "pass" here only means the case ran to
 // its end in that process.
@@ -24,15 +26,19 @@ export function threadtimeStamp(deviceDate) {
   return THREADTIME.test(`${stamp} `) ? stamp : null;
 }
 
-/** This run's login record for the release lane: text only, no account data. */
-export function writeReleaseLoginRecord(out, loginEnd, env = process.env) {
-  if (!THREADTIME.test(`${loginEnd} `)) throw new Error("release login: no device time for login_end");
-  return writeRecord(out, { mode: "password", status: "complete", login_end: loginEnd, lane: "release-prelogin", reason: null }, env);
+/**
+ * This run's login record for the release lane (login_phase.mjs readRecord validates it): the
+ * app's observed exchange and the device time at the match. Text only, no account data.
+ */
+export function writeReleaseLoginRecord(out, { exchangeAt, loginEnd }, env = process.env) {
+  if (!THREADTIME.test(`${exchangeAt} `)) throw new Error("release login: no observed app exchange");
+  if (!THREADTIME.test(`${loginEnd} `) || exchangeAt > loginEnd) throw new Error("release login: no device time for login_end");
+  return writeRecord(out, { mode: "release-prelogin", status: "matched", exchange_at: exchangeAt, login_end: loginEnd, reason: null }, env);
 }
 
 export async function run(ctx) {
   const loginEnd = threadtimeStamp(ctx.shell("date +'%m-%d %H:%M:%S.%N'", { allowFailure: true }));
-  writeReleaseLoginRecord(EVIDENCE, loginEnd);
+  writeReleaseLoginRecord(EVIDENCE, { exchangeAt: ctx.releaseLogin?.exchangeAt, loginEnd });
   // No QA account in the case's environment (the login read it from a consumed file anyway).
   const env = { ...process.env };
   for (const key of ["QA_LOGIN_EMAIL", "QA_LOGIN_PASSWORD", "QA_TEST_EMAIL", "QA_TEST_PASSWORD", "ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"]) delete env[key];

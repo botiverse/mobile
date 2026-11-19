@@ -81,6 +81,7 @@ import {
   writePrivateReceipt,
 } from "./app_identity_receipt_lib.mjs";
 import { claimTokenFile, createTestbedReleaseClient } from "./testbed_release_settings.mjs";
+import { parseReceipt as parseLoginReceipt } from "./login_phase.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -625,6 +626,7 @@ async function revokeAppSession(appMayBeSignedIn) {
 // throw make it exit non-zero after cleanup.
 let scenarioFailed = false;
 let scenarioStarted = false;
+let loginExchangeAt = null;
 async function runScenario(webSession) {
   scenarioStarted = true;
   const authed = async (method, pathname, { body, serverId } = {}) => {
@@ -647,6 +649,7 @@ async function runScenario(webSession) {
     nextStepIndex: () => stepIndex + 1,
     web: authed,
     account: { userId: webSession.userId, displayName: webSession.displayName },
+    releaseLogin: { exchangeAt: loginExchangeAt },
   };
   try {
     const mod = await import(path.resolve(SCENARIO));
@@ -1027,6 +1030,10 @@ async function main() {
         if (inApp && !signInVisible && (home || chooser)) {
           screen = home ? "home" : "choose_server";
           screenSince ||= now();
+          if (verdict.status === "exchanged") {
+            // The device time of the app's own exchange line (threadtime), for the release lane's login record.
+            loginExchangeAt = parseLoginReceipt(appLog()).stamp ?? null;
+          }
           if (verdict.status === "exchanged") return { exchange: "exchanged", exchange_log: `result=${verdict.result} reason=${verdict.reason}`, screen };
           // Signed-in screen but no verdict line yet: give the log 30s to catch up, then say so.
           if (now() - screenSince > 30_000) {

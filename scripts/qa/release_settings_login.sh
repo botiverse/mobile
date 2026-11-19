@@ -12,8 +12,8 @@
 #      release_settings_case.sh: recorder, agent, post-run reads; verdict qa-evidence/agent-rc.txt);
 #   4. then its cleanup (web sign-out, capture browser, `pm disable`, which kills the app).
 #
-# Its working evidence stays in RUNNER_TEMP (never uploaded). qa-evidence gets only the public
-# projection: result, identity statuses, the process check and cleanup statuses.
+# Its working evidence stays in RUNNER_TEMP (never uploaded). release_settings_terminal.mjs then
+# takes the one terminal decision for both exits and writes the public projection.
 set -euo pipefail
 
 : "${STAMP_RUN_CASE_ID:?}" "${RUNNER_TEMP:?}"
@@ -22,6 +22,8 @@ trap 'rm -f "$credential" "$RUNNER_TEMP/testbed-release-challenge-${STAMP_RUN_CA
 mkdir -p qa-evidence
 rm -f qa-evidence/agent-rc.txt qa-evidence/login-record.json
 touch qa-release-lane
+# The release case has its own goal; never the workflow's default (it opens a channel).
+if [[ -z "${QA_GOAL:-}" ]]; then echo "::error::release login: no settings goal (QA_GOAL); stopping before sign-in" >&2; echo 2 > qa-evidence/agent-rc.txt; exit 0; fi
 apk=$(find apks -type f -name '*.apk' -print -quit)
 [[ -s "$apk" ]] || { echo "::error::release login: no APK under apks/" >&2; echo 2 > qa-evidence/agent-rc.txt; exit 0; }
 # Two separate runner-temp directories: the private one (0700, receipt + OS facts) must not
@@ -46,25 +48,6 @@ if [[ "$rc" == 0 ]]; then
       --out "$work" || rc=$?
 fi
 
-node -e '
-const fs = require("fs");
-let s = {};
-try { s = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); } catch {}
-const out = { result: s.result ?? "missing", identity_receipt: s.identity_receipt ?? { state: "unknown" },
-  identity_process: s.identity_process ?? "not_checked", scenario_result: s.scenario_result ?? "not_run", cleanup: s.cleanup ?? {} };
-for (const key of Object.keys(out.cleanup)) if (/_error$|_route$|_log$|_check$|holders|reenabled/.test(key)) delete out.cleanup[key];
-fs.writeFileSync(process.argv[2], JSON.stringify(out, null, 2) + "\n");
-' "$work/summary.json" qa-evidence/release-login-summary.json
-
-matched=$(node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(s.identity_receipt?.state==="matched"&&s.identity_process==="same"&&s.scenario_result==="pass"?"yes":"no")' qa-evidence/release-login-summary.json)
-if [[ "$rc" == 0 && "$matched" == yes && -s qa-evidence/agent-rc.txt ]]; then
-  echo "release login: matched; the case ran in the matched process (agent rc $(cat qa-evidence/agent-rc.txt))"
-elif [[ -s qa-evidence/agent-rc.txt ]]; then
-  # The case ran but its process or cleanup cannot be vouched for: harness/incomplete, not a verdict.
-  echo "::error::release login: the case ran but the run did not complete cleanly (rc=$rc); verdict withheld"
-  echo 3 > qa-evidence/agent-rc.txt
-else
-  echo "::error::release login: Testbed did not answer matched for this attempt (rc=$rc); nothing captured, no scenario"
-  echo 2 > qa-evidence/agent-rc.txt
-fi
+# One terminal decision before either exit (artifact upload, Stamp evidence + verdict).
+node scripts/qa/release_settings_terminal.mjs --summary "$work/summary.json" --rc "$rc" --evidence qa-evidence
 exit 0

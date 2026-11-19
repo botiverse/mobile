@@ -85,6 +85,11 @@ export function readRecord(out, env = process.env) {
   if (r.run !== runId(env)) return { ok: false, reason: "login record belongs to another run" };
   if (r.mode === "password" && r.status === "complete" && THREADTIME.test(`${r.login_end} `)) return { ok: true, record: r };
   if (r.mode === "none" && r.status === "no-login") return { ok: true, record: r };
+  // Release settings lane (scenarios/release_settings_case.mjs): the release APK's own browser
+  // login, then Testbed's "matched" for this run's receipt. exchange_at is the app's own
+  // exchange line, login_end the device time at the match; nothing up to it is evidence.
+  if (r.mode === "release-prelogin" && r.status === "matched" && THREADTIME.test(`${r.exchange_at} `) &&
+      THREADTIME.test(`${r.login_end} `) && r.exchange_at <= r.login_end) return { ok: true, record: r };
   return { ok: false, reason: `login ${r.status || "status missing"}${r.reason ? `: ${r.reason}` : ""}` };
 }
 
