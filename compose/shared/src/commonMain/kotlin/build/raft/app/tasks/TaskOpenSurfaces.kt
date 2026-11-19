@@ -679,7 +679,7 @@ internal fun TaskPendingConversationPage(
         val headRow = rememberTaskConversationHeadRow(headScrollState) { headRoute(TaskHeadPlacement.FirstRow) }
         Box(Modifier.fillMaxWidth().weight(1f)) {
         BoxWithConstraints(Modifier.fillMaxSize().nestedScroll(headScrollState.connection)) {
-            val phone = maxWidth < TaskHeadPinnedMinWidth
+            val phone = !taskHeadPinned(maxWidth)
             val pageScroll = rememberScrollState()
             if (phone) {
                 // The head is the top of what scrolls here: in view while any of it is (and before it is measured).

@@ -85,6 +85,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalWindowInfo
 import build.raft.app.data.TaskConversationDetailsState
 import build.raft.app.data.formatTaskConversationRef
 import kotlinx.coroutines.flow.onStart
@@ -303,8 +305,37 @@ private fun TaskHistoryRow.toHeadRow(members: List<MemberProfile>, timeContext: 
 /** The description folds to three lines (web `DESCRIPTION_COLLAPSE_LINE_LIMIT`). */
 private const val TaskHeadDescriptionCollapsedLines = 3
 
-/** Narrower than this (a phone) the head is the conversation's first row ([TaskHeadScrollState]); wider it stays pinned. */
+/** Narrower than this (a phone) the head is the conversation's first row ([TaskHeadScrollState]); wider it may stay pinned ([taskHeadPinned]). */
 internal val TaskHeadPinnedMinWidth = 600.dp
+
+/**
+ * A window shorter than this keeps the head as the conversation's first row however wide it is
+ * (artin 2026-11-19, a tablet in landscape: pinned, the head took most of the height and left the
+ * messages a strip). Web pins the head only in its desktop dialog and lets it scroll away on a
+ * phone for the same reason (`TaskConversationDialog`: "pinned, it left the replies a sliver of
+ * the screen"). A head at rest (title, Add a description, the facts, History) is about 270dp tall
+ * on a wide page; under this window height (about 780dp left between the top bar and the
+ * composer) it would take more than a third of the conversation. The window's height, not the
+ * page's, so the keyboard coming up never moves the head between the two places.
+ */
+internal val TaskHeadPinnedMinWindowHeight = 960.dp
+
+/**
+ * Whether the task head is pinned above the conversation ([TaskHeadPlacement.Page]) rather than
+ * its first row: a page at least [TaskHeadPinnedMinWidth] wide in a window at least
+ * [TaskHeadPinnedMinWindowHeight] tall (a tablet upright, a desktop window). Null
+ * [windowHeight]: not known, the width alone decides.
+ */
+internal fun taskHeadPinned(pageWidth: Dp, windowHeight: Dp?): Boolean =
+    pageWidth >= TaskHeadPinnedMinWidth && (windowHeight == null || windowHeight >= TaskHeadPinnedMinWindowHeight)
+
+/** [taskHeadPinned] for a page [pageWidth] wide in this window. */
+@Composable
+internal fun taskHeadPinned(pageWidth: Dp): Boolean {
+    val windowHeightPx = LocalWindowInfo.current.containerSize.height
+    val windowHeight = with(LocalDensity.current) { windowHeightPx.toDp() }
+    return taskHeadPinned(pageWidth, windowHeight.takeIf { windowHeightPx > 0 })
+}
 
 /**
  * Where the head of a phone's task conversation is (web `mobile-modal`, artin 2026-11-06,
@@ -320,7 +351,8 @@ internal val TaskHeadPinnedMinWidth = 600.dp
  * composer or the keyboard coming up ([closeFloat]), as soon as the reader scrolls the messages
  * ([connection]) and when the row comes back in view. It never opens by itself.
  *
- * Off a phone the head stays pinned above the conversation and none of this applies.
+ * A wide page in a tall window ([taskHeadPinned]) keeps the head pinned above the conversation and
+ * none of this applies; a wide page in a short window (a tablet in landscape) is laid out as a phone's.
  */
 @Stable
 internal class TaskHeadScrollState {
@@ -333,7 +365,7 @@ internal class TaskHeadScrollState {
     /** Delete task's confirmation is open (the ⋯ menu's Delete task, slock #14115). */
     internal var deleteConfirming by mutableStateOf(false)
 
-    /** The page is narrower than [TaskHeadPinnedMinWidth] ([updatePhone]). */
+    /** The page lays the head out as a phone's: its first row, not pinned ([taskHeadPinned] false, [updatePhone]). */
     var phone by mutableStateOf(false)
         private set
 
@@ -372,7 +404,7 @@ internal class TaskHeadScrollState {
         return wasOpen
     }
 
-    /** [phone]: the page is narrower than [TaskHeadPinnedMinWidth]. Off a phone the head is pinned: no panel. */
+    /** [phone]: the head is the conversation's first row ([taskHeadPinned] false). Pinned, there is no panel. */
     internal fun updatePhone(phone: Boolean) {
         this.phone = phone
         if (!phone) floatRequested = false
@@ -453,7 +485,7 @@ internal fun TaskConversationHeadRowContent(row: TaskConversationHeadRow, modifi
 /**
  * A task conversation with no messages to list yet (loading, or empty): on a phone the head is
  * still its first row, above [state] (web: the parent slot over the replies' placeholder). In view
- * for as long as it is drawn here. Without a [row], or wider, [state] alone.
+ * for as long as it is drawn here. Without a [row], or pinned ([taskHeadPinned]), [state] alone.
  */
 @Composable
 internal fun TaskConversationHeadAboveState(row: TaskConversationHeadRow?, state: @Composable () -> Unit) {
@@ -462,7 +494,7 @@ internal fun TaskConversationHeadAboveState(row: TaskConversationHeadRow?, state
         return
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        if (maxWidth >= TaskHeadPinnedMinWidth) {
+        if (taskHeadPinned(maxWidth)) {
             state()
         } else {
             SideEffect { row.scrollState.updateHeadInView(true) }
@@ -496,11 +528,12 @@ internal enum class TaskHeadPlacement {
  * facts: Status and Assignee as the editors they were, Source, Created by, Created at, Earlier
  * discussion), and what happened to it (History, folded, as on web).
  *
- * On a phone (narrower than [TaskHeadPinnedMinWidth]) it takes no room above the conversation:
+ * On a phone (narrower than [TaskHeadPinnedMinWidth], or any page in a window shorter than
+ * [TaskHeadPinnedMinWindowHeight]: [taskHeadPinned] false) it takes no room above the conversation:
  * the head is the conversation's first row there ([TaskConversationHeadRowContent]) and is pulled
  * down from the top bar while that row is out of view ([TaskHeadFloat], [TaskHeadScrollState]);
  * this only tells the state the page is a phone's, and the keyboard coming up ([keyboardUp]) puts
- * the pulled-down head back up. Wider it stays pinned and never takes more than
+ * the pulled-down head back up. Pinned ([taskHeadPinned]) it never takes more than
  * [maxHeightFraction] of the page: past that it scrolls inside itself (web's pinned head,
  * `max-h-[45%]`).
  */
@@ -527,7 +560,7 @@ internal fun TaskConversationHead(
     val colors = RaftTheme.colors
     BoxWithConstraints(modifier.fillMaxWidth().background(colors.layerCanvas)) {
         val pageHeight = maxHeight
-        val phone = maxWidth < TaskHeadPinnedMinWidth
+        val phone = !taskHeadPinned(maxWidth)
         SideEffect { scrollState.updatePhone(phone) }
         LaunchedEffect(phone, keyboardUp) {
             // Typing: the composer has focus, so the pulled-down head goes back up.
