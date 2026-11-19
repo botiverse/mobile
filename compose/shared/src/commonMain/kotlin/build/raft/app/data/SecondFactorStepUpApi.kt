@@ -25,7 +25,7 @@ private val secondFactorStepUpJson = Json {
  *     403 { error, code: "second_factor_step_up_required", methods: ("totp" | "passkey" | "backup_code")[] }
  *
  * and nothing is applied. `POST /api/auth/second-factor/step-up` with `{ code }` or
- * `{ backupCode }` (or `{ webauthn }`, not used by the app) answers
+ * `{ backupCode }` (or `{ webauthn }`, a passkey: SecondFactorPasskeyStepUpApi.kt) answers
  * `{ verified: true, backupCodesRemaining? }` (the count only after a backup code); then the
  * refused request goes again. Its refusals are `{ error, code, ...extra }`
  * (services/secondFactor/management.ts `SecondFactorError`):
@@ -91,6 +91,16 @@ sealed interface SecondFactorStepUpResult {
     data object SessionFamilyRequired : SecondFactorStepUpResult
     /** 404 `passkey_not_found`: no passkey left (options), or the one answered with was removed. */
     data class PasskeyNotFound(val traceId: String? = null) : SecondFactorStepUpResult
+    /**
+     * 404 `passkey_rp_unavailable` (options only): none of the person's passkeys is in the RP group
+     * [rp] asked for, but some are in [availableRps] (e.g. iOS asks for `current` and the person has
+     * only passkeys under the legacy RP ID).
+     */
+    data class PasskeyRpUnavailable(
+        val rp: String? = null,
+        val availableRps: List<String> = emptyList(),
+        val traceId: String? = null,
+    ) : SecondFactorStepUpResult
     /** 503 `passkeys_unavailable`: the server has no WebAuthn relying party right now. */
     data class PasskeysUnavailable(val traceId: String? = null) : SecondFactorStepUpResult
     /** Anything else (network, 5xx, an unknown code): the server's sentence when it sent one. */
@@ -107,6 +117,10 @@ internal data class SecondFactorRefusalDto(
     val code: String? = null,
     val methods: List<String>? = null,
     val lockedUntil: String? = null,
+    /** `passkey_rp_unavailable`: the RP group asked for. */
+    val rp: String? = null,
+    /** `passkey_rp_unavailable`: the groups the person does have a passkey in. */
+    val availableRps: List<String>? = null,
 )
 
 @Serializable
@@ -182,6 +196,12 @@ internal fun parseSharedSecondFactorRefusalResult(statusCode: Int, bodyText: Str
         "second_factor_not_enabled" -> SecondFactorStepUpResult.NotEnabled
         "session_family_required" -> SecondFactorStepUpResult.SessionFamilyRequired
         "passkey_not_found" -> SecondFactorStepUpResult.PasskeyNotFound(traceId)
+        "passkey_rp_unavailable" ->
+            SecondFactorStepUpResult.PasskeyRpUnavailable(
+                rp = refusal.rp,
+                availableRps = refusal.availableRps.orEmpty().filter { it in SECOND_FACTOR_PASSKEY_RP_GROUPS },
+                traceId = traceId,
+            )
         "passkeys_unavailable" -> SecondFactorStepUpResult.PasskeysUnavailable(traceId)
         else -> SecondFactorStepUpResult.Failed(serverMessage = message, serverCode = refusal?.code ?: "http_$statusCode", traceId = traceId)
     }
@@ -233,7 +253,7 @@ class SecondFactorStepUpRepository(private val networkClient: RaftNetworkClient)
 
     /**
      * `POST /api/auth/second-factor/passkeys/assertion/options` (SecondFactorPasskeyStepUpApi.kt):
-     * `{}`, or `{ rp }` with [rp] (pending contract).
+     * `{}` (the server's default RP group), or `{ rp }` with [rp] (`current` | `legacy`).
      */
     suspend fun passkeyAssertionOptions(rp: String? = null): SecondFactorPasskeyOptionsResult =
         try {

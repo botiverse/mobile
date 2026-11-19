@@ -36,16 +36,14 @@ import platform.posix.memcpy
 
 internal actual fun raftNativePasskeyAssertionAvailable(): Boolean = true
 
-// iOS asks for the current group only (#proj-mobile:#189): its webcredentials entitlement names
-// app.raft.build, never the legacy RP ID.
-internal actual fun raftNativePasskeyRpGroup(): String? = "current"
-
 /**
- * The RP IDs `compose/iosApp/iosApp/iosApp.entitlements` lists as `webcredentials:`. iOS can assert
- * only for those; options for any other RP ID are [RaftNativePasskeyAssertionResult.Unsupported]
- * and the dialog falls back to the web. Keep the two in step.
+ * iOS asks for the current RP group only: `compose/iosApp/iosApp/iosApp.entitlements` lists
+ * `webcredentials:` for the current RP ID's domain, never the legacy one. The RP ID itself comes
+ * from the server's options; one the entitlement and that domain's AASA don't associate is refused
+ * by AuthenticationServices (not handled / failed) and becomes
+ * [RaftNativePasskeyAssertionResult.Unsupported].
  */
-internal val RAFT_IOS_WEBCREDENTIALS_RP_IDS: Set<String> = setOf("app.raft.build")
+internal actual fun raftNativePasskeyRpGroup(): String? = SECOND_FACTOR_PASSKEY_RP_CURRENT
 
 private const val PASSKEY_LOG_TAG = "RaftPasskey"
 private const val AS_AUTHORIZATION_ERROR_DOMAIN = "com.apple.AuthenticationServices.AuthorizationError"
@@ -70,8 +68,8 @@ private class IosRaftNativePasskeyAssertion(private val window: () -> UIWindow?)
         val options = request.options
         val rpId = options.rpId
         val result =
-            if (rpId == null || rpId !in RAFT_IOS_WEBCREDENTIALS_RP_IDS) {
-                RaftNativePasskeyAssertionResult.Unsupported.also { log("rp_not_associated") }
+            if (rpId.isNullOrBlank()) {
+                RaftNativePasskeyAssertionResult.Error("options_without_rp_id")
             } else {
                 val challenge = options.challenge.base64UrlBytes()
                 val allowed = options.allowCredentials.map { it.id.base64UrlBytes() }

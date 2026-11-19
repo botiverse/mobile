@@ -193,7 +193,7 @@ def self_test() -> int:
     repo_ent = Path(__file__).resolve().parents[2] / "compose/iosApp/iosApp/iosApp.entitlements"
     domains = _load(str(repo_ent)).get("com.apple.developer.associated-domains", [])
     assert "applinks:app.raft.build" in domains and "applinks:open.raft.build" in domains, domains
-    # Native passkeys (RaftNativePasskeyAssertion.ios.kt RAFT_IOS_WEBCREDENTIALS_RP_IDS).
+    # Native passkeys (RaftNativePasskeyAssertion.ios.kt, the current RP ID app.raft.build).
     assert "webcredentials:app.raft.build" in domains, domains
     print("check_ios_profile_entitlements self-test: OK")
     return 0

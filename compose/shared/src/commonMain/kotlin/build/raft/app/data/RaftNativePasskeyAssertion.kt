@@ -11,9 +11,10 @@ import androidx.compose.runtime.Composable
  * - Android: Credential Manager (`GetPublicKeyCredentialOption(requestJson)`) from the current
  *   Activity, on the main thread. Digital Asset Links with `get_login_creds` on the RP ID's domain
  *   let the app's `android:apk-key-hash:` origin assert (slock #15468 allow-list).
- * - iOS: `ASAuthorizationPlatformPublicKeyCredentialProvider` for the options' `rpId`, only when
- *   that RP ID is one the app's `webcredentials:` entitlement names; any other is [Unsupported]
- *   (the dialog then falls back to the web, as before).
+ * - iOS: `ASAuthorizationPlatformPublicKeyCredentialProvider` for the options' `rpId` (the current
+ *   RP group only, [raftNativePasskeyRpGroup]). An RP ID the app's `webcredentials:` entitlement
+ *   and that domain's AASA don't associate is refused by the system and becomes [Unsupported]
+ *   (the dialog then falls back to the other methods or the web, as before).
  * - Desktop: always [Unsupported].
  */
 fun interface RaftNativePasskeyAssertion {
@@ -43,8 +44,11 @@ sealed interface RaftNativePasskeyAssertionResult {
 internal expect fun raftNativePasskeyAssertionAvailable(): Boolean
 
 /**
- * The credential group this platform asks the options call for (`rp`, pending contract,
- * #proj-mobile:#189): null on Android (both RP IDs work there), `current` on iOS.
+ * The RP group this platform asks the options call for (`rp`, [SECOND_FACTOR_PASSKEY_RP_CURRENT] /
+ * [SECOND_FACTOR_PASSKEY_RP_LEGACY]): null on Android (the server's default; both RP IDs assert
+ * there, and the coordinator tries the other group when this device has none in the first),
+ * `current` on iOS (its `webcredentials:` entitlement names the current RP ID only; a person with
+ * only legacy passkeys gets 404 `passkey_rp_unavailable` and answers on the web).
  */
 internal expect fun raftNativePasskeyRpGroup(): String?
 

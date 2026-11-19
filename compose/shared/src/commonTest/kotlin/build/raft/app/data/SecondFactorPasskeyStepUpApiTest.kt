@@ -10,15 +10,16 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
- * The passkey step-up's wire shapes, botiverse/slock staging 2e16c9b353690120d5e981edffe3abec0c734946:
- *  - options: routes/secondFactor.ts `/passkeys/assertion/options` → passkeys.ts `startPasskeyAssertion`
- *    `{ options }` → webauthn.ts `passkeyAssertionOptions` (@simplewebauthn/server 14.0.3
+ * The passkey step-up's wire shapes, botiverse/slock staging e21bf9b978ac8061dfbdf9dfc3770b592c642ee6:
+ *  - options: routes/secondFactor.ts `/passkeys/assertion/options` `{ rp? }` → passkeys.ts
+ *    `startPasskeyAssertion` `{ options, rp?, otherRps? }` (rp / otherRps only with WEBAUTHN_LEGACY_RP_ID set) → webauthn.ts `passkeyAssertionOptions` (@simplewebauthn/server 14.0.3
  *    `generateAuthenticationOptions`: `{ rpId, challenge, allowCredentials: [{ ...cred, id, type }],
  *    timeout, userVerification }`), as read by routes/secondFactorPasskeys.api.test.ts `stepUpOptions`;
  *  - the assertion: test/integration/softwareAuthenticator.ts `assert` (the browser's
  *    `PublicKeyCredential.toJSON()`, which Android's `authenticationResponseJson` matches), checked by
  *    webauthn.ts `parsePasskeyAssertionResponse`;
- *  - refusals: passkeyManagement.ts `passkeyNotFound` / `relyingParty`, routes `requireWebSessionFamily`.
+ *  - refusals: passkeyManagement.ts `passkeyNotFound` / `startStepUpPasskeyAssertion`
+ *    (`passkey_rp_unavailable` `{ rp, availableRps }`) / `relyingParty`, routes `requireWebSessionFamily`.
  */
 class SecondFactorPasskeyStepUpApiTest {
     private val optionsBody =
@@ -71,8 +72,43 @@ class SecondFactorPasskeyStepUpApiTest {
     @Test
     fun theOptionsRequestIsEmptyUnlessAGroupIsAsked() {
         assertEquals(emptySet<String>(), Json.parseToJsonElement(buildSharedSecondFactorPasskeyAssertionOptionsBody()).jsonObject.keys)
-        val current = Json.parseToJsonElement(buildSharedSecondFactorPasskeyAssertionOptionsBody("current")).jsonObject
-        assertEquals("current", current["rp"]?.jsonPrimitive?.content)
+        val current = Json.parseToJsonElement(buildSharedSecondFactorPasskeyAssertionOptionsBody(SECOND_FACTOR_PASSKEY_RP_CURRENT)).jsonObject
+        assertEquals(mapOf("rp" to "current"), current.mapValues { it.value.jsonPrimitive.content })
+        val legacy = Json.parseToJsonElement(buildSharedSecondFactorPasskeyAssertionOptionsBody(SECOND_FACTOR_PASSKEY_RP_LEGACY)).jsonObject
+        assertEquals(mapOf("rp" to "legacy"), legacy.mapValues { it.value.jsonPrimitive.content })
+    }
+
+    @Test
+    fun optionsSayTheirRpGroupAndThePersonsOtherGroups() {
+        // Without a legacy RP ID: `{ options }` only.
+        val plain = assertIs<SecondFactorPasskeyOptionsResult.Ready>(parseSharedSecondFactorPasskeyAssertionOptions(200, optionsBody))
+        assertNull(plain.rp)
+        assertEquals(emptyList<String>(), plain.otherRps)
+        // With one: the group asked (or defaulted) and the other groups with a passkey; unknown names dropped.
+        val withGroups = optionsBody.dropLast(1) + ""","rp":"current","otherRps":["legacy","staging"]}"""
+        val ready = assertIs<SecondFactorPasskeyOptionsResult.Ready>(parseSharedSecondFactorPasskeyAssertionOptions(200, withGroups))
+        assertEquals("current", ready.rp)
+        assertEquals(listOf("legacy"), ready.otherRps)
+        // The platform still gets only the `options` object.
+        assertEquals(Json.parseToJsonElement(optionsBody).jsonObject["options"], Json.parseToJsonElement(ready.requestJson))
+    }
+
+    @Test
+    fun noPasskeyInTheGroupAskedForSaysWhichGroupsHaveOne() {
+        val trace = "0af7651916cd43dd8448eb211c80319c"
+        assertEquals(
+            SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.PasskeyRpUnavailable("current", listOf("legacy"), trace)),
+            parseSharedSecondFactorPasskeyAssertionOptions(
+                404,
+                """{"error":"None of your passkeys can be used here.","code":"passkey_rp_unavailable","rp":"current","availableRps":["legacy"]}""",
+                trace,
+            )
+        )
+        // An `rp` the server does not know: its 400 is a plain refusal.
+        assertEquals(
+            SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.Failed("rp must be \"current\" or \"legacy\".", "invalid_request", trace)),
+            parseSharedSecondFactorPasskeyAssertionOptions(400, """{"error":"rp must be \"current\" or \"legacy\".","code":"invalid_request"}""", trace)
+        )
     }
 
     @Test

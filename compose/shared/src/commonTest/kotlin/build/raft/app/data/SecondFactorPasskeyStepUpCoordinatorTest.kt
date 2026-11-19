@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 /**
  * Use passkey in "Verify it's you": the options, the platform prompt (the dialog runs it and
  * answers with [SecondFactorStepUpIntent.PasskeyAssertionFinished]) and the step-up's `webauthn`.
- * Payload shapes: SecondFactorPasskeyStepUpApiTest (botiverse/slock staging 2e16c9b35).
+ * Payload shapes: SecondFactorPasskeyStepUpApiTest (botiverse/slock staging e21bf9b97).
  */
 class SecondFactorPasskeyStepUpCoordinatorTest {
     private val withCodes =
@@ -45,6 +45,13 @@ class SecondFactorPasskeyStepUpCoordinatorTest {
     }
 
     private fun ready() = parseSharedSecondFactorPasskeyAssertionOptions(200, optionsBody)
+
+    /** Options in [rp] (RP ID [rpId]) while the person also has a passkey in [otherRps]. */
+    private fun readyIn(rp: String, rpId: String, vararg otherRps: String): SecondFactorPasskeyOptionsResult {
+        val others = otherRps.joinToString(",") { "\"$it\"" }
+        val extra = if (otherRps.isEmpty()) "" else ""","otherRps":[$others]"""
+        return parseSharedSecondFactorPasskeyAssertionOptions(200, optionsBody.replace("raft.test", rpId).dropLast(1) + ""","rp":"$rp"$extra}""")
+    }
 
     private fun refusal(body: String): DataResult<String> =
         DataResult.Error(
@@ -272,5 +279,83 @@ class SecondFactorPasskeyStepUpCoordinatorTest {
         assertNull(unwired.state.value?.method)
         unwired.accept(SecondFactorStepUpIntent.Cancel)
         assertEquals(SecondFactorStepUpOutcome.Cancelled, outcome.await())
+    }
+
+    @Test
+    fun iosWithOnlyLegacyPasskeysAnswersOnTheWebOrWithACode() = runTest {
+        // iOS asks for `current`; the person's passkeys are all under the legacy RP ID.
+        val rpUnavailable = { SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.PasskeyRpUnavailable("current", listOf("legacy"), trace)) }
+
+        val passkeyOnlyHarness = Harness(optionsResult = rpUnavailable, rpGroup = SECOND_FACTOR_PASSKEY_RP_CURRENT)
+        val webOutcome = async { passkeyOnlyHarness.coordinator.run(ScriptedAction(refusal(passkeyOnly))::invoke) }
+        runCurrent()
+        passkeyOnlyHarness.coordinator.accept(SecondFactorStepUpIntent.Submit)
+        val web = assertNotNull(passkeyOnlyHarness.coordinator.state.value)
+        assertEquals(listOf<String?>("current"), passkeyOnlyHarness.optionGroups)
+        assertNull(web.method, "the dialog's own web hand-off")
+        assertNull(web.passkeyCeremony, "no native prompt for a legacy passkey on iOS")
+        passkeyOnlyHarness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        assertEquals(SecondFactorStepUpOutcome.Cancelled, webOutcome.await())
+
+        val codesHarness = Harness(optionsResult = rpUnavailable, rpGroup = SECOND_FACTOR_PASSKEY_RP_CURRENT)
+        val codesOutcome = async { codesHarness.coordinator.run(ScriptedAction(refusal(withCodes))::invoke) }
+        runCurrent()
+        codesHarness.coordinator.accept(SecondFactorStepUpIntent.Submit)
+        val codes = assertNotNull(codesHarness.coordinator.state.value)
+        assertEquals(listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode), codes.methods)
+        assertEquals(SecondFactorStepUpBanner.PasskeyUnsupported, codes.banner)
+        codesHarness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        assertEquals(SecondFactorStepUpOutcome.Cancelled, codesOutcome.await())
+    }
+
+    @Test
+    fun androidTriesThePersonsOtherRpGroupOnceWhenThisDeviceHasNoneInTheFirst() = runTest {
+        // Android sends no `rp`: the server's default (current), then the legacy group the options name.
+        val answers = ArrayDeque(listOf(readyIn("current", "app.raft.test", "legacy"), readyIn("legacy", "raft.test", "current")))
+        val harness = Harness(optionsResult = { answers.removeFirst() }, rpGroup = null)
+        val outcome = async { harness.coordinator.run(ScriptedAction(refusal(passkeyOnly), DataResult.Content("applied"))::invoke) }
+        runCurrent()
+
+        val first = harness.usePasskey()
+        assertEquals("app.raft.test", first.request.options.rpId)
+        harness.coordinator.accept(SecondFactorStepUpIntent.PasskeyAssertionFinished(first.id, RaftNativePasskeyAssertionResult.NoCredential))
+        val second = assertNotNull(harness.coordinator.state.value?.passkeyCeremony, "a second prompt, for the other group")
+        assertEquals(listOf(null, "legacy"), harness.optionGroups)
+        assertEquals("raft.test", second.request.options.rpId, "the RP ID is the server's, per group")
+        assertTrue(second.id > first.id)
+
+        harness.coordinator.accept(SecondFactorStepUpIntent.PasskeyAssertionFinished(second.id, RaftNativePasskeyAssertionResult.Success(assertion)))
+        runCurrent()
+        assertEquals(SecondFactorStepUpOutcome.Completed(DataResult.Content("applied")), outcome.await())
+        assertIs<SecondFactorStepUpAnswer.Passkey>(harness.answers.single())
+    }
+
+    @Test
+    fun theOtherRpGroupIsTriedOnlyOnceAndNeverOnIos() = runTest {
+        // Android: none in either group on this device → the other methods (here: the web).
+        val android = Harness(optionsResult = { readyIn("current", "app.raft.test", "legacy") }, rpGroup = null)
+        val androidOutcome = async { android.coordinator.run(ScriptedAction(refusal(passkeyOnly))::invoke) }
+        runCurrent()
+        val first = android.usePasskey()
+        android.coordinator.accept(SecondFactorStepUpIntent.PasskeyAssertionFinished(first.id, RaftNativePasskeyAssertionResult.NoCredential))
+        val second = assertNotNull(android.coordinator.state.value?.passkeyCeremony)
+        android.coordinator.accept(SecondFactorStepUpIntent.PasskeyAssertionFinished(second.id, RaftNativePasskeyAssertionResult.NoCredential))
+        assertNull(android.coordinator.state.value?.passkeyCeremony)
+        assertNull(android.coordinator.state.value?.method)
+        assertEquals(listOf(null, "legacy"), android.optionGroups)
+        android.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        assertEquals(SecondFactorStepUpOutcome.Cancelled, androidOutcome.await())
+
+        // iOS asked for `current` and can't assert the legacy RP ID: no second ask.
+        val ios = Harness(optionsResult = { readyIn("current", "app.raft.test", "legacy") }, rpGroup = SECOND_FACTOR_PASSKEY_RP_CURRENT)
+        val iosOutcome = async { ios.coordinator.run(ScriptedAction(refusal(withCodes))::invoke) }
+        runCurrent()
+        val iosCeremony = ios.usePasskey()
+        ios.coordinator.accept(SecondFactorStepUpIntent.PasskeyAssertionFinished(iosCeremony.id, RaftNativePasskeyAssertionResult.NoCredential))
+        assertEquals(listOf<String?>("current"), ios.optionGroups)
+        assertEquals(SecondFactorStepUpMethod.Totp, ios.coordinator.state.value?.method)
+        assertEquals(SecondFactorStepUpBanner.PasskeyNoCredential, ios.coordinator.state.value?.banner)
+        ios.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        assertEquals(SecondFactorStepUpOutcome.Cancelled, iosOutcome.await())
     }
 }
