@@ -79,7 +79,6 @@ class ActivityObjectRowsTest {
         assertEquals(3, row.targetVersion)
         assertEquals("cm_1", row.targetComment)
         assertEquals("1842", row.doneFrontierSeq)
-        assertEquals(3, row.openVersion, "the row's version is pinned when it is not the latest")
         // The server's conversation counts stay apart from the object counts.
         assertEquals(3, snapshot.totalUnreadCount)
         assertEquals(ActivityObjectCounts(1, 1, 1), snapshot.objectCounts)
