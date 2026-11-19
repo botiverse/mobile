@@ -109,14 +109,15 @@ internal fun rememberComputerRuntimeInstallController(
 
 /**
  * A not-installed runtime the Computer can install from here (web `InstallCard` in a muted chip's
- * popover): the chip opens a small card that says so and offers Install, which first shows what would
- * run. The action is an ink-border button, busy while the plan is read or the installer runs; another
- * runtime's chip is disabled meanwhile.
+ * popover): the chip is a button (web `PopoverTrigger openOnHover`) that opens a small card that
+ * says so and offers Install, which first shows what would run. A mouse resting on it opens the card
+ * too; its click, or a finger's tap, pins it. No long-press copy: the chip's one gesture is to open
+ * the card (web: the chip copies nothing). The action is an ink-border button, busy while the plan
+ * is read or the installer runs; another runtime's chip is disabled meanwhile.
  */
 @Composable
 internal fun ComputerRuntimeInstallChip(
     label: String,
-    copyText: String,
     raftRuntimeId: String,
     runtimeName: String,
     installAs: RuntimeAuthRuntime,
@@ -157,9 +158,9 @@ internal fun ComputerRuntimeInstallChip(
             RaftBadge(
                 text = label,
                 modifier = Modifier.testTag("$COMPUTER_RUNTIME_INSTALL_CHIP_TAG-$raftRuntimeId"),
-                copyText = copyText,
                 appearance = RaftBadgeAppearance.Soft,
                 variant = RaftBadgeVariant.Muted,
+                onClick = cardState::pin,
             )
         },
     )

@@ -81,8 +81,9 @@ internal fun ThreadMessageAvatarSlot(
     /** The author's profile card under a mouse or trackpad pointer resting on the avatar; null: none. */
     previewCard: (@Composable ColumnScope.(RaftPreviewCardState) -> Unit)? = null,
     /**
-     * A click on the avatar, by any pointer, pins [previewCard] instead of running [onClick]
-     * (an external author: the card is all there is to show, for a finger too).
+     * The avatar's own click (its tap, by any pointer, a finger too; its screen-reader action)
+     * pins [previewCard] instead of running [onClick] (an external author: the card is all there
+     * is to show).
      */
     previewCardPinOnClick: Boolean = false,
     /**
@@ -123,6 +124,8 @@ internal fun ThreadMessageAvatarSlot(
                 // React parity: MessageSenderAvatar carries mt-0.5 (2px) so the
                 // avatar top optically aligns with the name glyphs.
                 Box(modifier = Modifier.padding(top = 2.dp)) {
+                    val previewCardState = rememberRaftPreviewCardState()
+                    val pins = previewCard != null && previewCardPinOnClick
                     val avatar: @Composable () -> Unit = {
                         ThreadMessageAvatar(
                             interactionIdentity = interactionIdentity,
@@ -136,7 +139,7 @@ internal fun ThreadMessageAvatarSlot(
                             delegatedBy = delegatedBy,
                             delegatedSurface = delegatedSurface,
                             originServers = originServers,
-                            onClick = onClick,
+                            onClick = if (pins) previewCardState::pin else onClick,
                             onLongPress = onLongPress,
                             profileActions = profileActions
                         )
@@ -144,7 +147,6 @@ internal fun ThreadMessageAvatarSlot(
                     if (previewCard == null) {
                         avatar()
                     } else {
-                        val previewCardState = rememberRaftPreviewCardState()
                         RaftPreviewCard(
                             card = { previewCard(previewCardState) },
                             state = previewCardState,

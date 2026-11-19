@@ -79,6 +79,7 @@ import build.raft.designsystem.components.RaftMeter
 import build.raft.designsystem.components.RaftMeterSize
 import build.raft.designsystem.components.RaftPreviewCard
 import build.raft.designsystem.components.RaftPreviewCardDefaults
+import build.raft.designsystem.components.RaftPreviewCardState
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSeparatorOrientation
 import build.raft.designsystem.components.RaftSheet
@@ -89,6 +90,7 @@ import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.components.rememberRaftPreviewCardState
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -822,9 +824,9 @@ private fun ComputerRuntimeUsageChip(
             }
         }
     val text = if (signedOut) label + stringResource(Res.string.settings_computers_runtime_auth_not_signed_in_suffix) else label
-    val chip: @Composable () -> Unit = {
-        // A badge whose long press copies the runtime name; the usage card opens on hover and pins
-        // on a click (below), so the badge takes no click of its own.
+    val chip: @Composable (onClick: (() -> Unit)?) -> Unit = { onClick ->
+        // A badge rendered as a button: its click opens the usage (a card for a mouse, a sheet for
+        // a finger); its long press copies the runtime name. One system gesture tells them apart.
         RaftBadge(
             text = text,
             modifier = Modifier.testTag(if (signedOut) COMPUTER_RUNTIME_CHIP_SIGNED_OUT_TAG else COMPUTER_RUNTIME_CHIP_TAG),
@@ -832,10 +834,11 @@ private fun ComputerRuntimeUsageChip(
             appearance = RaftBadgeAppearance.Soft,
             variant = if (signedOut) RaftBadgeVariant.Warning else RaftBadgeVariant.Information,
             trailing = healthDot,
+            onClick = onClick,
         )
     }
-    // Web `RuntimeUsageHoverCard` (artin 11-02): a mouse resting on the chip shows the usage card,
-    // a click (a finger's tap too) pins it.
+    // Web `RuntimeUsageHoverCard` (artin 11-02): a mouse resting on the chip shows the usage card
+    // and its click pins it; a finger's tap opens the usage sheet.
     ComputerRuntimeUsagePreviewCard(
         runtimeLabel = label,
         controller = usageController,
@@ -1419,15 +1422,20 @@ private fun RuntimeAccountUsageHealth.label(): String =
     )
 
 /**
- * Web `RuntimeUsageHoverCard` (desktop): the usage card on a runtime chip under a mouse or
- * trackpad pointer. It opens after the pointer rests on [trigger] for 200ms and closes 160ms
- * after it leaves; a click on [trigger], by any pointer, opens it at once and pins it (it then
- * stays until a click outside, Escape or its close button), so the pointer can reach Refresh.
- * Opening reads through the shared 60 s cache, as the sheet does.
+ * Web `RuntimeUsageHoverCard`: the usage card on a runtime chip or a rack usage line. A mouse or
+ * trackpad pointer resting on [trigger] for 200ms opens it as a card, which closes 160ms after it
+ * leaves; a mouse click on [trigger] opens it at once and pins it (it then stays until a click
+ * outside, Escape or its close button), so the pointer can reach Refresh. A finger's (or a pen's)
+ * tap opens the usage as a bottom sheet instead (web: a Drawer on a phone): [onTap] when given (the
+ * Computers page's own sheet), else this one's. The input decides, per click, not the device: a
+ * phone with a mouse plugged in gets the card from the mouse and the sheet from a finger. A key or
+ * a screen reader (no pointer) gets what the device's usual input gets ([RaftTheme.pointerInput]).
+ * Opening reads through the shared 60 s cache.
  *
- * The same for every pointer: a finger has no hover, so its tap pins the card (a real tap: a
- * press that scrolls the page or stops its fling pins nothing). The click goes no
- * further, so give [trigger] no click of its own (no sheet). [enabled] false shows [trigger] alone.
+ * [trigger] is the button: give its own click (`onClick` of a [RaftBadge], [raftClickable]) the
+ * click it is passed. The card only listens, so a press that scrolls the page or stops its fling,
+ * a long press (a chip's copy) or a drag is no click, by the system's rules. [enabled] false shows
+ * [trigger] alone, with no click.
  */
 @Composable
 internal fun ComputerRuntimeUsagePreviewCard(
@@ -1438,11 +1446,14 @@ internal fun ComputerRuntimeUsagePreviewCard(
     enabled: Boolean = true,
     /** The runtime's sign-in on this card (web `SurfaceAuth`); null shows usage alone. */
     auth: ComputerRuntimeAuthBinding? = null,
-    trigger: @Composable () -> Unit,
+    /** A finger's tap, when the page opens the usage itself; null opens this card's sheet. */
+    onTap: (() -> Unit)? = null,
+    state: RaftPreviewCardState = rememberRaftPreviewCardState(closeDelayMillis = ComputerRuntimeUsagePreviewCardCloseDelayMillis),
+    trigger: @Composable (onClick: (() -> Unit)?) -> Unit,
 ) {
-    val state = rememberRaftPreviewCardState(closeDelayMillis = ComputerRuntimeUsagePreviewCardCloseDelayMillis)
+    var sheetOpen by remember { mutableStateOf(false) }
     val timeContext = currentRaftTimeContextProvider?.current
-    if (state.isOpen) {
+    if (state.isOpen || sheetOpen) {
         LaunchedEffect(controller, auth) {
             controller?.onOpen()
             // Web `openNow`: the sign-in state is read again with the usage.
@@ -1453,6 +1464,21 @@ internal fun ComputerRuntimeUsagePreviewCard(
             }
         }
     }
+    val mouseFirst = RaftTheme.pointerInput == RaftPointerInput.Fine
+    val onClick: (() -> Unit)? =
+        if (!enabled) {
+            null
+        } else {
+            {
+                if (state.isMouseClick(noPointer = mouseFirst)) {
+                    state.pin()
+                } else {
+                    state.dismiss()
+                    if (onTap == null) sheetOpen = true
+                    onTap?.invoke()
+                }
+            }
+        }
     val authController = auth?.controller
     // Web: a dialog takes over from the card, so the card does not float above it.
     val onSignIn = {
@@ -1510,8 +1536,36 @@ internal fun ComputerRuntimeUsagePreviewCard(
         enabled = enabled,
         pinOnClick = true,
         width = RaftPreviewCardDefaults.WideWidth,
-        trigger = trigger,
+        trigger = { trigger(onClick) },
     )
+    if (sheetOpen && enabled) {
+        val closeSheet = { sheetOpen = false }
+        if (controller != null) {
+            ComputerRuntimeUsageSheet(
+                runtimeLabel = runtimeLabel,
+                state = controller.sheetState(runtimeVersion),
+                timeContext = timeContext,
+                onRefresh = controller::refreshNow,
+                onUseLimitReset = controller::openLimitReset,
+                onDismiss = closeSheet,
+                auth = auth?.cardState,
+                authRuntimeName = auth?.runtimeName ?: runtimeLabel,
+                onSignIn = { authController?.openSignIn() },
+                onSignOut = { authController?.openSignOut() },
+                onClaudeLimitReset = controller::onClaudeLimitReset,
+            )
+        } else if (auth != null) {
+            ComputerRuntimeAuthOnlySheet(
+                runtimeName = auth.runtimeName,
+                runtimeVersion = runtimeVersion,
+                auth = auth.cardState,
+                onDismiss = closeSheet,
+                onSignIn = { authController?.openSignIn() },
+                onSignOut = { authController?.openSignOut() },
+                onSignOutProvider = { provider -> authController?.openSignOut(provider) },
+            )
+        }
+    }
     if (controller != null) ComputerRuntimeLimitResetDialogHost(runtimeLabel, controller)
     if (auth != null) ComputerRuntimeAuthDialogHost(auth.controller, auth.runtimeName, auth.computerName, auth.agents, auth.openUrl)
 }
@@ -1542,6 +1596,45 @@ internal fun ComputerRuntimeAuthOnlyCard(
             }
         }
     }
+}
+
+/**
+ * [ComputerRuntimeAuthOnlyCard] as a finger's bottom sheet (web: the card in a Drawer on a phone):
+ * the runtime's name, its sign-in line and stored providers, then the sign-in action and Close.
+ */
+@Composable
+private fun ComputerRuntimeAuthOnlySheet(
+    runtimeName: String,
+    runtimeVersion: String?,
+    auth: ComputerRuntimeAuthCardState?,
+    onDismiss: () -> Unit,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+    onSignOutProvider: (RuntimeAuthSignedInProvider) -> Unit,
+) {
+    RaftSheet(
+        onDismissRequest = onDismiss,
+        title = runtimeName,
+        description =
+            runtimeVersion?.trim()?.takeIf { it.isNotEmpty() }?.let { stringResource(Res.string.settings_computers_runtime_usage_version, it) }
+                ?: stringResource(Res.string.settings_computers_runtime_usage_version_unavailable),
+        actions = {
+            if (auth != null) ComputerRuntimeAuthActionView(auth, onSignIn, onSignOut, fullWidth = true)
+            RaftButton(
+                text = stringResource(Res.string.common_close),
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg,
+            )
+        },
+        content = {
+            if (auth != null) {
+                ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount = false, authOnly = true)
+                ComputerRuntimeAuthProviderRows(auth, onSignOutProvider)
+            }
+        },
+    )
 }
 
 /** The card's head (web `Surface`): title, the sign-in line, the version, who may see it, and close. */

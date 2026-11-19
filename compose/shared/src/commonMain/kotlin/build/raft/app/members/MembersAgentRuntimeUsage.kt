@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.resources.*
-import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftRuntimeChip
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusSize
@@ -221,11 +220,13 @@ internal fun MembersAgentRuntimeUsageChip(
             attention -> stringResource(Res.string.member_runtime_usage_attention)
             else -> stringResource(Res.string.settings_computers_runtime_usage_healthy)
         }
-    val chip: @Composable () -> Unit = {
+    val chip: @Composable (onClick: (() -> Unit)?) -> Unit = { onClick ->
         RaftRuntimeChip(
             text = label,
-            // Long press copies the runtime name (never the usage status).
-            modifier = Modifier.raftCopyable(label),
+            // A button when it opens the usage (a card for a mouse, a sheet for a finger); its
+            // long press copies the runtime name (never the usage status).
+            onClick = onClick,
+            copyText = label,
             // Web `RuntimeAccountUsageChip`: Status `sm` after the label (`ml-1`); the attention
             // state is the light's accessible name only, never drawn as text.
             trailing =
@@ -241,10 +242,10 @@ internal fun MembersAgentRuntimeUsageChip(
         )
     }
     // Web `RuntimeUsageHoverCard` (artin 11-02): a mouse resting on the chip shows the usage
-    // card, a click (a finger's tap too) pins it; the card's own Refresh and close. Without usage
-    // to show, the chip alone.
+    // card and its click pins it; a finger's tap opens the usage sheet; the card's own Refresh
+    // and close. Without usage to show, the chip alone.
     if (controller == null) {
-        chip()
+        chip(null)
     } else {
         ComputerRuntimeUsagePreviewCard(
             runtimeLabel = label,
