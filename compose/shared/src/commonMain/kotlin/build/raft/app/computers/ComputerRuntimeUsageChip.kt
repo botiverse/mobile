@@ -126,9 +126,8 @@ internal fun ComputerRuntimeUsageChips(
     val access = if (usable) LocalMembersRuntimeAccountUsageAccess.current ?: rememberShellRuntimeAccountUsageAccess() else null
     chips.forEach { chip ->
         if (usable && hasCard(chip)) {
-            val experimental = if (chip.experimental) stringResource(Res.string.runtime_suffix_experimental) else ""
             ComputerRuntimeUsageChip(
-                label = chip.name + experimental,
+                label = chip.name,
                 runtimeId = chip.id,
                 runtimeName = chip.name,
                 machineId = machineId,

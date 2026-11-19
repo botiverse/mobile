@@ -20,6 +20,7 @@ import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftChoicePickerSheetSurface
 import build.raft.designsystem.components.RaftComboboxListAction
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import org.junit.Rule
@@ -30,13 +31,16 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The create dialog's runtime picker (web parity, botiverse/slock #11783 / #11794 / #11822 /
- * #11771), light and dark, from the bundled catalog on a computer that runs Claude Code, Codex
- * and Qwen Code:
- *  - `agents.runtime-picker.sheet`: the open list, Ready on this computer (Qwen Code with the
- *    Experimental badge) and Needs a Raft Computer update, then Show All Supported as the last row;
+ * #11771 / #15551 / #15599), light and dark, from the bundled catalog on a computer that runs
+ * Claude Code, Codex, Cursor, Pi and Qwen Code:
+ *  - `agents.runtime-picker.sheet`: the open list, Ready on this computer (Claude Code and Codex
+ *    with the outline Recommended badge, Cursor and Qwen Code with the muted Limited badge, Pi
+ *    with none; no Experimental anywhere) and Needs a Raft Computer update, then Show All
+ *    Supported as the last row;
  *  - `agents.runtime-picker.sheet.all`: after Show All Supported, Not installed on this computer
  *    joins and the last row reads Show Installed Only;
- *  - the trigger above each keeps the badge.
+ *  - `agents.runtime-picker.selected-hint`: the closed field (no badge) with the chosen
+ *    runtime's capability hint under it: Qwen Code, Cursor, Pi, and Claude Code (no hint).
  * Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -54,9 +58,18 @@ class RuntimePickerScreenshotTest {
 
     @Test fun sheetAllDark() = capture("agents.runtime-picker.sheet.all.dark", RaftAppAppearance.Dark, showAll = true)
 
+    @Test fun selectedHintLight() = captureSelected("agents.runtime-picker.selected-hint", RaftAppAppearance.Light)
+
+    @Test fun selectedHintDark() = captureSelected("agents.runtime-picker.selected-hint.dark", RaftAppAppearance.Dark)
+
     private fun capture(name: String, appearance: RaftAppAppearance, showAll: Boolean) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = ReportDir, activities = activities) {
             RaftDesignSystemTheme { RuntimePickerFixture(showAll) }
+        }
+
+    private fun captureSelected(name: String, appearance: RaftAppAppearance) =
+        RaftRobolectricScreenshot.capture(name, appearance, reportDir = ReportDir, activities = activities) {
+            RaftDesignSystemTheme { RuntimePickerSelectedFixture() }
         }
 
     private companion object {
@@ -69,7 +82,7 @@ private fun RuntimePickerFixture(showAll: Boolean) {
     val rows =
         runtimePickerRows(
             catalog = BundledRuntimeCatalog,
-            machineRuntimeIds = listOf("claude", "codex", "qwen"),
+            machineRuntimeIds = FixtureMachineRuntimes,
             selectedRuntimeId = "qwen",
             showAll = showAll
         )
@@ -96,5 +109,28 @@ private fun RuntimePickerFixture(showAll: Boolean) {
             listAction = action,
             modifier = Modifier.height(600.dp)
         )
+    }
+}
+
+private val FixtureMachineRuntimes = listOf("claude", "codex", "cursor", "pi", "qwen")
+
+/** Each chosen runtime as the create dialog's field shows it: the closed select, then its hint. */
+@Composable
+private fun RuntimePickerSelectedFixture() {
+    val title = stringResource(Res.string.agent_create_label_runtime)
+    val copy = rememberRuntimePickerCopy()
+    Column(
+        Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        listOf("qwen", "cursor", "pi", "claude").forEach { selected ->
+            val rows = runtimePickerRows(BundledRuntimeCatalog, FixtureMachineRuntimes, selectedRuntimeId = selected, showAll = false)
+            val options = runtimePickerOptions(rows.rows, copy)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                RaftFieldLabel(text = title)
+                RaftCombobox(value = selected, options = options, onValueChange = {}, title = title, emptyText = { "" }, label = title)
+                RuntimeCapabilityHintText(rows.selectedCapabilityHint(selected))
+            }
+        }
     }
 }

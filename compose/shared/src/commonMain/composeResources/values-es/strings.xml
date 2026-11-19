@@ -3769,8 +3769,14 @@
     <string name="runtime_picker_show_installed_only">Mostrar solo los instalados</string>
     <string name="runtime_suffix_deprecated">&#160;(obsoleto)</string>
     <string name="member_runtime_deprecated_warning">Este agente usa un runtime obsoleto. Puede seguir ejecutándose, pero los agentes nuevos no pueden elegir este runtime.</string>
-    <string name="runtime_suffix_experimental">&#160;(experimental)</string>
-    <string name="runtime_badge_experimental">Experimental</string>
+    <string name="runtime_picker_recommended">Recomendados</string>
+    <string name="runtime_picker_limited">Limitado</string>
+    <string name="runtime_capability_hint_no_subagents">May take longer on complex tasks in Raft, because it can't split work into parallel tasks.</string>
+    <string name="runtime_capability_hint_compaction_unreported">May use more tokens in Raft than recommended runtimes for the same work.</string>
+    <string name="runtime_capability_hint_no_subagents_compaction_unreported">May take longer and may use more tokens in Raft than recommended runtimes, because it can't split work into parallel tasks.</string>
+    <string name="runtime_capability_hint_no_steering_compaction_unreported">May use more tokens in Raft, and can't take new instructions until it finishes the current task.</string>
+    <string name="runtime_capability_hint_no_steering_no_subagents">May be harder to correct in Raft: it can't take new instructions mid-task or split work into parallel tasks.</string>
+    <string name="runtime_capability_hint_no_steering_no_subagents_compaction_unreported">May be harder to correct and may use more tokens in Raft: it can't take new instructions mid-task or work in parallel.</string>
     <string name="auth_private_deployment_title">Servidor autoalojado</string>
     <string name="auth_private_deployment_hint">Escribe las direcciones web y de API de tu servidor de Raft autoalojado. El servidor debe tener la versión 1.13.0 o posterior.</string>
     <string name="auth_private_deployment_web_label">Dirección web</string>

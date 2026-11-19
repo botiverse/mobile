@@ -3769,8 +3769,14 @@
     <string name="runtime_picker_show_installed_only">只顯示已安裝的項目</string>
     <string name="runtime_suffix_deprecated">（已淘汰）</string>
     <string name="member_runtime_deprecated_warning">這個 Agent 使用的執行環境已淘汰。它可以繼續執行，但新的 Agent 無法選擇這個執行環境。</string>
-    <string name="runtime_suffix_experimental">（實驗性）</string>
-    <string name="runtime_badge_experimental">實驗性</string>
+    <string name="runtime_picker_recommended">推薦</string>
+    <string name="runtime_picker_limited">能力有限</string>
+    <string name="runtime_capability_hint_no_subagents">May take longer on complex tasks in Raft, because it can't split work into parallel tasks.</string>
+    <string name="runtime_capability_hint_compaction_unreported">May use more tokens in Raft than recommended runtimes for the same work.</string>
+    <string name="runtime_capability_hint_no_subagents_compaction_unreported">May take longer and may use more tokens in Raft than recommended runtimes, because it can't split work into parallel tasks.</string>
+    <string name="runtime_capability_hint_no_steering_compaction_unreported">May use more tokens in Raft, and can't take new instructions until it finishes the current task.</string>
+    <string name="runtime_capability_hint_no_steering_no_subagents">May be harder to correct in Raft: it can't take new instructions mid-task or split work into parallel tasks.</string>
+    <string name="runtime_capability_hint_no_steering_no_subagents_compaction_unreported">May be harder to correct and may use more tokens in Raft: it can't take new instructions mid-task or work in parallel.</string>
     <string name="auth_private_deployment_title">自架伺服器</string>
     <string name="auth_private_deployment_hint">請輸入你自架 Raft 伺服器的 Web 與 API 位址。伺服器版本需為 1.13.0 或更新版本。</string>
     <string name="auth_private_deployment_web_label">Web 位址</string>

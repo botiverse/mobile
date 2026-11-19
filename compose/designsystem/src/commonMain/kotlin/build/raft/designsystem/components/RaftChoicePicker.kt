@@ -100,6 +100,8 @@ fun <T> RaftChoicePicker(
                                     description = option.description,
                                     enabled = enabled && option.enabled,
                                     badge = option.badge,
+                                    badgeAppearance = option.badgeAppearance,
+                                    badgeVariant = option.badgeVariant,
                                 )
                             }
                         }

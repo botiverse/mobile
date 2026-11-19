@@ -177,8 +177,6 @@ internal data class RaftComputerRuntimeChip(
     val id: String,
     val name: String,
     val availability: RaftComputerRuntimeAvailability,
-    /** Named with " (experimental)" in the chip (web #11771 / #11822: a separate badge in a row of chips reads as one more runtime). */
-    val experimental: Boolean = false,
 )
 
 /**
@@ -201,7 +199,6 @@ internal fun raftComputerRuntimeChips(
                     runtime.binary.isEmpty() -> RaftComputerRuntimeAvailability.UpdateComputer
                     else -> RaftComputerRuntimeAvailability.NotInstalled
                 },
-            experimental = runtime.experimental,
         )
     }
 

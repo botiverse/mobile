@@ -431,8 +431,10 @@ fun RaftRadioRow(
     description: String? = null,
     enabled: Boolean = LocalRaftFieldState.current.enabled,
     interactionSource: MutableInteractionSource? = null,
-    /** A raft-ui `Badge.Experimental` after the label. */
+    /** A raft-ui Badge after the label: `Badge.Experimental` unless [badgeAppearance] / [badgeVariant] say otherwise. */
     badge: String? = null,
+    badgeAppearance: RaftBadgeAppearance = RaftBadgeAppearance.Solid,
+    badgeVariant: RaftBadgeVariant = RaftBadgeVariant.Success,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     RaftChoiceRow(
@@ -441,6 +443,8 @@ fun RaftRadioRow(
         enabled = enabled,
         modifier = modifier.selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick),
         badge = badge,
+        badgeAppearance = badgeAppearance,
+        badgeVariant = badgeVariant,
     ) {
         val isFocused = raftIsFocused(source)
         RaftRadioBox(selected, enabled, focused = enabled && isFocused, modifier = Modifier)
@@ -454,6 +458,8 @@ private fun RaftChoiceRow(
     enabled: Boolean,
     modifier: Modifier,
     badge: String? = null,
+    badgeAppearance: RaftBadgeAppearance = RaftBadgeAppearance.Solid,
+    badgeVariant: RaftBadgeVariant = RaftBadgeVariant.Success,
     control: @Composable () -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -476,7 +482,7 @@ private fun RaftChoiceRow(
                         style = labelStyle,
                         color = if (enabled) colors.foreground else colors.foregroundDisabled,
                     )
-                    RaftExperimentalBadge(badge, enabled = enabled)
+                    RaftBadge(text = badge, appearance = badgeAppearance, variant = badgeVariant, enabled = enabled)
                 }
             }
             if (description != null) {

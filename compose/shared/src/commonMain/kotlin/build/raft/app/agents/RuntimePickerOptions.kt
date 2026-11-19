@@ -21,8 +21,9 @@ import build.raft.app.data.deprecatedHere
 import build.raft.app.data.hasMobileForm
 import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.app.data.runtimeCatalogIsDeprecated
-import build.raft.app.data.runtimeCatalogIsExperimental
 import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftComboboxOption
 
 /**
@@ -44,10 +45,12 @@ internal data class RuntimePickerRow(
     val group: RuntimePickerGroup,
     val enabled: Boolean,
     val suffix: RuntimePickerSuffix = RuntimePickerSuffix.None,
-    val deprecated: Boolean = false,
-    /** Drawn as the Experimental badge after the name (never with [deprecated]: deprecated wins). */
-    val experimental: Boolean = false
+    val deprecated: Boolean = false
 ) {
+    /** Recommended / Limited and the capability hint ([runtimePickerGuidance]); a deprecated row has none. */
+    val guidance: RuntimePickerGuidance
+        get() = runtimePickerGuidance(id, deprecated)
+
     /** The group heading already says the suffix, so the open list drops it (the closed field keeps it). */
     val suffixInList: Boolean
         get() = group != RuntimePickerGroup.NeedsComputerUpdate && group != RuntimePickerGroup.NotInstalled
@@ -161,8 +164,7 @@ private fun serverRowPickerRows(
                 group = group,
                 enabled = group == RuntimePickerGroup.Current || group == RuntimePickerGroup.Ready,
                 suffix = suffix,
-                deprecated = deprecated,
-                experimental = entry?.experimental == true && !deprecated
+                deprecated = deprecated
             )
         }
     if (current == null || rows.any { it.id == current }) return rows
@@ -213,8 +215,7 @@ private fun catalogPickerRows(
             group = group,
             enabled = group == RuntimePickerGroup.Current || group == RuntimePickerGroup.Ready,
             suffix = suffix,
-            deprecated = entry.deprecated,
-            experimental = entry.experimental && !entry.deprecated
+            deprecated = entry.deprecated
         )
     }
 }
@@ -249,7 +250,8 @@ internal data class RuntimePickerCopy(
     val suffixComingSoon: String,
     val suffixDeprecated: String,
     val needsAppUpdate: String,
-    val experimental: String
+    val recommended: String,
+    val limited: String
 ) {
     fun group(group: RuntimePickerGroup): String =
         when (group) {
@@ -284,13 +286,17 @@ internal fun rememberRuntimePickerCopy(): RuntimePickerCopy =
         suffixComingSoon = stringResource(Res.string.agent_create_suffix_coming_soon),
         suffixDeprecated = stringResource(Res.string.runtime_suffix_deprecated),
         needsAppUpdate = stringResource(Res.string.runtime_picker_needs_app_update),
-        experimental = stringResource(Res.string.runtime_badge_experimental)
+        recommended = stringResource(Res.string.runtime_picker_recommended),
+        limited = stringResource(Res.string.runtime_picker_limited)
     )
 
 /**
  * [rows] as picker options: the name (with " (deprecated)" for a deprecated current runtime),
- * the Experimental badge, the suffix where the heading doesn't say it (the closed field always
- * says it), the group heading, and [descriptions] (quota lines) or the app-update line.
+ * the Recommended (outline) or Limited (muted soft) badge in the list only (web slock #15551 /
+ * #15599: the closed field names the runtime only), the suffix where the heading doesn't say it
+ * (the closed field always says it), the group heading, and [descriptions] (quota lines) or the
+ * app-update line. The capability hint is not an option's description: it is said under the
+ * field once the runtime is chosen ([RuntimeCapabilityHintText]).
  */
 internal fun runtimePickerOptions(
     rows: List<RuntimePickerRow>,
@@ -298,6 +304,7 @@ internal fun runtimePickerOptions(
     descriptions: Map<String, String> = emptyMap()
 ): List<RaftComboboxOption<String>> =
     rows.map { row ->
+        val guidance = row.guidance
         val name = if (row.deprecated) row.name + copy.suffixDeprecated else row.name
         val suffix = copy.suffix(row.suffix)
         RaftComboboxOption(
@@ -307,9 +314,20 @@ internal fun runtimePickerOptions(
             group = copy.group(row.group),
             keywords = listOf(row.id),
             enabled = row.enabled,
-            badge = if (row.experimental) copy.experimental else null,
-            triggerLabel = name + suffix
+            badge = guidance.badge(copy),
+            triggerLabel = name + suffix,
+            badgeAppearance = if (guidance.recommended) RaftBadgeAppearance.Outline else RaftBadgeAppearance.Soft,
+            badgeVariant = if (guidance.recommended) RaftBadgeVariant.Default else RaftBadgeVariant.Muted,
+            badgeInTrigger = false
         )
+    }
+
+/** The badge text of [this] guidance: Recommended, Limited, or none. */
+internal fun RuntimePickerGuidance.badge(copy: RuntimePickerCopy): String? =
+    when {
+        recommended -> copy.recommended
+        limited -> copy.limited
+        else -> null
     }
 
 /**
@@ -321,7 +339,8 @@ internal fun runtimeIdentityDisplayName(runtimeId: String, serverId: String? = n
 
 /**
  * A runtime named as an identity (a subtitle, a chip, a profile card), web
- * `formatRuntimeLabelWithStatus`: the name plus " (deprecated)" or " (experimental)". Prose
+ * `formatRuntimeLabelWithStatus`: the name plus " (deprecated)" (never "experimental": slock #15551,
+ * cindyz). Prose
  * (a runtime inside a sentence) uses the bare [runtimeCatalogDisplayName].
  *
  * The status is [serverId]'s answer (web `useRuntimeDeprecatedHere`): its catalog is brought in
@@ -339,7 +358,6 @@ internal fun runtimeLabelWithStatus(
     val name = runtimeIdentityDisplayName(runtimeId, serverId)
     return when {
         deprecated ?: runtimeCatalogIsDeprecated(runtimeId, serverId) -> name + stringResource(Res.string.runtime_suffix_deprecated)
-        runtimeCatalogIsExperimental(runtimeId, serverId) -> name + stringResource(Res.string.runtime_suffix_experimental)
         else -> name
     }
 }

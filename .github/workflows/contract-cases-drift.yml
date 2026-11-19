@@ -8,6 +8,9 @@ name: Unread contract cases drift
 # app agreed on cannot change upstream without the app noticing (Tenny: daily
 # and on app PRs touching unread code; red, not a log line).
 #
+# Also checks the runtime pickers' vendored RUNTIME_RAFT_CAPABILITIES / RECOMMENDED_RUNTIME_IDS
+# (scripts/sync_slock_runtime_capabilities.py; re-vendor with --ref, update RuntimeRaftCapabilityTable).
+#
 # Fix a red run: SLOCK_SOURCE_REPO=<slock checkout> python3
 # scripts/sync_slock_contract_cases.py --ref origin/staging, run
 # UnreadContractCasesTest, ActivityRowContractCasesTest and ActivityRowContractCaseReducerTest, and
@@ -46,6 +49,11 @@ on:
       - "compose/shared/src/androidUnitTest/kotlin/build/raft/app/contract/NotificationLevelContractCasesTest.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/RaftNotificationContract.kt"
       - "scripts/sync_slock_notification_levels.py"
+      # Runtime Raft capabilities + recommended runtimes (slock packages/shared/src/runtimeCatalog.ts;
+      # the runtime pickers' Recommended / Limited badges and capability hint, #triage:#534).
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/agents/RuntimeRaftCapabilities.kt"
+      - "compose/shared/src/androidUnitTest/kotlin/build/raft/app/contract/RuntimeRaftCapabilitiesContractTest.kt"
+      - "scripts/sync_slock_runtime_capabilities.py"
       - ".github/workflows/contract-cases-drift.yml"
 
 permissions:
@@ -85,6 +93,11 @@ jobs:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
         run: python3 scripts/sync_slock_notification_levels.py --check
 
+      - name: Compare the vendored runtime Raft capabilities with slock
+        env:
+          SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
+        run: python3 scripts/sync_slock_runtime_capabilities.py --check
+
       # TODO(#proj-mobile:#70): ping @Lagoon in Raft on a red scheduled run. The
       # repo has no chat notification hook yet (visual-patrol only writes a step
       # summary since the repo went public), so the red run and this summary are
@@ -97,6 +110,7 @@ jobs:
             echo
             echo "unread vendored from: \`$(cat compose/shared/src/commonTest/resources/contract-cases/unread/SOURCE_SHA 2>/dev/null || echo none)\`"
             echo "activity-row vendored from: \`$(cat compose/shared/src/commonTest/resources/contract-cases/activity-row/SOURCE_SHA 2>/dev/null || echo none)\`"
+            echo "runtime-raft-capabilities vendored from: \`$(cat compose/shared/src/commonTest/resources/contract-cases/runtime-raft-capabilities/SOURCE_SHA 2>/dev/null || echo none)\`"
             echo "slock now: \`$(git -C slock-source rev-parse HEAD 2>/dev/null || echo unavailable)\`"
             echo
             echo "Re-vendor: \`SLOCK_SOURCE_REPO=<slock> python3 scripts/sync_slock_contract_cases.py --ref origin/staging\`, then run \`UnreadContractCasesTest\` / \`ActivityRowContractCasesTest\`. Owner: @Lagoon (#proj-mobile:#70)."
