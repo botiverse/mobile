@@ -209,6 +209,7 @@
     <string name="settings_step_up_sign_in_again_message">Não foi possível verificar este login. Entre novamente e tente mais uma vez.</string>
     <string name="settings_step_up_sign_in_again">Entrar novamente</string>
     <string name="settings_step_up_passkey_only">Faça essa alteração no Raft pela web e confirme com sua chave de acesso.</string>
+    <string name="settings_step_up_open_on_web">Abrir na web</string>
     <string name="settings_step_up_passkey_button">Usar chave de acesso</string>
     <string name="settings_step_up_use_passkey">Usar chave de acesso</string>
     <string name="settings_step_up_passkey_cancelled">A janela da chave de acesso foi fechada. Tente novamente ou use outro método.</string>

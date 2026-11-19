@@ -8,6 +8,7 @@ import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.TextStyle
@@ -16,6 +17,10 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.SecondFactorStepUpCoordinator
 import build.raft.app.data.SecondFactorStepUpDialogState
 import build.raft.app.data.SecondFactorStepUpIntent
+import build.raft.app.data.SecondFactorStepUpWebTarget
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.secondFactorStepUpWebUrl
+import build.raft.app.data.secondFactorStepUpWebServerSlug
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
@@ -235,8 +240,10 @@ internal fun ThreadRouteDialogs(
     }
     // Last of the card dialogs, so it opens over the install confirmation or spec sheet that asked.
     actionCardStepUpState?.let { dialogState ->
+        // Open on the web: the card's conversation, on the environment's web in this server.
+        val webUrl = rememberThreadActionCardStepUpWebUrl(data, payload)
         SecondFactorStepUpDialog(
-            state = dialogState,
+            state = if (dialogState.webUrl == null && webUrl != null) dialogState.copy(webUrl = webUrl) else dialogState,
             onIntent = { intent ->
                 coroutineScope.launch { actionCardStepUp.accept(intent) }
                 if (intent == SecondFactorStepUpIntent.SignInAgain) onAuthRequired("auth_required")
@@ -320,4 +327,45 @@ internal fun ThreadRouteDialogs(
             }
         )
     }
+}
+
+/**
+ * Where on the web an action card of [this] page is: its conversation (the channel, or the DM; a
+ * reply thread's parent conversation). Null when the page names none.
+ */
+internal fun RaftThreadScreenPayload.actionCardStepUpWebTarget(): SecondFactorStepUpWebTarget? {
+    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
+        val parent = parentChannelId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return SecondFactorStepUpWebTarget.Conversation(parent, directMessage = parentSurfaceKind == RaftThreadSurfaceKind.DirectMessage)
+    }
+    val channelId =
+        streamChannelId?.trim()?.takeIf { it.isNotBlank() }
+            ?: sourceThreadId?.trim()?.takeIf { it.isNotBlank() }
+            ?: return null
+    return SecondFactorStepUpWebTarget.Conversation(channelId, directMessage = surfaceKind == RaftThreadSurfaceKind.DirectMessage)
+}
+
+/**
+ * The action cards' "Verify it's you" Open on the web: [payload]'s conversation on the Developer
+ * environment's web URL (AGENTS.md Environment Web Link URL Rule) in the session's server.
+ */
+@Composable
+private fun rememberThreadActionCardStepUpWebUrl(
+    data: SharedThreadRouteContentData,
+    payload: RaftThreadScreenPayload,
+): String? {
+    val target = payload.actionCardStepUpWebTarget()
+    val webUrl by
+        produceState<String?>(null, data.bridge, data.storeScope, target) {
+            val stores = RaftSharedStoreRegistry.get(data.bridge)
+            value =
+                target?.let {
+                    secondFactorStepUpWebUrl(
+                        webBaseUrl = stores.apiEnvironmentStore.current().webUrl,
+                        serverSlug = stores.authStore(data.storeScope).readSession().secondFactorStepUpWebServerSlug(),
+                        target = it,
+                    )
+                }
+        }
+    return webUrl
 }

@@ -33,7 +33,8 @@ import org.robolectric.shadows.ShadowDialog
  * profile (2 passkeys, two-step verification On; a failed first read with its trace ID).
  * `settings.account.step-up{,.dark,.backup-used,.locked,.passkey-only}`: "Verify it's you" for a
  * refused password or sign-in method change (code field with the backup-code link; a used backup
- * code; the lock banner; only a passkey listed). Fixed fixture data. Reports land in
+ * code; the lock banner; only a passkey listed). `settings.account.step-up.open-on-web{,.dark}`:
+ * only a passkey listed and the action's web page known: Close and Open on the web. Fixed fixture data. Reports land in
  * `build/reports/home-screenshots/` (uploaded by CI as `shared-home-screenshots`); verify / record
  * as [RaftRobolectricScreenshot].
  */
@@ -113,6 +114,16 @@ class SettingsAccountScreenshotTest {
             SecondFactorStepUpDialogState(methods = emptyList(), method = null),
         )
 
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
+    fun stepUpDialogOpenOnWebLight() =
+        stepUpDialog("settings.account.step-up.open-on-web", RaftAppAppearance.Light, stepUpOpenOnWeb)
+
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
+    fun stepUpDialogOpenOnWebDark() =
+        stepUpDialog("settings.account.step-up.open-on-web.dark", RaftAppAppearance.Dark, stepUpOpenOnWeb)
+
     private fun stepUpDialog(name: String, appearance: RaftAppAppearance, state: SecondFactorStepUpDialogState) =
         RaftRobolectricScreenshot.capture(
             name,
@@ -124,7 +135,7 @@ class SettingsAccountScreenshotTest {
             Page {
                 RaftDesignSystemTheme {
                     // A fixed clock: goldens must not follow the machine's time zone.
-                    SecondFactorStepUpDialog(state = state, onIntent = {}, formatClock = { "23:40" })
+                    SecondFactorStepUpDialog(state = state, onIntent = {}, formatClock = { "23:40" }, openWebPage = {})
                 }
             }
         }
@@ -154,6 +165,14 @@ class SettingsAccountScreenshotTest {
 
 private val loginSecurityOn =
     SharedAccountLoginSecurityState(security = AccountLoginSecurity(twoStepEnabled = true, passkeyCount = 2))
+
+private val stepUpOpenOnWeb =
+    SecondFactorStepUpDialogState(
+        methods = emptyList(),
+        method = null,
+        passkeyListed = true,
+        webUrl = "https://app.raft.build/s/acme/computers",
+    )
 
 private val stepUpCode =
     SecondFactorStepUpDialogState(

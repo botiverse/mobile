@@ -209,6 +209,7 @@
     <string name="settings_step_up_sign_in_again_message">このログインは確認できません。もう一度ログインしてから、再度お試しください。</string>
     <string name="settings_step_up_sign_in_again">再ログイン</string>
     <string name="settings_step_up_passkey_only">Web 版の Raft でこの変更を行い、パスキーで確認してください。</string>
+    <string name="settings_step_up_open_on_web">Web 版で開く</string>
     <string name="settings_step_up_passkey_button">パスキーを使用</string>
     <string name="settings_step_up_use_passkey">パスキーを使用</string>
     <string name="settings_step_up_passkey_cancelled">パスキーの画面が閉じられました。もう一度試すか、別の方法を使用してください。</string>

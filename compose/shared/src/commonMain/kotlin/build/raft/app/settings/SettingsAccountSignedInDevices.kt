@@ -25,6 +25,7 @@ import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.SharedSignedInDevicesIntent
 import build.raft.app.data.SharedSignedInDevicesState
 import build.raft.app.data.SharedSignedInDevicesStore
+import build.raft.app.data.SecondFactorStepUpWebTarget
 import build.raft.app.data.SignedInDevice
 import build.raft.app.data.SignedInDeviceLostReach
 import build.raft.app.data.SignedInDevicePlatform
@@ -92,9 +93,16 @@ internal class SettingsSignedInDevicesUi(
 
 /** The page's store: read when the page shows and again on every return to the foreground. */
 @Composable
-internal fun rememberSettingsSignedInDevicesStore(networkClient: RaftNetworkClient): SharedSignedInDevicesStore {
+internal fun rememberSettingsSignedInDevicesStore(
+    networkClient: RaftNetworkClient,
+    /** "Verify it's you"'s Open on the web ([build.raft.app.data.secondFactorStepUpWebUrlResolver]). */
+    stepUpWebUrl: (suspend (SecondFactorStepUpWebTarget) -> String?)? = null,
+): SharedSignedInDevicesStore {
     val scope = rememberCoroutineScope()
-    val store = remember(networkClient, scope) { SharedSignedInDevicesStore(NetworkSignedInDevicesDataSource(networkClient), scope) }
+    val store =
+        remember(networkClient, scope) {
+            SharedSignedInDevicesStore(NetworkSignedInDevicesDataSource(networkClient), scope, stepUpWebUrl)
+        }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, store) {
         val observer =

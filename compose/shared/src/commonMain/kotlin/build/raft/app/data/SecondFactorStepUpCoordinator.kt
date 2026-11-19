@@ -98,7 +98,17 @@ data class SecondFactorStepUpDialogState(
     /** The last recovery email that failed, shown on the lost page. */
     val recoveryFailure: SecondFactorRecoveryEmailResult? = null,
     val passkeyCeremony: SecondFactorPasskeyCeremony? = null,
+    /**
+     * The refused action's web page ([SecondFactorStepUpWebTarget] on the environment's web URL):
+     * with no way to answer here ([method] null) the dialog offers Open on the web, to make the
+     * change there and confirm it with the passkey. Null: the dialog only says to.
+     */
+    val webUrl: String? = null,
 ) {
+    /** No way to answer here, and the action's web page is known: Open on the web. */
+    val opensOnWeb: Boolean
+        get() = method == null && webUrl != null
+
     /** Checking an answer, or the passkey prompt is up. */
     val busy: Boolean
         get() = submitting || passkeyCeremony != null
@@ -182,6 +192,9 @@ private const val TOTP_CODE_LENGTH = 6
  * ([SecondFactorStepUpIntent.PasskeyAssertionFinished]) as the step-up's `webauthn`. No passkey
  * on this device, or none the platform can use, drops the passkey and goes on with the other
  * methods (or the web, with none).
+ *
+ * The web, with none: the dialog's Open on the web goes to the action's page, [webUrl] of the
+ * run's target ([webTarget] unless [run] names another); without a [webUrl] it only says to.
  */
 class SecondFactorStepUpCoordinator(
     private val stepUp: suspend (SecondFactorStepUpAnswer) -> SecondFactorStepUpResult,
@@ -191,6 +204,9 @@ class SecondFactorStepUpCoordinator(
     private val passkeyOptions: (suspend (rp: String?) -> SecondFactorPasskeyOptionsResult)? = null,
     private val nativePasskeys: Boolean = raftNativePasskeyAssertionAvailable(),
     private val passkeyRpGroup: String? = raftNativePasskeyRpGroup(),
+    private val webUrl: (suspend (SecondFactorStepUpWebTarget) -> String?)? = null,
+    /** The action's web page when [run] names none, read when the dialog opens. */
+    private val webTarget: () -> SecondFactorStepUpWebTarget? = { null },
 ) {
     private var ceremonySeq = 0L
 
@@ -207,10 +223,16 @@ class SecondFactorStepUpCoordinator(
 
     private var pending: CompletableDeferred<SecondFactorStepUpSettle>? = null
 
-    suspend fun <T> run(request: suspend () -> DataResult<T>): SecondFactorStepUpOutcome<T> {
+    suspend fun <T> run(request: suspend () -> DataResult<T>): SecondFactorStepUpOutcome<T> = run(webTarget(), request)
+
+    /** [run] for an action done on the web at [webTarget] (Open on the web). */
+    suspend fun <T> run(
+        webTarget: SecondFactorStepUpWebTarget?,
+        request: suspend () -> DataResult<T>,
+    ): SecondFactorStepUpOutcome<T> {
         val first = request()
         val challenge = first.secondFactorStepUpChallengeOrNull() ?: return SecondFactorStepUpOutcome.Completed(first)
-        if (awaitSettled(challenge, recovery = null) != SecondFactorStepUpSettle.Verified) return SecondFactorStepUpOutcome.Cancelled
+        if (awaitSettled(challenge, recovery = null, webTarget) != SecondFactorStepUpSettle.Verified) return SecondFactorStepUpOutcome.Cancelled
         return SecondFactorStepUpOutcome.Completed(request())
     }
 
@@ -226,7 +248,7 @@ class SecondFactorStepUpCoordinator(
     ): SecondFactorStepUpSigningOutOutcome<T> {
         val first = request()
         val challenge = first.secondFactorStepUpChallengeOrNull() ?: return SecondFactorStepUpSigningOutOutcome.Completed(first)
-        return when (awaitSettled(challenge, recovery)) {
+        return when (awaitSettled(challenge, recovery, webTarget())) {
             SecondFactorStepUpSettle.Verified -> SecondFactorStepUpSigningOutOutcome.Completed(request())
             SecondFactorStepUpSettle.Cancelled -> SecondFactorStepUpSigningOutOutcome.Cancelled
             SecondFactorStepUpSettle.SignOutInstead -> SecondFactorStepUpSigningOutOutcome.SignOutInstead
@@ -312,10 +334,13 @@ class SecondFactorStepUpCoordinator(
     private suspend fun awaitSettled(
         challenge: SecondFactorStepUpChallenge,
         recovery: SecondFactorStepUpRecovery?,
+        webTarget: SecondFactorStepUpWebTarget?,
     ): SecondFactorStepUpSettle {
         pending?.let { return it.await() }
         val deferred = CompletableDeferred<SecondFactorStepUpSettle>()
         pending = deferred
+        // A page that can't be named (no session) leaves the dialog without Open on the web.
+        val actionWebUrl = webTarget?.let { target -> runCatchingPreservingCancellation { webUrl?.invoke(target) }.getOrNull() }
         val passkey = challenge.passkeyListed && nativePasskeys && passkeyOptions != null
         val methods = listOfNotNull(SecondFactorStepUpMethod.Passkey.takeIf { passkey }) + challenge.usableMethods
         publish(
@@ -324,6 +349,7 @@ class SecondFactorStepUpCoordinator(
                 method = methods.firstOrNull(),
                 recovery = recovery,
                 passkeyListed = challenge.passkeyListed,
+                webUrl = actionWebUrl,
             )
         )
         return try {

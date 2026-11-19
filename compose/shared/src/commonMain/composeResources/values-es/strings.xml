@@ -209,6 +209,7 @@
     <string name="settings_step_up_sign_in_again_message">No se puede verificar este inicio de sesión. Vuelve a iniciar sesión y luego inténtalo otra vez.</string>
     <string name="settings_step_up_sign_in_again">Volver a iniciar sesión</string>
     <string name="settings_step_up_passkey_only">Haz este cambio en Raft en la web y confírmalo con tu llave de acceso.</string>
+    <string name="settings_step_up_open_on_web">Abrir en la web</string>
     <string name="settings_step_up_passkey_button">Usar llave de acceso</string>
     <string name="settings_step_up_use_passkey">Usar llave de acceso</string>
     <string name="settings_step_up_passkey_cancelled">Se cerró la ventana de la llave de acceso. Inténtalo de nuevo o usa otro método.</string>

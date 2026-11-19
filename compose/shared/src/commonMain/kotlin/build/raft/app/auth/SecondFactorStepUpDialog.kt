@@ -59,7 +59,8 @@ internal const val SECOND_FACTOR_STEP_UP_DIALOG_TAG = "second-factor-step-up-dia
  * an authenticator code or a backup code (the others as links under it); a wrong or used code
  * under the field, a refused passkey, a lock, Sign In Again or any other refusal in a banner,
  * with the server's trace ID. Only a passkey listed and none usable here: a banner saying to do
- * this on the web and Close. A scrim tap does not close it; Cancel, the close button and Back do (not
+ * this on the web, Close, and Open on the web where the action's page is known
+ * ([SecondFactorStepUpDialogState.webUrl], opened with [openWebPage]; it ends the step-up like Cancel). A scrim tap does not close it; Cancel, the close button and Back do (not
  * while the answer is being checked). With a [SecondFactorStepUpDialogState.recovery] (signing out
  * a lost device) it also offers "Lost the device with your authenticator?"
  * ([SecondFactorStepUpRecoveryPage]).
@@ -72,6 +73,8 @@ internal fun SecondFactorStepUpDialog(
     description: String = stringResource(Res.string.settings_step_up_description),
     formatClock: (Long) -> String = ::secondFactorStepUpLocalClock,
     passkeyAssertion: RaftNativePasskeyAssertion = rememberRaftNativePasskeyAssertion(),
+    /** Opens the action's web page: a real browser, where the passkey works ([rememberRaftPasskeyWebPageOpener]). */
+    openWebPage: (String) -> Unit = rememberRaftPasskeyWebPageOpener(),
 ) {
     // The passkey prompt, once per attempt; its answer goes back to the coordinator.
     val ceremony = state.passkeyCeremony
@@ -99,7 +102,26 @@ internal fun SecondFactorStepUpDialog(
         dismissOnClickOutside = false,
         closeLabel = stringResource(Res.string.common_close),
         footer = {
-            if (method == null) {
+            val webUrl = state.webUrl?.takeIf { state.opensOnWeb }
+            if (webUrl != null) {
+                RaftButton(
+                    text = stringResource(Res.string.common_close),
+                    onClick = dismiss,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg
+                )
+                RaftButton(
+                    text = stringResource(Res.string.settings_step_up_open_on_web),
+                    onClick = {
+                        // The change is made there now: the action here ends as with Close.
+                        openWebPage(webUrl)
+                        onIntent(SecondFactorStepUpIntent.Cancel)
+                    },
+                    modifier = Modifier.testTag(SECOND_FACTOR_STEP_UP_OPEN_ON_WEB_TAG),
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg
+                )
+            } else if (method == null) {
                 RaftButton(
                     text = stringResource(Res.string.common_close),
                     onClick = dismiss,
@@ -179,6 +201,7 @@ internal fun SecondFactorStepUpDialog(
 
 internal const val SECOND_FACTOR_STEP_UP_LOST_LINK_TAG = "step-up-lost-authenticator"
 internal const val SECOND_FACTOR_STEP_UP_SUBMIT_TAG = "step-up-submit"
+internal const val SECOND_FACTOR_STEP_UP_OPEN_ON_WEB_TAG = "step-up-open-on-web"
 internal const val SECOND_FACTOR_STEP_UP_BANNER_TAG = "step-up-banner"
 
 /** The "Use …" link that switches to [method]. */
