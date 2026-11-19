@@ -399,6 +399,9 @@ class RaftDiagnosticsVolumePolicy(
                 "process_server_members" to Rule(),
                 "store_load" to Rule(budget = 3),
                 "roster_presence_projection" to Rule(),
+                // A realtime presence / agent:activity_state write the registry refused (#proj-mobile:#200):
+                // the first 20 a minute are written, the rest counted with sample member ids.
+                "presence_write_rejected" to Rule(budget = 20),
                 "process_read_receipt" to Rule(),
                 "scroll_frames" to Rule(budget = 3, metrics = FrameMetrics),
             )

@@ -141,7 +141,14 @@ internal fun processMemberPresenceRealtimeSink(
         else -> null
     }
     if (dropReason == null && context != null) {
-        context.ownerFor(admission.serverId)?.let { owner ->
+        val owner = context.ownerFor(admission.serverId)
+        if (owner == null) {
+            try {
+                diagnosticsLogger("presence_write_dropped reason=no_owner serverId=${admission.serverId}")
+            } catch (_: Throwable) {
+                // D.17: a throwing logger must never break the write edge.
+            }
+        } else {
             registry.apply(
                 owner = owner,
                 event = event,
@@ -403,7 +410,14 @@ internal data class ProcessPresenceOwnerSnapshot(
     val transport: ProcessPresenceTransportEpoch?
 )
 
-internal class ProcessMemberPresenceRegistry {
+/**
+ * [rejectLogger] receives one [presenceWriteRejectedLine] for every realtime write [apply] does not
+ * take (#proj-mobile:#200: a status dot stayed "online" while the agent worked, and nothing said
+ * whether its `agent:activity_state` arrived and was refused). Keys only, never status text.
+ */
+internal class ProcessMemberPresenceRegistry(
+    private val rejectLogger: (String) -> Unit = {}
+) {
 
     private data class Snapshot(
         val writeGeneration: Long,
@@ -510,16 +524,41 @@ internal class ProcessMemberPresenceRegistry {
         transport: ProcessPresenceTransportEpoch? = null
     ) {
         val memberId = event.memberId.value.trim()
-        if (memberId.isBlank()) return
+        if (memberId.isBlank()) {
+            logRejected(PresenceWriteRejectReason.NoMember, owner, event, previous = null)
+            return
+        }
         val normalizedTransport = transport?.normalizedOrNull()
-        if (transport != null && normalizedTransport == null) return
+        if (transport != null && normalizedTransport == null) {
+            logRejected(PresenceWriteRejectReason.InvalidEpoch, owner, event, previous = null, incomingTransport = transport)
+            return
+        }
         while (true) {
             val current = snapshot.value
-            if (writeGeneration != current.writeGeneration) return
+            if (writeGeneration != current.writeGeneration) {
+                logRejected(
+                    PresenceWriteRejectReason.RetiredGeneration,
+                    owner,
+                    event,
+                    previous = null,
+                    detail = "writeGen=$writeGeneration currentGen=${current.writeGeneration}"
+                )
+                return
+            }
             val currentTransport = current.transportEpochs[owner]
             val transportDisposition =
                 currentTransport.presenceTransportDisposition(normalizedTransport)
-            if (transportDisposition == PresenceTransportDisposition.Reject) return
+            if (transportDisposition == PresenceTransportDisposition.Reject) {
+                logRejected(
+                    if (normalizedTransport == null) PresenceWriteRejectReason.MissingEpoch else PresenceWriteRejectReason.OlderEpoch,
+                    owner,
+                    event,
+                    previous = current.partitions[owner]?.get(memberId),
+                    incomingTransport = normalizedTransport,
+                    currentTransport = currentTransport
+                )
+                return
+            }
             val transportAdvanced = transportDisposition == PresenceTransportDisposition.Advance
             // A transport advance carries the owner's facts over at lowest precedence instead of
             // wiping them; a carried fact never gates this write (it is treated as absent).
@@ -534,7 +573,10 @@ internal class ProcessMemberPresenceRegistry {
                 !transportAdvanced &&
                     current.currentProjectionStamps[owner]?.containsKey(memberId) == true
             val isSeenEvent = event.isAgentSeenFact()
-            if (isSeenEvent && previous != null && !event.advancesLastSeenAtOf(previous)) return
+            if (isSeenEvent && previous != null && !event.advancesLastSeenAtOf(previous)) {
+                logRejected(PresenceWriteRejectReason.SeenNotNewer, owner, event, previous)
+                return
+            }
             if (
                 // agent:seen carries no seq, so the seq gate below would drop every one that
                 // follows an agent:activity. It is ordered by its own timestamp instead (web
@@ -545,6 +587,13 @@ internal class ProcessMemberPresenceRegistry {
                     requiresStrictlyNewerSequence = hasCurrentProjection
                 )
             ) {
+                logRejected(
+                    event.sequenceRejectReason(previous),
+                    owner,
+                    event,
+                    previous,
+                    detail = "afterProjection=$hasCurrentProjection"
+                )
                 return
             }
             // agent:seen is a seq-less presence fact whose only payload is
@@ -606,6 +655,32 @@ internal class ProcessMemberPresenceRegistry {
             ) {
                 return
             }
+        }
+    }
+
+    private fun logRejected(
+        reason: PresenceWriteRejectReason,
+        owner: ProcessServerMembersOwner,
+        event: MemberPresenceUpdated,
+        previous: MemberPresenceUpdated?,
+        incomingTransport: ProcessPresenceTransportEpoch? = null,
+        currentTransport: ProcessPresenceTransportEpoch? = null,
+        detail: String? = null
+    ) {
+        try {
+            rejectLogger(
+                presenceWriteRejectedLine(
+                    reason = reason,
+                    serverId = owner.serverId,
+                    event = event,
+                    previous = previous,
+                    incomingTransport = incomingTransport,
+                    currentTransport = currentTransport,
+                    detail = detail
+                )
+            )
+        } catch (_: Throwable) {
+            // A throwing logger must never break the write edge (same rule as the sink's D.17).
         }
     }
 
@@ -1072,6 +1147,81 @@ internal fun MemberPresenceUpdated.advancesLastSeenAtOf(previous: MemberPresence
     val incoming = parseExternalAgentTimestampOrNull(lastSeenAt) ?: return false
     val knownMillis = parseExternalAgentTimestampOrNull(known) ?: return true
     return incoming > knownMillis
+}
+
+/**
+ * Why a realtime presence / activity-state write was not applied. [code] goes on the
+ * `presence_write_rejected` diagnostics line (summarized per minute, see RaftDiagnosticsVolume).
+ */
+internal enum class PresenceWriteRejectReason(val code: String) {
+    /** The event names no member. */
+    NoMember("no_member"),
+    /** The frame named a connection epoch that is not usable (blank family or epoch <= 0). */
+    InvalidEpoch("invalid_epoch"),
+    /** Written under an auth binding a sign-out / account switch already retired. */
+    RetiredGeneration("retired_generation"),
+    /** The owner has a live native transport and the frame names none. */
+    MissingEpoch("missing_epoch"),
+    /** The frame came from an older connection of the same family. */
+    OlderEpoch("older_epoch"),
+    /** `agent:seen` whose lastSeenAt is not newer than the stored one. */
+    SeenNotNewer("seen_not_newer"),
+    /** serverSeq lower than the stored fact's. */
+    StaleSeq("stale_seq"),
+    /** Equal serverSeq where a strictly newer one is required (`agent:activity_state`, or after a current REST projection). */
+    EqualSeq("equal_seq"),
+    /** A seq-less write never displaces a seq-carrying fact. */
+    SeqlessAfterSeq("seqless_after_seq"),
+}
+
+/** The sequence rule [shouldReplaceRegisteredPresenceFact] refused this write by. */
+internal fun MemberPresenceUpdated.sequenceRejectReason(previous: MemberPresenceUpdated?): PresenceWriteRejectReason {
+    val incoming = serverSeq
+    val stored = previous?.serverSeq
+    return when {
+        incoming == null && stored != null -> PresenceWriteRejectReason.SeqlessAfterSeq
+        incoming != null && stored != null && incoming == stored -> PresenceWriteRejectReason.EqualSeq
+        else -> PresenceWriteRejectReason.StaleSeq
+    }
+}
+
+/**
+ * One `presence_write_rejected` line: keys and counters only (server id, an 8-character member id
+ * prefix, the frame kind, seq numbers, connection epochs), never a status label or detail text.
+ */
+internal fun presenceWriteRejectedLine(
+    reason: PresenceWriteRejectReason,
+    serverId: String,
+    event: MemberPresenceUpdated,
+    previous: MemberPresenceUpdated?,
+    incomingTransport: ProcessPresenceTransportEpoch? = null,
+    currentTransport: ProcessPresenceTransportEpoch? = null,
+    detail: String? = null
+): String {
+    val kind =
+        when {
+            event.coarseState -> "state"
+            event.isAgentSeenFact() -> "seen"
+            event.serverSeq == null -> "seqless"
+            else -> "activity"
+        }
+    return buildString {
+        append("presence_write_rejected reason=").append(reason.code)
+        append(" serverId=").append(serverId.trim().ifBlank { "none" })
+        append(" memberId=").append(event.memberId.value.trim().take(8).ifBlank { "none" })
+        append(" kind=").append(kind)
+        append(" seq=").append(event.serverSeq ?: "none")
+        append(" prevSeq=").append(previous?.serverSeq ?: "none")
+        if (incomingTransport != null || currentTransport != null) {
+            append(" epoch=").append(incomingTransport?.epoch ?: "none")
+            append(" currentEpoch=").append(currentTransport?.epoch ?: "none")
+            append(" sameFamily=").append(
+                incomingTransport != null && currentTransport != null &&
+                    incomingTransport.connectionFamilyId == currentTransport.connectionFamilyId
+            )
+        }
+        if (!detail.isNullOrBlank()) append(' ').append(detail)
+    }
 }
 
 internal fun MemberPresenceUpdated.shouldReplaceRegisteredPresenceFact(
