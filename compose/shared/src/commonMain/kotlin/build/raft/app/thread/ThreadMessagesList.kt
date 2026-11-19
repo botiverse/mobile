@@ -965,10 +965,10 @@ private fun ThreadMessagesListContent(
             0
         }
     val menuState = remember(threadInstanceKey) { ThreadMessageMenuState() }
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress) {
-            menuState.authorDescriptionPopover = null
-        }
+    // Only the user's own scroll closes the author popover: a programmatic scroll such as the
+    // reading-anchor correction (ThreadReadingAnchorKeeper.kt) after a Save or a reaction must not.
+    ThreadUserScrollEffect(listState.raw) {
+        if (menuState.authorDescriptionPopover != null) menuState.authorDescriptionPopover = null
     }
 
     // Long-message collapse: expanded ids, one-way collapsible latch and threshold live for the

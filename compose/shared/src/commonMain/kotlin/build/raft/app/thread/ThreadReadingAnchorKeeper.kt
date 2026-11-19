@@ -221,3 +221,18 @@ internal class ThreadReadingAnchorOwner(
         }
     }
 }
+
+/**
+ * Calls [onUserScroll] when the user starts dragging [state] (its `DragInteraction.Start`); a
+ * programmatic scroll — a reading-anchor correction, a jump, a restore — does not count. For
+ * transient UI that should close on the user's scroll only.
+ */
+@androidx.compose.runtime.Composable
+internal fun ThreadUserScrollEffect(state: LazyListState, onUserScroll: () -> Unit) {
+    val current = androidx.compose.runtime.rememberUpdatedState(onUserScroll)
+    androidx.compose.runtime.LaunchedEffect(state) {
+        state.interactionSource.interactions.collect { interaction ->
+            if (interaction is androidx.compose.foundation.interaction.DragInteraction.Start) current.value()
+        }
+    }
+}
