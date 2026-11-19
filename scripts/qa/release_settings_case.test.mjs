@@ -9,7 +9,7 @@ import test from "node:test";
 import { readRecord, writeRecord } from "./login_phase.mjs";
 import { gate } from "./secure_evidence.mjs";
 import { threadtimeStamp, writeReleaseLoginRecord } from "./scenarios/release_settings_case.mjs";
-import { TERMINAL, applyTerminalDecision, terminalDecision } from "./release_settings_terminal.mjs";
+import { TERMINAL, applyTerminalDecision, recordingComplete, terminalDecision } from "./release_settings_terminal.mjs";
 
 const env = { GITHUB_RUN_ID: "4242", GITHUB_RUN_ATTEMPT: "1" };
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "release-case-"));
@@ -175,4 +175,28 @@ test("recording: never started, no segments, a failed transfer or an unconfirmed
   for (const failure of ["unconfirmed_stop", "no_segments", "transfer_failed", "cleanup_failed"]) assert.match(caseScript, new RegExp(`recording_fail ${failure}`));
   assert.ok(caseScript.indexOf('"status":"complete"') > caseScript.indexOf("recording_fail cleanup_failed"), "complete is written last");
   assert.match(caseScript, /REC_DIR="\/sdcard\/qa-rec-\$\{GITHUB_RUN_ID:-local\}-\$\{GITHUB_RUN_ATTEMPT:-1\}-\$\$-\$\{RANDOM\}"/);
+});
+
+test("recording receipt read from disk: only this run's complete receipt with segments counts", () => {
+  const dir = tmp();
+  const write = (receipt) => fs.writeFileSync(path.join(dir, "recording.json"), `${JSON.stringify(receipt)}\n`);
+  assert.equal(recordingComplete(dir, env), "missing");
+  write({ status: "complete", segments: 2, run: "4242:1" });
+  assert.equal(recordingComplete(dir, env), "complete");
+  write({ status: "complete", segments: 2, run: "1111:1" });
+  assert.equal(recordingComplete(dir, env), "invalid_receipt", "another run");
+  write({ status: "complete", segments: 0, run: "4242:1" });
+  assert.equal(recordingComplete(dir, env), "invalid_receipt", "zero segments");
+  write({ status: "complete", run: "4242:1" });
+  assert.equal(recordingComplete(dir, env), "invalid_receipt", "no segment count");
+  write({ status: "no_segments", segments: 0, run: "4242:1" });
+  assert.equal(recordingComplete(dir, env), "no_segments");
+  write({ status: "whatever", segments: 3, run: "4242:1" });
+  assert.equal(recordingComplete(dir, env), "invalid_receipt");
+  fs.writeFileSync(path.join(dir, "recording.json"), "not json");
+  assert.equal(recordingComplete(dir, env), "missing");
+  // The CLI path: a foreign "complete" receipt never completes the run.
+  write({ status: "complete", segments: 2, run: "1111:1" });
+  assert.equal(terminalDecision({ summary: cleanSummary(), rc: 0, recording: recordingComplete(dir, env) }).complete, false);
+  fs.rmSync(dir, { recursive: true });
 });

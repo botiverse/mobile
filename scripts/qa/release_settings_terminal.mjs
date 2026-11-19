@@ -37,14 +37,23 @@ export function readTerminal(dir, record, env = process.env) {
   return { ok: true };
 }
 
-/** This run's recording receipt from release_settings_case.sh. */
-function recordingComplete(evidence, env) {
+const RECORDING_FAILURES = ["not_started", "unconfirmed_stop", "no_segments", "transfer_failed", "cleanup_failed"];
+
+/**
+ * This run's recording receipt from release_settings_case.sh: "complete" only for a complete
+ * receipt of THIS run with at least one segment; a reported failure keeps its name; anything else
+ * (another run, zero segments, unknown status, unreadable) is "invalid_receipt" or "missing".
+ */
+export function recordingComplete(evidence, env = process.env) {
+  let r;
   try {
-    const r = JSON.parse(fs.readFileSync(path.join(evidence, "recording.json"), "utf8"));
-    return r.status === "complete" && Number.isInteger(r.segments) && r.segments >= 1 && r.run === runId(env) ? "complete" : String(r.status ?? "missing");
+    r = JSON.parse(fs.readFileSync(path.join(evidence, "recording.json"), "utf8"));
   } catch {
     return "missing";
   }
+  if (!r || typeof r !== "object" || r.run !== runId(env)) return "invalid_receipt";
+  if (r.status === "complete") return Number.isInteger(r.segments) && r.segments >= 1 ? "complete" : "invalid_receipt";
+  return RECORDING_FAILURES.includes(r.status) ? r.status : "invalid_receipt";
 }
 
 export const REQUIRED_CLEANUP = {
