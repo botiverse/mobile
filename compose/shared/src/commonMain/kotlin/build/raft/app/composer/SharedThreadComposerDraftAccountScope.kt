@@ -352,6 +352,15 @@ internal class SharedThreadComposerDraftAccounts(
     }
 
     private fun deleteOwner(token: String) {
+        // Crash-journal rows of internal 1.27 test builds, found through the journal and active indexes,
+        // so this runs before the drafts and their index are cleared. A cleanup that failed or has not run
+        // yet can then never leave a signed-out account's journal text behind.
+        // Removable after 1.28 with SharedThreadComposerDraftJournalCleanup.
+        runCatching {
+            SharedThreadComposerDraftJournalCleanup.deleteScope(base, SharedThreadComposerDraftJournalCleanup.accountScope(token))
+        }.onFailure { error ->
+            safeDiagnostics("thread_composer_draft_journal_purge_failed error=${error::class.simpleName.orEmpty()}")
+        }
         val view = synchronized(lock) {
             cleanupStores.getOrPut(token) { SharedThreadComposerDraftFixedAccountStore(base, token) }
         }

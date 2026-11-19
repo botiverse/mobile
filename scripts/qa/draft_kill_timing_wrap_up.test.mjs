@@ -39,22 +39,34 @@ const statsOf = (lines) => {
   return stats.result();
 };
 
-test("the write time is measured at wrap-up (timings pass -> run passes)", () => {
+test("the write latency is measured at wrap-up (timings pass -> run passes) and only reported", () => {
   const summary = timingsPass();
-  // The bug this guards: deciding before the capture is read always finds no write-time samples.
-  assert.deepEqual(acceptanceUnmet(summary, config), ["no draft_written costUs lines: the draft write time was not measured"]);
+  // The bug this guards: deciding before the capture is read always finds no latency samples.
+  assert.deepEqual(acceptanceUnmet(summary, config), ["no change_received -> draft_written pairs: the write latency was not measured"]);
   wrapUpVerdict(summary, statsOf([...edit(1, 1, 120), ...edit(2, 2, 3300)]), config);
   assert.equal(summary.result, "pass");
   assert.deepEqual(summary.unmet, []);
   assert.equal(summary.draft_write_cost.samples, 2);
-  assert.deepEqual(summary.write_deadline, { interval_ms: 40, write_time_ms: 4, deadline_ms: 44, basis: "p95 of 2 draft writes (3300 µs)" });
+  assert.equal(summary.write_deadline.deadline_ms, 175);
+  assert.equal(summary.write_deadline.measured_change_to_written_p95_ms, 20);
+  assert.equal(summary.write_deadline.measured_write_cost_p95_us, 3300);
+});
+
+test("a change -> written p95 above the 135 ms budget is unmet; the deadline stays 175 ms", () => {
+  const slow = [change(1, 1), written(1.2, 300, 1), change(2, 2), written(2.136, 300, 2)];
+  const r = wrapUpVerdict(timingsPass(), statsOf(slow), config);
+  assert.equal(r.result, "fail");
+  assert.deepEqual(r.unmet, ["change -> draft_written p95 200 ms exceeds the 135 ms write budget"]);
+  assert.equal(r.write_deadline.deadline_ms, 175);
+  // At the budget exactly: met.
+  assert.equal(wrapUpVerdict(timingsPass(), statsOf([change(1, 1), written(1.135, 300, 1)]), config).result, "pass");
 });
 
 test("an unread capture fails, a step failure is kept", () => {
   const unread = wrapUpVerdict(timingsPass(), null, config);
   assert.equal(unread.result, "fail");
-  assert.deepEqual(unread.unmet, ["no draft_written costUs lines: the draft write time was not measured"]);
-  assert.equal(unread.write_deadline.deadline_ms, 40);
+  assert.deepEqual(unread.unmet, ["no change_received -> draft_written pairs: the write latency was not measured"]);
+  assert.equal(unread.write_deadline.deadline_ms, 175);
 
   const stepFailed = wrapUpVerdict({ ...timingsPass(), result: "fail", failed_step: "kill-runs" }, statsOf(edit(1, 1, 10)), config);
   assert.equal(stepFailed.result, "fail");
@@ -68,16 +80,21 @@ test("a kill run that lost text older than the deadline fails the round; younger
     typed_len: 6, restored_len: restored, restored_is_prefix: true, written_len_before_kill: 5,
     changes_before_kill: [{ seq: 1, len: 5, age_ms: 400 }, { seq: 2, len: 6, age_ms: ageOfLast }],
   });
-  // Deadline 40 + 1 ms (p95 of the writes below).
+  // Deadline 40 + 135 ms, whatever the writes below measured.
   const lines = [...edit(1, 1, 300), ...edit(2, 2, 900)];
-  const young = wrapUpVerdict({ ...timingsPass(), runs: [...timingsPass().runs, killRun(5, 30)] }, statsOf(lines), config);
+  const young = wrapUpVerdict({ ...timingsPass(), runs: [...timingsPass().runs, killRun(5, 174)] }, statsOf(lines), config);
   assert.equal(young.result, "pass", JSON.stringify(young.unmet));
-  assert.equal(young.runs.at(-1).survival, "lost 1 char(s) younger than 41 ms");
+  assert.equal(young.runs.at(-1).survival, "lost 1 char(s) younger than 175 ms");
 
-  const old = wrapUpVerdict({ ...timingsPass(), runs: [...timingsPass().runs, killRun(5, 41)] }, statsOf(lines), config);
+  const old = wrapUpVerdict({ ...timingsPass(), runs: [...timingsPass().runs, killRun(5, 175)] }, statsOf(lines), config);
   assert.equal(old.result, "fail");
   assert.deepEqual(old.unmet, ["run 9 (D=0.1): not restored as expected"]);
-  assert.match(old.runs.at(-1).survival, /lost text older than 41 ms \(kept len 5, required 6\)/);
+  assert.match(old.runs.at(-1).survival, /lost text older than 175 ms \(kept len 5, required 6\)/);
+
+  // Home: one lost char fails even though it was younger than the deadline.
+  const home = wrapUpVerdict({ ...timingsPass(), runs: [...timingsPass().runs, { ...killRun(5, 30), group: "c1: Home, kill", mode: "home", requires_full_text: true }] }, statsOf(lines), config);
+  assert.equal(home.result, "fail");
+  assert.deepEqual(home.unmet, ["run 9 (c1: Home, kill): not restored as expected"]);
 });
 
 /** fs whose readSync records every requested length. */

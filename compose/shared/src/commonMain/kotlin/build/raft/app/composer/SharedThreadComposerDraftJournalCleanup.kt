@@ -5,7 +5,8 @@ import build.raft.app.data.SharedPreferenceStore
 /**
  * One-time removal of the composer draft "crash journal" rows (#4955 / #4987, removed again before
  * any release: artin 2026-11-19). Only internal 1.27 test builds wrote them; no released build did.
- * Drop this object and its call in RaftSharedStoreProvider after 1.28.
+ * Drop this object, its call in RaftSharedStoreProvider and the one in
+ * SharedThreadComposerDraftAccounts.deleteOwner after 1.28.
  *
  * What those builds left in the shared preference store, per account scope (`threadComposerDraft:v1:`
  * unscoped, `threadComposerDraft:v2:<account>:` for each account in [SharedThreadComposerDraftAccountKeys.OwnersKey]):
@@ -39,23 +40,8 @@ internal object SharedThreadComposerDraftJournalCleanup {
             runCatching {
                 val scopes =
                     listOf(SharedThreadComposerDraftPersistence.DraftStoragePrefix) +
-                        lines(base.getString(SharedThreadComposerDraftAccountKeys.OwnersKey))
-                            .map { token -> "${SharedThreadComposerDraftAccountKeys.ScopedPrefix}$token:" }
-                scopes.forEach { scope ->
-                    val indexKey = scope + JournalIndexRow
-                    val draftKeys = lines(base.getString(indexKey)) + lines(base.getString(scope + ActiveIndexRow))
-                    draftKeys.distinct().forEach { draftKey ->
-                        val row = scope + draftKey + JournalRowSuffix
-                        if (base.getString(row) != null) {
-                            base.putString(row, null)
-                            deleted += 1
-                        }
-                    }
-                    if (base.getString(indexKey) != null) {
-                        base.putString(indexKey, null)
-                        deleted += 1
-                    }
-                }
+                        lines(base.getString(SharedThreadComposerDraftAccountKeys.OwnersKey)).map(::accountScope)
+                scopes.forEach { scope -> deleted += deleteScope(base, scope) }
                 base.putString(DoneKey, "1")
             }
         runCatching {
@@ -67,6 +53,33 @@ internal object SharedThreadComposerDraftJournalCleanup {
                         "error=${result.exceptionOrNull()?.let { it::class.simpleName }.orEmpty()}"
                 }
             )
+        }
+        return deleted
+    }
+
+    /** The key prefix of account [storageToken]'s draft rows. */
+    fun accountScope(storageToken: String): String = "${SharedThreadComposerDraftAccountKeys.ScopedPrefix}$storageToken:"
+
+    /**
+     * Deletes the journal rows and the journal index of one scope ([scope]: a key prefix such as
+     * [accountScope]); returns how many keys it deleted. Throws what the store throws. Also called by
+     * the account purge before the account is forgotten, so a cleanup that failed (or has not run yet)
+     * can never leave journal text of a signed-out account behind.
+     */
+    fun deleteScope(base: SharedPreferenceStore, scope: String): Int {
+        var deleted = 0
+        val indexKey = scope + JournalIndexRow
+        val draftKeys = lines(base.getString(indexKey)) + lines(base.getString(scope + ActiveIndexRow))
+        draftKeys.distinct().forEach { draftKey ->
+            val row = scope + draftKey + JournalRowSuffix
+            if (base.getString(row) != null) {
+                base.putString(row, null)
+                deleted += 1
+            }
+        }
+        if (base.getString(indexKey) != null) {
+            base.putString(indexKey, null)
+            deleted += 1
         }
         return deleted
     }

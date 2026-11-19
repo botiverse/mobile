@@ -13,9 +13,10 @@
 //      CLOCK_MONOTONIC on the device. A run is a timing "hit" only when Δ is measured and inside the bucket.
 //      Then the app is relaunched on the same channel and the composer text (UI tree) is compared with the marker.
 //      Pass (artin 2026-11-19: no crash journal, only the 40 ms interval write): the restored text is a prefix of
-//      what was typed and keeps every change older than the write deadline at the kill (WRITE_INTERVAL_MS + the
-//      p95 of the measured draft write time, draft_written costUs) and everything a draft_written line reported
-//      before the kill. Younger text may be lost. Decided at wrap-up (applyWriteDeadline), once the write time is known.
+//      what was typed and keeps every change older than the write deadline at the kill (a fixed WRITE_INTERVAL_MS
+//      40 + WRITE_BUDGET_MS 135 ms) and everything a draft_written line reported before the kill. Younger text may
+//      be lost. Home and wait 1 s must keep the whole text. The measured write latency is reported and gated
+//      against the budget, never used to move the deadline. Decided at wrap-up (applyWriteDeadline).
 //   Buckets D = 0.05 / 0.1 / 0.3 / 0.7 s (round robin), fast typing (3-5 s of keystrokes on the device, then
 //   D = 0.05 / 0.1), and regressions: (a) wait 1 s then kill, (b) send then kill within 0.1 s (composer
 //   empty, the sent text not back as a draft), (c) Home then kill.
@@ -665,9 +666,11 @@ let SCREEN = { w: 1080, h: 2400 };
  *  "send":   full text typed and written; one device-side shell: tap Send, sleep, force-stop;
  *            required window: exit within [0, 100] ms of the tap.
  */
-async function killRun(api, { group, mode, delaySec }) {
+async function killRun(api, { group, mode, delaySec, fullText = false }) {
   runIndex += 1;
   const record = { group, mode, delay_sec: delaySec, run: runIndex };
+  // Home (the flush) and wait 1 s: the whole typed text must survive; the write deadline never excuses a loss.
+  if (fullText) record.requires_full_text = true;
   const runMark = logcatMark();
   try {
     await readyEmptyComposer(api);
@@ -828,7 +831,7 @@ async function killRun(api, { group, mode, delaySec }) {
     record.typed_len = expected.length;
     record.restored_len = seen.length;
     record.restored_is_prefix = expected.startsWith(seen);
-    record.expected_desc = `${describeText(expected)}; may lose changes younger than the write deadline`;
+    record.expected_desc = record.requires_full_text ? describeText(expected) : `${describeText(expected)}; may lose changes younger than the write deadline`;
     record.pass = seen === expected;
     return record;
   } catch (error) {
@@ -986,9 +989,9 @@ async function main() {
     const fastMaxAttempts = Math.max(FAST_RUNS * 3, FAST_RUNS + 5);
     summary.fast_progress = Object.fromEntries(FAST_DELAYS.map((d) => [d, { valid: 0, attempted: 0, max_attempts: fastMaxAttempts }]));
     const fixed = [];
-    fixed.push({ group: "a: wait 1 s", mode: "bucket", delaySec: 1 });
+    fixed.push({ group: "a: wait 1 s", mode: "bucket", delaySec: 1, fullText: true });
     for (let i = 0; i < 5; i += 1) fixed.push({ group: "b: send, kill within 100 ms", mode: "send", delaySec: null, untilHit: true });
-    fixed.push({ group: "c1: Home, kill", mode: "home", delaySec: null });
+    fixed.push({ group: "c1: Home, kill", mode: "home", delaySec: null, fullText: true });
     if (RECENTS) fixed.push({ group: "c2: recents swipe (task removed)", mode: "recents", delaySec: null });
     summary.pending_real_device = PENDING_REAL_DEVICE;
 
@@ -1072,9 +1075,10 @@ async function main() {
       (summary.pending_real_device?.length ? `Pending (real-device round, not run here): ${summary.pending_real_device.join("; ")}.\n\n` : "") +
       (summary.unconfirmed?.length ? `Unconfirmed (no pass without them):\n${summary.unconfirmed.map((u) => `- ${u}`).join("\n")}\n\n` : "") +
       (summary.write_deadline ? `Pass condition: typed text older than the write deadline at the kill survives. Deadline = write interval ${summary.write_deadline.interval_ms} ms ` +
-        `+ write time ${summary.write_deadline.write_time_ms} ms (${summary.write_deadline.basis}) = ${summary.write_deadline.deadline_ms} ms. A change younger than that ` +
+        `+ write budget ${summary.write_deadline.budget_ms} ms = ${summary.write_deadline.deadline_ms} ms (${summary.write_deadline.basis}). A change younger than that ` +
         `(Δ from its change_received to the kill's lower bound) may be lost; an older one, or anything a draft_written line reported before the kill, may not. ` +
-        `The restored text must be a prefix of what was typed. Dispatcher queueing before a write runs is not part of the write time.\n\n` : "") +
+        `Home and wait 1 s must keep the whole text. The restored text must be a prefix of what was typed. Measured this run (reported only, never moves the deadline): ` +
+        `change -> draft_written p95 ${summary.write_deadline.measured_change_to_written_p95_ms ?? "-"} ms (gated at the budget), write cost p95 ${summary.write_deadline.measured_write_cost_p95_us ?? "-"} µs.\n\n` : "") +
       `Exit interval on the device clock (logcat -v monotonic): lower = latest pre-signal line of the run's own kill (AM "Killing" / am_kill "stop <pkg>"; ` +
       `recents swipe: also "remove task"), upper = earliest evidence of death (device-side /proc poll: gone or zombie; am_proc_died; cgroup empty). ` +
       `Exit Δ = interval − last change_received uptimeMs (b: − the send_tap probe logged right before the tap). A sample is valid for a bucket only when ` +

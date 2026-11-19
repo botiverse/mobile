@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { WRITE_INTERVAL_MS, applyWriteDeadline, nearestRank, draftWriteCostStats, parseTimingMessage, requiredLenAtKill, typedBeforeKill, writeDeadline, writePathCounts, writeLatencyStats, analyzeKillRun, measuredBucket, summarizeByMeasuredBucket, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
+import { WRITE_BUDGET_MS, WRITE_INTERVAL_MS, applyWriteDeadline, nearestRank, draftWriteCostStats, parseTimingMessage, requiredLenAtKill, typedBeforeKill, writeDeadline, writePathCounts, writeLatencyStats, analyzeKillRun, measuredBucket, summarizeByMeasuredBucket, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
 
 const PKG = "build.raft.app.alpha";
 const PID = 4242;
@@ -191,12 +191,17 @@ test("percentiles are nearest-rank: rank ceil(q * n), so 1..100 gives p50/p95/p9
   assert.deepEqual([stats.p50_us, stats.p95_us, stats.p99_us, stats.max_us], [50, 95, 99, 100]);
 });
 
-test("the write deadline is the 40 ms interval plus the p95 draft write time, rounded up", () => {
+test("the write deadline is a fixed 40 ms interval plus the 135 ms budget; measurements are only reported", () => {
   assert.equal(WRITE_INTERVAL_MS, 40);
-  assert.deepEqual(writeDeadline({ samples: 20, p95_us: 2300 }), { interval_ms: 40, write_time_ms: 3, deadline_ms: 43, basis: "p95 of 20 draft writes (2300 µs)" });
-  // Not measured: the interval alone, never a looser guess.
-  assert.equal(writeDeadline({ samples: 0, p95_us: null }).deadline_ms, 40);
-  assert.equal(writeDeadline(undefined).deadline_ms, 40);
+  assert.equal(WRITE_BUDGET_MS, 135);
+  const measured = writeDeadline({ samples: 20, p95_ms: 400 }, { samples: 20, p95_us: 90_000 });
+  assert.equal(measured.deadline_ms, 175);
+  assert.equal(measured.measured_change_to_written_p95_ms, 400);
+  assert.equal(measured.measured_write_cost_p95_us, 90_000);
+  // A slow or a fast or a missing measurement never moves it.
+  assert.equal(writeDeadline({ samples: 20, p95_ms: 3 }).deadline_ms, 175);
+  assert.equal(writeDeadline().deadline_ms, 175);
+  assert.equal(writeDeadline().measured_change_to_written_p95_ms, null);
 });
 
 test("what was typed before the kill: the run's own changes with their age, and the longest written text", () => {
@@ -231,9 +236,11 @@ test("required text at the kill: every change older than the deadline and anythi
 });
 
 test("each kill run is decided against the deadline: younger text may be lost, older text and other text never", () => {
-  const changes = [{ len: 5, age_ms: 340 }, { len: 6, age_ms: 30 }];
+  const changes = [{ len: 5, age_ms: 340 }, { len: 6, age_ms: 174 }];
   const summary = {
-    draft_write_cost: { samples: 10, p95_us: 2500 },
+    // A huge measured write time does not widen the 175 ms deadline.
+    write_latency: { samples: 10, p95_ms: 900 },
+    draft_write_cost: { samples: 10, p95_us: 800_000 },
     runs: [
       { run: 1, typed_len: 6, restored_len: 6, restored_is_prefix: true, written_len_before_kill: 6, changes_before_kill: changes, pass: true },
       { run: 2, typed_len: 6, restored_len: 5, restored_is_prefix: true, written_len_before_kill: 5, changes_before_kill: changes, pass: false },
@@ -242,12 +249,17 @@ test("each kill run is decided against the deadline: younger text may be lost, o
       { run: 5, typed_len: 6, restored_len: 6, restored_is_prefix: false, written_len_before_kill: 6, changes_before_kill: changes, pass: false },
       { run: 6, typed_len: 6, restored_len: 5, restored_is_prefix: true, written_len_before_kill: 5, changes_before_kill: null, pass: false },
       { run: 7, mode: "send", pass: true },
+      // Home / wait 1 s: the whole text, even when the lost change is younger than the deadline.
+      { run: 8, mode: "home", requires_full_text: true, typed_len: 6, restored_len: 5, restored_is_prefix: true, written_len_before_kill: 5, changes_before_kill: changes, pass: false },
+      { run: 9, mode: "home", requires_full_text: true, typed_len: 6, restored_len: 6, restored_is_prefix: true, written_len_before_kill: 6, changes_before_kill: changes, pass: true },
     ],
   };
-  assert.deepEqual(applyWriteDeadline(summary), { interval_ms: 40, write_time_ms: 3, deadline_ms: 43, basis: "p95 of 10 draft writes (2500 µs)" });
-  assert.deepEqual(summary.runs.map((r) => r.pass), [true, true, false, false, false, false, true]);
-  assert.equal(summary.runs[1].survival, "lost 1 char(s) younger than 43 ms");
-  assert.match(summary.runs[2].survival, /lost text older than 43 ms \(kept len 5, required 6\)/);
+  assert.equal(applyWriteDeadline(summary).deadline_ms, 175);
+  assert.deepEqual(summary.runs.map((r) => r.pass), [true, true, false, false, false, false, true, false, true]);
+  assert.equal(summary.runs[1].survival, "lost 1 char(s) younger than 175 ms");
+  assert.match(summary.runs[2].survival, /lost text older than 175 ms \(kept len 5, required 6\)/);
+  assert.equal(summary.runs[7].survival, "lost text where the whole text is required (kept len 5 of 6)");
+  assert.equal(summary.runs[7].required_len, 6);
   assert.match(summary.runs[3].survival, /required 5/);
   assert.equal(summary.runs[4].survival, "restored text is not what was typed");
   assert.equal(summary.runs[6].required_len, undefined);

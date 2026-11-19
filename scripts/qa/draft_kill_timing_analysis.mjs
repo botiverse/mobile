@@ -3,7 +3,7 @@
 // app process was killed, and whether that text was already in the durable draft.
 //
 // Pass condition (artin 2026-11-19, no crash journal): typed text older than the write interval plus the
-// write time survives a kill. The composer writes typed text at once after a quiet period and at most every
+// write-time budget (a fixed 40 + 135 ms, see WRITE_BUDGET_MS) survives a kill; Home and wait-1 s keep all of it. The composer writes typed text at once after a quiet period and at most every
 // WRITE_INTERVAL_MS while typing; a change younger than that deadline at the kill may be lost, never an older one.
 //
 // Clock: logcat `-v monotonic` prints CLOCK_MONOTONIC seconds; the app's `RaftDraftTiming` lines carry
@@ -33,6 +33,17 @@ export function parseTimingMessage(message) {
 
 /** The composer's typed-text write interval (SharedThreadComposerDraftPersistSlice DefaultChangeWriteIntervalMillis). */
 export const WRITE_INTERVAL_MS = 40;
+
+/**
+ * Write-time budget, fixed (never taken from the run being judged). Source: the emulator draft-kill runs
+ * behind #4955 (Actions run 44215854224) measured change_received -> draft_written at p50 20-30 ms and p95
+ * 100-135 ms, max 341 ms. That latency is the whole path: dispatch to Dispatchers.Default, queueing, the
+ * locks and the store write. The budget is the top of that measured p95 range. So a run's change->written
+ * p95 above it is an unmet condition of its own (the device or the code got slower than the budget
+ * assumes). Kills between the deadline and the measured max (341 ms) can still legitimately lose text
+ * about 5% of the time; such a loss fails the run and is reported, not excused.
+ */
+export const WRITE_BUDGET_MS = 135;
 
 /** How typed-text writes were made: counts of draft_written by path, and of synchronous-write fallbacks. */
 export function writePathCounts(lines) {
@@ -291,14 +302,18 @@ export function requiredLenAtKill(run, deadlineMs) {
 }
 
 /**
- * The write deadline from the run's measured draft writes: WRITE_INTERVAL_MS plus the p95 of the draft
- * write's own time (draft_written costUs, every path), rounded up to whole ms. No samples: the interval
- * alone (stricter, and the missing measurement is an unmet condition of its own).
+ * The write deadline: WRITE_INTERVAL_MS + WRITE_BUDGET_MS, a constant. The run's measured values are only
+ * reported next to it ([writeLatency]: change -> draft_written; [draftWriteCost]: the write's own costUs).
  */
-export function writeDeadline(draftWriteCost) {
-  const p95 = draftWriteCost?.samples ? draftWriteCost.p95_us : null;
-  const writeMs = p95 == null ? 0 : Math.ceil(p95 / 1000);
-  return { interval_ms: WRITE_INTERVAL_MS, write_time_ms: writeMs, deadline_ms: WRITE_INTERVAL_MS + writeMs, basis: p95 == null ? "no draft write cost samples: interval only" : `p95 of ${draftWriteCost.samples} draft writes (${p95} µs)` };
+export function writeDeadline(writeLatency = null, draftWriteCost = null) {
+  return {
+    interval_ms: WRITE_INTERVAL_MS,
+    budget_ms: WRITE_BUDGET_MS,
+    deadline_ms: WRITE_INTERVAL_MS + WRITE_BUDGET_MS,
+    basis: "fixed: 40 ms write interval + 135 ms budget (top of the p95 change->written latency measured on the emulator for #4955)",
+    measured_change_to_written_p95_ms: writeLatency?.samples ? writeLatency.p95_ms : null,
+    measured_write_cost_p95_us: draftWriteCost?.samples ? draftWriteCost.p95_us : null,
+  };
 }
 
 /**
@@ -307,11 +322,12 @@ export function writeDeadline(draftWriteCost) {
  * required length (requiredLenAtKill). Text younger than the deadline may be lost; older text never.
  */
 export function applyWriteDeadline(summary) {
-  const deadline = writeDeadline(summary.draft_write_cost);
+  const deadline = writeDeadline(summary.write_latency, summary.draft_write_cost);
   summary.write_deadline = deadline;
   for (const run of summary.runs ?? []) {
     if (run.restored_len == null || run.typed_len == null) continue;
-    run.required_len = requiredLenAtKill(run, deadline.deadline_ms);
+    // Home (flush) and wait 1 s: the whole text must survive, never excused by the deadline.
+    run.required_len = run.requires_full_text ? run.typed_len : requiredLenAtKill(run, deadline.deadline_ms);
     run.lost_chars = run.typed_len - run.restored_len;
     if (!run.restored_is_prefix) {
       run.pass = false;
@@ -319,6 +335,9 @@ export function applyWriteDeadline(summary) {
     } else if (run.restored_len >= run.required_len) {
       run.pass = true;
       run.survival = run.restored_len === run.typed_len ? "all typed text kept" : `lost ${run.lost_chars} char(s) younger than ${deadline.deadline_ms} ms`;
+    } else if (run.requires_full_text) {
+      run.pass = false;
+      run.survival = `lost text where the whole text is required (kept len ${run.restored_len} of ${run.typed_len})`;
     } else {
       run.pass = false;
       run.survival = `lost text older than ${deadline.deadline_ms} ms (kept len ${run.restored_len}, required ${run.required_len})`;
@@ -489,7 +508,8 @@ export function acceptanceUnmet(summary, config) {
   const fast = summary.runs.filter((r) => r.mode === "fast");
   if (fast.some((r) => !r.typing_in_3_to_5_s)) unmet.push(`fast typing outside 3-5 s: ${fast.filter((r) => !r.typing_in_3_to_5_s).map((r) => `${r.typing_span_ms ?? "?"} ms`).join(", ")}`);
   if (!summary.runs.some((r) => r.mode === "send" && r.timing === "hit" && r.pass)) unmet.push("send regression: no attempt with the exit inside [0, 100] ms of the tap and the message delivered");
-  if (!summary.draft_write_cost?.samples) unmet.push("no draft_written costUs lines: the draft write time was not measured");
+  if (!summary.write_latency?.samples) unmet.push("no change_received -> draft_written pairs: the write latency was not measured");
+  else if (summary.write_latency.p95_ms > WRITE_BUDGET_MS) unmet.push(`change -> draft_written p95 ${summary.write_latency.p95_ms} ms exceeds the ${WRITE_BUDGET_MS} ms write budget`);
   if (!summary.apk || summary.apk.file_sha256 !== summary.apk.installed_base_apk_sha256) unmet.push("installed base.apk SHA-256 differs from the downloaded APK (or was not read)");
   if (summary.apk?.downloaded_sha256_from_workflow && summary.apk.downloaded_sha256_from_workflow !== summary.apk.file_sha256) unmet.push("APK SHA-256 differs from the one the workflow downloaded");
   if (env.REQUIRE_COMMIT && !["identical", "ahead"].includes(env.REQUIRE_COMMIT_STATUS ?? "")) unmet.push(`APK source ${env.APK_SOURCE_SHA} does not contain ${env.REQUIRE_COMMIT} (compare: ${env.REQUIRE_COMMIT_STATUS || "unavailable"})`);

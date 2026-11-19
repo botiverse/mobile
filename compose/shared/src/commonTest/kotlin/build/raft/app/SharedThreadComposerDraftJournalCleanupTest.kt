@@ -125,6 +125,39 @@ class SharedThreadComposerDraftJournalCleanupTest {
         assertEquals("1", base.getString(SharedThreadComposerDraftJournalCleanup.DoneKey))
     }
 
+    /** Removable after 1.28 with SharedThreadComposerDraftJournalCleanup. */
+    @Test
+    fun signingOutDeletesThatAccountsJournalEvenWhenTheCleanupHasNotRun() {
+        val base = InMemoryRaftKeyValueStore()
+        var live: SharedThreadComposerDraftAccount? = accountA
+        val view = SharedThreadComposerDraftAccountStore(base, liveAccount = { live })
+        val persistence = SharedThreadComposerDraftPersistence(view)
+        val slice = SharedThreadComposerDraftPersistSlice(persistence)
+        val accounts = SharedThreadComposerDraftAccounts(base = base, store = view, persistenceFor = { SharedThreadComposerDraftPersistence(it) })
+        accounts.onAccountBinding(accountA, slice)
+        persistence.save(key = draftOne, text = "A's draft", asTask = false)
+        leftovers(base)
+        // The one-time cleanup failed (or never ran): no done marker, rows still there.
+        assertNull(base.getString(SharedThreadComposerDraftJournalCleanup.DoneKey))
+
+        live = null
+        accounts.onAccountBinding(null, slice)
+
+        listOf(
+            "${scope(accountA)}journalKeys",
+            "${scope(accountA)}$draftOne:journal",
+            "${scope(accountA)}$draftTwo:journal",
+            "${scope(accountA)}send=channel-3|parent=_|mention=channel-3:journal",
+        ).forEach { key -> assertNull(base.getString(key), key) }
+        // A's drafts went with the session as before; the cleanup itself has still not run.
+        assertNull(base.getString("${scope(accountA)}$draftOne:text"))
+        assertNull(base.getString(SharedThreadComposerDraftJournalCleanup.DoneKey))
+        // Every account in the owners list was purged with its journal (B's index too); only the
+        // unscoped v1 index and row are left for the cleanup.
+        assertNull(base.getString("${scope(accountB)}journalKeys"))
+        assertEquals(2, SharedThreadComposerDraftJournalCleanup.runOnce(base))
+    }
+
     private class RecordingStore(private val inner: SharedPreferenceStore) : SharedPreferenceStore {
         val reads = mutableListOf<String>()
         val writes = mutableListOf<String>()
