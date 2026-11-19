@@ -80,6 +80,8 @@ internal data class RuntimeFormV2Source(
     /** Why the source is not live; may be a reason this client does not know. */
     val reason: String? = null,
     val retryable: Boolean? = null,
+    /** `OptionSource.state`: "stale" when the list is the Computer's last one (it did not answer in time). */
+    val state: String? = null,
     /**
      * `OptionSource.unavailableOptions`: options that exist but cannot be picked now (models the
      * Computer's runtime listed as disabled; on v3 also saved connections that are not selectable).
@@ -105,7 +107,12 @@ internal data class RuntimeFormV2UnavailableChoice(
 internal data class RuntimeFormV2SourceStatus(
     val unavailable: Boolean,
     val reason: String?,
-    val retryable: Boolean
+    val retryable: Boolean,
+    /**
+     * `OptionSource.state: "stale"`: the Computer did not answer in time and the list is its last one;
+     * the status line says so instead of the reason (slock v2State `stale`).
+     */
+    val stale: Boolean = false
 )
 
 internal typealias RuntimeFormV2Sources = Map<String, RuntimeFormV2Source>
@@ -176,6 +183,7 @@ internal fun parseRuntimeFormV2Source(value: JsonElement): RuntimeFormV2Source? 
         status = root["status"].stringOrNull(),
         reason = root["reason"].stringOrNull()?.takeIf { it.isNotEmpty() },
         retryable = (root["retryable"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull,
+        state = root["state"].stringOrNull(),
         unavailableOptions = (root["unavailableOptions"] as? JsonArray)?.mapNotNull { option ->
             val obj = option as? JsonObject ?: return@mapNotNull null
             val optionValue = obj["value"].stringOrNull() ?: return@mapNotNull null
@@ -511,7 +519,7 @@ internal fun runtimeFormV2SourceStatus(field: RuntimeFormV2Field, sources: Runti
         "fallback" -> false
         else -> return null
     }
-    return RuntimeFormV2SourceStatus(unavailable, source.reason, source.retryable == true)
+    return RuntimeFormV2SourceStatus(unavailable, source.reason, source.retryable == true, stale = source.state == "stale")
 }
 
 /**

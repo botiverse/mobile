@@ -3804,11 +3804,11 @@
     <string name="markdown_mermaid_copy_source">ソースをコピー</string>
     <string name="markdown_mermaid_fullscreen">全画面</string>
     <string name="markdown_mermaid_close_fullscreen">全画面を閉じる</string>
-    <string name="runtime_form_v2_update_required">この設定を編集するにはアプリを更新してください。</string>
+    <string name="runtime_form_v2_update_required">この設定を編集するには Raft をアップデートしてください。</string>
     <string name="runtime_form_v2_update_required_blocking">このエージェントの変更を保存するにはアプリを更新してください。</string>
-    <string name="runtime_form_v2_error_required">必須項目です</string>
-    <string name="runtime_form_v2_error_invalid_url">http:// または https:// で始まる URL を入力してください</string>
-    <string name="runtime_form_v2_error_not_a_choice">選択肢から選んでください</string>
+    <string name="runtime_form_v2_error_required">この項目は必須です。</string>
+    <string name="runtime_form_v2_error_invalid_url">ベース URL は http:// または https:// で始まる必要があります。</string>
+    <string name="runtime_form_v2_error_not_a_choice">利用可能な選択肢から選択してください。</string>
     <string name="runtime_form_v2_error_rejected">サーバーがこの値を受け付けませんでした</string>
     <string name="runtime_form_v2_error_secret_reentry_required">API キーは変更した保存済みの設定に紐づいています。新しいキーを入力してください。</string>
     <string name="runtime_form_v2_option_default">デフォルト</string>
@@ -3822,6 +3822,7 @@
     <string name="runtime_form_v2_unavailable">ランタイム設定を利用できません。</string>
     <string name="runtime_form_v2_source_refresh_failed">一覧を更新できませんでした。前回の選択肢を表示しています。</string>
     <string name="runtime_form_v2_source_status_fallback">代わりに標準の一覧を表示しています。</string>
+    <string name="runtime_form_v2_source_status_stale">このコンピューターが時間内に応答しなかったため、選択肢が最新でない可能性があります。</string>
     <string name="runtime_form_v2_source_status_probe_timeout">この Computer が選択肢を一覧表示するのに時間がかかりすぎました。</string>
     <string name="runtime_form_v2_source_status_probe_failed">この Computer は選択肢を一覧表示できませんでした。</string>
     <string name="runtime_form_v2_source_status_missing_config">選択肢を一覧表示するには、この Computer でこのランタイムを設定する必要があります。</string>

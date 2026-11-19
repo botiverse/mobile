@@ -3633,11 +3633,11 @@
     <string name="markdown_mermaid_copy_source">소스 복사</string>
     <string name="markdown_mermaid_fullscreen">전체 화면</string>
     <string name="markdown_mermaid_close_fullscreen">전체 화면 닫기</string>
-    <string name="runtime_form_v2_update_required">이 설정을 편집하려면 앱을 업데이트하세요.</string>
+    <string name="runtime_form_v2_update_required">이 설정을 편집하려면 Raft를 업데이트해 주세요.</string>
     <string name="runtime_form_v2_update_required_blocking">이 에이전트의 변경 사항을 저장하려면 앱을 업데이트하세요.</string>
-    <string name="runtime_form_v2_error_required">필수 항목이에요</string>
-    <string name="runtime_form_v2_error_invalid_url">http:// 또는 https://로 시작하는 URL을 입력하세요</string>
-    <string name="runtime_form_v2_error_not_a_choice">옵션 중 하나를 선택하세요</string>
+    <string name="runtime_form_v2_error_required">필수 항목이에요.</string>
+    <string name="runtime_form_v2_error_invalid_url">Base URL은 http:// 또는 https://로 시작해야 해요.</string>
+    <string name="runtime_form_v2_error_not_a_choice">사용 가능한 옵션 중에서 선택해 주세요.</string>
     <string name="runtime_form_v2_error_rejected">서버가 이 값을 거부했어요</string>
     <string name="runtime_form_v2_error_secret_reentry_required">이 API 키는 변경한 저장 설정에 연결되어 있어요. 새 API 키를 입력해 주세요.</string>
     <string name="runtime_form_v2_option_default">기본값</string>
@@ -3651,6 +3651,7 @@
     <string name="runtime_form_v2_unavailable">런타임 설정을 사용할 수 없어요.</string>
     <string name="runtime_form_v2_source_refresh_failed">이 목록을 새로고침하지 못했어요. 이전 옵션을 표시하고 있어요.</string>
     <string name="runtime_form_v2_source_status_fallback">대신 표준 목록을 표시하고 있어요.</string>
+    <string name="runtime_form_v2_source_status_stale">이 컴퓨터가 제시간에 응답하지 않아 옵션이 최신이 아닐 수 있어요.</string>
     <string name="runtime_form_v2_source_status_probe_timeout">이 컴퓨터에서 옵션 목록을 가져오는 데 시간이 너무 오래 걸렸어요.</string>
     <string name="runtime_form_v2_source_status_probe_failed">이 컴퓨터에서 옵션 목록을 가져오지 못했어요.</string>
     <string name="runtime_form_v2_source_status_missing_config">옵션 목록을 가져오려면 먼저 이 컴퓨터에서 이 런타임을 설정해야 해요.</string>

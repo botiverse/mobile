@@ -3633,11 +3633,11 @@
     <string name="markdown_mermaid_copy_source">Copiar código-fonte</string>
     <string name="markdown_mermaid_fullscreen">Tela cheia</string>
     <string name="markdown_mermaid_close_fullscreen">Sair da tela cheia</string>
-    <string name="runtime_form_v2_update_required">Atualize o app para editar esta configuração.</string>
+    <string name="runtime_form_v2_update_required">Atualize o Raft para editar esta configuração.</string>
     <string name="runtime_form_v2_update_required_blocking">Atualize o app para salvar as alterações deste agente.</string>
-    <string name="runtime_form_v2_error_required">Obrigatório</string>
-    <string name="runtime_form_v2_error_invalid_url">Insira uma URL que comece com http:// ou https://</string>
-    <string name="runtime_form_v2_error_not_a_choice">Escolha uma das opções</string>
+    <string name="runtime_form_v2_error_required">Este campo é obrigatório.</string>
+    <string name="runtime_form_v2_error_invalid_url">A URL base deve começar com http:// ou https://.</string>
+    <string name="runtime_form_v2_error_not_a_choice">Escolha uma das opções disponíveis.</string>
     <string name="runtime_form_v2_error_rejected">O servidor rejeitou este valor</string>
     <string name="runtime_form_v2_error_secret_reentry_required">A chave de API está vinculada às configurações salvas que você alterou. Insira uma nova.</string>
     <string name="runtime_form_v2_option_default">Padrão</string>
@@ -3651,6 +3651,7 @@
     <string name="runtime_form_v2_unavailable">A configuração do runtime não está disponível.</string>
     <string name="runtime_form_v2_source_refresh_failed">Não foi possível atualizar esta lista. Mostrando as opções anteriores.</string>
     <string name="runtime_form_v2_source_status_fallback">Exibindo a lista padrão como alternativa.</string>
+    <string name="runtime_form_v2_source_status_stale">Este computador não respondeu a tempo, então estas opções podem estar desatualizadas.</string>
     <string name="runtime_form_v2_source_status_probe_timeout">Este computador demorou demais para listar as opções.</string>
     <string name="runtime_form_v2_source_status_probe_failed">Este computador não conseguiu listar as opções.</string>
     <string name="runtime_form_v2_source_status_missing_config">Este runtime precisa ser configurado neste computador antes de listar as opções.</string>

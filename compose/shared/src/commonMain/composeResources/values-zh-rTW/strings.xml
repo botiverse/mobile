@@ -3633,11 +3633,11 @@
     <string name="markdown_mermaid_copy_source">複製原始碼</string>
     <string name="markdown_mermaid_fullscreen">全螢幕</string>
     <string name="markdown_mermaid_close_fullscreen">結束全螢幕</string>
-    <string name="runtime_form_v2_update_required">請更新 App 以編輯此設定。</string>
+    <string name="runtime_form_v2_update_required">請更新 Raft 後再編輯此設定。</string>
     <string name="runtime_form_v2_update_required_blocking">請更新 App 後再儲存此 Agent 的變更。</string>
-    <string name="runtime_form_v2_error_required">必填</string>
-    <string name="runtime_form_v2_error_invalid_url">請輸入以 http:// 或 https:// 開頭的網址</string>
-    <string name="runtime_form_v2_error_not_a_choice">請從選項中選擇一項</string>
+    <string name="runtime_form_v2_error_required">此欄位為必填。</string>
+    <string name="runtime_form_v2_error_invalid_url">Base URL 必須以 http:// 或 https:// 開頭。</string>
+    <string name="runtime_form_v2_error_not_a_choice">請從可用的選項中選擇。</string>
     <string name="runtime_form_v2_error_rejected">伺服器不接受此值</string>
     <string name="runtime_form_v2_error_secret_reentry_required">API 金鑰與你變更的已儲存設定綁定，請輸入新的金鑰。</string>
     <string name="runtime_form_v2_option_default">預設</string>
@@ -3651,6 +3651,7 @@
     <string name="runtime_form_v2_unavailable">無法取得執行環境設定。</string>
     <string name="runtime_form_v2_source_refresh_failed">無法重新整理此清單，仍顯示先前的選項。</string>
     <string name="runtime_form_v2_source_status_fallback">已改為顯示標準清單。</string>
+    <string name="runtime_form_v2_source_status_stale">這台電腦未能及時回應，選項可能不是最新的。</string>
     <string name="runtime_form_v2_source_status_probe_timeout">這台電腦列出選項的時間過長。</string>
     <string name="runtime_form_v2_source_status_probe_failed">這台電腦無法列出選項。</string>
     <string name="runtime_form_v2_source_status_missing_config">必須先在這台電腦上設定此執行環境，才能列出選項。</string>
