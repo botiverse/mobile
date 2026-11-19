@@ -184,9 +184,11 @@ internal fun raftEnvironmentIndicatorEnvironmentStoreOrNull(
 internal fun raftEnvironmentIndicatorLabel(
     environment: SharedSettingsApiEnvironmentOption,
 ): String? {
-    val productionApiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl.normalizedEnvironmentBaseUrl()
-    if (environment.apiBaseUrl.normalizedEnvironmentBaseUrl() == productionApiBaseUrl) return null
-    return environment.label.trim().takeIf(String::isNotEmpty)
+    // Only the Raft staging server shows the floating label (artin 2026-11-19): production and
+    // self-hosted / custom servers (private deployments, local dev) never show it.
+    val stagingApiBaseUrl = SharedApiEnvironmentStore.Staging.apiBaseUrl.normalizedEnvironmentBaseUrl()
+    if (environment.apiBaseUrl.normalizedEnvironmentBaseUrl() != stagingApiBaseUrl) return null
+    return environment.label.trim().takeIf(String::isNotEmpty) ?: SharedApiEnvironmentStore.Staging.label
 }
 
 private fun String.normalizedEnvironmentBaseUrl(): String = trim().trimEnd('/')
