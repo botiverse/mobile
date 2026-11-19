@@ -31,10 +31,8 @@ import androidx.compose.ui.platform.InspectorInfo
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Stable
-internal class DetachSafeLazyListPrefetchStrategy(
-    private val newDelegate: () -> LazyListPrefetchStrategy = { LazyListPrefetchStrategy() },
-) : LazyListPrefetchStrategy {
-    private var delegate: LazyListPrefetchStrategy = newDelegate()
+internal class DetachSafeLazyListPrefetchStrategy : LazyListPrefetchStrategy {
+    private var delegate: LazyListPrefetchStrategy = LazyListPrefetchStrategy()
 
     /** Times a detached layout's pending prefetch was dropped; tests read it. */
     var droppedLayouts: Int = 0
@@ -42,7 +40,7 @@ internal class DetachSafeLazyListPrefetchStrategy(
 
     /** The LazyColumn this state drove left its owner: forget its prefetch without cancelling it. */
     fun onLayoutDetached() {
-        delegate = newDelegate()
+        delegate = LazyListPrefetchStrategy()
         droppedLayouts += 1
     }
 
