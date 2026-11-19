@@ -298,7 +298,7 @@ class SecondFactorPasskeyStepUpCoordinatorTest {
         }
         val passkeyOnlyHarness = Harness(optionsResult = rpUnavailable, rpGroup = SECOND_FACTOR_PASSKEY_RP_CURRENT, webUrl = resolver)
         val webOutcome =
-            async { passkeyOnlyHarness.coordinator.run(SecondFactorStepUpWebTarget.Computers, ScriptedAction(refusal(passkeyOnly))::invoke) }
+            async { passkeyOnlyHarness.coordinator.run(SecondFactorStepUpWebTarget.Computers, request = ScriptedAction(refusal(passkeyOnly))::invoke) }
         runCurrent()
         assertFalse(assertNotNull(passkeyOnlyHarness.coordinator.state.value).opensOnWeb, "Use passkey first")
         passkeyOnlyHarness.coordinator.accept(SecondFactorStepUpIntent.Submit)
