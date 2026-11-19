@@ -44,7 +44,7 @@ jobs:
   qa-infra:
     name: Frozen artifact and reporter contracts
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -68,9 +68,21 @@ jobs:
           python3 scripts/qa/check_release_acceptance_cases.py
           python3 scripts/qa/check_release_acceptance_cases.py --emit-plan > /tmp/release-acceptance-plan.json
       - name: Check shell syntax
-        run: bash -n scripts/qa/stamp_report.sh scripts/qa/prepare_pinned_ios_app.sh scripts/sign_android_apk_with_rotation.sh scripts/test_sign_android_apk_with_rotation.sh scripts/test_hands_identifier_migration.sh scripts/verify_android_apk_with_rotation.sh
+        run: bash -n scripts/qa/stamp_report.sh scripts/qa/prepare_pinned_ios_app.sh scripts/sign_android_apk_with_rotation.sh scripts/test_sign_android_apk_with_rotation.sh scripts/test_hands_identifier_migration.sh scripts/verify_android_apk_with_rotation.sh scripts/qa/test_app_identity_apk_signer.sh
       - name: Check rotated Android APK signing contract
         run: scripts/test_sign_android_apk_with_rotation.sh
+      - name: Setup JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "build-tools;36.0.0"
+      - name: Check identity receipt signer selection on real signed APKs
+        # Four rotation policies x six released SDKs, signed with fresh keys (build-tools 36.0.0).
+        run: scripts/qa/test_app_identity_apk_signer.sh
       - name: Check Hands identifier migration contract
         run: scripts/test_hands_identifier_migration.sh
       - name: Check patch whitespace

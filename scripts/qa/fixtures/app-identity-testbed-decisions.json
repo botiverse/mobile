@@ -1,0 +1,14 @@
+{
+  "source": "Testbed private decision contract (release-target-decision.md, Testbed master 60d111b2): the job's private reply has state, attempt_id, request_id; the public summary only state. Synthetic replies for the pairing vector's attempt.",
+  "attempt_id": "pla_0123456789abcdef0123456789abcdef",
+  "request_id": "fefefefefefefefefefefefefefefefe",
+  "replies": {
+    "matched": { "state": "matched", "attempt_id": "pla_0123456789abcdef0123456789abcdef", "request_id": "fefefefefefefefefefefefefefefefe" },
+    "awaiting_confirmation": { "state": "awaiting_confirmation", "attempt_id": "pla_0123456789abcdef0123456789abcdef", "request_id": "fefefefefefefefefefefefefefefefe" },
+    "identity_mismatch": { "state": "identity_mismatch", "attempt_id": "pla_0123456789abcdef0123456789abcdef", "request_id": "fefefefefefefefefefefefefefefefe" },
+    "unknown": { "state": "unknown", "attempt_id": "pla_0123456789abcdef0123456789abcdef", "request_id": "fefefefefefefefefefefefefefefefe" },
+    "matched_other_attempt": { "state": "matched", "attempt_id": "pla_ffffffffffffffffffffffffffffffff", "request_id": "fefefefefefefefefefefefefefefefe" },
+    "matched_other_request": { "state": "matched", "attempt_id": "pla_0123456789abcdef0123456789abcdef", "request_id": "00000000000000000000000000000000" },
+    "unrecognised_state": { "state": "ok", "attempt_id": "pla_0123456789abcdef0123456789abcdef", "request_id": "fefefefefefefefefefefefefefefefe" }
+  }
+}

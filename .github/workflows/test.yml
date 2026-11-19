@@ -557,6 +557,10 @@ jobs:
             :androidApp:compileDebugUnitTestKotlin
             :ui-cmp:compileAndroidHostTest
             :designsystem:compileTestKotlinDesktop
+            # App identity receipt: the store variants' merged manifests declare
+            # AppIdentityReceiptProvider disabled + DUMP-protected (manifest merge only, no R8).
+            :androidApp:verifyReleaseIdentityReceiptProvider
+            :androidApp:verifyPlayIdentityReceiptProvider
           )
           compile=("${tasks[@]}")
           if [ "$BUILD_CONNECTED_APKS" = true ]; then

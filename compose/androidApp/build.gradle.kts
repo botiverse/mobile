@@ -406,6 +406,56 @@ data class OssLicenseEntry(
     val sourceUrl: String?
 )
 
+/**
+ * App identity receipt (AppIdentityReceiptProvider): a store variant's MERGED manifest must declare
+ * the provider disabled, exported only for `adb shell content call`, DUMP-protected, with the
+ * expected authority and no intent filter; and the QA session bootstrap entry points must stay
+ * behind `@bool/qa_session_bootstrap_enabled` (false outside alpha/connectedTest).
+ */
+abstract class VerifyIdentityReceiptProviderTask : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val mergedManifest: RegularFileProperty
+
+    @get:Input
+    abstract val expectedAuthority: Property<String>
+
+    @get:OutputFile
+    abstract val report: RegularFileProperty
+
+    @TaskAction
+    fun verify() {
+        val file = mergedManifest.get().asFile
+        val root = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = false }.newDocumentBuilder().parse(file).documentElement
+        fun components(tag: String) = root.getElementsByTagName(tag).let { list -> (0 until list.length).map { list.item(it) as Element } }
+        val provider =
+            components("provider").singleOrNull { it.getAttribute("android:name") == "build.raft.app.core.data.auth.AppIdentityReceiptProvider" }
+                ?: throw GradleException("${file.path}: AppIdentityReceiptProvider is not declared exactly once")
+        val expected =
+            mapOf(
+                "android:enabled" to "false",
+                "android:exported" to "true",
+                "android:permission" to "android.permission.DUMP",
+                "android:multiprocess" to "false",
+                "android:authorities" to expectedAuthority.get()
+            )
+        for ((attribute, value) in expected) {
+            val actual = provider.getAttribute(attribute)
+            if (actual != value) throw GradleException("${file.path}: AppIdentityReceiptProvider $attribute=\"$actual\", expected \"$value\"")
+        }
+        if (provider.getElementsByTagName("intent-filter").length != 0) throw GradleException("${file.path}: AppIdentityReceiptProvider must have no intent filter")
+        val qaGate = "@bool/qa_session_bootstrap_enabled"
+        for ((tag, name) in listOf("activity" to "build.raft.app.core.data.auth.QaSessionBootstrapActivity", "receiver" to "build.raft.app.core.data.auth.QaCaptureBoundaryReceiver")) {
+            val component = components(tag).singleOrNull { it.getAttribute("android:name") == name } ?: continue
+            for (attribute in listOf("android:enabled", "android:exported")) {
+                val actual = component.getAttribute(attribute)
+                if (actual != qaGate && actual != "false") throw GradleException("${file.path}: $name $attribute=\"$actual\" must stay $qaGate or false")
+            }
+        }
+        report.get().asFile.writeText("${file.name}: AppIdentityReceiptProvider disabled, DUMP, ${expectedAuthority.get()}; QA bootstrap gated\n")
+    }
+}
+
 abstract class GenerateOssLicensesTask : DefaultTask() {
     @get:Input
     abstract val sourceConfigurations: ListProperty<String>
@@ -755,6 +805,27 @@ androidComponents {
             layout.buildDirectory.dir("generated/assets/ossLicenses/main").get().asFile.absolutePath
         )
     }
+    // Store variants: the identity receipt provider ships disabled + DUMP-protected (merged manifest).
+    onVariants(selector().withBuildType("release")) { variant -> registerIdentityReceiptProviderCheck(variant) }
+    onVariants(selector().withBuildType("play")) { variant -> registerIdentityReceiptProviderCheck(variant) }
+}
+
+fun registerIdentityReceiptProviderCheck(variant: com.android.build.api.variant.ApplicationVariant) {
+    val suffix = variant.name.replaceFirstChar { it.uppercase() }
+    tasks.register("verify${suffix}IdentityReceiptProvider", VerifyIdentityReceiptProviderTask::class.java) {
+        group = "verification"
+        description = "Checks the ${variant.name} merged manifest declares AppIdentityReceiptProvider disabled and DUMP-protected."
+        mergedManifest.set(variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.MERGED_MANIFEST))
+        expectedAuthority.set(variant.applicationId.map { "$it.identity-receipt" })
+        report.set(layout.buildDirectory.file("reports/identityReceiptProvider/${variant.name}.txt"))
+    }
+}
+
+tasks.matching { it.name in setOf("assembleRelease", "bundleRelease") }.configureEach {
+    dependsOn("verifyReleaseIdentityReceiptProvider")
+}
+tasks.matching { it.name in setOf("assemblePlay", "bundlePlay") }.configureEach {
+    dependsOn("verifyPlayIdentityReceiptProvider")
 }
 
 val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::class) {

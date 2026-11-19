@@ -32,8 +32,21 @@
 //     [--strict-cleanup] [--revoke-app-session] [--keep-capture-browser]
 //     [--scenario scripts/qa/scenarios/<name>.mjs [its options, e.g. --server-name X]]
 //   (or --credential-file <testbed qa-account get --out file>)
+//   [--identity-receipt]  with QA_ATTEMPT_ID / QA_ATTEMPT_NONCE (Testbed's attempt) and optionally
+//     QA_EXPECTED_USER_REF / QA_EXPECTED_SERVER_REF, optionally Testbed's pairing salt in the file
+//     QA_PAIRING_SALT_FILE (never argv/env value), and QA_IDENTITY_PRIVATE_OUT (a fresh 0600 file
+//     outside --out that alone receives the complete receipt and OS facts): before any account is
+//     used, check the build has the app identity receipt provider (fail "this build does not
+//     support the identity receipt" otherwise) and `pm enable` it; until Testbed answers "matched"
+//     nothing is captured, the UI tree is read only transiently and failures quote no screen text;
+//     after sign-in ask the provider once, cross-check it with dumpsys and the installed APK
+//     (AppIdentityApkSigner.java), and publish only check statuses + Testbed's state in
+//     summary.json `identity_receipt`; `pm disable` it in cleanup (a failed disable is an
+//     ::error:: and a non-zero exit). scripts/qa/app_identity_receipt_lib.mjs.
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
 import {
   ENVIRONMENTS,
@@ -47,7 +60,27 @@ import {
   validateCallbackUrl,
   validateCapturedLoginUrl,
 } from "./release_auto_login_lib.mjs";
+import {
+  UnsupportedBuildError,
+  afterSignIn,
+  APKSIG_BUILD_TOOLS,
+  PRIVATE_RECEIPT_KEYS,
+  apkSignerInspectorArgs,
+  createCaptureGate,
+  createIdentityReceiptRunner,
+  guardedCapture,
+  runIdentityGate,
+  disableFailureAnnotation,
+  fileSha256,
+  newReceiptRequest,
+  parseApkSignerInspector,
+  privateOutPath,
+  publicIdentitySummary,
+  readPairingSaltFile,
+  writePrivateReceipt,
+} from "./app_identity_receipt_lib.mjs";
 
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(`--${name}`);
 const option = (name, fallback) => {
@@ -64,6 +97,7 @@ const OUT = option("out", "release-auto-login-evidence");
 const KEEP_STUB = flag("keep-capture-browser");
 const STRICT_CLEANUP = flag("strict-cleanup");
 const REVOKE_APP_SESSION = flag("revoke-app-session");
+const IDENTITY_RECEIPT = flag("identity-receipt");
 // Optional: a module whose run(ctx) drives the signed-in app (and the QA account's web session)
 // before cleanup; docs/qa-acceptance/release-auto-login.md "Scenarios".
 const SCENARIO = option("scenario", "");
@@ -74,7 +108,13 @@ const SCHEME = option("callback-scheme", callbackSchemeFor(PKG));
 const CAPTURE_FILE = "files/captured_url";
 
 const redact = createRedactor();
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// --identity-receipt: nothing is captured (screenshot or UI tree) until Testbed answers "matched".
+const captureGate = createCaptureGate({ identityMode: IDENTITY_RECEIPT });
+// Tests only (release_auto_login_identity.test.mjs drives this script against a fake adb): shrinks
+// every wait. Never set in a workflow.
+const TIME_SCALE = Number(process.env.RELEASE_AUTO_LOGIN_TEST_TIME_SCALE) > 0 ? Number(process.env.RELEASE_AUTO_LOGIN_TEST_TIME_SCALE) : 1;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms * TIME_SCALE));
+const now = () => Date.now() / TIME_SCALE;
 const summary = {
   package: PKG,
   environment: ENV_NAME,
@@ -107,7 +147,20 @@ function adb(args, { allowFailure = false, timeoutMs = 60_000, binary = false, i
 const shell = (command, options) => adb(["shell", command], options);
 
 // ---------- UI (uiautomator) ----------
+// --identity-receipt: until Testbed answers "matched" the UI hierarchy is read transiently (dumped
+// to adb's stdout, held in memory for the next tap, never written to the device's shared storage or
+// the host), and no failure message quotes what is on screen (fixed codes instead).
+const identityUiRestricted = () => IDENTITY_RECEIPT && !captureGate.allows();
+const onScreen = (labels) => (identityUiRestricted() ? "" : `; on screen: ${labels || "(nothing labelled)"}`);
 function dumpXml() {
+  if (IDENTITY_RECEIPT) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const xml = adb(["exec-out", "uiautomator", "dump", "/dev/tty"], { allowFailure: true, timeoutMs: 30_000 });
+      const end = xml.lastIndexOf("</hierarchy>");
+      if (xml.includes("<hierarchy") && end >= 0) return xml.slice(0, end + "</hierarchy>".length);
+    }
+    return "";
+  }
   for (let attempt = 0; attempt < 3; attempt += 1) {
     shell("uiautomator dump /sdcard/release-auto-login.xml >/dev/null 2>&1", { allowFailure: true, timeoutMs: 30_000 });
     const xml = adb(["exec-out", "cat", "/sdcard/release-auto-login.xml"], { allowFailure: true });
@@ -153,7 +206,7 @@ function launchApp() {
 async function dismissSystemDialog(list) {
   const anr = find(list, (n) => /isn.t responding/.test(n.text));
   if (!anr) return false;
-  if (/^Raft\b/.test(anr.text)) stop(`the app is not responding: ${anr.text}`);
+  if (/^Raft\b/.test(anr.text)) stop(identityUiRestricted() ? "the app is not responding" : `the app is not responding: ${anr.text}`);
   const button = find(list, "Close app") ?? find(list, "Wait");
   if (!button) return false;
   tapNode(button);
@@ -161,9 +214,9 @@ async function dismissSystemDialog(list) {
   return true;
 }
 async function waitFor(description, matcher, { timeoutMs = 60_000, intervalMs = 1500 } = {}) {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = now() + timeoutMs;
   let list = [];
-  while (Date.now() < deadline) {
+  while (now() < deadline) {
     list = nodes();
     const hit = find(list, matcher);
     if (hit) return hit;
@@ -171,7 +224,7 @@ async function waitFor(description, matcher, { timeoutMs = 60_000, intervalMs = 
     await sleep(intervalMs);
   }
   const visible = list.map(label).filter(Boolean).slice(0, 30).join(" | ");
-  stop(`timed out after ${Math.round(timeoutMs / 1000)}s waiting for ${description}; on screen: ${visible || "(nothing labelled)"}`);
+  stop(`timed out after ${Math.round(timeoutMs / 1000)}s waiting for ${description}${onScreen(visible)}`);
 }
 const PLACEHOLDERS = ["https://raft.company.com", "https://api.raft.company.com"];
 const editTexts = () => nodes().filter((n) => n.cls === "android.widget.EditText" && n.bounds).sort((a, b) => a.bounds[1] - b.bounds[1]);
@@ -201,7 +254,8 @@ async function typeInto(fieldIndex, value) {
 
 // ---------- evidence ----------
 fs.mkdirSync(OUT, { recursive: true });
-function evidence(name) {
+const evidence = guardedCapture(captureGate, captureEvidence);
+function captureEvidence(name) {
   const base = path.join(OUT, `step-${String(stepIndex).padStart(2, "0")}-${name}`);
   try {
     fs.writeFileSync(`${base}.png`, adb(["exec-out", "screencap", "-p"], { binary: true, allowFailure: true }));
@@ -294,6 +348,7 @@ const cleanupStatus = {
   capture_browser: "not_installed_by_run",
   web_session: "not_opened",
   app_session: REVOKE_APP_SESSION ? "not_signed_in" : "not_requested",
+  ...(IDENTITY_RECEIPT ? { identity_receipt_provider: "not_enabled" } : {}),
 };
 const cleanupDetail = {};
 async function cleanupStep(key, body) {
@@ -350,7 +405,8 @@ async function cleanupDevice() {
     if (stubInstalled()) throw new Error(`${STUB_PKG} is still installed`);
     return "uninstalled";
   });
-  shell("rm -f /sdcard/release-auto-login.xml", { allowFailure: true });
+  // --identity-receipt never writes the hierarchy to the device.
+  if (!IDENTITY_RECEIPT) shell("rm -f /sdcard/release-auto-login.xml", { allowFailure: true });
 }
 
 // The script's own web session: what the web's Sign out sends, then proof: the server must refuse
@@ -410,7 +466,7 @@ const markLogoutTap = () => {
 };
 
 async function signOutAppViaUi() {
-  const deadline = Date.now() + 150_000;
+  const deadline = now() + 150_000;
   const route = [];
   let scrolls = 0;
   let panelScrolls = 0;
@@ -428,7 +484,7 @@ async function signOutAppViaUi() {
   launchApp();
   await sleep(1500);
   logoutProbe.before = appProcess();
-  while (Date.now() < deadline) {
+  while (now() < deadline) {
     const list = nodes();
     if (await dismissSystemDialog(list)) continue;
     if (onSignInPage(list)) {
@@ -493,7 +549,7 @@ async function signOutAppViaUi() {
   }
   // Keep what the screen showed (no credential is on it: the app is signed in to its own UI).
   evidence("cleanup-app-sign-out-FAILED");
-  stop(`not back on the sign-in page after 150s (route: ${route.join(" > ") || "none"}); on screen: ${lastLabels || "(nothing labelled)"}`);
+  stop(`not back on the sign-in page after 150s (route: ${route.join(" > ") || "none"})${onScreen(lastLabels)}`);
 }
 
 // The app's own report of its POST /auth/logout, read only from the app's process (logcat --pid),
@@ -560,7 +616,9 @@ async function revokeAppSession(appMayBeSignedIn) {
 // (something not covered / unconfirmed), "unknown" (a write with no clear answer), "fail" or a
 // throw make it exit non-zero after cleanup.
 let scenarioFailed = false;
+let scenarioStarted = false;
 async function runScenario(webSession) {
+  scenarioStarted = true;
   const authed = async (method, pathname, { body, serverId } = {}) => {
     let out = await web(method, pathname, { token: webSession.accessToken, body, serverId });
     if (out.status === 401 && webSession.refreshToken) {
@@ -593,15 +651,150 @@ async function runScenario(webSession) {
   }
 }
 
+// ---------- app identity receipt (--identity-receipt) ----------
+const identity = IDENTITY_RECEIPT
+  ? createIdentityReceiptRunner({
+      pkg: PKG,
+      shell: (command) => {
+        const r = spawnSync("adb", ["shell", command], { encoding: "utf8", timeout: 60_000 });
+        return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? String(r.error ?? "") };
+      },
+      // The pairing salt rides on adb's stdin (no pty), never on a command line.
+      shellPrivate: (command) => {
+        const r = spawnSync("adb", ["shell", "-T"], { encoding: "utf8", timeout: 60_000, input: `${command}; exit\n` });
+        return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? String(r.error ?? "") };
+      },
+    })
+  : null;
+
+let privateOut = "";
+function identityReceiptRequest() {
+  try {
+    privateOut = privateOutPath(process.env.QA_IDENTITY_PRIVATE_OUT || "", OUT);
+  } catch (error) {
+    stop(`--identity-receipt: ${error.message.replace(/^identity receipt: /, "")}`);
+  }
+  const pairingSalt = readPairingSaltFile(process.env.QA_PAIRING_SALT_FILE || "");
+  // Never in a log line or the summary: the nonce, the salt, Testbed's frozen refs.
+  for (const secret of [pairingSalt, process.env.QA_ATTEMPT_NONCE, process.env.QA_EXPECTED_USER_REF, process.env.QA_EXPECTED_SERVER_REF]) {
+    if (secret) redact.add(secret);
+  }
+  return newReceiptRequest({ attemptId: process.env.QA_ATTEMPT_ID, nonce: process.env.QA_ATTEMPT_NONCE, pairingSalt: pairingSalt || null });
+}
+
+// apksig of the pinned Build Tools (AppIdentityApkSigner.java runs on its apksigner.jar).
+function apksignerJar() {
+  const root = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
+  if (!root) throw new Error("ANDROID_HOME/ANDROID_SDK_ROOT is required for apksig");
+  const jar = path.join(root, "build-tools", APKSIG_BUILD_TOOLS, "lib", "apksigner.jar");
+  if (!fs.existsSync(jar)) throw new Error(`build-tools ${APKSIG_BUILD_TOOLS} is not installed`);
+  return jar;
+}
+
+// What the OS says about the installed package, never what the app says. A value that could not
+// be read stays null (unknown) and fails the cross-check; it is never defaulted to a passing value.
+function installedPackageFacts() {
+  const dump = shell(`dumpsys package ${PKG}`, { allowFailure: true });
+  const flags = /pkgFlags=\[([^\]]*)\]/.exec(dump)?.[1];
+  const sdkText = shell("getprop ro.build.version.sdk", { allowFailure: true }).trim();
+  const deviceSdk = /^[1-9][0-9]*$/.test(sdkText) ? Number(sdkText) : null;
+  // ro.build.version.codename: "REL" on a released SDK, the codename on a preview, empty = unread.
+  const codename = shell("getprop ro.build.version.codename", { allowFailure: true }).trim();
+  const deviceCodename = codename || null;
+  const devicePreview = deviceCodename == null ? null : deviceCodename !== "REL";
+  const apkPaths = shell(`pm path ${PKG}`, { allowFailure: true }).split("\n").map((l) => l.trim()).filter((l) => l.startsWith("package:")).map((l) => l.slice(8));
+  const base = apkPaths.find((p) => p.endsWith("/base.apk"));
+  // Testbed takes the OS reading as the original decimal string (only the receipt's is a number).
+  const versionCode = /versionCode=([1-9][0-9]{0,19})\b/.exec(dump)?.[1] ?? null;
+  const facts = {
+    packageName: PKG,
+    versionCode,
+    debuggable: flags == null ? null : /\bDEBUGGABLE\b/.test(flags),
+    deviceSdk,
+    deviceCodename,
+    devicePreview,
+    signerSha256: null,
+    installedApkSha256: null,
+    splitApks: base ? apkPaths.length - 1 : null,
+  };
+  if (!base) return facts;
+  // Outside the evidence directory (uploaded recursively); removed right after.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "identity-apk-"));
+  const local = path.join(dir, "base.apk");
+  try {
+    adb(["pull", base, local], { timeoutMs: 120_000 });
+    facts.installedApkSha256 = fileSha256(local);
+    // The signer of a released platform of this SDK only (a preview device is refused anyway).
+    if (deviceSdk && devicePreview === false) {
+      const inspector = spawnSync("java", apkSignerInspectorArgs({ apksignerJar: apksignerJar(), script: path.join(SCRIPT_DIR, "AppIdentityApkSigner.java"), apk: local, sdk: deviceSdk }), { encoding: "utf8", timeout: 120_000 });
+      try {
+        facts.signerSha256 = parseApkSignerInspector(inspector.stdout, { status: inspector.status, sdk: deviceSdk });
+      } catch {
+        facts.signerSha256 = null;
+      }
+    }
+    return facts;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// Testbed's private observation + decision for this job. This change has no Testbed client yet
+// and never accepts a locally supplied decision (file, env, flag): both return nothing, so every
+// --identity-receipt run stops at the gate as "unknown" until the workflow wiring lands.
+const testbedDecision = {
+  async observe() {
+    log("identity receipt: no Testbed observation endpoint wired; the decision stays unknown");
+    return null;
+  },
+  async decide() {
+    return null;
+  },
+};
+
+function identityGate(request) {
+  return () =>
+    step("identity-receipt", async () => {
+      const outcome = await runIdentityGate({
+        runner: identity,
+        request,
+        gate: captureGate,
+        expected: { userRef: process.env.QA_EXPECTED_USER_REF || "", serverRef: process.env.QA_EXPECTED_SERVER_REF || "" },
+        readOsFacts: installedPackageFacts,
+        extraProblems: (facts) => (APK && fs.existsSync(APK) && fileSha256(APK) !== facts.installedApkSha256 ? ["installed base.apk differs from --apk"] : []),
+        // The complete receipt and OS facts are Testbed's alone: out of every log line, the summary
+        // and the evidence.
+        writePrivate: (secret) => {
+          for (const key of PRIVATE_RECEIPT_KEYS) {
+            const value = secret.receipt?.[key];
+            if (typeof value === "string" && value) redact.add(value);
+          }
+          writePrivateReceipt(privateOut, secret);
+        },
+        publish: (result) => { summary.identity_receipt = publicIdentitySummary(result); },
+        testbed: testbedDecision,
+      });
+      log(`identity receipt: ${outcome.matched ? "matched" : outcome.reason}`);
+      if (!outcome.matched) stop(`identity receipt not matched (${outcome.reason}); nothing captured, no scenario`);
+      return { testbed: "matched" };
+    }, { screenshot: false });
+}
+
 // ---------- the flow ----------
 async function main() {
   if (!preset && !(option("web-url") && option("api-url"))) stop(`unknown --env ${ENV_NAME}; use staging|production or pass --web-url and --api-url`);
   if (!STUB_APK && !shell(`pm path ${STUB_PKG}`, { allowFailure: true }).trim()) stop("--capture-browser-apk is required (build it with scripts/qa/capture-browser/build.sh)");
-  const account = credentials();
+  // With --identity-receipt the account is read only after the build is known to have the provider.
+  const receiptRequest = IDENTITY_RECEIPT ? identityReceiptRequest() : null;
+  let account = IDENTITY_RECEIPT ? null : credentials();
   let webSession = null;
   let callbackSent = false;
   let logcat = null;
-  const logcatFile = path.join(OUT, ".logcat-raw.txt");
+  // --identity-receipt: the app-login log lives only in a private runner-temp directory (never
+  // under --out, which is uploaded) and only its fixed exchange outcome is published.
+  const logcatDir = IDENTITY_RECEIPT ? fs.mkdtempSync(path.join(os.tmpdir(), "release-login-log-")) : null;
+  if (logcatDir) fs.chmodSync(logcatDir, 0o700);
+  const logcatFile = path.join(logcatDir ?? OUT, ".logcat-raw.txt");
   try {
     await step("prepare-device", async () => {
       adb(["wait-for-device"]);
@@ -637,18 +830,34 @@ async function main() {
       }
       const dump = shell(`dumpsys package ${PKG}`, { allowFailure: true });
       if (!dump.includes("versionCode=")) stop(`${PKG} is not installed`);
-      const flags = /pkgFlags=\[([^\]]*)\]/.exec(dump)?.[1] ?? "";
+      if (identity) {
+        // Before any account is used, and before the app first starts: enabling kills the process.
+        try {
+          identity.probe();
+          identity.enable();
+        } catch (error) {
+          if (error instanceof UnsupportedBuildError) {
+            summary.identity_receipt = publicIdentitySummary({ state: "unsupported_build" });
+            console.error(`::error title=identity receipt unsupported::${error.message}`);
+          }
+          stop(error.message);
+        }
+      }
+      // Unread pkgFlags is unknown (null), never "not debuggable".
+      const flags = /pkgFlags=\[([^\]]*)\]/.exec(dump)?.[1];
       return {
         sdk: shell("getprop ro.build.version.sdk").trim(),
         app_version: /versionName=(\S+)/.exec(dump)?.[1] ?? "",
         app_version_code: Number(/versionCode=(\d+)/.exec(dump)?.[1] ?? 0),
-        app_debuggable: /\bDEBUGGABLE\b/.test(flags),
+        app_debuggable: flags == null ? null : /\bDEBUGGABLE\b/.test(flags),
         previous_browser: restore.browserHolders.join(",") || "(none)",
         capture_browser_via: via,
         disabled_browsers: restore.disabledBrowsers,
       };
     });
 
+    account ??= credentials();
+    identity?.markSignInStarted();
     adb(["logcat", "-c"], { allowFailure: true });
     logcat = spawn("adb", ["logcat", "-v", "threadtime", "-s", "SlockAppLogin:*"], { stdio: ["ignore", fs.openSync(logcatFile, "w"), "ignore"] });
 
@@ -689,9 +898,9 @@ async function main() {
       else shell(`input tap ${Math.max(5, agreement.bounds[0] - 40)} ${agreement.bounds[1] + 30}`);
       await sleep(800);
       await waitFor('an enabled "Sign in to Raft"', (n) => n.text === "Sign in to Raft" && n.enabled).then(tapNode);
-      const deadline = Date.now() + 60_000;
+      const deadline = now() + 60_000;
       let captured = "";
-      while (Date.now() < deadline && !captured) {
+      while (now() < deadline && !captured) {
         captured = readCapture();
         if (!captured) await sleep(1000);
       }
@@ -766,11 +975,11 @@ async function main() {
       // exchanged sign-in read as "not logged".
       const appLog = () =>
         `${fs.existsSync(logcatFile) ? fs.readFileSync(logcatFile, "utf8") : ""}\n${adb(["logcat", "-d", "-v", "threadtime", "-s", "SlockAppLogin:*"], { allowFailure: true })}`;
-      const deadline = Date.now() + 120_000;
+      const deadline = now() + 120_000;
       let lastLabels = "";
       let screenSince = 0;
       let screen = "";
-      while (Date.now() < deadline) {
+      while (now() < deadline) {
         const verdict = parseAppLoginComplete(appLog());
         if (verdict.status === "refused") stop(`the app refused the callback: result=${verdict.result} reason=${verdict.reason}`);
         const list = nodes();
@@ -782,10 +991,10 @@ async function main() {
         const chooser = find(list, (n) => n.pkg === PKG && n.text.startsWith("Signed in as "));
         if (inApp && !signInVisible && (home || chooser)) {
           screen = home ? "home" : "choose_server";
-          screenSince ||= Date.now();
+          screenSince ||= now();
           if (verdict.status === "exchanged") return { exchange: "exchanged", exchange_log: `result=${verdict.result} reason=${verdict.reason}`, screen };
           // Signed-in screen but no verdict line yet: give the log 30s to catch up, then say so.
-          if (Date.now() - screenSince > 30_000) {
+          if (now() - screenSince > 30_000) {
             const note = `signed-in screen (${screen}) but the app logged no app_login_complete line (last: ${verdict.status})`;
             if (STRICT_CLEANUP) stop(`${note}; strict mode needs the app's own exchange verdict`);
             log(`WARNING: ${note}`);
@@ -798,20 +1007,37 @@ async function main() {
         lastLabels = list.map(label).filter(Boolean).slice(0, 30).join(" | ");
         await sleep(2000);
       }
-      stop(`still not signed in after 120s; on screen: ${lastLabels || "(nothing labelled)"}`);
+      stop(`still not signed in after 120s${onScreen(lastLabels)}`);
     });
 
-    if (SCENARIO) await runScenario(webSession);
+    // The identity gate strictly before any scenario: a scenario runs only after Testbed's "matched".
+    await afterSignIn({
+      identityGate: identity ? identityGate(receiptRequest) : null,
+      runScenario: SCENARIO ? () => runScenario(webSession) : null,
+    });
   } finally {
     // Every cleanup step runs whatever happened above; each records its own status.
     await signOutWebSession(webSession);
     try { logcat?.kill("SIGTERM"); } catch {}
-    if (fs.existsSync(logcatFile)) {
+    if (logcatDir) {
+      fs.rmSync(logcatDir, { recursive: true, force: true });
+    } else if (fs.existsSync(logcatFile)) {
       fs.writeFileSync(path.join(OUT, "logcat-app-login.txt"), redact(fs.readFileSync(logcatFile, "utf8")));
       fs.rmSync(logcatFile);
     }
     await revokeAppSession(callbackSent);
     await cleanupDevice();
+    // Last: disabling the provider kills the app process.
+    if (identity) {
+      await cleanupStep("identity_receipt_provider", async () => {
+        const disabled = identity.disable();
+        if (!disabled.ok) {
+          console.error(disableFailureAnnotation(PKG, disabled.detail));
+          throw new Error(`pm disable failed: ${disabled.detail}`);
+        }
+        return disabled.status;
+      });
+    }
     summary.cleanup = { ...cleanupStatus, ...cleanupDetail };
   }
 }
@@ -836,6 +1062,8 @@ main()
       console.error(`[release-auto-login] cleanup incomplete: ${list}${STRICT_CLEANUP ? " (strict: failing the run)" : ""}`);
     }
     process.exitCode = outcome.exitCode || (scenarioFailed ? 1 : 0);
-    if (SCENARIO) summary.scenario_result = summary.scenario?.result ?? (scenarioFailed ? "fail" : "pass");
+    // not_run when the scenario was never entered (a stop before it, or the identity gate closed);
+    // otherwise the scenario's own verdict.
+    if (SCENARIO) summary.scenario_result = !scenarioStarted ? "not_run" : summary.scenario?.result ?? (scenarioFailed ? "fail" : "pass");
     fs.writeFileSync(path.join(OUT, "summary.json"), `${redact(JSON.stringify(summary, null, 2))}\n`);
   });
