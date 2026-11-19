@@ -372,7 +372,19 @@ internal sealed interface ActivityConversationSender {
         /** The 19dp face before the name; null for DM rows (they already lead with the peer). */
         val avatar: ActivitySenderAvatarIdentity?,
     ) : ActivityConversationSender
+
+    /**
+     * A joint channel's sender (a thread in one, or the channel's row) whom neither this server's
+     * roster nor the row names: the other server's person or agent. The row names them, with
+     * [avatar], once `POST /api/actors/resolve` answers ([activityJointSenderName]); until then, or if
+     * it never does, the preview stands alone (web InboxRow `useActorFallback`, `jointRow`).
+     */
+    data class JointActor(val avatar: ActivitySenderAvatarIdentity) : ActivityConversationSender
 }
+
+/** The name a [ActivityConversationSender.JointActor] shows: the resolved actor's, else none. */
+internal fun activityJointSenderName(jointActor: ResolvedActor?): String? =
+    jointActor?.displayName?.takeIf { it.isNotBlank() } ?: jointActor?.name?.takeIf { it.isNotBlank() }
 
 @Immutable
 internal data class ActivityConversationRowModel(
@@ -576,7 +588,15 @@ internal fun InboxItem.activityConversationRowModel(
             // web: a DM whose last message came from the peer shows the preview alone. A DM thread keeps
             // "Peer: …": either side may have replied last (Jasper).
             directMessage && dmPeer != null && dmPeer.peerId != null && senderId == dmPeer.peerId -> null
-            !self && senderName == null -> null
+            !self && senderName == null -> {
+                // A joint channel's sender from the other server: in neither roster, and the server
+                // names only external projections. Resolve them as web does (`useActorFallback`).
+                val identity = activitySenderAvatarIdentity(senderProfiles)
+                val faced = identity.senderKind == MemberKind.Agent || identity.senderKind == MemberKind.Human
+                identity
+                    .takeIf { it.jointSurface && faced && !it.senderId.isNullOrBlank() && threadDmPeer == null }
+                    ?.let(ActivityConversationSender::JointActor)
+            }
             else -> {
                 val identity = activitySenderAvatarIdentity(senderProfiles)
                 val faced = identity.senderKind == MemberKind.Agent || identity.senderKind == MemberKind.Human
@@ -1044,10 +1064,22 @@ internal fun ActivityConversationListRow(
                     // One AnnotatedString for "#channel · [face] Sender: preview" so the line truncates as a
                     // whole like web's InboxItemBody: a long channel name ellipsizes the line instead of
                     // starving the preview to zero width. The sender face rides inline as a placeholder.
+                    // A joint sender from the other server: named (and faced) once the actor resolves.
+                    val jointSender = model.sender as? ActivityConversationSender.JointActor
+                    val jointSenderName =
+                        activityJointSenderName(
+                            rememberRaftJointActor(
+                                memberAvatarResolver = LocalActivityAvatarSource.current.memberAvatarResolver,
+                                kind = jointSender?.avatar?.senderKind,
+                                memberId = jointSender?.avatar?.senderId,
+                                enabled = jointSender != null,
+                            )
+                        )
                     val senderAvatar =
                         when (val sender = model.sender) {
                             is ActivityConversationSender.Named -> sender.avatar
                             is ActivityConversationSender.Self -> sender.avatar
+                            is ActivityConversationSender.JointActor -> sender.avatar.takeIf { jointSenderName != null }
                             else -> model.objectLine?.avatar
                         }
                     val density = LocalDensity.current
@@ -1077,6 +1109,7 @@ internal fun ActivityConversationListRow(
                             ActivityConversationSender.System -> systemLabel
                             is ActivityConversationSender.Self -> delegatedPreviewSender(selfLabel, model.delegatedBy)
                             is ActivityConversationSender.Named -> delegatedPreviewSender(sender.name, model.delegatedBy)
+                            is ActivityConversationSender.JointActor -> jointSenderName?.let { delegatedPreviewSender(it, model.delegatedBy) }
                             null -> null
                         }
                     val senderStyle = SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.foreground)

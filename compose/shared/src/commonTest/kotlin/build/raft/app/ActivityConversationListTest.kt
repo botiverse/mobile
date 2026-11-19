@@ -339,6 +339,44 @@ class ActivityConversationListTest {
     }
 
     @Test
+    fun aJointThreadsReplierFromTheOtherServerIsResolvedNotDropped() {
+        // The server names only external projections (channelService `latestActivitySenderName`), so
+        // the other server's person or agent replying in a joint channel's thread arrives nameless and
+        // in neither roster (#wg-deck, artin 2026-11-19). Web resolves them (`useActorFallback`).
+        val jointThread =
+            thread.copy(
+                parentChannelId = ChannelId("wg-deck"),
+                parentChannelName = "wg-deck",
+                parentChannelKind = ConversationKind.Joint,
+                latestActivitySenderName = null,
+                latestActivitySenderId = "user-edgar",
+                latestActivitySenderKind = MemberKind.Human,
+            )
+        val sender = assertIs<ActivityConversationSender.JointActor>(jointThread.activityConversationRowModel(context, InboxFilter.All).sender)
+        assertEquals("user-edgar", sender.avatar.senderId)
+        assertEquals(MemberKind.Human, sender.avatar.senderKind)
+        assertTrue(sender.avatar.jointSurface)
+        // A joint channel's own row (wire type only) resolves the same way.
+        val jointChannel =
+            channel("channel:wg-deck", "wg-deck").copy(
+                channelType = "joint",
+                lastMessageSenderName = null,
+                lastMessageSenderId = "agent-cachet",
+            )
+        assertIs<ActivityConversationSender.JointActor>(jointChannel.activityConversationRowModel(context, InboxFilter.All).sender)
+        // Outside a joint channel a nameless sender still shows the preview alone, and a named one stays Named.
+        assertNull(jointThread.copy(parentChannelKind = ConversationKind.Channel).activityConversationRowModel(context, InboxFilter.All).sender)
+        assertIs<ActivityConversationSender.Named>(
+            jointThread.copy(latestActivitySenderName = "Edgar").activityConversationRowModel(context, InboxFilter.All).sender
+        )
+        // The name it shows: the resolved display name, else the handle, else none (preview alone).
+        val edgar = ResolvedActor(MemberKind.Human, "user-edgar", "server-2", name = "edgar", displayName = "Edgar", avatarUrl = null, gravatarHash = null)
+        assertEquals("Edgar", activityJointSenderName(edgar))
+        assertEquals("edgar", activityJointSenderName(edgar.copy(displayName = " ")))
+        assertNull(activityJointSenderName(null))
+    }
+
+    @Test
     fun onlyAnAgentDmRowShowsThePresenceLight() {
         val dmRow = dm("dm:fable", "dm-fable", senderId = "agent-fable").activityConversationRowModel(context, InboxFilter.All)
         assertTrue(dmRow.leadingPresence)
