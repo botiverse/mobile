@@ -138,13 +138,14 @@ class RuntimeServerVerdictUiTest {
     fun forgetCatalogs() = RaftRuntimeCatalogNames.clear()
 
     /**
-     * Antigravity offered again on [RevivedServer] (`GET /servers/:id/runtimes` answers
-     * `deprecated: false`, web `useRuntimeDeprecatedHere`): every label that names an agent's
-     * runtime there drops "(deprecated)", without the agent's runtime-options row; another
-     * server's labels (and a label with no server) keep the bundled answer.
+     * A runtime's lifecycle is each server's answer (web `useRuntimeDeprecatedHere`): on
+     * [RevivedServer], a server from before slock #15445 whose catalog still answers
+     * `deprecated: true` for Antigravity, every label that names an agent's runtime says
+     * "(deprecated)"; another server's labels (and a label with no server) keep the bundled
+     * answer, which no longer deprecates it.
      */
     @Test
-    fun aServerThatOffersAntigravityAgainLabelsItWithoutDeprecated() = runRobolectricComposeUiTest {
+    fun eachServersCatalogDecidesWhetherAntigravityReadsDeprecated() = runRobolectricComposeUiTest {
         RaftRuntimeCatalogNames.publish(RevivedServer, revivedCatalog())
         var serverId by mutableStateOf<String?>(RevivedServer)
         setContent {
@@ -187,20 +188,20 @@ class RuntimeServerVerdictUiTest {
             }
         }
         waitForIdle()
-        assertEquals(0, deprecatedLabels(), "revived here: no label says (deprecated)")
-        assertTrue(onAllNodes(hasText("Antigravity CLI", substring = true), useUnmergedTree = true).fetchSemanticsNodes().size >= 4)
-        onNodeWithTag(MEMBERS_RUNTIME_DEPRECATED_BANNER_TAG).assertDoesNotExist()
+        assertEquals(4, deprecatedLabels(), "deprecated on this server: every label says so")
+        onNodeWithTag(MEMBERS_RUNTIME_DEPRECATED_BANNER_TAG).assertExists()
 
-        // Another server, whose catalog says nothing yet: the bundled table (Antigravity deprecated).
+        // Another server, whose catalog says nothing yet: the bundled table (not deprecated).
         runOnIdle { serverId = "other-server" }
         waitForIdle()
-        assertEquals(4, deprecatedLabels(), "another server never reads the revived server's answer")
-        onNodeWithTag(MEMBERS_RUNTIME_DEPRECATED_BANNER_TAG).assertExists()
+        assertEquals(0, deprecatedLabels(), "another server never reads this server's answer")
+        assertTrue(onAllNodes(hasText("Antigravity CLI", substring = true), useUnmergedTree = true).fetchSemanticsNodes().size >= 4)
+        onNodeWithTag(MEMBERS_RUNTIME_DEPRECATED_BANNER_TAG).assertDoesNotExist()
 
         // No server at all: the bundled table too, never the catalog read last.
         runOnIdle { serverId = null }
         waitForIdle()
-        assertEquals(4, deprecatedLabels())
+        assertEquals(0, deprecatedLabels())
     }
 
     private fun androidx.compose.ui.test.ComposeUiTest.deprecatedLabels(): Int =
@@ -209,7 +210,7 @@ class RuntimeServerVerdictUiTest {
     private fun revivedCatalog(): ServerRuntimeCatalog =
         ServerRuntimeCatalog(
             catalogVersion = 1,
-            runtimes = BundledRuntimeCatalog.runtimes.map { if (it.id == "antigravity") it.copy(deprecated = false) else it },
+            runtimes = BundledRuntimeCatalog.runtimes.map { if (it.id == "antigravity") it.copy(deprecated = true) else it },
             source = RuntimeCatalogSource.Server
         )
 

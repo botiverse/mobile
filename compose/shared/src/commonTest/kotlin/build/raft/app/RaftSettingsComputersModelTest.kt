@@ -472,7 +472,7 @@ class RaftSettingsComputersModelTest {
         val chips = raftComputerRuntimeChips(listOf("claude", "builtin", "kimi-sdk", "kimi", "pi"), build.raft.app.data.BundledRuntimeCatalog)
         // The web's display options: supported and not deprecated, in catalog order.
         assertEquals(
-            listOf("claude", "codex", "grok", "builtin", "kimi-sdk", "cursor", "opencode", "pi", "qwen", "qoder"),
+            listOf("claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk", "cursor", "opencode", "pi", "qwen", "qoder", "dsh"),
             chips.map { it.id },
         )
         // slock #15551: a chip names the runtime only, whatever the catalog's experimental flag.
