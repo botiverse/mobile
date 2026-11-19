@@ -67,6 +67,7 @@ internal enum class MigrationCopy {
     ErrorManifestTooLargeWithPaths,
     ErrorInsufficientDiskWithSizes,
     ErrorInsufficientDisk,
+    ErrorKeyPathUnreadable,
     AbortPrepDeadline,
     AbortTransferDeadline,
     AbortArrivalDeadline,
@@ -334,7 +335,9 @@ private val MIGRATION_ERROR_COPY: Map<String, MigrationCopy> =
         "MIGRATION_CONCURRENT_UPDATE" to MigrationCopy.ErrorConcurrentUpdate,
         "MIGRATION_CANCEL_FAILED" to MigrationCopy.ErrorCancelFailed,
         "MIGRATION_START_FAILED" to MigrationCopy.ErrorStartFailed,
-        "MIGRATION_STATUS_FAILED" to MigrationCopy.ErrorStatusFailed
+        "MIGRATION_STATUS_FAILED" to MigrationCopy.ErrorStatusFailed,
+        // Web #15464: MEMORY.md, notes/ or the workspace itself unreadable on the source.
+        "MIGRATION_WORKSPACE_KEY_PATH_UNREADABLE" to MigrationCopy.ErrorKeyPathUnreadable
     )
 
 /** Codes whose copy is assembled from wire data or the input (web `MIGRATION_ERROR_BUILDERS` / `INPUT_BUILDERS`). */

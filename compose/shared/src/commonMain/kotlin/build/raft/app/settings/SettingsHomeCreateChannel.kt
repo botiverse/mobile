@@ -412,7 +412,7 @@ internal fun SharedCreateChannelDialog(
                     },
                     hint =
                         when {
-                            external -> stringResource(Res.string.channel_create_external_hint, serverName)
+                            external -> stringResource(Res.string.channel_create_external_hint)
                             else -> null
                         },
                     freeLimitServerName = serverName.takeIf { externalAtLimit },

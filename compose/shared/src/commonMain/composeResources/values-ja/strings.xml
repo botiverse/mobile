@@ -2410,7 +2410,7 @@
     <string name="agent_invite_action_send">招待を送信</string>
     <string name="channel_create_title">チャンネルを作成</string>
     <string name="channel_create_external">外部</string>
-    <string name="channel_create_external_hint">%1$s の外部の人と 1 つのチャンネルで一緒に作業できます。閲覧できるのは、%1$s のメンバーも含め、追加した人だけです。</string>
+    <string name="channel_create_external_hint">友人、クライアント、パートナーをメールで同じチャンネルに招待できます。外部チャンネルは常に非公開です。</string>
     <string name="channel_create_external_free_limit">無料プラン：%1$s にはすでにサーバーの外部の人と共有しているチャンネルがあります。</string>
     <string name="channel_create_upgrade_for_more">アップグレードして追加</string>
     <string name="channel_create_people_title">#%1$s にメンバーを追加</string>
@@ -4219,6 +4219,7 @@
     <string name="joint_member_connect_description">あなたがオーナーまたは管理者のサーバーは、すぐに接続されます。ホストの %1$s の承認は不要です。サーバーが接続されたことは、チャンネル内のメッセージでお知らせします。</string>
     <string name="joint_member_connect_error_already_connected">%1$s はすでに接続されています。</string>
     <string name="joint_member_connect_error_archived">%1$s はアーカイブされました。</string>
+    <string name="joint_member_connect_error_channel_name_taken">%1$s にはすでに %2$s という名前のチャンネルがあります。%1$s でそのチャンネルの名前を変更してから、もう一度接続してください。</string>
     <string name="joint_member_connect_error_busy">%1$s は更新中です。1 分ほどしてから、もう一度お試しください。</string>
     <string name="joint_member_connect_error_channel_full">%1$s にはこれ以上サーバーを接続できません。</string>
     <string name="joint_member_connect_error_connect_in_progress">%1$s にサーバーを接続中です。完了してから、もう一度お試しください。</string>
@@ -4547,6 +4548,7 @@
     <string name="agent_migration_error_manifest_too_large_with_paths">ワークスペース内のファイルとフォルダーが多すぎるため、移行できません。大部分は %1$s にあります。不要になったフォルダーを削除するか、.raftmigrateignore に追加するようエージェントに依頼してから、もう一度お試しください。</string>
     <string name="agent_migration_error_insufficient_disk_with_sizes">移行先のコンピューターでこの移行のステージングとインストールを行うには %1$s の空き容量が必要ですが、利用可能なのは %2$s だけです。ディスクの空き容量を確保してから、もう一度お試しください。</string>
     <string name="agent_migration_error_insufficient_disk">移行先のコンピューターに、この移行のステージングとインストールに必要なディスクの空き容量がありません。ディスクの空き容量を確保してから、もう一度お試しください。</string>
+    <string name="agent_migration_error_key_path_unreadable">移行元のコンピューターに MEMORY.md または notes/ を読み取る権限がありません。これらは必ずエージェントと一緒に移動するため、移行を停止しました。何も移動していません。ファイルの権限を直してから、もう一度移行を開始してください。</string>
     <string name="agent_migration_abort_prep_deadline">移行元のコンピューターでのワークスペースの準備が停滞し、期限内に完了しませんでした。移行元がオンラインであることを確認してから、もう一度お試しください。</string>
     <string name="agent_migration_abort_transfer_deadline">ワークスペースの転送が期限内に完了しませんでした。両方のコンピューターがオンラインのままで、移行先に十分なディスクの空き容量があることを確認してから、もう一度お試しください。</string>
     <string name="agent_migration_abort_arrival_deadline">移行先のコンピューターで、ワークスペースのインストールが期限内に完了しませんでした。移行先が実行中で、十分なディスクの空き容量があることを確認してから、もう一度お試しください。</string>
@@ -5356,8 +5358,8 @@
     <string name="channel_external_invite_upgrade">アップグレード</string>
     <string name="channel_external_invite_becomes_private">外部の人を招待すると、このチャンネルは非公開になります。閲覧できるのはチャンネルのメンバーだけです。</string>
     <string name="channel_external_invite_emails_label">メールアドレスで招待</string>
-    <string name="channel_external_invite_emails_placeholder">name@example.com, name@example.org</string>
-    <string name="channel_external_invite_emails_hint">メールアドレスはカンマ、スペース、または改行で区切ってください。最大 %1$d 件まで入力できます。</string>
+    <string name="channel_external_invite_emails_placeholder">alex@example.com, sam@example.org, …</string>
+    <string name="channel_external_invite_emails_join_by_link">Raft のアカウントがなくても、参加用リンクがメールで届きます。</string>
     <string name="channel_external_invite_too_many">一度に招待できるのは %1$d 件までです。%2$d 件を削除してください。</string>
     <string name="channel_external_invite_next">次へ</string>
     <string name="channel_external_invite_checking">確認中…</string>
@@ -5522,6 +5524,7 @@
     <string name="external_invite_error_joint_free_server_limit">%1$s に参加できる無料サーバーの数が上限に達しています。接続するには、%2$s を Pro にアップグレードしてください。</string>
     <string name="external_invite_error_connect_in_progress">%1$s にサーバーを接続中です。完了してから、もう一度お試しください。</string>
     <string name="external_invite_error_archived">%1$s はアーカイブされました。</string>
+    <string name="external_invite_error_channel_name_taken">%1$s にはすでに %2$s という名前のチャンネルがあります。%1$s でそのチャンネルの名前を変更してから、もう一度接続してください。</string>
     <string name="external_invite_error_busy">%1$s は更新中です。1 分ほどしてから、もう一度お試しください。</string>
     <string name="external_invite_error_too_many_attempts">試行回数が多すぎます。1 分ほど待ってから、もう一度お試しください。</string>
     <string name="external_invite_error_generic">問題が発生しました。もう一度お試しください。</string>

@@ -110,6 +110,9 @@ internal enum class InviteeMessage {
     JointFreeServerLimit,
     ConnectInProgress,
     Archived,
+
+    /** The connecting server already has a channel of this name, live or archived (web #15570). */
+    ChannelNameTaken,
     Busy,
     TooManyAttempts,
     Generic,
@@ -169,6 +172,7 @@ internal fun inviteeErrorMessage(
         "joint_channel_free_limit_reached", "joint_channel_plan_limit_reached" -> InviteeMessage.HostLimit
         "connect_in_progress" -> InviteeMessage.ConnectInProgress
         "channel_archived" -> InviteeMessage.Archived
+        "channel_name_taken" -> InviteeMessage.ChannelNameTaken
         "channel_conversion_in_progress", "channel_conversion_fence_conflict", "channel_conversion_ledger_conflict" -> InviteeMessage.Busy
         else -> if (refusal.status == 429) InviteeMessage.TooManyAttempts else InviteeMessage.Generic
     }

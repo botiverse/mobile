@@ -32,6 +32,9 @@ internal enum class ComputerRuntimeOperationRefusal {
 
     /** The server's 504: only this one says it may still finish. */
     ComputerTimeout,
+
+    /** The server's 429 (upgrades and installs per person and Computer): wait, not "try again" (web #15424). */
+    RateLimited,
     Failed,
 }
 
@@ -41,6 +44,7 @@ internal fun computerRuntimeOperationRefusal(code: String?): ComputerRuntimeOper
         "computer_upgrade_required" -> ComputerRuntimeOperationRefusal.ComputerUpgradeRequired
         "computer_offline" -> ComputerRuntimeOperationRefusal.ComputerOffline
         "computer_timeout" -> ComputerRuntimeOperationRefusal.ComputerTimeout
+        "rate_limited" -> ComputerRuntimeOperationRefusal.RateLimited
         else -> ComputerRuntimeOperationRefusal.Failed
     }
 
@@ -77,6 +81,8 @@ internal fun computerRuntimeUpgradeCopy(state: ComputerRuntimeUpgradeState): Com
                     ComputerRuntimeOperationRefusal.ComputerUpgradeRequired -> Res.string.settings_computers_runtime_upgrade_computer_too_old
                     ComputerRuntimeOperationRefusal.ComputerOffline -> Res.string.settings_computers_runtime_upgrade_computer_offline
                     ComputerRuntimeOperationRefusal.ComputerTimeout -> Res.string.settings_computers_runtime_upgrade_timeout
+                    // Pressing again won't help for a while (web: the sign-ins' wait sentence).
+                    ComputerRuntimeOperationRefusal.RateLimited -> Res.string.settings_computers_runtime_auth_provider_error_rate_limited
                     ComputerRuntimeOperationRefusal.Failed -> Res.string.settings_computers_runtime_upgrade_error
                 },
                 success = false,
@@ -209,6 +215,8 @@ internal fun computerRuntimeInstallCopy(state: ComputerRuntimeInstallState): Com
                     ComputerRuntimeOperationRefusal.ComputerUpgradeRequired -> Res.string.settings_computers_runtime_install_computer_too_old
                     ComputerRuntimeOperationRefusal.ComputerOffline -> Res.string.settings_computers_runtime_install_computer_offline
                     ComputerRuntimeOperationRefusal.ComputerTimeout -> Res.string.settings_computers_runtime_install_timeout
+                    // Pressing again won't help for a while (web: the sign-ins' wait sentence).
+                    ComputerRuntimeOperationRefusal.RateLimited -> Res.string.settings_computers_runtime_auth_provider_error_rate_limited
                     ComputerRuntimeOperationRefusal.Failed -> Res.string.settings_computers_runtime_install_error
                 },
                 success = false,

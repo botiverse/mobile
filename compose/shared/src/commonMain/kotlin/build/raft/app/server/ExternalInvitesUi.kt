@@ -528,7 +528,7 @@ internal fun ExternalInviteFailureBanner(failure: ExternalInviteFailure, joint: 
 }
 
 /**
- * Web `ExternalInviteEmailsField`: Invite by email, its hint (with the history line and the
+ * Web `ExternalInviteEmailsField`: Invite by email, its hint (the join-by-link line, then the history line and the
  * channel's slots as typed, when given) and the over-the-limit error.
  */
 @Composable
@@ -542,7 +542,9 @@ internal fun ExternalInviteEmailsField(
 ) {
     val hint =
         listOfNotNull(
-            stringResource(Res.string.channel_external_invite_emails_hint, EXTERNAL_INVITE_MAX_EMAILS),
+            // Web #15466: everyone gets an email with a link (the separator/max line is gone;
+            // the over-limit error still names the max).
+            stringResource(Res.string.channel_external_invite_emails_join_by_link),
             if (historyHint) stringResource(Res.string.channel_external_invite_emails_see_history) else null,
             slotsText,
         ).joinToString("\n")

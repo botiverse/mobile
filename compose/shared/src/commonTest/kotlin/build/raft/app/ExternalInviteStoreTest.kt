@@ -301,6 +301,8 @@ class ExternalInviteStoreTest {
         assertEquals(InviteeMessage.JointServerLimit, inviteeErrorMessage(unborn, InviteeAction.NewServer, null, null))
         assertEquals(InviteeMessage.TooManyAttempts, inviteeErrorMessage(InviteeRefusal(429), InviteeAction.Guest, null))
         assertEquals(InviteeMessage.Busy, inviteeErrorMessage(InviteeRefusal(409, "channel_conversion_in_progress"), InviteeAction.Connect, null))
+        // Web #15570: a name clash on the connecting server says to rename that channel there first.
+        assertEquals(InviteeMessage.ChannelNameTaken, inviteeErrorMessage(InviteeRefusal(409, "channel_name_taken"), InviteeAction.Connect, null))
     }
 
     @Test

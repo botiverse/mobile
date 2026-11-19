@@ -258,6 +258,7 @@ class JointMemberConnectStoreTest {
         assertEquals(MemberConnectMessage.ServerMembershipRequired, refused("server_membership_required", 403))
         assertEquals(MemberConnectMessage.InvalidServer, refused("invalid_server", 400))
         assertEquals(MemberConnectMessage.Archived, refused("channel_archived"))
+        assertEquals(MemberConnectMessage.ChannelNameTaken, refused("channel_name_taken"))
         assertEquals(MemberConnectMessage.ChannelFull, refused("joint_server_limit"))
         assertEquals(MemberConnectMessage.GuestsPresent, refused("guests_present"))
         assertEquals(MemberConnectMessage.JointPartyLimit, refused("joint_party_limit"))

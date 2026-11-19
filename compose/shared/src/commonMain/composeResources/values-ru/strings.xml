@@ -2407,7 +2407,7 @@
     <string name="agent_invite_action_send">Отправить приглашения</string>
     <string name="channel_create_title">Создать канал</string>
     <string name="channel_create_external">Внешний</string>
-    <string name="channel_create_external_hint">Работайте в одном канале с людьми, которых нет на сервере %1$s. Канал увидят только те, кого вы добавите, — это касается и участников сервера %1$s.</string>
+    <string name="channel_create_external_hint">Приглашайте друзей, клиентов или партнёров в один канал по электронной почте. Внешние каналы всегда закрытые.</string>
     <string name="channel_create_external_free_limit">Тариф Free: на сервере %1$s уже есть канал с внешними участниками.</string>
     <string name="channel_create_upgrade_for_more">Повысить тариф</string>
     <string name="channel_create_people_title">Добавить людей в канал #%1$s</string>
@@ -4048,6 +4048,7 @@
     <string name="joint_member_connect_description">Серверы, где вы владелец или администратор, подключаются сразу. Хоста, %1$s, не спрашивают. Сообщение в канале скажет, что сервер подключён.</string>
     <string name="joint_member_connect_error_already_connected">%1$s уже подключён.</string>
     <string name="joint_member_connect_error_archived">Канал %1$s архивирован.</string>
+    <string name="joint_member_connect_error_channel_name_taken">В %1$s уже есть канал %2$s. Переименуйте этот канал в %1$s и подключитесь снова.</string>
     <string name="joint_member_connect_error_busy">Канал %1$s обновляется. Попробуйте ещё раз через минуту.</string>
     <string name="joint_member_connect_error_channel_full">К каналу %1$s нельзя подключить больше серверов.</string>
     <string name="joint_member_connect_error_connect_in_progress">К каналу %1$s сейчас подключается сервер. Попробуйте ещё раз, когда подключение завершится.</string>
@@ -4376,6 +4377,7 @@
     <string name="agent_migration_error_manifest_too_large_with_paths">В рабочем пространстве слишком много файлов и папок для переноса. Больше всего их здесь: %1$s. Попросите агента удалить ненужные папки или добавить их в .raftmigrateignore, затем попробуйте ещё раз.</string>
     <string name="agent_migration_error_insufficient_disk_with_sizes">Целевому компьютеру нужно %1$s свободного места для подготовки и установки переноса, а доступно только %2$s. Освободите место на диске и попробуйте ещё раз.</string>
     <string name="agent_migration_error_insufficient_disk">На целевом компьютере недостаточно свободного места на диске для подготовки и установки переноса. Освободите место и попробуйте ещё раз.</string>
+    <string name="agent_migration_error_key_path_unreadable">У исходного компьютера нет прав на чтение MEMORY.md или notes/, которые всегда переносятся вместе с агентом, поэтому миграция остановлена. Ничего не перенесено. Исправьте права доступа к файлам и запустите миграцию снова.</string>
     <string name="agent_migration_abort_prep_deadline">Подготовка рабочего пространства на исходном компьютере перестала продвигаться и не завершилась в срок. Убедитесь, что исходный компьютер в сети, и попробуйте ещё раз.</string>
     <string name="agent_migration_abort_transfer_deadline">Передача рабочего пространства не завершилась в срок. Убедитесь, что оба компьютера остаются в сети, а на целевом достаточно свободного места на диске, затем попробуйте ещё раз.</string>
     <string name="agent_migration_abort_arrival_deadline">Целевой компьютер не завершил установку рабочего пространства в срок. Убедитесь, что он работает и на нём достаточно свободного места на диске, затем попробуйте ещё раз.</string>
@@ -5181,8 +5183,8 @@
     <string name="channel_external_invite_upgrade">Повысить тариф</string>
     <string name="channel_external_invite_becomes_private">Если пригласить людей извне, этот канал станет закрытым. Видеть его смогут только его участники.</string>
     <string name="channel_external_invite_emails_label">Пригласить по электронной почте</string>
-    <string name="channel_external_invite_emails_placeholder">name@example.com, name@example.org</string>
-    <string name="channel_external_invite_emails_hint">Разделяйте адреса запятыми, пробелами или переносами строк. Не более %1$d.</string>
+    <string name="channel_external_invite_emails_placeholder">alex@example.com, sam@example.org, …</string>
+    <string name="channel_external_invite_emails_join_by_link">Каждый получит письмо со ссылкой для входа, даже без аккаунта Raft.</string>
     <string name="channel_external_invite_too_many">Максимум адресов за раз: %1$d. Удалите %2$d адреса.</string>
     <string name="channel_external_invite_next">Далее</string>
     <string name="channel_external_invite_checking">Проверка…</string>
@@ -5347,6 +5349,7 @@
     <string name="external_invite_error_joint_free_server_limit">В канале %1$s уже максимальное число бесплатных серверов. Переведите сервер %2$s на Pro, чтобы подключить его.</string>
     <string name="external_invite_error_connect_in_progress">К каналу %1$s сейчас подключается сервер. Попробуйте ещё раз, когда подключение завершится.</string>
     <string name="external_invite_error_archived">Канал %1$s архивирован.</string>
+    <string name="external_invite_error_channel_name_taken">В %1$s уже есть канал %2$s. Переименуйте этот канал в %1$s и подключитесь снова.</string>
     <string name="external_invite_error_busy">Канал %1$s обновляется. Попробуйте ещё раз через минуту.</string>
     <string name="external_invite_error_too_many_attempts">Слишком много попыток. Подождите минуту и попробуйте ещё раз.</string>
     <string name="external_invite_error_generic">Что-то пошло не так. Попробуйте ещё раз.</string>

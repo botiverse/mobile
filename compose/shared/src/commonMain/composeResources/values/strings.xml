@@ -2411,7 +2411,7 @@
     <string name="agent_invite_action_send">Send invites</string>
     <string name="channel_create_title">Create Channel</string>
     <string name="channel_create_external">External</string>
-    <string name="channel_create_external_hint">Work with people outside %1$s in one channel. Only people you add can see it, including %1$s members.</string>
+    <string name="channel_create_external_hint">Invite friends, clients, or partners to the same channel through email. External channels are always private.</string>
     <string name="channel_create_external_free_limit">Free plan: %1$s already has a channel with people outside it.</string>
     <string name="channel_create_upgrade_for_more">Upgrade for more</string>
     <string name="channel_create_people_title">Add people to #%1$s</string>
@@ -4220,6 +4220,7 @@
     <string name="joint_member_connect_description">Servers where you're an owner or admin connect now. %1$s, the host, isn't asked. A message in the channel says the server was connected.</string>
     <string name="joint_member_connect_error_already_connected">%1$s is already connected.</string>
     <string name="joint_member_connect_error_archived">%1$s was archived.</string>
+    <string name="joint_member_connect_error_channel_name_taken">%1$s already has a channel named %2$s. Rename that channel in %1$s, then connect again.</string>
     <string name="joint_member_connect_error_busy">%1$s is being updated. Try again in a minute.</string>
     <string name="joint_member_connect_error_channel_full">%1$s can't take any more servers.</string>
     <string name="joint_member_connect_error_connect_in_progress">A server is being connected to %1$s. Try again once it's done.</string>
@@ -4548,6 +4549,7 @@
     <string name="agent_migration_error_manifest_too_large_with_paths">The workspace has too many files and folders to move. Most are in %1$s. Ask the agent to delete folders it no longer needs, or to list them in .raftmigrateignore, then try again.</string>
     <string name="agent_migration_error_insufficient_disk_with_sizes">The target computer needs %1$s free to stage and install this migration, but only %2$s is available. Free disk space and try again.</string>
     <string name="agent_migration_error_insufficient_disk">The target computer does not have enough free disk space to stage and install this migration. Free disk space and try again.</string>
+    <string name="agent_migration_error_key_path_unreadable">The source computer has no permission to read MEMORY.md or notes/, which always move with the agent, so the migration stopped. Nothing was moved. Fix the file permissions and start the migration again.</string>
     <string name="agent_migration_abort_prep_deadline">Preparing the workspace on the source computer stopped making progress before the deadline. Make sure the source is online, then try again.</string>
     <string name="agent_migration_abort_transfer_deadline">The workspace transfer did not finish before the deadline. Make sure both computers stay online and the target has enough free disk space, then try again.</string>
     <string name="agent_migration_abort_arrival_deadline">The target computer did not finish installing the workspace before the deadline. Make sure the target is running and has enough free disk space, then try again.</string>
@@ -5357,8 +5359,8 @@
     <string name="channel_external_invite_upgrade">Upgrade</string>
     <string name="channel_external_invite_becomes_private">Inviting people from outside makes this channel private. Only its members will see it.</string>
     <string name="channel_external_invite_emails_label">Invite by email</string>
-    <string name="channel_external_invite_emails_placeholder">name@example.com, name@example.org</string>
-    <string name="channel_external_invite_emails_hint">Separate emails with commas, spaces or new lines. Up to %1$d.</string>
+    <string name="channel_external_invite_emails_placeholder">alex@example.com, sam@example.org, …</string>
+    <string name="channel_external_invite_emails_join_by_link">Everyone gets an email with a link to join, even without a Raft account.</string>
     <string name="channel_external_invite_too_many">Up to %1$d emails at a time. Remove %2$d.</string>
     <string name="channel_external_invite_next">Next</string>
     <string name="channel_external_invite_checking">Checking…</string>
@@ -5523,6 +5525,7 @@
     <string name="external_invite_error_joint_free_server_limit">%1$s already has as many free servers as it can take. Upgrade %2$s to Pro to connect it.</string>
     <string name="external_invite_error_connect_in_progress">A server is being connected to %1$s. Try again once it's done.</string>
     <string name="external_invite_error_archived">%1$s was archived.</string>
+    <string name="external_invite_error_channel_name_taken">%1$s already has a channel named %2$s. Rename that channel in %1$s, then connect again.</string>
     <string name="external_invite_error_busy">%1$s is being updated. Try again in a minute.</string>
     <string name="external_invite_error_too_many_attempts">Too many attempts. Wait a minute and try again.</string>
     <string name="external_invite_error_generic">Something went wrong. Try again.</string>
