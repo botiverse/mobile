@@ -7,7 +7,7 @@ import kotlinx.serialization.json.Json
 /**
  * Step-up with a legacy passkey in a system web session, for an account whose only passkeys are
  * under the legacy RP ID, which iOS can't assert natively (`passkey_rp_unavailable`). Contract:
- * botiverse/slock `docs/contracts/app-web-step-up.md` (#15593 @ 9fc79159), server
+ * botiverse/slock `docs/contracts/app-web-step-up.md` (#15593 @ 7daeae2d), server
  * `services/appStepUpService.ts` + `routes/appLogin.ts`. Flag `app_web_step_up_v1` (per person).
  *
  *     POST /api/auth/app-login/step-up/start      (the app's bearer)
@@ -19,9 +19,10 @@ import kotlinx.serialization.json.Json
  *     POST /api/auth/app-login/step-up/complete   (the app's bearer, same sign-in as start)
  *       { code, codeVerifier, returnUri } → 200 { verified: true, verifiedAt }
  *       400 invalid_request | pkce_mismatch | return_uri_mismatch (code not used up)
- *       404 code_not_found (or not_enabled) · 410 code_expired | code_consumed
+ *       403 session_family_required · 404 code_not_found (or not_enabled) · 410 code_expired | code_consumed
  *
- * Errors are `{ error, code, errorCode?, redirectUrl? }`. The page hands back to
+ * Refusals are the server's envelope (`lib/refusal.ts`): `{ error, code, errorCode }`, `errorCode`
+ * repeating `code`; the 503 is `{ error, code }`. The page hands back to
  * `<returnUri>?requestId=…&code=…` (or `error=access_denied` / `error=expired`), the same callback
  * the browser login uses ([parseAppLoginCallback]). A request lives 5 min, a code 2 min.
  */
@@ -93,8 +94,6 @@ sealed interface AppWebStepUpStartResult {
 
 sealed interface AppWebStepUpCompleteResult {
     data object Verified : AppWebStepUpCompleteResult
-    /** 409 `second_factor_not_enabled`: as [Verified], the action goes again. */
-    data object NotEnabled : AppWebStepUpCompleteResult
     /** 410 `code_expired` (also denied by a newer start or a revoke) or `code_consumed`. */
     data class Expired(val traceId: String? = null) : AppWebStepUpCompleteResult
     /** 403 `session_family_required`. */
@@ -155,7 +154,6 @@ internal fun parseAppWebStepUpComplete(statusCode: Int, bodyText: String?, trace
     val refusal = parseAppWebStepUpRefusal(bodyText)
     return when {
         statusCode == 410 -> AppWebStepUpCompleteResult.Expired(traceId)
-        refusal?.code == "second_factor_not_enabled" -> AppWebStepUpCompleteResult.NotEnabled
         refusal?.code == "session_family_required" -> AppWebStepUpCompleteResult.SessionFamilyRequired
         else ->
             AppWebStepUpCompleteResult.Failed(

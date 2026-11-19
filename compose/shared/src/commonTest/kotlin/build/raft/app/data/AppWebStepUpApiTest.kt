@@ -5,11 +5,19 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The web step-up's wire shapes (botiverse/slock docs/contracts/app-web-step-up.md, #15593 @
- * 9fc79159) and its PKCE.
+ * The web step-up's wire shapes and its PKCE. Answers are the server's verbatim (botiverse/slock
+ * #15593 @ 7daeae2d: docs/contracts/app-web-step-up.md, routes/appLogin.ts `/step-up/start` and
+ * `/step-up/complete`, refusals through lib/refusal.ts `refuse()`, which adds `errorCode`).
  */
 class AppWebStepUpApiTest {
     private val trace = "4bf92f3577b34da6a3ce929d0e0e4736"
+
+    /** `refuse()`'s envelope: `{ error, code, errorCode }`. */
+    private fun refusal(error: String, code: String) = """{"error":"$error","code":"$code","errorCode":"$code"}"""
+
+    private companion object {
+        const val UNUSABLE_CODE = "The verification code could not be used"
+    }
 
     @Test
     fun startSendsS256AndTheAction() {
@@ -38,26 +46,35 @@ class AppWebStepUpApiTest {
         )
         assertEquals(
             AppWebStepUpStartResult.Unavailable,
-            parseAppWebStepUpStart(404, """{"error":"No passkey","code":"passkey_not_found"}"""),
+            parseAppWebStepUpStart(404, refusal("App step-up is not available", "passkey_not_found")),
         )
         assertEquals(
             AppWebStepUpStartResult.SessionFamilyRequired,
-            parseAppWebStepUpStart(403, """{"error":"Sign in again","code":"session_family_required"}"""),
+            parseAppWebStepUpStart(403, refusal("Sign in again to continue.", "session_family_required")),
         )
         assertEquals(
-            AppWebStepUpStartResult.Failed("Unknown action", "invalid_action", trace),
-            parseAppWebStepUpStart(400, """{"error":"Unknown action","code":"invalid_action"}""", trace),
+            AppWebStepUpStartResult.Failed("App step-up is not available", "invalid_action", trace),
+            parseAppWebStepUpStart(400, refusal("App step-up is not available", "invalid_action"), trace),
         )
         // The flag off, or no legacy passkey: Open on the web instead.
-        assertEquals(AppWebStepUpStartResult.Unavailable, parseAppWebStepUpStart(404, """{"error":"Not found","code":"not_enabled"}"""))
+        assertEquals(AppWebStepUpStartResult.Unavailable, parseAppWebStepUpStart(404, refusal("App step-up is not available", "not_enabled")))
         assertEquals(AppWebStepUpStartResult.Unavailable, parseAppWebStepUpStart(404, null))
         assertEquals(
             AppWebStepUpStartResult.NotEnabled,
-            parseAppWebStepUpStart(409, """{"error":"Off","code":"second_factor_not_enabled"}"""),
+            parseAppWebStepUpStart(409, refusal("App step-up is not available", "second_factor_not_enabled")),
         )
         assertEquals(
-            AppWebStepUpStartResult.Failed("Bad return URI", "invalid_return_uri", trace),
-            parseAppWebStepUpStart(400, """{"error":"Bad return URI","code":"invalid_return_uri"}""", trace),
+            AppWebStepUpStartResult.Failed("App step-up is not available", "return_uri_not_allowed", trace),
+            parseAppWebStepUpStart(400, refusal("App step-up is not available", "return_uri_not_allowed"), trace),
+        )
+        assertEquals(
+            AppWebStepUpStartResult.Failed("returnUri, codeChallenge and action are required", "invalid_request", trace),
+            parseAppWebStepUpStart(400, refusal("returnUri, codeChallenge and action are required", "invalid_request"), trace),
+        )
+        // Not through refuse(): no errorCode.
+        assertEquals(
+            AppWebStepUpStartResult.Failed("App login URL is not configured", "app_login_url_unavailable", trace),
+            parseAppWebStepUpStart(503, """{"error":"App login URL is not configured","code":"app_login_url_unavailable"}""", trace),
         )
         assertEquals(AppWebStepUpStartResult.Failed(null, "http_502", trace), parseAppWebStepUpStart(502, "", trace))
         assertEquals(
@@ -72,28 +89,29 @@ class AppWebStepUpApiTest {
             AppWebStepUpCompleteResult.Verified,
             parseAppWebStepUpComplete(200, """{"verified":true,"verifiedAt":"2026-11-19T10:01:00Z"}"""),
         )
-        assertEquals(AppWebStepUpCompleteResult.Expired(trace), parseAppWebStepUpComplete(410, """{"code":"code_expired"}""", trace))
+        assertEquals(AppWebStepUpCompleteResult.Expired(trace), parseAppWebStepUpComplete(410, refusal(UNUSABLE_CODE, "code_expired"), trace))
         // pkce_mismatch leaves the code unused on the server; here it is a failure with its trace ID.
         assertEquals(
-            AppWebStepUpCompleteResult.Failed("PKCE mismatch", "pkce_mismatch", trace),
-            parseAppWebStepUpComplete(400, """{"error":"PKCE mismatch","code":"pkce_mismatch"}""", trace),
+            AppWebStepUpCompleteResult.Failed(UNUSABLE_CODE, "pkce_mismatch", trace),
+            parseAppWebStepUpComplete(400, refusal(UNUSABLE_CODE, "pkce_mismatch"), trace),
         )
         assertEquals(
             AppWebStepUpCompleteResult.SessionFamilyRequired,
-            parseAppWebStepUpComplete(403, """{"code":"session_family_required"}"""),
+            parseAppWebStepUpComplete(403, refusal("Sign in again to continue.", "session_family_required")),
         )
         assertEquals(
             AppWebStepUpCompleteResult.Failed(serverCode = "app_web_step_up_contract_mismatch", traceId = trace),
             parseAppWebStepUpComplete(200, """{"verified":false}""", trace),
         )
-        assertEquals(AppWebStepUpCompleteResult.Expired(trace), parseAppWebStepUpComplete(410, """{"code":"code_consumed"}""", trace))
+        assertEquals(AppWebStepUpCompleteResult.Expired(trace), parseAppWebStepUpComplete(410, refusal(UNUSABLE_CODE, "code_consumed"), trace))
+        // Another sign-in's or person's code, a login code, or the flag off: all 404, a failure.
         assertEquals(
-            AppWebStepUpCompleteResult.NotEnabled,
-            parseAppWebStepUpComplete(409, """{"code":"second_factor_not_enabled"}"""),
+            AppWebStepUpCompleteResult.Failed(UNUSABLE_CODE, "code_not_found", trace),
+            parseAppWebStepUpComplete(404, refusal(UNUSABLE_CODE, "code_not_found"), trace),
         )
         assertEquals(
-            AppWebStepUpCompleteResult.Failed("Not found", "code_not_found", trace),
-            parseAppWebStepUpComplete(404, """{"error":"Not found","code":"code_not_found"}""", trace),
+            AppWebStepUpCompleteResult.Failed(UNUSABLE_CODE, "not_enabled", trace),
+            parseAppWebStepUpComplete(404, refusal(UNUSABLE_CODE, "not_enabled"), trace),
         )
     }
 

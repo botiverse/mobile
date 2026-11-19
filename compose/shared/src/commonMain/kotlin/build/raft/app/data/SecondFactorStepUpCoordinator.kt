@@ -740,8 +740,7 @@ class SecondFactorStepUpCoordinator(
         if (pending !== deferred) return
         val shown = _state.value?.copy(submitting = false, webStepUp = SecondFactorWebStepUpPhase.Ready) ?: return
         when (result) {
-            AppWebStepUpCompleteResult.Verified,
-            AppWebStepUpCompleteResult.NotEnabled -> {
+            AppWebStepUpCompleteResult.Verified -> {
                 exit("verified")
                 settle(SecondFactorStepUpSettle.Verified)
             }
