@@ -83,7 +83,6 @@ private val homeChannelListAgentStatuses: Map<String, SharedServerMemberStatus> 
  */
 @Composable
 internal fun HomeChannelListVisualContent(
-    unreadStale: Boolean = false,
     // PROTOTYPE (native nav): the host draws the tab bar / the head.
     showBottomBar: Boolean = true,
     serverSwitcherInTopBar: Boolean = false,
@@ -119,7 +118,6 @@ internal fun HomeChannelListVisualContent(
         searchAndActivityOnShellNav = true,
         serverSwitcherInTopBar = serverSwitcherInTopBar,
         outerPadding = 0.dp,
-        unreadStale = unreadStale,
         onChannelClick = onChannelClick
     )
 }

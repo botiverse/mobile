@@ -1781,7 +1781,7 @@ internal class SharedHomeStore(
             }
         val summary = (result as? DataResult.Content)?.data
         // Task #164: a remembered summary may predate the reply that asked for this read, and an
-        // overload has none: both leave the marks as they are and raise the stale notice.
+        // overload has none: both leave the marks as they are and raise the stale flag.
         if (summary?.stale == true || result.isRwOverloadedError) {
             diagnosticsLogger("home_followed_thread_refresh result=stale")
             markHomeUnreadStale()
@@ -6107,8 +6107,8 @@ data class SharedHomeState(
     /**
      * Task #164: the unread counts Home shows may be old because the read warehouse is behind
      * (`X-Raft-Stale` or `503 rw_overloaded` on `channels/unread` / `servers/unread-summary`). The
-     * counts themselves stay as they were; the phone Home shows the stale notice until a load
-     * with fresh unread reads clears it.
+     * counts themselves stay as they were (no notice, artin) until a load with fresh unread reads
+     * clears it.
      */
     val unreadStale: Boolean = false,
     /**

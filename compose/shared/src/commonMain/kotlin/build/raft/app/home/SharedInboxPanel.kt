@@ -1042,10 +1042,10 @@ private fun SharedActivityPanelContent(
         )
         RaftAppShellBodyTopBanner()
         // Task #164 (stdrc O2): under the head, above the filters; the rows and counts stay.
+        // While the read warehouse is only behind (`state.stale`) there is no notice (artin): the
+        // rows keep the last good result and update silently once a fresh read lands.
         if (state.unavailable && state.snapshot != null) {
             RaftReadWarehouseUnavailableNotice(stringResource(Res.string.activity_unavailable_notice))
-        } else if (state.stale) {
-            RaftReadWarehouseStaleNotice(stringResource(Res.string.activity_stale_notice))
         }
         // slock #11383 (stdrc option A): the filter is a menu now, so the swipe-between-filters
         // pager (task #232) went with the segmented control it paged: a horizontal swipe is the
