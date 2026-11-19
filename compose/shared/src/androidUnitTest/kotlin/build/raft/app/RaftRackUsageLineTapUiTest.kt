@@ -21,9 +21,8 @@ import androidx.compose.ui.test.swipe
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftStorePullToRefreshBox
-import build.raft.designsystem.components.RaftPreviewCard
-import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardState
+import build.raft.designsystem.components.raftClickable
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -34,10 +33,11 @@ import org.robolectric.annotation.Config
 
 /**
  * artin (Huawei Android, 2026-11-19): on the Computers page, scrolling up and down fast kept
- * opening a runtime line's usage card. The line is a `pinOnClick` [RaftPreviewCard] trigger
- * (RaftRackUsagePreviewCard → ComputerRuntimeUsagePreviewCard), composed here as the page does,
- * in a LazyColumn under the pull-to-refresh box: a swipe that starts on a line, or a finger that
- * stops a fling over one, opens no card; a plain tap still pins it.
+ * opening a runtime line's usage card. The line is the usage card's button
+ * (RaftRackUsagePreviewCard → ComputerRuntimeUsagePreviewCard, the line's `raftClickable`),
+ * composed here as the page does, in a LazyColumn under the pull-to-refresh box: a swipe that
+ * starts on a line, or a finger that stops a fling over one, opens nothing (no card, no sheet); a
+ * plain tap opens the line's usage sheet (the page's `onTap`), never the card.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -47,6 +47,7 @@ class RaftRackUsageLineTapUiTest {
     val activities = RobolectricComposeActivityRule()
 
     private val states = List(LineCount) { RaftPreviewCardState() }
+    private val sheets = mutableListOf<Int>()
     private lateinit var list: LazyListState
 
     private fun ComposeUiTest.showRack() {
@@ -56,13 +57,16 @@ class RaftRackUsageLineTapUiTest {
                 RaftStorePullToRefreshBox(refreshing = false, onRefresh = {}, modifier = Modifier.fillMaxSize()) {
                     LazyColumn(Modifier.fillMaxSize().testTag(ListTag), state = list) {
                         items(states.indices.toList()) { index ->
-                            RaftPreviewCard(
-                                card = { BasicText("usage $index") },
+                            ComputerRuntimeUsagePreviewCard(
+                                runtimeLabel = "Claude $index",
+                                controller = null,
+                                runtimeVersion = null,
+                                onTap = { sheets += index },
                                 state = states[index],
-                                pinOnClick = true,
-                                width = RaftPreviewCardDefaults.WideWidth,
-                            ) {
-                                Box(Modifier.fillMaxWidth().height(56.dp).testTag(lineTag(index))) { BasicText("Claude $index") }
+                            ) { onClick ->
+                                Box(Modifier.fillMaxWidth().height(56.dp).testTag(lineTag(index)).raftClickable(onClick = { onClick?.invoke() })) {
+                                    BasicText("Claude $index")
+                                }
                             }
                         }
                     }
@@ -75,14 +79,14 @@ class RaftRackUsageLineTapUiTest {
     private fun openLines(): List<Int> = states.indices.filter { states[it].isOpen || states[it].isPinned }
 
     @Test
-    fun aPlainTapOnALinePinsItsCard() = runRobolectricComposeUiTest {
+    fun aPlainTapOnALineOpensItsSheet() = runRobolectricComposeUiTest {
         showRack()
 
         onNodeWithTag(lineTag(2)).performTouchInput { click() }
         mainClock.advanceTimeBy(1_000)
 
-        assertTrue(states[2].isPinned, "a tap on the line pins its card")
-        assertEquals(listOf(2), openLines())
+        assertEquals(listOf(2), sheets, "a finger's tap on the line opens its usage sheet")
+        assertEquals(emptyList(), openLines(), "and no card")
     }
 
     @Test
@@ -103,6 +107,7 @@ class RaftRackUsageLineTapUiTest {
 
         assertTrue(list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0, "the swipes scrolled the rack")
         assertEquals(emptyList(), openLines(), "no line's card opened")
+        assertEquals(emptyList(), sheets, "no line's sheet opened")
     }
 
     @Test
@@ -121,12 +126,14 @@ class RaftRackUsageLineTapUiTest {
         mainClock.advanceTimeBy(2_000)
 
         assertEquals(emptyList(), openLines(), "the tap that stopped the fling opened no card")
+        assertEquals(emptyList(), sheets, "nor a sheet")
 
         // Once the list is at rest, a tap is a tap again.
         val visible = list.firstVisibleItemIndex + 1
         onNodeWithTag(lineTag(visible)).performTouchInput { click() }
         mainClock.advanceTimeBy(1_000)
-        assertEquals(listOf(visible), openLines())
+        assertEquals(listOf(visible), sheets)
+        assertEquals(emptyList(), openLines())
     }
 
     private companion object {

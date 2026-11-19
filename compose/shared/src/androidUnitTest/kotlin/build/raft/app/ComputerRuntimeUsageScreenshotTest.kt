@@ -1,5 +1,11 @@
 package build.raft.app
 
+import android.os.Looper
+import android.os.SystemClock
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +18,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getAllSemanticsNodes
+import androidx.compose.ui.semantics.getOrNull
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -39,13 +49,17 @@ import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardSurface
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
+import java.time.Duration
 import kotlin.test.Test
+import kotlin.test.assertNotNull
 import kotlinx.serialization.json.Json
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowDialog
 
 /**
  * artin task #18: the computer detail's runtime chips with account usage (web
@@ -74,6 +88,21 @@ class ComputerRuntimeUsageScreenshotTest {
     @Test
     fun sheetDark() = capture("settings.computer.runtime_usage.sheet.dark", RaftAppAppearance.Dark) { RuntimeUsageSheetContent(it) }
 
+    // A finger's tap on Claude Code's chip on a phone: the usage opens as a bottom sheet (web: a
+    // Drawer on a phone), never as the hover card; the sheet's window is captured.
+    @Test
+    fun chipTapSheetLight() =
+        RaftRobolectricScreenshot.capture(
+            "settings.computer.runtime_usage.chip_tap_sheet",
+            RaftAppAppearance.Light,
+            reportDir = "build/reports/home-screenshots",
+            activities = activities,
+            root = { activity ->
+                tapChip(activity, "Claude")
+                ShadowDialog.getLatestDialog()?.window?.decorView?.let(::fittedToItsWindow)
+            },
+        ) { CapturePage(RaftAppAppearance.Light) { RuntimeUsageChipsContent(it) } }
+
     // The desktop card a mouse rests on (web RuntimeUsageHoverCard, 390 wide): pinned, with its
     // close button; the same content as the sheet.
     @Test
@@ -96,18 +125,57 @@ class ComputerRuntimeUsageScreenshotTest {
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable (RaftAppAppearance) -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-            val pager =
-                remember {
-                    object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
-                }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
-                RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
-                    CompositionLocalProvider(LocalRaftTimeContextProvider provides RaftTimeContextProvider(usageTimeContext)) {
-                        RaftComputersTheme { content(appearance) }
-                    }
-                }
+            CapturePage(appearance, content)
+        }
+}
+
+@Composable
+private fun CapturePage(appearance: RaftAppAppearance, content: @Composable (RaftAppAppearance) -> Unit) {
+    val pager =
+        remember {
+            object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
+        }
+    CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+        RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
+            CompositionLocalProvider(LocalRaftTimeContextProvider provides RaftTimeContextProvider(usageTimeContext)) {
+                RaftComputersTheme { content(appearance) }
             }
         }
+    }
+}
+
+/** A finger's tap (down, then up 60ms later) on the centre of the runtime chip whose text starts with [text]; then the page settles. */
+private fun tapChip(activity: ComponentActivity, text: String) {
+    val root = findCompose(activity.window.decorView)
+    assertNotNull(root, "no compose root")
+    val chip =
+        (root as ViewRootForTest).semanticsOwner.getAllSemanticsNodes(mergingEnabled = true).first { node ->
+            node.config.getOrNull(SemanticsProperties.TestTag) == COMPUTER_RUNTIME_CHIP_TAG &&
+                node.config.getOrNull(SemanticsProperties.Text)?.any { it.text.startsWith(text) } == true
+        }
+    val at = chip.boundsInRoot.center
+    val down = SystemClock.uptimeMillis()
+    MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, at.x, at.y, 0).also { root.dispatchTouchEvent(it) }.recycle()
+    MotionEvent.obtain(down, down + 60, MotionEvent.ACTION_UP, at.x, at.y, 0).also { root.dispatchTouchEvent(it) }.recycle()
+    repeat(10) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200)) }
+}
+
+/** The dialog window with its compose content measured to the window (RaftUpgradeDialogScreenshotTest). */
+private fun fittedToItsWindow(decor: View): View {
+    val content = findCompose(decor) ?: return decor
+    val parent = content.parent as? View ?: return decor
+    val exactly = View.MeasureSpec.EXACTLY
+    content.measure(View.MeasureSpec.makeMeasureSpec(parent.width, exactly), View.MeasureSpec.makeMeasureSpec(parent.height, exactly))
+    content.layout(0, 0, parent.width, parent.height)
+    return decor
+}
+
+private fun findCompose(view: View): View? {
+    if (view is ViewRootForTest) return view
+    if (view is ViewGroup) {
+        for (index in 0 until view.childCount) findCompose(view.getChildAt(index))?.let { return it }
+    }
+    return null
 }
 
 private val usageTimeContext =

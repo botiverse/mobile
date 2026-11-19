@@ -569,11 +569,12 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     ) {
         // Mobile refreshes by pull only (no header refresh button): same store refresh as Retry.
         RaftStorePullToRefreshBox(refreshing = refreshing, onRefresh = ::refresh, modifier = Modifier.fillMaxSize()) {
-        // A usage line's card on hover (web rack `UsageCardTrigger` → RuntimeUsageHoverCard).
+        // A usage line's card (web rack `UsageCardTrigger` → RuntimeUsageHoverCard): on a mouse's
+        // hover and click; a finger's tap is the line's own (the page's usage sheet, below).
         val usageCard: RaftRackUsageCard? =
             usageAccess.owner?.let { owner ->
                 usageServerId?.let { serverId ->
-                    RaftRackUsageCard { machineId: String, column: RaftRackUsageColumn, label: String, trigger: @Composable () -> Unit ->
+                    RaftRackUsageCard { machineId: String, column: RaftRackUsageColumn, label: String, onTap: () -> Unit, trigger: @Composable (onClick: (() -> Unit)?) -> Unit ->
                         val key = remember(owner, serverId, machineId, column.provider) {
                             RuntimeAccountUsageKey(owner, serverId, machineId, column.provider)
                         }
@@ -584,7 +585,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                                 ?.get(column.runtimeId)
                         val computerName =
                             (settingsState.computers as? ScreenLoadState.Content)?.data?.computers?.firstOrNull { it.id == machineId }?.name
-                        RaftRackUsagePreviewCard(label, key, usageAccess, runtimeVersion, column.runtimeId, computerName, trigger)
+                        RaftRackUsagePreviewCard(label, key, usageAccess, runtimeVersion, column.runtimeId, computerName, onTap, trigger)
                     }
                 }
             }
@@ -1789,7 +1790,7 @@ private fun RaftComputerRackCells(
                 if (column != null && !usageLoads[column.provider].unsupportedRead) {
                     val line = raftRackUsageLine(raftRackUsageCell(column, usageLoads[column.provider]), runtimeCatalog, row.canViewRuntimeUsage, onOpenUsage, row.id, nowMillis, raftRackLoginStep(row.runtimes, row.loginSteps, column.provider))
                     val card = line.usageCard
-                    if (card != null) card { RaftRackUsageCellContent(line, click = null) } else RaftRackUsageCellContent(line, click = line.onClick)
+                    if (card != null) card { click -> RaftRackUsageCellContent(line, click = click) } else RaftRackUsageCellContent(line, click = line.onClick)
                 }
             }
         }
@@ -1887,8 +1888,11 @@ private class RaftRackLine(
     val dimmed: Boolean = false,
     val semantics: String,
     val onClick: (() -> Unit)? = null,
-    /** A usage line wears its usage card (hover, a click pins); its click is then the card's. */
-    val usageCard: (@Composable (trigger: @Composable () -> Unit) -> Unit)? = null,
+    /**
+     * A usage line wears its usage card: it is drawn as the card's trigger, with the card's click
+     * (a mouse's pins the card, a finger's is [onClick]).
+     */
+    val usageCard: (@Composable (trigger: @Composable (onClick: (() -> Unit)?) -> Unit) -> Unit)? = null,
     val emphasized: Boolean = false,
     /** A usage line's model line (web `ModelUsageLine` / `ModelCardLine`, slock #14605); null: one line. */
     val model: RaftRackModelLineUi? = null,
@@ -1994,7 +1998,7 @@ private fun RaftRackLineRow(line: RaftRackLine, valueWidth: Dp) {
     val card = line.usageCard
     val tooltip = line.tooltip
     if (card != null) {
-        card { RaftRackLineRowContent(line, valueWidth, click = null) }
+        card { click -> RaftRackLineRowContent(line, valueWidth, click = click) }
     } else if (tooltip != null) {
         RaftTooltip(tooltip) { RaftRackLineRowContent(line, valueWidth, click = line.onClick) }
     } else {
@@ -2192,9 +2196,9 @@ private fun raftRackUsageLine(
     val onClick = if (canView) ({ onOpenUsage(cell.column, name) }) else null
     val cardHost = LocalRaftRackUsageCard.current
     val pending = LocalRaftRackUsagePending.current
-    val usageCard: (@Composable (@Composable () -> Unit) -> Unit)? =
-        if (canView && cardHost != null) {
-            { trigger -> cardHost.card(machineId, cell.column, name, trigger) }
+    val usageCard: (@Composable (@Composable (onClick: (() -> Unit)?) -> Unit) -> Unit)? =
+        if (onClick != null && cardHost != null) {
+            { trigger -> cardHost.card(machineId, cell.column, name, onClick, trigger) }
         } else {
             null
         }
@@ -3160,7 +3164,6 @@ private fun RaftComputerDetailBody(
                                 val experimental = if (chip.experimental) stringResource(Res.string.runtime_suffix_experimental) else ""
                                 ComputerRuntimeInstallChip(
                                     label = chip.name + experimental + stringResource(Res.string.agent_create_suffix_not_installed),
-                                    copyText = chip.name,
                                     raftRuntimeId = chip.id,
                                     runtimeName = chip.name,
                                     installAs = installAs,
@@ -4245,9 +4248,13 @@ private fun raftComputerActionErrorTitle(action: SharedSettingsActionState): Str
 
 // endregion
 
-/** Draws a rack usage line's usage card round [trigger] (the page knows the viewer and server). */
+/**
+ * Draws a rack usage line's usage card round [trigger] (the page knows the viewer and server):
+ * [trigger] is the line's button, given its click (a mouse's pins the card; a finger's is `onTap`,
+ * the line's own: the page's usage sheet).
+ */
 internal class RaftRackUsageCard(
-    val card: @Composable (machineId: String, column: RaftRackUsageColumn, label: String, trigger: @Composable () -> Unit) -> Unit,
+    val card: @Composable (machineId: String, column: RaftRackUsageColumn, label: String, onTap: () -> Unit, trigger: @Composable (onClick: (() -> Unit)?) -> Unit) -> Unit,
 )
 
 internal val LocalRaftRackUsageCard = staticCompositionLocalOf<RaftRackUsageCard?> { null }
@@ -4266,9 +4273,10 @@ internal class RaftRackUsagePending(
 internal val LocalRaftRackUsagePending = compositionLocalOf<RaftRackUsagePending?> { null }
 
 /**
- * A Computers card's usage line with its usage card (web rack `UsageCardTrigger`): it opens on
- * hover and pins on a click. The controller reads only when the card opens (the page already
- * read every line for the meters), so a page of Computers asks for nothing more at rest.
+ * A Computers card's usage line with its usage card (web rack `UsageCardTrigger`): it opens on a
+ * mouse's hover and pins on its click; a finger's tap is [onTap] (the page's usage sheet). The
+ * controller reads only when the card opens (the page already read every line for the meters),
+ * so a page of Computers asks for nothing more at rest.
  */
 @Composable
 private fun RaftRackUsagePreviewCard(
@@ -4278,7 +4286,8 @@ private fun RaftRackUsagePreviewCard(
     runtimeVersion: String?,
     runtimeId: String,
     computerName: String?,
-    trigger: @Composable () -> Unit,
+    onTap: () -> Unit,
+    trigger: @Composable (onClick: (() -> Unit)?) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val controller =
@@ -4290,5 +4299,5 @@ private fun RaftRackUsagePreviewCard(
     val auth = rememberComputerRuntimeAuthController(access, key.machineId, runtimeId, readNow = false)
     // The line's label is the runtime's display name (web rack `RackRuntimeUsage`).
     val binding = auth?.let { ComputerRuntimeAuthBinding(it, label, computerName, agents = null, openUrl = access.auth?.openUrl ?: {}) }
-    ComputerRuntimeUsagePreviewCard(runtimeLabel = label, controller = controller, runtimeVersion = runtimeVersion, auth = binding, trigger = trigger)
+    ComputerRuntimeUsagePreviewCard(runtimeLabel = label, controller = controller, runtimeVersion = runtimeVersion, auth = binding, onTap = onTap, trigger = trigger)
 }

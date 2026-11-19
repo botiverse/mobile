@@ -1,8 +1,8 @@
 package build.raft.designsystem
 
+import androidx.compose.ui.input.pointer.PointerType
 import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardState
-import build.raft.designsystem.components.raftPreviewCardIsPinClick
 import build.raft.designsystem.components.raftPreviewCardSwitchDelay
 import build.raft.designsystem.components.raftPreviewCardWantsOpen
 import kotlin.test.Test
@@ -119,11 +119,18 @@ class RaftPreviewCardTest {
     }
 
     @Test
-    fun aPinClickIsAReleaseWhereThePressWasBeforeALongPress() {
-        assertTrue(raftPreviewCardIsPinClick(distance = 0f, heldMillis = 80L, touchSlop = 8f, longPressMillis = 400L))
-        assertTrue(raftPreviewCardIsPinClick(distance = 8f, heldMillis = 399L, touchSlop = 8f, longPressMillis = 400L))
-        // A drag, or a long press (the trigger's own, such as copying), is not a click.
-        assertFalse(raftPreviewCardIsPinClick(distance = 9f, heldMillis = 80L, touchSlop = 8f, longPressMillis = 400L))
-        assertFalse(raftPreviewCardIsPinClick(distance = 0f, heldMillis = 400L, touchSlop = 8f, longPressMillis = 400L))
+    fun aClickIsAMouseClickByTheInputThatMadeIt() {
+        // A phone with a mouse plugged in: the input decides, not the device.
+        val state = RaftPreviewCardState()
+        state.pressPointer = PointerType.Mouse
+        assertTrue(state.isMouseClick(noPointer = false), "a mouse click pins the card")
+        state.pressPointer = PointerType.Touch
+        assertFalse(state.isMouseClick(noPointer = true), "a finger's tap is the caller's (a sheet)")
+        state.pressPointer = PointerType.Stylus
+        assertFalse(state.isMouseClick(noPointer = true), "so is a pen's")
+        // A key or a screen reader: the device's usual input.
+        state.pressPointer = null
+        assertTrue(state.isMouseClick(noPointer = true))
+        assertFalse(state.isMouseClick(noPointer = false))
     }
 }

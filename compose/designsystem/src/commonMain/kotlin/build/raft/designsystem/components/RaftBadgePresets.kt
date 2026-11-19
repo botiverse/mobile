@@ -179,6 +179,8 @@ fun RaftAgentTag(modifier: Modifier = Modifier, text: String = "agent") {
  * [showCpuIcon] leads it with Lucide `cpu` (14dp, badge ink), as the profile hero does
  * (`agent-profile-runtime-chip`); the Runtime row of the config section leaves it out.
  * [trailing] is the account-usage light (web `RuntimeAccountUsageChip`: Status `sm`, `ml-1`).
+ * [onClick], [onClickLabel] and [copyText] as on [RaftBadge]: a chip rendered as a button (it
+ * opens the runtime's usage), whose long press copies [copyText].
  */
 @Composable
 fun RaftRuntimeChip(
@@ -188,6 +190,9 @@ fun RaftRuntimeChip(
     trailing: (@Composable () -> Unit)? = null,
     /** A leading glyph other than the default `cpu` (web profile hero: `square-terminal`); wins over [showCpuIcon]. */
     leadingGlyph: RaftGlyph? = null,
+    onClick: (() -> Unit)? = null,
+    onClickLabel: String? = null,
+    copyText: String? = null,
 ) {
     val glyph = leadingGlyph ?: RaftGlyph.Cpu.takeIf { showCpuIcon }
     RaftBadgeFrame(
@@ -197,9 +202,12 @@ fun RaftRuntimeChip(
             raftBadgeLook(RaftBadgeAppearance.Soft, RaftBadgeVariant.Information, enabled = true, colors = RaftTheme.colors)
                 .copy(mono = true, weight = FontWeight.Normal),
         appearance = RaftBadgeAppearance.Soft,
-        modifier = modifier,
+        modifier = if (onClick == null) modifier.raftCopyable(copyText) else modifier,
         icon = if (glyph != null) ({ RaftGlyphIcon(glyph, size = 14.dp) }) else null,
         trailing = trailing,
+        onClick = onClick,
+        onClickLabel = onClickLabel,
+        copyText = copyText,
     )
 }
 

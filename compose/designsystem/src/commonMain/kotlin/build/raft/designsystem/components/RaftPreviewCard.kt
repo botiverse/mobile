@@ -1,6 +1,5 @@
 package build.raft.designsystem.components
 
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,15 +23,12 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -42,7 +38,6 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
-import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -62,7 +57,6 @@ import androidx.compose.ui.window.PopupProperties
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /** raft-ui PreviewCard metrics (preview-card.tsx, and the web's MentionLink.tsx). */
 object RaftPreviewCardDefaults {
@@ -122,16 +116,6 @@ internal fun raftPreviewCardWantsOpen(overTrigger: Boolean, overCard: Boolean, s
     pinned || (!suppressed && (overTrigger || overCard))
 
 /**
- * Whether a press and its release on a `pinOnClick` trigger are a click that pins the card: the
- * pointer let go where it went down (within [touchSlop]) before [longPressMillis] (a long press
- * is the trigger's own, such as copying). The trigger also drops a press that a scrolling list
- * took (a fling stopped, a drag), which these numbers alone cannot tell: a dragged list carries
- * the trigger with the finger.
- */
-internal fun raftPreviewCardIsPinClick(distance: Float, heldMillis: Long, touchSlop: Float, longPressMillis: Long): Boolean =
-    distance <= touchSlop && heldMillis < longPressMillis
-
-/**
  * How long to wait before an [open] card follows [wantsOpen]: null when it already does,
  * [openDelayMillis] to open, [closeDelayMillis] to close. A change of [wantsOpen] while
  * waiting starts over (the pending switch is dropped), so a pointer that crosses from the
@@ -181,14 +165,25 @@ class RaftPreviewCardState(
 
     private var pinnedOpen by mutableStateOf(false)
 
-    /**
-     * A pinned card was just closed by a press outside it, in this frame: when that press is on
-     * the trigger (a finger: the popup sees it before the trigger does), it must not pin again.
-     */
-    internal var closedByOutsidePress = false
-
     /** A pointer is down on the trigger (any pointer): a press there is never "outside". */
     internal var pressOnTrigger = false
+
+    /**
+     * The kind of pointer whose press on the trigger is under way or is ending in its click; null
+     * when no pointer is (a key, a screen reader). [raftPreviewCardTrigger] reads it, consuming
+     * nothing, and clears it once the release has been through every pass (the click has run).
+     */
+    internal var pressPointer: PointerType? = null
+
+    /**
+     * For a `pinOnClick` trigger's own click (its `onClick`): whether a mouse or trackpad made it,
+     * so it pins the card ([pin]). False for a finger's or a pen's tap: what it opens is the
+     * caller's (the web opens the card as a bottom sheet on a phone). A click with no pointer (a
+     * key, a screen reader) follows [noPointer]: the device's usual input, `RaftTheme.pointerInput
+     * == RaftPointerInput.Fine`. The same device can have both (a phone with a mouse plugged in):
+     * this is decided per click, by the input.
+     */
+    fun isMouseClick(noPointer: Boolean): Boolean = pressPointer?.let { it == PointerType.Mouse } ?: noPointer
 
     /** The trigger's focus, which a pinned card takes so Escape reaches it. */
     internal val triggerFocus = FocusRequester()
@@ -211,12 +206,16 @@ class RaftPreviewCardState(
 
     /**
      * Opens the card now and keeps it open whatever the pointer does (web `RuntimeUsageHoverCard`
-     * pins on click): a click on a `pinOnClick` trigger, by any pointer, a finger too.
+     * pins on click): the click of a `pinOnClick` trigger. A mouse click also brings focus to the
+     * trigger, so Escape closes the pinned card wherever the pointer is (web: a document listener
+     * while pinned); a finger's tap does not, so it never takes focus from a field being typed in
+     * (its keyboard would close).
      */
     fun pin() {
         pinnedOpen = true
         suppressed = false
         isOpen = true
+        if (pressPointer == PointerType.Mouse) runCatching { triggerFocus.requestFocus() }
     }
 
     /**
@@ -262,11 +261,15 @@ fun rememberRaftPreviewCardState(
  * [state] holds the open state: hold it to [RaftPreviewCardState.dismiss] the card from one of
  * its buttons. [enabled] false shows [trigger] alone.
  *
- * [pinOnClick] (web `RuntimeUsageHoverCard`, a card with buttons of its own): a click on
- * [trigger] by any pointer, a finger too (a real tap: not a press that became a scroll or that
- * stopped a fling), opens the card at once and pins it
- * ([RaftPreviewCardState.pin]) instead of closing it; a pinned card stays when the pointer
- * leaves and closes on a click outside, Escape or its own close button. [width] is the card's
+ * [pinOnClick] (web `RuntimeUsageHoverCard`, a card with buttons of its own): [trigger] is a
+ * button (a [RaftBadge] with `onClick`, [raftClickable]) whose own click calls
+ * [RaftPreviewCardState.pin]: the card opens at once and stays when the pointer leaves, until a
+ * click outside, Escape or its own close button. The card never detects taps itself: the
+ * trigger's click is the system's (a press that scrolls a list or stops its fling, a long press,
+ * a drag off the trigger are no click), with its keyboard and screen-reader activation, and the
+ * card only listens (it consumes nothing), so the trigger's own gestures (a long press that
+ * copies) still work. Which input clicked: [RaftPreviewCardState.isMouseClick]; a finger's tap may
+ * open the card's content another way (a bottom sheet) or pin the card too. [width] is the card's
  * ([RaftPreviewCardDefaults.WideWidth] for the usage card).
  */
 @Composable
@@ -287,11 +290,17 @@ fun RaftPreviewCard(
 
 /**
  * Makes the element a [RaftPreviewCard] trigger for [state]: a mouse or trackpad pointer
- * entering and leaving it is reported ([RaftPreviewCardState.setTriggerHovered]); a click or a
- * wheel scroll on it dismisses the card, and so does Escape while focus is in it; with
- * [pinOnClick], a click by any pointer pins it instead ([RaftPreviewCardState.pin]). Consumes
- * nothing. [RaftPreviewCard] attaches it; use it with [RaftPreviewCardPopup] for a trigger laid
- * out elsewhere.
+ * entering and leaving it is reported ([RaftPreviewCardState.setTriggerHovered]); a mouse click
+ * or a wheel scroll on it dismisses the card, and so does Escape while focus is in it. With
+ * [pinOnClick] the element's own click pins the card instead ([RaftPreviewCardState.pin]; a
+ * mouse click then focuses the element's first focusable part, for Escape).
+ *
+ * Listen-only: it reads every pointer event on the Initial pass and consumes nothing, so the
+ * element's own gestures (its click, a long press that copies, a list's scroll) decide as if it
+ * were not there. It detects no taps: tap rules (slop, long press, a press a scrolling list took)
+ * are the system click's. It records which pointer pressed ([RaftPreviewCardState.isMouseClick]).
+ * [RaftPreviewCard] attaches it; use it with [RaftPreviewCardPopup] for a trigger laid out
+ * elsewhere.
  */
 fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolean = true, pinOnClick: Boolean = false): Modifier =
     if (!enabled) {
@@ -299,90 +308,34 @@ fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolea
     } else {
         this
             .onPreviewKeyEvent { event ->
-                when {
-                    event.type != KeyEventType.KeyDown -> false
-                    state.isOpen && event.key == Key.Escape -> {
-                        state.dismiss()
-                        true
-                    }
-                    // A focused trigger opens its card from the keyboard, as its click does.
-                    pinOnClick && !state.isPinned && (event.key == Key.Enter || event.key == Key.Spacebar) -> {
-                        state.pin()
-                        true
-                    }
-                    else -> false
+                if (event.type == KeyEventType.KeyDown && state.isOpen && event.key == Key.Escape) {
+                    state.dismiss()
+                    true
+                } else {
+                    false
                 }
             }
-            // After the key handler, so it sees keys while this node has focus (a pinned card).
-            .then(if (pinOnClick) Modifier.focusRequester(state.triggerFocus).focusable() else Modifier)
+            // After the key handler, so it sees keys while focus is in the trigger (a pinned card).
+            // No focus target of its own: the trigger's click is focusable, and Enter or Space
+            // there is its click.
+            .then(if (pinOnClick) Modifier.focusRequester(state.triggerFocus) else Modifier)
             .pointerInput(state, pinOnClick) {
                 awaitPointerEventScope {
-                    var downAt: Offset? = null
-                    var downMillis = 0L
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
                         val change = event.changes.firstOrNull() ?: continue
-                        if (pinOnClick) {
-                            when (event.type) {
-                                PointerEventType.Press -> {
-                                    state.pressOnTrigger = true
-                                    // A press a scrolling list above has already taken (Initial pass,
-                                    // before this one) is a finger stopping a fling: no click.
-                                    val stopsFling = change.isConsumed
-                                    // The popup's "outside" press and this one come from two windows
-                                    // in either order (Android): if the card was closed by this press
-                                    // first, it stays pinned, as when this press came first.
-                                    if (state.closedByOutsidePress && !stopsFling) state.pin()
-                                    // One pointer, and the primary button for a mouse (a right click
-                                    // is the trigger's menu).
-                                    downAt =
-                                        change.position.takeIf {
-                                            !stopsFling &&
-                                                event.changes.size == 1 &&
-                                                (change.type != PointerType.Mouse || event.buttons.isPrimaryPressed)
-                                        }
-                                    downMillis = change.uptimeMillis
-                                }
-                                PointerEventType.Move -> {
-                                    val start = downAt
-                                    if (start != null) {
-                                        // A finger that drags a list moves the trigger with it, so its
-                                        // position on the trigger barely changes: the press is no click
-                                        // once anything (the list's scroll) took a move, seen on the
-                                        // Final pass of the same event (as waitForUpOrCancellation does),
-                                        // or once it left the touch slop.
-                                        if ((change.position - start).getDistance() > viewConfiguration.touchSlop) {
-                                            downAt = null
-                                        } else if (awaitPointerEvent(PointerEventPass.Final).changes.any { it.isConsumed }) {
-                                            downAt = null
-                                        }
-                                    }
-                                }
-                                PointerEventType.Release -> {
-                                    state.pressOnTrigger = false
-                                    val start = downAt
-                                    downAt = null
-                                    if (
-                                        start != null &&
-                                        !change.isConsumed &&
-                                        raftPreviewCardIsPinClick(
-                                            distance = (change.position - start).getDistance(),
-                                            heldMillis = change.uptimeMillis - downMillis,
-                                            touchSlop = viewConfiguration.touchSlop,
-                                            longPressMillis = viewConfiguration.longPressTimeoutMillis,
-                                        )
-                                    ) {
-                                        state.pin()
-                                        // Focus comes to the trigger, so Escape closes the pinned card
-                                        // wherever the pointer is (web: a document listener while
-                                        // pinned). Only for a mouse: a finger's tap must not take focus
-                                        // from a field being typed in (its keyboard would close).
-                                        if (change.type == PointerType.Mouse) runCatching { state.triggerFocus.requestFocus() }
-                                        // The click pins the card and goes no further: the trigger's
-                                        // own click (a sheet, a page) would show the same thing twice.
-                                        change.consume()
-                                    }
-                                }
+                        when (event.type) {
+                            PointerEventType.Press -> {
+                                state.pressOnTrigger = true
+                                state.pressPointer = change.type
+                            }
+                            PointerEventType.Release -> {
+                                // The trigger's click runs on this release's Main pass and reads
+                                // the pointer; cleared once the release is through (Final), so a
+                                // later key or screen-reader click has none.
+                                awaitPointerEvent(PointerEventPass.Final)
+                                state.pressOnTrigger = false
+                                state.pressPointer = null
                             }
                         }
                         if (change.type != PointerType.Mouse) continue
@@ -460,24 +413,16 @@ fun RaftPreviewCardPopup(
     DisposableEffect(state) { onDispose { state.setCardHovered(false) } }
     // A page pushed over this one closes the card first (pinned or not).
     RaftDismissOnPageCover { state.dismiss() }
-    val scope = rememberCoroutineScope()
     val pinned = state.isPinned
     Popup(
         popupPositionProvider = provider,
         onDismissRequest = {
             // A press on the trigger of a pinned card is not "outside": the trigger's click keeps
             // it pinned (web), so it does not close and open again. A mouse is known by its hover;
-            // a finger by its press, when that reached the trigger first.
-            if (!(pinned && (state.isTriggerHovered || state.pressOnTrigger))) {
-                state.dismiss()
-                if (pinned) {
-                    state.closedByOutsidePress = true
-                    scope.launch {
-                        withFrameNanos {}
-                        state.closedByOutsidePress = false
-                    }
-                }
-            }
+            // a finger by its press, when that reached the trigger first. When this window sees
+            // the press first (Android: the popup is a window of its own), the card closes and the
+            // trigger's click, on the release, pins it again or opens what a finger's tap opens.
+            if (!(pinned && (state.isTriggerHovered || state.pressOnTrigger))) state.dismiss()
         },
         // Never focusable, pinned or not: a focusable popup takes the clicks and scrolls meant for
         // the page under it (web: neither). Escape reaches a pinned card through its trigger,
