@@ -154,9 +154,6 @@ data class ActivityObjectRow(
             }
         }
 
-    /** The version an open lands on (web `artifactActivityOpenPath`): pinned only when not the latest. */
-    val openVersion: Int?
-        get() = targetVersion?.takeIf { latestVersion != null && it != latestVersion }
 }
 
 /** What the row says the newest event was (web `artifactActivityRowParts`). */

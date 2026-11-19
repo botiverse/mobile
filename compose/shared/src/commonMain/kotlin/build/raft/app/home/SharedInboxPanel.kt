@@ -1903,14 +1903,16 @@ internal fun SharedActivityList(
         if (currentItem.kind == InboxItemKind.Object && objectRow != null) {
             selectedItemKey = currentItem.key
             currentItem.activityOpenReadIntent()?.let(onIntent)
-            val target = ArtifactLinkTarget(objectRow.objectId, objectRow.openVersion)
+            // An Activity row always opens the latest version (web #15600, `artifactActivityTarget`):
+            // a comment written on an older version is located in the comment list, not by pinning it.
+            val target = ArtifactLinkTarget(objectRow.objectId, null)
             val header =
                 objectRow.title?.takeIf { it.isNotBlank() }?.let { title ->
                     RaftArtifactViewerHeader(
                         id = objectRow.objectId,
                         title = title,
                         kind = ArtifactKind.fromWire(objectRow.artifactKind),
-                        version = objectRow.openVersion ?: objectRow.latestVersion,
+                        version = objectRow.latestVersion,
                     )
                 }
             activityArtifactOpener.open(target, header, "activity_row")
