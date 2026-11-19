@@ -467,8 +467,15 @@ internal fun Modifier.raftPaneGridUnfaded(): Modifier {
         val box = bands.box?.takeIf { it.isAttached } ?: return@onGloballyPositioned
         // Something in another window (a dialog over the pane) is not the pane's.
         if (box.findRootCoordinates() !== part.findRootCoordinates()) return@onGloballyPositioned
-        val top = box.localPositionOf(part, Offset.Zero).y
-        val span = top to top + part.size.height
+        // Only what of it shows: trimmed to every clip between it and the box (a list's viewport, a stacked
+        // cell), so media scrolled under the composer or past its cell doesn't unfade what's there. Whole px,
+        // so a scroll doesn't rewrite the map (and redraw the fade) for sub-pixel moves.
+        val shown = box.localBoundingBoxOf(part, clipBounds = true)
+        if (shown.height <= 0f) {
+            bands.bands.remove(key)
+            return@onGloballyPositioned
+        }
+        val span = kotlin.math.floor(shown.top) to kotlin.math.ceil(shown.bottom)
         if (bands.bands[key] != span) bands.bands[key] = span
     }
 }
