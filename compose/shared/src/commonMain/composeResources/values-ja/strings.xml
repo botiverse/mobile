@@ -326,6 +326,10 @@
     <string name="settings_archived_agents_workspace_deleted">ワークスペースは削除済み</string>
     <string name="settings_archived_agents_workspace_unknown">ワークスペースの場所が不明</string>
     <string name="settings_archived_agents_workspace_deleting">ワークスペースを削除中…</string>
+    <string name="settings_archived_channels_open_label">%1$s を開く</string>
+    <string name="settings_archived_agents_open_label">%1$s を開く</string>
+    <string name="settings_archived_agents_view_workspace">ワークスペースを表示</string>
+    <string name="settings_archived_agents_view_workspace_label">%1$s のワークスペースを表示</string>
     <string name="settings_keyboard_shortcuts_title">キーボードショートカット</string>
     <string name="settings_keyboard_shortcuts_group_global">全体</string>
     <string name="settings_keyboard_shortcuts_group_channels_threads">チャンネルとスレッド</string>

@@ -326,6 +326,10 @@
     <string name="settings_archived_agents_workspace_deleted">Рабочее пространство удалено</string>
     <string name="settings_archived_agents_workspace_unknown">Расположение рабочего пространства неизвестно</string>
     <string name="settings_archived_agents_workspace_deleting">Удаление рабочего пространства…</string>
+    <string name="settings_archived_channels_open_label">Открыть канал %1$s</string>
+    <string name="settings_archived_agents_open_label">Открыть агента %1$s</string>
+    <string name="settings_archived_agents_view_workspace">Открыть рабочее пространство</string>
+    <string name="settings_archived_agents_view_workspace_label">Открыть рабочее пространство агента %1$s</string>
     <string name="settings_keyboard_shortcuts_title">Сочетания клавиш</string>
     <string name="settings_keyboard_shortcuts_group_global">Общие</string>
     <string name="settings_keyboard_shortcuts_group_channels_threads">Каналы и ветки</string>

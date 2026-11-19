@@ -326,6 +326,10 @@
     <string name="settings_archived_agents_workspace_deleted">工作區已刪除</string>
     <string name="settings_archived_agents_workspace_unknown">工作區位置不明</string>
     <string name="settings_archived_agents_workspace_deleting">正在刪除工作區…</string>
+    <string name="settings_archived_channels_open_label">開啟 %1$s</string>
+    <string name="settings_archived_agents_open_label">開啟 %1$s</string>
+    <string name="settings_archived_agents_view_workspace">檢視工作區</string>
+    <string name="settings_archived_agents_view_workspace_label">檢視 %1$s 的工作區</string>
     <string name="settings_keyboard_shortcuts_title">鍵盤快速鍵</string>
     <string name="settings_keyboard_shortcuts_group_global">全域</string>
     <string name="settings_keyboard_shortcuts_group_channels_threads">頻道與討論串</string>

@@ -326,6 +326,10 @@
     <string name="settings_archived_agents_workspace_deleted">Workspace deleted</string>
     <string name="settings_archived_agents_workspace_unknown">Workspace location unknown</string>
     <string name="settings_archived_agents_workspace_deleting">Deleting workspace…</string>
+    <string name="settings_archived_channels_open_label">Open %1$s</string>
+    <string name="settings_archived_agents_open_label">Open %1$s</string>
+    <string name="settings_archived_agents_view_workspace">View workspace</string>
+    <string name="settings_archived_agents_view_workspace_label">View the workspace of %1$s</string>
     <string name="settings_keyboard_shortcuts_title">Keyboard shortcuts</string>
     <string name="settings_keyboard_shortcuts_group_global">Global</string>
     <string name="settings_keyboard_shortcuts_group_channels_threads">Channels and threads</string>
