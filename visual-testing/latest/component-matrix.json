@@ -1,39 +1,39 @@
 {
-  "generatedAt": "2026-11-16T07:06:08.892Z",
-  "runId": "381dcbdf-20261116064230",
+  "generatedAt": "2026-11-19T18:42:58.493Z",
+  "runId": "a9f40757-20261119184104",
   "baseline": "react",
   "current": "android",
   "summary": {
-    "total": 162,
-    "active": 142,
+    "total": 187,
+    "active": 167,
     "pending": 17,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 123,
-        "active": 118,
+        "total": 134,
+        "active": 129,
         "pending": 3,
         "skipped": 2
       },
       "real-screen": {
-        "total": 39,
-        "active": 24,
+        "total": 53,
+        "active": 38,
         "pending": 14,
         "skipped": 1
       }
     },
     "providers": {
       "react": {
-        "active": 132,
+        "active": 157,
         "pending": 13,
         "unsupported": 0,
-        "total": 145
+        "total": 170
       },
       "android": {
         "active": 79,
-        "pending": 18,
+        "pending": 26,
         "unsupported": 0,
-        "total": 97
+        "total": 105
       },
       "harmony": {
         "active": 0,
@@ -231,6 +231,819 @@
         }
       },
       "notes": "#wg-ax:#9 (Kirby): a restore checked against what the model received. The Verified tag on the head's title (PanelStatus, as ChannelSideCard places it); its tooltip says what was checked. react-only: the panel is web-only.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.agent.runtime-picker.hints",
+      "title": "Runtime picker: the list shows names, Claude Code and Codex Recommended, runtimes without mid-turn steering Limited (top of the list)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/agent",
+      "surface": "agent-runtime-picker",
+      "group": "app/agent",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agent/RuntimeConfigFields",
+            "utils/runtimeCapabilityHint"
+          ],
+          "fixture": "packages/web/visual-testing/RuntimePickerHintCases.tsx#RuntimePickerHintsCase",
+          "path": "packages/web/visual-testing/RuntimePickerHintCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "#triage:#524. React only, no baseline or parity gate. The runtime field of Create agent and Edit runtime config (RuntimeConfigFields over groupRuntimePickerRows), its list opened by the capture interaction: each runtime's name, Claude Code and Codex with a Recommended badge after it, and the runtimes that can't take new messages while working (no mid-turn steering in the shared RUNTIME_RAFT_CAPABILITIES: Cursor CLI, OpenCode, Qwen Code) with a quieter muted Limited badge there; no hint and no Experimental badge in the list. The list opens scrolled to the chosen runtime: this case Claude Code (top), .hints-end Qoder (bottom). .hints-selected shows the closed field with Cursor CLI chosen and its hint under it.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.agent.runtime-picker.hints-end",
+      "title": "Runtime picker: the list shows names, Claude Code and Codex Recommended, runtimes without mid-turn steering Limited (list open on Qoder)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/agent",
+      "surface": "agent-runtime-picker",
+      "group": "app/agent",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agent/RuntimeConfigFields",
+            "utils/runtimeCapabilityHint"
+          ],
+          "fixture": "packages/web/visual-testing/RuntimePickerHintCases.tsx#RuntimePickerHintsCase",
+          "path": "packages/web/visual-testing/RuntimePickerHintCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "#triage:#524. As components.agent.runtime-picker.hints, with Qoder chosen, so the list opens scrolled to the end.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.agent.runtime-picker.hints-selected",
+      "title": "Runtime picker: Cursor CLI chosen, what it lacks in Raft under the select",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/agent",
+      "surface": "agent-runtime-picker",
+      "group": "app/agent",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agent/RuntimeConfigFields",
+            "utils/runtimeCapabilityHint"
+          ],
+          "fixture": "packages/web/visual-testing/RuntimePickerHintCases.tsx#RuntimePickerHintsCase",
+          "path": "packages/web/visual-testing/RuntimePickerHintCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "#triage:#524. React only, no baseline or parity gate. The runtime field of Create agent and Edit runtime config with Cursor CLI chosen and the list closed: under the select, in the field's description slot (the trigger's aria-describedby), the muted hint saying what Cursor lacks in Raft, from the shared RUNTIME_RAFT_CAPABILITIES. Claude Code, Codex and Kimi Code have no hint.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.agent.voice-call.over-composer",
+      "title": "Voice call window over the composer",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/agent",
+      "surface": "agent-voice-call",
+      "group": "app/agent",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/agent/AgentVoiceCallCard",
+            "features/agent/AgentVoiceCallPanel",
+            "features/composer/MessageInput"
+          ],
+          "fixture": "packages/web/visual-testing/AgentVoiceCallCases.tsx#liveVoiceCallFixture",
+          "path": "packages/web/visual-testing/VisualTestingCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: voice calls are web-only (#wg-runtime-form:#22). The real call window (AgentVoiceCallCard: fixed at z-app, placed 16px above the toast-viewport floors) over the real composer (MessageInput, which registers itself as a floor, with a draft so Send is live) at desktop width: the window sits above the composer, clear of Send. A live call with captions; its timer runs from when the case opens (about 3:12). No message list: the composer is what the window must stay clear of.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.agent.voice-call.phone",
+      "title": "Voice call window: states (phone)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/agent",
+      "surface": "agent-voice-call",
+      "group": "app/agent",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/agent/AgentVoiceCallPanel"
+          ],
+          "fixture": "packages/web/visual-testing/AgentVoiceCallCases.tsx#VOICE_CALL_STATES",
+          "path": "packages/web/visual-testing/AgentVoiceCallCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: voice calls are web-only (#wg-runtime-form:#22). components.agent.voice-call.states at a phone's width (390): each card as the window takes it on a phone, 12px from each side (at most 360 wide).",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.agent.voice-call.states",
+      "title": "Voice call window: states",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/agent",
+      "surface": "agent-voice-call",
+      "group": "app/agent",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/agent/AgentVoiceCallPanel"
+          ],
+          "fixture": "packages/web/visual-testing/AgentVoiceCallCases.tsx#VOICE_CALL_STATES",
+          "path": "packages/web/visual-testing/AgentVoiceCallCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: voice calls are web-only (#wg-runtime-form:#22, agent_voice_v1). The call window's card (AgentVoiceCallPanel, as AgentVoiceCallWindow draws it: layer-popover, line-seam ring, shadow-float; without its fixed place or the call store) on fixture calls and a fixed clock, no room. One sheet, because the React provider shoots one image per case (variants[0]); top to bottom, each wrapped in [data-voice-call-state]: connecting; live 3:12 with the agent speaking (ring) and two caption lines, the person's finished and the agent's unfinished one clamped to two lines; live with the microphone taken by another app mid-call (warning banner, Mute unavailable); ended 7:45 after the connection dropped; failed, agent offline (Send it a message instead). Phone width: components.agent.voice-call.phone; in place over the composer: components.agent.voice-call.over-composer.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.agent-migration-log.chart",
+      "title": "Migration log: chart view",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/agents",
+      "surface": "agent-migration-log",
+      "group": "app/agents",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/layout/MainLayout",
+            "components/agentMigration/log/MigrationLogPage",
+            "components/agentMigration/log/MigrationChord"
+          ],
+          "path": "packages/web/visual-testing/MigrationLogCases.tsx",
+          "fixture": "packages/web/visual-testing/MigrationLogCases.tsx#LOG",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate. The real MainLayout at /s/visual/migrations as the server's owner: the agent migration log (迁移记录) over the fixture's own log, which api.get answers: eight moves of three agents (succeeded, a failure, a cancel, one in progress, a move to the cloud), a computer renamed since (studio-mac, now mac-studio-2) and one no longer on the server (old-runner). The same log in the default chart view (the chord chart, its side hint and legend), for comparison with screens.agent-migration-log.table.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.agent-migration-log.table",
+      "title": "Migration log: table view",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/agents",
+      "surface": "agent-migration-log",
+      "group": "app/agents",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/layout/MainLayout",
+            "components/agentMigration/log/MigrationLogPage",
+            "components/agentMigration/log/MigrationLogTable"
+          ],
+          "path": "packages/web/visual-testing/MigrationLogCases.tsx",
+          "fixture": "packages/web/visual-testing/MigrationLogCases.tsx#LOG",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate. The real MainLayout at /s/visual/migrations as the server's owner: the agent migration log (迁移记录) over the fixture's own log, which api.get answers: eight moves of three agents (succeeded, a failure, a cancel, one in progress, a move to the cloud), a computer renamed since (studio-mac, now mac-studio-2) and one no longer on the server (old-runner). Opened with ?view=table: the Chart / Table switch on Table, the search field in the filter row, one row per move, newest first (time, agent, from → to, result, duration).",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.apps.app-card.narrow",
+      "title": "App card: states (360px)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/AppCard"
+          ],
+          "fixture": "packages/web/visual-testing/AppCardCases.tsx#APP_CARD_STATES",
+          "path": "packages/web/visual-testing/AppCardCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The redesigned App card (features/apps/AppCard.tsx) on fixture AppViews, with no page around it and not yet used by one. One sheet, because the React provider shoots one image per case (variants[0]); each card under its state's name, wrapped in [data-app-card-case]: normal, official, internal (made by), shared, long name and long description, updateNeedsApproval, signInExpired, cannotConnect, signInExpired for a member (no button), discover-add, discover-added, skeleton. One column in a 360px window: each card is under 360px wide, so its button takes a line of its own under the text, and nothing overflows the card.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.apps.app-card.narrow.dark",
+      "title": "App card: states (360px, dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/AppCard"
+          ],
+          "fixture": "packages/web/visual-testing/AppCardCases.tsx#APP_CARD_STATES",
+          "path": "packages/web/visual-testing/AppCardCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "components.apps.app-card.narrow in the dark theme.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.apps.app-card.states",
+      "title": "App card: states (desktop)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/AppCard"
+          ],
+          "fixture": "packages/web/visual-testing/AppCardCases.tsx#APP_CARD_STATES",
+          "path": "packages/web/visual-testing/AppCardCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The redesigned App card (features/apps/AppCard.tsx) on fixture AppViews, with no page around it and not yet used by one. One sheet, because the React provider shoots one image per case (variants[0]); each card under its state's name, wrapped in [data-app-card-case]: normal, official, internal (made by), shared, long name and long description, updateNeedsApproval, signInExpired, cannotConnect, signInExpired for a member (no button), discover-add, discover-added, skeleton. Two columns in 960px, as the Apps page lays cards out on a desktop: the button sits at the card's end.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.apps.app-card.states.dark",
+      "title": "App card: states (desktop, dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/AppCard"
+          ],
+          "fixture": "packages/web/visual-testing/AppCardCases.tsx#APP_CARD_STATES",
+          "path": "packages/web/visual-testing/AppCardCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "components.apps.app-card.states in the dark theme.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.yours.admin",
+      "title": "Apps page, Yours: an owner with a mix of Apps (desktop)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsYoursCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsYoursCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsYoursCases.tsx stubs api.get). Viewer is the Server's owner. Nine Apps under Yours, the one whose update waits first (Figma: 'Update needs your approval' in place of its source line, the attention dot on its logo, Review as its button), then today's order: Raft's own App (Stamp, Official), Linear, a private share (Ledger, 'Shared with you'), an App with a long name, description and publisher, an App built and installed here (Deploy bot, 'Internal · made by artin': its maker is among the Server's people), a listed service (Notion, 'Listed by Raft'), one connected by its address (Team wiki, 'Internal') and an App built here and not installed (Draft tool, 'Internal' alone: its maker left the Server). The notice above the list counts the waiting update. Toolbar: Yours 9 / Discover 24, the search, the origin filter showing All, Add app; no view switch (Apps are cards only). No card names an App type or shows an address. At 1280px: two columns of cards.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.yours.admin.dark",
+      "title": "Apps page, Yours: an owner with a mix of Apps (desktop, dark)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsYoursCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsYoursCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "screens.apps.yours.admin in the dark theme.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.yours.admin.narrow",
+      "title": "Apps page, Yours: an owner with a mix of Apps (360px)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsYoursCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsYoursCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsYoursCases.tsx stubs api.get). Viewer is the Server's owner. Nine Apps under Yours, the one whose update waits first (Figma: 'Update needs your approval' in place of its source line, the attention dot on its logo, Review as its button), then today's order: Raft's own App (Stamp, Official), Linear, a private share (Ledger, 'Shared with you'), an App with a long name, description and publisher, an App built and installed here (Deploy bot, 'Internal · made by artin': its maker is among the Server's people), a listed service (Notion, 'Listed by Raft'), one connected by its address (Team wiki, 'Internal') and an App built here and not installed (Draft tool, 'Internal' alone: its maker left the Server). The notice above the list counts the waiting update. Toolbar: Yours 9 / Discover 24, the search, the origin filter showing All, Add app; no view switch (Apps are cards only). No card names an App type or shows an address. In a 360px window: one column of cards, the toolbar on its narrow steps (the scope as a Select, Add app as +), nothing wider than the window.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.yours.admin.narrow.dark",
+      "title": "Apps page, Yours: an owner with a mix of Apps (360px, dark)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsYoursCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsYoursCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "screens.apps.yours.admin.narrow in the dark theme.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.yours.member",
+      "title": "Apps page, Yours: a member, read-only (desktop)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsYoursCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsYoursCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsYoursCases.tsx stubs api.get). The same Server read by a member: the line that says who can change Apps, no Add app, no state and no button on any card (the server marks what waits for App managers only), the Apps in today's order. An App built here names its maker for a member too (Deploy bot, 'Internal · made by artin'; Draft tool, whose maker left, 'Internal'). The notice still tells a member that an update waits for an owner or admin. At 1280px: two columns of cards.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.yours.member.dark",
+      "title": "Apps page, Yours: a member, read-only (desktop, dark)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsYoursCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsYoursCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "screens.apps.yours.member in the dark theme.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.yours.member.narrow",
+      "title": "Apps page, Yours: a member, read-only (360px)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsYoursCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsYoursCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsYoursCases.tsx stubs api.get). The same Server read by a member: the line that says who can change Apps, no Add app, no state and no button on any card (the server marks what waits for App managers only), the Apps in today's order. An App built here names its maker for a member too (Deploy bot, 'Internal · made by artin'; Draft tool, whose maker left, 'Internal'). The notice still tells a member that an update waits for an owner or admin. In a 360px window: one column of cards, the toolbar on its narrow steps (the scope as a Select, Add app as +), nothing wider than the window.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.yours.member.narrow.dark",
+      "title": "Apps page, Yours: a member, read-only (360px, dark)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsYoursCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsYoursCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "screens.apps.yours.member.narrow in the dark theme.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.yours.no-match",
+      "title": "Apps page, Yours: filters that match nothing (desktop)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsYoursCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsYoursCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsYoursCases.tsx stubs api.get). The owner's list, then the case's interactions type 'calendar' into the search and pick Shared with you in the origin filter (the page takes no starting filters): no card; the empty state names both conditions and offers Clear all. The origin filter is filled (applied) and Clear all ends the filters. At 1280px: two columns of cards.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.yours.no-match.dark",
+      "title": "Apps page, Yours: filters that match nothing (desktop, dark)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsYoursCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsYoursCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "screens.apps.yours.no-match in the dark theme.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.yours.no-match.narrow",
+      "title": "Apps page, Yours: filters that match nothing (360px)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsYoursCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsYoursCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsYoursCases.tsx stubs api.get). The owner's list, then the case's interactions type 'calendar' into the search and pick Shared with you in the origin filter (the page takes no starting filters): no card; the empty state names both conditions and offers Clear all. The origin filter is filled (applied) and Clear all ends the filters. In a 360px window: one column of cards, the toolbar on its narrow steps (the scope as a Select, Add app as +), nothing wider than the window.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.yours.no-match.narrow.dark",
+      "title": "Apps page, Yours: filters that match nothing (360px, dark)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsYoursCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsYoursCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "screens.apps.yours.no-match.narrow in the dark theme.",
       "comparison": {
         "baseline": "react",
         "current": "android",
@@ -607,6 +1420,38 @@
       }
     },
     {
+      "id": "components.file-viewer.header",
+      "title": "File viewer header: name, gallery count and actions",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "file-viewer",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/FileViewerShell#FileViewerHeader"
+          ],
+          "fixture": "packages/web/visual-testing/FileViewerCases.tsx#HEADER_ROWS",
+          "path": "packages/web/visual-testing/FileViewerCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate (#triage:#537). The file viewer's header (FileViewerHeader) alone at 1280px, three rows each in a bordered box under its label, wrapped in [data-file-viewer-header-case]: a single file (gta@2x.png), a gallery (gta@2x.png, 2 / 5) with comments, copy, download and close, and a 207-character name in a gallery (1 / 3). The name block is only as wide as the name (flex-initial) and truncates; a min-w-0 flex-1 spacer after it keeps the count and the actions at the row's end.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
       "id": "components.message-card.fields.phone",
       "title": "Card message Fields, phone width",
       "captureType": "component-fixture",
@@ -755,8 +1600,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9690255731607067,
-        "pixelPerfectSimilarity": 0.9139428984215714,
+        "rgbSimilarity": 0.9689504504898095,
+        "pixelPerfectSimilarity": 0.9124674255006009,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.comment-anchor.side-by-side.png"
       }
     },
@@ -776,554 +1621,10 @@
         "current": "android",
         "status": "basic-pass",
         "rawStatus": "different",
-        "acceptance": "basic pass: pixel perfect 96.68% > 96%",
-        "rgbSimilarity": 0.9833223346290793,
-        "pixelPerfectSimilarity": 0.9668317698561602,
+        "acceptance": "basic pass: pixel perfect 96.23% > 96%",
+        "rgbSimilarity": 0.9831319400333264,
+        "pixelPerfectSimilarity": 0.9622956014175527,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.forward-modal.side-by-side.png"
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.all-reachable",
-      "title": "Agent read line: everyone reached (no line)",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Niko muted #design but read your message (his face on it) and Cindy replied (her face on her reply): the message reaches everyone, so there is no line. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.all-reachable.dark",
-      "title": "Agent read line: everyone reached (no line) (dark)",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Niko muted #design but read your message (his face on it) and Cindy replied (her face on her reply): the message reaches everyone, so there is no line. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.all-reachable.en",
-      "title": "Agent read line: everyone reached (no line) (en)",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Niko muted #design but read your message (his face on it) and Cindy replied (her face on her reply): the message reaches everyone, so there is no line. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.all-reachable.en.dark",
-      "title": "Agent read line: everyone reached (no line) (en, dark)",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Niko muted #design but read your message (his face on it) and Cindy replied (her face on her reply): the message reaches everyone, so there is no line. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.many-narrow",
-      "title": "Agent read line: four muted agents, narrow",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Four muted agents at 320 wide. The names take the room left over beside the verb, \"+1\", \"·\" and the whole hint (zh: \"已静音：Produ… +1 · @ 对方才会看到\"). When not even a name's first letters fit (en), the segment shows its count instead of names and +1: \"Muted: 4 agents\", and the hint, still too long for the row, loses its tail (\"Muted: 4 agents · Mention them t…\"). Cindy's face: she read it. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.many-narrow.dark",
-      "title": "Agent read line: four muted agents, narrow (dark)",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Four muted agents at 320 wide. The names take the room left over beside the verb, \"+1\", \"·\" and the whole hint (zh: \"已静音：Produ… +1 · @ 对方才会看到\"). When not even a name's first letters fit (en), the segment shows its count instead of names and +1: \"Muted: 4 agents\", and the hint, still too long for the row, loses its tail (\"Muted: 4 agents · Mention them t…\"). Cindy's face: she read it. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.many-narrow.en",
-      "title": "Agent read line: four muted agents, narrow (en)",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Four muted agents at 320 wide. The names take the room left over beside the verb, \"+1\", \"·\" and the whole hint (zh: \"已静音：Produ… +1 · @ 对方才会看到\"). When not even a name's first letters fit (en), the segment shows its count instead of names and +1: \"Muted: 4 agents\", and the hint, still too long for the row, loses its tail (\"Muted: 4 agents · Mention them t…\"). Cindy's face: she read it. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.many-narrow.en.dark",
-      "title": "Agent read line: four muted agents, narrow (en, dark)",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Four muted agents at 320 wide. The names take the room left over beside the verb, \"+1\", \"·\" and the whole hint (zh: \"已静音：Produ… +1 · @ 对方才会看到\"). When not even a name's first letters fit (en), the segment shows its count instead of names and +1: \"Muted: 4 agents\", and the hint, still too long for the row, loses its tail (\"Muted: 4 agents · Mention them t…\"). Cindy's face: she read it. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.muted-channel",
-      "title": "Agent read line: muted channel",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Your latest message in #design: Cindy's face (she read it) at the end of its last line, and the line under it, \"Muted: Niko · Mention them to reach them\" with the mute bell (Niko muted the channel and has not read it). React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.muted-channel.dark",
-      "title": "Agent read line: muted channel (dark)",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Your latest message in #design: Cindy's face (she read it) at the end of its last line, and the line under it, \"Muted: Niko · Mention them to reach them\" with the mute bell (Niko muted the channel and has not read it). React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.muted-channel.en",
-      "title": "Agent read line: muted channel (en)",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Your latest message in #design: Cindy's face (she read it) at the end of its last line, and the line under it, \"Muted: Niko · Mention them to reach them\" with the mute bell (Niko muted the channel and has not read it). React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.muted-channel.en.dark",
-      "title": "Agent read line: muted channel (en, dark)",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Your latest message in #design: Cindy's face (she read it) at the end of its last line, and the line under it, \"Muted: Niko · Mention them to reach them\" with the mute bell (Niko muted the channel and has not read it). React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.stopped-following-thread",
-      "title": "Agent read line: stopped following a thread",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Your latest reply in a thread under #design: Cindy's face (she read it) and \"Stopped following: Niko · Mention them to reach them\" with the unfollow icon. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.stopped-following-thread.dark",
-      "title": "Agent read line: stopped following a thread (dark)",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Your latest reply in a thread under #design: Cindy's face (she read it) and \"Stopped following: Niko · Mention them to reach them\" with the unfollow icon. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.stopped-following-thread.en",
-      "title": "Agent read line: stopped following a thread (en)",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Your latest reply in a thread under #design: Cindy's face (she read it) and \"Stopped following: Niko · Mention them to reach them\" with the unfollow icon. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
-      }
-    },
-    {
-      "id": "components.thread.message.agent-read-line.stopped-following-thread.en.dark",
-      "title": "Agent read line: stopped following a thread (en, dark)",
-      "captureType": "component-fixture",
-      "captureGroup": "Components Parity",
-      "category": "app/thread",
-      "surface": "thread",
-      "group": "app/thread",
-      "status": "active",
-      "providers": {
-        "react": {
-          "status": "active",
-          "components": [
-            "components/message/MessageItem",
-            "components/message/AgentReadFaces",
-            "components/message/MessageReadStatusLine"
-          ],
-          "fixture": "packages/web/visual-testing/AgentReadLineCases.tsx#scenario",
-          "path": "packages/web/visual-testing/AgentReadLineCases.tsx",
-          "reason": ""
-        }
-      },
-      "notes": "Your latest reply in a thread under #design: Cindy's face (she read it) and \"Stopped following: Niko · Mention them to reach them\" with the unfollow icon. React only: the agent read faces and line are web-only. The real MessageItem rows from your latest message on, with the model useAgentReadProgress builds from the pure projection (agentReadProgressDomain) over the fixture in AgentReadLineCases.tsx; the UI language comes from the variant's `lang`, so zh-CN shows the Chinese line.",
-      "comparison": {
-        "baseline": "react",
-        "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
-        "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
       }
     },
     {
@@ -1338,6 +1639,230 @@
       "providers": {},
       "notes": "Missing post-login choose-server gate parity; this is distinct from the Home top-bar server switcher opened inside the app shell.",
       "comparison": null
+    },
+    {
+      "id": "components.channel.conversion-strip.complete",
+      "title": "Channel conversion strip: 100%, three digits",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "channel",
+      "surface": "channel",
+      "group": "channel",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/channel/ChannelConversionStrip"
+          ],
+          "path": "packages/web/visual-testing/ChannelConversionStripCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "A channel being made an external channel: the strip at the top of the conversation (Kirby, 2026-11-19). react-only: the apps have no conversion strip yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.channel.conversion-strip.failed",
+      "title": "Channel conversion strip: failed, a PanelNotice with Retry",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "channel",
+      "surface": "channel",
+      "group": "channel",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/channel/ChannelConversionStrip"
+          ],
+          "path": "packages/web/visual-testing/ChannelConversionStripCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "A channel being made an external channel: the strip at the top of the conversation (Kirby, 2026-11-19). react-only: the apps have no conversion strip yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.channel.conversion-strip.long-name-zh",
+      "title": "Channel conversion strip: zh-CN with a long Chinese channel name",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "channel",
+      "surface": "channel",
+      "group": "channel",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/channel/ChannelConversionStrip"
+          ],
+          "path": "packages/web/visual-testing/ChannelConversionStripCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "A channel being made an external channel: the strip at the top of the conversation (Kirby, 2026-11-19). react-only: the apps have no conversion strip yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.channel.conversion-strip.phone",
+      "title": "Channel conversion strip: 390px phone, the bar hidden",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "channel",
+      "surface": "channel",
+      "group": "channel",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/channel/ChannelConversionStrip"
+          ],
+          "path": "packages/web/visual-testing/ChannelConversionStripCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "A channel being made an external channel: the strip at the top of the conversation (Kirby, 2026-11-19). react-only: the apps have no conversion strip yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.channel.conversion-strip.phone-360",
+      "title": "Channel conversion strip: 360px phone",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "channel",
+      "surface": "channel",
+      "group": "channel",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/channel/ChannelConversionStrip"
+          ],
+          "path": "packages/web/visual-testing/ChannelConversionStripCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "A channel being made an external channel: the strip at the top of the conversation (Kirby, 2026-11-19). react-only: the apps have no conversion strip yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.channel.conversion-strip.running",
+      "title": "Channel conversion strip: running at 45%",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "channel",
+      "surface": "channel",
+      "group": "channel",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/channel/ChannelConversionStrip"
+          ],
+          "path": "packages/web/visual-testing/ChannelConversionStripCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "A channel being made an external channel: the strip at the top of the conversation (Kirby, 2026-11-19). react-only: the apps have no conversion strip yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "components.channel.conversion-strip.running.dark",
+      "title": "Channel conversion strip: running at 45% (Dark)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "channel",
+      "surface": "channel",
+      "group": "channel",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/channel/ChannelConversionStrip"
+          ],
+          "path": "packages/web/visual-testing/ChannelConversionStripCases.tsx",
+          "fixture": "",
+          "reason": ""
+        }
+      },
+      "notes": "A channel being made an external channel: the strip at the top of the conversation (Kirby, 2026-11-19). react-only: the apps have no conversion strip yet.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
     },
     {
       "id": "components.members.agent-lifecycle-actions",
@@ -1391,8 +1916,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8959275730290149,
-        "pixelPerfectSimilarity": 0.7669805370560745,
+        "rgbSimilarity": 0.9138671867501548,
+        "pixelPerfectSimilarity": 0.7871081349962968,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png"
       }
     },
@@ -1448,8 +1973,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9633407486127374,
-        "pixelPerfectSimilarity": 0.9216078637879586,
+        "rgbSimilarity": 0.9635771590156441,
+        "pixelPerfectSimilarity": 0.9223407056345445,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.avatar-management.side-by-side.png"
       }
     },
@@ -1507,8 +2032,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9745184361804442,
-        "pixelPerfectSimilarity": 0.8179348780059681,
+        "rgbSimilarity": 0.9736370610589151,
+        "pixelPerfectSimilarity": 0.8062809710913976,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.default.side-by-side.png"
       }
     },
@@ -1566,8 +2091,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9688340030250671,
-        "pixelPerfectSimilarity": 0.8031241139061044,
+        "rgbSimilarity": 0.9677391499305302,
+        "pixelPerfectSimilarity": 0.7743366954267428,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.task.side-by-side.png"
       }
     },
@@ -1621,8 +2146,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9897653141661867,
-        "pixelPerfectSimilarity": 0.954233130703719,
+        "rgbSimilarity": 0.9878870992545218,
+        "pixelPerfectSimilarity": 0.9417808045259025,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.deleted-human.side-by-side.png"
       }
     },
@@ -1676,8 +2201,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9714663089505644,
-        "pixelPerfectSimilarity": 0.9192084902985377,
+        "rgbSimilarity": 0.968618802395082,
+        "pixelPerfectSimilarity": 0.9012894775927951,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.long-inline-code.side-by-side.png"
       }
     },
@@ -1731,8 +2256,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9083281609272688,
-        "pixelPerfectSimilarity": 0.8285388982469274,
+        "rgbSimilarity": 0.9077484178662559,
+        "pixelPerfectSimilarity": 0.8112327656123277,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-latest-release.side-by-side.png"
       }
     },
@@ -1786,8 +2311,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.983755704785728,
-        "pixelPerfectSimilarity": 0.9215743991677602,
+        "rgbSimilarity": 0.9814194652732356,
+        "pixelPerfectSimilarity": 0.9032923124209431,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-link-ref.side-by-side.png"
       }
     },
@@ -1841,8 +2366,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9408353096191734,
-        "pixelPerfectSimilarity": 0.8831933182360533,
+        "rgbSimilarity": 0.9397825966207582,
+        "pixelPerfectSimilarity": 0.8670367935325201,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-adjacent.side-by-side.png"
       }
     },
@@ -1896,8 +2421,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8777090891635576,
-        "pixelPerfectSimilarity": 0.7962249193592477,
+        "rgbSimilarity": 0.8767800443305069,
+        "pixelPerfectSimilarity": 0.7833497348422721,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-clarify.side-by-side.png"
       }
     },
@@ -1951,8 +2476,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9879260432113276,
-        "pixelPerfectSimilarity": 0.9266339571434358,
+        "rgbSimilarity": 0.9847798595275793,
+        "pixelPerfectSimilarity": 0.910132863450399,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-slice1.side-by-side.png"
       }
     },
@@ -2006,8 +2531,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9079672645041323,
-        "pixelPerfectSimilarity": 0.8213465372105598,
+        "rgbSimilarity": 0.9063899870228393,
+        "pixelPerfectSimilarity": 0.8045438770651235,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-status606.side-by-side.png"
       }
     },
@@ -2061,8 +2586,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8541264410481696,
-        "pixelPerfectSimilarity": 0.8276247153037984,
+        "rgbSimilarity": 0.853111324318134,
+        "pixelPerfectSimilarity": 0.8136372541816668,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-task607.side-by-side.png"
       }
     },
@@ -2116,8 +2641,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9792561097342816,
-        "pixelPerfectSimilarity": 0.9358666995287281,
+        "rgbSimilarity": 0.9777775268701736,
+        "pixelPerfectSimilarity": 0.9233865848102589,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.rich-content.side-by-side.png"
       }
     },
@@ -2219,8 +2744,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.963519152159771,
-        "pixelPerfectSimilarity": 0.8568662994018444,
+        "rgbSimilarity": 0.9707891648758306,
+        "pixelPerfectSimilarity": 0.8810733719501492,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-share.selection.side-by-side.png"
       }
     },
@@ -2263,8 +2788,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9284371993689688,
-        "pixelPerfectSimilarity": 0.707789922336706,
+        "rgbSimilarity": 0.928274000380616,
+        "pixelPerfectSimilarity": 0.7039009560939385,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.avatar-list-row.states.side-by-side.png"
       }
     },
@@ -2306,8 +2831,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9679986081313711,
-        "pixelPerfectSimilarity": 0.9298740006215216,
+        "rgbSimilarity": 0.9677993463867643,
+        "pixelPerfectSimilarity": 0.9238953866146848,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.badge.states.side-by-side.png"
       }
     },
@@ -2347,8 +2872,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.973999680068406,
-        "pixelPerfectSimilarity": 0.9451332033788175,
+        "rgbSimilarity": 0.974040268912419,
+        "pixelPerfectSimilarity": 0.9429153129737925,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.button.states.side-by-side.png"
       }
     },
@@ -2390,8 +2915,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9556385082902359,
-        "pixelPerfectSimilarity": 0.9108563318627954,
+        "rgbSimilarity": 0.9556034737686925,
+        "pixelPerfectSimilarity": 0.9070380629937417,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.card.states.side-by-side.png"
       }
     },
@@ -2430,9 +2955,9 @@
         "current": "android",
         "status": "basic-pass",
         "rawStatus": "different",
-        "acceptance": "basic pass: pixel perfect 97.98% > 96%",
-        "rgbSimilarity": 0.9965059442663788,
-        "pixelPerfectSimilarity": 0.9798106377053746,
+        "acceptance": "basic pass: pixel perfect 97.50% > 96%",
+        "rgbSimilarity": 0.9958011594284669,
+        "pixelPerfectSimilarity": 0.9750330687830688,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.check-marker.states.side-by-side.png"
       }
     },
@@ -2472,9 +2997,9 @@
         "current": "android",
         "status": "basic-pass",
         "rawStatus": "different",
-        "acceptance": "basic pass: pixel perfect 96.66% > 96%",
-        "rgbSimilarity": 0.989987672466747,
-        "pixelPerfectSimilarity": 0.9666277787622817,
+        "acceptance": "basic pass: pixel perfect 96.22% > 96%",
+        "rgbSimilarity": 0.989756198224264,
+        "pixelPerfectSimilarity": 0.9622344300706874,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.checkbox.states.side-by-side.png"
       }
     },
@@ -2514,9 +3039,9 @@
         "current": "android",
         "status": "basic-pass",
         "rawStatus": "different",
-        "acceptance": "basic pass: pixel perfect 97.03% > 96%",
-        "rgbSimilarity": 0.9872867019065842,
-        "pixelPerfectSimilarity": 0.9703146128584725,
+        "acceptance": "basic pass: pixel perfect 96.08% > 96%",
+        "rgbSimilarity": 0.9870009084305014,
+        "pixelPerfectSimilarity": 0.960795225049611,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.form-field.states.side-by-side.png"
       }
     },
@@ -2556,8 +3081,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9827445058486265,
-        "pixelPerfectSimilarity": 0.7786108660851384,
+        "rgbSimilarity": 0.9827348780064835,
+        "pixelPerfectSimilarity": 0.7721585154693064,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.menu-item.states.side-by-side.png"
       }
     },
@@ -2599,9 +3124,9 @@
         "current": "android",
         "status": "basic-pass",
         "rawStatus": "different",
-        "acceptance": "basic pass: pixel perfect 96.39% > 96%",
-        "rgbSimilarity": 0.9846330864126747,
-        "pixelPerfectSimilarity": 0.9639376218323586,
+        "acceptance": "basic pass: pixel perfect 96.04% > 96%",
+        "rgbSimilarity": 0.984867297399069,
+        "pixelPerfectSimilarity": 0.9604484784492094,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.segmented-control.states.side-by-side.png"
       }
     },
@@ -2642,9 +3167,9 @@
         "current": "android",
         "status": "basic-pass",
         "rawStatus": "different",
-        "acceptance": "basic pass: pixel perfect 96.87% > 96%",
-        "rgbSimilarity": 0.9922772902403776,
-        "pixelPerfectSimilarity": 0.9687003878539419,
+        "acceptance": "basic pass: pixel perfect 96.77% > 96%",
+        "rgbSimilarity": 0.9922993236647213,
+        "pixelPerfectSimilarity": 0.967693910224205,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.select.states.side-by-side.png"
       }
     },
@@ -2684,8 +3209,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9706447373308326,
-        "pixelPerfectSimilarity": 0.7963710717122023,
+        "rgbSimilarity": 0.9706812031962703,
+        "pixelPerfectSimilarity": 0.793162174984787,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.selection-popover.states.side-by-side.png"
       }
     },
@@ -2767,9 +3292,9 @@
         "current": "android",
         "status": "basic-pass",
         "rawStatus": "different",
-        "acceptance": "basic pass: pixel perfect 96.53% > 96%",
-        "rgbSimilarity": 0.9850518366466304,
-        "pixelPerfectSimilarity": 0.9653170570628149,
+        "acceptance": "basic pass: pixel perfect 96.21% > 96%",
+        "rgbSimilarity": 0.9849476453732999,
+        "pixelPerfectSimilarity": 0.9621454212337157,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.slug-input.states.side-by-side.png"
       }
     },
@@ -2809,8 +3334,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9781779388418506,
-        "pixelPerfectSimilarity": 0.9305885797113868,
+        "rgbSimilarity": 0.9782543943419962,
+        "pixelPerfectSimilarity": 0.927100514819813,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.surface-list-item.states.side-by-side.png"
       }
     },
@@ -2850,8 +3375,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9769897894902655,
-        "pixelPerfectSimilarity": 0.9477526119826315,
+        "rgbSimilarity": 0.9768141742775125,
+        "pixelPerfectSimilarity": 0.94366059180874,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.textarea.states.side-by-side.png"
       }
     },
@@ -2891,8 +3416,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9330404968282954,
-        "pixelPerfectSimilarity": 0.8904006930907515,
+        "rgbSimilarity": 0.9324373436617487,
+        "pixelPerfectSimilarity": 0.8796014728178471,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.typography.specimen.side-by-side.png"
       }
     },
@@ -3231,6 +3756,38 @@
       }
     },
     {
+      "id": "components.members.agent-now-card.recent-rows-narrow",
+      "title": "Agent Profile Recent activity: rows on a phone (390px)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "members",
+      "surface": "members",
+      "group": "members",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agent/AgentNowCard"
+          ],
+          "fixture": "packages/web/visual-testing/AgentNowCardCases.tsx#AGENT_NOW_CARD_TURNS",
+          "path": "packages/web/visual-testing/AgentNowCardCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate. The agent profile's Recent activity card (AgentNowCard, recentRows 3; rows as AgentRecentActivity lays them out, without its status chip) in a 390px column, on fixture turns: a long trigger (@Tenny in a thread of #proj-raft-computer-reconciler) with long actions; an error ending that sent nothing (both badges, 'Ended with an error' and 'No message sent'); a short DM turn with only 'No message sent'. Nothing in a row is truncated: what does not fit wraps to the next line (a badge as a whole), indented under the text, not under the time. The card's 'Last turn: …' line (also a long thread trigger) wraps too at this width; from sm up it is one truncated line.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
       "id": "components.members.create-agent.builtin-provider-dialog",
       "title": "Members Create Agent Dialog - built-in provider",
       "captureType": "component-fixture",
@@ -3279,8 +3836,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.926092460172246,
-        "pixelPerfectSimilarity": 0.7877300468532696,
+        "rgbSimilarity": 0.926472760530555,
+        "pixelPerfectSimilarity": 0.788017647614804,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.claude-custom-provider-dialog.side-by-side.png"
       }
     },
@@ -3301,8 +3858,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9446716794043586,
-        "pixelPerfectSimilarity": 0.8698154224220574,
+        "rgbSimilarity": 0.9419437748409624,
+        "pixelPerfectSimilarity": 0.8648266294000891,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.claude-dialog.side-by-side.png"
       }
     },
@@ -3323,8 +3880,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9503498767531995,
-        "pixelPerfectSimilarity": 0.8743954307935351,
+        "rgbSimilarity": 0.9476055628229723,
+        "pixelPerfectSimilarity": 0.8693468897260367,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog-empty.side-by-side.png"
       }
     },
@@ -3345,8 +3902,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9423334394991756,
-        "pixelPerfectSimilarity": 0.8613366009100606,
+        "rgbSimilarity": 0.9401030765754128,
+        "pixelPerfectSimilarity": 0.8561847666113069,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog-error.side-by-side.png"
       }
     },
@@ -3367,8 +3924,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9581413625387428,
-        "pixelPerfectSimilarity": 0.8745767002876008,
+        "rgbSimilarity": 0.9580464306362015,
+        "pixelPerfectSimilarity": 0.8731039278432643,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog-no-computer.side-by-side.png"
       }
     },
@@ -3421,8 +3978,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9135862265837464,
-        "pixelPerfectSimilarity": 0.8190466758061797,
+        "rgbSimilarity": 0.9346192086389172,
+        "pixelPerfectSimilarity": 0.8451832023409436,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.computer-missing.side-by-side.png"
       }
     },
@@ -3443,8 +4000,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8543686498279046,
-        "pixelPerfectSimilarity": 0.7691594674910068,
+        "rgbSimilarity": 0.8623282981146299,
+        "pixelPerfectSimilarity": 0.7809458502229587,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.computer-offline.side-by-side.png"
       }
     },
@@ -3465,8 +4022,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8991990309668094,
-        "pixelPerfectSimilarity": 0.8119005189079859,
+        "rgbSimilarity": 0.9170687359745958,
+        "pixelPerfectSimilarity": 0.8319146940546117,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.daemon-only.side-by-side.png"
       }
     },
@@ -3487,8 +4044,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9357267909297344,
-        "pixelPerfectSimilarity": 0.8423503472055254,
+        "rgbSimilarity": 0.9504457262922195,
+        "pixelPerfectSimilarity": 0.8529730035821081,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.loading-state.side-by-side.png"
       }
     },
@@ -3509,8 +4066,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8894727861714201,
-        "pixelPerfectSimilarity": 0.7978922879547524,
+        "rgbSimilarity": 0.9052839062127137,
+        "pixelPerfectSimilarity": 0.8160911548476918,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.long-machine-name.side-by-side.png"
       }
     },
@@ -3531,8 +4088,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8864437569489017,
-        "pixelPerfectSimilarity": 0.7963830597500207,
+        "rgbSimilarity": 0.9007295732262519,
+        "pixelPerfectSimilarity": 0.814721992463928,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.no-computer.side-by-side.png"
       }
     },
@@ -3553,8 +4110,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.91299006112764,
-        "pixelPerfectSimilarity": 0.8256901920469614,
+        "rgbSimilarity": 0.9310118518975468,
+        "pixelPerfectSimilarity": 0.850158720474009,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.no-membership.side-by-side.png"
       }
     },
@@ -3652,8 +4209,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9213085414658296,
-        "pixelPerfectSimilarity": 0.8903287258550416,
+        "rgbSimilarity": 0.9210827007734912,
+        "pixelPerfectSimilarity": 0.8871758520881328,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.as-task-selected.side-by-side.png"
       }
     },
@@ -3708,8 +4265,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9736094017420712,
-        "pixelPerfectSimilarity": 0.8020193713450292,
+        "rgbSimilarity": 0.9735973100795452,
+        "pixelPerfectSimilarity": 0.8017990578297596,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.channel-suggestions.side-by-side.png"
       }
     },
@@ -3763,8 +4320,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.944268957873944,
-        "pixelPerfectSimilarity": 0.9062522561547902,
+        "rgbSimilarity": 0.9443501204619538,
+        "pixelPerfectSimilarity": 0.9040442326667149,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.empty.side-by-side.png"
       }
     },
@@ -3870,8 +4427,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9427453912761441,
-        "pixelPerfectSimilarity": 0.9177991274482502,
+        "rgbSimilarity": 0.9426511813302351,
+        "pixelPerfectSimilarity": 0.9159766700702373,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.image-preview.side-by-side.png"
       }
     },
@@ -3928,8 +4485,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9588451173209833,
-        "pixelPerfectSimilarity": 0.7443026923816888,
+        "rgbSimilarity": 0.9588298783781317,
+        "pixelPerfectSimilarity": 0.7440957815602528,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.member-suggestions.side-by-side.png"
       }
     },
@@ -3985,8 +4542,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9289909575146779,
-        "pixelPerfectSimilarity": 0.865426497277677,
+        "rgbSimilarity": 0.9290669049019767,
+        "pixelPerfectSimilarity": 0.8625047612645919,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.pending-mention-actions.side-by-side.png"
       }
     },
@@ -4040,8 +4597,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9225384281474998,
-        "pixelPerfectSimilarity": 0.8918325555752457,
+        "rgbSimilarity": 0.922311532169926,
+        "pixelPerfectSimilarity": 0.8886747592887944,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.states.side-by-side.png"
       }
     },
@@ -4095,8 +4652,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9865629512067273,
-        "pixelPerfectSimilarity": 0.9474838886603593,
+        "rgbSimilarity": 0.9852122525620874,
+        "pixelPerfectSimilarity": 0.9341641264718188,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message.row.side-by-side.png"
       }
     },
@@ -4185,8 +4742,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9661458515392091,
-        "pixelPerfectSimilarity": 0.922720254017964,
+        "rgbSimilarity": 0.9660451405140009,
+        "pixelPerfectSimilarity": 0.9158633845656746,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.channel.members.add-panel.side-by-side.png"
       }
     },
@@ -4242,8 +4799,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9665586202435321,
-        "pixelPerfectSimilarity": 0.9214130919107223,
+        "rgbSimilarity": 0.9670689803220661,
+        "pixelPerfectSimilarity": 0.9289524851136226,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.channel.settings.panel.side-by-side.png"
       }
     },
@@ -4303,8 +4860,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9330676375855421,
-        "pixelPerfectSimilarity": 0.8243869081305414,
+        "rgbSimilarity": 0.9321332144755118,
+        "pixelPerfectSimilarity": 0.8218894757802511,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.activity.results.side-by-side.png"
       }
     },
@@ -4478,8 +5035,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9558605513792359,
-        "pixelPerfectSimilarity": 0.9276551594038861,
+        "rgbSimilarity": 0.9566969702075966,
+        "pixelPerfectSimilarity": 0.9284715672095412,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.saved.results.side-by-side.png"
       }
     },
@@ -4536,8 +5093,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9590752548707145,
-        "pixelPerfectSimilarity": 0.8329704567856226,
+        "rgbSimilarity": 0.9530490463919599,
+        "pixelPerfectSimilarity": 0.8144951458932501,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.channel-dropdown.side-by-side.png"
       }
     },
@@ -4597,8 +5154,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8892708114307508,
-        "pixelPerfectSimilarity": 0.7020878422165976,
+        "rgbSimilarity": 0.8382527514186795,
+        "pixelPerfectSimilarity": 0.5827285921625545,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.results.side-by-side.png"
       }
     },
@@ -4655,8 +5212,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.973309074934043,
-        "pixelPerfectSimilarity": 0.8056281308650977,
+        "rgbSimilarity": 0.9731519619094783,
+        "pixelPerfectSimilarity": 0.7989798949514589,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.titlebar.states.side-by-side.png"
       }
     },
@@ -4716,8 +5273,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8993767031430102,
-        "pixelPerfectSimilarity": 0.8121447644399417,
+        "rgbSimilarity": 0.9174677960590037,
+        "pixelPerfectSimilarity": 0.8325726953329571,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-detail.profile.side-by-side.png"
       }
     },
@@ -4777,8 +5334,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9448658595595089,
-        "pixelPerfectSimilarity": 0.8701070738985431,
+        "rgbSimilarity": 0.9421379549961126,
+        "pixelPerfectSimilarity": 0.8651182808765747,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog.side-by-side.png"
       }
     },
@@ -4830,8 +5387,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9860444729965433,
-        "pixelPerfectSimilarity": 0.9317901234567901,
+        "rgbSimilarity": 0.9859113581488309,
+        "pixelPerfectSimilarity": 0.9236277302943969,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.navigation.tabbar.states.side-by-side.png"
       }
     },
@@ -5348,8 +5905,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.7718774055116328,
-        "pixelPerfectSimilarity": 0.6704089227559606,
+        "rgbSimilarity": 0.7072484975716256,
+        "pixelPerfectSimilarity": 0.6140927021696252,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.appearance.page.side-by-side.png"
       }
     },
@@ -5406,8 +5963,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.878894684654481,
-        "pixelPerfectSimilarity": 0.6887341113302652,
+        "rgbSimilarity": 0.9003566346370556,
+        "pixelPerfectSimilarity": 0.6883342373908412,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.notifications.page.side-by-side.png"
       }
     },
@@ -5475,8 +6032,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9523609259223672,
-        "pixelPerfectSimilarity": 0.9354595074892105,
+        "rgbSimilarity": 0.905414458525499,
+        "pixelPerfectSimilarity": 0.8869301490588619,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.root.page.side-by-side.png"
       }
     },
@@ -5533,8 +6090,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.962912693569731,
-        "pixelPerfectSimilarity": 0.9161638880937126,
+        "rgbSimilarity": 0.962934431653614,
+        "pixelPerfectSimilarity": 0.9141105158649019,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.server.profile.side-by-side.png"
       }
     },
@@ -5591,8 +6148,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8984973558081696,
-        "pixelPerfectSimilarity": 0.8272174148985744,
+        "rgbSimilarity": 0.898309847632603,
+        "pixelPerfectSimilarity": 0.8236650091722556,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.tasks.panel.states.side-by-side.png"
       }
     },
@@ -5646,8 +6203,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9816225056524341,
-        "pixelPerfectSimilarity": 0.8180399360223921,
+        "rgbSimilarity": 0.9816149886755329,
+        "pixelPerfectSimilarity": 0.8178437546858599,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.tasks.status-menu.side-by-side.png"
       }
     },
@@ -5762,9 +6319,337 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9734362605441004,
-        "pixelPerfectSimilarity": 0.8945275403608737,
+        "rgbSimilarity": 0.9733781787485489,
+        "pixelPerfectSimilarity": 0.8911301044634378,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.header.states.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.runtime-form.create.builtin",
+      "title": "Runtime Form - Built-in create",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "runtime-form",
+      "surface": "members",
+      "group": "runtime-form",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agent/RuntimeConfigFields#RuntimeFormV2Fields"
+          ],
+          "path": "packages/web/visual-testing/RuntimeFormCases.tsx",
+          "fixture": "packages/runtime-form/fixtures/builtin.form.v3.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "pending",
+          "components": [
+            "build.raft.app.RuntimeFormV2Fields"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/RuntimeFormVisualFixture.kt",
+          "fixture": "compose_runtime_form_visual",
+          "reason": ""
+        }
+      },
+      "notes": "Built-in's real v3 create form as the server sends it (fixtures/builtin.form.v3.json) with the server's option source fixtures listed in fixtures/visual-cases.v3.json, at its initial values plus any the case sets (REAL_FORM_VISUAL_VALUES in packages/runtime-form/src/kitchenSink.ts, so fields drawn only after a choice are in the capture; the test fails when a field is neither drawn nor listed hidden with a reason); rendered by the production field renderer, no API. Mobile renders the same files.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.7942350564335808,
+        "pixelPerfectSimilarity": 0.7549600966773156,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.runtime-form.create.builtin.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.runtime-form.create.claude",
+      "title": "Runtime Form - Claude Code create",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "runtime-form",
+      "surface": "members",
+      "group": "runtime-form",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agent/RuntimeConfigFields#RuntimeFormV2Fields"
+          ],
+          "path": "packages/web/visual-testing/RuntimeFormCases.tsx",
+          "fixture": "packages/runtime-form/fixtures/claude.form.v3.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "pending",
+          "components": [
+            "build.raft.app.RuntimeFormV2Fields"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/RuntimeFormVisualFixture.kt",
+          "fixture": "compose_runtime_form_visual",
+          "reason": ""
+        }
+      },
+      "notes": "Claude Code's real v3 create form as the server sends it (fixtures/claude.form.v3.json) with the server's option source fixtures listed in fixtures/visual-cases.v3.json, at its initial values plus any the case sets (REAL_FORM_VISUAL_VALUES in packages/runtime-form/src/kitchenSink.ts, so fields drawn only after a choice are in the capture; the test fails when a field is neither drawn nor listed hidden with a reason); rendered by the production field renderer, no API. Mobile renders the same files.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8239226839031962,
+        "pixelPerfectSimilarity": 0.7730364755178651,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.runtime-form.create.claude.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.runtime-form.create.codex",
+      "title": "Runtime Form - Codex create",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "runtime-form",
+      "surface": "members",
+      "group": "runtime-form",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agent/RuntimeConfigFields#RuntimeFormV2Fields"
+          ],
+          "path": "packages/web/visual-testing/RuntimeFormCases.tsx",
+          "fixture": "packages/runtime-form/fixtures/codex.form.v3.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "pending",
+          "components": [
+            "build.raft.app.RuntimeFormV2Fields"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/RuntimeFormVisualFixture.kt",
+          "fixture": "compose_runtime_form_visual",
+          "reason": ""
+        }
+      },
+      "notes": "Codex's real v3 create form as the server sends it (fixtures/codex.form.v3.json) with the server's option source fixtures listed in fixtures/visual-cases.v3.json, at its initial values plus any the case sets (REAL_FORM_VISUAL_VALUES in packages/runtime-form/src/kitchenSink.ts, so fields drawn only after a choice are in the capture; the test fails when a field is neither drawn nor listed hidden with a reason); rendered by the production field renderer, no API. Mobile renders the same files.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8948203162399764,
+        "pixelPerfectSimilarity": 0.8398847284923234,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.runtime-form.create.codex.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.runtime-form.create.grok",
+      "title": "Runtime Form - Grok create",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "runtime-form",
+      "surface": "members",
+      "group": "runtime-form",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agent/RuntimeConfigFields#RuntimeFormV2Fields"
+          ],
+          "path": "packages/web/visual-testing/RuntimeFormCases.tsx",
+          "fixture": "packages/runtime-form/fixtures/grok.form.v3.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "pending",
+          "components": [
+            "build.raft.app.RuntimeFormV2Fields"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/RuntimeFormVisualFixture.kt",
+          "fixture": "compose_runtime_form_visual",
+          "reason": ""
+        }
+      },
+      "notes": "Grok's real v3 create form as the server sends it (fixtures/grok.form.v3.json) with the server's option source fixtures listed in fixtures/visual-cases.v3.json, at its initial values plus any the case sets (REAL_FORM_VISUAL_VALUES in packages/runtime-form/src/kitchenSink.ts, so fields drawn only after a choice are in the capture; the test fails when a field is neither drawn nor listed hidden with a reason); rendered by the production field renderer, no API. Mobile renders the same files.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8844229931289062,
+        "pixelPerfectSimilarity": 0.8145832812174275,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.runtime-form.create.grok.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.runtime-form.create.kimi-sdk",
+      "title": "Runtime Form - Kimi Code create",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "runtime-form",
+      "surface": "members",
+      "group": "runtime-form",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agent/RuntimeConfigFields#RuntimeFormV2Fields"
+          ],
+          "path": "packages/web/visual-testing/RuntimeFormCases.tsx",
+          "fixture": "packages/runtime-form/fixtures/kimi-sdk.form.v3.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "pending",
+          "components": [
+            "build.raft.app.RuntimeFormV2Fields"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/RuntimeFormVisualFixture.kt",
+          "fixture": "compose_runtime_form_visual",
+          "reason": ""
+        }
+      },
+      "notes": "Kimi Code's real v3 create form as the server sends it (fixtures/kimi-sdk.form.v3.json) with the server's option source fixtures listed in fixtures/visual-cases.v3.json, at its initial values plus any the case sets (REAL_FORM_VISUAL_VALUES in packages/runtime-form/src/kitchenSink.ts, so fields drawn only after a choice are in the capture; the test fails when a field is neither drawn nor listed hidden with a reason); rendered by the production field renderer, no API. Mobile renders the same files.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8964105410124596,
+        "pixelPerfectSimilarity": 0.8250261117730997,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.runtime-form.create.kimi-sdk.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.runtime-form.create.pi",
+      "title": "Runtime Form - Pi create",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "runtime-form",
+      "surface": "members",
+      "group": "runtime-form",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agent/RuntimeConfigFields#RuntimeFormV2Fields"
+          ],
+          "path": "packages/web/visual-testing/RuntimeFormCases.tsx",
+          "fixture": "packages/runtime-form/fixtures/pi.form.v3.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "pending",
+          "components": [
+            "build.raft.app.RuntimeFormV2Fields"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/RuntimeFormVisualFixture.kt",
+          "fixture": "compose_runtime_form_visual",
+          "reason": ""
+        }
+      },
+      "notes": "Pi's real v3 create form as the server sends it (fixtures/pi.form.v3.json) with the server's option source fixtures listed in fixtures/visual-cases.v3.json, at its initial values plus any the case sets (REAL_FORM_VISUAL_VALUES in packages/runtime-form/src/kitchenSink.ts, so fields drawn only after a choice are in the capture; the test fails when a field is neither drawn nor listed hidden with a reason); rendered by the production field renderer, no API. Mobile renders the same files.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8937918567185895,
+        "pixelPerfectSimilarity": 0.8168135593220339,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.runtime-form.create.pi.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.runtime-form.kitchen-sink.choices",
+      "title": "Runtime Form - Kitchen Sink (choices)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "runtime-form",
+      "surface": "members",
+      "group": "runtime-form",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agent/RuntimeConfigFields#RuntimeFormV2Fields"
+          ],
+          "path": "packages/web/visual-testing/RuntimeFormCases.tsx",
+          "fixture": "packages/runtime-form/fixtures/kitchen-sink-choices.form.v3.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "pending",
+          "components": [
+            "build.raft.app.RuntimeFormV2Fields"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/RuntimeFormVisualFixture.kt",
+          "fixture": "compose_runtime_form_visual",
+          "reason": ""
+        }
+      },
+      "notes": "Generated (packages/runtime-form/kitchen-sink/generate.ts), one page of the kitchen sink: v3 create form rows for every field kind of the protocol (RUNTIME_FORM_V2_FIELD_KINDS) in each state, cut into pages that fit the 2700 dp full-length cap. This page: select and dependent select rows: empty, filled with choice labels, required-missing, value not listed, option source fallback / stale / unavailable with Retry / being retried (the per-source loading state) / unavailable and optional (hidden), a value no longer available, a typed custom value, dependent select list-only / combobox / typed-only / required / no list for the parent's value (hidden). Rendered by the production field renderer from the fixtures (values from kitchen-sink-choices.state.v3.json, validation errors shown), no API; mobile renders the same files. A new field kind fails src/kitchenSink.test.ts until it has rows.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.7841257483127108,
+        "pixelPerfectSimilarity": 0.7390702374452841,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.runtime-form.kitchen-sink.choices.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.runtime-form.kitchen-sink.inputs",
+      "title": "Runtime Form - Kitchen Sink (inputs)",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "runtime-form",
+      "surface": "members",
+      "group": "runtime-form",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/agent/RuntimeConfigFields#RuntimeFormV2Fields"
+          ],
+          "path": "packages/web/visual-testing/RuntimeFormCases.tsx",
+          "fixture": "packages/runtime-form/fixtures/kitchen-sink-inputs.form.v3.json",
+          "reason": ""
+        },
+        "android": {
+          "status": "pending",
+          "components": [
+            "build.raft.app.RuntimeFormV2Fields"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/RuntimeFormVisualFixture.kt",
+          "fixture": "compose_runtime_form_visual",
+          "reason": ""
+        }
+      },
+      "notes": "Generated (packages/runtime-form/kitchen-sink/generate.ts), one page of the kitchen sink: v3 create form rows for every field kind of the protocol (RUNTIME_FORM_V2_FIELD_KINDS) in each state, cut into pages that fit the 2700 dp full-length cap. This page: text, secret, URL, switch, key/value and number rows: empty, filled, required-missing, invalid URL, a hint with a link, shown / hidden / required by a v3 rule (on the switch), the Advanced group (open: it holds values), and number fields (the protocol's unsupported kind: optional is skipped, required blocks saving). Rendered by the production field renderer from the fixtures (values from kitchen-sink-inputs.state.v3.json, validation errors shown), no API; mobile renders the same files. A new field kind fails src/kitchenSink.test.ts until it has rows.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8070811348110122,
+        "pixelPerfectSimilarity": 0.7799237226186116,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.runtime-form.kitchen-sink.inputs.side-by-side.png"
       }
     },
     {
@@ -5941,8 +6826,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9603290155395795,
-        "pixelPerfectSimilarity": 0.9338908285467583,
+        "rgbSimilarity": 0.960947155017142,
+        "pixelPerfectSimilarity": 0.9305552427075121,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.channel-list.side-by-side.png"
       }
     },
@@ -6000,8 +6885,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9655841183774346,
-        "pixelPerfectSimilarity": 0.9265823854037617,
+        "rgbSimilarity": 0.9654149914982908,
+        "pixelPerfectSimilarity": 0.9239116016568433,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.channel-list.dark.side-by-side.png"
       }
     },
@@ -6095,8 +6980,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9795673977633533,
-        "pixelPerfectSimilarity": 0.8640634071913693,
+        "rgbSimilarity": 0.9784540274299577,
+        "pixelPerfectSimilarity": 0.8620701178758051,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.loading.side-by-side.png"
       }
     },
@@ -6193,8 +7078,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.4125409288652033,
-        "pixelPerfectSimilarity": 0.25409321158846776,
+        "rgbSimilarity": 0.40085096477256077,
+        "pixelPerfectSimilarity": 0.24607089607089608,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.activity.side-by-side.png"
       }
     },
@@ -6251,8 +7136,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9190443427107566,
-        "pixelPerfectSimilarity": 0.8706758994430227,
+        "rgbSimilarity": 0.9191546733824483,
+        "pixelPerfectSimilarity": 0.8673348721293926,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.apps.side-by-side.png"
       }
     },
@@ -6309,8 +7194,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8991044408565685,
-        "pixelPerfectSimilarity": 0.811141736650162,
+        "rgbSimilarity": 0.9171916561424378,
+        "pixelPerfectSimilarity": 0.831545800135925,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.side-by-side.png"
       }
     },
@@ -6367,8 +7252,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9282836384220322,
-        "pixelPerfectSimilarity": 0.868595153088824,
+        "rgbSimilarity": 0.9282185405808019,
+        "pixelPerfectSimilarity": 0.8652074542897328,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.reminders.side-by-side.png"
       }
     },
@@ -6425,8 +7310,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9264570125589685,
-        "pixelPerfectSimilarity": 0.8856120176120176,
+        "rgbSimilarity": 0.926286599191171,
+        "pixelPerfectSimilarity": 0.8803698523698523,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.workspace.side-by-side.png"
       }
     },
@@ -6483,8 +7368,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9668639402273145,
-        "pixelPerfectSimilarity": 0.9393812280909055,
+        "rgbSimilarity": 0.966860098050796,
+        "pixelPerfectSimilarity": 0.9371612706290126,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.human.profile.side-by-side.png"
       }
     },
@@ -6708,8 +7593,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9548812319785791,
-        "pixelPerfectSimilarity": 0.7805059342974034,
+        "rgbSimilarity": 0.9548007198270123,
+        "pixelPerfectSimilarity": 0.7793389908318819,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.settings.server-danger-modal.side-by-side.png"
       }
     },

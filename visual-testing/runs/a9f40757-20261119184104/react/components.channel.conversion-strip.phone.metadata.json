@@ -1,0 +1,36 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.channel.conversion-strip.phone",
+  "image": "visual-testing-results/react/components.channel.conversion-strip.phone.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.channel.conversion-strip.phone']",
+  "crop": {
+    "mode": "element",
+    "contract": "page-viewport",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 360
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 360
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "capturedAt": "2026-11-19T18:37:49.592Z"
+}

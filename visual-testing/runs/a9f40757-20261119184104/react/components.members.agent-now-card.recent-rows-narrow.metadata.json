@@ -1,0 +1,36 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.members.agent-now-card.recent-rows-narrow",
+  "image": "visual-testing-results/react/components.members.agent-now-card.recent-rows-narrow.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.members.agent-now-card.recent-rows-narrow']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 457
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 457
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "capturedAt": "2026-11-19T18:26:14.396Z"
+}

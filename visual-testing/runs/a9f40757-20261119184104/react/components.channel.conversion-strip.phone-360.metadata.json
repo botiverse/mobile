@@ -1,0 +1,36 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.channel.conversion-strip.phone-360",
+  "image": "visual-testing-results/react/components.channel.conversion-strip.phone-360.png",
+  "viewport": {
+    "width": 360,
+    "height": 780,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 360,
+    "height": 780,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.channel.conversion-strip.phone-360']",
+  "crop": {
+    "mode": "element",
+    "contract": "page-viewport",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 360,
+      "height": 360
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 360,
+      "height": 360
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "capturedAt": "2026-11-19T18:37:55.040Z"
+}

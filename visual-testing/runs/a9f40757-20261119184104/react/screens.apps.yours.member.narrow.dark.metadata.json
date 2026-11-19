@@ -1,0 +1,36 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "screens.apps.yours.member.narrow.dark",
+  "image": "visual-testing-results/react/screens.apps.yours.member.narrow.dark.png",
+  "viewport": {
+    "width": 360,
+    "height": 1500,
+    "density": 2
+  },
+  "captureViewport": {
+    "width": 360,
+    "height": 1500,
+    "density": 2
+  },
+  "selector": "[data-visual-case='screens.apps.yours.member.narrow.dark']",
+  "crop": {
+    "mode": "element",
+    "contract": "viewport-with-portal",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 360,
+      "height": 1500
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 360,
+      "height": 1500
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "capturedAt": "2026-11-19T18:37:06.253Z"
+}
