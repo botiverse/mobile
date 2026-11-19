@@ -3,7 +3,8 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|ios|premerge|full] [xcode-app-path] [premerge-base-ref]" >&2
+  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|ios|premerge|full] [xcode-app-path] [premerge-base-ref] [queue-tested:true|false]" >&2
+  echo "  ref-name: the PR head branch for pull_request (stamp-mq/* = Stamp merge-queue candidate), else github.ref_name" >&2
   exit 2
 }
 
@@ -37,6 +38,8 @@ mark_all_platforms() {
 # Task #37 (artin 2026-10-09): this gate is no longer consulted for pull
 # requests — ordinary PRs never compile iOS at all (see emit_plan); it remains
 # the main-push path gate. Explicit full-ci PRs are the PR-side escape hatch.
+# Stamp merge queue (2026-11-19): Stamp's premerge dispatch no longer consults
+# it either; the queue candidate (draft PR from stamp-mq/*) compiles iOS on every batch.
 change_keeps_ios() {
   local changed_paths_file="$1"
   local path
@@ -171,15 +174,19 @@ emit_plan() {
   local dispatch_scope="${5:-}"
   local xcode_app_path="${6:-}"
   local premerge_base_ref="${7:-}"
+  local queue_tested="${8:-false}"
   run_android=false
   run_ios=false
   local run_device_suite=false
   local run_canonical_final=false
   local attachment_api_levels="[]"
-  # The GitHub-hosted Xcode 27.1 iOS compile lane runs only on the nightly
-  # schedule and release-* pushes (cost cut 2026-11-05: ~48 min on the most
-  # expensive runner). 27.1-only SDK breakage is caught by the nightly within
-  # 24h and by ios-release.yml's 27.1 build before any release.
+  # iOS compile lanes. The Xcode 27.0 lane (run_ios_xcode270) is the default
+  # for every iOS run except the merge queue. The Xcode 27.1 lane
+  # (run_ios_xcode271, the release SDK) runs on the nightly schedule and
+  # release-* pushes next to it, and alone on the Stamp merge queue batch
+  # candidate (draft PR from stamp-mq/*). Both run on GitHub's standard xcode-27 image, free on
+  # this public repo but one of the org's 5 concurrent macOS slots each.
+  local run_ios_xcode270=true
   local run_ios_xcode271=false
   # iOS tests in the iOS compile job (step 1 of the mobile test prune, Lagoon
   # 2026-11-13, artin's go-ahead): the K/N commonTest compile + iosTest
@@ -189,10 +196,18 @@ emit_plan() {
   # other iOS run (premerge, scope=ios, main push, merge queue) compiles the
   # iOS targets, links the framework and builds the host app only; iOS-only
   # behaviour regressions surface in the nightly within 24h. Exception: a
-  # premerge or main push whose diff touches iOS test sources
+  # merge-queue batch or main push whose diff touches iOS test sources
   # (change_touches_ios_tests) runs the iOS tests too.
   local run_ios_tests=false
   local ios_lanes="[]"
+  # Stamp merge queue (2026-11-19). queue_candidate: this pull_request run is
+  # the queue's managed draft PR (head stamp-mq/<batch>); Stamp accepts the
+  # batch only when every job of the run concluded success, so the emulator
+  # jobs the plan does not select run as no-op successes instead of skipping.
+  # queue_reuse: a main push whose SHA carries a verified stamp/queue-tested
+  # status (scripts/ci/check_queue_tested.py); only queue-ci-reuse runs.
+  local queue_candidate=false
+  local queue_reuse=false
   reason=""
 
   case "$full_ci" in
@@ -203,10 +218,45 @@ emit_plan() {
       ;;
   esac
 
+  case "$queue_tested" in
+    true|false) ;;
+    *)
+      echo "queue-tested flag must be true or false" >&2
+      return 1
+      ;;
+  esac
+  if test "$queue_tested" = true && ! { test "$event_name" = push && test "$ref_name" = main; }; then
+    echo "queue-tested reuse applies only to push to main (got ${event_name} ${ref_name})" >&2
+    return 1
+  fi
+
   case "$event_name" in
     pull_request)
       classify_changed_paths "$changed_paths_file" "pull-request"
-      if test "$full_ci" = true; then
+      case "$ref_name" in
+        stamp-mq/*)
+          # Stamp merge queue candidate (managed draft PR, 2026-11-19): up to
+          # 10 approved PRs, each squashed onto main's tip; main fast-forwards
+          # to this exact head only when every job of this run succeeded. It
+          # is the pre-merge check for everything that lands on main, so it
+          # runs every platform whatever the diff: Linux gates, Android
+          # compile & tests, and the iOS compile on the release SDK (Xcode
+          # 27.1 lane only, GitHub xcode-27). Compile + link + host app; the
+          # iOS tests only when the batch touches iOS test sources. No
+          # emulator suite (its jobs run as no-op successes, see above).
+          mark_all_platforms
+          queue_candidate=true
+          run_ios_xcode270=false
+          run_ios_xcode271=true
+          if change_touches_ios_tests "$changed_paths_file"; then
+            run_ios_tests=true
+          fi
+          reason="merge-queue-candidate"
+          ;;
+      esac
+      if test "$queue_candidate" = true; then
+        :
+      elif test "$full_ci" = true; then
         mark_all_platforms
         # Task #26 closure: full-ci PR keeps the device suite but only the
         # API31 attachment leg; canonical-final stays nightly/manual only.
@@ -216,23 +266,16 @@ emit_plan() {
         run_ios_tests=true
         reason="pull-request-full-ci"
       else
-        # Task #37 (artin 2026-10-09): iOS compile runs only on the trunk
-        # evidence chain (main/release pushes + nightly). Ordinary PRs never
-        # compile iOS, including PRs that touch iOS-specific paths; an iOS
-        # regression is caught by the main push readback (~12 min) and handled
-        # fix-forward. The full-ci label remains the explicit escape hatch.
-        # Fail-closed exception: an unavailable diff still selects every
-        # platform, because "we don't know what changed" must not silently
-        # skip coverage.
+        # Task #37 (artin 2026-10-09): ordinary PRs never compile iOS,
+        # including PRs that touch iOS-specific paths. Stamp merge queue
+        # (2026-11-19): the pre-merge iOS compile runs on the queue batch
+        # candidate (draft PR from stamp-mq/*, Xcode 27.1) instead. The full-ci label remains
+        # the explicit escape hatch. An unavailable diff fails closed to
+        # Android (the PR-time platform); iOS is still compiled by the queue.
+        run_ios=false
         case "$reason" in
-          pull-request-diff-unavailable-fail-closed)
-            ;;
-          *)
-            run_ios=false
-            case "$reason" in
-              pull-request-paths:*) reason="pull-request-paths:$(platform_summary)" ;;
-            esac
-            ;;
+          pull-request-diff-unavailable-fail-closed) run_android=true ;;
+          pull-request-paths:*) reason="pull-request-paths:$(platform_summary)" ;;
         esac
       fi
       ;;
@@ -247,26 +290,38 @@ emit_plan() {
     push)
       case "$ref_name" in
         main)
-          classify_changed_paths "$changed_paths_file" "main-push"
-          # Task #26 option A: iOS compile only when the push can affect iOS;
-          # ordinary pushes rely on the nightly iOS readback. Fail-closed:
-          # unknown paths were already marked all-platform by classify and are
-          # kept here.
-          if test "$run_ios" = true && ! change_keeps_ios "$changed_paths_file"; then
-            run_ios=false
-            case "$reason" in
-              main-push-paths:*) reason="main-push-paths:$(platform_summary)" ;;
-            esac
+          if test "$queue_tested" = true; then
+            # Stamp fast-forwarded main to a merge-queue candidate whose
+            # Test run (every job green, first attempt, built on this push's
+            # before SHA) is verified by check_queue_tested.py. Nothing to
+            # re-run on the same SHA: only the queue-ci-reuse job reports.
+            queue_reuse=true
+            reason="main-push-queue-tested-reuse"
+            run_device_suite=false
+            run_canonical_final=false
+            attachment_api_levels="[]"
+          else
+            classify_changed_paths "$changed_paths_file" "main-push"
+            # Task #26 option A: iOS compile only when the push can affect iOS;
+            # ordinary pushes rely on the nightly iOS readback. Fail-closed:
+            # unknown paths were already marked all-platform by classify and are
+            # kept here.
+            if test "$run_ios" = true && ! change_keeps_ios "$changed_paths_file"; then
+              run_ios=false
+              case "$reason" in
+                main-push-paths:*) reason="main-push-paths:$(platform_summary)" ;;
+              esac
+            fi
+            # A main push touching iOS test sources runs the iOS tests.
+            if test "$run_ios" = true && change_touches_ios_tests "$changed_paths_file"; then
+              run_ios_tests=true
+            fi
+            # Task #26 closure: routine main pushes no longer run the device
+            # suite; nightly and explicit manual dispatch keep the readback.
+            run_device_suite=false
+            run_canonical_final=false
+            attachment_api_levels="[]"
           fi
-          # A main push touching iOS test sources runs the iOS tests.
-          if test "$run_ios" = true && change_touches_ios_tests "$changed_paths_file"; then
-            run_ios_tests=true
-          fi
-          # Task #26 closure: routine main pushes no longer run the device
-          # suite; nightly and explicit manual dispatch keep the readback.
-          run_device_suite=false
-          run_canonical_final=false
-          attachment_api_levels="[]"
           ;;
         release-*)
           # Release branches keep the platform readback, but routine release
@@ -302,7 +357,7 @@ emit_plan() {
       # dispatch has no trustworthy PR diff, so the pr tier is a fixed set:
       # Linux gates + Android compile, no iOS, no device suite. scope=full
       # keeps the deliberate full readback. scope=ios (2026-11-05) is the
-      # pre-merge iOS check: plan + the Blacksmith Xcode 27.0 iOS compile only
+      # pre-merge iOS check: plan + the Xcode 27.0 iOS compile only
       # (Android is already covered by the PR-tier run), compile + link + host
       # app build without the iOS tests (run_ios_tests=false). An empty/unknown scope
       # is rejected so the choice is always explicit in the workflow input.
@@ -326,13 +381,12 @@ emit_plan() {
         premerge)
           # Stamp's ready-to-merge check (artin 2026-11-11): dispatched once on
           # the PR's exact head. Changed paths are head vs its merge-base with
-          # the PR base (premerge-base-ref) and get the pull_request
-          # classification; iOS compiles only when they can affect iOS
-          # (classify selected iOS: iOS/native paths, shared compose/** such
-          # as commonMain, CI-control). Android is not rerun: the PR-tier run
-          # already compiled and tested it. An unavailable diff stays
-          # fail-closed and selects every platform. A PR into a release
-          # branch gets the scope=full readback instead.
+          # the PR base (premerge-base-ref). Stamp merge queue (2026-11-19):
+          # into main it no longer compiles iOS; the queue candidate (draft PR from
+          # stamp-mq/*) does, on the combined batch commit. Android is not
+          # rerun: the PR-tier run already compiled and tested it. An
+          # unavailable diff fails closed to Android only. A PR into a release
+          # branch (not queued) gets the scope=full readback instead.
           case "$premerge_base_ref" in
             "")
               echo "workflow_dispatch scope=premerge requires the base ref (input base_ref)" >&2
@@ -352,29 +406,15 @@ emit_plan() {
               run_device_suite=false
               run_canonical_final=false
               attachment_api_levels="[]"
+              run_ios=false
               case "$reason" in
                 workflow_dispatch-premerge-diff-unavailable-fail-closed)
-                  mark_all_platforms
+                  run_android=true
                   reason="workflow_dispatch-premerge:diff-unavailable-fail-closed"
                   ;;
                 *)
                   run_android=false
-                  # wg-cost (Tenny 2026-11-12): premerge compiles iOS only for
-                  # iOS-specific source or CI-control paths, like main pushes
-                  # (change_keeps_ios). Ordinary commonMain PRs rely on the
-                  # nightly iOS readback plus the main merge hold.
-                  if test "$run_ios" = true && ! change_keeps_ios "$changed_paths_file"; then
-                    run_ios=false
-                  fi
-                  # A premerge touching iOS test sources runs the iOS tests.
-                  if test "$run_ios" = true && change_touches_ios_tests "$changed_paths_file"; then
-                    run_ios_tests=true
-                  fi
-                  if test "$run_ios" = true; then
-                    reason="workflow_dispatch-premerge:ios"
-                  else
-                    reason="workflow_dispatch-premerge:no-ios"
-                  fi
+                  reason="workflow_dispatch-premerge:no-ios"
                   ;;
               esac
               ;;
@@ -419,35 +459,42 @@ emit_plan() {
     return 1
   fi
 
-  # iOS compile lanes (matrix of the test.yml `ios` job). Every iOS run gets the
-  # Blacksmith Xcode 27.0 lane. The GitHub-hosted Xcode 27.1 lane is added only
-  # on the nightly schedule and release-* pushes (run_ios_xcode271 above); GitHub
-  # Macs are the most expensive runner and share one concurrency cap with
-  # ios-release.yml / ios-simulator-app.yml.
+  # iOS compile lanes (matrix of the test.yml `ios` job), both on GitHub's
+  # standard xcode-27 image (free on this public repo; GitHub's standard Macs
+  # share a 5-job concurrency cap with ios-simulator-app.yml /
+  # qa-acceptance-ios.yml). Xcode 27.0 lane: every iOS run but the merge queue.
+  # Xcode 27.1 lane: nightly and release-* pushes (with 27.0), and the merge
+  # queue batch (alone).
   # Defensive clamp: no branch above sets run_ios_xcode271/run_ios_tests
   # without iOS today, but both only make sense inside the iOS job, so a future
   # branch that drops iOS cannot leave them true (verify_test_tier_results.mjs
   # rejects either flag without run_ios).
   if test "$run_ios" != true; then
+    run_ios_xcode270=false
     run_ios_xcode271=false
     run_ios_tests=false
   fi
-  if test "$run_ios_xcode271" = true; then
-    ios_lanes='["blacksmith-xcode27.0","github-xcode27.1"]'
-  elif test "$run_ios" = true; then
-    ios_lanes='["blacksmith-xcode27.0"]'
+  if test "$run_ios_xcode270" = true && test "$run_ios_xcode271" = true; then
+    ios_lanes='["github-xcode27.0","github-xcode27.1"]'
+  elif test "$run_ios_xcode270" = true; then
+    ios_lanes='["github-xcode27.0"]'
+  elif test "$run_ios_xcode271" = true; then
+    ios_lanes='["github-xcode27.1"]'
   fi
 
   printf 'run_android=%s\n' "$run_android"
   printf 'run_ios=%s\n' "$run_ios"
+  printf 'run_ios_xcode270=%s\n' "$run_ios_xcode270"
   printf 'run_ios_xcode271=%s\n' "$run_ios_xcode271"
   printf 'ios_lanes=%s\n' "$ios_lanes"
   printf 'run_ios_tests=%s\n' "$run_ios_tests"
   printf 'run_device_suite=%s\n' "$run_device_suite"
   printf 'run_canonical_final=%s\n' "$run_canonical_final"
   printf 'attachment_api_levels=%s\n' "$attachment_api_levels"
+  printf 'queue_candidate=%s\n' "$queue_candidate"
+  printf 'queue_reuse=%s\n' "$queue_reuse"
   printf 'reason=%s\n' "$reason"
 }
 
-test "$#" -ge 4 && test "$#" -le 7 || usage
-emit_plan "$1" "$2" "$3" "$4" "${5:-}" "${6:-}" "${7:-}"
+test "$#" -ge 4 && test "$#" -le 8 || usage
+emit_plan "$1" "$2" "$3" "$4" "${5:-}" "${6:-}" "${7:-}" "${8:-false}"

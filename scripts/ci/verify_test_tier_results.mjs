@@ -3,8 +3,9 @@
 const DEVICE_SUITE_JOB = "android-device";
 const CANONICAL_FINAL_JOB = "android-canonical-final-actual-host";
 const ATTACHMENT_JOB = "android-minimum-supported-attachment-runtime";
-const IOS_DEFAULT_LANE = "blacksmith-xcode27.0";
+const IOS_DEFAULT_LANE = "github-xcode27.0";
 const IOS_XCODE271_LANE = "github-xcode27.1";
+const QUEUE_REUSE_JOB = "queue-ci-reuse";
 
 function requireBoolean(value, name) {
   if (value !== "true" && value !== "false") {
@@ -20,10 +21,16 @@ export function verifyTierResults(needs) {
   const outputs = needs.plan.outputs || {};
   const runAndroid = requireBoolean(outputs.run_android, "run_android");
   const runIos = requireBoolean(outputs.run_ios, "run_ios");
+  const runIosXcode270 = requireBoolean(outputs.run_ios_xcode270, "run_ios_xcode270");
   const runIosXcode271 = requireBoolean(outputs.run_ios_xcode271, "run_ios_xcode271");
   const runIosTests = requireBoolean(outputs.run_ios_tests, "run_ios_tests");
   const runDeviceSuite = requireBoolean(outputs.run_device_suite, "run_device_suite");
   const runCanonicalFinal = requireBoolean(outputs.run_canonical_final, "run_canonical_final");
+  // Stamp merge queue (2026-11-19). queueCandidate: Stamp's managed draft PR; Stamp accepts the
+  // run only when every job succeeded, so the emulator jobs the plan does not select run as
+  // no-op successes. queueReuse: a main push proven by stamp/queue-tested; only queue-ci-reuse runs.
+  const queueCandidate = requireBoolean(outputs.queue_candidate, "queue_candidate");
+  const queueReuse = requireBoolean(outputs.queue_reuse, "queue_reuse");
   const attachmentRaw = outputs.attachment_api_levels;
   if (typeof attachmentRaw !== "string") {
     throw new Error("CI plan output attachment_api_levels must be a string");
@@ -38,10 +45,18 @@ export function verifyTierResults(needs) {
     throw new Error(`attachment_api_levels must be an integer array, got ${attachmentRaw}`);
   }
   const runAttachment = attachmentLevels.length > 0;
+  if (queueCandidate && queueReuse) throw new Error("queue_candidate and queue_reuse are exclusive");
+  if (queueReuse && (runAndroid || runIos || runDeviceSuite || runCanonicalFinal || runAttachment)) {
+    throw new Error("queue_reuse plans no other job");
+  }
   if (runDeviceSuite && !runAndroid) throw new Error("device suite requires Android");
   if (runCanonicalFinal && !runAndroid) throw new Error("canonical-final requires Android");
   if (runAttachment && !runAndroid) throw new Error("attachment legs require Android");
+  if (runIosXcode270 && !runIos) throw new Error("Xcode 27.0 iOS lane requires iOS");
   if (runIosXcode271 && !runIos) throw new Error("Xcode 27.1 iOS lane requires iOS");
+  // Every iOS run has at least one lane: 27.0 (default), 27.1 beside it (nightly, release-*),
+  // or 27.1 alone (Stamp merge queue batch).
+  if (runIos && !runIosXcode270 && !runIosXcode271) throw new Error("iOS run without an iOS lane");
   if (runIosTests && !runIos) throw new Error("iOS tests require iOS");
 
   // The `ios` job is a matrix over ios_lanes, and needs.ios.result is success only when every
@@ -53,7 +68,10 @@ export function verifyTierResults(needs) {
   } catch {
     throw new Error(`ios_lanes must be valid JSON, got ${outputs.ios_lanes}`);
   }
-  const expectedLanes = !runIos ? [] : runIosXcode271 ? [IOS_DEFAULT_LANE, IOS_XCODE271_LANE] : [IOS_DEFAULT_LANE];
+  const expectedLanes = [
+    ...(runIosXcode270 ? [IOS_DEFAULT_LANE] : []),
+    ...(runIosXcode271 ? [IOS_XCODE271_LANE] : []),
+  ];
   if (JSON.stringify(iosLanes) !== JSON.stringify(expectedLanes)) {
     throw new Error(`ios_lanes must be ${JSON.stringify(expectedLanes)}, got ${outputs.ios_lanes}`);
   }
@@ -61,9 +79,11 @@ export function verifyTierResults(needs) {
   const expected = new Map([
     ["android", runAndroid],
     ["ios", runIos],
-    [DEVICE_SUITE_JOB, runDeviceSuite],
-    [CANONICAL_FINAL_JOB, runCanonicalFinal],
-    [ATTACHMENT_JOB, runAttachment],
+    // On a queue candidate the emulator jobs always run: for real when planned, else as no-ops.
+    [DEVICE_SUITE_JOB, runDeviceSuite || queueCandidate],
+    [CANONICAL_FINAL_JOB, runCanonicalFinal || queueCandidate],
+    [ATTACHMENT_JOB, runAttachment || queueCandidate],
+    [QUEUE_REUSE_JOB, queueReuse],
   ]);
   for (const [name, shouldRun] of expected) {
     const result = needs[name]?.result;
@@ -76,40 +96,47 @@ export function verifyTierResults(needs) {
   return {
     run_android: runAndroid,
     run_ios: runIos,
+    run_ios_xcode270: runIosXcode270,
     run_ios_xcode271: runIosXcode271,
     ios_lanes: iosLanes,
     run_ios_tests: runIosTests,
     run_device_suite: runDeviceSuite,
     run_canonical_final: runCanonicalFinal,
     attachment_api_levels: attachmentLevels,
+    queue_candidate: queueCandidate,
+    queue_reuse: queueReuse,
     reason: outputs.reason || "missing",
   };
 }
 
-function fixture({ android, ios, iosXcode271 = false, iosTests = false, deviceSuite, canonicalFinal, attachmentLevels }) {
+function fixture({ android, ios, iosXcode270 = ios, iosXcode271 = false, iosTests = false, deviceSuite, canonicalFinal, attachmentLevels, queueCandidate = false, queueReuse = false }) {
   const levels = attachmentLevels ?? [];
-  const lanes = ios ? [IOS_DEFAULT_LANE, ...(iosXcode271 ? [IOS_XCODE271_LANE] : [])] : [];
+  const lanes = [...(iosXcode270 ? [IOS_DEFAULT_LANE] : []), ...(iosXcode271 ? [IOS_XCODE271_LANE] : [])];
   const needs = {
     plan: {
       result: "success",
       outputs: {
         run_android: String(android),
         run_ios: String(ios),
+        run_ios_xcode270: String(iosXcode270),
         run_ios_xcode271: String(iosXcode271),
         ios_lanes: JSON.stringify(lanes),
         run_ios_tests: String(iosTests),
         run_device_suite: String(deviceSuite),
         run_canonical_final: String(canonicalFinal),
         attachment_api_levels: JSON.stringify(levels),
+        queue_candidate: String(queueCandidate),
+        queue_reuse: String(queueReuse),
         reason: "fixture",
       },
     },
   };
   needs.android = { result: android ? "success" : "skipped" };
   needs.ios = { result: ios ? "success" : "skipped" };
-  needs[DEVICE_SUITE_JOB] = { result: deviceSuite ? "success" : "skipped" };
-  needs[CANONICAL_FINAL_JOB] = { result: canonicalFinal ? "success" : "skipped" };
-  needs[ATTACHMENT_JOB] = { result: levels.length > 0 ? "success" : "skipped" };
+  needs[DEVICE_SUITE_JOB] = { result: deviceSuite || queueCandidate ? "success" : "skipped" };
+  needs[CANONICAL_FINAL_JOB] = { result: canonicalFinal || queueCandidate ? "success" : "skipped" };
+  needs[ATTACHMENT_JOB] = { result: levels.length > 0 || queueCandidate ? "success" : "skipped" };
+  needs[QUEUE_REUSE_JOB] = { result: queueReuse ? "success" : "skipped" };
   return needs;
 }
 
@@ -130,11 +157,18 @@ function selfTest() {
   verifyTierResults(fixture({ ...none, android: true, ios: true }));
   // release-* push: both iOS lanes, no device suite
   verifyTierResults(fixture({ ...none, android: true, ios: true, iosXcode271: true, iosTests: true }));
-  // premerge / main push touching iOS test sources: iOS compile + tests
+  // Stamp merge queue candidate: Android + the Xcode 27.1 lane alone, emulator jobs as no-ops
+  const queue = { ...none, android: true, ios: true, iosXcode270: false, iosXcode271: true, queueCandidate: true };
+  verifyTierResults(fixture(queue));
+  // queue candidate touching iOS test sources: + iOS tests
+  verifyTierResults(fixture({ ...queue, iosTests: true }));
+  // main push reusing a queue-tested run: only queue-ci-reuse
+  verifyTierResults(fixture({ ...none, queueReuse: true }));
+  // main push touching iOS test sources: iOS compile + tests
   verifyTierResults(fixture({ ...none, ios: true, iosTests: true }));
-  // full-ci PR: device suite + API31 only, no canonical-final, Blacksmith iOS lane only
+  // full-ci PR: device suite + API31 only, no canonical-final, Xcode 27.0 iOS lane only
   verifyTierResults(fixture({ android: true, ios: true, deviceSuite: true, canonicalFinal: false, attachmentLevels: [31], iosTests: true }));
-  // scope=full dispatch: full device suite + canonical-final + all attachment legs, Blacksmith iOS lane only
+  // scope=full dispatch: full device suite + canonical-final + all attachment legs, Xcode 27.0 iOS lane only
   verifyTierResults(fixture({ android: true, ios: true, iosTests: true, deviceSuite: true, canonicalFinal: true, attachmentLevels: [29, 31, 34] }));
   // nightly: full device suite + canonical-final + all attachment legs, both iOS lanes
   verifyTierResults(fixture({ android: true, ios: true, iosXcode271: true, iosTests: true, deviceSuite: true, canonicalFinal: true, attachmentLevels: [29, 31, 34] }));
@@ -195,6 +229,62 @@ function selfTest() {
   const missingXcode271Flag = fixture({ ...none, ios: true });
   delete missingXcode271Flag.plan.outputs.run_ios_xcode271;
   expectFailure(missingXcode271Flag, "missing run_ios_xcode271");
+
+  // Literal pins (not from fixture()): the candidate's no-op emulator jobs and the reuse job.
+  const queueLiteral = fixture(queue);
+  if (queueLiteral[DEVICE_SUITE_JOB].result !== "success" || queueLiteral[QUEUE_REUSE_JOB].result !== "skipped") {
+    throw new Error("fixture drift: a queue candidate runs the emulator jobs as no-ops and skips queue-ci-reuse");
+  }
+
+  const queueSkippedEmulator = fixture(queue);
+  queueSkippedEmulator[ATTACHMENT_JOB].result = "skipped";
+  expectFailure(queueSkippedEmulator, "queue candidate with a skipped job (Stamp would refuse the batch)");
+
+  const queueReuseRan = fixture(queue);
+  queueReuseRan[QUEUE_REUSE_JOB].result = "success";
+  expectFailure(queueReuseRan, "queue-ci-reuse ran on a candidate");
+
+  const reuseSkipped = fixture({ ...none, queueReuse: true });
+  reuseSkipped[QUEUE_REUSE_JOB].result = "skipped";
+  expectFailure(reuseSkipped, "planned queue-ci-reuse skipped");
+
+  const reuseWithAndroid = fixture({ ...none, android: true, queueReuse: true });
+  expectFailure(reuseWithAndroid, "queue reuse that still runs Android");
+
+  const reuseOnOrdinary = fixture({ ...none, android: true });
+  reuseOnOrdinary[QUEUE_REUSE_JOB].result = "success";
+  expectFailure(reuseOnOrdinary, "unplanned queue-ci-reuse");
+
+  const bothQueueFlags = fixture({ ...queue, queueReuse: true });
+  expectFailure(bothQueueFlags, "queue_candidate and queue_reuse together");
+
+  const missingQueueFlag = fixture({ ...none, android: true });
+  delete missingQueueFlag.plan.outputs.queue_reuse;
+  expectFailure(missingQueueFlag, "missing queue_reuse");
+
+  const queueLaneLiteral = fixture({ ...none, android: true, ios: true, iosXcode270: false, iosXcode271: true });
+  if (queueLaneLiteral.plan.outputs.ios_lanes !== '["github-xcode27.1"]') {
+    throw new Error("fixture drift: the merge-queue tier must plan the Xcode 27.1 lane alone");
+  }
+
+  const xcode270WithoutIos = fixture({ ...none, android: true });
+  xcode270WithoutIos.plan.outputs.run_ios_xcode270 = "true";
+  expectFailure(xcode270WithoutIos, "Xcode 27.0 lane without iOS");
+
+  const iosWithoutLane = fixture({ ...none, ios: true, iosXcode270: false });
+  expectFailure(iosWithoutLane, "iOS planned with no lane");
+
+  const queueWithDefaultLane = fixture({ ...none, android: true, ios: true, iosXcode270: false, iosXcode271: true });
+  queueWithDefaultLane.plan.outputs.ios_lanes = JSON.stringify([IOS_DEFAULT_LANE, IOS_XCODE271_LANE]);
+  expectFailure(queueWithDefaultLane, "unplanned Xcode 27.0 lane on the merge queue");
+
+  const queueDroppedLane = fixture({ ...none, android: true, ios: true, iosXcode270: false, iosXcode271: true });
+  queueDroppedLane.plan.outputs.ios_lanes = JSON.stringify([IOS_DEFAULT_LANE]);
+  expectFailure(queueDroppedLane, "merge-queue Xcode 27.1 lane swapped for 27.0");
+
+  const missingXcode270Flag = fixture({ ...none, ios: true });
+  delete missingXcode270Flag.plan.outputs.run_ios_xcode270;
+  expectFailure(missingXcode270Flag, "missing run_ios_xcode270");
 
   const iosTestsWithoutIos = fixture({ ...none, android: true });
   iosTestsWithoutIos.plan.outputs.run_ios_tests = "true";

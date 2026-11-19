@@ -104,7 +104,7 @@ permissions:
 jobs:
   resolve:
     name: Resolve release parameters
-    runs-on: blacksmith-4vcpu-ubuntu-2204
+    runs-on: ubuntu-latest
     outputs:
       version_major: ${{ steps.p.outputs.version_major }}
       version_minor: ${{ steps.p.outputs.version_minor }}
@@ -637,7 +637,7 @@ jobs:
 
   create_hands_draft:
     name: Upload to Hands + create draft
-    runs-on: blacksmith-4vcpu-ubuntu-2204
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [resolve, build_ios_release]
     environment:
@@ -770,7 +770,7 @@ jobs:
   testflight_internal:
     name: TestFlight internal (Botiverse)
     if: ${{ inputs.testflight_internal && needs.resolve.outputs.export_method == 'app-store-connect' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2204
+    runs-on: ubuntu-latest
     timeout-minutes: 75
     needs: [resolve, build_ios_release, create_hands_draft]
     environment:
