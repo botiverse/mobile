@@ -349,6 +349,8 @@ private fun Modifier.raftPaneGridContentMinWidth(minDp: Float): Modifier =
  *   ([raftPaneGridFitHead]), which fit the column; the seams ([raftPaneGridUnfaded]); and full-bleed media, a web view,
  *   an image, a video ([raftPaneGridNoFade]), which is hard-clipped at the column's edge: fading it, dark or light,
  *   only shows a band of the surface over it.
+ * - Only between panes: the last pane in the row, cut by the screen's end edge, is cut hard, text and lists too
+ *   (artin and Lagoon, 2026-11-19). The screen's edge already reads as a cut, so a fade there only dims content.
  */
 private fun Modifier.raftPaneGridClipFade(clipped: Boolean, bands: RaftPaneGridHeadBands, surface: Color): Modifier =
     onPlaced { bands.box = it }
@@ -1215,6 +1217,9 @@ fun RaftPaneGrid(
         val unitWidths = plan?.let { p -> raftRowUnitWidths(p) { group -> raftPaneGridShownUnit(p, p.groups[group], picked) } }
         val widthOf: Map<String, Float> = plan?.units?.mapIndexed { i, unit -> unit.key to unitWidths!![i] }?.toMap().orEmpty()
         val fitted = placed.map { place -> if (plan != null) widthOf[place.column.bounds.id] ?: 0f else store.widthDp(place.column.bounds) }
+        // The last column shown runs to the screen's end edge: cut there, never faded (artin, Lagoon 2026-11-19). -1: the
+        // main pane is the last.
+        val lastShown = fitted.indexOfLast { it > 0f }
         // The tabs each shown unit's column carries where its group holds more than one (web RowTabs).
         val tabsOf: Map<String, RaftPaneGridRowTabs> =
             if (plan == null) {
@@ -1288,7 +1293,7 @@ fun RaftPaneGrid(
                     val mainBands = remember { RaftPaneGridHeadBands() }
                     Box(
                         Modifier.weight(1f).fillMaxWidth()
-                            .then(if (plan != null) Modifier.clipToBounds().raftPaneGridClipFade(mainClipped, mainBands, RaftTheme.surfaceColor) else Modifier)
+                            .then(if (plan != null) Modifier.clipToBounds().raftPaneGridClipFade(mainClipped && lastShown >= 0, mainBands, RaftTheme.surfaceColor) else Modifier)
                     ) {
                         Box(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (plan != null) RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP else 0f)) {
                             CompositionLocalProvider(
@@ -1343,6 +1348,7 @@ fun RaftPaneGrid(
                             resizable = plan?.expanded == null,
                             // In the planned row the main pane gives way to 160 like any column, its content clipped.
                             mainMinDp = if (plan != null) RAFT_PANE_GRID_KEPT_MIN_WIDTH_DP else RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP,
+                            atScreenEnd = index == lastShown,
                         )
                     }
                     val locals = place.locals
@@ -1405,6 +1411,8 @@ fun RowScope.RaftPaneGridSideColumn(
     resizable: Boolean = true,
     /** The narrowest a drag may leave the main pane: 160 in the planned row (#189 rule 2, its content clips), else 360. */
     mainMinDp: Float = RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP,
+    /** The last column in the row, against the screen's end edge: its content is cut there, never faded. */
+    atScreenEnd: Boolean = false,
 ) {
     val store = LocalRaftPaneGridSizes.current
     val commit: (Float) -> Unit = { width -> if (onCommitWidth != null) onCommitWidth(width) else store.setWidth(column.bounds, width) }
@@ -1442,7 +1450,7 @@ fun RowScope.RaftPaneGridSideColumn(
             // Rule 2: narrower than its content's minimum, the content keeps it against the start and clips, its end
             // fading out under the heads, which fit the column.
             val bands = remember { RaftPaneGridHeadBands() }
-            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().raftPaneGridClipFade(!fill && !gone && width < minWidth, bands, RaftTheme.colors.layerCanvas)) {
+            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().raftPaneGridClipFade(!fill && !gone && !atScreenEnd && width < minWidth, bands, RaftTheme.colors.layerCanvas)) {
                 Row(Modifier.fillMaxSize().raftPaneGridContentMinWidth(if (fill) 0f else minWidth)) {
                     Spacer(Modifier.width(seam).fillMaxHeight())
                     // A page in a cell is not in the main pane: a grid it declares is its own.
