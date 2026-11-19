@@ -1847,6 +1847,17 @@ private fun SharedThreadRouteContentContent(
                 scopeInitialServerId = storeScope.initialServerId
             )?.let(::ServerId)
         }
+    // Open-path jitter tracing (#proj-mobile:#199): one sampling decision per open, from the
+    // trace_sample.* flags (RaftTraceSampling.kt); a sampled open's list records its shifts.
+    val threadOpenTrace =
+        rememberThreadOpenTraceSession(
+            openKey = initialThreadInstanceKey,
+            surfaceKind = initialPayload.surfaceKind,
+            openKind = if (initialPayload.focusedMessageId.isNullOrBlank()) "latest" else "focused",
+            flags = { sharedStores.serverFeatureFlags.snapshotFor(headerProjectionServerId) },
+            serverId = { headerProjectionServerId?.value },
+            log = { line -> bridge.log(line) },
+        )
     val memberAvatarResolver =
         remember(serverMembersStore, headerProjectionServerId) {
             raftMemberAvatarResolver(
@@ -6175,7 +6186,7 @@ private fun SharedThreadRouteContentContent(
                                     fileRefs = refs
                                 )
                             },
-                            log = bridge::log,
+                            log = { line -> bridge.log(line) },
                         )
                     uploadComposerAttachmentFiles(prepared)
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RequestFocus)
@@ -6981,7 +6992,7 @@ private fun SharedThreadRouteContentContent(
                                 serverId = currentServerId.orEmpty(),
                                 tasksDataSource = tasksDataSource,
                                 taskV2Enabled = taskV2Enabled,
-                                log = bridge::log,
+                                log = { line -> bridge.log(line) },
                             ),
                     )
                 } finally {
@@ -7405,6 +7416,7 @@ private fun SharedThreadRouteContentContent(
                         singleParagraphLightPath = singleParagraphLightPathEnabled,
                     ),
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
+                LocalThreadOpenTrace provides threadOpenTrace,
                 LocalThreadFeedbackCardEntryEnabled provides feedbackCardEntryEnabled,
                 LocalThreadViewerServerId provides currentServerId,
                 // A joint channel's conversation: every person's face (hand-off card, task head, typing,
@@ -9843,7 +9855,7 @@ private fun SharedThreadRouteContentContent(
                                         fileRefs = refs
                                     )
                                 },
-                                log = bridge::log,
+                                log = { line -> bridge.log(line) },
                             )
                         uploadComposerAttachmentFiles(prepared)
                     }

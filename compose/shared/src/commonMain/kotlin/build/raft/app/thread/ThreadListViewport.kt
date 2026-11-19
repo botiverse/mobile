@@ -55,6 +55,49 @@ internal class ThreadListViewport(
         isRetired = true
     }
 
+    // Open-trace attribution (ThreadOpenTrace.kt), observe-only: which viewport owner issued the
+    // last scroll. Plain fields written on the main thread; reading them changes no scroll.
+    private var pendingDispatchOwner: String? = null
+    private var pendingDispatchAttempt = 0
+    private var activeOwnerTag: String = ThreadOpenShiftCause.Unknown
+    private var activeOwnerAttempt = 0
+
+    /** Scrolls issued by a named owner (this adapter's, and raw writes noted with [noteRawViewportWrite]). */
+    var ownedScrollCount: Int = 0
+        private set
+    var lastScrollOwnerTag: String = ThreadOpenShiftCause.Unknown
+        private set
+    var lastScrollOwnerAttempt: Int = 0
+        private set
+
+    /** A writer that dispatches a controller event names itself; the command executor picks it up. */
+    fun noteDispatchOwner(tag: String, attempt: Int = 0) {
+        pendingDispatchOwner = tag
+        pendingDispatchAttempt = attempt
+    }
+
+    /** The command executor: the dispatching writer's name, else [defaultTag] for the command's target. */
+    fun noteCommandOwner(defaultTag: String) {
+        val pending = pendingDispatchOwner
+        activeOwnerTag = pending ?: defaultTag
+        activeOwnerAttempt = if (pending != null) pendingDispatchAttempt else 0
+        pendingDispatchOwner = null
+    }
+
+    /** A writer that scrolls through this adapter directly. */
+    fun noteViewportOwner(tag: String) {
+        activeOwnerTag = tag
+        activeOwnerAttempt = 0
+        pendingDispatchOwner = null
+    }
+
+    /** A write that bypasses this adapter (`raw.requestScrollToItem`). */
+    fun noteRawViewportWrite(tag: String) {
+        lastScrollOwnerTag = tag
+        lastScrollOwnerAttempt = 0
+        ownedScrollCount += 1
+    }
+
     /**
      * Checked right before each mutation of [raw], with no suspension in between: never from a
      * cancelling job (throws its [kotlinx.coroutines.CancellationException]), never on a retired list.
@@ -63,6 +106,9 @@ internal class ThreadListViewport(
         currentCoroutineContext().ensureActive()
         if (isRetired) return false
         issuedScrolls += 1
+        ownedScrollCount += 1
+        lastScrollOwnerTag = activeOwnerTag
+        lastScrollOwnerAttempt = activeOwnerAttempt
         return true
     }
 

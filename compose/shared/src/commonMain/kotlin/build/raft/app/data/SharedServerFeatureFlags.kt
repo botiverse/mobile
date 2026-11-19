@@ -79,7 +79,7 @@ const val THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY: String =
 val SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS: Set<String> = emptySet()
 
 /** Server evaluation reason for a key that has no flag row at all (slock featureFlagService). */
-private const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"
+internal const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"
 
 // agent_migration_v0 is no longer read (2026-11-05): agent migration is always shown, as on web
 // (slock #13059). The server flag row can go once app versions that still read it are gone.
@@ -266,7 +266,9 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,
-)
+    // Trace sampling (slock docs/observability/trace-sampling.md): the rate is the variant, the most
+    // specific key with a flag decides (RaftTraceSampling.kt).
+) + traceSampleKeys(MOBILE_THREAD_OPEN_TRACE_NAME)
 
 /**
  * The `platform` value this client reports to feature-flag evaluation. The server's `FeatureFlagPlatform`
@@ -317,6 +319,12 @@ data class ServerFeatureFlagSnapshot(
     val resolved: Boolean,
     val values: Map<String, Boolean>,
     val variants: Map<String, String> = emptyMap(),
+    /**
+     * The server's `reason` per evaluated key (`missing_flag`, `default`, `platform_rule`,
+     * `kill_switch`, ...); a key the answer left out has none. Trace sampling needs it to tell "no flag"
+     * from "flag off" ([traceSampleEvaluations]).
+     */
+    val reasons: Map<String, String> = emptyMap(),
 ) {
     fun isEnabled(key: String): Boolean = values[key] == true
     fun variant(key: String): String? = variants[key]
@@ -626,6 +634,7 @@ class SharedServerFeatureFlags(
         }
         val values = keys.associateWith { it in clientDefaultOnKeys }.toMutableMap()
         val variants = linkedMapOf<String, String>()
+        val reasons = linkedMapOf<String, String>()
         val observedEvaluations = linkedMapOf<String, FeatureFlagEvaluation>()
         for (evaluation in decoded.evaluations) {
             if (values.containsKey(evaluation.key)) {
@@ -639,6 +648,7 @@ class SharedServerFeatureFlags(
                     ?.trim()
                     ?.takeIf { evaluation.enabled && it.isNotEmpty() }
                     ?.let { variants[evaluation.key] = it }
+                evaluation.reason?.let { reasons[evaluation.key] = it }
                 observedEvaluations[evaluation.key] = evaluation
             }
         }
@@ -647,7 +657,8 @@ class SharedServerFeatureFlags(
                 serverId = serverId,
                 resolved = true,
                 values = values.toMap(),
-                variants = variants.toMap()
+                variants = variants.toMap(),
+                reasons = reasons.toMap(),
             )
         val accepted = synchronized(stateLock) {
             if (!shouldPublish()) return@synchronized null

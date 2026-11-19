@@ -254,6 +254,7 @@ internal fun Modifier.raftThreadTailLayoutAnchor(
                         }
                     if (resolveThreadTailLayoutAnchor(state) == ThreadTailLayoutAnchor.PinTail) {
                         listState.raw.requestScrollToItem(next.itemCount - 1)
+                        listState.noteRawViewportWrite(ThreadViewportOwnerTag.TailLayoutAnchor)
                         pinned = true
                         if (memory.pinnedPasses == 0) {
                             currentOnTransition.value(ThreadTailLayoutAnchorTransition.Started(state))

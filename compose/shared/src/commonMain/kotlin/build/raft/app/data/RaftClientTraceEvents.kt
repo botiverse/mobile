@@ -59,7 +59,7 @@ internal data class RaftScopeAttestationRequest(val scope: String)
 @Serializable
 internal data class RaftScopeAttestationResponse(val attestation: String? = null, val expiresAt: String? = null)
 
-/** Web `WebEventRecord`. */
+/** Web `WebEventRecord`; inside a span it carries that span's [traceId] / [spanId]. */
 @Serializable
 internal data class RaftWebEventRecord(
     val type: String = "event",
@@ -67,14 +67,35 @@ internal data class RaftWebEventRecord(
     val name: String,
     val surface: String = "web",
     val time: String,
+    @kotlinx.serialization.SerialName("trace_id") val traceId: String? = null,
+    @kotlinx.serialization.SerialName("span_id") val spanId: String? = null,
     val attrs: JsonObject,
 )
 
-/** `POST /api/web-traces` body: events only (the worker accepts an empty `records`). */
+/**
+ * Web `WebTraceRecord` (webAuthTrace.ts; worker `isLocalTraceRecord`): a span with a real duration.
+ * `kind` `internal` and `status` `ok` / `error`, as the web's spans.
+ */
+@Serializable
+internal data class RaftWebSpanRecord(
+    val type: String = "span",
+    @kotlinx.serialization.SerialName("schema_version") val schemaVersion: Int = 1,
+    @kotlinx.serialization.SerialName("trace_id") val traceId: String,
+    @kotlinx.serialization.SerialName("span_id") val spanId: String,
+    val name: String,
+    val surface: String = "web",
+    val kind: String = "internal",
+    val status: String = "ok",
+    @kotlinx.serialization.SerialName("start_time") val startTime: String,
+    @kotlinx.serialization.SerialName("end_time") val endTime: String,
+    val attrs: JsonObject,
+)
+
+/** `POST /api/web-traces` body: spans in `records`, point facts in `events` (either may be empty). */
 @Serializable
 internal data class RaftWebTraceBatchRequest(
     val attestation: String,
-    val records: List<JsonObject> = emptyList(),
+    val records: List<RaftWebSpanRecord> = emptyList(),
     val events: List<RaftWebEventRecord>,
 )
 
@@ -122,7 +143,8 @@ internal class RaftClientTraceEventSender(
     private val flushDelayMillis: Long = RaftClientTraceFlushDelayMillis,
     private val privacyMode: StateFlow<RaftPrivacyMode> = RaftTelemetryPrivacy.state,
 ) {
-    private class Queued(val serverId: ServerId, val record: RaftWebEventRecord)
+    /** One queued record: an event, or a span. */
+    private class Queued(val serverId: ServerId, val record: RaftWebEventRecord? = null, val span: RaftWebSpanRecord? = null)
 
     private class Attestation(val serverId: ServerId, val value: String, val expiresAtMillis: Long)
 
@@ -174,16 +196,41 @@ internal class RaftClientTraceEventSender(
                     time = raftEpochMillisUtcIso(now),
                     attrs = JsonObject(attrs + defaultAttrs().mapValues { (_, value) -> JsonPrimitive(value) }),
                 )
-            synchronized(lock) {
-                val mode = privacyMode.value
-                if (mode == RaftPrivacyMode.On) return
-                if (transport == null || queue.size >= RaftClientTraceMaxQueued) return
-                queue += Queued(ServerId(server), record)
-                // Held, not sent, until the client config answers.
-                if (mode == RaftPrivacyMode.Off) scheduleFlushLocked()
-            }
+            enqueue(listOf(Queued(ServerId(server), record = record)))
         } catch (_: Throwable) {
             // Trace emission must never affect state transitions.
+        }
+    }
+
+    /**
+     * Queues one span with its events (each already carrying the span's trace / span id), all or
+     * none: a full queue drops the whole unit. [defaultAttrs] are added to the span and each event.
+     * Never throws.
+     */
+    fun emitSpan(serverId: String, span: RaftWebSpanRecord, events: List<RaftWebEventRecord>) {
+        val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return
+        try {
+            val defaults = defaultAttrs().mapValues { (_, value) -> JsonPrimitive(value) }
+            val id = ServerId(server)
+            val unit =
+                buildList {
+                    add(Queued(id, span = span.copy(attrs = JsonObject(span.attrs + defaults))))
+                    events.forEach { add(Queued(id, record = it.copy(attrs = JsonObject(it.attrs + defaults)))) }
+                }
+            enqueue(unit)
+        } catch (_: Throwable) {
+            // Trace emission must never affect the app.
+        }
+    }
+
+    private fun enqueue(unit: List<Queued>) {
+        synchronized(lock) {
+            val mode = privacyMode.value
+            if (mode == RaftPrivacyMode.On) return
+            if (transport == null || queue.size + unit.size > RaftClientTraceMaxQueued) return
+            queue += unit
+            // Held, not sent, until the client config answers.
+            if (mode == RaftPrivacyMode.Off) scheduleFlushLocked()
         }
     }
 
@@ -205,7 +252,7 @@ internal class RaftClientTraceEventSender(
                     transport to batch
                 }
             try {
-                send(target, batch.first().serverId, batch.map { it.record })
+                send(target, batch.first().serverId, batch.mapNotNull { it.span }, batch.mapNotNull { it.record })
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
@@ -214,7 +261,12 @@ internal class RaftClientTraceEventSender(
         }
     }
 
-    private suspend fun send(transport: RaftClientTraceTransport, serverId: ServerId, events: List<RaftWebEventRecord>) {
+    private suspend fun send(
+        transport: RaftClientTraceTransport,
+        serverId: ServerId,
+        spans: List<RaftWebSpanRecord>,
+        events: List<RaftWebEventRecord>,
+    ) {
         val now = nowEpochMillis()
         val cached = synchronized(lock) { attestation?.takeIf { it.serverId == serverId && it.expiresAtMillis - AttestationReuseMarginMillis > now } }
         val value =
@@ -227,7 +279,7 @@ internal class RaftClientTraceEventSender(
                     if (expiresAt != null) synchronized(lock) { attestation = Attestation(serverId, token, expiresAt) }
                     token
                 }
-        val status = transport.send(RaftWebTraceBatchRequest(attestation = value, events = events))
+        val status = transport.send(RaftWebTraceBatchRequest(attestation = value, records = spans, events = events))
         // A rejected attestation (e.g. secret rotation) must not be reused.
         if (status == 401 || status == 403) synchronized(lock) { attestation = null }
     }
@@ -250,6 +302,11 @@ object RaftClientTraceEvents {
     /** `mobile_inbox_inplace_v0`: one `activity:inplace_check` (web `emitStateTransitionTrace`). */
     internal fun emitInPlaceCheck(serverId: String, check: ActivityInPlaceCheck) {
         sender.emit(serverId, RaftStateTransitionTraceName, check.stateTransitionTraceAttrs())
+    }
+
+    /** One sampled unit of work: its span and its events (`mobile.thread_open`, ThreadOpenTrace.kt). */
+    internal fun emitSpan(serverId: String, span: RaftWebSpanRecord, events: List<RaftWebEventRecord>) {
+        sender.emitSpan(serverId, span, events)
     }
 
     /** `inbox_row_position_v1`: one `activity:list_row_lowered` or `activity:list_row_corrected` (web `reportListRowsLowered`). */
