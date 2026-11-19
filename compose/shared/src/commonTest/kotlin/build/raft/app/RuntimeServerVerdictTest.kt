@@ -21,8 +21,9 @@ import kotlin.test.assertTrue
  */
 class RuntimeServerVerdictTest {
     @Test
-    fun createOffersAndLetsYouPickAntigravityWhereTheServerAdmitsItThoughTheBundledTableDeprecatesIt() {
-        check(BundledRuntimeCatalog.entry("antigravity")?.deprecated == true) { "the bundled table deprecates Antigravity" }
+    fun createOffersAndLetsYouPickAntigravityWhereTheServerAdmitsIt() {
+        // The bundled table no longer deprecates Antigravity (slock #15445); the server's rows decide.
+        assertFalse(BundledRuntimeCatalog.entry("antigravity")!!.deprecated)
         val rows = newAgentRows(installed = setOf("claude", "codex", "antigravity"), extra = listOf(newRow("antigravity", installed = true)))
         val picker =
             runtimePickerRows(BundledRuntimeCatalog, listOf("claude", "codex", "antigravity"), selectedRuntimeId = "claude", showAll = false, options = rows)
@@ -61,21 +62,22 @@ class RuntimeServerVerdictTest {
     @Test
     fun withoutRowsTheServerCatalogDecidesAndTheBundledTableOnlyWhenTheServerDidNotAnswer() {
         val machine = listOf("claude", "antigravity")
-        // GET /servers/:id/runtimes answered: Antigravity is `deprecated: false` on this server.
+        // GET /servers/:id/runtimes answered from a server before slock #15445: Antigravity is
+        // `deprecated: true` there, so it is not offered, whatever the bundled table says.
         val served =
             BundledRuntimeCatalog.copy(
                 catalogVersion = 1,
-                runtimes = BundledRuntimeCatalog.runtimes.map { if (it.id == "antigravity") it.copy(deprecated = false) else it },
+                runtimes = BundledRuntimeCatalog.runtimes.map { if (it.id == "antigravity") it.copy(deprecated = true) else it },
                 source = RuntimeCatalogSource.Server
             )
-        val fromServer = runtimePickerRows(served, machine, selectedRuntimeId = "claude", showAll = false)
-        assertEquals(RuntimePickerGroup.Ready, fromServer.rows.single { it.id == "antigravity" }.group)
-        assertTrue("antigravity" in served.creatableRuntimeIds())
+        val fromServer = runtimePickerRows(served, machine, selectedRuntimeId = "claude", showAll = true)
+        assertTrue(fromServer.rows.none { it.id == "antigravity" })
+        assertFalse("antigravity" in served.creatableRuntimeIds())
 
-        // It failed (no cache either): the bundled table is the fallback, and it deprecates Antigravity.
-        val fallback = runtimePickerRows(BundledRuntimeCatalog, machine, selectedRuntimeId = "claude", showAll = true)
-        assertTrue(fallback.rows.none { it.id == "antigravity" })
-        assertFalse("antigravity" in BundledRuntimeCatalog.creatableRuntimeIds())
+        // It failed (no cache either): the bundled table is the fallback, and it offers Antigravity.
+        val fallback = runtimePickerRows(BundledRuntimeCatalog, machine, selectedRuntimeId = "claude", showAll = false)
+        assertEquals(RuntimePickerGroup.Ready, fallback.rows.single { it.id == "antigravity" }.group)
+        assertTrue("antigravity" in BundledRuntimeCatalog.creatableRuntimeIds())
 
         // Once the computer's rows land they decide, even over the bundled fallback.
         val rows = listOf(newRow("claude", installed = true), newRow("antigravity", installed = true))

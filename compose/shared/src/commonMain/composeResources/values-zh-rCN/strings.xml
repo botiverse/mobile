@@ -3123,6 +3123,7 @@
     <string name="settings_computers_runtime_auth_sign_in_action">登录</string>
     <string name="settings_computers_runtime_auth_sign_out_action">退出登录</string>
     <string name="settings_computers_runtime_auth_upgrade_required">升级这台 Computer 后即可在这里登录</string>
+    <string name="settings_computers_runtime_auth_dsh_credentials">DeepSeek Harness 不在这里登录。它使用这台 Computer 上为它设置的 API 密钥：保存在 dsh 自己设置里的密钥（dsh 要求它的凭据文件只有所有者可读，权限 600），或这台 Computer 环境里、Agent 的「环境变量」里的 DEEPSEEK_API_KEY。已保存的密钥优先。</string>
     <string name="settings_computers_runtime_auth_unavailable_not_installed">在这台 Computer 上安装这个运行时的命令行工具，然后在这台 Computer 的页面上点「重新检测运行时」。</string>
     <string name="settings_computers_runtime_auth_unavailable_install_on">macOS 或 Linux：</string>
     <string name="settings_computers_runtime_auth_unavailable_version_unsupported">在这台 Computer 上更新这个运行时的命令行工具，然后在这台 Computer 的页面上点「重新检测运行时」。</string>

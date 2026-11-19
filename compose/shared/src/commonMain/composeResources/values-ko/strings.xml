@@ -5443,6 +5443,7 @@
     <string name="settings_computers_runtime_auth_sign_in_action">로그인</string>
     <string name="settings_computers_runtime_auth_sign_out_action">로그아웃</string>
     <string name="settings_computers_runtime_auth_upgrade_required">이 컴퓨터를 업그레이드하면 여기서 로그인할 수 있어요</string>
+    <string name="settings_computers_runtime_auth_dsh_credentials">DeepSeek Harness는 여기서 로그인하지 않습니다. 이 컴퓨터에 설정된 API 키를 사용합니다. dsh 자체 설정에 저장한 키(dsh는 자격 증명 파일을 소유자만 읽을 수 있어야 합니다. 권한 600) 또는 컴퓨터 환경이나 에이전트의 ‘환경 변수’에 있는 DEEPSEEK_API_KEY입니다. 저장한 키가 우선합니다.</string>
     <string name="settings_computers_runtime_auth_unavailable_not_installed">컴퓨터에 이 런타임의 명령줄 도구를 설치한 다음, 컴퓨터 페이지에서 ‘런타임 다시 감지’를 사용하세요.</string>
     <string name="settings_computers_runtime_auth_unavailable_install_on">macOS 또는 Linux에서:</string>
     <string name="settings_computers_runtime_auth_unavailable_version_unsupported">컴퓨터에서 이 런타임의 명령줄 도구를 업데이트한 다음, 컴퓨터 페이지에서 ‘런타임 다시 감지’를 사용하세요.</string>

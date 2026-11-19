@@ -5443,6 +5443,7 @@
     <string name="settings_computers_runtime_auth_sign_in_action">Entrar</string>
     <string name="settings_computers_runtime_auth_sign_out_action">Sair</string>
     <string name="settings_computers_runtime_auth_upgrade_required">Atualize este computador para fazer login por aqui</string>
+    <string name="settings_computers_runtime_auth_dsh_credentials">O DeepSeek Harness não faz login por aqui. Ele usa a chave de API configurada para ele neste computador: uma salva nas configurações do próprio dsh (o dsh exige que o arquivo de credenciais só possa ser lido pelo dono, modo 600), ou DEEPSEEK_API_KEY no ambiente do computador ou nas Variáveis de ambiente de um agente. Uma chave salva tem prioridade.</string>
     <string name="settings_computers_runtime_auth_unavailable_not_installed">Instale a ferramenta de linha de comando deste runtime no computador e depois use “Detectar runtimes novamente” na página do computador.</string>
     <string name="settings_computers_runtime_auth_unavailable_install_on">No macOS ou Linux:</string>
     <string name="settings_computers_runtime_auth_unavailable_version_unsupported">Atualize a ferramenta de linha de comando deste runtime no computador e depois use “Detectar runtimes novamente” na página do computador.</string>

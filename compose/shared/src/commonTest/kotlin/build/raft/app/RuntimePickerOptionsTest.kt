@@ -185,7 +185,10 @@ class RuntimePickerOptionsTest {
     fun theBundledTableOffersTodaysRuntimesWithTheirGuidance() {
         val picker = runtimePickerRows(BundledRuntimeCatalog, listOf("claude", "codex", "qwen", "qoder"), selectedRuntimeId = "claude", showAll = true)
         val ids = picker.rows.map { it.id }
-        assertFalse("antigravity" in ids || "kimi" in ids || "copilot" in ids || "gemini" in ids, "ids=$ids")
+        assertFalse("kimi" in ids || "copilot" in ids || "gemini" in ids, "ids=$ids")
+        // Antigravity is no longer deprecated (slock #15445); DeepSeek Harness is listed by name, not by id (slock #15549).
+        assertTrue("antigravity" in ids, "ids=$ids")
+        assertEquals("DeepSeek Harness", picker.rows.single { it.id == "dsh" }.name)
         // Qwen Code and Qoder are experimental in the catalog: that no longer shows (slock #15551).
         assertEquals(RuntimePickerGuidance(limited = true, hint = RuntimeCapabilityHint.NoSteeringCompactionUnreported), picker.rows.single { it.id == "qwen" }.guidance)
         assertEquals(RuntimePickerGuidance(hint = RuntimeCapabilityHint.CompactionUnreported), picker.rows.single { it.id == "qoder" }.guidance)

@@ -1,10 +1,10 @@
 {
   "source": "botiverse/slock",
-  "sourceSha": "409605bdd39c2ee8d9bc4ce2fe36b91c61d62703",
+  "sourceSha": "114dcb89ebd49931af819210e77234566de25f96",
   "generatedBy": "scripts/refresh_server_enum_fixture.py",
   "domains": {
     "channel_types": {
-      "source": "packages/server/src/db/schema.ts:3441",
+      "source": "packages/server/src/db/schema.ts:3548",
       "values": [
         "channel",
         "private",
@@ -15,7 +15,7 @@
       ]
     },
     "inbox_kinds": {
-      "source": "packages/server/src/services/channelService.ts:13370, packages/server/src/services/channelService.ts:13401, packages/server/src/services/channelService.ts:13450, packages/shared/src/activityObjectsContract.ts:103",
+      "source": "packages/server/src/services/channelService.ts:13508, packages/server/src/services/channelService.ts:13539, packages/server/src/services/channelService.ts:13588, packages/shared/src/activityObjectsContract.ts:103",
       "values": [
         "channel",
         "dm",
@@ -25,7 +25,7 @@
       ]
     },
     "inbox_channel_types": {
-      "source": "packages/server/src/services/channelService.ts:13357",
+      "source": "packages/server/src/services/channelService.ts:13495",
       "values": [
         "channel",
         "private",
@@ -34,7 +34,7 @@
       ]
     },
     "message_sender_types": {
-      "source": "packages/server/src/db/schema.ts:4194",
+      "source": "packages/server/src/db/schema.ts:4318",
       "values": [
         "user",
         "agent",
@@ -42,14 +42,14 @@
       ]
     },
     "message_types": {
-      "source": "packages/server/src/db/schema.ts:4213",
+      "source": "packages/server/src/db/schema.ts:4343",
       "values": [
         "chat",
         "system"
       ]
     },
     "task_statuses": {
-      "source": "packages/shared/src/index.ts:5830",
+      "source": "packages/shared/src/index.ts:6418",
       "values": [
         "backlog",
         "todo",
@@ -68,21 +68,21 @@
       ]
     },
     "runtime_provider_kinds_claude": {
-      "source": "packages/shared/src/index.ts:2910",
+      "source": "packages/shared/src/index.ts:3273",
       "values": [
         "default",
         "custom"
       ]
     },
     "runtime_provider_kinds_pi": {
-      "source": "packages/shared/src/index.ts:2934",
+      "source": "packages/shared/src/index.ts:3297",
       "values": [
         "default",
         "pi-builtin"
       ]
     },
     "runtime_provider_kinds_builtin": {
-      "source": "packages/shared/src/index.ts:2948",
+      "source": "packages/shared/src/index.ts:3311",
       "values": [
         "connection",
         "preset",
@@ -90,7 +90,7 @@
       ]
     },
     "runtime_auth_runtimes": {
-      "source": "packages/shared/src/runtimeAuth.ts:25",
+      "source": "packages/shared/src/runtimeAuth.ts:28",
       "values": [
         "claude",
         "codex",
@@ -100,7 +100,8 @@
         "antigravity",
         "pi",
         "grok",
-        "opencode"
+        "opencode",
+        "dsh"
       ]
     },
     "sidebar_pinned_kinds": {
@@ -141,6 +142,7 @@
         "agent:deleted",
         "agent:lifecycle",
         "agent:migration-updated",
+        "agent:per-turn-process-idle",
         "agent:seen",
         "agent:session",
         "agent:typing",
@@ -173,17 +175,13 @@
         "notification:push",
         "notification:retract",
         "notification_prefs:updated",
+        "onboarding:held-wakes:sweep",
         "permission-updates:changed",
         "pinned:updated",
         "presence:activity",
         "product_feedback:app_unread",
         "product_feedback:unread",
         "reaction_viewer:updated",
-        "read_progress:detail_changed",
-        "read_progress:unwatch",
-        "read_progress:updated",
-        "read_progress:watch",
-        "read_progress:watched",
         "read_state:updated",
         "read_state:updated_bulk",
         "reminder:fired",

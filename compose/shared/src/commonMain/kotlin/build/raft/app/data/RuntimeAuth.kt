@@ -47,9 +47,10 @@ internal enum class RuntimeAuthLoginRegion(val wire: String) {
 /**
  * slock `RuntimeAuthRuntime`: the runtime whose sign-in Raft drives (OAR's id, not Raft's: Kimi Code
  * `kimi-sdk` signs in as `kimi`), with what it can do (`RUNTIME_AUTH_ACTIONS`), the regions its login
- * asks for (`RUNTIME_AUTH_LOGIN_REGION_CHOICES`), whether it signs in per model provider (Pi), whether
- * the server offers it only where its flag revives it (Antigravity) and whether its logout needs a
- * daemon capability beyond its sign-in (`runtimeAuthLogoutNeedsCapability`).
+ * asks for (`RUNTIME_AUTH_LOGIN_REGION_CHOICES`), whether it signs in per model provider (Pi) and
+ * whether its logout needs a daemon capability beyond its sign-in (`runtimeAuthLogoutNeedsCapability`).
+ * A runtime with no action at all (DeepSeek Harness) is here only for its card's status and Install
+ * ([statusOnly]).
  */
 internal enum class RuntimeAuthRuntime(
     val wire: String,
@@ -58,7 +59,6 @@ internal enum class RuntimeAuthRuntime(
     val perProvider: Boolean = false,
     /** slock `runtimeAuthChoosesOAuthMethod`: a provider may offer several OAuth sign-ins; the login names one (OpenCode). */
     val choosesOAuthMethod: Boolean = false,
-    val serverGated: Boolean = false,
     val logoutNeedsCapability: Boolean = false,
 ) {
     Claude("claude", setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout)),
@@ -66,7 +66,7 @@ internal enum class RuntimeAuthRuntime(
     Kimi("kimi", setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout), regionChoices = RuntimeAuthLoginRegion.entries),
     Qoder("qoder", setOf(RuntimeAuthAction.Login)),
     Qwen("qwen", setOf(RuntimeAuthAction.ConnectProvider)),
-    Antigravity("antigravity", setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout), serverGated = true, logoutNeedsCapability = true),
+    Antigravity("antigravity", setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout), logoutNeedsCapability = true),
     Pi("pi", setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout, RuntimeAuthAction.ConnectProvider), perProvider = true),
     Grok("grok", setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout)),
 
@@ -76,7 +76,10 @@ internal enum class RuntimeAuthRuntime(
         setOf(RuntimeAuthAction.Login, RuntimeAuthAction.Logout, RuntimeAuthAction.ConnectProvider),
         perProvider = true,
         choosesOAuthMethod = true,
-    );
+    ),
+
+    /** DeepSeek Harness (slock #15549): no sign-in at all; its DeepSeek key is configured in dsh itself. */
+    Dsh("dsh", emptySet());
 
     /** slock `runtimeAuthLiteralApiKeyFits`: the key-content rule of a per-provider runtime. */
     fun literalApiKeyFits(apiKey: String): Boolean =
@@ -87,6 +90,13 @@ internal enum class RuntimeAuthRuntime(
         }
 
     fun supports(action: RuntimeAuthAction): Boolean = action in actions
+
+    /**
+     * slock `runtimeAuthStatusOnly`: Raft neither signs it in nor connects a provider; its card shows
+     * whether it is installed and usable here, Install, and how its credentials are set outside Raft.
+     */
+    val statusOnly: Boolean
+        get() = actions.isEmpty()
 
     /** A provider's API key instead of a sign-in (Qwen Code): presence only, never "signed out". */
     val hasProviderKey: Boolean
@@ -110,6 +120,7 @@ internal enum class RuntimeAuthRuntime(
                 "pi" -> Pi
                 "grok" -> Grok
                 "opencode" -> Opencode
+                "dsh" -> Dsh
                 else -> null
             }
     }
@@ -128,6 +139,8 @@ internal val RUNTIME_INSTALL_COMMANDS: Map<String, String> =
         "claude" to "npm install -g @anthropic-ai/claude-code",
         "codex" to "npm install -g @openai/codex",
         "kimi-sdk" to "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
+        // OAR's documented method for DeepSeek Harness: its official npm package (slock #15549).
+        "dsh" to "npm install -g @deepseek-ai/dsh",
     )
 
 /** slock `RuntimeAuthAvailability` of the runtime-auth read. */

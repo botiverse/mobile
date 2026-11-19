@@ -16,6 +16,9 @@ import build.raft.app.data.RuntimeAuthSignedInProvider
 import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthUnavailableReason
 import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.RUNTIME_INSTALL_COMMANDS
+import build.raft.app.resources.Res
+import build.raft.app.resources.settings_computers_runtime_auth_dsh_credentials
 import build.raft.app.model.RuntimeAuthAccountLabel
 import build.raft.app.model.RuntimeAuthLoginEventPushed
 import build.raft.app.model.RuntimeAuthLoginOutcome
@@ -223,6 +226,19 @@ class ComputerRuntimeAuthSessionTest {
         assertEquals(ComputerRuntimeAuthAction.SignOut, action(RuntimeAuthRuntime.Grok, RuntimeAuthStatus.LoggedIn()))
         assertNull(action(RuntimeAuthRuntime.Qoder, RuntimeAuthStatus.LoggedIn()), "Qoder has no sign-out")
         assertNull(action(RuntimeAuthRuntime.Antigravity, RuntimeAuthStatus.LoggedIn()), "a Computer that signs Antigravity in but not out")
+        // DeepSeek Harness has no sign-in (slock #15549): a missing CLI as for any runtime, else how its key is set, for every viewer.
+        val dshNote = ComputerRuntimeAuthAction.CredentialsNote(Res.string.settings_computers_runtime_auth_dsh_credentials)
+        assertEquals(dshNote, action(RuntimeAuthRuntime.Dsh, RuntimeAuthStatus.Unknown))
+        assertEquals(dshNote, action(RuntimeAuthRuntime.Dsh, null))
+        assertEquals(dshNote, action(RuntimeAuthRuntime.Dsh, RuntimeAuthStatus.Unknown, VIEW.copy(canAct = false)), "not only a viewer who may act")
+        assertEquals(dshNote, action(RuntimeAuthRuntime.Dsh, null, VIEW.copy(availability = RuntimeAuthAvailability.ComputerUpgradeRequired)), "no sign-in to upgrade for")
+        assertEquals(
+            ComputerRuntimeAuthAction.Unavailable(RuntimeAuthUnavailableReason.NotInstalled),
+            action(RuntimeAuthRuntime.Dsh, RuntimeAuthStatus.Unavailable(RuntimeAuthUnavailableReason.NotInstalled)),
+        )
+        assertTrue(RuntimeAuthRuntime.Dsh.statusOnly)
+        assertEquals(RuntimeAuthRuntime.Dsh, RuntimeAuthRuntime.forRaftRuntime("dsh"))
+        assertEquals("npm install -g @deepseek-ai/dsh", RUNTIME_INSTALL_COMMANDS["dsh"])
         assertEquals(
             ComputerRuntimeAuthAction.Unavailable(RuntimeAuthUnavailableReason.NotInstalled),
             action(RuntimeAuthRuntime.Claude, RuntimeAuthStatus.Unavailable(RuntimeAuthUnavailableReason.NotInstalled)),
