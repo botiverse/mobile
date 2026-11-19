@@ -60,12 +60,13 @@ export function scopeReviewReport(report) {
   if (missing.length) {
     throw new AttemptScopeError(`review_context.attempt_ids not found in report cases: ${missing.join(", ")}; refusing to vote`);
   }
-  const retried = cases.some((c) => !current.has(c.id));
   // A vote counts for this round only when it is bound to exactly this attempt
-  // set. A vote without bound ids predates attempt binding: it can only refer
-  // to this round when no attempt has been superseded.
+  // set. A vote without bound ids predates attempt binding and Testbed does not
+  // count it for this round, even when no attempt was retried (Argus,
+  // raft-mobile-reconcile #214 dea79d56): reusing it would make this reviewer
+  // exit as already_submitted and the round would miss its vote.
   const scopedReviews = reviews.filter((r) =>
-    Array.isArray(r.attempt_ids) ? sameSet(r.attempt_ids, ids) : !retried);
+    Array.isArray(r.attempt_ids) && sameSet(r.attempt_ids, ids));
   return {
     mode: "attempt_bound",
     attemptIds: [...ids],

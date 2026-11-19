@@ -52,10 +52,16 @@ test("only the current attempts' cases, evidence and bound votes are selected", 
   assert.deepEqual(scope.superseded, { case_ids: ["rc-old"], evidence_ids: ["ev-old"], review_ids: ["v-unbound", "v-old"] });
 });
 
-test("without a retry an unbound vote still refers to the only attempt set", () => {
+test("with review_context an unbound vote never counts, even on the first attempt", () => {
   const report = { run: { id: "r" }, cases: [{ id: "rc-1", case_id: "c" }], review_context: { attempt_ids: ["rc-1"] },
-    evidence: [shot("e", "rc-1")], reviews: [{ id: "v", role: "panel", reviewer: "p1" }] };
-  assert.deepEqual(scopeReviewReport(report).reviews.map((r) => r.id), ["v"]);
+    evidence: [shot("e", "rc-1")], reviews: [
+      { id: "v", role: "panel", reviewer: "p1" },
+      { id: "v-null", role: "panel", reviewer: "p2", attempt_ids: null },
+      { id: "v-bound", role: "panel", reviewer: "p3", attempt_ids: ["rc-1"] },
+    ] };
+  const scope = scopeReviewReport(report);
+  assert.deepEqual(scope.reviews.map((r) => r.id), ["v-bound"]);
+  assert.deepEqual(scope.superseded.review_ids, ["v", "v-null"]);
 });
 
 test("a report without review_context (older Testbed) keeps the full history and says so", () => {
@@ -276,6 +282,19 @@ test("review_agent re-votes after a retry when its own earlier vote is unbound o
     assert.deepEqual(r.posts[0].expected_attempt_ids, ["rc-new", "rc-set"]);
     assert.deepEqual(r.record.attempt_scope.superseded.review_ids, ["v1"]);
   }
+});
+
+test("review_agent on a first-round report with its own unbound vote still votes on the new route", () => {
+  const firstRound = { run: { id: "run-1", status: "in_review", app_slug: "raft-android" },
+    cases: [{ id: "rc-set", case_id: "settings", case_revision: 1, attempt: 1, retry_of: null, status: "judging", verdict_json: verdictAt(1) }],
+    review_context: { attempt_ids: ["rc-set"] }, evidence: [shot("ev-set", "rc-set")],
+    reviews: [{ id: "v-legacy", role: "panel", reviewer: "panel-1", verdict: "passed", comment: "old", detail_json: "{}", attempt_ids: null }] };
+  const r = runAgent(firstRound);
+  assert.equal(r.code, 0, r.stderr);
+  assert.notEqual(r.record.stage, "already_submitted");
+  assert.deepEqual(r.postPaths, ["/api/runs/run-1/attempt-panel-review"]);
+  assert.deepEqual(r.posts[0].expected_attempt_ids, ["rc-set"]);
+  assert.equal(r.record.stage, "submitted");
 });
 
 test("review_agent reuses its own vote bound to the current attempts without posting again", () => {
