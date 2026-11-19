@@ -42,6 +42,7 @@ import build.raft.app.data.runtimeform.v2.RuntimeFormV2FieldKind
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loaded
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Source
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2SourceStatus
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2UnavailableChoice
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Values
 import build.raft.app.data.runtimeform.v2.booleanValue
 import build.raft.app.data.runtimeform.v2.isFormRevisionStale
@@ -206,20 +207,24 @@ private const val RUNTIME_CHOICE_CONNECTION_PREFIX = "connection:"
 
 /**
  * One listed choice of a runtime form select. A bound connection that is unavailable stays visible
- * but cannot be picked again. With [showsIdentifiers], the row has its id under the name, unless the
- * choice has a description (web shows the description in the row instead; here it goes under the
- * field): then the value is a search keyword, so search still finds the model id, as web
- * `runtimeChoiceMatches` always searches the value.
+ * but cannot be picked again. A choice's description (`choice.labels`) is the row's second line, as
+ * web draws it in the list (RuntimeChoiceCombobox `renderOption`, RuntimeSelectControl
+ * `SelectItemDescription` when it says more than the label); the closed field never repeats it. With
+ * [showsIdentifiers], a row without a description has its id under the name; a described one keeps
+ * the value as a search keyword, so search still finds the model id, as web `runtimeChoiceMatches`
+ * always searches the value.
  */
 internal fun runtimeFormV2ListedOption(
     option: RuntimeFormV2Choice,
     group: String?,
     showsIdentifiers: Boolean
 ): RaftComboboxOption<String> {
-    val described = !option.description.isNullOrBlank()
+    val description = option.description?.takeIf { it.isNotBlank() && !it.equals(option.label, ignoreCase = true) }
+    val described = description != null
     return RaftComboboxOption(
         value = option.value,
         label = option.label,
+        description = description,
         group = group,
         enabled = !option.unavailable,
         identifier = if (showsIdentifiers && !described) runtimeChoiceIdentifier(option.value, option.label) else null,
@@ -234,6 +239,52 @@ internal fun runtimeFormV2ListedOption(
  */
 internal fun runtimeFormV2ShowsChoiceIdentifiers(field: RuntimeFormV2Field, choices: RuntimeFormV2Choices.Select): Boolean =
     choices.allowCustom || (field.optionSourceId != null && field.kind != RuntimeFormV2FieldKind.DerivedSelect)
+
+/**
+ * Web RuntimeChoiceCombobox `unlisted && !customValue`: the searchable list's stored value is not one it
+ * offers and was not typed on purpose, so it says "The saved value … is not in the current list", also
+ * when the value is one of the source's unavailable entries. A saved provider connection (its value is
+ * the internal `connection:<id>`) has its own label and reason instead.
+ */
+internal fun runtimeFormV2ShowsSavedValueNotInList(
+    searchable: Boolean,
+    allowCustom: Boolean,
+    unlisted: Boolean,
+    unavailableSelected: RuntimeFormV2UnavailableChoice?
+): Boolean = searchable && !allowCustom && unlisted && unavailableSelected?.connectionId == null
+
+/** The option source a field can ask for again: its own (a derived select follows its parent's), when refresh is wired. */
+internal fun runtimeFormV2RefreshableSource(field: RuntimeFormV2Field, sourceRefresh: RuntimeFormV2SourceRefresh?): String? =
+    field.optionSourceId?.takeIf { field.kind != RuntimeFormV2FieldKind.DerivedSelect && sourceRefresh != null }
+
+/**
+ * Web RuntimeFormV2FieldControl `showRefresh`: the label-row refresh shows unless the source's status line
+ * already offers Retry (a retryable non-live source), so the two never repeat each other; a source whose
+ * retry cannot help (missing_config, unsupported) still has the refresh.
+ */
+internal fun runtimeFormV2ShowsRefreshAction(refreshableSource: String?, status: RuntimeFormV2SourceStatus?): Boolean =
+    refreshableSource != null && status?.retryable != true
+
+private fun runtimeFormV2RefreshAction(
+    refreshableSource: String?,
+    status: RuntimeFormV2SourceStatus?,
+    sourceRefresh: RuntimeFormV2SourceRefresh?,
+    enabled: Boolean,
+    clearFocus: () -> Unit
+): (@Composable () -> Unit)? {
+    if (refreshableSource == null || sourceRefresh == null || !runtimeFormV2ShowsRefreshAction(refreshableSource, status)) return null
+    return {
+        CreateAgentLabelAction(
+            actionIcon = RaftLucideIconName.RefreshCw,
+            actionEnabled = enabled && refreshableSource !in sourceRefresh.refreshing,
+            loading = refreshableSource in sourceRefresh.refreshing,
+            onAction = {
+                clearFocus()
+                sourceRefresh.onRefresh(refreshableSource)
+            }
+        )
+    }
+}
 
 /**
  * The combobox value for a select whose stored value is [current]. "" means "nothing chosen" unless the
@@ -287,7 +338,8 @@ private fun runtimeFormV2ErrorText(
             RuntimeFormV2ErrorCode.Required -> stringResource(Res.string.runtime_form_v2_error_required)
             RuntimeFormV2ErrorCode.InvalidUrl -> stringResource(Res.string.runtime_form_v2_error_invalid_url)
             RuntimeFormV2ErrorCode.NotAChoice -> stringResource(Res.string.runtime_form_v2_error_not_a_choice)
-            RuntimeFormV2ErrorCode.UnsupportedRequired -> stringResource(Res.string.runtime_form_v2_update_required)
+            // The field itself says "Update Raft to edit this setting." and Save stays off: not twice (slock #15397).
+            RuntimeFormV2ErrorCode.UnsupportedRequired -> null
             // The field's source status line already says why, with its retry.
             RuntimeFormV2ErrorCode.SourceUnavailable -> null
             RuntimeFormV2ErrorCode.ConnectionUnavailable -> stringResource(Res.string.runtime_form_v2_saved_provider_unavailable)
@@ -410,6 +462,7 @@ private fun RuntimeFormV2FieldRow(
         RuntimeFormV2FieldKind.DerivedSelect ->
             when (val choices = runtimeFormV2Choices(field, loaded.sources, values)) {
                 RuntimeFormV2Choices.FreeText ->
+                    // Web: a source-bound field typed into keeps the label-row refresh, without a status line.
                     RuntimeFormV2TextInput(
                         label = field.label,
                         value = current,
@@ -418,7 +471,15 @@ private fun RuntimeFormV2FieldRow(
                         required = required,
                         hint = hint,
                         error = error,
-                        enabled = fieldEnabled
+                        enabled = fieldEnabled,
+                        labelTrailing =
+                            runtimeFormV2RefreshAction(
+                                runtimeFormV2RefreshableSource(field, sourceRefresh),
+                                runtimeFormV2SourceStatus(field, loaded.sources),
+                                sourceRefresh,
+                                fieldEnabled,
+                                clearFocus
+                            )
                     )
                 is RuntimeFormV2Choices.Select -> {
                     val defaultLabel = stringResource(Res.string.runtime_form_v2_option_default)
@@ -475,12 +536,10 @@ private fun RuntimeFormV2FieldRow(
                     }
                     // `option_source.status`: a source that is not live says why.
                     val sourceStatus = runtimeFormV2SourceStatus(field, loaded.sources)
-                    // Re-probe: selects that read a machine option source can ask for it again, like v1's
-                    // refresh next to the model picker. Derived selects follow their parent's source. A source
-                    // whose status says retrying cannot help (missing_config, unsupported) offers no re-probe.
-                    val refreshableSource = field.optionSourceId
-                        ?.takeIf { field.kind != RuntimeFormV2FieldKind.DerivedSelect && sourceRefresh != null }
-                        ?.takeIf { sourceStatus == null || sourceStatus.retryable }
+                    // Re-probe: selects that read a machine option source can ask for it again. Derived selects
+                    // follow their parent's source. The label-row action and the status line's Retry never both
+                    // show (web RuntimeFormV2FieldControl `showRefresh`).
+                    val refreshableSource = runtimeFormV2RefreshableSource(field, sourceRefresh)
                     // Web StableField: the label row (with the refresh action), the control, the status line
                     // (`belowControl`), then one message row where an error replaces the hint.
                     RuntimeFormV2FieldFrame(
@@ -489,26 +548,11 @@ private fun RuntimeFormV2FieldRow(
                         error = error?.takeIf { it.isNotBlank() },
                         enabled = fieldEnabled,
                         required = required,
-                        labelTrailing =
-                            if (refreshableSource != null && sourceRefresh != null) {
-                                {
-                                    CreateAgentLabelAction(
-                                        actionIcon = RaftLucideIconName.RefreshCw,
-                                        actionEnabled = fieldEnabled && refreshableSource !in sourceRefresh.refreshing,
-                                        loading = refreshableSource in sourceRefresh.refreshing,
-                                        onAction = {
-                                            clearFocus()
-                                            sourceRefresh.onRefresh(refreshableSource)
-                                        }
-                                    )
-                                }
-                            } else {
-                                null
-                            }
+                        labelTrailing = runtimeFormV2RefreshAction(refreshableSource, sourceStatus, sourceRefresh, fieldEnabled, clearFocus)
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             // Required shows no mark: the picker says it to screen readers ("Model, Required"); the
-                            // field state also gives the picker the field type and the invalid border.
+                            // field state also gives the picker the field type (and a plain select its invalid edge).
                             if (choices.allowCustom) {
                                 // `select.custom_value` is raft-ui's ComboboxSelect with `create`: the list
                                 // with search, and typed text that is not a choice offered as "Use “…”".
@@ -542,6 +586,8 @@ private fun RuntimeFormV2FieldRow(
                                     },
                                     createLabel = { typed -> useCustomLabel.replace("%1\$s", typed) },
                                     enabled = fieldEnabled,
+                                    // A typed-value list is web's RuntimeChoiceCombobox: no red edge on error.
+                                    invalid = false,
                                     label = field.label
                                 )
                             } else {
@@ -574,22 +620,25 @@ private fun RuntimeFormV2FieldRow(
                                     title = field.label,
                                     searchPlaceholder = searchLabel,
                                     enabled = fieldEnabled,
+                                    // Web RuntimeChoiceCombobox draws its own field edge, which a field error leaves ink (the
+                                    // message row says it); a plain select's edge turns red (RuntimeSelectControl).
+                                    invalid = !showsIdentifiers && !error.isNullOrBlank(),
                                     label = field.label
                                 )
                             }
-                            // A stored value the list no longer offers (not a typed custom one) says so (web
-                            // RuntimeChoiceCombobox `savedValueNotInList`).
-                            if (showsIdentifiers && !choices.allowCustom && unlisted && unavailableSelected == null) {
+                            // A stored value the list does not offer (not a typed custom one) says so, also when it
+                            // is one of the source's unavailable entries (web RuntimeChoiceCombobox
+                            // `savedValueNotInList`: `unlisted && !customValue`). A saved connection's internal
+                            // `connection:<id>` is never shown: its own label and reason say it.
+                            if (runtimeFormV2ShowsSavedValueNotInList(showsIdentifiers, choices.allowCustom, unlisted, unavailableSelected)) {
                                 Text(
                                     stringResource(Res.string.runtime_form_v2_saved_value_not_in_list, current),
                                     style = RaftType.Caption,
                                     color = RaftColor.ForegroundHint
                                 )
                             }
-                            // `choice.labels`: the selected choice's description (e.g. what a reasoning level does).
-                            choices.options.firstOrNull { it.value == current }?.description?.let {
-                                Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray)
-                            }
+                            // `choice.labels` descriptions are the list rows' second line only: web shows none under
+                            // the closed field.
                             sourceStatus?.let { status ->
                                 RuntimeFormV2SourceStatusLine(
                                     status = status,
@@ -707,7 +756,14 @@ internal fun runtimeFormV2SourceReasonText(reason: String?): StringResource =
 @Composable
 private fun RuntimeFormV2SourceStatusLine(status: RuntimeFormV2SourceStatus, retrying: Boolean, onRetry: (() -> Unit)?) {
     val reason = stringResource(runtimeFormV2SourceReasonText(status.reason))
-    val text = if (status.unavailable) reason else "$reason ${stringResource(Res.string.runtime_form_v2_source_status_fallback)}"
+    val fallback = stringResource(Res.string.runtime_form_v2_source_status_fallback)
+    // A stale list (the Computer's last one: it did not answer in time) says so instead of the reason.
+    val text =
+        when {
+            status.stale -> stringResource(Res.string.runtime_form_v2_source_status_stale)
+            status.unavailable -> reason
+            else -> "$reason $fallback"
+        }
     val retryLabel = stringResource(Res.string.common_retry)
     val retry = onRetry?.takeIf { status.retryable }
     val line =
@@ -900,14 +956,16 @@ private fun RuntimeFormV2TextInput(
     required: Boolean,
     hint: String?,
     error: String?,
-    enabled: Boolean
+    enabled: Boolean,
+    labelTrailing: (@Composable () -> Unit)? = null
 ) {
     RuntimeFormV2FieldFrame(
         label = label.takeIf { it.isNotBlank() },
         description = hint?.takeIf { it.isNotBlank() },
         error = error?.takeIf { it.isNotBlank() },
         enabled = enabled,
-        required = required
+        required = required,
+        labelTrailing = labelTrailing
     ) {
         val editor = rememberRuntimeFormV2Editor(KeyboardOptions.Default)
         RaftTextField(

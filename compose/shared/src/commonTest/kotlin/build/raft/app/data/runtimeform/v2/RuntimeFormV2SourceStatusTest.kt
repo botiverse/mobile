@@ -49,6 +49,16 @@ class RuntimeFormV2SourceStatusTest {
     }
 
     @Test
+    fun aStaleListIsMarkedStaleAndOnlyTheStaleStateCounts() {
+        // slock v2State: `state: "stale"` (the Computer's last list, it did not answer in time) on a non-live source.
+        val stale = sourceWith("status" to JsonPrimitive("fallback"), "reason" to JsonPrimitive("probe_timeout"), "retryable" to JsonPrimitive(true), "state" to JsonPrimitive("stale"))
+        assertEquals(RuntimeFormV2SourceStatus(unavailable = false, reason = "probe_timeout", retryable = true, stale = true), runtimeFormV2SourceStatus(model, stale))
+        val fresh = sourceWith("status" to JsonPrimitive("fallback"), "state" to JsonPrimitive("fresh"))
+        assertFalse(assertNotNull(runtimeFormV2SourceStatus(model, fresh)).stale)
+        assertNull(runtimeFormV2SourceStatus(model, sourceWith("status" to JsonPrimitive("live"), "state" to JsonPrimitive("stale"))), "a live source reports no status")
+    }
+
+    @Test
     fun aFallbackListIsUsableAndSubmittable() {
         val values = initialRuntimeFormV2Values(codex, fallback)
         assertEquals("gpt-6.2-sol", values.text("model"))

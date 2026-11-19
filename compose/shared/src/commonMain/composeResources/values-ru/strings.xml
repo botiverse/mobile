@@ -3639,11 +3639,11 @@
     <string name="markdown_mermaid_copy_source">Копировать исходный код</string>
     <string name="markdown_mermaid_fullscreen">Во весь экран</string>
     <string name="markdown_mermaid_close_fullscreen">Выйти из полноэкранного режима</string>
-    <string name="runtime_form_v2_update_required">Обновите приложение, чтобы изменить эту настройку.</string>
+    <string name="runtime_form_v2_update_required">Чтобы изменить этот параметр, обновите Raft.</string>
     <string name="runtime_form_v2_update_required_blocking">Обновите приложение, чтобы сохранить изменения этого агента.</string>
-    <string name="runtime_form_v2_error_required">Обязательное поле</string>
-    <string name="runtime_form_v2_error_invalid_url">Введите URL, начинающийся с http:// или https://</string>
-    <string name="runtime_form_v2_error_not_a_choice">Выберите один из вариантов</string>
+    <string name="runtime_form_v2_error_required">Это поле обязательно.</string>
+    <string name="runtime_form_v2_error_invalid_url">Базовый URL должен начинаться с http:// или https://.</string>
+    <string name="runtime_form_v2_error_not_a_choice">Выберите один из доступных вариантов.</string>
     <string name="runtime_form_v2_error_rejected">Сервер отклонил это значение</string>
     <string name="runtime_form_v2_error_secret_reentry_required">Ключ API привязан к сохранённым настройкам, которые вы изменили. Введите новый ключ.</string>
     <string name="runtime_form_v2_option_default">По умолчанию</string>
@@ -3657,6 +3657,7 @@
     <string name="runtime_form_v2_unavailable">Конфигурация среды выполнения недоступна.</string>
     <string name="runtime_form_v2_source_refresh_failed">Не удалось обновить список. Показаны прежние варианты.</string>
     <string name="runtime_form_v2_source_status_fallback">Вместо этого показан стандартный список.</string>
+    <string name="runtime_form_v2_source_status_stale">Этот компьютер не ответил вовремя, поэтому варианты могут быть устаревшими.</string>
     <string name="runtime_form_v2_source_status_probe_timeout">Этот компьютер слишком долго получал список вариантов.</string>
     <string name="runtime_form_v2_source_status_probe_failed">Этому компьютеру не удалось получить список вариантов.</string>
     <string name="runtime_form_v2_source_status_missing_config">Чтобы получить список вариантов, сначала настройте эту среду выполнения на этом компьютере.</string>
