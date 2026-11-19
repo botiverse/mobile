@@ -67,12 +67,9 @@ internal class SharedThreadComposerDraftAccountStore(
     private val base: SharedPreferenceStore,
     private val liveAccount: () -> SharedThreadComposerDraftAccount?,
     private val diagnosticsLogger: ((String) -> Unit)? = null
-) : SharedPreferenceStore, SharedThreadComposerDraftJournalScope {
+) : SharedPreferenceStore {
     private val lock = SynchronizedObject()
     private var bound: SharedThreadComposerDraftAccount? = null
-
-    /** The journal index cache follows the account the rows go to; none while no account is bound. */
-    override fun journalScopeToken(): String? = currentAccount()?.storageToken
     private val registeredOwners = mutableSetOf<String>()
 
     /** The account reads and writes go to right now; null fails closed. */
@@ -220,9 +217,7 @@ internal class SharedThreadComposerDraftAccountStore(
 private class SharedThreadComposerDraftFixedAccountStore(
     private val base: SharedPreferenceStore,
     private val storageToken: String
-) : SharedPreferenceStore, SharedThreadComposerDraftJournalScope {
-    override fun journalScopeToken(): String = storageToken
-
+) : SharedPreferenceStore {
     private fun scoped(key: String): String =
         "${SharedThreadComposerDraftAccountKeys.ScopedPrefix}$storageToken:" +
             key.removePrefix(SharedThreadComposerDraftPersistence.DraftStoragePrefix)
@@ -357,6 +352,15 @@ internal class SharedThreadComposerDraftAccounts(
     }
 
     private fun deleteOwner(token: String) {
+        // Crash-journal rows of internal 1.27 test builds, found through the journal and active indexes,
+        // so this runs before the drafts and their index are cleared. A cleanup that failed or has not run
+        // yet can then never leave a signed-out account's journal text behind.
+        // Removable after 1.28 with SharedThreadComposerDraftJournalCleanup.
+        runCatching {
+            SharedThreadComposerDraftJournalCleanup.deleteScope(base, SharedThreadComposerDraftJournalCleanup.accountScope(token))
+        }.onFailure { error ->
+            safeDiagnostics("thread_composer_draft_journal_purge_failed error=${error::class.simpleName.orEmpty()}")
+        }
         val view = synchronized(lock) {
             cleanupStores.getOrPut(token) { SharedThreadComposerDraftFixedAccountStore(base, token) }
         }
@@ -375,16 +379,11 @@ internal class SharedThreadComposerDraftAccounts(
                 SharedThreadComposerDraftPersistence.draftRowKeys(draftKey).forEach { row -> view.putString(row, null) }
             }
         view.putString(indexKey, null)
-        SharedThreadComposerDraftPersistence.journalRowKeys(view).forEach { row -> view.putString(row, null) }
-        // Rows and index written directly (not through a facade): no cached index may outlive them.
-        SharedThreadComposerDraftJournalIndexEpoch.bump()
         store.forgetOwner(token)
         safeDiagnostics("thread_composer_draft_account_purged")
     }
 
     private fun clearEveryDraft(persistence: SharedThreadComposerDraftPersistence) {
-        // The crash journal may hold a draft that never got a full write (no active record).
-        runCatching { persistence.clearJournal() }
         persistence.activeDraftRecords().forEach { record ->
             runCatching { persistence.clear(record.key) }
                 .onFailure { error ->

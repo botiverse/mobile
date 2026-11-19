@@ -10,6 +10,7 @@ import build.raft.app.RaftComposerDraftUploads
 import build.raft.app.SharedThreadComposerDraftAccount
 import build.raft.app.SharedThreadComposerDraftAccountStore
 import build.raft.app.SharedThreadComposerDraftAccounts
+import build.raft.app.SharedThreadComposerDraftJournalCleanup
 import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
 import build.raft.app.CoroutineThreadComposerDraftPersistenceScheduler
@@ -3949,6 +3950,8 @@ internal class RaftSharedStoreProvider private constructor(
                     recordsKnownAtStart = false
                 )
             CoroutineScope(SupervisorJob()).launch {
+                // Leftover crash-journal rows of internal 1.27 test builds, once per device (drop after 1.28).
+                SharedThreadComposerDraftJournalCleanup.runOnce(sharedPreferenceStore, composerDraftLogger)
                 composerDraftAccounts.onStoredSessionReadAtStart(authStore)
                 // Typed: Unknown (not read yet) and Corrupt (unreadable) never delete drafts; only
                 // SignedOut or another account does.

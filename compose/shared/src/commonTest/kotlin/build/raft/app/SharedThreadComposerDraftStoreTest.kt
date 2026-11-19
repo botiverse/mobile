@@ -208,9 +208,7 @@ class SharedThreadComposerDraftStoreTest {
             SharedThreadComposerDraftPersistSlice(
                 persistence = persistence,
                 scheduler = scheduler,
-                changeWriteIntervalMillis = 250L,
-                // Counts the draft rows' writes; SharedThreadComposerDraftCrashJournalTest covers the journal row.
-                crashJournal = false,
+                changeWriteIntervalMillis = 250L
             )
         val draftKey = "send=channel-rapid|parent=_|mention=channel-rapid"
         val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
@@ -243,8 +241,7 @@ class SharedThreadComposerDraftStoreTest {
         val storage = CountingSharedPreferenceStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
         val scheduler = FakeThreadComposerDraftPersistenceScheduler()
-        // Counts the draft rows' writes; SharedThreadComposerDraftCrashJournalTest covers the journal row.
-        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler, crashJournal = false)
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler)
         val draftKey = "send=channel-blur|parent=_|mention=channel-blur"
         val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
 
@@ -317,8 +314,7 @@ class SharedThreadComposerDraftStoreTest {
         val storage = CountingSharedPreferenceStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
         val scheduler = FakeThreadComposerDraftPersistenceScheduler()
-        // Counts the draft rows' writes; SharedThreadComposerDraftCrashJournalTest covers the journal row.
-        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler, crashJournal = false)
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler)
         val draftKey = "send=channel-send|parent=_|mention=channel-send"
         val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
 
@@ -346,8 +342,7 @@ class SharedThreadComposerDraftStoreTest {
         val storage = CountingSharedPreferenceStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
         val scheduler = FakeThreadComposerDraftPersistenceScheduler()
-        // Counts the draft rows' writes; SharedThreadComposerDraftCrashJournalTest covers the journal row.
-        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler, crashJournal = false)
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler)
         val firstKey = "send=channel-one|parent=_|mention=channel-one"
         val secondKey = "send=channel-two|parent=_|mention=channel-two"
         val firstStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))

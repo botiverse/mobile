@@ -12,6 +12,11 @@
 //      "Killing <old pid>:<pkg>" line (logcat -v monotonic) − the last change_received uptimeMs, both
 //      CLOCK_MONOTONIC on the device. A run is a timing "hit" only when Δ is measured and inside the bucket.
 //      Then the app is relaunched on the same channel and the composer text (UI tree) is compared with the marker.
+//      Pass (artin 2026-11-19: no crash journal, only the 40 ms interval write): the restored text is a prefix of
+//      what was typed and keeps every change older than the write deadline at the kill (a fixed WRITE_INTERVAL_MS
+//      40 + WRITE_BUDGET_MS 135 ms) and everything a draft_written line reported before the kill. Younger text may
+//      be lost. Home and wait 1 s must keep the whole text. The measured write latency is reported and gated
+//      against the budget, never used to move the deadline. Decided at wrap-up (applyWriteDeadline).
 //   Buckets D = 0.05 / 0.1 / 0.3 / 0.7 s (round robin), fast typing (3-5 s of keystrokes on the device, then
 //   D = 0.05 / 0.1), and regressions: (a) wait 1 s then kill, (b) send then kill within 0.1 s (composer
 //   empty, the sent text not back as a draft), (c) Home then kill.
@@ -24,7 +29,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { costSplitReport, channelActivityReport, errorBodySummary, parseMessagesResponse, queryWithReauth, sendDeliveryCount, creditedBucket, createLogcatStats, forEachLogLine, isEvidenceLine, wrapUpVerdict, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
+import { channelActivityReport, errorBodySummary, parseMessagesResponse, queryWithReauth, sendDeliveryCount, creditedBucket, createLogcatStats, forEachLogLine, isEvidenceLine, wrapUpVerdict, BUCKETS, SEND_WINDOW, analyzeKillRun, bucketFor, isForceStopReason, killReason, markdownTable, parseEventPid, parseLogcatLine, summarize } from "./draft_kill_timing_analysis.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, value, index, all) => {
@@ -274,14 +279,6 @@ async function stopCapture() {
   }
   fs.renameSync(partial, path.join(OUT, "timing-lines.txt"));
   fs.rmSync(LOGCAT_RAW);
-  // The journal cost split per sample, from the filtered evidence file only (scripts/qa/draft_kill_cost_split.mjs
-  // gives the same from a downloaded timing-lines.txt).
-  try {
-    const report = costSplitReport(fs.readFileSync(path.join(OUT, "timing-lines.txt"), "utf8").split("\n"));
-    fs.writeFileSync(path.join(OUT, "cost-split.json"), `${JSON.stringify(report, null, 1)}\n`);
-  } catch (error) {
-    summary.cost_split_error = redact(String(error?.message ?? error)).slice(0, 200);
-  }
   return stats.result();
 }
 
@@ -587,13 +584,14 @@ function killScript({ oldPid, startTime, before, sleepSec, probeLabel = null }) 
 }
 
 /** Runs [script] for the old process, then decides the run (exit interval, timing) and the relaunch pid. */
-async function killAndAnalyze({ oldPid, startTime, script, expectedLen, delaySec, refProbe = null, mark, window = null, extraReasons = [] }) {
+async function killAndAnalyze({ oldPid, startTime, script, expectedLen, delaySec, refProbe = null, mark, historyMark = mark, window = null, extraReasons = [] }) {
   const out = shell(script, { timeoutMs: 90_000 });
   await sleep(1500);
   const pidGone = !shell(`ls -d /proc/${oldPid} 2>/dev/null`, { allowFailure: true }).trim();
   const lines = linesSince(mark);
+  // What was typed and written before the kill is read from the run's start (the prefix too).
   const analysis = analyzeKillRun({
-    lines, pkg: PKG, oldPid, samePid: out.includes("SAME_PROCESS"), runIndex, expectedLen, delaySec, pidGone, refProbe, window, extraReasons,
+    lines, history: linesSince(historyMark), pkg: PKG, oldPid, samePid: out.includes("SAME_PROCESS"), runIndex, expectedLen, delaySec, pidGone, refProbe, window, extraReasons,
   });
   return { analysis: { ...analysis, old_start_time: startTime, pid_gone_after_poll: out.includes("PID_GONE") }, lines };
 }
@@ -668,9 +666,11 @@ let SCREEN = { w: 1080, h: 2400 };
  *  "send":   full text typed and written; one device-side shell: tap Send, sleep, force-stop;
  *            required window: exit within [0, 100] ms of the tap.
  */
-async function killRun(api, { group, mode, delaySec }) {
+async function killRun(api, { group, mode, delaySec, fullText = false }) {
   runIndex += 1;
   const record = { group, mode, delay_sec: delaySec, run: runIndex };
+  // Home (the flush) and wait 1 s: the whole typed text must survive; the write deadline never excuses a loss.
+  if (fullText) record.requires_full_text = true;
   const runMark = logcatMark();
   try {
     await readyEmptyComposer(api);
@@ -754,7 +754,7 @@ async function killRun(api, { group, mode, delaySec }) {
       record.sent_on_server = Boolean(found);
       record.observed_desc = describeText(seen);
       relaunchIdentity(record, oldPid, startTime, mark);
-      // Composer must be empty (the journal owns the text) and the text must reach the server.
+      // Composer must be empty (the pending-send journal owns the text) and the text must reach the server.
       record.expected_desc = "composer (empty); message on the server (possibly late)";
       record.pass = seen === "" && record.delivery_count.delivered === "exactly once";
       if (!found) record.reason = `${record.reason ? `${record.reason}; ` : ""}message ${record.delivery}`;
@@ -795,7 +795,7 @@ async function killRun(api, { group, mode, delaySec }) {
     record.sleep_sec = sleepSec;
     const bucketed = mode === "bucket" || mode === "fast";
     const { analysis, lines } = await killAndAnalyze({
-      oldPid, startTime, mark, expectedLen: expected.length, delaySec: bucketed ? delaySec : null, extraReasons,
+      oldPid, startTime, mark, historyMark: runMark, expectedLen: expected.length, delaySec: bucketed ? delaySec : null, extraReasons,
       script: killScript({ oldPid, startTime, before, sleepSec }),
     });
     Object.assign(record, analysis);
@@ -823,14 +823,16 @@ async function killRun(api, { group, mode, delaySec }) {
     record.observed_desc = describeText(seen);
     relaunchIdentity(record, oldPid, startTime, mark);
     if (record.last_change_seq == null && /no change_received/.test(record.reason ?? "")) {
-      // The last keystroke never reached the composer before the kill, so the app never had the full text:
-      // not a draft-survival sample. The draft must still hold everything the app did receive (the prefix).
+      // The last keystroke never reached the composer before the kill, so the app never had the full text.
       record.sample = "last key not received before the kill";
-      record.expected_desc = `${describeText(expected)}, or ${describeText(expected.slice(0, -1))} if the last key never arrived`;
-      record.pass = seen === expected || seen === expected.slice(0, -1);
-    } else {
-      record.pass = seen === expected;
     }
+    // Decided at wrap-up against the write deadline (applyWriteDeadline): every change older than it must be
+    // kept, younger ones may be lost. Until then, pass means "all typed text kept".
+    record.typed_len = expected.length;
+    record.restored_len = seen.length;
+    record.restored_is_prefix = expected.startsWith(seen);
+    record.expected_desc = record.requires_full_text ? describeText(expected) : `${describeText(expected)}; may lose changes younger than the write deadline`;
+    record.pass = seen === expected;
     return record;
   } catch (error) {
     record.timing = record.timing ?? "unconfirmed";
@@ -844,7 +846,7 @@ async function killRun(api, { group, mode, delaySec }) {
     screenshot(`run-${runIndex}-ERROR`);
     return record;
   } finally {
-    log(`run ${runIndex} ${group}: sleep=${record.sleep_sec ?? "-"} timing=${record.timing} exitΔ=[${record.delta_lower_ms ?? "-"}, ${record.delta_upper_ms ?? "-"}]ms bucket=${record.measured_bucket ?? "-"} pass=${record.pass}${record.reason ? ` (${record.reason})` : ""}`);
+    log(`run ${runIndex} ${group}: sleep=${record.sleep_sec ?? "-"} timing=${record.timing} exitΔ=[${record.delta_lower_ms ?? "-"}, ${record.delta_upper_ms ?? "-"}]ms bucket=${record.measured_bucket ?? "-"} kept=${record.restored_len ?? "-"}/${record.typed_len ?? "-"} written_before_kill=${record.written_before_kill ?? "-"}${record.reason ? ` (${record.reason})` : ""}`);
   }
 }
 
@@ -987,9 +989,9 @@ async function main() {
     const fastMaxAttempts = Math.max(FAST_RUNS * 3, FAST_RUNS + 5);
     summary.fast_progress = Object.fromEntries(FAST_DELAYS.map((d) => [d, { valid: 0, attempted: 0, max_attempts: fastMaxAttempts }]));
     const fixed = [];
-    fixed.push({ group: "a: wait 1 s", mode: "bucket", delaySec: 1 });
+    fixed.push({ group: "a: wait 1 s", mode: "bucket", delaySec: 1, fullText: true });
     for (let i = 0; i < 5; i += 1) fixed.push({ group: "b: send, kill within 100 ms", mode: "send", delaySec: null, untilHit: true });
-    fixed.push({ group: "c1: Home, kill", mode: "home", delaySec: null });
+    fixed.push({ group: "c1: Home, kill", mode: "home", delaySec: null, fullText: true });
     if (RECENTS) fixed.push({ group: "c2: recents swipe (task removed)", mode: "recents", delaySec: null });
     summary.pending_real_device = PENDING_REAL_DEVICE;
 
@@ -1036,8 +1038,8 @@ async function main() {
       return { runs: summary.runs.length };
     });
 
-    // The verdict is decided in `finally`, after stopCapture: the crash-journal gate needs the
-    // whole-run statistics, which exist only once the capture has been read.
+    // The verdict is decided in `finally`, after stopCapture: the write deadline needs the measured
+    // draft write time, which exists only once the capture has been read.
   } catch (error) {
     summary.result = "fail";
     summary.failed_step = currentStep;
@@ -1072,10 +1074,11 @@ async function main() {
       (summary.unmet?.length ? `Unmet conditions:\n${summary.unmet.map((u) => `- ${u}`).join("\n")}\n\n` : "") +
       (summary.pending_real_device?.length ? `Pending (real-device round, not run here): ${summary.pending_real_device.join("; ")}.\n\n` : "") +
       (summary.unconfirmed?.length ? `Unconfirmed (no pass without them):\n${summary.unconfirmed.map((u) => `- ${u}`).join("\n")}\n\n` : "") +
-      (summary.journal_coverage ? `Crash-journal coverage, paired by (process, seq): ${summary.journal_coverage.edits} edits (change_received), ` +
-        `${summary.journal_coverage.paired} with a cost line, ${summary.journal_coverage.failures} write failures, ${summary.journal_coverage.likely_interrupted} likely interrupted ` +
-        `(the process's last edit, no journal line, its death logged after that edit), ${summary.journal_coverage.missing} without a result (allowed ${summary.journal_coverage.allowed_missing}), ` +
-        `${summary.journal_coverage.unpaired} unpaired journal lines (excluded).\n\n` : "") +
+      (summary.write_deadline ? `Pass condition: typed text older than the write deadline at the kill survives. Deadline = write interval ${summary.write_deadline.interval_ms} ms ` +
+        `+ write budget ${summary.write_deadline.budget_ms} ms = ${summary.write_deadline.deadline_ms} ms (${summary.write_deadline.basis}). A change younger than that ` +
+        `(Δ from its change_received to the kill's lower bound) may be lost; an older one, or anything a draft_written line reported before the kill, may not. ` +
+        `Home and wait 1 s must keep the whole text. The restored text must be a prefix of what was typed. Measured this run (reported only, never moves the deadline): ` +
+        `change -> draft_written p95 ${summary.write_deadline.measured_change_to_written_p95_ms ?? "-"} ms (gated at the budget), write cost p95 ${summary.write_deadline.measured_write_cost_p95_us ?? "-"} µs.\n\n` : "") +
       `Exit interval on the device clock (logcat -v monotonic): lower = latest pre-signal line of the run's own kill (AM "Killing" / am_kill "stop <pkg>"; ` +
       `recents swipe: also "remove task"), upper = earliest evidence of death (device-side /proc poll: gone or zombie; am_proc_died; cgroup empty). ` +
       `Exit Δ = interval − last change_received uptimeMs (b: − the send_tap probe logged right before the tap). A sample is valid for a bucket only when ` +
@@ -1091,12 +1094,11 @@ async function main() {
         `(${summary.apk.file_sha256 === summary.apk.installed_base_apk_sha256 ? "match" : "MISMATCH"}); versionName ${summary.apk.version_name}; versionCode ${summary.apk.version_code}; ` +
         `debuggable ${summary.apk.debuggable}; source commit ${summary.apk.source_commit ?? "?"}` +
         `${summary.apk.required_commit ? `; contains ${summary.apk.required_commit}: ${summary.apk.required_commit_compare ?? "unknown"}` : ""}.\n\n` : "") +
-      (summary.journal_write_cost ? `Crash-journal write on the input thread (draft_journal_written costUs, encode + one store write; paired completed samples only, ${summary.journal_write_cost.unpaired_excluded ?? 0} unpaired lines excluded): ` +
-        `n=${summary.journal_write_cost.samples}, min ${summary.journal_write_cost.min_us}, p50 ${summary.journal_write_cost.p50_us}, p95 ${summary.journal_write_cost.p95_us}, ` +
-        `p99 ${summary.journal_write_cost.p99_us}, max ${summary.journal_write_cost.max_us} µs (target p95 < 1000 µs).\n\n` : "") +
-      (summary.journal_write_cost_parts ? `Split of the same paired samples (µs): ${Object.entries(summary.journal_write_cost_parts)
-        .map(([name, q]) => `${name.toUpperCase()} n=${q.samples} p50 ${q.p50_us} p95 ${q.p95_us} p99 ${q.p99_us} max ${q.max_us}`)
-        .join("; ")} (STORE = INDEX + PUT).\n\n` : "") +
+      (summary.draft_write_cost ? `Draft write time (draft_written costUs: from the moment the write runs to durable, lock waits included; every path): ` +
+        `n=${summary.draft_write_cost.samples}, min ${summary.draft_write_cost.min_us}, p50 ${summary.draft_write_cost.p50_us}, p95 ${summary.draft_write_cost.p95_us}, ` +
+        `p99 ${summary.draft_write_cost.p99_us}, max ${summary.draft_write_cost.max_us} µs. By path: ${Object.entries(summary.draft_write_cost_by_path ?? {})
+          .map(([name, q]) => `${name} n=${q.samples} p50 ${q.p50_us} p95 ${q.p95_us} max ${q.max_us}`)
+          .join("; ") || "none"}.\n\n` : "") +
       (summary.write_paths ? `Draft writes by path (app marker lines): ${JSON.stringify(summary.write_paths)}.\n\n` : "") +
       (summary.fast_progress ? `Fast typing valid / attempted (target ${FAST_RUNS} each; valid = whole exit interval inside the tolerance and burst 3-5 s): ` +
         `${Object.entries(summary.fast_progress).map(([d, p]) => `${d} s: ${p.valid} / ${p.attempted}`).join("; ")}.\n\n` : "") +

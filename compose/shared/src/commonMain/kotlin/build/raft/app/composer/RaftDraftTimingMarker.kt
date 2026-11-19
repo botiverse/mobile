@@ -40,15 +40,14 @@ fun raftDraftTimingMarkerEnabled(buildConfigDebug: Boolean, appDebuggable: Boole
     buildConfigDebug && appDebuggable
 
 /**
- * The crash journal's input-thread write cost as a timing line (task #246):
- * `draft_journal_written seq=<change seq> path=sync costUs=<total µs> encodeUs=<µs> storeUs=<µs> indexUs=<µs> putUs=<µs> indexWrite=<0|1> len=<text length>`,
- * [seq] being the `change_received` seq of the same change (logged just before the journal write).
- * ENCODE = the entry to JSON; STORE = index (the journaled-drafts list) + put (the row's store write);
- * costUs = the whole write including the journal lock; indexWrite=1 when the write also registered the
- * draft key in the journal index. Never the text.
+ * The durable draft write of a typed change as a timing line (task #246):
+ * `draft_written seq=<change seq> len=<text length> path=<background|flush> costUs=<µs>`,
+ * [seq] being the `change_received` seq of the newest change the write carries. [path] says which
+ * write made it durable: `background` is the interval write (at once after a quiet period, then at
+ * most every 40 ms while typing: `DefaultChangeWriteIntervalMillis`), `flush` a synchronous flush
+ * (backgrounding, Home). costUs is how long that write took on
+ * its own thread, from the moment it started running (lock waits included, queueing on the
+ * dispatcher before it ran not included). Never the text.
  */
-internal fun raftDraftJournalCostLine(seq: Long, cost: SharedThreadComposerDraftJournalWriteCost, textLength: Int): String =
-    "draft_journal_written seq=$seq path=sync costUs=${cost.total.inWholeMicroseconds} " +
-        "encodeUs=${cost.encode.inWholeMicroseconds} storeUs=${(cost.index + cost.put).inWholeMicroseconds} " +
-        "indexUs=${cost.index.inWholeMicroseconds} putUs=${cost.put.inWholeMicroseconds} " +
-        "indexWrite=${if (cost.indexWrite) 1 else 0} len=$textLength"
+internal fun raftDraftWrittenLine(seq: Long, textLength: Int, path: String, cost: kotlin.time.Duration): String =
+    "draft_written seq=$seq len=$textLength path=$path costUs=${cost.inWholeMicroseconds}"
