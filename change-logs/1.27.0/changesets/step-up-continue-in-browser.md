@@ -3,7 +3,7 @@ type: improved
 area: settings
 platforms:
   - ios
-pull_request: 0
+pull_request: 5038
 rollout: flag
 ---
 
