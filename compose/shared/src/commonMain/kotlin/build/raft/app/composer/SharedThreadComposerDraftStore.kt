@@ -128,6 +128,8 @@ internal data class SharedThreadComposerDraftJournalWriteCost(
     val index: kotlin.time.Duration,
     val put: kotlin.time.Duration,
     val total: kotlin.time.Duration,
+    /** The write also registered the draft key in the journal index (one extra store write). */
+    val indexWrite: Boolean = false,
 )
 
 @Serializable
@@ -422,6 +424,12 @@ private class SharedThreadComposerDraftStoreLockEntry(
      * one row read and one row write.
      */
     val journalLock = SynchronizedObject()
+
+    /**
+     * Draft keys known to be listed in the journal index, per index scope (account token), with the
+     * [SharedThreadComposerDraftJournalIndexEpoch] they were read or written at.  Guarded by [journalLock].
+     */
+    val journalIndexCache: MutableMap<String, Pair<Long, MutableSet<String>>> = mutableMapOf()
 
     /**
      * A transition is a store-wide gate, not a facade-local detail.  Home and Thread can wrap
@@ -781,20 +789,50 @@ internal class SharedThreadComposerDraftPersistence(
      */
     fun writeJournal(entry: SharedThreadComposerDraftJournalEntry): SharedThreadComposerDraftJournalWriteCost {
         val started = TimeSource.Monotonic.markNow()
-        val encoded = ComposerDraftJson.encodeToString(entry)
+        val encoded = SharedThreadComposerDraftJournalRow.encode(entry)
         val encode = started.elapsedNow()
         var index = kotlin.time.Duration.ZERO
         var put = kotlin.time.Duration.ZERO
+        var indexWrite = false
         synchronized(lockEntry.journalLock) {
             val indexStarted = TimeSource.Monotonic.markNow()
-            val listed = journalIndexLocked()
-            if (entry.key !in listed) store.putString(JournalIndexKey, (listed + entry.key).joinToString("\n"))
+            // An update of a draft key already listed (and not removed since: same epoch) skips the index.
+            val scope = journalIndexScopeOf(store)
+            val epoch = SharedThreadComposerDraftJournalIndexEpoch.value
+            val cached = scope?.let { lockEntry.journalIndexCache[it] }?.takeIf { (at, _) -> at == epoch }?.second
+            if (cached == null || entry.key !in cached) {
+                var listed = journalIndexLocked()
+                if (entry.key !in listed) {
+                    store.putString(JournalIndexKey, (listed + entry.key).joinToString("\n"))
+                    indexWrite = true
+                    // Registration only (rare): read back, since the store may have dropped the write (no
+                    // account bound at that instant).
+                    listed = journalIndexLocked()
+                }
+                // Cache "listed" only when the index as read lists the key AND the account is the same one
+                // after the writes; otherwise the next write reads the index again.
+                if (scope != null && entry.key in listed && journalIndexScopeOf(store) == scope) {
+                    lockEntry.journalIndexCache[scope] = epoch to listed.toMutableSet()
+                }
+            }
             index = indexStarted.elapsedNow()
             val putStarted = TimeSource.Monotonic.markNow()
             store.putString(journalRowKey(entry.key), encoded)
             put = putStarted.elapsedNow()
         }
-        return SharedThreadComposerDraftJournalWriteCost(encode = encode, index = index, put = put, total = started.elapsedNow())
+        return SharedThreadComposerDraftJournalWriteCost(
+            encode = encode,
+            index = index,
+            put = put,
+            total = started.elapsedNow(),
+            indexWrite = indexWrite,
+        )
+    }
+
+    /** Forgets every cached index of this store (a removal or a raw rewrite of index entries). */
+    private fun invalidateJournalIndexCacheLocked() {
+        lockEntry.journalIndexCache.clear()
+        SharedThreadComposerDraftJournalIndexEpoch.bump()
     }
 
     /** The raw journal rows of [keys] (null: no row), for a transition's rollback image. */
@@ -803,6 +841,7 @@ internal class SharedThreadComposerDraftPersistence(
 
     internal fun restoreJournalRaw(rows: Map<String, String?>) {
         synchronized(lockEntry.journalLock) {
+            invalidateJournalIndexCacheLocked()
             val listed = journalIndexLocked()
             val missing = rows.filter { (key, value) -> value != null && key !in listed }.keys
             if (missing.isNotEmpty()) store.putString(JournalIndexKey, (listed + missing).joinToString("\n"))
@@ -813,9 +852,7 @@ internal class SharedThreadComposerDraftPersistence(
     /** The journal entry of draft [key], or null (none, or unreadable). */
     fun readJournal(key: String): SharedThreadComposerDraftJournalEntry? =
         store.getString(journalRowKey(key))?.let { encoded ->
-            runCatching { ComposerDraftJson.decodeFromString<SharedThreadComposerDraftJournalEntry>(encoded) }
-                .getOrNull()
-                ?.takeIf { entry -> entry.key == key }
+            SharedThreadComposerDraftJournalRow.decode(encoded)?.takeIf { entry -> entry.key == key }
         }
 
     /** Drops the journal of [key] (a write or clear of that draft that did not come from typing). */
@@ -827,6 +864,7 @@ internal class SharedThreadComposerDraftPersistence(
     /** Drops every journal row and the list of them (account retired, every draft cleared). */
     fun clearJournal() {
         synchronized(lockEntry.journalLock) {
+            invalidateJournalIndexCacheLocked()
             journalIndexLocked().forEach { key -> store.putString(journalRowKey(key), null) }
             store.putString(JournalIndexKey, null)
         }
@@ -836,7 +874,7 @@ internal class SharedThreadComposerDraftPersistence(
         synchronized(lockEntry.journalLock) {
             val row = journalRowKey(key)
             val encoded = store.getString(row) ?: return@synchronized
-            val entry = runCatching { ComposerDraftJson.decodeFromString<SharedThreadComposerDraftJournalEntry>(encoded) }.getOrNull()
+            val entry = SharedThreadComposerDraftJournalRow.decode(encoded)
             // An unreadable journal is dropped: it can never be applied.
             if (entry == null || predicate(entry)) {
                 store.putString(row, null)
@@ -844,6 +882,7 @@ internal class SharedThreadComposerDraftPersistence(
                 // are gone are dropped here, off the input thread, once it grows past a few.
                 val listed = journalIndexLocked()
                 if (listed.size > JournalIndexCompactAbove) {
+                    invalidateJournalIndexCacheLocked()
                     val live = listed.filter { listedKey -> store.getString(journalRowKey(listedKey)) != null }
                     store.putString(JournalIndexKey, live.takeIf { it.isNotEmpty() }?.joinToString("\n"))
                 }
