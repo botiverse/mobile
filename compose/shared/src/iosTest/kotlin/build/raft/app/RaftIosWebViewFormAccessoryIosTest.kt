@@ -53,7 +53,7 @@ class RaftIosWebViewFormAccessoryIosTest {
     fun theWebViewLeavesTheFormAccessoryBarOutUnlessAsked() {
         val view = RaftIosWebView(frame = CGRectMake(0.0, 0.0, 1.0, 1.0), configuration = WKWebViewConfiguration())
         assertFalse(view.showsFormAccessoryBar)
-        assertNull(view.inputAccessoryView())
+        assertNull(view.formAccessoryView())
     }
 
     @Test
@@ -61,7 +61,7 @@ class RaftIosWebViewFormAccessoryIosTest {
         assertFalse(config().showsFormAccessoryBar)
         val (_, appPage) = hostedWebView(config())
         assertFalse(appPage.showsFormAccessoryBar)
-        assertNull(appPage.inputAccessoryView())
+        assertNull(appPage.formAccessoryView())
 
         val (_, browser) = hostedWebView(config(showsFormAccessoryBar = true))
         assertTrue(browser.showsFormAccessoryBar)
@@ -77,6 +77,6 @@ class RaftIosWebViewFormAccessoryIosTest {
         assertTrue(raftIsSameObjCObject(container?.subviews?.single(), view))
         host.applyConfig(config(showsFormAccessoryBar = false))
         assertFalse(view.showsFormAccessoryBar)
-        assertNull(view.inputAccessoryView())
+        assertNull(view.formAccessoryView())
     }
 }
