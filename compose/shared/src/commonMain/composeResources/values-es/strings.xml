@@ -1522,6 +1522,8 @@
     <string name="member_report_issue_step_complete_failed">No se pudo finalizar el reporte</string>
     <string name="member_report_issue_submit_failed">No se pudo enviar el reporte del problema</string>
     <string name="member_report_issue_server_unavailable">El servidor actual no está disponible.</string>
+    <string name="member_report_issue_privacy_mode_on">Este servidor funciona en modo de privacidad, así que el reporte no se puede enviar a Raft. No se ha subido nada.</string>
+    <string name="member_report_issue_privacy_mode_unknown">Aún no se puede enviar: este servidor todavía no ha indicado si el modo de privacidad está activado. No se ha subido nada.</string>
     <string name="member_report_issue_success_title">Reporte enviado</string>
     <string name="member_report_issue_success_body">Se subió la exportación de comentarios.</string>
     <string name="member_report_issue_success_hint">El paquete incluye la descripción del problema y el contexto del cliente que seleccionaste.</string>

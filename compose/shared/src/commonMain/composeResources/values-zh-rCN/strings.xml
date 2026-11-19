@@ -1520,6 +1520,8 @@
     <string name="member_report_issue_step_complete_failed">完成报告失败</string>
     <string name="member_report_issue_submit_failed">提交问题报告失败</string>
     <string name="member_report_issue_server_unavailable">当前服务器不可用。</string>
+    <string name="member_report_issue_privacy_mode_on">此服务器开启了隐私模式，报告无法发送给 Raft。没有上传任何内容。</string>
+    <string name="member_report_issue_privacy_mode_unknown">暂时无法发送：此服务器还未告知是否开启隐私模式。没有上传任何内容。</string>
     <string name="member_report_issue_success_title">报告已提交</string>
     <string name="member_report_issue_success_body">反馈导出已上传。</string>
     <string name="member_report_issue_success_hint">报告包包含问题描述，以及你选择的客户端上下文。</string>

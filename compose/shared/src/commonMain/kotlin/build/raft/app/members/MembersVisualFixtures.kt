@@ -29,6 +29,7 @@ import build.raft.app.data.AgentAppEventPage
 import build.raft.app.data.AgentWorkspaceTreeSnapshot
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsServerActionResult
 import build.raft.app.data.ComputerStatus
@@ -472,6 +473,9 @@ private val membersAgentDetailVisualWorkspaceNotesChildren = AgentWorkspaceChild
     )
 )
 
+/** Captures show the profile of an ordinary (privacy mode off) server, Report issue included. */
+internal val MembersVisualPrivacyModeOff = MutableStateFlow(RaftPrivacyMode.Off)
+
 internal enum class MembersAgentDetailVisualMode {
     Profile,
     LifecycleActions,
@@ -794,6 +798,7 @@ internal fun MemberDetailVisualSeedContent(
             agentPanelTabOrder = payload.agentPanelTabOrder,
             initialAgentScopeSet = seed.agentScopeSet,
             stableVisualCapture = true,
+            privacyMode = MembersVisualPrivacyModeOff,
             visualLiveActivityDetail = (seed.agentDetailState as? MembersAgentDetailLoadState.Content)?.detail?.summary?.activityDetail
         ),
         remoteControls = rememberMembersVisualFixtureRemoteControls()
@@ -859,7 +864,8 @@ internal fun MembersAgentDetailVisualContent(
         ),
         presentation = MembersAgentDetailPresentation(
             initialVisualMode = visualMode,
-            stableVisualCapture = true
+            stableVisualCapture = true,
+            privacyMode = MembersVisualPrivacyModeOff
         ),
         remoteControls = rememberMembersVisualFixtureRemoteControls()
     )
@@ -908,7 +914,7 @@ internal fun MembersRemoteAgentProfileVisualContent(
             nowEpochMillis = 1781872200000,
             timeFormat = RaftTimeFormat24Hour
         ),
-        presentation = MembersAgentDetailPresentation(stableVisualCapture = true),
+        presentation = MembersAgentDetailPresentation(stableVisualCapture = true, privacyMode = MembersVisualPrivacyModeOff),
         accessMode = accessMode
     )
 }

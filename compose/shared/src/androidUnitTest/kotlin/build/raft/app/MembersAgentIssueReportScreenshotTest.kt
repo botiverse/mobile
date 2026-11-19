@@ -12,6 +12,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AgentIssueReportResult
 import build.raft.app.data.AgentIssueTicketRequest
 import build.raft.app.data.AgentIssueTranscriptRequestState
+import build.raft.app.data.RaftPrivacyMode
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -30,6 +31,8 @@ import org.robolectric.shadows.ShadowDialog
  *   requested.
  * - `members.report-issue.ticket-failed`: uploaded but no ticket — warning, report reference,
  *   Copy report reference and Retry ticket.
+ * - `members.report-issue.privacy-on`: the panel was open when the server answered privacy mode
+ *   on — the warning first, Report disabled (web ReportIssueDialog `isPrivacyModeOn()`).
  * Verify / record as [RaftRobolectricScreenshot]; reports land in `build/reports/home-screenshots/`.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -58,6 +61,10 @@ class MembersAgentIssueReportScreenshotTest {
     @Test
     fun ticketFailedDark() =
         capture("members.report-issue.ticket-failed.dark", RaftAppAppearance.Dark) { ReceiptContent(ticketFailedReceipt) }
+
+    @Test
+    fun privacyOnLight() =
+        capture("members.report-issue.privacy-on", RaftAppAppearance.Light) { PanelContent(RaftPrivacyMode.On) }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(
@@ -104,13 +111,14 @@ private val ticketFailedReceipt =
     )
 
 @Composable
-private fun PanelContent() {
+private fun PanelContent(privacyMode: RaftPrivacyMode = RaftPrivacyMode.Off) {
     MembersAgentIssueReportDialog(
         agentName = "Cindy",
         runtimeTranscriptAvailable = true,
         canIncludeMachineLog = true,
         busy = false,
         errorMessage = null,
+        privacyMode = privacyMode,
         onSubmit = {},
         onDismiss = {},
     )

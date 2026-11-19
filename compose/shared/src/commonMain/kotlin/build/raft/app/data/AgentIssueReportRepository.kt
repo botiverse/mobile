@@ -43,6 +43,26 @@ private val agentIssueRequestJson = Json {
 /** Web `TRANSCRIPT_REQUEST_CONFIRM_CAP_MS` (packages/web/src/feedback/transcriptRequestState.ts). */
 internal const val AGENT_ISSUE_TRANSCRIPT_CONFIRM_CAP_MILLIS = 10_000L
 
+/**
+ * `RAFT_PRIVACY_MODE` and the agent report (botiverse/slock docs/observability/privacy-mode.md, web
+ * AgentDetailPanel + ReportIssueDialog `isPrivacyModeOn()`): the bundle goes to Raft's trace-upload
+ * worker before any ticket exists, so it is sent only once this environment's client config has
+ * answered "off" ([RaftTelemetryPrivacy], published by [SharedClientConfigStore]). While the answer
+ * is unknown or "on", the entry is hidden and nothing is uploaded.
+ */
+internal fun agentIssueReportAllowed(mode: RaftPrivacyMode): Boolean = mode == RaftPrivacyMode.Off
+
+/** The submit error for a report privacy mode does not let out (null when it may go). */
+internal fun agentIssueReportPrivacyError(mode: RaftPrivacyMode): ScreenError? =
+    when (mode) {
+        RaftPrivacyMode.Off -> null
+        RaftPrivacyMode.On -> ScreenError(AGENT_ISSUE_REPORT_PRIVACY_MODE_ON, retryable = false)
+        RaftPrivacyMode.Unknown -> ScreenError(AGENT_ISSUE_REPORT_PRIVACY_MODE_UNKNOWN, retryable = false)
+    }
+
+internal const val AGENT_ISSUE_REPORT_PRIVACY_MODE_ON = "agent_issue_report_privacy_mode_on"
+internal const val AGENT_ISSUE_REPORT_PRIVACY_MODE_UNKNOWN = "agent_issue_report_privacy_mode_unknown"
+
 internal data class AgentIssueReportSubmission(
     val server: ServerSummary,
     val member: MemberProfile,
@@ -116,9 +136,12 @@ internal class AgentIssueReportRepository(
      * — and listed by — the same Hands app that page reads. Blank files as web.
      */
     private val feedbackClientKind: String = "",
-    private val feedbackClientVersion: String = ""
+    private val feedbackClientVersion: String = "",
+    /** This environment's privacy mode, read again before each request to the trace-upload worker. */
+    private val privacyMode: () -> RaftPrivacyMode = { RaftTelemetryPrivacy.state.value }
 ) {
     suspend fun submit(submission: AgentIssueReportSubmission): DataResult<AgentIssueReportResult> {
+        privacyBlock("start")?.let { return it }
         val session = sessionStore.readSession()
             ?: return DataResult.Error(ScreenError("agent_issue_report_unauthenticated", retryable = false))
         val serverId = submission.server.id
@@ -162,11 +185,15 @@ internal class AgentIssueReportRepository(
                     daemonVersion = submission.detail?.summary?.daemonVersion,
                     metadata = submission.toMetadata(recentMessages.dmChannelId, bundle.generatedAt)
                 )
+            // The answer can change while messages load (an environment change starts over at
+            // unknown): check again right before the worker sees anything.
+            privacyBlock("create")?.let { return it }
             val created =
                 when (val result = createReport(createRequest)) {
                     is DataResult.Content -> result.data
                     else -> return result.toFailure()
                 }
+            privacyBlock("upload")?.let { return it }
             uploadBundle(created, bundleJson).failureOrNull()?.let { return it }
             completeReport(created).failureOrNull()?.let { return it }
 
@@ -233,6 +260,13 @@ internal class AgentIssueReportRepository(
             logger("agent_issue_report_exception type=${throwable::class.simpleName}")
             DataResult.Error(ScreenError("agent_issue_report_failed", retryable = true))
         }
+    }
+
+    private fun privacyBlock(step: String): DataResult.Error? {
+        val mode = privacyMode()
+        val error = agentIssueReportPrivacyError(mode) ?: return null
+        logger("agent_issue_report_blocked reason=privacy_mode mode=${mode.name.lowercase()} step=$step")
+        return DataResult.Error(error)
     }
 
     private suspend fun createAttestation(serverId: ServerId): DataResult<AgentIssueScopeAttestation> =

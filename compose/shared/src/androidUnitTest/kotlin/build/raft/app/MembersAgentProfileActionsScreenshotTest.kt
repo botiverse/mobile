@@ -67,6 +67,7 @@ class MembersAgentProfileActionsScreenshotTest {
                             onOpenRestartReset = {},
                             onCopyDiagnostics = {},
                             onReportIssue = {},
+                            reportIssueOffered = true,
                             modifier = Modifier.padding(horizontal = 20.dp),
                         )
                     }

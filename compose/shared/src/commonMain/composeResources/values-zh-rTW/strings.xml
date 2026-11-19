@@ -1522,6 +1522,8 @@
     <string name="member_report_issue_step_complete_failed">完成回報失敗</string>
     <string name="member_report_issue_submit_failed">無法提交問題回報</string>
     <string name="member_report_issue_server_unavailable">目前的伺服器無法使用。</string>
+    <string name="member_report_issue_privacy_mode_on">此伺服器開啟了隱私模式，回報無法傳送給 Raft。沒有上傳任何內容。</string>
+    <string name="member_report_issue_privacy_mode_unknown">暫時無法傳送：此伺服器尚未告知是否開啟隱私模式。沒有上傳任何內容。</string>
     <string name="member_report_issue_success_title">回報已提交</string>
     <string name="member_report_issue_success_body">已上傳意見回饋匯出資料。</string>
     <string name="member_report_issue_success_hint">資料包內含問題描述，以及你勾選附上的相關內容。</string>
