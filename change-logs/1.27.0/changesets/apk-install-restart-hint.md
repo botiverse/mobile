@@ -3,7 +3,7 @@ type: improved
 area: messages
 platforms:
   - android
-pull_request: 0
+pull_request: 5054
 rollout: full
 ---
 
