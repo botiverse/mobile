@@ -9,8 +9,14 @@
 //     case and coordinate, taken from the same report.cases rows. null when the
 //     history is empty, forked or broken.
 //   - report.reviews[].attempt_ids: the attempt ids a vote was bound to.
-//   - POST /api/runs/:id/panel-review takes top-level expected_attempt_ids, in
-//     the report's order.
+//   - Attempt-bound votes go to POST /api/runs/:id/attempt-panel-review
+//     (botiverse/testbed#327 @ bb13fde2) with
+//     top-level expected_attempt_ids, in the report's order. Its receipt echoes
+//     the attempt_ids the vote was bound to. Legacy votes keep the old
+//     POST /api/runs/:id/panel-review URL and carry no attempt ids.
+//     During a mixed deployment an older Worker ignores expected_attempt_ids on
+//     the old URL and still answers ok. So an attempt-bound vote never uses the
+//     old URL, and it counts only when the receipt names exactly its attempts.
 //
 // Modes:
 //   - "attempt_bound": review_context.attempt_ids is a non-empty array. Only
@@ -81,4 +87,62 @@ export function panelReviewBody(scope, vote) {
     ...vote,
     ...(scope.mode === "attempt_bound" ? { expected_attempt_ids: [...scope.attemptIds] } : {}),
   };
+}
+
+// Where a vote is POSTed. The attempt-bound route exists only on Workers that
+// enforce expected_attempt_ids; the old route stays for reports without
+// review_context.
+export function panelReviewPath(scope, runId) {
+  return scope.mode === "attempt_bound"
+    ? `/api/runs/${runId}/attempt-panel-review`
+    : `/api/runs/${runId}/panel-review`;
+}
+
+// The attempt ids a receipt says the vote was bound to. Testbed
+// botiverse/testbed#327 @ bb13fde2 (worker/src/panel-review.ts panelReview)
+// answers { ok, review_id, attempt_ids, duplicate, votes, finalized, ... } with
+// attempt_ids at the top level. Undefined when the receipt does not have one.
+export function receiptAttemptIds(receipt) {
+  return receipt && typeof receipt === "object" && Object.hasOwn(receipt, "attempt_ids") ? receipt.attempt_ids : undefined;
+}
+
+const sameList = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]);
+
+// Posts one panel vote and reports whether it counts.
+//   post(path, body) -> { status, body } where body is the parsed JSON (or {}).
+// Result:
+//   { stage: "submitted", path, receipt }: legacy vote accepted, or an
+//     attempt-bound vote whose receipt names exactly scope.attemptIds (same
+//     order) and a review_id (docs/final-review-context.md "Panel opinions").
+//   { stage: "unconfirmed", path, status, reason, receipt }: an attempt-bound
+//     vote that is not confirmed (404 = Worker without the route, or receipt
+//     without / with different attempt_ids, or without review_id). It must not be counted, and the
+//     old URL must not be tried.
+// Any other non-2xx status throws, as before.
+export async function submitPanelVote({ scope, runId, vote, post }) {
+  const path = panelReviewPath(scope, runId);
+  const { status, body } = await post(path, panelReviewBody(scope, vote));
+  const bound = scope.mode === "attempt_bound";
+  if (bound && status === 404) {
+    return { stage: "unconfirmed", path, status, receipt: body ?? null,
+      reason: `${path} returned 404: this Testbed Worker cannot bind a vote to attempts; vote not counted (old panel-review URL deliberately not used)` };
+  }
+  if (status < 200 || status >= 300) {
+    throw new Error(`Stamp ${status} ${path}: ${JSON.stringify(body ?? null).slice(0, 500)}`);
+  }
+  if (!bound) return { stage: "submitted", path, receipt: body };
+  const echoed = receiptAttemptIds(body);
+  if (echoed === undefined) {
+    return { stage: "unconfirmed", path, status, receipt: body,
+      reason: `${path} receipt has no attempt_ids; expected ${JSON.stringify(scope.attemptIds)}; vote not counted` };
+  }
+  if (!sameList(echoed, scope.attemptIds)) {
+    return { stage: "unconfirmed", path, status, receipt: body,
+      reason: `${path} receipt attempt_ids ${JSON.stringify(echoed)} differ from expected ${JSON.stringify(scope.attemptIds)}; vote not counted` };
+  }
+  if (typeof body?.review_id !== "string" || !body.review_id) {
+    return { stage: "unconfirmed", path, status, receipt: body,
+      reason: `${path} receipt has no review_id; vote not counted` };
+  }
+  return { stage: "submitted", path, receipt: body };
 }

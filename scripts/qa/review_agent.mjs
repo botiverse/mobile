@@ -8,7 +8,7 @@
 
 import { resolvePiModel } from "./pi_model.mjs";
 import { selectReviewScreenshots } from "./review_evidence_selection.mjs";
-import { panelReviewBody, scopeReviewReport } from "./review_attempt_scope.mjs";
+import { scopeReviewReport, submitPanelVote } from "./review_attempt_scope.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 
@@ -63,6 +63,39 @@ async function stamp(path, init = {}) {
   const text = await res.text();
   if (!res.ok) throw new Error(`Stamp ${res.status} ${path}: ${text.slice(0, 500)}`);
   return text ? JSON.parse(text) : {};
+}
+
+// Vote POST: returns the status instead of throwing so submitPanelVote can
+// tell a Worker without the attempt-bound route (404) from other failures.
+async function stampPost(path, body) {
+  const res = await fetch(`${stampUrl}${path}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${stampToken}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let parsed;
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    parsed = { raw: text.slice(0, 500) };
+  }
+  return { status: res.status, body: parsed };
+}
+
+// Records the POST outcome. An unconfirmed attempt-bound vote is not counted:
+// the record keeps stage "unconfirmed" and the process exits 2, so the panel
+// workflow (which requires stage submitted/already_submitted) fails.
+function finishSubmission(result) {
+  if (result.stage === "submitted") {
+    saveRecord({ stage: "submitted", post_path: result.path, post_receipt: result.receipt });
+    console.log(JSON.stringify(record, null, 2));
+    return;
+  }
+  saveRecord({ stage: "unconfirmed", post_path: result.path, post_status: result.status, post_receipt: result.receipt, unconfirmed_reason: result.reason });
+  console.log(JSON.stringify(record, null, 2));
+  console.error(`review_agent: vote unconfirmed: ${result.reason}`);
+  process.exitCode = 2;
 }
 
 async function evidenceBytes(ev) {
@@ -294,9 +327,11 @@ async function main() {
     };
     validateVote(incompleteVote, cases);
     saveRecord({ stage: "evidence_incomplete", parsed_vote: incompleteVote, validation: { ok: true } });
-    const posted = await stamp(`/api/runs/${runId}/panel-review`, {
-      method: "POST",
-      body: JSON.stringify(panelReviewBody(scope, {
+    finishSubmission(await submitPanelVote({
+      scope,
+      runId,
+      post: stampPost,
+      vote: {
         reviewer,
         verdict: incompleteVote.verdict,
         reason: incompleteVote.reason,
@@ -315,10 +350,8 @@ async function main() {
           model: modelName,
           usage: null,
         },
-      })),
-    });
-    saveRecord({ stage: "submitted", post_receipt: posted });
-    console.log(JSON.stringify(record, null, 2));
+      },
+    }));
     return;
   }
 
@@ -430,17 +463,17 @@ async function main() {
     model: modelName,
     usage: response.usage || null,
   };
-  const posted = await stamp(`/api/runs/${runId}/panel-review`, {
-    method: "POST",
-    body: JSON.stringify(panelReviewBody(scope, {
+  finishSubmission(await submitPanelVote({
+    scope,
+    runId,
+    post: stampPost,
+    vote: {
       reviewer,
       verdict: vote.verdict,
       reason: String(vote.reason || "").slice(0, 1000),
       detail_json: detailJson,
-    })),
-  });
-  saveRecord({ stage: "submitted", post_receipt: posted });
-  console.log(JSON.stringify(record, null, 2));
+    },
+  }));
 }
 
 main().catch((error) => {

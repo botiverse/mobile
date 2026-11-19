@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { AttemptScopeError, panelReviewBody, scopeReviewReport } from "./review_attempt_scope.mjs";
+import { AttemptScopeError, panelReviewBody, panelReviewPath, receiptAttemptIds, scopeReviewReport, submitPanelVote } from "./review_attempt_scope.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.join(HERE, "review_agent.mjs");
@@ -84,6 +84,82 @@ test("the vote body carries expected_attempt_ids only when attempt-bound, in rep
   assert.deepEqual(panelReviewBody(scopeReviewReport(legacy), vote), vote);
 });
 
+// ---- vote submission: attempt-bound route and receipt check ------------------
+
+const VOTE = { reviewer: "p1", verdict: "passed", reason: "ok", detail_json: {} };
+const legacyReport = () => { const { review_context: _, ...r } = retriedReport(); return r; };
+function fakePost(status, body) {
+  const calls = [];
+  return { calls, post: async (p, b) => { calls.push({ path: p, body: b }); return { status, body }; } };
+}
+
+test("attempt-bound votes use the attempt-panel-review route; legacy votes keep panel-review", () => {
+  assert.equal(panelReviewPath(scopeReviewReport(retriedReport()), "run-1"), "/api/runs/run-1/attempt-panel-review");
+  assert.equal(panelReviewPath(scopeReviewReport(legacyReport()), "run-1"), "/api/runs/run-1/panel-review");
+});
+
+test("receipt attempt ids are read from the top-level field of the Testbed receipt", () => {
+  assert.deepEqual(receiptAttemptIds({ ok: true, review_id: "r", attempt_ids: ["a", "b"] }), ["a", "b"]);
+  assert.equal(receiptAttemptIds({ ok: true, receipt: { attempt_ids: ["a"] } }), undefined);
+  assert.equal(receiptAttemptIds({ ok: true }), undefined);
+  assert.equal(receiptAttemptIds(null), undefined);
+});
+
+test("attempt-bound vote is submitted when the new route echoes exactly the expected attempts", async () => {
+  // Shape of botiverse/testbed#327 @ bb13fde2 panelReview(); a replay has duplicate=true and the original id.
+  for (const receipt of [{ ok: true, review_id: "rv-1", attempt_ids: ["rc-new", "rc-set"], duplicate: false, votes: { passed: 1, failed: 0 }, finalized: null },
+    { ok: true, review_id: "rv-1", attempt_ids: ["rc-new", "rc-set"], duplicate: true, votes: { passed: 1, failed: 0 }, finalized: null }]) {
+    const f = fakePost(200, receipt);
+    const r = await submitPanelVote({ scope: scopeReviewReport(retriedReport()), runId: "run-1", vote: VOTE, post: f.post });
+    assert.equal(r.stage, "submitted");
+    assert.deepEqual(f.calls, [{ path: "/api/runs/run-1/attempt-panel-review", body: { ...VOTE, expected_attempt_ids: ["rc-new", "rc-set"] } }]);
+  }
+});
+
+test("attempt-bound vote on a Worker without the route (404) stays unconfirmed and never falls back", async () => {
+  const f = fakePost(404, { error: "not found" });
+  const r = await submitPanelVote({ scope: scopeReviewReport(retriedReport()), runId: "run-1", vote: VOTE, post: f.post });
+  assert.equal(r.stage, "unconfirmed");
+  assert.equal(r.status, 404);
+  assert.match(r.reason, /404/);
+  assert.deepEqual(f.calls.map((c) => c.path), ["/api/runs/run-1/attempt-panel-review"]);
+});
+
+test("attempt-bound vote whose receipt lacks or differs in attempt_ids, or lacks review_id, stays unconfirmed", async () => {
+  for (const [receipt, why] of [
+    [{ ok: true, review_id: "rv-1" }, /no attempt_ids/],
+    [{ ok: true, review_id: "rv-1", receipt: { attempt_ids: ["rc-new", "rc-set"] } }, /no attempt_ids/],
+    [{ ok: true, review_id: "rv-1", attempt_ids: null }, /differ/],
+    [{ ok: true, review_id: "rv-1", attempt_ids: ["rc-set", "rc-new"] }, /differ/],
+    [{ ok: true, review_id: "rv-1", attempt_ids: ["rc-new"] }, /differ/],
+    [{ ok: true, review_id: "rv-1", attempt_ids: ["rc-old", "rc-set"] }, /differ/],
+    [{ ok: true, attempt_ids: ["rc-new", "rc-set"] }, /no review_id/],
+    [{ ok: true, review_id: "", attempt_ids: ["rc-new", "rc-set"] }, /no review_id/],
+  ]) {
+    const f = fakePost(200, receipt);
+    const r = await submitPanelVote({ scope: scopeReviewReport(retriedReport()), runId: "run-1", vote: VOTE, post: f.post });
+    assert.equal(r.stage, "unconfirmed", JSON.stringify(receipt));
+    assert.match(r.reason, why);
+    assert.equal(f.calls.length, 1);
+  }
+});
+
+test("legacy vote keeps the old URL, sends no attempt ids and needs none back", async () => {
+  const f = fakePost(200, { ok: true });
+  const r = await submitPanelVote({ scope: scopeReviewReport(legacyReport()), runId: "run-1", vote: VOTE, post: f.post });
+  assert.equal(r.stage, "submitted");
+  assert.deepEqual(f.calls, [{ path: "/api/runs/run-1/panel-review", body: VOTE }]);
+});
+
+test("other HTTP failures still throw", async () => {
+  for (const report of [retriedReport(), legacyReport()]) {
+    const f = fakePost(409, { error: "attempts changed" });
+    await assert.rejects(submitPanelVote({ scope: scopeReviewReport(report), runId: "run-1", vote: VOTE, post: f.post }), /Stamp 409/);
+  }
+  const legacy404 = fakePost(404, { error: "not found" });
+  await assert.rejects(submitPanelVote({ scope: scopeReviewReport(legacyReport()), runId: "run-1", vote: VOTE, post: legacy404.post }), /Stamp 404/);
+});
+
 // ---- review_agent.mjs end to end --------------------------------------------
 
 const FAKE_NET = `
@@ -99,7 +175,16 @@ global.fetch = async (url, opts = {}) => {
   if (m === "GET" && p.startsWith("/api/cases/")) { const id = decodeURIComponent(p.split("/").pop()); return res(200, { revision: 1, spec_yaml: spec(id) }); }
   const ev = p.match(/^\\/api\\/runs\\/run-1\\/evidence\\/(.+)$/);
   if (m === "GET" && ev) { trace({ evidence: ev[1] }); const b = Buffer.from("bytes:" + ev[1]); return { ok: true, status: 200, arrayBuffer: async () => b }; }
-  if (m === "POST" && p === "/api/runs/run-1/panel-review") { trace({ post: JSON.parse(opts.body) }); return res(200, { ok: true }); }
+  if (m === "POST" && p === "/api/runs/run-1/panel-review") { trace({ post: JSON.parse(opts.body), path: p }); return res(200, { ok: true }); }
+  if (m === "POST" && p === "/api/runs/run-1/attempt-panel-review") {
+    const body = JSON.parse(opts.body);
+    trace({ post: body, path: p });
+    const mode = process.env.FAKE_BOUND || "echo";
+    if (mode === "404") return res(404, { error: "not found" });
+    if (mode === "none") return res(200, { ok: true });
+    if (mode === "mismatch") return res(200, { ok: true, review_id: "rv-1", attempt_ids: ["rc-old", "rc-set"] });
+    return res(200, { ok: true, review_id: "rv-1", attempt_ids: body.expected_attempt_ids, duplicate: false, votes: { passed: 1, failed: 0 }, finalized: null });
+  }
   throw new Error("fake unexpected " + m + " " + p);
 };
 `;
@@ -119,7 +204,7 @@ export function builtinModels() {
 `;
 const FAKE_YAML = `export const parse = (s) => JSON.parse(s); export const stringify = (v) => JSON.stringify(v);\n`;
 
-function runAgent(report, reviewer = "panel-1") {
+function runAgent(report, reviewer = "panel-1", bound = "echo") {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "review-attempts-"));
   try {
     for (const [name, body] of [["fake-net.cjs", FAKE_NET], ["fake-model.mjs", FAKE_MODEL], ["fake-yaml.mjs", FAKE_YAML]]) fs.writeFileSync(path.join(d, name), body);
@@ -132,11 +217,11 @@ function runAgent(report, reviewer = "panel-1") {
       encoding: "utf8",
       env: { ...process.env, NODE_OPTIONS: `--require=${path.join(d, "fake-net.cjs")}`, STAMP_URL: "http://testbed.invalid", STAMP_TOKEN: "fake", PI_API_KEY: "fake", MINIMAX_API_KEY: "",
         SLOCK_PI_AI_MODULE: path.join(d, "fake-model.mjs"), SLOCK_YAML_MODULE: path.join(d, "fake-yaml.mjs"),
-        FAKE_REPORT: path.join(d, "report.json"), FAKE_TRACE: trace, FAKE_CASES: JSON.stringify(caseIds) },
+        FAKE_REPORT: path.join(d, "report.json"), FAKE_TRACE: trace, FAKE_BOUND: bound, FAKE_CASES: JSON.stringify(caseIds) },
     });
     const events = fs.readFileSync(trace, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
     return { code: r.status, stderr: r.stderr, record: fs.existsSync(out) ? JSON.parse(fs.readFileSync(out, "utf8")) : null,
-      posts: events.filter((e) => e.post).map((e) => e.post), modelSaw: events.find((e) => e.model_saw)?.model_saw ?? null,
+      posts: events.filter((e) => e.post).map((e) => e.post), postPaths: events.filter((e) => e.post).map((e) => e.path), modelSaw: events.find((e) => e.model_saw)?.model_saw ?? null,
       fetchedEvidence: events.filter((e) => e.evidence).map((e) => e.evidence) };
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
@@ -149,7 +234,10 @@ test("review_agent judges only the current attempts and binds its vote to them",
   assert.deepEqual(r.modelSaw.sort(), ["ev-new", "ev-set"]);
   assert.ok(!r.fetchedEvidence.includes("ev-old"), "superseded evidence is never fetched");
   assert.equal(r.posts.length, 1);
+  assert.deepEqual(r.postPaths, ["/api/runs/run-1/attempt-panel-review"]);
   assert.deepEqual(r.posts[0].expected_attempt_ids, ["rc-new", "rc-set"]);
+  assert.equal(r.record.stage, "submitted");
+  assert.deepEqual(r.record.post_receipt.attempt_ids, ["rc-new", "rc-set"]);
   assert.deepEqual(Object.keys(r.posts[0].detail_json.assertions).sort(), ["open-thread", "settings"]);
   assert.deepEqual(r.record.attempt_scope.attempt_ids, ["rc-new", "rc-set"]);
   assert.deepEqual(r.record.review_input.cases.map((c) => c.case_id), ["open-thread", "settings"]);
@@ -163,6 +251,8 @@ test("review_agent on an older Testbed report reviews the full history, logs it,
   assert.deepEqual(r.modelSaw.sort(), ["ev-new", "ev-old", "ev-set"]);
   assert.equal(r.posts.length, 1);
   assert.ok(!("expected_attempt_ids" in r.posts[0]));
+  assert.deepEqual(r.postPaths, ["/api/runs/run-1/panel-review"]);
+  assert.equal(r.record.stage, "submitted");
   assert.equal(r.record.attempt_scope.mode, "legacy");
 });
 
@@ -198,4 +288,34 @@ test("review_agent reuses its own vote bound to the current attempts without pos
   assert.equal(r.posts.length, 0);
   assert.equal(r.record.stage, "already_submitted");
   assert.equal(r.record.existing_review.id, "v1");
+});
+
+test("review_agent keeps an attempt-bound vote unconfirmed on 404 or a receipt without matching ids, without falling back", () => {
+  for (const [bound, why] of [["404", /returned 404/], ["none", /no attempt_ids/], ["mismatch", /differ from expected/]]) {
+    const r = runAgent(retriedReport(), "panel-1", bound);
+    assert.equal(r.code, 2, `${bound}: ${r.stderr}`);
+    assert.deepEqual(r.postPaths, ["/api/runs/run-1/attempt-panel-review"], "the old panel-review URL is never tried");
+    assert.equal(r.record.stage, "unconfirmed");
+    assert.match(r.record.unconfirmed_reason, why);
+    assert.match(r.stderr, /vote unconfirmed/);
+  }
+});
+
+test("review_agent's evidence-incomplete vote follows the same route and confirmation rule", () => {
+  // The executor asserted a1 on step 5, which has no raw screenshot.
+  const incomplete = () => retriedReport({ cases: retriedReport().cases.map((c) => c.id === "rc-new" ? { ...c, verdict_json: verdictAt(5) } : c) });
+  const ok = runAgent(incomplete());
+  assert.equal(ok.code, 0, ok.stderr);
+  assert.equal(ok.modelSaw, null, "no model call for an evidence-incomplete review");
+  assert.deepEqual(ok.postPaths, ["/api/runs/run-1/attempt-panel-review"]);
+  assert.equal(ok.posts[0].detail_json.evidence_incomplete, true);
+  assert.equal(ok.record.stage, "submitted");
+  const missing = runAgent(incomplete(), "panel-1", "404");
+  assert.equal(missing.code, 2, missing.stderr);
+  assert.deepEqual(missing.postPaths, ["/api/runs/run-1/attempt-panel-review"]);
+  assert.equal(missing.record.stage, "unconfirmed");
+  const { review_context: _, ...legacy } = incomplete();
+  const old = runAgent(legacy);
+  assert.equal(old.code, 0, old.stderr);
+  assert.deepEqual(old.postPaths, ["/api/runs/run-1/panel-review"]);
 });
