@@ -5,7 +5,9 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
@@ -16,7 +18,10 @@ import kotlinx.coroutines.test.runTest
 class SharedClientConfigStoreTest {
     // The store publishes to the process-wide list message links read (RaftClientConfigAppHosts).
     @AfterTest
-    fun resetProcessHosts() = RaftClientConfigAppHosts.publish(emptyList())
+    fun resetProcessState() {
+        RaftClientConfigAppHosts.publish(emptyList())
+        RaftTelemetryPrivacy.publish(RaftPrivacyMode.Unknown)
+    }
 
     private class MemoryPreferences : SharedPreferenceStore {
         val values = mutableMapOf<String, String>()
@@ -131,5 +136,63 @@ class SharedClientConfigStoreTest {
         runCurrent()
         assertEquals(listOf("GET https://api-aws-staging.botiverse.dev/api/public/client-config []"), raw)
         assertEquals(listOf("app.raft.build", "raft-app-staging.botiverse.dev"), store.appHosts.value)
+    }
+
+    /** RAFT_PRIVACY_MODE (slock docs/observability/privacy-mode.md): only `privacyMode: true` on a 2xx answer is on. */
+    @Test
+    fun privacyModeIsOnOnlyForATrueFieldOnASuccessfulAnswer() {
+        val cases =
+            listOf(
+                HomeNetworkResponse(200, """{"appHosts":["app.raft.build"],"privacyMode":true}""") to RaftPrivacyMode.On,
+                // No usable host is no app-host answer, but the privacy field still counts.
+                HomeNetworkResponse(200, """{"privacyMode":true}""") to RaftPrivacyMode.On,
+                HomeNetworkResponse(200, """{"appHosts":["app.raft.build"]}""") to RaftPrivacyMode.Off,
+                HomeNetworkResponse(200, """{"appHosts":["app.raft.build"],"privacyMode":false}""") to RaftPrivacyMode.Off,
+                HomeNetworkResponse(200, "not json") to RaftPrivacyMode.Off,
+                HomeNetworkResponse(503, """{"privacyMode":true}""") to RaftPrivacyMode.Off,
+                null to RaftPrivacyMode.Off,
+            )
+        for ((response, expected) in cases) {
+            assertEquals(expected, raftClientConfigPrivacyMode(response), "response ${response?.code} ${response?.bodyText}")
+        }
+    }
+
+    @Test
+    fun privacyModeIsUnknownUntilEachEnvironmentAnswersAndAFailedReadIsOff() = runTest {
+        val published = mutableListOf<RaftPrivacyMode>()
+        val environment = MutableStateFlow("https://self-hosted.example/api")
+        val api = FakeApi { ok("""{"appHosts":["app.raft.build"],"privacyMode":true}""") }
+        val store = SharedClientConfigStore(api, MemoryPreferences(), { environment.value }, environment, backgroundScope, publishPrivacyMode = { published += it })
+        store.start()
+        runCurrent()
+        assertEquals(listOf(RaftPrivacyMode.Unknown, RaftPrivacyMode.On), published)
+
+        // Another environment starts over at unknown; a failed read is off.
+        api.next = { error("offline") }
+        environment.value = "https://api.raft.build/api"
+        runCurrent()
+        assertEquals(listOf(RaftPrivacyMode.Unknown, RaftPrivacyMode.On, RaftPrivacyMode.Unknown, RaftPrivacyMode.Off), published)
+    }
+
+    @Test
+    fun aReadWithNoAnswerCountsAsOffAfterTheTimeoutAndALateOnStillWins() = runTest {
+        val published = mutableListOf<RaftPrivacyMode>()
+        val answer = CompletableDeferred<HomeNetworkResponse>()
+        val api =
+            object : RaftClientConfigApi {
+                override suspend fun read(environment: String): HomeNetworkResponse = answer.await()
+            }
+        val environment = MutableStateFlow("https://self-hosted.example/api")
+        val store = SharedClientConfigStore(api, MemoryPreferences(), { environment.value }, environment, backgroundScope, publishPrivacyMode = { published += it })
+        store.start()
+        advanceTimeBy(RAFT_PRIVACY_MODE_READ_TIMEOUT_MILLIS - 1)
+        runCurrent()
+        assertEquals(listOf(RaftPrivacyMode.Unknown), published, "held while the read is pending")
+        advanceTimeBy(2)
+        runCurrent()
+        assertEquals(listOf(RaftPrivacyMode.Unknown, RaftPrivacyMode.Off), published)
+        answer.complete(ok("""{"privacyMode":true}"""))
+        runCurrent()
+        assertEquals(RaftPrivacyMode.On, published.last())
     }
 }

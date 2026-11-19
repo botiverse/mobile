@@ -3,6 +3,7 @@ package build.raft.app.data
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,10 +31,14 @@ import kotlinx.serialization.json.Json
  * the canonical host, APP_URL's, Raft's earlier hosts, APP_PERMALINK_HOSTS). Read as the web's
  * `store/raftAppHosts.ts` reads them: anything that is not a bare hostname is dropped, duplicates
  * once, the server's order kept; no list, or none left, is no answer.
+ *
+ * `privacyMode`: `true` only under `RAFT_PRIVACY_MODE` (server `publicClientConfig.ts`, slock
+ * staging 72740e52e; docs/observability/privacy-mode.md); absent otherwise, never `false`.
  */
 @Serializable
 data class ClientConfigWireDto(
     val appHosts: List<String>? = null,
+    val privacyMode: Boolean? = null,
 )
 
 /** The parsed client config. */
@@ -55,6 +60,16 @@ fun parseRaftClientConfig(bodyText: String?): RaftClientConfig? {
     val wire = bodyText?.let { runCatching { clientConfigJson.decodeFromString(ClientConfigWireDto.serializer(), it) }.getOrNull() } ?: return null
     val hosts = wire.appHosts.orEmpty().mapNotNull(::clientConfigHostnameOrNull).distinct()
     return if (hosts.isEmpty()) null else RaftClientConfig(hosts)
+}
+
+/**
+ * The privacy mode a client-config read says (privacy-mode.md): [RaftPrivacyMode.On] only for a 2xx
+ * answer carrying `privacyMode: true`; any other answer, or a failed read, is [RaftPrivacyMode.Off].
+ */
+fun raftClientConfigPrivacyMode(response: HomeNetworkResponse?): RaftPrivacyMode {
+    val body = response?.takeIf { it.isSuccessful }?.bodyText ?: return RaftPrivacyMode.Off
+    val wire = runCatching { clientConfigJson.decodeFromString(ClientConfigWireDto.serializer(), body) }.getOrNull()
+    return if (wire?.privacyMode == true) RaftPrivacyMode.On else RaftPrivacyMode.Off
 }
 
 internal interface RaftClientConfigApi {
@@ -89,6 +104,12 @@ internal const val CLIENT_CONFIG_CACHE_KEY: String = "clientConfig.appHosts.v1"
  * [appHosts]: the last good answer for this environment (memory or disk); a failed read keeps it.
  * Never fetched on this environment: [CLIENT_CONFIG_FALLBACK_APP_HOSTS]. An answer for an
  * environment that is no longer current is stored for it but not published.
+ *
+ * Privacy mode ([publishPrivacyMode], process-wide [RaftTelemetryPrivacy]): unknown from each
+ * environment's start until its read answers (never taken from the disk cache, so a server that
+ * turned it on since is never sent to on a stale "off"); then on or off as
+ * [raftClientConfigPrivacyMode] reads it. A read with no answer after
+ * [RAFT_PRIVACY_MODE_READ_TIMEOUT_MILLIS] counts as off, as on the web; a later "on" still wins.
  */
 class SharedClientConfigStore internal constructor(
     private val api: RaftClientConfigApi,
@@ -99,6 +120,7 @@ class SharedClientConfigStore internal constructor(
     private val environmentChanges: Flow<String>,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {},
+    private val publishPrivacyMode: (RaftPrivacyMode) -> Unit = RaftTelemetryPrivacy::publish,
 ) {
     private val mutableAppHosts =
         MutableStateFlow(
@@ -108,6 +130,9 @@ class SharedClientConfigStore internal constructor(
     val appHosts: StateFlow<List<String>> = mutableAppHosts.asStateFlow()
 
     private var started: Job? = null
+
+    /** The environment whose privacy mode has been answered (null while unknown). */
+    private var privacyAnsweredFor: String? = null
 
     /** Idempotent: follows the environment from now on, reading the config for each one. */
     fun start() {
@@ -119,7 +144,18 @@ class SharedClientConfigStore internal constructor(
                     // Another environment's hosts never count here; the fallback adds nothing readers lack.
                     RaftClientConfigAppHosts.publish(cached.orEmpty())
                     mutableAppHosts.value = cached ?: CLIENT_CONFIG_FALLBACK_APP_HOSTS
-                    refresh(environment)
+                    privacyAnsweredFor = null
+                    publishPrivacyMode(RaftPrivacyMode.Unknown)
+                    val timeout =
+                        scope.launch {
+                            delay(RAFT_PRIVACY_MODE_READ_TIMEOUT_MILLIS)
+                            if (privacyAnsweredFor != environment) answerPrivacyMode(environment, RaftPrivacyMode.Off, "timeout")
+                        }
+                    try {
+                        refresh(environment)
+                    } finally {
+                        timeout.cancel()
+                    }
                 }
             }
     }
@@ -133,8 +169,10 @@ class SharedClientConfigStore internal constructor(
                 throw cancellation
             } catch (error: Throwable) {
                 logger("client_config read_failed reason=${error::class.simpleName ?: "unknown"}")
+                answerPrivacyMode(environment, RaftPrivacyMode.Off, "read_failed")
                 return
             }
+        answerPrivacyMode(environment, raftClientConfigPrivacyMode(response), if (response.isSuccessful) "answer" else "read_failed")
         val config = response.takeIf { it.isSuccessful }?.let { parseRaftClientConfig(it.bodyText) }
         if (config == null) {
             logger("client_config read_failed code=${response.code}")
@@ -148,6 +186,13 @@ class SharedClientConfigStore internal constructor(
         } else {
             logger("client_config stale_environment_ignored")
         }
+    }
+
+    private fun answerPrivacyMode(environment: String, mode: RaftPrivacyMode, reason: String) {
+        if (normalizedEnvironment(currentEnvironment()) != environment) return
+        privacyAnsweredFor = environment
+        publishPrivacyMode(mode)
+        logger("client_config privacy_mode=${if (mode == RaftPrivacyMode.On) "on" else "off"} reason=$reason")
     }
 
     private fun readCache(): Map<String, List<String>> =

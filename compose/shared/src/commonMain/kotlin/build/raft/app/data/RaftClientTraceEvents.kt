@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -30,6 +31,11 @@ import kotlinx.serialization.json.JsonPrimitive
  *
  * Fire and forget, like the web: batched [RaftClientTraceFlushDelayMillis] after the first event,
  * at most [RaftClientTraceMaxBatch] per request; any failure drops the batch. Nothing here throws.
+ *
+ * `RAFT_PRIVACY_MODE` ([RaftTelemetryPrivacy], web `webTelemetryPrivacyHold.ts`): until the
+ * environment's client config answers, events are held in memory (up to [RaftClientTraceMaxQueued])
+ * and nothing is sent, not even the attestation request; "on" drops what was held and every later
+ * event; "off" sends what was held, then everything is as before.
  */
 internal const val RaftClientTraceFlushDelayMillis = 4_000L
 internal const val RaftClientTraceMaxBatch = 100
@@ -114,6 +120,7 @@ internal class RaftClientTraceEventSender(
     /** Attributes every event carries (`clientPlatform`, `appVersion`). */
     private val defaultAttrs: () -> Map<String, String>,
     private val flushDelayMillis: Long = RaftClientTraceFlushDelayMillis,
+    private val privacyMode: StateFlow<RaftPrivacyMode> = RaftTelemetryPrivacy.state,
 ) {
     private class Queued(val serverId: ServerId, val record: RaftWebEventRecord)
 
@@ -125,8 +132,35 @@ internal class RaftClientTraceEventSender(
     private var flushJob: Job? = null
     private var attestation: Attestation? = null
 
+    init {
+        scope.launch {
+            privacyMode.collect { mode ->
+                synchronized(lock) {
+                    when (mode) {
+                        RaftPrivacyMode.On -> queue.clear()
+                        RaftPrivacyMode.Off -> if (queue.isNotEmpty()) scheduleFlushLocked()
+                        RaftPrivacyMode.Unknown -> Unit
+                    }
+                }
+            }
+        }
+    }
+
+    /** Events waiting to be sent (held while privacy mode is unknown). */
+    internal val queuedCount: Int
+        get() = synchronized(lock) { queue.size }
+
     fun bindTransport(next: RaftClientTraceTransport) {
         synchronized(lock) { transport = next }
+    }
+
+    private fun scheduleFlushLocked() {
+        if (flushJob != null) return
+        flushJob =
+            scope.launch {
+                delay(flushDelayMillis)
+                flush()
+            }
     }
 
     /** Queues one event for [serverId]; sent with the next flush. Never throws. */
@@ -141,15 +175,12 @@ internal class RaftClientTraceEventSender(
                     attrs = JsonObject(attrs + defaultAttrs().mapValues { (_, value) -> JsonPrimitive(value) }),
                 )
             synchronized(lock) {
+                val mode = privacyMode.value
+                if (mode == RaftPrivacyMode.On) return
                 if (transport == null || queue.size >= RaftClientTraceMaxQueued) return
                 queue += Queued(ServerId(server), record)
-                if (flushJob == null) {
-                    flushJob =
-                        scope.launch {
-                            delay(flushDelayMillis)
-                            flush()
-                        }
-                }
+                // Held, not sent, until the client config answers.
+                if (mode == RaftPrivacyMode.Off) scheduleFlushLocked()
             }
         } catch (_: Throwable) {
             // Trace emission must never affect state transitions.
@@ -161,9 +192,11 @@ internal class RaftClientTraceEventSender(
             val (target, batch) =
                 synchronized(lock) {
                     val transport = transport
-                    if (queue.isEmpty() || transport == null) {
+                    val mode = privacyMode.value
+                    if (queue.isEmpty() || transport == null || mode != RaftPrivacyMode.Off) {
                         flushJob = null
-                        queue.clear()
+                        // Unknown again (an environment change): keep holding; the answer flushes.
+                        if (mode != RaftPrivacyMode.Unknown) queue.clear()
                         return
                     }
                     val serverId = queue.first().serverId
