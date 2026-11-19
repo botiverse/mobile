@@ -30,7 +30,8 @@ import org.intellij.markdown.parser.MarkdownParser
  */
 internal fun raftMarkdownQuoteRanges(source: String): List<RaftMarkdownQuoteRange> {
     if ('>' !in source) return emptyList()
-    val tree = MarkdownParser(RaftGFMFlavourDescriptor(quoteEndsAtUnmarkedLine = false)).buildMarkdownTreeFromString(source)
+    val tree = MarkdownParser(RaftGFMFlavourDescriptor(quoteEndsAtUnmarkedLine = false))
+        .buildMarkdownTreeOrPlainText(source, source = "quote_ranges")
     val quotes = mutableListOf<RaftMarkdownQuoteRange>()
     fun visit(node: ASTNode) {
         when (node.type) {

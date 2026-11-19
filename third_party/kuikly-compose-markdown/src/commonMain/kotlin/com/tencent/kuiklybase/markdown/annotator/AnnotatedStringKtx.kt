@@ -46,6 +46,7 @@ import build.raft.app.markdown.withRaftInlineChipGaps
 import build.raft.app.markdown.raftInlineMathContentId
 import build.raft.app.markdown.raftMathFormulaRenders
 import build.raft.app.markdown.RaftMathErrorColor
+import build.raft.app.markdown.buildMarkdownTreeOrPlainText
 import build.raft.app.raftFirstComposedCharacterEnd
 import build.raft.app.raftInlineCodeCharWrapBridgeThreshold
 import build.raft.app.raftInlineCodeUsesEdgePaddingBridge
@@ -175,7 +176,7 @@ fun String.buildMarkdownAnnotatedString(
     flavour: MarkdownFlavourDescriptor = RaftGFMFlavourDescriptor(),
 ): AnnotatedString {
     val content = MarkdownParserContent.from(this).parserContent
-    val parsedTree = MarkdownParser(flavour).buildMarkdownTreeFromString(content)
+    val parsedTree = MarkdownParser(flavour).buildMarkdownTreeOrPlainText(content, source = "annotated_string")
     val textNode = parsedTree.children.firstOrNull { node ->
         node.type == MarkdownTokenTypes.TEXT || node.type == MarkdownElementTypes.PARAGRAPH
     }

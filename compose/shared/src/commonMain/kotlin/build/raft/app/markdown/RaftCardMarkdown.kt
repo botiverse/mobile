@@ -72,7 +72,7 @@ internal fun raftCardMarkdownViolations(content: String): List<RaftCardMarkdownV
 
 /** Parses [content] with the message renderer's parser and checks it against the card Markdown subset. */
 internal fun raftCardMarkdownCheck(content: String): RaftCardMarkdownCheck {
-    val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
+    val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeOrPlainText(content, source = "card_markdown")
     val walker = CardMarkdownWalker(content, definedLabels(content, tree))
     walker.visit(tree, nesting = 0, report = true)
     return RaftCardMarkdownCheck(

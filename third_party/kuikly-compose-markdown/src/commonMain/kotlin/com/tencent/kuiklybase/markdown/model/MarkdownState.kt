@@ -5,6 +5,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import build.raft.app.markdown.buildMarkdownTreeOrPlainText
 import com.tencent.kuiklybase.markdown.compose.raftMarkdownLogSubTrace
 import com.tencent.kuiklybase.markdown.utils.lookupLinkDefinition
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -380,7 +381,7 @@ private fun parseMarkdownContent(
     lookupLinks: Boolean,
     parser: MarkdownParser
 ): MarkdownCachedParseResult {
-    val parsedResult: ASTNode = parser.buildMarkdownTreeFromString(content)
+    val parsedResult: ASTNode = parser.buildMarkdownTreeOrPlainText(content, source = "markdown_state")
     val links =
         if (lookupLinks) {
             mutableMapOf<String, String?>().also { values ->
