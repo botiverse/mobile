@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.InMemoryRaftKeyValueStore
-import build.raft.app.data.SharedPreferenceStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -103,86 +102,41 @@ class SharedThreadComposerDraftTimingMarkerTest {
             store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "debug"))
             clock.advanceBy(IntervalMillis)
             assertEquals(listOf("change_received seq=1 len=5", "draft_written seq=1 len=5 path=background"), changeLines(factoryLines))
-            // The crash journal's cost goes through the same installed sink, so release builds never log it.
-            assertEquals(1, factoryLines.count { JournalCostLine.matches(it) }, "lines=$factoryLines")
         } finally {
             RaftDraftTimingMarker.installIfEnabled(buildConfigDebug = false, appDebuggable = false, factory)
         }
     }
 
     @Test
-    fun eachJournalWriteLogsItsCostAndTextLengthButNeverTheText() {
+    fun eachDraftWriteLogsItsOwnCostAndTheTextLengthButNeverTheText() {
         val lines = mutableListOf<String>()
         val clock = VirtualDraftWriteClock()
         val store = startStore(clock, timingSink = sinkInto(lines))
 
         store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "secret words"))
+        clock.advanceBy(0L)
         store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "secret words!"))
-        clock.advanceBy(IntervalMillis)
+        store.dispatch(SharedThreadComposerDraftIntent.Flush)
 
-        val journal = lines.filter { it.startsWith("draft_journal_written ") }
-        assertEquals(2, journal.size, "lines=$lines")
-        assertTrue(journal.all { JournalCostLine.matches(it) }, "lines=$journal")
-        // STORE is index + put, and the whole write is at least ENCODE + STORE.
-        journal.forEach { journalLine ->
-            val us = Regex("""(\w+)Us=(\d+)""").findAll(journalLine).associate { it.groupValues[1] to it.groupValues[2].toLong() }
-            // Each part is truncated to whole µs on its own: allow 1-2 µs of rounding.
-            assertTrue(kotlin.math.abs(us.getValue("index") + us.getValue("put") - us.getValue("store")) <= 1, journalLine)
-            assertTrue(us.getValue("cost") >= us.getValue("encode") + us.getValue("store") - 2, journalLine)
-        }
-        assertEquals(listOf("len=12", "len=13"), journal.map { it.substringAfterLast(' ') })
-        // Each change's marker comes first (the moment it arrived), then its journal line with the same seq.
-        assertEquals(
-            listOf("change_received seq=1", "draft_journal_written seq=1", "change_received seq=2", "draft_journal_written seq=2"),
-            lines.filter { it.startsWith("change_received ") || it.startsWith("draft_journal_written ") }.map { it.split(' ').take(2).joinToString(" ") },
-        )
+        val written = lines.filter { it.startsWith("draft_written ") }
+        assertEquals(2, written.size, "lines=$lines")
+        assertTrue(written.all { DraftWrittenLine.matches(it) }, "lines=$written")
+        assertEquals(listOf("path=background", "path=flush"), written.map { Regex("""path=\w+""").find(it)?.value })
         assertTrue(lines.none { "secret" in it }, "lines=$lines")
+        // Nothing but the change and its durable write is logged: no per-keystroke write of its own.
+        assertTrue(lines.all { it.startsWith("change_received ") || it.startsWith("draft_written ") }, "lines=$lines")
     }
 
     @Test
-    fun theJournalCostLineHasTheShapeTheAcceptanceScriptParses() {
+    fun theDraftWrittenLineHasTheShapeTheAcceptanceScriptParses() {
         assertEquals(
-            "draft_journal_written seq=3 path=sync costUs=1234 encodeUs=200 storeUs=1000 indexUs=100 putUs=900 indexWrite=1 len=7",
-            raftDraftJournalCostLine(
-                3,
-                SharedThreadComposerDraftJournalWriteCost(encode = 200.microseconds, index = 100.microseconds, put = 900.microseconds, total = 1234.microseconds, indexWrite = true),
-                7,
-            ),
+            "draft_written seq=3 len=7 path=background costUs=1234",
+            raftDraftWrittenLine(3, 7, "background", 1234.microseconds),
         )
     }
 
-    @Test
-    fun aFailedJournalWriteIsLoggedSoTheAcceptanceCanCountIt() {
-        val lines = mutableListOf<String>()
-        val clock = VirtualDraftWriteClock()
-        val storage = InMemoryRaftKeyValueStore()
-        val failingJournal =
-            object : SharedPreferenceStore {
-                override fun getString(key: String): String? = storage.getString(key)
-
-                override fun putString(key: String, value: String?) {
-                    if (key == SharedThreadComposerDraftPersistence.journalRowKey(draftKey) && value != null) error("disk full")
-                    storage.putString(key, value)
-                }
-            }
-        val slice =
-            SharedThreadComposerDraftPersistSlice(
-                persistence = SharedThreadComposerDraftPersistence(failingJournal),
-                scheduler = clock,
-                changeWriteIntervalMillis = IntervalMillis,
-                monotonicMillis = clock::now,
-                timingSink = sinkInto(lines),
-            )
-        val store = SharedThreadComposerDraftStore(persistSlices = listOf(slice))
-        store.dispatch(SharedThreadComposerDraftIntent.Start(RaftThreadComposerPayload(instanceId = "composer-timing"), draftKey))
-
-        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "secret"))
-
-        assertEquals(listOf("change_received seq=1 len=6", "draft_journal_write_failed seq=1 len=6"), lines)
-    }
-
-    /** The change / durable-write lines, without the crash journal's cost lines. */
-    private fun changeLines(lines: List<String>): List<String> = lines.filterNot { it.startsWith("draft_journal_written ") }
+    /** The change / durable-write lines without the write's measured cost (wall-clock, so not compared). */
+    private fun changeLines(lines: List<String>): List<String> = lines.map { it.replace(CostField, "") }
 
     private fun sinkInto(lines: MutableList<String>): () -> ((String) -> Unit)? = { { line -> lines += line } }
 
@@ -220,6 +174,7 @@ class SharedThreadComposerDraftTimingMarkerTest {
 
     private companion object {
         const val IntervalMillis = 40L
-        val JournalCostLine = Regex("""^draft_journal_written seq=\d+ path=sync costUs=\d+ encodeUs=\d+ storeUs=\d+ indexUs=\d+ putUs=\d+ indexWrite=[01] len=\d+$""")
+        val DraftWrittenLine = Regex("""^draft_written seq=\d+ len=\d+ path=(background|flush) costUs=\d+$""")
+        val CostField = Regex(""" costUs=\d+$""")
     }
 }

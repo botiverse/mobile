@@ -6,16 +6,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { JOURNAL_MISSING_TOLERANCE, acceptanceUnmet, costSplitReport, channelActivityReport, creditedBucket, errorBodySummary, queryWithReauth, sendDeliveryCount, createLogcatStats, forEachLogLine, isEvidenceLine, journalCoverage, parseMessagesResponse, wrapUpVerdict } from "./draft_kill_timing_analysis.mjs";
+import { acceptanceUnmet, channelActivityReport, creditedBucket, errorBodySummary, queryWithReauth, sendDeliveryCount, createLogcatStats, forEachLogLine, isEvidenceLine, parseMessagesResponse, wrapUpVerdict } from "./draft_kill_timing_analysis.mjs";
 
 const PKG = "build.raft.app.alpha";
 const PID = 4242;
 const line = (sec, pid, tag, message) => `${sec.toFixed(3).padStart(10)}  ${pid}  ${pid} I ${tag}: ${message}`;
-const journal = (sec, costUs, seq = 1, pid = PID) => line(sec, pid, "RaftDraftTiming", `draft_journal_written seq=${seq} path=sync costUs=${costUs} len=3 uptimeMs=${Math.round(sec * 1000)}`);
-const journalFailed = (sec, seq, pid = PID) => line(sec, pid, "RaftDraftTiming", `draft_journal_write_failed seq=${seq} len=3 uptimeMs=${Math.round(sec * 1000)}`);
+const written = (sec, costUs, seq = 1, pid = PID) => line(sec, pid, "RaftDraftTiming", `draft_written seq=${seq} len=3 path=background costUs=${costUs} uptimeMs=${Math.round(sec * 1000)}`);
 const change = (sec, seq, pid = PID) => line(sec, pid, "RaftDraftTiming", `change_received seq=${seq} len=3 uptimeMs=${Math.round(sec * 1000)}`);
-/** One typed edit as the app logs it: change_received (the arrival), then its journal cost line, same seq. */
-const edit = (sec, seq, costUs, pid = PID) => [change(sec, seq, pid), journal(sec, costUs, seq, pid)];
+/** One typed edit as the app logs it: change_received (the arrival), then the draft write of it with its own time. */
+const edit = (sec, seq, costUs, pid = PID) => [change(sec, seq, pid), written(sec + 0.02, costUs, seq, pid)];
 const config = { runsPerBucket: 1, fastRuns: 1, env: {} };
 const RUN_TAG = "dk12345";
 const ourMessage = (i) => ({ id: `m${i}`, content: `${RUN_TAG} send ${i}`, senderId: "qa", createdAt: `2026-11-18T10:00:0${i}Z` });
@@ -40,30 +39,45 @@ const statsOf = (lines) => {
   return stats.result();
 };
 
-test("the crash-journal gate sees the cost measured at wrap-up (timings pass -> run passes)", () => {
+test("the write time is measured at wrap-up (timings pass -> run passes)", () => {
   const summary = timingsPass();
-  // The bug this guards: deciding before the capture is read always finds no journal samples.
-  assert.deepEqual(acceptanceUnmet(summary, config), ["no draft_journal_written lines: the crash journal's cost was not measured"]);
-  wrapUpVerdict(summary, statsOf([...edit(1, 1, 120), ...edit(2, 2, 300)]), config);
+  // The bug this guards: deciding before the capture is read always finds no write-time samples.
+  assert.deepEqual(acceptanceUnmet(summary, config), ["no draft_written costUs lines: the draft write time was not measured"]);
+  wrapUpVerdict(summary, statsOf([...edit(1, 1, 120), ...edit(2, 2, 3300)]), config);
   assert.equal(summary.result, "pass");
   assert.deepEqual(summary.unmet, []);
-  assert.equal(summary.journal_write_cost.samples, 2);
-  assert.equal(summary.journal_write_cost.p95_us, 300);
+  assert.equal(summary.draft_write_cost.samples, 2);
+  assert.deepEqual(summary.write_deadline, { interval_ms: 40, write_time_ms: 4, deadline_ms: 44, basis: "p95 of 2 draft writes (3300 µs)" });
 });
 
-test("the crash-journal gate still fails a slow journal, an unread capture and keeps a step failure", () => {
-  const slow = wrapUpVerdict(timingsPass(), statsOf(edit(1, 1, 1000)), config);
-  assert.equal(slow.result, "fail");
-  assert.deepEqual(slow.unmet, ["crash-journal write p95 1000 µs is not below 1000 µs"]);
-
+test("an unread capture fails, a step failure is kept", () => {
   const unread = wrapUpVerdict(timingsPass(), null, config);
   assert.equal(unread.result, "fail");
-  assert.deepEqual(unread.unmet, ["no draft_journal_written lines: the crash journal's cost was not measured"]);
+  assert.deepEqual(unread.unmet, ["no draft_written costUs lines: the draft write time was not measured"]);
+  assert.equal(unread.write_deadline.deadline_ms, 40);
 
   const stepFailed = wrapUpVerdict({ ...timingsPass(), result: "fail", failed_step: "kill-runs" }, statsOf(edit(1, 1, 10)), config);
   assert.equal(stepFailed.result, "fail");
   assert.equal(stepFailed.failed_step, "kill-runs");
-  assert.equal(stepFailed.journal_write_cost.samples, 1);
+  assert.equal(stepFailed.draft_write_cost.samples, 1);
+});
+
+test("a kill run that lost text older than the deadline fails the round; younger text may go", () => {
+  const killRun = (restored, ageOfLast) => ({
+    run: 9, group: "D=0.1", mode: "bucket", timing: "hit", pass: restored === 6,
+    typed_len: 6, restored_len: restored, restored_is_prefix: true, written_len_before_kill: 5,
+    changes_before_kill: [{ seq: 1, len: 5, age_ms: 400 }, { seq: 2, len: 6, age_ms: ageOfLast }],
+  });
+  // Deadline 40 + 1 ms (p95 of the writes below).
+  const lines = [...edit(1, 1, 300), ...edit(2, 2, 900)];
+  const young = wrapUpVerdict({ ...timingsPass(), runs: [...timingsPass().runs, killRun(5, 30)] }, statsOf(lines), config);
+  assert.equal(young.result, "pass", JSON.stringify(young.unmet));
+  assert.equal(young.runs.at(-1).survival, "lost 1 char(s) younger than 41 ms");
+
+  const old = wrapUpVerdict({ ...timingsPass(), runs: [...timingsPass().runs, killRun(5, 41)] }, statsOf(lines), config);
+  assert.equal(old.result, "fail");
+  assert.deepEqual(old.unmet, ["run 9 (D=0.1): not restored as expected"]);
+  assert.match(old.runs.at(-1).survival, /lost text older than 41 ms \(kept len 5, required 6\)/);
 });
 
 /** fs whose readSync records every requested length. */
@@ -108,14 +122,14 @@ test("wrap-up over a logcat far larger than the heap finishes with bounded memor
     const stats = createLogcatStats();
     const read = forEachLogLine(process.argv[1], 0, (l) => stats.add(l));
     const used = process.memoryUsage();
-    console.log(JSON.stringify({ read, journal: stats.result().journal_write_cost, heapUsed: used.heapUsed, rss: used.rss }));
+    console.log(JSON.stringify({ read, cost: stats.result().draft_write_cost, heapUsed: used.heapUsed, rss: used.rss }));
   `;
   const run = spawnSync(process.execPath, ["--max-old-space-size=32", "--input-type=module", "-e", child, file], { encoding: "utf8" });
   assert.equal(run.status, 0, `wrap-up child failed: ${run.stderr.slice(-500)}`);
   const out = JSON.parse(run.stdout);
   assert.ok(out.read.bytes > 96 * (1 << 20) * 0.99, `read ${out.read.bytes} bytes`);
-  assert.equal(out.journal.samples, 96);
-  assert.equal(out.journal.max_us, 195);
+  assert.equal(out.cost.samples, 96);
+  assert.equal(out.cost.max_us, 195);
   assert.ok(out.heapUsed < 32 * (1 << 20), `heap ${out.heapUsed}`);
   assert.ok(out.rss < 96 * (1 << 20), `rss ${out.rss}`);
 });
@@ -167,71 +181,6 @@ test("the channel concurrency check gates the run: other activity, a failed or a
 
   assert.equal(verdict(undefined).result, "unconfirmed");
   assert.equal(verdict({ error: "fetch failed" }).result, "unconfirmed");
-});
-
-const killedAt = (sec, pid = PID) => line(sec, 600, "ActivityManager", `Killing ${pid}:${PKG}/u0a190 (adj 0): stop ${PKG} due to from pid 9000`);
-const procDied = (sec, pid = PID) => line(sec, 600, "am_proc_died", `[0,${pid},${PKG},0,17]`);
-
-test("journal coverage has zero tolerance: one input without a result in many is not covered; an empty run never is", () => {
-  assert.equal(JOURNAL_MISSING_TOLERANCE, 0);
-  assert.deepEqual(journalCoverage({ edits: 1000, paired: 999, failures: 0, missing: 1 }), { edits: 1000, paired: 999, failures: 0, likely_interrupted: 0, missing: 1, unpaired: 0, allowed_missing: 0, covered: false });
-  assert.equal(journalCoverage({ edits: 1000, paired: 999, failures: 0, likely_interrupted: 1, missing: 0 }).covered, true);
-  // 1 of 101 inputs without a result and without death evidence: unconfirmed, not pass.
-  const edits = Array.from({ length: 100 }, (_, i) => edit(1 + i * 0.01, i + 1, 100)).flat();
-  const oneOfMany = wrapUpVerdict(timingsPass(), statsOf([change(0.5, 0), ...edits]), config);
-  assert.equal(oneOfMany.result, "unconfirmed");
-  assert.equal(oneOfMany.journal_coverage.missing, 1);
-  assert.equal(journalCoverage({ edits: 0, paired: 0, failures: 0, missing: 0 }).covered, false);
-});
-
-test("a last input without a result and without death evidence of its process is not a pass", () => {
-  // Two inputs, one with a cost line, one with nothing, and no record of the process dying.
-  const noDeath = wrapUpVerdict(timingsPass(), statsOf([...edit(1, 1, 100), change(2, 2)]), config);
-  assert.equal(noDeath.result, "unconfirmed");
-  assert.deepEqual(noDeath.journal_coverage, { edits: 2, paired: 1, failures: 0, likely_interrupted: 0, missing: 1, unpaired: 0, allowed_missing: 0, covered: false });
-
-  // Death evidence for ANOTHER pid, or logged BEFORE the input, does not count.
-  for (const death of [killedAt(3, 777), procDied(1.5)]) {
-    const r = wrapUpVerdict(timingsPass(), statsOf([...edit(1, 1, 100), change(2, 2), death]), config);
-    assert.equal(r.result, "unconfirmed", death);
-    assert.equal(r.journal_coverage.missing, 1);
-    assert.equal(r.journal_coverage.likely_interrupted, 0);
-  }
-});
-
-test("a last input without a result whose process then died is listed as likely interrupted", () => {
-  for (const death of [killedAt(2.01), procDied(2.05), line(2.06, 600, "libprocessgroup", `Successfully killed process cgroup uid 10190 pid ${PID} in 3ms`)]) {
-    const r = wrapUpVerdict(timingsPass(), statsOf([...edit(1, 1, 100), ...edit(1.5, 2, 110), change(2, 3), death, ...edit(4, 1, 90, 5000)]), config);
-    assert.equal(r.result, "pass", `${death} ${JSON.stringify(r.unconfirmed)}`);
-    assert.deepEqual(r.journal_coverage, { edits: 4, paired: 3, failures: 0, likely_interrupted: 1, missing: 0, unpaired: 0, allowed_missing: 0, covered: true });
-  }
-  // Only the process's LAST input can have been interrupted: an earlier one without a result stays missing.
-  const earlier = wrapUpVerdict(timingsPass(), statsOf([change(1, 1), ...edit(2, 2, 100), killedAt(3)]), config);
-  assert.equal(earlier.result, "unconfirmed");
-  assert.equal(earlier.journal_coverage.missing, 1);
-});
-
-test("journal coverage: a missing sample mid-run is unconfirmed even when extra lines of other changes make the totals match", () => {
-  // Edit 2 has no cost line; edit 1 logged two and a line of seq 9 has no edit. Totals: 3 edits, 3 cost lines.
-  const lines = [change(1, 1), journal(1, 100, 1), journal(1.1, 5000, 1), change(2, 2), journal(2.5, 7000, 9), ...edit(3, 3, 300), killedAt(4)];
-  const masked = wrapUpVerdict(timingsPass(), statsOf(lines), config);
-  assert.equal(masked.result, "unconfirmed");
-  assert.deepEqual(masked.journal_coverage, { edits: 3, paired: 2, failures: 0, likely_interrupted: 0, missing: 1, unpaired: 2, allowed_missing: 0, covered: false });
-  assert.match(masked.unconfirmed.join("\n"), /2 paired of 3 edits, 1 without a result/);
-  // Percentiles use the paired samples only: the repeat (5000) and the unpaired seq 9 (7000) are excluded.
-  assert.deepEqual(masked.journal_write_cost, { samples: 2, min_us: 100, p50_us: 100, p95_us: 300, p99_us: 300, max_us: 300, basis: "paired samples only", unpaired_excluded: 2 });
-
-  // The same seq in another process is another change.
-  const otherProcess = statsOf([...edit(1, 1, 100), change(2, 2), journal(2, 100, 2, 5000), ...edit(3, 3, 100)]).journal_coverage;
-  assert.equal(otherProcess.missing, 1);
-  assert.equal(otherProcess.unpaired, 1);
-});
-
-test("a failed journal write fails the run, paired or not", () => {
-  const failed = wrapUpVerdict(timingsPass(), statsOf([...edit(1, 1, 100), change(2, 2), journalFailed(2, 2), ...edit(3, 3, 100)]), config);
-  assert.equal(failed.result, "fail");
-  assert.deepEqual(failed.unmet, ["crash-journal write failed 1 time(s) (draft_journal_write_failed)"]);
-  assert.equal(failed.journal_coverage.missing, 0);
 });
 
 test("a channel read counts only as a messages array: empty body, malformed JSON and other shapes are unavailable", () => {
@@ -322,59 +271,8 @@ test("error bodies are summarised without tokens", () => {
   assert.equal(errorBodySummary({ message: "x".repeat(500) }).message.length, 120);
 });
 
-test("the journal cost splits into ENCODE and STORE over the paired samples only", () => {
-  const split = (sec, seq, e, i, p) => [
-    change(sec, seq),
-    line(sec, PID, "RaftDraftTiming", `draft_journal_written seq=${seq} path=sync costUs=${e + i + p + 5} encodeUs=${e} storeUs=${i + p} indexUs=${i} putUs=${p} len=3 uptimeMs=1`),
-  ];
-  const stats = statsOf([
-    ...split(1, 1, 100, 50, 300),
-    ...split(2, 2, 120, 60, 2000),
-    line(3, PID, "RaftDraftTiming", "draft_journal_written seq=99 path=sync costUs=9 encodeUs=9000 storeUs=9000 indexUs=1 putUs=1 len=3 uptimeMs=1"),
-  ]);
-  assert.equal(stats.journal_write_cost_parts.encode.samples, 2);
-  assert.equal(stats.journal_write_cost_parts.encode.max_us, 120);
-  assert.equal(stats.journal_write_cost_parts.store.p50_us, 350);
-  assert.equal(stats.journal_write_cost_parts.store.p95_us, 2060);
-  assert.equal(stats.journal_write_cost_parts.put.max_us, 2000);
-  assert.equal(stats.journal_write_cost.unpaired_excluded, 1);
-});
-
 test("the recents gate applies only when the round runs the recents swipe", () => {
   const noRecents = { ...timingsPass(), runs: timingsPass().runs.filter((r) => r.mode !== "recents") };
   assert.equal(wrapUpVerdict(structuredClone(noRecents), statsOf(edit(1, 1, 100)), { ...config, recents: false }).result, "pass");
   assert.equal(wrapUpVerdict(structuredClone(noRecents), statsOf(edit(1, 1, 100)), config).result, "fail");
-});
-
-test("the cost split report is reproducible from timing lines: pairing, groups, slow-sample dominance", () => {
-  const cost = (sec, seq, t, e, i, p, indexWrite) =>
-    line(sec, PID, "RaftDraftTiming", `draft_journal_written seq=${seq} path=sync costUs=${t} encodeUs=${e} storeUs=${i + p} indexUs=${i} putUs=${p}${indexWrite == null ? "" : ` indexWrite=${indexWrite}`} len=3 uptimeMs=1`);
-  const lines = [
-    change(1, 1), cost(1, 1, 1500, 100, 1200, 150, 1),
-    change(2, 2), cost(2, 2, 400, 100, 100, 150, 0),
-    change(3, 3), cost(3, 3, 5000, 4000, 300, 500, 0),
-    cost(3.1, 3, 9999, 9000, 1, 1, 0), // repeat of seq 3: excluded
-    cost(4, 77, 8000, 1, 1, 7000, 0), // no input 77: excluded
-    change(5, 5), cost(5, 5, 2000, 600, 600, 700, 0),
-  ];
-  const r = costSplitReport(lines);
-  assert.equal(r.samples, 4);
-  assert.equal(r.unpaired, 2);
-  assert.equal(r.groups.registration.total.samples, 1);
-  assert.equal(r.groups.update.total.samples, 3);
-  assert.equal(r.groups.update.total.max_us, 5000);
-  assert.equal(r.slow.count, 3);
-  assert.deepEqual(r.slow.dominant, { encode: 1, index: 1, put: 0, none: 1 });
-  assert.deepEqual(r.slow.slowest.map((s) => s.key), [`${PID}:3`, `${PID}:5`, `${PID}:1`]);
-  // Lines without indexWrite (older builds) are unlabelled, never guessed.
-  assert.equal(costSplitReport([change(1, 1), cost(1, 1, 500, 100, 200, 200, null)]).groups.unlabelled.total.samples, 1);
-});
-
-test("the cost split pairs a cost line with its input wherever the input sits in the file", () => {
-  const cost = (sec, seq) => line(sec, PID, "RaftDraftTiming", `draft_journal_written seq=${seq} path=sync costUs=500 encodeUs=100 storeUs=400 indexUs=100 putUs=300 indexWrite=0 len=3 uptimeMs=1`);
-  // The cost line first (e.g. logcat buffers interleaved), its input after it: still paired, as the summary does.
-  const lines = [cost(1, 1), change(1, 1)];
-  assert.equal(costSplitReport(lines).samples, 1);
-  assert.equal(costSplitReport(lines).unpaired, 0);
-  assert.equal(statsOf(lines).journal_coverage.paired, 1);
 });

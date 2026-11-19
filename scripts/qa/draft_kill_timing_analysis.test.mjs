@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { nearestRank, journalCostStats, writePathCounts, writeLatencyStats, analyzeKillRun, measuredBucket, summarizeByMeasuredBucket, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
+import { WRITE_INTERVAL_MS, applyWriteDeadline, nearestRank, draftWriteCostStats, parseTimingMessage, requiredLenAtKill, typedBeforeKill, writeDeadline, writePathCounts, writeLatencyStats, analyzeKillRun, measuredBucket, summarizeByMeasuredBucket, exitInterval, parseEventPid, parseKillLine, parseLogcatLine, summarize, markdownTable } from "./draft_kill_timing_analysis.mjs";
 
 const PKG = "build.raft.app.alpha";
 const PID = 4242;
 const line = (sec, pid, tag, message) => `${sec.toFixed(3).padStart(10)}  ${pid}  ${pid} I ${tag}: ${message}`;
 const change = (sec, seq, len, pid = PID) => line(sec, pid, "RaftDraftTiming", `change_received seq=${seq} len=${len} uptimeMs=${Math.round(sec * 1000)}`);
-const written = (sec, seq, len, pid = PID) => line(sec, pid, "RaftDraftTiming", `draft_written seq=${seq} len=${len} uptimeMs=${Math.round(sec * 1000)}`);
+const written = (sec, seq, len, pid = PID, costUs = null) =>
+  line(sec, pid, "RaftDraftTiming", `draft_written seq=${seq} len=${len} path=background${costUs == null ? "" : ` costUs=${costUs}`} uptimeMs=${Math.round(sec * 1000)}`);
 const killing = (sec, pid = PID, pkg = PKG) => line(sec, 600, "ActivityManager", `Killing ${pid}:${pkg}/u0a190 (adj 0): stop ${pkg} due to from pid 9000`);
 const amKill = (sec, pid = PID) => line(sec, 600, "am_kill", `[0,${pid},${PKG},0,stop ${PKG} due to from pid 9000]`);
 const procDied = (sec, pid = PID) => line(sec, 600, "am_proc_died", `[0,${pid},${PKG},0,17]`);
@@ -161,18 +162,23 @@ test("write paths are counted from the marker lines", () => {
   assert.deepEqual(counts, { sync: 1, background: 2, flush: 0, unlabeled: 1, sync_write_fallback: 1 });
 });
 
-test("journal write cost distribution comes from paired draft_journal_written lines only", () => {
+test("draft_written lines carry the write's own time; lines of builds without it still parse", () => {
+  assert.deepEqual(parseTimingMessage("draft_written seq=3 len=7 path=background costUs=1234 uptimeMs=99"), { kind: "draft_written", seq: 3, len: 7, path: "background", costUs: 1234, uptimeMs: 99 });
+  assert.deepEqual(parseTimingMessage("draft_written seq=3 len=7 path=flush uptimeMs=99"), { kind: "draft_written", seq: 3, len: 7, path: "flush", costUs: null, uptimeMs: 99 });
+  // The removed crash journal's line is not a timing line.
+  assert.equal(parseTimingMessage("draft_journal_written seq=3 path=sync costUs=12 len=7 uptimeMs=99"), null);
+});
+
+test("draft write cost distribution comes from draft_written costUs, every path", () => {
   const l = (sec, msg) => line(sec, PID, "RaftDraftTiming", msg);
-  const stats = journalCostStats([
+  const stats = draftWriteCostStats([
     l(1, "change_received seq=1 len=3 uptimeMs=1000"),
-    l(1, "draft_journal_written seq=1 path=sync costUs=120 len=3 uptimeMs=1000"),
-    l(2, "change_received seq=2 len=4 uptimeMs=2000"),
-    l(2, "draft_journal_written seq=2 path=sync costUs=80 len=4 uptimeMs=2000"),
-    // No change_received of seq 7, and a line without a seq: excluded.
-    l(3, "draft_journal_written seq=7 path=sync costUs=9000 len=4 uptimeMs=3000"),
-    l(3, "draft_journal_written path=sync costUs=9000 len=4 uptimeMs=3000"),
+    l(1, "draft_written seq=1 len=3 path=background costUs=120 uptimeMs=1001"),
+    l(2, "draft_written seq=2 len=4 path=flush costUs=800 uptimeMs=2000"),
+    // No cost on the line (older build): counted as a write, not as a cost sample.
+    l(3, "draft_written seq=3 len=5 path=background uptimeMs=3000"),
   ]);
-  assert.deepEqual(stats, { samples: 2, min_us: 80, p50_us: 80, p95_us: 120, p99_us: 120, max_us: 120, basis: "paired samples only", unpaired_excluded: 2 });
+  assert.deepEqual(stats, { samples: 2, min_us: 120, p50_us: 120, p95_us: 800, p99_us: 800, max_us: 800 });
 });
 
 test("percentiles are nearest-rank: rank ceil(q * n), so 1..100 gives p50/p95/p99 = 50/95/99", () => {
@@ -181,7 +187,68 @@ test("percentiles are nearest-rank: rank ceil(q * n), so 1..100 gives p50/p95/p9
   assert.equal(nearestRank([7], 0.95), 7);
   assert.equal(nearestRank([1, 2], 0.5), 1);
   assert.equal(nearestRank([], 0.5), null);
-  const l = (sec, msg) => line(sec, PID, "RaftDraftTiming", msg);
-  const stats = journalCostStats(probe.flatMap((v) => [l(v, `change_received seq=${v} len=1 uptimeMs=${v}`), l(v, `draft_journal_written seq=${v} path=sync costUs=${v} len=1 uptimeMs=${v}`)]));
+  const stats = draftWriteCostStats(probe.map((v) => written(v, v, 1, PID, v)));
   assert.deepEqual([stats.p50_us, stats.p95_us, stats.p99_us, stats.max_us], [50, 95, 99, 100]);
+});
+
+test("the write deadline is the 40 ms interval plus the p95 draft write time, rounded up", () => {
+  assert.equal(WRITE_INTERVAL_MS, 40);
+  assert.deepEqual(writeDeadline({ samples: 20, p95_us: 2300 }), { interval_ms: 40, write_time_ms: 3, deadline_ms: 43, basis: "p95 of 20 draft writes (2300 µs)" });
+  // Not measured: the interval alone, never a looser guess.
+  assert.equal(writeDeadline({ samples: 0, p95_us: null }).deadline_ms, 40);
+  assert.equal(writeDeadline(undefined).deadline_ms, 40);
+});
+
+test("what was typed before the kill: the run's own changes with their age, and the longest written text", () => {
+  const lines = [
+    change(9, 1, 20), written(9.01, 1, 20), // the previous text, before the composer was cleared
+    change(9.5, 2, 0),
+    change(10, 3, 5), written(10.002, 3, 5),
+    change(10.3, 4, 6),
+    killing(10.36), gone(10.37),
+    change(10.4, 5, 7), // after the signal: not part of what was typed before the kill
+  ];
+  const typed = typedBeforeKill(lines, PID, 10360);
+  assert.deepEqual(typed.changes_before_kill, [{ seq: 3, len: 5, age_ms: 360 }, { seq: 4, len: 6, age_ms: 60 }]);
+  assert.equal(typed.written_len_before_kill, 5);
+  assert.equal(typedBeforeKill(lines, PID, null).changes_before_kill, null);
+  // Another process's lines never count.
+  assert.deepEqual(typedBeforeKill(lines.map((l) => l.replace(` ${PID}  ${PID} `, " 77  77 ")), PID, 10360).changes_before_kill, []);
+  const run = analyzeKillRun({ ...base, expectedLen: 6, delaySec: 0.05, lines: lines.slice(5, 8), history: lines });
+  assert.equal(run.timing, "hit");
+  assert.deepEqual(run.changes_before_kill, typed.changes_before_kill);
+});
+
+test("required text at the kill: every change older than the deadline and anything written before it", () => {
+  const run = { typed_len: 6, written_len_before_kill: 4, changes_before_kill: [{ len: 4, age_ms: 300 }, { len: 5, age_ms: 50 }, { len: 6, age_ms: 20 }] };
+  assert.equal(requiredLenAtKill(run, 43), 5);
+  assert.equal(requiredLenAtKill(run, 60), 4);
+  assert.equal(requiredLenAtKill(run, 10), 6);
+  // A write reported before the kill is required even when younger than the deadline.
+  assert.equal(requiredLenAtKill({ ...run, written_len_before_kill: 6 }, 43), 6);
+  // Kill time unknown: nothing proves a loss was inside the window, so the whole text is required.
+  assert.equal(requiredLenAtKill({ ...run, changes_before_kill: null }, 43), 6);
+});
+
+test("each kill run is decided against the deadline: younger text may be lost, older text and other text never", () => {
+  const changes = [{ len: 5, age_ms: 340 }, { len: 6, age_ms: 30 }];
+  const summary = {
+    draft_write_cost: { samples: 10, p95_us: 2500 },
+    runs: [
+      { run: 1, typed_len: 6, restored_len: 6, restored_is_prefix: true, written_len_before_kill: 6, changes_before_kill: changes, pass: true },
+      { run: 2, typed_len: 6, restored_len: 5, restored_is_prefix: true, written_len_before_kill: 5, changes_before_kill: changes, pass: false },
+      { run: 3, typed_len: 6, restored_len: 5, restored_is_prefix: true, written_len_before_kill: 6, changes_before_kill: changes, pass: false },
+      { run: 4, typed_len: 6, restored_len: 4, restored_is_prefix: true, written_len_before_kill: 4, changes_before_kill: changes, pass: false },
+      { run: 5, typed_len: 6, restored_len: 6, restored_is_prefix: false, written_len_before_kill: 6, changes_before_kill: changes, pass: false },
+      { run: 6, typed_len: 6, restored_len: 5, restored_is_prefix: true, written_len_before_kill: 5, changes_before_kill: null, pass: false },
+      { run: 7, mode: "send", pass: true },
+    ],
+  };
+  assert.deepEqual(applyWriteDeadline(summary), { interval_ms: 40, write_time_ms: 3, deadline_ms: 43, basis: "p95 of 10 draft writes (2500 µs)" });
+  assert.deepEqual(summary.runs.map((r) => r.pass), [true, true, false, false, false, false, true]);
+  assert.equal(summary.runs[1].survival, "lost 1 char(s) younger than 43 ms");
+  assert.match(summary.runs[2].survival, /lost text older than 43 ms \(kept len 5, required 6\)/);
+  assert.match(summary.runs[3].survival, /required 5/);
+  assert.equal(summary.runs[4].survival, "restored text is not what was typed");
+  assert.equal(summary.runs[6].required_len, undefined);
 });

@@ -2,6 +2,10 @@
 // lines and decides, on the device's own clock, how long after the composer took the last typed text the
 // app process was killed, and whether that text was already in the durable draft.
 //
+// Pass condition (artin 2026-11-19, no crash journal): typed text older than the write interval plus the
+// write time survives a kill. The composer writes typed text at once after a quiet period and at most every
+// WRITE_INTERVAL_MS while typing; a change younger than that deadline at the kill may be lost, never an older one.
+//
 // Clock: logcat `-v monotonic` prints CLOCK_MONOTONIC seconds; the app's `RaftDraftTiming` lines carry
 // SystemClock.uptimeMillis(), which is CLOCK_MONOTONIC too. Δ = kill line (ActivityManager "Killing <pid>:<pkg>",
 // logged by system_server right before it signals the process) − last change_received uptimeMs.
@@ -15,13 +19,20 @@ export function parseLogcatLine(line) {
   return { tsMs: Math.round(Number(m[1]) * 1000 * 1000) / 1000, pid: Number(m[2]), tid: Number(m[3]), level: m[4], tag: m[5].trim(), message: m[6] };
 }
 
-/** `change_received seq=3 len=12 uptimeMs=123456` → {kind, seq, len, uptimeMs}. */
+/**
+ * `change_received seq=3 len=12 uptimeMs=123456` → {kind, seq, len, uptimeMs}; `draft_written seq=3 len=12
+ * path=background costUs=850 uptimeMs=…` also gives path and costUs (the write's own time on its thread).
+ */
 export function parseTimingMessage(message) {
-  // `path=` (sync | background | flush) and `sync_write_fallback` come from builds with the synchronous first write.
-  const m = /^(change_received|draft_written|sync_write_fallback) seq=(\d+) len=(\d+)(?: path=(\w+))? uptimeMs=(\d+)\s*$/.exec(message);
+  // `path=` (sync | background | flush) and `sync_write_fallback` come from builds with the synchronous first write;
+  // `costUs=` from builds that time the draft write (lines without it parse with costUs null).
+  const m = /^(change_received|draft_written|sync_write_fallback) seq=(\d+) len=(\d+)(?: path=(\w+))?(?: costUs=(\d+))? uptimeMs=(\d+)\s*$/.exec(message);
   if (!m) return null;
-  return { kind: m[1], seq: Number(m[2]), len: Number(m[3]), path: m[4] ?? null, uptimeMs: Number(m[5]) };
+  return { kind: m[1], seq: Number(m[2]), len: Number(m[3]), path: m[4] ?? null, costUs: m[5] != null ? Number(m[5]) : null, uptimeMs: Number(m[6]) };
 }
+
+/** The composer's typed-text write interval (SharedThreadComposerDraftPersistSlice DefaultChangeWriteIntervalMillis). */
+export const WRITE_INTERVAL_MS = 40;
 
 /** How typed-text writes were made: counts of draft_written by path, and of synchronous-write fallbacks. */
 export function writePathCounts(lines) {
@@ -178,7 +189,7 @@ function classify(result, delaySec) {
  * @param {boolean} input.pidGone the old pid was gone after the kill
  * @param {string|null} [input.refProbe] measure from this probe line (`run=<n> <refProbe>`) instead of the last change
  */
-export function analyzeKillRun({ lines, pkg, oldPid, samePid = true, runIndex, expectedLen, delaySec, pidGone, refProbe = null, extraReasons = [], window = null }) {
+export function analyzeKillRun({ lines, history = lines, pkg, oldPid, samePid = true, runIndex, expectedLen, delaySec, pidGone, refProbe = null, extraReasons = [], window = null }) {
   const parsed = lines.map(parseLogcatLine).filter(Boolean);
   const timing = parsed
     .filter((l) => l.tag === "RaftDraftTiming")
@@ -213,6 +224,8 @@ export function analyzeKillRun({ lines, pkg, oldPid, samePid = true, runIndex, e
     clock_skew_ms: lastChange ? round3(lastChange.tsMs - lastChange.uptimeMs) : null,
     written_before_kill: Boolean(written),
     write_after_change_ms: written && lastChange ? written.uptimeMs - lastChange.uptimeMs : null,
+    write_cost_us: written?.costUs ?? null,
+    ...typedBeforeKill(history, oldPid, lower),
     timing: "unconfirmed",
     reason: null,
   };
@@ -243,6 +256,77 @@ export function analyzeKillRun({ lines, pkg, oldPid, samePid = true, runIndex, e
   return result;
 }
 
+/**
+ * What the old process had typed and written before the kill signal ([lowerMs], logcat monotonic), from
+ * [history] (the run's lines from before its text was typed): its change_received lines after the last
+ * empty-composer change (the run's own text only), each with its age at the signal, and the longest text a
+ * draft_written line reported before the signal. With no signal line the ages are unknown (null).
+ */
+export function typedBeforeKill(history, oldPid, lowerMs) {
+  const timing = history
+    .map(parseLogcatLine)
+    .filter((l) => l && l.tag === "RaftDraftTiming" && l.pid === oldPid && (lowerMs == null || l.tsMs <= lowerMs))
+    .map((l) => ({ ...l, ...parseTimingMessage(l.message) }))
+    .filter((l) => l.kind);
+  const changes = timing.filter((l) => l.kind === "change_received");
+  const cleared = changes.findLastIndex((l) => l.len === 0);
+  const own = changes.slice(cleared + 1);
+  const ownFrom = cleared >= 0 ? changes[cleared].uptimeMs : -Infinity;
+  const written = timing.filter((l) => l.kind === "draft_written" && l.uptimeMs >= ownFrom);
+  return {
+    changes_before_kill: lowerMs == null ? null : own.map((c) => ({ seq: c.seq, len: c.len, age_ms: round3(lowerMs - c.uptimeMs) })),
+    written_len_before_kill: written.length ? Math.max(...written.map((w) => w.len)) : 0,
+  };
+}
+
+/**
+ * The text that must have survived a kill: the longest of what a draft_written line reported before the
+ * signal and every change at least [deadlineMs] old at the signal. Without the signal time the whole typed
+ * text is required (nothing proves the loss was inside the window).
+ */
+export function requiredLenAtKill(run, deadlineMs) {
+  if (run.changes_before_kill == null) return run.typed_len;
+  const old = run.changes_before_kill.filter((c) => c.age_ms >= deadlineMs).map((c) => c.len);
+  return Math.max(run.written_len_before_kill ?? 0, ...old, 0);
+}
+
+/**
+ * The write deadline from the run's measured draft writes: WRITE_INTERVAL_MS plus the p95 of the draft
+ * write's own time (draft_written costUs, every path), rounded up to whole ms. No samples: the interval
+ * alone (stricter, and the missing measurement is an unmet condition of its own).
+ */
+export function writeDeadline(draftWriteCost) {
+  const p95 = draftWriteCost?.samples ? draftWriteCost.p95_us : null;
+  const writeMs = p95 == null ? 0 : Math.ceil(p95 / 1000);
+  return { interval_ms: WRITE_INTERVAL_MS, write_time_ms: writeMs, deadline_ms: WRITE_INTERVAL_MS + writeMs, basis: p95 == null ? "no draft write cost samples: interval only" : `p95 of ${draftWriteCost.samples} draft writes (${p95} µs)` };
+}
+
+/**
+ * Decides each kill run that recorded what was restored (restored_len, restored_is_prefix, typed_len)
+ * against the deadline: pass when the restored text is a prefix of the typed text and at least the
+ * required length (requiredLenAtKill). Text younger than the deadline may be lost; older text never.
+ */
+export function applyWriteDeadline(summary) {
+  const deadline = writeDeadline(summary.draft_write_cost);
+  summary.write_deadline = deadline;
+  for (const run of summary.runs ?? []) {
+    if (run.restored_len == null || run.typed_len == null) continue;
+    run.required_len = requiredLenAtKill(run, deadline.deadline_ms);
+    run.lost_chars = run.typed_len - run.restored_len;
+    if (!run.restored_is_prefix) {
+      run.pass = false;
+      run.survival = "restored text is not what was typed";
+    } else if (run.restored_len >= run.required_len) {
+      run.pass = true;
+      run.survival = run.restored_len === run.typed_len ? "all typed text kept" : `lost ${run.lost_chars} char(s) younger than ${deadline.deadline_ms} ms`;
+    } else {
+      run.pass = false;
+      run.survival = `lost text older than ${deadline.deadline_ms} ms (kept len ${run.restored_len}, required ${run.required_len})`;
+    }
+  }
+  return deadline;
+}
+
 /** Nearest-rank percentile of sorted [values]: the value at rank ceil(q * n) (1-based), clamped to 1..n. */
 export const nearestRank = (sorted, q) =>
   sorted.length ? sorted[Math.min(sorted.length, Math.max(1, Math.ceil(q * sorted.length))) - 1] : null;
@@ -254,88 +338,6 @@ const quantiles = (values, unit) => {
 };
 
 /**
- * Whether the crash journal's cost samples cover the typed edits, paired by (process, seq). Every typed
- * change logs `change_received seq=N` first (the moment it arrived) and then, from the same synchronous
- * call, `draft_journal_written seq=N ...` (the cost sample) or `draft_journal_write_failed seq=N`.
- * - paired: an edit with its cost line; failures: an edit with its failure line (or an unpaired one).
- * - likely_interrupted: the LAST edit of a process with neither line, AND evidence that this process
- *   died at or after that edit's marker (AM "Killing <pid>", am_kill / am_proc_died of the pid, its cgroup
- *   killed, AM "has died"): the kill most likely landed during that journal write. Listed apart.
- * - missing: every other edit with neither line, including a last edit with no death evidence.
- * - unpaired: cost / failure lines with no edit of that (process, seq), and repeats of one edit's cost
- *   line; never counted for an edit and never in the cost percentiles.
- * Zero tolerance: a single missing input makes the run "unconfirmed" (a lost logcat line cannot be told
- * apart from a journal write that never ran). Any failure fails the run.
- */
-export const JOURNAL_MISSING_TOLERANCE = 0;
-export function journalCoverage({ edits, paired, failures, likely_interrupted = 0, missing, unpaired = 0 }) {
-  const allowed = Math.floor(edits * JOURNAL_MISSING_TOLERANCE);
-  return { edits, paired, failures, likely_interrupted, missing, unpaired, allowed_missing: allowed, covered: edits > 0 && missing <= allowed };
-}
-
-/**
- * Pairs the journal lines with the edits. [editsByPid]: pid -> [{ seq, tsMs }] in log order;
- * [costLines]: [{ key: "pid:seq", costUs }] in log order; [failureKeys]: "pid:seq" keys; [deathsByPid]:
- * pid -> logcat times of death evidence. Returns { coverage, pairedCostsUs }.
- */
-export function pairJournalLines(editsByPid, costLines, failureKeys, deathsByPid = new Map()) {
-  const editKeys = new Set();
-  for (const [pid, list] of editsByPid) for (const e of list) editKeys.add(`${pid}:${e.seq}`);
-  const costByKey = new Map();
-  const partsByKey = new Map();
-  let unpaired = 0;
-  for (const { key, costUs, parts } of costLines) {
-    if (editKeys.has(key) && !costByKey.has(key)) {
-      costByKey.set(key, costUs);
-      if (parts) partsByKey.set(key, parts);
-    } else unpaired += 1;
-  }
-  let edits = 0;
-  let failures = 0;
-  let likelyInterrupted = 0;
-  let missing = 0;
-  for (const [pid, list] of editsByPid) {
-    list.forEach((e, index) => {
-      const key = `${pid}:${e.seq}`;
-      edits += 1;
-      if (costByKey.has(key)) return;
-      if (failureKeys.has(key)) failures += 1;
-      else if (index === list.length - 1 && (deathsByPid.get(pid) ?? []).some((at) => at >= e.tsMs)) likelyInterrupted += 1;
-      else missing += 1;
-    });
-  }
-  const unpairedFailures = [...failureKeys].filter((key) => !editKeys.has(key)).length;
-  const coverage = journalCoverage({
-    edits,
-    paired: costByKey.size,
-    failures: failures + unpairedFailures,
-    likely_interrupted: likelyInterrupted,
-    missing,
-    unpaired: unpaired + unpairedFailures,
-  });
-  // ENCODE / STORE (index + put) halves of the paired samples that carry them.
-  const pairedPartsUs = {};
-  for (const name of ["encode", "store", "index", "put"]) {
-    pairedPartsUs[name] = [...partsByKey.values()].map((p) => p[name]).filter((v) => v != null);
-  }
-  return { coverage, pairedCostsUs: [...costByKey.values()], pairedPartsUs };
-}
-
-/** The pid a death-evidence line names (AM Killing / has died, am_kill / am_proc_died, cgroup killed), or null. */
-export function deathEvidencePid(l) {
-  if (l.tag === "ActivityManager") {
-    const m = /^Killing (\d+):/.exec(l.message) ?? /^Process \S+ \(pid (\d+)\) has died/.exec(l.message);
-    return m ? Number(m[1]) : null;
-  }
-  if (l.tag === "am_kill" || l.tag === "am_proc_died") return parseEventPid(l.message)?.pid ?? null;
-  if (l.tag === "libprocessgroup") {
-    const m = /^Successfully killed process cgroup uid \d+ pid (\d+) /.exec(l.message);
-    return m ? Number(m[1]) : null;
-  }
-  return null;
-}
-
-/**
  * The wrap-up statistics of a whole run, fed one logcat line at a time ([add]) so the raw logcat is never
  * held in memory: what it keeps grows with the app's own RaftDraftTiming lines (one number per keystroke),
  * not with the size of the logcat.
@@ -344,75 +346,44 @@ export function deathEvidencePid(l) {
  *   change (same pid and seq), over every change the run logged. draft_written is logged after the durable
  *   write and the active-draft-records refresh, so this is an upper bound on when the text became durable.
  * - write_paths: counts of draft_written by path, and of synchronous-write fallbacks.
- * - journal_write_cost: the crash journal's input-thread write cost (`draft_journal_written ... costUs=N`).
+ * - draft_write_cost: the draft write's own time (draft_written costUs), every path, and per path.
  */
 export function createLogcatStats() {
   const changes = new Map();
   const latencies = [];
   const paths = { sync: 0, background: 0, flush: 0, unlabeled: 0, sync_write_fallback: 0 };
-  const editsByPid = new Map();
-  const costLines = [];
-  const failureKeys = new Set();
-  const deathsByPid = new Map();
+  const costsUs = [];
+  const costsUsByPath = {};
   const appPids = new Set();
   return {
     /** Pids that logged RaftDraftTiming lines: the app's own processes. */
     appPids,
     add(raw) {
-      if (!raw.includes("RaftDraftTiming")) {
-        if (!/Killing |has died|am_kill|am_proc_died|libprocessgroup/.test(raw)) return;
-        const d = parseLogcatLine(raw);
-        const pid = d ? deathEvidencePid(d) : null;
-        if (pid != null) {
-          if (!deathsByPid.has(pid)) deathsByPid.set(pid, []);
-          deathsByPid.get(pid).push(d.tsMs);
-        }
-        return;
-      }
+      if (!raw.includes("RaftDraftTiming")) return;
       const l = parseLogcatLine(raw);
       if (!l || l.tag !== "RaftDraftTiming") return;
       appPids.add(l.pid);
-      const cost = /^draft_journal_written\b.*\bcostUs=(\d+)/.exec(l.message);
-      if (cost) {
-        const seq = /\bseq=(\d+)/.exec(l.message);
-        const part = (name) => {
-          const m = new RegExp(`\\b${name}Us=(\\d+)`).exec(l.message);
-          return m ? Number(m[1]) : null;
-        };
-        costLines.push({
-          key: seq ? `${l.pid}:${seq[1]}` : `${l.pid}:noseq`,
-          costUs: Number(cost[1]),
-          parts: { encode: part("encode"), store: part("store"), index: part("index"), put: part("put") },
-        });
-        return;
-      }
-      if (/^draft_journal_write_failed\b/.test(l.message)) {
-        const seq = /\bseq=(\d+)/.exec(l.message);
-        failureKeys.add(seq ? `${l.pid}:${seq[1]}` : `${l.pid}:noseq:${failureKeys.size}`);
-        return;
-      }
       const t = parseTimingMessage(l.message);
       if (!t) return;
       const key = `${l.pid}:${t.seq}`;
-      if (t.kind === "change_received") {
-        if (!editsByPid.has(l.pid)) editsByPid.set(l.pid, []);
-        editsByPid.get(l.pid).push({ seq: t.seq, tsMs: l.tsMs });
-        changes.set(key, t.uptimeMs);
-      }
+      if (t.kind === "change_received") changes.set(key, t.uptimeMs);
       else if (changes.has(key)) latencies.push(t.uptimeMs - changes.get(key));
       if (t.kind === "sync_write_fallback") paths.sync_write_fallback += 1;
-      else if (t.kind === "draft_written") paths[t.path && t.path in paths ? t.path : "unlabeled"] += 1;
+      else if (t.kind === "draft_written") {
+        const path = t.path && t.path in paths ? t.path : "unlabeled";
+        paths[path] += 1;
+        if (t.costUs != null) {
+          costsUs.push(t.costUs);
+          (costsUsByPath[path] ??= []).push(t.costUs);
+        }
+      }
     },
     result() {
-      const journal = pairJournalLines(editsByPid, costLines, failureKeys, deathsByPid);
       return {
         write_latency: quantiles([...latencies], "ms"),
         write_paths: { ...paths },
-        // Percentiles of PAIRED samples only (a cost line matched to its change_received by process + seq).
-        journal_write_cost: { ...quantiles([...journal.pairedCostsUs], "us"), basis: "paired samples only", unpaired_excluded: journal.coverage.unpaired },
-        // The same paired samples split: ENCODE (entry to JSON) and STORE (index + put), each with its parts.
-        journal_write_cost_parts: Object.fromEntries(Object.entries(journal.pairedPartsUs).map(([name, values]) => [name, quantiles([...values], "us")])),
-        journal_coverage: journal.coverage,
+        draft_write_cost: quantiles([...costsUs], "us"),
+        draft_write_cost_by_path: Object.fromEntries(Object.entries(costsUsByPath).map(([path, values]) => [path, quantiles([...values], "us")])),
       };
     },
   };
@@ -425,7 +396,7 @@ export function logcatStatsOf(lines) {
 }
 
 export const writeLatencyStats = (lines) => logcatStatsOf(lines).write_latency;
-export const journalCostStats = (lines) => logcatStatsOf(lines).journal_write_cost;
+export const draftWriteCostStats = (lines) => logcatStatsOf(lines).draft_write_cost;
 
 /**
  * Calls [onLine] for every line of [file] from byte [from] on, reading at most [chunkBytes] at a time; a line
@@ -518,9 +489,7 @@ export function acceptanceUnmet(summary, config) {
   const fast = summary.runs.filter((r) => r.mode === "fast");
   if (fast.some((r) => !r.typing_in_3_to_5_s)) unmet.push(`fast typing outside 3-5 s: ${fast.filter((r) => !r.typing_in_3_to_5_s).map((r) => `${r.typing_span_ms ?? "?"} ms`).join(", ")}`);
   if (!summary.runs.some((r) => r.mode === "send" && r.timing === "hit" && r.pass)) unmet.push("send regression: no attempt with the exit inside [0, 100] ms of the tap and the message delivered");
-  if (!summary.journal_write_cost?.samples) unmet.push("no draft_journal_written lines: the crash journal's cost was not measured");
-  else if (summary.journal_write_cost.p95_us >= 1000) unmet.push(`crash-journal write p95 ${summary.journal_write_cost.p95_us} µs is not below 1000 µs`);
-  if (summary.journal_coverage?.failures > 0) unmet.push(`crash-journal write failed ${summary.journal_coverage.failures} time(s) (draft_journal_write_failed)`);
+  if (!summary.draft_write_cost?.samples) unmet.push("no draft_written costUs lines: the draft write time was not measured");
   if (!summary.apk || summary.apk.file_sha256 !== summary.apk.installed_base_apk_sha256) unmet.push("installed base.apk SHA-256 differs from the downloaded APK (or was not read)");
   if (summary.apk?.downloaded_sha256_from_workflow && summary.apk.downloaded_sha256_from_workflow !== summary.apk.file_sha256) unmet.push("APK SHA-256 differs from the one the workflow downloaded");
   if (env.REQUIRE_COMMIT && !["identical", "ahead"].includes(env.REQUIRE_COMMIT_STATUS ?? "")) unmet.push(`APK source ${env.APK_SOURCE_SHA} does not contain ${env.REQUIRE_COMMIT} (compare: ${env.REQUIRE_COMMIT_STATUS || "unavailable"})`);
@@ -534,7 +503,6 @@ export function acceptanceUnmet(summary, config) {
  * - Channel concurrency: the check must have read the run's channel completely (see channelActivityReport)
  *   and found nothing this run did not post. Other activity is not verified to be harmless, so it is
  *   unconfirmed, as is a failed or incomplete read.
- * - Crash-journal cost: the samples must cover the typed edits (journalCoverage).
  */
 export function acceptanceUnconfirmed(summary) {
   const unconfirmed = [];
@@ -544,11 +512,6 @@ export function acceptanceUnconfirmed(summary) {
     if (!a.coverage?.complete) unconfirmed.push(`channel concurrency check incomplete: ${a.coverage?.reason ?? "coverage unknown"}`);
     if (a.other_activity == null) unconfirmed.push("other activity in the run's channel unknown");
     else if (a.other_activity > 0) unconfirmed.push(`other activity in the run's channel: ${a.other_activity} item(s) ${JSON.stringify(a.other_kinds ?? {})}, not verified to be harmless`);
-  }
-  const c = summary.journal_coverage;
-  if (!c) unconfirmed.push("crash-journal sample coverage unknown");
-  else if (!c.covered && c.failures === 0) {
-    unconfirmed.push(`crash-journal cost samples do not cover the edits: ${c.paired} paired of ${c.edits} edits, ${c.missing} without a result (allowed ${c.allowed_missing}), ${c.likely_interrupted} likely interrupted by the process's death`);
   }
   return unconfirmed;
 }
@@ -668,12 +631,14 @@ export function channelActivityReport({ status, ok = status === 200, problem = n
 
 /**
  * The verdict, decided at wrap-up AFTER the whole-run logcat statistics exist: [logcatStats] (or null when
- * the capture could not be read) is merged into [summary] first, so the crash-journal gate sees the measured
- * cost. A run that already failed at a step keeps that failure; otherwise the result is "fail" with any
- * unmet condition, else "unconfirmed" with any unconfirmed one, else "pass".
+ * the capture could not be read) is merged into [summary] first, so the write deadline uses the measured
+ * draft write time; then every kill run is decided against it (applyWriteDeadline). A run that already
+ * failed at a step keeps that failure; otherwise the result is "fail" with any unmet condition, else
+ * "unconfirmed" with any unconfirmed one, else "pass".
  */
 export function wrapUpVerdict(summary, logcatStats, config) {
   if (logcatStats) Object.assign(summary, logcatStats);
+  applyWriteDeadline(summary);
   if (summary.failed_step) {
     summary.result = "fail";
     return summary;
@@ -682,88 +647,6 @@ export function wrapUpVerdict(summary, logcatStats, config) {
   summary.unconfirmed = acceptanceUnconfirmed(summary);
   summary.result = summary.unmet.length ? "fail" : summary.unconfirmed.length ? "unconfirmed" : "pass";
   return summary;
-}
-
-/**
- * The journal write cost, sample by sample, as timing-lines.txt has it (reproducible from that file alone):
- * 1. A sample is a `draft_journal_written seq=N ... costUs encodeUs storeUs indexUs putUs` line whose
- *    (logcat pid, seq) matches a `change_received seq=N` line of the same pid; the first such line per
- *    (pid, seq) counts, repeats and lines without a matching input are excluded (counted as unpaired).
- * 2. Percentiles: nearest-rank on the sorted values, rank ceil(q * n) (1-based) clamped to 1..n (nearestRank).
- * 3. Registration vs update: a line with `indexWrite=1` (the write also registered the draft key in the
- *    journal index) is "registration", `indexWrite=0` "update". Lines of builds that do not log the field
- *    are "unlabelled": which of them registered a key cannot be told from the line, so it is not guessed.
- * 4. Slow = total costUs >= [slowUs]. For each slow sample the dominant part is the one of ENCODE / INDEX /
- *    PUT holding >= 50% of the total, else "none"; share = sum of a part / sum of totals over slow samples.
- */
-export function costSplitReport(lines, { slowUs = 1000, listSlowest = 50 } = {}) {
-  // Two passes, like the end-of-run summary (pairJournalLines): every input first, then the cost lines,
-  // so a cost line pairs with its input wherever the two sit in the file.
-  const parsed = [];
-  const inputs = new Set();
-  for (const raw of lines) {
-    if (!raw.includes("RaftDraftTiming")) continue;
-    const l = parseLogcatLine(raw);
-    if (!l || l.tag !== "RaftDraftTiming") continue;
-    const input = /^change_received seq=(\d+) /.exec(l.message);
-    if (input) inputs.add(`${l.pid}:${input[1]}`);
-    else if (l.message.startsWith("draft_journal_written ")) parsed.push(l);
-  }
-  const seen = new Set();
-  const samples = [];
-  let unpaired = 0;
-  for (const l of parsed) {
-    const field = (name) => {
-      const m = new RegExp(`\\b${name}=(\\d+)`).exec(l.message);
-      return m ? Number(m[1]) : null;
-    };
-    const key = `${l.pid}:${field("seq")}`;
-    if (field("seq") == null || !inputs.has(key) || seen.has(key)) {
-      unpaired += 1;
-      continue;
-    }
-    seen.add(key);
-    const indexWrite = field("indexWrite");
-    samples.push({
-      key,
-      ts_ms: l.tsMs,
-      total: field("costUs"),
-      encode: field("encodeUs"),
-      index: field("indexUs"),
-      put: field("putUs"),
-      len: field("len"),
-      group: indexWrite == null ? "unlabelled" : indexWrite === 1 ? "registration" : "update",
-    });
-  }
-  const q = (values) => quantiles(values.filter((v) => v != null), "us");
-  const parts = (list) => Object.fromEntries(["total", "encode", "index", "put"].map((k) => [k, q(list.map((s) => s[k]))]));
-  const groups = {};
-  for (const g of ["registration", "update", "unlabelled"]) {
-    const list = samples.filter((s) => s.group === g);
-    if (list.length) groups[g] = parts(list);
-  }
-  const slow = samples.filter((s) => s.total >= slowUs).sort((a, b) => b.total - a.total);
-  const dominant = { encode: 0, index: 0, put: 0, none: 0 };
-  for (const s of slow) {
-    const top = ["encode", "index", "put"].map((k) => [k, s[k] ?? 0]).sort((a, b) => b[1] - a[1])[0];
-    dominant[top[1] >= s.total * 0.5 ? top[0] : "none"] += 1;
-  }
-  const sum = (k) => slow.reduce((a, s) => a + (s[k] ?? 0), 0);
-  const totalSlow = sum("total");
-  return {
-    method: "paired by (pid, seq); first line per input; nearest-rank percentiles; slow = costUs >= slowUs; dominant part >= 50% of the total",
-    slow_us: slowUs,
-    samples: samples.length,
-    unpaired,
-    all: parts(samples),
-    groups,
-    slow: {
-      count: slow.length,
-      share_pct: totalSlow ? { encode: Math.round((100 * sum("encode")) / totalSlow), index: Math.round((100 * sum("index")) / totalSlow), put: Math.round((100 * sum("put")) / totalSlow) } : null,
-      dominant,
-      slowest: slow.slice(0, listSlowest),
-    },
-  };
 }
 
 /** Per-bucket counts for the result table. */
@@ -830,12 +713,12 @@ export function markdownTable(runs, summary) {
   }
   out.push(
     "", "### Per run", "",
-    "| # | group | D (s) | sleep (s) | measured bucket | exit Δ lower (ms) | exit Δ upper (ms) | width (ms) | bounds | timing | written before kill | expected | composer after relaunch | restored as expected | old pid | new pid | pid gone | note |",
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+    "| # | group | D (s) | sleep (s) | measured bucket | exit Δ lower (ms) | exit Δ upper (ms) | width (ms) | bounds | timing | written before kill | expected | composer after relaunch | kept / required / typed (len) | restored as expected | old pid | new pid | pid gone | note |",
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
   );
   runs.forEach((r, i) => {
     const bounds = r.exit_lower_source ? `${r.exit_lower_source} .. ${r.exit_upper_source ?? "?"}` : "-";
-    out.push(`| ${i + 1} | ${r.group} | ${cell(r.delay_sec)} | ${cell(r.sleep_sec)} | ${cell(r.measured_bucket)} | ${cell(r.delta_lower_ms)} | ${cell(r.delta_upper_ms)} | ${cell(r.exit_width_ms)} | ${bounds} | ${r.timing} | ${r.written_before_kill ? "yes" : "no"} | ${cell(r.expected_desc)} | ${cell(r.observed_desc)} | ${r.pass ? "yes" : "no"} | ${cell(r.old_pid)} | ${cell(r.new_pid)} | ${r.pid_gone ? "yes" : "no"} | ${cell([r.sample, r.reason, r.note, r.error, r.foreign_app_deaths?.length ? `other app deaths: ${r.foreign_app_deaths.join("; ")}` : null].filter(Boolean).join("; ") || null)} |`);
+    out.push(`| ${i + 1} | ${r.group} | ${cell(r.delay_sec)} | ${cell(r.sleep_sec)} | ${cell(r.measured_bucket)} | ${cell(r.delta_lower_ms)} | ${cell(r.delta_upper_ms)} | ${cell(r.exit_width_ms)} | ${bounds} | ${r.timing} | ${r.written_before_kill ? "yes" : "no"} | ${cell(r.expected_desc)} | ${cell(r.observed_desc)} | ${r.restored_len == null ? "-" : `${r.restored_len} / ${cell(r.required_len)} / ${r.typed_len}`} | ${r.pass ? "yes" : "no"} | ${cell(r.old_pid)} | ${cell(r.new_pid)} | ${r.pid_gone ? "yes" : "no"} | ${cell([r.survival, r.sample, r.reason, r.note, r.error, r.foreign_app_deaths?.length ? `other app deaths: ${r.foreign_app_deaths.join("; ")}` : null].filter(Boolean).join("; ") || null)} |`);
   });
   return `${out.join("\n")}\n`;
 }
