@@ -1228,7 +1228,7 @@ private fun HomeSearchRouterContent(
         shellScope = environment.shellScope,
         listState = searchListState,
         overlay = overlay,
-        artifacts = artifactsState.takeIf { artifactsOn && !conversationScopedSearch },
+        artifacts = artifactsState.takeIf { !conversationScopedSearch },
         onArtifactsIntent = artifactsViewModel.store::dispatch,
         onOpenArtifact = { hit ->
             val target = ArtifactLinkTarget(hit.id)
