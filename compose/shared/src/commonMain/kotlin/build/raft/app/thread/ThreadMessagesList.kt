@@ -770,6 +770,7 @@ private fun ThreadMessagesListContent(
                 // raw item.offset — negating here would scroll the target BELOW the top and
                 // surface the previous row as firstVisible (Jony r18: staged -37 → readback 17).
                 viewportLayoutGeneration += 1L
+                listState.noteDispatchOwner(ThreadViewportOwnerTag.AdaptiveRestore)
                 dispatchViewportEvent(
                     LazyViewportEvent.Anchor(
                         target = LazyViewportAnchorTarget.Message(requireNotNull(anchor.messageId)),
@@ -1020,6 +1021,7 @@ private fun ThreadMessagesListContent(
                 )
             plan.rawScrollRequest?.let { request ->
                 listState.raw.requestScrollToItem(request.rawIndex, request.scrollOffset)
+                listState.noteRawViewportWrite(ThreadViewportOwnerTag.LongMessageToggle)
             }
             dispatchViewportEvent(
                 LazyViewportEvent.Anchor(
@@ -1237,6 +1239,26 @@ private fun ThreadMessagesListContent(
                     )
                 }
         )
+    // Open-path jitter tracing (#proj-mobile:#199): only a sampled open installs the recorder;
+    // it reads this list's layout once per frame and never scrolls (ThreadOpenTrace.kt).
+    ThreadMessagesListOpenTrace(
+        openKey = threadInstanceKey,
+        slice = renderPayload,
+        backgroundRefreshing = renderConfig.backgroundRefreshing,
+        listState = listState,
+        flags = adaptiveSharedStores.serverFeatureFlags,
+        initialServerId = adaptiveStoreScope.initialServerId,
+        messageBodyFontSize = messageBodyTextStyle.fontSize.hashCode(),
+        log = diagnosticsLogger,
+    ) {
+        val pendingFocus = pendingFocusedMessageAnchorIdentityState.value
+        initialBottomAnchorReady &&
+            (
+                pendingFocus == null ||
+                    pendingFocus == consumedFocusedMessageAnchorIdentity ||
+                    pendingFocus == scrollInterruptedFocusedMessageAnchorIdentity
+            )
+    }
     // Search in this thread (web useThreadSearch): the bar's store reads the whole thread; the page
     // tells it what it holds, and lands on the open match (loading around it when it isn't loaded).
     val threadFind = LocalThreadFindController.current
@@ -1642,6 +1664,7 @@ private fun ThreadMessagesListContent(
         if (!commandIsLiveOrTerminallyInvalidate()) return@ThreadListScrollOwnerEffect
         listState.awaitThreadMessagesLayoutFrame()
         if (!commandIsLiveOrTerminallyInvalidate()) return@ThreadListScrollOwnerEffect
+        listState.noteCommandOwner(command.target.openTraceOwnerTag())
         val executed =
             when (val target = command.target) {
                 is LazyViewportCommandTarget.Top -> {
@@ -1978,6 +2001,7 @@ private fun ThreadMessagesListContent(
                 return
             }
             viewportLayoutGeneration += 1L
+            listState.noteDispatchOwner(ThreadViewportOwnerTag.NewerSettle)
             dispatchViewportEvent(
                 LazyViewportEvent.NewerPageSettled(
                     expectedViewportEpoch = restoreTicket.expectedViewportEpoch,
@@ -2278,6 +2302,7 @@ private fun ThreadMessagesListContent(
             ) {
                 val targetIndex = renderPayload.threadMessageListItemIndex(anchor.messageId)
                 if (targetIndex >= 0) {
+                    listState.noteViewportOwner(ThreadViewportOwnerTag.OlderRestore)
                     listState.scrollToItem(targetIndex, -anchor.offset)
                     diagnosticsLogger(
                         "thread_older_anchor_restore result=restored messageId=${anchor.messageId} " +
@@ -2695,6 +2720,7 @@ private fun ThreadMessagesListContent(
             return@LaunchedEffect
         }
         correctedFocusedOriginIdentity = targetIdentity
+        listState.noteDispatchOwner(ThreadViewportOwnerTag.OriginCorrection)
         dispatchViewportEvent(
             LazyViewportEvent.Anchor(
                 target = LazyViewportAnchorTarget.Message(targetMessageId),
@@ -2875,6 +2901,7 @@ private fun ThreadMessagesListContent(
                     initialBottomAnchorReady = true
                     return@LaunchedEffect
                 }
+                listState.noteDispatchOwner(ThreadViewportOwnerTag.InitialBottomRetry, initialBottomAnchorRetries)
                 dispatchViewportEvent(
                     LazyViewportEvent.FollowLatest(canOverrideUserDragging = false)
                 )
@@ -3327,7 +3354,10 @@ private fun ThreadMessagesListContent(
             // FollowingLatest rather than replayed (replaying top-aligns / centres the row).
             (insetViewportAction ?: ThreadComposerInsetViewportAction.ReplayIntent)
                 .viewportEvent()
-                ?.let(dispatchViewportEvent)
+                ?.let { event ->
+                    listState.noteDispatchOwner(ThreadViewportOwnerTag.ImeCorrection)
+                    dispatchViewportEvent(event)
+                }
         }
         val insetCommandId = viewportControllerState.pendingCommand?.id
         val pixelProbeThreadInstanceKey = threadInstanceKey

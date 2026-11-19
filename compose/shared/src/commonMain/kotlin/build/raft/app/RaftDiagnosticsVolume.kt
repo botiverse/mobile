@@ -433,7 +433,7 @@ class RaftDiagnosticsVolumePolicy(
                 "auth", "send", "nav_transition", "artifact", "webview", "thread_read_", "thread_start",
                 "thread_route_open", "thread_reply_open", "home_open_", "conversation_open", "task",
                 "app_shell_", "app_back", "lifecycle", "process_exit", "system_kill", "memory", "crash",
-                "anr", "diagnostics_", "settings_", "feedback", "background_transition", "shared_activity",
+                "anr", "diagnostics_", "settings_", "feedback", "background_transition", "shared_activity", "open_trace_",
                 "foreground_reconcile", "activity_keep_top_pin", "sync_changes", "realtime_authority",
                 "reconnect", "rebaseline", "socket", "push", "notification",
             )

@@ -121,4 +121,56 @@ class RaftClientTraceEventSenderTest {
             }
         }
     }
+
+    /** A sampled unit (the `mobile.thread_open` span and its shift events) goes in one batch, under the same gate. */
+    @Test
+    fun aSpanAndItsEventsAreSentTogetherWithTheDefaultsAndNotUnderPrivacyMode() = runTest {
+        for (mode in listOf(RaftPrivacyMode.Off, RaftPrivacyMode.On)) {
+            val transport = RecordingTransport()
+            val sender =
+                RaftClientTraceEventSender(
+                    scope = backgroundScope,
+                    nowEpochMillis = { 1_794_391_200_000L },
+                    defaultAttrs = { mapOf("clientPlatform" to "ios") },
+                    privacyMode = MutableStateFlow(mode),
+                )
+            sender.bindTransport(transport)
+            val span =
+                RaftWebSpanRecord(
+                    traceId = "0123456789abcdef0123456789abcdef",
+                    spanId = "0123456789abcdef",
+                    name = "mobile.thread_open",
+                    startTime = "2026-11-11T10:00:00.000Z",
+                    endTime = "2026-11-11T10:00:01.000Z",
+                    attrs = buildJsonObject { put("end", "stable") },
+                )
+            val shift =
+                RaftWebEventRecord(
+                    name = "mobile.thread_open.shift",
+                    time = "2026-11-11T10:00:00.500Z",
+                    traceId = span.traceId,
+                    spanId = span.spanId,
+                    attrs = buildJsonObject { put("cause", "follow_latest") },
+                )
+            sender.emitSpan("server-1", span, listOf(shift))
+            advanceTimeBy(RaftClientTraceFlushDelayMillis + 1L)
+            runCurrent()
+            if (mode == RaftPrivacyMode.On) {
+                assertTrue(transport.batches.isEmpty() && transport.attested.isEmpty(), "privacy mode: nothing sent")
+                continue
+            }
+            val batch = transport.batches.single()
+            with(batch.records.single()) {
+                assertEquals("span", type)
+                assertEquals("internal", kind)
+                assertEquals("stable", attrs.getValue("end").jsonPrimitive.content)
+                assertEquals("ios", attrs.getValue("clientPlatform").jsonPrimitive.content)
+            }
+            with(batch.events.single()) {
+                assertEquals(span.traceId, traceId)
+                assertEquals(span.spanId, spanId)
+                assertEquals("ios", attrs.getValue("clientPlatform").jsonPrimitive.content)
+            }
+        }
+    }
 }
