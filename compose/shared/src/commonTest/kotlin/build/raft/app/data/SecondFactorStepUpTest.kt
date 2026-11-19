@@ -60,7 +60,7 @@ class SecondFactorStepUpTest {
                 Triple(
                     400,
                     """{"error":"That code didn't work. Check your authenticator app and try again.","code":"second_factor_code_invalid"}""",
-                    SecondFactorStepUpResult.CodeInvalid
+                    SecondFactorStepUpResult.CodeInvalid()
                 ),
                 Triple(400, """{"error":"That backup code was already used.","code":"backup_code_used"}""", SecondFactorStepUpResult.BackupCodeUsed),
                 Triple(
@@ -150,7 +150,7 @@ class SecondFactorStepUpTest {
         val results =
             ArrayDeque(
                 listOf(
-                    SecondFactorStepUpResult.CodeInvalid,
+                    SecondFactorStepUpResult.CodeInvalid(),
                     SecondFactorStepUpResult.BackupCodeUsed,
                     SecondFactorStepUpResult.Locked(lockedUntil),
                     SecondFactorStepUpResult.Failed("Failed to verify this sign-in"),

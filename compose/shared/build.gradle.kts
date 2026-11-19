@@ -251,6 +251,10 @@ kotlin {
                 implementation(libs.androidx.activity.compose)
                 // CMP switch: RaftSandboxWebView (document-start scripts, web message listener).
                 implementation(libs.androidx.webkit)
+                // Native passkey step-up (RaftNativePasskeyAssertion.android.kt): Credential Manager, and
+                // its Play services provider for Google Password Manager passkeys before Android 14.
+                implementation(libs.androidx.credentials)
+                implementation(libs.androidx.credentials.play.services.auth)
                 // Animated GIF / WebP in the image viewer (AnimatedImageDecoder on API 28+, GifDecoder
                 // below). Android-only artifact; iOS plays them through Skia's Codec instead. The
                 // loader turns Coil's service loader off so this never decodes outside the viewer.

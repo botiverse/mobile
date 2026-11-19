@@ -8,6 +8,7 @@
 	<array>
 		<string>applinks:app.raft.build</string>
 		<string>applinks:open.raft.build</string>
+		<string>webcredentials:app.raft.build</string>
 	</array>
 	<key>com.apple.developer.applesignin</key>
 	<array>

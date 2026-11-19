@@ -209,6 +209,13 @@
     <string name="settings_step_up_sign_in_again_message">無法驗證目前的登入。請重新登入，然後再試一次。</string>
     <string name="settings_step_up_sign_in_again">重新登入</string>
     <string name="settings_step_up_passkey_only">請在網頁版 Raft 上進行此變更，並用通行密鑰確認。</string>
+    <string name="settings_step_up_passkey_button">使用通行密鑰</string>
+    <string name="settings_step_up_use_passkey">使用通行密鑰</string>
+    <string name="settings_step_up_passkey_cancelled">通行密鑰視窗已關閉。請再試一次，或改用其他方式。</string>
+    <string name="settings_step_up_passkey_invalid">這個通行密鑰未通過驗證。請再試一次，或改用其他方式。</string>
+    <string name="settings_step_up_passkeys_unavailable">目前無法使用通行密鑰。請稍後再試。</string>
+    <string name="settings_step_up_passkey_none_here">這台裝置上沒有 Raft 的通行密鑰。請改用其他方式。</string>
+    <string name="settings_step_up_passkey_unsupported">這台裝置無法在這裡使用你的通行密鑰。請改用其他方式。</string>
     <string name="settings_step_up_failed">驗證失敗，請再試一次。</string>
     <string name="settings_step_up_lost_device_description">讓遺失的裝置登出並中斷它核准的內容，需要重新進行第二步驟驗證，驗證後 10 分鐘內有效。</string>
     <string name="settings_step_up_lost_authenticator">遺失了裝有驗證器的裝置？</string>

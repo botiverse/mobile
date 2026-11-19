@@ -25,7 +25,7 @@ private val secondFactorStepUpJson = Json {
  *     403 { error, code: "second_factor_step_up_required", methods: ("totp" | "passkey" | "backup_code")[] }
  *
  * and nothing is applied. `POST /api/auth/second-factor/step-up` with `{ code }` or
- * `{ backupCode }` (or `{ webauthn }`, not used by the app) answers
+ * `{ backupCode }` (or `{ webauthn }`, a passkey: SecondFactorPasskeyStepUpApi.kt) answers
  * `{ verified: true, backupCodesRemaining? }` (the count only after a backup code); then the
  * refused request goes again. Its refusals are `{ error, code, ...extra }`
  * (services/secondFactor/management.ts `SecondFactorError`):
@@ -40,37 +40,75 @@ const val SECOND_FACTOR_STEP_UP_REQUIRED_CODE = "second_factor_step_up_required"
 
 private const val SECOND_FACTOR_STEP_UP_PATH = "auth/second-factor/step-up"
 
-/** A way to answer a step-up in the app. Passkeys are not offered (v1 app scope). */
+/**
+ * A way to answer a step-up in the app. [Passkey] only where the platform can assert one natively
+ * (Android Credential Manager, [raftNativePasskeyAssertionAvailable]) and the host wired the
+ * assertion options ([SecondFactorStepUpCoordinator]); it comes first then, as on the web
+ * (`secondFactorSignIn.ts` `METHOD_ORDER`).
+ */
 enum class SecondFactorStepUpMethod(val wireName: String) {
+    Passkey("passkey"),
     Totp("totp"),
     BackupCode("backup_code"),
 }
+
+/** The methods answered with a typed code, in the dialog's order. */
+internal val SECOND_FACTOR_STEP_UP_CODE_METHODS = listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode)
 
 /** A 403 `second_factor_step_up_required`: the [methods] the server listed, as sent. */
 data class SecondFactorStepUpChallenge(
     val methods: List<String>,
     val serverMessage: String? = null,
 ) {
-    /** What the app can answer with, authenticator code first; empty when only a passkey is listed. */
+    /** The typed-code methods listed, authenticator code first; empty when only a passkey is listed. */
     val usableMethods: List<SecondFactorStepUpMethod>
-        get() = SecondFactorStepUpMethod.entries.filter { it.wireName in methods }
+        get() = SECOND_FACTOR_STEP_UP_CODE_METHODS.filter { it.wireName in methods }
+
+    /** The server listed a passkey (the person has one and the server has a WebAuthn relying party). */
+    val passkeyListed: Boolean
+        get() = SecondFactorStepUpMethod.Passkey.wireName in methods
 }
 
 sealed interface SecondFactorStepUpAnswer {
     data class AuthenticatorCode(val code: String) : SecondFactorStepUpAnswer
     data class BackupCode(val code: String) : SecondFactorStepUpAnswer
+    /** The platform's assertion for the server's options ([parseSharedPasskeyAssertionResponse]). */
+    data class Passkey(val assertion: SecondFactorPasskeyAssertionDto) : SecondFactorStepUpAnswer
 }
 
+/**
+ * A step-up answer's result. `traceId`: the refusing response's `X-Trace-Id` (AGENTS.md "Errors carry
+ * the trace ID"), null when there was no response or it carried none.
+ */
 sealed interface SecondFactorStepUpResult {
     data class Verified(val backupCodesRemaining: Int? = null) : SecondFactorStepUpResult
-    data object CodeInvalid : SecondFactorStepUpResult
+    /** 400 `second_factor_code_invalid`: a wrong code, or a passkey assertion the server refused. */
+    data class CodeInvalid(val traceId: String? = null) : SecondFactorStepUpResult
     data object BackupCodeUsed : SecondFactorStepUpResult
     /** [lockedUntilEpochMillis]: null when the time could not be read. */
-    data class Locked(val lockedUntilEpochMillis: Long?) : SecondFactorStepUpResult
+    data class Locked(val lockedUntilEpochMillis: Long?, val traceId: String? = null) : SecondFactorStepUpResult
     data object NotEnabled : SecondFactorStepUpResult
     data object SessionFamilyRequired : SecondFactorStepUpResult
+    /** 404 `passkey_not_found`: no passkey left (options), or the one answered with was removed. */
+    data class PasskeyNotFound(val traceId: String? = null) : SecondFactorStepUpResult
+    /**
+     * 404 `passkey_rp_unavailable` (options only): none of the person's passkeys is in the RP group
+     * [rp] asked for, but some are in [availableRps] (e.g. iOS asks for `current` and the person has
+     * only passkeys under the legacy RP ID).
+     */
+    data class PasskeyRpUnavailable(
+        val rp: String? = null,
+        val availableRps: List<String> = emptyList(),
+        val traceId: String? = null,
+    ) : SecondFactorStepUpResult
+    /** 503 `passkeys_unavailable`: the server has no WebAuthn relying party right now. */
+    data class PasskeysUnavailable(val traceId: String? = null) : SecondFactorStepUpResult
     /** Anything else (network, 5xx, an unknown code): the server's sentence when it sent one. */
-    data class Failed(val serverMessage: String? = null, val serverCode: String? = null) : SecondFactorStepUpResult
+    data class Failed(
+        val serverMessage: String? = null,
+        val serverCode: String? = null,
+        val traceId: String? = null,
+    ) : SecondFactorStepUpResult
 }
 
 @Serializable
@@ -79,12 +117,17 @@ internal data class SecondFactorRefusalDto(
     val code: String? = null,
     val methods: List<String>? = null,
     val lockedUntil: String? = null,
+    /** `passkey_rp_unavailable`: the RP group asked for. */
+    val rp: String? = null,
+    /** `passkey_rp_unavailable`: the groups the person does have a passkey in. */
+    val availableRps: List<String>? = null,
 )
 
 @Serializable
 data class SecondFactorStepUpRequestBody(
     val code: String? = null,
     val backupCode: String? = null,
+    val webauthn: SecondFactorPasskeyAssertionDto? = null,
 )
 
 @Serializable
@@ -118,11 +161,12 @@ fun buildSharedSecondFactorStepUpBody(answer: SecondFactorStepUpAnswer): String 
         when (answer) {
             is SecondFactorStepUpAnswer.AuthenticatorCode -> SecondFactorStepUpRequestBody(code = answer.code)
             is SecondFactorStepUpAnswer.BackupCode -> SecondFactorStepUpRequestBody(backupCode = answer.code)
+            is SecondFactorStepUpAnswer.Passkey -> SecondFactorStepUpRequestBody(webauthn = answer.assertion)
         }
     )
 
-/** `POST /api/auth/second-factor/step-up`'s answer, from its status and body. */
-fun parseSharedSecondFactorStepUpResult(statusCode: Int, bodyText: String?): SecondFactorStepUpResult {
+/** `POST /api/auth/second-factor/step-up`'s answer, from its status, body and [traceId] (`X-Trace-Id`). */
+fun parseSharedSecondFactorStepUpResult(statusCode: Int, bodyText: String?, traceId: String? = null): SecondFactorStepUpResult {
     if (statusCode in 200..299) {
         val response =
             bodyText?.takeIf { it.isNotBlank() }?.let { body ->
@@ -131,21 +175,35 @@ fun parseSharedSecondFactorStepUpResult(statusCode: Int, bodyText: String?): Sec
         return if (response?.verified == true) {
             SecondFactorStepUpResult.Verified(response.backupCodesRemaining)
         } else {
-            SecondFactorStepUpResult.Failed(serverCode = "second_factor_step_up_contract_mismatch")
+            SecondFactorStepUpResult.Failed(serverCode = "second_factor_step_up_contract_mismatch", traceId = traceId)
         }
     }
+    return parseSharedSecondFactorRefusalResult(statusCode, bodyText, traceId)
+}
+
+/** A refused second-factor call (step-up or passkey assertion options) as a [SecondFactorStepUpResult]. */
+internal fun parseSharedSecondFactorRefusalResult(statusCode: Int, bodyText: String?, traceId: String?): SecondFactorStepUpResult {
     val refusal = parseSecondFactorRefusal(bodyText)
     val message = refusal?.error?.takeIf { it.isNotBlank() }
     return when (refusal?.code) {
-        "second_factor_code_invalid" -> SecondFactorStepUpResult.CodeInvalid
+        "second_factor_code_invalid" -> SecondFactorStepUpResult.CodeInvalid(traceId)
         "backup_code_used" -> SecondFactorStepUpResult.BackupCodeUsed
         "second_factor_locked" ->
             SecondFactorStepUpResult.Locked(
-                refusal.lockedUntil?.let { raw -> runCatching { Instant.parse(raw).toEpochMilliseconds() }.getOrNull() }
+                refusal.lockedUntil?.let { raw -> runCatching { Instant.parse(raw).toEpochMilliseconds() }.getOrNull() },
+                traceId,
             )
         "second_factor_not_enabled" -> SecondFactorStepUpResult.NotEnabled
         "session_family_required" -> SecondFactorStepUpResult.SessionFamilyRequired
-        else -> SecondFactorStepUpResult.Failed(serverMessage = message, serverCode = refusal?.code ?: "http_$statusCode")
+        "passkey_not_found" -> SecondFactorStepUpResult.PasskeyNotFound(traceId)
+        "passkey_rp_unavailable" ->
+            SecondFactorStepUpResult.PasskeyRpUnavailable(
+                rp = refusal.rp,
+                availableRps = refusal.availableRps.orEmpty().filter { it in SECOND_FACTOR_PASSKEY_RP_GROUPS },
+                traceId = traceId,
+            )
+        "passkeys_unavailable" -> SecondFactorStepUpResult.PasskeysUnavailable(traceId)
+        else -> SecondFactorStepUpResult.Failed(serverMessage = message, serverCode = refusal?.code ?: "http_$statusCode", traceId = traceId)
     }
 }
 
@@ -185,11 +243,36 @@ class SecondFactorStepUpRepository(private val networkClient: RaftNetworkClient)
             parseSharedSecondFactorStepUpResult(
                 response.code,
                 response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText,
+                response.traceId,
             )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
             SecondFactorStepUpResult.Failed(serverCode = "network")
+        }
+
+    /**
+     * `POST /api/auth/second-factor/passkeys/assertion/options` (SecondFactorPasskeyStepUpApi.kt):
+     * `{}` (the server's default RP group), or `{ rp }` with [rp] (`current` | `legacy`).
+     */
+    suspend fun passkeyAssertionOptions(rp: String? = null): SecondFactorPasskeyOptionsResult =
+        try {
+            val response =
+                networkClient.request(
+                    priority = DataRequestPriority.Foreground,
+                    path = SECOND_FACTOR_PASSKEY_ASSERTION_OPTIONS_PATH,
+                    method = "POST",
+                    bodyText = buildSharedSecondFactorPasskeyAssertionOptionsBody(rp),
+                )
+            parseSharedSecondFactorPasskeyAssertionOptions(
+                response.code,
+                response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText,
+                response.traceId,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.Failed(serverCode = "network"))
         }
 }
 
@@ -202,6 +285,6 @@ fun parseSharedMobileOAuthLinkStepUpChallenge(methods: String?, message: String?
     SecondFactorStepUpChallenge(
         methods =
             methods?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.takeIf { it.isNotEmpty() }
-                ?: SecondFactorStepUpMethod.entries.map { it.wireName },
+                ?: SECOND_FACTOR_STEP_UP_CODE_METHODS.map { it.wireName },
         serverMessage = message?.takeIf { it.isNotBlank() },
     )

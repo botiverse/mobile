@@ -2,7 +2,8 @@
 """Fail early when the iOS release provisioning profile can't sign the app's entitlements.
 
 The app declares capabilities in compose/iosApp/iosApp/iosApp.entitlements (Associated
-Domains `applinks:app.raft.build` / `applinks:open.raft.build` since 1.24, Sign in with
+Domains `applinks:app.raft.build` / `applinks:open.raft.build` since 1.24, and
+`webcredentials:app.raft.build` for native passkeys since 1.27, Sign in with
 Apple, Push). A profile generated before a capability was enabled on the App ID lacks the
 matching entitlement. Before this check, ios-release.yml found out ~10 minutes later in
 "Archive app" (run #137, 1.16.0: a late, cryptic failure) and then silently stripped
@@ -192,6 +193,8 @@ def self_test() -> int:
     repo_ent = Path(__file__).resolve().parents[2] / "compose/iosApp/iosApp/iosApp.entitlements"
     domains = _load(str(repo_ent)).get("com.apple.developer.associated-domains", [])
     assert "applinks:app.raft.build" in domains and "applinks:open.raft.build" in domains, domains
+    # Native passkeys (RaftNativePasskeyAssertion.ios.kt, the current RP ID app.raft.build).
+    assert "webcredentials:app.raft.build" in domains, domains
     print("check_ios_profile_entitlements self-test: OK")
     return 0
 

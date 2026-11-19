@@ -879,6 +879,10 @@ class SharedSettingsDataSource(
         settingsRepository?.stepUpSecondFactor(answer)
             ?: SecondFactorStepUpResult.Failed(serverCode = "second_factor_step_up_unavailable")
 
+    suspend fun secondFactorPasskeyAssertionOptions(rp: String?): SecondFactorPasskeyOptionsResult =
+        settingsRepository?.secondFactorPasskeyAssertionOptions(rp)
+            ?: SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.Failed(serverCode = "second_factor_step_up_unavailable"))
+
     suspend fun loadConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> =
         settingsRepository?.getConnectedApps() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
@@ -2038,7 +2042,8 @@ class SharedSettingsStore(
     private val secondFactorStepUp =
         SecondFactorStepUpCoordinator(
             stepUp = { answer -> dataSource.stepUpSecondFactor(answer) },
-            onStateChange = { dialog -> _state.value = _state.value.copy(secondFactorStepUp = dialog) }
+            onStateChange = { dialog -> _state.value = _state.value.copy(secondFactorStepUp = dialog) },
+            passkeyOptions = { rp -> dataSource.secondFactorPasskeyAssertionOptions(rp) },
         )
 
     private var loadJob: Job? = null

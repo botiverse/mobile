@@ -8,13 +8,35 @@ import kotlinx.coroutines.flow.asStateFlow
 /** Why the answer field is marked. */
 enum class SecondFactorStepUpFieldError { CodeInvalid, BackupCodeInvalid, BackupCodeUsed }
 
-/** A refusal shown in a banner under the field. */
+/**
+ * A refusal shown in a banner under the field. `traceId`: the refusing response's, shown with it
+ * (AGENTS.md "Errors carry the trace ID"); null for a local failure.
+ */
 sealed interface SecondFactorStepUpBanner {
-    data class Locked(val lockedUntilEpochMillis: Long?) : SecondFactorStepUpBanner
+    data class Locked(val lockedUntilEpochMillis: Long?, val traceId: String? = null) : SecondFactorStepUpBanner
     /** 403 `session_family_required`: offer Sign In Again. */
     data object SignInAgain : SecondFactorStepUpBanner
-    data class Failed(val serverMessage: String?) : SecondFactorStepUpBanner
+    data class Failed(val serverMessage: String?, val traceId: String? = null) : SecondFactorStepUpBanner
+    /** The server refused the passkey's assertion (web `auth.secondFactor.passkeyInvalid`). */
+    data class PasskeyInvalid(val traceId: String?) : SecondFactorStepUpBanner
+    /** 503 `passkeys_unavailable` (web `settings.passkeys.unavailable`). */
+    data class PasskeysUnavailable(val traceId: String?) : SecondFactorStepUpBanner
+    /** The system prompt was closed (web `auth.secondFactor.passkeyCancelled`). */
+    data object PasskeyCancelled : SecondFactorStepUpBanner
+    /** No passkey for Raft on this device: the dialog moved on to the other methods. */
+    data object PasskeyNoCredential : SecondFactorStepUpBanner
+    /** This device can't use a passkey here: the dialog moved on to the other methods. */
+    data object PasskeyUnsupported : SecondFactorStepUpBanner
 }
+
+/**
+ * A passkey assertion the dialog is to run on the platform ([RaftNativePasskeyAssertion]): the
+ * server's options for this attempt. [id] tells a late answer from an earlier attempt's.
+ */
+data class SecondFactorPasskeyCeremony(
+    val id: Long,
+    val request: RaftNativePasskeyRequest,
+)
 
 /** Can't verify? › Sign it out now with your password: one device, or every other one (web `LostDeviceStepUp.signOut`). */
 enum class SecondFactorStepUpSignOutScope { One, Others }
@@ -56,8 +78,10 @@ enum class SecondFactorRecoveryEmailResult { Sent, TooManyRequests, Failed }
 
 /**
  * The open "Verify it's you" dialog (web VerifyItsYouDialog): one way to answer at a time, the
- * others as links. [method] is null when the server listed only a passkey: the dialog then says
- * to do this on the web and has no field. [recovery]: signing out a lost device (see
+ * others as links. [method] is [SecondFactorStepUpMethod.Passkey] (first) where this platform can
+ * assert one natively; it is null when the server listed only a passkey and this platform can't
+ * use it (desktop) or the passkey fell through (none on this device): the dialog then says to do
+ * this on the web and has no field. [passkeyCeremony]: a passkey prompt the dialog is to run. [recovery]: signing out a lost device (see
  * [SecondFactorStepUpRecovery]); [passkeyListed]: the server listed a passkey (the lost page warns
  * that a passkey on the lost device still signs in).
  */
@@ -73,9 +97,19 @@ data class SecondFactorStepUpDialogState(
     val view: SecondFactorStepUpView = SecondFactorStepUpView.Answer,
     /** The last recovery email that failed, shown on the lost page. */
     val recoveryFailure: SecondFactorRecoveryEmailResult? = null,
+    val passkeyCeremony: SecondFactorPasskeyCeremony? = null,
 ) {
+    /** Checking an answer, or the passkey prompt is up. */
+    val busy: Boolean
+        get() = submitting || passkeyCeremony != null
+
     val canSubmit: Boolean
-        get() = method != null && !submitting && normalizedSecondFactorAnswer(input).isNotEmpty()
+        get() =
+            when (method) {
+                null -> false
+                SecondFactorStepUpMethod.Passkey -> !busy
+                else -> !busy && normalizedSecondFactorAnswer(input).isNotEmpty()
+            }
 
     val otherMethods: List<SecondFactorStepUpMethod>
         get() = methods.filter { it != method }
@@ -99,6 +133,11 @@ sealed interface SecondFactorStepUpIntent {
     data object RequestTwoStepReset : SecondFactorStepUpIntent
     /** Sign it (them) out now with your password: the caller sends `sign_out` instead. */
     data object SignOutInstead : SecondFactorStepUpIntent
+    /** The platform's answer to [SecondFactorStepUpDialogState.passkeyCeremony] [ceremonyId]. */
+    data class PasskeyAssertionFinished(
+        val ceremonyId: Long,
+        val result: RaftNativePasskeyAssertionResult,
+    ) : SecondFactorStepUpIntent
 }
 
 sealed interface SecondFactorStepUpOutcome<out T> {
@@ -135,13 +174,34 @@ private const val TOTP_CODE_LENGTH = 6
  * The host store forwards the dialog's intents to [accept] and mirrors [state] into its own
  * state through [onStateChange]. [requestPasswordEmail] and [requestTwoStepReset] send the lost
  * page's emails (only [runSigningOut] opens that page).
+ *
+ * A passkey (only with [passkeyOptions], where [nativePasskeys]): Use passkey fetches the server's
+ * assertion options (asking for [passkeyRpGroup]; with none, and no passkey on this device in the
+ * server's default group, once more for the options' `otherRps`), hands them to the dialog as a
+ * [SecondFactorPasskeyCeremony] for the platform prompt, and sends the assertion it gets back
+ * ([SecondFactorStepUpIntent.PasskeyAssertionFinished]) as the step-up's `webauthn`. No passkey
+ * on this device, or none the platform can use, drops the passkey and goes on with the other
+ * methods (or the web, with none).
  */
 class SecondFactorStepUpCoordinator(
     private val stepUp: suspend (SecondFactorStepUpAnswer) -> SecondFactorStepUpResult,
     private val onStateChange: (SecondFactorStepUpDialogState?) -> Unit = {},
     private val requestPasswordEmail: suspend (String) -> SecondFactorRecoveryEmailResult = { SecondFactorRecoveryEmailResult.Failed },
     private val requestTwoStepReset: suspend (String) -> SecondFactorRecoveryEmailResult = { SecondFactorRecoveryEmailResult.Failed },
+    private val passkeyOptions: (suspend (rp: String?) -> SecondFactorPasskeyOptionsResult)? = null,
+    private val nativePasskeys: Boolean = raftNativePasskeyAssertionAvailable(),
+    private val passkeyRpGroup: String? = raftNativePasskeyRpGroup(),
 ) {
+    private var ceremonySeq = 0L
+
+    /**
+     * The other RP group to try once when this device has no passkey in the first one: set from
+     * the options' `otherRps` only where the platform asked for the server's default group
+     * ([passkeyRpGroup] null: Android, where both RP IDs assert), cleared when used or on a new
+     * Use passkey.
+     */
+    private var passkeyFallbackRp: String? = null
+
     private val _state = MutableStateFlow<SecondFactorStepUpDialogState?>(null)
     val state: StateFlow<SecondFactorStepUpDialogState?> = _state.asStateFlow()
 
@@ -176,7 +236,7 @@ class SecondFactorStepUpCoordinator(
     suspend fun accept(intent: SecondFactorStepUpIntent) {
         when (intent) {
             is SecondFactorStepUpIntent.InputChanged -> update { current ->
-                if (current.submitting) return@update current
+                if (current.busy) return@update current
                 val text =
                     if (current.method == SecondFactorStepUpMethod.Totp) {
                         intent.text.filter { it.isDigit() }.take(TOTP_CODE_LENGTH)
@@ -187,7 +247,7 @@ class SecondFactorStepUpCoordinator(
             }
             is SecondFactorStepUpIntent.SwitchMethod -> update { current ->
                 val sameAnswer = intent.method == current.method && current.view == SecondFactorStepUpView.Answer
-                if (current.submitting || sameAnswer || intent.method !in current.methods) {
+                if (current.busy || sameAnswer || intent.method !in current.methods) {
                     current
                 } else {
                     // The lost page's "Use a backup code" comes back to the answer page too.
@@ -222,6 +282,7 @@ class SecondFactorStepUpCoordinator(
                     settle(SecondFactorStepUpSettle.SignOutInstead)
                 }
             }
+            is SecondFactorStepUpIntent.PasskeyAssertionFinished -> finishPasskey(intent)
         }
     }
 
@@ -255,13 +316,14 @@ class SecondFactorStepUpCoordinator(
         pending?.let { return it.await() }
         val deferred = CompletableDeferred<SecondFactorStepUpSettle>()
         pending = deferred
-        val methods = challenge.usableMethods
+        val passkey = challenge.passkeyListed && nativePasskeys && passkeyOptions != null
+        val methods = listOfNotNull(SecondFactorStepUpMethod.Passkey.takeIf { passkey }) + challenge.usableMethods
         publish(
             SecondFactorStepUpDialogState(
                 methods = methods,
                 method = methods.firstOrNull(),
                 recovery = recovery,
-                passkeyListed = "passkey" in challenge.methods,
+                passkeyListed = challenge.passkeyListed,
             )
         )
         return try {
@@ -283,38 +345,166 @@ class SecondFactorStepUpCoordinator(
         val entered = normalizedSecondFactorAnswer(current.input)
         val answer =
             when (method) {
+                SecondFactorStepUpMethod.Passkey -> return startPasskey(current, deferred)
                 SecondFactorStepUpMethod.Totp -> SecondFactorStepUpAnswer.AuthenticatorCode(entered)
                 SecondFactorStepUpMethod.BackupCode -> SecondFactorStepUpAnswer.BackupCode(entered)
             }
         publish(current.copy(submitting = true, fieldError = null, banner = null))
+        answerWith(answer, method, deferred)
+    }
+
+    /** Sends [answer] and settles, or shows the refusal. */
+    private suspend fun answerWith(
+        answer: SecondFactorStepUpAnswer,
+        method: SecondFactorStepUpMethod,
+        deferred: CompletableDeferred<SecondFactorStepUpSettle>,
+    ) {
         val result = stepUp(answer)
         if (pending !== deferred) return
         val shown = _state.value ?: return
         val next = shown.copy(submitting = false)
+        val passkey = method == SecondFactorStepUpMethod.Passkey
         when (result) {
             is SecondFactorStepUpResult.Verified,
             SecondFactorStepUpResult.NotEnabled -> settle(SecondFactorStepUpSettle.Verified)
-            SecondFactorStepUpResult.CodeInvalid ->
+            is SecondFactorStepUpResult.CodeInvalid ->
                 publish(
-                    next.copy(
-                        fieldError =
-                            if (method == SecondFactorStepUpMethod.BackupCode) {
-                                SecondFactorStepUpFieldError.BackupCodeInvalid
-                            } else {
-                                SecondFactorStepUpFieldError.CodeInvalid
-                            }
-                    )
+                    when (method) {
+                        SecondFactorStepUpMethod.Passkey -> next.copy(banner = SecondFactorStepUpBanner.PasskeyInvalid(result.traceId))
+                        SecondFactorStepUpMethod.BackupCode -> next.copy(fieldError = SecondFactorStepUpFieldError.BackupCodeInvalid)
+                        SecondFactorStepUpMethod.Totp -> next.copy(fieldError = SecondFactorStepUpFieldError.CodeInvalid)
+                    }
                 )
             SecondFactorStepUpResult.BackupCodeUsed ->
-                publish(next.copy(fieldError = SecondFactorStepUpFieldError.BackupCodeUsed))
-            is SecondFactorStepUpResult.Locked ->
-                publish(next.copy(banner = SecondFactorStepUpBanner.Locked(result.lockedUntilEpochMillis)))
-            SecondFactorStepUpResult.SessionFamilyRequired ->
-                publish(next.copy(banner = SecondFactorStepUpBanner.SignInAgain))
-            is SecondFactorStepUpResult.Failed ->
-                publish(next.copy(banner = SecondFactorStepUpBanner.Failed(result.serverMessage)))
+                publish(
+                    if (passkey) {
+                        next.copy(banner = SecondFactorStepUpBanner.Failed(null))
+                    } else {
+                        next.copy(fieldError = SecondFactorStepUpFieldError.BackupCodeUsed)
+                    }
+                )
+            is SecondFactorStepUpResult.PasskeyNotFound ->
+                // The passkey answered with was removed meanwhile (web: passkeyInvalid).
+                publish(next.copy(banner = SecondFactorStepUpBanner.PasskeyInvalid(result.traceId)))
+            else -> publish(next.copy(banner = refusalBanner(result)))
         }
     }
+
+    /** Use passkey: the server's options, then the platform prompt (the dialog runs it). */
+    private suspend fun startPasskey(
+        current: SecondFactorStepUpDialogState,
+        deferred: CompletableDeferred<SecondFactorStepUpSettle>,
+    ) {
+        passkeyFallbackRp = null
+        publish(current.copy(submitting = true, fieldError = null, banner = null))
+        requestPasskeyCeremony(passkeyRpGroup, firstAsk = true, deferred = deferred)
+    }
+
+    /** Fetches options for [rp] (null: the server's default group) and hands them to the dialog. */
+    private suspend fun requestPasskeyCeremony(
+        rp: String?,
+        firstAsk: Boolean,
+        deferred: CompletableDeferred<SecondFactorStepUpSettle>,
+    ) {
+        val fetch = passkeyOptions ?: return
+        val options = fetch(rp)
+        if (pending !== deferred) return
+        val shown = _state.value?.copy(submitting = false) ?: return
+        when (options) {
+            is SecondFactorPasskeyOptionsResult.Ready -> {
+                if (firstAsk && passkeyRpGroup == null) {
+                    passkeyFallbackRp = options.otherRps.firstOrNull { it != options.rp }
+                }
+                publish(
+                    shown.copy(
+                        passkeyCeremony =
+                            SecondFactorPasskeyCeremony(
+                                id = ++ceremonySeq,
+                                request = RaftNativePasskeyRequest(options.requestJson, options.options),
+                            )
+                    )
+                )
+            }
+            is SecondFactorPasskeyOptionsResult.Refused ->
+                when (val refusal = options.result) {
+                    // No passkey (in the group this platform asked for): go on without it.
+                    is SecondFactorStepUpResult.PasskeyNotFound -> publish(withoutPasskey(shown, SecondFactorStepUpBanner.PasskeyNoCredential))
+                    // None this platform can use (iOS: only passkeys under the legacy RP ID): the
+                    // other methods, or the web with none.
+                    is SecondFactorStepUpResult.PasskeyRpUnavailable -> publish(withoutPasskey(shown, SecondFactorStepUpBanner.PasskeyUnsupported))
+                    is SecondFactorStepUpResult.CodeInvalid -> publish(shown.copy(banner = SecondFactorStepUpBanner.PasskeyInvalid(refusal.traceId)))
+                    else -> publish(shown.copy(banner = refusalBanner(refusal)))
+                }
+        }
+    }
+
+    /** The platform's answer to the passkey prompt. */
+    private suspend fun finishPasskey(intent: SecondFactorStepUpIntent.PasskeyAssertionFinished) {
+        val current = _state.value ?: return
+        if (current.passkeyCeremony?.id != intent.ceremonyId) return
+        val deferred = pending ?: return
+        val shown = current.copy(passkeyCeremony = null)
+        when (val result = intent.result) {
+            is RaftNativePasskeyAssertionResult.Success -> {
+                val assertion = parseSharedPasskeyAssertionResponse(result.responseJson)
+                if (assertion == null) {
+                    publish(shown.copy(banner = SecondFactorStepUpBanner.Failed(null)))
+                    return
+                }
+                publish(shown.copy(submitting = true, banner = null))
+                answerWith(SecondFactorStepUpAnswer.Passkey(assertion), SecondFactorStepUpMethod.Passkey, deferred)
+            }
+            RaftNativePasskeyAssertionResult.Cancelled -> publish(shown.copy(banner = SecondFactorStepUpBanner.PasskeyCancelled))
+            RaftNativePasskeyAssertionResult.NoCredential -> {
+                val fallback = passkeyFallbackRp
+                passkeyFallbackRp = null
+                if (fallback != null) {
+                    // None in the first group on this device: ask once for the person's other one.
+                    publish(shown.copy(submitting = true, banner = null))
+                    requestPasskeyCeremony(fallback, firstAsk = false, deferred = deferred)
+                } else {
+                    publish(withoutPasskey(shown, SecondFactorStepUpBanner.PasskeyNoCredential))
+                }
+            }
+            RaftNativePasskeyAssertionResult.Unsupported -> publish(withoutPasskey(shown, SecondFactorStepUpBanner.PasskeyUnsupported))
+            is RaftNativePasskeyAssertionResult.Error -> publish(shown.copy(banner = SecondFactorStepUpBanner.Failed(null)))
+        }
+    }
+
+    /**
+     * The dialog without the passkey: the next method with [banner] saying why, or, with none left,
+     * no method (the dialog's own "do this on the web" says it then).
+     */
+    private fun withoutPasskey(
+        state: SecondFactorStepUpDialogState,
+        banner: SecondFactorStepUpBanner,
+    ): SecondFactorStepUpDialogState {
+        val methods = state.methods - SecondFactorStepUpMethod.Passkey
+        val method = methods.firstOrNull()
+        return state.copy(
+            methods = methods,
+            method = method,
+            input = "",
+            fieldError = null,
+            banner = banner.takeIf { method != null },
+            submitting = false,
+            passkeyCeremony = null,
+        )
+    }
+
+    private fun refusalBanner(result: SecondFactorStepUpResult): SecondFactorStepUpBanner =
+        when (result) {
+            is SecondFactorStepUpResult.Locked -> SecondFactorStepUpBanner.Locked(result.lockedUntilEpochMillis, result.traceId)
+            SecondFactorStepUpResult.SessionFamilyRequired -> SecondFactorStepUpBanner.SignInAgain
+            is SecondFactorStepUpResult.PasskeysUnavailable -> SecondFactorStepUpBanner.PasskeysUnavailable(result.traceId)
+            is SecondFactorStepUpResult.PasskeyRpUnavailable -> SecondFactorStepUpBanner.PasskeyUnsupported
+            is SecondFactorStepUpResult.PasskeyNotFound -> SecondFactorStepUpBanner.PasskeyInvalid(result.traceId)
+            is SecondFactorStepUpResult.Failed -> SecondFactorStepUpBanner.Failed(result.serverMessage, result.traceId)
+            is SecondFactorStepUpResult.CodeInvalid,
+            SecondFactorStepUpResult.BackupCodeUsed,
+            SecondFactorStepUpResult.NotEnabled,
+            is SecondFactorStepUpResult.Verified -> SecondFactorStepUpBanner.Failed(null)
+        }
 
     private fun settle(outcome: SecondFactorStepUpSettle) {
         val deferred = pending ?: return

@@ -209,6 +209,13 @@
     <string name="settings_step_up_sign_in_again_message">No se puede verificar este inicio de sesión. Vuelve a iniciar sesión y luego inténtalo otra vez.</string>
     <string name="settings_step_up_sign_in_again">Volver a iniciar sesión</string>
     <string name="settings_step_up_passkey_only">Haz este cambio en Raft en la web y confírmalo con tu llave de acceso.</string>
+    <string name="settings_step_up_passkey_button">Usar llave de acceso</string>
+    <string name="settings_step_up_use_passkey">Usar llave de acceso</string>
+    <string name="settings_step_up_passkey_cancelled">Se cerró la ventana de la llave de acceso. Inténtalo de nuevo o usa otro método.</string>
+    <string name="settings_step_up_passkey_invalid">Esa llave de acceso no funcionó. Inténtalo de nuevo o usa otro método.</string>
+    <string name="settings_step_up_passkeys_unavailable">Las llaves de acceso no están disponibles en este momento. Inténtalo de nuevo más tarde.</string>
+    <string name="settings_step_up_passkey_none_here">No hay ninguna llave de acceso de Raft en este dispositivo. Usa otro método.</string>
+    <string name="settings_step_up_passkey_unsupported">Este dispositivo no puede usar tu llave de acceso aquí. Usa otro método.</string>
     <string name="settings_step_up_failed">No se pudo verificar. Inténtalo de nuevo.</string>
     <string name="settings_step_up_lost_device_description">Para cerrar la sesión de un dispositivo perdido y desconectar lo que aprobó tienes que volver a completar el segundo paso. Es válido durante 10 minutos.</string>
     <string name="settings_step_up_lost_authenticator">¿Perdiste el dispositivo con tu app de autenticación?</string>

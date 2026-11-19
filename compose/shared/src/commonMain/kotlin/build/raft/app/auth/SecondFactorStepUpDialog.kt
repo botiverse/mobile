@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
@@ -22,6 +25,8 @@ import build.raft.app.data.SecondFactorStepUpLostDevice
 import build.raft.app.data.SecondFactorStepUpRecovery
 import build.raft.app.data.SecondFactorStepUpSignOutScope
 import build.raft.app.data.SecondFactorStepUpView
+import build.raft.app.data.RaftNativePasskeyAssertion
+import build.raft.app.data.rememberRaftNativePasskeyAssertion
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.resources.*
@@ -49,10 +54,12 @@ internal const val SECOND_FACTOR_STEP_UP_DIALOG_TAG = "second-factor-step-up-dia
 
 /**
  * "Verify it's you" (web VerifyItsYouDialog, slock packages/web/src/components/settings/): the
- * step-up of a refused sensitive action. An authenticator code or a backup code (the other one
- * as a link under the field); a wrong or used code under the field, a lock, Sign In Again or
- * any other refusal in a warning banner. Only a passkey listed: a banner saying to do this on
- * the web and Close. A scrim tap does not close it; Cancel, the close button and Back do (not
+ * step-up of a refused sensitive action. A passkey (Use passkey, where the platform can assert
+ * one: [passkeyAssertion] runs the coordinator's [SecondFactorStepUpDialogState.passkeyCeremony]),
+ * an authenticator code or a backup code (the others as links under it); a wrong or used code
+ * under the field, a refused passkey, a lock, Sign In Again or any other refusal in a banner,
+ * with the server's trace ID. Only a passkey listed and none usable here: a banner saying to do
+ * this on the web and Close. A scrim tap does not close it; Cancel, the close button and Back do (not
  * while the answer is being checked). With a [SecondFactorStepUpDialogState.recovery] (signing out
  * a lost device) it also offers "Lost the device with your authenticator?"
  * ([SecondFactorStepUpRecoveryPage]).
@@ -64,7 +71,17 @@ internal fun SecondFactorStepUpDialog(
     /** What the step-up is for (web SecondFactorStepUpHost `reason`); changing how you sign in by default. */
     description: String = stringResource(Res.string.settings_step_up_description),
     formatClock: (Long) -> String = ::secondFactorStepUpLocalClock,
+    passkeyAssertion: RaftNativePasskeyAssertion = rememberRaftNativePasskeyAssertion(),
 ) {
+    // The passkey prompt, once per attempt; its answer goes back to the coordinator.
+    val ceremony = state.passkeyCeremony
+    val currentOnIntent by rememberUpdatedState(onIntent)
+    LaunchedEffect(ceremony?.id) {
+        if (ceremony != null) {
+            val result = passkeyAssertion.assert(ceremony.request)
+            currentOnIntent(SecondFactorStepUpIntent.PasskeyAssertionFinished(ceremony.id, result))
+        }
+    }
     // Signing out a lost device: "Lost the device with your authenticator?" and its pages.
     val recovery = state.recovery
     if (recovery != null && state.view != SecondFactorStepUpView.Answer) {
@@ -98,12 +115,20 @@ internal fun SecondFactorStepUpDialog(
                     enabled = !state.submitting
                 )
                 RaftButton(
-                    text = stringResource(Res.string.settings_step_up_verify),
+                    text =
+                        stringResource(
+                            if (method == SecondFactorStepUpMethod.Passkey) {
+                                Res.string.settings_step_up_passkey_button
+                            } else {
+                                Res.string.settings_step_up_verify
+                            }
+                        ),
                     onClick = { onIntent(SecondFactorStepUpIntent.Submit) },
+                    modifier = Modifier.testTag(SECOND_FACTOR_STEP_UP_SUBMIT_TAG),
                     variant = RaftButtonVariant.Primary,
                     size = RaftButtonSize.Lg,
-                    enabled = state.canSubmit || state.submitting,
-                    loading = state.submitting,
+                    enabled = state.canSubmit || state.busy,
+                    loading = state.busy,
                     loadingLabel = stringResource(Res.string.settings_step_up_verifying)
                 )
             }
@@ -117,21 +142,23 @@ internal fun SecondFactorStepUpDialog(
                     size = RaftBannerSize.Sm
                 )
             } else {
-                SecondFactorStepUpAnswerField(state, method, onIntent)
+                // A passkey is its Use passkey button; a code its field (web VerifyItsYouDialog).
+                if (method != SecondFactorStepUpMethod.Passkey) SecondFactorStepUpAnswerField(state, method, onIntent)
                 state.otherMethods.forEach { other ->
                     RaftTextLink(
                         text =
                             stringResource(
-                                if (other == SecondFactorStepUpMethod.BackupCode) {
-                                    Res.string.settings_step_up_use_backup_code
-                                } else {
-                                    Res.string.settings_step_up_use_authenticator
+                                when (other) {
+                                    SecondFactorStepUpMethod.Passkey -> Res.string.settings_step_up_use_passkey
+                                    SecondFactorStepUpMethod.BackupCode -> Res.string.settings_step_up_use_backup_code
+                                    SecondFactorStepUpMethod.Totp -> Res.string.settings_step_up_use_authenticator
                                 }
                             ),
                         onClick = { onIntent(SecondFactorStepUpIntent.SwitchMethod(other)) },
+                        modifier = Modifier.testTag(secondFactorStepUpMethodLinkTag(other)),
                         variant = RaftTextLinkVariant.Strong,
                         style = RaftTheme.typography.callout,
-                        enabled = !state.submitting
+                        enabled = !state.busy
                     )
                 }
             }
@@ -151,6 +178,11 @@ internal fun SecondFactorStepUpDialog(
 }
 
 internal const val SECOND_FACTOR_STEP_UP_LOST_LINK_TAG = "step-up-lost-authenticator"
+internal const val SECOND_FACTOR_STEP_UP_SUBMIT_TAG = "step-up-submit"
+internal const val SECOND_FACTOR_STEP_UP_BANNER_TAG = "step-up-banner"
+
+/** The "Use …" link that switches to [method]. */
+internal fun secondFactorStepUpMethodLinkTag(method: SecondFactorStepUpMethod): String = "step-up-use-${method.wireName}"
 internal const val SECOND_FACTOR_STEP_UP_SIGN_OUT_INSTEAD_TAG = "step-up-sign-out-instead"
 
 /**
@@ -423,18 +455,19 @@ private fun SecondFactorStepUpBannerView(
     formatClock: (Long) -> String,
     onIntent: (SecondFactorStepUpIntent) -> Unit,
 ) {
+    val tagged = Modifier.testTag(SECOND_FACTOR_STEP_UP_BANNER_TAG)
     when (banner) {
         is SecondFactorStepUpBanner.Locked ->
-            RaftBanner(
+            SecondFactorStepUpTracedBanner(
                 description =
                     banner.lockedUntilEpochMillis?.let { stringResource(Res.string.settings_step_up_locked_until, formatClock(it)) }
                         ?: stringResource(Res.string.settings_step_up_locked),
-                status = RaftBannerStatus.Warning,
-                size = RaftBannerSize.Sm
+                traceId = banner.traceId
             )
         SecondFactorStepUpBanner.SignInAgain ->
             RaftBanner(
                 description = stringResource(Res.string.settings_step_up_sign_in_again_message),
+                modifier = tagged,
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm,
                 action = {
@@ -447,12 +480,50 @@ private fun SecondFactorStepUpBannerView(
                 }
             )
         is SecondFactorStepUpBanner.Failed ->
-            RaftBanner(
+            SecondFactorStepUpTracedBanner(
                 // Localized copy first; the server's sentence only says more when there is one.
                 description = banner.serverMessage ?: stringResource(Res.string.settings_step_up_failed),
+                traceId = banner.traceId
+            )
+        is SecondFactorStepUpBanner.PasskeyInvalid ->
+            SecondFactorStepUpTracedBanner(stringResource(Res.string.settings_step_up_passkey_invalid), banner.traceId)
+        is SecondFactorStepUpBanner.PasskeysUnavailable ->
+            SecondFactorStepUpTracedBanner(stringResource(Res.string.settings_step_up_passkeys_unavailable), banner.traceId)
+        SecondFactorStepUpBanner.PasskeyCancelled ->
+            RaftBanner(
+                description = stringResource(Res.string.settings_step_up_passkey_cancelled),
+                modifier = tagged,
+                status = RaftBannerStatus.Info,
+                size = RaftBannerSize.Sm
+            )
+        SecondFactorStepUpBanner.PasskeyNoCredential ->
+            RaftBanner(
+                description = stringResource(Res.string.settings_step_up_passkey_none_here),
+                modifier = tagged,
+                status = RaftBannerStatus.Info,
+                size = RaftBannerSize.Sm
+            )
+        SecondFactorStepUpBanner.PasskeyUnsupported ->
+            RaftBanner(
+                description = stringResource(Res.string.settings_step_up_passkey_unsupported),
+                modifier = tagged,
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm
             )
+    }
+}
+
+/** A refusal from the server: the warning banner, its trace ID under it (AGENTS.md "Errors carry the trace ID"). */
+@Composable
+private fun SecondFactorStepUpTracedBanner(description: String, traceId: String?) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftBanner(
+            description = description,
+            modifier = Modifier.testTag(SECOND_FACTOR_STEP_UP_BANNER_TAG),
+            status = RaftBannerStatus.Warning,
+            size = RaftBannerSize.Sm
+        )
+        RaftTraceIdNote(traceId)
     }
 }
 
