@@ -24,7 +24,8 @@ and every file it names go to RuntimeFormVisualFixtures.g.kt in the
 visualFixtures source set (compiled only with -PslockVisualFixtures=true), read
 by the compose_runtime_form_visual page. These are embedded minified (the
 largest option source is over the JVM's 64 KiB string constant limit pretty
-printed); each keeps its source file's sha256.
+printed); each keeps its source file's sha256. A body over 20000 characters is split
+into chunks joined at run time (a class-file string constant holds at most 65535 bytes).
 """
 import argparse
 import hashlib
@@ -37,6 +38,8 @@ FIXTURES_KT = ROOT / "compose/shared/src/commonTest/kotlin/build/raft/app/data/r
 FIXTURES_V3_KT = ROOT / "compose/shared/src/commonTest/kotlin/build/raft/app/data/runtimeform/v2/RuntimeFormV3Fixtures.kt"
 VISUAL_KT = ROOT / "compose/shared/src/visualFixtures/kotlin/build/raft/app/RuntimeFormVisualFixtures.g.kt"
 VISUAL_CASES = "visual-cases.v3.json"
+# Characters per embedded chunk: at most 3 bytes each in a class file's modified UTF-8, under its 65535.
+VISUAL_CHUNK_CHARS = 20000
 CONTRACT_KT = ROOT / "compose/shared/src/commonMain/kotlin/build/raft/app/data/runtimeform/v2/RuntimeFormV2.kt"
 FIXTURES = [
     ("BUILTIN_V2_FORM_JSON", "builtin.form.json"),
@@ -94,8 +97,13 @@ FIXTURES_V3 = [
     ("CODEX_V3_FORM_JSON", "codex.form.v3.json"),
     ("CODEX_V3_EDIT_JSON", "codex.edit.v3.json"),
     ("CODEX_V3_REASONING_EFFORT_SOURCE_JSON", "codex.option-source.reasoning-effort.v3.json"),
-    # Codex speed (slock #15382): dependent_select on the model, shown while fastMode is const true.
+    # Codex speed (slock #15382, #15565): dependent_select on the model, shown for multi-tier models.
     ("CODEX_V3_SPEED_SOURCE_JSON", "codex.option-source.speed.v3.json"),
+    # Codex speed vs Fast mode by model tier (slock #15565): HIDE fastMode / SHOW speed on the model.
+    ("CODEX_V3_SPEED_CONFORMANCE_JSON", "codex.speed.conformance.v3.json"),
+    # Codex's v3 model source: a single-tier (gpt-6.2-sol), a multi-tier (gpt-6.2-astra) and a zero-tier
+    # model (gpt-5-mini), drawn by the Codex speed screenshots.
+    ("CODEX_V3_MODEL_SOURCE_JSON", "codex.option-source.model.v3.json"),
     ("GROK_V3_FORM_JSON", "grok.form.v3.json"),
     ("CLAUDE_V3_FORM_JSON", "claude.form.v3.json"),
     ("CLAUDE_V3_EDIT_JSON", "claude.edit.v3.json"),
@@ -172,7 +180,14 @@ def render_visual(slock: pathlib.Path, slock_sha: str | None = None) -> str:
         digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
         name = f"RUNTIME_FORM_VISUAL_FIXTURE_{index}"
         out += ["", f"/** fixtures/{file}, sha256 {digest} */"]
-        if "$" in body:
+        if len(body.encode("utf-8")) > VISUAL_CHUNK_CHARS:
+            # One class-file string constant holds at most 65535 bytes: join a larger body at run time.
+            chunks = [body[i:i + VISUAL_CHUNK_CHARS] for i in range(0, len(body), VISUAL_CHUNK_CHARS)]
+            out.append(f"private val {name}: String =")
+            out.append("    listOf(")
+            out += [f'        """{chunk.replace("$", "${'$'}")}""",' for chunk in chunks]
+            out.append('    ).joinToString("")')
+        elif "$" in body:
             out.append(f'private val {name}: String = """{body.replace("$", "${'$'}")}"""')
         else:
             out.append(f'private const val {name}: String = """{body}"""')

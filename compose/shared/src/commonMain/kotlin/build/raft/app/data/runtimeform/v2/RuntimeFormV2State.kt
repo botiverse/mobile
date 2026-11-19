@@ -446,9 +446,11 @@ internal fun runtimeFormV2ValuesAfterSourceReload(
 }
 
 /**
- * Set one field and cascade: fields whose choices depend on it are reset to
- * their defaults, recursively, so a stale model can never survive a provider
- * change.
+ * Set one field and cascade: a field whose choices depend on it keeps its value while the new parent
+ * still lists it (switching models keeps the chosen reasoning effort or Codex speed), and otherwise
+ * resets to its default, recursively, so a stale model can never survive a provider change. An
+ * unlisted value (one typed for the old parent) resets. "" (Default) is kept only where both the old
+ * and the new parent offer a list. Mirrors slock v2State `applyRuntimeFormV2Change` (slock #15508).
  */
 internal fun applyRuntimeFormV2Change(
     form: ParsedRuntimeFormV2,
@@ -462,7 +464,7 @@ internal fun applyRuntimeFormV2Change(
     for (field in dependencyOrder(form.fields)) {
         val parent = field.dependsOn ?: field.derivedFrom?.key
         if (parent != null && parent in changed) {
-            next[field.key] = defaultFor(field, sources, next)
+            if (!stillListed(field, sources, next, values)) next[field.key] = defaultFor(field, sources, next)
             changed += field.key
         }
     }
@@ -474,6 +476,27 @@ internal fun applyRuntimeFormV2Change(
         }
     }
     return next
+}
+
+/**
+ * The field's value is one of the choices it lists under [next]. "" (Default) counts only where the new
+ * parent offers Default and the old parent ([before]) listed choices, i.e. Default was picked from a
+ * list rather than left over from a parent without one.
+ */
+private fun stillListed(
+    field: RuntimeFormV2Field,
+    sources: RuntimeFormV2Sources,
+    next: RuntimeFormV2Values,
+    before: RuntimeFormV2Values
+): Boolean {
+    val value = (next[field.key] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return false
+    val choices = runtimeFormV2Choices(field, sources, next) as? RuntimeFormV2Choices.Select ?: return false
+    if (value.isEmpty()) {
+        val offered = choices.allowEmpty || choices.options.any { it.value == "" }
+        val old = runtimeFormV2Choices(field, sources, before) as? RuntimeFormV2Choices.Select
+        return offered && old != null && old.options.isNotEmpty()
+    }
+    return choices.options.any { it.value == value }
 }
 
 /**
@@ -529,10 +552,18 @@ internal fun isRuntimeFormV2FieldVisible(
     field: RuntimeFormV2Field,
     values: RuntimeFormV2Values,
     sources: RuntimeFormV2Sources? = null
-): Boolean =
-    field.rule.let { rule -> rule == null || evaluateRuntimeFormV3Condition(rule.condition, values) == (rule.effect == RuntimeFormV3Effect.Show) } &&
-        !hiddenAsUnavailable(field, values, sources) &&
-        field.visibleWhen.all { rule -> visibilityValuesOf(rule.key, values, sources).any { it in rule.values } }
+): Boolean = !hiddenByVisibilityRule(field, values, sources) && !hiddenAsUnavailable(field, values, sources)
+
+/**
+ * Hidden by an explicit visibility rule (v3 `rules` SHOW/HIDE, v2 `visibility`): the field does not apply
+ * to the current values. Checked before [hiddenAsUnavailable] (slock #15565 v2State), so a field a rule
+ * hides never carries its stored value into the submission, even when its dependent source has no key.
+ */
+private fun hiddenByVisibilityRule(field: RuntimeFormV2Field, values: RuntimeFormV2Values, sources: RuntimeFormV2Sources?): Boolean {
+    val rule = field.rule
+    if (rule != null && evaluateRuntimeFormV3Condition(rule.condition, values) != (rule.effect == RuntimeFormV3Effect.Show)) return true
+    return !field.visibleWhen.all { visibility -> visibilityValuesOf(visibility.key, values, sources).any { it in visibility.values } }
+}
 
 private val textLikeKinds = setOf(
     RuntimeFormV2FieldKind.Text,
@@ -655,11 +686,13 @@ internal fun runtimeFormV2Submission(
         // Connection-owned fields never enter formValues while a saved connection is selected, not even
         // as empty strings: the server refuses any value for them on a connection submit.
         if (connectionActive && field.connectionOwned) continue
+        // A field its SHOW/HIDE rule hides does not apply to these values: never submit a stale stored
+        // value for it, even when its dependent source also has no key (slock #15565).
+        if (field.kind != RuntimeFormV2FieldKind.Unsupported && hiddenByVisibilityRule(field, values, sources)) continue
         if (hiddenAsUnavailable(field, values, sources)) {
             form.values?.get(field.key)?.let { out[field.key] = it }
             continue
         }
-        if (field.kind != RuntimeFormV2FieldKind.Unsupported && !isRuntimeFormV2FieldVisible(field, values, sources)) continue
         val value = values[field.key] ?: continue
         val text = value.stringOrNull()
         out[field.key] =
