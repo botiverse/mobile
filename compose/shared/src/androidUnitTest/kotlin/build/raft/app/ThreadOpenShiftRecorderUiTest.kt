@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
@@ -57,15 +58,16 @@ class ThreadOpenShiftRecorderUiTest {
                 val list = remember(raw) { ThreadListViewport(raw, reverse = false) }
                 viewport = list
                 Box(Modifier.height(400.dp)) {
-                    LazyColumn(state = raw) {
+                    // Fills the box from the first frame, so the viewport never changes size.
+                    LazyColumn(state = raw, modifier = Modifier.fillMaxSize()) {
                         item(key = "m0") { Box(Modifier.fillMaxWidth().height(firstRowHeight.value)) }
-                        items(5, key = { "m${it + 1}" }) { Box(Modifier.fillMaxWidth().height(60.dp)) }
+                        items(9, key = { "m${it + 1}" }) { Box(Modifier.fillMaxWidth().height(60.dp)) }
                     }
                 }
                 if (recording.value) {
                     ThreadOpenShiftRecorderEffect(session = session, listState = list, typeScaleKey = 0) { inputs ->
                         inputs.status = "content"
-                        inputs.messageRows = 6
+                        inputs.messageRows = 10
                         inputs.backgroundRefreshing = refreshing.value
                         inputs.positioned = true
                     }

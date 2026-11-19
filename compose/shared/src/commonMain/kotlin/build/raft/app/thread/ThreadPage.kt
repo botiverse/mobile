@@ -1850,14 +1850,7 @@ private fun SharedThreadRouteContentContent(
     // Open-path jitter tracing (#proj-mobile:#199): one sampling decision per open, from the
     // trace_sample.* flags (RaftTraceSampling.kt); a sampled open's list records its shifts.
     val threadOpenTrace =
-        rememberThreadOpenTraceSession(
-            openKey = initialThreadInstanceKey,
-            surfaceKind = initialPayload.surfaceKind,
-            openKind = if (initialPayload.focusedMessageId.isNullOrBlank()) "latest" else "focused",
-            flags = { sharedStores.serverFeatureFlags.snapshotFor(headerProjectionServerId) },
-            serverId = { headerProjectionServerId?.value },
-            log = { line -> bridge.log(line) },
-        )
+        rememberThreadPageOpenTrace(initialThreadInstanceKey, initialPayload, sharedStores.serverFeatureFlags, headerProjectionServerId, bridge)
     val memberAvatarResolver =
         remember(serverMembersStore, headerProjectionServerId) {
             raftMemberAvatarResolver(

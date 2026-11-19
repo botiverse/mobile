@@ -14,7 +14,10 @@ import androidx.compose.ui.platform.LocalDensity
 import build.raft.app.data.MOBILE_THREAD_OPEN_TRACE_NAME
 import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftClientTraceEvents
+import build.raft.app.base.BridgeModule
 import build.raft.app.data.ServerFeatureFlagSnapshot
+import build.raft.app.data.SharedServerFeatureFlags
+import build.raft.app.model.ServerId
 import build.raft.app.data.defaultTraceSampleRate
 import build.raft.app.data.resolveTraceSampleRate
 import build.raft.app.data.traceSampleEvaluations
@@ -76,6 +79,29 @@ internal fun rememberThreadOpenTraceSession(
     // Declared after the session's effect, so it is disposed first when the page leaves composition.
     DisposableEffect(holder) { onDispose { holder.leaving = true } }
     return session
+}
+
+/**
+ * [rememberThreadOpenTraceSession] for a thread page (kept out of the page's own composable, whose
+ * bytecode is at its size ceiling).
+ */
+@Composable
+internal fun rememberThreadPageOpenTrace(
+    openKey: String?,
+    initialPayload: RaftThreadScreenPayload,
+    flags: SharedServerFeatureFlags,
+    serverId: ServerId?,
+    bridge: BridgeModule,
+): ThreadOpenTraceSession? {
+    val currentServerId = rememberUpdatedState(serverId)
+    return rememberThreadOpenTraceSession(
+        openKey = openKey,
+        surfaceKind = initialPayload.surfaceKind,
+        openKind = if (initialPayload.focusedMessageId.isNullOrBlank()) "latest" else "focused",
+        flags = { flags.snapshotFor(currentServerId.value) },
+        serverId = { currentServerId.value?.value },
+        log = { line -> bridge.log(line) },
+    )
 }
 
 /** Log lines (every build) and the upload (privacy mode permitting, in the sender). Once per session. */
