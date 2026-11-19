@@ -3544,7 +3544,8 @@ internal class RaftSharedStoreProvider private constructor(
             //    delivery: between Cleared and the next Authenticated the
             //    context is null and late events are DROPPED, never re-read
             //    against the new account.
-            val processMemberPresenceRegistry = ProcessMemberPresenceRegistry()
+            val processMemberPresenceRegistry =
+                ProcessMemberPresenceRegistry(rejectLogger = sharedInfoLogger("SlockPresence"))
             val presenceAuthContext = MutableStateFlow<ProcessPresenceAuthContext?>(null)
             // The same binding, typed (architecture review B): Unknown until the stored session is
             // read, then SignedIn / SignedOut / Corrupt. Followers that delete or retire data key on
