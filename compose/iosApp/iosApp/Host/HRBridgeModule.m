@@ -324,7 +324,7 @@ static NSDictionary *RaftIosOpenSourceLicensesResult(void) {
             };
         };
     NSArray<NSDictionary *> *items = @[
-        item(@"Hands", @"Hands", @"0.2.2", @"MIT License",
+        item(@"Hands", @"Hands", @"0.2.3", @"MIT License",
              @"https://github.com/oranix-io/hands/blob/main/LICENSE", @"https://github.com/oranix-io/hands"),
         item(@"MMKV", @"MMKV / MMKVCore", @"2.4.3", @"BSD 3-Clause License",
              @"https://github.com/Tencent/MMKV/blob/master/LICENSE.TXT", @"https://github.com/Tencent/MMKV"),
@@ -2364,14 +2364,25 @@ void RaftIosInstallHandsReporting(void) {
 #else
         NSString *handsChannel = @"main";
 #endif
+        // RAFT_PRIVACY_MODE (Hands iOS SDK 0.2.3): crash handling only. Pending crash reports
+        // stay on disk and no device ping is sent until RaftIosHandsLaunchUploads (shared) sees
+        // every signed-in server answer privacy mode off and calls RaftIosRunHandsLaunchUploads.
         [Hands installWithConfig:[HandsConfig configWithBaseUrl:@"https://hands.build"
                                                           appSlug:@"raft-ios"
                                                           channel:handsChannel
-                                                        clientKey:@"qk_2d6ac57a6532bc7ff1d3183b43bda99e2e732a99"]];
+                                                        clientKey:@"qk_2d6ac57a6532bc7ff1d3183b43bda99e2e732a99"]
+                  uploadOnLaunch:NO];
         // Install fatal handlers before our diagnostic registration/logging.
         // The provider is evaluated on a later upload, not during registration.
         RaftIosRegisterHandsDiagnosticsProvider();
     });
+}
+
+void RaftIosRunHandsLaunchUploads(void) {
+    // The SDK's serial upload queue keeps a repeated call from sending a report twice.
+    [Hands uploadPendingAfterDelay:0];
+    [Hands reportDevice];
+    RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"hands_launch_uploads ran");
 }
 
 // One path component named after the attachment (Save to Files, picker uploads, Open/Share

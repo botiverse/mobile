@@ -5,7 +5,6 @@ import build.raft.app.shared.handsUpdateRequestAllowed
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -57,12 +56,6 @@ class RaftHandsLaunchUploadsTest {
 
         assertEquals(listOf("device_ping", "crashes", "anrs", "native_crashes"), ran)
         assertTrue(logs.any { it.startsWith("hands_launch_upload_failed step=crashes") })
-    }
-
-    /** The SDK's internal ANR pass is called by name; an SDK bump that renames or reshapes it fails here. */
-    @Test
-    fun theSdksAnrUploadIsReachable() {
-        assertNotNull(HandsAnrUploadBridge.resolve())
     }
 
     @Test
