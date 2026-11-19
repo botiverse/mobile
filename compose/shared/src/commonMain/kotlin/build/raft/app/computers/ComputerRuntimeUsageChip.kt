@@ -1608,7 +1608,7 @@ internal fun ComputerRuntimeUsagePreviewCard(
                 authRuntimeName = auth?.runtimeName ?: runtimeLabel,
                 onSignIn = { authController?.openSignIn() },
                 onSignOut = { authController?.openSignOut() },
-                onClaudeLimitReset = controller::onClaudeLimitReset,
+                onClaudeLimitReset = controller::openClaudeLimitReset,
             )
         } else if (auth != null) {
             ComputerRuntimeAuthOnlySheet(
