@@ -1176,28 +1176,23 @@ private fun ThreadMessagesListContent(
         )
     // Open-path jitter tracing (#proj-mobile:#199): only a sampled open installs the recorder;
     // it reads this list's layout once per frame and never scrolls (ThreadOpenTrace.kt).
-    val openTraceSession = LocalThreadOpenTrace.current
-    if (openTraceSession != null) {
-        val openTraceFontScale = LocalDensity.current.fontScale
-        ThreadOpenShiftRecorderEffect(
-            session = openTraceSession,
-            listState = listState,
-            typeScaleKey = (openTraceFontScale * 100f).toInt() * 31 + messageBodyTextStyle.fontSize.hashCode(),
-        ) { inputs ->
-            val pendingFocus = pendingFocusedMessageAnchorIdentityState.value
-            inputs.positioned =
-                initialBottomAnchorReady &&
-                    (
-                        pendingFocus == null ||
-                            pendingFocus == consumedFocusedMessageAnchorIdentity ||
-                            pendingFocus == scrollInterruptedFocusedMessageAnchorIdentity
-                    )
-            inputs.status = renderPayload.status
-            inputs.messageRows = renderPayload.messages.size
-            inputs.durableLastKnown = renderPayload.durableLastKnown
-            inputs.backgroundRefreshing = renderConfig.backgroundRefreshing
-            inputs.mainLoadFailed = renderPayload.mainLoadFailed
-        }
+    ThreadMessagesListOpenTrace(
+        openKey = threadInstanceKey,
+        slice = renderPayload,
+        backgroundRefreshing = renderConfig.backgroundRefreshing,
+        listState = listState,
+        flags = adaptiveSharedStores.serverFeatureFlags,
+        initialServerId = adaptiveStoreScope.initialServerId,
+        messageBodyFontSize = messageBodyTextStyle.fontSize.hashCode(),
+        log = diagnosticsLogger,
+    ) {
+        val pendingFocus = pendingFocusedMessageAnchorIdentityState.value
+        initialBottomAnchorReady &&
+            (
+                pendingFocus == null ||
+                    pendingFocus == consumedFocusedMessageAnchorIdentity ||
+                    pendingFocus == scrollInterruptedFocusedMessageAnchorIdentity
+            )
     }
     // Search in this thread (web useThreadSearch): the bar's store reads the whole thread; the page
     // tells it what it holds, and lands on the open match (loading around it when it isn't loaded).

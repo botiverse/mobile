@@ -1847,10 +1847,6 @@ private fun SharedThreadRouteContentContent(
                 scopeInitialServerId = storeScope.initialServerId
             )?.let(::ServerId)
         }
-    // Open-path jitter tracing (#proj-mobile:#199): one sampling decision per open, from the
-    // trace_sample.* flags (RaftTraceSampling.kt); a sampled open's list records its shifts.
-    val threadOpenTrace =
-        rememberThreadPageOpenTrace(initialThreadInstanceKey, initialPayload, sharedStores.serverFeatureFlags, headerProjectionServerId, bridge)
     val memberAvatarResolver =
         remember(serverMembersStore, headerProjectionServerId) {
             raftMemberAvatarResolver(
@@ -6179,7 +6175,7 @@ private fun SharedThreadRouteContentContent(
                                     fileRefs = refs
                                 )
                             },
-                            log = { line -> bridge.log(line) },
+                            log = bridge::log,
                         )
                     uploadComposerAttachmentFiles(prepared)
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RequestFocus)
@@ -6985,7 +6981,7 @@ private fun SharedThreadRouteContentContent(
                                 serverId = currentServerId.orEmpty(),
                                 tasksDataSource = tasksDataSource,
                                 taskV2Enabled = taskV2Enabled,
-                                log = { line -> bridge.log(line) },
+                                log = bridge::log,
                             ),
                     )
                 } finally {
@@ -7409,7 +7405,6 @@ private fun SharedThreadRouteContentContent(
                         singleParagraphLightPath = singleParagraphLightPathEnabled,
                     ),
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
-                LocalThreadOpenTrace provides threadOpenTrace,
                 LocalThreadFeedbackCardEntryEnabled provides feedbackCardEntryEnabled,
                 LocalThreadViewerServerId provides currentServerId,
                 // A joint channel's conversation: every person's face (hand-off card, task head, typing,
@@ -9848,7 +9843,7 @@ private fun SharedThreadRouteContentContent(
                                         fileRefs = refs
                                     )
                                 },
-                                log = { line -> bridge.log(line) },
+                                log = bridge::log,
                             )
                         uploadComposerAttachmentFiles(prepared)
                     }

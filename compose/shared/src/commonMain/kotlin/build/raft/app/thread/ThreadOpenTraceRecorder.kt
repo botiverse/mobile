@@ -8,13 +8,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalDensity
 import build.raft.app.data.MOBILE_THREAD_OPEN_TRACE_NAME
 import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftClientTraceEvents
-import build.raft.app.base.BridgeModule
 import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.model.ServerId
@@ -25,9 +23,6 @@ import build.raft.app.data.traceSampled
 import build.raft.app.nav.LocalRaftStackPageInMotion
 import build.raft.app.nav.LocalRaftStackPageLeaving
 import kotlinx.coroutines.launch
-
-/** The open trace of the thread page this list belongs to; null when this open is not sampled. */
-internal val LocalThreadOpenTrace = staticCompositionLocalOf<ThreadOpenTraceSession?> { null }
 
 /** `mobile.thread_open`'s rate for this open: flags first, then the App default (RaftTraceSampling.kt). */
 internal fun threadOpenTraceSampleRate(
@@ -40,9 +35,9 @@ private class ThreadOpenTraceHolder {
 }
 
 /**
- * One sampling decision per open ([openKey]: the page's thread instance). Not sampled (or rate 0):
- * null, and nothing is installed anywhere. A new [openKey] on the same page ends the previous
- * session as superseded; the page leaving composition ends it as left. Either way it is reported.
+ * One sampling decision per open ([openKey]: the list's thread instance). Not sampled (or rate 0):
+ * null, and nothing is installed anywhere. A new [openKey] on the same list ends the previous
+ * session as superseded; the list leaving composition ends it as left. Either way it is reported.
  */
 @Composable
 internal fun rememberThreadOpenTraceSession(
@@ -82,26 +77,47 @@ internal fun rememberThreadOpenTraceSession(
 }
 
 /**
- * [rememberThreadOpenTraceSession] for a thread page (kept out of the page's own composable, whose
- * bytecode is at its size ceiling).
+ * The open trace of a thread message list (ThreadMessagesListContent): one sampling decision per
+ * [openKey] (the list's thread instance), and the recorder when sampled. [positioned]: the initial
+ * bottom anchor is done and no focused-message anchor is pending.
  */
 @Composable
-internal fun rememberThreadPageOpenTrace(
-    openKey: String?,
-    initialPayload: RaftThreadScreenPayload,
+internal fun ThreadMessagesListOpenTrace(
+    openKey: String,
+    slice: ThreadTimelineSlice,
+    backgroundRefreshing: Boolean,
+    listState: ThreadListViewport,
     flags: SharedServerFeatureFlags,
-    serverId: ServerId?,
-    bridge: BridgeModule,
-): ThreadOpenTraceSession? {
-    val currentServerId = rememberUpdatedState(serverId)
-    return rememberThreadOpenTraceSession(
-        openKey = openKey,
-        surfaceKind = initialPayload.surfaceKind,
-        openKind = if (initialPayload.focusedMessageId.isNullOrBlank()) "latest" else "focused",
-        flags = { flags.snapshotFor(currentServerId.value) },
-        serverId = { currentServerId.value?.value },
-        log = { line -> bridge.log(line) },
-    )
+    /** The shell's server, read until the page knows the viewer's (the first frames of a cold open). */
+    initialServerId: String?,
+    messageBodyFontSize: Int,
+    log: (String) -> Unit,
+    positioned: () -> Boolean,
+) {
+    val viewerServerId =
+        (LocalThreadViewerServerId.current ?: initialServerId)?.trim()?.takeIf { it.isNotBlank() }
+    val session =
+        rememberThreadOpenTraceSession(
+            openKey = openKey,
+            surfaceKind = slice.surfaceKind,
+            openKind = if (slice.focusedMessageId.isNullOrBlank()) "latest" else "focused",
+            flags = { flags.snapshotFor(viewerServerId?.let(::ServerId)) },
+            serverId = { viewerServerId },
+            log = log,
+        ) ?: return
+    val fontScale = LocalDensity.current.fontScale
+    ThreadOpenShiftRecorderEffect(
+        session = session,
+        listState = listState,
+        typeScaleKey = (fontScale * 100f).toInt() * 31 + messageBodyFontSize,
+    ) { inputs ->
+        inputs.positioned = positioned()
+        inputs.status = slice.status
+        inputs.messageRows = slice.messages.size
+        inputs.durableLastKnown = slice.durableLastKnown
+        inputs.backgroundRefreshing = backgroundRefreshing
+        inputs.mainLoadFailed = slice.mainLoadFailed
+    }
 }
 
 /** Log lines (every build) and the upload (privacy mode permitting, in the sender). Once per session. */
