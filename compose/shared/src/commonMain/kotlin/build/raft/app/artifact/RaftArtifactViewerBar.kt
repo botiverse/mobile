@@ -25,6 +25,7 @@ import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
+import build.raft.designsystem.components.raftPaneGridNoFade
 
 /**
  * The viewer's own ⋮: only what the web page's ⋯ cannot offer (owner decision 2026-11-10, "two
@@ -103,7 +104,9 @@ internal fun RaftArtifactViewerFrame(
                     }
                 },
         )
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content() }
+        // The page is full-bleed: in a clipped column (#189 rule 2) it is cut hard at the column's edge, never faded
+        // into the surface (raftPaneGridNoFade), whatever it draws, loading or not.
+        Box(modifier = Modifier.weight(1f).fillMaxWidth().raftPaneGridNoFade()) { content() }
     }
 }
 

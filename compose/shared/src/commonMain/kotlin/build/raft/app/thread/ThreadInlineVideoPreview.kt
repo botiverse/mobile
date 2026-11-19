@@ -44,6 +44,7 @@ import build.raft.designsystem.components.RaftEmbeddedControls
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
+import build.raft.designsystem.components.raftPaneGridNoFade
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -176,6 +177,8 @@ internal fun ThreadInlineVideoAttachmentCard(
                     .widthIn(max = ThreadInlineVideoMaxWidth)
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
+                    // Full-bleed media: in a clipped pane of the wide row it is cut hard at the pane's edge, never faded.
+                    .raftPaneGridNoFade()
                     .border(RaftStroke.Hairline, RaftTheme.colors.lineHairline, outer)
                     .padding(RaftStroke.Hairline)
                     .clip(RoundedCornerShape(RaftRadius.Container - RaftStroke.Hairline))

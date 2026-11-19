@@ -3,7 +3,6 @@ package build.raft.designsystem
 import build.raft.designsystem.components.RaftRowPlanColumn
 import build.raft.designsystem.components.raftPaneGridFadeSpans
 import build.raft.designsystem.components.raftPaneGridMainShownDp
-import build.raft.designsystem.components.raftPaneGridNativeFadePx
 import build.raft.designsystem.components.raftPaneGridRowPlan
 import build.raft.designsystem.components.raftRowUnitWidths
 import kotlin.math.abs
@@ -89,17 +88,6 @@ class RaftPaneGridClipTest {
     }
 
     @Test
-    fun aNativeViewFadesOverItsVisibleEnd() {
-        // The Artifact's WKWebView laid out at 480 from the column's start, 1dp in (the seam), in a 272 column: the
-        // pane's end is 271 into the view, the fade the 24 before it.
-        assertEquals(247f to 271f, raftPaneGridNativeFadePx(boxWidthPx = 272f, viewLeftPx = 1f, viewWidthPx = 480f, fadePx = 24f))
-        // A view that ends inside the pane is not cut: no fade.
-        assertEquals(null, raftPaneGridNativeFadePx(boxWidthPx = 500f, viewLeftPx = 1f, viewWidthPx = 480f, fadePx = 24f))
-        // Less than the fade's length shows: it fades from its start.
-        assertEquals(0f to 10f, raftPaneGridNativeFadePx(boxWidthPx = 11f, viewLeftPx = 1f, viewWidthPx = 480f, fadePx = 24f))
-    }
-
-    @Test
     fun theEndFadePassesTheHeadsBy() {
         // No head: the whole height fades.
         assertEquals(listOf(0f to 600f), raftPaneGridFadeSpans(600f, emptyList()))
@@ -112,5 +100,23 @@ class RaftPaneGridClipTest {
         )
         // A head past the bottom: nothing below it.
         assertEquals(listOf(56f to 580f), raftPaneGridFadeSpans(600f, listOf(0f to 56f, 580f to 640f)))
+    }
+
+    @Test
+    fun theEndFadePassesFullBleedMediaBy() {
+        // An image (raftPaneGridNoFade) under the 56 head: the fade skips it as it does the head, text around it fades.
+        assertEquals(
+            listOf(56f to 200f, 380f to 600f),
+            raftPaneGridFadeSpans(600f, listOf(0f to 56f, 200f to 380f)),
+        )
+        // Two images overlapping, or one inside another's span: one gap.
+        assertEquals(listOf(0f to 100f, 400f to 600f), raftPaneGridFadeSpans(600f, listOf(100f to 300f, 200f to 400f)))
+        assertEquals(listOf(0f to 100f, 400f to 600f), raftPaneGridFadeSpans(600f, listOf(100f to 400f, 200f to 300f)))
+        // Scrolled partly out at the top or the bottom: only what is in counts.
+        assertEquals(listOf(40f to 500f), raftPaneGridFadeSpans(600f, listOf(-80f to 40f, 500f to 720f)))
+        // Wholly out of the column: the whole height fades.
+        assertEquals(listOf(0f to 600f), raftPaneGridFadeSpans(600f, listOf(-300f to -100f, 650f to 900f)))
+        // The whole pane full-bleed (the Artifact's page under its bar): nothing fades.
+        assertEquals(emptyList(), raftPaneGridFadeSpans(600f, listOf(0f to 56f, 56f to 600f)))
     }
 }

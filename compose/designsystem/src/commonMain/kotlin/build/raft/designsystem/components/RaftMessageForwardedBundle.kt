@@ -478,7 +478,8 @@ fun RaftMessageForwardedBundleGallery(
     if (count <= 0) return
     val chunk = if (count == 4) 2 else 3
     val rows = (0 until count).chunked(chunk)
-    BoxWithConstraints(modifier.fillMaxWidth()) {
+    // Full-bleed media: in a clipped pane of the wide row it is cut hard at the pane's edge, never faded.
+    BoxWithConstraints(modifier.fillMaxWidth().raftPaneGridNoFade()) {
         val available = maxWidth
         val wide = available >= RaftMessageForwardedBundleDefaults.GalleryWideFrom
         val gap = RaftMessageForwardedBundleDefaults.GalleryGap

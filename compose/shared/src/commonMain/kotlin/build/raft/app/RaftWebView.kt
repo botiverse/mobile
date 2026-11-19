@@ -5,6 +5,7 @@ import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import build.raft.designsystem.components.raftPaneGridNoFade
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.compat.json.JSONObject
 
@@ -209,7 +210,9 @@ internal fun RaftSandboxWebView(
                 diagnosticsSurface = diagnosticsSurface
             )
         }
-    RaftSandboxWebViewHost(config = config, events = events, controller = controller, modifier = modifier)
+    // Full-bleed: in a clipped pane of the wide row (the Artifact column) the page is cut hard at the pane's edge, never
+    // faded (raftPaneGridNoFade): a fade over a dark page glows. A native view (iOS WKWebView) is clipped as it is.
+    RaftSandboxWebViewHost(config = config, events = events, controller = controller, modifier = modifier.raftPaneGridNoFade())
 }
 
 /**

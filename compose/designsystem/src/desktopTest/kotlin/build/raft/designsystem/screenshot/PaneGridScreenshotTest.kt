@@ -1,5 +1,6 @@
 package build.raft.designsystem.screenshot
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +13,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftPaneGridSizes
 import build.raft.designsystem.components.RaftPaneGrid
@@ -26,6 +28,7 @@ import build.raft.designsystem.components.RaftPaneGridExpand
 import build.raft.designsystem.components.RaftPaneGridHeadAction
 import build.raft.designsystem.components.RaftPaneGridHeadLabels
 import build.raft.designsystem.components.RaftPaneGridMemorySizes
+import build.raft.designsystem.components.raftPaneGridNoFade
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
@@ -85,13 +88,15 @@ class PaneGridScreenshotTest {
      * content kept at its minimum and cut at its edge; past five times 160 the rightmost becomes
      * a tab in its neighbour's column, under the row-tab strip.
      */
-    private fun captureRow(name: String, widthDp: Int, heads: Boolean = false, expanded: String? = null) =
+    private fun captureRow(name: String, widthDp: Int, heads: Boolean = false, expanded: String? = null, media: Boolean = false) =
         appearances.forEach { appearance ->
             RaftScreenshot.capture("${name}_${appearance.name.lowercase()}", appearance) {
                 val sizes = remember { RaftPaneGridMemorySizes() }
                 val rowExpand = remember { RaftPaneGridExpand().apply { if (expanded != null) expand(expanded) } }
                 // The cells' heads: stand-ins, or the design system's column head (#189 step 5).
-                val cell: @Composable RaftPaneGridCellScope.(String) -> Unit = { title -> if (heads) HeadStand(title) else Stand(title) }
+                val cell: @Composable RaftPaneGridCellScope.(String) -> Unit = { title ->
+                    if (heads) HeadStand(title) else if (media) MediaStand(title) else Stand(title)
+                }
                 CompositionLocalProvider(LocalRaftPaneGridSizes provides sizes) {
                     Box(Modifier.size(widthDp.dp, 420.dp)) {
                         RaftPaneGrid(
@@ -127,6 +132,14 @@ class PaneGridScreenshotTest {
 
     @Test
     fun paneGridTabs() = captureRow("pane_grid_tabs", widthDp = 640)
+
+    /**
+     * The clipped row again, every cell with text and a dark full-bleed block (an image) wider than what shows: the text
+     * fades into the column's surface at its end (`layer-canvas`, light or dark, never to transparent), the block is cut
+     * hard at the edge ([raftPaneGridNoFade]): no band of the surface glowing over it.
+     */
+    @Test
+    fun paneGridClippedMedia() = captureRow("pane_grid_clipped_media", widthDp = 1160, media = true)
 
     /**
      * #189 step 5: every cell with the column head: the title, its own action (New), ⋯ (Move Left / Move Right), Expand
@@ -180,6 +193,23 @@ private fun RaftPaneGridCellScope.Stand(title: String) {
         }
     }
 }
+
+/** A cell stand-in with content to its minimum's edge: text, a dark full-bleed block (an image), text. */
+@Composable
+private fun RaftPaneGridCellScope.MediaStand(title: String) {
+    val line = "$title: a line of text long enough to run past the edge of a clipped column"
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
+            RaftText(title, style = RaftTheme.typography.headline)
+        }
+        RaftText(line, maxLines = 1, softWrap = false, modifier = Modifier.padding(horizontal = 16.dp))
+        Box(Modifier.padding(vertical = 12.dp).raftPaneGridNoFade().fillMaxWidth().height(96.dp).background(MediaInk))
+        RaftText(line, maxLines = 1, softWrap = false, modifier = Modifier.padding(horizontal = 16.dp))
+    }
+}
+
+/** The stand-in image: dark in both themes, as a photo or a dark page is. */
+private val MediaInk = Color(0xFF1B2430)
 
 @Composable
 private fun MainStand(title: String) {

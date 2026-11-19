@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.HostBridgeTransport
@@ -34,6 +35,8 @@ import build.raft.app.data.RaftLocalPreferenceStore
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftMessageImageDimensions
+import build.raft.designsystem.components.RaftMessageImageGallery
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
@@ -54,10 +57,12 @@ import org.robolectric.annotation.GraphicsMode
  * 479), and in its detail the shell's [RaftWorkspaceDetailGrid] with the thread as its main pane and the Artifact
  * column handed up to the split's row. The row right of the list is 479, short of the thread's 360 and the
  * Artifact's 480: by raft-design responsive.md "The channel's side columns" both clip (rule 4, step 4), their content
- * kept at its minimum against their start, its end fading over fade-edge (a mask), each head fitted to what shows
- * (rule 2: "the head is never clipped"), nothing past the window or over the neighbour. The thread's head is
+ * kept at its minimum against their start, each head fitted to what shows (rule 2: "the head is never clipped"),
+ * nothing past the window or over the neighbour. The thread's text fades into the surface at its end (fade-edge, in
+ * `layer-canvas`, never to transparent); its image and the Artifact's dark page are full-bleed, cut hard at the edge,
+ * never faded (raftPaneGridNoFade): no band of the surface glowing over dark media. The thread's head is
  * [RaftTopPageHeader] with a title long enough to ellipsize; the Artifact's is the App-drawn viewer bar
- * ([RaftArtifactViewerFrame]) over text. Light only. Verify / record as [RaftRobolectricScreenshot].
+ * ([RaftArtifactViewerFrame]) over a dark slide. Light and dark. Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -76,10 +81,16 @@ class ActivityThreadArtifactFoldableScreenshotTest {
     fun clearPreferenceStore() = RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
 
     @Test
-    fun activityThreadArtifactFoldable() =
+    fun activityThreadArtifactFoldable() = capture("activity_thread_artifact_foldable", RaftAppAppearance.Light)
+
+    /** Dark: the clipped ends fade into the dark surface; the image and the Artifact's page are cut, nothing glows. */
+    @Test
+    fun activityThreadArtifactFoldableDark() = capture("activity_thread_artifact_foldable_dark", RaftAppAppearance.Dark)
+
+    private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(
-            "activity_thread_artifact_foldable",
-            RaftAppAppearance.Light,
+            name,
+            appearance,
             reportDir = "build/reports/home-screenshots",
             activities = activities,
         ) {
@@ -213,6 +224,13 @@ class ActivityThreadArtifactFoldableScreenshotTest {
                         "Before going on stage, turn auto-lock off in the phone's settings. Everything else works at phone size.",
                     modifier = Modifier.padding(top = 12.dp),
                 )
+                // A dark image attachment, wider than what shows: full-bleed, cut hard at the column's edge.
+                RaftMessageImageGallery(
+                    images = listOf(RaftMessageImageDimensions(1600, 900)),
+                    modifier = Modifier.padding(top = 12.dp),
+                ) {
+                    Box(Modifier.fillMaxSize().background(Color(0xFF1B2430)))
+                }
             }
             Box(
                 Modifier.fillMaxWidth().padding(12.dp).height(72.dp)
