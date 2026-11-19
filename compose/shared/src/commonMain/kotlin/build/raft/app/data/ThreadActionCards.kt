@@ -189,6 +189,9 @@ internal const val QuestionAskActionCardType = "question:ask"
 /** A seat request (web person card `seats:add`): no owner answered within its 7 days once expired. */
 internal const val SeatsAddActionCardType = "seats:add"
 
+/** Cindy's Pro free trial offer in the owner's DM (wire `action.type`); a phone shows it as one line. */
+internal const val PlanTrialActionCardType = "plan:trial"
+
 /** [ThreadActionCard.expiresAt] as epoch millis; null when absent or unreadable. */
 internal fun ThreadActionCard.expiresAtEpochMillis(): Long? = parseRaftTimestampEpochMillisOrNull(expiresAt)
 
