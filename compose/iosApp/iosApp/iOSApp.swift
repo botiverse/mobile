@@ -770,6 +770,9 @@ struct iOSApp: App {
         RaftIosInstallHandsReporting()
         // CMP page routing: debug builds also admit the debug-only :ui-cmp pages.
         RaftPageControllerFactory.configure()
+        // Hands was installed without launch uploads: they run once every signed-in server
+        // answered privacy mode off (RAFT_PRIVACY_MODE), else wait for the next launch.
+        RaftIosHandsLaunchUploads.shared.start { RaftIosRunHandsLaunchUploads() }
         // task #436: register the SVG coder with SDWebImage, which the durable avatar store
         // (RaftIosAvatarCacheProvider) decodes committed avatar bytes with; SVG avatars are
         // otherwise rejected (UIImage has no native SVG support).

@@ -18,6 +18,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -45,6 +46,7 @@ import build.raft.app.data.FeedbackTicketKind
 import build.raft.app.data.FeedbackTicketListRead
 import build.raft.app.data.FeedbackTicketPage
 import build.raft.app.data.FeedbackTicketStatus
+import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.SettingsFeedbackTicketsRepository
 import build.raft.app.data.SettingsFeedbackTicketsStore
 import build.raft.app.model.RaftTimeContext
@@ -150,6 +152,7 @@ class SettingsFeedbackTicketsPageUiTest {
         onCopyTicketLink: ((String) -> Unit)? = null,
         agentDraftSent: kotlinx.coroutines.flow.Flow<Boolean> = kotlinx.coroutines.flow.flowOf(true),
         ownClient: FeedbackClient? = FeedbackClient.Android,
+        privacyMode: RaftPrivacyMode = RaftPrivacyMode.Off,
     ) {
         val scope = rememberCoroutineScope()
         val store = remember { SettingsFeedbackTicketsStore(repository, scope, agentDraftSent = agentDraftSent).also { it.start() } }
@@ -171,6 +174,7 @@ class SettingsFeedbackTicketsPageUiTest {
                         onCopyTicketLink = onCopyTicketLink,
                     ),
                 ownClient = ownClient,
+                privacyMode = privacyMode,
                 replyComposer = { draft, enabled, sending, error, onChange, onSend ->
                     Column {
                         RaftTextarea(value = draft, onValueChange = onChange, modifier = Modifier.testTag(ReplyField), placeholder = "Write a reply…")
@@ -418,6 +422,36 @@ class SettingsFeedbackTicketsPageUiTest {
             onNode(hasContentDescription("Close Ticket")).assertIsDisplayed()
             onNode(hasContentDescription("Copy Link")).assertDoesNotExist()
         }
+
+    /** `RAFT_PRIVACY_MODE`: New Feedback (its archive goes to Hands) only once the server answered off. */
+    @Test
+    fun newFeedbackIsOfferedOnlyWhenTheServerAnsweredPrivacyModeOff() {
+        val cases =
+            listOf(
+                RaftPrivacyMode.Off to null,
+                RaftPrivacyMode.On to "This server runs in privacy mode, so feedback can't be sent to Raft from this app.",
+                RaftPrivacyMode.Unknown to "Feedback can't be sent yet: this server hasn't said whether privacy mode is on.",
+            )
+        for ((mode, notice) in cases) {
+            runRobolectricComposeUiTest {
+                val repository = FakeRepository(pageOf(crash))
+                setContent { Page(repository, privacyMode = mode) }
+                waitForIdle()
+
+                // The tickets already filed stay readable either way.
+                onNodeWithText("Crash on launch").assertIsDisplayed()
+                if (notice == null) {
+                    onNodeWithTag(SettingsFeedbackTicketsNewFeedbackTag).assertIsDisplayed()
+                    onAllNodesWithTag(SettingsFeedbackTicketsPrivacyNoticeTag).assertCountEquals(0)
+                } else {
+                    onAllNodesWithTag(SettingsFeedbackTicketsNewFeedbackTag).assertCountEquals(0)
+                    onAllNodesWithText("New Feedback").assertCountEquals(0)
+                    onNodeWithTag(SettingsFeedbackTicketsPrivacyNoticeTag).assertIsDisplayed()
+                    onNodeWithText(notice).assertIsDisplayed()
+                }
+            }
+        }
+    }
 
     private companion object {
         const val ReplyField = "feedback_reply_field"

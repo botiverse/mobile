@@ -9,6 +9,7 @@ import build.hands.update.HandsFeedback
 import build.hands.update.HandsDeviceId
 import build.hands.update.HandsFeedbackException
 import build.raft.app.BuildConfig
+import build.raft.app.data.RaftServicesPrivacyGate
 import build.raft.app.shared.RaftBuildStamp
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -1433,12 +1434,26 @@ internal object AndroidSystemKillReporter {
     private val started = AtomicBoolean(false)
     private val uploadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** Runs in the background; the Hands client is only built when there is something to send. */
+    /**
+     * Runs in the background; the Hands client is only built when there is something to send.
+     * `RAFT_PRIVACY_MODE`: nothing is looked at or sent until every signed-in server answered
+     * privacy mode off ([RaftServicesPrivacyGate]); on or unknown, the exits stay unreported (the
+     * watermark does not move) for the next launch to decide again.
+     */
     fun start(context: Context, baseUrl: String, appSlug: String, channel: String?, clientKey: String?) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         if (!started.compareAndSet(false, true)) return
         val appContext = context.applicationContext
         uploadScope.launch {
+            val privacyMode = RaftServicesPrivacyGate.awaitLaunchDecision()
+            if (!RaftServicesPrivacyGate.allowsAutomatic(privacyMode)) {
+                RaftAndroidLocalDiagnostics.recordLog(
+                    "info",
+                    Tag,
+                    "system_kill_report_skipped reason=privacy_mode mode=${privacyMode.name.lowercase()} kept_for=next_launch",
+                )
+                return@launch
+            }
             runCatching {
                 val feedback by lazy {
                     // Version comes from each exit's extras (stamp, its process's record, or the

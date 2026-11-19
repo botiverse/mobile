@@ -32,6 +32,11 @@ import build.raft.app.data.SETTINGS_FEEDBACK_CARD_CHANGED
 import build.raft.app.data.SETTINGS_FEEDBACK_CARD_NOT_ALLOWED
 import build.raft.app.data.SETTINGS_FEEDBACK_CARD_NOT_WAITING
 import build.raft.app.data.SETTINGS_FEEDBACK_CARD_UNAVAILABLE
+import build.raft.app.data.SETTINGS_FEEDBACK_NOT_CONFIGURED
+import build.raft.app.data.SETTINGS_FEEDBACK_PRIVACY_MODE_ON
+import build.raft.app.data.SETTINGS_FEEDBACK_PRIVACY_MODE_UNKNOWN
+import build.raft.app.data.RaftPrivacyMode
+import build.raft.app.data.settingsFeedbackPrivacyCode
 import build.raft.app.data.SettingsFeedbackCardDraft
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.PRODUCT_FEEDBACK_MAX_ATTACHMENTS
@@ -98,7 +103,7 @@ internal fun SharedHandsFeedbackContent(
     /**
      * Signed in: files through the Raft server (`POST /api/product-feedback`), so the ticket is
      * this person's and shows in their ticket list. Null keeps the native Hands form (visual
-     * fixtures); the submitter itself hands over to it when the server cannot file.
+     * fixtures only); a server that cannot file is a failure, never handed to the native form.
      */
     proxySubmitter: SettingsFeedbackProxySubmitter? = null,
     /** A ticket filed through [proxySubmitter], after the draft is cleared (the page shows it). */
@@ -111,12 +116,20 @@ internal fun SharedHandsFeedbackContent(
     card: SettingsFeedbackCardDraft? = null,
     /** The card was already sent by this person (no ticket named): the page shows the list, where it is. */
     onCardAlreadySent: (() -> Unit)? = null,
+    /**
+     * The current server's privacy mode ([build.raft.app.data.RaftTelemetryPrivacy.state]). Nothing
+     * is sent unless it is off (the diagnostics archive goes straight to Hands); on or unknown, the
+     * form says why at the top and Send stops there. Off by default for visual fixtures.
+     */
+    privacyMode: RaftPrivacyMode = RaftPrivacyMode.Off,
 ) {
     // The Raft proxy takes images up to 10 MB each (server PRODUCT_FEEDBACK_MAX_ATTACHMENT_BYTES; web
     // NewFeedbackForm says the same); the diagnostics zip goes through its own presigned upload.
     val attachmentMaxBytes = settingsFeedbackImageMaxBytes()
     val attachmentMaxLabel = RaftFormat.byteLimit(attachmentMaxBytes)
     val copy = settingsHandsFeedbackCopy(attachmentMaxLabel)
+    val privacyNotice = copy.privacyNotice(privacyMode)
+    val latestPrivacyMode by rememberUpdatedState(privacyMode)
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val scope = rememberCoroutineScope()
     // Keep editor callbacks on the Kuikly dispatcher while detaching their Job from composition
@@ -780,6 +793,11 @@ internal fun SharedHandsFeedbackContent(
             settingsCapabilities.log("settings_hands_feedback_submit_ignored reason=busy")
             return
         }
+        settingsFeedbackPrivacyCode(latestPrivacyMode)?.let { code ->
+            // Nothing leaves the device; the banner at the top already says why.
+            settingsCapabilities.log("settings_hands_feedback_submit_blocked reason=privacy_mode code=$code")
+            return
+        }
         if (submittedMessage.isBlank()) {
             settingsCapabilities.log("settings_hands_feedback_submit_blocked reason=blank_message")
             error = copy.messageRequired
@@ -834,10 +852,6 @@ internal fun SharedHandsFeedbackContent(
                             is SettingsFeedbackProxyOutcome.Failed -> {
                                 nextProxyAttempt = outcome.retry
                                 DataResult.Error(ScreenError(outcome.code, retryable = outcome.retryable, traceId = outcome.traceId))
-                            }
-                            SettingsFeedbackProxyOutcome.UseNativeForm -> {
-                                settingsCapabilities.log("settings_hands_feedback_submit_native_fallback")
-                                settingsCapabilities.submitHandsFeedback(submittedMessage, submittedAttachments)
                             }
                         }
                     } else {
@@ -1027,6 +1041,8 @@ internal fun SharedHandsFeedbackContent(
 
     val notice =
         when {
+            // Why nothing can be sent comes first, and stays while it holds.
+            privacyNotice != null -> SettingsHandsFeedbackNotice.Problem(message = privacyNotice, retryable = false, traceId = null)
             !error.isNullOrBlank() ->
                 SettingsHandsFeedbackNotice.Problem(
                     message = error.orEmpty(),
@@ -1097,6 +1113,9 @@ internal data class SettingsHandsFeedbackCopy(
     val submissionAuthBody: String = "Feedback authentication failed. Update the app or contact support.",
     val submissionPermissionTitle: String = "Permission needed",
     val submissionPermissionBody: String = "You do not have permission to send feedback.",
+    val notConfiguredBody: String = "This server isn't set up to take feedback, so it can't be sent from this app.",
+    val privacyModeOnBody: String = "This server runs in privacy mode, so feedback can't be sent to Raft from this app.",
+    val privacyModeUnknownBody: String = "Feedback can't be sent yet: this server hasn't said whether privacy mode is on.",
     val cardNotWaitingBody: String = "This feedback was already sent. Find it in Settings.",
     val cardChangedBody: String = "This card changed after you opened it. Go back and open it again.",
     val cardUnavailableBody: String = "Feedback cards are not available here anymore.",
@@ -1123,6 +1142,9 @@ internal fun SettingsHandsFeedbackCopy.submissionFailure(
         when (diagnosticCode) {
             "settings_feedback_network_failed" -> submissionNetworkBody
             "settings_feedback_server_unavailable" -> submissionUnavailable
+            SETTINGS_FEEDBACK_NOT_CONFIGURED -> notConfiguredBody
+            SETTINGS_FEEDBACK_PRIVACY_MODE_ON -> privacyModeOnBody
+            SETTINGS_FEEDBACK_PRIVACY_MODE_UNKNOWN -> privacyModeUnknownBody
             "settings_feedback_rate_limited" -> submissionRateLimitedBody
             "settings_feedback_attachment_read_failed" -> submissionAttachmentReadBody
             "settings_feedback_attachment_too_large" -> submissionAttachmentTooLargeBody
@@ -1142,6 +1164,8 @@ internal fun SettingsHandsFeedbackCopy.submissionFailure(
                     "settings_feedback_attachment_too_large",
                     SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID,
                     "settings_feedback_auth_failed",
+                    SETTINGS_FEEDBACK_NOT_CONFIGURED,
+                    SETTINGS_FEEDBACK_PRIVACY_MODE_ON,
                     SETTINGS_FEEDBACK_CARD_ALREADY_SENT,
                     SETTINGS_FEEDBACK_CARD_NOT_WAITING,
                     SETTINGS_FEEDBACK_CARD_CHANGED,
@@ -1155,6 +1179,14 @@ internal fun SettingsHandsFeedbackCopy.submissionFailure(
         retryable = canRetry
     )
 }
+
+/** Why nothing can be sent under [mode] (null when privacy mode is off and it may). */
+internal fun SettingsHandsFeedbackCopy.privacyNotice(mode: RaftPrivacyMode): String? =
+    when (mode) {
+        RaftPrivacyMode.Off -> null
+        RaftPrivacyMode.On -> privacyModeOnBody
+        RaftPrivacyMode.Unknown -> privacyModeUnknownBody
+    }
 
 internal fun SettingsHandsFeedbackCopy.submissionUnavailableFailure(): SettingsHandsFeedbackFailurePresentation =
     SettingsHandsFeedbackFailurePresentation(
@@ -1206,6 +1238,9 @@ internal fun settingsHandsFeedbackCopy(attachmentMaxLabel: String): SettingsHand
         submissionAuthBody = stringResource(Res.string.settings_feedback_submission_auth_body),
         submissionPermissionTitle = stringResource(Res.string.settings_feedback_submission_permission_title),
         submissionPermissionBody = stringResource(Res.string.settings_feedback_submission_permission_body),
+        notConfiguredBody = stringResource(Res.string.settings_feedback_not_configured),
+        privacyModeOnBody = stringResource(Res.string.settings_feedback_privacy_mode_on),
+        privacyModeUnknownBody = stringResource(Res.string.settings_feedback_privacy_mode_unknown),
         cardNotWaitingBody = stringResource(Res.string.settings_feedback_card_not_waiting),
         cardChangedBody = stringResource(Res.string.settings_feedback_card_changed),
         cardUnavailableBody = stringResource(Res.string.settings_feedback_card_unavailable),

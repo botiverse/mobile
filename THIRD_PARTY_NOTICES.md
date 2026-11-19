@@ -54,7 +54,7 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 | Pod | Version | License |
 |---|---|---|
 | OpenKuiklyIOSRender (Botiverse-built podspec) | 2.28.0-raft.15-2.1.21 | KuiklyUI license |
-| Hands (oranix-io/hands, tag ios-v0.2.2) | 0.2.2 | MIT |
+| Hands (oranix-io/hands, tag ios-v0.2.3) | 0.2.3 | MIT |
 | MMKV / MMKVCore | 2.4.3 | BSD-3-Clause |
 | MobileVLCKit (VLCKit + libVLC; in-app playback of WebM / MKV / MPEG-TS/PS / FLV; prebuilt dynamic framework from download.videolan.org, sha256 pinned by the trunk spec) | 3.7.5 | **LGPL-2.1-or-later** (VLCKit `COPYING.txt`; libVLC and its bundled codec/demux libraries under LGPL-2.1-or-later or compatible permissive licenses) — https://code.videolan.org/videolan/VLCKit |
 | SDWebImage | 5.21.7 | MIT |

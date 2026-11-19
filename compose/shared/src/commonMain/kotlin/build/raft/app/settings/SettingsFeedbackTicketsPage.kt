@@ -68,7 +68,10 @@ import build.raft.app.data.FeedbackTicketStatus
 import build.raft.app.data.FeedbackTicketsListPhase
 import build.raft.app.data.FeedbackTicketsListState
 import build.raft.app.data.NetworkSettingsFeedbackTicketsRepository
+import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftTelemetryPrivacy
+import build.raft.app.data.settingsFeedbackSendAllowed
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SettingsFeedbackTicketsState
 import build.raft.app.data.SettingsFeedbackTicketsStore
@@ -206,6 +209,8 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
     // A ticket just filed from the submit form: read in and opened as it is filed.
     LaunchedEffect(store) { store.followSettingsFeedbackFiledTickets(bridge::log) }
     val state by store.state.collectAsState()
+    // New Feedback only once the current server answered privacy mode off (its archive goes to Hands).
+    val privacyMode by RaftTelemetryPrivacy.state.collectAsState()
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
     val timeContext = LocalRaftPageBaseTimeContextProvider.current?.current
     // Copy Link (#119): the ticket's web address for an agent, on the Developer environment's web
@@ -266,6 +271,7 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
                 onCopyTicketLink = copyTicketLink,
             ),
         bottomContentPadding = raftBottomSafeAreaPadding(),
+        privacyMode = privacyMode,
     )
 }
 
@@ -366,6 +372,11 @@ internal fun SettingsFeedbackTicketsScreen(
     replyComposer: SettingsFeedbackReplyComposer = { draft, enabled, sending, error, onChange, onSend ->
         SettingsFeedbackThreadReplyComposer(draft, enabled, sending, error, onChange, onSend, bottomContentPadding)
     },
+    /**
+     * The current server's privacy mode: New Feedback is offered only when it is off; on or
+     * unknown, the list says why in its place (the feedback's diagnostics archive goes to Hands).
+     */
+    privacyMode: RaftPrivacyMode = RaftPrivacyMode.Off,
 ) {
     val detail = state.detail
     var closeDialogOpen by remember(detail?.ticketId) { mutableStateOf(false) }
@@ -416,7 +427,15 @@ internal fun SettingsFeedbackTicketsScreen(
             },
     ) {
         if (detail == null) {
-            FeedbackTicketList(state.list, timeContext, actions, bottomContentPadding, ownClient = ownClient, showAgentHint = state.showAgentHint)
+            FeedbackTicketList(
+                state.list,
+                timeContext,
+                actions,
+                bottomContentPadding,
+                ownClient = ownClient,
+                showAgentHint = state.showAgentHint,
+                newFeedbackBlocked = settingsFeedbackNewFeedbackNotice(privacyMode),
+            )
         } else {
             FeedbackTicketDetail(detail, timeContext, actions, replyComposer, bottomContentPadding, ownClient = ownClient, onOpenCloseDialog = openCloseDialog)
         }
@@ -502,8 +521,23 @@ private fun FeedbackTicketList(
     bottomContentPadding: androidx.compose.ui.unit.Dp,
     ownClient: FeedbackClient?,
     showAgentHint: Boolean = false,
+    /** Why New Feedback is not offered (privacy mode on or unknown); null offers it. */
+    newFeedbackBlocked: String? = null,
 ) {
     Column(Modifier.fillMaxSize()) {
+        newFeedbackBlocked?.let { reason ->
+            RaftBanner(
+                description = reason,
+                status = RaftBannerStatus.Info,
+                size = RaftBannerSize.Sm,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(RaftTheme.colors.layerCanvas)
+                        .padding(start = 16.dp, top = 12.dp, end = 16.dp)
+                        .testTag(SettingsFeedbackTicketsPrivacyNoticeTag),
+            )
+        }
         // The inbox only, above its New Feedback (web AboutFeedbackDialog: `px-4 pt-3`).
         if (showAgentHint) {
             FeedbackAgentHint(Modifier.fillMaxWidth().background(RaftTheme.colors.layerCanvas).padding(start = 16.dp, top = 12.dp, end = 16.dp))
@@ -526,13 +560,16 @@ private fun FeedbackTicketList(
             } else {
                 Spacer(Modifier.weight(1f))
             }
-            RaftButton(
-                text = stringResource(Res.string.settings_feedback_tickets_new_feedback),
-                onClick = actions.onNewFeedback,
-                variant = RaftButtonVariant.Primary,
-                size = RaftButtonSize.Md,
-                leadingIcon = { RaftLucideIcon(RaftLucideIconName.Plus, modifier = Modifier.size(16.dp)) },
-            )
+            if (newFeedbackBlocked == null) {
+                RaftButton(
+                    text = stringResource(Res.string.settings_feedback_tickets_new_feedback),
+                    onClick = actions.onNewFeedback,
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Md,
+                    leadingIcon = { RaftLucideIcon(RaftLucideIconName.Plus, modifier = Modifier.size(16.dp)) },
+                    modifier = Modifier.testTag(SettingsFeedbackTicketsNewFeedbackTag),
+                )
+            }
         }
         RaftStorePullToRefreshBox(
             refreshing = list.refreshing,
@@ -1345,3 +1382,15 @@ internal fun FeedbackOpenedAttachment.toFeedbackImagePreviewPayload(): RaftFileP
         attachmentId = attachment.id,
     )
 }
+
+internal const val SettingsFeedbackTicketsNewFeedbackTag = "settings_feedback_tickets_new_feedback"
+internal const val SettingsFeedbackTicketsPrivacyNoticeTag = "settings_feedback_tickets_privacy_notice"
+
+/** Why the list does not offer New Feedback under [mode] (null when privacy mode is off and it does). */
+@Composable
+internal fun settingsFeedbackNewFeedbackNotice(mode: RaftPrivacyMode): String? =
+    when {
+        settingsFeedbackSendAllowed(mode) -> null
+        mode == RaftPrivacyMode.On -> stringResource(Res.string.settings_feedback_privacy_mode_on)
+        else -> stringResource(Res.string.settings_feedback_privacy_mode_unknown)
+    }

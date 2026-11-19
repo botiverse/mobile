@@ -450,6 +450,9 @@
     <string name="settings_feedback_attachment_permission_needed">Чтобы добавить вложение, нужно разрешение.</string>
     <string name="settings_feedback_message_required">Введите сообщение.</string>
     <string name="settings_feedback_submission_unavailable">Отправка отзывов сейчас недоступна. Попробуйте ещё раз.</string>
+    <string name="settings_feedback_privacy_mode_on">Этот сервер работает в режиме конфиденциальности, поэтому из этого приложения нельзя отправить отзыв в Raft.</string>
+    <string name="settings_feedback_privacy_mode_unknown">Пока нельзя отправить отзыв: сервер ещё не сообщил, включён ли режим конфиденциальности.</string>
+    <string name="settings_feedback_not_configured">Этот сервер не настроен на приём отзывов, поэтому их нельзя отправить из этого приложения.</string>
     <string name="host_feedback_prompt_message">Ваше сообщение и данные диагностики устройства будут отправлены в Hands. Вы получите сведения об обращении, которые можно скопировать и опубликовать в сообществе.</string>
     <string name="host_feedback_prompt_placeholder">Опишите проблему или идею</string>
     <string name="host_feedback_sent_title">Отзыв отправлен</string>

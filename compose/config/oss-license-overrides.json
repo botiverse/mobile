@@ -40,12 +40,12 @@
       "reason": "Pulled transitively by androidx.media3 (task #556); license inherited from the Guava parent POM, same resolution gap as guava/listenablefuture."
     },
     {
-      "id": "build.hands:hands-android-sdk:0.13.2",
+      "id": "build.hands:hands-android-sdk:0.13.3",
       "displayName": "Hands Android SDK",
       "licenseName": "MIT License",
       "licenseUrl": "https://opensource.org/licenses/MIT",
-      "sourceUrl": "https://github.com/botiverse/hands/tree/5e2565dcfbd0660d3baca5dc51c3f2fc99cd60cb/clients/android",
-      "reason": "Pin the packaged disclosure to the exact source commit paired with the official 0.13.2 Raft Maven AAR and native-symbols artifact; Gradle metadata can otherwise hide POM license/source details."
+      "sourceUrl": "https://github.com/botiverse/hands/tree/893684967b585ab951edfb5f2c4ae2c33d4cff36/clients/android",
+      "reason": "Pin the packaged disclosure to the exact source commit paired with the official 0.13.3 Raft Maven AAR and native-symbols artifact; Gradle metadata can otherwise hide POM license/source details."
     },
     {
       "id": "org.slf4j:slf4j-api",

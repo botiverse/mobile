@@ -450,6 +450,9 @@
     <string name="settings_feedback_attachment_permission_needed">Se necesita permiso para agregar un archivo adjunto.</string>
     <string name="settings_feedback_message_required">El mensaje es obligatorio.</string>
     <string name="settings_feedback_submission_unavailable">Los comentarios no están disponibles en este momento. Inténtalo de nuevo.</string>
+    <string name="settings_feedback_privacy_mode_on">Este servidor funciona en modo de privacidad, así que no se pueden enviar comentarios a Raft desde esta app.</string>
+    <string name="settings_feedback_privacy_mode_unknown">Aún no se pueden enviar comentarios: este servidor todavía no ha indicado si el modo de privacidad está activado.</string>
+    <string name="settings_feedback_not_configured">Este servidor no está configurado para recibir comentarios, así que no se pueden enviar desde esta app.</string>
     <string name="host_feedback_prompt_message">Tu mensaje y los diagnósticos del dispositivo se enviarán a Hands. Recibirás una referencia que puedes copiar para compartir en la comunidad.</string>
     <string name="host_feedback_prompt_placeholder">Describe tus comentarios</string>
     <string name="host_feedback_sent_title">Comentarios enviados</string>

@@ -450,6 +450,9 @@
     <string name="settings_feedback_attachment_permission_needed">Permission is needed to add an attachment.</string>
     <string name="settings_feedback_message_required">A message is required.</string>
     <string name="settings_feedback_submission_unavailable">Feedback is unavailable right now. Please try again.</string>
+    <string name="settings_feedback_privacy_mode_on">This server runs in privacy mode, so feedback can't be sent to Raft from this app.</string>
+    <string name="settings_feedback_privacy_mode_unknown">Feedback can't be sent yet: this server hasn't said whether privacy mode is on.</string>
+    <string name="settings_feedback_not_configured">This server isn't set up to take feedback, so it can't be sent from this app.</string>
     <string name="host_feedback_prompt_message">Your message plus device diagnostics will be sent to Hands. You'll get a copyable reference to share in the community.</string>
     <string name="host_feedback_prompt_placeholder">Describe your feedback</string>
     <string name="host_feedback_sent_title">Feedback sent</string>

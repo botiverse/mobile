@@ -9,6 +9,7 @@ import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
 import build.raft.app.core.data.diagnostics.AndroidSystemKillReporter
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
+import build.raft.app.core.data.diagnostics.RaftHandsLaunchUploads
 import build.raft.app.core.data.diagnostics.RaftWebViewRendererGoneReporter
 import build.raft.app.data.raftClearLegacyFontPreference
 import build.hands.update.HandsCrash
@@ -155,12 +156,29 @@ class RaftApplication : Application() {
             clientKey = BuildConfig.HANDS_CLIENT_KEY,
             // ANRs are filed with the hung build, read from each exit's RaftBuildStamp.
             captureAnrs = true,
+            // RAFT_PRIVACY_MODE: the SDK records as before, but its launch uploads (device ping,
+            // crashes, ANRs, native crashes) are run by RaftHandsLaunchUploads, only once every
+            // signed-in server answered privacy mode off. Release-health sessions (sent to Hands as
+            // they happen) stay off: they come only with Hands.install(trackSessions = true), which
+            // this app does not call, and the SDK (0.13.3) cannot start them after install.
+            uploadOnLaunch = false,
+            reportDeviceAnalytics = false,
             extraContext = {
                 RaftAndroidLocalDiagnostics.exportRecentDiagnosticsText(this)
             }
         )
+        RaftHandsLaunchUploads.start(
+            context = this,
+            baseUrl = BuildConfig.HANDS_BASE_URL,
+            appSlug = BuildConfig.HANDS_APP_SLUG,
+            versionName = BuildConfig.VERSION_NAME,
+            versionCode = BuildConfig.VERSION_CODE.toLong(),
+            channel = BuildConfig.HANDS_CHANNEL,
+            clientKey = BuildConfig.HANDS_CLIENT_KEY,
+        )
         // System kills (low memory, freezer, OEM `reason=other`) leave no crash for HandsCrash to
-        // catch; report the ones the user saw as crash tickets (ANRs stay with HandsCrash).
+        // catch; report the ones the user saw as crash tickets (ANRs stay with HandsCrash). Sent
+        // only once every signed-in server answered privacy mode off (RaftServicesPrivacyGate).
         AndroidSystemKillReporter.start(
             context = this,
             baseUrl = BuildConfig.HANDS_BASE_URL,

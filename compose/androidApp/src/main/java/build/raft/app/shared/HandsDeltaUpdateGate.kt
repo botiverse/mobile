@@ -10,6 +10,17 @@ internal const val HANDS_DELTA_ALPHA_CHANNEL = "alpha-delta"
 internal const val HANDS_UPDATE_MODE_ALPHA_DELTA = "alpha_delta"
 internal const val HANDS_UPDATE_MODE_FULL_APK = "full_apk"
 
+/** The bridge's Hands update actions a person starts: Settings' Check for update, and Install. */
+internal val HandsUpdateUserActions = setOf("handsUpdateCheck", "handsUpdateInstall")
+
+/**
+ * Whether a Hands update [action] may ask Hands now. A person's own Check for update / Install
+ * always may; the automatic status check (`handsUpdateStatus`) only when every signed-in server
+ * answers privacy mode off ([automaticAllowed], `RaftServicesPrivacyGate.allowsAutomatic`).
+ */
+internal fun handsUpdateRequestAllowed(action: String, automaticAllowed: Boolean): Boolean =
+    action in HandsUpdateUserActions || automaticAllowed
+
 internal fun handsApkUpdateDisabledResponse(): Map<String, Any> =
     mapOf(
         // The shared bridge parser treats every non-"ok" response as an

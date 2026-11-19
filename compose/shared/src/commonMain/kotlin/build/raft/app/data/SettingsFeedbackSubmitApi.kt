@@ -15,8 +15,15 @@ import kotlin.uuid.Uuid
  * server's proxy, `POST /api/product-feedback` (slock packages/server/src/routes/productFeedback.ts),
  * as the web page does (packages/web/src/feedback/createHandsFeedbackTransport.ts `createTicket`),
  * so the server files it under this person (X-Hands-Reporter-Id) and it shows in their own ticket
- * list (`GET /api/product-feedback/tickets`). The native Hands SDK form files anonymously; it stays
- * only for signed-out feedback and for a server that cannot file it ([SettingsFeedbackProxyOutcome.UseNativeForm]).
+ * list (`GET /api/product-feedback/tickets`). A server that cannot file it (no route, or "feedback
+ * not configured") is a failure the form explains ([SETTINGS_FEEDBACK_NOT_CONFIGURED]); it is never
+ * handed to the native Hands SDK form, which would file it straight to Hands past the server.
+ *
+ * `RAFT_PRIVACY_MODE` (owner ruling: under privacy mode nothing goes to Raft's own services, Hands
+ * included): the diagnostics archive goes straight to Hands, so nothing is sent unless the current
+ * server's client config answered privacy mode off ([RaftTelemetryPrivacy.state]); on or unknown,
+ * the send stops before the archive ([SETTINGS_FEEDBACK_PRIVACY_MODE_ON] /
+ * [SETTINGS_FEEDBACK_PRIVACY_MODE_UNKNOWN]) and the page does not offer New Feedback.
  *
  * The body is the web form (`productFeedbackForm`): `type`, `message`, `metadata`,
  * `submission_id`, `may_contact`, then `diagnostics` (the presigned archive's reference, web
@@ -306,12 +313,6 @@ sealed interface SettingsFeedbackProxyOutcome {
     data class Filed(val ticketId: String) : SettingsFeedbackProxyOutcome
 
     /**
-     * The server cannot file it: no product-feedback route, or its Hands integration is
-     * unavailable (web host's `integration-unavailable`, which hands over to the native form).
-     */
-    object UseNativeForm : SettingsFeedbackProxyOutcome
-
-    /**
      * [code] is one of the form's `settings_feedback_*` failure codes. [retry] is what a Retry
      * sends again (null: retrying the same thing cannot help).
      */
@@ -327,6 +328,32 @@ sealed interface SettingsFeedbackProxyOutcome {
 
 /** The Settings form's codes for a failure it explains (SettingsHandsFeedbackCopy.submissionFailure). */
 internal const val SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID = "settings_feedback_attachment_type_invalid"
+
+/**
+ * The server cannot file feedback: no product-feedback route, or its Hands integration is not
+ * configured (`feedback_integration_unavailable`). Final; nothing is sent elsewhere instead.
+ */
+internal const val SETTINGS_FEEDBACK_NOT_CONFIGURED = "settings_feedback_not_configured"
+
+/** The current server runs in privacy mode: nothing was sent (final). */
+internal const val SETTINGS_FEEDBACK_PRIVACY_MODE_ON = "settings_feedback_privacy_mode_on"
+
+/** The current server has not said whether privacy mode is on: nothing was sent (a retry may go). */
+internal const val SETTINGS_FEEDBACK_PRIVACY_MODE_UNKNOWN = "settings_feedback_privacy_mode_unknown"
+
+/**
+ * Whether Settings › Feedback may send (and offers New Feedback): only once the current server
+ * answered privacy mode off.
+ */
+internal fun settingsFeedbackSendAllowed(mode: RaftPrivacyMode): Boolean = mode == RaftPrivacyMode.Off
+
+/** The failure code for a send privacy mode does not let out (null when it may go). */
+internal fun settingsFeedbackPrivacyCode(mode: RaftPrivacyMode): String? =
+    when (mode) {
+        RaftPrivacyMode.Off -> null
+        RaftPrivacyMode.On -> SETTINGS_FEEDBACK_PRIVACY_MODE_ON
+        RaftPrivacyMode.Unknown -> SETTINGS_FEEDBACK_PRIVACY_MODE_UNKNOWN
+    }
 
 /** A card this person already sent (409 `feedback_card_already_sent`): the page opens the ticket list, where it is. */
 internal const val SETTINGS_FEEDBACK_CARD_ALREADY_SENT = "settings_feedback_card_already_sent"
@@ -377,6 +404,8 @@ class SettingsFeedbackProxySubmitter(
     private val logger: (String) -> Unit = {},
     /** A card's draft filed: Settings › Feedback stops suggesting an agent's draft ([accountId]'s flag). */
     private val agentDraftSent: RaftFeedbackAgentDraftSentRepository = RaftFeedbackAgentDraftSent.repository,
+    /** The current server's privacy mode, read again before the archive and before the request. */
+    private val privacyMode: () -> RaftPrivacyMode = { RaftTelemetryPrivacy.state.value },
 ) {
     fun newAttempt(
         message: String,
@@ -394,6 +423,7 @@ class SettingsFeedbackProxySubmitter(
             logger("settings_feedback_submit_blocked reason=attachment_type count=$unsupported")
             return SettingsFeedbackProxyOutcome.Failed(SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID, retryable = false)
         }
+        privacyBlock(attempt, "start")?.let { return it }
         val prepared =
             if (attempt.diagnosticsPrepared) {
                 attempt
@@ -402,6 +432,8 @@ class SettingsFeedbackProxySubmitter(
                 logger("settings_feedback_diagnostics_prepared attached=${ref != null}")
                 attempt.copy(diagnosticsPrepared = true, diagnostics = ref)
             }
+        // The answer can change while the archive uploads (an environment change starts over at unknown).
+        privacyBlock(prepared, "submit")?.let { return it }
         val first = repository.submit(prepared.toRequest())
         if (first is FeedbackResult.Failed && prepared.diagnostics != null && first.failure.code in DiagnosticsRefusedCodes) {
             // A new submission id: Hands keyed the refused one to a payload with the archive.
@@ -410,6 +442,14 @@ class SettingsFeedbackProxySubmitter(
             return outcome(without, repository.submit(without.toRequest()))
         }
         return outcome(prepared, first)
+    }
+
+    private fun privacyBlock(attempt: SettingsFeedbackProxyAttempt, step: String): SettingsFeedbackProxyOutcome.Failed? {
+        val mode = privacyMode()
+        val code = settingsFeedbackPrivacyCode(mode) ?: return null
+        logger("settings_feedback_submit_blocked reason=privacy_mode mode=${mode.name.lowercase()} step=$step")
+        val retry = attempt.takeIf { mode == RaftPrivacyMode.Unknown }
+        return SettingsFeedbackProxyOutcome.Failed(code = code, retryable = retry != null, retry = retry)
     }
 
     private suspend fun uploadDiagnostics(uploader: SettingsFeedbackDiagnosticsUploader): FeedbackDiagnosticsReference? =
@@ -445,10 +485,11 @@ class SettingsFeedbackProxySubmitter(
             FeedbackCardRefusals[failure.code]?.let { code -> return failed(code, null) }
         }
         if (failure.kind == FeedbackErrorKind.NotSupported || failure.code == "feedback_integration_unavailable") {
-            // The native Hands form files anonymously and cannot complete a card: a card's send
-            // says the server is unavailable instead.
+            // Never handed to the native Hands form (it would file past the server's privacy
+            // decision): a card's send says the server is unavailable, anything else that this
+            // server takes no feedback.
             if (sent.card != null) return failed("settings_feedback_server_unavailable", sent)
-            return SettingsFeedbackProxyOutcome.UseNativeForm
+            return failed(SETTINGS_FEEDBACK_NOT_CONFIGURED, null)
         }
         return when {
             failure.code == "feedback_attachment_type_invalid" -> failed(SETTINGS_FEEDBACK_ATTACHMENT_TYPE_INVALID, null)

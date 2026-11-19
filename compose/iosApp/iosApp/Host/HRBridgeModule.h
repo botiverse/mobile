@@ -46,6 +46,9 @@ FOUNDATION_EXTERN void RaftIosDiagnosticsRecordUnhandledException(
     NSString *stack
 );
 FOUNDATION_EXTERN void RaftIosInstallHandsReporting(void);
+/// Hands' deferred launch work (pending crash uploads + device ping); called by
+/// RaftIosHandsLaunchUploads only once every signed-in server answered privacy mode off.
+FOUNDATION_EXTERN void RaftIosRunHandsLaunchUploads(void);
 /** Installs the bridge-free temporary-file retirement handler used by shared draft persistence. */
 FOUNDATION_EXTERN void RaftIosInstallThreadComposerTemporaryFileRetirement(void);
 FOUNDATION_EXTERN NSArray<NSString *> *RaftIosPrepareDiagnosticsAttachmentPaths(NSString *reason);
