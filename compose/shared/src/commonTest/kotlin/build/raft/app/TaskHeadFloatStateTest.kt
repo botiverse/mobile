@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.unit.dp
 import build.raft.app.data.TaskConversationHeaderState
 import build.raft.app.data.parseSharedServerTasksPayload
 import build.raft.app.model.ChannelId
@@ -64,6 +65,24 @@ class TaskHeadFloatStateTest {
         assertFalse(state.floatOpen)
         state.updatePhone(true)
         assertFalse(state.floatOpen)
+    }
+
+    @Test
+    fun `the head is pinned only on a wide page in a tall window`() {
+        // A phone, upright or on its side.
+        assertFalse(taskHeadPinned(pageWidth = 360.dp, windowHeight = 800.dp))
+        assertFalse(taskHeadPinned(pageWidth = 412.dp, windowHeight = 1400.dp))
+        // A tablet on its side (artin 2026-11-19): wide, but pinned the head took most of the height.
+        assertFalse(taskHeadPinned(pageWidth = 1280.dp, windowHeight = 800.dp))
+        assertFalse(taskHeadPinned(pageWidth = 1194.dp, windowHeight = 834.dp))
+        assertFalse(taskHeadPinned(pageWidth = 1280.dp, windowHeight = TaskHeadPinnedMinWindowHeight - 1.dp))
+        // Upright, or a tall desktop window: pinned, as web's desktop dialog.
+        assertTrue(taskHeadPinned(pageWidth = 800.dp, windowHeight = 1280.dp))
+        assertTrue(taskHeadPinned(pageWidth = 1366.dp, windowHeight = 1024.dp))
+        assertTrue(taskHeadPinned(pageWidth = TaskHeadPinnedMinWidth, windowHeight = TaskHeadPinnedMinWindowHeight))
+        // The window's height unknown: the width alone decides, as before.
+        assertTrue(taskHeadPinned(pageWidth = 800.dp, windowHeight = null))
+        assertFalse(taskHeadPinned(pageWidth = 360.dp, windowHeight = null))
     }
 
     @Test

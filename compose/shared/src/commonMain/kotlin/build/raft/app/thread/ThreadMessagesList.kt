@@ -3433,7 +3433,7 @@ private fun ThreadMessagesListContent(
             // Task v2 on a phone: the head is the list's first row, at the top of the history
             // boundary row (web `mobile-modal`: the parent row over the history boundary), so it
             // moves with the conversation; the top bar summarizes the task while it is out of view.
-            val taskHeadRow = LocalTaskConversationHeadRow.current?.takeIf { maxWidth < TaskHeadPinnedMinWidth }
+            val taskHeadRow = LocalTaskConversationHeadRow.current?.takeIf { !taskHeadPinned(maxWidth) }
             if (taskHeadRow != null) {
                 LaunchedEffect(taskHeadRow, listState) {
                     snapshotFlow { listState.threadTaskHeadRowInView(taskHeadRow.scrollState.rowHeadHeightPx) }
