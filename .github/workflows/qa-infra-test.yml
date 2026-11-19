@@ -68,7 +68,7 @@ jobs:
           python3 scripts/qa/check_release_acceptance_cases.py
           python3 scripts/qa/check_release_acceptance_cases.py --emit-plan > /tmp/release-acceptance-plan.json
       - name: Check shell syntax
-        run: bash -n scripts/qa/stamp_report.sh scripts/qa/prepare_pinned_ios_app.sh scripts/sign_android_apk_with_rotation.sh scripts/test_sign_android_apk_with_rotation.sh scripts/test_hands_identifier_migration.sh scripts/verify_android_apk_with_rotation.sh scripts/qa/test_app_identity_apk_signer.sh
+        run: bash -n scripts/qa/stamp_report.sh scripts/qa/prepare_pinned_ios_app.sh scripts/sign_android_apk_with_rotation.sh scripts/test_sign_android_apk_with_rotation.sh scripts/test_hands_identifier_migration.sh scripts/verify_android_apk_with_rotation.sh scripts/qa/test_app_identity_apk_signer.sh scripts/qa/release_settings_login.sh scripts/qa/release_settings_case.sh
       - name: Check rotated Android APK signing contract
         run: scripts/test_sign_android_apk_with_rotation.sh
       - name: Setup JDK 17

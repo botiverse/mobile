@@ -125,3 +125,37 @@ test("the private output must be a fresh file outside the evidence directory", (
   assert.match(inside.summary.error, /outside the evidence directory/);
   assert.equal(inside.summary.scenario_result, "not_run");
 });
+
+test("--consume-credential-file removes the account file as soon as it is read", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "release-login-credential-"));
+  const credential = path.join(dir, "account");
+  fs.writeFileSync(credential, "qa@example.invalid\nnot-a-real-password\n", { mode: 0o600 });
+  const run = runStandalone({ env: { QA_LOGIN_EMAIL: "", QA_LOGIN_PASSWORD: "" }, args: ["--credential-file", credential, "--consume-credential-file"] });
+  const exists = fs.existsSync(credential);
+  fs.rmSync(dir, { recursive: true, force: true });
+  assert.equal(exists, false, "credential file consumed");
+  // It was read after the provider was enabled (the sign-in page then timed out as usual).
+  assert.equal(run.summary.steps.find((s) => s.name === "open-sign-in-page")?.result, "fail");
+  for (const text of [run.result.stdout, run.result.stderr, run.summaryText]) assert.ok(!text.includes("not-a-real-password"));
+});
+
+test("release lane: the case runs as the matched run's scenario, in the matched process, before cleanup", () => {
+  const source = fs.readFileSync(SCRIPT, "utf8");
+  const wrapper = fs.readFileSync(new URL("./release_settings_login.sh", import.meta.url), "utf8");
+  assert.match(wrapper, /--scenario scripts\/qa\/scenarios\/release_settings_case\.mjs/);
+  assert.match(wrapper, /--credential-file "\$credential" --consume-credential-file/);
+  assert.doesNotMatch(wrapper, /QA_LOGIN_EMAIL=|QA_RELEASE_LOGIN_/);
+  // The scenario only after the identity gate, and before the finally{} cleanup (pm disable).
+  const main = source.slice(source.indexOf("async function main()"));
+  assert.ok(main.indexOf("runScenario: SCENARIO ?") < main.indexOf("} finally {"));
+  assert.ok(main.indexOf("} finally {") < main.indexOf("identity.disable()"));
+  // Same process: the receipt call's pid + start ticks, checked before and after the scenario.
+  const scenario = source.slice(source.indexOf("async function runScenario("), source.indexOf("// ---------- app identity receipt"));
+  assert.match(scenario, /appProcess\(\) === matchedProcess/);
+  assert.ok(scenario.indexOf("if (!sameProcess())") < scenario.indexOf("await mod.run(ctx)"));
+  assert.ok(scenario.indexOf("await mod.run(ctx)") < scenario.lastIndexOf("sameProcess()"));
+  assert.match(source, /matchedProcess = `\$\{called\.os\.pidBefore\}:\$\{called\.os\.startTicksBefore\}`/);
+  const caseModule = fs.readFileSync(new URL("./scenarios/release_settings_case.mjs", import.meta.url), "utf8");
+  assert.match(caseModule, /"QA_LOGIN_PASSWORD"/);
+  assert.match(caseModule, /release_settings_case\.sh/);
+});

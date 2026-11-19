@@ -4,7 +4,7 @@
 // exits 0). Idempotent, so running it twice is harmless.
 //
 // Valid login record of this run (login_phase.mjs readRecord):
-//   password login: log lines (logcat*, system-log*) are kept only when their device
+//   password login (and the release lane's matched record): log lines (logcat*, system-log*) are kept only when their device
 //     timestamp is strictly after login_end; a line at the same millisecond, a line in
 //     another format or without a timestamp is dropped. .xcresult bundles (opaque) go.
 //   no login: any sign-in line in the text evidence (web_login_attempt / app_login_complete)
@@ -20,6 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { LOGIN_LOG_MARKERS, RECORD, THREADTIME, readRecord, runId, secretValues } from "./login_phase.mjs";
+import { readTerminal } from "./release_settings_terminal.mjs";
 
 export const GATE = "evidence-gate.json";
 const KEEP = new Set(["verdict.json", "agent-rc.txt", RECORD, GATE]);
@@ -44,8 +45,14 @@ export function gate(dir, env = process.env) {
   fs.mkdirSync(dir, { recursive: true });
   const { ok, record, reason } = readRecord(dir, env);
   let why = ok ? null : reason;
+  // Release lane: also this run's completion record (written last by release_settings_terminal.mjs).
+  if (!why && record.mode === "release-prelogin") {
+    const terminal = readTerminal(dir, record, env);
+    if (!terminal.ok) why = terminal.reason;
+  }
   const files = () => walk(dir).filter((f) => !KEEP.has(path.relative(dir, f)));
-  if (!why && record.mode === "password") {
+  // A release-prelogin record bounds the log the same way (lines strictly after login_end).
+  if (!why && (record.mode === "password" || record.mode === "release-prelogin")) {
     for (const f of files()) {
       if (f.endsWith(".xcresult")) fs.rmSync(f, { recursive: true, force: true });
       else if (LOG_FILE.test(path.basename(f))) fs.writeFileSync(f, linesAfter(fs.readFileSync(f, "utf8"), record.login_end));
