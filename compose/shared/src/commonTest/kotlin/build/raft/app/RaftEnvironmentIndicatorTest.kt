@@ -52,22 +52,33 @@ class RaftEnvironmentIndicatorTest {
     }
 
     @Test
-    fun nonProductionEnvironmentsRenderTheirConfiguredNames() {
-        val cases =
+    fun onlyTheStagingServerRendersTheIndicator() {
+        val staging = SharedApiEnvironmentStore.Staging
+        assertEquals("Staging", raftEnvironmentIndicatorLabel(staging))
+        assertEquals(
+            "My staging",
+            raftEnvironmentIndicatorLabel(
+                staging.copy(key = SharedApiEnvironmentStore.CustomKey, label = "  My staging  ", apiBaseUrl = staging.apiBaseUrl.trimEnd('/')),
+            ),
+        )
+        val selfHosted =
             listOf(
-                SharedApiEnvironmentStore.Staging to "Staging",
                 SharedSettingsApiEnvironmentOption(
                     key = SharedApiEnvironmentStore.CustomKey,
                     label = "  Local Dev  ",
                     apiBaseUrl = "http://10.0.2.2:3000/api/",
                     socketBaseUrl = "http://10.0.2.2:3000",
                     webUrl = "http://10.0.2.2:3000",
-                ) to "Local Dev",
+                ),
+                SharedSettingsApiEnvironmentOption(
+                    key = SharedApiEnvironmentStore.CustomKey,
+                    label = "Acme Raft",
+                    apiBaseUrl = "https://raft.acme.example/api/",
+                    socketBaseUrl = "https://raft.acme.example",
+                    webUrl = "https://raft.acme.example",
+                ),
             )
-
-        cases.forEach { (environment, expectedLabel) ->
-            assertEquals(expectedLabel, raftEnvironmentIndicatorLabel(environment))
-        }
+        selfHosted.forEach { environment -> assertNull(raftEnvironmentIndicatorLabel(environment)) }
     }
 
     @Test

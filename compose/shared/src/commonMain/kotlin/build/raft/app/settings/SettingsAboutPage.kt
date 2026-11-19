@@ -139,8 +139,8 @@ internal const val RAFT_MOBILE_SOURCE_LICENSE = "FSL-1.1-ALv2"
 /**
  * The host of the server the app talks to, for About's Connected server row; null on the official
  * Raft service (or before the environment loads), so the row only shows on a self-hosted or other
- * non-official server. Official means the production API base, the same rule as the environment
- * indicator ([raftEnvironmentIndicatorLabel]).
+ * non-official server. Official means the production API base. (The floating environment indicator,
+ * [raftEnvironmentIndicatorLabel], is narrower: staging only.)
  */
 internal fun settingsAboutConnectedServerHost(developer: SharedSettingsDeveloperSnapshot?): String? {
     val apiBaseUrl = developer?.apiBaseUrl.orEmpty().trim()
