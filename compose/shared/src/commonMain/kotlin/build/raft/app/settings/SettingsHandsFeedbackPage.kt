@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -10,6 +11,7 @@ import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.data.NetworkSettingsFeedbackSubmitRepository
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftTelemetryPrivacy
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SettingsFeedbackCardDraft
 import build.raft.app.data.SettingsFeedbackProxySubmitter
@@ -174,6 +176,8 @@ private fun SettingsHandsFeedbackScreen() {
         }
     val cardEntry = remember(pager.pageData.params) { settingsFeedbackCardEntryFromPageData(pager.pageData.params) }
     var cardDraft by remember(cardEntry) { mutableStateOf<SettingsFeedbackCardDraft?>(null) }
+    // The current server's privacy mode: the form sends nothing unless it answered off.
+    val privacyMode by RaftTelemetryPrivacy.state.collectAsState()
     val openTicketList: () -> Unit = {
         pager.openSettingsFeedbackTicketsPage(environment.storeScope)
         router.closePage()
@@ -228,6 +232,7 @@ private fun SettingsHandsFeedbackScreen() {
                 // form reserves the system navigation bar itself.
                 bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
                 proxySubmitter = proxySubmitter,
+                privacyMode = privacyMode,
                 card = card,
                 onCardAlreadySent =
                     card?.let {

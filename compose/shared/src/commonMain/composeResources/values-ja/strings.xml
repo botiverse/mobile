@@ -450,6 +450,9 @@
     <string name="settings_feedback_attachment_permission_needed">添付ファイルを追加するには権限が必要です。</string>
     <string name="settings_feedback_message_required">メッセージは必須です。</string>
     <string name="settings_feedback_submission_unavailable">フィードバックは現在利用できません。もう一度お試しください。</string>
+    <string name="settings_feedback_privacy_mode_on">このサーバーはプライバシーモードで動作しているため、このアプリから Raft にフィードバックを送信できません。</string>
+    <string name="settings_feedback_privacy_mode_unknown">まだフィードバックを送信できません：このサーバーがプライバシーモードかどうかをまだ返していません。</string>
+    <string name="settings_feedback_not_configured">このサーバーはフィードバックを受け付ける設定になっていないため、このアプリから送信できません。</string>
     <string name="host_feedback_prompt_message">メッセージとデバイスの診断情報が Hands に送信されます。コミュニティで共有できるコピー可能な参照が発行されます。</string>
     <string name="host_feedback_prompt_placeholder">フィードバックを入力</string>
     <string name="host_feedback_sent_title">フィードバックを送信しました</string>

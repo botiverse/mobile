@@ -450,6 +450,9 @@
     <string name="settings_feedback_attachment_permission_needed">É necessária permissão para adicionar um anexo.</string>
     <string name="settings_feedback_message_required">A mensagem é obrigatória.</string>
     <string name="settings_feedback_submission_unavailable">O feedback está indisponível no momento. Tente novamente.</string>
+    <string name="settings_feedback_privacy_mode_on">Este servidor funciona no modo de privacidade, então o feedback não pode ser enviado ao Raft por este app.</string>
+    <string name="settings_feedback_privacy_mode_unknown">Ainda não é possível enviar feedback: este servidor ainda não informou se o modo de privacidade está ativado.</string>
+    <string name="settings_feedback_not_configured">Este servidor não está configurado para receber feedback, então ele não pode ser enviado por este app.</string>
     <string name="host_feedback_prompt_message">Sua mensagem e o diagnóstico do dispositivo serão enviados ao Hands. Você receberá uma referência copiável para compartilhar na comunidade.</string>
     <string name="host_feedback_prompt_placeholder">Descreva seu feedback</string>
     <string name="host_feedback_sent_title">Feedback enviado</string>

@@ -450,6 +450,9 @@
     <string name="settings_feedback_attachment_permission_needed">需要授予權限才能新增附件。</string>
     <string name="settings_feedback_message_required">請輸入意見回饋內容。</string>
     <string name="settings_feedback_submission_unavailable">目前無法傳送意見回饋，請稍後再試。</string>
+    <string name="settings_feedback_privacy_mode_on">此伺服器開啟了隱私模式，無法從此應用程式向 Raft 傳送意見回饋。</string>
+    <string name="settings_feedback_privacy_mode_unknown">暫時無法傳送意見回饋：此伺服器尚未告知是否開啟隱私模式。</string>
+    <string name="settings_feedback_not_configured">此伺服器未設定意見回饋，無法從此應用程式傳送。</string>
     <string name="host_feedback_prompt_message">你的留言和裝置診斷資訊將傳送給 Hands，並產生可複製的參照，方便你分享到社群。</string>
     <string name="host_feedback_prompt_placeholder">描述你的意見回饋</string>
     <string name="host_feedback_sent_title">意見回饋已送出</string>

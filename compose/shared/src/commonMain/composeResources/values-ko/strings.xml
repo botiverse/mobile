@@ -450,6 +450,9 @@
     <string name="settings_feedback_attachment_permission_needed">첨부 파일을 추가하려면 권한이 필요해요.</string>
     <string name="settings_feedback_message_required">메시지를 입력해 주세요.</string>
     <string name="settings_feedback_submission_unavailable">지금은 피드백을 보낼 수 없어요. 다시 시도해 주세요.</string>
+    <string name="settings_feedback_privacy_mode_on">이 서버는 개인정보 보호 모드로 실행 중이어서 이 앱에서 Raft로 피드백을 보낼 수 없어요.</string>
+    <string name="settings_feedback_privacy_mode_unknown">아직 피드백을 보낼 수 없어요: 이 서버가 개인정보 보호 모드 여부를 아직 알려 주지 않았어요.</string>
+    <string name="settings_feedback_not_configured">이 서버는 피드백을 받도록 설정되어 있지 않아 이 앱에서 보낼 수 없어요.</string>
     <string name="host_feedback_prompt_message">메시지와 기기 진단 정보가 Hands로 전송돼요. 커뮤니티에 공유할 수 있는 복사 가능한 참조를 받게 돼요.</string>
     <string name="host_feedback_prompt_placeholder">피드백을 입력하세요</string>
     <string name="host_feedback_sent_title">피드백을 보냈어요</string>

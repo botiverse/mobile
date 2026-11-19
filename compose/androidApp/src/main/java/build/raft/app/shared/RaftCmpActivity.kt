@@ -23,6 +23,7 @@ import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import androidx.compose.ui.graphics.toArgb
 import build.raft.app.data.RaftAppAppearanceRuntime
+import build.raft.app.data.RaftServicesPrivacyGate
 import build.raft.app.RaftDatabaseLaunchReadiness
 import android.graphics.Matrix
 import android.graphics.Rect
@@ -5196,6 +5197,15 @@ internal class RaftBridgeModule(
         if (action == "handsUpdateCheck" || action == "handsUpdateStatus" || action == "handsUpdateInstall") {
             val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
             scope.launch {
+                // RAFT_PRIVACY_MODE: the automatic status check (Home's banner, About, the signed-out
+                // banner) asks Hands only while every signed-in server answers privacy mode off;
+                // otherwise it answers "nothing new" without a request. A person's own Check for
+                // update (handsUpdateCheck) and Install always go.
+                if (!handsUpdateRequestAllowed(action, RaftServicesPrivacyGate.allowsAutomatic())) {
+                    RaftAppLog.record("SlockHandsUpdate", "check_skipped action=$action reason=privacy_mode")
+                    callback?.invoke(handsUpdateStatusWithoutCheck())
+                    return@launch
+                }
                 val result =
                         runCatching {
                                     val install = action != "handsUpdateStatus"
@@ -5913,6 +5923,16 @@ internal class RaftBridgeModule(
                 "feedback" to feedback.orEmpty()
         )
     }
+
+    /** The status payload with no Hands request: the build as installed, nothing newer known. */
+    private fun handsUpdateStatusWithoutCheck(): Map<String, Any> =
+            loadSettingsDeveloper() +
+                    mapOf(
+                            "updateCheckSupported" to true,
+                            "updateAvailable" to false,
+                            "currentVersionLabel" to (BuildConfig.VERSION_NAME.ifBlank { BuildConfig.VERSION_CODE.toString() }),
+                            "currentVersionCode" to BuildConfig.VERSION_CODE.toLong()
+                    )
 
     private suspend fun checkHandsUpdate(install: Boolean = true): Map<String, Any> {
         val arch = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }

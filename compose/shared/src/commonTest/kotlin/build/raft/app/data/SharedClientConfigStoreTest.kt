@@ -162,7 +162,7 @@ class SharedClientConfigStoreTest {
         val published = mutableListOf<RaftPrivacyMode>()
         val environment = MutableStateFlow("https://self-hosted.example/api")
         val api = FakeApi { ok("""{"appHosts":["app.raft.build"],"privacyMode":true}""") }
-        val store = SharedClientConfigStore(api, MemoryPreferences(), { environment.value }, environment, backgroundScope, publishPrivacyMode = { published += it })
+        val store = SharedClientConfigStore(api, MemoryPreferences(), { environment.value }, environment, backgroundScope, publishPrivacyMode = { _, mode -> published += mode })
         store.start()
         runCurrent()
         assertEquals(listOf(RaftPrivacyMode.Unknown, RaftPrivacyMode.On), published)
@@ -183,7 +183,7 @@ class SharedClientConfigStoreTest {
                 override suspend fun read(environment: String): HomeNetworkResponse = answer.await()
             }
         val environment = MutableStateFlow("https://self-hosted.example/api")
-        val store = SharedClientConfigStore(api, MemoryPreferences(), { environment.value }, environment, backgroundScope, publishPrivacyMode = { published += it })
+        val store = SharedClientConfigStore(api, MemoryPreferences(), { environment.value }, environment, backgroundScope, publishPrivacyMode = { _, mode -> published += mode })
         store.start()
         advanceTimeBy(RAFT_PRIVACY_MODE_READ_TIMEOUT_MILLIS - 1)
         runCurrent()

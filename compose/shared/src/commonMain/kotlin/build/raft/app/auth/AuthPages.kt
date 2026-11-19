@@ -29,7 +29,10 @@ import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.RaftSharedStoreProvider
+import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftTelemetryPrivacy
+import build.raft.app.data.settingsFeedbackSendAllowed
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.kuiklyBridgeCallContext
@@ -531,6 +534,8 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
         val sourceLicensesSignInMessage = stringResource(Res.string.auth_notice_source_licenses_sign_in)
         val reportSubmittedPrefix = stringResource(Res.string.auth_notice_report_submitted_prefix)
         val reportFailedDiagnosticsCopiedMessage = stringResource(Res.string.auth_notice_report_failed_diagnostics_copied)
+        val reportPrivacyModeOnMessage = stringResource(Res.string.settings_feedback_privacy_mode_on)
+        val reportPrivacyModeUnknownMessage = stringResource(Res.string.settings_feedback_privacy_mode_unknown)
         // task #177: standalone page outside the app shell; the lists reserve the
         // system navigation bar themselves.
         val aboutBottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg
@@ -614,6 +619,14 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                     onCopyValue = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
                     onSendFeedback = {
                         bridgeCallScope.launch {
+                            // The report goes straight to Hands: only once this server answered
+                            // privacy mode off (owner ruling). Copy / Share logs stay on this page.
+                            val privacyMode = RaftTelemetryPrivacy.state.value
+                            if (!settingsFeedbackSendAllowed(privacyMode)) {
+                                settingsCapabilities.log("auth_diagnostics_send_feedback_blocked reason=privacy_mode mode=${privacyMode.name.lowercase()}")
+                                bridge.toast(if (privacyMode == RaftPrivacyMode.On) reportPrivacyModeOnMessage else reportPrivacyModeUnknownMessage)
+                                return@launch
+                            }
                             val about = (aboutState as? ScreenLoadState.Content<SharedSettingsAboutSnapshot>)?.data
                             when (
                                 val result = settingsCapabilities.submitHandsFeedback(

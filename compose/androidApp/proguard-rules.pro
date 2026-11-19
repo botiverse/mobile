@@ -10,10 +10,19 @@
 # Manifest components (activities, activity-aliases, services, receivers, the
 # AppWidget providers, FileProvider) are kept by the AAPT-generated rules.
 #
-# The app code has no Class.forName / getDeclared* / ServiceLoader / @JavascriptInterface
+# Apart from HandsAnr below, the app code has no Class.forName / getDeclared* / ServiceLoader / @JavascriptInterface
 # usage. The two reflective paths that existed (R.font.getField font lookup, Gson decode of
 # StoredAuthSession) were replaced with static code rather than kept. Re-check when adding
 # reflection: prefer static code over keep rules.
+
+# Hands SDK ANR uploads (RaftHandsLaunchUploads.kt, HandsAnrUploadBridge): RAFT_PRIVACY_MODE
+# needs the app to decide when the SDK's launch uploads run, and the SDK's ANR pass
+# (`HandsAnr.uploadPending`) lives in an internal object, so it is called by name. Drop this
+# when the SDK makes it public. RaftHandsLaunchUploadsTest checks the shape on every SDK bump.
+-keep class build.hands.update.HandsAnr {
+    public static final build.hands.update.HandsAnr INSTANCE;
+    public final java.lang.Object uploadPending(android.content.Context, java.lang.String, java.lang.String, java.lang.String, java.lang.Long, java.lang.String, java.lang.String, kotlin.coroutines.Continuation);
+}
 
 # Preserve source and line number information for Hands crash stack traces.
 # Upload build/outputs/mapping/<variant>/mapping.txt with the release to deobfuscate.

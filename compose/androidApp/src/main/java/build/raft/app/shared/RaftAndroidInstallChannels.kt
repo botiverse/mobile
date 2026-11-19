@@ -10,6 +10,7 @@ import build.raft.app.RaftHostStrings
 import build.raft.app.data.RaftInstallChannelLatest
 import build.raft.app.data.RaftInstallChannelUpdates
 import build.raft.app.data.RaftInstallChannelUpdatesHost
+import build.raft.app.data.RaftServicesPrivacyGate
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -34,12 +35,17 @@ internal object RaftAndroidInstallChannels {
  * Hands, the APK builds' channel: the same update check as Settings > About (the route of
  * [resolveHandsUpdateRoute]). A build is available only when Hands offers one for this install
  * with an APK to download; Update opens that download.
+ *
+ * Asked automatically (the minimum build gate), so under `RAFT_PRIVACY_MODE` it asks Hands only
+ * while every signed-in server answers privacy mode off ([RaftServicesPrivacyGate]); otherwise
+ * the answer is [RaftInstallChannelLatest.Unknown] and no request is sent.
  */
 internal class RaftAndroidHandsInstallChannel(private val context: Context) : RaftInstallChannelUpdates {
     override val name: String = "hands"
 
     override suspend fun latest(): RaftInstallChannelLatest {
         if (BuildConfig.HANDS_BASE_URL.isBlank()) return RaftInstallChannelLatest.Unknown
+        if (!RaftServicesPrivacyGate.allowsAutomatic()) return RaftInstallChannelLatest.Unknown
         val route =
             resolveHandsUpdateRoute(
                 alphaDeltaEnabled =

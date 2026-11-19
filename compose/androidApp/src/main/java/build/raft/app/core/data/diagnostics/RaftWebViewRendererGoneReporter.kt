@@ -6,6 +6,8 @@ import build.hands.update.HandsFeedback
 import build.raft.app.BuildConfig
 import build.raft.app.RaftWebViewRendererGone
 import build.raft.app.RaftWebViewRendererGoneDailyStore
+import build.raft.app.data.RaftServicesPrivacyGate
+import build.raft.app.data.RaftTelemetryPrivacy
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
@@ -47,7 +49,18 @@ internal object RaftWebViewRendererGoneReporter {
         }
         RaftWebViewRendererGone.dailyStore =
             PreferencesDailyStore(appContext.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE))
-        RaftWebViewRendererGone.ticketSink = { message, extras, done ->
+        RaftWebViewRendererGone.ticketSink = ticketSink@{ message, extras, done ->
+            // RAFT_PRIVACY_MODE: sent only while every signed-in server answers privacy mode off;
+            // otherwise nothing leaves the device and the quota is given back.
+            if (!RaftServicesPrivacyGate.allowsAutomatic()) {
+                RaftAndroidLocalDiagnostics.recordLog(
+                    "info",
+                    Tag,
+                    "renderer_gone_ticket_skipped reason=privacy_mode mode=${RaftTelemetryPrivacy.acrossSignedInServers.value.name.lowercase()}",
+                )
+                done(false)
+                return@ticketSink
+            }
             // One id for every attempt of this ticket. It is also the Hands `submission_id`, so a
             // retry after a lost response gets the first ticket back instead of filing a second.
             val eventId = UUID.randomUUID().toString()

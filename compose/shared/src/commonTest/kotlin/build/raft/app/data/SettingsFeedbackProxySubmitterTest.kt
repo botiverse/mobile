@@ -13,13 +13,13 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
  * The Settings form's send through the Raft server: one diagnostics upload per feedback, kept with
  * its submission id across retries (web createDiagnosticsSubmission), refused diagnostics omitted
- * once, the native form when the server cannot file, and the host's diagnostics stream.
+ * once, a server that cannot file is a final failure (never the native Hands form), nothing sent
+ * unless the current server answered privacy mode off, and the host's diagnostics stream.
  */
 class SettingsFeedbackProxySubmitterTest {
     private val ref =
@@ -44,7 +44,12 @@ class SettingsFeedbackProxySubmitterTest {
 
     private val agentDraftSent = RaftFeedbackAgentDraftSentRepository { SyncTestPreferences() }
 
-    private fun submitter(repository: FakeRepository, uploads: MutableList<String>, answer: FeedbackDiagnosticsReference? = ref): SettingsFeedbackProxySubmitter {
+    private fun submitter(
+        repository: FakeRepository,
+        uploads: MutableList<String>,
+        answer: FeedbackDiagnosticsReference? = ref,
+        privacyMode: () -> RaftPrivacyMode = { RaftPrivacyMode.Off },
+    ): SettingsFeedbackProxySubmitter {
         var ids = 0
         return SettingsFeedbackProxySubmitter(
             repository = repository,
@@ -53,6 +58,7 @@ class SettingsFeedbackProxySubmitterTest {
             locale = { "ja" },
             newSubmissionId = { "submission-${++ids}" },
             agentDraftSent = agentDraftSent,
+            privacyMode = privacyMode,
         )
     }
 
@@ -128,15 +134,68 @@ class SettingsFeedbackProxySubmitterTest {
     }
 
     @Test
-    fun aServerThatCannotFileHandsOverToTheNativeForm() = runTest {
+    fun aServerThatCannotFileIsAFinalFailureNotTheNativeForm() = runTest {
         listOf(
             failed(FeedbackErrorKind.Unavailable, "feedback_integration_unavailable", 503),
             failed(FeedbackErrorKind.NotSupported, "feedback_http_404", 404),
         ).forEach { answer ->
-            val submitter = submitter(FakeRepository(mutableListOf(answer)), mutableListOf())
+            val repository = FakeRepository(mutableListOf(answer))
+            val submitter = submitter(repository, mutableListOf())
 
-            assertSame(SettingsFeedbackProxyOutcome.UseNativeForm, submitter.submit(submitter.newAttempt("x", emptyList())))
+            val outcome = assertIs<SettingsFeedbackProxyOutcome.Failed>(submitter.submit(submitter.newAttempt("x", emptyList())))
+            assertEquals(SETTINGS_FEEDBACK_NOT_CONFIGURED, outcome.code)
+            assertFalse(outcome.retryable)
+            assertNull(outcome.retry)
+            // One request to the server, nothing anywhere else.
+            assertEquals(1, repository.requests.size)
         }
+    }
+
+    @Test
+    fun privacyModeOnOrUnknownSendsNothingNotEvenTheDiagnosticsArchive() = runTest {
+        for ((mode, code) in listOf(RaftPrivacyMode.On to SETTINGS_FEEDBACK_PRIVACY_MODE_ON, RaftPrivacyMode.Unknown to SETTINGS_FEEDBACK_PRIVACY_MODE_UNKNOWN)) {
+            val repository = FakeRepository(mutableListOf(FeedbackResult.Ok("ticket-1")))
+            val uploads = mutableListOf<String>()
+            val submitter = submitter(repository, uploads, privacyMode = { mode })
+
+            val outcome = assertIs<SettingsFeedbackProxyOutcome.Failed>(submitter.submit(submitter.newAttempt("It froze", listOf(image))))
+
+            assertEquals(code, outcome.code, "mode $mode")
+            assertEquals(emptyList(), uploads, "no archive to Hands under $mode")
+            assertEquals(emptyList(), repository.requests, "no request to the server under $mode")
+            // Unknown may still answer off: a retry keeps the same feedback. On is final.
+            assertEquals(mode == RaftPrivacyMode.Unknown, outcome.retryable)
+        }
+    }
+
+    @Test
+    fun privacyModeTurningOnWhileTheArchiveUploadsStopsBeforeTheRequest() = runTest {
+        val repository = FakeRepository(mutableListOf(FeedbackResult.Ok("ticket-1")))
+        var mode = RaftPrivacyMode.Off
+        var ids = 0
+        val submitter =
+            SettingsFeedbackProxySubmitter(
+                repository = repository,
+                diagnostics = SettingsFeedbackDiagnosticsUploader { _ -> mode = RaftPrivacyMode.On; ref },
+                accountId = "user-1",
+                locale = { "en" },
+                newSubmissionId = { "submission-${++ids}" },
+                agentDraftSent = agentDraftSent,
+                privacyMode = { mode },
+            )
+
+        val outcome = assertIs<SettingsFeedbackProxyOutcome.Failed>(submitter.submit(submitter.newAttempt("It froze", emptyList())))
+
+        assertEquals(SETTINGS_FEEDBACK_PRIVACY_MODE_ON, outcome.code)
+        assertEquals(emptyList(), repository.requests)
+    }
+
+    @Test
+    fun onlyAnOffAnswerLetsSettingsFeedbackSend() {
+        assertTrue(settingsFeedbackSendAllowed(RaftPrivacyMode.Off))
+        assertFalse(settingsFeedbackSendAllowed(RaftPrivacyMode.On))
+        assertFalse(settingsFeedbackSendAllowed(RaftPrivacyMode.Unknown))
+        assertNull(settingsFeedbackPrivacyCode(RaftPrivacyMode.Off))
     }
 
     private val card =

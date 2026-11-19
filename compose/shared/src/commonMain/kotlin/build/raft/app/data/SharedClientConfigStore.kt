@@ -120,7 +120,7 @@ class SharedClientConfigStore internal constructor(
     private val environmentChanges: Flow<String>,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {},
-    private val publishPrivacyMode: (RaftPrivacyMode) -> Unit = RaftTelemetryPrivacy::publish,
+    private val publishPrivacyMode: (environment: String, mode: RaftPrivacyMode) -> Unit = RaftTelemetryPrivacy::publish,
 ) {
     private val mutableAppHosts =
         MutableStateFlow(
@@ -145,7 +145,7 @@ class SharedClientConfigStore internal constructor(
                     RaftClientConfigAppHosts.publish(cached.orEmpty())
                     mutableAppHosts.value = cached ?: CLIENT_CONFIG_FALLBACK_APP_HOSTS
                     privacyAnsweredFor = null
-                    publishPrivacyMode(RaftPrivacyMode.Unknown)
+                    publishPrivacyMode(environment, RaftPrivacyMode.Unknown)
                     val timeout =
                         scope.launch {
                             delay(RAFT_PRIVACY_MODE_READ_TIMEOUT_MILLIS)
@@ -191,7 +191,7 @@ class SharedClientConfigStore internal constructor(
     private fun answerPrivacyMode(environment: String, mode: RaftPrivacyMode, reason: String) {
         if (normalizedEnvironment(currentEnvironment()) != environment) return
         privacyAnsweredFor = environment
-        publishPrivacyMode(mode)
+        publishPrivacyMode(environment, mode)
         logger("client_config privacy_mode=${if (mode == RaftPrivacyMode.On) "on" else "off"} reason=$reason")
     }
 
