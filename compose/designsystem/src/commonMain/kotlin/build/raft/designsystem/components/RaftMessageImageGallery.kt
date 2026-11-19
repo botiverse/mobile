@@ -214,7 +214,8 @@ fun RaftMessageImageFrame(
  * reserves its own proportions ([raftMessageImageSingleSize]); rows of one or two are
  * two across, 128dp tall, all 4dp apart; a wide image fills its row. A gallery
  * at its full 360dp (its own width, not the window's) takes 144dp and 128dp rows.
- * [image] draws one image into its frame, honouring the layout's [RaftMessageImageFit].
+ * [image] draws one image into its frame, honouring the layout's [RaftMessageImageFit]. In a clipped pane of the wide
+ * row the gallery is cut hard at the pane's edge, never faded ([raftPaneGridNoFade]).
  */
 @Composable
 fun RaftMessageImageGallery(
@@ -227,7 +228,8 @@ fun RaftMessageImageGallery(
 ) {
     val rows = remember(images) { buildRaftMessageImageGalleryRows(images) }
     if (rows.isEmpty()) return
-    BoxWithConstraints(modifier) {
+    // Full-bleed media: in a clipped pane of the wide row it is cut hard at the pane's edge, never faded.
+    BoxWithConstraints(modifier.raftPaneGridNoFade()) {
         val available = min(RaftMessageImageGalleryDefaults.MaxWidth, maxWidth)
         val wide = available >= RaftMessageImageGalleryDefaults.WideFrom
         val gap = RaftMessageImageGalleryDefaults.Gap
