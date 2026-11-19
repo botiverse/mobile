@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -44,7 +45,8 @@ class RaftClientTraceEventSenderTest {
             RaftClientTraceEventSender(
                 scope = backgroundScope,
                 nowEpochMillis = { 1_794_391_200_000L },
-                defaultAttrs = { mapOf("clientPlatform" to "android", "appVersion" to "1.2.3") }
+                defaultAttrs = { mapOf("clientPlatform" to "android", "appVersion" to "1.2.3") },
+                privacyMode = MutableStateFlow(RaftPrivacyMode.Off),
             )
         sender.emit("server-1", RaftStateTransitionTraceName, attrs)
         assertTrue(transport.batches.isEmpty())
@@ -82,5 +84,41 @@ class RaftClientTraceEventSenderTest {
         runCurrent()
         assertEquals(listOf("att-1", "att-1", "att-2"), transport.batches.map { it.attestation })
         assertEquals(listOf(ServerId("server-1"), ServerId("server-1")), transport.attested)
+    }
+
+    /** RAFT_PRIVACY_MODE (slock docs/observability/privacy-mode.md, web webTelemetryPrivacyHold.ts). */
+    @Test
+    fun eventsAreHeldUntilPrivacyModeIsKnownThenSentWhenOffAndDroppedWhenOn() = runTest {
+        for (answer in listOf(RaftPrivacyMode.Off, RaftPrivacyMode.On)) {
+            val transport = RecordingTransport()
+            val privacy = MutableStateFlow(RaftPrivacyMode.Unknown)
+            val sender =
+                RaftClientTraceEventSender(
+                    scope = backgroundScope,
+                    nowEpochMillis = { 1_794_391_200_000L },
+                    defaultAttrs = { emptyMap() },
+                    privacyMode = privacy,
+                )
+            sender.bindTransport(transport)
+            sender.emit("server-1", RaftStateTransitionTraceName, attrs)
+            sender.emit("server-1", RaftStateTransitionTraceName, attrs)
+            advanceTimeBy(3 * RaftClientTraceFlushDelayMillis)
+            runCurrent()
+            assertTrue(transport.attested.isEmpty() && transport.batches.isEmpty(), "$answer: nothing leaves while unknown, not even the attestation")
+            assertEquals(2, sender.queuedCount, "$answer: held in memory")
+
+            privacy.value = answer
+            runCurrent()
+            sender.emit("server-1", RaftStateTransitionTraceName, attrs)
+            advanceTimeBy(RaftClientTraceFlushDelayMillis + 1L)
+            runCurrent()
+            when (answer) {
+                RaftPrivacyMode.Off -> assertEquals(listOf(3), transport.batches.map { it.events.size }, "held events are sent with the next one")
+                else -> {
+                    assertTrue(transport.attested.isEmpty() && transport.batches.isEmpty(), "on: nothing is ever sent")
+                    assertEquals(0, sender.queuedCount, "on: what was held is dropped")
+                }
+            }
+        }
     }
 }
