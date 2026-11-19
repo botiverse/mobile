@@ -9,6 +9,7 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Bundle
+import android.os.SystemClock
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
@@ -81,7 +82,14 @@ internal object AndroidAppScopeRealtimeOwner {
     private var installedApplicationContext: Context? = null
     private var lastHiddenAtMillis: Long? = null
     private var backgroundKeepAliveEnabled = false
-    private var networkCallbackInstalled = false
+        set(value) {
+            if (field == value) return
+            field = value
+            // Keep-alive changes whether the hidden process needs the network callback.
+            syncDefaultNetworkCallback(source = if (value) "keep_alive_enabled" else "keep_alive_disabled")
+        }
+    private var networkCallbackRegistration: AndroidDefaultNetworkCallbackRegistration? = null
+    private val hiddenNetworkCallbackCounter = AndroidHiddenNetworkCallbackCounter()
     private var processLifecycleInstalled = false
     private var hostNetworkOnline: Boolean? = null
     @Volatile private var productAppOpenPending = false
@@ -112,8 +120,13 @@ internal object AndroidAppScopeRealtimeOwner {
                 // Rating prompt: today is an active day (counted once per local day).
                 RaftRatingPrompt.onAppForeground()
                 RaftResumeFrameProbe.onAppShown()
+                flushHiddenNetworkCallbackSummary()
                 installedApplicationContext?.let { context ->
                     onAppShown(context, source = "process_activity_started")
+                    // Back in front: the network callback again, and the current status at once
+                    // (the callback's own first answers follow).
+                    syncDefaultNetworkCallback(source = "app_shown")
+                    publishCurrentNetworkStatus(context, source = "app_shown")
                 }
                 // Keeps the FCM delivery-status answer fresh for the background tray decision.
                 RaftAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "app_foreground")
@@ -130,6 +143,9 @@ internal object AndroidAppScopeRealtimeOwner {
                 // No-Play-services devices: make sure the background connection service is up now that the
                 // app is hidden (no-op on Play services devices).
                 installedApplicationContext?.let(AndroidRealtimeKeepAliveController::onAppBackgrounded)
+                // Hidden without a background connection: no network callbacks into the process,
+                // so it can be frozen while cached (Hands a8cd6426).
+                syncDefaultNetworkCallback(source = "app_hidden")
             }
         }
 
@@ -157,45 +173,97 @@ internal object AndroidAppScopeRealtimeOwner {
         val appContext = context.applicationContext
         installedApplicationContext = appContext
         installProcessLifecycle(appContext)
-        if (networkCallbackInstalled) return
         val connectivityManager =
             appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
                 ?: return
         synchronized(this) {
-            if (networkCallbackInstalled) return
-            runCatching {
-                connectivityManager.registerDefaultNetworkCallback(
-                    object : ConnectivityManager.NetworkCallback() {
-                        override fun onAvailable(network: Network) {
-                            onNetworkAvailable(appContext)
-                        }
-
-                        override fun onCapabilitiesChanged(
-                            network: Network,
-                            networkCapabilities: NetworkCapabilities
-                        ) {
-                            onNetworkCapabilitiesChanged(appContext, networkCapabilities)
-                        }
-
-                        override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
-                            onNetworkDnsConfigurationMaybeChanged(appContext, linkProperties)
-                        }
-
-                        override fun onLost(network: Network) {
-                            onNetworkLost(appContext)
-                        }
-                    }
+            if (networkCallbackRegistration != null) return
+            var current: ConnectivityManager.NetworkCallback? = null
+            networkCallbackRegistration =
+                AndroidDefaultNetworkCallbackRegistration(
+                    register = {
+                        val callback = defaultNetworkCallback(appContext)
+                        connectivityManager.registerDefaultNetworkCallback(callback)
+                        current = callback
+                    },
+                    unregister = {
+                        val callback = current
+                        current = null
+                        if (callback != null) connectivityManager.unregisterNetworkCallback(callback)
+                    },
                 )
-                networkCallbackInstalled = true
-                publishCurrentNetworkStatus(appContext, source = "network_callback_initial")
-                RaftAppLog.d(LOG_TAG, "app_scope_lifecycle event=network_callback_installed")
-            }.onFailure { error ->
-                RaftAppLog.w(
-                    LOG_TAG,
-                    "app_scope_lifecycle event=network_callback_install_failed message=${error.message.orEmpty()}"
-                )
+        }
+        syncDefaultNetworkCallback(source = "install")
+        publishCurrentNetworkStatus(appContext, source = "network_callback_initial")
+    }
+
+    /** A fresh callback per registration: one the system has seen is never registered twice. */
+    private fun defaultNetworkCallback(appContext: Context): ConnectivityManager.NetworkCallback =
+        object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                countNetworkCallback(AndroidNetworkCallbackKind.Available)
+                onNetworkAvailable(appContext)
+            }
+
+            override fun onCapabilitiesChanged(
+                network: Network,
+                networkCapabilities: NetworkCapabilities
+            ) {
+                countNetworkCallback(AndroidNetworkCallbackKind.Capabilities)
+                onNetworkCapabilitiesChanged(appContext, networkCapabilities)
+            }
+
+            override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+                countNetworkCallback(AndroidNetworkCallbackKind.LinkProperties)
+                onNetworkDnsConfigurationMaybeChanged(appContext, linkProperties)
+            }
+
+            override fun onLost(network: Network) {
+                countNetworkCallback(AndroidNetworkCallbackKind.Lost)
+                onNetworkLost(appContext)
             }
         }
+
+    /**
+     * Registers the default-network callback while [AndroidDefaultNetworkCallbackPolicy] wants it (in
+     * front, or hidden with a background connection) and unregisters it otherwise.
+     */
+    private fun syncDefaultNetworkCallback(source: String) {
+        val registration = networkCallbackRegistration ?: return
+        val wanted =
+            AndroidDefaultNetworkCallbackPolicy.shouldBeRegistered(
+                foreground = appVisibility == AppVisibility.Foreground,
+                backgroundKeepAliveEnabled = backgroundKeepAliveEnabled,
+                backgroundConnectionServiceActive = RaftBackgroundConnectionService.active,
+            )
+        val transition = registration.sync(wanted)
+        if (transition == AndroidNetworkCallbackTransition.Unregistered) flushHiddenNetworkCallbackSummary()
+        when (transition) {
+            AndroidNetworkCallbackTransition.Unchanged -> Unit
+            AndroidNetworkCallbackTransition.Registered,
+            AndroidNetworkCallbackTransition.Unregistered ->
+                RaftAppLog.d(
+                    LOG_TAG,
+                    "app_scope_lifecycle event=network_callback_${transition.name.lowercase()} source=$source " +
+                        "visibility=$appVisibility keep_alive=$backgroundKeepAliveEnabled"
+                )
+            AndroidNetworkCallbackTransition.RegisterFailed,
+            AndroidNetworkCallbackTransition.UnregisterFailed ->
+                RaftAppLog.w(
+                    LOG_TAG,
+                    "app_scope_lifecycle event=network_callback_${transition.name.lowercase()} source=$source"
+                )
+        }
+    }
+
+    private fun countNetworkCallback(kind: AndroidNetworkCallbackKind) {
+        hiddenNetworkCallbackCounter
+            .record(kind, hidden = appVisibility != AppVisibility.Foreground, nowMillis = SystemClock.elapsedRealtime())
+            ?.let { RaftAppLog.i(LOG_TAG, it) }
+    }
+
+    private fun flushHiddenNetworkCallbackSummary() {
+        hiddenNetworkCallbackCounter.flush(SystemClock.elapsedRealtime())?.let { RaftAppLog.i(LOG_TAG, it) }
     }
 
     private fun installProcessLifecycle(context: Context) {

@@ -67,6 +67,7 @@ import build.raft.app.data.settlesAttempt
 import build.raft.app.data.allModels
 import build.raft.app.data.claudeOAuthApps
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.repeatWhileProcessForeground
 import build.raft.app.model.RaftRelativeTimeLabel
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.RaftTimeContext
@@ -941,9 +942,9 @@ internal fun ComputerRuntimeUsageSheetHost(
     val auth = runtimeId?.let { rememberComputerRuntimeAuthController(access, key.machineId, it, readNow = true) }
     LaunchedEffect(controller) {
         controller.onOpen()
-        while (true) {
+        // The cooldown clock ticks only while the app is in front (a hidden activity keeps its composition).
+        repeatWhileProcessForeground(intervalMillis = 1_000L, runImmediatelyOnStart = true) {
             controller.updateCooldown()
-            delay(1_000L)
         }
     }
     val timeContext = currentRaftTimeContextProvider?.current
@@ -1513,9 +1514,10 @@ internal fun ComputerRuntimeUsagePreviewCard(
             controller?.onOpen()
             // Web `openNow`: the sign-in state is read again with the usage.
             auth?.controller?.read()
-            while (controller != null) {
-                controller.updateCooldown()
-                delay(1_000L)
+            if (controller != null) {
+                repeatWhileProcessForeground(intervalMillis = 1_000L, runImmediatelyOnStart = true) {
+                    controller.updateCooldown()
+                }
             }
         }
     }

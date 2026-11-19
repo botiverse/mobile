@@ -13,7 +13,6 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,7 +36,8 @@ import kotlinx.coroutines.launch
  *  - on `activity:changed` for its server (a new version, for those who follow the Artifact; and
  *    the person's own open of it, which marks it seen);
  *  - when its change line arrives in the channel (`message:new` with the notice);
- *  - while shown ([ChannelAnnouncementIntent.Watch]), every [CHANNEL_ANNOUNCEMENT_POLL_MILLIS]; and when
+ *  - while shown ([ChannelAnnouncementIntent.Watch]) and the app is in front, every
+ *    [CHANNEL_ANNOUNCEMENT_POLL_MILLIS]; and when
  *    the page comes back (the UI asks).
  *
  * There is no announcement event on the wire (botiverse/slock 6a848d0a: the server emits nothing
@@ -155,6 +155,9 @@ internal class SharedChannelAnnouncementStore(
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {},
     private val pollMillis: Long = CHANNEL_ANNOUNCEMENT_POLL_MILLIS,
+    /** The poll runs only while this is true (the app in the foreground); see [repeatWhileProcessForeground]. */
+    private val foreground: Flow<Boolean> = RaftProcessForegroundGate.foreground,
+    private val nowMillis: () -> Long = ::raftForegroundGateNowMillis,
 ) {
     private val mutableState = MutableStateFlow(ChannelAnnouncementState())
     val state: StateFlow<ChannelAnnouncementState> = mutableState.asStateFlow()
@@ -211,8 +214,9 @@ internal class SharedChannelAnnouncementStore(
                 if (!start) return
                 val job =
                     scope.launch {
-                        while (true) {
-                            delay(pollMillis)
+                        // Hidden, the page stays composed but nothing reads; back in front one read
+                        // at once if a poll came due meanwhile.
+                        repeatWhileProcessForeground(intervalMillis = pollMillis, foreground = foreground, nowMillis = nowMillis) {
                             load(intent.key, "poll", DataRequestPriority.Background)
                         }
                     }

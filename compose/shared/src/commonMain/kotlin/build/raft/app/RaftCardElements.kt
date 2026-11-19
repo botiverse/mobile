@@ -54,6 +54,7 @@ import build.raft.app.data.RaftAppLinkTextTone
 import build.raft.app.data.appLinkDomain
 import build.raft.app.data.actionCardScopeGroupLabel
 import build.raft.app.data.renderActionCardMsg
+import build.raft.app.data.repeatWhileProcessForeground
 import build.raft.app.markdown.raftAppLinkKeepEnd
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.designsystem.components.RaftBadge
@@ -71,7 +72,6 @@ import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.time.Clock
-import kotlinx.coroutines.delay
 
 /**
  * What a card tree needs from the place that draws it. Link cards ([RaftAppLinkCardBody]) use
@@ -479,8 +479,8 @@ internal fun raftCardDurationText(node: CardDuration): String? {
     var now by remember { mutableLongStateOf(clock ?: Clock.System.now().toEpochMilliseconds()) }
     if (end == null && clock == null) {
         LaunchedEffect(node.start) {
-            while (true) {
-                delay(1_000)
+            // Ticks only while the app is in front; back in front it catches up at once.
+            repeatWhileProcessForeground(intervalMillis = 1_000L) {
                 now = Clock.System.now().toEpochMilliseconds()
             }
         }

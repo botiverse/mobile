@@ -9,6 +9,7 @@ import build.raft.app.data.raftShellOwnsProcessRealtime
 import build.raft.app.data.noteRaftShellRealtimeServer
 import build.raft.app.data.raftProcessRealtimeSessionDemand
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.repeatWhileProcessForeground
 import androidx.compose.ui.input.key.key
 import build.raft.app.data.selectedConversationWhenShellReturns
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
@@ -561,8 +562,8 @@ internal fun AppShellHomeStartEffects(
     }
     LaunchedEffect(readyServerId, readySession?.accessToken, authoritativeHomeStartAllowed) {
         if (readyServerId.isNullOrBlank() || !authoritativeHomeStartAllowed) return@LaunchedEffect
-        while (true) {
-            delay(AppUpdateNotificationRefreshIntervalMs)
+        // Only while the app is in front: hidden, nothing is read; back in front one read if one came due.
+        repeatWhileProcessForeground(intervalMillis = AppUpdateNotificationRefreshIntervalMs) {
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
         }
     }

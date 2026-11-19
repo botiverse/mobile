@@ -193,16 +193,27 @@ private fun sharedErrorLogger(tag: String, prefix: String = ""): (String) -> Uni
 
 internal const val ServerFeatureFlagRefreshIntervalMillis = 60_000L
 
+/**
+ * Reads the selected server's flags at once, then every [intervalMillis] while the app is in the
+ * foreground ([RaftProcessForegroundGate]): hidden, it reads nothing; back in front it reads once at
+ * once if a read came due meanwhile.
+ */
 internal suspend fun refreshSelectedServerFeatureFlags(
     intervalMillis: Long = ServerFeatureFlagRefreshIntervalMillis,
     wait: suspend (Long) -> Unit = { delay(it) },
+    foreground: Flow<Boolean> = RaftProcessForegroundGate.foreground,
+    nowMillis: () -> Long = ::raftForegroundGateNowMillis,
     refresh: suspend () -> Unit
 ) {
     require(intervalMillis > 0L) { "feature flag refresh interval must be positive" }
-    while (true) {
-        refresh()
-        wait(intervalMillis)
-    }
+    repeatWhileProcessForeground(
+        intervalMillis = intervalMillis,
+        foreground = foreground,
+        runImmediatelyOnStart = true,
+        wait = wait,
+        nowMillis = nowMillis,
+        block = refresh,
+    )
 }
 
 private const val ProcessRealtimeAuthorityScopeKey = "process-realtime-host"
