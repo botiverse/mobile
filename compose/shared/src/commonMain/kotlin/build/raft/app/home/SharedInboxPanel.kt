@@ -29,6 +29,8 @@ import androidx.compose.runtime.Immutable
 import build.raft.designsystem.gesture.LocalRaftScrollInProgress
 import build.raft.designsystem.gesture.raftHoldsHorizontalDragsWhileScrolling
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.theme.RaftPointerInput
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.RaftRealtimeEvents
@@ -1249,6 +1251,26 @@ internal fun SharedActivityHeader(
     onTitleClick: (() -> Unit)? = null,
     mainTab: Boolean = false
 ) {
+    if (mainTab && RaftTheme.scale == RaftScale.Wide) {
+        // The wide layout's Activity column (web TabRootBar from `md` up, "the same head as every
+        // panel": raft-ui PanelSectionHeader): on the canvas, not the phone tab root's frame, with
+        // the title and the counts on one line. 56 with a finger, 44 under a mouse or trackpad.
+        RaftTopPageHeader(
+            title = stringResource(Res.string.tab_activity),
+            subtitle = activityHeaderSubtitle(totalCount, totalUnreadCount),
+            backgroundColor = RaftColor.Canvas,
+            topSafeAreaOverride = topSafeAreaPadding,
+            // The column's margin, the toolbar's and the rows' edge (raft-design lists.md, One edge).
+            contentStartPadding = activityColumnMargin(RaftScale.Wide, RaftTheme.pointerInput),
+            contentEndPadding = activityColumnMargin(RaftScale.Wide, RaftTheme.pointerInput),
+            titleStyle = RaftType.Headline,
+            refreshing = refreshing,
+            onTitleClick = onTitleClick,
+            showBodyTopBanner = false,
+            subtitleInline = true,
+        )
+        return
+    }
     if (mainTab) {
         // App-shell tab head: raft-ui top-level page, the frame layer with the page's name and the
         // stats line, no icon sticker and no back arrow. The title starts on the 16dp phone margin,
@@ -1300,8 +1322,27 @@ private fun SharedActivityMarkAllReadButton(iconOnly: Boolean, onClick: () -> Un
     }
 }
 
-/** web `@max-[30rem]` on the toolbar's content box: the 54dp row less its 16dp edges. */
-internal fun activityMarkAllReadIconOnly(toolbarWidth: Dp): Boolean = toolbarWidth - 32.dp < 480.dp
+/**
+ * The Activity toolbar's height, its seam included: 54 on a phone (unchanged); on the wide layout
+ * raft-design's list toolbar line, 49 with a finger and 44 under a mouse or trackpad.
+ */
+internal fun activityFilterBarHeight(scale: RaftScale, pointerInput: RaftPointerInput): Dp =
+    when {
+        scale != RaftScale.Wide -> 54.dp
+        pointerInput == RaftPointerInput.Fine -> 44.dp
+        else -> 49.dp
+    }
+
+/**
+ * The Activity column's margin, where its head, its toolbar and its rows start (raft-design
+ * lists.md, One edge; raft-ui `listColumnMargin`): 16 on a phone (unchanged); on the wide layout
+ * 20 with a finger and 16 under a mouse or trackpad.
+ */
+internal fun activityColumnMargin(scale: RaftScale, pointerInput: RaftPointerInput): Dp =
+    if (scale == RaftScale.Wide && pointerInput == RaftPointerInput.Touch) 20.dp else 16.dp
+
+/** web `@max-[30rem]` on the toolbar's content box: the row less its [edge] on both sides. */
+internal fun activityMarkAllReadIconOnly(toolbarWidth: Dp, edge: Dp = 16.dp): Boolean = toolbarWidth - edge * 2 < 480.dp
 
 @Composable
 private fun activityHeaderSubtitle(totalCount: Int, totalUnreadCount: Int): String =
@@ -1323,16 +1364,23 @@ internal fun SharedActivityFilterBar(
     menuExpanded: Boolean = false,
     onMenuExpandedChange: (Boolean) -> Unit = {},
 ) {
-    // web inbox toolbar: 54dp with a 1dp seam inside it, 16dp edges, its controls centred.
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(54.dp).background(RaftColor.SurfaceWhite)) {
-        val markAllReadIconOnly = activityMarkAllReadIconOnly(maxWidth)
+    // web inbox toolbar: a 1dp seam inside it, 16dp edges, its controls centred. 54dp on a phone;
+    // on the wide layout raft-design's list toolbar line (spacing.md): 49 with a finger (web
+    // `h-[calc(--spacing(12)+1px)]`), the 44 head height under a mouse or trackpad
+    // (`md:pointer-fine:h-(--header-height)`).
+    val toolbarHeight = activityFilterBarHeight(RaftTheme.scale, RaftTheme.pointerInput)
+    // Its sides are the list column's margin (web `px-(--column-margin)`): 16 on a phone; on the
+    // wide layout 20 with a finger and 16 under a mouse or trackpad.
+    val edge = activityColumnMargin(RaftTheme.scale, RaftTheme.pointerInput)
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(toolbarHeight).background(RaftColor.SurfaceWhite)) {
+        val markAllReadIconOnly = activityMarkAllReadIconOnly(maxWidth, edge)
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(54.dp - RaftAppStroke.Thin)
+                    .height(toolbarHeight - RaftAppStroke.Thin)
                     .raftSafeAreaHorizontalPadding()
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = edge),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {

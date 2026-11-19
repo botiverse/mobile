@@ -133,6 +133,7 @@ import build.raft.designsystem.components.RaftTimelineDetail
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.tokens.RaftRadius
 
 /** The Source row (web `TaskSourceProperty`): [preview] null = the message is not loaded (yet). */
@@ -1308,18 +1309,39 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
         } else {
             Modifier
         }
-    Column(modifier.then(toggle), verticalArrangement = Arrangement.Top) {
-        if (refLine) {
-            // The ref names the task's channel: a tap goes there, to the task (artin, task #35).
-            val viewInChannel = stringResource(Res.string.task_conversation_view_in_channel)
-            RaftTextLink(
-                text = chrome.ref,
-                onClick = chrome.onViewInChannel,
-                // Screen readers say where the ref goes, not just the ref.
-                modifier = Modifier.semantics { onClick(label = viewInChannel) { chrome.onViewInChannel(); true } },
-                style = typography.monoMeta,
+    val viewInChannel = stringResource(Res.string.task_conversation_view_in_channel)
+    // The ref names the task's channel: a tap goes there, to the task (artin, task #35).
+    val refLink: @Composable (Modifier) -> Unit = { refModifier ->
+        RaftTextLink(
+            text = chrome.ref,
+            onClick = chrome.onViewInChannel,
+            // Screen readers say where the ref goes, not just the ref.
+            modifier = refModifier.semantics { onClick(label = viewInChannel) { chrome.onViewInChannel(); true } },
+            style = typography.monoMeta,
+            maxLines = 1,
+        )
+    }
+    if (RaftTheme.scale == RaftScale.Wide && !chrome.summarized) {
+        // The wide layout: one line, as every head from 768 (raft-design desktop-density rule 2;
+        // web taskConversationBarClasses BAR_NAME_CLASS): "Task #7", then the ref after it on its
+        // baseline, the ref giving up its room first (`shrink-[1000]`).
+        Row(modifier.then(toggle), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            RaftText(
+                label,
+                modifier = Modifier.alignByBaseline(),
+                style = typography.subhead.copy(fontWeight = FontWeight.Bold),
+                color = colors.foreground,
                 maxLines = 1,
             )
+            if (refLine) {
+                refLink(Modifier.weight(1f, fill = false).alignByBaseline())
+            }
+        }
+        return
+    }
+    Column(modifier.then(toggle), verticalArrangement = Arrangement.Top) {
+        if (refLine) {
+            refLink(Modifier)
         }
         if (chrome.summarized) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
