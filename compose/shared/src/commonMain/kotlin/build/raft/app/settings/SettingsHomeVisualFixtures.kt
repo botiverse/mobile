@@ -1201,7 +1201,6 @@ internal fun HomeActivityVisualContent() {
  */
 @Composable
 internal fun RaftActivityTabVisualContent(
-    stale: Boolean = false,
     // PROTOTYPE (native nav): the whole screen with its safe area, the host draws the tab bar.
     protoFullScreen: Boolean = false,
 ) {
@@ -1225,7 +1224,6 @@ internal fun RaftActivityTabVisualContent(
                         selectedFilter = filter,
                         snapshot = homeActivityTabVisualSnapshot,
                         loaded = true,
-                        stale = stale,
                     ),
                 onIntent = {},
                 onOpenItem = {},

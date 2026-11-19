@@ -6309,8 +6309,8 @@ data class SharedActivityState(
     /**
      * Task #164: the rows and counts shown may be old because the read warehouse is behind: the
      * last canonical read was the server's remembered body (`X-Raft-Stale`) or a `503
-     * rw_overloaded` while rows were shown. The list keeps its last good rows; the page shows the
-     * stale notice until a fresh read clears it.
+     * rw_overloaded` while rows were shown. The list keeps its last good rows; no notice is
+     * shown (artin); a fresh read clears the flag.
      */
     val stale: Boolean = false,
     /**

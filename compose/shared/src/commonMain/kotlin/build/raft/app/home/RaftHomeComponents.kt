@@ -1673,7 +1673,7 @@ internal data class RaftStructuralHomeShellData(
     val draftsCount: Int? = null,
     val notifications: List<RaftHomeNotificationItem> = emptyList(),
     val inlineError: RaftHomeInlineError? = null,
-    /** Task #164: the unread counts may be old (read warehouse behind); shows the stale notice. */
+    /** Task #164: the unread counts may be old (read warehouse behind); no notice of its own (artin), only with [unreadUnavailable]. */
     val unreadStale: Boolean = false,
     /** botiverse/slock #12066: the unread reads failed with `503 rw_unconfigured`; the notice says unavailable. */
     val unreadUnavailable: Boolean = false,
@@ -2753,10 +2753,10 @@ private fun RaftStructuralHomeShellContent(
                 }
                 RaftAppShellBodyTopBanner()
                 // Task #164 (stdrc O2): under the head, above the list; the counts stay as they are.
+                // A read warehouse that is only behind shows no notice (artin): the counts keep the
+                // last good result and update silently on recovery.
                 if (unreadStale && unreadUnavailable) {
                     RaftReadWarehouseUnavailableNotice(stringResource(Res.string.home_unread_unavailable_notice))
-                } else if (unreadStale) {
-                    RaftReadWarehouseStaleNotice(stringResource(Res.string.home_unread_stale_notice))
                 }
                 appUpdateBanner?.let { update ->
                     HomeAppUpdateBanner(

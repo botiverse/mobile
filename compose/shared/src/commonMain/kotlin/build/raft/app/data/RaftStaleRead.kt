@@ -119,7 +119,7 @@ val ScreenError.isRwOverloaded: Boolean
 
 /**
  * A stale answer or an overload: the read warehouse could not give fresh numbers. Other failures
- * (a timeout, a 500) keep their own error and never raise the stale notice.
+ * (a timeout, a 500) keep their own error and never raise the stale flag.
  */
 val DataResult<*>.isRwOverloadedError: Boolean
     get() = this is DataResult.Error && error.isRwOverloaded
