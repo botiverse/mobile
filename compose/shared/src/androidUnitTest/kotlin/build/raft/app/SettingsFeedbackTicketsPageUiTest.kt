@@ -423,21 +423,6 @@ class SettingsFeedbackTicketsPageUiTest {
             onNode(hasContentDescription("Copy Link")).assertDoesNotExist()
         }
 
-    private companion object {
-        const val ReplyField = "feedback_reply_field"
-    }
-}
-
-@Composable
-private fun Host(content: @Composable () -> Unit) {
-    val pager =
-        remember {
-            object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
-        }
-    CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
-        RaftDesignSystemTheme { content() }
-    }
-
     /** `RAFT_PRIVACY_MODE`: New Feedback (its archive goes to Hands) only once the server answered off. */
     @Test
     fun newFeedbackIsOfferedOnlyWhenTheServerAnsweredPrivacyModeOff() {
@@ -466,5 +451,20 @@ private fun Host(content: @Composable () -> Unit) {
                 }
             }
         }
+    }
+
+    private companion object {
+        const val ReplyField = "feedback_reply_field"
+    }
+}
+
+@Composable
+private fun Host(content: @Composable () -> Unit) {
+    val pager =
+        remember {
+            object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
+        }
+    CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+        RaftDesignSystemTheme { content() }
     }
 }
