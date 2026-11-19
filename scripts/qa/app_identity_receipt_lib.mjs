@@ -9,8 +9,9 @@
 //   3. after the normal sign-in, asks it once with `content call` (Testbed's attempt id + nonce and
 //      a fresh request id) and cross-checks what the app says against what the OS says:
 //      package + versionCode + debuggable from `dumpsys package`, the signer from the installed APK
-//      (`pm path` + apksigner, the certificate for the device's SDK: a rotated lineage lists one
-//      per SDK range), the pid before and after;
+//      (`pm path` + AppIdentityApkSigner.java on apksig 36.0.0: the certificate a released
+//      platform of the device's SDK uses, from the structured v3/v3.1 result), the pid before and
+//      after; the complete receipt + OS facts go privately to Testbed, which decides;
 //   4. `pm disable`s it again in cleanup. A disable that fails or cannot be confirmed is reported
 //      loudly (::error:: + non-zero exit), never ignored.
 //
@@ -19,11 +20,13 @@
 // With Testbed's optional pairing salt the receipt also has user_pair_ref / server_pair_ref (same
 // formulas, salted with it) for cross-run comparison. The nonce, the salt and all four refs are
 // private to Testbed: the request reaches the device over adb's stdin (never argv), and the
-// nonce + refs go only to the Testbed-private output file (0600). stdout, the summary and the
-// evidence carry only verification STATUS (user_check / server_check / pair_check).
+// receipt + OS facts go only to the fresh Testbed-private output file (0600, outside the evidence
+// directory). stdout, the summary and the evidence carry only PUBLIC_IDENTITY_FIELDS (check
+// statuses + Testbed's decision state).
 // What the app reports is not proof on its own; the OS-side cross-check is.
 import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 export const RECEIPT_CONTRACT = "raft-app-identity-receipt/v1";
@@ -128,7 +131,12 @@ export function crossCheckReceipt({ receipt, request, os, expected = {} }) {
   check(String(receipt.version_code) === String(os.versionCode), "version_code differs from dumpsys package");
   check(typeof receipt.signer_sha256 === "string" && HEX64.test(receipt.signer_sha256), "receipt has no single signer");
   check(receipt.signer_sha256 === os.signerSha256, "signer_sha256 differs from apksigner (device SDK certificate)");
-  check(receipt.debuggable === false && os.debuggable === false, "build is debuggable");
+  // os.debuggable is null when pkgFlags could not be read: unknown, never "not debuggable".
+  check(receipt.debuggable === false && os.debuggable === false, os.debuggable == null ? "debuggable flag could not be read" : "build is debuggable");
+  // This pilot runs on a released SDK only (ro.build.version.codename must read REL).
+  check(os.deviceCodename === "REL" && os.devicePreview === false, "device is not on a released SDK (codename is not REL or unread)");
+  check(os.splitApks === 0, "installed package is not a single APK");
+  check(HEX64.test(os.installedApkSha256 ?? ""), "installed APK digest is unknown");
   check(os.pidBefore != null && String(receipt.pid) === String(os.pidBefore) && String(os.pidBefore) === String(os.pidAfter), "pid changed around the call");
   check(os.startTicksBefore != null && receipt.process_start_ticks === os.startTicksBefore && os.startTicksBefore === os.startTicksAfter, "process start time changed around the call");
   check(receipt.signed_in === true, "app is not signed in");
@@ -147,22 +155,8 @@ export function crossCheckReceipt({ receipt, request, os, expected = {} }) {
   return { verdict, problems, pending };
 }
 
-/** Receipt fields that are Testbed's comparison baseline: private output only. */
+/** Receipt fields that are Testbed's comparison baseline: private output only, redacted everywhere else. */
 export const PRIVATE_RECEIPT_KEYS = ["nonce", "user_ref", "server_ref", "user_pair_ref", "server_pair_ref"];
-
-/**
- * Splits a receipt into what may go to the summary/evidence (no nonce, no ref) and the
- * Testbed-private part (nonce + every ref present, bound to this attempt and request).
- */
-export function splitPrivateReceipt(receipt) {
-  const shareable = {};
-  const secret = { attempt_id: receipt.attempt_id, request_id: receipt.request_id };
-  for (const [key, value] of Object.entries(receipt)) {
-    if (PRIVATE_RECEIPT_KEYS.includes(key)) secret[key] = value;
-    else shareable[key] = value;
-  }
-  return { shareable, private: secret };
-}
 
 /**
  * The public verdict per digest, without the digest: pass/fail against Testbed's frozen value when
@@ -175,6 +169,24 @@ export function verificationStatus({ receipt, request, expected = {} }) {
     checks.pair_check = HEX64.test(receipt.user_pair_ref ?? "") && HEX64.test(receipt.server_pair_ref ?? "") ? "pending" : "fail";
   }
   return checks;
+}
+
+/** The only fields `summary.identity_receipt` may carry: fixed check statuses and Testbed's state. */
+export const PUBLIC_IDENTITY_FIELDS = ["receipt_check", "os_check", "user_check", "server_check", "pair_check", "state"];
+const CHECK_STATUSES = ["pass", "fail", "pending", "not_run"];
+export const TESTBED_DECISION_STATES = ["matched", "awaiting_confirmation", "identity_mismatch", "unknown"];
+const PUBLIC_STATES = [...TESTBED_DECISION_STATES, "unsupported_build"];
+
+/** Projects to the agreed public field list; any other key or value is dropped. */
+export function publicIdentitySummary(result) {
+  const out = {};
+  for (const key of PUBLIC_IDENTITY_FIELDS) {
+    const value = result?.[key];
+    if (value === undefined) continue;
+    if (key === "state" ? PUBLIC_STATES.includes(value) : CHECK_STATUSES.includes(value)) out[key] = value;
+  }
+  if (!out.state) out.state = "unknown";
+  return out;
 }
 
 /**
@@ -198,8 +210,6 @@ export function guardedCapture(gate, capture) {
   };
 }
 
-export const TESTBED_DECISION_STATES = ["matched", "awaiting_confirmation", "identity_mismatch", "unknown"];
-
 /**
  * Testbed's private decision for this job: `{ state, attempt_id, request_id }`. It counts only when
  * both ids are this attempt's app request; anything else (other attempt/request, unknown state, no
@@ -212,37 +222,55 @@ export function parseTestbedDecision(reply, request) {
   return TESTBED_DECISION_STATES.includes(reply.state) ? reply.state : "unknown";
 }
 
+/** Testbed's reply to the private observation: only `recorded` lets the runner ask for a decision. */
+export function observationRecorded(reply) {
+  return Boolean(reply && typeof reply === "object" && reply.state === "recorded");
+}
+
 /**
- * After sign-in in --identity-receipt mode: ask the provider, cross-check with the OS, write the
- * private part for Testbed, publish only statuses, then ask Testbed for its decision
- * (`requestTestbedDecision(request)` -> the job's private reply). Only a "matched" reply bound to
- * this attempt and request opens the capture gate; every other outcome (unclear/missing receipt,
- * runner-side mismatch, awaiting_confirmation, identity_mismatch, unknown, ids of another request)
- * returns `{ matched: false }` with nothing captured.
+ * After sign-in in --identity-receipt mode:
+ *   1. ask the provider once and read what the OS says (`readOsFacts`; a failed read is unknown);
+ *   2. cross-check them; write the complete receipt + OS facts to the private file only;
+ *   3. any runner-side problem stops here: nothing is submitted to Testbed;
+ *   4. `testbed.observe({ request_id, receipt, os })` privately (must answer `recorded`), then
+ *      `testbed.decide(request)`; only a "matched" decision bound to this attempt and request opens
+ *      the capture gate.
+ * `publish` gets only PUBLIC_IDENTITY_FIELDS (statuses + state), never ids, values or free text.
  */
-export async function runIdentityGate({ runner, request, readOsFacts, expected = {}, extraProblems = () => [], writePrivate, publish, requestTestbedDecision, gate }) {
+export async function runIdentityGate({ runner, request, readOsFacts, expected = {}, extraProblems = () => [], writePrivate, publish, testbed, gate }) {
+  const show = (fields) => publish(publicIdentitySummary(fields));
   const answer = runner.call(request);
   if (answer.error) {
-    publish({ verdict: "unknown", problems: [`provider answered ${answer.error}${answer.detail ? `: ${answer.detail}` : ""}`] });
+    show({ receipt_check: "fail", state: "unknown" });
     return { matched: false, reason: "receipt_unavailable" };
   }
-  const { shareable, private: secret } = splitPrivateReceipt(answer.receipt);
-  writePrivate(secret);
-  const facts = readOsFacts();
-  const os = { ...facts, ...answer.os };
-  const { verdict, problems, pending } = crossCheckReceipt({ receipt: answer.receipt, request, os, expected });
-  problems.push(...extraProblems(facts));
+  let facts = null;
+  const problems = [];
+  try {
+    facts = readOsFacts();
+  } catch {
+    problems.push("os_facts_unavailable");
+  }
+  const os = { ...(facts ?? {}), ...answer.os };
+  const crossCheck = crossCheckReceipt({ receipt: answer.receipt, request, os, expected });
+  problems.push(...crossCheck.problems);
+  if (facts) problems.push(...extraProblems(facts));
   const checks = verificationStatus({ receipt: answer.receipt, request, expected });
-  const runnerVerdict = problems.length ? "unknown" : verdict;
-  publish({ verdict: runnerVerdict, problems, pending, checks, receipt: shareable, os });
-  if (runnerVerdict === "unknown") return { matched: false, reason: "mismatch", problems };
+  writePrivate({ attempt_id: request.attemptId, request_id: request.requestId, receipt: answer.receipt, os, problems });
+  const osCheck = problems.length ? "fail" : "pass";
+  if (problems.length) {
+    show({ receipt_check: "pass", os_check: osCheck, ...checks, state: "unknown" });
+    return { matched: false, reason: "mismatch", problems };
+  }
   let state = "unknown";
   try {
-    state = parseTestbedDecision(await requestTestbedDecision(request), request);
+    if (observationRecorded(await testbed.observe({ request_id: request.requestId, receipt: answer.receipt, os }))) {
+      state = parseTestbedDecision(await testbed.decide(request), request);
+    }
   } catch {
     state = "unknown";
   }
-  publish({ verdict: runnerVerdict, problems, pending, checks, receipt: shareable, os, testbed: { state } });
+  show({ receipt_check: "pass", os_check: osCheck, ...checks, state });
   if (state !== "matched") return { matched: false, reason: state };
   gate.open();
   return { matched: true };
@@ -261,9 +289,22 @@ export async function afterSignIn({ identityGate, runScenario }) {
   return { matched: true, scenarioRan: Boolean(runScenario) };
 }
 
-/** Writes the Testbed-private part, readable by the runner user only. */
+/**
+ * The Testbed-private file: a FRESH file (refused if it exists), mode 0600, outside the evidence
+ * directory (which the workflow uploads recursively).
+ */
+export function privateOutPath(file, evidenceDir) {
+  if (!file) throw new Error("identity receipt: QA_IDENTITY_PRIVATE_OUT is required");
+  const target = path.resolve(file);
+  const rel = path.relative(path.resolve(evidenceDir), target);
+  if (!rel.startsWith("..") && !path.isAbsolute(rel)) throw new Error("identity receipt: QA_IDENTITY_PRIVATE_OUT must be outside the evidence directory");
+  if (fs.existsSync(target)) throw new Error("identity receipt: QA_IDENTITY_PRIVATE_OUT must not exist yet");
+  return target;
+}
+
+/** Writes the Testbed-private part once, to a new file readable by the runner user only. */
 export function writePrivateReceipt(file, data) {
-  fs.writeFileSync(file, `${JSON.stringify(data)}\n`, { mode: 0o600 });
+  fs.writeFileSync(file, `${JSON.stringify(data)}\n`, { mode: 0o600, flag: "wx" });
   fs.chmodSync(file, 0o600);
 }
 
@@ -355,62 +396,25 @@ export function disableFailureAnnotation(pkg, detail) {
   return `::error title=identity receipt provider left enabled::pm disable ${componentFor(pkg)} failed (${String(detail ?? "").replace(/[\r\n]+/g, " ")}); disable it by hand before reusing this device`;
 }
 
-const V3_SIGNER_LINE = /^(V3(?:\.0|\.1)?\s+)?Signer:?\s*\(([^)]*)\)\s+certificate SHA-256 digest:\s*([0-9A-Fa-f]{64})$/;
-const SUMMARY_SIGNER_LINE = /^Signer #[1-9][0-9]* certificate SHA-256 digest:\s*([0-9A-Fa-f]{64})$/;
+/** Build Tools pinned for the signer selection (its apksig is what AppIdentityApkSigner.java uses). */
+export const APKSIG_BUILD_TOOLS = "36.0.0";
+const SIGNER_SELECTED = /^\{"result":"SIGNER_SELECTED","android_sdk":([1-9][0-9]*),"signer_sha256":"([0-9a-f]{64})"\}$/;
 
 /**
- * The certificate the device actually uses (what SigningInfo.apkContentsSigners reports), from
- * `apksigner verify -v --print-certs` output. Taken ONLY from the verified v3/v3.1 signer blocks
- * whose SDK range holds the device SDK, never from apksigner's summary "Signer #N" certificates
- * (with a three-generation rotation the summary is the 2nd certificate while API 35/36 devices
- * use the 3rd). A v3.1 block wins over a v3.0 block on the same SDK.
- *
- * A block signed for a dev release (rotation-min-sdk-version + the dev-release flag) shifts only
- * its LOWER bound: a preview device whose SDK is minSdk (the codename build of minSdk + 1) takes
- * it, a release device only from minSdk + 1. So rotation-min-sdk-version=35 + flag selects the old
- * certificate on release API 35 and the new one on release API 36.
- *
- * The summary line is used only when the output has no v3 block at all (a v1/v2-only APK) and
- * names exactly one certificate.
+ * `java` arguments for scripts/qa/AppIdentityApkSigner.java: the certificate a RELEASED platform of
+ * `sdk` uses for the APK, from apksig's structured v3/v3.1 verification result (the same selection
+ * as Testbed's InspectReleaseSettingsApk), never from apksigner's printed text.
  */
-export function apkSignerForDevice(apksignerOutput, { sdk, preview = false }) {
+export function apkSignerInspectorArgs({ apksignerJar, script, apk, sdk }) {
   if (!Number.isInteger(sdk) || sdk < 1) throw new Error("device SDK is invalid");
-  const blocks = [];
-  const summary = [];
-  for (const raw of String(apksignerOutput ?? "").split(/\r?\n/)) {
-    const line = raw.trim();
-    const block = V3_SIGNER_LINE.exec(line);
-    if (block) {
-      const attrs = block[2];
-      const min = Number(/minSdkVersion=([0-9]+)/.exec(attrs)?.[1]);
-      const max = Number(/maxSdkVersion=([0-9]+)/.exec(attrs)?.[1]);
-      if (!Number.isInteger(min) || !Number.isInteger(max) || max < min) throw new Error(`apksigner signer range is invalid: ${line.slice(0, 120)}`);
-      const devRelease = /targets\s*dev\s*release\s*=?\s*true/i.test(attrs.replace(/[_-]/g, ""));
-      blocks.push({ v31: /^V3\.1/.test(block[1] ?? ""), min, max, devRelease, digest: block[3].toLowerCase() });
-      continue;
-    }
-    const sum = SUMMARY_SIGNER_LINE.exec(line);
-    if (sum) summary.push(sum[1].toLowerCase());
-  }
-  if (!blocks.length) {
-    if (summary.length !== 1) throw new Error(`no v3 signer block and ${summary.length} summary certificates`);
-    return summary[0];
-  }
-  const applies = (b) => {
-    const lower = b.devRelease && !preview ? b.min + 1 : b.min;
-    return sdk >= lower && sdk <= b.max;
-  };
-  const candidates = blocks.filter(applies);
-  const preferred = candidates.some((b) => b.v31) ? candidates.filter((b) => b.v31) : candidates;
-  const digests = [...new Set(preferred.map((b) => b.digest))];
-  if (digests.length !== 1) throw new Error(`apksigner lists ${digests.length} certificates for device SDK ${sdk}${preview ? " (preview)" : ""}`);
-  return digests[0];
+  return ["-cp", apksignerJar, script, apk, String(sdk)];
 }
 
-/** `apksigner verify` arguments: verbose, certificates, verified for exactly the device SDK. */
-export function apksignerDeviceArgs(apk, sdk) {
-  if (!Number.isInteger(sdk) || sdk < 1) throw new Error("device SDK is invalid");
-  return ["verify", "-v", "--min-sdk-version", String(sdk), "--max-sdk-version", String(sdk), "--print-certs", apk];
+/** The inspector's verdict: the selected certificate for exactly `sdk`, or a fixed error. */
+export function parseApkSignerInspector(output, { status, sdk }) {
+  const match = SIGNER_SELECTED.exec(String(output ?? "").trim());
+  if (status !== 0 || !match || Number(match[1]) !== sdk) throw new Error("APK_SIGNER_UNVERIFIED");
+  return match[2];
 }
 
 /** sha256 of a local file (the APK pulled from `pm path`). */

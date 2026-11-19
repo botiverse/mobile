@@ -6,8 +6,9 @@ import {
   PROVIDER_CLASS,
   UNSUPPORTED_MESSAGE,
   UnsupportedBuildError,
-  apkSignerForDevice,
-  apksignerDeviceArgs,
+  APKSIG_BUILD_TOOLS,
+  PUBLIC_IDENTITY_FIELDS,
+  apkSignerInspectorArgs,
   componentFor,
   contentCallCommand,
   createIdentityReceiptRunner,
@@ -15,8 +16,11 @@ import {
   disableFailureAnnotation,
   newReceiptRequest,
   parseContentCallOutput,
+  parseApkSignerInspector,
   parseReceipt,
+  privateOutPath,
   procStartTicks,
+  publicIdentitySummary,
   providerDeclared,
   afterSignIn,
   createCaptureGate,
@@ -25,7 +29,6 @@ import {
   readPairingSaltFile,
   runIdentityGate,
   serverRef,
-  splitPrivateReceipt,
   userRef,
   verificationStatus,
   writePrivateReceipt,
@@ -65,9 +68,14 @@ test("the design sample parses as a v1 receipt; anything outside the contract is
 
 const os = {
   packageName: PKG,
-  versionCode: "12600",
+  versionCode: 12600,
   signerSha256: sample.signer_sha256,
   debuggable: false,
+  deviceSdk: 35,
+  deviceCodename: "REL",
+  devicePreview: false,
+  installedApkSha256: "d4".repeat(32),
+  splitApks: 0,
   pidBefore: "4242",
   pidAfter: "4242",
   startTicksBefore: "987654",
@@ -84,10 +92,19 @@ test("cross-check is ok only when the receipt, the OS and the frozen refs all ag
     [{ receipt: { ...sample, session_origin: "qa_bootstrap" } }, /origin/],
     [{ receipt: { ...sample, debuggable: true } }, /debuggable/],
     [{ os: { ...os, debuggable: true } }, /debuggable/],
+    // An unread pkgFlags is unknown, never "not debuggable".
+    [{ os: { ...os, debuggable: null } }, /debuggable flag could not be read/],
+    [{ os: { ...os, deviceCodename: "Baklava", devicePreview: true } }, /released SDK/],
+    [{ os: { ...os, deviceCodename: null, devicePreview: null } }, /released SDK/],
+    [{ os: { ...os, splitApks: 1 } }, /single APK/],
+    [{ os: { ...os, splitApks: null } }, /single APK/],
+    [{ os: { ...os, installedApkSha256: null } }, /APK digest/],
+    [{ os: { ...os, signerSha256: null } }, /signer_sha256 differs/],
     [{ os: { ...os, signerSha256: "0".repeat(64) } }, /signer_sha256 differs/],
     [{ receipt: { ...sample, signer_sha256: null } }, /no single signer/],
     [{ os: { ...os, packageName: "build.raft.app.alpha" } }, /package differs/],
-    [{ os: { ...os, versionCode: "12600001" } }, /version_code/],
+    [{ os: { ...os, versionCode: 12600001 } }, /version_code/],
+    [{ os: { ...os, versionCode: null } }, /version_code/],
     [{ os: { ...os, pidAfter: "4243" } }, /pid changed/],
     [{ os: { ...os, startTicksAfter: "1" } }, /start time/],
     [{ receipt: { ...sample, request_id: "ab".repeat(16) } }, /echo/],
@@ -108,57 +125,29 @@ test("without frozen refs everything else is checked and the refs are left to Te
   assert.equal(crossCheckReceipt({ receipt: { ...sample, pid: 1 }, request, os, expected: {} }).verdict, "unknown");
 });
 
-// Signer fixtures: verified v3/v3.1 blocks per SDK range, plus apksigner's summary line, which
-// must never decide (it is the 2nd certificate of a 3-generation rotation).
-const certA = "a1".repeat(32);
+// The signer comes from AppIdentityApkSigner.java (apksig's structured result; real signed
+// fixtures in test_app_identity_apk_signer.sh). Only its exact success line for the device SDK
+// counts; anything else is unverified.
 const certB = "b2".repeat(32);
-const certC = "c3".repeat(32);
-const lines = (...l) => l.join("\n");
-const twoCertRotation = lines(
-  `Signer #1 certificate SHA-256 digest: ${certA}`,
-  `V3.1 Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: ${certB}`,
-  `V3 Signer (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: ${certA}`,
-);
-const threeCertRotation = lines(
-  `Signer #1 certificate SHA-256 digest: ${certB}`,
-  `V3.1 Signer (minSdkVersion=35, maxSdkVersion=2147483647) certificate SHA-256 digest: ${certC}`,
-  `V3 Signer (minSdkVersion=24, maxSdkVersion=34) certificate SHA-256 digest: ${certB}`,
-);
-// rotation-min-sdk-version=35 + the dev-release flag: the v3.0 block reaches up to 35.
-const devReleaseRotation = lines(
-  `Signer #1 certificate SHA-256 digest: ${certA}`,
-  `V3.1 Signer (minSdkVersion=35, maxSdkVersion=2147483647, targetsDevRelease=true) certificate SHA-256 digest: ${certB}`,
-  `V3 Signer (minSdkVersion=24, maxSdkVersion=35) certificate SHA-256 digest: ${certA}`,
-);
-
-test("2-cert rotation: API 34/35/36 use the rotated certificate, API 30 the original", () => {
-  for (const sdk of [34, 35, 36]) assert.equal(apkSignerForDevice(twoCertRotation, { sdk }), certB, `API ${sdk}`);
-  assert.equal(apkSignerForDevice(twoCertRotation, { sdk: 30 }), certA);
-});
-
-test("3-cert rotation: API 35/36 use the 3rd certificate (not apksigner's summary), API 34 the 2nd", () => {
-  assert.equal(apkSignerForDevice(threeCertRotation, { sdk: 34 }), certB);
-  assert.equal(apkSignerForDevice(threeCertRotation, { sdk: 35 }), certC);
-  assert.equal(apkSignerForDevice(threeCertRotation, { sdk: 36 }), certC);
-});
-
-test("dev-release flag moves only the lower bound: release API 35 keeps the old certificate", () => {
-  assert.equal(apkSignerForDevice(devReleaseRotation, { sdk: 35 }), certA);
-  assert.equal(apkSignerForDevice(devReleaseRotation, { sdk: 36 }), certB);
-  assert.equal(apkSignerForDevice(devReleaseRotation, { sdk: 34 }), certA);
-  // A preview device on SDK 35 (the codename build of 36) already takes the new certificate.
-  assert.equal(apkSignerForDevice(devReleaseRotation, { sdk: 35, preview: true }), certB);
-});
-
-test("the summary certificate is used only without any v3 block; ambiguity is an error", () => {
-  assert.equal(apkSignerForDevice(`Signer #1 certificate SHA-256 digest: ${certA}`, { sdk: 34 }), certA);
-  assert.throws(() => apkSignerForDevice(lines(`Signer #1 certificate SHA-256 digest: ${certA}`, `Signer #2 certificate SHA-256 digest: ${certB}`), { sdk: 34 }), /2 summary/);
-  assert.throws(() => apkSignerForDevice(`V3 Signer (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: ${certA}`, { sdk: 34 }), /0 certificates/);
-  assert.deepEqual(apksignerDeviceArgs("app.apk", 35), ["verify", "-v", "--min-sdk-version", "35", "--max-sdk-version", "35", "--print-certs", "app.apk"]);
-  // The receipt (apkContentsSigners on the device) is compared with that selection.
-  const deviceCert = apkSignerForDevice(threeCertRotation, { sdk: 36 });
-  assert.equal(crossCheckReceipt({ receipt: { ...sample, signer_sha256: certC }, request, os: { ...os, signerSha256: deviceCert }, expected }).verdict, "ok");
-  assert.equal(crossCheckReceipt({ receipt: { ...sample, signer_sha256: certB }, request, os: { ...os, signerSha256: deviceCert }, expected }).verdict, "unknown");
+test("the signer inspector's answer counts only as its exact success line for this SDK", () => {
+  assert.equal(APKSIG_BUILD_TOOLS, "36.0.0");
+  assert.deepEqual(apkSignerInspectorArgs({ apksignerJar: "/sdk/build-tools/36.0.0/lib/apksigner.jar", script: "AppIdentityApkSigner.java", apk: "base.apk", sdk: 35 }),
+    ["-cp", "/sdk/build-tools/36.0.0/lib/apksigner.jar", "AppIdentityApkSigner.java", "base.apk", "35"]);
+  assert.throws(() => apkSignerInspectorArgs({ apksignerJar: "j", script: "s", apk: "a", sdk: null }), /SDK/);
+  const ok = `{"result":"SIGNER_SELECTED","android_sdk":35,"signer_sha256":"${certB}"}\n`;
+  assert.equal(parseApkSignerInspector(ok, { status: 0, sdk: 35 }), certB);
+  for (const [output, status, sdk] of [
+    [ok, 1, 35],
+    [ok, 0, 36],
+    ['{"result":"APK_SIGNER_UNVERIFIED"}', 1, 35],
+    [`Signer (minSdkVersion=35 (dev release=true), maxSdkVersion=2147483647) certificate SHA-256 digest: ${certB}`, 0, 35],
+    ["", 0, 35],
+  ]) {
+    assert.throws(() => parseApkSignerInspector(output, { status, sdk }), /^Error: APK_SIGNER_UNVERIFIED$/);
+  }
+  const source = fs.readFileSync(new URL("./release_auto_login.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /apksigner"\), \[?"verify"|buildTool\("apksigner"\)/, "no apksigner text parsing in the runner");
+  assert.match(source, /"AppIdentityApkSigner\.java"/);
 });
 
 test("request needs Testbed's attempt id and nonce; the request id is fresh each time", () => {
@@ -358,7 +347,7 @@ test("the salt goes over the private channel only; pair refs go only to the 0600
   assert.match(source, /readPairingSaltFile\(process\.env\.QA_PAIRING_SALT_FILE/);
   assert.match(source, /spawnSync\("adb", \["shell", "-T"\], \{[^}]*input: `\$\{command\}; exit\\n`/);
   assert.match(source, /for \(const secret of \[pairingSalt, process\.env\.QA_ATTEMPT_NONCE, process\.env\.QA_EXPECTED_USER_REF, process\.env\.QA_EXPECTED_SERVER_REF\]\)/);
-  assert.match(source, /publish: \(result\) => \{ summary\.identity_receipt = result; \}/);
+  assert.match(source, /publish: \(result\) => \{ summary\.identity_receipt = publicIdentitySummary\(result\); \}/);
 });
 
 // The five values that are Testbed's comparison baseline (synthetic pairing vector).
@@ -366,10 +355,11 @@ const FIVE = ["nonce", "user_ref", "server_ref", "user_pair_ref", "server_pair_r
 
 const decisions = JSON.parse(fs.readFileSync(new URL("./fixtures/app-identity-testbed-decisions.json", import.meta.url), "utf8")).replies;
 
-function gateFixture({ answer = { receipt: pairing.receipt }, osFacts = { ...os }, testbed = decisions.matched, expectedRefs = {} } = {}) {
+function gateFixture({ answer = { receipt: pairing.receipt }, osFacts = { ...os }, testbed = decisions.matched, observed = { state: "recorded" }, expectedRefs = {} } = {}) {
   const published = [];
   const privateWrites = [];
-  const counts = { screenshots: 0, uiFiles: 0, scenarios: 0, testbedAsked: 0 };
+  const observations = [];
+  const counts = { screenshots: 0, uiFiles: 0, scenarios: 0, testbedAsked: 0, observed: 0 };
   const gate = createCaptureGate({ identityMode: true });
   const evidence = guardedCapture(gate, () => { counts.screenshots += 1; counts.uiFiles += 1; });
   const fakeRunner = { call: () => ({ ...answer, ...(answer.receipt ? { receipt: JSON.parse(JSON.stringify(answer.receipt)) } : {}), os: { pidBefore: "4242", pidAfter: "4242", startTicksBefore: "987654", startTicksAfter: "987654" } }) };
@@ -383,51 +373,80 @@ function gateFixture({ answer = { receipt: pairing.receipt }, osFacts = { ...os 
           request: pairedRequest,
           gate,
           expected: expectedRefs,
-          readOsFacts: () => osFacts,
+          readOsFacts: () => {
+            if (osFacts instanceof Error) throw osFacts;
+            return osFacts;
+          },
           writePrivate: (secret) => privateWrites.push(secret),
           publish: (result) => published.push(result),
-          requestTestbedDecision: async () => {
-            counts.testbedAsked += 1;
-            if (testbed instanceof Error) throw testbed;
-            return testbed;
+          testbed: {
+            observe: async (observation) => {
+              counts.observed += 1;
+              observations.push(observation);
+              if (observed instanceof Error) throw observed;
+              return observed;
+            },
+            decide: async () => {
+              counts.testbedAsked += 1;
+              if (testbed instanceof Error) throw testbed;
+              return testbed;
+            },
           },
         });
       },
       runScenario: async () => { counts.scenarios += 1; evidence("scenario-step"); },
     });
-  return { run, counts, published, privateWrites };
+  return { run, counts, published, privateWrites, observations };
 }
 
-test("public output carries none of the five baseline values; the private output carries all five", async () => {
+test("public output is only the agreed check statuses and state; the private output has the complete receipt and OS facts", async () => {
   const fixture = gateFixture();
   const outcome = await fixture.run();
   assert.equal(outcome.matched, true);
-  const publicText = JSON.stringify(fixture.published);
-  for (const key of FIVE) {
-    assert.ok(!publicText.includes(pairing.receipt[key]), `public output must not contain ${key}`);
-    assert.ok(!publicText.includes(`"${key}"`), `public output must not name ${key}`);
+  const last = fixture.published.at(-1);
+  assert.deepEqual(last, { receipt_check: "pass", os_check: "pass", user_check: "pending", server_check: "pending", pair_check: "pending", state: "matched" });
+  for (const result of fixture.published) {
+    assert.ok(Object.keys(result).every((key) => PUBLIC_IDENTITY_FIELDS.includes(key)), JSON.stringify(result));
   }
-  assert.ok(!publicText.includes(pairing.pairing_salt));
-  assert.deepEqual(fixture.published.at(-1).checks, { user_check: "pending", server_check: "pending", pair_check: "pending" });
-  assert.equal(fixture.privateWrites.length, 1);
-  const secret = fixture.privateWrites[0];
-  for (const key of FIVE) assert.equal(secret[key], pairing.receipt[key], key);
-  assert.deepEqual(Object.keys(secret), ["attempt_id", "request_id", ...FIVE]);
+  const publicText = JSON.stringify(fixture.published);
+  for (const value of [...FIVE.map((k) => pairing.receipt[k]), pairing.pairing_salt, pairedRequest.attemptId, pairedRequest.requestId, os.signerSha256, os.installedApkSha256, "4242", "987654", "REL"]) {
+    assert.ok(!publicText.includes(String(value)), `public output must not contain ${value}`);
+  }
+  // The projection drops every other key and any free-text value.
+  assert.deepEqual(publicIdentitySummary({ user_check: "pass", state: "matched", problems: ["x"], receipt: { nonce: "n" }, os: {}, attempt_id: "pla_x", server_check: "because" }), { user_check: "pass", state: "matched" });
+  assert.deepEqual(publicIdentitySummary({ state: "free text" }), { state: "unknown" });
+  assert.deepEqual(publicIdentitySummary({ state: "unsupported_build" }), { state: "unsupported_build" });
   // Status with frozen refs: pass / fail, never the value.
   assert.deepEqual(verificationStatus({ receipt: pairing.receipt, request: pairedRequest, expected }), { user_check: "pass", server_check: "pass", pair_check: "pending" });
   assert.equal(verificationStatus({ receipt: pairing.receipt, request, expected: { userRef: "0".repeat(64), serverRef: expected.serverRef } }).user_check, "fail");
   assert.equal(verificationStatus({ receipt: { ...sample, server_ref: null }, request, expected: {} }).server_check, "fail");
 
+  // Private: once, the complete receipt + every OS fact, bound to this attempt and request.
+  assert.equal(fixture.privateWrites.length, 1);
+  const secret = fixture.privateWrites[0];
+  assert.deepEqual(Object.keys(secret), ["attempt_id", "request_id", "receipt", "os", "problems"]);
+  assert.deepEqual(secret.receipt, pairing.receipt);
+  for (const key of ["packageName", "versionCode", "debuggable", "deviceSdk", "deviceCodename", "devicePreview", "signerSha256", "installedApkSha256", "splitApks", "pidBefore", "pidAfter", "startTicksBefore", "startTicksAfter"]) {
+    assert.ok(key in secret.os, key);
+  }
+  // The observation Testbed gets privately is the same complete receipt + OS facts.
+  assert.deepEqual(fixture.observations, [{ request_id: pairedRequest.requestId, receipt: pairing.receipt, os: secret.os }]);
+
   const dir = fs.mkdtempSync(path.join(os_.tmpdir(), "identity-private-"));
-  const file = path.join(dir, "private.json");
+  const evidenceDir = path.join(dir, "evidence");
+  fs.mkdirSync(evidenceDir);
+  const file = privateOutPath(path.join(dir, "private.json"), evidenceDir);
   writePrivateReceipt(file, secret);
   assert.equal(fs.statSync(file).mode & 0o777, 0o600);
   const raw = fs.readFileSync(file, "utf8");
   for (const key of FIVE) assert.ok(raw.includes(pairing.receipt[key]), key);
+  // Fresh only, and never inside the uploaded evidence directory.
+  assert.throws(() => privateOutPath(file, evidenceDir), /must not exist/);
+  assert.throws(() => writePrivateReceipt(file, secret), /EEXIST/);
+  assert.throws(() => privateOutPath(path.join(evidenceDir, "private.json"), evidenceDir), /outside the evidence directory/);
+  assert.throws(() => privateOutPath(path.join(evidenceDir, "sub", "p.json"), evidenceDir), /outside the evidence directory/);
+  assert.throws(() => privateOutPath("", evidenceDir), /required/);
   fs.rmSync(dir, { recursive: true });
-  // Without a salt the private part still holds the nonce and both refs.
-  assert.deepEqual(Object.keys(splitPrivateReceipt(sample).private), ["attempt_id", "request_id", "nonce", "user_ref", "server_ref"]);
-  assert.ok(!Object.keys(splitPrivateReceipt(sample).shareable).some((k) => FIVE.includes(k)));
 });
 
 test("nothing is captured and no scenario runs unless Testbed's reply is matched for this attempt and request", async () => {
@@ -440,7 +459,12 @@ test("nothing is captured and no scenario runs unless Testbed's reply is matched
     "unrecognised state": gateFixture({ testbed: decisions.unrecognised_state }),
     "no reply": gateFixture({ testbed: null }),
     "transport failure": gateFixture({ testbed: new Error("ECONNRESET") }),
+    "observation not recorded": gateFixture({ observed: { state: "refused" } }),
+    "observation transport failure": gateFixture({ observed: new Error("ETIMEDOUT") }),
     "runner-side mismatch": gateFixture({ osFacts: { ...os, signerSha256: "0".repeat(64) } }),
+    "pkgFlags unread": gateFixture({ osFacts: { ...os, debuggable: null } }),
+    "codename unread": gateFixture({ osFacts: { ...os, deviceCodename: null, devicePreview: null } }),
+    "OS read failed": gateFixture({ osFacts: new Error("adb: device offline") }),
     "unclear receipt": gateFixture({ answer: { error: "no_answer", detail: "Error while accessing provider" } }),
     "missing pair refs": gateFixture({ answer: { receipt: { ...pairing.receipt, server_pair_ref: null } } }),
   };
@@ -449,18 +473,25 @@ test("nothing is captured and no scenario runs unless Testbed's reply is matched
     assert.equal(outcome.matched, false, name);
     assert.equal(outcome.scenarioRan, false, name);
     assert.deepEqual([fixture.counts.screenshots, fixture.counts.uiFiles, fixture.counts.scenarios], [0, 0, 0], name);
+    assert.notEqual(fixture.published.at(-1).state, "matched", name);
   }
-  assert.equal(cases["runner-side mismatch"].counts.testbedAsked, 0, "a runner-side mismatch never asks Testbed");
-  assert.equal(cases["matched for another request"].published.at(-1).testbed.state, "unknown");
-  assert.equal(cases["identity_mismatch"].published.at(-1).testbed.state, "identity_mismatch");
+  // A runner-side problem (including an unknown OS value) stops before anything is submitted.
+  for (const name of ["runner-side mismatch", "pkgFlags unread", "codename unread", "OS read failed", "unclear receipt", "missing pair refs"]) {
+    assert.deepEqual([cases[name].counts.observed, cases[name].counts.testbedAsked], [0, 0], name);
+  }
+  assert.equal(cases["pkgFlags unread"].published.at(-1).os_check, "fail");
+  assert.deepEqual(cases["OS read failed"].privateWrites[0].problems.slice(0, 1), ["os_facts_unavailable"]);
+  assert.deepEqual(cases["unclear receipt"].published.at(-1), { receipt_check: "fail", state: "unknown" });
+  assert.equal(cases["observation not recorded"].counts.testbedAsked, 0, "no decision without a recorded observation");
+  assert.equal(cases["matched for another request"].published.at(-1).state, "unknown");
+  assert.equal(cases["identity_mismatch"].published.at(-1).state, "identity_mismatch");
 
   const matched = gateFixture({ testbed: decisions.matched });
   const outcome = await matched.run();
   assert.deepEqual(outcome, { matched: true, scenarioRan: true });
   // Captures only after matched: the scenario's capture, not verify-signed-in's.
   assert.deepEqual([matched.counts.screenshots, matched.counts.uiFiles, matched.counts.scenarios], [1, 1, 1]);
-  // The public summary carries only the decision state, not its ids.
-  assert.deepEqual(matched.published.at(-1).testbed, { state: "matched" });
+  assert.equal(matched.published.at(-1).state, "matched");
 });
 
 test("Testbed decisions bind to this attempt and request; release mode accepts no local decision", () => {
@@ -474,9 +505,9 @@ test("Testbed decisions bind to this attempt and request; release mode accepts n
   assert.equal(guardedCapture(createCaptureGate({ identityMode: false }), () => { captured += 1; })("x"), true);
   assert.equal(captured, 1);
   const source = fs.readFileSync(new URL("./release_auto_login.mjs", import.meta.url), "utf8");
-  // No endpoint yet: the runner's decision source returns nothing, and reads no file/env decision.
-  const decisionFn = source.slice(source.indexOf("async function requestTestbedDecision()"), source.indexOf("function identityGate(request)"));
-  assert.match(decisionFn, /return null;/);
+  // No Testbed client in this change: observe/decide return nothing, and read no file/env decision.
+  const decisionFn = source.slice(source.indexOf("const testbedDecision = {"), source.indexOf("function identityGate(request)"));
+  assert.equal((decisionFn.match(/return null;/g) ?? []).length, 2);
   assert.doesNotMatch(decisionFn, /process\.env|readFileSync|option\(|flag\(/);
   assert.doesNotMatch(source, /VERDICT_FILE|DECISION_FILE/);
   // Every capture (step screenshots, failure shots) goes through the gate; the scenario only
