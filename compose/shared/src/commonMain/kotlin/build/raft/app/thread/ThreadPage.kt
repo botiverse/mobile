@@ -7528,8 +7528,8 @@ private fun SharedThreadRouteContentContent(
         // head's Source and History times fell back to the raw wire timestamp (1.17.0 build 3 smoke).
         val taskConversationTimeContext =
             timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext()
-        // The head pinned above the conversation off a phone, as its first row on a phone, and pulled
-        // down from the bar ([TaskHeadPlacement]).
+        // The head as the conversation's first row at every width, and pulled down from the bar
+        // ([TaskHeadPlacement]); the page's placement holds its effects.
         val taskConversationHeadRoute: (@Composable (placement: TaskHeadPlacement) -> Unit)? =
             if (taskConversationTask != null && taskConversationHeaderState != null && !taskConversationHeaderState.removed) {
                 { placement ->

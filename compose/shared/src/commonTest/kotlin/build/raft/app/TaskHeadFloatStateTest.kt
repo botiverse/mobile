@@ -2,7 +2,6 @@ package build.raft.app
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.unit.dp
 import build.raft.app.data.TaskConversationHeaderState
 import build.raft.app.data.parseSharedServerTasksPayload
 import build.raft.app.model.ChannelId
@@ -14,22 +13,22 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Task v2 on a phone (web `mobile-modal`; artin 2026-11-06, #proj-mobile:ec53b56a): the head is the
- * conversation's first row. While that row is in view the top bar has nothing to pull down; once it
+ * Task v2 (web `mobile-modal`; artin 2026-11-06, #proj-mobile:ec53b56a): the head is the
+ * conversation's first row, at every page size (never pinned, artin 2026-11-19). While that row is in view the top bar has nothing to pull down; once it
  * is out of view the bar summarizes the task and pulls the head down over the messages (slock
  * #11722). Nothing opens on entry, each way of closing the panel (web `TaskHeadPullDown`) puts it
  * back up, and the row coming back into view drops it.
  */
 class TaskHeadFloatStateTest {
-    /** A phone's head as the conversation opens: its row in view until the list says otherwise. */
-    private fun onAPhone(): TaskHeadScrollState = TaskHeadScrollState().apply { updatePhone(true) }
+    /** The head as the conversation opens (any page size): its row in view until the list says otherwise. */
+    private fun opened(): TaskHeadScrollState = TaskHeadScrollState()
 
-    /** A phone's head scrolled out of view (a long conversation at its newest message). */
-    private fun outOfView(): TaskHeadScrollState = onAPhone().apply { updateHeadInView(false) }
+    /** The head scrolled out of view (a long conversation at its newest message). */
+    private fun outOfView(): TaskHeadScrollState = opened().apply { updateHeadInView(false) }
 
     @Test
     fun `nothing is pulled down when the conversation opens`() {
-        val state = onAPhone()
+        val state = opened()
         assertTrue(state.headInView)
         assertFalse(state.collapsed)
         assertFalse(state.floatOpen)
@@ -42,47 +41,12 @@ class TaskHeadFloatStateTest {
 
     @Test
     fun `while the row is in view the bar has nothing to pull down`() {
-        val state = onAPhone()
+        val state = opened()
         state.toggleFloat()
         assertFalse(state.floatOpen)
         // It does not come down later on its own once the row goes out of view.
         state.updateHeadInView(false)
         assertFalse(state.floatOpen)
-    }
-
-    @Test
-    fun `off a phone the head is pinned and the bar has nothing to pull down`() {
-        val pinned = TaskHeadScrollState().apply { updatePhone(false) }
-        pinned.updateHeadInView(false)
-        assertFalse(pinned.collapsed)
-        pinned.toggleFloat()
-        assertFalse(pinned.floatOpen)
-        // Pulled down on a phone, then the page widens: the head is pinned, the panel goes.
-        val state = outOfView()
-        state.toggleFloat()
-        assertTrue(state.floatOpen)
-        state.updatePhone(false)
-        assertFalse(state.floatOpen)
-        state.updatePhone(true)
-        assertFalse(state.floatOpen)
-    }
-
-    @Test
-    fun `the head is pinned only on a wide page in a tall window`() {
-        // A phone, upright or on its side.
-        assertFalse(taskHeadPinned(pageWidth = 360.dp, windowHeight = 800.dp))
-        assertFalse(taskHeadPinned(pageWidth = 412.dp, windowHeight = 1400.dp))
-        // A tablet on its side (artin 2026-11-19): wide, but pinned the head took most of the height.
-        assertFalse(taskHeadPinned(pageWidth = 1280.dp, windowHeight = 800.dp))
-        assertFalse(taskHeadPinned(pageWidth = 1194.dp, windowHeight = 834.dp))
-        assertFalse(taskHeadPinned(pageWidth = 1280.dp, windowHeight = TaskHeadPinnedMinWindowHeight - 1.dp))
-        // Upright, or a tall desktop window: pinned, as web's desktop dialog.
-        assertTrue(taskHeadPinned(pageWidth = 800.dp, windowHeight = 1280.dp))
-        assertTrue(taskHeadPinned(pageWidth = 1366.dp, windowHeight = 1024.dp))
-        assertTrue(taskHeadPinned(pageWidth = TaskHeadPinnedMinWidth, windowHeight = TaskHeadPinnedMinWindowHeight))
-        // The window's height unknown: the width alone decides, as before.
-        assertTrue(taskHeadPinned(pageWidth = 800.dp, windowHeight = null))
-        assertFalse(taskHeadPinned(pageWidth = 360.dp, windowHeight = null))
     }
 
     @Test

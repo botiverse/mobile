@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -650,8 +649,8 @@ internal fun TaskPendingConversationPage(
             },
             titleContent = { TaskConversationBarTitle(chrome, Modifier.weight(1f)) },
         )
-        // The head, as on the conversation page: pinned above the page off a phone ([TaskHeadPlacement.Page]),
-        // its first row on a phone, and pulled down from the bar while that row is out of view.
+        // The head, as on the conversation page: the first row of what scrolls here, and pulled down
+        // from the bar while that row is out of view ([TaskHeadPlacement.Page] holds the page's effects).
         val headRoute: @Composable (TaskHeadPlacement) -> Unit = { placement ->
             TaskConversationHeadRoute(
                 task = task,
@@ -678,22 +677,19 @@ internal fun TaskPendingConversationPage(
         }
         val headRow = rememberTaskConversationHeadRow(headScrollState) { headRoute(TaskHeadPlacement.FirstRow) }
         Box(Modifier.fillMaxWidth().weight(1f)) {
-        BoxWithConstraints(Modifier.fillMaxSize().nestedScroll(headScrollState.connection)) {
-            val phone = !taskHeadPinned(maxWidth)
+        Box(Modifier.fillMaxSize().nestedScroll(headScrollState.connection)) {
             val pageScroll = rememberScrollState()
-            if (phone) {
-                // The head is the top of what scrolls here: in view while any of it is (and before it is measured).
-                LaunchedEffect(headScrollState, pageScroll) {
-                    snapshotFlow {
-                        val headHeight = headScrollState.rowHeadHeightPx
-                        headHeight <= 0 || pageScroll.value < headHeight
-                    }.collect { inView -> headScrollState.updateHeadInView(inView) }
-                }
+            // The head is the top of what scrolls here: in view while any of it is (and before it is measured).
+            LaunchedEffect(headScrollState, pageScroll) {
+                snapshotFlow {
+                    val headHeight = headScrollState.rowHeadHeightPx
+                    headHeight <= 0 || pageScroll.value < headHeight
+                }.collect { inView -> headScrollState.updateHeadInView(inView) }
             }
             Column(Modifier.fillMaxSize()) {
                 headRoute(TaskHeadPlacement.Page)
                 Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(pageScroll)) {
-                    if (phone) TaskConversationHeadRowContent(headRow)
+                    TaskConversationHeadRowContent(headRow)
                     // Where the messages go: the empty state, and a refused send's words.
                     Column(
                         Modifier.fillMaxWidth().padding(16.dp),

@@ -39,7 +39,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalDensity
-import build.raft.designsystem.tokens.RaftStroke
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.layout.boundsInRoot
@@ -48,7 +47,6 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.composed
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.SideEffect
@@ -85,8 +83,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.platform.LocalWindowInfo
 import build.raft.app.data.TaskConversationDetailsState
 import build.raft.app.data.formatTaskConversationRef
 import kotlinx.coroutines.flow.onStart
@@ -305,38 +301,6 @@ private fun TaskHistoryRow.toHeadRow(members: List<MemberProfile>, timeContext: 
 /** The description folds to three lines (web `DESCRIPTION_COLLAPSE_LINE_LIMIT`). */
 private const val TaskHeadDescriptionCollapsedLines = 3
 
-/** Narrower than this (a phone) the head is the conversation's first row ([TaskHeadScrollState]); wider it may stay pinned ([taskHeadPinned]). */
-internal val TaskHeadPinnedMinWidth = 600.dp
-
-/**
- * A window shorter than this keeps the head as the conversation's first row however wide it is
- * (artin 2026-11-19, a tablet in landscape: pinned, the head took most of the height and left the
- * messages a strip). Web pins the head only in its desktop dialog and lets it scroll away on a
- * phone for the same reason (`TaskConversationDialog`: "pinned, it left the replies a sliver of
- * the screen"). A head at rest (title, Add a description, the facts, History) is about 270dp tall
- * on a wide page; under this window height (about 780dp left between the top bar and the
- * composer) it would take more than a third of the conversation. The window's height, not the
- * page's, so the keyboard coming up never moves the head between the two places.
- */
-internal val TaskHeadPinnedMinWindowHeight = 960.dp
-
-/**
- * Whether the task head is pinned above the conversation ([TaskHeadPlacement.Page]) rather than
- * its first row: a page at least [TaskHeadPinnedMinWidth] wide in a window at least
- * [TaskHeadPinnedMinWindowHeight] tall (a tablet upright, a desktop window). Null
- * [windowHeight]: not known, the width alone decides.
- */
-internal fun taskHeadPinned(pageWidth: Dp, windowHeight: Dp?): Boolean =
-    pageWidth >= TaskHeadPinnedMinWidth && (windowHeight == null || windowHeight >= TaskHeadPinnedMinWindowHeight)
-
-/** [taskHeadPinned] for a page [pageWidth] wide in this window. */
-@Composable
-internal fun taskHeadPinned(pageWidth: Dp): Boolean {
-    val windowHeightPx = LocalWindowInfo.current.containerSize.height
-    val windowHeight = with(LocalDensity.current) { windowHeightPx.toDp() }
-    return taskHeadPinned(pageWidth, windowHeight.takeIf { windowHeightPx > 0 })
-}
-
 /**
  * Where the head of a phone's task conversation is (web `mobile-modal`, artin 2026-11-06,
  * #proj-mobile:ec53b56a): the conversation's first row, above where it begins ("Beginning of
@@ -351,8 +315,8 @@ internal fun taskHeadPinned(pageWidth: Dp): Boolean {
  * composer or the keyboard coming up ([closeFloat]), as soon as the reader scrolls the messages
  * ([connection]) and when the row comes back in view. It never opens by itself.
  *
- * A wide page in a tall window ([taskHeadPinned]) keeps the head pinned above the conversation and
- * none of this applies; a wide page in a short window (a tablet in landscape) is laid out as a phone's.
+ * Every page lays the head out this way, a tablet's and a desktop window's too (artin 2026-11-19:
+ * pinned above the conversation, the head took most of a landscape tablet's height).
  */
 @Stable
 internal class TaskHeadScrollState {
@@ -365,10 +329,6 @@ internal class TaskHeadScrollState {
     /** Delete task's confirmation is open (the ⋯ menu's Delete task, slock #14115). */
     internal var deleteConfirming by mutableStateOf(false)
 
-    /** The page lays the head out as a phone's: its first row, not pinned ([taskHeadPinned] false, [updatePhone]). */
-    var phone by mutableStateOf(false)
-        private set
-
     /**
      * Some of the head's row is on screen (web: the row intersects the timeline). True until the
      * list says otherwise, and again once the row is no longer in a list (web unmount).
@@ -379,9 +339,9 @@ internal class TaskHeadScrollState {
     /** The height of the head in its row, in px (the rest of the row is where the conversation begins). */
     internal var rowHeadHeightPx by mutableIntStateOf(0)
 
-    /** On a phone with the head's row out of view: the top bar summarizes the task. */
+    /** The head's row is out of view: the top bar summarizes the task. */
     val collapsed: Boolean
-        get() = phone && !headInView
+        get() = !headInView
 
     private var floatRequested by mutableStateOf(false)
 
@@ -402,12 +362,6 @@ internal class TaskHeadScrollState {
         val wasOpen = floatOpen
         floatRequested = false
         return wasOpen
-    }
-
-    /** [phone]: the head is the conversation's first row ([taskHeadPinned] false). Pinned, there is no panel. */
-    internal fun updatePhone(phone: Boolean) {
-        this.phone = phone
-        if (!phone) floatRequested = false
     }
 
     /** The head's row came into view or went out of it. Back in view, the head needs no panel (web). */
@@ -483,9 +437,9 @@ internal fun TaskConversationHeadRowContent(row: TaskConversationHeadRow, modifi
 }
 
 /**
- * A task conversation with no messages to list yet (loading, or empty): on a phone the head is
- * still its first row, above [state] (web: the parent slot over the replies' placeholder). In view
- * for as long as it is drawn here. Without a [row], or pinned ([taskHeadPinned]), [state] alone.
+ * A task conversation with no messages to list yet (loading, or empty): the head is still its
+ * first row, above [state] (web: the parent slot over the replies' placeholder). In view for as
+ * long as it is drawn here. Without a [row], [state] alone.
  */
 @Composable
 internal fun TaskConversationHeadAboveState(row: TaskConversationHeadRow?, state: @Composable () -> Unit) {
@@ -494,113 +448,46 @@ internal fun TaskConversationHeadAboveState(row: TaskConversationHeadRow?, state
         return
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        if (taskHeadPinned(maxWidth)) {
-            state()
-        } else {
-            SideEffect { row.scrollState.updateHeadInView(true) }
-            val pageHeight = maxHeight
-            // At least the page's height, so the state fills what the head leaves; a taller head scrolls.
-            val fill = if (pageHeight.value.isFinite()) Modifier.heightIn(min = pageHeight) else Modifier
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).then(fill)) {
-                TaskConversationHeadRowContent(row)
-                Box(Modifier.fillMaxWidth().weight(1f)) { state() }
-            }
+        SideEffect { row.scrollState.updateHeadInView(true) }
+        val pageHeight = maxHeight
+        // At least the page's height, so the state fills what the head leaves; a taller head scrolls.
+        val fill = if (pageHeight.value.isFinite()) Modifier.heightIn(min = pageHeight) else Modifier
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).then(fill)) {
+            TaskConversationHeadRowContent(row)
+            Box(Modifier.fillMaxWidth().weight(1f)) { state() }
         }
     }
 }
 
 /** Where [TaskConversationHeadRoute] draws the head. */
 internal enum class TaskHeadPlacement {
-    /** Above the conversation: pinned off a phone; on a phone no room (it tells the state the page is a phone's). */
+    /**
+     * The page's own placement: it takes no room above the conversation (the head is never pinned
+     * there) and holds the page's effects ([TaskConversationHeadPageEffects], Delete task's confirmation).
+     */
     Page,
 
-    /** On a phone: the conversation's first row ([TaskConversationHeadRowContent]). */
+    /** The conversation's first row ([TaskConversationHeadRowContent]). */
     FirstRow,
 
-    /** On a phone: pulled down from the top bar over the messages ([TaskHeadFloat]). */
+    /** Pulled down from the top bar over the messages ([TaskHeadFloat]). */
     PullDown,
 }
 
 /**
- * Task v2: the head of a task conversation (web `TaskModalHead` in `TaskConversationDialog`). In the
- * order the questions arise: what is this (the title, `text-headline` 600, and the description,
- * `text-subhead` muted, folded to three lines with Show More), what state is it in (the inline
- * facts: Status and Assignee as the editors they were, Source, Created by, Created at, Earlier
- * discussion), and what happened to it (History, folded, as on web).
- *
- * On a phone (narrower than [TaskHeadPinnedMinWidth], or any page in a window shorter than
- * [TaskHeadPinnedMinWindowHeight]: [taskHeadPinned] false) it takes no room above the conversation:
- * the head is the conversation's first row there ([TaskConversationHeadRowContent]) and is pulled
- * down from the top bar while that row is out of view ([TaskHeadFloat], [TaskHeadScrollState]);
- * this only tells the state the page is a phone's, and the keyboard coming up ([keyboardUp]) puts
- * the pulled-down head back up. Pinned ([taskHeadPinned]) it never takes more than
- * [maxHeightFraction] of the page: past that it scrolls inside itself (web's pinned head,
- * `max-h-[45%]`).
+ * Task v2: the page's side of a task conversation's head ([TaskHeadPlacement.Page]). The head
+ * itself (web `TaskModalHead`: the title and description, the inline facts, History) is never
+ * pinned above the conversation, at any width or height (artin 2026-11-19): it is the
+ * conversation's first row ([TaskConversationHeadRowContent]) and is pulled down from the top bar
+ * while that row is out of view ([TaskHeadFloat], [TaskHeadScrollState]). This takes no room; the
+ * keyboard coming up ([keyboardUp]) puts the pulled-down head back up.
  */
 @Composable
-internal fun TaskConversationHead(
-    model: TaskConversationHeadModel,
-    onSelectStatus: (TaskStatus) -> Unit,
-    onOpenAssignee: () -> Unit,
-    /** Null (also [onOpenEarlierDiscussion]): a plain fact, as on the pending task page. */
-    onOpenSource: (() -> Unit)?,
-    onOpenEarlierDiscussion: (() -> Unit)?,
-    /** Null: the creator is a plain fact. */
-    onOpenCreator: ((TaskHeadPerson) -> Unit)? = null,
-    modifier: Modifier = Modifier,
-    scrollState: TaskHeadScrollState = remember { TaskHeadScrollState() },
-    keyboardUp: Boolean = false,
-    initiallyHistoryOpen: Boolean = false,
-    initiallyDescriptionExpanded: Boolean = false,
-    maxHeightFraction: Float = 0.45f,
-    onRetryHistory: (() -> Unit)? = null,
-    /** Null: the title and description are plain text. */
-    editing: TaskHeadEditing? = null,
-) {
-    val colors = RaftTheme.colors
-    BoxWithConstraints(modifier.fillMaxWidth().background(colors.layerCanvas)) {
-        val pageHeight = maxHeight
-        val phone = !taskHeadPinned(maxWidth)
-        SideEffect { scrollState.updatePhone(phone) }
-        LaunchedEffect(phone, keyboardUp) {
-            // Typing: the composer has focus, so the pulled-down head goes back up.
-            if (phone && keyboardUp) scrollState.closeFloat()
-        }
-        if (!phone) {
-            val cap = if (pageHeight.value.isFinite()) pageHeight * maxHeightFraction else pageHeight
-            Column(Modifier.fillMaxWidth()) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = cap)
-                        .verticalScroll(rememberScrollState())
-                        .raftSafeAreaHorizontalPadding()
-                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
-                ) {
-                    TaskHeadContent(
-                        model = model,
-                        onSelectStatus = onSelectStatus,
-                        onOpenAssignee = onOpenAssignee,
-                        onOpenSource = onOpenSource,
-                        onOpenEarlierDiscussion = onOpenEarlierDiscussion,
-                        onOpenCreator = onOpenCreator,
-                        initiallyHistoryOpen = initiallyHistoryOpen,
-                        initiallyDescriptionExpanded = initiallyDescriptionExpanded,
-                        onRetryHistory = onRetryHistory,
-                        editing = editing,
-                    )
-                }
-                TaskHeadDivider()
-            }
-        }
+internal fun TaskConversationHeadPageEffects(scrollState: TaskHeadScrollState, keyboardUp: Boolean) {
+    LaunchedEffect(scrollState, keyboardUp) {
+        // Typing: the composer has focus, so the pulled-down head goes back up.
+        if (keyboardUp) scrollState.closeFloat()
     }
-}
-
-/** The top bar's seam (raft-ui panel head: `line-seam` flattened on the canvas), so both rules match. */
-@Composable
-private fun TaskHeadDivider() {
-    val colors = RaftTheme.colors
-    Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam.compositeOver(colors.layerCanvas)))
 }
 
 /**
@@ -731,7 +618,7 @@ private fun TaskHeadFacts(
     RaftDescriptionList(direction = RaftDescriptionListDirection.Inline) {
         Item(stringResource(Res.string.task_head_status)) {
             val anchor = LocalTaskHeadStatusMenuAnchor.current
-            Box(if (anchor != null) Modifier.onGloballyPositioned(anchor) else Modifier) {
+            Box(TaskHeadFactValueModifier.then(if (anchor != null) Modifier.onGloballyPositioned(anchor) else Modifier), contentAlignment = Alignment.CenterStart) {
                 // Web InlineBadgeEditor: the chip opens the status menu; a status the reader may not
                 // change is the plain badge, with no chevron.
                 RaftTaskStatusBadge(
@@ -756,32 +643,38 @@ private fun TaskHeadFacts(
             }
         }
         Item(stringResource(Res.string.task_head_assignee)) {
-            // An assignee the reader may not change is a plain fact, not a disabled picker.
-            if (!bar.assigneeEditable) {
-                RaftDescriptionValue(bar.assigneeName ?: unassigned, copyable = false, maxLines = 1)
-                return@Item
+            TaskHeadFactValue {
+                // An assignee the reader may not change is a plain fact, not a disabled picker.
+                if (!bar.assigneeEditable) {
+                    RaftDescriptionValue(bar.assigneeName ?: unassigned, copyable = false, maxLines = 1)
+                } else {
+                    // The assignee by display name, as web's v2 dialog shows it (`assigneeAsPerson`).
+                    RaftPickerTriggerButton(
+                        text = bar.assigneeName ?: unassigned,
+                        onClick = onOpenAssignee,
+                        hasValue = bar.assigneeName != null,
+                        enabled = bar.assigneeEditable,
+                        showIndicator = bar.assigneeEditable,
+                        modifier = Modifier.offset(x = TaskHeadChipHang).widthIn(max = 200.dp).testTag(TaskHeadAssigneeTestTag),
+                        // The status badge's box (22dp chip): web InlineBadgeEditor draws both as the same chip.
+                        size = RaftPickerTriggerSize.Chip,
+                    )
+                }
             }
-            // The assignee by display name, as web's v2 dialog shows it (`assigneeAsPerson`).
-            RaftPickerTriggerButton(
-                text = bar.assigneeName ?: unassigned,
-                onClick = onOpenAssignee,
-                hasValue = bar.assigneeName != null,
-                enabled = bar.assigneeEditable,
-                showIndicator = bar.assigneeEditable,
-                modifier = Modifier.offset(x = TaskHeadChipHang).widthIn(max = 200.dp).testTag(TaskHeadAssigneeTestTag),
-                // The status badge's box (22dp chip): web InlineBadgeEditor draws both as the same chip.
-                size = RaftPickerTriggerSize.Chip,
-            )
         }
         model.source?.let { source ->
             Item(stringResource(Res.string.task_head_source)) {
-                TaskHeadSourceValue(source, model.avatarServerId, onOpenSource)
+                TaskHeadFactValue { TaskHeadSourceValue(source, model.avatarServerId, onOpenSource) }
             }
         }
         Item(stringResource(Res.string.task_head_created_by)) {
-            TaskHeadCreatedByValue(model.createdBy ?: unknown, model.creator, model.avatarServerId, onOpenCreator)
+            TaskHeadFactValue { TaskHeadCreatedByValue(model.createdBy ?: unknown, model.creator, model.avatarServerId, onOpenCreator) }
         }
-        model.createdAt?.let { Item(stringResource(Res.string.task_head_created_at), it.localized(), mono = true, copyable = false) }
+        model.createdAt?.let { createdAt ->
+            Item(stringResource(Res.string.task_head_created_at)) {
+                TaskHeadFactValue { RaftDescriptionValue(createdAt.localized(), mono = true, copyable = false, maxLines = 1) }
+            }
+        }
         // Where it cannot open (the pending task page) it is a plain count, and hidden while unknown.
         model.earlierDiscussion?.takeIf { onOpenEarlierDiscussion != null || it.replyCount != null }?.let { earlier ->
             Item(stringResource(Res.string.task_head_earlier_discussion)) {
@@ -791,15 +684,34 @@ private fun TaskHeadFacts(
                         1 -> stringResource(Res.string.task_head_earlier_discussion_replies_one)
                         else -> stringResource(Res.string.task_head_earlier_discussion_replies_many, count)
                     }
-                TaskHeadLinkValue(
-                    contentDescription = stringResource(Res.string.task_head_earlier_discussion_open),
-                    onClick = onOpenEarlierDiscussion,
-                ) {
-                    RaftText(label, style = RaftTheme.typography.callout, color = RaftTheme.colors.foreground, maxLines = 1)
+                TaskHeadFactValue {
+                    TaskHeadLinkValue(
+                        contentDescription = stringResource(Res.string.task_head_earlier_discussion_open),
+                        onClick = onOpenEarlierDiscussion,
+                    ) {
+                        RaftText(label, style = RaftTheme.typography.callout, color = RaftTheme.colors.foreground, maxLines = 1)
+                    }
                 }
             }
         }
     }
+}
+
+/**
+ * Every fact's value has one height, its content centred in it: the status and assignee chips
+ * (22dp), a fact that leads somewhere ([TaskHeadLinkValue], its text line and 1dp above and
+ * below), a face and name, a plain value. Facts of different kinds on one line of the wrapping
+ * row then stand at one height with their labels on one line (artin 2026-11-19: Source and
+ * Earlier discussion sat lower than the facts beside them; a 48dp touch box made them taller).
+ */
+private val TaskHeadFactValueHeight = 24.dp
+
+private val TaskHeadFactValueModifier = Modifier.heightIn(min = TaskHeadFactValueHeight)
+
+/** A fact's value in its [TaskHeadFactValueHeight] box. */
+@Composable
+private fun TaskHeadFactValue(content: @Composable () -> Unit) {
+    Box(TaskHeadFactValueModifier, contentAlignment = Alignment.CenterStart) { content() }
 }
 
 internal const val TaskHeadStatusTestTag = "task-head-status"
@@ -847,8 +759,8 @@ private fun TaskHeadLinkValue(
     val pressed by source.collectIsPressedAsState()
     Row(
         Modifier
-            // A 48dp touch target with no visible padding (it overhangs the row).
-            .then(if (onClick != null) Modifier.minimumInteractiveComponentSize() else Modifier)
+            // No 48dp box: it would make this fact taller than the others on its line, so it sat
+            // lower than them. The row keeps its size; the platform widens a small target's touch area.
             // The padding hangs outward: the text starts where a plain fact's does.
             .offset(x = (-6).dp)
             .clip(shape)
@@ -860,7 +772,7 @@ private fun TaskHeadLinkValue(
                     Modifier
                 }
             )
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .padding(horizontal = 6.dp, vertical = 1.dp)
             .semantics(mergeDescendants = true) { if (onClick != null) this.contentDescription = contentDescription },
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1108,12 +1020,12 @@ internal fun TaskConversationHeadRoute(
     /** Null: the creator is a plain fact. */
     onOpenCreator: ((TaskHeadPerson) -> Unit)? = null,
     scrollState: TaskHeadScrollState,
-    /** The keyboard is up: on a phone the pulled-down head goes back up. */
+    /** The keyboard is up: the pulled-down head goes back up. */
     keyboardUp: Boolean = false,
     onRetryHistory: (() -> Unit)? = null,
     /** False: status and assignee are plain facts ([taskConversationHeadModel]). */
     editable: Boolean = true,
-    /** Above the conversation (pinned off a phone), its first row on a phone, or pulled down from the bar. */
+    /** The page's effects (no room above the conversation), its first row, or pulled down from the bar. */
     placement: TaskHeadPlacement = TaskHeadPlacement.Page,
     /** The task's server: the head's faces read its member directory. */
     serverId: String? = null,
@@ -1147,7 +1059,7 @@ internal fun TaskConversationHeadRoute(
     var assigneeQuery by remember(task.id) { mutableStateOf("") }
     val model = task.taskConversationHeadModel(state, details, statusUpdating, assigneeCandidates, timeContext, editable, serverId, canWriteChannel)
     // The pulled-down head closes when the keyboard comes up, so the text is edited in the head's
-    // row (a phone) or the pinned head (wider), not there.
+    // row, not there.
     val editing =
         onAmend?.takeIf { editable && task.canAmendText(canWriteChannel) && placement != TaskHeadPlacement.PullDown }?.let { send ->
             TaskHeadEditing(scrollState.edit, task, send)
@@ -1180,18 +1092,7 @@ internal fun TaskConversationHeadRoute(
             }
             // The panel's frame without the panel: the head reads the same in the row as pulled down.
             TaskHeadPlacement.FirstRow -> TaskHeadFrame(content)
-            TaskHeadPlacement.Page -> TaskConversationHead(
-                model = model,
-                onSelectStatus = onSelectStatus,
-                onOpenAssignee = onOpenAssignee,
-                onOpenSource = onOpenSource,
-                onOpenEarlierDiscussion = onOpenEarlierDiscussion,
-                onOpenCreator = onOpenCreator,
-                scrollState = scrollState,
-                keyboardUp = keyboardUp,
-                onRetryHistory = onRetryHistory,
-                editing = editing,
-            )
+            TaskHeadPlacement.Page -> TaskConversationHeadPageEffects(scrollState, keyboardUp)
         }
         if (assigneeSheetOpen && model.bar.assigneeEditable) {
             TaskConversationAssigneeSheet(
