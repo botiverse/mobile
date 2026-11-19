@@ -1,5 +1,10 @@
 package build.raft.app
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.SettingsServerSidebarPinnedItem
@@ -59,6 +64,54 @@ internal class ActivityArrivalVisit {
         if (claimed || !loaded) return false
         claimed = true
         return true
+    }
+
+    /** The visit ended (the surface went inactive): the next active, loaded list claims again. */
+    fun leave() {
+        claimed = false
+    }
+}
+
+/**
+ * The Activity surface's visits, one per server, held by the surface above its list (xxchan, mobile
+ * #193). The wide list leaves composition while it is collapsed and a conversation is open
+ * ([RaftAdaptiveListDetailSplit]), and comes back when Back closes the conversation: a visit
+ * remembered inside the list started afresh there, claimed the arrival again and reopened the
+ * conversation Back had just closed, so Back could never leave it.
+ */
+internal class ActivityArrivalVisits {
+    private val byServer = mutableMapOf<String, ActivityArrivalVisit>()
+
+    /** [serverId]'s visit (the list's activity server, as the list keyed it before). */
+    fun of(serverId: String): ActivityArrivalVisit = byServer.getOrPut(serverId) { ActivityArrivalVisit() }
+
+    /** The surface went inactive: every visit ended, also while the list is not composed. */
+    fun leave() {
+        byServer.values.forEach(ActivityArrivalVisit::leave)
+    }
+}
+
+/** [ActivityArrivalVisits] for a surface; they end whenever [active] turns false. */
+@Composable
+internal fun rememberActivityArrivalVisits(active: Boolean): ActivityArrivalVisits {
+    val visits = remember { ActivityArrivalVisits() }
+    LaunchedEffect(visits, active) {
+        if (!active) visits.leave()
+    }
+    return visits
+}
+
+/** Claims [visit]'s arrival once the list is [active] and [loaded], then runs [reopen] (at most once per visit). */
+@Composable
+internal fun ActivityArrivalReopenEffect(
+    visit: ActivityArrivalVisit,
+    active: Boolean,
+    loaded: Boolean,
+    reopen: () -> Unit,
+) {
+    val latestReopen by rememberUpdatedState(reopen)
+    LaunchedEffect(visit, active, loaded) {
+        if (visit.claim(active = active, loaded = loaded)) latestReopen()
     }
 }
 

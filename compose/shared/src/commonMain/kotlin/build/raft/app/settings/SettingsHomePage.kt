@@ -6280,7 +6280,7 @@ private fun RaftAppShellReadyContent(
                     // opened thread renders in the shared workspace detail slot at right —
                     // same canonical-identity OpenDetail path the Home tab uses, so compact
                     // keeps the standalone push behavior unchanged.
-                    val activityListPane: @Composable (Boolean) -> Unit = { listActive ->
+                    val activityListPane: @Composable (Boolean, ActivityArrivalVisits) -> Unit = { listActive, arrivalVisits ->
                         SharedHomeActivityScreen(
                             bridge = bridge,
                             authStore = shellAuthStore,
@@ -6303,15 +6303,20 @@ private fun RaftAppShellReadyContent(
                             // The two-pane layout owns the highlight: none once the detail closes.
                             externalSelectionOwned = navRailActive,
                             mainTab = true,
-                            scrollToTopRequest = tabScrollToTopRequests.activity
+                            scrollToTopRequest = tabScrollToTopRequests.activity,
+                            arrivalVisits = arrivalVisits,
                         )
                     }
                     val activityTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         PerformanceSceneEffect(bridge, "kuikly_activity", active = active)
+                        // mobile #193: the visit outlives the list, which leaves composition while
+                        // collapsed beside an open conversation; Back that closes the conversation
+                        // brings the list back without reopening it.
+                        val activityArrivalVisits = rememberActivityArrivalVisits(active)
                         adaptiveSplitListDetail(
                             desktopModeOnLargeScreen,
                             active,
-                            activityListPane,
+                            { listActive -> activityListPane(listActive, activityArrivalVisits) },
                             true,
                             // Web Activity is two columns at every desktop width (slock #10842).
                             RaftListPaneKind.List,

@@ -204,6 +204,11 @@ internal fun SharedHomeActivityScreen(
     mainTab: Boolean = false,
     // App-shell bottom-tab double tap generation (AppShellTabScrollToTopRequests.activity).
     scrollToTopRequest: Int = 0,
+    /**
+     * The Activity surface's visits ([rememberActivityArrivalVisits]) when the host keeps them above
+     * a list that can leave composition (the wide split's collapsed list); null keeps one here.
+     */
+    arrivalVisits: ActivityArrivalVisits? = null,
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -579,21 +584,25 @@ internal fun SharedHomeActivityScreen(
     // Wide layout (the list-detail host owns the selection): once per visit, after the list loads,
     // reopen the conversation opened last time on this server when it is still listed and nothing
     // is open beside the list (ActivityArrivalReopen.kt). Not a pick: no MarkRead, no prewarm.
-    val arrivalVisit = remember(activitySummaryServerId) { ActivityArrivalVisit() }
-    val latestOpenActivityItem by rememberUpdatedState(openActivityItem)
+    // The visit is the host's when it holds them ([arrivalVisits]): the wide list leaves composition
+    // while collapsed beside an open conversation, and a visit remembered here would start afresh
+    // when Back brings the list back, reopening what Back just closed (mobile #193).
+    val visit =
+        remember(arrivalVisits, activitySummaryServerId) {
+            arrivalVisits?.of(activitySummaryServerId.value) ?: ActivityArrivalVisit()
+        }
     val arrivalItems = safeOpenProjectedState.snapshot?.items
     val arrivalLoaded = state.loaded && arrivalItems != null && !conversationListPending
-    LaunchedEffect(arrivalVisit, active, arrivalLoaded) {
-        if (!arrivalVisit.claim(active = active, loaded = arrivalLoaded)) return@LaunchedEffect
+    ActivityArrivalReopenEffect(visit = visit, active = active, loaded = arrivalLoaded) {
         val item =
             activityArrivalReopenTarget(
                 wide = externalSelectionOwned,
                 somethingOpen = externalSelectedThreadId != null,
                 items = arrivalItems.orEmpty(),
                 lastOpenedKey = lastOpenedStore.read(activitySummaryServerId.value),
-            ) ?: return@LaunchedEffect
+            ) ?: return@ActivityArrivalReopenEffect
         bridge.log("shared_activity_arrival_reopen kind=${item.kind.name} unread=${item.unreadCount}")
-        latestOpenActivityItem(item)
+        openActivityItem(item)
     }
     // web: pinning or unpinning while Pinned is shown reloads it (the server resolves the pins).
     val pinnedScopeReloadEdge = remember(activitySummaryServerId) { ActivityPinnedScopeReloadEdge() }
