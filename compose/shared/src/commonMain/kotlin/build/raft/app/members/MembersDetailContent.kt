@@ -26,6 +26,9 @@ import build.raft.app.data.canStopAgentTurn
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentArchiveWorkspaceChoice
 import build.raft.app.data.AgentIssueReportResult
+import build.raft.app.data.RaftPrivacyMode
+import build.raft.app.data.RaftTelemetryPrivacy
+import build.raft.app.data.agentIssueReportAllowed
 import build.raft.app.data.AgentIssueTranscriptRequestState
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentScopeSet
@@ -81,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import build.raft.app.data.map
 import kotlinx.coroutines.launch
 import androidx.compose.ui.semantics.selected
@@ -301,7 +305,13 @@ internal class MembersAgentDetailPresentation(
      * component pages (VisualTestingCases) seed [MembersAgentDetailVisualLiveActivityDetail]; the
      * real-route captures (react-provider.spec) show the agent's own `activityDetail`.
      */
-    val visualLiveActivityDetail: String? = MembersAgentDetailVisualLiveActivityDetail
+    val visualLiveActivityDetail: String? = MembersAgentDetailVisualLiveActivityDetail,
+    /**
+     * `RAFT_PRIVACY_MODE` for the current environment (process-wide [RaftTelemetryPrivacy]): Report
+     * issue is offered, and its bundle sent, only while it is [RaftPrivacyMode.Off]. Visual
+     * fixtures pin it off.
+     */
+    val privacyMode: StateFlow<RaftPrivacyMode> = RaftTelemetryPrivacy.state
 )
 
 @Composable
@@ -545,6 +555,10 @@ internal fun MembersDetailContent(
         mutableStateOf(false)
     }
     var reportIssueDialogOpen by remember(member.id.value) { mutableStateOf(false) }
+    // Web AgentDetailPanel / ReportIssueDialog (`isPrivacyModeOn()`): no entry and no upload until
+    // this environment's client config has answered "off".
+    val privacyMode by presentation.privacyMode.collectAsState()
+    val reportIssueOffered = agentIssueReportAllowed(privacyMode)
     var issueReportReceipt by remember(member.id.value) { mutableStateOf<AgentIssueReportResult?>(null) }
     var issueReportReferenceCopied by remember(member.id.value) { mutableStateOf(false) }
     var issueTicketRetrying by remember(member.id.value) { mutableStateOf(false) }
@@ -875,9 +889,17 @@ internal fun MembersDetailContent(
                 )
         }
     }
+    fun openReportIssue() {
+        if (!agentIssueReportAllowed(presentation.privacyMode.value)) return
+        issueReportReceipt = null
+        issueReportReferenceCopied = false
+        reportIssueDialogOpen = true
+    }
     fun submitIssueReport(selection: MembersAgentIssueReportSelection, canIncludeMachineLog: Boolean) {
         val callback = onReportAgentIssue
         if (diagnosticInFlight != null || issueReportSubmitting) return
+        // The dialog was open when the answer turned "on" (or the environment changed): never send.
+        if (!agentIssueReportAllowed(presentation.privacyMode.value)) return
         if (agentDetailActions == null && callback == null) {
             onUnavailableAction(issueReportingUnavailable)
             return
@@ -1233,11 +1255,7 @@ internal fun MembersDetailContent(
                                                 onOpenRestartReset = { openRestartResetDialog() },
                                                 onCopyDiagnostics = { copyDiagnostics() },
                                                 onCopyText = { text -> agentDetailActions?.copyDiagnostics(text) ?: Unit },
-                                                onReportIssue = {
-                                                    issueReportReceipt = null
-                                                    issueReportReferenceCopied = false
-                                                    reportIssueDialogOpen = true
-                                                },
+                                                onReportIssue = { openReportIssue() },
                                                 onOpenComputer = onOpenComputer,
                                                 onStopTurn = profileStopTurn,
                                                 stopTurnInProgress = turnStopState.inFlightAgentId != null,
@@ -1381,11 +1399,8 @@ internal fun MembersDetailContent(
                                         onRunLifecycleAction = { runLifecycleAction(it) },
                                         onOpenRestartReset = { openRestartResetDialog() },
                                         onCopyDiagnostics = { copyDiagnostics() },
-                                        onReportIssue = {
-                                            issueReportReceipt = null
-                                            issueReportReferenceCopied = false
-                                            reportIssueDialogOpen = true
-                                        },
+                                        onReportIssue = { openReportIssue() },
+                                        reportIssueOffered = reportIssueOffered,
                                         modifier = Modifier.padding(horizontal = MembersAgentProfileInset)
                                     )
                                 }
@@ -1526,6 +1541,7 @@ internal fun MembersDetailContent(
                         membersAgentIssueReportErrorMessage(error, error.userFacingMessage(errorStrings))
                     },
                 errorTraceId = reportState?.error?.traceId,
+                privacyMode = privacyMode,
                 onSubmit = { selection -> submitIssueReport(selection, canIncludeMachineLog) },
                 onDismiss = {
                     if (reportState?.inProgress != true) {

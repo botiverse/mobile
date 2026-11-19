@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -26,7 +27,10 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.raftCardSurface
 import build.raft.app.data.AgentIssueReportResult
+import build.raft.app.data.AGENT_ISSUE_REPORT_PRIVACY_MODE_ON
+import build.raft.app.data.AGENT_ISSUE_REPORT_PRIVACY_MODE_UNKNOWN
 import build.raft.app.data.AgentIssueTranscriptRequestState
+import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.ScreenError
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
@@ -75,6 +79,12 @@ internal fun MembersAgentIssueReportDialog(
     busy: Boolean,
     errorMessage: String?,
     errorTraceId: String? = null,
+    /**
+     * Privacy mode now (web ReportIssueDialog `isPrivacyModeOn()`). The entry is only offered when
+     * it is off; if it turns on (or unknown, after an environment change) while the panel is open,
+     * the panel says why and Submit stays disabled, so the bundle is never sent.
+     */
+    privacyMode: RaftPrivacyMode = RaftPrivacyMode.Off,
     onSubmit: (MembersAgentIssueReportSelection) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -97,7 +107,10 @@ internal fun MembersAgentIssueReportDialog(
         } else {
             stringResource(Res.string.member_report_issue_submit)
         }
-    val commit: () -> Unit = {
+    val privacyNotice = membersAgentIssueReportPrivacyNotice(privacyMode)
+    val canCommit = consented && privacyNotice == null
+    val commit: () -> Unit = commit@{
+        if (privacyNotice != null) return@commit
         onSubmit(
             MembersAgentIssueReportSelection(
                 description = description.text,
@@ -120,13 +133,23 @@ internal fun MembersAgentIssueReportDialog(
         presentation = RaftDialogPresentation.Sheet,
         commitLabel = commitLabel,
         onCommit = commit,
-        commitEnabled = consented,
+        commitEnabled = canCommit,
         commitLoading = busy
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
             verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
         ) {
+            privacyNotice?.let { notice ->
+                item {
+                    // First, so it is seen before anything is filled in: why nothing can be sent.
+                    RaftBanner(
+                        description = notice,
+                        status = RaftBannerStatus.Warning,
+                        modifier = Modifier.testTag(MEMBERS_AGENT_ISSUE_PRIVACY_NOTICE_TAG)
+                    )
+                }
+            }
             item {
                 RaftCard(modifier = Modifier.fillMaxWidth()) {
                     RaftSectionEyebrow(text = stringResource(Res.string.member_report_issue_agent_label))
@@ -235,7 +258,7 @@ internal fun MembersAgentIssueReportDialog(
                     )
                 }
             }
-            errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
+            errorMessage?.takeIf { it.isNotBlank() && it != privacyNotice }?.let { message ->
                 item {
                     // Web: the error as is in a warning Banner; the trace ID under it (AGENTS.md).
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -258,7 +281,7 @@ internal fun MembersAgentIssueReportDialog(
             )
             RaftButton(
                 text = commitLabel,
-                enabled = consented,
+                enabled = canCommit,
                 loading = busy,
                 // Web ReportIssueDialog submits with the pink primary action, lg in the footer.
                 variant = RaftButtonVariant.Primary,
@@ -287,6 +310,8 @@ internal fun membersAgentIssueReportErrorMessage(error: ScreenError, detail: Str
             code.startsWith("agent_issue_report_complete_failed") -> Res.string.member_report_issue_step_complete_failed
             else -> null
         }
+    if (code == AGENT_ISSUE_REPORT_PRIVACY_MODE_ON) return stringResource(Res.string.member_report_issue_privacy_mode_on)
+    if (code == AGENT_ISSUE_REPORT_PRIVACY_MODE_UNKNOWN) return stringResource(Res.string.member_report_issue_privacy_mode_unknown)
     return when {
         step != null -> "${stringResource(step)}: $detail"
         code == "agent_issue_report_server_mismatch" -> stringResource(Res.string.member_report_issue_server_unavailable)
@@ -294,6 +319,17 @@ internal fun membersAgentIssueReportErrorMessage(error: ScreenError, detail: Str
         else -> detail
     }
 }
+
+internal const val MEMBERS_AGENT_ISSUE_PRIVACY_NOTICE_TAG = "members-agent-issue-privacy-notice"
+
+/** Why the open panel can't send (null when privacy mode is off and it may). */
+@Composable
+internal fun membersAgentIssueReportPrivacyNotice(mode: RaftPrivacyMode): String? =
+    when (mode) {
+        RaftPrivacyMode.Off -> null
+        RaftPrivacyMode.On -> stringResource(Res.string.member_report_issue_privacy_mode_on)
+        RaftPrivacyMode.Unknown -> stringResource(Res.string.member_report_issue_privacy_mode_unknown)
+    }
 
 /** The disclosure with its `<strong>` span (web `agent.reportIssue.sensitiveDataWarning`). */
 internal fun membersAgentIssueDisclosure(template: String, strong: String): AnnotatedString {

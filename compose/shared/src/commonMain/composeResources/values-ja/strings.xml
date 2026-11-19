@@ -1529,6 +1529,8 @@
     <string name="member_report_issue_step_complete_failed">レポートの確定に失敗しました</string>
     <string name="member_report_issue_submit_failed">問題の報告を送信できませんでした</string>
     <string name="member_report_issue_server_unavailable">現在のサーバーを利用できません。</string>
+    <string name="member_report_issue_privacy_mode_on">このサーバーはプライバシーモードで動作しているため、レポートを Raft に送信できません。何もアップロードされていません。</string>
+    <string name="member_report_issue_privacy_mode_unknown">まだ送信できません：このサーバーがプライバシーモードかどうかをまだ返していません。何もアップロードされていません。</string>
     <string name="member_report_issue_success_title">レポートを送信しました</string>
     <string name="member_report_issue_success_body">フィードバックのエクスポートをアップロードしました。</string>
     <string name="member_report_issue_success_hint">このバンドルには、問題の説明と選択したクライアント側のコンテキストが含まれます。</string>

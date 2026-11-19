@@ -1843,6 +1843,11 @@ internal fun MembersAgentProfileActionsSection(
     onOpenRestartReset: () -> Unit,
     onCopyDiagnostics: () -> Unit,
     onReportIssue: () -> Unit,
+    /**
+     * Web AgentDetailPanel: Report issue only once the server's client config answered privacy
+     * mode "off" (its bundle goes to Raft's trace-upload worker); hidden while unknown or on.
+     */
+    reportIssueOffered: Boolean,
     /** Web `computerOffline` (the agent's machine is known and offline): Restart / reset is not offered. */
     computerOffline: Boolean = false,
     modifier: Modifier = Modifier
@@ -1908,14 +1913,16 @@ internal fun MembersAgentProfileActionsSection(
                 risk = null,
                 onClick = onCopyDiagnostics
             )
-            MembersAgentActionRow(
-                label = if (reportState?.inProgress == true) stringResource(Res.string.member_action_reporting) else stringResource(Res.string.member_action_report_issue),
-                iconName = RaftLucideIconName.Bug,
-                enabled = !diagnosticBusy,
-                divider = true,
-                risk = null,
-                onClick = onReportIssue
-            )
+            if (reportIssueOffered) {
+                MembersAgentActionRow(
+                    label = if (reportState?.inProgress == true) stringResource(Res.string.member_action_reporting) else stringResource(Res.string.member_action_report_issue),
+                    iconName = RaftLucideIconName.Bug,
+                    enabled = !diagnosticBusy,
+                    divider = true,
+                    risk = null,
+                    onClick = onReportIssue
+                )
+            }
             MembersAgentActionRow(
                 label = if (lifecycleInFlight == MembersAgentLifecycleAction.Delete.actionKey) stringResource(Res.string.member_action_deleting) else stringResource(Res.string.member_action_delete_agent),
                 iconName = RaftLucideIconName.Archive,

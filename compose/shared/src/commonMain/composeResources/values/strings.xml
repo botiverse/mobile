@@ -1523,6 +1523,8 @@
     <string name="member_report_issue_step_complete_failed">Finalize report failed</string>
     <string name="member_report_issue_submit_failed">Failed to submit issue report</string>
     <string name="member_report_issue_server_unavailable">Current server is unavailable.</string>
+    <string name="member_report_issue_privacy_mode_on">This server runs in privacy mode, so the report can't be sent to Raft. Nothing has been uploaded.</string>
+    <string name="member_report_issue_privacy_mode_unknown">Can't send yet: this server hasn't said whether privacy mode is on. Nothing has been uploaded.</string>
     <string name="member_report_issue_success_title">Report submitted</string>
     <string name="member_report_issue_success_body">Feedback export uploaded.</string>
     <string name="member_report_issue_success_hint">The bundle includes the issue description plus the client-side context you selected.</string>

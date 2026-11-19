@@ -1522,6 +1522,8 @@
     <string name="member_report_issue_step_complete_failed">신고를 마무리하지 못했어요</string>
     <string name="member_report_issue_submit_failed">문제 신고를 제출하지 못했어요</string>
     <string name="member_report_issue_server_unavailable">현재 서버를 사용할 수 없어요.</string>
+    <string name="member_report_issue_privacy_mode_on">이 서버는 개인정보 보호 모드로 실행 중이어서 보고서를 Raft에 보낼 수 없어요. 업로드된 내용은 없어요.</string>
+    <string name="member_report_issue_privacy_mode_unknown">아직 보낼 수 없어요: 이 서버가 개인정보 보호 모드 여부를 아직 알려 주지 않았어요. 업로드된 내용은 없어요.</string>
     <string name="member_report_issue_success_title">신고를 제출했어요</string>
     <string name="member_report_issue_success_body">피드백 내보내기를 업로드했어요.</string>
     <string name="member_report_issue_success_hint">번들에는 문제 설명과 선택한 클라이언트 측 컨텍스트가 포함돼요.</string>

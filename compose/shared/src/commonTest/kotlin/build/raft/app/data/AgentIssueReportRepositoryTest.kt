@@ -218,11 +218,64 @@ class AgentIssueReportRepositoryTest {
         assertTrue(network.calls.isEmpty())
     }
 
+    @Test
+    fun privacyModeGateSendsOnlyWhenTheServerAnsweredOff() {
+        // privacy-mode.md + web ReportIssueDialog: the bundle goes to Raft's trace-upload worker.
+        val cases =
+            listOf(
+                Triple(RaftPrivacyMode.Off, true, null),
+                Triple(RaftPrivacyMode.On, false, AGENT_ISSUE_REPORT_PRIVACY_MODE_ON),
+                Triple(RaftPrivacyMode.Unknown, false, AGENT_ISSUE_REPORT_PRIVACY_MODE_UNKNOWN),
+            )
+        for ((mode, allowed, code) in cases) {
+            assertEquals(allowed, agentIssueReportAllowed(mode), "allowed for $mode")
+            val error = agentIssueReportPrivacyError(mode)
+            assertEquals(code, error?.code, "error for $mode")
+            if (error != null) assertFalse(error.retryable, "$mode is not retried")
+        }
+    }
+
+    @Test
+    fun privacyModeOnOrUnknownSendsNothing() = runTest {
+        for ((mode, code) in
+            listOf(
+                RaftPrivacyMode.On to AGENT_ISSUE_REPORT_PRIVACY_MODE_ON,
+                RaftPrivacyMode.Unknown to AGENT_ISSUE_REPORT_PRIVACY_MODE_UNKNOWN,
+            )) {
+            val network = RecordingAgentIssueNetworkClient()
+
+            val result = repository(network, privacyMode = { mode }).submit(submission())
+
+            val error = assertIs<DataResult.Error>(result, "$mode")
+            assertEquals(code, error.error.code)
+            assertEquals(emptyList(), network.calls, "$mode: no request at all, not even the messages read")
+        }
+    }
+
+    @Test
+    fun privacyModeTurningOnMidSubmitStopsBeforeTheWorker() = runTest {
+        // Off when the panel submits, on by the time the messages and attestation are back (an
+        // environment change, or the late "on" after the 10 s timeout).
+        val network = RecordingAgentIssueNetworkClient()
+        var reads = 0
+        val repository = repository(network, privacyMode = { if (reads++ == 0) RaftPrivacyMode.Off else RaftPrivacyMode.On })
+
+        val result = repository.submit(submission())
+
+        assertEquals(AGENT_ISSUE_REPORT_PRIVACY_MODE_ON, assertIs<DataResult.Error>(result).error.code)
+        assertEquals(
+            listOf("GET messages/channel/dm-1?limit=100", "POST servers/server-1/scope-attestation"),
+            network.calls,
+            "nothing reaches the trace-upload worker"
+        )
+    }
+
     private fun repository(
         network: RecordingAgentIssueNetworkClient,
         sha256Hex: (String) -> String = { "a".repeat(64) },
         feedbackClientKind: String = "",
-        feedbackClientVersion: String = ""
+        feedbackClientVersion: String = "",
+        privacyMode: () -> RaftPrivacyMode = { RaftPrivacyMode.Off }
     ): AgentIssueReportRepository =
         AgentIssueReportRepository(
             sessionStore = InMemoryRaftAuthSessionStore(session),
@@ -233,7 +286,8 @@ class AgentIssueReportRepositoryTest {
             nowMillis = { 1234L },
             newSubmissionId = { "submission-1" },
             feedbackClientKind = feedbackClientKind,
-            feedbackClientVersion = feedbackClientVersion
+            feedbackClientVersion = feedbackClientVersion,
+            privacyMode = privacyMode
         )
 
     private fun submission(
