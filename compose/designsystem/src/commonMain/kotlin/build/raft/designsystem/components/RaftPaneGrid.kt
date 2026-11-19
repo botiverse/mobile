@@ -350,7 +350,7 @@ private fun Modifier.raftPaneGridContentMinWidth(minDp: Float): Modifier =
  *   an image, a video ([raftPaneGridNoFade]), which is hard-clipped at the column's edge: fading it, dark or light,
  *   only shows a band of the surface over it.
  * - Only between panes: the last pane in the row, cut by the screen's end edge, is cut hard, text and lists too
- *   (artin and Lagoon, 2026-11-19). Nothing goes on past the screen's edge, so a fade there only dims content.
+ *   (artin and Lagoon, 2026-11-19). The screen's edge already reads as a cut, so a fade there only dims content.
  */
 private fun Modifier.raftPaneGridClipFade(clipped: Boolean, bands: RaftPaneGridHeadBands, surface: Color): Modifier =
     onPlaced { bands.box = it }
