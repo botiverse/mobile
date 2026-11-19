@@ -7,6 +7,7 @@ import build.raft.app.data.parseArtifactLinkTarget
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageId
+import build.raft.app.markdown.buildMarkdownTreeOrPlainText
 import build.raft.app.raftLogWarn
 import build.raft.app.raftSchemeLinkToWebLink
 import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
@@ -152,7 +153,7 @@ internal fun raftMessageVisibleLinks(content: String): List<RaftVisibleLink> {
 private fun scanRaftLinks(content: String, labelled: Boolean, onLink: (href: String, node: ASTNode, bare: Boolean) -> Unit) {
     if ("://" !in content) return
     val text = content.take(MESSAGE_LINK_SCAN_LIMIT)
-    val tree = markdownParser.buildMarkdownTreeFromString(text)
+    val tree = markdownParser.buildMarkdownTreeOrPlainText(text, source = "message_links")
     val definitions = HashMap<String, String>()
     fun collect(node: ASTNode) {
         if (node.type == MarkdownElementTypes.LINK_DEFINITION) {
@@ -481,7 +482,7 @@ internal fun extractFirstQuotedRaftPermalink(
     webBaseUrl: String? = null,
 ): ExtractedQuotedPermalink? {
     if (currentServerSlug == null || !("http" in content || "raft://" in content)) return null
-    val tree = markdownParser.buildMarkdownTreeFromString(content)
+    val tree = markdownParser.buildMarkdownTreeOrPlainText(content, source = "quoted_permalink")
     val code = ArrayList<IntRange>()
     fun collect(node: ASTNode) {
         when (node.type) {

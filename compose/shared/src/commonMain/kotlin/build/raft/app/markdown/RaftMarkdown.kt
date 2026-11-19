@@ -648,7 +648,7 @@ private fun String.decodeThreadEscapedLineBreaks(): String =
  */
 private fun String.threadEscapedLineBreakLiteralRanges(): List<IntRange> {
     if (!contains('$') && !contains('`')) return emptyList()
-    val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(this)
+    val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeOrPlainText(this, source = "escaped_line_breaks")
     val ranges = mutableListOf<IntRange>()
     fun visit(node: ASTNode) {
         when (node.type) {
