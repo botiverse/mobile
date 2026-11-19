@@ -704,10 +704,11 @@ function installedPackageFacts() {
   const devicePreview = deviceCodename == null ? null : deviceCodename !== "REL";
   const apkPaths = shell(`pm path ${PKG}`, { allowFailure: true }).split("\n").map((l) => l.trim()).filter((l) => l.startsWith("package:")).map((l) => l.slice(8));
   const base = apkPaths.find((p) => p.endsWith("/base.apk"));
-  const versionCode = /versionCode=(\d+)/.exec(dump)?.[1];
+  // Testbed takes the OS reading as the original decimal string (only the receipt's is a number).
+  const versionCode = /versionCode=([1-9][0-9]{0,19})\b/.exec(dump)?.[1] ?? null;
   const facts = {
     packageName: PKG,
-    versionCode: versionCode ? Number(versionCode) : null,
+    versionCode,
     debuggable: flags == null ? null : /\bDEBUGGABLE\b/.test(flags),
     deviceSdk,
     deviceCodename,
@@ -789,7 +790,11 @@ async function main() {
   let webSession = null;
   let callbackSent = false;
   let logcat = null;
-  const logcatFile = path.join(OUT, ".logcat-raw.txt");
+  // --identity-receipt: the app-login log lives only in a private runner-temp directory (never
+  // under --out, which is uploaded) and only its fixed exchange outcome is published.
+  const logcatDir = IDENTITY_RECEIPT ? fs.mkdtempSync(path.join(os.tmpdir(), "release-login-log-")) : null;
+  if (logcatDir) fs.chmodSync(logcatDir, 0o700);
+  const logcatFile = path.join(logcatDir ?? OUT, ".logcat-raw.txt");
   try {
     await step("prepare-device", async () => {
       adb(["wait-for-device"]);
@@ -838,12 +843,13 @@ async function main() {
           stop(error.message);
         }
       }
-      const flags = /pkgFlags=\[([^\]]*)\]/.exec(dump)?.[1] ?? "";
+      // Unread pkgFlags is unknown (null), never "not debuggable".
+      const flags = /pkgFlags=\[([^\]]*)\]/.exec(dump)?.[1];
       return {
         sdk: shell("getprop ro.build.version.sdk").trim(),
         app_version: /versionName=(\S+)/.exec(dump)?.[1] ?? "",
         app_version_code: Number(/versionCode=(\d+)/.exec(dump)?.[1] ?? 0),
-        app_debuggable: /\bDEBUGGABLE\b/.test(flags),
+        app_debuggable: flags == null ? null : /\bDEBUGGABLE\b/.test(flags),
         previous_browser: restore.browserHolders.join(",") || "(none)",
         capture_browser_via: via,
         disabled_browsers: restore.disabledBrowsers,
@@ -1013,7 +1019,9 @@ async function main() {
     // Every cleanup step runs whatever happened above; each records its own status.
     await signOutWebSession(webSession);
     try { logcat?.kill("SIGTERM"); } catch {}
-    if (fs.existsSync(logcatFile)) {
+    if (logcatDir) {
+      fs.rmSync(logcatDir, { recursive: true, force: true });
+    } else if (fs.existsSync(logcatFile)) {
       fs.writeFileSync(path.join(OUT, "logcat-app-login.txt"), redact(fs.readFileSync(logcatFile, "utf8")));
       fs.rmSync(logcatFile);
     }

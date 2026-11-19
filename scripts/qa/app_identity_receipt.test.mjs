@@ -68,7 +68,7 @@ test("the design sample parses as a v1 receipt; anything outside the contract is
 
 const os = {
   packageName: PKG,
-  versionCode: 12600,
+  versionCode: "12600",
   signerSha256: sample.signer_sha256,
   debuggable: false,
   deviceSdk: 35,
@@ -103,7 +103,10 @@ test("cross-check is ok only when the receipt, the OS and the frozen refs all ag
     [{ os: { ...os, signerSha256: "0".repeat(64) } }, /signer_sha256 differs/],
     [{ receipt: { ...sample, signer_sha256: null } }, /no single signer/],
     [{ os: { ...os, packageName: "build.raft.app.alpha" } }, /package differs/],
-    [{ os: { ...os, versionCode: 12600001 } }, /version_code/],
+    [{ os: { ...os, versionCode: "12600001" } }, /version_code/],
+    // Testbed's observation takes the original digits as a string; a number is refused.
+    [{ os: { ...os, versionCode: 12600 } }, /version_code/],
+    [{ os: { ...os, versionCode: "012600" } }, /version_code/],
     [{ os: { ...os, versionCode: null } }, /version_code/],
     [{ os: { ...os, pidAfter: "4243" } }, /pid changed/],
     [{ os: { ...os, startTicksAfter: "1" } }, /start time/],
@@ -429,13 +432,23 @@ test("public output is only the agreed check statuses and state; the private out
   for (const key of ["packageName", "versionCode", "debuggable", "deviceSdk", "deviceCodename", "devicePreview", "signerSha256", "installedApkSha256", "splitApks", "pidBefore", "pidAfter", "startTicksBefore", "startTicksAfter"]) {
     assert.ok(key in secret.os, key);
   }
+  // Types as Testbed #318's observation schema takes them: OS versionCode/pids/ticks are decimal
+  // strings, the receipt's version_code a number.
+  assert.equal(typeof secret.os.versionCode, "string");
+  assert.match(secret.os.versionCode, /^[1-9]\d{0,19}$/);
+  assert.equal(typeof secret.receipt.version_code, "number");
+  for (const key of ["pidBefore", "pidAfter", "startTicksBefore", "startTicksAfter"]) assert.equal(typeof secret.os[key], "string", key);
   // The observation Testbed gets privately is the same complete receipt + OS facts.
   assert.deepEqual(fixture.observations, [{ request_id: pairedRequest.requestId, receipt: pairing.receipt, os: secret.os }]);
 
   const dir = fs.mkdtempSync(path.join(os_.tmpdir(), "identity-private-"));
   const evidenceDir = path.join(dir, "evidence");
   fs.mkdirSync(evidenceDir);
-  const file = privateOutPath(path.join(dir, "private.json"), evidenceDir);
+  fs.mkdirSync(path.join(dir, "private"));
+  fs.chmodSync(path.join(dir, "private"), 0o700);
+  const file = privateOutPath(path.join(dir, "private", "private.json"), evidenceDir);
+  // The directory that holds the evidence directory is not "outside" it either.
+  assert.throws(() => privateOutPath(path.join(dir, "private.json"), evidenceDir), /outside the evidence directory/);
   writePrivateReceipt(file, secret);
   assert.equal(fs.statSync(file).mode & 0o777, 0o600);
   const raw = fs.readFileSync(file, "utf8");
@@ -444,8 +457,29 @@ test("public output is only the agreed check statuses and state; the private out
   assert.throws(() => privateOutPath(file, evidenceDir), /must not exist/);
   assert.throws(() => writePrivateReceipt(file, secret), /EEXIST/);
   assert.throws(() => privateOutPath(path.join(evidenceDir, "private.json"), evidenceDir), /outside the evidence directory/);
+  fs.mkdirSync(path.join(evidenceDir, "sub"));
+  fs.chmodSync(path.join(evidenceDir, "sub"), 0o700);
   assert.throws(() => privateOutPath(path.join(evidenceDir, "sub", "p.json"), evidenceDir), /outside the evidence directory/);
   assert.throws(() => privateOutPath("", evidenceDir), /required/);
+  // Real filesystem boundary: a symlinked directory or a ".." spelling that lands inside the
+  // evidence directory is inside; a sibling whose name merely starts with "evidence" is outside.
+  fs.mkdirSync(path.join(evidenceDir, "inner"));
+  fs.symlinkSync(path.join(evidenceDir, "inner"), path.join(dir, "link"));
+  assert.throws(() => privateOutPath(path.join(dir, "link", "p.json"), evidenceDir), /outside the evidence directory/);
+  assert.throws(() => privateOutPath(path.join(dir, "other", "..", "evidence", "p.json"), evidenceDir), /outside the evidence directory/);
+  fs.symlinkSync(evidenceDir, path.join(dir, "evidence-alias"));
+  assert.throws(() => privateOutPath(path.join(dir, "out.json"), path.join(dir, "evidence-alias", "inner")), /outside the evidence directory/, "a parent of the evidence dir is refused too");
+  fs.mkdirSync(path.join(dir, "evidence-private"));
+  fs.chmodSync(path.join(dir, "evidence-private"), 0o700);
+  assert.equal(privateOutPath(path.join(dir, "evidence-private", "p.json"), evidenceDir), path.join(fs.realpathSync(dir), "evidence-private", "p.json"));
+  // A dangling symlink at the target counts as existing; exclusive creation never follows it.
+  fs.symlinkSync(path.join(evidenceDir, "planted.json"), path.join(dir, "evidence-private", "s.json"));
+  assert.throws(() => privateOutPath(path.join(dir, "evidence-private", "s.json"), evidenceDir), /must not exist/);
+  // A directory others can write, or a missing one, is refused.
+  fs.mkdirSync(path.join(dir, "shared"));
+  fs.chmodSync(path.join(dir, "shared"), 0o777);
+  assert.throws(() => privateOutPath(path.join(dir, "shared", "p.json"), evidenceDir), /runner-owned/);
+  assert.throws(() => privateOutPath(path.join(dir, "missing", "p.json"), evidenceDir), /must exist/);
   fs.rmSync(dir, { recursive: true });
 });
 

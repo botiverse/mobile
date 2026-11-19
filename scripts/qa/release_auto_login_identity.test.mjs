@@ -32,7 +32,7 @@ if (cmd.startsWith("pm path build.qa.capturebrowser")) out("package:/data/app/st
 if (cmd.startsWith("run-as build.qa.capturebrowser sh -c")) out("absent\\n");
 if (cmd.startsWith("cmd package resolve-activity")) out("priority=0\\nbuild.qa.capturebrowser/.CaptureActivity\\n");
 if (cmd === "pm clear " + pkg) out("Success\\n");
-if (cmd === "dumpsys package " + pkg) out("Packages:\\n  Package [" + pkg + "]\\n    versionCode=12700001 minSdk=29\\n    pkgFlags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ]\\n  ContentProvider Authorities:\\n    [" + pkg + ".identity-receipt]:\\n");
+if (cmd === "dumpsys package " + pkg) out("Packages:\\n  Package [" + pkg + "]\\n    versionCode=12700001 minSdk=29\\n" + (process.env.FAKE_NO_PKGFLAGS ? "" : "    pkgFlags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ]\\n") + "  ContentProvider Authorities:\\n    [" + pkg + ".identity-receipt]:\\n");
 if (cmd.startsWith("pm enable " + pkg + "/")) out("Component {" + args[1].split(" ")[2] + "} new state: enabled\\n");
 if (cmd.startsWith("pm disable " + pkg + "/")) out("Component {" + args[1].split(" ")[2] + "} new state: disabled\\n");
 if (cmd === "getprop ro.build.version.sdk") out("35\\n");
@@ -48,6 +48,7 @@ function runStandalone({ env = {}, args = [], privateInsideOut = false } = {}) {
   const out = path.join(dir, "evidence");
   const privateOut = path.join(dir, "private", "identity.json");
   fs.mkdirSync(path.dirname(privateOut));
+  fs.chmodSync(path.dirname(privateOut), 0o700);
   const result = spawnSync(process.execPath, [SCRIPT, "--identity-receipt", "--out", out, "--scenario", "scripts/qa/scenarios/none.mjs", ...args], {
     encoding: "utf8",
     timeout: 60_000,
@@ -90,13 +91,22 @@ test("a pre-match sign-in timeout writes no UI tree to the device and quotes no 
   assert.ok(flat.some((c) => c.startsWith("exec-out uiautomator dump /dev/tty")), "transient dump used");
   assert.ok(!flat.some((c) => c.includes("/sdcard")), flat.filter((c) => c.includes("/sdcard")).join("\n"));
   assert.ok(!flat.some((c) => c.includes("screencap")), "no screenshot");
-  // No evidence captured before a match; only the summary (and the app-login log) are written.
-  assert.deepEqual(run.files.filter((f) => /\.(png|xml)$/.test(f)), []);
+  // No evidence captured before a match: the upload directory holds only the summary (no
+  // screenshot, UI tree or app-login log; that log lived in a private temp dir).
+  assert.deepEqual(run.files, ["summary.json"]);
   assert.equal(run.summary.scenario_result, "not_run");
   assert.equal(run.summary.result, "failed");
   // The provider was enabled before sign-in and disabled again in cleanup.
   assert.equal(run.summary.cleanup.identity_receipt_provider, "disabled");
   assert.equal(run.privateExists, false, "no private output without a receipt");
+});
+
+test("an unreadable pkgFlags is reported as unknown in the preparation summary, never as not debuggable", () => {
+  const run = runStandalone({ env: { FAKE_NO_PKGFLAGS: "1" } });
+  const prepare = run.summary.steps.find((s) => s.name === "prepare-device");
+  assert.equal(prepare?.result, "pass", JSON.stringify(run.summary.steps));
+  assert.equal(prepare.detail.app_debuggable, null);
+  assert.deepEqual(run.files, ["summary.json"]);
 });
 
 test("a run stopped before the scenario (missing private output setting) reports scenario_result not_run", () => {

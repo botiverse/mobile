@@ -128,7 +128,8 @@ export function crossCheckReceipt({ receipt, request, os, expected = {} }) {
   const check = (ok, problem) => { if (!ok) problems.push(problem); };
   check(receipt.attempt_id === request.attemptId && receipt.nonce === request.nonce && receipt.request_id === request.requestId, "receipt does not echo this request");
   check(receipt.package === os.packageName, "package differs from the installed package");
-  check(String(receipt.version_code) === String(os.versionCode), "version_code differs from dumpsys package");
+  // os.versionCode is dumpsys's original decimal string (Testbed's observation schema); the receipt's is a number.
+  check(typeof os.versionCode === "string" && /^[1-9][0-9]{0,19}$/.test(os.versionCode) && String(receipt.version_code) === os.versionCode, "version_code differs from dumpsys package");
   check(typeof receipt.signer_sha256 === "string" && HEX64.test(receipt.signer_sha256), "receipt has no single signer");
   check(receipt.signer_sha256 === os.signerSha256, "signer_sha256 differs from apksigner (device SDK certificate)");
   // os.debuggable is null when pkgFlags could not be read: unknown, never "not debuggable".
@@ -289,17 +290,54 @@ export async function afterSignIn({ identityGate, runScenario }) {
   return { matched: true, scenarioRan: Boolean(runScenario) };
 }
 
+/** Canonical path: the nearest existing ancestor through realpath, then the rest. */
+function canonicalPath(p) {
+  let head = path.resolve(p);
+  const rest = [];
+  while (!fs.existsSync(head)) {
+    rest.unshift(path.basename(head));
+    const parent = path.dirname(head);
+    if (parent === head) break;
+    head = parent;
+  }
+  return path.join(fs.realpathSync(head), ...rest);
+}
+
+/** `child` is `dir` or below it, compared by path components of canonical paths. */
+function isWithin(child, dir) {
+  const a = canonicalPath(child).split(path.sep).filter(Boolean);
+  const b = canonicalPath(dir).split(path.sep).filter(Boolean);
+  return b.every((part, i) => a[i] === part);
+}
+
 /**
- * The Testbed-private file: a FRESH file (refused if it exists), mode 0600, outside the evidence
- * directory (which the workflow uploads recursively).
+ * The Testbed-private file: a FRESH file (nothing, not even a symlink, may exist there) in an
+ * existing runner-owned directory that no group/other may write, whose canonical location is
+ * outside the canonical evidence directory (which the workflow uploads recursively), and that
+ * does not contain the evidence directory either.
  */
 export function privateOutPath(file, evidenceDir) {
   if (!file) throw new Error("identity receipt: QA_IDENTITY_PRIVATE_OUT is required");
   const target = path.resolve(file);
-  const rel = path.relative(path.resolve(evidenceDir), target);
-  if (!rel.startsWith("..") && !path.isAbsolute(rel)) throw new Error("identity receipt: QA_IDENTITY_PRIVATE_OUT must be outside the evidence directory");
-  if (fs.existsSync(target)) throw new Error("identity receipt: QA_IDENTITY_PRIVATE_OUT must not exist yet");
-  return target;
+  const parent = path.dirname(target);
+  let parentStat;
+  try {
+    parentStat = fs.statSync(parent);
+  } catch {
+    throw new Error("identity receipt: QA_IDENTITY_PRIVATE_OUT's directory must exist");
+  }
+  if (!parentStat.isDirectory()) throw new Error("identity receipt: QA_IDENTITY_PRIVATE_OUT's directory must exist");
+  const realParent = fs.realpathSync(parent);
+  if (isWithin(realParent, evidenceDir) || isWithin(evidenceDir, realParent)) {
+    throw new Error("identity receipt: QA_IDENTITY_PRIVATE_OUT must be outside the evidence directory");
+  }
+  if ((typeof process.getuid === "function" && parentStat.uid !== process.getuid()) || (parentStat.mode & 0o022) !== 0) {
+    throw new Error("identity receipt: QA_IDENTITY_PRIVATE_OUT must be in a runner-owned directory no one else can write");
+  }
+  let exists = true;
+  try { fs.lstatSync(target); } catch { exists = false; }
+  if (exists) throw new Error("identity receipt: QA_IDENTITY_PRIVATE_OUT must not exist yet");
+  return path.join(realParent, path.basename(target));
 }
 
 /** Writes the Testbed-private part once, to a new file readable by the runner user only. */
