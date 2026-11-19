@@ -639,6 +639,10 @@ class SharedActivityStore internal constructor(
     private var panelActive: Boolean? = null
     /** Why the load in flight reads (for `activity:list_row_lowered`'s fetch reason / trigger). */
     private var loadFetchLabel: Pair<InboxFetchReason?, InboxRefreshTriggerCount?> = null to null
+    /** The app came back to the foreground and no reset load has started since (guarded by realtimeOwnerLock). */
+    private var foregroundReturnUnread = false
+    /** The reset load in flight is the first since a return to the foreground (`activity:inplace_check` `resumed`). */
+    private var loadResumed = false
     /** Bumped when the row state goes (server switch, reset): an answer from before is dropped. */
     private var rowRereadGeneration = 0L
 
@@ -686,7 +690,10 @@ class SharedActivityStore internal constructor(
                 // The app went to the background: held `local_read` rows go now, as lowerings.
                 if (previous && !foreground) localReadAckHold.flush(ActivityListRowHeldEnd.Background)
                 previous = foreground
-                if (returned) onAppForegroundReturned()
+                if (returned) {
+                    synchronized(realtimeOwnerLock) { foregroundReturnUnread = true }
+                    onAppForegroundReturned()
+                }
             }
         }
     }
@@ -3007,26 +3014,33 @@ class SharedActivityStore internal constructor(
     /**
      * Web `checkInPlaceDrift` (inboxStore.ts: a reset answer of the All list, before the local
      * holds of newer rows): judges the rows patched in place against [served] and sends the checks.
-     * Flag off, nothing was noted and nothing is sent.
+     * [answered]: the rows as the server sent them (their read frontiers, for
+     * [servedReadBehindScopes]). Flag off, nothing was noted and nothing is sent.
+     *
+     * Web `requestReadStateRevision` (inboxStore.ts): an answer a read state was accepted under
+     * (since the load started) may predate that read; it judges nothing and the rows wait for the
+     * next answer (or expire).
      */
-    private fun checkInPlaceDriftLocked(current: SharedActivityState, served: List<InboxItem>, backend: String? = null) {
+    private fun checkInPlaceDriftLocked(
+        current: SharedActivityState,
+        served: List<InboxItem>,
+        answered: List<InboxItem>,
+        backend: String? = null
+    ) {
         if (inPlaceDriftCheck.isEmpty || current.selectedFilter != InboxFilter.All) return
         val serverId = current.ownerServerId
         if (serverId == null || !inboxInPlaceEnabled(serverId)) {
             inPlaceDriftCheck.clear()
             return
         }
-        val rowPosition = rowPositionOnLocked()
-        for (check in inPlaceDriftCheck.check(current.items, served, rowPosition, backend)) {
-            if (rowPosition) {
-                emitInPlaceCheckLocked(serverId, check)
-                continue
-            }
-            diagnosticsLogger(
-                "activity_inplace_check entity=${check.entityId} trigger=${check.trigger.wireValue} " +
-                    "outcome=${check.outcome.wireValue} result=${check.result}"
-            )
-            inPlaceCheckSink(serverId, check)
+        if (perReceiverStateVersionStore.readStateAcceptMark() != listReadMark) {
+            diagnosticsLogger("activity_inplace_check_skipped reason=read_changed")
+            return
+        }
+        val readBehind = servedReadBehindScopes(answered, acceptedReadStateLookupLocked(current))
+        val read = ActivityInPlaceRead(fetchReason = loadFetchLabel.first?.wireValue, resumed = loadResumed)
+        for (check in inPlaceDriftCheck.check(current.items, served, readBehind, backend, read)) {
+            emitInPlaceCheckLocked(serverId, check)
         }
     }
 
@@ -3564,6 +3578,8 @@ class SharedActivityStore internal constructor(
                 loadFetchLabel = fetchReason to fetchTrigger
                 val startedAtMillis = nowMillis()
                 if (refresh) {
+                    loadResumed = foregroundReturnUnread
+                    foregroundReturnUnread = false
                     lastResetLoadStartedAtMillis = startedAtMillis
                     resetLoadsStarted += 1
                 }
@@ -4354,7 +4370,9 @@ class SharedActivityStore internal constructor(
                             .reconcileLocallyClearedUnreadItems(current.selectedFilter, owner)
                     val pageItems = locallyRead.reconcileLocallyDoneItems(owner)
                     // A remembered (`X-Raft-Stale`) answer can be minutes old: it judges nothing.
-                    if (!append && result.data.staleReason == null) checkInPlaceDriftLocked(current, pageItems.items, result.data.inboxBackend)
+                    if (!append && result.data.staleReason == null) {
+                        checkInPlaceDriftLocked(current, pageItems.items, result.data.items, result.data.inboxBackend)
+                    }
                     if (result.data.staleReason == null) forgetAbsentReadStatesLocked(current, result.data.items, listReadMark)
                     beforeRealtimeHighWaterFold()
                     val realtimeReconcile =
@@ -4467,7 +4485,7 @@ class SharedActivityStore internal constructor(
                     nextState
                 }
                 is DataResult.Empty -> {
-                    if (!append) checkInPlaceDriftLocked(current, emptyList())
+                    if (!append) checkInPlaceDriftLocked(current, emptyList(), emptyList())
                     val realtimeReconcile =
                         if (!append) {
                             reconcileRealtimeHighWater(

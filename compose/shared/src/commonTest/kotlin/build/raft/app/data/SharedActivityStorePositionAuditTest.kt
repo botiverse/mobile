@@ -334,14 +334,22 @@ class SharedActivityStorePositionAuditTest {
             runCurrent()
             return f.checks.map { it.second }
         }
-        val check = expiredAfter(rowPosition = true).single()
-        assertEquals("expired" to ActivityInPlaceCheckOutcome.Noop, check.result to check.outcome)
-        assertEquals("list" to "position", check.scope to check.reread)
-        assertEquals(1, check.sampleRate)
-        assertTrue(check.outcomeDetail.startsWith("trigger=message_new;existed=1;result=expired;reread=position;own=0;sender_type=user;message_type=chat;age_ms="), check.outcomeDetail)
-        assertTrue(check.outcomeDetail.endsWith(";read_behind=0"), check.outcomeDetail)
-        // Flag off: the note lapses silently, as before (the minute reconcile judged it first anyway).
-        assertTrue(expiredAfter(rowPosition = false).none { it.result == "expired" })
+        // Web emitExpired (#triage:#244): sent with the flag off too; only the position rule's `reread` and cause differ.
+        listOf(true, false).forEach { rowPosition ->
+            val check = expiredAfter(rowPosition).single { it.result == "expired" }
+            assertEquals(ActivityInPlaceCheckOutcome.Noop, check.outcome, "rowPosition=$rowPosition")
+            assertEquals("list" to (if (rowPosition) "position" else null), check.scope to check.reread, "rowPosition=$rowPosition")
+            assertEquals(1, check.sampleRate)
+            val prefix =
+                if (rowPosition) {
+                    "trigger=message_new;existed=1;result=expired;reread=position;own=0;sender_type=user;message_type=chat;age_ms="
+                } else {
+                    "trigger=message_new;existed=1;result=expired;age_ms="
+                }
+            assertTrue(check.outcomeDetail.startsWith(prefix), check.outcomeDetail)
+            assertTrue(check.outcomeDetail.contains(";read_behind=0;"), check.outcomeDetail)
+            assertEquals("visibility" to false, check.fetchReason to check.resumed, "rowPosition=$rowPosition: the Refresh that found it")
+        }
     }
 
     @Test

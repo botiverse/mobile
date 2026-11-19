@@ -18,9 +18,17 @@ import kotlinx.serialization.json.putJsonObject
  * thread_reply), `inbox.inplace.row_existed`, `inbox.inplace.result` and
  * `inbox.inplace.sample_rate` (every conflict is sent; one `noop` in [ActivityInPlaceNoopSample]).
  * An answer still behind the patched row judges nothing: the row waits for the next answer, up to
- * [ActivityInPlaceCheckTtlMillis]. Mobile has no persisted-read event yet, so `read_persisted` is
- * never a trigger here. `order` leaves out rows listed here ahead of the answer (`;ahead=N`, web
- * `aheadOfServed`, slock #14247).
+ * [ActivityInPlaceCheckTtlMillis]; past it the check is `result=expired`. Mobile has no
+ * persisted-read event yet, so `read_persisted` is never a trigger here. `order` leaves out rows
+ * listed here ahead of the answer (`;ahead=N`, web `aheadOfServed`, slock #14247).
+ *
+ * As web (#triage:#244), whatever `inbox_row_position_v1` says: an answer only ahead of the patched
+ * row that agrees is a match (`;served_ahead=1`), a note no answer judged is `expired`, a row whose
+ * answer has an older read than the one accepted here is not judged on it (`;read_behind=N`, web
+ * inboxServedReadBehind.ts, slock #14817), and the store judges nothing on an answer a read changed
+ * under (web inboxStore `requestReadStateRevision`). Mobile also says why the list was read
+ * (`inbox.inplace.fetch_reason`) and whether it was the first read after a return to the foreground
+ * (`inbox.inplace.resumed`).
  */
 internal const val ActivityInPlaceCheckTtlMillis = 90_000L
 internal const val ActivityInPlaceExpectationsCap = 200
@@ -49,8 +57,8 @@ data class ActivityInPlaceCheck(
     val outcomeDetail: String,
     val timestampMillis: Long,
     /**
-     * `inbox_row_position_v1` (web `inbox.inplace.scope`): `list` (judged by a list answer, order
-     * included) or `row` (by a row re-read's answer). Null with the flag off: not sent, today's shape.
+     * Web `inbox.inplace.scope`: `list` (judged by a list answer, order included) or `row` (by an
+     * `inbox_row_position_v1` row re-read's answer). Null: not sent.
      */
     val scope: String? = null,
     /** Web `inbox.inplace.reread`: `position` for a row the per-row rule patched or judged; null: not sent. */
@@ -59,7 +67,20 @@ data class ActivityInPlaceCheck(
     val backend: String? = null,
     /** Web `inbox.inplace.not_judged_cause`, with `result=not_judged`. */
     val notJudgedCause: ActivityAuditNotJudgedCause? = null,
+    /**
+     * `inbox.inplace.fetch_reason` (mobile, list checks): the judging read's `X-Raft-Fetch-Reason`
+     * ([InboxFetchReason.wireValue], `none` when it had none); null: not sent (row checks).
+     */
+    val fetchReason: String? = null,
+    /** `inbox.inplace.resumed` (mobile, list checks): the judging read was the first after a return to the foreground. */
+    val resumed: Boolean? = null,
 )
+
+/** Mobile: why the judging list read ran, and whether it was the first one after a return to the foreground. */
+internal data class ActivityInPlaceRead(val fetchReason: String? = null, val resumed: Boolean = false) {
+    val detail: String
+        get() = ";fetch_reason=${fetchReason ?: "none"};resumed=${if (resumed) 1 else 0}"
+}
 
 /**
  * Why a scheduled audit (`position_audit`) was not judged (web `AuditNotJudgedCause`,
@@ -118,7 +139,35 @@ internal fun ActivityInPlaceCheck.stateTransitionTraceAttrs(): JsonObject =
         reread?.let { put("inbox.inplace.reread", it) }
         backend?.let { put("inbox.inplace.backend", it) }
         notJudgedCause?.let { put("inbox.inplace.not_judged_cause", it.wireValue) }
+        fetchReason?.let { put("inbox.inplace.fetch_reason", it) }
+        resumed?.let { put("inbox.inplace.resumed", if (it) "true" else "false") }
     }
+
+/**
+ * Web `servedReadBehindScopes` (inboxServedReadBehind.ts, slock #14817): the scopes of [served] rows
+ * whose read cursor is older and lower than the read accepted here ([ledgerOf]), with activity past
+ * it. Such an answer counts the replies read since as unread again; its row is not judged on it.
+ * Web also skips a ledger that is a mark (Mark as Unread); the mobile checkpoint does not keep the
+ * mark, and a mark is saved only when nothing countable is unread (slock #11795).
+ */
+internal fun servedReadBehindScopes(
+    served: List<InboxItem>,
+    ledgerOf: (scopeId: String) -> ActivityLedgerReadState?
+): Set<String> {
+    val behind = HashSet<String>()
+    served.forEach { item ->
+        if (!item.isConversationRow()) return@forEach
+        val scopeId = item.inPlaceScopeId() ?: return@forEach
+        val servedVersion = item.readStateVersion ?: return@forEach
+        val servedReadSeq = item.readStateMaxReadSeq ?: return@forEach
+        val latestSeq = item.readStateLatestActivitySeq ?: return@forEach
+        val ledger = ledgerOf(scopeId) ?: return@forEach
+        if (ledger.readStateVersion <= servedVersion) return@forEach
+        val ledgerSeq = ledger.maxReadSeq.toString()
+        if (compareActivitySeq(ledgerSeq, servedReadSeq) > 0 && compareActivitySeq(ledgerSeq, latestSeq) < 0) behind += scopeId
+    }
+    return behind
+}
 
 /** Web `inboxItemChannelId`: the conversation a row is (a thread's own channel); none for other rows. */
 internal fun InboxItem.inPlaceScopeId(): String? =
@@ -148,6 +197,8 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
         val cause: String = "",
         /** A read state for the scope arrived after the event (web `read_state=1`). */
         var readState: Boolean = false,
+        /** Answers not judged as their read was behind the accepted one (web `readBehind`, `;read_behind=N`). */
+        var readBehind: Int = 0,
     )
 
     private val expectations = LinkedHashMap<String, Expectation>()
@@ -199,21 +250,20 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
     }
 
     /**
-     * A first-window answer of the All list, newest first: judge each noted row against what the
-     * answer puts on screen ([served], after the local read/Done holds) and the list shown now
-     * ([local]). Returns the checks to send (all conflicts, sampled noops).
-     *
-     * [rowPosition] (`inbox_row_position_v1`): the web's current check (slock inboxInPlaceUnread.ts
-     * `checkInPlaceDrift`): a note past the stale-list bound is sent as `result=expired`
-     * (emitExpired), an answer only ahead of the patched row that agrees is a match
-     * (`;served_ahead=1`), and every check carries `inbox.inplace.scope=list`, its `reread`, the
-     * answer's [backend] and `;age_ms=`. Off: today's checks, exactly.
+     * Web `checkInPlaceDrift` (slock inboxInPlaceUnread.ts): a first-window answer of the All list,
+     * newest first. Judges each noted row against what the answer puts on screen ([served], after the
+     * local read/Done holds) and the list shown now ([local]); a row of a [readBehind] scope
+     * ([servedReadBehindScopes]) waits for another answer. A note past the stale-list bound is sent as
+     * `result=expired` (emitExpired). Every check carries `inbox.inplace.scope=list`, its `reread`,
+     * the answer's [backend], `;age_ms=` and the [read]'s fetch reason and resume flag. Returns the
+     * checks to send (all conflicts, sampled noops, every patched row's expiry).
      */
     fun check(
         local: List<InboxItem>,
         served: List<InboxItem>,
-        rowPosition: Boolean = false,
-        backend: String? = null
+        readBehind: Set<String> = emptySet(),
+        backend: String? = null,
+        read: ActivityInPlaceRead = ActivityInPlaceRead()
     ): List<ActivityInPlaceCheck> {
         if (expectations.isEmpty()) return emptyList()
         val now = nowMillis()
@@ -228,10 +278,9 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
             val localRow = local.firstOrNull { it.inPlaceScopeId() == scopeId }
             if (now > expected.until) {
                 iterator.remove()
-                if (!rowPosition) continue
                 // Done, read away or moved on since: nothing patched in place was left to judge.
                 if (expected.existed && (localRow == null || localRow.latestActivitySeq != expected.seq)) continue
-                expiredCheck(localRow?.key ?: scopeId, expected, now, backend)?.let(checks::add)
+                expiredCheck(localRow?.key ?: scopeId, expected, now, backend, read)?.let(checks::add)
                 continue
             }
             val result: String
@@ -250,6 +299,11 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
             } else {
                 val seqOrder = compareActivitySeq(servedRow.latestActivitySeq, expected.seq)
                 if (seqOrder < 0) continue
+                // Its read is behind the one accepted here: its count is from the older cursor.
+                if (scopeId in readBehind) {
+                    expected.readBehind += 1
+                    continue
+                }
                 val localIndex = sharedIndex(local, servedKeys, localRow.key)
                 val servedIndex = sharedIndex(served, localKeys, localRow.key)
                 val drift =
@@ -258,9 +312,9 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
                         if (servedRow.hasMention != localRow.hasMention) add("mention")
                         if (localIndex != servedIndex) add("order")
                     }.toMutableList()
-                // Web (flag on): an answer at a newer message than the patched row, that agrees on the
-                // unread, the @ and the order (no row ahead of it here), is a match (`;served_ahead=1`).
-                val servedAheadOnly = rowPosition && seqOrder > 0 && drift.isEmpty() && ahead.isEmpty()
+                // Web: an answer at a newer message than the patched row, that agrees on the unread,
+                // the @ and the order (no row ahead of it here), is a match (`;served_ahead=1`).
+                val servedAheadOnly = seqOrder > 0 && drift.isEmpty() && ahead.isEmpty()
                 if (seqOrder > 0 && !servedAheadOnly) drift.add(0, "served_ahead")
                 result = if (drift.isEmpty()) "match" else drift.joinToString("+")
                 detail =
@@ -284,30 +338,39 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
                     sampleRate = if (agrees) ActivityInPlaceNoopSample else 1,
                     outcomeDetail =
                         "trigger=${expected.trigger.wireValue};existed=${if (expected.existed) 1 else 0};result=$result$detail" +
-                            if (rowPosition) webListSuffix(expected, now, readBehind = false) else "",
+                            webListSuffix(expected, now, readBehindAlways = false) + read.detail,
                     timestampMillis = now,
-                    scope = if (rowPosition) "list" else null,
-                    reread = if (rowPosition) expected.reread else null,
-                    backend = if (rowPosition) backend else null,
+                    scope = "list",
+                    reread = expected.reread,
+                    backend = backend,
+                    fetchReason = read.fetchReason ?: "none",
+                    resumed = read.resumed,
                 )
         }
         return checks
     }
 
     /**
-     * Web `outcomeDetail` past the result: `;reread=`, the event's cause, `;age_ms=`, `;read_state=`
-     * (and `;read_behind=0` for an expired check).
+     * Web `outcomeDetail` past the result: `;reread=`, the event's cause, `;age_ms=` (since the row
+     * was patched), `;read_state=` and `;read_behind=N` (when an answer was behind the read, and
+     * always for an expired check).
      */
-    private fun webListSuffix(expected: Expectation, now: Long, readBehind: Boolean): String =
+    private fun webListSuffix(expected: Expectation, now: Long, readBehindAlways: Boolean): String =
         (expected.reread?.let { ";reread=$it" } ?: "") + expected.cause +
             ";age_ms=${now - expected.at};read_state=${if (expected.readState) 1 else 0}" +
-            if (readBehind) ";read_behind=0" else ""
+            if (readBehindAlways || expected.readBehind > 0) ";read_behind=${expected.readBehind}" else ""
 
     /**
      * Web `emitExpired`: a note no answer judged within the stale-list bound, `result=expired`,
      * outcome noop. Every patched row's (sample rate 1); one unlisted row's in [ActivityInPlaceNoopSample].
      */
-    private fun expiredCheck(entityId: String, expected: Expectation, now: Long, backend: String?): ActivityInPlaceCheck? {
+    private fun expiredCheck(
+        entityId: String,
+        expected: Expectation,
+        now: Long,
+        backend: String?,
+        read: ActivityInPlaceRead
+    ): ActivityInPlaceCheck? {
         if (!expected.existed && expiredAbsentChecks++ % ActivityInPlaceNoopSample != 0L) return null
         return ActivityInPlaceCheck(
             entityId = entityId,
@@ -318,11 +381,13 @@ internal class ActivityInPlaceDriftCheck(private val nowMillis: () -> Long) {
             sampleRate = if (expected.existed) 1 else ActivityInPlaceNoopSample,
             outcomeDetail =
                 "trigger=${expected.trigger.wireValue};existed=${if (expected.existed) 1 else 0};result=expired" +
-                    webListSuffix(expected, now, readBehind = true),
+                    webListSuffix(expected, now, readBehindAlways = true) + read.detail,
             timestampMillis = now,
             scope = "list",
             reread = expected.reread,
             backend = backend,
+            fetchReason = read.fetchReason ?: "none",
+            resumed = read.resumed,
         )
     }
 
