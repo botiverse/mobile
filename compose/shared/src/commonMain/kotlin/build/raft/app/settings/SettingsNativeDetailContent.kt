@@ -21,6 +21,7 @@ import build.raft.app.data.MOBILE_ACTION_TEST_NOTIFICATION
 import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.ServerPublicVisibilityRepository
+import build.raft.app.data.ArchivedChannel
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.ServerAppearanceRepository
 import build.raft.app.data.RaftAuthSessionStore
@@ -238,6 +239,11 @@ internal fun SettingsNativeDetailScreen() {
         },
         webBaseUrl = environment.webBaseUrl,
         onLogout = { pager.openLoginReplacingCurrentPage() },
+        // Server's archived channels and agents (web `nav.toChannel` / `toAgent` / `toAgentWorkspace`).
+        onOpenArchivedChannel = { channel -> pager.openSettingsArchivedChannel(channel, environment.storeScope, bridge::logWarn) },
+        onOpenArchivedAgent = { agentId, workspace ->
+            pager.openSettingsArchivedAgent(agentId, session?.currentServerId, workspace, environment.storeScope, bridge::logWarn)
+        },
     )
     }
     }
@@ -320,6 +326,10 @@ internal fun SettingsNativeDetailPageContent(
     networkClient: RaftNetworkClient? = null,
     onOpenBillingPage: () -> Unit = {},
     webBaseUrl: String = "",
+    /** Server's archived channel row: opens the (read-only) channel. */
+    onOpenArchivedChannel: (ArchivedChannel) -> Unit = {},
+    /** Server's archived agent row (workspace false) or its View workspace (true): opens the agent. */
+    onOpenArchivedAgent: (agentId: String, workspace: Boolean) -> Unit = { _, _ -> },
     onLogout: () -> Unit
 ) {
     val diagnosticsSnapshot =
@@ -648,7 +658,15 @@ internal fun SettingsNativeDetailPageContent(
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     publicAccess = publicAccess,
-                    archive = rememberSettingsServerArchive(networkClient, currentServer?.id?.value, currentServer?.role),
+                    archive =
+                        rememberSettingsServerArchive(
+                            networkClient,
+                            currentServer?.id?.value,
+                            currentServer?.role,
+                            onOpenChannel = onOpenArchivedChannel,
+                            onOpenAgent = { onOpenArchivedAgent(it, false) },
+                            onOpenAgentWorkspace = { onOpenArchivedAgent(it, true) },
+                        ),
                     leaveImpact =
                         memberRemovalImpactRepository?.let { repository ->
                             SettingsServerLeaveImpactBinding(

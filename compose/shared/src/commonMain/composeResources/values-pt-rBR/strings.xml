@@ -326,6 +326,10 @@
     <string name="settings_archived_agents_workspace_deleted">Espaço de trabalho excluído</string>
     <string name="settings_archived_agents_workspace_unknown">Local do espaço de trabalho desconhecido</string>
     <string name="settings_archived_agents_workspace_deleting">Excluindo espaço de trabalho…</string>
+    <string name="settings_archived_channels_open_label">Abrir %1$s</string>
+    <string name="settings_archived_agents_open_label">Abrir %1$s</string>
+    <string name="settings_archived_agents_view_workspace">Ver espaço de trabalho</string>
+    <string name="settings_archived_agents_view_workspace_label">Ver o espaço de trabalho de %1$s</string>
     <string name="settings_keyboard_shortcuts_title">Atalhos de teclado</string>
     <string name="settings_keyboard_shortcuts_group_global">Gerais</string>
     <string name="settings_keyboard_shortcuts_group_channels_threads">Canais e threads</string>
