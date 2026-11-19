@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import build.raft.app.data.PROFILE_DESCRIPTION_MAX_LENGTH
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -85,15 +86,15 @@ class TextFieldValueLengthTest {
     }
 
     @Test
-    fun createAgentLimitRetainsExistingThreshold() {
+    fun createAgentLimitIsTheProfileDescriptionLimit() {
         val createAgent =
             TextFieldValue(
-                text = "a".repeat(CREATE_AGENT_DESCRIPTION_MAX_LENGTH + 1),
-                selection = TextRange(CREATE_AGENT_DESCRIPTION_MAX_LENGTH + 1)
-            ).coerceTextLength(CREATE_AGENT_DESCRIPTION_MAX_LENGTH)
+                text = "a".repeat(PROFILE_DESCRIPTION_MAX_LENGTH + 1),
+                selection = TextRange(PROFILE_DESCRIPTION_MAX_LENGTH + 1)
+            ).coerceTextLength(PROFILE_DESCRIPTION_MAX_LENGTH)
 
-        assertEquals(CREATE_AGENT_DESCRIPTION_MAX_LENGTH, createAgent.text.length)
-        assertEquals(TextRange(CREATE_AGENT_DESCRIPTION_MAX_LENGTH), createAgent.selection)
+        assertEquals(PROFILE_DESCRIPTION_MAX_LENGTH, createAgent.text.length)
+        assertEquals(TextRange(PROFILE_DESCRIPTION_MAX_LENGTH), createAgent.selection)
     }
 
     @Test

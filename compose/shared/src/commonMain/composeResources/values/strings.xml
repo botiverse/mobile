@@ -1829,7 +1829,6 @@
     <string name="member_error_runtime_edit_unavailable">Runtime config editing is not available.</string>
     <string name="member_error_display_name_required">Display name is required</string>
     <string name="member_error_save">Save failed: %1$s</string>
-    <string name="member_error_description_too_long">Description must be at most %1$s characters</string>
     <string name="member_dialog_full_reset_warning">This will permanently delete all workspace files including MEMORY.md and notes/. This cannot be undone.</string>
     <string name="member_dialog_restart_description">Stop and restart the agent process. Keeps the runtime session and workspace files.</string>
     <string name="member_dialog_reset_session_description">Clear the runtime session and restart. Workspace files (MEMORY.md, notes/) are preserved.</string>
@@ -1863,6 +1862,7 @@
     <string name="member_action_issue_reported">Issue reported</string>
     <string name="member_dialog_edit_runtime_config">Edit Runtime Config</string>
     <string name="member_placeholder_description">Describe this agent</string>
+    <string name="agent_detail_description_hint">A sentence or two on who it is and what it does. Tell it longer instructions in a message.</string>
     <string name="member_hint_chat_audit_only">Visible here as an activity/audit trail. These rows are intentionally not direct conversation links.</string>
     <string name="member_hint_no_scheduled_reminders">This agent hasn't scheduled anything. Reminders appear here in real time as soon as the agent schedules them.</string>
     <string name="member_hint_connected_apps">Connected apps this agent can use.</string>
@@ -2314,7 +2314,8 @@
     <string name="agent_create_title_external">Create External Agent</string>
     <string name="agent_create_auto_join_channel">Will join %1$s automatically after it is created</string>
     <string name="agent_create_placeholder_description">Leave blank for a general-purpose agent, or describe a role...</string>
-    <string name="agent_create_error_description_length">Description must be at most %1$d characters.</string>
+    <string name="agent_create_description_hint">A sentence or two on who it is and what it does. Tell it longer instructions in a message after it's created.</string>
+    <string name="agent_create_error_description_length">Description must be %1$d characters or fewer.</string>
     <string name="agent_create_action_create">Create Agent</string>
     <string name="agent_create_submit">Create</string>
     <string name="agent_create_action_create_external">Create External Agent</string>

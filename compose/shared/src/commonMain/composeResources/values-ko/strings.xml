@@ -1825,7 +1825,6 @@
     <string name="member_error_runtime_edit_unavailable">런타임 설정을 편집할 수 없어요.</string>
     <string name="member_error_display_name_required">표시 이름을 입력해 주세요</string>
     <string name="member_error_save">저장하지 못했어요: %1$s</string>
-    <string name="member_error_description_too_long">설명은 최대 %1$s자까지 입력할 수 있어요</string>
     <string name="member_dialog_full_reset_warning">MEMORY.md와 notes/를 포함한 모든 워크스페이스 파일이 영구적으로 삭제돼요. 되돌릴 수 없어요.</string>
     <string name="member_dialog_restart_description">에이전트 프로세스를 중지하고 재시작해요. 런타임 세션과 워크스페이스 파일은 유지돼요.</string>
     <string name="member_dialog_reset_session_description">런타임 세션을 지우고 재시작해요. MEMORY.md, notes/ 같은 워크스페이스 파일은 유지돼요.</string>
@@ -1859,6 +1858,7 @@
     <string name="member_action_issue_reported">문제를 신고했어요</string>
     <string name="member_dialog_edit_runtime_config">런타임 설정 편집</string>
     <string name="member_placeholder_description">이 에이전트를 설명해 주세요</string>
+    <string name="agent_detail_description_hint">어떤 에이전트이고 무엇을 하는지 한두 문장으로 적어 주세요. 자세한 작업 지시는 메시지로 알려 주세요.</string>
     <string name="member_hint_chat_audit_only">활동/감사 기록으로만 여기에 표시돼요. 이 항목들은 의도적으로 대화에 바로 연결되지 않아요.</string>
     <string name="member_hint_no_scheduled_reminders">이 에이전트가 아직 아무것도 예약하지 않았어요. 에이전트가 리마인더를 예약하면 바로 여기에 실시간으로 표시돼요.</string>
     <string name="member_hint_connected_apps">이 에이전트가 사용할 수 있는 연결된 앱이에요.</string>
@@ -2310,7 +2310,8 @@
     <string name="agent_create_title_external">외부 에이전트 만들기</string>
     <string name="agent_create_auto_join_channel">만들고 나면 %1$s에 자동으로 참여해요</string>
     <string name="agent_create_placeholder_description">범용 에이전트라면 비워 두고, 아니면 역할을 설명해 주세요…</string>
-    <string name="agent_create_error_description_length">설명은 %1$d자 이하여야 해요.</string>
+    <string name="agent_create_description_hint">어떤 에이전트이고 무엇을 하는지 한두 문장으로 적어 주세요. 자세한 작업 지시는 만든 뒤 메시지로 알려 주세요.</string>
+    <string name="agent_create_error_description_length">설명은 %1$d자 이하로 입력해 주세요.</string>
     <string name="agent_create_action_create">에이전트 만들기</string>
     <string name="agent_create_submit">만들기</string>
     <string name="agent_create_action_create_external">외부 에이전트 만들기</string>

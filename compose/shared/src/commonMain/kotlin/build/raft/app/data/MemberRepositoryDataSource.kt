@@ -1578,6 +1578,8 @@ private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> {
                     code = "http_$code",
                     retryable = code != 404,
                     serverMessage = serverMessage,
+                    // The refusal's own code (400 `profile_description_invalid`...), for the editor to name.
+                    serverCode = memberServerErrorCodeOrNull(),
                     formFieldKeys = runtimeFormV2ServerError(bodyText ?: errorBodyText)?.fieldKeys.orEmpty()
                 )
             )

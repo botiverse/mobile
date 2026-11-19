@@ -640,6 +640,7 @@ class MemberRepositoryDataSourceTest {
         var channelRoleResponse: HomeNetworkResponse = HomeNetworkResponse(500, "{}")
         var startBlocker: CompletableDeferred<Unit>? = null
         var patchConfigApply: String? = null
+        var patchRefusal: HomeNetworkResponse? = null
 
         override suspend fun request(
             priority: DataRequestPriority,
@@ -774,6 +775,7 @@ class MemberRepositoryDataSourceTest {
                 }
                 normalized == "agents/agent-1" && method == "PATCH" -> {
                     calls += "PATCH agents/agent-1 body=${bodyText.orEmpty()}"
+                    patchRefusal?.let { return it }
                     // slock routes/agents.ts PATCH answer: the agent plus `configApply` (#13372).
                     val apply = patchConfigApply?.let { ""","configApply":"$it"""" }.orEmpty()
                     ok("""{"id":"agent-1","name":"noel","displayName":"Noel Bot","status":"active","runtime":"codex","model":"gpt-5"$apply}""")
@@ -808,6 +810,26 @@ class MemberRepositoryDataSourceTest {
             assertEquals(expected, result.data.configApply, "wire=$wire")
             assertEquals(null, result.data.withoutConfigApply().configApply)
         }
+    }
+
+    @Test
+    fun aDescriptionRefusalKeepsTheServersCodeForTheEditor() = runBlocking {
+        // slock #15664 routes/agents.ts PATCH /:id: a new or changed description over 300 is a 400
+        // `profile_description_invalid`; the editor names it from ScreenError.serverCode.
+        val network = FakeMemberNetworkClient()
+        network.patchRefusal =
+            HomeNetworkResponse(
+                code = 400,
+                bodyText = null,
+                errorBodyText = """{"code":"profile_description_invalid","error":"A new or changed description must be a string of at most 300 characters"}"""
+            )
+        val repository = RealMemberRepository(sampleStore(), network)
+        val request = AgentProfileUpdateRequest(agentId = MemberId("agent-1"), displayName = "Noel Bot", description = "z".repeat(301))
+        val result = repository.updateAgentProfile(DataRequestPriority.Foreground, request)
+        assertTrue(result is DataResult.Error)
+        assertEquals("http_400", result.error.code)
+        assertEquals(PROFILE_DESCRIPTION_INVALID_CODE, result.error.serverCode)
+        assertEquals("A new or changed description must be a string of at most 300 characters", result.error.serverMessage)
     }
 
     @Test

@@ -42,6 +42,8 @@ import build.raft.app.model.RUNTIMES
 import build.raft.app.model.suggestAgentName
 import build.raft.app.model.validateAgentName
 import build.raft.app.data.DataResult
+import build.raft.app.data.PROFILE_DESCRIPTION_MAX_LENGTH
+import build.raft.app.data.profileDescriptionLength
 import build.raft.app.data.RuntimeFormV2Availability
 import build.raft.app.data.SharedCreateAgentRuntimeCatalog
 import build.raft.app.data.CREATE_AGENT_HOSTED_PROVIDER
@@ -368,7 +370,6 @@ internal data class CreateAgentDropdownItem(
     val enabled: Boolean = true
 )
 
-internal const val CREATE_AGENT_DESCRIPTION_MAX_LENGTH = 3000
 internal const val CREATE_AGENT_NO_MACHINE_RUNTIMES_ERROR =
     "Selected computer has no runtime data. Refresh computers or choose another computer."
 
@@ -680,7 +681,9 @@ internal fun SharedCreateAgentDialog(
     val trimmedName = name.trim()
     val inlineNameError = if (trimmedName.isNotEmpty()) validateAgentName(trimmedName) else null
     val localizedInlineNameError = inlineNameError?.let { localizedCreateAgentNameError(trimmedName, it) }
-    val descriptionTooLong = description.text.length > CREATE_AGENT_DESCRIPTION_MAX_LENGTH
+    // Web CreateAgentDialog (slock #15664): an action card can prefill a description over the limit
+    // (its own cap is longer); the error says so and Create waits for it to fit.
+    val descriptionTooLong = profileDescriptionLength(description.text) > PROFILE_DESCRIPTION_MAX_LENGTH
     // Web `CreateAgentDialog`: the agent limit holds for an external agent too (it takes a seat).
     val atLimit = createAgentAtLimit(currentAgentCount, maxAgents)
     val selectedMachine = machines.firstOrNull { it.id == selectedMachineId }
@@ -876,32 +879,41 @@ internal fun SharedCreateAgentDialog(
                     }
                 }
                 item(key = "description") {
+                    val descriptionError =
+                        if (descriptionTooLong) {
+                            Res.string.agent_create_error_description_length
+                                .format(listOf(PROFILE_DESCRIPTION_MAX_LENGTH))
+                                .localized()
+                        } else {
+                            null
+                        }
                     RaftField(
                         label = stringResource(Res.string.agent_create_label_description),
                         modifier = Modifier.fillMaxWidth(),
-                        error =
-                            if (descriptionTooLong) {
-                                Res.string.agent_create_error_description_length
-                                    .format(listOf(CREATE_AGENT_DESCRIPTION_MAX_LENGTH))
-                                    .localized()
-                            } else {
-                                null
-                            },
                         enabled = !submitting,
                         optional = true
                     ) {
-                        // The TextareaGroup counter ("n/3000") under the box replaces the hand-drawn one.
-                        RaftTextarea(
-                            value = description,
-                            onValueChange = { description = it.coerceTextLength(CREATE_AGENT_DESCRIPTION_MAX_LENGTH) },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = stringResource(Res.string.agent_create_placeholder_description),
-                            limit = CREATE_AGENT_DESCRIPTION_MAX_LENGTH,
-                            minHeight = 82.dp,
-                            // Three 24dp field lines inside the textarea's 10dp vertical padding, then it scrolls.
-                            maxHeight = 92.dp,
-                            inputModifier = rememberRaftTextareaEditorModifier()
-                        )
+                        // Web StableField: the textarea, then one row with the hint (or the error) and the
+                        // "n/300" counter. Typing stops at the limit (web `maxLength`).
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            RaftTextarea(
+                                value = description,
+                                onValueChange = { description = it.coerceTextLength(PROFILE_DESCRIPTION_MAX_LENGTH) },
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = stringResource(Res.string.agent_create_placeholder_description),
+                                invalid = descriptionTooLong,
+                                minHeight = 82.dp,
+                                // Three 24dp field lines inside the textarea's 10dp vertical padding, then it scrolls.
+                                maxHeight = 92.dp,
+                                inputModifier = rememberRaftTextareaEditorModifier()
+                            )
+                            RaftProfileDescriptionFoot(
+                                count = description.text.length,
+                                hint = stringResource(Res.string.agent_create_description_hint),
+                                error = descriptionError,
+                                enabled = !submitting
+                            )
+                        }
                     }
                 }
                 if (hostedMode && createAgentHostedModelFieldShown(hostedModels)) {

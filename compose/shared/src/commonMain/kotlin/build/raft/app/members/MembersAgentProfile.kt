@@ -14,6 +14,9 @@ import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentProfileUpdateRequest
 import build.raft.app.data.DataResult
+import build.raft.app.data.PROFILE_DESCRIPTION_INVALID_CODE
+import build.raft.app.data.PROFILE_DESCRIPTION_MAX_LENGTH
+import build.raft.app.data.profileDescriptionTooLong
 import build.raft.app.data.SharedAgentDetailActions
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedAgentDetailState
@@ -194,8 +197,6 @@ internal fun MembersAgentRoleHelpRow(
         )
     }
 }
-
-private const val MembersAgentProfileDescriptionMaxLength = 3000
 
 // Web AgentProfileInfo spacings (raft-ui DescriptionList stacked at phone width, section
 // paddings). Kept as separate constants on purpose so one can change without the others
@@ -882,7 +883,8 @@ private fun MembersAgentProfileFieldsSection(
     val displayNameRequired = stringResource(Res.string.member_error_display_name_required)
     val permissionErrorTemplate = membersStringTemplate(Res.string.member_error_permission)
     val saveErrorTemplate = membersStringTemplate(Res.string.member_error_save)
-    val descriptionTooLongTemplate = membersStringTemplate(Res.string.member_error_description_too_long)
+    val descriptionTooLongMessage =
+        stringResource(Res.string.agent_create_error_description_length, PROFILE_DESCRIPTION_MAX_LENGTH)
 
     // Display Name: independent edit state machine, mirrors React `editingDisplayName`
     // (AgentDetailPanel.tsx ~L1073). Pencil icon toggles edit mode; inline Save/Cancel
@@ -923,6 +925,13 @@ private fun MembersAgentProfileFieldsSection(
         if (storeBackedProfileEdit) profileState.roleSaving else localSavingRole
     val roleError =
         if (storeBackedProfileEdit) profileState.roleError else localRoleError
+    // The failed save's trace id, shown under its error (AGENTS.md "Errors carry the trace ID").
+    var roleErrorTraceId by remember(member.id.value) { mutableStateOf<String?>(null) }
+    // Web AgentProfileEditDialog (slock #15664): one saved under the older, longer limit stays as it
+    // is; once edited, the 300 limit applies. Save waits for a change that fits.
+    val trimmedDraftRole = draftRole.trim()
+    val descriptionChanged = trimmedDraftRole != member.description.orEmpty()
+    val descriptionTooLong = profileDescriptionTooLong(trimmedDraftRole, member.description)
 
     fun saveDisplayName() {
         val callback = onUpdateAgentProfile
@@ -1027,15 +1036,9 @@ private fun MembersAgentProfileFieldsSection(
             return
         }
         val next = draftRole.trim()
-        if (next.length > MembersAgentProfileDescriptionMaxLength) {
-            val error = descriptionTooLongTemplate.membersFormat(MembersAgentProfileDescriptionMaxLength.toString())
-            if (storeBackedProfileEdit) {
-                profileStore.dispatch(SharedAgentDetailIntent.SetRoleError(error))
-            } else {
-                localRoleError = error
-            }
-            return
-        }
+        // The field already says so and Save is off; nothing to send.
+        if (!descriptionChanged || descriptionTooLong) return
+        roleErrorTraceId = null
         scope.launch {
             if (roleEditorAuthority != currentProfileEditAuthority) {
                 onUnavailableAction(profileEditingUnavailable)
@@ -1084,6 +1087,7 @@ private fun MembersAgentProfileFieldsSection(
                 is DataResult.NoPermission -> {
                     val error =
                         membersFormattedPermissionError(permissionErrorTemplate, result.blocker, errorStrings)
+                    roleErrorTraceId = result.blocker.traceId
                     if (storeBackedProfileEdit) {
                         profileStore.dispatch(SharedAgentDetailIntent.SetRoleError(error))
                     } else {
@@ -1091,7 +1095,15 @@ private fun MembersAgentProfileFieldsSection(
                     }
                 }
                 is DataResult.Error -> {
-                    val error = membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
+                    // 400 `profile_description_invalid`: the Server's limit (the stored description it
+                    // compares with may be newer than this page's); said as the field's own error.
+                    val error =
+                        if (result.error.serverCode == PROFILE_DESCRIPTION_INVALID_CODE) {
+                            descriptionTooLongMessage
+                        } else {
+                            membersFormattedScreenError(saveErrorTemplate, result.error, errorStrings)
+                        }
+                    roleErrorTraceId = result.error.traceId
                     if (storeBackedProfileEdit) {
                         profileStore.dispatch(SharedAgentDetailIntent.SetRoleError(error))
                     } else {
@@ -1247,10 +1259,11 @@ private fun MembersAgentProfileFieldsSection(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
             ) {
+                val shownRoleError =
+                    roleError?.takeIf { it.isNotBlank() } ?: descriptionTooLongMessage.takeIf { descriptionTooLong }
                 RaftField(
                     label = null,
-                    modifier = Modifier.fillMaxWidth(),
-                    error = roleError?.takeIf { it.isNotBlank() }
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     val descriptionFocus = remember { FocusRequester() }
                     LaunchedEffect(Unit) {
@@ -1262,6 +1275,7 @@ private fun MembersAgentProfileFieldsSection(
                         placeholder = stringResource(Res.string.member_placeholder_description),
                         modifier = Modifier.fillMaxWidth(),
                         inputModifier = Modifier.focusRequester(descriptionFocus),
+                        invalid = shownRoleError != null,
                         onValueChange = {
                             if (storeBackedProfileEdit) {
                                 profileStore.dispatch(
@@ -1275,6 +1289,14 @@ private fun MembersAgentProfileFieldsSection(
                         enabled = !savingRole
                     )
                 }
+                // Web StableField message row: the hint (or the error) and the persistent "n/300"
+                // counter; one saved under the older limit reads e.g. 412/300 before it is edited.
+                RaftProfileDescriptionFoot(
+                    count = trimmedDraftRole.length,
+                    hint = stringResource(Res.string.agent_detail_description_hint),
+                    error = shownRoleError
+                )
+                if (roleError != null) RaftTraceIdNote(roleErrorTraceId)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
@@ -1283,7 +1305,7 @@ private fun MembersAgentProfileFieldsSection(
                     RaftButton(
                         text = if (savingRole) stringResource(Res.string.member_action_saving) else stringResource(Res.string.common_save),
                         onClick = { saveRole() },
-                        enabled = !savingRole,
+                        enabled = !savingRole && descriptionChanged && !descriptionTooLong,
                         variant = RaftButtonVariant.Primary,
                         size = RaftButtonSize.Lg
                     )
@@ -1303,12 +1325,6 @@ private fun MembersAgentProfileFieldsSection(
                             }
                         },
                         enabled = !savingRole
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        text = "${draftRole.trim().length}/$MembersAgentProfileDescriptionMaxLength",
-                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 10.sp, lineHeight = 14.sp),
-                        color = RaftColor.TextMutedGray
                     )
                 }
             }
