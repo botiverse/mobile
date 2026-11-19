@@ -18,6 +18,7 @@ APKSIGNER_BIN="${APKSIGNER:-}"
 BLACKSMITH_CLI_VERSION="${BLACKSMITH_CLI_VERSION:-}"
 INJECTED_FAULT="${VISUAL_INJECTED_FAULT:-}"
 DEFER_VERDICT=0
+DISPLAY_FORM="phone"
 ONE_CASE_PER_PROCESS=1
 EXECUTION_MODE="targeted"
 TEST_CLASS="build.raft.app.visual.KmpVisualScreenshotCaptureTest"
@@ -46,6 +47,9 @@ Options:
   --blacksmith-cli-version <version>               Required for Testbox sample.
   --injected-fault <name>                          Control-only fault identity.
   --output-dir <path>                              Default: visual-testing-results.
+  --display <phone|wide>                           phone (default): 1170x2532 @ 480dpi
+                                                   (390x844dp); wide: 2560x1600 @ 320dpi
+                                                   (1280x800dp), screens.wide.* cases only.
   --single-process-targets                         Run a targeted list in one process.
   --defer-verdict                                  Persist evidence and return success;
                                                    a later workflow step must fail.
@@ -67,6 +71,7 @@ while [[ $# -gt 0 ]]; do
     --blacksmith-cli-version) BLACKSMITH_CLI_VERSION="$2"; shift 2 ;;
     --injected-fault) INJECTED_FAULT="$2"; shift 2 ;;
     --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+    --display) DISPLAY_FORM="$2"; shift 2 ;;
     --single-process-targets) ONE_CASE_PER_PROCESS=0; shift ;;
     --defer-verdict) DEFER_VERDICT=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -74,6 +79,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+case "$DISPLAY_FORM" in
+  phone) DISPLAY_SIZE="1170x2532"; DISPLAY_DENSITY="480" ;;
+  wide) DISPLAY_SIZE="2560x1600"; DISPLAY_DENSITY="320" ;;
+  *) echo "Unknown --display: $DISPLAY_FORM (phone or wide)" >&2; exit 2 ;;
+esac
 [[ -f "$APP_APK" ]] || { echo "App APK not found: $APP_APK" >&2; exit 2; }
 [[ -f "$TEST_APK" ]] || { echo "Instrumentation APK not found: $TEST_APK" >&2; exit 2; }
 for value_name in SHARD_INDEX SHARD_TOTAL ATTEMPT RETRY; do
@@ -498,7 +508,7 @@ CURRENT_PHASE="resolve_case_contract"
 if [[ -z "$METHOD_FILTER" ]]; then
   EXECUTION_MODE="canonical_shard"
   ONE_CASE_PER_PROCESS=0
-  METHOD_FILTER="$(python3 "$CASE_MAPPER" --all --shard-index "$SHARD_INDEX" --shard-total "$SHARD_TOTAL")"
+  METHOD_FILTER="$(python3 "$CASE_MAPPER" --all --form "$DISPLAY_FORM" --shard-index "$SHARD_INDEX" --shard-total "$SHARD_TOTAL")"
 fi
 [[ -n "$EXPECTED_METHOD_FILTER" ]] || EXPECTED_METHOD_FILTER="$METHOD_FILTER"
 python3 "$CASE_MAPPER" --selectors "$METHOD_FILTER" --format json > "$ACTUAL_MAP_FILE"
@@ -588,8 +598,8 @@ CURRENT_PHASE="warm_device_reset"
 "$ADB_BIN" logcat -c
 
 CURRENT_PHASE="visual_environment"
-"$ADB_BIN" shell 'for i in 1 2 3 4 5; do wm size 1170x2532; sleep 1; if wm size | grep -q "Override size: 1170x2532"; then echo "wm size applied on try $i"; break; fi; wm size reset; sleep 1; done; wm size | grep -q "Override size: 1170x2532"'
-"$ADB_BIN" shell wm density 480
+"$ADB_BIN" shell "for i in 1 2 3 4 5; do wm size $DISPLAY_SIZE; sleep 1; if wm size | grep -q 'Override size: $DISPLAY_SIZE'; then echo \"wm size applied on try \$i\"; break; fi; wm size reset; sleep 1; done; wm size | grep -q 'Override size: $DISPLAY_SIZE'"
+"$ADB_BIN" shell wm density "$DISPLAY_DENSITY"
 "$ADB_BIN" shell settings put system accelerometer_rotation 0
 "$ADB_BIN" shell settings put system user_rotation 0
 "$ADB_BIN" shell settings put system font_scale 1.0

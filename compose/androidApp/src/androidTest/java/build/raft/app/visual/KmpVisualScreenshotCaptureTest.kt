@@ -3287,6 +3287,71 @@ class KmpVisualScreenshotCaptureTest {
     // the fixture the React case seeds (slock shared/homeChannelListFixture.json). The page pins
     // the app theme from pageData.appearance and restores it when the activity closes.
     @Test
+    fun captureWideActivityTask() {
+        // Wide lane only (scripts/visual_android_case_filter.py: `screens.wide.*`), on a 1280x800dp
+        // display (wm size 2560x1600, density 320), by touch.
+        captureKmpComponentCase(
+            caseId = "screens.wide.activity-task",
+            pageName = "compose_wide_shell_visual",
+            pageData = JSONObject().put("scene", "activity-task"),
+            crop = WIDE_VIEWPORT_CROP,
+            settleMs = 3_000
+        )
+    }
+
+    @Test
+    fun captureWideChannel() {
+        // Wide lane only (scripts/visual_android_case_filter.py: `screens.wide.*`), on a 1280x800dp
+        // display (wm size 2560x1600, density 320), by touch.
+        captureKmpComponentCase(
+            caseId = "screens.wide.channel",
+            pageName = "compose_wide_shell_visual",
+            pageData = JSONObject().put("scene", "channel"),
+            crop = WIDE_VIEWPORT_CROP,
+            settleMs = 3_000
+        )
+    }
+
+    @Test
+    fun captureWideChannelThread() {
+        // Wide lane only (scripts/visual_android_case_filter.py: `screens.wide.*`), on a 1280x800dp
+        // display (wm size 2560x1600, density 320), by touch.
+        captureKmpComponentCase(
+            caseId = "screens.wide.channel-thread",
+            pageName = "compose_wide_shell_visual",
+            pageData = JSONObject().put("scene", "channel-thread"),
+            crop = WIDE_VIEWPORT_CROP,
+            settleMs = 3_000
+        )
+    }
+
+    @Test
+    fun captureWideSettings() {
+        // Wide lane only (scripts/visual_android_case_filter.py: `screens.wide.*`), on a 1280x800dp
+        // display (wm size 2560x1600, density 320), by touch.
+        captureKmpComponentCase(
+            caseId = "screens.wide.settings",
+            pageName = "compose_wide_shell_visual",
+            pageData = JSONObject().put("scene", "settings"),
+            crop = WIDE_VIEWPORT_CROP,
+            settleMs = 3_000
+        )
+    }
+
+    @Test
+    fun captureWideTasksTask() {
+        // Wide lane only (scripts/visual_android_case_filter.py: `screens.wide.*`), on a 1280x800dp
+        // display (wm size 2560x1600, density 320), by touch.
+        captureKmpComponentCase(
+            caseId = "screens.wide.tasks-task",
+            pageName = "compose_wide_shell_visual",
+            pageData = JSONObject().put("scene", "tasks-task"),
+            crop = WIDE_VIEWPORT_CROP,
+            settleMs = 3_000
+        )
+    }
+
+    @Test
     fun captureHomeChannelList() {
         captureKmpComponentCase(
             caseId = "screens.home.channel-list",
@@ -6562,6 +6627,16 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 390,
                 heightDp = 844,
+                contract = "viewport-bounds",
+                captureMethod = "app-window-root-draw-viewport-density-resize"
+            )
+        // The wide lane's display: 1280x800dp (2560x1600 at 320dpi), the web's wide size.
+        private val WIDE_VIEWPORT_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 1280,
+                heightDp = 800,
                 contract = "viewport-bounds",
                 captureMethod = "app-window-root-draw-viewport-density-resize"
             )

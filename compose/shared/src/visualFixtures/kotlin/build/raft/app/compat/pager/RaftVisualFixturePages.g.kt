@@ -135,4 +135,5 @@ internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
         "compose_ui_surface_list_item_visual" to { build.raft.app.ComposeUiSurfaceListItemVisualPage() },
         "compose_ui_textarea_visual" to { build.raft.app.ComposeUiTextareaVisualPage() },
         "compose_ui_typography_specimen_visual" to { build.raft.app.ComposeUiTypographySpecimenVisualPage() },
+        "compose_wide_shell_visual" to { build.raft.app.WideShellVisualFixture() },
     )
