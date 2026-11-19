@@ -8,3 +8,6 @@ import java.awt.GraphicsEnvironment
  */
 actual fun raftPlatformInitialPointerInput(): RaftPointerInput =
     if (GraphicsEnvironment.isHeadless()) RaftPointerInput.Touch else RaftPointerInput.Fine
+
+/** A desktop window always has a size before it composes; no guess. */
+internal actual fun raftPlatformUnmeasuredWindowWidth(): androidx.compose.ui.unit.Dp? = null

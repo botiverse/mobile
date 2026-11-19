@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import build.raft.app.compat.ui.ProvideRaftPlatformImeInsets
 import build.raft.app.compat.ui.RaftProvidePageActive
+import build.raft.app.RaftProvideAppTypeScale
 import build.raft.app.RaftProvideTextRendering
 import build.raft.app.RaftUpgradeDialogHost
 import build.raft.app.RaftUpgradeDialogState
@@ -243,6 +244,9 @@ fun RaftPagerHost(
         LocalRaftNativeNavBar provides (ownNativeNavBar?.takeIf { it.hostDrawsBar } ?: inheritedNativeNavBar.takeIf { ownNativeNavBar == null }),
         LocalRaftNativeNavBarScript provides (ownNativeNavBar ?: inheritedNativeNavBarScript),
     ) {
+        // The app's RaftType sizes follow this window's scale from the page's first frame, not
+        // from whenever a design-system theme first composes (RaftProvideAppTypeScale).
+        RaftProvideAppTypeScale {
         // Back handlers of an inactive (kept-alive, hidden) page must not fire.
         RaftProvidePageActive(active) {
             // Raft text rendering defaults (CSS line box, ...) for Text calls not built from a token.
@@ -266,6 +270,7 @@ fun RaftPagerHost(
                     }
                 }
             }
+        }
         }
     }
     }
