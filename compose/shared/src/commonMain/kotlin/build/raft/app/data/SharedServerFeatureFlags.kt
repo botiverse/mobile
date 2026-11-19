@@ -221,6 +221,17 @@ const val EXTERNAL_CHANNELS_FEATURE_FLAG_KEY: String = "external_channels_v1"
  */
 const val SERVER_LABS_UI_FEATURE_FLAG_KEY: String = "server_labs_ui_v0"
 
+/**
+ * Claude limit resets on the Computer usage card (botiverse/slock `packages/shared/src/featureFlags.ts`
+ * `CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY`, web `serverFeatureFlags.ts` `claudeLimitReset`; #15564): per server,
+ * default off. On, and the server's `GET …/runtime-auth` saying the Computer runs them
+ * (`claudeLimitResets: ok`, sent only while the server's evaluation of the same key is on), the card offers
+ * "Use a limit reset" (ComputerRuntimeClaudeLimitReset.kt). Off, nothing about Claude resets is drawn and
+ * the server refuses both routes (404 `claude_limit_reset_disabled`). The first key, `claude_limit_reset`,
+ * was retired (artin, #proj-raft-computer:4e327d5c); the app never read it.
+ */
+const val CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY: String = "claude_limit_reset_v2"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -250,6 +261,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SERVER_SSO_FEATURE_FLAG_KEY,
     CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY,
     EXTERNAL_CHANNELS_FEATURE_FLAG_KEY,
+    // The Computer usage card's "Use a limit reset" for Claude Code.
+    CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,

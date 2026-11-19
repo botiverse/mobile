@@ -1819,25 +1819,36 @@ private data class RuntimeLimitResetBody(val idempotencyKey: String, val respond
 internal fun buildRuntimeLimitResetBody(idempotencyKey: RuntimeLimitResetIdempotencyKey): String =
     computersApiJson.encodeToString(RuntimeLimitResetBody(idempotencyKey = idempotencyKey.value, respondAsync = true))
 
+/** [onboardingRequiredReason]: this client reads `unsupported: onboarding_required` (slock runtimeAuthRoutes.ts). */
 @Serializable
-private data class ClaudeLimitResetBody(val idempotencyKey: String, val kind: String, val respondAsync: Boolean)
+private data class ClaudeLimitResetBody(
+    val idempotencyKey: String,
+    val kind: String,
+    val onboardingRequiredReason: Boolean,
+    val respondAsync: Boolean,
+)
 
-/** `{idempotencyKey, kind, respondAsync: true}`: a Claude redeem names the kind the person chose (slock #14336). */
+/**
+ * `{idempotencyKey, kind, onboardingRequiredReason: true, respondAsync: true}`: a Claude redeem names
+ * the kind the person chose (slock #14336) and says it reads `onboarding_required` (web `redeemLimitReset`).
+ */
 internal fun buildClaudeLimitResetBody(idempotencyKey: RuntimeLimitResetIdempotencyKey, kind: RuntimeLimitResetKind): String =
-    computersApiJson.encodeToString(ClaudeLimitResetBody(idempotencyKey = idempotencyKey.value, kind = kind.wire, respondAsync = true))
+    computersApiJson.encodeToString(
+        ClaudeLimitResetBody(idempotencyKey = idempotencyKey.value, kind = kind.wire, onboardingRequiredReason = true, respondAsync = true)
+    )
 
 /** [consent] is left out unless true (the route takes only `true`). */
 @Serializable
-private data class ClaudeLimitResetsReadBody(val consent: Boolean? = null, val respondAsync: Boolean)
+private data class ClaudeLimitResetsReadBody(val consent: Boolean? = null, val onboardingRequiredReason: Boolean, val respondAsync: Boolean)
 
 /**
- * `{consent: true, respondAsync: true}` once the person accepted the read at the 5-hour limit,
- * else `{respondAsync: true}` (web `readLimitResets`).
+ * `{consent: true, onboardingRequiredReason: true, respondAsync: true}` for a read with consent, else
+ * `{onboardingRequiredReason: true, respondAsync: true}` (web `readLimitResets`).
  */
 internal fun buildClaudeLimitResetsReadBody(consent: Boolean): String =
     runtimeAuthBodyJson.encodeToString(
         ClaudeLimitResetsReadBody.serializer(),
-        ClaudeLimitResetsReadBody(consent = true.takeIf { consent }, respondAsync = true),
+        ClaudeLimitResetsReadBody(consent = true.takeIf { consent }, onboardingRequiredReason = true, respondAsync = true),
     )
 
 @Serializable

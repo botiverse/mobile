@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.data.AuthSessionEvent
+import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageKey
 import build.raft.app.data.RuntimeAccountUsageLoad
@@ -64,6 +65,8 @@ internal class MembersRuntimeAccountUsageAccess(
     val viewer: RuntimeAccountUsageViewer? = null,
     /** Signing the Computer's runtimes in and out from their cards; null offers no sign-in (the agent page). */
     val auth: ComputerRuntimeAuthHost? = null,
+    /** The server's feature flags (`claude_limit_reset_v2` for the cards' Claude limit resets); null reads every flag as off. */
+    val serverFeatureFlags: SharedServerFeatureFlags? = null,
 )
 
 /**
@@ -209,6 +212,7 @@ internal fun MembersAgentRuntimeUsageChip(
             }
         }
     DisposableEffect(controller) { onDispose { controller?.cancel() } }
+    BindClaudeLimitResetFlag(controller, access?.serverFeatureFlags)
     LaunchedEffect(controller) { controller?.start() }
     val load = controller?.load
     val offered = controller != null && load.offersRuntimeAccountUsage()

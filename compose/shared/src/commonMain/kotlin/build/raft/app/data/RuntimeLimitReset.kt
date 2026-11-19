@@ -44,6 +44,9 @@ internal val RUNTIME_LIMIT_RESET_UNSUPPORTED_REASONS: Set<String> =
         "unsupported_version",
         "unsupported_platform",
         "not_attempted",
+        // Claude Code stopped at a first-run page the Computer does not answer (OAR 0.114); nothing
+        // was spent. Sent only to a request with `onboardingRequiredReason: true`.
+        "onboarding_required",
     )
 
 /** slock `RUNTIME_LIMIT_RESETS_READ_UNSUPPORTED_REASONS`: a read may also need the person's consent first. */
