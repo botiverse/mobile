@@ -253,6 +253,6 @@ class SharedActivityStoreBadgeOwnerHardeningTest {
 
         val detail = f.checks.single { it.result == "expired" }.outcomeDetail
         assertTrue(detail.contains(";reread=position;own=0;sender_type=user;message_type=chat;age_ms="), detail)
-        assertTrue(detail.endsWith(";read_state=1;read_behind=0"), detail)
+        assertTrue(detail.contains(";read_state=1;read_behind=0;fetch_reason="), detail)
     }
 }
