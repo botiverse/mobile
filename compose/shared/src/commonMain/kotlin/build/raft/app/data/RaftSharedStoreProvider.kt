@@ -201,7 +201,7 @@ internal const val ServerFeatureFlagRefreshIntervalMillis = 60_000L
 internal suspend fun refreshSelectedServerFeatureFlags(
     intervalMillis: Long = ServerFeatureFlagRefreshIntervalMillis,
     wait: suspend (Long) -> Unit = { delay(it) },
-    foreground: Flow<Boolean> = RaftProcessForegroundGate.foreground,
+    foreground: StateFlow<Boolean> = RaftProcessForegroundGate.foreground,
     nowMillis: () -> Long = ::raftForegroundGateNowMillis,
     refresh: suspend () -> Unit
 ) {

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -14,6 +15,7 @@ import kotlin.test.assertEquals
  * must not wake a burst of timers while Android tries to freeze it again), and catches up once, not
  * once per missed interval, when the app comes back.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class RaftProcessForegroundGateTest {
     private fun TestScope.startRepeating(
         foreground: MutableStateFlow<Boolean>,
@@ -84,6 +86,25 @@ class RaftProcessForegroundGateTest {
             assertEquals(emptyList(), runs, "not due yet")
             advanceTimeBy(45_001L)
             assertEquals(listOf(60_000L), runs)
+        }
+
+    @Test
+    fun aCancellationThrownByTheBlockReachesTheCaller() =
+        runTest {
+            var runs = 0
+            val stopped =
+                runCatching {
+                    repeatWhileProcessForeground(
+                        intervalMillis = 1_000L,
+                        foreground = MutableStateFlow(true),
+                        runImmediatelyOnStart = true,
+                    ) {
+                        runs += 1
+                        if (runs == 2) throw kotlinx.coroutines.CancellationException("stop")
+                    }
+                }
+            assertEquals(2, runs)
+            assertEquals("stop", stopped.exceptionOrNull()?.message)
         }
 
     @Test

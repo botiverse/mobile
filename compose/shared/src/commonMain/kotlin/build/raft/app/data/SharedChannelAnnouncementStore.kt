@@ -156,7 +156,7 @@ internal class SharedChannelAnnouncementStore(
     private val logger: (String) -> Unit = {},
     private val pollMillis: Long = CHANNEL_ANNOUNCEMENT_POLL_MILLIS,
     /** The poll runs only while this is true (the app in the foreground); see [repeatWhileProcessForeground]. */
-    private val foreground: Flow<Boolean> = RaftProcessForegroundGate.foreground,
+    private val foreground: StateFlow<Boolean> = RaftProcessForegroundGate.foreground,
     private val nowMillis: () -> Long = ::raftForegroundGateNowMillis,
 ) {
     private val mutableState = MutableStateFlow(ChannelAnnouncementState())

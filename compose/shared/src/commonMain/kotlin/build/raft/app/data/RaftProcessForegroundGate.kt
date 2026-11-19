@@ -1,12 +1,10 @@
 package build.raft.app.data
 
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlin.time.TimeSource
 
 /**
@@ -41,17 +39,19 @@ internal fun raftForegroundGateNowMillis(): Long = RaftForegroundGateClockOrigin
  * Runs [block] every [intervalMillis] while [foreground] is true, and not at all while it is false.
  *
  * - Start: [block] runs at once when [runImmediatelyOnStart], else one interval later.
- * - Hidden: the timer stops (a [block] under way is cancelled with it).
+ * - Hidden: nothing runs. A wait under way finishes, then the loop parks until the app is back
+ *   (at most one wake-up after the hide, no work).
  * - Back in front: if an interval came due while hidden, [block] runs once at once (never one run
- *   per missed interval); otherwise it runs when the interval that was under way ends. Then every
+ *   per missed interval); otherwise it runs when the interval under way ends. Then every
  *   [intervalMillis] again.
  *
- * [wait] and [nowMillis] are for tests; production uses `delay` and a monotonic clock. Never returns
- * normally: cancel the calling coroutine to stop it.
+ * One coroutine, no child: whatever [block] or [wait] throws (a cancellation included) ends the
+ * loop and reaches the caller. [wait] and [nowMillis] are for tests; production uses `delay` and a
+ * monotonic clock. Never returns normally: cancel the calling coroutine to stop it.
  */
 internal suspend fun repeatWhileProcessForeground(
     intervalMillis: Long,
-    foreground: Flow<Boolean> = RaftProcessForegroundGate.foreground,
+    foreground: StateFlow<Boolean> = RaftProcessForegroundGate.foreground,
     runImmediatelyOnStart: Boolean = false,
     wait: suspend (Long) -> Unit = { delay(it) },
     nowMillis: () -> Long = ::raftForegroundGateNowMillis,
@@ -59,25 +59,18 @@ internal suspend fun repeatWhileProcessForeground(
 ) {
     require(intervalMillis > 0L) { "interval must be positive" }
     var lastRunAtMillis: Long? = if (runImmediatelyOnStart) null else nowMillis()
-    var hiddenSinceStart = false
-    foreground.distinctUntilChanged().collectLatest { inFront ->
-        if (!inFront) {
-            hiddenSinceStart = true
-            return@collectLatest
+    var nextWaitMillis = if (runImmediatelyOnStart) 0L else intervalMillis
+    while (true) {
+        if (!foreground.value) {
+            foreground.first { it }
+            val last = lastRunAtMillis
+            nextWaitMillis = if (last == null) 0L else (intervalMillis - (nowMillis() - last)).coerceIn(0L, intervalMillis)
         }
-        val last = lastRunAtMillis
-        val firstWait =
-            when {
-                last == null -> 0L
-                // Never hidden: a plain interval (the clock is read only to measure a hide).
-                !hiddenSinceStart -> intervalMillis
-                else -> (intervalMillis - (nowMillis() - last)).coerceIn(0L, intervalMillis)
-            }
-        if (firstWait > 0L) wait(firstWait)
-        while (true) {
-            lastRunAtMillis = nowMillis()
-            block()
-            wait(intervalMillis)
-        }
+        if (nextWaitMillis > 0L) wait(nextWaitMillis)
+        // Hidden meanwhile: decide again once the app is back.
+        if (!foreground.value) continue
+        lastRunAtMillis = nowMillis()
+        block()
+        nextWaitMillis = intervalMillis
     }
 }
