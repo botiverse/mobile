@@ -8,11 +8,9 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -208,16 +206,14 @@ internal fun raftStaleRecoveryDelayMillis(
  * and by the realtime ingress's `rooms:joined` signal; read by every [RaftStaleReadRecovery].
  */
 object RaftStaleReadRecoverySignals {
-    private val foregroundState = MutableStateFlow(true)
     private val nudgeEvents = MutableSharedFlow<String>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
-    /** True until a host reports the process in the background. */
-    val foreground: StateFlow<Boolean> = foregroundState.asStateFlow()
+    /** True until a host reports the process in the background ([RaftProcessForegroundGate]). */
+    val foreground: StateFlow<Boolean> = RaftProcessForegroundGate.foreground
     val nudges: SharedFlow<String> = nudgeEvents.asSharedFlow()
 
     fun onProcessVisibility(foreground: Boolean) {
-        val wasForeground = foregroundState.value
-        foregroundState.value = foreground
+        val wasForeground = RaftProcessForegroundGate.update(foreground)
         if (foreground && !wasForeground) nudgeEvents.tryEmit("foreground")
     }
 

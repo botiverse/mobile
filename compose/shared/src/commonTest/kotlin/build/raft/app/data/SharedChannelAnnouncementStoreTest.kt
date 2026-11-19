@@ -7,8 +7,10 @@ import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -182,6 +184,31 @@ class SharedChannelAnnouncementStoreTest {
             store.dispatch(ChannelAnnouncementIntent.Unwatch(key))
             advanceTimeBy(CHANNEL_ANNOUNCEMENT_POLL_MILLIS * 3)
             assertEquals(2, api.readCalls.size, "no page shows it")
+        }
+
+    @Test
+    fun aHiddenAppDoesNotPollAndReadsOnceWhenItComesBack() =
+        runTest {
+            val api = FakeApi()
+            val foreground = MutableStateFlow(true)
+            val store =
+                SharedChannelAnnouncementStore(
+                    ChannelAnnouncementRepository(api),
+                    backgroundScope,
+                    foreground = foreground,
+                    nowMillis = { testScheduler.currentTime },
+                )
+            store.dispatch(ChannelAnnouncementIntent.Watch(key))
+            advanceTimeBy(CHANNEL_ANNOUNCEMENT_POLL_MILLIS / 2)
+            foreground.value = false
+            advanceTimeBy(CHANNEL_ANNOUNCEMENT_POLL_MILLIS * 10)
+            assertEquals(0, api.readCalls.size, "no poll while hidden")
+            foreground.value = true
+            runCurrent()
+            assertEquals(1, api.readCalls.size, "one read on return, not ten")
+            api.reads.removeFirst().complete(ok(body("pt_a")))
+            advanceTimeBy(CHANNEL_ANNOUNCEMENT_POLL_MILLIS + 1)
+            assertEquals(2, api.readCalls.size, "then every minute again")
         }
 
     @Test
