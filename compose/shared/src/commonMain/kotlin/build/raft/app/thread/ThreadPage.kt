@@ -9914,6 +9914,8 @@ private fun SharedThreadRouteContentContent(
                         }
                     }
                 }
+                ThreadComposerReorderAttachmentsAction ->
+                    composerDraftViewModel.reorderThreadComposerAttachments(value, bridge::log)
                 "retryAttachments" -> {
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
                         val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
