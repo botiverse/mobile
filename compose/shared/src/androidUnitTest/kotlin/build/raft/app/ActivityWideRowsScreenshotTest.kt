@@ -49,7 +49,7 @@ import org.robolectric.annotation.GraphicsMode
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w944dp-h420dp-xhdpi")
+@Config(sdk = [34], qualifiers = "w944dp-h560dp-xhdpi")
 class ActivityWideRowsScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
@@ -145,14 +145,15 @@ private fun WideRows(hoverThird: Boolean) {
         ActivityConversationListContext(
             channelSymbolsByChannelId = mapOf("long-press" to "#", "joint-hands" to "git-branch", "release" to "#", "mobile" to "#"),
         )
+    val layout = activityRowLayout
     Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         Column(
-            Modifier.width(380.dp).fillMaxHeight().padding(top = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
+            Modifier.width(380.dp).fillMaxHeight().padding(top = layout.listTop),
+            verticalArrangement = Arrangement.spacedBy(layout.rowGap),
         ) {
             activityConversationListEntries(wideRows, wideRowsTime).forEach { entry ->
                 if (entry is ActivityConversationListEntry.DayHeading) {
-                    ActivityDayHeading(entry.label, first = entry.first, background = RaftTheme.colors.layerCanvas)
+                    ActivityDayHeading(entry.label, first = entry.first, background = RaftTheme.colors.layerCanvas, horizontalPadding = layout.contentEdge)
                     return@forEach
                 }
                 val item = (entry as ActivityConversationListEntry.Row).item

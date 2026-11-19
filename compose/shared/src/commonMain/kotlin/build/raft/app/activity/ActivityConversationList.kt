@@ -106,6 +106,11 @@ import build.raft.designsystem.components.RaftQuietUnreadDot
 import build.raft.designsystem.components.raftUnreadCountText
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.theme.RaftPointerInput
+import build.raft.designsystem.theme.RaftScale
+import build.raft.designsystem.tokens.RaftRadius
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Shape
 
 /*
  * Activity conversation list, the only Activity layout: the KMP port of the web
@@ -833,6 +838,81 @@ private val ConversationTileGlyph = 18.dp
 private val ConversationDividerStart = 64.dp
 private val ConversationSenderAvatar = 19.dp
 
+/**
+ * How an Activity row is laid out. A phone keeps its own row (artin #3653: two reserved excerpt lines,
+ * hairlines between rows, full-bleed fills). The wide layout takes the web's row (ThreadsInbox
+ * `RaftInboxItem density="compact"`, a list cell; raft-design patterns/lists.md and
+ * components/inbox-item.md): the title line and one excerpt line, the state drawn on one rounded
+ * shape inset [shapeInset] from both sides of the column, the content [contentPadX] inside that
+ * shape, [padY] above and below it, rows [rowGap] apart and no line between them.
+ */
+@Immutable
+internal data class ActivityRowLayout(
+    /** The state shape's inset from each side of the column (`--cell-inset-x`); 0: the fills run edge to edge. */
+    val shapeInset: Dp,
+    /** The content's inset inside the shape at the start and at the end (`--cell-pad-x`). */
+    val contentPadX: Dp,
+    /** Above and below the content. */
+    val padY: Dp,
+    /** The row's least height (`pointer-coarse:min-h-14`). */
+    val minHeight: Dp,
+    /** The excerpt's lines, each reserved. */
+    val previewLines: Int,
+    /** A hairline between two adjacent rows. */
+    val dividers: Boolean,
+    /** Between two rows (the list's `gap-0.5`). */
+    val rowGap: Dp,
+    /** Above the first row (web inbox scroller `py-1` and the list's `py-1`). */
+    val listTop: Dp,
+) {
+    /** Where a row's content starts and ends, from the column's edge: the column's margin. */
+    val contentEdge: Dp
+        get() = shapeInset + contentPadX
+
+    val shape: Shape
+        get() = if (shapeInset > 0.dp) RoundedCornerShape(RaftRadius.Control) else RectangleShape
+
+    companion object {
+        /** The phone's row, unchanged: 16dp edges, 12dp above and below, two excerpt lines, hairlines. */
+        val Phone =
+            ActivityRowLayout(
+                shapeInset = 0.dp,
+                contentPadX = 16.dp,
+                padY = 12.dp,
+                minHeight = 0.dp,
+                previewLines = ActivityConversationPreviewMaxLines,
+                dividers = true,
+                rowGap = 0.dp,
+                listTop = 4.dp,
+            )
+
+        /**
+         * The web's compact list cell: shape 8dp in, content 12dp inside it by touch (20dp from the
+         * column's edge) and 8dp inside it under a mouse or trackpad (16dp); 8dp above and below, at
+         * least 56dp tall by touch; one excerpt line; rows 2dp apart with no line between them.
+         */
+        fun wide(pointerInput: RaftPointerInput): ActivityRowLayout =
+            ActivityRowLayout(
+                shapeInset = 8.dp,
+                contentPadX = if (pointerInput == RaftPointerInput.Fine) 8.dp else 12.dp,
+                padY = 8.dp,
+                minHeight = if (pointerInput == RaftPointerInput.Fine) 0.dp else 56.dp,
+                previewLines = 1,
+                dividers = false,
+                rowGap = 2.dp,
+                listTop = 8.dp,
+            )
+
+        fun of(scale: RaftScale, pointerInput: RaftPointerInput): ActivityRowLayout =
+            if (scale == RaftScale.Wide) wide(pointerInput) else Phone
+    }
+}
+
+/** The Activity row layout for the enclosing theme's scale and input. */
+internal val activityRowLayout: ActivityRowLayout
+    @Composable
+    get() = ActivityRowLayout.of(RaftTheme.scale, RaftTheme.pointerInput)
+
 @Composable
 internal fun ActivityConversationListRow(
     item: InboxItem,
@@ -882,10 +962,12 @@ internal fun ActivityConversationListRow(
      */
     accessibilityActionIds: List<String> = emptyList(),
     onAccessibilityAction: (actionId: String) -> Unit = {},
+    layout: ActivityRowLayout = activityRowLayout,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val hairline = colors.lineHairline
+    val rowShape = layout.shape
     // Every row is the same height (artin): one title line and two excerpt lines, each a slot of its
     // style's line height, so a one-line excerpt still reserves its second line and a task badge, an
     // inline face or a fallback CJK glyph cannot make one row taller than its neighbours.
@@ -953,20 +1035,22 @@ internal fun ActivityConversationListRow(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    // The wide layout's list cell: its state shape sits in from both sides of the column.
+                    .padding(horizontal = layout.shapeInset)
                     .then(
                         when {
-                            selected -> Modifier.background(colors.infoSoft)
-                            menuOpen -> Modifier.background(colors.fillSubtle)
+                            selected -> Modifier.background(colors.infoSoft, rowShape)
+                            menuOpen -> Modifier.background(colors.fillSubtle, rowShape)
                             // raft-ui 0.20: an inbox row presses with the medium tier.
-                            pressed -> Modifier.background(colors.fillMedium)
+                            pressed -> Modifier.background(colors.fillMedium, rowShape)
                             else -> Modifier
                         }
                     )
-                    .raftStateOverlay(hover, RectangleShape)
+                    .raftStateOverlay(hover, rowShape)
                     .raftPointerHover(hoverSource)
                     .raftPointerHoverPosition { position -> pointerHovering = position != null }
                     .then(
-                        if (divider) {
+                        if (divider && layout.dividers) {
                             Modifier.drawBehind {
                                 val start = ConversationDividerStart.toPx()
                                 drawLine(hairline, Offset(start, 0f), Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
@@ -995,7 +1079,8 @@ internal fun ActivityConversationListRow(
                             }
                             if (accessibilityActions.isNotEmpty()) customActions = accessibilityActions
                         }
-                        .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 16.dp),
+                        .heightIn(min = layout.minHeight)
+                        .padding(horizontal = layout.contentPadX, vertical = layout.padY),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1101,6 +1186,7 @@ internal fun ActivityConversationListRow(
                         color = bodyColor,
                         inlineContent = inlineContent,
                         lineHeight = bodyLine,
+                        maxLines = layout.previewLines,
                         marks = {
                             Box(Modifier.alpha(if (showHoverDone) 0f else 1f)) {
                                 ActivityConversationMarks(model, marksHeight = bodyLine)
@@ -1116,7 +1202,7 @@ internal fun ActivityConversationListRow(
                 RaftIconButton(
                     onClick = onHoverDone,
                     tooltip = stringResource(Res.string.thread_action_mark_done),
-                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp).testTag(ActivityRowHoverDoneTag),
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = layout.contentPadX).testTag(ActivityRowHoverDoneTag),
                 ) {
                     RaftContentLucideIcon(RaftLucideIconName.Check, size = 18.dp)
                 }
@@ -1403,6 +1489,8 @@ internal fun ActivityExcerptBesideMarks(
     color: Color,
     inlineContent: Map<String, InlineTextContent>,
     lineHeight: Dp,
+    /** The excerpt's lines, each reserved; one: the excerpt ellipsizes on the marks' line. */
+    maxLines: Int = ActivityConversationPreviewMaxLines,
     marks: @Composable () -> Unit,
 ) {
     // Where line 1 ends is measured here, in the measure pass that uses it, with the same style and
@@ -1433,18 +1521,43 @@ internal fun ActivityExcerptBesideMarks(
                             text = text,
                             style = style,
                             color = color,
-                            maxLines = ActivityConversationPreviewMaxLines,
+                            maxLines = maxLines,
                             overflow = TextOverflow.Ellipsis,
                             inlineContent = inlineContent,
                         )
                     }
                 }.first().measure(loose)
-            val height = maxOf(body.height, minLine * ActivityConversationPreviewMaxLines)
+            val height = maxOf(body.height, minLine * maxLines)
             return@SubcomposeLayout layout(width, height) {
                 body.place(0, 0)
             }
         }
         val firstWidth = (width - marksWidth - gap).coerceAtLeast(0)
+        if (maxLines <= 1) {
+            // One line (the web's compact row, `InboxItemLine`): the excerpt ellipsizes before the marks.
+            val only =
+                subcompose("first") {
+                    Box(readAs) {
+                        RaftText(
+                            text = text,
+                            style = style,
+                            color = color,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            inlineContent = inlineContent,
+                        )
+                    }
+                }.first().measure(Constraints(maxWidth = firstWidth))
+            val row = maxOf(only.height, minLine)
+            return@SubcomposeLayout layout(width, row) {
+                only.place(0, (row - only.height) / 2)
+                var x = width
+                marksPlaceables.forEach { marksPlaceable ->
+                    x -= marksPlaceable.width
+                    marksPlaceable.place(x, (row - marksPlaceable.height) / 2)
+                }
+            }
+        }
         val firstLineEnd =
             measurer
                 .measure(
@@ -1480,7 +1593,7 @@ internal fun ActivityExcerptBesideMarks(
                             text = rest,
                             style = style,
                             color = color,
-                            maxLines = ActivityConversationPreviewMaxLines - 1,
+                            maxLines = maxLines - 1,
                             overflow = TextOverflow.Ellipsis,
                             inlineContent = inlineContent,
                         )
@@ -1488,7 +1601,7 @@ internal fun ActivityExcerptBesideMarks(
                 }.first().measure(loose)
             }
         // An excerpt that fits on line 1 still reserves line 2.
-        layout(width, firstRow + maxOf(second?.height ?: 0, minLine * (ActivityConversationPreviewMaxLines - 1))) {
+        layout(width, firstRow + maxOf(second?.height ?: 0, minLine * (maxLines - 1))) {
             first.place(0, (firstRow - first.height) / 2)
             var x = width
             marksPlaceables.forEach { marksPlaceable ->
