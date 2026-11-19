@@ -102,6 +102,7 @@ internal fun jointMemberConnectMessage(message: MemberConnectMessage, target: St
             stringResource(Res.string.joint_member_connect_error_server_membership_required, target)
         MemberConnectMessage.InvalidServer -> stringResource(Res.string.joint_member_connect_error_invalid_server, target, channel)
         MemberConnectMessage.Archived -> stringResource(Res.string.joint_member_connect_error_archived, channel)
+        MemberConnectMessage.ChannelNameTaken -> stringResource(Res.string.joint_member_connect_error_channel_name_taken, target, channel)
         MemberConnectMessage.TooManyAttempts -> stringResource(Res.string.joint_member_connect_error_too_many_attempts)
         MemberConnectMessage.ChannelFull -> stringResource(Res.string.joint_member_connect_error_channel_full, channel)
         MemberConnectMessage.TargetFreeLimit -> stringResource(Res.string.joint_member_connect_error_target_free_limit, target)

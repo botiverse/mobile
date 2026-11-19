@@ -230,6 +230,7 @@ internal fun inviteeMessageDesc(message: InviteeMessage, target: String, channel
         InviteeMessage.JointFreeServerLimit -> Res.string.external_invite_error_joint_free_server_limit.format(channel, target)
         InviteeMessage.ConnectInProgress -> Res.string.external_invite_error_connect_in_progress.format(channel)
         InviteeMessage.Archived -> Res.string.external_invite_error_archived.format(channel)
+        InviteeMessage.ChannelNameTaken -> Res.string.external_invite_error_channel_name_taken.format(target, channel)
         InviteeMessage.Busy -> Res.string.external_invite_error_busy.format(channel)
         InviteeMessage.TooManyAttempts -> Res.string.external_invite_error_too_many_attempts.desc()
         InviteeMessage.Generic -> Res.string.external_invite_error_generic.desc()

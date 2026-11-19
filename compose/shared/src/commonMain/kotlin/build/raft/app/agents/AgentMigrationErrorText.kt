@@ -90,6 +90,7 @@ internal fun migrationCopyResource(copy: MigrationCopy): StringResource =
         MigrationCopy.ErrorManifestTooLargeWithPaths -> Res.string.agent_migration_error_manifest_too_large_with_paths
         MigrationCopy.ErrorInsufficientDiskWithSizes -> Res.string.agent_migration_error_insufficient_disk_with_sizes
         MigrationCopy.ErrorInsufficientDisk -> Res.string.agent_migration_error_insufficient_disk
+        MigrationCopy.ErrorKeyPathUnreadable -> Res.string.agent_migration_error_key_path_unreadable
         MigrationCopy.AbortPrepDeadline -> Res.string.agent_migration_abort_prep_deadline
         MigrationCopy.AbortTransferDeadline -> Res.string.agent_migration_abort_transfer_deadline
         MigrationCopy.AbortArrivalDeadline -> Res.string.agent_migration_abort_arrival_deadline

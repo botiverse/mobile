@@ -41,7 +41,8 @@ class ComputerRuntimeOperationsTest {
         assertEquals(ComputerRuntimeOperationRefusal.ComputerUpgradeRequired, computerRuntimeOperationRefusal("computer_upgrade_required"))
         assertEquals(ComputerRuntimeOperationRefusal.ComputerOffline, computerRuntimeOperationRefusal("computer_offline"))
         assertEquals(ComputerRuntimeOperationRefusal.ComputerTimeout, computerRuntimeOperationRefusal("computer_timeout"))
-        listOf(null, "rate_limited", "forbidden", "malformed_response", "runtime_upgrade_disabled").forEach {
+        assertEquals(ComputerRuntimeOperationRefusal.RateLimited, computerRuntimeOperationRefusal("rate_limited"))
+        listOf(null, "forbidden", "malformed_response", "runtime_upgrade_disabled").forEach {
             assertEquals(ComputerRuntimeOperationRefusal.Failed, computerRuntimeOperationRefusal(it), it.toString())
         }
         assertEquals(
@@ -51,6 +52,20 @@ class ComputerRuntimeOperationsTest {
         assertEquals(
             Res.string.settings_computers_runtime_install_error,
             computerRuntimeInstallCopy(ComputerRuntimeInstallState.Refused(RuntimeAuthRuntime.Grok, "grok", "Grok", ComputerRuntimeOperationRefusal.Failed))?.message,
+        )
+    }
+
+    /** Web #15424: a 429 `rate_limited` Upgrade or Install says to wait a few minutes, not "try again". */
+    @Test
+    fun aRateLimitedUpgradeOrInstallSaysToWaitNotTryAgain() {
+        val reason = computerRuntimeOperationRefusal("rate_limited")
+        assertEquals(
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_auth_provider_error_rate_limited, success = false, traceId = "t2"),
+            computerRuntimeUpgradeCopy(ComputerRuntimeUpgradeState.Refused(reason, "t2")),
+        )
+        assertEquals(
+            Res.string.settings_computers_runtime_auth_provider_error_rate_limited,
+            computerRuntimeInstallCopy(ComputerRuntimeInstallState.Refused(RuntimeAuthRuntime.Grok, "grok", "Grok", reason))?.message,
         )
     }
 

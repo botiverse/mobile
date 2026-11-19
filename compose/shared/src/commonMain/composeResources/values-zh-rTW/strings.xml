@@ -2415,7 +2415,7 @@
     <string name="agent_invite_action_send">傳送邀請</string>
     <string name="channel_create_title">建立頻道</string>
     <string name="channel_create_external">外部</string>
-    <string name="channel_create_external_hint">在同一個頻道中與 %1$s 以外的人協作。只有你新增的人能看到這個頻道，%1$s 的成員也不例外。</string>
+    <string name="channel_create_external_hint">透過電子郵件邀請朋友、客戶或合作夥伴加入同一個頻道。外部頻道一律是私人頻道。</string>
     <string name="channel_create_external_free_limit">免費版：%1$s 已有一個與伺服器以外的人共享的頻道。</string>
     <string name="channel_create_upgrade_for_more">升級以取得更多</string>
     <string name="channel_create_people_title">新增成員至 #%1$s</string>
@@ -4056,6 +4056,7 @@
     <string name="joint_member_connect_description">你是擁有者或管理員的伺服器會直接連結。不需要徵得託管方 %1$s 同意，頻道裡會發一則訊息說明這個伺服器已連結。</string>
     <string name="joint_member_connect_error_already_connected">%1$s 已經連結。</string>
     <string name="joint_member_connect_error_archived">%1$s 已封存。</string>
+    <string name="joint_member_connect_error_channel_name_taken">%1$s 已經有一個叫 %2$s 的頻道。請先在 %1$s 裡為那個頻道改名，再重新連接。</string>
     <string name="joint_member_connect_error_busy">%1$s 正在更新，請過一分鐘再試。</string>
     <string name="joint_member_connect_error_channel_full">%1$s 無法再連結更多伺服器。</string>
     <string name="joint_member_connect_error_connect_in_progress">有伺服器正在連結到 %1$s，請等連結完成後再試一次。</string>
@@ -4384,6 +4385,7 @@
     <string name="agent_migration_error_manifest_too_large_with_paths">工作區中的檔案和資料夾太多，無法遷移。大部分位於：%1$s。請讓 Agent 刪除不再需要的資料夾，或將它們列入 .raftmigrateignore，然後再試一次。</string>
     <string name="agent_migration_error_insufficient_disk_with_sizes">目標電腦需要 %1$s 的可用空間來暫存並安裝這次遷移，但目前只有 %2$s 可用。請釋放磁碟空間，然後再試一次。</string>
     <string name="agent_migration_error_insufficient_disk">目標電腦沒有足夠的可用磁碟空間來暫存並安裝這次遷移。請釋放磁碟空間，然後再試一次。</string>
+    <string name="agent_migration_error_key_path_unreadable">來源電腦沒有權限讀取 MEMORY.md 或 notes/，這兩項必須隨 agent 一起遷移，所以遷移已停止，沒有移動任何內容。請修正檔案權限後重新開始遷移。</string>
     <string name="agent_migration_abort_prep_deadline">來源電腦上的工作區準備作業在期限前就停止進展。請確認來源電腦已上線，然後再試一次。</string>
     <string name="agent_migration_abort_transfer_deadline">工作區傳輸未能在期限內完成。請確認兩台電腦都保持上線，且目標電腦有足夠的可用磁碟空間，然後再試一次。</string>
     <string name="agent_migration_abort_arrival_deadline">目標電腦未能在期限內完成工作區安裝。請確認目標電腦正在執行，且有足夠的可用磁碟空間，然後再試一次。</string>
@@ -5189,8 +5191,8 @@
     <string name="channel_external_invite_upgrade">升級</string>
     <string name="channel_external_invite_becomes_private">邀請外部人員會讓這個頻道轉為私人頻道，只有頻道成員能看到它。</string>
     <string name="channel_external_invite_emails_label">透過電子郵件邀請</string>
-    <string name="channel_external_invite_emails_placeholder">name@example.com, name@example.org</string>
-    <string name="channel_external_invite_emails_hint">以逗號、空格或換行分隔電子郵件地址，最多 %1$d 個。</string>
+    <string name="channel_external_invite_emails_placeholder">alex@example.com, sam@example.org, …</string>
+    <string name="channel_external_invite_emails_join_by_link">每個人都會收到一封附有加入連結的電子郵件，還沒有 Raft 帳號也可以。</string>
     <string name="channel_external_invite_too_many">一次最多 %1$d 個電子郵件地址，請移除 %2$d 個。</string>
     <string name="channel_external_invite_next">下一步</string>
     <string name="channel_external_invite_checking">檢查中…</string>
@@ -5355,6 +5357,7 @@
     <string name="external_invite_error_joint_free_server_limit">%1$s 中的免費版伺服器已達上限。將 %2$s 升級到 Pro 即可連結。</string>
     <string name="external_invite_error_connect_in_progress">有伺服器正在連結到 %1$s，請等連結完成後再試一次。</string>
     <string name="external_invite_error_archived">%1$s 已封存。</string>
+    <string name="external_invite_error_channel_name_taken">%1$s 已經有一個叫 %2$s 的頻道。請先在 %1$s 裡為那個頻道改名，再重新連接。</string>
     <string name="external_invite_error_busy">%1$s 正在更新，請過一分鐘再試。</string>
     <string name="external_invite_error_too_many_attempts">嘗試次數過多，請稍候一分鐘再試一次。</string>
     <string name="external_invite_error_generic">發生錯誤，請再試一次。</string>

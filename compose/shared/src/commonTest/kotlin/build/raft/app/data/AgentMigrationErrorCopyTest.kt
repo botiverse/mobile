@@ -57,6 +57,20 @@ class AgentMigrationErrorCopyTest {
         assertEquals(listOf(MigrationText(MigrationCopy.ErrorFailedGeneric)), result.messageParts)
     }
 
+    /** Web #15464: MEMORY.md, notes/ or the workspace unreadable on the source has its own sentence. */
+    @Test
+    fun keyPathUnreadableHasItsOwnSentence() {
+        val result = migrationErrorPresentation(
+            MigrationErrorInput(
+                code = "MIGRATION_WORKSPACE_KEY_PATH_UNREADABLE",
+                rawMessage = "MIGRATION_WORKSPACE_KEY_PATH_UNREADABLE:path=notes%2F",
+                context = MigrationErrorContext.Failed
+            )
+        )
+        assertEquals(listOf(MigrationText(MigrationCopy.ErrorKeyPathUnreadable)), result.messageParts)
+        assertEquals("MIGRATION_WORKSPACE_KEY_PATH_UNREADABLE", result.technicalCode)
+    }
+
     @Test
     fun startAndStatusFallbacks() {
         assertEquals(

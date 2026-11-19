@@ -133,6 +133,9 @@ internal enum class MemberConnectMessage {
     /** `externalInvite.error.archived` {channel}. */
     Archived,
 
+    /** `externalInvite.error.channelNameTaken` {target} {channel} (web #15570). */
+    ChannelNameTaken,
+
     /** `externalInvite.error.tooManyAttempts`. */
     TooManyAttempts,
 
@@ -173,6 +176,7 @@ private val MEMBER_REFUSAL_MESSAGES =
         "server_membership_required" to MemberConnectMessage.ServerMembershipRequired,
         "invalid_server" to MemberConnectMessage.InvalidServer,
         "channel_archived" to MemberConnectMessage.Archived,
+        "channel_name_taken" to MemberConnectMessage.ChannelNameTaken,
         "channel_full" to MemberConnectMessage.ChannelFull,
         "joint_server_limit" to MemberConnectMessage.ChannelFull,
     )

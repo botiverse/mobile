@@ -53,7 +53,7 @@ class CreateExternalChannelScreenshotTest {
                 enabled = true,
                 onSelected = {},
                 externalOffered = true,
-                hint = stringResource(Res.string.channel_create_external_hint, "Acme"),
+                hint = stringResource(Res.string.channel_create_external_hint),
             )
         }
 

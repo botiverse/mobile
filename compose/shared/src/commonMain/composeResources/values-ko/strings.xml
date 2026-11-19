@@ -2415,7 +2415,7 @@
     <string name="agent_invite_action_send">초대 보내기</string>
     <string name="channel_create_title">채널 만들기</string>
     <string name="channel_create_external">외부</string>
-    <string name="channel_create_external_hint">한 채널에서 %1$s 서버 외부 사람과 함께 일해요. %1$s 멤버를 포함해 내가 추가한 사람만 이 채널을 볼 수 있어요.</string>
+    <string name="channel_create_external_hint">이메일로 친구, 고객, 파트너를 같은 채널에 초대해요. 외부 채널은 항상 비공개예요.</string>
     <string name="channel_create_external_free_limit">무료 요금제: %1$s 서버에는 이미 외부 사람과 공유하는 채널이 있어요.</string>
     <string name="channel_create_upgrade_for_more">업그레이드해서 더 만들기</string>
     <string name="channel_create_people_title">#%1$s에 사람 추가</string>
@@ -4056,6 +4056,7 @@
     <string name="joint_member_connect_description">내가 소유자나 관리자인 서버는 바로 연결돼요. 호스트인 %1$s의 승인은 필요 없어요. 서버가 연결되면 채널에 메시지가 올라가요.</string>
     <string name="joint_member_connect_error_already_connected">%1$s은(는) 이미 연결되어 있어요.</string>
     <string name="joint_member_connect_error_archived">%1$s 채널이 보관됐어요.</string>
+    <string name="joint_member_connect_error_channel_name_taken">%1$s에 이미 %2$s 채널이 있어요. %1$s에서 그 채널 이름을 바꾼 다음 다시 연결해 주세요.</string>
     <string name="joint_member_connect_error_busy">%1$s 채널을 업데이트하는 중이에요. 1분 후에 다시 시도해 주세요.</string>
     <string name="joint_member_connect_error_channel_full">%1$s 채널에는 더 이상 서버를 연결할 수 없어요.</string>
     <string name="joint_member_connect_error_connect_in_progress">%1$s에 서버를 연결하는 중이에요. 연결이 끝나면 다시 시도해 주세요.</string>
@@ -4384,6 +4385,7 @@
     <string name="agent_migration_error_manifest_too_large_with_paths">워크스페이스에 파일과 폴더가 너무 많아서 옮길 수 없어요. 대부분 %1$s에 있어요. 에이전트에게 더 이상 필요 없는 폴더를 삭제하거나 .raftmigrateignore에 추가해 달라고 요청한 뒤 다시 시도해 주세요.</string>
     <string name="agent_migration_error_insufficient_disk_with_sizes">이 마이그레이션을 준비하고 설치하려면 대상 컴퓨터에 여유 공간이 %1$s 필요하지만 %2$s만 사용할 수 있어요. 디스크 공간을 확보한 뒤 다시 시도해 주세요.</string>
     <string name="agent_migration_error_insufficient_disk">대상 컴퓨터에 이 마이그레이션을 준비하고 설치할 디스크 여유 공간이 부족해요. 디스크 공간을 확보한 뒤 다시 시도해 주세요.</string>
+    <string name="agent_migration_error_key_path_unreadable">원본 컴퓨터에 MEMORY.md 또는 notes/를 읽을 권한이 없어요. 이 둘은 항상 에이전트와 함께 옮겨야 하므로 마이그레이션을 중단했어요. 아무것도 옮기지 않았어요. 파일 권한을 고친 뒤 마이그레이션을 다시 시작하세요.</string>
     <string name="agent_migration_abort_prep_deadline">원본 컴퓨터의 워크스페이스 준비가 진행되지 않은 채 기한이 지났어요. 원본 컴퓨터가 온라인인지 확인한 뒤 다시 시도해 주세요.</string>
     <string name="agent_migration_abort_transfer_deadline">워크스페이스 전송이 기한 내에 끝나지 않았어요. 두 컴퓨터가 계속 온라인 상태인지, 대상 컴퓨터에 디스크 여유 공간이 충분한지 확인한 뒤 다시 시도해 주세요.</string>
     <string name="agent_migration_abort_arrival_deadline">대상 컴퓨터가 기한 내에 워크스페이스 설치를 마치지 못했어요. 대상 컴퓨터가 실행 중이고 디스크 여유 공간이 충분한지 확인한 뒤 다시 시도해 주세요.</string>
@@ -5189,8 +5191,8 @@
     <string name="channel_external_invite_upgrade">업그레이드</string>
     <string name="channel_external_invite_becomes_private">외부 사람을 초대하면 이 채널이 비공개로 바뀌어요. 채널 멤버만 이 채널을 볼 수 있어요.</string>
     <string name="channel_external_invite_emails_label">이메일로 초대</string>
-    <string name="channel_external_invite_emails_placeholder">name@example.com, name@example.org</string>
-    <string name="channel_external_invite_emails_hint">이메일은 쉼표, 공백 또는 줄바꿈으로 구분해 주세요. 최대 %1$d개까지 입력할 수 있어요.</string>
+    <string name="channel_external_invite_emails_placeholder">alex@example.com, sam@example.org, …</string>
+    <string name="channel_external_invite_emails_join_by_link">Raft 계정이 없어도 참여 링크를 이메일로 받아요.</string>
     <string name="channel_external_invite_too_many">한 번에 최대 %1$d개 이메일까지 초대할 수 있어요. %2$d개를 지워 주세요.</string>
     <string name="channel_external_invite_next">다음</string>
     <string name="channel_external_invite_checking">확인 중…</string>
@@ -5355,6 +5357,7 @@
     <string name="external_invite_error_joint_free_server_limit">%1$s 채널에는 무료 요금제 서버가 이미 최대 개수만큼 참여하고 있어요. 연결하려면 %2$s 서버를 Pro로 업그레이드해 주세요.</string>
     <string name="external_invite_error_connect_in_progress">%1$s에 서버를 연결하는 중이에요. 연결이 끝나면 다시 시도해 주세요.</string>
     <string name="external_invite_error_archived">%1$s 채널이 보관됐어요.</string>
+    <string name="external_invite_error_channel_name_taken">%1$s에 이미 %2$s 채널이 있어요. %1$s에서 그 채널 이름을 바꾼 다음 다시 연결해 주세요.</string>
     <string name="external_invite_error_busy">%1$s 채널을 업데이트하는 중이에요. 1분 후에 다시 시도해 주세요.</string>
     <string name="external_invite_error_too_many_attempts">시도 횟수가 너무 많아요. 1분 정도 기다린 후 다시 시도해 주세요.</string>
     <string name="external_invite_error_generic">문제가 발생했어요. 다시 시도해 주세요.</string>
