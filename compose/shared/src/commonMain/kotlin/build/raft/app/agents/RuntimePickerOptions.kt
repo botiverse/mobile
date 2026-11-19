@@ -292,8 +292,8 @@ internal fun rememberRuntimePickerCopy(): RuntimePickerCopy =
 
 /**
  * [rows] as picker options: the name (with " (deprecated)" for a deprecated current runtime),
- * the Recommended (outline) or Limited (muted soft) badge in the list only (web slock #15551 /
- * #15599: the closed field names the runtime only), the suffix where the heading doesn't say it
+ * the Recommended or Limited badge (both the same outline badge, web slock #15630) in the list only
+ * (web slock #15551 / #15599: the closed field names the runtime only), the suffix where the heading doesn't say it
  * (the closed field always says it), the group heading, and [descriptions] (quota lines) or the
  * app-update line. The capability hint is not an option's description: it is said under the
  * field once the runtime is chosen ([RuntimeCapabilityHintText]).
@@ -316,8 +316,8 @@ internal fun runtimePickerOptions(
             enabled = row.enabled,
             badge = guidance.badge(copy),
             triggerLabel = name + suffix,
-            badgeAppearance = if (guidance.recommended) RaftBadgeAppearance.Outline else RaftBadgeAppearance.Soft,
-            badgeVariant = if (guidance.recommended) RaftBadgeVariant.Default else RaftBadgeVariant.Muted,
+            badgeAppearance = RaftBadgeAppearance.Outline,
+            badgeVariant = RaftBadgeVariant.Default,
             badgeInTrigger = false
         )
     }

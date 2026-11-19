@@ -142,14 +142,14 @@ class RuntimePickerOptionsTest {
         // Under "Needs a Raft Computer update" the list drops the suffix; the closed field keeps it.
         assertEquals("Built-in Pi", options.getValue("builtin").label)
         assertEquals("Built-in Pi (update Raft Computer)", options.getValue("builtin").triggerLabel)
-        // slock #15551 / #15599: Recommended (outline) on Claude Code, Limited (muted soft) on Qwen
+        // slock #15551 / #15599: Recommended (outline) on Claude Code, Limited (the same outline badge, slock #15630) on Qwen
         // Code (no mid-turn steering), nothing on Pi; never Experimental, and never in the trigger.
         assertEquals("Recommended", options.getValue("claude").badge)
         assertEquals(RaftBadgeAppearance.Outline, options.getValue("claude").badgeAppearance)
         assertEquals(RaftBadgeVariant.Default, options.getValue("claude").badgeVariant)
         assertEquals("Limited", options.getValue("qwen").badge)
-        assertEquals(RaftBadgeAppearance.Soft, options.getValue("qwen").badgeAppearance)
-        assertEquals(RaftBadgeVariant.Muted, options.getValue("qwen").badgeVariant)
+        assertEquals(RaftBadgeAppearance.Outline, options.getValue("qwen").badgeAppearance)
+        assertEquals(RaftBadgeVariant.Default, options.getValue("qwen").badgeVariant)
         assertEquals("Qwen Code", options.getValue("qwen").label)
         assertNull(options.getValue("builtin").badge)
         assertTrue(options.values.none { it.badgeInTrigger && it.badge != null })
