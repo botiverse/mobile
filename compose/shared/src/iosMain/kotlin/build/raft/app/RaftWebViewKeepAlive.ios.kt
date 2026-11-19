@@ -53,7 +53,7 @@ internal object RaftIosWebViewSpare {
     private const val REFILL_DELAY_SECONDS = 5.0
     private const val LOG_TAG = "SlockWebViewWarmup"
 
-    private val slot = RaftWebViewSpareSlot<WKWebView> { view -> retire(view) }
+    private val slot = RaftWebViewSpareSlot<RaftIosWebView> { view -> retire(view) }
     /** When the current spare became ready: `idleMs` at take (an idle spare's process may be suspended). */
     private var readyAt: TimeSource.Monotonic.ValueTimeMark? = null
     /** Retained while a spare warms up (WKWebView holds its navigation delegate weakly). */
@@ -76,7 +76,7 @@ internal object RaftIosWebViewSpare {
     }
 
     /** The ready spare (now the caller's), or null (none, or still warming up); a new one is made later. */
-    fun take(): WKWebView? {
+    fun take(): RaftIosWebView? {
         val view = slot.take()
         if (view == null) {
             if (!slot.isEmpty) raftLogInfo(LOG_TAG, "webview_spare result=not_ready")
@@ -106,7 +106,7 @@ internal object RaftIosWebViewSpare {
         val started = TimeSource.Monotonic.markNow()
         runCatching {
             val view =
-                WKWebView(
+                RaftIosWebView(
                     frame = CGRectMake(0.0, 0.0, 0.0, 0.0),
                     configuration = raftIosWebViewConfiguration(ephemeral = false, allowScripts = true),
                 )

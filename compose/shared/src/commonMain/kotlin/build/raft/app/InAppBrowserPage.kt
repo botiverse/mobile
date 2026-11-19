@@ -172,6 +172,8 @@ private fun RaftInAppBrowserScreen() {
                         ephemeral = false,
                         injectedJavaScript = "",
                         diagnosticsSurface = "in_app_browser",
+                        // Other sites' forms: keep WebKit's field-to-field bar, as Safari does.
+                        showsFormAccessoryBar = true,
                         onLoadSuccess = { loadError = null },
                         onLoadFailure = { reason ->
                             loadError = reason.ifBlank { "webview_load_failed" }
