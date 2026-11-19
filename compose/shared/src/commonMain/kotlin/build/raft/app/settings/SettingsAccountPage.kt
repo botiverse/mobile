@@ -69,6 +69,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -143,8 +145,10 @@ internal data class RaftSettingsAccountPayload(
     // align this to react's "browser" (intentional platform copy divergence).
     val logoutDetail: String = "Sign out on this device. Your account and data stay; you can sign back in any time.",
     val logoutLabel: String = "Sign out",
-    val logoutConfirmMessage: String = "Sign out on this device? Your account and data are kept; you can sign back in any time.",
+    val logoutConfirmTitle: String = "Sign out?",
+    val logoutConfirmMessage: String = "Sign out of this device? Your account and data are kept; you can sign back in any time.",
     val logoutConfirmLabel: String = "Sign out",
+    val logoutSigningOutLabel: String = "Signing out…",
     val logoutCancelLabel: String = "Cancel",
     val changePasswordTitle: String = "Change password",
     val changePasswordSubtitle: String = "Requires current password before saving a new one",
@@ -217,8 +221,10 @@ private fun RaftSettingsAccountPayload.localizedPresentationCopy(): RaftSettings
         logoutTitle = stringResource(Res.string.settings_account_logout),
         logoutDetail = stringResource(Res.string.settings_account_logout_detail),
         logoutLabel = stringResource(Res.string.settings_account_logout_action),
+        logoutConfirmTitle = stringResource(Res.string.settings_account_logout_confirm_title),
         logoutConfirmMessage = stringResource(Res.string.settings_account_logout_confirm),
         logoutConfirmLabel = stringResource(Res.string.settings_account_logout_action),
+        logoutSigningOutLabel = stringResource(Res.string.settings_account_logout_signing_out),
         logoutCancelLabel = stringResource(Res.string.common_cancel),
         changePasswordTitle = stringResource(Res.string.settings_account_change_password),
         changePasswordSubtitle = stringResource(Res.string.settings_account_change_password_detail),
@@ -330,7 +336,7 @@ private fun SettingsAccountScreen() {
             applyTopSafeArea = false,
             // This page is hosted outside the app shell, so the account list must
             // reserve the native navigation bar itself. Without this, the inline
-            // logout confirmation row can end under three-button navigation.
+            // Sign out row can end under three-button navigation.
             bottomContentPadding =
                 settingsAccountStandaloneBottomContentPadding(raftBottomSafeAreaPadding()),
             // The web deletion page, on every platform.
@@ -1192,13 +1198,18 @@ private fun SettingsDisconnectProviderDialog(
     }
 }
 
+internal const val SettingsLogoutButtonTag = "settings-account-logout"
+internal const val SettingsLogoutDialogTag = "settings-account-logout-dialog"
+internal const val SettingsLogoutConfirmTag = "settings-account-logout-confirm"
+internal const val SettingsLogoutCancelTag = "settings-account-logout-cancel"
+
 /**
  * Web `AccountSignOutSection`: the Session header over a card whose row is the title (subhead
- * semibold) over the description (footnote, muted) beside the orange Sign Out button. The
- * confirmation opens under the row.
+ * semibold) over the description (footnote, muted) beside the orange Sign Out button. The button
+ * opens the web's confirm dialog ([SettingsLogoutConfirmDialog]); the same on Android and iOS.
  */
 @Composable
-private fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmLogout: () -> Unit) {
+internal fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmLogout: () -> Unit) {
     val confirming = remember { mutableStateOf(false) }
     SettingsFormSection(iconName = RaftLucideIconName.LogOut, title = stringResource(Res.string.settings_account_session)) {
         SettingsAccountHardShadowCard {
@@ -1220,31 +1231,71 @@ private fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmL
                 RaftButton(
                     text = payload.logoutLabel,
                     onClick = { confirming.value = true },
-                    enabled = !confirming.value,
+                    modifier = Modifier.testTag(SettingsLogoutButtonTag),
                     variant = RaftButtonVariant.Warning,
                     size = RaftButtonSize.Md
                 )
             }
-            if (confirming.value) {
-                SettingsAccountWarning(payload.logoutConfirmMessage)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RaftButton(
-                        text = payload.logoutCancelLabel,
-                        onClick = { confirming.value = false },
-                        enabled = true,
-                        modifier = Modifier.weight(1f),
-                        size = RaftButtonSize.Lg
-                    )
-                    RaftButton(
-                        text = payload.logoutConfirmLabel,
-                        onClick = onConfirmLogout,
-                        modifier = Modifier.weight(1f),
-                        variant = RaftButtonVariant.Danger,
-                        size = RaftButtonSize.Lg
-                    )
-                }
-            }
         }
+    }
+    if (confirming.value) {
+        SettingsLogoutConfirmDialog(
+            payload = payload,
+            onConfirm = onConfirmLogout,
+            onDismiss = { confirming.value = false }
+        )
+    }
+}
+
+/**
+ * Web `AccountSignOutSection`'s `ConfirmDialog` (`settings.session.confirm*`): "Sign out?" over
+ * the one sentence (plain body text: a warning-variant confirm carries no danger banner), Cancel
+ * (ghost) then the orange Sign out. Confirm signs out and shows "Signing out…" until the page
+ * leaves; while it runs, Cancel, × and Back do nothing. A tap on the scrim never closes it
+ * (web `disablePointerDismissal`).
+ */
+@Composable
+internal fun SettingsLogoutConfirmDialog(
+    payload: RaftSettingsAccountPayload,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    initiallySigningOut: Boolean = false
+) {
+    var signingOut by remember { mutableStateOf(initiallySigningOut) }
+    val dismiss = { if (!signingOut) onDismiss() }
+    RaftDialog(
+        onDismissRequest = dismiss,
+        title = payload.logoutConfirmTitle,
+        modifier = Modifier.testTag(SettingsLogoutDialogTag),
+        size = RaftDialogSize.Sm,
+        dismissOnClickOutside = false,
+        closeLabel = stringResource(Res.string.common_close),
+        footer = {
+            RaftButton(
+                text = payload.logoutCancelLabel,
+                onClick = dismiss,
+                modifier = Modifier.testTag(SettingsLogoutCancelTag),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg,
+                enabled = !signingOut
+            )
+            RaftButton(
+                text = payload.logoutConfirmLabel,
+                onClick = {
+                    if (!signingOut) {
+                        signingOut = true
+                        onConfirm()
+                    }
+                },
+                modifier = Modifier.testTag(SettingsLogoutConfirmTag),
+                variant = RaftButtonVariant.Warning,
+                size = RaftButtonSize.Lg,
+                loading = signingOut,
+                loadingLabel = payload.logoutSigningOutLabel
+            )
+        }
+    ) {
+        RaftText(payload.logoutConfirmMessage, style = RaftTheme.typography.subhead, color = RaftTheme.colors.foregroundMuted)
     }
 }
 

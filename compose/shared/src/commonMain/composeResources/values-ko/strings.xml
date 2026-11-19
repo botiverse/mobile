@@ -187,7 +187,9 @@
     <string name="settings_account_logout">로그아웃</string>
     <string name="settings_account_logout_action">로그아웃</string>
     <string name="settings_account_logout_detail">이 기기에서 로그아웃해요. 계정과 데이터는 그대로 남아 있고, 언제든 다시 로그인할 수 있어요.</string>
-    <string name="settings_account_logout_confirm">이 기기에서 로그아웃할까요? 계정과 데이터는 그대로 유지되며 언제든 다시 로그인할 수 있어요.</string>
+    <string name="settings_account_logout_confirm_title">로그아웃할까요?</string>
+    <string name="settings_account_logout_confirm">이 기기에서 로그아웃할까요? 계정과 데이터는 그대로 남아 있고, 언제든 다시 로그인할 수 있어요.</string>
+    <string name="settings_account_logout_signing_out">로그아웃 중…</string>
     <string name="settings_account_delete">계정 삭제</string>
     <string name="settings_account_delete_detail">Raft 계정과 개인 데이터의 영구 삭제를 요청해요.</string>
     <string name="settings_account_delete_action">계정 삭제</string>

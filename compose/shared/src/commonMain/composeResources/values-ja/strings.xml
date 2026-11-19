@@ -187,7 +187,9 @@
     <string name="settings_account_logout">ログアウト</string>
     <string name="settings_account_logout_action">ログアウト</string>
     <string name="settings_account_logout_detail">このデバイスからログアウトします。アカウントとデータはそのまま残り、いつでも再ログインできます。</string>
+    <string name="settings_account_logout_confirm_title">ログアウトしますか？</string>
     <string name="settings_account_logout_confirm">このデバイスからログアウトしますか？アカウントとデータは保持され、いつでも再ログインできます。</string>
+    <string name="settings_account_logout_signing_out">ログアウト中…</string>
     <string name="settings_account_delete">アカウントを削除</string>
     <string name="settings_account_delete_detail">Raft アカウントと個人データの完全な削除を依頼します。</string>
     <string name="settings_account_delete_action">アカウントを削除</string>

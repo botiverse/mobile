@@ -187,7 +187,9 @@
     <string name="settings_account_logout">Cerrar sesión</string>
     <string name="settings_account_logout_action">Cerrar sesión</string>
     <string name="settings_account_logout_detail">Cierra la sesión en este dispositivo. Tu cuenta y tus datos se conservan; puedes volver a iniciar sesión en cualquier momento.</string>
-    <string name="settings_account_logout_confirm">¿Cerrar sesión en este dispositivo? Tu cuenta y tus datos se conservan; puedes volver a iniciar sesión cuando quieras.</string>
+    <string name="settings_account_logout_confirm_title">¿Cerrar sesión?</string>
+    <string name="settings_account_logout_confirm">¿Cerrar sesión en este dispositivo? Tu cuenta y tus datos se conservan; puedes volver a iniciar sesión en cualquier momento.</string>
+    <string name="settings_account_logout_signing_out">Cerrando sesión…</string>
     <string name="settings_account_delete">Eliminar cuenta</string>
     <string name="settings_account_delete_detail">Solicítanos eliminar de forma permanente tu cuenta de Raft y tus datos personales.</string>
     <string name="settings_account_delete_action">Eliminar cuenta</string>

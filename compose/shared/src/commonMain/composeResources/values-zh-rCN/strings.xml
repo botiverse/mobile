@@ -187,7 +187,9 @@
     <string name="settings_account_logout">退出登录</string>
     <string name="settings_account_logout_action">退出登录</string>
     <string name="settings_account_logout_detail">退出当前设备的登录状态。你的账户和数据会保留，随时可以重新登录。</string>
-    <string name="settings_account_logout_confirm">要退出此设备上的登录吗？你的账户和数据会保留，之后可随时重新登录。</string>
+    <string name="settings_account_logout_confirm_title">退出登录？</string>
+    <string name="settings_account_logout_confirm">要退出当前设备的登录状态吗？你的账户和数据会保留，随时可以重新登录。</string>
+    <string name="settings_account_logout_signing_out">正在退出登录…</string>
     <string name="settings_account_delete">删除账户</string>
     <string name="settings_account_delete_detail">申请永久删除你的 Raft 账户和个人数据。</string>
     <string name="settings_account_delete_action">删除账户</string>

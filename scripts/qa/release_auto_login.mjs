@@ -502,7 +502,7 @@ async function signOutAppViaUi() {
     }
     const mine = list.filter((n) => n.pkg === PKG);
     const is = (n, text) => n.text === text || n.desc === text;
-    const confirmMessage = find(mine, (n) => n.text.startsWith("Sign out on this device?"));
+    const confirmMessage = find(mine, (n) => n.text.startsWith("Sign out of this device?"));
     const chooserSignOut = find(mine, (n) => n.text === "Sign Out" && n.enabled);
     const signOut = mine.filter((n) => n.bounds && n.enabled && n.text === "Sign out");
     const settings = find(mine, (n) => is(n, "Settings"));
