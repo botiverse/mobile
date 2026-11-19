@@ -1083,6 +1083,41 @@ private fun ThreadMessagesListContent(
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
+    // Save / unsave (artin #proj-mobile #201, ThreadSavedToggleTopKeep.kt): direct user action;
+    // the rows above the message keep their place while its footer's Saved indicator comes or
+    // goes, in the same measure that lays the new footer out.
+    val savedToggleTopKeeper = remember(threadInstanceKey) { ThreadSavedToggleTopKeeper() }
+    // Remembered (one instance per list): the rows' callbacks capture it.
+    val savedTogglePayloadState = rememberUpdatedState(renderPayload)
+    val savedToggleEventState = rememberUpdatedState(onThreadEvent)
+    val toggleMessageSaved: (String) -> Unit =
+        remember(savedToggleTopKeeper, userScrollGeneration) {
+            { messageId ->
+                savedTogglePayloadState.value.threadMessageById(messageId)?.let { message ->
+                    savedToggleTopKeeper.arm(messageId, saved = !message.isSaved, userScrollGeneration = userScrollGeneration.value)
+                }
+                savedToggleEventState.value.invoke("toggleMessageSaved", messageId, null, null)
+            }
+        }
+    ThreadSavedToggleTopKeepEffect(
+        keeper = savedToggleTopKeeper,
+        listState = listState,
+        savedStateOf = { messageId -> renderPayload.threadMessageById(messageId)?.isSaved },
+        listItemIndexOf = { messageId -> renderPayload.threadMessageListItemIndex(messageId) },
+        userScrollGeneration = userScrollGeneration.value,
+        followingLatest = { viewportControllerState.intent == LazyViewportIntent.FollowingLatest },
+    ) { savedMessageId, forwardTop ->
+        // The controller is re-anchored on the row, so the HeightChange replay agrees.
+        dispatchViewportEvent(
+            LazyViewportEvent.Anchor(
+                target = LazyViewportAnchorTarget.Message(savedMessageId),
+                offset = forwardTop,
+                layoutGeneration = viewportLayoutGeneration,
+                fallback = LazyViewportAnchorFallback.Free
+            )
+        )
+        diagnosticsLogger("thread_saved_toggle_keep_top messageId=${savedMessageId.take(8)} top=$forwardTop")
+    }
     // A4 adoption (task #18): the viewport anchor provider is registered here — the only
     // place listState/timelineSlice/userScrollGeneration coexist. The page-level initiator
     // calls it under the request fence; a null holder (embedded detail child, or A4 gate
@@ -3711,7 +3746,7 @@ private fun ThreadMessagesListContent(
                                             ThreadQuickReactionBarRequest(origin.id, anchor, fromHoverToolbar = true)
                                     },
                                     onForward = { onForwardMessage(origin.id) },
-                                    onToggleSave = { onThreadEvent("toggleMessageSaved", origin.id, null, null) }
+                                    onToggleSave = { toggleMessageSaved(origin.id) }
                                 )
                             }
                     )
@@ -4062,7 +4097,7 @@ private fun ThreadMessagesListContent(
                                                     ThreadQuickReactionBarRequest(message.id, anchor, fromHoverToolbar = true)
                                             },
                                             onForward = { onForwardMessage(message.id) },
-                                            onToggleSave = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
+                                            onToggleSave = { toggleMessageSaved(message.id) },
                                             onShownChange = { shown ->
                                                 if (shown) {
                                                     menuState.hoverToolbarMessageId = message.id
@@ -4125,7 +4160,7 @@ private fun ThreadMessagesListContent(
                                         menuState.taskStatusMenuAnchor = anchor
                                     },
                                     onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
-                                    onToggleSave = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
+                                    onToggleSave = { toggleMessageSaved(message.id) },
                                     showReactionReactors = true,
                                     onShowAuthorDescription = { description, anchor ->
                                         menuState.authorDescriptionPopover =
@@ -4584,7 +4619,7 @@ private fun ThreadMessagesListContent(
                         onSave = {
                             close()
                             trackTool(ThreadNewMessageMenuTool.Save)
-                            onThreadEvent("toggleMessageSaved", message.id, null, null)
+                            toggleMessageSaved(message.id)
                         },
                         onTranslate = {
                             close()
@@ -4891,7 +4926,7 @@ private fun ThreadMessagesListContent(
                                 message,
                                 if (message.isSaved) RaftMessageAction.Unsave else RaftMessageAction.Save
                             )
-                            onThreadEvent("toggleMessageSaved", message.id, null, null)
+                            toggleMessageSaved(message.id)
                         },
                         onFollowThread = onFollowThread,
                         onUnfollowThread = onUnfollowThread,
