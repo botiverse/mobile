@@ -5,6 +5,8 @@ import build.raft.app.data.RuntimeCatalogEntry
 import build.raft.app.data.RuntimeCatalogForm
 import build.raft.app.data.RuntimeCatalogSource
 import build.raft.app.data.ServerRuntimeCatalog
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -49,7 +51,6 @@ class RuntimePickerOptionsTest {
         assertTrue(picker.rows.filter { it.group == RuntimePickerGroup.Ready }.all { it.enabled })
         assertFalse(picker.rows.single { it.id == "builtin" }.enabled)
         assertFalse(picker.rows.single { it.id == "future" }.enabled)
-        assertTrue(picker.rows.single { it.id == "qwen" }.experimental)
 
         val all = runtimePickerRows(catalog, listOf("claude", "qwen", "codex"), selectedRuntimeId = "claude", showAll = true)
         val pi = all.rows.single { it.id == "pi" }
@@ -116,7 +117,7 @@ class RuntimePickerOptionsTest {
     }
 
     @Test
-    fun optionsSayTheSuffixWhereTheHeadingDoesNotAndBadgeExperimental() {
+    fun optionsSayTheSuffixWhereTheHeadingDoesNotAndBadgeRecommendedOrLimitedInTheListOnly() {
         val copy =
             RuntimePickerCopy(
                 groupCurrent = "Current runtime",
@@ -130,7 +131,8 @@ class RuntimePickerOptionsTest {
                 suffixComingSoon = " (coming soon)",
                 suffixDeprecated = " (deprecated)",
                 needsAppUpdate = "Update the app to use this runtime",
-                experimental = "Experimental"
+                recommended = "Recommended",
+                limited = "Limited"
             )
         val rows = runtimePickerRows(catalog, listOf("claude", "qwen"), selectedRuntimeId = "claude", showAll = true, currentRuntimeId = "pi").rows
         val options = runtimePickerOptions(rows, copy, descriptions = mapOf("claude" to "Claude Max · 5h 28% used")).associateBy { it.value }
@@ -140,12 +142,38 @@ class RuntimePickerOptionsTest {
         // Under "Needs a Raft Computer update" the list drops the suffix; the closed field keeps it.
         assertEquals("Built-in Pi", options.getValue("builtin").label)
         assertEquals("Built-in Pi (update Raft Computer)", options.getValue("builtin").triggerLabel)
-        assertEquals("Experimental", options.getValue("qwen").badge)
+        // slock #15551 / #15599: Recommended (outline) on Claude Code, Limited (muted soft) on Qwen
+        // Code (no mid-turn steering), nothing on Pi; never Experimental, and never in the trigger.
+        assertEquals("Recommended", options.getValue("claude").badge)
+        assertEquals(RaftBadgeAppearance.Outline, options.getValue("claude").badgeAppearance)
+        assertEquals(RaftBadgeVariant.Default, options.getValue("claude").badgeVariant)
+        assertEquals("Limited", options.getValue("qwen").badge)
+        assertEquals(RaftBadgeAppearance.Soft, options.getValue("qwen").badgeAppearance)
+        assertEquals(RaftBadgeVariant.Muted, options.getValue("qwen").badgeVariant)
         assertEquals("Qwen Code", options.getValue("qwen").label)
-        assertNull(options.getValue("claude").badge)
+        assertNull(options.getValue("builtin").badge)
+        assertTrue(options.values.none { it.badgeInTrigger && it.badge != null })
+        assertTrue(options.values.none { it.badge == "Experimental" })
         assertEquals("Claude Max · 5h 28% used", options.getValue("claude").description)
         assertEquals("Update the app to use this runtime", options.getValue("future").description)
         assertFalse(options.getValue("future").enabled)
+    }
+
+    @Test
+    fun aDeprecatedCurrentRuntimeKeepsItsDeprecatedLabelAlone() {
+        val rows = runtimePickerRows(catalog, listOf("claude", "copilot"), selectedRuntimeId = "copilot", showAll = false, currentRuntimeId = "copilot")
+        // Copilot lacks mid-turn steering, but deprecated wins: no Limited badge, no hint.
+        assertEquals(RuntimePickerGuidance(), rows.rows.single { it.id == "copilot" }.guidance)
+        assertNull(rows.selectedCapabilityHint("copilot"))
+    }
+
+    @Test
+    fun theHintUnderTheFieldIsTheChosenRuntimesOnly() {
+        val rows = runtimePickerRows(catalog, listOf("claude", "qwen", "codex"), selectedRuntimeId = "qwen", showAll = false)
+        assertEquals(RuntimeCapabilityHint.NoSteeringCompactionUnreported, rows.selectedCapabilityHint("qwen"))
+        assertNull(rows.selectedCapabilityHint("claude"))
+        // Not a row of this list (another computer's runtime): nothing under the field.
+        assertNull(rows.selectedCapabilityHint("cursor"))
     }
 
     @Test
@@ -154,12 +182,13 @@ class RuntimePickerOptionsTest {
     }
 
     @Test
-    fun theBundledTableOffersTodaysRuntimesWithQwenAndQoderExperimental() {
+    fun theBundledTableOffersTodaysRuntimesWithTheirGuidance() {
         val picker = runtimePickerRows(BundledRuntimeCatalog, listOf("claude", "codex", "qwen", "qoder"), selectedRuntimeId = "claude", showAll = true)
         val ids = picker.rows.map { it.id }
         assertFalse("antigravity" in ids || "kimi" in ids || "copilot" in ids || "gemini" in ids, "ids=$ids")
-        assertTrue(picker.rows.single { it.id == "qwen" }.experimental)
-        assertTrue(picker.rows.single { it.id == "qoder" }.experimental)
+        // Qwen Code and Qoder are experimental in the catalog: that no longer shows (slock #15551).
+        assertEquals(RuntimePickerGuidance(limited = true, hint = RuntimeCapabilityHint.NoSteeringCompactionUnreported), picker.rows.single { it.id == "qwen" }.guidance)
+        assertEquals(RuntimePickerGuidance(hint = RuntimeCapabilityHint.CompactionUnreported), picker.rows.single { it.id == "qoder" }.guidance)
         assertEquals(RuntimePickerGroup.NeedsComputerUpdate, picker.rows.single { it.id == "kimi-sdk" }.group)
     }
 

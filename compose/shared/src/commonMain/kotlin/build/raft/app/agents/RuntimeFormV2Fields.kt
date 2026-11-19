@@ -869,6 +869,10 @@ internal fun RuntimeFormV2RuntimeSection(
                 onRuntimeChange(id)
             }
         )
+        // Web slock #15551: what the chosen runtime lacks in Raft, under the field (never in the list).
+        if (runtimeAvailabilityError == null) {
+            RuntimeCapabilityHintText(rows.selectedCapabilityHint(runtime), enabled = enabled)
+        }
         runtimeAvailabilityError?.let { error ->
             Text(
                 text =

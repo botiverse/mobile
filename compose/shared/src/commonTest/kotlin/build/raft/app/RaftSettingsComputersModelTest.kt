@@ -475,7 +475,8 @@ class RaftSettingsComputersModelTest {
             listOf("claude", "codex", "grok", "builtin", "kimi-sdk", "cursor", "opencode", "pi", "qwen", "qoder"),
             chips.map { it.id },
         )
-        assertTrue(chips.single { it.id == "qwen" }.experimental)
+        // slock #15551: a chip names the runtime only, whatever the catalog's experimental flag.
+        assertEquals("Qwen Code", chips.single { it.id == "qwen" }.name)
         val byId = chips.associateBy { it.id }
         assertEquals("Claude Code", byId.getValue("claude").name)
         assertEquals(RaftComputerRuntimeAvailability.Detected, byId.getValue("claude").availability)

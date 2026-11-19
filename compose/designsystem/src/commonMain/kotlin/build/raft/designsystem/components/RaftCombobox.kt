@@ -118,8 +118,10 @@ internal fun raftComboboxFocusesSearch(creates: Boolean): Boolean = creates
  * `provider/modelId`), a one-line `text-mono-meta` `foreground-hint` line under the label that
  * truncates, search matches it, and it is visual help only (not announced); a [description]
  * takes its place (web RuntimeChoiceCombobox `renderOption`). Leave it null when it would read
- * as the label again. [badge]: a raft-ui `Badge.Experimental` (solid
- * `success`) after the label, in the list and in the trigger. [triggerLabel]: what the closed
+ * as the label again. [badge]: a raft-ui Badge after the label, by default `Badge.Experimental`
+ * (solid `success`) in the list and in the trigger; [badgeAppearance] / [badgeVariant] give it
+ * another look (an outline "Recommended", a muted soft "Limited"), and [badgeInTrigger] = false
+ * keeps it to the list (the closed field names the value only). [triggerLabel]: what the closed
  * trigger says when it differs from the list's label (a group heading in the list already says
  * part of it); the label otherwise.
  */
@@ -134,6 +136,9 @@ data class RaftComboboxOption<out T>(
     val badge: String? = null,
     val triggerLabel: String? = null,
     val identifier: String? = null,
+    val badgeAppearance: RaftBadgeAppearance = RaftBadgeAppearance.Solid,
+    val badgeVariant: RaftBadgeVariant = RaftBadgeVariant.Success,
+    val badgeInTrigger: Boolean = true,
 )
 
 /**
@@ -199,9 +204,9 @@ internal fun raftComboboxRows(options: List<RaftComboboxOption<*>>): List<RaftCo
 internal fun <T> raftComboboxLabelOf(options: List<RaftComboboxOption<T>>, value: T): String =
     options.firstOrNull { it.value == value }?.let { it.triggerLabel ?: it.label } ?: value.toString()
 
-/** The [RaftComboboxOption.badge] of [value]'s option, for the trigger. */
+/** The [RaftComboboxOption.badge] of [value]'s option, for the trigger (none when it is the list's only). */
 internal fun <T> raftComboboxBadgeOf(options: List<RaftComboboxOption<T>>, value: T): String? =
-    options.firstOrNull { it.value == value }?.badge
+    options.firstOrNull { it.value == value }?.takeIf { it.badgeInTrigger }?.badge
 
 /**
  * A row at the end of a picker's list that changes what the list shows (raft-ui
@@ -972,6 +977,8 @@ internal fun RaftComboboxOptionRow(
     badge: String? = null,
     interactionSource: MutableInteractionSource? = null,
     identifier: String? = null,
+    badgeAppearance: RaftBadgeAppearance = RaftBadgeAppearance.Solid,
+    badgeVariant: RaftBadgeVariant = RaftBadgeVariant.Success,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -1034,7 +1041,7 @@ internal fun RaftComboboxOptionRow(
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     RaftText(text, Modifier.weight(1f, fill = false), style = labelStyle, color = ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    RaftExperimentalBadge(badge, enabled = enabled)
+                    RaftBadge(text = badge, appearance = badgeAppearance, variant = badgeVariant, enabled = enabled)
                 }
             }
             if (description != null) {
@@ -1098,6 +1105,8 @@ internal fun <T> RaftComboboxMenuRows(
                     leading = if (optionLeading != null) { { optionLeading(option) } } else null,
                     badge = option.badge,
                     identifier = option.identifier,
+                    badgeAppearance = option.badgeAppearance,
+                    badgeVariant = option.badgeVariant,
                 )
             }
         }
@@ -1271,6 +1280,8 @@ private fun <T> RaftComboboxList(
                         leading = if (optionLeading != null) { { optionLeading(option) } } else null,
                         badge = option.badge,
                         identifier = option.identifier,
+                        badgeAppearance = option.badgeAppearance,
+                        badgeVariant = option.badgeVariant,
                     )
                 }
             }

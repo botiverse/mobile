@@ -2390,18 +2390,12 @@ private fun raftRackModelLineUi(model: RaftRackModelLine, nowMillis: Long): Raft
 private fun RaftComputerRackOtherRuntimes(runtimeIds: List<String>, runtimeCatalog: ServerRuntimeCatalog) {
     val hint = RaftTheme.colors.foregroundHint
     val deprecated = stringResource(Res.string.runtime_suffix_deprecated)
-    val experimental = stringResource(Res.string.runtime_suffix_experimental)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         RaftText(stringResource(Res.string.settings_computers_rack_other_runtimes), style = RaftTheme.typography.footnote, color = hint, maxLines = 1)
         runtimeIds.forEach { runtimeId ->
             val entry = runtimeCatalog.entry(runtimeId)
             val name = entry?.displayName ?: raftAgentRuntimeDisplayName(runtimeId)
-            val suffix =
-                when {
-                    entry?.deprecated == true -> deprecated
-                    entry?.experimental == true -> experimental
-                    else -> ""
-                }
+            val suffix = if (entry?.deprecated == true) deprecated else ""
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 RaftRuntimeMark(runtimeId, color = hint)
                 RaftText(name + suffix, style = RaftTheme.typography.footnote, color = hint, maxLines = 1)
@@ -3161,9 +3155,8 @@ private fun RaftComputerDetailBody(
                         ) { chip ->
                             val installAs = install?.takeIf { chip.availability == RaftComputerRuntimeAvailability.NotInstalled }?.installableAs(chip.id)
                             if (install != null && installAs != null) {
-                                val experimental = if (chip.experimental) stringResource(Res.string.runtime_suffix_experimental) else ""
                                 ComputerRuntimeInstallChip(
-                                    label = chip.name + experimental + stringResource(Res.string.agent_create_suffix_not_installed),
+                                    label = chip.name + stringResource(Res.string.agent_create_suffix_not_installed),
                                     raftRuntimeId = chip.id,
                                     runtimeName = chip.name,
                                     installAs = installAs,
@@ -3521,9 +3514,8 @@ private fun RaftComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
             RaftComputerRuntimeAvailability.NotInstalled -> stringResource(Res.string.agent_create_suffix_not_installed)
             RaftComputerRuntimeAvailability.UpdateComputer -> stringResource(Res.string.settings_computers_runtime_suffix_update_computer)
         }
-    val experimental = if (chip.experimental) stringResource(Res.string.runtime_suffix_experimental) else ""
     RaftBadge(
-        text = chip.name + experimental + suffix,
+        text = chip.name + suffix,
         // Long press copies the runtime name without the "(not installed)" style suffix.
         modifier = Modifier.raftCopyable(chip.name),
         appearance = RaftBadgeAppearance.Soft,

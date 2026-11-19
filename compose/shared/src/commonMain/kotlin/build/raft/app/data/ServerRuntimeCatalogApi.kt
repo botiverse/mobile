@@ -331,9 +331,6 @@ internal fun runtimeCatalogDisplayName(runtimeId: String, serverId: String? = nu
 internal fun runtimeCatalogIsDeprecated(runtimeId: String, serverId: String?): Boolean =
     RaftRuntimeCatalogNames.entry(runtimeId, serverId)?.deprecated == true
 
-internal fun runtimeCatalogIsExperimental(runtimeId: String, serverId: String?): Boolean =
-    RaftRuntimeCatalogNames.entry(runtimeId, serverId)?.experimental == true
-
 // ── Transport, cache, repository ──
 
 internal interface RaftServerRuntimeCatalogApi {

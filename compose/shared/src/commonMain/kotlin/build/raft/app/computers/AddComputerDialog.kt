@@ -423,9 +423,8 @@ private fun AddComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
             RaftComputerRuntimeAvailability.NotInstalled -> stringResource(Res.string.agent_create_suffix_not_installed)
             RaftComputerRuntimeAvailability.UpdateComputer -> stringResource(Res.string.settings_computers_runtime_suffix_update_computer)
         }
-    val experimental = if (chip.experimental) stringResource(Res.string.runtime_suffix_experimental) else ""
     RaftBadge(
-        text = chip.name + experimental + suffix,
+        text = chip.name + suffix,
         appearance = RaftBadgeAppearance.Soft,
         variant =
             if (chip.availability == RaftComputerRuntimeAvailability.Detected) RaftBadgeVariant.Information else RaftBadgeVariant.Muted,

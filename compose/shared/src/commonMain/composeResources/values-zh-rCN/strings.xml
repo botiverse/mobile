@@ -3946,8 +3946,14 @@
     <string name="runtime_picker_show_installed_only">只显示已安装的</string>
     <string name="runtime_suffix_deprecated">（已弃用）</string>
     <string name="member_runtime_deprecated_warning">此 Agent 使用已弃用的运行时。它可以继续运行，但新 Agent 无法选择此运行时。</string>
-    <string name="runtime_suffix_experimental">（实验性）</string>
-    <string name="runtime_badge_experimental">实验性</string>
+    <string name="runtime_picker_recommended">推荐</string>
+    <string name="runtime_picker_limited">能力有限</string>
+    <string name="runtime_capability_hint_no_subagents">在 Raft 里处理复杂任务可能更慢，因为它不能把工作拆成并行任务。</string>
+    <string name="runtime_capability_hint_compaction_unreported">做同样的工作，在 Raft 里可能比推荐的运行时更费 token。</string>
+    <string name="runtime_capability_hint_no_subagents_compaction_unreported">在 Raft 里可能比推荐的运行时更慢、更费 token，因为它不能把工作拆成并行任务。</string>
+    <string name="runtime_capability_hint_no_steering_compaction_unreported">在 Raft 里可能更费 token，而且做完当前任务前不能接收新指令。</string>
+    <string name="runtime_capability_hint_no_steering_no_subagents">在 Raft 里可能更难及时纠正：它干活时不能接收新指令，也不能分头并行。</string>
+    <string name="runtime_capability_hint_no_steering_no_subagents_compaction_unreported">在 Raft 里可能更难及时纠正，也可能更费 token：它干活时不能接收新指令，也不能分头并行。</string>
     <string name="auth_private_deployment_title">私有化部署</string>
     <string name="auth_private_deployment_hint">填写你自建的 Raft 地址。服务器版本需要 1.13.0 或更高。</string>
     <string name="auth_private_deployment_web_label">前端地址</string>

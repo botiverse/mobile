@@ -120,7 +120,8 @@ data class RuntimeConfig(
  * Mirrors slock `packages/shared/src/runtimeCatalog.ts` `RUNTIMES` at origin/staging 0b369d1aef
  * (unchanged since f5fe2ca864, PR #12065).
  * [displayName] is the bare product name; a label that names a lifecycle status adds it
- * (" (deprecated)", " (experimental)") from the app's strings.
+ * (" (deprecated)") from the app's strings. [experimental] is kept as catalog data only: no label
+ * shows it (slock #15551).
  */
 data class RuntimeInfo(
     val id: String,

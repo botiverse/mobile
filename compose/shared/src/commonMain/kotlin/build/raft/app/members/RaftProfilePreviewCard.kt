@@ -65,7 +65,7 @@ internal data class RaftProfilePreviewCardModel(
     val status: RaftAgentStatusIndicatorState? = null,
     /** An agent's runtime and model (web Runtime / Model rows); null leaves the row out. */
     val runtimeLabel: String? = null,
-    /** The runtime behind [runtimeLabel]: its lifecycle status (" (experimental)") is added when drawn. */
+    /** The runtime behind [runtimeLabel]: its lifecycle status (" (deprecated)") is added when drawn. */
     val runtimeId: String? = null,
     val modelLabel: String? = null,
     /** Where an agent runs (web Computer row, above Runtime); null leaves the row out. */
