@@ -7,6 +7,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
@@ -143,6 +144,12 @@ internal class ThreadListViewport(
     suspend fun scrollBy(value: Float): Float {
         if (!admitScroll()) return 0f
         return if (reverse) -raw.scrollBy(-value) else raw.scrollBy(value)
+    }
+
+    /** [scrollBy], animated (default spring); a drag cancels it through the scroll mutex. */
+    suspend fun animateScrollBy(value: Float): Float {
+        if (!admitScroll()) return 0f
+        return if (reverse) -raw.animateScrollBy(-value) else raw.animateScrollBy(value)
     }
 
     /**
