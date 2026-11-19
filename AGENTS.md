@@ -616,20 +616,28 @@ The canonical flow is (Stamp commands, run from a Stamp checkout):
    ready-to-merge `scope=premerge` dispatch (into `main`) compile iOS any more.
    The pre-merge iOS compile runs in Stamp's merge queue: once a PR is approved
    and its auto-merge registered, Stamp squashes it with up to 9 other ready
-   PRs onto main's tip, pushes the batch to `stamp-mq/<batch>`, and `Test`
-   runs there (plan `reason=merge-queue-batch`): the Linux gates, `Android
-   compile & tests` and `iOS compile (Xcode 27.1)` on GitHub's free `xcode-27`
-   runner, whatever the diff. `CI gate` aggregates all of them and is the
-   queue's single required check; main fast-forwards to the batch only when it
-   is green. A batch that fails is split and a PR that fails alone is sent back
-   (`hintKind failed_alone`): read `stamp pr checks <N>`, which lists the
-   batch's `merge queue runs:`, fix, and register auto-merge again. The batch
+   PRs onto main's tip, pushes it to `stamp-mq/<batch>` and opens a managed
+   draft PR into `main`; `Test` runs on that draft PR (plan
+   `reason=merge-queue-candidate`): the Linux gates, `Android compile & tests`
+   and `iOS compile (Xcode 27.1)` on GitHub's free `xcode-27` runner, whatever
+   the diff; the emulator jobs run as no-op successes, because Stamp accepts a
+   candidate only when every job of its run succeeded. `CI gate` aggregates
+   all of them and is the queue's required check; main fast-forwards to the
+   candidate only when the run is green. Stamp then marks that SHA with the
+   `stamp/queue-tested` commit status, and the main push run verifies it
+   (`scripts/ci/check_queue_tested.py`) and runs only `queue-ci-reuse` (plan
+   `reason=main-push-queue-tested-reuse`) instead of repeating the same tests;
+   without a verified status the main push runs its usual tier. A PR that
+   fails is sent back (`hintKind failed_alone` when it failed tested alone,
+   `member_changed` when another PR of its batch did): read `stamp pr checks
+   <N>`, which lists the batch's `merge queue runs:`, fix, and register
+   auto-merge again. The candidate's
    iOS compile (like `scope=ios` and main pushes) compiles, links the shared
    framework and builds the host app only; the iOS tests (`iosTest`, the
    `iosAppTests` XCTests, adaptive editor snapshots, the UI-test harness build)
    run only on the nightly schedule, `release-*` pushes, `scope=full`, premerge
-   into a release base, and PRs with the `full-ci` label (2026-11-13); a batch
-   or main push whose diff touches iOS test sources (`*/iosTest/*`,
+   into a release base, and PRs with the `full-ci` label (2026-11-13); a queue
+   candidate or main push whose diff touches iOS test sources (`*/iosTest/*`,
    `iosAppTests`, `iosAppUITests`) runs them too. `scope=premerge` into `main`
    now plans nothing but `plan` and `CI gate`
    (`reason=workflow_dispatch-premerge:no-ios`; an unreadable diff reruns

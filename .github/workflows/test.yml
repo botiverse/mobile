@@ -12,11 +12,12 @@ on:
     branches:
       - main
       - "release-*"
-      # Stamp merge queue (2026-11-19): Stamp squashes each approved PR of a batch (up to 10)
-      # onto main's tip, pushes the result to stamp-mq/<batch>, and fast-forwards main to it
-      # once this run's CI gate is green. The batch is the pre-merge check: Linux gates,
-      # Android compile & tests and the iOS compile on Xcode 27.1 (planner: merge-queue-batch).
-      - "stamp-mq/**"
+    # Stamp merge queue (2026-11-19): Stamp squashes each approved PR of a batch (up to 10)
+    # onto main's tip, pushes it to stamp-mq/<batch> and opens a managed draft PR into main;
+    # this workflow's pull_request run on it is the pre-merge check (planner:
+    # merge-queue-candidate). Main fast-forwards to that head only when every job of the run
+    # succeeded. Stamp then marks the SHA with the `stamp/queue-tested` status, and the main
+    # push run reuses the result (planner: main-push-queue-tested-reuse, job queue-ci-reuse).
   workflow_dispatch:
     inputs:
       scope:
@@ -88,6 +89,10 @@ jobs:
       # The audit comment uses the GraphQL PullRequest surface because this
       # installation cannot access PR comments through the REST Issues API.
       pull-requests: write
+      # check_queue_tested.py (main pushes): read the stamp/queue-tested commit status and
+      # re-read the merge-queue candidate run and its jobs.
+      statuses: read
+      actions: read
     outputs:
       run_android: ${{ steps.plan.outputs.run_android }}
       run_ios: ${{ steps.plan.outputs.run_ios }}
@@ -95,6 +100,9 @@ jobs:
       run_ios_xcode271: ${{ steps.plan.outputs.run_ios_xcode271 }}
       ios_lanes: ${{ steps.plan.outputs.ios_lanes }}
       run_ios_tests: ${{ steps.plan.outputs.run_ios_tests }}
+      queue_candidate: ${{ steps.plan.outputs.queue_candidate }}
+      queue_reuse: ${{ steps.plan.outputs.queue_reuse }}
+      queue_tested_run: ${{ steps.queue_tested.outputs.queue_tested_run }}
       run_device_suite: ${{ steps.plan.outputs.run_device_suite }}
       run_canonical_final: ${{ steps.plan.outputs.run_canonical_final }}
       attachment_api_levels: ${{ steps.plan.outputs.attachment_api_levels }}
@@ -150,6 +158,21 @@ jobs:
       - name: Self-test the execution tier planner
         run: scripts/ci/test_plan_test_tier.sh
 
+      - name: Self-test the queue-tested reuse check
+        run: python3 -I scripts/ci/check_queue_tested.py --self-test
+
+      # Stamp merge queue: a main push that is exactly a tested queue fast-forward reuses that
+      # run instead of re-running every tier on the same SHA. Fails to queue_tested=false
+      # (full main-push tier) on any doubt. Nightly and release-* never consult it.
+      - name: Check Stamp queue-tested status
+        id: queue_tested
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUSH_SHA: ${{ github.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: python3 -I scripts/ci/check_queue_tested.py
+
       - name: Resolve exact execution tier
         id: plan
         shell: bash
@@ -159,7 +182,10 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
           PUSH_HEAD_SHA: ${{ github.sha }}
-          REF_NAME: ${{ github.ref_name }}
+          # pull_request: the PR head branch (stamp-mq/<batch> = Stamp merge-queue candidate);
+          # otherwise the pushed/dispatched ref.
+          REF_NAME: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+          QUEUE_TESTED: ${{ steps.queue_tested.outputs.queue_tested == 'true' }}
           FULL_CI: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
           DISPATCH_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.scope || '' }}
           # The planner refuses a non-empty xcode_app_path when its plan skips the iOS compile.
@@ -202,20 +228,7 @@ jobs:
               write_changed_paths "$BASE_SHA" "$HEAD_SHA" merge-base
               ;;
             push)
-              case "$REF_NAME" in
-                stamp-mq/*)
-                  # A merge-queue batch branch is new on every push (before = 0000...), so
-                  # diff the batch against its merge-base with main instead: the batch's
-                  # squashed PRs. The planner runs every platform on a batch anyway; the
-                  # paths only decide whether the iOS tests run.
-                  write_changed_paths "$(git rev-parse --verify -q 'refs/remotes/origin/main^{commit}' || true)" "$PUSH_HEAD_SHA" merge-base
-                  echo "merge-queue batch changed paths ($(wc -l < "$changed")):"
-                  head -n 50 "$changed"
-                  ;;
-                *)
-                  write_changed_paths "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" direct
-                  ;;
-              esac
+              write_changed_paths "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" direct
               ;;
             workflow_dispatch)
               if test "$DISPATCH_SCOPE" = premerge; then
@@ -236,7 +249,7 @@ jobs:
               ;;
           esac
           scripts/ci/plan_test_tier.sh "$EVENT_NAME" "$changed" "$FULL_CI" "$REF_NAME" "$DISPATCH_SCOPE" \
-            "$XCODE_APP_PATH" "$PREMERGE_BASE_REF" | tee -a "$GITHUB_OUTPUT"
+            "$XCODE_APP_PATH" "$PREMERGE_BASE_REF" "$QUEUE_TESTED" | tee -a "$GITHUB_OUTPUT"
 
       - name: Self-test gitlink carry-in gate
         run: python3 scripts/ci/test_gitlink_carry_in_gate.py
@@ -816,10 +829,16 @@ jobs:
     name: Android first-character baseline (emulator)
     runs-on: ubuntu-latest
     needs: [plan, android]
-    if: ${{ needs.plan.outputs.run_device_suite == 'true' }}
+    # Stamp's queue accepts a candidate only when every job of its run succeeded, so on the
+    # merge-queue candidate this job runs as a no-op success when the plan does not select it
+    # (every step is gated on RAFT_JOB_ACTIVE).
+    if: ${{ needs.plan.outputs.run_device_suite == 'true' || needs.plan.outputs.queue_candidate == 'true' }}
     timeout-minutes: 30
+    env:
+      RAFT_JOB_ACTIVE: ${{ needs.plan.outputs.run_device_suite == 'true' }}
     steps:
       - name: Free runner disk space for emulator
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         run: |
           sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
           df -h /
@@ -828,9 +847,11 @@ jobs:
       # (the instrumentation gates were previously hardcoded `grep 'OK (N tests)'`
       # count pins that broke whenever a case was added to a gated class).
       - name: Checkout
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: actions/checkout@v7
 
       - name: Select Thread newer-pagination gate
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -868,23 +889,27 @@ jobs:
           echo "Thread newer-pagination gate required: $run_gate"
 
       - name: Setup Android SDK
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
 
       - name: Download connected-test APKs
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: actions/download-artifact@v8
         with:
           name: android-connected-test-apks
           path: android-connected-test-apks
 
       - name: Download shared atomic-sink test APK
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: actions/download-artifact@v8
         with:
           name: android-shared-atomic-sink-test-apk
           path: android-shared-atomic-sink-test-apk
 
       - name: List downloaded APK members
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         run: |
           find android-connected-test-apks -type f -name '*.apk' -print
           find android-shared-atomic-sink-test-apk -type f -name '*.apk' -print
@@ -897,16 +922,19 @@ jobs:
           grep -Fq "targetSdkVersion:'34'" shared-atomic-sink-test-apk-badging.txt
 
       - name: Enable KVM
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
       - name: Validate first-character baseline regression script
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         shell: bash
         run: bash -n scripts/ci/run-first-character-emulator-suite.sh
 
       - name: Run first-character baseline regression
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: reactivecircus/android-emulator-runner@v2
         env:
           SOURCE_EXACT: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -927,7 +955,7 @@ jobs:
           script: bash scripts/ci/run-first-character-emulator-suite.sh
 
       - name: Upload instrumentation output
-        if: always()
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' && (always()) }}
         uses: actions/upload-artifact@v7
         with:
           name: first-character-baseline-instrumentation
@@ -982,33 +1010,44 @@ jobs:
     name: Android attachment authority (API ${{ matrix.api-level }} emulator)
     runs-on: ubuntu-latest
     needs: [plan, android]
-    if: ${{ needs.plan.outputs.attachment_api_levels != '[]' }}
+    # Stamp's queue accepts a candidate only when every job of its run succeeded, so on the
+    # merge-queue candidate this job runs as a no-op success when the plan does not select it
+    # (every step is gated on RAFT_JOB_ACTIVE).
+    if: ${{ needs.plan.outputs.attachment_api_levels != '[]' || needs.plan.outputs.queue_candidate == 'true' }}
     timeout-minutes: 20
+    env:
+      RAFT_JOB_ACTIVE: ${{ needs.plan.outputs.attachment_api_levels != '[]' }}
     strategy:
       fail-fast: false
       matrix:
-        api-level: ${{ fromJSON(needs.plan.outputs.attachment_api_levels) }}
+        # ["none"]: the no-op leg on a merge-queue candidate that plans no attachment legs.
+        api-level: ${{ fromJSON(needs.plan.outputs.attachment_api_levels != '[]' && needs.plan.outputs.attachment_api_levels || '["none"]') }}
     steps:
       - name: Free runner disk space for emulator
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         run: |
           sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
           df -h /
 
       - name: Checkout
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: actions/checkout@v7
 
       - name: Setup Android SDK
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
 
       - name: Download connected-test APKs
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: actions/download-artifact@v8
         with:
           name: android-connected-test-apks
           path: android-connected-test-apks
 
       - name: Verify minimum-supported app artifact
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1022,12 +1061,14 @@ jobs:
           grep -Fq "sdkVersion:'29'" "api${{ matrix.api-level }}-connectedtest-app-badging.txt"
 
       - name: Enable KVM
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
       - name: Run exact public-download authority on API ${{ matrix.api-level }}
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
@@ -1046,7 +1087,7 @@ jobs:
             scripts/ci/run-public-downloads-authority.sh ${{ matrix.api-level }} ${{ inputs.attachment_authority_repeat || 1 }} ${{ inputs.attachment_authority_mode || 'ci' }}
 
       - name: Upload API ${{ matrix.api-level }} attachment evidence
-        if: always()
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' && (always()) }}
         uses: actions/upload-artifact@v7
         with:
           name: attachment-public-downloads-api${{ matrix.api-level }}-evidence
@@ -1063,10 +1104,16 @@ jobs:
     name: Android canonical-final actual host (emulator)
     runs-on: ubuntu-latest
     needs: [plan, android]
-    if: ${{ needs.plan.outputs.run_canonical_final == 'true' }}
+    # Stamp's queue accepts a candidate only when every job of its run succeeded, so on the
+    # merge-queue candidate this job runs as a no-op success when the plan does not select it
+    # (every step is gated on RAFT_JOB_ACTIVE).
+    if: ${{ needs.plan.outputs.run_canonical_final == 'true' || needs.plan.outputs.queue_candidate == 'true' }}
     timeout-minutes: 35
+    env:
+      RAFT_JOB_ACTIVE: ${{ needs.plan.outputs.run_canonical_final == 'true' }}
     steps:
       - name: Free runner disk space for emulator
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         run: |
           sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
           df -h /
@@ -1075,20 +1122,24 @@ jobs:
       # embedded in this workflow as a 160-line heredoc because the job had no
       # checkout).
       - name: Checkout
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: actions/checkout@v7
 
       - name: Setup Android SDK
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
 
       - name: Download connected-test APKs
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: actions/download-artifact@v8
         with:
           name: android-connected-test-apks
           path: android-connected-test-apks
 
       - name: Enable KVM
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
@@ -1098,6 +1149,7 @@ jobs:
       # (extracted from an inline YAML heredoc in task #18 so it can be
       # shellchecked, reviewed as a normal diff, and run locally).
       - name: Validate canonical-final actual-host regression script
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         shell: bash
         run: |
           bash -n \
@@ -1105,6 +1157,7 @@ jobs:
             scripts/ci/canonical-final-pre-attempt-guard.sh
 
       - name: Run canonical-final actual-host regression under exact-zero egress gate
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -1119,7 +1172,7 @@ jobs:
           script: bash scripts/ci/canonical-final-actual-host.sh
 
       - name: Upload canonical-final actual-host evidence
-        if: always()
+        if: ${{ env.RAFT_JOB_ACTIVE == 'true' && (always()) }}
         uses: actions/upload-artifact@v7
         with:
           name: canonical-final-actual-host-evidence
@@ -1162,7 +1215,7 @@ jobs:
     # which is success only when every planned lane succeeded.
     name: ${{ matrix.lane == 'github-xcode27.1' && 'iOS compile (Xcode 27.1)' || 'iOS compile' }}
     # Pull requests never compile iOS (only the full-ci label does). Stamp merge queue
-    # (2026-11-19): the pre-merge iOS compile runs on the queue batch (push to stamp-mq/*),
+    # (2026-11-19): the pre-merge iOS compile runs on the queue candidate (draft PR from stamp-mq/*),
     # once per batch of up to 10 PRs, on the Xcode 27.1 lane; main pushes compile iOS when
     # the push can affect iOS; nightly and release-* pushes run the full readback.
     # Lanes come from the plan (`ios_lanes`, pinned by run_ios_xcode270 / run_ios_xcode271):
@@ -1208,7 +1261,7 @@ jobs:
     runs-on: ${{ matrix.lane == 'github-xcode27.1' && 'xcode-27' || (inputs.ios_runner || 'xcode-27') }}
     # The 3-core GitHub Mac is slower than the 6-vCPU Blacksmith one; the 27.1 lane already
     # takes ~48 min there with the iOS tests, so keep headroom. ios_runner is a dispatch input:
-    # on push (main, release-*, stamp-mq/*) and schedule it is empty and the lane uses xcode-27.
+    # on push, pull_request (queue candidates included) and schedule it is empty: xcode-27.
     timeout-minutes: 90
     steps:
       # Blacksmith macOS starts its local Actions-results proxy with the job (see ios-release.yml).
@@ -1530,15 +1583,45 @@ jobs:
         if: failure()
         uses: ./.github/actions/gradle-failure-diagnostics
 
+  # Stamp merge queue CI reuse (2026-11-19): on a main push that is exactly a tested queue
+  # fast-forward (check_queue_tested.py verified the stamp/queue-tested status, the candidate
+  # run and the push's before SHA), this is the only job besides plan and the CI gate. It
+  # records which candidate run proved the SHA. The name is Stamp's contract: on the
+  # candidate run itself this job is skipped, and Stamp allows exactly this name to skip.
+  queue-ci-reuse:
+    name: queue-ci-reuse
+    runs-on: ubuntu-latest
+    needs: [plan]
+    if: ${{ needs.plan.outputs.queue_reuse == 'true' }}
+    timeout-minutes: 5
+    steps:
+      - name: Record merge-queue CI reuse
+        env:
+          TESTED_RUN: ${{ needs.plan.outputs.queue_tested_run }}
+          PUSH_SHA: ${{ github.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${TESTED_RUN}"
+          echo "Reusing Stamp merge-queue run ${TESTED_RUN} for ${PUSH_SHA} (base ${PUSH_BEFORE_SHA}): ${url}"
+          {
+            echo "### Merge-queue CI reuse"
+            echo ""
+            echo "\`${PUSH_SHA}\` is the merge-queue candidate that [run ${TESTED_RUN}](${url}) tested on base \`${PUSH_BEFORE_SHA}\`"
+            echo "(every job green, first attempt, verified against the \`stamp/queue-tested\` status)."
+            echo "Android, iOS and the emulator jobs are not re-run on this push."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # The only Test context intended for the main-branch required-check rule.
   # It always reports, including docs-only PRs, and mechanically verifies that
   # exactly the jobs selected by the checked-in plan passed. Emulator jobs are
   # intentionally absent from merge_group until their bounded infra-abort
   # retry contract has landed and has fresh flake evidence.
   # Stamp merge queue (2026-11-19): this is the queue's single required check on
-  # the stamp-mq/* batch commit. It needs every job, iOS included, so a red or
-  # skipped-but-planned "iOS compile (Xcode 27.1)" or "Android compile & tests"
-  # turns it red and the batch does not land.
+  # the candidate (draft PR from stamp-mq/*). It needs every job, iOS included, so a
+  # red or skipped-but-planned "iOS compile (Xcode 27.1)" or "Android compile & tests"
+  # turns it red and the batch does not land. (Stamp additionally requires every job of
+  # the candidate run to succeed; only queue-ci-reuse may skip.)
   ci-gate:
     name: CI gate
     if: ${{ always() }}
@@ -1551,6 +1634,7 @@ jobs:
       - android-minimum-supported-attachment-runtime
       - android-canonical-final-actual-host
       - ios
+      - queue-ci-reuse
     steps:
       - name: Checkout aggregate verifier
         uses: actions/checkout@v7

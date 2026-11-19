@@ -21,7 +21,8 @@ job (`scripts/ci/plan_test_tier.sh`) picks jobs:
 | Ordinary PR touching `compose/**` | yes | **no**, even for iOS paths (task #37) | no |
 | PR with label `full-ci` | yes | yes (Xcode 27.0) | yes |
 | PR touching only docs/other | no (skipped = NOT RUN) | no | no |
-| **Merge-queue batch** (push to `stamp-mq/*`) | yes | **yes, every batch** (Xcode 27.1 lane only) | no |
+| **Merge-queue candidate** (Stamp's draft PR from `stamp-mq/*`) | yes | **yes, every batch** (Xcode 27.1 lane only) | no (emulator jobs run as no-op successes) |
+| Push to `main` that is a verified queue fast-forward | no | no | no (only `queue-ci-reuse`) |
 | Push to `main` | by path | only if iOS paths changed | no |
 | Push to `release-*` | yes | yes (27.0 + 27.1) | no |
 | Nightly schedule | yes | yes (27.0 + 27.1) | yes |
@@ -34,12 +35,26 @@ job (`scripts/ci/plan_test_tier.sh`) picks jobs:
 Stamp's merge queue lands every PR into `main` (2026-11-19). Once a PR is
 approved and its auto-merge is registered, Stamp puts it in the FIFO queue; up
 to 10 ready PRs form a batch, each squashed onto main's tip, pushed to
-`stamp-mq/<batch>`. `Test` runs on that push with plan
-`reason=merge-queue-batch`: the Linux gates in `plan`, `Android compile &
-tests`, and `iOS compile (Xcode 27.1)` on GitHub's free `xcode-27` image,
-whatever the batch's diff. `CI gate` needs every job and is the queue's single
-required check; when it is green, main fast-forwards to the batch. One iOS
+`stamp-mq/<batch>` with a managed draft PR into `main`. `Test` runs on that
+draft PR (`pull_request`) with plan `reason=merge-queue-candidate`: the Linux
+gates in `plan`, `Android compile & tests`, and `iOS compile (Xcode 27.1)` on
+GitHub's free `xcode-27` image, whatever the batch's diff. Stamp accepts a
+candidate only when **every job** of its run succeeded (only `queue-ci-reuse`
+may skip), so the emulator jobs run as no-op successes there (their steps are
+gated on `RAFT_JOB_ACTIVE`; planner output `queue_candidate`). `CI gate` needs
+every job and is the queue's required check. The queue's CI policy is the
+default "test the final combined commit", so a batch uses one Mac. One iOS
 compile (~33 min) per batch replaces the per-PR premerge compile.
+
+CI reuse on main: before fast-forwarding, Stamp writes the commit status
+`stamp/queue-tested` (`v1 run=<run id> base=<base sha>`) on the candidate SHA.
+The main push run's plan job checks it with `scripts/ci/check_queue_tested.py`
+(creator `stamp-build[bot]`, description shape, the named run is this
+workflow's first-attempt green `pull_request` run on a `stamp-mq/` branch for
+the same SHA with every job green, and the push's `before` equals the base).
+If all hold, the plan is `reason=main-push-queue-tested-reuse` and only the
+`queue-ci-reuse` job runs; on any doubt the push runs its usual tier. Nightly
+and `release-*` never reuse.
 
 - Where a PR stands: `stamp pr view <N> --repo botiverse/mobile` (`merge
   queue:` line) or `stamp pr queue status <N> --repo botiverse/mobile`.
@@ -52,6 +67,8 @@ compile (~33 min) per batch replaces the per-PR premerge compile.
 - A PR that changes `test.yml`, `.github/actions` or other CI definition is
   tested alone in its own batch, by the workflow as that PR defines it.
 - Do not push `stamp-mq/*` yourself (Stamp refuses it, `REF_RESERVED_FOR_STAMP`).
+- `Test` must keep running on draft PRs: a workflow that skips drafts leaves
+  the batch waiting until its timeout.
 - The Xcode 27.1 lane cannot fall back to Blacksmith: on
   `blacksmith-*-macos-27` `Xcode_27.1.app/Contents/Developer` is a symlink and
   `scripts/ci/select_ios_xcode.sh` refuses it; `blacksmith-*-macos-latest` has
@@ -83,7 +100,7 @@ adaptive editor snapshots and the UI-test harness build. The merge queue,
 `scope=ios` and main pushes compile the iOS targets, link the shared framework
 and build the host app only, so a green queue iOS compile is not an iOS test
 result; iOS-only behaviour regressions surface in the nightly within 24h.
-Exception: a queue batch or main push whose diff touches iOS test sources
+Exception: a queue candidate or main push whose diff touches iOS test sources
 (`*/iosTest/*`, `compose/iosApp/iosAppTests/**`,
 `compose/iosApp/iosAppUITests/**`) runs the iOS tests too. To run the iOS
 tests on a PR before merge, add the `full-ci` label; do not dispatch

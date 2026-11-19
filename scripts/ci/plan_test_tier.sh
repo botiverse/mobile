@@ -3,7 +3,8 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|ios|premerge|full] [xcode-app-path] [premerge-base-ref]" >&2
+  echo "usage: plan_test_tier.sh <event-name> <changed-paths-file> <full-ci:true|false> <ref-name> [dispatch-scope:pr|ios|premerge|full] [xcode-app-path] [premerge-base-ref] [queue-tested:true|false]" >&2
+  echo "  ref-name: the PR head branch for pull_request (stamp-mq/* = Stamp merge-queue candidate), else github.ref_name" >&2
   exit 2
 }
 
@@ -38,7 +39,7 @@ mark_all_platforms() {
 # requests — ordinary PRs never compile iOS at all (see emit_plan); it remains
 # the main-push path gate. Explicit full-ci PRs are the PR-side escape hatch.
 # Stamp merge queue (2026-11-19): Stamp's premerge dispatch no longer consults
-# it either; the queue batch (push to stamp-mq/*) compiles iOS on every batch.
+# it either; the queue candidate (draft PR from stamp-mq/*) compiles iOS on every batch.
 change_keeps_ios() {
   local changed_paths_file="$1"
   local path
@@ -173,6 +174,7 @@ emit_plan() {
   local dispatch_scope="${5:-}"
   local xcode_app_path="${6:-}"
   local premerge_base_ref="${7:-}"
+  local queue_tested="${8:-false}"
   run_android=false
   run_ios=false
   local run_device_suite=false
@@ -182,7 +184,7 @@ emit_plan() {
   # for every iOS run except the merge queue. The Xcode 27.1 lane
   # (run_ios_xcode271, the release SDK) runs on the nightly schedule and
   # release-* pushes next to it, and alone on the Stamp merge queue batch
-  # (push to stamp-mq/*). Both run on GitHub's standard xcode-27 image, free on
+  # candidate (draft PR from stamp-mq/*). Both run on GitHub's standard xcode-27 image, free on
   # this public repo but one of the org's 5 concurrent macOS slots each.
   local run_ios_xcode270=true
   local run_ios_xcode271=false
@@ -198,6 +200,14 @@ emit_plan() {
   # (change_touches_ios_tests) runs the iOS tests too.
   local run_ios_tests=false
   local ios_lanes="[]"
+  # Stamp merge queue (2026-11-19). queue_candidate: this pull_request run is
+  # the queue's managed draft PR (head stamp-mq/<batch>); Stamp accepts the
+  # batch only when every job of the run concluded success, so the emulator
+  # jobs the plan does not select run as no-op successes instead of skipping.
+  # queue_reuse: a main push whose SHA carries a verified stamp/queue-tested
+  # status (scripts/ci/check_queue_tested.py); only queue-ci-reuse runs.
+  local queue_candidate=false
+  local queue_reuse=false
   reason=""
 
   case "$full_ci" in
@@ -208,10 +218,45 @@ emit_plan() {
       ;;
   esac
 
+  case "$queue_tested" in
+    true|false) ;;
+    *)
+      echo "queue-tested flag must be true or false" >&2
+      return 1
+      ;;
+  esac
+  if test "$queue_tested" = true && ! { test "$event_name" = push && test "$ref_name" = main; }; then
+    echo "queue-tested reuse applies only to push to main (got ${event_name} ${ref_name})" >&2
+    return 1
+  fi
+
   case "$event_name" in
     pull_request)
       classify_changed_paths "$changed_paths_file" "pull-request"
-      if test "$full_ci" = true; then
+      case "$ref_name" in
+        stamp-mq/*)
+          # Stamp merge queue candidate (managed draft PR, 2026-11-19): up to
+          # 10 approved PRs, each squashed onto main's tip; main fast-forwards
+          # to this exact head only when every job of this run succeeded. It
+          # is the pre-merge check for everything that lands on main, so it
+          # runs every platform whatever the diff: Linux gates, Android
+          # compile & tests, and the iOS compile on the release SDK (Xcode
+          # 27.1 lane only, GitHub xcode-27). Compile + link + host app; the
+          # iOS tests only when the batch touches iOS test sources. No
+          # emulator suite (its jobs run as no-op successes, see above).
+          mark_all_platforms
+          queue_candidate=true
+          run_ios_xcode270=false
+          run_ios_xcode271=true
+          if change_touches_ios_tests "$changed_paths_file"; then
+            run_ios_tests=true
+          fi
+          reason="merge-queue-candidate"
+          ;;
+      esac
+      if test "$queue_candidate" = true; then
+        :
+      elif test "$full_ci" = true; then
         mark_all_platforms
         # Task #26 closure: full-ci PR keeps the device suite but only the
         # API31 attachment leg; canonical-final stays nightly/manual only.
@@ -224,7 +269,7 @@ emit_plan() {
         # Task #37 (artin 2026-10-09): ordinary PRs never compile iOS,
         # including PRs that touch iOS-specific paths. Stamp merge queue
         # (2026-11-19): the pre-merge iOS compile runs on the queue batch
-        # (push to stamp-mq/*, Xcode 27.1) instead. The full-ci label remains
+        # candidate (draft PR from stamp-mq/*, Xcode 27.1) instead. The full-ci label remains
         # the explicit escape hatch. An unavailable diff fails closed to
         # Android (the PR-time platform); iOS is still compiled by the queue.
         run_ios=false
@@ -245,47 +290,38 @@ emit_plan() {
     push)
       case "$ref_name" in
         main)
-          classify_changed_paths "$changed_paths_file" "main-push"
-          # Task #26 option A: iOS compile only when the push can affect iOS;
-          # ordinary pushes rely on the nightly iOS readback. Fail-closed:
-          # unknown paths were already marked all-platform by classify and are
-          # kept here.
-          if test "$run_ios" = true && ! change_keeps_ios "$changed_paths_file"; then
-            run_ios=false
-            case "$reason" in
-              main-push-paths:*) reason="main-push-paths:$(platform_summary)" ;;
-            esac
+          if test "$queue_tested" = true; then
+            # Stamp fast-forwarded main to a merge-queue candidate whose
+            # Test run (every job green, first attempt, built on this push's
+            # before SHA) is verified by check_queue_tested.py. Nothing to
+            # re-run on the same SHA: only the queue-ci-reuse job reports.
+            queue_reuse=true
+            reason="main-push-queue-tested-reuse"
+            run_device_suite=false
+            run_canonical_final=false
+            attachment_api_levels="[]"
+          else
+            classify_changed_paths "$changed_paths_file" "main-push"
+            # Task #26 option A: iOS compile only when the push can affect iOS;
+            # ordinary pushes rely on the nightly iOS readback. Fail-closed:
+            # unknown paths were already marked all-platform by classify and are
+            # kept here.
+            if test "$run_ios" = true && ! change_keeps_ios "$changed_paths_file"; then
+              run_ios=false
+              case "$reason" in
+                main-push-paths:*) reason="main-push-paths:$(platform_summary)" ;;
+              esac
+            fi
+            # A main push touching iOS test sources runs the iOS tests.
+            if test "$run_ios" = true && change_touches_ios_tests "$changed_paths_file"; then
+              run_ios_tests=true
+            fi
+            # Task #26 closure: routine main pushes no longer run the device
+            # suite; nightly and explicit manual dispatch keep the readback.
+            run_device_suite=false
+            run_canonical_final=false
+            attachment_api_levels="[]"
           fi
-          # A main push touching iOS test sources runs the iOS tests.
-          if test "$run_ios" = true && change_touches_ios_tests "$changed_paths_file"; then
-            run_ios_tests=true
-          fi
-          # Task #26 closure: routine main pushes no longer run the device
-          # suite; nightly and explicit manual dispatch keep the readback.
-          run_device_suite=false
-          run_canonical_final=false
-          attachment_api_levels="[]"
-          ;;
-        stamp-mq/*)
-          # Stamp merge queue batch (2026-11-19): up to 10 approved PRs, each
-          # squashed onto main's tip, pushed to stamp-mq/<batch>; main
-          # fast-forwards to it only when the CI gate here is green. This is
-          # the pre-merge check for everything that lands on main, so it runs
-          # every platform whatever the diff (like merge_group): Linux gates,
-          # Android compile & tests, and the iOS compile on the release SDK
-          # (Xcode 27.1 lane only, GitHub xcode-27). Compile + link + host app;
-          # the iOS tests only when the batch touches iOS test sources. No
-          # emulator jobs: they stay nightly/full-tier.
-          mark_all_platforms
-          run_ios_xcode270=false
-          run_ios_xcode271=true
-          if change_touches_ios_tests "$changed_paths_file"; then
-            run_ios_tests=true
-          fi
-          run_device_suite=false
-          run_canonical_final=false
-          attachment_api_levels="[]"
-          reason="merge-queue-batch"
           ;;
         release-*)
           # Release branches keep the platform readback, but routine release
@@ -346,7 +382,7 @@ emit_plan() {
           # Stamp's ready-to-merge check (artin 2026-11-11): dispatched once on
           # the PR's exact head. Changed paths are head vs its merge-base with
           # the PR base (premerge-base-ref). Stamp merge queue (2026-11-19):
-          # into main it no longer compiles iOS; the queue batch (push to
+          # into main it no longer compiles iOS; the queue candidate (draft PR from
           # stamp-mq/*) does, on the combined batch commit. Android is not
           # rerun: the PR-tier run already compiled and tested it. An
           # unavailable diff fails closed to Android only. A PR into a release
@@ -455,8 +491,10 @@ emit_plan() {
   printf 'run_device_suite=%s\n' "$run_device_suite"
   printf 'run_canonical_final=%s\n' "$run_canonical_final"
   printf 'attachment_api_levels=%s\n' "$attachment_api_levels"
+  printf 'queue_candidate=%s\n' "$queue_candidate"
+  printf 'queue_reuse=%s\n' "$queue_reuse"
   printf 'reason=%s\n' "$reason"
 }
 
-test "$#" -ge 4 && test "$#" -le 7 || usage
-emit_plan "$1" "$2" "$3" "$4" "${5:-}" "${6:-}" "${7:-}"
+test "$#" -ge 4 && test "$#" -le 8 || usage
+emit_plan "$1" "$2" "$3" "$4" "${5:-}" "${6:-}" "${7:-}" "${8:-false}"
