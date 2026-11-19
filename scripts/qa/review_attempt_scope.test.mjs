@@ -106,7 +106,7 @@ test("receipt attempt ids are read from the top-level field of the Testbed recei
 });
 
 test("attempt-bound vote is submitted when the new route echoes exactly the expected attempts", async () => {
-  // Shape of botiverse/testbed#327 @ bb13fde2 panelReview(); a replay has duplicate=true and the original id.
+  // Shape of botiverse/testbed#327 @ 1a2f11b2 panelReview(); a replay has duplicate=true and the original id.
   for (const receipt of [{ ok: true, review_id: "rv-1", attempt_ids: ["rc-new", "rc-set"], duplicate: false, votes: { passed: 1, failed: 0 }, finalized: null },
     { ok: true, review_id: "rv-1", attempt_ids: ["rc-new", "rc-set"], duplicate: true, votes: { passed: 1, failed: 0 }, finalized: null }]) {
     const f = fakePost(200, receipt);
