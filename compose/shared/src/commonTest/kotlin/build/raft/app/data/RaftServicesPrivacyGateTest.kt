@@ -60,6 +60,19 @@ class RaftServicesPrivacyGateTest {
     }
 
     @Test
+    fun aFailedReadIsOffForTracesButUnknownForDeferrableUploads() {
+        RaftTelemetryPrivacy.publish("https://self-hosted.example/api", RaftPrivacyAnswer.Failed)
+        assertEquals(RaftPrivacyMode.Off, RaftTelemetryPrivacy.state.value)
+        assertEquals(RaftPrivacyMode.Unknown, RaftTelemetryPrivacy.acrossSignedInServers.value)
+        assertFalse(RaftServicesPrivacyGate.allowsAutomatic())
+
+        // A successful response, even without the field (an older server), is off for both.
+        RaftTelemetryPrivacy.publish("https://self-hosted.example/api", RaftPrivacyAnswer.Off)
+        assertEquals(RaftPrivacyMode.Off, RaftTelemetryPrivacy.acrossSignedInServers.value)
+        assertTrue(RaftServicesPrivacyGate.allowsAutomatic())
+    }
+
+    @Test
     fun aLaunchWaitsForTheAnswerThenDecidesOnce() = runTest {
         val across = MutableStateFlow(RaftPrivacyMode.Unknown)
         val decision = async { RaftServicesPrivacyGate.awaitLaunchDecision(across, waitMillis = 60_000L) }

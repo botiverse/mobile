@@ -23,6 +23,26 @@ enum class RaftPrivacyMode { Unknown, On, Off }
 internal const val RAFT_PRIVACY_MODE_READ_TIMEOUT_MILLIS = 10_000L
 
 /**
+ * How an environment's client-config read decided privacy mode (owner ruling on #5082):
+ * - [Pending]: no answer yet.
+ * - [On] / [Off]: a successful response; `privacyMode: true` is on, anything else (no field, an
+ *   older server) off.
+ * - [Failed]: no successful response (transport error, non-2xx, or no answer within
+ *   [RAFT_PRIVACY_MODE_READ_TIMEOUT_MILLIS]).
+ *
+ * [telemetryMode] is what in-memory trace telemetry follows (#5064, as the web: a failed read is
+ * off). [deferrableMode] is what uploads that can wait follow (Hands crash / ANR / native crash /
+ * device ping, automatic update checks): a failed read is unknown, so they stay on the device and
+ * the next launch decides again.
+ */
+enum class RaftPrivacyAnswer(val telemetryMode: RaftPrivacyMode, val deferrableMode: RaftPrivacyMode) {
+    Pending(RaftPrivacyMode.Unknown, RaftPrivacyMode.Unknown),
+    On(RaftPrivacyMode.On, RaftPrivacyMode.On),
+    Off(RaftPrivacyMode.Off, RaftPrivacyMode.Off),
+    Failed(RaftPrivacyMode.Off, RaftPrivacyMode.Unknown),
+}
+
+/**
  * Privacy mode across several servers (owner ruling, observability/privacy): [RaftPrivacyMode.On]
  * when any one is on, [RaftPrivacyMode.Unknown] when any one has not answered (or there is none),
  * [RaftPrivacyMode.Off] only when every one answered off.
@@ -41,8 +61,9 @@ fun raftPrivacyModeAcross(modes: Collection<RaftPrivacyMode>): RaftPrivacyMode =
  * telemetry sender ([RaftClientTraceEvents]).
  *
  * [state] is the current environment's answer: what the current server's own requests (traces, an
- * agent report, Settings › Feedback) follow. [signedInServers] is every API environment this app is
- * signed in to, with its answer, and [acrossSignedInServers] their [raftPrivacyModeAcross]: what
+ * agent report, Settings › Feedback) follow; a failed read is off there. [signedInServers] is every
+ * API environment this app is signed in to, with its [RaftPrivacyAnswer.deferrableMode] (a failed
+ * read is unknown), and [acrossSignedInServers] their [raftPrivacyModeAcross]: what
  * requests that belong to no one server follow (the Hands SDK's crash / ANR / system-kill /
  * WebView-crash uploads, its device ping, automatic update checks; [RaftServicesPrivacyGate]).
  * Today a session lives in one API environment (every server in it shares that deploy's
@@ -61,11 +82,23 @@ object RaftTelemetryPrivacy {
     val acrossSignedInServers: StateFlow<RaftPrivacyMode> = mutableAcross.asStateFlow()
 
     /** [environment]'s answer, the current environment's (its session's servers are the signed-in ones). */
-    fun publish(environment: String, mode: RaftPrivacyMode) {
-        val servers = mapOf(environment to mode)
+    fun publish(environment: String, answer: RaftPrivacyAnswer) {
+        val servers = mapOf(environment to answer.deferrableMode)
         mutableSignedInServers.value = servers
         mutableAcross.value = raftPrivacyModeAcross(servers.values)
-        mutableState.value = mode
+        mutableState.value = answer.telemetryMode
+    }
+
+    /** [environment]'s answer as a successful response said it ([RaftPrivacyMode.Unknown]: none yet). */
+    fun publish(environment: String, mode: RaftPrivacyMode) {
+        publish(
+            environment,
+            when (mode) {
+                RaftPrivacyMode.Unknown -> RaftPrivacyAnswer.Pending
+                RaftPrivacyMode.On -> RaftPrivacyAnswer.On
+                RaftPrivacyMode.Off -> RaftPrivacyAnswer.Off
+            },
+        )
     }
 
     /** The current environment's answer, its name unknown (tests, a reset). */
@@ -79,7 +112,8 @@ object RaftTelemetryPrivacy {
  * to them automatically unless every server this app is signed in to answered privacy mode off.
  * Local recording is unaffected (crash logs, ANR exits and system-kill records stay on the device
  * and are looked at again on the next launch). A person's own "Check for update" is not automatic
- * and is not gated here.
+ * and is not gated here. Only a successful client-config response counts as an answer here: a
+ * failed or timed-out read is unknown ([RaftPrivacyAnswer.Failed]), unlike for trace telemetry.
  */
 object RaftServicesPrivacyGate {
     /** How long a launch's uploads wait for every signed-in server's answer before skipping this launch. */

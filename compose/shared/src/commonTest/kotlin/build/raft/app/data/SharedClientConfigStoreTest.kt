@@ -162,7 +162,7 @@ class SharedClientConfigStoreTest {
         val published = mutableListOf<RaftPrivacyMode>()
         val environment = MutableStateFlow("https://self-hosted.example/api")
         val api = FakeApi { ok("""{"appHosts":["app.raft.build"],"privacyMode":true}""") }
-        val store = SharedClientConfigStore(api, MemoryPreferences(), { environment.value }, environment, backgroundScope, publishPrivacyMode = { _, mode -> published += mode })
+        val store = SharedClientConfigStore(api, MemoryPreferences(), { environment.value }, environment, backgroundScope, publishPrivacyMode = { _, answer -> published += answer.telemetryMode })
         store.start()
         runCurrent()
         assertEquals(listOf(RaftPrivacyMode.Unknown, RaftPrivacyMode.On), published)
@@ -183,7 +183,7 @@ class SharedClientConfigStoreTest {
                 override suspend fun read(environment: String): HomeNetworkResponse = answer.await()
             }
         val environment = MutableStateFlow("https://self-hosted.example/api")
-        val store = SharedClientConfigStore(api, MemoryPreferences(), { environment.value }, environment, backgroundScope, publishPrivacyMode = { _, mode -> published += mode })
+        val store = SharedClientConfigStore(api, MemoryPreferences(), { environment.value }, environment, backgroundScope, publishPrivacyMode = { _, answer -> published += answer.telemetryMode })
         store.start()
         advanceTimeBy(RAFT_PRIVACY_MODE_READ_TIMEOUT_MILLIS - 1)
         runCurrent()
@@ -194,5 +194,71 @@ class SharedClientConfigStoreTest {
         answer.complete(ok("""{"privacyMode":true}"""))
         runCurrent()
         assertEquals(RaftPrivacyMode.On, published.last())
+    }
+
+    @Test
+    fun eachPublishSaysWhetherASuccessfulResponseAnsweredOrTheReadFailed() = runTest {
+        val cases =
+            listOf<Pair<() -> HomeNetworkResponse, RaftPrivacyAnswer>>(
+                { ok("""{"privacyMode":true}""") } to RaftPrivacyAnswer.On,
+                { ok("""{"privacyMode":false}""") } to RaftPrivacyAnswer.Off,
+                // An older server: a successful response without the field is off.
+                { ok("""{"appHosts":["app.raft.build"]}""") } to RaftPrivacyAnswer.Off,
+                { HomeNetworkResponse(503, """{"privacyMode":false}""") } to RaftPrivacyAnswer.Failed,
+                { error("offline") } to RaftPrivacyAnswer.Failed,
+            )
+        for ((response, expected) in cases) {
+            val answers = mutableListOf<RaftPrivacyAnswer>()
+            val environment = MutableStateFlow("https://self-hosted.example/api")
+            val store = SharedClientConfigStore(FakeApi(response), MemoryPreferences(), { environment.value }, environment, backgroundScope, publishPrivacyMode = { _, answer -> answers += answer })
+            store.start()
+            runCurrent()
+            assertEquals(listOf(RaftPrivacyAnswer.Pending, expected), answers)
+        }
+    }
+
+    @Test
+    fun aTimedOutReadIsFailedThenALateSuccessfulAnswerReplacesIt() = runTest {
+        val answers = mutableListOf<RaftPrivacyAnswer>()
+        val answer = CompletableDeferred<HomeNetworkResponse>()
+        val api =
+            object : RaftClientConfigApi {
+                override suspend fun read(environment: String): HomeNetworkResponse = answer.await()
+            }
+        val environment = MutableStateFlow("https://self-hosted.example/api")
+        val store = SharedClientConfigStore(api, MemoryPreferences(), { environment.value }, environment, backgroundScope, publishPrivacyMode = { _, a -> answers += a })
+        store.start()
+        advanceTimeBy(RAFT_PRIVACY_MODE_READ_TIMEOUT_MILLIS + 1)
+        runCurrent()
+        assertEquals(listOf(RaftPrivacyAnswer.Pending, RaftPrivacyAnswer.Failed), answers)
+        answer.complete(ok("""{"appHosts":["app.raft.build"]}"""))
+        runCurrent()
+        assertEquals(RaftPrivacyAnswer.Off, answers.last())
+    }
+
+    /**
+     * Owner ruling on #5082: a failed read lets trace telemetry go (off, #5064) but keeps the
+     * deferrable uploads on the device; the next launch with a successful answer sends them.
+     */
+    @Test
+    fun aFailedReadUploadsNothingAndTheNextLaunchWithASuccessfulAnswerUploads() = runTest {
+        val uploaded = mutableListOf<String>()
+        suspend fun appLaunch(response: () -> HomeNetworkResponse) {
+            val environment = MutableStateFlow("https://self-hosted.example/api")
+            val store = SharedClientConfigStore(FakeApi(response), MemoryPreferences(), { environment.value }, environment, backgroundScope)
+            store.start()
+            runCurrent()
+            val decision = RaftServicesPrivacyGate.awaitLaunchDecision(waitMillis = 60_000L)
+            if (RaftServicesPrivacyGate.allowsAutomatic(decision)) uploaded += "crash"
+        }
+
+        appLaunch { error("offline") }
+        assertEquals(RaftPrivacyMode.Off, RaftTelemetryPrivacy.state.value, "traces follow #5064: a failed read is off")
+        assertEquals(RaftPrivacyMode.Unknown, RaftTelemetryPrivacy.acrossSignedInServers.value, "deferrable uploads: unknown")
+        assertEquals(emptyList(), uploaded, "nothing uploaded after a failed read")
+
+        appLaunch { ok("""{"appHosts":["app.raft.build"]}""") }
+        assertEquals(RaftPrivacyMode.Off, RaftTelemetryPrivacy.acrossSignedInServers.value)
+        assertEquals(listOf("crash"), uploaded, "the next launch with a successful answer uploads")
     }
 }

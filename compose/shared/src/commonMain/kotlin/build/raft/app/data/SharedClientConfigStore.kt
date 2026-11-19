@@ -110,6 +110,9 @@ internal const val CLIENT_CONFIG_CACHE_KEY: String = "clientConfig.appHosts.v1"
  * turned it on since is never sent to on a stale "off"); then on or off as
  * [raftClientConfigPrivacyMode] reads it. A read with no answer after
  * [RAFT_PRIVACY_MODE_READ_TIMEOUT_MILLIS] counts as off, as on the web; a later "on" still wins.
+ * Each publish says how it was decided ([RaftPrivacyAnswer]): a successful response is
+ * [RaftPrivacyAnswer.On] / [RaftPrivacyAnswer.Off] (no field: off); a failed read or the timeout is
+ * [RaftPrivacyAnswer.Failed], which telemetry takes as off but deferrable uploads as unknown.
  */
 class SharedClientConfigStore internal constructor(
     private val api: RaftClientConfigApi,
@@ -120,7 +123,7 @@ class SharedClientConfigStore internal constructor(
     private val environmentChanges: Flow<String>,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {},
-    private val publishPrivacyMode: (environment: String, mode: RaftPrivacyMode) -> Unit = RaftTelemetryPrivacy::publish,
+    private val publishPrivacyMode: (environment: String, answer: RaftPrivacyAnswer) -> Unit = RaftTelemetryPrivacy::publish,
 ) {
     private val mutableAppHosts =
         MutableStateFlow(
@@ -145,11 +148,11 @@ class SharedClientConfigStore internal constructor(
                     RaftClientConfigAppHosts.publish(cached.orEmpty())
                     mutableAppHosts.value = cached ?: CLIENT_CONFIG_FALLBACK_APP_HOSTS
                     privacyAnsweredFor = null
-                    publishPrivacyMode(environment, RaftPrivacyMode.Unknown)
+                    publishPrivacyMode(environment, RaftPrivacyAnswer.Pending)
                     val timeout =
                         scope.launch {
                             delay(RAFT_PRIVACY_MODE_READ_TIMEOUT_MILLIS)
-                            if (privacyAnsweredFor != environment) answerPrivacyMode(environment, RaftPrivacyMode.Off, "timeout")
+                            if (privacyAnsweredFor != environment) answerPrivacyMode(environment, RaftPrivacyAnswer.Failed, "timeout")
                         }
                     try {
                         refresh(environment)
@@ -169,10 +172,16 @@ class SharedClientConfigStore internal constructor(
                 throw cancellation
             } catch (error: Throwable) {
                 logger("client_config read_failed reason=${error::class.simpleName ?: "unknown"}")
-                answerPrivacyMode(environment, RaftPrivacyMode.Off, "read_failed")
+                answerPrivacyMode(environment, RaftPrivacyAnswer.Failed, "read_failed")
                 return
             }
-        answerPrivacyMode(environment, raftClientConfigPrivacyMode(response), if (response.isSuccessful) "answer" else "read_failed")
+        val answer =
+            when {
+                !response.isSuccessful -> RaftPrivacyAnswer.Failed
+                raftClientConfigPrivacyMode(response) == RaftPrivacyMode.On -> RaftPrivacyAnswer.On
+                else -> RaftPrivacyAnswer.Off
+            }
+        answerPrivacyMode(environment, answer, if (response.isSuccessful) "answer" else "read_failed")
         val config = response.takeIf { it.isSuccessful }?.let { parseRaftClientConfig(it.bodyText) }
         if (config == null) {
             logger("client_config read_failed code=${response.code}")
@@ -188,11 +197,14 @@ class SharedClientConfigStore internal constructor(
         }
     }
 
-    private fun answerPrivacyMode(environment: String, mode: RaftPrivacyMode, reason: String) {
+    private fun answerPrivacyMode(environment: String, answer: RaftPrivacyAnswer, reason: String) {
         if (normalizedEnvironment(currentEnvironment()) != environment) return
         privacyAnsweredFor = environment
-        publishPrivacyMode(environment, mode)
-        logger("client_config privacy_mode=${if (mode == RaftPrivacyMode.On) "on" else "off"} reason=$reason")
+        publishPrivacyMode(environment, answer)
+        logger(
+            "client_config privacy_mode=${if (answer.telemetryMode == RaftPrivacyMode.On) "on" else "off"} " +
+                "answered=${answer != RaftPrivacyAnswer.Failed} reason=$reason"
+        )
     }
 
     private fun readCache(): Map<String, List<String>> =
