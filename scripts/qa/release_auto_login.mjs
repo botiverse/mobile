@@ -32,7 +32,8 @@
 //     [--strict-cleanup] [--revoke-app-session] [--keep-capture-browser]
 //     [--scenario scripts/qa/scenarios/<name>.mjs [its options, e.g. --server-name X]]
 //   (or --credential-file <testbed qa-account get --out file>)
-//   [--identity-receipt]  with QA_ATTEMPT_ID / QA_ATTEMPT_NONCE (Testbed's attempt) and optionally
+//   [--identity-receipt]  with QA_ATTEMPT_CHALLENGE_FILE (Testbed's private challenge: attempt id,
+//     nonce, pairing salt) or QA_ATTEMPT_ID / QA_ATTEMPT_NONCE (Testbed's attempt) and optionally
 //     QA_EXPECTED_USER_REF / QA_EXPECTED_SERVER_REF, optionally Testbed's pairing salt in the file
 //     QA_PAIRING_SALT_FILE (never argv/env value), and QA_IDENTITY_PRIVATE_OUT (a fresh 0600 file
 //     outside --out that alone receives the complete receipt and OS facts): before any account is
@@ -79,6 +80,7 @@ import {
   readPairingSaltFile,
   writePrivateReceipt,
 } from "./app_identity_receipt_lib.mjs";
+import { claimTokenFile, createTestbedReleaseClient } from "./testbed_release_settings.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -674,12 +676,17 @@ function identityReceiptRequest() {
   } catch (error) {
     stop(`--identity-receipt: ${error.message.replace(/^identity receipt: /, "")}`);
   }
-  const pairingSalt = readPairingSaltFile(process.env.QA_PAIRING_SALT_FILE || "");
+  // Testbed's challenge (testbed_release_settings.mjs challenge): attempt id, nonce and pairing
+  // salt from one private file. Otherwise QA_ATTEMPT_ID / QA_ATTEMPT_NONCE + QA_PAIRING_SALT_FILE.
+  const challengePath = process.env.QA_ATTEMPT_CHALLENGE_FILE || "";
+  const challenge = challengePath ? JSON.parse(fs.readFileSync(challengePath, "utf8")) : null;
+  const pairingSalt = challenge ? challenge.pairing_salt : readPairingSaltFile(process.env.QA_PAIRING_SALT_FILE || "");
+  const nonce = challenge ? challenge.nonce : process.env.QA_ATTEMPT_NONCE;
   // Never in a log line or the summary: the nonce, the salt, Testbed's frozen refs.
-  for (const secret of [pairingSalt, process.env.QA_ATTEMPT_NONCE, process.env.QA_EXPECTED_USER_REF, process.env.QA_EXPECTED_SERVER_REF]) {
+  for (const secret of [pairingSalt, nonce, process.env.QA_EXPECTED_USER_REF, process.env.QA_EXPECTED_SERVER_REF]) {
     if (secret) redact.add(secret);
   }
-  return newReceiptRequest({ attemptId: process.env.QA_ATTEMPT_ID, nonce: process.env.QA_ATTEMPT_NONCE, pairingSalt: pairingSalt || null });
+  return newReceiptRequest({ attemptId: challenge ? challenge.attempt_id : process.env.QA_ATTEMPT_ID, nonce, pairingSalt: pairingSalt || null });
 }
 
 // apksig of the pinned Build Tools (AppIdentityApkSigner.java runs on its apksigner.jar).
@@ -739,18 +746,26 @@ function installedPackageFacts() {
   }
 }
 
-// Testbed's private observation + decision for this job. This change has no Testbed client yet
-// and never accepts a locally supplied decision (file, env, flag): both return nothing, so every
-// --identity-receipt run stops at the gate as "unknown" until the workflow wiring lands.
-const testbedDecision = {
+// Testbed's private observation + decision for this job: only from the Testbed server, over the
+// bound job's own OIDC proof + executor bearer + claim credential (QA_TESTBED_RELEASE_SETTINGS=1 in
+// the qa-acceptance.yml release lane; testbed_release_settings.mjs). A locally supplied decision
+// (file, env value, flag) is never accepted: without that lane both calls return nothing and the
+// run stops at the gate as "unknown".
+const noTestbed = {
   async observe() {
-    log("identity receipt: no Testbed observation endpoint wired; the decision stays unknown");
+    log("identity receipt: no Testbed release settings lane; the decision stays unknown");
     return null;
   },
   async decide() {
     return null;
   },
 };
+function testbedDecisionSource() {
+  if (process.env.QA_TESTBED_RELEASE_SETTINGS !== "1") return noTestbed;
+  const claimToken = fs.readFileSync(claimTokenFile(process.env, process.env.STAMP_RUN_CASE_ID), "utf8").trim();
+  redact.add(claimToken);
+  return createTestbedReleaseClient({ env: process.env, claimToken });
+}
 
 function identityGate(request) {
   return () =>
@@ -772,7 +787,7 @@ function identityGate(request) {
           writePrivateReceipt(privateOut, secret);
         },
         publish: (result) => { summary.identity_receipt = publicIdentitySummary(result); },
-        testbed: testbedDecision,
+        testbed: testbedDecisionSource(),
       });
       log(`identity receipt: ${outcome.matched ? "matched" : outcome.reason}`);
       if (!outcome.matched) stop(`identity receipt not matched (${outcome.reason}); nothing captured, no scenario`);

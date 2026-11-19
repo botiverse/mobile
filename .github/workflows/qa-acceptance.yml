@@ -78,6 +78,14 @@ on:
         default: ""
       # Identity of the server environment under test, recorded in perf.json
       # (task #14 self-describing header). Free-form label, e.g. OranixSlockTest.
+      # Testbed's release settings lane (docs/android-smoke.md in botiverse/testbed): the case's
+      # checked admission says release-prelogin. The job binds itself, claims through
+      # release-settings-claim, signs the release APK in through its own browser login with the
+      # identity receipt, and opens capture / runs the agent only after Testbed answers matched.
+      login_mode:
+        description: "Empty (legacy/bootstrap) or 'release-prelogin' (Testbed release settings lane)"
+        required: false
+        default: ""
       environment:
         description: "Performance report label only. Password-mode QA uses the production account API and web origin."
         required: false
@@ -183,6 +191,13 @@ jobs:
     needs: build
     # Run when build succeeded OR was skipped (pinned-bits inputs replace it).
     if: ${{ always() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    # id-token: the release settings lane proves this job's identity to Testbed with a GitHub
+    # OIDC token per endpoint (audience = Testbed origin + exact path). Only
+    # testbed_release_settings.mjs requests one; the agent runs with the request variables unset.
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
     steps:
       - name: Checkout mobile
         uses: actions/checkout@v7
@@ -413,9 +428,46 @@ jobs:
             'const fs=require("fs"),e=process.env;fs.writeFileSync("apks/observed-identity.json",JSON.stringify({sha256:e.APK_SHA,packageId:e.APK_PKG,version:e.APK_VERSION,versionCode:e.APK_CODE}))'
           node scripts/qa/verify_pinned_android_identity.mjs "$manifest" apks/observed-identity.json
 
+      # Release settings lane, before any claim: bind this running job to Testbed's checked
+      # admission (release-settings-job), then the dedicated claim (release-settings-claim) with the
+      # same build facts stamp_report.sh claims with. A refusal, a missing claim credential or a
+      # login_mode other than release-prelogin stops the job here, before any password step.
+      - name: Bind release settings job to Testbed
+        if: ${{ inputs.stamp_run_case_id != '' && inputs.login_mode == 'release-prelogin' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+        run: node scripts/qa/testbed_release_settings.mjs bind
+
+      - name: Claim release settings run case (release-prelogin)
+        if: ${{ inputs.stamp_run_case_id != '' && inputs.login_mode == 'release-prelogin' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+        run: |
+          test -s apks/observed-identity.json || { echo "::error::release lane needs the frozen artifact identity (artifact_sha256 input)"; exit 1; }
+          node scripts/qa/testbed_release_settings.mjs claim --identity apks/observed-identity.json
+
+      - name: Setup JDK 17 for the release identity checks
+        if: ${{ inputs.login_mode == 'release-prelogin' }}
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install build-tools 36.0.0 for the release identity checks
+        if: ${{ inputs.login_mode == 'release-prelogin' }}
+        run: sdkmanager "build-tools;36.0.0"
+
+      - name: Build the QA capture browser
+        if: ${{ inputs.login_mode == 'release-prelogin' }}
+        run: bash scripts/qa/capture-browser/build.sh "${RUNNER_TEMP}/capture-browser.apk"
+
       - name: Claim Stamp run case and resolve auth mode
         id: stamp-claim
-        if: ${{ inputs.stamp_run_case_id != '' }}
+        if: ${{ inputs.stamp_run_case_id != '' && inputs.login_mode != 'release-prelogin' }}
         env:
           STAMP_DIRECT_ANDROID_APK: ${{ inputs.apk_url != '' && inputs.apk_run_id == '' && inputs.artifact_sha256 == '' }}
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
@@ -463,7 +515,7 @@ jobs:
         # rerun means nothing. credential -> rerun cannot help. infra -> rerun is reasonable.
         # contract -> a passing rerun does NOT mean fixed. A missing reason is treated as
         # contract, because the unknown case must not default to the cheap one.
-        if: ${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        if: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') }}
         env:
           QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
           QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
@@ -500,11 +552,11 @@ jobs:
           fi
 
       - name: Build protected Android login form driver
-        if: ${{ steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        if: ${{ inputs.login_mode != 'release-prelogin' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}
         run: bash scripts/qa/build_login_form.sh "$RUNNER_TEMP/qa-login-form.jar"
 
       - name: Freeze legacy credential identity receipt
-        if: ${{ inputs.stamp_run_case_id != '' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        if: ${{ inputs.stamp_run_case_id != '' && inputs.login_mode != 'release-prelogin' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}
         env:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
           STAMP_URL: ${{ secrets.STAMP_URL }}
@@ -522,7 +574,7 @@ jobs:
       # idempotently ensures one image-bearing fixture message exists in the
       # QA channel. Best-effort: seeding never fails the acceptance job.
       - name: Seed media fixtures (image + workspace)
-        if: ${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}
+        if: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') }}
         env:
           QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
           QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
@@ -561,8 +613,12 @@ jobs:
           QA_MODEL_RELEASE_ATTEMPTS: ${{ vars.QA_MODEL_RELEASE_ATTEMPTS || '3' }}
           QA_MODEL_QUEUE_TIMEOUT_MS: ${{ vars.QA_MODEL_QUEUE_TIMEOUT_MS || '900000' }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
-          QA_TEST_EMAIL: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_EMAIL || '' }}
-          QA_TEST_PASSWORD: ${{ (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_PASSWORD || '' }}
+          QA_TEST_EMAIL: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_EMAIL || '' }}
+          QA_TEST_PASSWORD: ${{ inputs.login_mode != 'release-prelogin' && (inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true') && secrets.QA_TEST_PASSWORD || '' }}
+          # Release settings lane only: used by scripts/qa/release_settings_login.sh alone (unset for the agent).
+          QA_RELEASE_LOGIN_EMAIL: ${{ inputs.stamp_run_case_id != '' && inputs.login_mode == 'release-prelogin' && secrets.QA_TEST_EMAIL || '' }}
+          QA_RELEASE_LOGIN_PASSWORD: ${{ inputs.stamp_run_case_id != '' && inputs.login_mode == 'release-prelogin' && secrets.QA_TEST_PASSWORD || '' }}
+          QA_RELEASE_PRELOGIN: ${{ inputs.login_mode == 'release-prelogin' }}
           QA_GOAL: ${{ inputs.goal || '' }}
           QA_MAX_TURNS: ${{ inputs.max_turns || '30' }}
           QA_MAX_MINUTES: ${{ inputs.max_minutes || '20' }}
@@ -606,8 +662,9 @@ jobs:
             # The failure bundle is saved in the line above before failure-terminal cleanup/pm clear.
             if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then timeout --kill-after=5s 90s node scripts/qa/capture_bootstrap_diagnostics.mjs --out qa-evidence/bootstrap-diagnostics --label ready || true; fi
             # Login phase (#222), before the recorder and the agent: the form receives values via stdin.
+            # Release settings lane: release_settings_login.sh (only it gets QA_RELEASE_LOGIN_*) creates qa-login-ok only after Testbed answers matched.
             # Failures publish a structural UI summary; bootstrap runs record "no login". Only a complete record of this run creates qa-login-ok.
-            rm -f qa-login-ok; PW=true; [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ] && PW=false; node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence && touch qa-login-ok || echo "::error::login phase UNKNOWN: see the protected login UI summary; acceptance evidence withheld"
+            if [ "${QA_RELEASE_PRELOGIN:-false}" = "true" ]; then bash scripts/qa/release_settings_login.sh || true; else rm -f qa-login-ok; PW=true; [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ] && PW=false; node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence && touch qa-login-ok || echo "::error::login phase UNKNOWN: see the protected login UI summary; acceptance evidence withheld"; fi
             adb logcat -c
             # task #14 perf v1: reset gfxinfo counters and stamp the capture
             # window start before the agent drives the app (record-only,
@@ -615,7 +672,7 @@ jobs:
             adb shell dumpsys gfxinfo "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" reset || true
             date +%s%3N > qa-evidence/perf-started.txt
             [ -f qa-login-ok ] && adb shell "nohup sh -c 'i=1; while [ \$i -le 8 ]; do screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 180 /sdcard/qa-rec-\$(printf %02d \$i).mp4; i=\$((i+1)); done' >/dev/null 2>&1 &"
-            if [ ! -f qa-login-ok ]; then echo 2 > qa-evidence/agent-rc.txt; exit 0; fi; if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then . "$RUNNER_TEMP/stamp-bootstrap-capture-env-${STAMP_RUN_CASE_ID}.sh"; fi; export MINIMAX_API_KEY="$PI_API_KEY"; env -u QA_TEST_EMAIL -u QA_TEST_PASSWORD node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --max-minutes "$QA_MAX_MINUTES" --no-progress-turns "$QA_NO_PROGRESS_TURNS" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
+            if [ ! -f qa-login-ok ]; then echo 2 > qa-evidence/agent-rc.txt; exit 0; fi; if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then . "$RUNNER_TEMP/stamp-bootstrap-capture-env-${STAMP_RUN_CASE_ID}.sh"; fi; export MINIMAX_API_KEY="$PI_API_KEY"; env -u QA_TEST_EMAIL -u QA_TEST_PASSWORD -u QA_RELEASE_LOGIN_EMAIL -u QA_RELEASE_LOGIN_PASSWORD -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --max-minutes "$QA_MAX_MINUTES" --no-progress-turns "$QA_NO_PROGRESS_TURNS" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
             [ -f qa-login-ok ] && adb logcat -d -v threadtime > qa-evidence/logcat-full.txt 2>&1 || true
             [ -f qa-login-ok ] || exit 0; if [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ]; then . "$RUNNER_TEMP/stamp-bootstrap-capture-env-${STAMP_RUN_CASE_ID}.sh"; fi; PKG="$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)"; adb shell pidof "$PKG" >> qa-evidence/app-pids.txt 2>/dev/null || true; node scripts/qa/scope_logcat.mjs --input qa-evidence/logcat-full.txt --output qa-evidence/logcat.txt --verdict qa-evidence/verdict.json --pids qa-evidence/app-pids.txt --package "$PKG" --generation "${QA_CAPTURE_SCOPE_GENERATION:-${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}}" || true
             [ -f qa-login-ok ] && adb shell dumpsys activity top > qa-evidence/activity-top.txt 2>&1 || true

@@ -117,8 +117,9 @@ STEP_ALLOWLIST = {
         ("passwords go to `security` for a temp keychain; outputs are profile uuid/name/team and keychain path",
          "0a60acff7a5fd1b36afaafcaa0157ebbff6638e059f2aee1046f133197b40121"),
     ("qa-acceptance.yml", "acceptance", "Claim Stamp run case and resolve auth mode"):
-        ("STAMP_DIRECT_ANDROID_APK is an input-derived boolean. The existing token and bootstrap boolean env/output writes are unchanged.",
-         "35333d3a78792737446d37cbe9d159a1a3d4debf3c24d8c83c3be0232bc4f94e"),
+        ("STAMP_DIRECT_ANDROID_APK is an input-derived boolean. The existing token and bootstrap boolean env/output writes are unchanged; "
+         "skipped in the release-prelogin lane, which claims through testbed_release_settings.mjs without $GITHUB_ENV/$GITHUB_OUTPUT.",
+         "d9c2d9609e205380365b4f36f2f35ee301d84fb18c20035f2fadfcbc502576d5"),
     ("qa-acceptance-ios.yml", "acceptance", "Claim Stamp run case and resolve auth mode"):
         ("STAMP_TOKEN is used by stamp_report.sh; writes only bootstrap_required / STAMP_BOOTSTRAP_REQUIRED (true|false)",
          "862107c03608e2090a1a91a7ad9d2dd0da85bf2f228d379ca90e183917d096a8"),
@@ -132,6 +133,12 @@ STEP_ALLOWLIST = {
 LEGACY = "(inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true')"
 LEGACY_IF = "${{ inputs.stamp_run_case_id == '' || steps.stamp-claim.outputs.bootstrap_required != 'true' }}"
 RECEIPT_IF = "${{ inputs.stamp_run_case_id != '' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}"
+# Android qa-acceptance.yml: the Testbed release settings lane (login_mode=release-prelogin) gets the
+# QA account ONLY as QA_RELEASE_LOGIN_* on the emulator step (scripts/qa/release_settings_login.sh);
+# every legacy password step is off in that lane.
+NOT_RELEASE = "inputs.login_mode != 'release-prelogin'"
+ANDROID_LEGACY_IF = "${{ %s && %s }}" % (NOT_RELEASE, LEGACY)
+ANDROID_RECEIPT_IF = "${{ inputs.stamp_run_case_id != '' && %s && steps.stamp-claim.outputs.bootstrap_required != 'true' }}" % NOT_RELEASE
 
 
 def _plain(*keys: str) -> dict[str, str]:
@@ -140,6 +147,13 @@ def _plain(*keys: str) -> dict[str, str]:
 
 def _legacy(*keys: str) -> dict[str, str]:
     return {k: "${{ %s && secrets.%s || '' }}" % (LEGACY, k) for k in keys}
+
+
+def _android_agent_env() -> dict[str, str]:
+    env = {k: "${{ %s && %s && secrets.%s || '' }}" % (NOT_RELEASE, LEGACY, k) for k in ("QA_TEST_EMAIL", "QA_TEST_PASSWORD")}
+    for kind in ("EMAIL", "PASSWORD"):
+        env[f"QA_RELEASE_LOGIN_{kind}"] = "${{ inputs.stamp_run_case_id != '' && inputs.login_mode == 'release-prelogin' && secrets.QA_TEST_%s || '' }}" % kind
+    return env
 
 
 def _env_pair(selector: str) -> dict[str, str]:
@@ -164,10 +178,10 @@ QA_SECRET_STEPS: dict[str, dict[str, dict[str, dict]]] = {
         "Run update e2e on the emulator": {"if": None, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
     }},
     "qa-acceptance.yml": {"acceptance": {
-        PREFLIGHT: {"if": LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
-        "Freeze legacy credential identity receipt": {"if": RECEIPT_IF, "env": _plain("QA_TEST_EMAIL")},
-        "Seed media fixtures (image + workspace)": {"if": LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
-        "Run acceptance agent": {"if": None, "env": _legacy("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        PREFLIGHT: {"if": ANDROID_LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        "Freeze legacy credential identity receipt": {"if": ANDROID_RECEIPT_IF, "env": _plain("QA_TEST_EMAIL")},
+        "Seed media fixtures (image + workspace)": {"if": ANDROID_LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
+        "Run acceptance agent": {"if": None, "env": _android_agent_env()},
     }},
     "qa-acceptance-ios.yml": {"acceptance": {
         PREFLIGHT: {"if": LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
@@ -605,16 +619,19 @@ def real_tree_mutants() -> list[tuple[str, str, str, str]]:
         ("extra alias in an allowed step", qa, "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}",
          "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n          EXTRA_ALIAS: ${{ secrets.QA_TEST_PASSWORD }}"),
         ("acceptance runner no longer gated on bootstrap", qa, gate, "secrets.QA_TEST_PASSWORD"),
+        ("release login password no longer gated on the release lane", qa,
+         "inputs.login_mode == 'release-prelogin' && secrets.QA_TEST_PASSWORD", "secrets.QA_TEST_PASSWORD"),
+        ("legacy preflight runs in the release lane", qa, f"        if: {ANDROID_LEGACY_IF}\n", f"        if: {LEGACY_IF}\n"),
         # #222: neither iOS step may get the account back, gated or not.
         ("iOS deterministic repro gets the QA password back", ios, "        # Never signs in, so no QA credentials (#222).\n",
          f"        env:\n          QA_TEST_PASSWORD: ${{{{ {gate} }}}}\n"),
         ("iOS acceptance agent gets the QA password back", ios, "          QA_PASSWORD_LOGIN: ",
          f"          QA_TEST_PASSWORD: ${{{{ {gate} }}}}\n          QA_PASSWORD_LOGIN: "),
-        ("preflight gate -> true", qa, f"        if: {LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
+        ("preflight gate -> true", qa, f"        if: {ANDROID_LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
          "        if: ${{ true }}\n        env:\n          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}\n          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence"),
-        ("preflight gate -> false", qa, f"        if: {LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
+        ("preflight gate -> false", qa, f"        if: {ANDROID_LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
          "        if: ${{ false }}\n        env:\n          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}\n          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence"),
-        ("preflight gate removed", qa, f"        if: {LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
+        ("preflight gate removed", qa, f"        if: {ANDROID_LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
          "        env:\n          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}\n          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence"),
         ("staging/production branch pair swapped", ral,
          "QA_LOGIN_PASSWORD: ${{ (needs.plan.outputs.environment == 'staging' && secrets.QA_STAGING_TEST_PASSWORD) || secrets.QA_TEST_PASSWORD }}\n        with:",

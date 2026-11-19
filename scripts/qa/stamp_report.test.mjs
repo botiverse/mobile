@@ -544,8 +544,13 @@ test("Android and iOS freeze legacy email before execution and expose none for b
       assert.match(executeBlock, new RegExp(`QA_PASSWORD_LOGIN: \\$\\{\\{ ${legacy} && 'true' \\|\\| 'false' \\}\\}`));
       continue;
     }
-    assert.match(executeBlock, new RegExp(`QA_TEST_EMAIL: \\$\\{\\{ ${legacy} && secrets\\.QA_TEST_EMAIL \\|\\| '' \\}\\}`));
-    assert.match(executeBlock, new RegExp(`QA_TEST_PASSWORD: \\$\\{\\{ ${legacy} && secrets\\.QA_TEST_PASSWORD \\|\\| '' \\}\\}`));
+    // Android: the release settings lane gets the account only as QA_RELEASE_LOGIN_*, never the legacy names.
+    const notRelease = String.raw`inputs\.login_mode != 'release-prelogin'`;
+    assert.match(executeBlock, new RegExp(`QA_TEST_EMAIL: \\$\\{\\{ ${notRelease} && ${legacy} && secrets\\.QA_TEST_EMAIL \\|\\| '' \\}\\}`));
+    assert.match(executeBlock, new RegExp(`QA_TEST_PASSWORD: \\$\\{\\{ ${notRelease} && ${legacy} && secrets\\.QA_TEST_PASSWORD \\|\\| '' \\}\\}`));
+    assert.match(executeBlock, /QA_RELEASE_LOGIN_PASSWORD: \$\{\{ inputs\.stamp_run_case_id != '' && inputs\.login_mode == 'release-prelogin' && secrets\.QA_TEST_PASSWORD \|\| '' \}\}/);
+    assert.match(preflightBlock, new RegExp(notRelease));
+    assert.match(receiptBlock, new RegExp(notRelease));
   }
 });
 

@@ -348,8 +348,9 @@ test("the salt goes over the private channel only; pair refs go only to the 0600
 
   const source = fs.readFileSync(new URL("./release_auto_login.mjs", import.meta.url), "utf8");
   assert.match(source, /readPairingSaltFile\(process\.env\.QA_PAIRING_SALT_FILE/);
+  assert.match(source, /JSON\.parse\(fs\.readFileSync\(challengePath, "utf8"\)\)/);
   assert.match(source, /spawnSync\("adb", \["shell", "-T"\], \{[^}]*input: `\$\{command\}; exit\\n`/);
-  assert.match(source, /for \(const secret of \[pairingSalt, process\.env\.QA_ATTEMPT_NONCE, process\.env\.QA_EXPECTED_USER_REF, process\.env\.QA_EXPECTED_SERVER_REF\]\)/);
+  assert.match(source, /for \(const secret of \[pairingSalt, nonce, process\.env\.QA_EXPECTED_USER_REF, process\.env\.QA_EXPECTED_SERVER_REF\]\)/);
   assert.match(source, /publish: \(result\) => \{ summary\.identity_receipt = publicIdentitySummary\(result\); \}/);
 });
 
@@ -539,10 +540,14 @@ test("Testbed decisions bind to this attempt and request; release mode accepts n
   assert.equal(guardedCapture(createCaptureGate({ identityMode: false }), () => { captured += 1; })("x"), true);
   assert.equal(captured, 1);
   const source = fs.readFileSync(new URL("./release_auto_login.mjs", import.meta.url), "utf8");
-  // No Testbed client in this change: observe/decide return nothing, and read no file/env decision.
-  const decisionFn = source.slice(source.indexOf("const testbedDecision = {"), source.indexOf("function identityGate(request)"));
-  assert.equal((decisionFn.match(/return null;/g) ?? []).length, 2);
-  assert.doesNotMatch(decisionFn, /process\.env|readFileSync|option\(|flag\(/);
+  // Outside the Testbed release lane observe/decide return nothing; inside it the only source is
+  // the Testbed client (HTTP + OIDC + claim credential). No file/env/flag decision is read.
+  const stub = source.slice(source.indexOf("const noTestbed = {"), source.indexOf("function testbedDecisionSource()"));
+  assert.equal((stub.match(/return null;/g) ?? []).length, 2);
+  assert.doesNotMatch(stub, /process\.env|readFileSync|option\(|flag\(/);
+  const chooser = source.slice(source.indexOf("function testbedDecisionSource()"), source.indexOf("function identityGate(request)"));
+  assert.match(chooser, /return createTestbedReleaseClient\(\{ env: process\.env, claimToken \}\);/);
+  assert.doesNotMatch(chooser, /DECISION|VERDICT|state/);
   assert.doesNotMatch(source, /VERDICT_FILE|DECISION_FILE/);
   // Every capture (step screenshots, failure shots) goes through the gate; the scenario only
   // through afterSignIn after the identity gate.
