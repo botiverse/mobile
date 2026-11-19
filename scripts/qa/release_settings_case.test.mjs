@@ -9,7 +9,7 @@ import test from "node:test";
 import { readRecord, writeRecord } from "./login_phase.mjs";
 import { gate } from "./secure_evidence.mjs";
 import { threadtimeStamp, writeReleaseLoginRecord } from "./scenarios/release_settings_case.mjs";
-import { applyTerminalDecision, terminalDecision } from "./release_settings_terminal.mjs";
+import { TERMINAL, applyTerminalDecision, terminalDecision } from "./release_settings_terminal.mjs";
 
 const env = { GITHUB_RUN_ID: "4242", GITHUB_RUN_ATTEMPT: "1" };
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "release-case-"));
@@ -94,6 +94,7 @@ test("not vouched for: process changed, recorder not stopped, a required cleanup
     const result = gate(dir, env);
     assert.equal(result.ok, false, name);
     assert.deepEqual(fs.readdirSync(dir).sort(), ["agent-rc.txt", "evidence-gate.json", "login-record.json", "verdict.json"], name);
+    assert.ok(!fs.existsSync(path.join(dir, TERMINAL)), `${name}: no completion record`);
     assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "verdict.json"), "utf8")).verdict, "unknown", name);
     assert.equal(fs.readFileSync(path.join(dir, "agent-rc.txt"), "utf8"), "2\n", name);
     fs.rmSync(dir, { recursive: true });
@@ -116,7 +117,7 @@ test("without a match there is no record: the gate withholds everything, as on t
 
 test("lane wiring: goal required, stale record cleared, record before the agent, recorder joined before cleanup", () => {
   const wrapper = fs.readFileSync(new URL("./release_settings_login.sh", import.meta.url), "utf8");
-  assert.match(wrapper, /rm -f qa-evidence\/agent-rc\.txt qa-evidence\/login-record\.json/);
+  assert.match(wrapper, /rm -f qa-evidence\/agent-rc\.txt qa-evidence\/login-record\.json qa-evidence\/release-terminal\.json qa-evidence\/recording\.json/);
   assert.ok(wrapper.indexOf('if [[ -z "${QA_GOAL:-}" ]]') < wrapper.indexOf("testbed_release_settings.mjs challenge"), "no goal: stop before the challenge and sign-in");
   assert.match(wrapper, /release_settings_terminal\.mjs --summary "\$work\/summary\.json" --rc "\$rc" --evidence qa-evidence/);
   const mod = fs.readFileSync(new URL("./scenarios/release_settings_case.mjs", import.meta.url), "utf8");
@@ -124,9 +125,9 @@ test("lane wiring: goal required, stale record cleared, record before the agent,
   const caseScript = fs.readFileSync(new URL("./release_settings_case.sh", import.meta.url), "utf8");
   assert.match(caseScript, /if \[ -z "\$\{QA_GOAL:-\}" \]; then .*exit 3; fi/);
   assert.doesNotMatch(caseScript, /DEFAULT_GOAL/);
-  const loopKill = caseScript.indexOf("kill \\$(cat $LOOP_PID)");
+  const loopKill = caseScript.indexOf('adb shell "kill \\$(cat $REC_DIR/loop.pid)"');
   const recKill = caseScript.indexOf("pkill -INT screenrecord");
-  const joined = caseScript.indexOf('if [ "$stopped" != yes ]');
+  const joined = caseScript.indexOf('[ "$stopped" = yes ] || recording_fail unconfirmed_stop');
   const pull = caseScript.indexOf("adb pull");
   assert.ok(loopKill > 0 && loopKill < recKill && recKill < joined && joined < pull, "loop stopped, segment stopped, both joined, then pulled");
   assert.match(caseScript, /exit 4\n/);
@@ -135,4 +136,43 @@ test("lane wiring: goal required, stale record cleared, record before the agent,
     const line = wf.split("\n").find((l) => re.test(l));
     assert.match(line, /^\s+\[ -f qa-release-lane \] && exit 0; /, String(re));
   }
+});
+
+test("an interrupted run (matched record, no completion record) publishes nothing in either exit", () => {
+  // The case ran and wrote its media, then the wrapper was killed before the terminal decision.
+  const dir = caseEvidence();
+  const result = gate(dir, env);
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /no completion record/);
+  assert.ok(!fs.existsSync(path.join(dir, "qa-rec-01.mp4")) && !fs.existsSync(path.join(dir, "step-01.png")));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "verdict.json"), "utf8")).verdict, "unknown");
+  assert.equal(fs.readFileSync(path.join(dir, "agent-rc.txt"), "utf8"), "2\n");
+  fs.rmSync(dir, { recursive: true });
+});
+
+test("a completion record of another run, incomplete, or not matching the login record is refused", () => {
+  for (const [name, patch] of [["another run", { run: "1:1" }], ["incomplete", { complete: false }], ["other login", { login_end: "11-19 09:00:00.000" }], ["contract", { contract: "x" }]]) {
+    const dir = caseEvidence();
+    applyTerminalDecision(dir, terminalDecision({ summary: cleanSummary(), rc: 0 }), env);
+    const file = path.join(dir, TERMINAL);
+    fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, "utf8")), ...patch }));
+    assert.equal(gate(dir, env).ok, false, name);
+    assert.ok(!fs.existsSync(path.join(dir, "qa-rec-01.mp4")), name);
+    fs.rmSync(dir, { recursive: true });
+  }
+});
+
+test("recording: never started, no segments, a failed transfer or an unconfirmed stop is not completed", () => {
+  for (const status of ["not_started", "no_segments", "transfer_failed", "unconfirmed_stop", "missing"]) {
+    const decision = terminalDecision({ summary: cleanSummary(), rc: 0, recording: status });
+    assert.equal(decision.complete, false, status);
+    assert.match(decision.reason, new RegExp(`recording ${status}`));
+    assert.equal(decision.public.recording, status);
+  }
+  const caseScript = fs.readFileSync(new URL("./release_settings_case.sh", import.meta.url), "utf8");
+  // Start receipt before the agent; join, every segment pulled and non-empty, directory removed.
+  assert.ok(caseScript.indexOf('[ "$started" = yes ] || recording_fail not_started') < caseScript.indexOf("acceptance_agent.mjs"));
+  for (const failure of ["unconfirmed_stop", "no_segments", "transfer_failed", "cleanup_failed"]) assert.match(caseScript, new RegExp(`recording_fail ${failure}`));
+  assert.ok(caseScript.indexOf('"status":"complete"') > caseScript.indexOf("recording_fail cleanup_failed"), "complete is written last");
+  assert.match(caseScript, /REC_DIR="\/sdcard\/qa-rec-\$\{GITHUB_RUN_ID:-local\}-\$\{GITHUB_RUN_ATTEMPT:-1\}-\$\$-\$\{RANDOM\}"/);
 });

@@ -20,7 +20,7 @@ set -euo pipefail
 credential="$RUNNER_TEMP/release-login-credential/account"
 trap 'rm -f "$credential" "$RUNNER_TEMP/testbed-release-challenge-${STAMP_RUN_CASE_ID}.json"' EXIT
 mkdir -p qa-evidence
-rm -f qa-evidence/agent-rc.txt qa-evidence/login-record.json
+rm -f qa-evidence/agent-rc.txt qa-evidence/login-record.json qa-evidence/release-terminal.json qa-evidence/recording.json
 touch qa-release-lane
 # The release case has its own goal; never the workflow's default (it opens a channel).
 if [[ -z "${QA_GOAL:-}" ]]; then echo "::error::release login: no settings goal (QA_GOAL); stopping before sign-in" >&2; echo 2 > qa-evidence/agent-rc.txt; exit 0; fi

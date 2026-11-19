@@ -71,17 +71,21 @@ export function claimBody({ ciJobRef, identity }) {
   return { ci_job_ref: ciJobRef, apk_sha256: identity.sha256, package_id: identity.packageId, version_code: versionCode };
 }
 
-export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetch, claimToken = "" } = {}) {
+export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetch, claimToken = "", retryDelaysMs = [1000, 3000] } = {}) {
   const runCaseId = env.STAMP_RUN_CASE_ID;
   const testbedUrl = env.STAMP_URL;
   const executorToken = env.STAMP_TOKEN;
   if (!RUN_CASE.test(String(runCaseId ?? "")) || !testbedUrl || !executorToken) fail("testbed_not_configured");
   const jobRef = `${env.GITHUB_SERVER_URL || "https://github.com"}/${env.GITHUB_REPOSITORY || ""}/actions/runs/${env.GITHUB_RUN_ID || ""}`;
-  const post = async (endpoint, body, { claimed = true } = {}) => {
+  // `retry`: the same request (same job signature, same body) again after a transport failure,
+  // a timeout, a 5xx or an unreadable reply, a bounded number of times. Testbed answers a repeated
+  // dedicated claim from the same job with the original result, so a claim whose reply was lost
+  // is recovered rather than abandoned. A 4xx is a refusal: never retried.
+  const post = async (endpoint, body, { claimed = true, retry = false } = {}) => {
     const audience = releaseSettingsAudience(testbedUrl, runCaseId, endpoint);
     const idToken = await requestOidcToken({ env, fetchImpl, audience });
     if (claimed && !claimToken) fail("claim_token_missing");
-    const response = await fetchImpl(audience, {
+    const request = {
       method: "POST",
       headers: {
         Authorization: `Bearer ${executorToken}`,
@@ -90,10 +94,31 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
         ...(claimed ? { "X-Testbed-Claim-Token": claimToken } : {}),
       },
       body: JSON.stringify({ id_token: idToken, ...body }),
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!response.ok) fail(`${endpoint}_http_${response.status}`);
-    return response.json().catch(() => fail(`${endpoint}_reply_unreadable`));
+    };
+    const delays = retry ? retryDelaysMs : [];
+    let lastFailure = `${endpoint}_no_reply`;
+    for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, delays[attempt - 1]));
+      let response;
+      try {
+        response = await fetchImpl(audience, { ...request, signal: AbortSignal.timeout(30_000) });
+      } catch {
+        lastFailure = `${endpoint}_no_reply`;
+        continue;
+      }
+      if (response.status >= 400 && response.status < 500) fail(`${endpoint}_http_${response.status}`);
+      if (!response.ok) {
+        lastFailure = `${endpoint}_http_${response.status}`;
+        continue;
+      }
+      const json = await response.json().catch(() => undefined);
+      if (json === undefined) {
+        lastFailure = `${endpoint}_reply_unreadable`;
+        continue;
+      }
+      return json;
+    }
+    fail(lastFailure);
   };
   return {
     jobRef,
@@ -104,7 +129,7 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
       return reply;
     },
     async claim(identity) {
-      return parseClaimReply(await post("release-settings-claim", claimBody({ ciJobRef: jobRef, identity }), { claimed: false }), runCaseId);
+      return parseClaimReply(await post("release-settings-claim", claimBody({ ciJobRef: jobRef, identity }), { claimed: false, retry: true }), runCaseId);
     },
     async challenge() {
       return parseChallengeReply(await post("release-settings-observation", { action: "challenge" }));
