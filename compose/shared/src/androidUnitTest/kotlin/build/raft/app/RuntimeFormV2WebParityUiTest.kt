@@ -85,7 +85,12 @@ class RuntimeFormV2WebParityUiTest {
         val loaded = RuntimeFormV2Loaded(checkNotNull(parseRuntimeFormV2(PARITY_FORM)), sources(SELECT_REQUIRED_SOURCE, SELECT_RETIRED_SOURCE, SELECT_STALE_SOURCE))
         val values =
             initialRuntimeFormV2Values(loaded.form, loaded.sources) +
-                mapOf("selectRetired" to JsonPrimitive("retired"), "url" to JsonPrimitive("gateway.example.test"))
+                mapOf(
+                    // As the kitchen-sink state: a required select left empty, a retired saved value, a bad URL.
+                    "selectRequired" to JsonPrimitive(""),
+                    "selectRetired" to JsonPrimitive("retired"),
+                    "url" to JsonPrimitive("gateway.example.test")
+                )
         setContent { Form(loaded, values, showAllErrors = true) }
         waitForIdle()
         fun count(text: String) = onAllNodes(textContains(text), useUnmergedTree = true).fetchSemanticsNodes().size
