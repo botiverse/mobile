@@ -594,14 +594,11 @@ class SecondFactorStepUpCoordinator(
     }
 
     /** [state] with Continue in browser where it has no way to answer and the platform and server have one. */
-    private fun SecondFactorStepUpDialogState.offeringWebStepUp(): SecondFactorStepUpDialogState =
+    private fun SecondFactorStepUpDialogState.offeringWebStepUp(): SecondFactorStepUpDialogState {
         // Start needs the action's key (400 `invalid_action` without): none, no Continue in browser.
         val offered = this@SecondFactorStepUpCoordinator.webStepUp != null && openAction != null && !webStepUpUnavailable
-        if (method == null && webStepUp == null && offered) {
-            copy(webStepUp = SecondFactorWebStepUpPhase.Ready)
-        } else {
-            this
-        }
+        return if (method == null && webStepUp == null && offered) copy(webStepUp = SecondFactorWebStepUpPhase.Ready) else this
+    }
 
     /** Continue in browser: the request, then the page in a web session (the dialog opens it). */
     private suspend fun continueInBrowser() {
