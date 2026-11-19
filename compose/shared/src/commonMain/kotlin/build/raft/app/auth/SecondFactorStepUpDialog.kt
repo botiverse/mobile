@@ -27,6 +27,11 @@ import build.raft.app.data.SecondFactorStepUpSignOutScope
 import build.raft.app.data.SecondFactorStepUpView
 import build.raft.app.data.RaftNativePasskeyAssertion
 import build.raft.app.data.rememberRaftNativePasskeyAssertion
+import build.raft.app.data.RaftAppWebStepUp
+import build.raft.app.data.RaftAppWebStepUpBrowser
+import build.raft.app.data.SecondFactorWebStepUpPhase
+import build.raft.app.data.rememberRaftAppWebStepUpBrowser
+import kotlinx.coroutines.flow.Flow
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.resources.*
@@ -60,7 +65,11 @@ internal const val SECOND_FACTOR_STEP_UP_DIALOG_TAG = "second-factor-step-up-dia
  * under the field, a refused passkey, a lock, Sign In Again or any other refusal in a banner,
  * with the server's trace ID. Only a passkey listed and none usable here: a banner saying to do
  * this on the web, Close, and Open on the web where the action's page is known
- * ([SecondFactorStepUpDialogState.webUrl], opened with [openWebPage]; it ends the step-up like Cancel). A scrim tap does not close it; Cancel, the close button and Back do (not
+ * ([SecondFactorStepUpDialogState.webUrl], opened with [openWebPage]; it ends the step-up like Cancel), or
+ * on iOS with only legacy passkeys Continue in browser ([SecondFactorStepUpDialogState.webStepUp]:
+ * [webStepUpBrowser] runs the coordinator's [SecondFactorStepUpDialogState.webStepUpSession], and
+ * while it waits the step-up callbacks handed to the app elsewhere ([webStepUpCallbacks]) go back
+ * to the coordinator). A scrim tap does not close it; Cancel, the close button and Back do (not
  * while the answer is being checked). With a [SecondFactorStepUpDialogState.recovery] (signing out
  * a lost device) it also offers "Lost the device with your authenticator?"
  * ([SecondFactorStepUpRecoveryPage]).
@@ -75,6 +84,8 @@ internal fun SecondFactorStepUpDialog(
     passkeyAssertion: RaftNativePasskeyAssertion = rememberRaftNativePasskeyAssertion(),
     /** Opens the action's web page: a real browser, where the passkey works ([rememberRaftPasskeyWebPageOpener]). */
     openWebPage: (String) -> Unit = rememberRaftPasskeyWebPageOpener(),
+    webStepUpBrowser: RaftAppWebStepUpBrowser = rememberRaftAppWebStepUpBrowser(),
+    webStepUpCallbacks: Flow<String> = RaftAppWebStepUp.callbacks,
 ) {
     // The passkey prompt, once per attempt; its answer goes back to the coordinator.
     val ceremony = state.passkeyCeremony
@@ -84,6 +95,18 @@ internal fun SecondFactorStepUpDialog(
             val result = passkeyAssertion.assert(ceremony.request)
             currentOnIntent(SecondFactorStepUpIntent.PasskeyAssertionFinished(ceremony.id, result))
         }
+    }
+    // Continue in browser: the web page, once per attempt; how it ended goes back to the coordinator.
+    val webSession = state.webStepUpSession
+    LaunchedEffect(webSession?.id) {
+        if (webSession != null) {
+            val result = webStepUpBrowser.open(webSession.url, webSession.callbackScheme)
+            currentOnIntent(SecondFactorStepUpIntent.WebStepUpBrowserFinished(webSession.id, result))
+        }
+    }
+    val waitingOnWeb = state.webStepUp == SecondFactorWebStepUpPhase.Waiting
+    LaunchedEffect(waitingOnWeb, webStepUpCallbacks) {
+        if (waitingOnWeb) webStepUpCallbacks.collect { uri -> currentOnIntent(SecondFactorStepUpIntent.WebStepUpCallback(uri)) }
     }
     // Signing out a lost device: "Lost the device with your authenticator?" and its pages.
     val recovery = state.recovery
@@ -103,7 +126,33 @@ internal fun SecondFactorStepUpDialog(
         closeLabel = stringResource(Res.string.common_close),
         footer = {
             val webUrl = state.webUrl?.takeIf { state.opensOnWeb }
-            if (webUrl != null) {
+            val webPhase = state.webStepUp?.takeIf { state.continuesInBrowser }
+            if (webPhase != null) {
+                RaftButton(
+                    text = stringResource(Res.string.common_cancel),
+                    onClick = dismiss,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg,
+                    enabled = !state.submitting
+                )
+                val working = webPhase != SecondFactorWebStepUpPhase.Ready
+                RaftButton(
+                    text = stringResource(Res.string.settings_step_up_web_continue),
+                    onClick = { if (!working) onIntent(SecondFactorStepUpIntent.ContinueInBrowser) },
+                    modifier = Modifier.testTag(SECOND_FACTOR_STEP_UP_CONTINUE_IN_BROWSER_TAG),
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg,
+                    loading = working,
+                    loadingLabel =
+                        stringResource(
+                            if (webPhase == SecondFactorWebStepUpPhase.Completing) {
+                                Res.string.settings_step_up_verifying
+                            } else {
+                                Res.string.settings_step_up_web_waiting
+                            }
+                        )
+                )
+            } else if (webUrl != null) {
                 RaftButton(
                     text = stringResource(Res.string.common_close),
                     onClick = dismiss,
@@ -157,7 +206,16 @@ internal fun SecondFactorStepUpDialog(
         }
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (method == null) {
+            val webPhase = state.webStepUp?.takeIf { state.continuesInBrowser }
+            if (webPhase != null) {
+                val waiting = webPhase == SecondFactorWebStepUpPhase.Waiting || webPhase == SecondFactorWebStepUpPhase.Completing
+                RaftBanner(
+                    description =
+                        stringResource(if (waiting) Res.string.settings_step_up_web_waiting else Res.string.settings_step_up_web_body),
+                    status = RaftBannerStatus.Info,
+                    size = RaftBannerSize.Sm
+                )
+            } else if (method == null) {
                 RaftBanner(
                     description = stringResource(Res.string.settings_step_up_passkey_only),
                     status = RaftBannerStatus.Warning,
@@ -202,6 +260,7 @@ internal fun SecondFactorStepUpDialog(
 internal const val SECOND_FACTOR_STEP_UP_LOST_LINK_TAG = "step-up-lost-authenticator"
 internal const val SECOND_FACTOR_STEP_UP_SUBMIT_TAG = "step-up-submit"
 internal const val SECOND_FACTOR_STEP_UP_OPEN_ON_WEB_TAG = "step-up-open-on-web"
+internal const val SECOND_FACTOR_STEP_UP_CONTINUE_IN_BROWSER_TAG = "step-up-continue-in-browser"
 internal const val SECOND_FACTOR_STEP_UP_BANNER_TAG = "step-up-banner"
 
 /** The "Use …" link that switches to [method]. */
@@ -533,6 +592,15 @@ private fun SecondFactorStepUpBannerView(
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm
             )
+        SecondFactorStepUpBanner.WebStepUpCancelled ->
+            RaftBanner(
+                description = stringResource(Res.string.settings_step_up_web_cancelled),
+                modifier = tagged,
+                status = RaftBannerStatus.Info,
+                size = RaftBannerSize.Sm
+            )
+        is SecondFactorStepUpBanner.WebStepUpExpired ->
+            SecondFactorStepUpTracedBanner(stringResource(Res.string.settings_step_up_web_expired), banner.traceId)
     }
 }
 

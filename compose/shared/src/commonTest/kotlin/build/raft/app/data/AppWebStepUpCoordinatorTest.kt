@@ -1,0 +1,388 @@
+package build.raft.app.data
+
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/**
+ * Continue in browser (iOS, only legacy passkeys): "Verify it's you" reaches no way to answer
+ * after `passkey_rp_unavailable`, starts the web step-up, has the dialog open its page, takes the
+ * page's callback for that request only, exchanges the code with the verifier and retries the
+ * refused action once. Wire shapes: AppWebStepUpApiTest.
+ */
+class AppWebStepUpCoordinatorTest {
+    private val passkeyOnly =
+        """{"error":"Confirm it's you with your second step before attaching a computer.","code":"second_factor_step_up_required","methods":["passkey"]}"""
+    private val trace = "4bf92f3577b34da6a3ce929d0e0e4736"
+    private val returnUri = "raft://login/callback"
+    private val verifier = "v".repeat(43)
+
+    private class Harness(
+        val startResults: ArrayDeque<AppWebStepUpStartResult>,
+        val completeResults: ArrayDeque<AppWebStepUpCompleteResult> = ArrayDeque(listOf(AppWebStepUpCompleteResult.Verified)),
+        val store: InMemoryRaftKeyValueStore = InMemoryRaftKeyValueStore(),
+        webUrl: String? = null,
+        action: String? = "computer_attach",
+    ) {
+        var clock = 1_000L
+        val starts = mutableListOf<AppWebStepUpStartBody>()
+        val completes = mutableListOf<AppWebStepUpCompleteBody>()
+        val logs = mutableListOf<String>()
+        private var generations = 0
+        val pending = AppWebStepUpPendingStore({ store }, now = { clock })
+        val coordinator =
+            SecondFactorStepUpCoordinator(
+                stepUp = { error("no step-up answer: the web verifies this sign-in") },
+                passkeyOptions = {
+                    SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.PasskeyRpUnavailable("current", listOf("legacy")))
+                },
+                nativePasskeys = true,
+                passkeyRpGroup = "current",
+                webUrl = if (webUrl != null) { _ -> webUrl } else null,
+                webTarget = { SecondFactorStepUpWebTarget.Computers.takeIf { webUrl != null } },
+                webStepUp =
+                    SecondFactorWebStepUp(
+                        start = { body -> starts += body; startResults.removeFirst() },
+                        complete = { body -> completes += body; completeResults.removeFirst() },
+                        returnUri = "raft://login/callback",
+                        pending = pending,
+                        pkce = { AppWebStepUpPkce("v".repeat(43), "c".repeat(43)) },
+                        generation = { "gen-${++generations}" },
+                        log = logs::add,
+                    ),
+                webStepUpAction = action,
+            )
+    }
+
+    private fun started(id: String) = AppWebStepUpStartResult.Started(id, "https://app.raft.build/login/app/verify?request=$id", "2026-11-19T10:05:00Z")
+
+    private fun refusal(): DataResult<String> =
+        DataResult.Error(
+            ScreenError(
+                code = SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
+                retryable = false,
+                secondFactorStepUp = parseSharedSecondFactorStepUpRequired(403, passkeyOnly)
+            )
+        )
+
+    private class ScriptedAction(vararg results: DataResult<String>) {
+        private val script = results.toList()
+        var calls = 0
+            private set
+
+        suspend fun invoke(): DataResult<String> = script[minOf(calls++, script.lastIndex)]
+    }
+
+    /** Use passkey → `passkey_rp_unavailable`: no way to answer here, Continue in browser. */
+    private suspend fun Harness.reachLegacyOnly(): SecondFactorStepUpDialogState {
+        coordinator.accept(SecondFactorStepUpIntent.Submit)
+        val dialog = assertNotNull(coordinator.state.value)
+        assertNull(dialog.method)
+        assertEquals(SecondFactorWebStepUpPhase.Ready, dialog.webStepUp)
+        assertTrue(dialog.continuesInBrowser)
+        assertFalse(dialog.opensOnWeb, "Continue in browser stands in for Open on the web")
+        return dialog
+    }
+
+    /** Continue in browser: the session the dialog is asked to open. */
+    private suspend fun Harness.continueInBrowser(): SecondFactorWebStepUpSession {
+        coordinator.accept(SecondFactorStepUpIntent.ContinueInBrowser)
+        val dialog = assertNotNull(coordinator.state.value)
+        assertEquals(SecondFactorWebStepUpPhase.Waiting, dialog.webStepUp)
+        return assertNotNull(dialog.webStepUpSession)
+    }
+
+    private suspend fun Harness.finish(session: SecondFactorWebStepUpSession, result: RaftAppWebStepUpBrowserResult) =
+        coordinator.accept(SecondFactorStepUpIntent.WebStepUpBrowserFinished(session.id, result))
+
+    @Test
+    fun theWebVerifiesThisSignInAndTheActionGoesOnceMore() = runTest {
+        val harness = Harness(ArrayDeque(listOf(started("r-1"))), action = "computer_attach")
+        val action = ScriptedAction(refusal(), DataResult.Content("attached"))
+        val outcome = async { harness.coordinator.run(action::invoke) }
+        runCurrent()
+        harness.reachLegacyOnly()
+
+        val session = harness.continueInBrowser()
+        assertEquals("https://app.raft.build/login/app/verify?request=r-1", session.url)
+        assertEquals("raft", session.callbackScheme)
+        val start = harness.starts.single()
+        assertEquals(returnUri, start.returnUri)
+        assertEquals("c".repeat(43), start.codeChallenge)
+        assertEquals("S256", start.codeChallengeMethod)
+        assertEquals("computer_attach", start.action)
+        // On disk while the page is up: the request and its verifier.
+        val onFile = assertNotNull(harness.pending.read())
+        assertEquals("r-1", onFile.requestId)
+        assertEquals(verifier, onFile.verifier)
+        assertEquals(returnUri, onFile.returnUri)
+
+        harness.finish(session, RaftAppWebStepUpBrowserResult.Callback("$returnUri?requestId=r-1&code=k-1"))
+        runCurrent()
+
+        assertEquals(listOf(AppWebStepUpCompleteBody("k-1", verifier, returnUri)), harness.completes)
+        assertEquals(SecondFactorStepUpOutcome.Completed(DataResult.Content("attached")), outcome.await())
+        assertEquals(2, action.calls, "the refused action goes exactly once more")
+        assertNull(harness.coordinator.state.value)
+        assertNull(harness.pending.read(), "the request is used up")
+    }
+
+    @Test
+    fun aCallbackForAnotherRequestIsIgnoredAndARepeatCannotExchangeAgain() = runTest {
+        val harness = Harness(ArrayDeque(listOf(started("r-2"))))
+        val action = ScriptedAction(refusal(), DataResult.Content("attached"))
+        val outcome = async { harness.coordinator.run(action::invoke) }
+        runCurrent()
+        harness.reachLegacyOnly()
+        val session = harness.continueInBrowser()
+
+        // An earlier attempt's callback handed to the app (openURL): stale, still waiting.
+        harness.coordinator.accept(SecondFactorStepUpIntent.WebStepUpCallback("$returnUri?requestId=r-old&code=k-old"))
+        harness.coordinator.accept(SecondFactorStepUpIntent.WebStepUpCallback("raft://login/callback?requestId=r-2"))
+        val waiting = assertNotNull(harness.coordinator.state.value)
+        assertEquals(SecondFactorWebStepUpPhase.Waiting, waiting.webStepUp)
+        assertEquals(session, waiting.webStepUpSession)
+        assertTrue(harness.completes.isEmpty())
+        assertTrue(harness.logs.any { "result=stale" in it })
+
+        // This request's callback, through openURL; the web session's copy after it is not exchanged again.
+        harness.coordinator.accept(SecondFactorStepUpIntent.WebStepUpCallback("$returnUri?requestId=r-2&code=k-2"))
+        runCurrent()
+        harness.finish(session, RaftAppWebStepUpBrowserResult.Callback("$returnUri?requestId=r-2&code=k-2"))
+        assertEquals(SecondFactorStepUpOutcome.Completed(DataResult.Content("attached")), outcome.await())
+        assertEquals(1, harness.completes.size)
+    }
+
+    @Test
+    fun closingTheBrowserKeepsTheDialogAndTryingAgainStartsANewRequest() = runTest {
+        val harness = Harness(ArrayDeque(listOf(started("r-3"), started("r-4"))))
+        val action = ScriptedAction(refusal(), DataResult.Content("attached"))
+        val outcome = async { harness.coordinator.run(action::invoke) }
+        runCurrent()
+        harness.reachLegacyOnly()
+
+        val first = harness.continueInBrowser()
+        harness.finish(first, RaftAppWebStepUpBrowserResult.Closed)
+        val closed = assertNotNull(harness.coordinator.state.value)
+        assertEquals(SecondFactorStepUpBanner.WebStepUpCancelled, closed.banner)
+        assertEquals(SecondFactorWebStepUpPhase.Ready, closed.webStepUp)
+        assertNull(closed.webStepUpSession)
+        assertNull(harness.pending.read(), "the closed attempt's request is dropped")
+
+        // A late callback of the closed attempt: not waiting, nothing exchanged.
+        harness.coordinator.accept(SecondFactorStepUpIntent.WebStepUpCallback("$returnUri?requestId=r-3&code=k-3"))
+        assertTrue(harness.completes.isEmpty())
+
+        val second = harness.continueInBrowser()
+        assertTrue(second.id != first.id)
+        assertEquals("r-4", harness.pending.read()?.requestId)
+        assertNull(harness.coordinator.state.value?.banner)
+
+        // Cancel: the action ends quietly and the request on file goes with the dialog.
+        harness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        assertEquals(SecondFactorStepUpOutcome.Cancelled, outcome.await())
+        assertEquals(1, action.calls)
+        assertNull(harness.pending.read())
+    }
+
+    @Test
+    fun thePagesCancelAndAnExpiredRequestLetThePersonTryAgain() = runTest {
+        val harness =
+            Harness(
+                ArrayDeque(listOf(started("r-5"), started("r-6"), started("r-7"))),
+                completeResults = ArrayDeque(listOf(AppWebStepUpCompleteResult.Expired(trace))),
+            )
+        val outcome = async { harness.coordinator.run(ScriptedAction(refusal())::invoke) }
+        runCurrent()
+        harness.reachLegacyOnly()
+
+        // Cancel on the page: error=access_denied.
+        harness.finish(harness.continueInBrowser(), RaftAppWebStepUpBrowserResult.Callback("$returnUri?requestId=r-5&error=access_denied"))
+        assertEquals(SecondFactorStepUpBanner.WebStepUpCancelled, harness.coordinator.state.value?.banner)
+
+        // The page ran out: error=expired.
+        harness.finish(harness.continueInBrowser(), RaftAppWebStepUpBrowserResult.Callback("$returnUri?requestId=r-6&error=expired"))
+        assertEquals(SecondFactorStepUpBanner.WebStepUpExpired(), harness.coordinator.state.value?.banner)
+
+        // The code ran out before the exchange: 410, with its trace ID.
+        harness.finish(harness.continueInBrowser(), RaftAppWebStepUpBrowserResult.Callback("$returnUri?requestId=r-7&code=k-7"))
+        runCurrent()
+        val expired = assertNotNull(harness.coordinator.state.value)
+        assertEquals(SecondFactorStepUpBanner.WebStepUpExpired(trace), expired.banner)
+        assertEquals(SecondFactorWebStepUpPhase.Ready, expired.webStepUp)
+        assertFalse(expired.submitting)
+        assertEquals(listOf("k-7"), harness.completes.map { it.code })
+
+        harness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        assertEquals(SecondFactorStepUpOutcome.Cancelled, outcome.await())
+    }
+
+    @Test
+    fun aRequestOlderThanTheAppWaitsIsNotExchanged() = runTest {
+        val harness = Harness(ArrayDeque(listOf(started("r-8"))))
+        val outcome = async { harness.coordinator.run(ScriptedAction(refusal())::invoke) }
+        runCurrent()
+        harness.reachLegacyOnly()
+        val session = harness.continueInBrowser()
+        harness.clock += 11 * 60_000L
+        harness.finish(session, RaftAppWebStepUpBrowserResult.Callback("$returnUri?requestId=r-8&code=k-8"))
+        assertEquals(SecondFactorStepUpBanner.WebStepUpExpired(), harness.coordinator.state.value?.banner)
+        assertTrue(harness.completes.isEmpty())
+        harness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        outcome.await()
+    }
+
+    @Test
+    fun failuresShowTheirTraceId() = runTest {
+        val harness =
+            Harness(
+                ArrayDeque(listOf(AppWebStepUpStartResult.Failed("Try later", "http_503", trace), started("r-9"))),
+                completeResults = ArrayDeque(listOf(AppWebStepUpCompleteResult.Failed(null, "code_not_found", trace))),
+            )
+        val outcome = async { harness.coordinator.run(ScriptedAction(refusal())::invoke) }
+        runCurrent()
+        harness.reachLegacyOnly()
+
+        harness.coordinator.accept(SecondFactorStepUpIntent.ContinueInBrowser)
+        val startFailed = assertNotNull(harness.coordinator.state.value)
+        assertEquals(SecondFactorStepUpBanner.Failed("Try later", trace), startFailed.banner)
+        assertEquals(SecondFactorWebStepUpPhase.Ready, startFailed.webStepUp)
+        assertNull(harness.pending.read())
+
+        harness.finish(harness.continueInBrowser(), RaftAppWebStepUpBrowserResult.Callback("$returnUri?requestId=r-9&code=k-9"))
+        runCurrent()
+        assertEquals(SecondFactorStepUpBanner.Failed(null, trace), harness.coordinator.state.value?.banner)
+
+        harness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        assertEquals(SecondFactorStepUpOutcome.Cancelled, outcome.await())
+    }
+
+    @Test
+    fun theBrowserThatCouldNotOpenLetsThePersonTryAgain() = runTest {
+        val harness = Harness(ArrayDeque(listOf(started("r-10"))))
+        val outcome = async { harness.coordinator.run(ScriptedAction(refusal())::invoke) }
+        runCurrent()
+        harness.reachLegacyOnly()
+        val session = harness.continueInBrowser()
+        // A late answer of another session is not this one's.
+        harness.finish(session.copy(id = session.id + 7), RaftAppWebStepUpBrowserResult.Closed)
+        assertEquals(SecondFactorWebStepUpPhase.Waiting, harness.coordinator.state.value?.webStepUp)
+
+        harness.finish(session, RaftAppWebStepUpBrowserResult.Failed("start_refused"))
+        val shown = assertNotNull(harness.coordinator.state.value)
+        assertIs<SecondFactorStepUpBanner.Failed>(shown.banner)
+        assertEquals(SecondFactorWebStepUpPhase.Ready, shown.webStepUp)
+        assertNull(harness.pending.read())
+        harness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        outcome.await()
+    }
+
+    @Test
+    fun noWebStepUpOnTheServerFallsBackToOpenOnTheWeb() = runTest {
+        val webUrl = "https://app.raft.build/s/acme/computers"
+        val harness = Harness(ArrayDeque(listOf(AppWebStepUpStartResult.Unavailable)), webUrl = webUrl)
+        val action = ScriptedAction(refusal(), DataResult.Content("attached"))
+        val first = async { harness.coordinator.run(action::invoke) }
+        runCurrent()
+        harness.reachLegacyOnly()
+
+        harness.coordinator.accept(SecondFactorStepUpIntent.ContinueInBrowser)
+        val fallback = assertNotNull(harness.coordinator.state.value)
+        assertNull(fallback.webStepUp)
+        assertNull(fallback.webStepUpSession)
+        assertTrue(fallback.opensOnWeb, "#5035's Open on the web")
+        assertEquals(webUrl, fallback.webUrl)
+        assertNull(harness.pending.read())
+        harness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        assertEquals(SecondFactorStepUpOutcome.Cancelled, first.await())
+
+        // The next refusal goes straight to Open on the web: no second start.
+        val second = async { harness.coordinator.run(ScriptedAction(refusal())::invoke) }
+        runCurrent()
+        harness.coordinator.accept(SecondFactorStepUpIntent.Submit)
+        val again = assertNotNull(harness.coordinator.state.value)
+        assertNull(again.webStepUp)
+        assertTrue(again.opensOnWeb)
+        harness.coordinator.accept(SecondFactorStepUpIntent.ContinueInBrowser)
+        assertEquals(1, harness.starts.size)
+        harness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        second.await()
+    }
+
+    @Test
+    fun twoStepVerificationTurnedOffMeanwhileJustRetries() = runTest {
+        val harness = Harness(ArrayDeque(listOf(AppWebStepUpStartResult.NotEnabled)))
+        val action = ScriptedAction(refusal(), DataResult.Content("attached"))
+        val outcome = async { harness.coordinator.run(action::invoke) }
+        runCurrent()
+        harness.reachLegacyOnly()
+        harness.coordinator.accept(SecondFactorStepUpIntent.ContinueInBrowser)
+        assertEquals(SecondFactorStepUpOutcome.Completed(DataResult.Content("attached")), outcome.await())
+        assertEquals(2, action.calls)
+    }
+
+    @Test
+    fun anActionTheServerCantBeToldAboutKeepsOpenOnTheWeb() = runTest {
+        val harness = Harness(ArrayDeque(listOf(started("r-x"))), webUrl = "https://app.raft.build/s/acme/computers", action = null)
+        val outcome = async { harness.coordinator.run(ScriptedAction(refusal())::invoke) }
+        runCurrent()
+        harness.coordinator.accept(SecondFactorStepUpIntent.Submit)
+        val dialog = assertNotNull(harness.coordinator.state.value)
+        assertNull(dialog.webStepUp, "start needs the action's key")
+        assertTrue(dialog.opensOnWeb)
+        harness.coordinator.accept(SecondFactorStepUpIntent.ContinueInBrowser)
+        assertTrue(harness.starts.isEmpty())
+        harness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        outcome.await()
+    }
+
+    @Test
+    fun aSignInThatCantBeVerifiedAsksToSignInAgain() = runTest {
+        val harness =
+            Harness(
+                ArrayDeque(listOf(AppWebStepUpStartResult.SessionFamilyRequired, started("r-11"))),
+                completeResults = ArrayDeque(listOf(AppWebStepUpCompleteResult.SessionFamilyRequired)),
+            )
+        val outcome = async { harness.coordinator.run(ScriptedAction(refusal())::invoke) }
+        runCurrent()
+        harness.reachLegacyOnly()
+        harness.coordinator.accept(SecondFactorStepUpIntent.ContinueInBrowser)
+        assertEquals(SecondFactorStepUpBanner.SignInAgain, harness.coordinator.state.value?.banner)
+        harness.finish(harness.continueInBrowser(), RaftAppWebStepUpBrowserResult.Callback("$returnUri?requestId=r-11&code=k-11"))
+        runCurrent()
+        assertEquals(SecondFactorStepUpBanner.SignInAgain, harness.coordinator.state.value?.banner)
+        harness.coordinator.accept(SecondFactorStepUpIntent.SignInAgain)
+        assertEquals(SecondFactorStepUpOutcome.Cancelled, outcome.await())
+    }
+
+    @Test
+    fun withoutTheWebStepUpThePasskeyOnlyStateIsUnchanged() = runTest {
+        val coordinator =
+            SecondFactorStepUpCoordinator(
+                stepUp = { error("not answered") },
+                passkeyOptions = {
+                    SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.PasskeyRpUnavailable("current", listOf("legacy")))
+                },
+                nativePasskeys = true,
+                passkeyRpGroup = "current",
+            )
+        val outcome = async { coordinator.run(ScriptedAction(refusal())::invoke) }
+        runCurrent()
+        coordinator.accept(SecondFactorStepUpIntent.Submit)
+        val dialog = assertNotNull(coordinator.state.value)
+        assertNull(dialog.method)
+        assertNull(dialog.webStepUp)
+        assertFalse(dialog.continuesInBrowser)
+        coordinator.accept(SecondFactorStepUpIntent.ContinueInBrowser)
+        assertNull(coordinator.state.value?.webStepUp)
+        coordinator.accept(SecondFactorStepUpIntent.Cancel)
+        outcome.await()
+    }
+}

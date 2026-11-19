@@ -210,6 +210,11 @@
     <string name="settings_step_up_sign_in_again">Entrar novamente</string>
     <string name="settings_step_up_passkey_only">Faça essa alteração no Raft pela web e confirme com sua chave de acesso.</string>
     <string name="settings_step_up_open_on_web">Abrir na web</string>
+    <string name="settings_step_up_web_body">Sua chave de acesso funciona no navegador. Continue lá para confirmar que é você.</string>
+    <string name="settings_step_up_web_continue">Continuar no navegador</string>
+    <string name="settings_step_up_web_waiting">Aguardando você concluir no navegador…</string>
+    <string name="settings_step_up_web_cancelled">O navegador foi fechado antes da confirmação. Tente novamente.</string>
+    <string name="settings_step_up_web_expired">Esta solicitação expirou. Tente novamente.</string>
     <string name="settings_step_up_passkey_button">Usar chave de acesso</string>
     <string name="settings_step_up_use_passkey">Usar chave de acesso</string>
     <string name="settings_step_up_passkey_cancelled">A janela da chave de acesso foi fechada. Tente novamente ou use outro método.</string>

@@ -210,6 +210,11 @@
     <string name="settings_step_up_sign_in_again">Войти снова</string>
     <string name="settings_step_up_passkey_only">Внесите изменение в веб-версии Raft и подтвердите его ключом доступа.</string>
     <string name="settings_step_up_open_on_web">Открыть в веб-версии</string>
+    <string name="settings_step_up_web_body">Ваш ключ доступа работает в браузере. Продолжите там, чтобы подтвердить, что это вы.</string>
+    <string name="settings_step_up_web_continue">Продолжить в браузере</string>
+    <string name="settings_step_up_web_waiting">Ожидаем завершения в браузере…</string>
+    <string name="settings_step_up_web_cancelled">Браузер закрыт до подтверждения. Попробуйте ещё раз.</string>
+    <string name="settings_step_up_web_expired">Срок действия запроса истёк. Попробуйте ещё раз.</string>
     <string name="settings_step_up_passkey_button">Использовать ключ доступа</string>
     <string name="settings_step_up_use_passkey">Использовать ключ доступа</string>
     <string name="settings_step_up_passkey_cancelled">Окно ключа доступа закрыто. Попробуйте ещё раз или выберите другой способ.</string>

@@ -91,6 +91,8 @@ object RaftAppLoginBridge {
     /** Parses [uri]; false (and nothing started) when it is not a well-formed login callback. */
     fun completeCallbackUri(uri: String?): Boolean {
         val callback = parseAppLoginCallback(uri) ?: return false
+        // The web step-up's callback (same URI, its own request): never a browser login.
+        if (uri != null && RaftAppWebStepUp.offerCallback(callback, uri)) return true
         return completeCallback(callback.returnUri, callback.requestId, callback.code, callback.error)
     }
 

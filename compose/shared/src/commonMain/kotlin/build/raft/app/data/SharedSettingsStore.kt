@@ -883,6 +883,13 @@ class SharedSettingsDataSource(
         settingsRepository?.secondFactorPasskeyAssertionOptions(rp)
             ?: SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.Failed(serverCode = "second_factor_step_up_unavailable"))
 
+    internal suspend fun appWebStepUpStart(body: AppWebStepUpStartBody): AppWebStepUpStartResult =
+        settingsRepository?.appWebStepUpStart(body) ?: AppWebStepUpStartResult.Unavailable
+
+    internal suspend fun appWebStepUpComplete(body: AppWebStepUpCompleteBody): AppWebStepUpCompleteResult =
+        settingsRepository?.appWebStepUpComplete(body)
+            ?: AppWebStepUpCompleteResult.Failed(serverCode = "second_factor_step_up_unavailable")
+
     suspend fun loadConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> =
         settingsRepository?.getConnectedApps() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
@@ -2056,6 +2063,11 @@ class SharedSettingsStore(
             onStateChange = { dialog -> _state.value = _state.value.copy(secondFactorStepUp = dialog) },
             passkeyOptions = { rp -> dataSource.secondFactorPasskeyAssertionOptions(rp) },
             webUrl = { target -> dataSource.secondFactorStepUpWebUrl(target) },
+            webStepUp =
+                secondFactorWebStepUp(
+                    start = { body -> dataSource.appWebStepUpStart(body) },
+                    complete = { body -> dataSource.appWebStepUpComplete(body) },
+                ),
         )
 
     private var loadJob: Job? = null
@@ -3466,7 +3478,14 @@ class SharedSettingsStore(
         itemId: String? = null,
         request: suspend () -> DataResult<T>
     ): DataResult<T>? =
-        when (val outcome = secondFactorStepUp.run(settingsSecondFactorStepUpWebTarget(action, itemId), request)) {
+        when (
+            val outcome =
+                secondFactorStepUp.run(
+                    settingsSecondFactorStepUpWebTarget(action, itemId),
+                    settingsSecondFactorStepUpAction(action),
+                    request,
+                )
+        ) {
             is SecondFactorStepUpOutcome.Completed -> outcome.result
             SecondFactorStepUpOutcome.Cancelled -> {
                 _state.value = _state.value.copy(actionState = SharedSettingsActionState(action, itemId, inProgress = false))
@@ -4480,6 +4499,20 @@ internal fun settingsSecondFactorStepUpWebTarget(action: String, itemId: String?
         COMPUTER_ACTION_REGISTER -> SecondFactorStepUpWebTarget.Computers
         COMPUTER_ACTION_ROTATE_KEY ->
             itemId?.takeIf { it.isNotBlank() }?.let(SecondFactorStepUpWebTarget::Computer) ?: SecondFactorStepUpWebTarget.Computers
+        else -> null
+    }
+
+/**
+ * The server's `StepUpAction` key (slock `stepUpGate.ts`) of a Settings action, for Continue in
+ * browser (the web step-up's start takes it as `action`; slock docs/contracts/app-web-step-up.md).
+ */
+internal fun settingsSecondFactorStepUpAction(action: String): String? =
+    when (action) {
+        ACCOUNT_ACTION_PASSWORD_CHANGE -> "password_change"
+        ACCOUNT_ACTION_PROVIDER_CONNECT -> "identity_link"
+        ACCOUNT_ACTION_PROVIDER_DISCONNECT -> "identity_unlink"
+        COMPUTER_ACTION_REGISTER -> "computer_attach"
+        COMPUTER_ACTION_ROTATE_KEY -> "machine_key_rotate"
         else -> null
     }
 

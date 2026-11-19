@@ -420,7 +420,13 @@ private fun rememberExternalAgentStepUp(agentsApiClient: RaftAgentsApiClient): S
     val coordinator =
         remember(agentsApiClient) {
             agentsApiClient.secondFactorStepUpRepository()?.let { repository ->
-                SecondFactorStepUpCoordinator(stepUp = repository::stepUp, passkeyOptions = repository::passkeyAssertionOptions)
+                SecondFactorStepUpCoordinator(
+                    stepUp = repository::stepUp,
+                    passkeyOptions = repository::passkeyAssertionOptions,
+                    webStepUp = repository.webStepUp(),
+                    // slock stepUpGate.ts: an agent key.
+                    webStepUpAction = "agent_credential_mint",
+                )
             }
         }
     if (coordinator != null) {
