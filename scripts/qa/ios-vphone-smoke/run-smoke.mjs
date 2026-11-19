@@ -881,7 +881,7 @@ async function caseAppearanceRelogin({ driver, config, evidence }) {
   }
   evidence.writeJson("sign-out-first-tap.json", { center: signOutCenter });
   await driver.inputTap(signOutCenter.x, signOutCenter.y);
-  await driver.waitFor({ text: "Sign out on this device?", match: "contains" }, { timeoutMs: 5000 });
+  await driver.waitFor({ text: "Sign out of this device?", match: "contains" }, { timeoutMs: 5000 });
   const confirmation = await driver.uiTree();
   const signOutButtons = findElements(confirmation, { text: "Sign out", role: "button", match: "exact" });
   if (!signOutButtons.length) throw new Error("sign-out confirmation is missing");

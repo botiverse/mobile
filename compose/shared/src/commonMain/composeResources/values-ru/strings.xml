@@ -187,7 +187,9 @@
     <string name="settings_account_logout">Выйти из аккаунта</string>
     <string name="settings_account_logout_action">Выйти</string>
     <string name="settings_account_logout_detail">Вы выйдете из аккаунта на этом устройстве. Аккаунт и данные сохранятся, войти снова можно в любой момент.</string>
+    <string name="settings_account_logout_confirm_title">Выйти из аккаунта?</string>
     <string name="settings_account_logout_confirm">Выйти из аккаунта на этом устройстве? Аккаунт и данные сохранятся, войти снова можно в любой момент.</string>
+    <string name="settings_account_logout_signing_out">Выход…</string>
     <string name="settings_account_delete">Удалить аккаунт</string>
     <string name="settings_account_delete_detail">Запросить безвозвратное удаление аккаунта Raft и личных данных.</string>
     <string name="settings_account_delete_action">Удалить аккаунт</string>

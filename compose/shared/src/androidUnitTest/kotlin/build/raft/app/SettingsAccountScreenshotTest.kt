@@ -37,7 +37,9 @@ import org.robolectric.shadows.ShadowDialog
  * code; the lock banner; only a passkey listed). `settings.account.step-up.open-on-web{,.dark}`:
  * only a passkey listed and the action's web page known: Close and Open on the web.
  * `settings.account.step-up.continue-in-browser{,.dark,.waiting,.expired}`: only legacy passkeys
- * on iOS: Cancel and Continue in browser; waiting on the page; the request ran out (trace ID). Fixed fixture data. Reports land in
+ * on iOS: Cancel and Continue in browser; waiting on the page; the request ran out (trace ID).
+ * `settings.account.logout-dialog{,.dark}`: Sign out's confirm dialog (web `AccountSignOutSection`'s
+ * ConfirmDialog: "Sign out?", the one sentence, Cancel and the orange Sign out). Fixed fixture data. Reports land in
  * `build/reports/home-screenshots/` (uploaded by CI as `shared-home-screenshots`); verify / record
  * as [RaftRobolectricScreenshot].
  */
@@ -154,6 +156,29 @@ class SettingsAccountScreenshotTest {
             RaftAppAppearance.Light,
             stepUpContinueInBrowser.copy(banner = SecondFactorStepUpBanner.WebStepUpExpired("4bf92f3577b34da6a3ce929d0e0e4736")),
         )
+
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
+    fun logoutDialogLight() = logoutDialog("settings.account.logout-dialog", RaftAppAppearance.Light)
+
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
+    fun logoutDialogDark() = logoutDialog("settings.account.logout-dialog.dark", RaftAppAppearance.Dark)
+
+    private fun logoutDialog(name: String, appearance: RaftAppAppearance) =
+        RaftRobolectricScreenshot.capture(
+            name,
+            appearance,
+            reportDir = "build/reports/home-screenshots",
+            activities = activities,
+            root = { ShadowDialog.getLatestDialog()?.window?.decorView },
+        ) {
+            Page {
+                RaftDesignSystemTheme {
+                    SettingsLogoutConfirmDialog(payload = accountFixture, onConfirm = {}, onDismiss = {})
+                }
+            }
+        }
 
     private fun stepUpDialog(name: String, appearance: RaftAppAppearance, state: SecondFactorStepUpDialogState) =
         RaftRobolectricScreenshot.capture(

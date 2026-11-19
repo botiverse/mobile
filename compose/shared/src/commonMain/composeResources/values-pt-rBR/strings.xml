@@ -187,7 +187,9 @@
     <string name="settings_account_logout">Sair</string>
     <string name="settings_account_logout_action">Sair</string>
     <string name="settings_account_logout_detail">Encerrar a sessão neste dispositivo. Sua conta e seus dados são mantidos; você pode entrar novamente quando quiser.</string>
-    <string name="settings_account_logout_confirm">Sair neste dispositivo? Sua conta e seus dados são mantidos; você pode entrar novamente a qualquer momento.</string>
+    <string name="settings_account_logout_confirm_title">Sair?</string>
+    <string name="settings_account_logout_confirm">Encerrar a sessão neste dispositivo? Sua conta e seus dados serão mantidos; você pode entrar novamente quando quiser.</string>
+    <string name="settings_account_logout_signing_out">Saindo…</string>
     <string name="settings_account_delete">Excluir conta</string>
     <string name="settings_account_delete_detail">Peça a exclusão permanente da sua conta do Raft e dos seus dados pessoais.</string>
     <string name="settings_account_delete_action">Excluir conta</string>

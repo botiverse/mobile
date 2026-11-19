@@ -187,7 +187,9 @@
     <string name="settings_account_logout">登出</string>
     <string name="settings_account_logout_action">登出</string>
     <string name="settings_account_logout_detail">在此裝置上登出。你的帳號和資料都會保留，隨時可以重新登入。</string>
-    <string name="settings_account_logout_confirm">要登出此裝置嗎？你的帳號和資料都會保留，之後可隨時重新登入。</string>
+    <string name="settings_account_logout_confirm_title">登出？</string>
+    <string name="settings_account_logout_confirm">要在此裝置上登出嗎？你的帳號和資料都會保留，隨時可以重新登入。</string>
+    <string name="settings_account_logout_signing_out">正在登出…</string>
     <string name="settings_account_delete">刪除帳號</string>
     <string name="settings_account_delete_detail">申請永久刪除你的 Raft 帳號和個人資料。</string>
     <string name="settings_account_delete_action">刪除帳號</string>

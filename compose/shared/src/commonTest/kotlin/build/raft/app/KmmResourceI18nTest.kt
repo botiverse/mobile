@@ -684,7 +684,9 @@ class KmmResourceI18nTest {
             Res.string.settings_account_change_password,
             Res.string.settings_account_password_mismatch,
             Res.string.settings_account_session,
-            Res.string.settings_account_logout_confirm
+            Res.string.settings_account_logout_confirm_title,
+            Res.string.settings_account_logout_confirm,
+            Res.string.settings_account_logout_signing_out
         ).forEach { resource ->
             assertTrue(
                 resource.desc() is ResourceStringDesc,

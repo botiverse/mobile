@@ -187,7 +187,9 @@
     <string name="settings_account_logout">Sign out</string>
     <string name="settings_account_logout_action">Sign out</string>
     <string name="settings_account_logout_detail">Sign out of this device. Your account and data stay; you can sign back in any time.</string>
-    <string name="settings_account_logout_confirm">Sign out on this device? Your account and data are kept; you can sign back in any time.</string>
+    <string name="settings_account_logout_confirm_title">Sign out?</string>
+    <string name="settings_account_logout_confirm">Sign out of this device? Your account and data are kept; you can sign back in any time.</string>
+    <string name="settings_account_logout_signing_out">Signing out…</string>
     <string name="settings_account_delete">Delete account</string>
     <string name="settings_account_delete_detail">Ask us to permanently delete your Raft account and personal data.</string>
     <string name="settings_account_delete_action">Delete Account</string>
