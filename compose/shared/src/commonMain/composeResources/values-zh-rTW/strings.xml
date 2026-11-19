@@ -867,6 +867,8 @@
     <string name="thread_composer_attachment_checking">正在檢查檔案…</string>
     <string name="thread_composer_attachment_finishing">正在完成上傳…</string>
     <string name="thread_composer_attachment_file">檔案</string>
+    <string name="thread_composer_attachment_move_left">左移</string>
+    <string name="thread_composer_attachment_move_right">右移</string>
     <string name="thread_members_title">成員（%1$d）</string>
     <string name="thread_members_agents">Agent</string>
     <string name="thread_members_humans">真人</string>

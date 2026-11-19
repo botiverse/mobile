@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,10 +35,12 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import build.raft.designsystem.theme.RaftTheme
@@ -50,7 +53,9 @@ import kotlin.coroutines.cancellation.CancellationException
 // scroll and moves nothing; a hold let go without moving moves nothing (and picks nothing).
 // The lifted row is a card that left its place for a moment: `shadow-float` on the popover
 // layer (design/foundations/elevation.md). For a plain Column of keyed rows, inside a
-// verticalScroll or not; a LazyColumn keeps its own sort overlay.
+// verticalScroll or not, or a plain Row of keyed tiles ([Orientation.Horizontal], inside a
+// horizontalScroll or not: the composer's attachment tray); a LazyColumn keeps its own sort
+// overlay.
 
 /** raft-ui touch-drag metrics. */
 object RaftReorderDefaults {
@@ -66,7 +71,7 @@ object RaftReorderDefaults {
      */
     val DragDistance: Dp = 6.dp
 
-    /** A lifted row this close to the list's top or bottom edge scrolls the list… */
+    /** A lifted row this close to the list's top or bottom (start or end) edge scrolls the list… */
     val EdgeScrollZone: Dp = 40.dp
 
     /** …by this much a frame. */
@@ -135,13 +140,17 @@ private suspend fun AwaitPointerEventScope.awaitTouchDragHold(down: PointerInput
  * app owns the order ([sync] it with what the app shows) and gets a changed order back from
  * [drop] or [moveBy] to commit. All positions are pixels. [gap] is the space between rows (a
  * `spacedBy` column); [clampToEnds] keeps the lifted row between the first and last slots (web
- * dnd-kit `restrictToParentElement`).
+ * dnd-kit `restrictToParentElement`). [orientation] is the list's axis: a Column's rows move up
+ * and down, a Row's tiles ([Orientation.Horizontal]) move along the reading direction. Every
+ * "height", "y", "up" and "down" below is then the tile's extent and position along that axis,
+ * start to end.
  */
 @Stable
 class RaftReorderState(
     initialOrder: List<String> = emptyList(),
     var gap: Float = 0f,
     private val clampToEnds: Boolean = false,
+    val orientation: Orientation = Orientation.Vertical,
 ) {
     /** The rows in the order they show, the lifted row in the slot it would drop into. */
     var order: List<String> by mutableStateOf(initialOrder)
@@ -155,10 +164,10 @@ class RaftReorderState(
     var liftedOffset: Float by mutableStateOf(0f)
         private set
 
-    /** The finger's y in root coordinates while a row is lifted. */
+    /** The finger's y (x for a Row) in root coordinates while a row is lifted. */
     internal var fingerY: Float = 0f
 
-    /** The scrolling list's top and bottom in root coordinates (a viewport), if any. */
+    /** The scrolling list's top and bottom (left and right) in root coordinates, if any. */
     internal var viewportTop: Float = 0f
     internal var viewportBottom: Float = 0f
 
@@ -299,6 +308,39 @@ class RaftReorderState(
     }
 }
 
+/**
+ * The screen reader's [moveUpLabel] / [moveDownLabel] actions of the row under [key] (one place
+ * toward the start / the end), committing through [onOrderChange]. [raftReorderableItem] adds
+ * them itself; use this alone when the node a screen reader focuses is inside the dragged one (a
+ * tray tile whose remove button is its own control): pass the item no labels and put this on the
+ * focusable part.
+ */
+@Composable
+fun Modifier.raftReorderableActions(
+    state: RaftReorderState,
+    key: String,
+    onOrderChange: (List<String>) -> Unit,
+    moveUpLabel: String?,
+    moveDownLabel: String?,
+): Modifier {
+    if (moveUpLabel == null && moveDownLabel == null) return this
+    val commit by rememberUpdatedState(onOrderChange)
+    // Read here, not in the semantics block, so the actions follow the order.
+    val canMoveUp = moveUpLabel != null && state.canMove(key, -1)
+    val canMoveDown = moveDownLabel != null && state.canMove(key, 1)
+    return semantics {
+        val actions = buildList {
+            if (canMoveUp && moveUpLabel != null) {
+                add(CustomAccessibilityAction(moveUpLabel) { state.moveBy(key, -1)?.let(commit) != null })
+            }
+            if (canMoveDown && moveDownLabel != null) {
+                add(CustomAccessibilityAction(moveDownLabel) { state.moveBy(key, 1)?.let(commit) != null })
+            }
+        }
+        if (actions.isNotEmpty()) customActions = actions
+    }
+}
+
 private fun List<String>.swapped(a: Int, b: Int): List<String> =
     toMutableList().also {
         val t = it[a]
@@ -332,9 +374,10 @@ fun rememberRaftReorderState(
     order: List<String>,
     gap: Dp = 0.dp,
     clampToEnds: Boolean = false,
+    orientation: Orientation = Orientation.Vertical,
 ): RaftReorderState {
     val gapPx = with(LocalDensity.current) { gap.toPx() }
-    val state = remember(clampToEnds) { RaftReorderState(order, gapPx, clampToEnds) }
+    val state = remember(clampToEnds, orientation) { RaftReorderState(order, gapPx, clampToEnds, orientation) }
     SideEffect {
         state.gap = gapPx
         state.sync(order)
@@ -343,28 +386,32 @@ fun rememberRaftReorderState(
 }
 
 /**
- * The scrolling list a reorderable column sits in: put it before `verticalScroll(scrollState)`.
- * While a row is lifted and the finger is near the top or bottom edge, the list scrolls and the
- * row stays under the finger.
+ * The scrolling list a reorderable column sits in: put it before `verticalScroll(scrollState)`
+ * (a Row's: before `horizontalScroll(scrollState)`). While a row is lifted and the finger is near
+ * the top or bottom (left or right) edge, the list scrolls and the row stays under the finger.
  */
 @Composable
 fun Modifier.raftReorderableViewport(state: RaftReorderState, scrollState: ScrollState): Modifier {
     val density = LocalDensity.current
     val zone = with(density) { RaftReorderDefaults.EdgeScrollZone.toPx() }
     val step = with(density) { RaftReorderDefaults.EdgeScrollStep.toPx() }
-    LaunchedEffect(state, state.liftedKey) {
+    val horizontal = state.orientation == Orientation.Horizontal
+    // A right-to-left Row scrolls forward to the left: the screen's left edge is its end.
+    val mirrored = horizontal && LocalLayoutDirection.current == LayoutDirection.Rtl
+    LaunchedEffect(state, state.liftedKey, mirrored) {
         if (state.liftedKey == null) return@LaunchedEffect
         while (state.dragging) {
-            val delta =
+            val screenDelta =
                 raftReorderAutoScrollDelta(
                     fingerY = state.fingerY,
                     top = state.viewportTop,
                     bottom = state.viewportBottom,
                     zone = zone,
                     step = step,
-                    canScrollBackward = scrollState.canScrollBackward,
-                    canScrollForward = scrollState.canScrollForward,
+                    canScrollBackward = if (mirrored) scrollState.canScrollForward else scrollState.canScrollBackward,
+                    canScrollForward = if (mirrored) scrollState.canScrollBackward else scrollState.canScrollForward,
                 )
+            val delta = if (mirrored) -screenDelta else screenDelta
             if (delta != 0f) {
                 val consumed = scrollState.dispatchRawDelta(delta)
                 // The rows moved under a finger that stayed: the lifted row follows the finger.
@@ -375,8 +422,8 @@ fun Modifier.raftReorderableViewport(state: RaftReorderState, scrollState: Scrol
     }
     return onGloballyPositioned {
         val bounds = it.boundsInRoot()
-        state.viewportTop = bounds.top
-        state.viewportBottom = bounds.bottom
+        state.viewportTop = if (horizontal) bounds.left else bounds.top
+        state.viewportBottom = if (horizontal) bounds.right else bounds.bottom
     }
 }
 
@@ -391,6 +438,10 @@ fun Modifier.raftReorderableViewport(state: RaftReorderState, scrollState: Scrol
  * that moves that far lifts the row at once, as web dnd-kit's distance constraint, and the hold
  * still lifts it too; events another handler consumed (a long-press tooltip) don't end it.
  * Without it a move past [RaftReorderDefaults.HoldSlop] is a scroll and lifts nothing.
+ *
+ * In a Row ([RaftReorderState.orientation] horizontal) [moveUpLabel] moves the tile one place
+ * toward the start and [moveDownLabel] toward the end (pass "Move left" / "Move right" for a
+ * left-to-right layout). [liftedRadius] is the lifted card's corner radius: the tile's own.
  */
 @Composable
 fun Modifier.raftReorderableItem(
@@ -401,46 +452,41 @@ fun Modifier.raftReorderableItem(
     moveDownLabel: String? = null,
     enabled: Boolean = true,
     dragDistance: Dp? = null,
+    liftedRadius: Dp = RaftRadius.Chip,
 ): Modifier {
     if (!enabled) return this
     val haptics = rememberRaftHaptics()
     val commit by rememberUpdatedState(onOrderChange)
     val coordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
     val lifted = state.liftedKey == key
-    // Read here, not in the semantics block, so the actions follow the order.
-    val canMoveUp = moveUpLabel != null && state.canMove(key, -1)
-    val canMoveDown = moveDownLabel != null && state.canMove(key, 1)
-    val shape = RoundedCornerShape(RaftRadius.Chip)
+    val horizontal = state.orientation == Orientation.Horizontal
+    // A right-to-left Row's order runs leftward: a move right on the screen is toward its start.
+    val axisSign = if (horizontal && LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
+    val shape = RoundedCornerShape(liftedRadius)
     val colors = RaftTheme.colors
     return this
-        .onSizeChanged { state.setHeight(key, it.height) }
+        .onSizeChanged { state.setHeight(key, if (horizontal) it.width else it.height) }
         .zIndex(if (lifted) 1f else 0f)
-        .graphicsLayer { translationY = if (state.liftedKey == key) state.liftedOffset else 0f }
+        .graphicsLayer {
+            val offset = if (state.liftedKey == key) state.liftedOffset * axisSign else 0f
+            if (horizontal) translationX = offset else translationY = offset
+        }
         .then(
             if (lifted) {
-                Modifier.raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip).background(colors.layerPopover, shape)
+                Modifier.raftFloatShadow(RaftTheme.isDark, liftedRadius).background(colors.layerPopover, shape)
             } else {
                 Modifier
             },
         )
-        .semantics {
-            val actions = buildList {
-                if (canMoveUp && moveUpLabel != null) {
-                    add(CustomAccessibilityAction(moveUpLabel) { state.moveBy(key, -1)?.let(commit) != null })
-                }
-                if (canMoveDown && moveDownLabel != null) {
-                    add(CustomAccessibilityAction(moveDownLabel) { state.moveBy(key, 1)?.let(commit) != null })
-                }
-            }
-            if (actions.isNotEmpty()) customActions = actions
-        }
+        .raftReorderableActions(state, key, onOrderChange, moveUpLabel, moveDownLabel)
         .onGloballyPositioned { coordinates[0] = it }
-        .pointerInput(state, key, dragDistance) {
+        .pointerInput(state, key, dragDistance, axisSign) {
             val slop = RaftReorderDefaults.HoldSlop.toPx()
             val liftDistance = dragDistance?.toPx()
             fun root(local: Offset): Offset? = coordinates[0]?.takeIf { it.isAttached }?.localToRoot(local)
 
-            fun rootY(local: Offset): Float? = root(local)?.y
+            // The finger along the list's axis, on the screen (x for a Row, y for a Column).
+            fun rootY(local: Offset): Float? = root(local)?.let { if (horizontal) it.x else it.y }
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 if (state.dragging) return@awaitEachGesture
@@ -492,7 +538,7 @@ fun Modifier.raftReorderableItem(
                         val y = rootY(change.position) ?: continue
                         state.fingerY = y
                         val before = state.order
-                        state.dragBy(y - lastY)
+                        state.dragBy((y - lastY) * axisSign)
                         // A tick each time the lifted row takes another slot (RaftHaptics.tick).
                         if (state.order != before) haptics.tick()
                         lastY = y

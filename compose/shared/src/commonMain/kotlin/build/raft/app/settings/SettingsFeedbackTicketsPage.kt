@@ -1279,6 +1279,7 @@ private fun SettingsFeedbackThreadReplyComposer(
                     enabled = enabled && !sending,
                     attachmentActionsEnabled = false,
                     originalImageOptionEnabled = false,
+                    attachmentReorderEnabled = false,
                     composerMode = if (sending) "sending" else if (error != null) "failed" else "idle",
                     statusLabel = error,
                     suggestionsEnabled = false,

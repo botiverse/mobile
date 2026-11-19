@@ -743,6 +743,7 @@ internal fun TaskPendingConversationPage(
                             enabled = !sending,
                             attachmentActionsEnabled = false,
                             originalImageOptionEnabled = false,
+                            attachmentReorderEnabled = false,
                             showAsTaskToggle = false,
                         ),
                     onEvent = { action, value, _, _ -> if (action == "change" && value != null) onDraftChange(value) },

@@ -867,6 +867,8 @@
     <string name="thread_composer_attachment_checking">Verificando arquivo…</string>
     <string name="thread_composer_attachment_finishing">Concluindo o envio…</string>
     <string name="thread_composer_attachment_file">arquivo</string>
+    <string name="thread_composer_attachment_move_left">Mover para a esquerda</string>
+    <string name="thread_composer_attachment_move_right">Mover para a direita</string>
     <string name="thread_members_title">Membros (%1$d)</string>
     <string name="thread_members_agents">Agentes</string>
     <string name="thread_members_humans">Pessoas</string>

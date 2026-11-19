@@ -9919,6 +9919,16 @@ private fun SharedThreadRouteContentContent(
                         }
                     }
                 }
+                ThreadComposerReorderAttachmentsAction -> {
+                    // The tray's new order is the send's attachmentIds order (web arrayMove).
+                    val order = decodeThreadComposerAttachmentOrder(value)
+                    if (order == null) {
+                        bridge.logWarn("thread_composer_attachment_reorder_rejected reason=missing_order")
+                    } else {
+                        bridge.log("thread_composer_attachment_reorder count=${order.size}")
+                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.ReorderAttachments(order))
+                    }
+                }
                 "retryAttachments" -> {
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
                         val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
