@@ -252,7 +252,13 @@ internal fun activityRowsWithHeldRowsAtTheirTime(served: List<InboxItem>, held: 
     }
 }
 
-private data class ActivityRealtimeCatchUpTarget(val channelId: ChannelId, val seq: String)
+/**
+ * [revivedKey] (#triage:#244, web activityUnreadRevive.ts): the row Unread kept read this visit and
+ * a live message brought back unread ([SharedActivityStore.reviveRetainedReadRowLocked]). An answer
+ * that does not list that row is behind (the server does not have the message yet), not a filter
+ * leaving it out; [channelId] is then the row's stream (a thread row's thread channel).
+ */
+private data class ActivityRealtimeCatchUpTarget(val channelId: ChannelId, val seq: String, val revivedKey: String? = null)
 
 /**
  * A canonical refresh read ([SharedActivityStore.loadCanonicalDepth]). [partialFailureCode] is set
@@ -1676,6 +1682,8 @@ class SharedActivityStore internal constructor(
                     RealtimeRowPatch.NeedsRead -> scheduleRealtimeBackgroundReconcileLocked(trigger)
                 }
             }
+            // #triage:#244: Unread brings back, unread and on top, a row it kept read this visit.
+            if (intent.allowLocalPatch) reviveRetainedReadRowLocked(event, intent)
             // Only All has stable membership under a message-only payload. Unread
             // and Mentions depend on receiver-specific read/mention facts that are
             // not fully carried by every realtime frame; patching those filters
@@ -1700,6 +1708,65 @@ class SharedActivityStore internal constructor(
         // folded by their domain owners. They must never take full-list refresh
         // ownership while the user is reading Activity.
         return null
+    }
+
+    /**
+     * #triage:#244 (web activityUnreadRevive.ts, slock #15568): Unread keeps a row read this visit in
+     * place, read ([SharedActivityState.retainedReadRowKeys]). A live message that makes that
+     * conversation unread again brings the row back as All moves its row: unread, on top, with the
+     * new preview, sender and count, and back in the filter's count. Only a message newer (by seq)
+     * than the kept copy that counts for the reader ([InPlaceUnreadContext.unreadFor]: not their own,
+     * not in the conversation open on screen, not an unfollowed thread, not an uncounted system
+     * line); anything else leaves the row to the re-read, as before. The row is patched by the same
+     * code as All's ([applyMessageNewPatch], [applyThreadUpdatedInPlace]), so it is never listed
+     * twice and a `message:new` + `thread:updated` pair counts once.
+     *
+     * The re-read that follows often comes before the server has the message and leaves the row
+     * out: the row is the catch-up target ([ActivityRealtimeCatchUpTarget.revivedKey]), so that
+     * answer is behind and re-read, and the row stays shown (read) meanwhile
+     * ([withRetainedReadRows]). Activity on the app has no search or ascending sort, the web
+     * condition's other half. Returns whether the row came back.
+     */
+    private fun reviveRetainedReadRowLocked(event: RealtimeEvent, intent: SharedActivityIntent.ApplyRealtimeEvent): Boolean {
+        val current = _state.value
+        if (current.selectedFilter.keepsReadActivityRows() || current.retainedReadRowKeys.isEmpty()) return false
+        val snapshot = current.snapshot ?: return false
+        val principalId = current.ownerUserId?.trim()?.takeIf { it.isNotBlank() } ?: return false
+        val message =
+            when (event) {
+                is MessageNew -> event.message
+                is ThreadUpdated -> event.latestReply?.toActivityLiveMessage(event)
+                else -> null
+            } ?: return false
+        val streamChannelId = message.channelId ?: message.threadChannelId ?: return false
+        // The row applyMessageNewPatch patches: the thread row first, then the channel / DM row.
+        val threadIndex = snapshot.threadRowIndex(streamChannelId)
+        val index =
+            if (threadIndex >= 0) {
+                threadIndex
+            } else {
+                snapshot.items.indexOfFirst { item -> item.isChannelOrDmRow() && item.channelId == message.channelId }
+            }
+        if (event is ThreadUpdated && threadIndex < 0) return false
+        val kept = snapshot.items.getOrNull(index) ?: return false
+        if (kept.key !in current.retainedReadRowKeys || kept.showsUnread) return false
+        val seq = message.seq?.takeIf { it >= 0L }?.toString() ?: return false
+        val keptSeq = kept.latestActivitySeq ?: return false
+        if (compareActivitySeq(seq, keptSeq) <= 0) return false
+        val context = InPlaceUnreadContext(principalId, readOnArrivalConversationId(intent.activeConversationId, snapshot))
+        if (context.unreadFor(kept, message, snapshot, (event as? MessageNew)?.systemProvenance)?.counts != true) return false
+        val patch =
+            if (event is ThreadUpdated) applyThreadUpdatedInPlace(event, intent, context) else applyMessageNewPatch(message, intent, context)
+        val revived = _state.value
+        val revivedSnapshot = revived.snapshot ?: return false
+        val back = revivedSnapshot.items.firstOrNull()
+        if (patch != RealtimeRowPatch.Patched || back == null || back.key != kept.key || !back.showsUnread) return false
+        // Reading it here took it out of Unread's count (markRead); it is back in.
+        reduceState(intent, revived.copy(snapshot = revivedSnapshot.copy(totalCount = revivedSnapshot.totalCount + 1)))
+        realtimeCatchUpTarget = ActivityRealtimeCatchUpTarget(streamChannelId, seq, revivedKey = kept.key)
+        realtimeCatchUpRetries = 0
+        diagnosticsLogger("activity_unread_revive key=${kept.key} seq=$seq")
+        return true
     }
 
     /**
@@ -4230,7 +4297,9 @@ class SharedActivityStore internal constructor(
         val incoming = message.seq?.takeIf { it >= 0L }?.toString() ?: return
         val target = realtimeCatchUpTarget
         if (target != null && compareActivitySeq(incoming, target.seq) <= 0) return
-        realtimeCatchUpTarget = ActivityRealtimeCatchUpTarget(channelId, incoming)
+        // A later message on a row brought back unread keeps it brought back.
+        realtimeCatchUpTarget =
+            ActivityRealtimeCatchUpTarget(channelId, incoming, target?.revivedKey?.takeIf { target?.channelId == channelId })
         realtimeCatchUpRetries = 0
     }
 
@@ -4252,13 +4321,22 @@ class SharedActivityStore internal constructor(
      */
     private fun settleRealtimeCatchUpLocked(nextState: SharedActivityState, result: DataResult<InboxSnapshot>) {
         val target = realtimeCatchUpTarget ?: return
+        val revivedKey = target.revivedKey?.takeIf { it in nextState.retainedReadRowKeys }
         val servedRow =
             (result as? DataResult.Content)
                 ?.takeIf { !nextState.stale }
                 ?.data?.items
-                ?.firstOrNull { item -> item.isChannelOrDmRow() && item.channelId == target.channelId }
+                ?.firstOrNull { item ->
+                    if (revivedKey != null) item.key == revivedKey else item.isChannelOrDmRow() && item.channelId == target.channelId
+                }
         val servedSeq = servedRow?.latestActivitySeq
-        val behind = servedRow != null && compareActivitySeq(servedSeq, target.seq) < 0
+        // #244: a clean answer without the row brought back unread is behind (web keepRevivedRowShown).
+        val clean = !nextState.stale && (result is DataResult.Content || result is DataResult.Empty)
+        val behind =
+            when {
+                servedRow != null -> compareActivitySeq(servedSeq, target.seq) < 0
+                else -> clean && revivedKey != null
+            }
         if (!behind || realtimeCatchUpRetries >= ActivityRealtimeCatchUpRetryDelaysMillis.size) {
             if (behind || nextState.stale || result !is DataResult.Content) {
                 diagnosticsLogger(
@@ -4397,7 +4475,7 @@ class SharedActivityStore internal constructor(
                         if (append) {
                             (current.items + answerItems).dedupeActivityItems()
                         } else {
-                            answerItems.withRetainedReadRows(current).dedupeActivityItems()
+                            answerItems.withRetainedReadRows(current, realtimeCatchUpTarget?.revivedKey).dedupeActivityItems()
                         }
                     // Hands f6c3f3a6: a refresh shown page by page keeps the rows it has not read
                     // yet below the fetched ones, in their shown order; a fetched row is listed
@@ -4488,7 +4566,7 @@ class SharedActivityStore internal constructor(
                         } else {
                             InboxSnapshot(
                                 server = server,
-                                items = realtimeReconcile.items.withRetainedReadRows(current),
+                                items = realtimeReconcile.items.withRetainedReadRows(current, realtimeCatchUpTarget?.revivedKey),
                                 totalCount =
                                     if (realtimeReconcile.preserveTotalUnreadFloor) {
                                         maxOf(current.totalCount, realtimeReconcile.items.size)
@@ -6407,13 +6485,17 @@ internal fun SharedActivityState.withRetainedRowsDropped(matching: (InboxItem) -
  *
  * Only rows read here are put back: a retained row that is unread locally (the user marked it unread
  * again, #793) and that the page no longer lists was read elsewhere or is gone, so it drops; putting
- * back its stale unread copy would show an unread row the server no longer has.
+ * back its stale unread copy would show an unread row the server no longer has. Except [revivedKey]
+ * (#triage:#244): the row a live message brought back unread, which an answer from before the server
+ * had the message leaves out. It stays, shown read with its new preview, while the catch-up re-reads
+ * (web keepRevivedRowShown).
  */
-private fun List<InboxItem>.withRetainedReadRows(current: SharedActivityState): List<InboxItem> {
+private fun List<InboxItem>.withRetainedReadRows(current: SharedActivityState, revivedKey: String? = null): List<InboxItem> {
     val keys = current.retainedReadRowKeys
     if (keys.isEmpty()) return this
     val pageKeys = mapTo(mutableSetOf(), InboxItem::key)
-    if (current.items.none { item -> item.key in keys && item.key !in pageKeys && item.unreadCount <= 0 }) return this
+    fun putsBack(item: InboxItem) = item.key in keys && (item.unreadCount <= 0 || item.key == revivedKey)
+    if (current.items.none { item -> item.key !in pageKeys && putsBack(item) }) return this
     // Anchor each missing retained row to the next row after it that the page still lists (null:
     // the end), walking the previous list backwards so rows sharing an anchor keep their order.
     val anchored = linkedMapOf<String?, MutableList<InboxItem>>()
@@ -6421,7 +6503,7 @@ private fun List<InboxItem>.withRetainedReadRows(current: SharedActivityState): 
     for (item in current.items.asReversed()) {
         if (item.key in pageKeys) {
             anchor = item.key
-        } else if (item.key in keys && item.unreadCount <= 0) {
+        } else if (putsBack(item)) {
             anchored.getOrPut(anchor) { mutableListOf() }
                 .add(0, item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false))
         }
