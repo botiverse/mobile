@@ -1,6 +1,6 @@
 package build.raft.app.components
 
-import build.raft.app.RaftAppTypeScale
+import build.raft.app.RaftProvideAppTypeScale
 
 import build.raft.app.resources.*
 import build.raft.app.RaftAppThemeState
@@ -71,15 +71,15 @@ internal fun RaftDesignSystemTheme(forceDark: Boolean, content: @Composable () -
         decor = RaftAppThemeState.decor,
     ) {
         // The app's own RaftType roles follow the scale this theme resolved (wide from the wide
-        // breakpoint, by window width alone). Written in composition, ahead of the content that reads it,
-        // so the first frame already has the right sizes; only on a change.
-        val scale = RaftTheme.scale
-        if (RaftAppTypeScale.scale != scale) RaftAppTypeScale.scale = scale
-        CompositionLocalProvider(
-            LocalTextSelectionColors provides appSelectionColors,
-            LocalRaftStrings provides strings,
-        ) {
-            RaftProvideDesignSystemMisuse(content = content)
+        // breakpoint, by window width alone), as the page host already set it for the page; kept
+        // here for content drawn without a page host (tests, visual fixtures).
+        RaftProvideAppTypeScale {
+            CompositionLocalProvider(
+                LocalTextSelectionColors provides appSelectionColors,
+                LocalRaftStrings provides strings,
+            ) {
+                RaftProvideDesignSystemMisuse(content = content)
+            }
         }
     }
 }

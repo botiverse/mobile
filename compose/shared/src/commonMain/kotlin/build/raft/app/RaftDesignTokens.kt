@@ -13,7 +13,10 @@ import androidx.compose.ui.unit.TextUnit
 import build.raft.designsystem.theme.RaftFonts
 import build.raft.designsystem.theme.RaftTypography
 import build.raft.designsystem.theme.RaftScale as DesignSystemScale
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshots.Snapshot
+import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
@@ -420,6 +423,25 @@ private val RaftScaleWide: RaftTypography =
  */
 internal object RaftAppTypeScale {
     var scale by mutableStateOf(DesignSystemScale.Compact)
+}
+
+/**
+ * Points [RaftAppTypeScale] at the enclosing designsystem theme's scale ([RaftTheme.scale]: the
+ * window's width, or the platform's guess before the window is measured), in composition and
+ * before [content] composes, so every [RaftType] text in [content] draws its first frame at the
+ * window's scale. The page host ([build.raft.app.compat.pager.RaftPagerHost]) runs this round
+ * every page, so text a page draws before (or outside) any [build.raft.app.components.RaftDesignSystemTheme]
+ * (a cached first frame, a launch state) does not start at the phone scale on a wide window and
+ * switch once the first design-system theme composes.
+ *
+ * The current value is read without observing it: a second window at another width writing its
+ * own scale must not recompose this one into writing back.
+ */
+@Composable
+internal fun RaftProvideAppTypeScale(content: @Composable () -> Unit) {
+    val scale = RaftTheme.scale
+    if (Snapshot.withoutReadObservation { RaftAppTypeScale.scale } != scale) RaftAppTypeScale.scale = scale
+    content()
 }
 
 private val RaftScale: RaftTypography

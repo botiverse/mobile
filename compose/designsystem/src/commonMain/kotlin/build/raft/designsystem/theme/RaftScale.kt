@@ -285,10 +285,28 @@ internal val LocalRaftPointerInput = staticCompositionLocalOf<RaftPointerInput?>
 /** The control metrics of the enclosing [RaftTheme] ([RaftPointerInput.controls]). */
 internal val LocalRaftControls = staticCompositionLocalOf { RaftControlMetrics.Mobile }
 
-/** The scale for this window's width ([RaftScale.of]). */
+/**
+ * The scale for this window's width ([RaftScale.of]). A window not measured yet (a zero container
+ * width: a host view composed before its first layout) takes the platform's guess instead
+ * ([raftPlatformUnmeasuredWindowWidth]), so a wide window does not draw its first frame at the
+ * phone scale and then switch.
+ */
 @Composable
 @ReadOnlyComposable
 internal fun raftAutoScale(): RaftScale {
-    val width = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val containerWidth = LocalWindowInfo.current.containerSize.width
+    val width =
+        if (containerWidth > 0) {
+            with(LocalDensity.current) { containerWidth.toDp() }
+        } else {
+            raftPlatformUnmeasuredWindowWidth() ?: 0.dp
+        }
     return RaftScale.of(width)
 }
+
+/**
+ * The window width to assume while the window has no measured size yet: the screen's width
+ * (iOS: the screen bounds in points; Android: the configuration's screen width), null where the
+ * platform has no better guess (desktop), which keeps [RaftScale.Compact].
+ */
+internal expect fun raftPlatformUnmeasuredWindowWidth(): Dp?
