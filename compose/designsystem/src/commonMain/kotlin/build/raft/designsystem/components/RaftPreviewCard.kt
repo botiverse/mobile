@@ -124,7 +124,9 @@ internal fun raftPreviewCardWantsOpen(overTrigger: Boolean, overCard: Boolean, s
 /**
  * Whether a press and its release on a `pinOnClick` trigger are a click that pins the card: the
  * pointer let go where it went down (within [touchSlop]) before [longPressMillis] (a long press
- * is the trigger's own, such as copying).
+ * is the trigger's own, such as copying). The trigger also drops a press that a scrolling list
+ * took (a fling stopped, a drag), which these numbers alone cannot tell: a dragged list carries
+ * the trigger with the finger.
  */
 internal fun raftPreviewCardIsPinClick(distance: Float, heldMillis: Long, touchSlop: Float, longPressMillis: Long): Boolean =
     distance <= touchSlop && heldMillis < longPressMillis
@@ -261,7 +263,8 @@ fun rememberRaftPreviewCardState(
  * its buttons. [enabled] false shows [trigger] alone.
  *
  * [pinOnClick] (web `RuntimeUsageHoverCard`, a card with buttons of its own): a click on
- * [trigger] by any pointer, a finger too, opens the card at once and pins it
+ * [trigger] by any pointer, a finger too (a real tap: not a press that became a scroll or that
+ * stopped a fling), opens the card at once and pins it
  * ([RaftPreviewCardState.pin]) instead of closing it; a pinned card stays when the pointer
  * leaves and closes on a click outside, Escape or its own close button. [width] is the card's
  * ([RaftPreviewCardDefaults.WideWidth] for the usage card).
@@ -323,18 +326,37 @@ fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolea
                             when (event.type) {
                                 PointerEventType.Press -> {
                                     state.pressOnTrigger = true
+                                    // A press a scrolling list above has already taken (Initial pass,
+                                    // before this one) is a finger stopping a fling: no click.
+                                    val stopsFling = change.isConsumed
                                     // The popup's "outside" press and this one come from two windows
                                     // in either order (Android): if the card was closed by this press
                                     // first, it stays pinned, as when this press came first.
-                                    if (state.closedByOutsidePress) state.pin()
+                                    if (state.closedByOutsidePress && !stopsFling) state.pin()
                                     // One pointer, and the primary button for a mouse (a right click
                                     // is the trigger's menu).
                                     downAt =
                                         change.position.takeIf {
-                                            event.changes.size == 1 &&
+                                            !stopsFling &&
+                                                event.changes.size == 1 &&
                                                 (change.type != PointerType.Mouse || event.buttons.isPrimaryPressed)
                                         }
                                     downMillis = change.uptimeMillis
+                                }
+                                PointerEventType.Move -> {
+                                    val start = downAt
+                                    if (start != null) {
+                                        // A finger that drags a list moves the trigger with it, so its
+                                        // position on the trigger barely changes: the press is no click
+                                        // once anything (the list's scroll) took a move, seen on the
+                                        // Final pass of the same event (as waitForUpOrCancellation does),
+                                        // or once it left the touch slop.
+                                        if ((change.position - start).getDistance() > viewConfiguration.touchSlop) {
+                                            downAt = null
+                                        } else if (awaitPointerEvent(PointerEventPass.Final).changes.any { it.isConsumed }) {
+                                            downAt = null
+                                        }
+                                    }
                                 }
                                 PointerEventType.Release -> {
                                     state.pressOnTrigger = false
@@ -342,6 +364,7 @@ fun Modifier.raftPreviewCardTrigger(state: RaftPreviewCardState, enabled: Boolea
                                     downAt = null
                                     if (
                                         start != null &&
+                                        !change.isConsumed &&
                                         raftPreviewCardIsPinClick(
                                             distance = (change.position - start).getDistance(),
                                             heldMillis = change.uptimeMillis - downMillis,

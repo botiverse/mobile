@@ -1425,7 +1425,8 @@ private fun RuntimeAccountUsageHealth.label(): String =
  * stays until a click outside, Escape or its close button), so the pointer can reach Refresh.
  * Opening reads through the shared 60 s cache, as the sheet does.
  *
- * The same for every pointer: a finger has no hover, so its tap pins the card. The click goes no
+ * The same for every pointer: a finger has no hover, so its tap pins the card (a real tap: a
+ * press that scrolls the page or stops its fling pins nothing). The click goes no
  * further, so give [trigger] no click of its own (no sheet). [enabled] false shows [trigger] alone.
  */
 @Composable
