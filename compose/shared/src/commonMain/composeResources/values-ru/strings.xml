@@ -209,6 +209,7 @@
     <string name="settings_step_up_sign_in_again_message">Не удалось проверить текущий вход. Войдите снова и повторите попытку.</string>
     <string name="settings_step_up_sign_in_again">Войти снова</string>
     <string name="settings_step_up_passkey_only">Внесите изменение в веб-версии Raft и подтвердите его ключом доступа.</string>
+    <string name="settings_step_up_open_on_web">Открыть в веб-версии</string>
     <string name="settings_step_up_passkey_button">Использовать ключ доступа</string>
     <string name="settings_step_up_use_passkey">Использовать ключ доступа</string>
     <string name="settings_step_up_passkey_cancelled">Окно ключа доступа закрыто. Попробуйте ещё раз или выберите другой способ.</string>

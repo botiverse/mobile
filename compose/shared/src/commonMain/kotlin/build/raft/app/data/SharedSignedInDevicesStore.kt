@@ -140,6 +140,8 @@ private sealed interface SignedInDevicesSendOutcome {
 internal class SharedSignedInDevicesStore(
     private val dataSource: SignedInDevicesDataSource,
     private val scope: CoroutineScope,
+    /** Settings › Account's web page for "Verify it's you"'s Open on the web; null: none offered. */
+    private val stepUpWebUrl: (suspend (SecondFactorStepUpWebTarget) -> String?)? = null,
 ) {
     private val mutableState = MutableStateFlow(SharedSignedInDevicesState())
     val state: StateFlow<SharedSignedInDevicesState> = mutableState.asStateFlow()
@@ -151,6 +153,8 @@ internal class SharedSignedInDevicesStore(
             requestPasswordEmail = { email -> dataSource.requestPasswordEmail(email) },
             requestTwoStepReset = { email -> dataSource.requestTwoStepReset(email) },
             passkeyOptions = { rp -> dataSource.passkeyAssertionOptions(rp) },
+            webUrl = stepUpWebUrl,
+            webTarget = { SecondFactorStepUpWebTarget.Account },
         )
 
     private var refreshJob: Job? = null

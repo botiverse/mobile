@@ -76,10 +76,16 @@ class SecondFactorStepUpPasskeyUiTest {
         state: androidx.compose.runtime.State<SecondFactorStepUpDialogState>,
         intents: MutableList<SecondFactorStepUpIntent>,
         port: RaftNativePasskeyAssertion = RaftNativePasskeyAssertion { error("no prompt asked") },
+        opened: MutableList<String> = mutableListOf(),
     ) {
         setContent {
             RaftDesignSystemTheme {
-                SecondFactorStepUpDialog(state = state.value, onIntent = { intents += it }, passkeyAssertion = port)
+                SecondFactorStepUpDialog(
+                    state = state.value,
+                    onIntent = { intents += it },
+                    passkeyAssertion = port,
+                    openWebPage = { opened += it },
+                )
             }
         }
         waitForIdle()
@@ -132,4 +138,37 @@ class SecondFactorStepUpPasskeyUiTest {
         onAllNodesWithTag(RaftTraceIdNoteTestTag).assertCountEquals(1)
         onNodeWithText("4bf92f35", substring = true).assertExists()
     }
+
+    @Test
+    fun onlyAPasskeyThatCantBeUsedHereOpensTheActionOnTheWeb() = runRobolectricComposeUiTest {
+        val intents = mutableListOf<SecondFactorStepUpIntent>()
+        val opened = mutableListOf<String>()
+        val webUrl = "https://staging.raft.build/s/acme/computers"
+        show(mutableStateOf(passkeyOnlyHere.copy(webUrl = webUrl)), intents, opened = opened)
+
+        onNodeWithText("Make this change in Raft on the web", substring = true).assertExists()
+        onNodeWithTag(SECOND_FACTOR_STEP_UP_OPEN_ON_WEB_TAG).assertIsEnabled().performClick()
+        waitForIdle()
+
+        // The page opens and the action here ends, as with Close.
+        assertEquals(listOf(webUrl), opened)
+        assertEquals(listOf<SecondFactorStepUpIntent>(SecondFactorStepUpIntent.Cancel), intents)
+    }
+
+    @Test
+    fun openOnTheWebOnlyWithNoWayToAnswerHereAndAKnownPage() = runRobolectricComposeUiTest {
+        val state = mutableStateOf(passkeyOnlyHere)
+        show(state, mutableListOf())
+        // No page known: the sentence and Close only.
+        onNodeWithText("Make this change in Raft on the web", substring = true).assertExists()
+        onAllNodesWithTag(SECOND_FACTOR_STEP_UP_OPEN_ON_WEB_TAG).assertCountEquals(0)
+
+        // A way to answer here: never, even with the page known.
+        runOnIdle { state.value = passkeyFirst.copy(webUrl = "https://app.raft.build/settings/account") }
+        waitForIdle()
+        onAllNodesWithTag(SECOND_FACTOR_STEP_UP_OPEN_ON_WEB_TAG).assertCountEquals(0)
+        onNodeWithText("Use Passkey").assertExists()
+    }
+
+    private val passkeyOnlyHere = SecondFactorStepUpDialogState(methods = emptyList(), method = null, passkeyListed = true)
 }

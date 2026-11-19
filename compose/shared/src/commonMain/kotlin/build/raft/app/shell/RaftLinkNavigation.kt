@@ -35,6 +35,14 @@ internal enum class RaftLinkOpenIntent {
      * route straight back into the app, which is not what was asked for.
      */
     RaftWebPage,
+
+    /**
+     * A page of Raft's own web that needs a real browser whatever the link setting: one where the
+     * person confirms with a passkey (WebAuthn, which the in-app web view lacks), as Settings ›
+     * Account › Login & security's rows. Asked for as a browser (`browser: true`), so Raft's App
+     * Links / Universal Links don't bring it back into the app ([rememberRaftPasskeyWebPageOpener]).
+     */
+    RaftWebPageInBrowser,
 }
 
 internal enum class RaftLinkOpenTarget {
@@ -90,7 +98,11 @@ internal fun resolveRaftLinkOpenDecision(
         "http", "https" -> {
             if (!url.hasValidHttpAuthority(scheme)) {
                 rejectedLink(RaftLinkRejectReason.Invalid)
-            } else if (intent == RaftLinkOpenIntent.ForceExternal || mode == LinkOpenMode.SystemBrowser) {
+            } else if (
+                intent == RaftLinkOpenIntent.ForceExternal ||
+                intent == RaftLinkOpenIntent.RaftWebPageInBrowser ||
+                mode == LinkOpenMode.SystemBrowser
+            ) {
                 RaftLinkOpenDecision(RaftLinkOpenTarget.ExternalBrowser, url)
             } else {
                 RaftLinkOpenDecision(RaftLinkOpenTarget.InAppBrowser, url)
@@ -250,7 +262,7 @@ internal class RaftLinkNavigator(
                 }
             }
             RaftLinkOpenTarget.ExternalBrowser -> {
-                if (intent == RaftLinkOpenIntent.RaftWebPage) {
+                if (intent == RaftLinkOpenIntent.RaftWebPage || intent == RaftLinkOpenIntent.RaftWebPageInBrowser) {
                     openRaftWebPageInBrowser(decision.url)
                 } else {
                     openExternalBrowser(decision.url)
@@ -413,6 +425,21 @@ internal fun rememberRaftWebPageOpener(): (String) -> Unit {
     return remember(navigator, uriHandler) {
         { url ->
             if (navigator != null) navigator.open(url, RaftLinkOpenIntent.RaftWebPage) else uriHandler.openUri(url)
+        }
+    }
+}
+
+/**
+ * Opens a page of Raft's web where the person confirms with a passkey ([RaftLinkOpenIntent.RaftWebPageInBrowser]):
+ * the default browser whatever the link setting, asked for as a browser.
+ */
+@Composable
+internal fun rememberRaftPasskeyWebPageOpener(): (String) -> Unit {
+    val navigator = LocalRaftLinkNavigator.current
+    val uriHandler = LocalUriHandler.current
+    return remember(navigator, uriHandler) {
+        { url ->
+            if (navigator != null) navigator.open(url, RaftLinkOpenIntent.RaftWebPageInBrowser) else uriHandler.openUri(url)
         }
     }
 }

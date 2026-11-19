@@ -209,6 +209,7 @@
     <string name="settings_step_up_sign_in_again_message">This sign-in can't be verified. Sign in again, then try once more.</string>
     <string name="settings_step_up_sign_in_again">Sign In Again</string>
     <string name="settings_step_up_passkey_only">Make this change in Raft on the web and confirm it with your passkey.</string>
+    <string name="settings_step_up_open_on_web">Open on the web</string>
     <string name="settings_step_up_passkey_button">Use Passkey</string>
     <string name="settings_step_up_use_passkey">Use a Passkey</string>
     <string name="settings_step_up_passkey_cancelled">The passkey prompt was closed. Try again, or use another way.</string>

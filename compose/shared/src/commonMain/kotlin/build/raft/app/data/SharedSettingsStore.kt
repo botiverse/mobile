@@ -1075,6 +1075,17 @@ class SharedSettingsDataSource(
     suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> =
         settingsRepository?.registerComputer(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
+    /**
+     * [target]'s web page for "Verify it's you"'s Open on the web: the selected API environment's
+     * web URL (AGENTS.md Environment Web Link URL Rule) and the session's server.
+     */
+    suspend fun secondFactorStepUpWebUrl(target: SecondFactorStepUpWebTarget): String =
+        build.raft.app.data.secondFactorStepUpWebUrl(
+            webBaseUrl = (apiEnvironmentStore?.current() ?: SharedApiEnvironmentStore.Production).webUrl,
+            serverSlug = sessionStore.readSession().secondFactorStepUpWebServerSlug(),
+            target = target,
+        )
+
     /** The context of the Add Computer dialog's `raft-computer` connect commands. */
     suspend fun addComputerCommandContext(): SettingsComputerCommandContext? =
         computerCommandContext(sessionStore.readSession())
@@ -2044,6 +2055,7 @@ class SharedSettingsStore(
             stepUp = { answer -> dataSource.stepUpSecondFactor(answer) },
             onStateChange = { dialog -> _state.value = _state.value.copy(secondFactorStepUp = dialog) },
             passkeyOptions = { rp -> dataSource.secondFactorPasskeyAssertionOptions(rp) },
+            webUrl = { target -> dataSource.secondFactorStepUpWebUrl(target) },
         )
 
     private var loadJob: Job? = null
@@ -3454,7 +3466,7 @@ class SharedSettingsStore(
         itemId: String? = null,
         request: suspend () -> DataResult<T>
     ): DataResult<T>? =
-        when (val outcome = secondFactorStepUp.run(request)) {
+        when (val outcome = secondFactorStepUp.run(settingsSecondFactorStepUpWebTarget(action, itemId), request)) {
             is SecondFactorStepUpOutcome.Completed -> outcome.result
             SecondFactorStepUpOutcome.Cancelled -> {
                 _state.value = _state.value.copy(actionState = SharedSettingsActionState(action, itemId, inProgress = false))
@@ -4454,6 +4466,22 @@ private fun StoredAuthSession?.settingsCurrentServer(): StoredAuthServer? {
 
 private fun StoredAuthSession?.canManageCurrentServer(): Boolean =
     settingsCurrentServer()?.role.let { it == "owner" || it == "admin" }
+
+/**
+ * Where on the web a Settings action refused for a fresh second step is done (Open on the web):
+ * Account's for the password and sign-in providers, the Computers page for adding a computer (its
+ * Add Computer), the computer's page for a new machine key.
+ */
+internal fun settingsSecondFactorStepUpWebTarget(action: String, itemId: String?): SecondFactorStepUpWebTarget? =
+    when (action) {
+        ACCOUNT_ACTION_PASSWORD_CHANGE,
+        ACCOUNT_ACTION_PROVIDER_CONNECT,
+        ACCOUNT_ACTION_PROVIDER_DISCONNECT -> SecondFactorStepUpWebTarget.Account
+        COMPUTER_ACTION_REGISTER -> SecondFactorStepUpWebTarget.Computers
+        COMPUTER_ACTION_ROTATE_KEY ->
+            itemId?.takeIf { it.isNotBlank() }?.let(SecondFactorStepUpWebTarget::Computer) ?: SecondFactorStepUpWebTarget.Computers
+        else -> null
+    }
 
 private fun StoredAuthSession?.currentServerSlugForSettings(): String? {
     val session = this ?: return null

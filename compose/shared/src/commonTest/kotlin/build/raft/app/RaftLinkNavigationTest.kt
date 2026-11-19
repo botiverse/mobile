@@ -53,9 +53,19 @@ class RaftLinkNavigationTest {
         navigator(LinkOpenMode.SystemBrowser).open(url, RaftLinkOpenIntent.RaftWebPage)
         navigator(LinkOpenMode.InAppBrowser).open(url, RaftLinkOpenIntent.RaftWebPage)
         navigator(LinkOpenMode.SystemBrowser).open("https://example.test/blog")
+        // A page confirmed with a passkey ("Verify it's you" Open on the web): a real browser in either mode.
+        val passkeyPage = "https://app.raft.build/s/hq/computers"
+        navigator(LinkOpenMode.InAppBrowser).open(passkeyPage, RaftLinkOpenIntent.RaftWebPageInBrowser)
+        navigator(LinkOpenMode.SystemBrowser).open(passkeyPage, RaftLinkOpenIntent.RaftWebPageInBrowser)
 
         assertEquals(
-            listOf("browser:$url", "in_app:$url", "view:https://example.test/blog"),
+            listOf(
+                "browser:$url",
+                "in_app:$url",
+                "view:https://example.test/blog",
+                "browser:$passkeyPage",
+                "browser:$passkeyPage",
+            ),
             opened,
         )
     }

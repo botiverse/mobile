@@ -209,6 +209,7 @@
     <string name="settings_step_up_sign_in_again_message">無法驗證目前的登入。請重新登入，然後再試一次。</string>
     <string name="settings_step_up_sign_in_again">重新登入</string>
     <string name="settings_step_up_passkey_only">請在網頁版 Raft 上進行此變更，並用通行密鑰確認。</string>
+    <string name="settings_step_up_open_on_web">在網頁開啟</string>
     <string name="settings_step_up_passkey_button">使用通行密鑰</string>
     <string name="settings_step_up_use_passkey">使用通行密鑰</string>
     <string name="settings_step_up_passkey_cancelled">通行密鑰視窗已關閉。請再試一次，或改用其他方式。</string>

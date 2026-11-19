@@ -32,6 +32,8 @@ class SecondFactorPasskeyStepUpCoordinatorTest {
         val optionsResult: () -> SecondFactorPasskeyOptionsResult,
         nativePasskeys: Boolean = true,
         rpGroup: String? = null,
+        webUrl: (suspend (SecondFactorStepUpWebTarget) -> String?)? = null,
+        webTarget: SecondFactorStepUpWebTarget? = null,
     ) {
         val answers = mutableListOf<SecondFactorStepUpAnswer>()
         val optionGroups = mutableListOf<String?>()
@@ -41,6 +43,8 @@ class SecondFactorPasskeyStepUpCoordinatorTest {
                 passkeyOptions = { rp -> optionGroups += rp; optionsResult() },
                 nativePasskeys = nativePasskeys,
                 passkeyRpGroup = rpGroup,
+                webUrl = webUrl,
+                webTarget = { webTarget },
             )
     }
 
@@ -286,24 +290,44 @@ class SecondFactorPasskeyStepUpCoordinatorTest {
         // iOS asks for `current`; the person's passkeys are all under the legacy RP ID.
         val rpUnavailable = { SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.PasskeyRpUnavailable("current", listOf("legacy"), trace)) }
 
-        val passkeyOnlyHarness = Harness(optionsResult = rpUnavailable, rpGroup = SECOND_FACTOR_PASSKEY_RP_CURRENT)
-        val webOutcome = async { passkeyOnlyHarness.coordinator.run(ScriptedAction(refusal(passkeyOnly))::invoke) }
+        // Adding a computer: Open on the web goes to the server's Computers page on the environment's web.
+        val pages = mutableListOf<SecondFactorStepUpWebTarget>()
+        val resolver: suspend (SecondFactorStepUpWebTarget) -> String? = { target ->
+            pages += target
+            secondFactorStepUpWebUrl("https://staging.raft.build/", "acme", target)
+        }
+        val passkeyOnlyHarness = Harness(optionsResult = rpUnavailable, rpGroup = SECOND_FACTOR_PASSKEY_RP_CURRENT, webUrl = resolver)
+        val webOutcome =
+            async { passkeyOnlyHarness.coordinator.run(SecondFactorStepUpWebTarget.Computers, ScriptedAction(refusal(passkeyOnly))::invoke) }
         runCurrent()
+        assertFalse(assertNotNull(passkeyOnlyHarness.coordinator.state.value).opensOnWeb, "Use passkey first")
         passkeyOnlyHarness.coordinator.accept(SecondFactorStepUpIntent.Submit)
         val web = assertNotNull(passkeyOnlyHarness.coordinator.state.value)
         assertEquals(listOf<String?>("current"), passkeyOnlyHarness.optionGroups)
         assertNull(web.method, "the dialog's own web hand-off")
         assertNull(web.passkeyCeremony, "no native prompt for a legacy passkey on iOS")
+        assertEquals("https://staging.raft.build/s/acme/computers", web.webUrl)
+        assertTrue(web.opensOnWeb)
+        assertEquals(listOf<SecondFactorStepUpWebTarget>(SecondFactorStepUpWebTarget.Computers), pages)
         passkeyOnlyHarness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
         assertEquals(SecondFactorStepUpOutcome.Cancelled, webOutcome.await())
 
-        val codesHarness = Harness(optionsResult = rpUnavailable, rpGroup = SECOND_FACTOR_PASSKEY_RP_CURRENT)
+        val codesHarness =
+            Harness(
+                optionsResult = rpUnavailable,
+                rpGroup = SECOND_FACTOR_PASSKEY_RP_CURRENT,
+                webUrl = resolver,
+                webTarget = SecondFactorStepUpWebTarget.Account,
+            )
         val codesOutcome = async { codesHarness.coordinator.run(ScriptedAction(refusal(withCodes))::invoke) }
         runCurrent()
         codesHarness.coordinator.accept(SecondFactorStepUpIntent.Submit)
         val codes = assertNotNull(codesHarness.coordinator.state.value)
         assertEquals(listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode), codes.methods)
         assertEquals(SecondFactorStepUpBanner.PasskeyUnsupported, codes.banner)
+        // The coordinator's own page (no target named), but a code answers here: no Open on the web.
+        assertEquals("https://staging.raft.build/s/acme/settings/account", codes.webUrl)
+        assertFalse(codes.opensOnWeb)
         codesHarness.coordinator.accept(SecondFactorStepUpIntent.Cancel)
         assertEquals(SecondFactorStepUpOutcome.Cancelled, codesOutcome.await())
     }

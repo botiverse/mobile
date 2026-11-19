@@ -61,6 +61,7 @@ import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.RAFT_MOBILE_OAUTH_COMPLETION_EVENT
 import build.raft.app.data.RaftEventBuses
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.secondFactorStepUpWebUrlResolver
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -290,7 +291,14 @@ private fun SettingsAccountScreen() {
         remember(bridge, environment.storeScope) { RaftSharedStoreRegistry.get(bridge).networkClient(environment.storeScope) }
     val loginSecurityStore = rememberSettingsAccountLoginSecurityStore(loginSecurityNetworkClient)
     val loginSecurityState by loginSecurityStore.state.collectAsState()
-    val signedInDevicesStore = rememberSettingsSignedInDevicesStore(loginSecurityNetworkClient)
+    val signedInDevicesStore =
+        rememberSettingsSignedInDevicesStore(
+            loginSecurityNetworkClient,
+            stepUpWebUrl =
+                remember(environment) {
+                    secondFactorStepUpWebUrlResolver({ environment.webBaseUrl }) { environment.authStore.readSession() }
+                },
+        )
     val signedInDevicesState by signedInDevicesStore.state.collectAsState()
     val appLoginsStore = rememberSettingsAppLoginsStore(loginSecurityNetworkClient)
     val appLoginsState by appLoginsStore.state.collectAsState()

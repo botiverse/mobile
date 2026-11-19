@@ -209,6 +209,7 @@
     <string name="settings_step_up_sign_in_again_message">지금 로그인으로는 인증할 수 없어요. 다시 로그인한 다음 한 번 더 시도해 주세요.</string>
     <string name="settings_step_up_sign_in_again">다시 로그인</string>
     <string name="settings_step_up_passkey_only">웹의 Raft에서 변경하고 패스키로 확인해 주세요.</string>
+    <string name="settings_step_up_open_on_web">웹에서 열기</string>
     <string name="settings_step_up_passkey_button">패스키 사용</string>
     <string name="settings_step_up_use_passkey">패스키 사용</string>
     <string name="settings_step_up_passkey_cancelled">패스키 창이 닫혔어요. 다시 시도하거나 다른 방법을 사용하세요.</string>
