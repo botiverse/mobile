@@ -16,9 +16,12 @@ import build.raft.app.resources.activity_list_day_today
 import build.raft.app.resources.activity_list_day_weekday_tuesday
 import build.raft.app.resources.activity_list_day_weekday_wednesday
 import build.raft.app.resources.activity_list_day_yesterday
+import build.raft.designsystem.theme.RaftPointerInput
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Activity's rows by day (web botiverse/slock #13030, `activityDayGroups.ts`): Today / Yesterday /
@@ -248,6 +251,23 @@ class ActivityDayGroupsTest {
         )
         assertNull(activityRowTime("not a time", ctx))
         assertNull(activityRowTime("2026-11-05T11:00:00Z", null))
+    }
+
+    @Test
+    fun anEarlierDaysClockShowsAlwaysWithAFingerAndOnlyOnHoverWithAMouse() {
+        val older = ActivityRowTime.Older(clock = "23:15", day = ActivityRowTimeDay.Yesterday)
+        // A finger cannot hover (Jasper, #proj-raft-ui:#274): the clock is always there.
+        assertTrue(older.shown(RaftPointerInput.Touch, pointerHovering = false))
+        assertTrue(older.shown(RaftPointerInput.Touch, pointerHovering = true))
+        // A mouse or trackpad keeps the hover reveal.
+        assertFalse(older.shown(RaftPointerInput.Fine, pointerHovering = false))
+        assertTrue(older.shown(RaftPointerInput.Fine, pointerHovering = true))
+        // A recent row shows its time with either input, hovered or not.
+        for (recent in listOf(ActivityRowTime.Now, ActivityRowTime.Minutes(3), ActivityRowTime.Hours(2))) {
+            for (input in RaftPointerInput.entries) {
+                assertTrue(recent.shown(input, pointerHovering = false), "$recent with $input")
+            }
+        }
     }
 
     @Test

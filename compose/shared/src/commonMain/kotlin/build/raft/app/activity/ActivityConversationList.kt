@@ -1280,8 +1280,9 @@ internal fun ActivityConversationLeading(
 /**
  * The time at the end of the row's first line, in a list grouped by day (web ActivityRowTime, slock
  * #13030): today's rows and any row under an hour old show it short ("now", "3m", "2h"); an earlier
- * day's row, whose heading names the day, shows its clock only while a pointer hovers it, and a finger
- * never does. Screen readers hear it in words on every row ("yesterday at 17:20").
+ * day's row, whose heading names the day, shows its clock alone ("23:15"): while a mouse or trackpad
+ * hovers it when one is in use, and always with a finger, which cannot hover (Jasper,
+ * #proj-raft-ui:#274). Screen readers hear it in words on every row ("yesterday at 17:20").
  */
 @Composable
 private fun ActivityConversationTime(
@@ -1297,7 +1298,7 @@ private fun ActivityConversationTime(
         return
     }
     val words = rowTime.words()
-    val shown = rowTime !is ActivityRowTime.Older || pointerHovering
+    val shown = rowTime.shown(RaftTheme.pointerInput, pointerHovering)
     RaftText(
         text = rowTime.shownLabel(),
         modifier =
