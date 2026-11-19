@@ -8,6 +8,7 @@
 
 import { resolvePiModel } from "./pi_model.mjs";
 import { selectReviewScreenshots } from "./review_evidence_selection.mjs";
+import { panelReviewBody, scopeReviewReport } from "./review_attempt_scope.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 
@@ -147,8 +148,16 @@ function scanLog(text) {
 
 async function main() {
   saveRecord();
-  const data = await stamp(`/api/runs/${runId}`);
-  if (!data.run) throw new Error("run not found");
+  const report = await stamp(`/api/runs/${runId}`);
+  if (!report.run) throw new Error("run not found");
+  // Review only the current attempt of each case; superseded retries, their
+  // evidence and votes on them stay out of the review input.
+  const scope = scopeReviewReport(report);
+  if (scope.notice) console.error(`review_agent: ${scope.notice}`);
+  else console.error(`review_agent: reviewing current attempts ${scope.attemptIds.join(", ")}` +
+    (scope.superseded.case_ids.length ? `; ignoring superseded attempts ${scope.superseded.case_ids.join(", ")}` : ""));
+  saveRecord({ attempt_scope: { mode: scope.mode, attempt_ids: scope.attemptIds, superseded: scope.superseded || null, notice: scope.notice || null } });
+  const data = { ...report, cases: scope.cases, evidence: scope.evidence, reviews: scope.reviews };
   const existingReview = (data.reviews || []).find((r) => r.role === "panel" && r.reviewer === reviewer);
   if (!["running", "judging", "in_review"].includes(data.run.status) && !existingReview) {
     throw new Error(`run is not reviewable: ${data.run.status}`);
@@ -287,7 +296,7 @@ async function main() {
     saveRecord({ stage: "evidence_incomplete", parsed_vote: incompleteVote, validation: { ok: true } });
     const posted = await stamp(`/api/runs/${runId}/panel-review`, {
       method: "POST",
-      body: JSON.stringify({
+      body: JSON.stringify(panelReviewBody(scope, {
         reviewer,
         verdict: incompleteVote.verdict,
         reason: incompleteVote.reason,
@@ -306,7 +315,7 @@ async function main() {
           model: modelName,
           usage: null,
         },
-      }),
+      })),
     });
     saveRecord({ stage: "submitted", post_receipt: posted });
     console.log(JSON.stringify(record, null, 2));
@@ -423,12 +432,12 @@ async function main() {
   };
   const posted = await stamp(`/api/runs/${runId}/panel-review`, {
     method: "POST",
-    body: JSON.stringify({
+    body: JSON.stringify(panelReviewBody(scope, {
       reviewer,
       verdict: vote.verdict,
       reason: String(vote.reason || "").slice(0, 1000),
       detail_json: detailJson,
-    }),
+    })),
   });
   saveRecord({ stage: "submitted", post_receipt: posted });
   console.log(JSON.stringify(record, null, 2));
