@@ -974,7 +974,6 @@
     <string name="channel_settings_info_detail">在整个工作空间中显示的名称和描述。</string>
     <string name="channel_settings_section_detail">选择此频道在侧栏中所在的分区。</string>
     <string name="channel_settings_section_detail_dm">选择此会话在侧栏中所在的分区。</string>
-    <string name="channel_settings_section_create">创建分区</string>
     <string name="channel_settings_collapse_detail">超过预览高度的消息折叠在「显示更多」开关后。关闭后此频道的长消息始终完整显示。</string>
     <string name="channel_settings_collapse_detail_dm">超过预览高度的消息折叠在「显示更多」开关后。关闭后此会话的长消息始终完整显示。</string>
     <string name="channel_settings_actions">操作</string>
@@ -2551,7 +2550,6 @@
     <string name="home_sort_recent">最近</string>
     <string name="home_sort_az">A-Z</string>
     <string name="home_section_move_to">移动到分区</string>
-    <string name="home_section_remove_from">移出分区</string>
     <string name="home_section_new_menu">新建分区</string>
     <string name="home_sidebar_row_menu_action">更多操作</string>
     <string name="home_sidebar_section_menu_action">%1$s选项</string>

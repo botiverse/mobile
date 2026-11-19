@@ -974,7 +974,6 @@
     <string name="channel_settings_info_detail">Название и описание, которые видны во всём рабочем пространстве.</string>
     <string name="channel_settings_section_detail">Выберите, в каком разделе боковой панели будет этот канал.</string>
     <string name="channel_settings_section_detail_dm">Выберите, в каком разделе боковой панели будет этот чат.</string>
-    <string name="channel_settings_section_create">Создать раздел</string>
     <string name="channel_settings_collapse_detail">Сообщения выше области предпросмотра сворачиваются под кнопку «Показать полностью». Отключите, чтобы в этом канале длинные сообщения всегда были видны целиком.</string>
     <string name="channel_settings_collapse_detail_dm">Сообщения выше области предпросмотра сворачиваются под кнопку «Показать полностью». Отключите, чтобы в этом чате длинные сообщения всегда были видны целиком.</string>
     <string name="channel_settings_actions">Действия</string>
@@ -2548,7 +2547,6 @@
     <string name="home_sort_recent">По активности</string>
     <string name="home_sort_az">По алфавиту</string>
     <string name="home_section_move_to">Переместить в раздел</string>
-    <string name="home_section_remove_from">Убрать из раздела</string>
     <string name="home_section_new_menu">Новый раздел</string>
     <string name="home_sidebar_row_menu_action">Другие действия</string>
     <string name="home_sidebar_section_menu_action">Параметры раздела «%1$s»</string>

@@ -85,6 +85,8 @@ import build.raft.designsystem.components.RaftRadioGroup
 import build.raft.designsystem.components.RaftRadioRow
 import build.raft.designsystem.components.RaftSegment
 import build.raft.designsystem.components.RaftSegmentedControl
+import build.raft.designsystem.components.RaftSelectAction
+import build.raft.designsystem.components.RaftSelectOptions
 import build.raft.designsystem.components.RaftSelectTrigger
 import build.raft.designsystem.components.RaftSheetSurface
 import build.raft.designsystem.components.RaftSwitch
@@ -1188,6 +1190,35 @@ class InteractiveComponentScreenshotTest {
                     RaftSelectOpen()
                 }
             }
+            }
+        }
+
+    /**
+     * An open [RaftSelect] whose options carry leading icons and whose list ends with an action
+     * row after a separator (raft-ui `SelectItemLeading` / `SelectActionItem`; slock #15500, the
+     * channel settings "Sidebar section" select with its "New section" row).
+     */
+    @Test
+    fun selectPopupActions() =
+        capture("select_popup_actions", settleFrames = 2) {
+            CompositionLocalProvider(LocalInputModeManager provides TouchMode) {
+                Box(Modifier.size(340.dp, 260.dp)) {
+                    Box(Modifier.width(300.dp)) {
+                        RaftSelectTrigger("Launch", {}, expanded = true)
+                        RaftDropdownMenu(expanded = true, onDismissRequest = {}, width = 300.dp, offset = 4.dp) {
+                            RaftSelectOptions(
+                                value = "Launch",
+                                options = listOf("Channels", "Pinned", "Launch"),
+                                optionLabel = { it },
+                                onPick = {},
+                                optionLeadingIcon = { option ->
+                                    { RaftGlyphIcon(if (option == "Pinned") RaftGlyph.Bookmark else RaftGlyph.Hash) }
+                                },
+                                action = RaftSelectAction("New section", onAction = {}, leadingIcon = { RaftGlyphIcon(RaftGlyph.Plus) }),
+                            )
+                        }
+                    }
+                }
             }
         }
 

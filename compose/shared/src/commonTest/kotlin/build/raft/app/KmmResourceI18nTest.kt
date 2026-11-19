@@ -250,7 +250,6 @@ class KmmResourceI18nTest {
             Res.string.home_sort_recent,
             Res.string.home_sort_az,
             Res.string.home_section_move_to,
-            Res.string.home_section_remove_from,
             Res.string.home_section_new_menu,
             Res.string.home_section_rename,
             Res.string.home_section_delete,
