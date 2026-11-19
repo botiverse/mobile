@@ -1,6 +1,8 @@
 package build.raft.app.shared
 
 import android.Manifest
+import android.app.Activity
+import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
@@ -8,6 +10,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.Settings
+import build.raft.app.RaftHostStrings
 import build.raft.app.core.data.diagnostics.RaftAppLog
 
 /**
@@ -47,6 +50,25 @@ internal object AndroidPackageInstallPermission {
     }
 
     /**
+     * The explanation before the switch (a themed system dialog, as the attachment Save As
+     * fallback): Android restarts Raft when "Install unknown apps" changes, so come back and tap
+     * Install again. Open Settings leads on; Cancel or Back leaves things as they are.
+     */
+    private fun showRestartExplanation(activity: Activity?, onOpenSettings: () -> Unit): Boolean {
+        val host = activity?.takeUnless { it.isFinishing || it.isDestroyed } ?: return false
+        host.runOnUiThread {
+            if (host.isFinishing || host.isDestroyed) return@runOnUiThread
+            AlertDialog.Builder(host)
+                .setTitle(RaftHostStrings.apkInstallPermissionTitle())
+                .setMessage(RaftHostStrings.apkInstallPermissionMessage())
+                .setPositiveButton(RaftHostStrings.apkInstallPermissionOpenSettings()) { _, _ -> onOpenSettings() }
+                .setNegativeButton(RaftHostStrings.apkInstallPermissionCancel(), null)
+                .show()
+        }
+        return true
+    }
+
+    /**
      * Opens the system file manager on `Download/Raft` (where published attachments live), else on
      * the Downloads list. Returns which surface opened, or null when neither could be started.
      * Any file manager that handles a directory document holds the install permission itself.
@@ -70,11 +92,17 @@ internal object AndroidPackageInstallPermission {
         return null
     }
 
-    fun gate(context: Context, attachmentIdPrefix: String): AndroidPackageInstallGate =
+    fun gate(context: Context, activity: Activity?, attachmentIdPrefix: String): AndroidPackageInstallGate =
         AndroidPackageInstallGate(
             installPermissionDeclared = { isDeclared(context) },
             canRequestPackageInstalls = { canRequest(context) },
-            openUnknownSourcesSettings = { openUnknownSourcesSettings(context) },
+            openUnknownSourcesSettings = {
+                AndroidUnknownSourcesSettingsPrompt(
+                    showExplanation = { onOpenSettings -> showRestartExplanation(activity, onOpenSettings) },
+                    openSettings = { openUnknownSourcesSettings(context) },
+                    record = { line -> RaftAppLog.w(LOG_TAG, "$line attachmentId=$attachmentIdPrefix") }
+                ).request()
+            },
             openDownloadsInFileManager = { openDownloadsInFileManager(context) },
             record = { decision, detail ->
                 // warn: kept in release diagnostics, unlike record(); one line per Install tap.

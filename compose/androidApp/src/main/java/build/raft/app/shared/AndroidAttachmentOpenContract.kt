@@ -514,7 +514,8 @@ internal fun androidPackageInstallDecision(
  * Runs before an APK is handed to the system installer. Returns null when the installer may be
  * launched, otherwise the terminal result whose shared copy tells the user what to do.
  *
- * - Permission declared but "install unknown apps" off: open Raft's own settings switch.
+ * - Permission declared but "install unknown apps" off: lead to Raft's own settings switch
+ *   ([AndroidUnknownSourcesSettingsPrompt]: first say that Android restarts Raft when it changes).
  * - Permission not declared (Google Play build): never launch the installer (it would finish
  *   silently) and never open a settings page that has no switch for Raft. A file manager does hold
  *   the permission, so when the APK already is a public Downloads copy, open the file manager on
@@ -554,11 +555,43 @@ internal class AndroidPackageInstallGate(
                 }
             }
             AndroidPackageInstallDecision.RequestUnknownSourcesPermission -> {
-                val opened = runCatching(openUnknownSourcesSettings).getOrDefault(false)
-                record(decision, "settingsOpened=$opened")
+                val requested = runCatching(openUnknownSourcesSettings).getOrDefault(false)
+                record(decision, "settingsRequested=$requested")
                 AndroidAttachmentOpenResult.installPermissionRequired(source.durableCache)
             }
         }
+    }
+}
+
+/**
+ * The way to Raft's "Install unknown apps" switch. Android kills Raft's process when that
+ * permission changes (`[KILL UID] REQUEST_INSTALL_PACKAGES changed`, Hands 624cfe35), so someone who
+ * flips it comes back to a restarted Raft with nothing saying why or what to do next. Before the
+ * settings page opens, [showExplanation] says so and asks them to come back and tap Install again;
+ * the page opens only from its confirm. Without a window to show it in, the page opens directly.
+ */
+internal class AndroidUnknownSourcesSettingsPrompt(
+    /** Shows the explanation with its confirm wired to `onOpenSettings`; false when it could not be shown. */
+    private val showExplanation: (onOpenSettings: () -> Unit) -> Boolean,
+    private val openSettings: () -> Boolean,
+    private val record: (String) -> Unit = {}
+) {
+    /** True when the person was led toward the switch: the explanation shown, or the page opened. */
+    fun request(): Boolean {
+        val shown =
+            runCatching {
+                showExplanation {
+                    val opened = runCatching(openSettings).getOrDefault(false)
+                    record("attachment_install_permission_settings confirmed=true settingsOpened=$opened")
+                }
+            }.getOrDefault(false)
+        if (shown) {
+            record("attachment_install_permission_explained shown=true")
+            return true
+        }
+        val opened = runCatching(openSettings).getOrDefault(false)
+        record("attachment_install_permission_explained shown=false settingsOpened=$opened")
+        return opened
     }
 }
 

@@ -27,11 +27,12 @@ class AndroidPackageInstallPermissionTest {
     private val packageManager = shadowOf(context.packageManager)
 
     @Test
-    fun sideloadBuildWithUnknownSourcesOffOpensRaftsOwnSettingsPage() {
+    fun sideloadBuildWithUnknownSourcesOffAndNoWindowOpensRaftsOwnSettingsPage() {
         installSelf(requested = arrayOf(Manifest.permission.REQUEST_INSTALL_PACKAGES))
         packageManager.setCanRequestPackageInstalls(false)
 
-        val result = AndroidPackageInstallPermission.gate(context, "att").admit(apk())
+        // No activity to explain the restart in: the switch's page opens directly, as before.
+        val result = AndroidPackageInstallPermission.gate(context, null, "att").admit(apk())
 
         assertEquals(AndroidAttachmentOpenStatus.InstallPermissionRequired, result?.status)
         val started = shadowOf(context as Application).nextStartedActivity
@@ -45,7 +46,7 @@ class AndroidPackageInstallPermissionTest {
         packageManager.setCanRequestPackageInstalls(true)
 
         assertTrue(AndroidPackageInstallPermission.isDeclared(context))
-        assertNull(AndroidPackageInstallPermission.gate(context, "att").admit(apk()))
+        assertNull(AndroidPackageInstallPermission.gate(context, null, "att").admit(apk()))
         assertNull(shadowOf(context as Application).nextStartedActivity)
     }
 
@@ -55,7 +56,7 @@ class AndroidPackageInstallPermissionTest {
         packageManager.setCanRequestPackageInstalls(false)
 
         assertFalse(AndroidPackageInstallPermission.isDeclared(context))
-        val result = AndroidPackageInstallPermission.gate(context, "att").admit(apk())
+        val result = AndroidPackageInstallPermission.gate(context, null, "att").admit(apk())
 
         assertEquals(AndroidAttachmentOpenStatus.InstallViaFiles, result?.status)
         val started = shadowOf(context as Application).nextStartedActivity

@@ -1,6 +1,7 @@
 package build.raft.app.shared
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -55,10 +56,74 @@ class AndroidPackageInstallGateTest {
             assertEquals(0, harness.launches)
             assertEquals(1, harness.settingsOpens)
             assertEquals(
-                listOf(AndroidPackageInstallDecision.RequestUnknownSourcesPermission to "settingsOpened=$settingsOpened"),
+                listOf(AndroidPackageInstallDecision.RequestUnknownSourcesPermission to "settingsRequested=$settingsOpened"),
                 harness.records
             )
         }
+    }
+
+    /**
+     * Hands 624cfe35: Android kills Raft ("[KILL UID] REQUEST_INSTALL_PACKAGES changed") when the
+     * switch flips, so Install first says that and opens the switch's page only from its confirm.
+     */
+    @Test
+    fun installWithoutTheSwitchExplainsTheRestartBeforeOpeningSettings() {
+        var settingsOpens = 0
+        var confirm: (() -> Unit)? = null
+        val lines = mutableListOf<String>()
+        val prompt =
+            AndroidUnknownSourcesSettingsPrompt(
+                showExplanation = { onOpenSettings ->
+                    confirm = onOpenSettings
+                    true
+                },
+                openSettings = {
+                    settingsOpens += 1
+                    true
+                },
+                record = { lines += it }
+            )
+        val records = mutableListOf<Pair<AndroidPackageInstallDecision, String?>>()
+        val gate =
+            AndroidPackageInstallGate(
+                installPermissionDeclared = { true },
+                canRequestPackageInstalls = { false },
+                openUnknownSourcesSettings = prompt::request,
+                record = { decision, detail -> records += decision to detail }
+            )
+
+        val result = gate.admit(publicApk())
+
+        // The file page stays quiet (the explanation is the feedback); nothing opened yet.
+        assertEquals(AndroidAttachmentOpenStatus.InstallPermissionRequired, result?.status)
+        assertEquals(0, settingsOpens)
+        assertEquals(listOf(AndroidPackageInstallDecision.RequestUnknownSourcesPermission to "settingsRequested=true"), records)
+        assertEquals(listOf("attachment_install_permission_explained shown=true"), lines)
+
+        // Open Settings: the switch's page, once.
+        confirm!!.invoke()
+        assertEquals(1, settingsOpens)
+        assertEquals("attachment_install_permission_settings confirmed=true settingsOpened=true", lines.last())
+    }
+
+    @Test
+    fun withoutAWindowForTheExplanationTheSettingsPageOpensDirectly() {
+        listOf<() -> Boolean>({ false }, { throw IllegalStateException("no window") }).forEach { show ->
+            var settingsOpens = 0
+            val requested =
+                AndroidUnknownSourcesSettingsPrompt(
+                    showExplanation = { show() },
+                    openSettings = {
+                        settingsOpens += 1
+                        true
+                    }
+                ).request()
+
+            assertTrue(requested)
+            assertEquals(1, settingsOpens)
+        }
+        // Nothing could open: the gate still reports the permission as required (shared copy).
+        assertFalse(AndroidUnknownSourcesSettingsPrompt(showExplanation = { false }, openSettings = { false }).request())
     }
 
     @Test

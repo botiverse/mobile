@@ -93,6 +93,15 @@ object RaftHostStrings {
 
     fun appUpdateInstallPermissionRequired(): String = resolve(Res.string.app_update_detail_install_permission_required)
 
+    /** APK attachment Install without "Install unknown apps": Android restarts Raft when that switch changes. */
+    fun apkInstallPermissionTitle(): String = resolve(Res.string.host_apk_install_permission_title)
+
+    fun apkInstallPermissionMessage(): String = resolve(Res.string.host_apk_install_permission_message)
+
+    fun apkInstallPermissionOpenSettings(): String = resolve(Res.string.host_apk_install_permission_open_settings)
+
+    fun apkInstallPermissionCancel(): String = resolve(Res.string.common_cancel)
+
     fun appUpdateInstallerFailed(): String = resolve(Res.string.app_update_detail_installer_failed)
 
     fun appUpdateInstallFailed(): String = resolve(Res.string.app_update_detail_install_failed)

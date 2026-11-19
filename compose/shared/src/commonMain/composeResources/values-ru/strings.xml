@@ -454,6 +454,9 @@
     <string name="host_feedback_prompt_placeholder">Опишите проблему или идею</string>
     <string name="host_feedback_sent_title">Отзыв отправлен</string>
     <string name="host_feedback_copied_message">Отзыв отправлен.</string>
+    <string name="host_apk_install_permission_title">Разрешите Raft устанавливать приложения</string>
+    <string name="host_apk_install_permission_message">Когда вы включите «Установку неизвестных приложений», Android перезапустит Raft. Затем вернитесь в Raft и снова нажмите «Установить».</string>
+    <string name="host_apk_install_permission_open_settings">Открыть настройки</string>
     <string name="host_feedback_failed_message">Не удалось отправить отзыв: %1$s</string>
     <string name="host_feedback_error_unknown">Неизвестная ошибка</string>
     <string name="settings_feedback_submission_failed_title">Не удалось отправить отзыв</string>

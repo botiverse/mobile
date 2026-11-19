@@ -454,6 +454,9 @@
     <string name="host_feedback_prompt_placeholder">Descreva seu feedback</string>
     <string name="host_feedback_sent_title">Feedback enviado</string>
     <string name="host_feedback_copied_message">Feedback enviado.</string>
+    <string name="host_apk_install_permission_title">Permitir que o Raft instale apps</string>
+    <string name="host_apk_install_permission_message">O Android reinicia o Raft quando você ativa “Instalar apps desconhecidos”. Depois, volte ao Raft e toque em Instalar de novo.</string>
+    <string name="host_apk_install_permission_open_settings">Abrir configurações</string>
     <string name="host_feedback_failed_message">Não foi possível enviar o feedback: %1$s</string>
     <string name="host_feedback_error_unknown">Erro desconhecido</string>
     <string name="settings_feedback_submission_failed_title">Não foi possível enviar o feedback</string>
