@@ -155,6 +155,9 @@ internal class SharedSignedInDevicesStore(
             passkeyOptions = { rp -> dataSource.passkeyAssertionOptions(rp) },
             webUrl = stepUpWebUrl,
             webTarget = { SecondFactorStepUpWebTarget.Account },
+            webStepUp = dataSource.webStepUp(),
+            // slock stepUpGate.ts: a lost device's sign-out (pending contract verification).
+            webStepUpAction = "session_revoke",
         )
 
     private var refreshJob: Job? = null

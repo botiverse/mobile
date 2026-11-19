@@ -27,7 +27,28 @@ sealed interface SecondFactorStepUpBanner {
     data object PasskeyNoCredential : SecondFactorStepUpBanner
     /** This device can't use a passkey here: the dialog moved on to the other methods. */
     data object PasskeyUnsupported : SecondFactorStepUpBanner
+    /** Continue in browser: the web sheet was closed (or the page's Cancel) before it confirmed. */
+    data object WebStepUpCancelled : SecondFactorStepUpBanner
+    /** Continue in browser: the request or its code ran out (`error=expired`, 410). */
+    data class WebStepUpExpired(val traceId: String? = null) : SecondFactorStepUpBanner
 }
+
+/**
+ * Continue in browser (iOS, an account with only legacy passkeys; AppWebStepUp.kt): [Ready] to
+ * start, [Opening] while the request is made, [Waiting] while the web page is up, [Completing]
+ * while the page's code is exchanged.
+ */
+enum class SecondFactorWebStepUpPhase { Ready, Opening, Waiting, Completing }
+
+/**
+ * A web step-up page the dialog is to open now ([RaftAppWebStepUpBrowser]), handing back to
+ * [callbackScheme]. [id] tells a late answer from an earlier attempt's.
+ */
+data class SecondFactorWebStepUpSession(
+    val id: Long,
+    val url: String,
+    val callbackScheme: String,
+)
 
 /**
  * A passkey assertion the dialog is to run on the platform ([RaftNativePasskeyAssertion]): the
@@ -104,10 +125,22 @@ data class SecondFactorStepUpDialogState(
      * change there and confirm it with the passkey. Null: the dialog only says to.
      */
     val webUrl: String? = null,
+    /**
+     * Continue in browser, with no way to answer here and only legacy passkeys (iOS): the passkey
+     * is checked on a web page and this sign-in verified. Null: not offered (other platforms, or
+     * the server has none: 404), and Open on the web stands in.
+     */
+    val webStepUp: SecondFactorWebStepUpPhase? = null,
+    /** The web page the dialog is to open for Continue in browser. */
+    val webStepUpSession: SecondFactorWebStepUpSession? = null,
 ) {
-    /** No way to answer here, and the action's web page is known: Open on the web. */
+    /** No way to answer here, no Continue in browser, and the action's web page is known: Open on the web. */
     val opensOnWeb: Boolean
-        get() = method == null && webUrl != null
+        get() = method == null && webStepUp == null && webUrl != null
+
+    /** No way to answer here, and Continue in browser is offered. */
+    val continuesInBrowser: Boolean
+        get() = method == null && webStepUp != null
 
     /** Checking an answer, or the passkey prompt is up. */
     val busy: Boolean
@@ -143,6 +176,15 @@ sealed interface SecondFactorStepUpIntent {
     data object RequestTwoStepReset : SecondFactorStepUpIntent
     /** Sign it (them) out now with your password: the caller sends `sign_out` instead. */
     data object SignOutInstead : SecondFactorStepUpIntent
+    /** Continue in browser: start the web step-up and open its page. */
+    data object ContinueInBrowser : SecondFactorStepUpIntent
+    /** The platform's web session for [SecondFactorStepUpDialogState.webStepUpSession] [sessionId] ended. */
+    data class WebStepUpBrowserFinished(
+        val sessionId: Long,
+        val result: RaftAppWebStepUpBrowserResult,
+    ) : SecondFactorStepUpIntent
+    /** A web step-up callback handed to the app outside the web session ([RaftAppWebStepUp.callbacks]). */
+    data class WebStepUpCallback(val uri: String) : SecondFactorStepUpIntent
     /** The platform's answer to [SecondFactorStepUpDialogState.passkeyCeremony] [ceremonyId]. */
     data class PasskeyAssertionFinished(
         val ceremonyId: Long,
@@ -195,6 +237,15 @@ private const val TOTP_CODE_LENGTH = 6
  *
  * The web, with none: the dialog's Open on the web goes to the action's page, [webUrl] of the
  * run's target ([webTarget] unless [run] names another); without a [webUrl] it only says to.
+ *
+ * Continue in browser (only with [webStepUp], iOS): when the passkey drops out because the person
+ * has only legacy passkeys (`passkey_rp_unavailable`) and no other method is left, the dialog
+ * offers it instead of Open on the web. It starts a web step-up for this sign-in (the refused
+ * action's `StepUpAction` key: [webStepUpAction], or the one [run] names), keeps the request and
+ * its PKCE verifier on disk, has the dialog open the page in a web session, takes the page's
+ * callback for that request only, exchanges its code (this sign-in's bearer and the verifier) and
+ * settles as verified: the action goes once more. A 404 from the start (flag off, no legacy
+ * passkey) drops back to Open on the web for this coordinator.
  */
 class SecondFactorStepUpCoordinator(
     private val stepUp: suspend (SecondFactorStepUpAnswer) -> SecondFactorStepUpResult,
@@ -207,7 +258,18 @@ class SecondFactorStepUpCoordinator(
     private val webUrl: (suspend (SecondFactorStepUpWebTarget) -> String?)? = null,
     /** The action's web page when [run] names none, read when the dialog opens. */
     private val webTarget: () -> SecondFactorStepUpWebTarget? = { null },
+    private val webStepUp: SecondFactorWebStepUp? = null,
+    /** The refused action's `StepUpAction` key for the web step-up when [run] names none. */
+    private val webStepUpAction: String? = null,
 ) {
+    /** The server answered the web step-up's start with 404: Open on the web from now on. */
+    private var webStepUpUnavailable = false
+    private var webSessionSeq = 0L
+    /** The open dialog's action key, sent with the web step-up's start. */
+    private var openAction: String? = null
+    /** The web step-up request this dialog put on file (cleared with the dialog). */
+    private var openWebGeneration: String? = null
+
     private var ceremonySeq = 0L
 
     /**
@@ -223,16 +285,20 @@ class SecondFactorStepUpCoordinator(
 
     private var pending: CompletableDeferred<SecondFactorStepUpSettle>? = null
 
-    suspend fun <T> run(request: suspend () -> DataResult<T>): SecondFactorStepUpOutcome<T> = run(webTarget(), request)
+    suspend fun <T> run(request: suspend () -> DataResult<T>): SecondFactorStepUpOutcome<T> = run(webTarget(), webStepUpAction, request)
 
-    /** [run] for an action done on the web at [webTarget] (Open on the web). */
+    /**
+     * [run] for an action done on the web at [webTarget] (Open on the web), whose `StepUpAction`
+     * key is [action] (Continue in browser).
+     */
     suspend fun <T> run(
         webTarget: SecondFactorStepUpWebTarget?,
+        action: String? = webStepUpAction,
         request: suspend () -> DataResult<T>,
     ): SecondFactorStepUpOutcome<T> {
         val first = request()
         val challenge = first.secondFactorStepUpChallengeOrNull() ?: return SecondFactorStepUpOutcome.Completed(first)
-        if (awaitSettled(challenge, recovery = null, webTarget) != SecondFactorStepUpSettle.Verified) return SecondFactorStepUpOutcome.Cancelled
+        if (awaitSettled(challenge, recovery = null, webTarget, action) != SecondFactorStepUpSettle.Verified) return SecondFactorStepUpOutcome.Cancelled
         return SecondFactorStepUpOutcome.Completed(request())
     }
 
@@ -248,7 +314,7 @@ class SecondFactorStepUpCoordinator(
     ): SecondFactorStepUpSigningOutOutcome<T> {
         val first = request()
         val challenge = first.secondFactorStepUpChallengeOrNull() ?: return SecondFactorStepUpSigningOutOutcome.Completed(first)
-        return when (awaitSettled(challenge, recovery, webTarget())) {
+        return when (awaitSettled(challenge, recovery, webTarget(), webStepUpAction)) {
             SecondFactorStepUpSettle.Verified -> SecondFactorStepUpSigningOutOutcome.Completed(request())
             SecondFactorStepUpSettle.Cancelled -> SecondFactorStepUpSigningOutOutcome.Cancelled
             SecondFactorStepUpSettle.SignOutInstead -> SecondFactorStepUpSigningOutOutcome.SignOutInstead
@@ -305,6 +371,9 @@ class SecondFactorStepUpCoordinator(
                 }
             }
             is SecondFactorStepUpIntent.PasskeyAssertionFinished -> finishPasskey(intent)
+            SecondFactorStepUpIntent.ContinueInBrowser -> continueInBrowser()
+            is SecondFactorStepUpIntent.WebStepUpBrowserFinished -> finishWebSession(intent)
+            is SecondFactorStepUpIntent.WebStepUpCallback -> acceptWebCallback(intent.uri, fromSession = false)
         }
     }
 
@@ -335,10 +404,13 @@ class SecondFactorStepUpCoordinator(
         challenge: SecondFactorStepUpChallenge,
         recovery: SecondFactorStepUpRecovery?,
         webTarget: SecondFactorStepUpWebTarget?,
+        action: String?,
     ): SecondFactorStepUpSettle {
         pending?.let { return it.await() }
         val deferred = CompletableDeferred<SecondFactorStepUpSettle>()
         pending = deferred
+        openAction = action
+        openWebGeneration = null
         // A page that can't be named (no session) leaves the dialog without Open on the web.
         val actionWebUrl = webTarget?.let { target -> runCatchingPreservingCancellation { webUrl?.invoke(target) }.getOrNull() }
         val passkey = challenge.passkeyListed && nativePasskeys && passkeyOptions != null
@@ -359,6 +431,7 @@ class SecondFactorStepUpCoordinator(
             if (pending === deferred) {
                 pending = null
                 publish(null)
+                forgetWebRequest()
             }
         }
     }
@@ -457,7 +530,9 @@ class SecondFactorStepUpCoordinator(
                     is SecondFactorStepUpResult.PasskeyNotFound -> publish(withoutPasskey(shown, SecondFactorStepUpBanner.PasskeyNoCredential))
                     // None this platform can use (iOS: only passkeys under the legacy RP ID): the
                     // other methods, or the web with none.
-                    is SecondFactorStepUpResult.PasskeyRpUnavailable -> publish(withoutPasskey(shown, SecondFactorStepUpBanner.PasskeyUnsupported))
+                    // With nothing left, Continue in browser where the platform has it.
+                    is SecondFactorStepUpResult.PasskeyRpUnavailable ->
+                        publish(withoutPasskey(shown, SecondFactorStepUpBanner.PasskeyUnsupported).offeringWebStepUp())
                     is SecondFactorStepUpResult.CodeInvalid -> publish(shown.copy(banner = SecondFactorStepUpBanner.PasskeyInvalid(refusal.traceId)))
                     else -> publish(shown.copy(banner = refusalBanner(refusal)))
                 }
@@ -518,6 +593,175 @@ class SecondFactorStepUpCoordinator(
         )
     }
 
+    /** [state] with Continue in browser where it has no way to answer and the platform and server have one. */
+    private fun SecondFactorStepUpDialogState.offeringWebStepUp(): SecondFactorStepUpDialogState =
+        if (method == null && webStepUp == null && this@SecondFactorStepUpCoordinator.webStepUp != null && !webStepUpUnavailable) {
+            copy(webStepUp = SecondFactorWebStepUpPhase.Ready)
+        } else {
+            this
+        }
+
+    /** Continue in browser: the request, then the page in a web session (the dialog opens it). */
+    private suspend fun continueInBrowser() {
+        val current = _state.value ?: return
+        val web = webStepUp ?: return
+        if (!current.continuesInBrowser || current.webStepUp != SecondFactorWebStepUpPhase.Ready || current.submitting) return
+        val deferred = pending ?: return
+        publish(current.copy(webStepUp = SecondFactorWebStepUpPhase.Opening, webStepUpSession = null, banner = null))
+        forgetWebRequest()
+        val pkce = web.pkce()
+        val generation = web.generation()
+        val started =
+            runCatchingPreservingCancellation {
+                web.start(AppWebStepUpStartBodyPending(returnUri = web.returnUri, codeChallenge = pkce.challenge, action = openAction))
+            }.getOrElse { AppWebStepUpStartResult.Failed(serverCode = "threw") }
+        if (pending !== deferred) return
+        val shown = _state.value ?: return
+        if (shown.webStepUp != SecondFactorWebStepUpPhase.Opening) return
+        when (started) {
+            is AppWebStepUpStartResult.Started -> {
+                if (!isAllowedAppLoginUrl(started.stepUpUrl)) {
+                    web.log("app_web_step_up_start result=failed reason=url_not_allowed")
+                    publish(shown.copy(webStepUp = SecondFactorWebStepUpPhase.Ready, banner = SecondFactorStepUpBanner.Failed(null)))
+                    return
+                }
+                web.pending.save(
+                    AppWebStepUpPending(generation, started.requestId, pkce.verifier, web.returnUri, web.pending.now())
+                )
+                openWebGeneration = generation
+                web.log("app_web_step_up_start result=started")
+                publish(
+                    shown.copy(
+                        webStepUp = SecondFactorWebStepUpPhase.Waiting,
+                        webStepUpSession =
+                            SecondFactorWebStepUpSession(
+                                id = ++webSessionSeq,
+                                url = started.stepUpUrl,
+                                callbackScheme = web.returnUri.substringBefore("://"),
+                            ),
+                    )
+                )
+            }
+            AppWebStepUpStartResult.Unavailable -> {
+                // Flag off, or no legacy passkey after all: Open on the web (#5035), from now on.
+                web.log("app_web_step_up_start result=unavailable")
+                webStepUpUnavailable = true
+                publish(shown.copy(webStepUp = null))
+            }
+            AppWebStepUpStartResult.NotEnabled -> settle(SecondFactorStepUpSettle.Verified)
+            is AppWebStepUpStartResult.Failed -> {
+                web.log("app_web_step_up_start result=failed code=${started.serverCode}")
+                publish(
+                    shown.copy(
+                        webStepUp = SecondFactorWebStepUpPhase.Ready,
+                        banner = SecondFactorStepUpBanner.Failed(started.serverMessage, started.traceId),
+                    )
+                )
+            }
+        }
+    }
+
+    /** The web session ended: its callback, or the sheet closed. */
+    private suspend fun finishWebSession(intent: SecondFactorStepUpIntent.WebStepUpBrowserFinished) {
+        val current = _state.value ?: return
+        if (current.webStepUpSession?.id != intent.sessionId) return
+        val shown = current.copy(webStepUpSession = null)
+        when (val result = intent.result) {
+            is RaftAppWebStepUpBrowserResult.Callback -> {
+                publish(shown)
+                acceptWebCallback(result.uri, fromSession = true)
+            }
+            RaftAppWebStepUpBrowserResult.Closed ->
+                publish(
+                    if (shown.webStepUp == SecondFactorWebStepUpPhase.Waiting) {
+                        forgetWebRequest()
+                        shown.copy(webStepUp = SecondFactorWebStepUpPhase.Ready, banner = SecondFactorStepUpBanner.WebStepUpCancelled)
+                    } else {
+                        shown
+                    }
+                )
+            is RaftAppWebStepUpBrowserResult.Failed ->
+                publish(
+                    if (shown.webStepUp == SecondFactorWebStepUpPhase.Waiting) {
+                        webStepUp?.log("app_web_step_up_session result=failed reason=${result.reason}")
+                        forgetWebRequest()
+                        shown.copy(webStepUp = SecondFactorWebStepUpPhase.Ready, banner = SecondFactorStepUpBanner.Failed(null))
+                    } else {
+                        shown
+                    }
+                )
+        }
+    }
+
+    /**
+     * The page's callback: only for the request on file (anything else is stale and ignored; one
+     * the web session itself handed back ends the attempt), exchanged once, then Verified.
+     */
+    private suspend fun acceptWebCallback(uri: String, fromSession: Boolean) {
+        val web = webStepUp ?: return
+        val current = _state.value ?: return
+        val deferred = pending ?: return
+        fun exit(reason: String) = web.log("app_web_step_up_callback result=$reason source=${if (fromSession) "session" else "open_url"}")
+        if (current.webStepUp != SecondFactorWebStepUpPhase.Waiting) return exit("ignored_not_waiting")
+        val giveUp = { banner: SecondFactorStepUpBanner ->
+            publish(current.copy(webStepUp = SecondFactorWebStepUpPhase.Ready, webStepUpSession = null, banner = banner))
+        }
+        val callback = parseAppLoginCallback(uri)
+        val onFile = web.pending.read()
+        if (callback == null || onFile == null || onFile.requestId != callback.requestId || onFile.returnUri != callback.returnUri) {
+            exit(if (callback == null) "ignored_malformed" else "stale")
+            // The session is over without this attempt's answer: let the person try again.
+            if (fromSession) giveUp(SecondFactorStepUpBanner.Failed(null))
+            return
+        }
+        // Remove before exchanging: a repeated callback cannot use the code again.
+        web.pending.clear()
+        openWebGeneration = null
+        when {
+            !web.pending.isFresh(onFile) -> return giveUp(SecondFactorStepUpBanner.WebStepUpExpired()).also { exit("expired_local") }
+            callback.error == "expired" -> return giveUp(SecondFactorStepUpBanner.WebStepUpExpired()).also { exit("expired") }
+            callback.error == "access_denied" -> return giveUp(SecondFactorStepUpBanner.WebStepUpCancelled).also { exit("denied") }
+            callback.error.isNotBlank() -> return giveUp(SecondFactorStepUpBanner.Failed(null)).also { exit("callback_error") }
+        }
+        publish(
+            current.copy(
+                webStepUp = SecondFactorWebStepUpPhase.Completing,
+                webStepUpSession = null,
+                submitting = true,
+                banner = null,
+            )
+        )
+        val result =
+            runCatchingPreservingCancellation {
+                web.complete(AppWebStepUpCompleteBodyPending(code = callback.code, codeVerifier = onFile.verifier, returnUri = onFile.returnUri))
+            }.getOrElse { AppWebStepUpCompleteResult.Failed(serverCode = "threw") }
+        if (pending !== deferred) return
+        val shown = _state.value?.copy(submitting = false, webStepUp = SecondFactorWebStepUpPhase.Ready) ?: return
+        when (result) {
+            AppWebStepUpCompleteResult.Verified,
+            AppWebStepUpCompleteResult.NotEnabled -> {
+                exit("verified")
+                settle(SecondFactorStepUpSettle.Verified)
+            }
+            is AppWebStepUpCompleteResult.Expired -> {
+                exit("exchange_expired")
+                publish(shown.copy(banner = SecondFactorStepUpBanner.WebStepUpExpired(result.traceId)))
+            }
+            is AppWebStepUpCompleteResult.Failed -> {
+                exit("exchange_failed code=${result.serverCode}")
+                publish(shown.copy(banner = SecondFactorStepUpBanner.Failed(result.serverMessage, result.traceId)))
+            }
+        }
+    }
+
+    /** Drops the web step-up request this dialog put on file (not a newer one of another dialog). */
+    private fun forgetWebRequest() {
+        val generation = openWebGeneration ?: return
+        openWebGeneration = null
+        val web = webStepUp ?: return
+        if (web.pending.read()?.generation == generation) web.pending.clear()
+    }
+
     private fun refusalBanner(result: SecondFactorStepUpResult): SecondFactorStepUpBanner =
         when (result) {
             is SecondFactorStepUpResult.Locked -> SecondFactorStepUpBanner.Locked(result.lockedUntilEpochMillis, result.traceId)
@@ -535,6 +779,7 @@ class SecondFactorStepUpCoordinator(
     private fun settle(outcome: SecondFactorStepUpSettle) {
         val deferred = pending ?: return
         pending = null
+        forgetWebRequest()
         publish(null)
         deferred.complete(outcome)
     }

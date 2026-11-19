@@ -210,6 +210,11 @@
     <string name="settings_step_up_sign_in_again">再ログイン</string>
     <string name="settings_step_up_passkey_only">Web 版の Raft でこの変更を行い、パスキーで確認してください。</string>
     <string name="settings_step_up_open_on_web">Web 版で開く</string>
+    <string name="settings_step_up_web_body">パスキーはブラウザで使えます。ブラウザで続けて本人確認してください。</string>
+    <string name="settings_step_up_web_continue">ブラウザで続ける</string>
+    <string name="settings_step_up_web_waiting">ブラウザで完了してください…</string>
+    <string name="settings_step_up_web_cancelled">確認の前にブラウザが閉じられました。もう一度お試しください。</string>
+    <string name="settings_step_up_web_expired">このリクエストの有効期限が切れました。もう一度お試しください。</string>
     <string name="settings_step_up_passkey_button">パスキーを使用</string>
     <string name="settings_step_up_use_passkey">パスキーを使用</string>
     <string name="settings_step_up_passkey_cancelled">パスキーの画面が閉じられました。もう一度試すか、別の方法を使用してください。</string>

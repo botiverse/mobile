@@ -10087,5 +10087,9 @@ private fun FlushComposerDraftOnLeave(
  */
 private fun threadActionCardStepUpCoordinator(networkClient: RaftNetworkClient): SecondFactorStepUpCoordinator {
     val repository = SecondFactorStepUpRepository(networkClient)
-    return SecondFactorStepUpCoordinator(stepUp = repository::stepUp, passkeyOptions = repository::passkeyAssertionOptions)
+    return SecondFactorStepUpCoordinator(
+        stepUp = repository::stepUp,
+        passkeyOptions = repository::passkeyAssertionOptions,
+        webStepUp = repository.webStepUp(),
+    )
 }

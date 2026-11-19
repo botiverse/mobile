@@ -15,6 +15,7 @@ import build.raft.app.data.SecondFactorStepUpBanner
 import build.raft.app.data.SecondFactorStepUpDialogState
 import build.raft.app.data.SecondFactorStepUpFieldError
 import build.raft.app.data.SecondFactorStepUpMethod
+import build.raft.app.data.SecondFactorWebStepUpPhase
 import build.raft.app.data.SharedAccountLoginSecurityState
 import kotlin.test.Test
 import org.junit.runner.RunWith
@@ -34,7 +35,9 @@ import org.robolectric.shadows.ShadowDialog
  * `settings.account.step-up{,.dark,.backup-used,.locked,.passkey-only}`: "Verify it's you" for a
  * refused password or sign-in method change (code field with the backup-code link; a used backup
  * code; the lock banner; only a passkey listed). `settings.account.step-up.open-on-web{,.dark}`:
- * only a passkey listed and the action's web page known: Close and Open on the web. Fixed fixture data. Reports land in
+ * only a passkey listed and the action's web page known: Close and Open on the web.
+ * `settings.account.step-up.continue-in-browser{,.dark,.waiting,.expired}`: only legacy passkeys
+ * on iOS: Cancel and Continue in browser; waiting on the page; the request ran out (trace ID). Fixed fixture data. Reports land in
  * `build/reports/home-screenshots/` (uploaded by CI as `shared-home-screenshots`); verify / record
  * as [RaftRobolectricScreenshot].
  */
@@ -124,6 +127,34 @@ class SettingsAccountScreenshotTest {
     fun stepUpDialogOpenOnWebDark() =
         stepUpDialog("settings.account.step-up.open-on-web.dark", RaftAppAppearance.Dark, stepUpOpenOnWeb)
 
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
+    fun stepUpDialogContinueInBrowserLight() =
+        stepUpDialog("settings.account.step-up.continue-in-browser", RaftAppAppearance.Light, stepUpContinueInBrowser)
+
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
+    fun stepUpDialogContinueInBrowserDark() =
+        stepUpDialog("settings.account.step-up.continue-in-browser.dark", RaftAppAppearance.Dark, stepUpContinueInBrowser)
+
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
+    fun stepUpDialogContinueInBrowserWaitingLight() =
+        stepUpDialog(
+            "settings.account.step-up.continue-in-browser.waiting",
+            RaftAppAppearance.Light,
+            stepUpContinueInBrowser.copy(webStepUp = SecondFactorWebStepUpPhase.Waiting),
+        )
+
+    @Test
+    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
+    fun stepUpDialogContinueInBrowserExpiredLight() =
+        stepUpDialog(
+            "settings.account.step-up.continue-in-browser.expired",
+            RaftAppAppearance.Light,
+            stepUpContinueInBrowser.copy(banner = SecondFactorStepUpBanner.WebStepUpExpired("4bf92f3577b34da6a3ce929d0e0e4736")),
+        )
+
     private fun stepUpDialog(name: String, appearance: RaftAppAppearance, state: SecondFactorStepUpDialogState) =
         RaftRobolectricScreenshot.capture(
             name,
@@ -165,6 +196,16 @@ class SettingsAccountScreenshotTest {
 
 private val loginSecurityOn =
     SharedAccountLoginSecurityState(security = AccountLoginSecurity(twoStepEnabled = true, passkeyCount = 2))
+
+/** Only legacy passkeys on iOS: Continue in browser (the action's page is known, but the web step-up stands in). */
+private val stepUpContinueInBrowser =
+    SecondFactorStepUpDialogState(
+        methods = emptyList(),
+        method = null,
+        passkeyListed = true,
+        webUrl = "https://app.raft.build/s/acme/computers",
+        webStepUp = SecondFactorWebStepUpPhase.Ready,
+    )
 
 private val stepUpOpenOnWeb =
     SecondFactorStepUpDialogState(

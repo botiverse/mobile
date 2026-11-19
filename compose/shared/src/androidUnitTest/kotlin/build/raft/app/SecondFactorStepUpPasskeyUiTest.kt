@@ -21,6 +21,13 @@ import build.raft.app.data.SecondFactorStepUpDialogState
 import build.raft.app.data.SecondFactorStepUpIntent
 import build.raft.app.data.SecondFactorStepUpMethod
 import build.raft.app.data.parseSharedSecondFactorPasskeyAssertionOptions
+import build.raft.app.data.RaftAppWebStepUpBrowser
+import build.raft.app.data.RaftAppWebStepUpBrowserResult
+import build.raft.app.data.SecondFactorWebStepUpPhase
+import build.raft.app.data.SecondFactorWebStepUpSession
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.emptyFlow
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
 import kotlin.test.AfterTest
@@ -77,6 +84,8 @@ class SecondFactorStepUpPasskeyUiTest {
         intents: MutableList<SecondFactorStepUpIntent>,
         port: RaftNativePasskeyAssertion = RaftNativePasskeyAssertion { error("no prompt asked") },
         opened: MutableList<String> = mutableListOf(),
+        browser: RaftAppWebStepUpBrowser = RaftAppWebStepUpBrowser { _, _ -> error("no web page asked") },
+        callbacks: Flow<String> = emptyFlow(),
     ) {
         setContent {
             RaftDesignSystemTheme {
@@ -85,6 +94,8 @@ class SecondFactorStepUpPasskeyUiTest {
                     onIntent = { intents += it },
                     passkeyAssertion = port,
                     openWebPage = { opened += it },
+                    webStepUpBrowser = browser,
+                    webStepUpCallbacks = callbacks,
                 )
             }
         }
@@ -168,6 +179,44 @@ class SecondFactorStepUpPasskeyUiTest {
         waitForIdle()
         onAllNodesWithTag(SECOND_FACTOR_STEP_UP_OPEN_ON_WEB_TAG).assertCountEquals(0)
         onNodeWithText("Use Passkey").assertExists()
+    }
+
+    @Test
+    fun continueInBrowserOpensTheCoordinatorsPageOnceAndHandsBackHowItEnded() = runRobolectricComposeUiTest {
+        val intents = mutableListOf<SecondFactorStepUpIntent>()
+        val pages = mutableListOf<Pair<String, String>>()
+        val browser = RaftAppWebStepUpBrowser { url, scheme ->
+            pages += url to scheme
+            RaftAppWebStepUpBrowserResult.Callback("raft://login/callback?requestId=r-1&code=k-1")
+        }
+        val callbacks = MutableSharedFlow<String>(extraBufferCapacity = 1)
+        val ready = passkeyOnlyHere.copy(webUrl = "https://app.raft.build/settings/account", webStepUp = SecondFactorWebStepUpPhase.Ready)
+        val state = mutableStateOf(ready)
+        show(state, intents, browser = browser, callbacks = callbacks)
+
+        // Continue in browser stands in for Open on the web.
+        onNodeWithText("Your passkey works in the browser", substring = true).assertExists()
+        onAllNodesWithTag(SECOND_FACTOR_STEP_UP_OPEN_ON_WEB_TAG).assertCountEquals(0)
+        onNodeWithTag(SECOND_FACTOR_STEP_UP_CONTINUE_IN_BROWSER_TAG).performClick()
+        waitForIdle()
+        assertEquals(listOf<SecondFactorStepUpIntent>(SecondFactorStepUpIntent.ContinueInBrowser), intents)
+
+        // The coordinator asks for its page: opened once, and how it ended goes back.
+        val session = SecondFactorWebStepUpSession(3, "https://app.raft.build/login/app?request=r-1&purpose=step_up", "raft")
+        runOnIdle { state.value = ready.copy(webStepUp = SecondFactorWebStepUpPhase.Waiting, webStepUpSession = session) }
+        waitForIdle()
+        onNodeWithText("Finish in the browser", substring = true).assertExists()
+        assertEquals(listOf(session.url to "raft"), pages)
+        assertEquals(
+            SecondFactorStepUpIntent.WebStepUpBrowserFinished(3, RaftAppWebStepUpBrowserResult.Callback("raft://login/callback?requestId=r-1&code=k-1")),
+            intents.last(),
+        )
+
+        // While waiting, a callback handed to the app elsewhere goes to the coordinator too.
+        runOnIdle { callbacks.tryEmit("raft://login/callback?requestId=r-1&code=k-1") }
+        waitForIdle()
+        assertEquals(SecondFactorStepUpIntent.WebStepUpCallback("raft://login/callback?requestId=r-1&code=k-1"), intents.last())
+        assertEquals(1, pages.size)
     }
 
     private val passkeyOnlyHere = SecondFactorStepUpDialogState(methods = emptyList(), method = null, passkeyListed = true)

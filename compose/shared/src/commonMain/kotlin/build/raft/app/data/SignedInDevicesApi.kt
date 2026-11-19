@@ -246,6 +246,8 @@ internal interface SignedInDevicesDataSource {
     /** The step-up's passkey assertion options (SecondFactorPasskeyStepUpApi.kt). */
     suspend fun passkeyAssertionOptions(rp: String?): SecondFactorPasskeyOptionsResult =
         SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.Failed(serverCode = "second_factor_step_up_unavailable"))
+    /** The step-up's Continue in browser (AppWebStepUp.kt); null where there is none. */
+    fun webStepUp(): SecondFactorWebStepUp? = null
     suspend fun requestPasswordEmail(email: String): SecondFactorRecoveryEmailResult
     suspend fun requestTwoStepReset(email: String): SecondFactorRecoveryEmailResult
 }
@@ -325,6 +327,8 @@ internal class NetworkSignedInDevicesDataSource(private val networkClient: RaftN
 
     override suspend fun passkeyAssertionOptions(rp: String?): SecondFactorPasskeyOptionsResult =
         stepUpRepository.passkeyAssertionOptions(rp)
+
+    override fun webStepUp(): SecondFactorWebStepUp? = stepUpRepository.webStepUp()
 
     override suspend fun requestPasswordEmail(email: String): SecondFactorRecoveryEmailResult = email(FORGOT_PASSWORD_PATH, email)
 
