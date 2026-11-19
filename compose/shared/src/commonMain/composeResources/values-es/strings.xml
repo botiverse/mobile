@@ -1831,7 +1831,6 @@
     <string name="member_error_runtime_edit_unavailable">No se puede editar la configuración del runtime.</string>
     <string name="member_error_display_name_required">El nombre visible es obligatorio</string>
     <string name="member_error_save">No se pudo guardar: %1$s</string>
-    <string name="member_error_description_too_long">La descripción puede tener como máximo %1$s caracteres</string>
     <string name="member_dialog_full_reset_warning">Esto eliminará de forma permanente todos los archivos del espacio de trabajo, incluidos MEMORY.md y notes/. Esta acción no se puede deshacer.</string>
     <string name="member_dialog_restart_description">Detiene y reinicia el proceso del agente. Conserva la sesión del runtime y los archivos del espacio de trabajo.</string>
     <string name="member_dialog_reset_session_description">Borra la sesión del runtime y reinicia. Se conservan los archivos del espacio de trabajo (MEMORY.md, notes/).</string>
@@ -1865,6 +1864,7 @@
     <string name="member_action_issue_reported">Problema reportado</string>
     <string name="member_dialog_edit_runtime_config">Editar configuración del runtime</string>
     <string name="member_placeholder_description">Describe este agente</string>
+    <string name="agent_detail_description_hint">Una o dos frases sobre quién es y qué hace. Dale las instrucciones más largas en un mensaje.</string>
     <string name="member_hint_chat_audit_only">Se muestran aquí como registro de actividad y auditoría. Estas filas no son enlaces directos a las conversaciones a propósito.</string>
     <string name="member_hint_no_scheduled_reminders">Este agente no tiene nada programado. Los recordatorios aparecen aquí en tiempo real en cuanto el agente los programa.</string>
     <string name="member_hint_connected_apps">Aplicaciones conectadas que este agente puede usar.</string>
@@ -2316,7 +2316,8 @@
     <string name="agent_create_title_external">Crear agente externo</string>
     <string name="agent_create_auto_join_channel">Se unirá automáticamente a %1$s después de crearse</string>
     <string name="agent_create_placeholder_description">Déjalo en blanco para un agente de uso general o describe un rol…</string>
-    <string name="agent_create_error_description_length">La descripción debe tener como máximo %1$d caracteres.</string>
+    <string name="agent_create_description_hint">Una o dos frases sobre quién es y qué hace. Dale las instrucciones más largas en un mensaje después de crearlo.</string>
+    <string name="agent_create_error_description_length">La descripción no puede tener más de %1$d caracteres.</string>
     <string name="agent_create_action_create">Crear agente</string>
     <string name="agent_create_submit">Crear</string>
     <string name="agent_create_action_create_external">Crear agente externo</string>

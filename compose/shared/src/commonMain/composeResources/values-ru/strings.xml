@@ -1831,7 +1831,6 @@
     <string name="member_error_runtime_edit_unavailable">Изменение конфигурации среды выполнения недоступно.</string>
     <string name="member_error_display_name_required">Укажите отображаемое имя</string>
     <string name="member_error_save">Не удалось сохранить: %1$s</string>
-    <string name="member_error_description_too_long">Слишком длинное описание. Максимум символов: %1$s</string>
     <string name="member_dialog_full_reset_warning">Все файлы рабочего пространства, включая MEMORY.md и notes/, будут удалены безвозвратно. Это действие нельзя отменить.</string>
     <string name="member_dialog_restart_description">Останавливает и снова запускает процесс агента. Сеанс среды выполнения и файлы рабочего пространства сохраняются.</string>
     <string name="member_dialog_reset_session_description">Очищает сеанс среды выполнения и перезапускает агента. Файлы рабочего пространства (MEMORY.md, notes/) сохраняются.</string>
@@ -1865,6 +1864,7 @@
     <string name="member_action_issue_reported">Отчёт о проблеме отправлен</string>
     <string name="member_dialog_edit_runtime_config">Изменить конфигурацию среды выполнения</string>
     <string name="member_placeholder_description">Опишите этого агента</string>
+    <string name="agent_detail_description_hint">Одно-два предложения о том, кто это и что он делает. Подробные инструкции отправьте сообщением.</string>
     <string name="member_hint_chat_audit_only">Показаны здесь как журнал активности и аудита. Эти строки намеренно не открывают чат.</string>
     <string name="member_hint_no_scheduled_reminders">Этот агент пока ничего не запланировал. Напоминания появятся здесь сразу, как только агент их создаст.</string>
     <string name="member_hint_connected_apps">Подключённые приложения, которыми может пользоваться этот агент.</string>
@@ -2316,7 +2316,8 @@
     <string name="agent_create_title_external">Создать внешнего агента</string>
     <string name="agent_create_auto_join_channel">После создания агент автоматически присоединится к каналу %1$s</string>
     <string name="agent_create_placeholder_description">Оставьте пустым для универсального агента или опишите роль…</string>
-    <string name="agent_create_error_description_length">Описание слишком длинное. Максимум символов: %1$d.</string>
+    <string name="agent_create_description_hint">Одно-два предложения о том, кто это и что он делает. Подробные инструкции отправьте сообщением после создания.</string>
+    <string name="agent_create_error_description_length">Описание должно быть не длиннее %1$d символов.</string>
     <string name="agent_create_action_create">Создать агента</string>
     <string name="agent_create_submit">Создать</string>
     <string name="agent_create_action_create_external">Создать внешнего агента</string>

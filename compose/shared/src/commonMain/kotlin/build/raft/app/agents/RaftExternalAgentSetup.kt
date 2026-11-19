@@ -36,6 +36,7 @@ import build.raft.app.components.SegmentedControlOption
 import build.raft.app.data.AgentArchiveWorkspaceChoice
 import build.raft.app.data.AgentCredentialRow
 import build.raft.app.data.DataResult
+import build.raft.app.data.PROFILE_DESCRIPTION_MAX_LENGTH
 import build.raft.app.data.ExternalAgentSetupState
 import build.raft.app.data.ExternalAgentStatusSnapshot
 import build.raft.app.data.RaftAgentsApiClient
@@ -610,7 +611,8 @@ internal fun RaftCreateExternalAgentDialog(host: RaftExternalAgentCreateHost, on
                 ) {
                     RaftTextarea(
                         value = description,
-                        onValueChange = { description = it },
+                        // Web CreateExternalAgentDialog `maxLength` (slock #15664): typing stops at the limit.
+                        onValueChange = { description = it.take(PROFILE_DESCRIPTION_MAX_LENGTH) },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = stringResource(Res.string.external_agent_create_description_placeholder),
                         minHeight = 82.dp,
