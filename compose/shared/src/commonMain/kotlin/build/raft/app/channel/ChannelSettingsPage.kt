@@ -2000,9 +2000,10 @@ private fun ChannelDetailsRowText(title: String, description: String?, modifier:
 
 /**
  * The actions at the end of the details (web EditChannelDialog `actionsSection`): a card of rows
- * with no heading, colored by their risk (raft-ui ListRow `tone`): Archive, Leave and Stop all
- * agents orange (they interrupt, but can be undone), Delete or Disconnect red (it can't be undone);
- * Unarchive takes nothing back, so it stays neutral. Each asks first as before (web
+ * with no heading (raft-ui ListRow "An action's risk"): only Delete or Disconnect, which can't be
+ * undone, is red. Archive, Leave and Stop all agents are ink: they interrupt but can be undone,
+ * and their confirmations' buttons are orange (web slock #15515, cindyz #triage:f2e107f7); see
+ * [channelSettingsActionRisk]. Each asks first as before (web
  * `confirmDialogs`), except Unarchive and Stop all agents (its own dialog).
  */
 @Composable
@@ -2024,7 +2025,7 @@ internal fun ChannelActionsSection(
                     ChannelActionRow(
                         stringResource(Res.string.thread_settings_archive),
                         RaftLucideIconName.Archive,
-                        risk = RaftRiskTone.Warning,
+                        risk = channelSettingsActionRisk(ChannelSettingsActionRow.Archive),
                         enabled = buttonEnabled,
                         divider = divider,
                     ) { callbacks.onConfirm(ChannelSettingsConfirm.Archive) }
@@ -2038,7 +2039,7 @@ internal fun ChannelActionsSection(
                             }
                         ),
                         RaftLucideIconName.Archive,
-                        risk = null,
+                        risk = channelSettingsActionRisk(ChannelSettingsActionRow.Unarchive),
                         enabled = buttonEnabled,
                         divider = divider,
                         onClick = callbacks.onUnarchive,
@@ -2047,7 +2048,7 @@ internal fun ChannelActionsSection(
                     ChannelActionRow(
                         stringResource(Res.string.channel_settings_leave),
                         RaftLucideIconName.LogOut,
-                        risk = RaftRiskTone.Warning,
+                        risk = channelSettingsActionRisk(ChannelSettingsActionRow.Leave),
                         enabled = buttonEnabled,
                         divider = divider,
                     ) { callbacks.onConfirm(ChannelSettingsConfirm.Leave) }
@@ -2055,7 +2056,7 @@ internal fun ChannelActionsSection(
                     ChannelActionRow(
                         stringResource(Res.string.channel_sos_entry),
                         RaftLucideIconName.Square,
-                        risk = RaftRiskTone.Warning,
+                        risk = channelSettingsActionRisk(ChannelSettingsActionRow.StopAllAgents),
                         enabled = true,
                         divider = divider,
                         onClick = callbacks.onStopAllAgents,
@@ -2064,7 +2065,7 @@ internal fun ChannelActionsSection(
                     ChannelActionRow(
                         stringResource(Res.string.thread_settings_delete),
                         RaftLucideIconName.Trash2,
-                        risk = RaftRiskTone.Danger,
+                        risk = channelSettingsActionRisk(ChannelSettingsActionRow.Delete),
                         enabled = buttonEnabled,
                         divider = divider,
                     ) { callbacks.onConfirm(ChannelSettingsConfirm.Delete) }
@@ -2072,7 +2073,7 @@ internal fun ChannelActionsSection(
                     ChannelActionRow(
                         stringResource(Res.string.joint_disconnect_channel),
                         RaftLucideIconName.Unplug,
-                        risk = RaftRiskTone.Danger,
+                        risk = channelSettingsActionRisk(ChannelSettingsActionRow.Disconnect),
                         enabled = buttonEnabled,
                         divider = divider,
                     ) { callbacks.onConfirm(ChannelSettingsConfirm.Disconnect) }
@@ -2082,8 +2083,19 @@ internal fun ChannelActionsSection(
 }
 
 /**
- * One action row: its icon and its name, both in the risk's ink. The icon is 18dp on a row with a
- * risk and 20dp on Unarchive (raft-design #1296), as the row provides it.
+ * An action row's risk tone (web EditChannelDialog `actionRows`, slock #15515): red only for what
+ * can't be undone (Delete, Disconnect); every other row is ink.
+ */
+internal fun channelSettingsActionRisk(row: ChannelSettingsActionRow): RaftRiskTone? =
+    when (row) {
+        ChannelSettingsActionRow.Delete,
+        ChannelSettingsActionRow.Disconnect -> RaftRiskTone.Danger
+        else -> null
+    }
+
+/**
+ * One action row: its icon and its name, both in the risk's ink. The icon is 18dp on a red row and
+ * 20dp on an ink one (raft-design #1296), as the row provides it.
  */
 @Composable
 private fun ChannelActionRow(

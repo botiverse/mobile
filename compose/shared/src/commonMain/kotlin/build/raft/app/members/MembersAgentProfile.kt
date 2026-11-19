@@ -54,6 +54,11 @@ import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftRuntimeChip
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.LocalRaftListRowIconSize
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftListRowVariant
+import build.raft.designsystem.components.RaftRiskTone
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.theme.RaftTheme
@@ -1867,74 +1872,89 @@ internal fun MembersAgentProfileActionsSection(
     val reportState = diagnosticActionState?.takeIf { it.actionKey == "report" }
     val diagnosticBusy = diagnosticActionState?.inProgress == true
 
-    // Web: `<Separator />`, then `px-5 py-4`: the eyebrow (`mb-3`) over `stack-y-2` buttons.
+    // Web AgentActionRows (slock #15515): `<Separator />`, then `px-5 py-4` and a card of action
+    // rows with no heading, as at the end of a channel's details. Only Archive agent, which can't
+    // be undone, is red; Stop agent and Restart / Reset interrupt but can be undone, so they stay
+    // ink and warn in their confirmations.
     Column(modifier = modifier.fillMaxWidth()) {
         MembersProfileFullBleedDivider()
-        MembersDetailSectionTitle(
-            stringResource(Res.string.member_section_actions),
-            modifier = Modifier.padding(top = MembersProfileSectionPaddingY, bottom = MembersProfileEyebrowGap)
-        )
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-        ) {
-            // raft-ui agent page Actions: full-width 44dp outline buttons, the irreversible one red, last.
+        RaftListRowGroup(Modifier.fillMaxWidth().padding(vertical = MembersProfileSectionPaddingY)) {
             if (primaryAction != null) {
-                MembersAgentActionButton(
+                MembersAgentActionRow(
                     label = if (primaryBusy) primaryAction.localizedBusyLabel() else primaryLabel,
                     iconName = primaryAction.iconName,
                     enabled = lifecycleInFlight == null,
+                    divider = false,
+                    risk = membersAgentProfileActionRisk(primaryAction),
                     onClick = { onRunLifecycleAction(primaryAction) }
                 )
             }
             // Web `restartResetOffered(canControl, computerOffline)`.
             if (!computerOffline) {
-                MembersAgentActionButton(
+                MembersAgentActionRow(
                     label = stringResource(Res.string.member_label_restart_reset),
                     iconName = RaftLucideIconName.RotateCcw,
                     enabled = lifecycleInFlight == null,
+                    divider = primaryAction != null,
+                    risk = membersAgentProfileActionRisk(MembersAgentLifecycleAction.Restart),
                     onClick = onOpenRestartReset
                 )
             }
-            MembersAgentActionButton(
+            MembersAgentActionRow(
                 label = copyState?.successLabel ?: stringResource(Res.string.member_action_copy_diagnostic_info),
                 iconName = if (copyState?.successLabel != null) RaftLucideIconName.Check else RaftLucideIconName.Copy,
                 enabled = !diagnosticBusy,
+                divider = primaryAction != null || !computerOffline,
+                risk = null,
                 onClick = onCopyDiagnostics
             )
-            MembersAgentActionButton(
+            MembersAgentActionRow(
                 label = if (reportState?.inProgress == true) stringResource(Res.string.member_action_reporting) else stringResource(Res.string.member_action_report_issue),
                 iconName = RaftLucideIconName.Bug,
                 enabled = !diagnosticBusy,
+                divider = true,
+                risk = null,
                 onClick = onReportIssue
             )
-            MembersAgentActionButton(
+            MembersAgentActionRow(
                 label = if (lifecycleInFlight == MembersAgentLifecycleAction.Delete.actionKey) stringResource(Res.string.member_action_deleting) else stringResource(Res.string.member_action_delete_agent),
                 iconName = RaftLucideIconName.Archive,
                 enabled = lifecycleInFlight == null,
-                variant = RaftButtonVariant.Danger,
+                divider = true,
+                risk = membersAgentProfileActionRisk(MembersAgentLifecycleAction.Delete),
                 onClick = { onRunLifecycleAction(MembersAgentLifecycleAction.Delete) }
             )
         }
     }
 }
 
+/**
+ * An agent profile action row's risk tone (web AgentActionRows, slock #15515; raft-design ListRow
+ * "An action's risk"): red only for what can't be undone (Archive agent). Start, Stop and
+ * Restart / Reset are ink: Stop and Restart interrupt but can be undone, and warn in their
+ * confirmations' orange buttons instead.
+ */
+internal fun membersAgentProfileActionRisk(action: MembersAgentLifecycleAction): RaftRiskTone? =
+    if (action.destructive) RaftRiskTone.Danger else null
+
+/** One action row (raft-ui ListRow `plain`): its icon and its name, both in the risk's ink. */
 @Composable
-private fun MembersAgentActionButton(
+private fun MembersAgentActionRow(
     label: String,
     iconName: RaftLucideIconName,
     enabled: Boolean,
-    onClick: () -> Unit,
-    variant: RaftButtonVariant = RaftButtonVariant.Default
+    divider: Boolean,
+    risk: RaftRiskTone?,
+    onClick: () -> Unit
 ) {
-    RaftButton(
-        text = label,
+    RaftListRow(
+        title = label,
+        variant = RaftListRowVariant.Plain,
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        variant = variant,
-        size = RaftButtonSize.Lg,
+        risk = risk,
         enabled = enabled,
-        leadingIcon = { RaftContentLucideIcon(iconName, size = 18.dp) }
+        divider = divider,
+        leading = { RaftComputersIcon(iconName, size = LocalRaftListRowIconSize.current) },
     )
 }
 
