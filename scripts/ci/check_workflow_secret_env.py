@@ -150,10 +150,8 @@ def _legacy(*keys: str) -> dict[str, str]:
 
 
 def _android_agent_env() -> dict[str, str]:
-    env = {k: "${{ %s && %s && secrets.%s || '' }}" % (NOT_RELEASE, LEGACY, k) for k in ("QA_TEST_EMAIL", "QA_TEST_PASSWORD")}
-    for kind in ("EMAIL", "PASSWORD"):
-        env[f"QA_RELEASE_LOGIN_{kind}"] = "${{ inputs.stamp_run_case_id != '' && inputs.login_mode == 'release-prelogin' && secrets.QA_TEST_%s || '' }}" % kind
-    return env
+    # The release lane gets nothing here: its account goes through "Stage release login credential".
+    return {k: "${{ %s && %s && secrets.%s || '' }}" % (NOT_RELEASE, LEGACY, k) for k in ("QA_TEST_EMAIL", "QA_TEST_PASSWORD")}
 
 
 def _env_pair(selector: str) -> dict[str, str]:
@@ -182,6 +180,9 @@ QA_SECRET_STEPS: dict[str, dict[str, dict[str, dict]]] = {
         "Freeze legacy credential identity receipt": {"if": ANDROID_RECEIPT_IF, "env": _plain("QA_TEST_EMAIL")},
         "Seed media fixtures (image + workspace)": {"if": ANDROID_LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
         "Run acceptance agent": {"if": None, "env": _android_agent_env()},
+        # Release settings lane: one 0600 file read (and removed) by release_auto_login.mjs only.
+        "Stage release login credential": {"if": "${{ inputs.stamp_run_case_id != '' && inputs.login_mode == 'release-prelogin' }}",
+                                           "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
     }},
     "qa-acceptance-ios.yml": {"acceptance": {
         PREFLIGHT: {"if": LEGACY_IF, "env": _plain("QA_TEST_EMAIL", "QA_TEST_PASSWORD")},
@@ -619,8 +620,11 @@ def real_tree_mutants() -> list[tuple[str, str, str, str]]:
         ("extra alias in an allowed step", qa, "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}",
          "QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n          EXTRA_ALIAS: ${{ secrets.QA_TEST_PASSWORD }}"),
         ("acceptance runner no longer gated on bootstrap", qa, gate, "secrets.QA_TEST_PASSWORD"),
-        ("release login password no longer gated on the release lane", qa,
-         "inputs.login_mode == 'release-prelogin' && secrets.QA_TEST_PASSWORD", "secrets.QA_TEST_PASSWORD"),
+        ("release credential staged outside the release lane", qa,
+         "        if: ${{ inputs.stamp_run_case_id != '' && inputs.login_mode == 'release-prelogin' }}\n        env:\n          QA_TEST_EMAIL",
+         "        if: ${{ inputs.stamp_run_case_id != '' }}\n        env:\n          QA_TEST_EMAIL"),
+        ("emulator step gets the release account step-wide", qa, "          QA_RELEASE_PRELOGIN: ",
+         "          QA_RELEASE_LOGIN_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n          QA_RELEASE_PRELOGIN: "),
         ("legacy preflight runs in the release lane", qa, f"        if: {ANDROID_LEGACY_IF}\n", f"        if: {LEGACY_IF}\n"),
         # #222: neither iOS step may get the account back, gated or not.
         ("iOS deterministic repro gets the QA password back", ios, "        # Never signs in, so no QA credentials (#222).\n",

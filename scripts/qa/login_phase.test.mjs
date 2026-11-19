@@ -456,8 +456,12 @@ test("rule 2: the workflow starts the recorder, the agent and every post-run rea
   assert.ok(login > 0 && login < at(/screenrecord --size/) && login < at(/acceptance_agent\.mjs/));
   assert.match(lines[login], /&& touch qa-login-ok/);
   for (const re of [/screenrecord --size/, /adb logcat -d -v threadtime/, /adb shell dumpsys activity top/, /scope_logcat\.mjs/]) assert.match(lines[at(re)], /\[ -f qa-login-ok \]/, String(re));
-  assert.match(lines[at(/acceptance_agent\.mjs/)], /if \[ ! -f qa-login-ok \]; then echo 2 > qa-evidence\/agent-rc\.txt; exit 0; fi;.*env -u QA_TEST_EMAIL -u QA_TEST_PASSWORD -u QA_RELEASE_LOGIN_EMAIL -u QA_RELEASE_LOGIN_PASSWORD -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN node scripts\/qa\/acceptance_agent\.mjs/);
-  // Release settings lane: the same line creates qa-login-ok only through release_settings_login.sh (matched).
+  assert.match(lines[at(/acceptance_agent\.mjs/)], /if \[ ! -f qa-login-ok \]; then echo 2 > qa-evidence\/agent-rc\.txt; exit 0; fi;.*env -u QA_TEST_EMAIL -u QA_TEST_PASSWORD -u ACTIONS_ID_TOKEN_REQUEST_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN node scripts\/qa\/acceptance_agent\.mjs/);
+  // Release settings lane: release_settings_login.sh runs the case inside the matched process; every
+  // later capture/agent/post-run line of the workflow is skipped in that lane.
+  for (const re of [/^\s+adb logcat -c$/, /screenrecord --size/, /acceptance_agent\.mjs/, /adb logcat -d -v threadtime/, /scope_logcat\.mjs/, /adb shell dumpsys activity top/, /dumpsys gfxinfo .* reset/, /perf-started\.txt$/, /gfxinfo\.txt 2>&1/]) {
+    assert.match(lines[lines.findIndex((l) => re.test(l.replace(/^\s+\[ -f qa-release-lane \] && exit 0; /, "            ")))], /^\s+\[ -f qa-release-lane \] && exit 0; /, String(re));
+  }
   assert.match(lines[login], /^\s+if \[ "\$\{QA_RELEASE_PRELOGIN:-false\}" = "true" \]; then bash scripts\/qa\/release_settings_login\.sh \|\| true; else rm -f qa-login-ok;/);
   assert.ok(at(/qa-run-owner/) < login, "the ownership marker is written before the login phase");
   // iOS: every mode writes its record before it runs; none gets the QA account.

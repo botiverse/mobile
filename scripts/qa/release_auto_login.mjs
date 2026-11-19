@@ -311,8 +311,14 @@ async function web(method, pathname, { token, body, serverId } = {}) {
 
 function credentials() {
   const file = option("credential-file", "");
+  let text = "";
+  if (file) {
+    text = fs.readFileSync(file, "utf8");
+    // --consume-credential-file: the file is removed as soon as it is read (release settings lane).
+    if (flag("consume-credential-file")) fs.rmSync(file, { force: true });
+  }
   const value = file
-    ? parseCredentialFile(fs.readFileSync(file, "utf8"))
+    ? parseCredentialFile(text)
     : { email: process.env.QA_LOGIN_EMAIL ?? "", password: process.env.QA_LOGIN_PASSWORD ?? "" };
   if (!value.email || !value.password) stop("no QA credentials: set QA_LOGIN_EMAIL / QA_LOGIN_PASSWORD or pass --credential-file");
   redact.add(value.email);
@@ -644,7 +650,16 @@ async function runScenario(webSession) {
   };
   try {
     const mod = await import(path.resolve(SCENARIO));
+    // --identity-receipt: the scenario must run in the very app process Testbed matched
+    // (pid + /proc start ticks of the receipt call), before and after it.
+    const sameProcess = () => !matchedProcess || appProcess() === matchedProcess;
+    if (!sameProcess()) {
+      summary.identity_process = "changed";
+      throw new Error("the app process changed between the identity match and the scenario");
+    }
     const report = await mod.run(ctx);
+    if (matchedProcess) summary.identity_process = sameProcess() ? "same" : "changed";
+    if (summary.identity_process === "changed") scenarioFailed = true;
     if (report?.result !== "pass") scenarioFailed = true;
   } catch (error) {
     scenarioFailed = true;
@@ -767,11 +782,15 @@ function testbedDecisionSource() {
   return createTestbedReleaseClient({ env: process.env, claimToken });
 }
 
+// "<pid>:<start ticks>" of the app process the matched receipt came from (appProcess() format).
+let matchedProcess = null;
 function identityGate(request) {
+  let called = null;
+  const runner = { call: (r) => { called = identity.call(r); return called; } };
   return () =>
     step("identity-receipt", async () => {
       const outcome = await runIdentityGate({
-        runner: identity,
+        runner,
         request,
         gate: captureGate,
         expected: { userRef: process.env.QA_EXPECTED_USER_REF || "", serverRef: process.env.QA_EXPECTED_SERVER_REF || "" },
@@ -790,6 +809,7 @@ function identityGate(request) {
         testbed: testbedDecisionSource(),
       });
       log(`identity receipt: ${outcome.matched ? "matched" : outcome.reason}`);
+      if (outcome.matched && called?.os?.pidBefore && called.os.startTicksBefore) matchedProcess = `${called.os.pidBefore}:${called.os.startTicksBefore}`;
       if (!outcome.matched) stop(`identity receipt not matched (${outcome.reason}); nothing captured, no scenario`);
       return { testbed: "matched" };
     }, { screenshot: false });

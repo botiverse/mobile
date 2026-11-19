@@ -548,7 +548,12 @@ test("Android and iOS freeze legacy email before execution and expose none for b
     const notRelease = String.raw`inputs\.login_mode != 'release-prelogin'`;
     assert.match(executeBlock, new RegExp(`QA_TEST_EMAIL: \\$\\{\\{ ${notRelease} && ${legacy} && secrets\\.QA_TEST_EMAIL \\|\\| '' \\}\\}`));
     assert.match(executeBlock, new RegExp(`QA_TEST_PASSWORD: \\$\\{\\{ ${notRelease} && ${legacy} && secrets\\.QA_TEST_PASSWORD \\|\\| '' \\}\\}`));
-    assert.match(executeBlock, /QA_RELEASE_LOGIN_PASSWORD: \$\{\{ inputs\.stamp_run_case_id != '' && inputs\.login_mode == 'release-prelogin' && secrets\.QA_TEST_PASSWORD \|\| '' \}\}/);
+    // The release lane's account never reaches the emulator step's env (every line and child would inherit it).
+    assert.doesNotMatch(executeBlock, /QA_RELEASE_LOGIN_/);
+    assert.equal((executeBlock.match(/secrets\.QA_TEST_/g) ?? []).length, 2, "only the two legacy-gated keys");
+    const stage = source.slice(source.indexOf("name: Stage release login credential"), execute);
+    assert.match(stage, /if: \$\{\{ inputs\.stamp_run_case_id != '' && inputs\.login_mode == 'release-prelogin' \}\}/);
+    assert.match(stage, /umask 077/);
     assert.match(preflightBlock, new RegExp(notRelease));
     assert.match(receiptBlock, new RegExp(notRelease));
   }
