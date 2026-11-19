@@ -43,6 +43,15 @@ internal fun messageBodyFontSizeCommittedOwnerKey(environmentId: String): String
 }
 
 /**
+ * A conversation page's message body owner: its captured session's account ([accountId]), or
+ * before it has one (the cached first frame) the committed session's
+ * ([messageBodyFontSizeCommittedOwnerKey]), so messages start at the last-known size, not at md.
+ */
+internal fun threadMessageBodyOwnerKey(environmentId: String, accountId: String?): String? =
+    accountId?.let { messageBodyFontSizeOwnerKey(environmentId, it) }
+        ?: messageBodyFontSizeCommittedOwnerKey(environmentId)
+
+/**
  * Durable last-known copy of each owner's message body size (sm / md / lg), so a cold start draws
  * messages at the account's size from the first frame instead of at md until the appearance
  * settings load returns (then switching, seconds after opening). Keyed by owner (environment +

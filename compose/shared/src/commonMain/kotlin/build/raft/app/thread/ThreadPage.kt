@@ -147,8 +147,7 @@ import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.data.runCatchingPreservingCancellation
-import build.raft.app.data.messageBodyFontSizeCommittedOwnerKey
-import build.raft.app.data.messageBodyFontSizeOwnerKey
+import build.raft.app.data.threadMessageBodyOwnerKey
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -1722,11 +1721,7 @@ private fun SharedThreadRouteContentContent(
     }
     val messageBodyOwnerKey =
         remember(currentSession?.user?.id, sharedStores.apiEnvironmentStore.current().apiBaseUrl) {
-            val environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl
-            currentSession?.user?.id?.let { accountId -> messageBodyFontSizeOwnerKey(environmentId, accountId) }
-                // Before the page has captured its session (the cached first frame): the committed
-                // session's account, so messages start at its last-known size, not at md.
-                ?: messageBodyFontSizeCommittedOwnerKey(environmentId)
+            threadMessageBodyOwnerKey(sharedStores.apiEnvironmentStore.current().apiBaseUrl, currentSession?.user?.id)
         }
     LaunchedEffect(messageBodyOwnerKey, messageBodySettingsRepository) {
         val ownerKey = messageBodyOwnerKey ?: return@LaunchedEffect
