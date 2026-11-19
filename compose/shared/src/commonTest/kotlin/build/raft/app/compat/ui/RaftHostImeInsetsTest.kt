@@ -33,4 +33,24 @@ class RaftHostImeInsetsTest {
             )
         }
     }
+
+    @Test
+    fun keyboardTargetIsWhereTheKeyboardEndsNotWhereItsSlideIs() {
+        // iOS: the slide is a third of the way up (310), the target is set as it starts (1006).
+        assertEquals(1006, resolveRaftImeTargetBottomPx({ 310 }, { 310 }, hostImeTargetBottomPx = 1006))
+        // iOS hiding: the target is 0 from the first frame of the slide down.
+        assertEquals(0, resolveRaftImeTargetBottomPx({ 900 }, { 900 }, hostImeTargetBottomPx = 0))
+        // Android: no separate target; each dispatch is already the end state.
+        assertEquals(1006, resolveRaftImeTargetBottomPx({ 310 }, { 1006 }, hostImeTargetBottomPx = null))
+        // No host (tests): WindowInsets.ime.
+        assertEquals(640, resolveRaftImeTargetBottomPx({ 640 }, { null }, hostImeTargetBottomPx = null))
+        assertEquals(0, resolveRaftImeTargetBottomPx({ -3 }, { null }, hostImeTargetBottomPx = null))
+    }
+
+    @Test
+    fun aHostTargetDoesNotReadTheSlide() {
+        // The values that change every frame of the slide are not read once the host gives a target.
+        val target = resolveRaftImeTargetBottomPx({ error("compose ime read") }, { error("host slide read") }, hostImeTargetBottomPx = 812)
+        assertEquals(812, target)
+    }
 }

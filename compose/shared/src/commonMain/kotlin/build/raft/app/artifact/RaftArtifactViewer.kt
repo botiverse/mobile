@@ -916,14 +916,31 @@ internal fun raftArtifactViewerRereadsLatest(
  * ([hostPadsWebView]: Android, whose window is edge-to-edge, so neither the keyboard nor the
  * navigation bar resizes it and the page gets no `env(safe-area-inset-bottom)`), the web page
  * ends above the keyboard while it is up, else above the navigation bar: the IME inset already
- * covers the navigation bar, so the larger one. Elsewhere (iOS: WKWebView applies the safe area
- * and the keyboard itself) nothing.
+ * covers the navigation bar, so the larger one. Where the WebView applies the safe area itself
+ * but the host still pads it by the keyboard ([hostPadsKeyboard]: the Artifact viewer on iOS),
+ * the keyboard alone. Elsewhere (iOS server setup: WKWebView applies the safe area and the
+ * keyboard itself) nothing.
+ *
+ * Why the viewer pads iOS too (xxchan, #proj-mobile:#194): WKWebView meets the keyboard by
+ * shrinking only the page's visual viewport, never its layout viewport, so the page's
+ * `position: fixed; bottom: 0` comment sheet stays at the layout bottom, under the keyboard,
+ * unless WebKit happens to scroll the focused box into view (it did for a tap in the box, not for
+ * the focus the Comment button moves in). A WebView that ends at the keyboard's top has nothing
+ * under it: the sheet sits on the keyboard however the focus came. [imeBottomPx] is the
+ * keyboard's settled inset (`raftImeTargetBottomPx`), so the page is resized once per show or
+ * hide, not on every frame of the slide.
  */
 internal fun raftArtifactViewerWebBottomInsetPx(
     imeBottomPx: Int,
     navigationBarBottomPx: Int,
     hostPadsWebView: Boolean,
-): Int = if (hostPadsWebView) maxOf(imeBottomPx, navigationBarBottomPx).coerceAtLeast(0) else 0
+    hostPadsKeyboard: Boolean = hostPadsWebView,
+): Int =
+    when {
+        hostPadsWebView -> maxOf(imeBottomPx, navigationBarBottomPx)
+        hostPadsKeyboard -> imeBottomPx
+        else -> 0
+    }.coerceAtLeast(0)
 
 /**
  * Desktop Mode (artin 11-03, "artifact 预览应该要支持一个桌面模式"): the viewer lays the page out at a

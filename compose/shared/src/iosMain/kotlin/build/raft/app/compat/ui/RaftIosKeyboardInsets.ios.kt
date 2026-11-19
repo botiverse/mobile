@@ -104,8 +104,11 @@ private class RaftKeyboardSlide(val targetPoints: Double, private val probe: UIV
     }
 }
 
-/** Starts a [RaftKeyboardSlide] on every keyboard frame change while [view] is in a window. */
-private class RaftKeyboardSlideTracker(private val view: UIView) {
+/**
+ * Starts a [RaftKeyboardSlide] on every keyboard frame change while [view] is in a window, and
+ * tells [onTarget] where each change ends (the overlap in points), as it starts.
+ */
+private class RaftKeyboardSlideTracker(private val view: UIView, private val onTarget: (Double) -> Unit) {
     var slide: RaftKeyboardSlide? by mutableStateOf(null)
         private set
 
@@ -158,6 +161,7 @@ private class RaftKeyboardSlideTracker(private val view: UIView) {
                 viewBottomInScreen = viewBottomInScreen,
             )
         overlapPoints = target
+        onTarget(target)
         // No slide (a keyboard that appears without animation): CMP sets the value at once.
         if (duration <= 0.0) return
         val probe = UIView()
@@ -203,7 +207,14 @@ private fun ProvideRaftIosKeyboardInsets(content: @Composable () -> Unit) {
     val ime = WindowInsets.ime
     val density = LocalDensity.current
     val insets = remember { RaftHostImeInsets().apply { imeAnimationRunning = true } }
-    val tracker = remember(view) { RaftKeyboardSlideTracker(view) }
+    // The keyboard's target as each change starts (RaftHostImeInsets.imeTargetBottomPx): a page that
+    // moves once per show or hide (the Artifact viewer's WebView) reads it instead of the slide.
+    val tracker =
+        remember(view) {
+            RaftKeyboardSlideTracker(view) { points ->
+                insets.imeTargetBottomPx = (points * view.contentScaleFactor).roundToInt()
+            }
+        }
     DisposableEffect(tracker) {
         tracker.start()
         onDispose { tracker.stop() }

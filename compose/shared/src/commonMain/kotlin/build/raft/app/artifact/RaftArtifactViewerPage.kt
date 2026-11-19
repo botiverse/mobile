@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
 import build.raft.app.compat.json.JSONObject
-import build.raft.app.compat.ui.raftImeBottomPx
+import build.raft.app.compat.ui.raftImeTargetBottomPx
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
@@ -1030,9 +1030,10 @@ private fun RaftArtifactViewerWebBody(
     val density = LocalDensity.current
     val bottomInsetPx =
         raftArtifactViewerWebBottomInsetPx(
-            imeBottomPx = raftImeBottomPx(density),
+            imeBottomPx = raftImeTargetBottomPx(density),
             navigationBarBottomPx = with(density) { raftBottomSafeAreaPadding().roundToPx() },
             hostPadsWebView = raftWebViewNeedsHostBottomInsets,
+            hostPadsKeyboard = true,
         )
     // The page, and over it the App's splash while it covers the page (one loader at a time).
     Box(Modifier.fillMaxSize()) {
@@ -1164,7 +1165,7 @@ internal fun RaftArtifactViewerSplashCover(
     val bottomPx =
         if (raftWebViewNeedsHostBottomInsets) {
             raftArtifactViewerWebBottomInsetPx(
-                imeBottomPx = raftImeBottomPx(density),
+                imeBottomPx = raftImeTargetBottomPx(density),
                 navigationBarBottomPx = with(density) { raftBottomSafeAreaPadding().roundToPx() },
                 hostPadsWebView = true,
             )

@@ -102,4 +102,16 @@ class RaftArtifactViewerInsetsAndVersionTest {
         // iOS: WKWebView applies the safe area and the keyboard itself (no double inset).
         assertEquals(0, raftArtifactViewerWebBottomInsetPx(imeBottomPx = 336, navigationBarBottomPx = 34, hostPadsWebView = false))
     }
+
+    @Test
+    fun iosViewerPadsTheWebViewByTheKeyboardAloneSoTheCommentSheetSitsOnIt() {
+        // xxchan #proj-mobile:#194: WKWebView only shrinks the visual viewport, so the page's fixed
+        // comment sheet stayed under the keyboard. The viewer ends the WebView at the keyboard's top.
+        assertEquals(1008, raftArtifactViewerWebBottomInsetPx(imeBottomPx = 1008, navigationBarBottomPx = 102, hostPadsWebView = false, hostPadsKeyboard = true))
+        // Keyboard down: WKWebView keeps applying the home indicator's safe area itself.
+        assertEquals(0, raftArtifactViewerWebBottomInsetPx(imeBottomPx = 0, navigationBarBottomPx = 102, hostPadsWebView = false, hostPadsKeyboard = true))
+        // Android is unchanged by the keyboard flag: the larger of the keyboard and the navigation bar.
+        assertEquals(72, raftArtifactViewerWebBottomInsetPx(imeBottomPx = 0, navigationBarBottomPx = 72, hostPadsWebView = true, hostPadsKeyboard = true))
+        assertEquals(560, raftArtifactViewerWebBottomInsetPx(imeBottomPx = 560, navigationBarBottomPx = 72, hostPadsWebView = true, hostPadsKeyboard = true))
+    }
 }

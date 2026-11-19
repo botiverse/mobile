@@ -45,6 +45,15 @@ class RaftHostImeInsets {
      * keyboard is CMP's value.
      */
     var imeAnimationRunning: Boolean by mutableStateOf(false)
+
+    /**
+     * Where the keyboard ends up, in px, when the host reports it apart from [imeBottomPx]; null
+     * where [imeBottomPx] already is that (Android: each inset dispatch is the end state, sent
+     * before the platform animates towards it). iOS: the latest keyboard frame's overlap, set as
+     * the slide starts, while [imeBottomPx] follows the slide; null until the first keyboard
+     * frame change this page saw. See [raftImeTargetBottomPx].
+     */
+    var imeTargetBottomPx: Int? by mutableStateOf(null)
 }
 
 /** The host's IME report for this composition's window; null where the host reports none. */
@@ -95,3 +104,31 @@ internal fun raftImeBottomPx(ime: WindowInsets, host: RaftHostImeInsets?, densit
 @Composable
 internal fun raftImeBottomPx(density: Density): Int =
     raftImeBottomPx(WindowInsets.ime, LocalRaftHostImeInsets.current, density)
+
+/**
+ * The keyboard's settled bottom inset: where the keyboard ends up, not where its slide is now. For
+ * a surface that should move once per keyboard show or hide instead of every frame of the slide
+ * (a platform WebView, which relays out its whole page on each resize: the Artifact viewer). The
+ * host's target when it reports one, else the host's dispatched inset (Android's end state), else
+ * `WindowInsets.ime` (no host: tests).
+ */
+internal fun resolveRaftImeTargetBottomPx(
+    composeImeBottomPx: () -> Int,
+    hostImeBottomPx: () -> Int?,
+    hostImeTargetBottomPx: Int?,
+): Int = (hostImeTargetBottomPx ?: hostImeBottomPx() ?: composeImeBottomPx()).coerceAtLeast(0)
+
+/**
+ * [resolveRaftImeTargetBottomPx] for this window. Reads only the value it uses, so a page that
+ * reads it recomposes when the target changes, not on every frame of the keyboard's slide.
+ */
+@Composable
+internal fun raftImeTargetBottomPx(density: Density): Int {
+    val host = LocalRaftHostImeInsets.current
+    val ime = WindowInsets.ime
+    return resolveRaftImeTargetBottomPx(
+        composeImeBottomPx = { ime.getBottom(density) },
+        hostImeBottomPx = { host?.imeBottomPx },
+        hostImeTargetBottomPx = host?.imeTargetBottomPx,
+    )
+}
