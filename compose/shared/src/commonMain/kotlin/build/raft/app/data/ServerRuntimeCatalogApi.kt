@@ -268,7 +268,7 @@ private fun RuntimeInfo.toBundledEntry(): RuntimeCatalogEntry =
         supported = supported,
         experimental = experimental,
         deprecated = deprecated,
-        oarOnly = id == "qwen" || id == "qoder",
+        oarOnly = id == "qwen" || id == "qoder" || id == "dsh",
         models = RUNTIME_MODELS[id].orEmpty(),
         modelsSource = if (id in StaticBundledModelSources) RuntimeCatalogModelsSource.Static else RuntimeCatalogModelsSource.Fallback,
         forms = listOf(RuntimeCatalogForm.V2)

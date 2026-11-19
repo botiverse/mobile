@@ -3118,6 +3118,7 @@
     <string name="settings_computers_runtime_auth_sign_in_action">ログイン</string>
     <string name="settings_computers_runtime_auth_sign_out_action">ログアウト</string>
     <string name="settings_computers_runtime_auth_upgrade_required">このコンピューターをアップグレードすると、ここからログインできます</string>
+    <string name="settings_computers_runtime_auth_dsh_credentials">DeepSeek Harness はここではログインしません。このコンピューターで設定された API キーを使います。dsh 自身の設定に保存したキー（dsh は認証情報ファイルが所有者のみ読み取り可能、モード 600 であることを求めます）か、コンピューターの環境またはエージェントの「環境変数」にある DEEPSEEK_API_KEY です。保存したキーが優先されます。</string>
     <string name="settings_computers_runtime_auth_unavailable_not_installed">コンピューターにこのランタイムのコマンドラインツールをインストールしてから、コンピューターのページで「ランタイムを再スキャン」を使ってください。</string>
     <string name="settings_computers_runtime_auth_unavailable_install_on">macOS または Linux の場合：</string>
     <string name="settings_computers_runtime_auth_unavailable_version_unsupported">コンピューター上のこのランタイムのコマンドラインツールを更新してから、コンピューターのページで「ランタイムを再スキャン」を使ってください。</string>

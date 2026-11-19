@@ -5435,6 +5435,7 @@
     <string name="settings_computers_runtime_auth_sign_in_action">登入</string>
     <string name="settings_computers_runtime_auth_sign_out_action">登出</string>
     <string name="settings_computers_runtime_auth_upgrade_required">升級這台電腦後，即可在這裡登入</string>
+    <string name="settings_computers_runtime_auth_dsh_credentials">DeepSeek Harness 不在這裡登入。它使用這台電腦上為它設定的 API 金鑰：儲存在 dsh 自己設定裡的金鑰（dsh 要求它的憑證檔案只有擁有者可讀，權限 600），或這台電腦環境裡、Agent 的「環境變數」裡的 DEEPSEEK_API_KEY。已儲存的金鑰優先。</string>
     <string name="settings_computers_runtime_auth_unavailable_not_installed">在這台電腦上安裝這個執行環境的命令列工具，然後到這台電腦的頁面上使用「重新偵測執行環境」。</string>
     <string name="settings_computers_runtime_auth_unavailable_install_on">在 macOS 或 Linux 上：</string>
     <string name="settings_computers_runtime_auth_unavailable_version_unsupported">在這台電腦上更新這個執行環境的命令列工具，然後到這台電腦的頁面上使用「重新偵測執行環境」。</string>

@@ -65,7 +65,7 @@ class RuntimeAuthContractTest {
         )
         assertNull(view.statusOf(RuntimeAuthRuntime.Qoder), "an unknown kind is no status")
         assertEquals(listOf(RuntimeAuthRuntime.Claude, RuntimeAuthRuntime.Codex, RuntimeAuthRuntime.Grok, RuntimeAuthRuntime.Pi), view.runtimes)
-        // Antigravity is not in `runtimes`: no card (server-gated), and no sign-out without `logoutRuntimes`.
+        // Antigravity is not in `runtimes`: this Computer does not sign it in from here, and no sign-out without `logoutRuntimes`.
         assertFalse(view.computerSupports(RuntimeAuthRuntime.Antigravity))
         assertTrue(view.computerSignsOut(RuntimeAuthRuntime.Grok))
         assertFalse(view.computerSignsOut(RuntimeAuthRuntime.Qoder), "Qoder has no logout")

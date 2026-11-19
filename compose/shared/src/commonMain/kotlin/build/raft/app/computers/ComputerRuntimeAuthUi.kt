@@ -63,6 +63,7 @@ import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.rememberRaftCopyAction
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import org.jetbrains.compose.resources.StringResource
 
 /*
  * The runtime card's sign-in part and its dialogs (web RuntimeUsageSurface.tsx `RuntimeAuthHeaderLine`,
@@ -102,9 +103,32 @@ internal sealed interface ComputerRuntimeAuthAction {
     data object SignOut : ComputerRuntimeAuthAction
 
     data object SignIn : ComputerRuntimeAuthAction
+
+    /**
+     * A runtime Raft does not sign in (DeepSeek Harness, slock #15549 `RuntimeCredentialsNote`): how
+     * its credentials are set on the Computer. Shown to every viewer, not only one who may act.
+     */
+    data class CredentialsNote(val text: StringResource) : ComputerRuntimeAuthAction
 }
 
+/** Web `CREDENTIALS_NOTE`: the card line of a status-only runtime, by runtime; none for one without. */
+internal fun runtimeCredentialsNote(runtime: RuntimeAuthRuntime): StringResource? =
+    when (runtime) {
+        RuntimeAuthRuntime.Dsh -> Res.string.settings_computers_runtime_auth_dsh_credentials
+        else -> null
+    }
+
 internal fun ComputerRuntimeAuthCardState.action(): ComputerRuntimeAuthAction? {
+    // Nothing to sign in from here (DeepSeek Harness): a missing or too-old CLI as for any runtime,
+    // else how its key is set (every viewer). Web `runtimeAuthAction`, slock #15549.
+    if (runtime.statusOnly) {
+        val current = status
+        return if (current is RuntimeAuthStatus.Unavailable && view.availability == RuntimeAuthAvailability.Ok) {
+            ComputerRuntimeAuthAction.Unavailable(current.reason, upgradeOffered = upgrade != null)
+        } else {
+            runtimeCredentialsNote(runtime)?.let { ComputerRuntimeAuthAction.CredentialsNote(it) }
+        }
+    }
     if (!view.canAct) return null
     // A daemon that predates this runtime's sign-in from the web would drop a start.
     val needsNewerComputer = view.availability == RuntimeAuthAvailability.Ok && !view.computerSupports(runtime)
@@ -227,6 +251,13 @@ private fun ComputerRuntimeAuthSignInActionView(
                 color = RaftTheme.colors.foregroundHint,
             )
         is ComputerRuntimeAuthAction.Unavailable -> ComputerRuntimeAuthUnavailable(auth.raftRuntimeId, action.reason, modifier, action.upgradeOffered)
+        is ComputerRuntimeAuthAction.CredentialsNote ->
+            RaftText(
+                stringResource(action.text),
+                modifier = modifier.testTag(COMPUTER_RUNTIME_AUTH_CREDENTIALS_NOTE_TAG),
+                style = RaftTheme.typography.caption,
+                color = RaftTheme.colors.foregroundHint,
+            )
         is ComputerRuntimeAuthAction.AddProvider ->
             RaftButton(
                 text = stringResource(Res.string.settings_computers_runtime_auth_pi_add_provider),
@@ -1052,6 +1083,7 @@ internal const val COMPUTER_RUNTIME_AUTH_SIGN_IN_TAG = "runtime-auth-sign-in"
 internal const val COMPUTER_RUNTIME_AUTH_SIGN_OUT_TAG = "runtime-auth-sign-out"
 internal const val COMPUTER_RUNTIME_AUTH_ADD_PROVIDER_TAG = "runtime-auth-add-provider"
 internal const val COMPUTER_RUNTIME_AUTH_UNAVAILABLE_TAG = "runtime-auth-unavailable"
+internal const val COMPUTER_RUNTIME_AUTH_CREDENTIALS_NOTE_TAG = "runtime-auth-credentials-note"
 internal const val COMPUTER_RUNTIME_AUTH_CLI_UNAVAILABLE_TAG = "runtime-auth-cli-unavailable"
 internal const val COMPUTER_RUNTIME_AUTH_INSTALL_LINE_TAG = "runtime-auth-install-line"
 internal const val COMPUTER_RUNTIME_AUTH_LOGGED_OUT_TAG = "runtime-auth-logged-out"

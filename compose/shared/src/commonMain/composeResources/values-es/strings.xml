@@ -5435,6 +5435,7 @@
     <string name="settings_computers_runtime_auth_sign_in_action">Iniciar sesión</string>
     <string name="settings_computers_runtime_auth_sign_out_action">Cerrar sesión</string>
     <string name="settings_computers_runtime_auth_upgrade_required">Actualiza esta computadora para iniciar sesión desde aquí</string>
+    <string name="settings_computers_runtime_auth_dsh_credentials">DeepSeek Harness no inicia sesión desde aquí. Usa la clave de API configurada para él en esta computadora: una guardada en los ajustes de dsh (dsh exige que su archivo de credenciales solo lo pueda leer su propietario, modo 600), o DEEPSEEK_API_KEY en el entorno de la computadora o en las Variables de entorno de un agente. Una clave guardada tiene prioridad.</string>
     <string name="settings_computers_runtime_auth_unavailable_not_installed">Instala la herramienta de línea de comandos de este runtime en la computadora y luego usa “Volver a escanear runtimes” en la página de la computadora.</string>
     <string name="settings_computers_runtime_auth_unavailable_install_on">En macOS o Linux:</string>
     <string name="settings_computers_runtime_auth_unavailable_version_unsupported">Actualiza la herramienta de línea de comandos de este runtime en la computadora y luego usa “Volver a escanear runtimes” en la página de la computadora.</string>

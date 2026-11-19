@@ -117,8 +117,8 @@ data class RuntimeConfig(
 /**
  * The bundled runtime table: the last resort after the server catalog
  * (`GET /api/servers/:id/runtimes`, shared `ServerRuntimeCatalog`) and its per-server cache.
- * Mirrors slock `packages/shared/src/runtimeCatalog.ts` `RUNTIMES` at origin/staging 0b369d1aef
- * (unchanged since f5fe2ca864, PR #12065).
+ * Mirrors slock `packages/shared/src/runtimeCatalog.ts` `RUNTIMES` at origin/staging 114dcb89eb
+ * (Antigravity no longer deprecated, slock #15445; DeepSeek Harness added, slock #15549).
  * [displayName] is the bare product name; a label that names a lifecycle status adds it
  * (" (deprecated)") from the app's strings. [experimental] is kept as catalog data only: no label
  * shows it (slock #15551).
@@ -138,7 +138,7 @@ val RUNTIMES: List<RuntimeInfo> = listOf(
     RuntimeInfo(id = "codex", displayName = "Codex CLI", abbreviation = "CX", binary = "codex", supported = true),
     RuntimeInfo(id = "grok", displayName = "Grok Build", abbreviation = "GK", binary = "grok", supported = true),
     RuntimeInfo(id = "builtin", displayName = "Built-in Pi", abbreviation = "BP", binary = "", supported = true),
-    RuntimeInfo(id = "antigravity", displayName = "Antigravity CLI", abbreviation = "AG", binary = "agy", supported = true, deprecated = true),
+    RuntimeInfo(id = "antigravity", displayName = "Antigravity CLI", abbreviation = "AG", binary = "agy", supported = true, experimental = true),
     RuntimeInfo(id = "kimi-sdk", displayName = "Kimi Code", abbreviation = "KC", binary = "", supported = true),
     RuntimeInfo(id = "kimi", displayName = "Kimi CLI", abbreviation = "KL", binary = "kimi", supported = true, deprecated = true),
     RuntimeInfo(id = "copilot", displayName = "Copilot CLI", abbreviation = "CP", binary = "copilot", supported = true, deprecated = true),
@@ -147,7 +147,8 @@ val RUNTIMES: List<RuntimeInfo> = listOf(
     RuntimeInfo(id = "opencode", displayName = "OpenCode", abbreviation = "OC", binary = "opencode", supported = true),
     RuntimeInfo(id = "pi", displayName = "Pi", abbreviation = "PI", binary = "pi", supported = true),
     RuntimeInfo(id = "qwen", displayName = "Qwen Code", abbreviation = "QW", binary = "qwen", supported = true, experimental = true),
-    RuntimeInfo(id = "qoder", displayName = "Qoder", abbreviation = "QD", binary = "qodercli", supported = true, experimental = true)
+    RuntimeInfo(id = "qoder", displayName = "Qoder", abbreviation = "QD", binary = "qodercli", supported = true, experimental = true),
+    RuntimeInfo(id = "dsh", displayName = "DeepSeek Harness", abbreviation = "DS", binary = "dsh", supported = true, experimental = true)
 )
 
 /** The bundled table's name for [id], else [id] itself. Shared code goes through the catalog first. */
@@ -158,10 +159,11 @@ fun getRuntimeDisplayName(id: String): String =
 
 /**
  * Shared `REASONING_EFFORT_RUNTIMES` without `kimi-sdk` (its effort follows the live model's
- * capability, see MembersPage). Antigravity's is agy's thought level, offered only for a model whose
- * levels the Computer lists (slock #14619).
+ * capability, see MembersPage). Antigravity's is agy's thought level, and DeepSeek Harness's its
+ * model's reasoning effort, each offered only for a model whose levels the Computer lists
+ * (slock #14619, #15549).
  */
-val REASONING_EFFORT_RUNTIMES: Set<String> = setOf("builtin", "claude", "codex", "grok", "antigravity", "copilot", "pi")
+val REASONING_EFFORT_RUNTIMES: Set<String> = setOf("builtin", "claude", "codex", "grok", "antigravity", "copilot", "pi", "dsh")
 val RUNTIME_FAST_MODE_RUNTIMES: Set<String> = setOf("claude", "codex")
 
 // ── Runtime models ──
@@ -383,9 +385,10 @@ fun supportsRuntimeReasoningEffort(runtime: String): Boolean = REASONING_EFFORT_
 /**
  * Shared `runtimeOffersUndeclaredReasoningEfforts` (slock #14619): whether a model that declares no
  * efforts still offers the runtime's base set in the pickers. Antigravity does not: agy can only
- * apply a level the Computer listed for that model.
+ * apply a level the Computer listed for that model. Nor does DeepSeek Harness (slock #15549): OAR
+ * lists each model's own efforts and dsh refuses one it does not support.
  */
-fun runtimeOffersUndeclaredReasoningEfforts(runtime: String): Boolean = runtime != "antigravity"
+fun runtimeOffersUndeclaredReasoningEfforts(runtime: String): Boolean = runtime != "antigravity" && runtime != "dsh"
 
 /**
  * Shared `runtimeChoiceModel` (slock #14619): the model entry meaning "the runtime chooses" (no

@@ -5435,6 +5435,7 @@
     <string name="settings_computers_runtime_auth_sign_in_action">Войти</string>
     <string name="settings_computers_runtime_auth_sign_out_action">Выйти</string>
     <string name="settings_computers_runtime_auth_upgrade_required">Обновите этот компьютер, чтобы входить отсюда</string>
+    <string name="settings_computers_runtime_auth_dsh_credentials">В DeepSeek Harness не нужно входить отсюда. Он использует ключ API, заданный для него на этом компьютере: сохранённый в настройках самого dsh (dsh требует, чтобы файл учётных данных мог читать только владелец, режим 600), или DEEPSEEK_API_KEY в окружении компьютера либо в «Переменных окружения» агента. Сохранённый ключ важнее.</string>
     <string name="settings_computers_runtime_auth_unavailable_not_installed">Установите инструмент командной строки этой среды выполнения на компьютере, затем нажмите «Повторить поиск сред выполнения» на странице компьютера.</string>
     <string name="settings_computers_runtime_auth_unavailable_install_on">В macOS или Linux:</string>
     <string name="settings_computers_runtime_auth_unavailable_version_unsupported">Обновите инструмент командной строки этой среды выполнения на компьютере, затем нажмите «Повторить поиск сред выполнения» на странице компьютера.</string>

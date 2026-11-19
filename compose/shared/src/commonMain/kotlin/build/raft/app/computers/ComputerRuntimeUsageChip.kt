@@ -828,12 +828,12 @@ private fun ComputerRuntimeUsageChip(
     LaunchedEffect(controller) { controller?.start() }
     // Web: the card reads the Computer's sign-in state on mount, so a signed-out chip says so at rest.
     val auth = rememberComputerRuntimeAuthController(access, machineId, runtimeId, readNow = true)
-    // An open dialog stays with its session even if the Computer drops offline meanwhile (Antigravity's
-    // card is offered only while the server lists it for an online Computer).
-    val authBinding = auth?.takeIf { it.offered || it.dialog != null }?.let { ComputerRuntimeAuthBinding(it, runtimeName, computerName, agents, access?.auth?.openUrl ?: {}) }
+    // Every runtime with a sign-in (or a status-only card) gets a card: Antigravity is no longer
+    // gated by the server (slock #15445).
+    val authBinding = auth?.let { ComputerRuntimeAuthBinding(it, runtimeName, computerName, agents, access?.auth?.openUrl ?: {}) }
     // A Computer that reads no usage for this runtime (`unsupported`, slock #14667): as a runtime with none.
     val usageController = controller?.takeUnless { it.load.unsupportedRead }
-    // A runtime with neither usage nor a sign-in offered here has no card (Antigravity where the server does not revive it).
+    // A runtime with neither usage nor a sign-in has no card.
     if (usageController == null && authBinding == null) {
         plain()
         return

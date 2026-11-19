@@ -828,10 +828,6 @@ internal class ComputerRuntimeAuthController(
     val signedOut: Boolean
         get() = status == RuntimeAuthStatus.LoggedOut && !runtime.perProvider && !runtime.hasProviderKey
 
-    /** A server-gated runtime (Antigravity) gets a card only once the server lists it for this Computer. */
-    val offered: Boolean
-        get() = !runtime.serverGated || view?.computerSupports(runtime) == true
-
     fun read(force: Boolean = false) {
         val seq = ++readSeq
         scope.launch {

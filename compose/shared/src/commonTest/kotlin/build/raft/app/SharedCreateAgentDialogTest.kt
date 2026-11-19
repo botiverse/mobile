@@ -23,7 +23,7 @@ class SharedCreateAgentDialogTest {
     fun runtimePickerOffersTheBundledCreatableRuntimesWithoutTheServerCatalog() {
         val rows = runtimePickerRows(BundledRuntimeCatalog, emptyList(), selectedRuntimeId = "", showAll = true).rows
         assertEquals(
-            listOf("claude", "codex", "grok", "builtin", "kimi-sdk", "cursor", "opencode", "pi", "qwen", "qoder"),
+            listOf("claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk", "cursor", "opencode", "pi", "qwen", "qoder", "dsh"),
             rows.map { it.id }.sortedBy { id -> BundledRuntimeCatalog.runtimes.indexOfFirst { it.id == id } }
         )
     }
@@ -52,7 +52,9 @@ class SharedCreateAgentDialogTest {
         assertFalse("copilot" in createIds)
         assertFalse("kimi" in createIds)
         assertFalse("gemini" in createIds)
-        assertFalse("antigravity" in createIds)
+        // Antigravity is no longer deprecated (slock #15445); DeepSeek Harness is new (slock #15549).
+        assertTrue("antigravity" in createIds)
+        assertTrue("dsh" in createIds)
 
         val editingKimiIds = runtimePickerRows(BundledRuntimeCatalog, emptyList(), "kimi", showAll = true, currentRuntimeId = "kimi").rows.map { it.id }
         assertTrue("kimi" in editingKimiIds)

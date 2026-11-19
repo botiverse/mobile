@@ -376,6 +376,8 @@ class ServerEnumContractTest {
                 "desktop:input-presence" to "client → server (desktop app)",
                 "presence:activity" to "client → server (RealtimeSocketEvents.PresenceActivity is emitted, not received)",
                 "features:server-changed" to "server-internal pub/sub channel",
+                "agent:per-turn-process-idle" to "server-internal orchestrator event (onboardingHeldWakes)",
+                "onboarding:held-wakes:sweep" to "server-internal orchestrator event (onboardingHeldWakes)",
             )
 
         /**

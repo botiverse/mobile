@@ -165,19 +165,19 @@ class ServerRuntimeCatalogApiTest {
     @Test
     fun aRuntimesStatusIsAskedOfItsOwnServerNeverTheCatalogReadLast() {
         val names = RaftRuntimeCatalogNameRegistry()
-        val revived =
+        // A server from before slock #15445 still deprecates Antigravity; the bundled table does not.
+        val older =
             ServerRuntimeCatalog(
                 catalogVersion = 1,
-                runtimes = listOf(entry("antigravity", displayName = "Antigravity CLI").copy(deprecated = false)),
+                runtimes = listOf(entry("antigravity", displayName = "Antigravity CLI").copy(deprecated = true)),
                 source = RuntimeCatalogSource.Server
             )
-        names.publish("oar", revived)
-        // The server that offers Antigravity again: not deprecated there.
-        assertFalse(names.entry("antigravity", "oar")!!.deprecated)
-        // No server, or a server whose catalog was not read: the bundled table, never "oar"'s answer.
-        assertTrue(names.entry("antigravity")!!.deprecated)
-        assertTrue(names.entry("antigravity", "other")!!.deprecated)
-        assertTrue(names.entry("antigravity", " ")!!.deprecated)
+        names.publish("old", older)
+        assertTrue(names.entry("antigravity", "old")!!.deprecated)
+        // No server, or a server whose catalog was not read: the bundled table, never "old"'s answer.
+        assertFalse(names.entry("antigravity")!!.deprecated)
+        assertFalse(names.entry("antigravity", "other")!!.deprecated)
+        assertFalse(names.entry("antigravity", " ")!!.deprecated)
     }
 
     @Test

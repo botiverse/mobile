@@ -3119,6 +3119,7 @@
     <string name="settings_computers_runtime_auth_sign_in_action">Sign in</string>
     <string name="settings_computers_runtime_auth_sign_out_action">Sign out</string>
     <string name="settings_computers_runtime_auth_upgrade_required">Upgrade this Computer to sign in from here</string>
+    <string name="settings_computers_runtime_auth_dsh_credentials">DeepSeek Harness has no sign-in here. It uses the API key set for it on this Computer: one saved in dsh's own settings (dsh needs its credentials file readable by its owner only, mode 600), or DEEPSEEK_API_KEY in the Computer's environment or an agent's Environment variables. A saved key comes first.</string>
     <string name="settings_computers_runtime_auth_unavailable_not_installed">Install this runtime's command-line tool on the Computer, then use Rescan runtimes on the Computer's page.</string>
     <string name="settings_computers_runtime_auth_unavailable_install_on">On macOS or Linux:</string>
     <string name="settings_computers_runtime_auth_unavailable_version_unsupported">Update this runtime's command-line tool on the Computer, then use Rescan runtimes on the Computer's page.</string>

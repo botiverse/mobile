@@ -54,17 +54,21 @@ class AgentRuntimeConfigTest {
 
     @Test
     fun runtimesMirrorTheSharedCatalogAndMarkLegacyEntriesDeprecated() {
-        // slock packages/shared/src/runtimeCatalog.ts RUNTIMES at origin/staging 0b369d1aef (as at f5fe2ca864).
+        // slock packages/shared/src/runtimeCatalog.ts RUNTIMES at origin/staging 114dcb89eb (#15445, #15549).
         val ids = RUNTIMES.map { it.id }
         assertEquals(
             listOf(
                 "claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk",
-                "kimi", "copilot", "cursor", "gemini", "opencode", "pi", "qwen", "qoder"
+                "kimi", "copilot", "cursor", "gemini", "opencode", "pi", "qwen", "qoder", "dsh"
             ),
             ids
         )
-        assertEquals(setOf("antigravity", "kimi", "gemini", "copilot"), RUNTIMES.filter { it.deprecated }.map { it.id }.toSet())
-        assertEquals(setOf("qwen", "qoder"), RUNTIMES.filter { it.experimental }.map { it.id }.toSet())
+        assertEquals(setOf("kimi", "gemini", "copilot"), RUNTIMES.filter { it.deprecated }.map { it.id }.toSet())
+        assertEquals(setOf("antigravity", "qwen", "qoder", "dsh"), RUNTIMES.filter { it.experimental }.map { it.id }.toSet())
+        assertEquals("DeepSeek Harness", getRuntimeDisplayName("dsh"))
+        // DeepSeek Harness: effort per model, only the levels the Computer lists for it (slock #15549).
+        assertTrue(supportsRuntimeReasoningEffort("dsh"))
+        assertFalse(runtimeOffersUndeclaredReasoningEfforts("dsh"))
         assertEquals("Kimi CLI", RUNTIMES.single { it.id == "kimi" }.displayName)
     }
 

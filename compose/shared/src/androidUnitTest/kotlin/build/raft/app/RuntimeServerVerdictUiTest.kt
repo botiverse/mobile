@@ -56,8 +56,7 @@ class RuntimeServerVerdictUiTest {
 
     @Test
     fun whenTheServerSaysAntigravityIsSelectableThePickerLetsYouPickIt() = runRobolectricComposeUiTest {
-        // The bundled table (the fallback) deprecates Antigravity; this server's rows admit it.
-        check(BundledRuntimeCatalog.entry("antigravity")?.deprecated == true)
+        // This server's rows admit Antigravity (no longer deprecated anywhere, slock #15445).
         var runtime by mutableStateOf("claude")
         setContent {
             RaftTheme(appearance = RaftAppearance.Light) {
