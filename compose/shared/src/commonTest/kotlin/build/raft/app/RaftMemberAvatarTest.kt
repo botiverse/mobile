@@ -4,6 +4,7 @@ import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.MemberSnapshot
 import build.raft.app.data.PresenceNoopMemberRepository
 import build.raft.app.data.RaftMemberAvatarRefStore
+import build.raft.app.data.ResolvedActor
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
@@ -13,6 +14,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
@@ -78,6 +80,29 @@ class RaftMemberAvatarTest {
         assertEquals(
             "https://example.com/ext.png",
             raftMemberAvatarWireValue(RaftMemberAvatarIdentity(MemberKind.External, "x", null), null, "https://example.com/ext.png"),
+        )
+    }
+
+    @Test
+    fun aJointChannelsAgentFromTheOtherServerWearsItsResolvedFaceNotTheRobot() {
+        // #wg-deck:#286: the hand-off card drew "@Gogo" (the other server's agent) as the default
+        // robot while Gogo's message rows, which read POST /api/actors/resolve, had the right face.
+        val store = store()
+        store.seed(MemberSnapshot(server(), listOf(agent("kirby", AvatarReference.Pixel("antenna")))))
+        val resolver = raftMemberAvatarResolver(store, ServerKey)
+        val gogo =
+            ResolvedActor(MemberKind.Agent, "gogo", homeServerId = "server-2", name = "Gogo", displayName = "Gogo", avatarUrl = "pixel:frog", gravatarHash = null)
+        val jointAvatar = gogo.explicitAvatarWireValue()
+        assertNotNull(jointAvatar)
+        val gogoIdentity = RaftMemberAvatarIdentity(MemberKind.Agent, "gogo", ServerKey)
+        assertEquals(jointAvatar, raftMemberAvatarWireValue(gogoIdentity, resolver.current("gogo"), jointActorAvatarWireValue = jointAvatar))
+        // Unresolved (or off a joint surface): the robot, as before.
+        assertEquals("pixel:robot", raftMemberAvatarWireValue(gogoIdentity, resolver.current("gogo")))
+        // What the row carries is fresher than the resolved actor; this server's directory beats both.
+        assertEquals("pixel:cat", raftMemberAvatarWireValue(gogoIdentity, null, carriedAvatarWireValue = "pixel:cat", jointActorAvatarWireValue = jointAvatar))
+        assertEquals(
+            "pixel:antenna",
+            raftMemberAvatarWireValue(RaftMemberAvatarIdentity(MemberKind.Agent, "kirby", ServerKey), resolver.current("kirby"), jointActorAvatarWireValue = jointAvatar),
         )
     }
 

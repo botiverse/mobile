@@ -7407,6 +7407,9 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
                 LocalThreadFeedbackCardEntryEnabled provides feedbackCardEntryEnabled,
                 LocalThreadViewerServerId provides currentServerId,
+                // A joint channel's conversation: every person's face (hand-off card, task head, typing,
+                // followers, composer chips) reads the other server's people as its message rows do.
+                LocalRaftJointActorSurface provides jointMessageSurface,
                 // The Add Reaction picker keeps its skin tone and frequently used emoji per account.
                 LocalRaftEmojiPickerOwnerKey provides messageBodyOwnerKey,
                 LocalThreadActionCardNames provides actionCardNames,
