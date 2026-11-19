@@ -969,7 +969,6 @@
     <string name="channel_settings_info_detail">워크스페이스 전체에 표시되는 이름과 설명이에요.</string>
     <string name="channel_settings_section_detail">이 채널을 사이드바의 어느 섹션에 표시할지 선택해요.</string>
     <string name="channel_settings_section_detail_dm">이 대화를 사이드바의 어느 섹션에 표시할지 선택해요.</string>
-    <string name="channel_settings_section_create">섹션 만들기</string>
     <string name="channel_settings_collapse_detail">미리보기 높이보다 긴 메시지를 접고 ‘더 보기’로 펼칠 수 있게 해요. 끄면 이 채널에서는 항상 메시지 전체를 보여줘요.</string>
     <string name="channel_settings_collapse_detail_dm">미리보기 높이보다 긴 메시지를 접고 ‘더 보기’로 펼칠 수 있게 해요. 끄면 이 대화에서는 항상 메시지 전체를 보여줘요.</string>
     <string name="channel_settings_actions">관리</string>
@@ -2543,7 +2542,6 @@
     <string name="home_sort_recent">최근</string>
     <string name="home_sort_az">A-Z</string>
     <string name="home_section_move_to">섹션으로 이동</string>
-    <string name="home_section_remove_from">섹션에서 빼기</string>
     <string name="home_section_new_menu">새 섹션</string>
     <string name="home_sidebar_row_menu_action">더 보기</string>
     <string name="home_sidebar_section_menu_action">%1$s 옵션</string>

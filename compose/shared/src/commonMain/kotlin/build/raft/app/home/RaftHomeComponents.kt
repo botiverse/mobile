@@ -683,7 +683,6 @@ data class RaftHomeShellLabels(
     val sectionEmpty: String = "No conversations",
     val pinnedSectionEmpty: String = "Long-press a channel or DM to pin it",
     val jointChannelsEmpty: String = "No joint channels yet",
-    val removeFromSection: String = "Remove from section",
     val newSectionMenu: String = "New section",
     val renameSection: String = "Edit section",
     val deleteSection: String = "Delete section",
@@ -738,7 +737,6 @@ data class RaftHomeShellLabels(
             sectionEmpty = stringResource(Res.string.home_section_empty),
             pinnedSectionEmpty = stringResource(Res.string.home_section_pinned_empty),
             jointChannelsEmpty = stringResource(Res.string.home_section_joint_empty),
-            removeFromSection = stringResource(Res.string.home_section_remove_from),
             newSectionMenu = stringResource(Res.string.home_section_new_menu),
             renameSection = stringResource(Res.string.home_section_rename),
             deleteSection = stringResource(Res.string.home_section_delete),
@@ -3776,31 +3774,42 @@ private fun RaftStructuralHomeShellContent(
                                 }
                             }
                             ?.sectionId
+                    val moveTargetChannel = channels.firstOrNull { it.id == moveToSectionTarget }
+                    val movePlacement =
+                        ChannelSectionPlacement(
+                            customSections = customSections,
+                            pinned = moveTargetIsPinned,
+                            placementSectionId = moveTargetCurrentSectionId,
+                            joint = moveTargetDm == null && moveTargetChannel?.homeChannelKind() == JointChannelKindWireValue,
+                            directMessage = moveTargetDm != null
+                        )
                     RaftBaseMenuOverlay(
                         anchor = resolvedMoveAnchor,
-                        items =
-                            raftHomeMoveToSectionMenuItems(
-                                customSections = customSections,
-                                currentSectionId = moveTargetCurrentSectionId,
-                                labels = labels,
-                                pinned = moveTargetIsPinned
-                            ),
+                        items = raftHomeMoveToSectionMenuItems(movePlacement, labels),
                         selectedId = "",
                         onDismiss = { moveToSectionConversationId = null },
                         onSelect = { actionId ->
-                            when {
-                                // Web moveItemToPinned: pin it (pinning also drops
-                                // any custom-section placement in the store).
-                                actionId == "pinned" -> if (!moveTargetIsPinned) onPinToggle(moveToSectionTarget)
-                                actionId == "create" ->
-                                    sectionDialogTarget =
-                                        RaftHomeSectionDialogTarget.Create(moveConversationId = moveToSectionTarget)
-                                actionId.startsWith("section:") -> {
-                                    val targetSectionId = actionId.removePrefix("section:").takeIf { it.isNotBlank() }
-                                    if (targetSectionId == null || targetSectionId != moveTargetCurrentSectionId) {
-                                        onMoveConversationToSection(moveToSectionTarget, targetSectionId)
+                            if (actionId == "create") {
+                                // Web: New section goes before the section the row is shown in.
+                                sectionDialogTarget =
+                                    RaftHomeSectionDialogTarget.Create(
+                                        moveConversationId = moveToSectionTarget,
+                                        insertBeforeSectionId = movePlacement.currentSectionKey
+                                    )
+                            } else {
+                                raftHomeMoveToSectionValue(actionId)
+                                    ?.let { channelSectionMoves(movePlacement, it) }
+                                    .orEmpty()
+                                    .forEach { move ->
+                                        when (move) {
+                                            ChannelSectionMove.Pin,
+                                            ChannelSectionMove.Unpin -> onPinToggle(moveToSectionTarget)
+                                            ChannelSectionMove.ClearPlacement ->
+                                                onMoveConversationToSection(moveToSectionTarget, null)
+                                            is ChannelSectionMove.MoveTo ->
+                                                onMoveConversationToSection(moveToSectionTarget, move.sectionId)
+                                        }
                                     }
-                                }
                             }
                             moveToSectionConversationId = null
                         }
@@ -4512,43 +4521,61 @@ internal fun raftHomeSectionMenuItems(
     }
 
 /**
- * "Move to section" submenu. Mirrors web Sidebar.tsx: Pinned (checked and
- * disabled when the conversation is already pinned), one row per custom
- * section (the current one checked), then New Section… and — only when the
- * conversation sits in a custom section — Remove from Section. Item ids carry
- * the target: `pinned`, `section:<id>`, `create`, and the bare `section:` for
- * "back to the default section".
+ * "Move to section" submenu (web SidebarRowContextMenu, slock #15514), the same choices as
+ * channel settings' Sidebar section select ([ChannelSectionPlacement.options]): the
+ * conversation's home section (Channels, Joint Channels or Direct Messages) first, then Pinned
+ * and the custom sections, the one the row is shown in checked (bold); then New section. There
+ * is no "Remove from section": the home row moves it back (and unpins it). Item ids: `home`,
+ * `pinned`, `section:<id>`, `create`.
  */
 internal fun raftHomeMoveToSectionMenuItems(
-    customSections: List<SettingsServerSidebarCustomSection>,
-    currentSectionId: String?,
+    placement: ChannelSectionPlacement,
     labels: RaftHomeShellLabels = RaftHomeShellLabels(),
-    pinned: Boolean = false
 ): List<RaftBaseMenuItem> =
     buildList {
-        add(
-            RaftBaseMenuItem(
-                id = "pinned",
-                label = labels.pinnedTarget,
-                icon = RaftLucideIconName.Pin,
-                checked = pinned,
-                enabled = !pinned
-            )
-        )
-        customSections.forEach { section ->
+        val current = placement.current
+        placement.options.forEach { option ->
             add(
-                RaftBaseMenuItem(
-                    id = "section:${section.id}",
-                    label = section.sidebarSectionHeaderLabel(),
-                    icon = RaftLucideIconName.FolderInput,
-                    checked = section.id == currentSectionId
-                )
+                when (option) {
+                    ChannelSectionValue.Home ->
+                        RaftBaseMenuItem(
+                            id = "home",
+                            label =
+                                when {
+                                    placement.directMessage -> labels.directMessages
+                                    placement.joint -> labels.jointChannels
+                                    else -> labels.channels
+                                },
+                            icon = RaftLucideIconName.FolderInput,
+                            checked = current == option
+                        )
+                    ChannelSectionValue.Pinned ->
+                        RaftBaseMenuItem(
+                            id = "pinned",
+                            label = labels.pinnedTarget,
+                            icon = RaftLucideIconName.Pin,
+                            checked = current == option
+                        )
+                    is ChannelSectionValue.Custom ->
+                        RaftBaseMenuItem(
+                            id = "section:${option.sectionId}",
+                            label = placement.customSections.first { it.id == option.sectionId }.sidebarSectionHeaderLabel(),
+                            icon = RaftLucideIconName.FolderInput,
+                            checked = current == option
+                        )
+                }
             )
         }
         add(RaftBaseMenuItem(id = "create", label = labels.newSectionMenu, icon = RaftLucideIconName.FolderPlus, dividerBefore = true))
-        if (currentSectionId != null) {
-            add(RaftBaseMenuItem(id = "section:", label = labels.removeFromSection, icon = RaftLucideIconName.X))
-        }
+    }
+
+/** The section a [raftHomeMoveToSectionMenuItems] id picks; null for `create` or an unknown id. */
+internal fun raftHomeMoveToSectionValue(actionId: String): ChannelSectionValue? =
+    when {
+        actionId == "home" -> ChannelSectionValue.Home
+        actionId == "pinned" -> ChannelSectionValue.Pinned
+        actionId.startsWith("section:") -> actionId.removePrefix("section:").takeIf { it.isNotBlank() }?.let(ChannelSectionValue::Custom)
+        else -> null
     }
 
 /** A "New section" submission: the section, plus where it came from. */

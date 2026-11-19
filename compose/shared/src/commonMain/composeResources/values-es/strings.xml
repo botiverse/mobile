@@ -969,7 +969,6 @@
     <string name="channel_settings_info_detail">Nombre y descripción que se muestran en todo el espacio de trabajo.</string>
     <string name="channel_settings_section_detail">Elige dónde aparece este canal en tu barra lateral.</string>
     <string name="channel_settings_section_detail_dm">Elige dónde aparece esta conversación en tu barra lateral.</string>
-    <string name="channel_settings_section_create">Crear sección</string>
     <string name="channel_settings_collapse_detail">Los mensajes más altos que la vista previa se contraen tras un botón “Mostrar más”. Desactívalo para ver siempre los mensajes completos en este canal.</string>
     <string name="channel_settings_collapse_detail_dm">Los mensajes más altos que la vista previa se contraen tras un botón “Mostrar más”. Desactívalo para ver siempre los mensajes completos en esta conversación.</string>
     <string name="channel_settings_actions">Acciones</string>
@@ -2543,7 +2542,6 @@
     <string name="home_sort_recent">Recientes</string>
     <string name="home_sort_az">A-Z</string>
     <string name="home_section_move_to">Mover a sección</string>
-    <string name="home_section_remove_from">Quitar de la sección</string>
     <string name="home_section_new_menu">Nueva sección</string>
     <string name="home_sidebar_row_menu_action">Más acciones</string>
     <string name="home_sidebar_section_menu_action">Opciones de %1$s</string>

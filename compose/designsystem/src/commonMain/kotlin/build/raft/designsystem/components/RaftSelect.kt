@@ -246,7 +246,9 @@ private fun RaftSelectFitValue(
  * [optionLabel]; the current [value] is bold with a check, never a fill. Picking calls
  * [onValueChange] and closes the list; from the keyboard, focus goes back to the trigger.
  * [optionEnabled] = false greys an option out and keeps it from being picked (raft-ui
- * `SelectItem disabled`).
+ * `SelectItem disabled`). [optionLeadingIcon] gives an option a 16dp leading icon (raft-ui
+ * `SelectItemLeading`). [action] ends the list, after a separator, with a row that does
+ * something instead of picking a value (raft-ui `SelectActionItem`, e.g. "New section").
  */
 @Composable
 fun <T> RaftSelect(
@@ -262,6 +264,8 @@ fun <T> RaftSelect(
     optionEnabled: (T) -> Boolean = { true },
     /** raft-ui `SelectTrigger fit`: the trigger is as wide as its longest option ([RaftSelectTrigger]). */
     fit: Boolean = false,
+    optionLeadingIcon: ((T) -> (@Composable () -> Unit)?)? = null,
+    action: RaftSelectAction? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var triggerWidth by remember { mutableStateOf(0) }
@@ -290,19 +294,67 @@ fun <T> RaftSelect(
             returnFocusTo = trigger,
         ) {
             CompositionLocalProvider(LocalRaftMenuFieldType provides inField) {
-                options.forEach { option ->
-                    RaftMenuItem(
-                        text = optionLabel(option),
-                        enabled = optionEnabled(option),
-                        checked = option == value,
-                        onClick = {
-                            expanded = false
-                            onValueChange(option)
-                        },
-                    )
-                }
+                RaftSelectOptions(
+                    value = value,
+                    options = options,
+                    optionLabel = optionLabel,
+                    optionEnabled = optionEnabled,
+                    optionLeadingIcon = optionLeadingIcon,
+                    action = action,
+                    onPick = { option ->
+                        expanded = false
+                        onValueChange(option)
+                    },
+                    onAction = { expanded = false },
+                )
             }
         }
+    }
+}
+
+/**
+ * The row at the end of a [RaftSelect]'s list that does something instead of picking a value
+ * (raft-ui `SelectActionItem`): [text] in `foreground`, a 16dp [leadingIcon] in
+ * `foreground-muted`. Picking it closes the list and calls [onAction].
+ */
+@Immutable
+class RaftSelectAction(
+    val text: String,
+    val onAction: () -> Unit,
+    val leadingIcon: (@Composable () -> Unit)? = null,
+)
+
+/** A [RaftSelect]'s list rows: the options (the current [value] checked), then a separator and the [action]. */
+@Composable
+internal fun <T> RaftSelectOptions(
+    value: T?,
+    options: List<T>,
+    optionLabel: (T) -> String,
+    onPick: (T) -> Unit,
+    optionEnabled: (T) -> Boolean = { true },
+    optionLeadingIcon: ((T) -> (@Composable () -> Unit)?)? = null,
+    action: RaftSelectAction? = null,
+    onAction: () -> Unit = {},
+) {
+    options.forEach { option ->
+        RaftMenuItem(
+            text = optionLabel(option),
+            enabled = optionEnabled(option),
+            checked = option == value,
+            leadingIcon = optionLeadingIcon?.invoke(option),
+            onClick = { onPick(option) },
+        )
+    }
+    if (action != null) {
+        RaftMenuSeparator()
+        RaftMenuItem(
+            text = action.text,
+            leadingIcon = action.leadingIcon,
+            onClick = {
+                onAction()
+                action.onAction()
+            },
+        )
     }
 }
 

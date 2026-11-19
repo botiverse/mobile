@@ -14,7 +14,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.SettingsServerSidebarCustomSection
 import build.raft.app.resources.*
+import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftSelect
+import build.raft.designsystem.components.RaftSelectAction
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 
@@ -110,7 +112,7 @@ internal fun channelSectionMoves(state: ChannelSectionPlacement, next: ChannelSe
 
 /**
  * Web ChannelPreferencesSection's first row: "Move to section", its line, and the select of
- * [ChannelSectionPlacement.options] with "Create section" last, which opens the sidebar's New
+ * [ChannelSectionPlacement.options] with "New section" last, which opens the sidebar's New
  * section dialog and creates the section with this channel or DM in it. A DM's line says "this
  * conversation" and its home is Direct Messages.
  */
@@ -141,10 +143,14 @@ internal fun ChannelSectionSelectRow(
     }
 }
 
+/** The sidebar Move to section icon of an option (web ChannelSectionSelect, slock #15500): Pin for Pinned, else FolderInput. */
+internal fun channelSectionOptionIcon(value: ChannelSectionValue): RaftLucideIconName =
+    if (value == ChannelSectionValue.Pinned) RaftLucideIconName.Pin else RaftLucideIconName.FolderInput
+
 /**
- * Web ChannelSectionSelect: the select of [ChannelSectionPlacement.options] with "Create section"
- * last, which opens the sidebar's New section dialog and creates the section with this channel or
- * DM in it. [label] names it for assistive tech (the row's title).
+ * Web ChannelSectionSelect: the select of [ChannelSectionPlacement.options], each with the
+ * sidebar menu's icon, and "New section" last, which opens the sidebar's New section dialog
+ * and creates the section with this channel or DM in it. [label] names it for assistive tech (the row's title).
  */
 @Composable
 internal fun ChannelSectionSelect(
@@ -164,12 +170,9 @@ internal fun ChannelSectionSelect(
             else -> stringResource(Res.string.home_section_channels)
         }
     val pinnedLabel = stringResource(Res.string.home_section_pinned)
-    val createLabel = stringResource(Res.string.channel_settings_section_create)
-    // null is the "Create section" action at the end of the list.
-    val options: List<ChannelSectionValue?> = state.options + null
-    val labelOf: (ChannelSectionValue?) -> String = { value ->
+    val newSectionLabel = stringResource(Res.string.home_section_new_menu)
+    val labelOf: (ChannelSectionValue) -> String = { value ->
         when (value) {
-            null -> createLabel
             ChannelSectionValue.Home -> homeLabel
             ChannelSectionValue.Pinned -> pinnedLabel
             is ChannelSectionValue.Custom ->
@@ -178,18 +181,16 @@ internal fun ChannelSectionSelect(
     }
     RaftSelect(
         value = state.current,
-        options = options,
-        onValueChange = { picked ->
-            if (picked == null) {
-                creating = true
-            } else {
-                channelSectionMoves(state, picked).takeIf { it.isNotEmpty() }?.let(onMove)
-            }
-        },
+        options = state.options,
+        onValueChange = { picked -> channelSectionMoves(state, picked).takeIf { it.isNotEmpty() }?.let(onMove) },
         optionLabel = labelOf,
         enabled = enabled,
         label = label,
         fit = fit,
+        // The sidebar's Move to section icons (slock #15500, cindyz #triage:#518).
+        optionLeadingIcon = { value -> { RaftSlotIcon(channelSectionOptionIcon(value)) } },
+        // Named and drawn as the sidebar's "New section" row.
+        action = RaftSelectAction(newSectionLabel, onAction = { creating = true }, leadingIcon = { RaftSlotIcon(RaftLucideIconName.FolderPlus) }),
     )
     if (creating) {
         RaftHomeSectionDialog(

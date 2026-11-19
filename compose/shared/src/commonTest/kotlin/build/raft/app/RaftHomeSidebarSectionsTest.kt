@@ -4,7 +4,6 @@ import build.raft.app.data.SettingsServerSidebarCustomSection
 import build.raft.app.data.SettingsServerSidebarSectionPlacement
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -293,23 +292,55 @@ class RaftHomeSidebarSectionsTest {
         assertTrue(joint.none { it.id == "create-channel" })
     }
 
+    /** Web SidebarRowContextMenu Move to section (botiverse/slock #15514). */
     @Test
-    fun moveToSectionMenuMirrorsWebSubmenu() {
+    fun moveToSectionMenuListsHomeFirstAndChecksTheCurrentSection() {
         val sections = listOf(section("sec-1", "One"), section("sec-2", "Two"))
-        // web2.png: a channel in no section — Pinned, the sections, New Section….
-        val plain = raftHomeMoveToSectionMenuItems(sections, currentSectionId = null)
-        assertEquals(listOf("pinned", "section:sec-1", "section:sec-2", "create"), plain.map { it.id })
-        assertTrue(plain.none { it.checked })
-        assertTrue(plain.all { it.enabled })
-        // web3.png: a pinned DM — Pinned is checked and disabled.
-        val pinned = raftHomeMoveToSectionMenuItems(emptyList(), currentSectionId = null, pinned = true)
-        assertEquals(listOf("pinned", "create"), pinned.map { it.id })
-        assertTrue(pinned.first().checked)
-        assertFalse(pinned.first().enabled)
-        // Placed rows check their section and can be removed from it.
-        val placed = raftHomeMoveToSectionMenuItems(sections, currentSectionId = "sec-2")
-        assertEquals(listOf("pinned", "section:sec-1", "section:sec-2", "create", "section:"), placed.map { it.id })
-        assertEquals(listOf("section:sec-2"), placed.filter { it.checked }.map { it.id })
+        val labels = RaftHomeShellLabels(channels = "Channels", jointChannels = "Joint Channels", directMessages = "Direct Messages")
+        fun menu(pinned: Boolean = false, placed: String? = null, joint: Boolean = false, dm: Boolean = false) =
+            raftHomeMoveToSectionMenuItems(
+                ChannelSectionPlacement(sections, pinned = pinned, placementSectionId = placed, joint = joint, directMessage = dm),
+                labels
+            )
+        // A channel at home: its home section first and checked, then Pinned, the sections, New section.
+        val home = menu()
+        assertEquals(listOf("home", "pinned", "section:sec-1", "section:sec-2", "create"), home.map { it.id })
+        assertEquals("Channels", home.first().label)
+        assertEquals(listOf("home"), home.filter { it.checked }.map { it.id })
+        assertTrue(home.all { it.enabled })
+        assertTrue(home.last().dividerBefore)
+        // No "Remove from section" any more, wherever the row sits.
+        assertTrue(menu(placed = "sec-2").none { it.id == "section:" })
+        assertEquals(listOf("section:sec-2"), menu(placed = "sec-2").filter { it.checked }.map { it.id })
+        // Pinned wins over a placement and stays pickable (it does nothing); a deleted section's placement is home.
+        val pinned = menu(pinned = true, placed = "sec-1")
+        assertEquals(listOf("pinned"), pinned.filter { it.checked }.map { it.id })
+        assertTrue(pinned.single { it.id == "pinned" }.enabled)
+        assertEquals(listOf("home"), menu(placed = "deleted").filter { it.checked }.map { it.id })
+        // The home row names the conversation's home section.
+        assertEquals("Joint Channels", menu(joint = true).first().label)
+        assertEquals("Direct Messages", menu(dm = true).first().label)
+    }
+
+    @Test
+    fun moveToSectionPicksWriteWhatChannelSettingsWrites() {
+        val sections = listOf(section("sec-1", "One"))
+        fun moves(actionId: String, pinned: Boolean = false, placed: String? = null) =
+            raftHomeMoveToSectionValue(actionId)
+                ?.let { channelSectionMoves(ChannelSectionPlacement(sections, pinned = pinned, placementSectionId = placed), it) }
+        // Home replaces Remove from section, and also unpins.
+        assertEquals(listOf(ChannelSectionMove.ClearPlacement), moves("home", placed = "sec-1"))
+        assertEquals(listOf(ChannelSectionMove.Unpin), moves("home", pinned = true))
+        assertEquals(listOf(ChannelSectionMove.Unpin, ChannelSectionMove.ClearPlacement), moves("home", pinned = true, placed = "sec-1"))
+        // Home always writes an orphaned placement away; already home writes nothing.
+        assertEquals(listOf(ChannelSectionMove.ClearPlacement), moves("home", placed = "deleted"))
+        assertEquals(emptyList<ChannelSectionMove>(), moves("home"))
+        // Picking the current section does nothing.
+        assertEquals(emptyList<ChannelSectionMove>(), moves("pinned", pinned = true))
+        assertEquals(emptyList<ChannelSectionMove>(), moves("section:sec-1", placed = "sec-1"))
+        assertEquals(listOf(ChannelSectionMove.Pin), moves("pinned", placed = "sec-1"))
+        assertEquals(listOf(ChannelSectionMove.MoveTo("sec-1")), moves("section:sec-1", pinned = true))
+        assertEquals(null, moves("create"))
     }
 
     /** Web SidebarReadToggleMenuItem (botiverse/slock d60367a1) and its behavior test. */
