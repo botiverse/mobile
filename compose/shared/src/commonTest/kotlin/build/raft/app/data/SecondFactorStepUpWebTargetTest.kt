@@ -11,7 +11,7 @@ import kotlin.test.assertNull
 
 /**
  * "Verify it's you"'s Open on the web: the refused action's page (slock web MainColumnRoutes under
- * `/s/:serverSlug/*`, staging) on the Developer environment's web URL, in the session's server.
+ * `/s/:serverSlug`, staging) on the Developer environment's web URL, in the session's server.
  */
 class SecondFactorStepUpWebTargetTest {
     @Test

@@ -6,7 +6,7 @@ import build.raft.app.sharedSettingsWebUrl
  * The web page where a refused action is done, for "Verify it's you"'s Open on the web: when the
  * account answers only with a passkey this device can't use, the person makes the same change on
  * the web and confirms it there with the passkey. Routes are the web's (slock
- * `components/layout/MainLayout.tsx` MainColumnRoutes under `/s/:serverSlug/*`); the web has no
+ * `components/layout/MainLayout.tsx` MainColumnRoutes under `/s/:serverSlug`); the web has no
  * deep link that opens a dialog (Add Computer, Change password), so each opens the page that has it.
  */
 sealed interface SecondFactorStepUpWebTarget {
