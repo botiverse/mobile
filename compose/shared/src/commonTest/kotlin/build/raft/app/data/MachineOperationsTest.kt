@@ -57,7 +57,7 @@ class MachineOperationsTest {
 
         assertEquals(RuntimeLimitResetsReadResult.Unsupported("consent_required"), assertIs<RuntimeLimitResetsReadLoad.Done>(result).result)
         assertEquals(
-            """POST servers/s1/machines/m1/runtime-account-usage/claude/limit-resets/read {"respondAsync":true}""",
+            """POST servers/s1/machines/m1/runtime-account-usage/claude/limit-resets/read {"onboardingRequiredReason":true,"respondAsync":true}""",
             api.calls.first(),
         )
         assertEquals(4, reads(api), "a pending read, a 502 and a dropped read are all read again")
@@ -71,7 +71,7 @@ class MachineOperationsTest {
 
         assertIs<RuntimeLimitResetsReadLoad.Done>(result)
         assertEquals(
-            listOf("""POST servers/s1/machines/m1/runtime-account-usage/claude/limit-resets/read {"consent":true,"respondAsync":true}"""),
+            listOf("""POST servers/s1/machines/m1/runtime-account-usage/claude/limit-resets/read {"consent":true,"onboardingRequiredReason":true,"respondAsync":true}"""),
             api.calls,
             "no operation is read",
         )
@@ -109,7 +109,7 @@ class MachineOperationsTest {
 
         val refusal = assertIs<RuntimeLimitResetLoad.Failed>(load).refusal
         assertEquals(RuntimeLimitResetRefusal(504, "computer_timeout", TRACE), refusal)
-        assertTrue(api.calls.first().endsWith("""{"idempotencyKey":"$KEY","kind":"weekly","respondAsync":true}"""), api.calls.first())
+        assertTrue(api.calls.first().endsWith("""{"idempotencyKey":"$KEY","kind":"weekly","onboardingRequiredReason":true,"respondAsync":true}"""), api.calls.first())
     }
 
     @Test

@@ -10,8 +10,8 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 
 /*
- * Claude limit resets on the usage card (slock #14336, #14375, #14605, #14757; feature flag
- * `claude_limit_reset`, server-scoped). Wire: packages/shared/src/runtimeAccountUsage.ts
+ * Claude limit resets on the usage card (slock #14336, #14375, #14605, #14757, #15564, #15574;
+ * feature flag `claude_limit_reset_v2`, server-scoped, [CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY]). Wire: packages/shared/src/runtimeAccountUsage.ts
  * (`RUNTIME_LIMIT_RESET_KINDS`, `runtimeLimitResetKindStatusSchema`,
  * `runtimeLimitResetsReadResultSchema`, `claudeFiveHourLimitOf`) and
  * packages/server/src/routes/runtimeAuthRoutes.ts:
@@ -20,10 +20,14 @@ import kotlinx.serialization.json.doubleOrNull
  *   the flag is on, for a person who may act, on an online Computer; beside it
  *   `claudeLimitResetAccess {canUse, canConsent}` (both true since slock #15124: the person who
  *   connected the Computer, or an owner or admin; an older server sent false to an owner or admin).
- * - `POST …/runtime-account-usage/claude/limit-resets/read` with `{consent?: true}` answers
- *   `{result: RuntimeLimitResetsReadResult}`.
- * - `POST …/runtime-account-usage/claude/limit-reset` with `{idempotencyKey, kind}` answers as the
- *   Codex redeem does ([RuntimeLimitResetReply]).
+ * - `POST …/runtime-account-usage/claude/limit-resets/read` with
+ *   `{consent?: true, onboardingRequiredReason: true}` answers `{result: RuntimeLimitResetsReadResult}`.
+ * - `POST …/runtime-account-usage/claude/limit-reset` with
+ *   `{idempotencyKey, kind, onboardingRequiredReason: true}` answers as the Codex redeem does
+ *   ([RuntimeLimitResetReply]).
+ * - `onboardingRequiredReason: true` says this client reads `unsupported: onboarding_required`
+ *   (OAR 0.114: Claude Code stopped at a first-run page); without it the server answers
+ *   `not_attempted` there.
  */
 
 /** slock `RUNTIME_LIMIT_RESET_KINDS`, in that order. */

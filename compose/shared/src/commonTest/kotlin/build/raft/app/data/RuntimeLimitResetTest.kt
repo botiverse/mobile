@@ -194,6 +194,8 @@ class RuntimeLimitResetTest {
         private val refresh: () -> HomeNetworkResponse = { error("no refresh expected") },
         private val logout: () -> HomeNetworkResponse = { error("no logout expected") },
         private val readClaude: () -> HomeNetworkResponse = { error("no Claude read expected") },
+        /** Runs before each Claude read answers: a test holds it here to see the reading state. */
+        private val beforeReadClaude: suspend () -> Unit = {},
         /** `GET …/machine-operations/:id` answers, in order (MachineOperations.kt). */
         private val operation: () -> HomeNetworkResponse = { error("no machine-operation read expected") },
     ) : RaftComputersApi {
@@ -206,6 +208,7 @@ class RuntimeLimitResetTest {
 
         override suspend fun readClaudeLimitResets(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse {
             calls += "POST servers/${serverId.value}/machines/$machineId/runtime-account-usage/claude/limit-resets/read $body"
+            beforeReadClaude()
             return readClaude()
         }
 

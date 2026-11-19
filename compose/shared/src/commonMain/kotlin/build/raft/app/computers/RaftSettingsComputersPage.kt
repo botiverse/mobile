@@ -4295,6 +4295,7 @@ private fun RaftRackUsagePreviewCard(
             ComputerRuntimeUsageController(key = key, store = access.store, scope = scope, log = access.log, onIdentityChanged = access.onIdentityChanged)
         }
     DisposableEffect(controller) { onDispose { controller.cancel() } }
+    BindClaudeLimitResetFlag(controller, access.serverFeatureFlags)
     // The card's sign-in, read only when it opens: a page of Computers asks for nothing more at rest.
     val auth = rememberComputerRuntimeAuthController(access, key.machineId, runtimeId, readNow = false)
     // The line's label is the runtime's display name (web rack `RackRuntimeUsage`).

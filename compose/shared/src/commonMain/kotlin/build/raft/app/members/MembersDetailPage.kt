@@ -876,7 +876,8 @@ internal fun MemberDetailPageContent(
                     serverId = statusLookupServerId,
                     onIdentityChanged = { routeScope.launch { runtimeAccountUsageOwnerTracker.invalidate() } },
                     log = { message -> bridge.log(message) },
-                    viewer = runtimeAccountUsageViewer
+                    viewer = runtimeAccountUsageViewer,
+                    serverFeatureFlags = provider.serverFeatureFlags,
                 )
             }
         }

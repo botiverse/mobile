@@ -193,7 +193,7 @@ internal data class RuntimeAuthView(
     val runtimes: List<RuntimeAuthRuntime>? = null,
     val logoutRuntimes: List<RuntimeAuthRuntime>? = null,
     /**
-     * Claude limit resets (slock #14336): sent only while `claude_limit_reset` is on, for a person
+     * Claude limit resets (slock #14336): sent only while the server's `claude_limit_reset_v2` is on (slock #15564), for a person
      * who may act, on an online Computer; null otherwise (nothing is offered).
      */
     val claudeLimitResets: ClaudeLimitResetsAvailability? = null,
