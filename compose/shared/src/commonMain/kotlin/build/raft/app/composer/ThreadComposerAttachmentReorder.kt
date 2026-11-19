@@ -22,3 +22,18 @@ internal fun decodeThreadComposerAttachmentOrder(value: String?): List<String>? 
         ?.takeIf { it.isNotBlank() }
         ?.let { runCatching { Json.decodeFromString(attachmentOrderSerializer, it) }.getOrNull() }
         ?.filter { it.isNotBlank() }
+
+/**
+ * The tray's new order ([ThreadComposerReorderAttachmentsAction]'s value) into the draft store: it
+ * becomes the send's `attachmentIds` order (web `arrayMove` of `pendingFiles`). Kept out of the
+ * thread page's event handler, which is near the JVM method-size ceiling.
+ */
+internal fun SharedThreadComposerDraftViewModel.reorderThreadComposerAttachments(value: String?, log: (String) -> Unit) {
+    val order = decodeThreadComposerAttachmentOrder(value)
+    if (order == null) {
+        log("thread_composer_attachment_reorder_rejected reason=missing_order")
+        return
+    }
+    log("thread_composer_attachment_reorder count=${order.size}")
+    dispatch(SharedThreadComposerDraftIntent.ReorderAttachments(order))
+}
