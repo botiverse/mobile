@@ -26,15 +26,78 @@ internal fun messageBodyFontSizeOwnerKey(environmentId: String, accountId: Strin
 }
 
 /**
+ * The owner key of the last committed auth session in [environmentId], read lock-free from the
+ * session store ([KeyValueAuthSessionStore.readCommittedSessionSnapshot]): a conversation page's
+ * owner before it has captured its session, so its first frame already finds the account's
+ * last-known size. Null when signed out or the store is not installed.
+ */
+internal fun messageBodyFontSizeCommittedOwnerKey(environmentId: String): String? {
+    val accountId =
+        runCatching {
+            KeyValueAuthSessionStore(RaftSharedAuthSessionKeyValueStoreProvider.create().store)
+                .readCommittedSessionSnapshot()
+                ?.user
+                ?.id
+        }.getOrNull() ?: return null
+    return messageBodyFontSizeOwnerKey(environmentId, accountId)
+}
+
+/**
+ * Durable last-known copy of each owner's message body size (sm / md / lg), so a cold start draws
+ * messages at the account's size from the first frame instead of at md until the appearance
+ * settings load returns (then switching, seconds after opening). Keyed by owner (environment +
+ * account), like the other last-known copies: kept on sign-out, never read for another account.
+ */
+class MessageBodyFontSizeLastKnownStore(private val store: SharedPreferenceStore) {
+    /** The owner whose size was written last (the account this device last used). */
+    fun lastOwnerKey(): String? = store.getString(LAST_OWNER_KEY)?.takeIf { it.isNotBlank() }
+
+    fun read(ownerKey: String): String? =
+        store.getString(ownerStorageKey(ownerKey))?.let(::normalizeSettingsMessageBodyFontSize)
+
+    fun write(ownerKey: String, selectedKey: String) {
+        store.putString(ownerStorageKey(ownerKey), selectedKey)
+        store.putString(LAST_OWNER_KEY, ownerKey)
+    }
+
+    private fun ownerStorageKey(ownerKey: String) = "$OWNER_KEY_PREFIX$ownerKey"
+
+    private companion object {
+        const val LAST_OWNER_KEY = "settings:persist:message_body_font_size:v1:last_owner"
+        const val OWNER_KEY_PREFIX = "settings:persist:message_body_font_size:v1:owner:"
+    }
+}
+
+/**
  * Process-scoped, owner-partitioned projection of the server-owned message body font preference.
  * Multiple windows/accounts never share one unkeyed preference value.
+ *
+ * With [lastKnown], the last owner's stored size is in the state from construction and any other
+ * owner's is put in when its load starts, so pages draw it before the server answers; every
+ * server answer is written back. A seeded owner is not "loaded": the server is still asked.
  */
 class SharedMessageBodyFontSizeStore(
     private val scope: CoroutineScope,
     private val diagnosticsLogger: (String) -> Unit = {},
+    private val lastKnown: MessageBodyFontSizeLastKnownStore? = null,
 ) {
     private val mutex = Mutex()
-    private val _state = raftStoreState(SharedMessageBodyFontSizeState(), "SharedMessageBodyFontSizeStore")
+    private val _state = raftStoreState(initialState(), "SharedMessageBodyFontSizeStore")
+
+    private fun initialState(): SharedMessageBodyFontSizeState {
+        val store = lastKnown ?: return SharedMessageBodyFontSizeState()
+        val seeded =
+            runCatching {
+                store.lastOwnerKey()?.let { owner -> store.read(owner)?.let { selected -> owner to selected } }
+            }.getOrNull()
+        return SharedMessageBodyFontSizeState(selectedKeysByOwner = listOfNotNull(seeded).toMap())
+    }
+
+    private fun lastKnownFor(ownerKey: String): String? = runCatching { lastKnown?.read(ownerKey) }.getOrNull()
+
+    private fun rememberLastKnown(ownerKey: String, selectedKey: String) {
+        runCatching { lastKnown?.write(ownerKey, selectedKey) }
+    }
     val state: StateFlow<SharedMessageBodyFontSizeState> = _state.asStateFlow()
 
     private val loads = mutableMapOf<String, Deferred<DataResult<SettingsAppearanceSnapshot>>>()
@@ -65,8 +128,17 @@ class SharedMessageBodyFontSizeStore(
                 }
                 val requestGeneration = (generations[normalizedOwnerKey] ?: 0L) + 1L
                 generations[normalizedOwnerKey] = requestGeneration
+                val seeded =
+                    if (normalizedOwnerKey in current.selectedKeysByOwner) {
+                        current.selectedKeysByOwner
+                    } else {
+                        lastKnownFor(normalizedOwnerKey)
+                            ?.let { selected -> current.selectedKeysByOwner + (normalizedOwnerKey to selected) }
+                            ?: current.selectedKeysByOwner
+                    }
                 _state.value =
                     current.copy(
+                        selectedKeysByOwner = seeded,
                         loadingOwners = current.loadingOwners + normalizedOwnerKey,
                         loadedOwners = current.loadedOwners - normalizedOwnerKey,
                     )
@@ -112,6 +184,7 @@ class SharedMessageBodyFontSizeStore(
                             loadingOwners = current.loadingOwners - ownerKey,
                             loadedOwners = current.loadedOwners + ownerKey,
                         )
+                    rememberLastKnown(ownerKey, selectedKey)
                     diagnosticsLogger("message_body_font_size source=load owner=$ownerKey selected=$selectedKey")
                 }
                 else -> {
@@ -142,6 +215,7 @@ class SharedMessageBodyFontSizeStore(
                     loadingOwners = current.loadingOwners - normalizedOwnerKey,
                     loadedOwners = current.loadedOwners + normalizedOwnerKey,
                 )
+            rememberLastKnown(normalizedOwnerKey, selectedKey)
             diagnosticsLogger("message_body_font_size source=authoritative owner=$normalizedOwnerKey selected=$selectedKey")
         }
     }

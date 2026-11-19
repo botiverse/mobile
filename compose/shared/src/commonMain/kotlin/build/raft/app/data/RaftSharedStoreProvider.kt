@@ -3517,6 +3517,7 @@ internal class RaftSharedStoreProvider private constructor(
                 SharedMessageBodyFontSizeStore(
                     scope = RaftStoreThreading.newScope(),
                     diagnosticsLogger = sharedInfoLogger("SlockMessageBodyFontSize", "store"),
+                    lastKnown = MessageBodyFontSizeLastKnownStore(sharedPreferenceStore),
                 )
             val processServerMembersRepository =
                 RealMemberRepository(
