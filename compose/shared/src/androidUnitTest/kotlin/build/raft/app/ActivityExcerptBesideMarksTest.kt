@@ -104,6 +104,35 @@ class ActivityExcerptBesideMarksTest {
         assertEquals(split, texts(activity), "line 2 is still there")
     }
 
+    /**
+     * The wide layout's compact row (web `InboxItemLine`): one excerpt line. With marks or without, the
+     * whole excerpt is one text that ellipsizes on that line; nothing spills onto a second line.
+     */
+    @Test
+    fun oneLineExcerptKeepsTheWholeTextOnOneLine() {
+        val text = buildAnnotatedString { append(excerpt) }
+        val showMarks = mutableStateOf(false)
+        val activity = activities.launch()
+        activity.setContent {
+            RaftTheme {
+                ActivityExcerptBesideMarks(
+                    text = text,
+                    style = RaftTheme.typography.callout,
+                    color = RaftTheme.colors.foreground,
+                    inlineContent = emptyMap(),
+                    lineHeight = 22.dp,
+                    maxLines = 1,
+                    marks = { if (showMarks.value) Box(Modifier.size(28.dp, 22.dp)) },
+                )
+            }
+        }
+        settle()
+        assertEquals(listOf(excerpt), texts(activity), "no marks: one one-line text")
+        showMarks.value = true
+        settle()
+        assertEquals(listOf(excerpt), texts(activity), "marks: the excerpt stays one text beside them")
+    }
+
     private fun texts(activity: android.app.Activity): List<String> {
         val root = assertNotNull(findComposeRoot(activity.window.decorView), "no compose root")
         val out = mutableListOf<String>()

@@ -2177,6 +2177,7 @@ internal fun SharedActivityList(
             // A touch while the list still flings only stops it: neither a row's swipe nor the filter
             // pager takes that gesture (artin, #proj-mobile:34aed863; iOS / RecyclerView behaviour).
             val listScrolling = remember(listState) { { listState.isScrollInProgress } }
+            val rowLayout = activityRowLayout
             CompositionLocalProvider(LocalRaftScrollInProgress provides listScrolling) {
                 LazyColumn(
                     state = listState,
@@ -2184,8 +2185,10 @@ internal fun SharedActivityList(
                         Modifier
                             .fillMaxSize()
                             .raftHoldsHorizontalDragsWhileScrolling(listScrolling)
-                            // web inbox scroller `py-1`; rows sit edge to edge, split by their own hairline.
-                            .padding(top = 4.dp)
+                            // web inbox scroller `py-1`; on a phone rows sit edge to edge, split by their own
+                            // hairline; on the wide layout (the list's own `py-1 gap-0.5`) 2dp apart, no line.
+                            .padding(top = rowLayout.listTop),
+                    verticalArrangement = Arrangement.spacedBy(rowLayout.rowGap),
                 ) {
                     // One compact row per conversation (web ThreadsInbox `layout="list"`).
                     // TODO(dark-mode): these rows paint with RaftTheme.colors (foreground, lineHairline, infoSoft)
@@ -2194,7 +2197,8 @@ internal fun SharedActivityList(
                     conversationListEntries.forEach { entry ->
                         when (entry) {
                             // On the panel's own surface, so no row shows through the stuck heading.
-                            is ActivityConversationListEntry.DayHeading -> activityDayHeadingItem(entry, RaftColor.SurfaceWhite)
+                            is ActivityConversationListEntry.DayHeading ->
+                                activityDayHeadingItem(entry, RaftColor.SurfaceWhite, horizontalPadding = rowLayout.contentEdge)
                             is ActivityConversationListEntry.Row -> item(key = entry.key, contentType = "activity_row") {
                                 val item = entry.item
                                 val model =
@@ -2235,6 +2239,7 @@ internal fun SharedActivityList(
                                     swipeOpenSide = swipeOpenRow.openSide(item.key),
                                     onSwipeOpenChange = { side -> swipeOpenRow = swipeOpenRow.change(item.key, side) },
                                     onSwipeOpenRowPlaced = swipeOpenRowGeometry::onOpenRowPlaced,
+                                    layout = rowLayout,
                                 )
                             }
                         }

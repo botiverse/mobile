@@ -12,6 +12,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.InboxItem
 import build.raft.app.model.MillisPerDay
@@ -192,7 +193,14 @@ private val ActivityMonthResources =
  * through it. Groups after the first sit 6dp under the rows above (`InboxItemListGroup mt-1.5`).
  */
 @Composable
-internal fun ActivityDayHeading(label: ActivityDayLabel, first: Boolean, background: Color, modifier: Modifier = Modifier) {
+internal fun ActivityDayHeading(
+    label: ActivityDayLabel,
+    first: Boolean,
+    background: Color,
+    modifier: Modifier = Modifier,
+    /** The column's margin, the rows' content edge ([ActivityRowLayout.contentEdge]). */
+    horizontalPadding: Dp = 16.dp,
+) {
     RaftText(
         text = label.localized(),
         modifier =
@@ -201,7 +209,7 @@ internal fun ActivityDayHeading(label: ActivityDayLabel, first: Boolean, backgro
                 .background(background)
                 .raftSafeAreaHorizontalPadding()
                 .padding(top = if (first) 0.dp else 6.dp)
-                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .padding(horizontal = horizontalPadding, vertical = 4.dp)
                 .semantics { heading() },
         style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold),
         color = RaftTheme.colors.foregroundHint,
@@ -212,9 +220,13 @@ internal fun ActivityDayHeading(label: ActivityDayLabel, first: Boolean, backgro
 
 /** [ActivityDayHeading] as the list's sticky header: it stays in view while its day's rows scroll. */
 @OptIn(ExperimentalFoundationApi::class)
-internal fun LazyListScope.activityDayHeadingItem(heading: ActivityConversationListEntry.DayHeading, background: Color) {
+internal fun LazyListScope.activityDayHeadingItem(
+    heading: ActivityConversationListEntry.DayHeading,
+    background: Color,
+    horizontalPadding: Dp = 16.dp,
+) {
     stickyHeader(key = heading.key, contentType = "activity_day_heading") {
-        ActivityDayHeading(heading.label, first = heading.first, background = background)
+        ActivityDayHeading(heading.label, first = heading.first, background = background, horizontalPadding = horizontalPadding)
     }
 }
 
