@@ -52,9 +52,8 @@ data class SearchArtifactsState(
 
 sealed interface SearchArtifactsIntent {
     /**
-     * The search's words for [serverId]; [enabled] is false while workspace_artifacts_v0 is off or
-     * not yet known for the server, or in a conversation's own search (the groups are
-     * server-wide): then nothing is asked. The same words again are a no-op.
+     * The search's words for [serverId]; [enabled] is false in a conversation's own search (the
+     * groups are server-wide): then nothing is asked. The same words again are a no-op.
      */
     data class Query(val serverId: String?, val query: String, val enabled: Boolean) : SearchArtifactsIntent
 

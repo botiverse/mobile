@@ -1011,13 +1011,9 @@ private fun HomeSearchRouterContent(
             )
         }
     }
-    // The Artifacts group of core's search (web useSearchAppResults): only while the server's
-    // workspace_artifacts_v0 is loaded and on (no request otherwise), and not in a conversation's own
-    // search (the groups are server-wide). The wide panel asks for 5 (web overlay `limit`).
+    // The Artifacts group of core's search (web useSearchAppResults): for the search's server, not in a
+    // conversation's own search (the groups are server-wide). The wide panel asks for 5 (web overlay `limit`).
     val sharedStores = remember(environment.bridge) { RaftSharedStoreRegistry.get(environment.bridge) }
-    val artifactsFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-    val artifactsOn =
-        remember(searchScopeServerId, artifactsFlagRevision) { appShellArtifactsShown(sharedStores.serverFeatureFlags, searchScopeServerId) }
     val conversationScopedSearch = normalizedInitialChannelId != null && !environment.tabRoot && environment.inlineOnClose == null
     val artifactsViewModel: HomeSearchArtifactsViewModel =
         viewModel(key = if (overlay != null) "home-secondary-search-artifacts-overlay" else "home-secondary-search-artifacts") {
@@ -1029,9 +1025,9 @@ private fun HomeSearchRouterContent(
         }
     val artifactsState by artifactsViewModel.state.collectAsState()
     val searchQuery = searchSavedState.search.query
-    LaunchedEffect(artifactsViewModel, searchScopeServerId, searchQuery, artifactsOn, conversationScopedSearch) {
+    LaunchedEffect(artifactsViewModel, searchScopeServerId, searchQuery, conversationScopedSearch) {
         artifactsViewModel.store.dispatch(
-            SearchArtifactsIntent.Query(searchScopeServerId, searchQuery, enabled = artifactsOn && !conversationScopedSearch)
+            SearchArtifactsIntent.Query(searchScopeServerId, searchQuery, enabled = !conversationScopedSearch)
         )
     }
     val artifactsMoreFailed =

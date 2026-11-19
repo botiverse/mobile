@@ -255,11 +255,10 @@ internal data class RaftMessageLinkPlan(
 internal fun planRaftMessageLinks(
     content: String,
     appHosts: Collection<String>,
-    artifactsEnabled: Boolean = true,
 ): RaftMessageLinkPlan =
     // Never thrown out of a message's render (#triage:#351): if reading its links fails, the message has no cards.
     try {
-        planRaftMessageLinksUnguarded(content, appHosts, artifactsEnabled)
+        planRaftMessageLinksUnguarded(content, appHosts)
     } catch (error: Exception) {
         raftLogWarn("RaftMessageLinks", "reading the message's links failed: ${error::class.simpleName}: ${error.message}")
         NoRaftMessageLinks
@@ -270,17 +269,14 @@ private val NoRaftMessageLinks = RaftMessageLinkPlan(emptyList(), emptyMap(), em
 private fun planRaftMessageLinksUnguarded(
     content: String,
     appHosts: Collection<String>,
-    artifactsEnabled: Boolean,
 ): RaftMessageLinkPlan {
     val visible = raftMessageVisibleLinks(content)
     if (visible.isEmpty()) return NoRaftMessageLinks
     val bare = visible.filter { it.bare }.map { it.href }
     val firstParty = LinkedHashMap<String, ArtifactLinkTarget>()
-    if (artifactsEnabled) {
-        // Raft's own objects from every visible link, one the author gave words to included (#proj-workspace:#289):
-        // its card goes under the message, and its words stay as written (only a bare one becomes a chip).
-        for (link in visible) parseArtifactLinkTarget(link.href, appHosts)?.let { firstParty[link.href] = it }
-    }
+    // Raft's own objects from every visible link, one the author gave words to included (#proj-workspace:#289):
+    // its card goes under the message, and its words stay as written (only a bare one becomes a chip).
+    for (link in visible) parseArtifactLinkTarget(link.href, appHosts)?.let { firstParty[link.href] = it }
     val accepted = LinkedHashMap<String, ArtifactLinkTarget>()
     for (target in firstParty.values) {
         if (accepted.size >= MESSAGE_OBJECT_LINK_LIMIT) break

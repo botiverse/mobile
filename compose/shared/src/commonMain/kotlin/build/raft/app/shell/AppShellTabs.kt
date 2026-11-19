@@ -198,8 +198,6 @@ internal fun appShellRailTabs(
     moreAttention: Set<RaftMoreAttention> = emptySet(),
     /** The rail page shown inline in the content area (Computers / Apps): it is the selected entry. */
     inlinePageRailId: String? = null,
-    /** workspace_artifacts_v0 loaded and on ([appShellArtifactsShown]): the Artifacts entry shows. */
-    artifacts: Boolean = false,
     /** The Assistant entry shows (web `useRememberedAssistantShown`, the phone Home row's rule). */
     assistant: Boolean = false,
 ): List<RaftBottomTabItemPayload> =
@@ -208,7 +206,6 @@ internal fun appShellRailTabs(
         ids =
             AppShellRailTabKeys.filter { id ->
                 when (id) {
-                    RaftAppDestination.Artifacts.id -> artifacts
                     RaftAppDestination.Assistant.id -> assistant
                     else -> true
                 }
@@ -294,8 +291,8 @@ internal const val AppShellServerTabKey = "more"
 /** The server's pages in the server panel, in order; each opens the page the More row opened. */
 internal enum class RaftServerMenuEntry(val key: String) {
     /**
-     * The Artifacts home (web MobileServerTab: first of the server's pages, behind the rail's gate,
-     * workspace_artifacts_v0; guests too). Not a shell tab: a pushed page.
+     * The Artifacts home (web MobileServerTab: first of the server's pages; guests too). Not a
+     * shell tab: a pushed page.
      */
     Artifacts("artifacts"),
     Members(RaftAppDestination.Members.id),
@@ -363,16 +360,12 @@ internal fun raftServerMenuEntriesFor(
     entries: List<RaftServerMenuEntry>,
     wide: Boolean,
     guest: Boolean,
-    /** The server's workspace_artifacts_v0, already loaded and on (web `useArtifactsRailShown`). */
-    artifacts: Boolean = false,
-): List<RaftServerMenuEntry> {
-    val shown = if (artifacts) entries else entries - RaftServerMenuEntry.Artifacts
-    return when {
+): List<RaftServerMenuEntry> =
+    when {
         wide -> emptyList()
-        guest -> shown - RaftServerMenuEntry.Apps
-        else -> shown
+        guest -> entries - RaftServerMenuEntry.Apps
+        else -> entries
     }
-}
 
 /** The unread count a server row shows: the Home switcher's label, or null. */
 internal fun raftServerMenuUnreadLabel(server: RaftServerSwitcherItem): String? =

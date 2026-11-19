@@ -1665,13 +1665,14 @@ class RaftAppShellTest {
     fun railTabsKeepWebLeftRailEntries() {
         // Direction A (#proj-mobile 10-30): web LeftRail's entries, order and icons.
         val tabs = appShellRailTabs(selectedTab = "members", labelFor = { it })
-        assertEquals(listOf("home", "activity", "tasks", "members", "computers", "apps"), tabs.map { it.key })
-        assertEquals(listOf(false, false, false, true, false, false), tabs.map { it.selected })
+        assertEquals(listOf("home", "activity", "tasks", "artifacts", "members", "computers", "apps"), tabs.map { it.key })
+        assertEquals(listOf(false, false, false, false, true, false, false), tabs.map { it.selected })
         assertEquals(
             listOf(
                 RaftLucideIconName.MessageSquare,
                 RaftLucideIconName.Activity,
                 RaftLucideIconName.ListTodo,
+                RaftLucideIconName.Artifact,
                 RaftLucideIconName.Users,
                 RaftLucideIconName.Monitor,
                 RaftLucideIconName.Blocks,

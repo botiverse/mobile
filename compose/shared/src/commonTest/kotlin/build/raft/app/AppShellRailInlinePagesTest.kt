@@ -44,9 +44,8 @@ class AppShellRailInlinePagesTest {
     fun theInlinePageIsTheSelectedRailEntry() {
         val tabs = appShellRailTabs(selectedTab = "home", labelFor = { it }, inlinePageRailId = appShellRailInlinePageRailId(AppShellRailComputersKey))
         assertEquals(listOf("computers"), tabs.filter { it.selected }.map { it.key })
-        // Artifacts only behind workspace_artifacts_v0 (web `useArtifactsRailShown`), after Tasks.
-        assertFalse(tabs.any { it.key == "artifacts" })
-        val withArtifacts = appShellRailTabs(selectedTab = "home", labelFor = { it }, artifacts = true, inlinePageRailId = appShellRailInlinePageRailId(AppShellRailArtifactsKey))
+        // Artifacts always (workspace_artifacts_v0 is no longer read), after Tasks.
+        val withArtifacts = appShellRailTabs(selectedTab = "home", labelFor = { it }, inlinePageRailId = appShellRailInlinePageRailId(AppShellRailArtifactsKey))
         assertEquals(listOf("home", "activity", "tasks", "artifacts", "members", "computers", "apps"), withArtifacts.map { it.key })
         assertEquals(listOf("artifacts"), withArtifacts.filter { it.selected }.map { it.key })
         // The Assistant only where its entry shows (web `useRememberedAssistantShown`), last.

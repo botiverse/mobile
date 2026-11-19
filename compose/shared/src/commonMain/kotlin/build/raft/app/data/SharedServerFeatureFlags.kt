@@ -90,12 +90,11 @@ const val AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY: String = "agent_migration_hos
 /** Cloud agents in the create dialog (slock `ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY`). */
 const val ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY: String = "antiproton_hosted_runtime"
 
-/**
- * Workspace Artifacts (slock `packages/shared/src/featureFlags.ts` `WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY`):
- * per server, default off, no rules. Off (or unresolved), Artifact links stay plain links and nothing
- * new is shown: no chips, no item cards, no Activity object rows.
- */
-const val WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY: String = "workspace_artifacts_v0"
+// workspace_artifacts_v0 is no longer read (2026-11-19, from 1.27): Workspace Artifacts are always on, as on
+// web (#proj-workspace:#338): the Artifacts home and its entries, Artifact chips and item cards, a
+// conversation's Artifacts and search's Artifacts group. A server that still refuses with 403
+// ARTIFACTS_NOT_ENABLED gets the Artifacts home's off state. The server flag row can go once app
+// versions that still read it (1.26 and earlier) are gone.
 
 /**
  * Task v2 (slock `packages/web/src/store/serverFeatureFlags.ts` `TASK_V2_CONVERSATIONS_FLAG_KEY`, the
@@ -242,7 +241,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
     ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY,
-    WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY,
     MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY,
     INBOX_ROW_POSITION_FEATURE_FLAG_KEY,
     SYNC_INBOX_ROWS_FEATURE_FLAG_KEY,

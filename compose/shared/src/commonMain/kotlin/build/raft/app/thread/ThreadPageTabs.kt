@@ -11,9 +11,7 @@ import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
 import build.raft.app.components.RaftAnchoredMetaChip
 import build.raft.app.base.Utils
 import build.raft.app.data.ArtifactLinkTarget
-import build.raft.app.data.WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
 import build.raft.app.data.artifactWebUrl
-import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.map
@@ -34,7 +32,6 @@ import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.model.ServerId
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -828,17 +825,10 @@ internal fun ThreadFilesTab(
         return
     }
     val vm = filesViewModel
-    // Workspace Artifacts (web #11580): the conversation's own lead its files, behind the
-    // server's workspace_artifacts_v0, latched while the tab is composed.
+    // Workspace Artifacts (web #11580): the conversation's own lead its files.
     val appLinkHost = LocalThreadAppLinkPreviewHost.current
     val artifactsServerId = appLinkHost?.serverId?.takeIf { appLinkHost.artifacts != null }
-    val artifactsEnabled =
-        rememberServerFeatureLatched(
-            appLinkHost?.artifacts?.featureFlags,
-            artifactsServerId?.let(::ServerId),
-            WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
-        )
-    val artifactsScope = artifactsServerId?.takeIf { artifactsEnabled }?.let(::ThreadFilesArtifactsScope)
+    val artifactsScope = artifactsServerId?.let(::ThreadFilesArtifactsScope)
     LaunchedEffect(
         threadInstanceKey,
         filesStartKey,

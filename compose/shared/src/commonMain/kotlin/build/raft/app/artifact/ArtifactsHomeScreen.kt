@@ -101,9 +101,10 @@ import build.raft.designsystem.tokens.RaftStroke
  * Conversation and Author filters, 和我有关 and Clear all), then every Artifact the reader can see in
  * the server as tiles (the default) or rows, Load more for the next page. The skeleton while the first
  * page loads, a warning with Try again when a read fails (rows stay under it), an empty state by
- * cause, and the off state when workspace_artifacts_v0 is off. A row opens the in-app viewer.
+ * cause, and the off state when the server refuses with 403 ARTIFACTS_NOT_ENABLED. A row opens the
+ * in-app viewer.
  *
- * Pure: state in, intents out ([ArtifactsHomeRoute] wires the store, the flag and the viewer).
+ * Pure: state in, intents out ([ArtifactsHomeRoute] wires the store and the viewer).
  */
 @Composable
 internal fun ArtifactsHomeScreen(

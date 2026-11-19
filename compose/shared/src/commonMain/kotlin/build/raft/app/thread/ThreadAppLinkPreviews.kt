@@ -32,19 +32,15 @@ import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
 import build.raft.app.data.SharedArtifactScreenshotStore
 import build.raft.app.data.SharedArtifactSummaryStore
-import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.APP_LINK_READ_MODE_V1
 import build.raft.app.data.AppLinkBatchRead
 import build.raft.app.data.AppLinkCardView
 import build.raft.app.data.appLinkCardReadLocale
 import build.raft.app.data.runtimeFormRequestLanguageTag
 import kotlinx.coroutines.awaitCancellation
-import build.raft.app.data.WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
 import build.raft.app.data.answersFor
 import build.raft.app.links.planRaftMessageLinks
 import build.raft.app.data.artifactWebUrl
-import build.raft.app.data.rememberServerFeatureLatched
-import build.raft.app.model.ServerId
 import kotlinx.coroutines.flow.StateFlow
 import build.raft.app.data.SharedAppLinkPreviewStore
 import build.raft.app.data.appLinkAppKey
@@ -95,7 +91,6 @@ internal data class ThreadAppLinkPreviewHost(
 internal data class ThreadArtifactLinkHost(
     val summaries: SharedArtifactSummaryStore,
     val appHosts: StateFlow<List<String>>,
-    val featureFlags: SharedServerFeatureFlags?,
     val webBaseUrl: String,
     /** The cards' screenshots (in memory for this viewer); null where none are read (fixtures). */
     val screenshots: SharedArtifactScreenshotStore? = null,
@@ -130,17 +125,15 @@ internal data class ThreadArtifactLinkAnswers(
 }
 
 /**
- * The message's Artifact links (workspace_artifacts_v0, latched for this composition: a flag that
- * turns off leaves what is shown until the next entry): split on the app hosts and read in the
- * message's batch (the store's one request per window; a reference already asked is not asked
- * again, so the chips in the text and the cards under it share one read).
+ * The message's Artifact links: split on the app hosts and read in the message's batch (the store's
+ * one request per window; a reference already asked is not asked again, so the chips in the text and
+ * the cards under it share one read).
  */
 @Composable
 internal fun rememberThreadArtifactLinkAnswers(host: ThreadArtifactLinkHost?, serverId: String, body: String): ThreadArtifactLinkAnswers {
     if (host == null) return ThreadArtifactLinkAnswers.None
-    val enabled = rememberServerFeatureLatched(host.featureFlags, ServerId(serverId), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY)
     val appHosts by host.appHosts.collectAsState()
-    val targets = remember(enabled, appHosts, body) { if (enabled) planRaftMessageLinks(body, appHosts).objectTargets else emptyList() }
+    val targets = remember(appHosts, body) { planRaftMessageLinks(body, appHosts).objectTargets }
     if (targets.isEmpty()) return ThreadArtifactLinkAnswers.None
     val answersFlow = remember(host.summaries, serverId, targets) { host.summaries.answersFlow(serverId, targets) }
     val answers by answersFlow.collectAsState(initial = host.summaries.state.value.answersFor(serverId, targets))

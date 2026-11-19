@@ -5,8 +5,7 @@ import build.raft.app.sharedSettingsResolvedWebBaseUrl
 /**
  * Workspace Artifacts links in a message's text (botiverse/slock feat/workspace-artifacts
  * 542e922d6: `packages/shared/src/artifactRef.ts` `parseArtifactRef`, web
- * `packages/web/src/apps/artifacts/artifactLinks.ts` `artifactLinkTarget`), behind the per-server
- * flag [WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY].
+ * `packages/web/src/apps/artifacts/artifactLinks.ts` `artifactLinkTarget`).
  *
  * A link names an Artifact only on one of Raft's own app hosts (`appHosts`, from
  * `GET /api/public/client-config`, [SharedClientConfigStore]), each compared whole:

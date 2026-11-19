@@ -127,8 +127,8 @@ internal enum class RaftAppDestination(
         navEvent = RaftNavDestination.Search,
     ),
     /**
-     * The Artifacts home (web LeftRail: after Tasks, only behind workspace_artifacts_v0,
-     * `useArtifactsRailShown`); a page in the content area beside the rail, like Computers. The
+     * The Artifacts home (web LeftRail: after Tasks; workspace_artifacts_v0 is no longer read, it is
+     * always shown); a page in the content area beside the rail, like Computers. The
      * phone opens it from the server panel ([RaftServerMenuEntry.Artifacts]). NAV_DESTINATIONS has
      * no `artifacts` yet: no nav event.
      */

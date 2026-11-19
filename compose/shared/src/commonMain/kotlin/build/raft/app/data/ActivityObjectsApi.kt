@@ -12,9 +12,10 @@ import kotlinx.serialization.json.JsonElement
 
 /**
  * Activity rows for first-party objects (botiverse/slock feat/workspace-artifacts 542e922d6,
- * `packages/shared/src/activityObjectsContract.ts`), behind each app's server flag (Artifacts:
- * `workspace_artifacts_v0`). With every object app off the inbox and unread-summary answers are
- * exactly what they were: no object rows, none of the count fields.
+ * `packages/shared/src/activityObjectsContract.ts`), behind each app's server flag on the server
+ * (Artifacts: `workspace_artifacts_v0`, which the app no longer reads). With every object app off
+ * the inbox and unread-summary answers are exactly what they were: no object rows, none of the
+ * count fields.
  *
  * - `GET /api/channels/inbox` `items` may hold `ObjectInboxItem`s (`kind: "object"`), ordered and
  *   paged with the conversation rows by `lastActivityAt`; the answer adds `objectUnreadCount`,

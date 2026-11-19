@@ -66,9 +66,8 @@ internal data class RaftAppLinkChipHost(
     /** Marks the chip of a link (by URL) whose card [onOpenCard] opens, so the card can open beside it. */
     val cardAnchor: ((String) -> Modifier)? = null,
     /**
-     * Workspace Artifacts (flag `workspace_artifacts_v0`): the message's Artifact links answered `ok`,
-     * by [ArtifactLinkTarget.key]. A link not in it (off, loading, unavailable, failed) stays the
-     * author's plain link. Empty while the flag is off.
+     * Workspace Artifacts: the message's Artifact links answered `ok`, by [ArtifactLinkTarget.key]. A
+     * link not in it (loading, unavailable, failed) stays the author's plain link.
      */
     val artifacts: Map<String, ArtifactSummary> = emptyMap(),
     /** Raft's own app hosts the links were split on ([parseArtifactLinkTarget]). */

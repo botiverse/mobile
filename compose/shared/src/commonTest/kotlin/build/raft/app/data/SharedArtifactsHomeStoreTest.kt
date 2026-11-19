@@ -291,7 +291,7 @@ class SharedArtifactsHomeStoreTest {
         store.dispatch(ArtifactsHomeIntent.Start("server-a"))
         runCurrent()
 
-        // Server B, its flag still unknown: nothing read yet.
+        // Leaving A before the next server is known: nothing read yet.
         store.dispatch(ArtifactsHomeIntent.Start(null))
         late.complete(ok(rows("from-a"), counts = ArtifactsHomeCounts(9, 9, 1)))
         advanceUntilIdle()
@@ -300,7 +300,7 @@ class SharedArtifactsHomeStoreTest {
         assertNull(store.state.value.counts)
         assertEquals(ArtifactsHomeStatus.Idle, store.state.value.status)
 
-        // B's flag resolves on: B's own list.
+        // The next server is B: B's own list.
         api.answer = { _, _ -> ok(rows("from-b")) }
         store.dispatch(ArtifactsHomeIntent.Start("server-b"))
         advanceUntilIdle()

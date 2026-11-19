@@ -4293,13 +4293,6 @@ private fun RaftAppShellReadyContent(
         navRailActive = navRailActive,
         showAppShellBottomTabs = showAppShellBottomTabs,
     )
-    // web `useArtifactsRailShown`: the Artifacts entries (server panel row, wide rail tab) only where the current server's
-    // workspace_artifacts_v0 is already loaded and on (the panel never asks for flags itself).
-    val artifactsFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-    val serverMenuArtifactsShown =
-        remember(serverMenuModel?.currentServer?.id, artifactsFlagRevision) {
-            appShellArtifactsShown(sharedStores.serverFeatureFlags, serverMenuModel?.currentServer?.id)
-        }
     // web LeftRail `useRememberedAssistantShown`: the rail's Assistant, by the phone Home row's rule.
     val railAssistantShown =
         rememberAppShellRailAssistantShown(
@@ -4311,8 +4304,6 @@ private fun RaftAppShellReadyContent(
             railInlineSecondaryDestinationState = railInlineSecondaryDestinationState,
             wideNavHistoriesState = wideNavHistoriesState,
         )
-    // Artifacts off for this server (or the flag turned off): its inline page closes and the wide
-    // history's arrows never reopen it (review L1).
     AppShellServerMenuEffects(
         pageVisibleTick = pageVisibleTick,
         selectedTabState = selectedTabState,
@@ -4320,15 +4311,12 @@ private fun RaftAppShellReadyContent(
         serverPageOriginState = serverPageOriginState,
         serverTabFocusPendingState = serverTabFocusPendingState,
         serverTabFocusOnPageReturnState = serverTabFocusOnPageReturnState,
-        railInlineSecondaryDestinationState = railInlineSecondaryDestinationState,
         bridge = bridge,
         authDataSource = authDataSource,
         serverDrawerProgrammaticCloseFenceState = serverDrawerProgrammaticCloseFenceState,
         homeShellStore = homeShellStore,
         homeState = homeState,
         readyServerId = readyServerId,
-        wideNavHistoriesState = wideNavHistoriesState,
-        serverMenuArtifactsShown = serverMenuArtifactsShown,
     )
     val serverTabAccessibilityLabel =
         serverMenuModel?.let { stringResource(Res.string.server_tab_a11y_label, it.currentServer.name) }
@@ -4359,9 +4347,8 @@ private fun RaftAppShellReadyContent(
     }
     // The wide rail keeps the web LeftRail entries (Direction A, #proj-mobile 10-30): Chat,
     // Activity, Tasks, Members, Computers, Apps; Members is a rail root there.
-    val appShellRailTabItems = remember(selectedTab, railInlineSecondaryDestination, railNavLabels, activityTabUnreadCount, moreAttention, serverMenuArtifactsShown, railAssistantShown) {
+    val appShellRailTabItems = remember(selectedTab, railInlineSecondaryDestination, railNavLabels, activityTabUnreadCount, moreAttention, railAssistantShown) {
         appShellRailTabs(
-            artifacts = serverMenuArtifactsShown,
             assistant = railAssistantShown,
             selectedTab = selectedTab,
             inlinePageRailId = appShellRailInlinePageRailId(railInlineSecondaryDestination),
@@ -4900,7 +4887,6 @@ private fun RaftAppShellReadyContent(
                         serverMenuModel.entries,
                         wide = navRailActive,
                         guest = serverMenuContent.snapshot.server.role.equals("guest", ignoreCase = true),
-                        artifacts = serverMenuArtifactsShown,
                     ),
                 onPick = ::onServerMenuPick,
                 switchPending = homeServerSwitchListPending(homeState.serverSwitchState.pendingServerId),

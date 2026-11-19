@@ -389,29 +389,18 @@ internal fun AppShellServerMenuEffects(
     serverPageOriginState: MutableState<String?>,
     serverTabFocusPendingState: MutableState<Boolean>,
     serverTabFocusOnPageReturnState: MutableState<Boolean>,
-    railInlineSecondaryDestinationState: MutableState<String?>,
     bridge: build.raft.app.base.BridgeModule,
     authDataSource: SharedAuthDataSource,
     serverDrawerProgrammaticCloseFenceState: MutableState<((String) -> Unit)?>,
     homeShellStore: SharedHomeShellStore,
     homeState: SharedHomeState,
     readyServerId: String?,
-    wideNavHistoriesState: MutableState<RaftWideNavHistories>,
-    serverMenuArtifactsShown: Boolean,
 ) {
     var selectedTab by selectedTabState
     var serverPageOrigin by serverPageOriginState
     var serverTabFocusPending by serverTabFocusPendingState
     var serverTabFocusOnPageReturn by serverTabFocusOnPageReturnState
-    var railInlineSecondaryDestination by railInlineSecondaryDestinationState
     var serverDrawerProgrammaticCloseFence by serverDrawerProgrammaticCloseFenceState
-    var wideNavHistories by wideNavHistoriesState
-    LaunchedEffect(serverMenuArtifactsShown, readyServerId) {
-        if (serverMenuArtifactsShown) return@LaunchedEffect
-        val serverId = readyServerId ?: return@LaunchedEffect
-        wideNavHistories = wideNavHistories.withoutSurface(serverId, AppShellRailArtifactsKey)
-        if (railInlineSecondaryDestination == AppShellRailArtifactsKey) railInlineSecondaryDestination = null
-    }
 
     // artin 10-23: a server switch that ends without the server's Home (dropped load, error,
     // timeout) says so once (web ServerSwitcherMenu `switchFailed`); the list is already back.

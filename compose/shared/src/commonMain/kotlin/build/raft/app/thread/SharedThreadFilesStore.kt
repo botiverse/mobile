@@ -21,7 +21,7 @@ internal data class SharedThreadFilesState(
     val requestInFlight: Boolean = false,
     /** A pull-to-refresh is reloading the first page while the loaded list stays on screen. */
     val refreshing: Boolean = false,
-    /** The conversation's Artifacts, at the head of the list (workspace_artifacts_v0; web #11580). */
+    /** The conversation's Artifacts, at the head of the list (web #11580). */
     val artifacts: ThreadFilesArtifactsState = ThreadFilesArtifactsState()
 )
 

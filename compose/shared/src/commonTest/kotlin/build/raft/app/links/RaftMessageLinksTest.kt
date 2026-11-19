@@ -103,14 +103,6 @@ class RaftMessageLinksTest {
         assertEquals(setOf(a, aAgain), plan.objects.keys)
     }
 
-    @Test
-    fun planWithArtifactsOffLeavesEveryPublicLinkToTheApps() {
-        val link = "https://app.raft.build/artifacts/pt_a"
-        val plan = planRaftMessageLinks(link, listOf("app.raft.build"), artifactsEnabled = false)
-        assertEquals(emptyList(), plan.objectCards)
-        assertEquals(listOf(link), plan.appLinks)
-    }
-
     // --- permalinks -----------------------------------------------------------------------------
 
     private val hosts = raftPermalinkHostnames(emptyList())

@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
  * The Artifacts home page's list (web `ArtifactsDashboard.tsx` `useAllArtifacts`, `allReducer`, and
  * `DashboardList`'s filter state; slock staging aae2b7a89).
  *
- * - The list is read when the page has a server with workspace_artifacts_v0 on, and again for a
+ * - The list is read when the page has a server, and again for a
  *   new server, filter, settled search (typing waits [SEARCH_DEBOUNCE_MILLIS]), the toggle or a sort.
  *   The same filter in another sort keeps the rows on screen while it reads; a new filter shows the
  *   skeleton. An answer to an older read is dropped ([generation]).
@@ -26,7 +26,8 @@ import kotlinx.coroutines.launch
  * - New activity on this server's Artifacts reads the first page again, rows kept, unless the
  *   viewer is open or Load More has extended the list (web `useArtifactActivityChanged`): one
  *   read at a time, at most one more queued. Closing the viewer always reads again.
- * - 403 ARTIFACTS_NOT_ENABLED: [ArtifactsHomeStatus.Off].
+ * - 403 ARTIFACTS_NOT_ENABLED (the server still refuses for a server without Artifacts):
+ *   [ArtifactsHomeStatus.Off].
  * - Filters are this page's state: another server starts with none.
  */
 internal class SharedArtifactsHomeStore(
@@ -119,7 +120,7 @@ internal class SharedArtifactsHomeStore(
         if (serverId != current.serverId) {
             // Both filters name someone or somewhere in one server: another's list starts with neither.
             // An answer still on its way is the old server's: it must never land under the new one
-            // (review H2), even while the new one's flag is still unknown (Start(null)).
+            // (review H2), even while the new one is not known yet (Start(null)).
             generation++
             readJob?.cancel()
             pageJob?.cancel()
@@ -467,7 +468,7 @@ internal fun artifactsHomeAuthorsOnScreen(actors: List<ArtifactsHomeActor>): Lis
 internal const val ARTIFACTS_HOME_AUTHORS_LIMIT: Int = 50
 
 internal sealed interface ArtifactsHomeIntent {
-    /** The page's server with the flag on; null leaves the list unread. */
+    /** The page's server; null (not known yet) leaves the list unread. */
     data class Start(val serverId: String?) : ArtifactsHomeIntent
     data class Search(val text: String) : ArtifactsHomeIntent
     data class SetPlace(val place: ArtifactsHomePlace?) : ArtifactsHomeIntent

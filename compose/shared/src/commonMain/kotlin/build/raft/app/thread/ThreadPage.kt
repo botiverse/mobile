@@ -493,7 +493,7 @@ private fun rememberThreadFilesViewModel(
             SharedThreadFilesViewModel(
                 dataSource,
                 diagnosticsLogger = { bridge.log(it) },
-                // The conversation's Artifacts lead its files (workspace_artifacts_v0, read in the tab).
+                // The conversation's Artifacts lead its files (read in the tab).
                 artifactsApi = NetworkRaftConversationArtifactsApi(sharedStores.networkClient)
             )
         }
@@ -7295,12 +7295,11 @@ private fun SharedThreadRouteContentContent(
                         conversationId = appLinkPreviewConversationId,
                         toast = { message -> bridge.toast(message) },
                         toastWithIntent = { message, intent -> bridge.toastWithIntent(message, intent) },
-                        // Workspace Artifacts links (behind workspace_artifacts_v0, read per message).
+                        // Workspace Artifacts links (read per message).
                         artifacts =
                             ThreadArtifactLinkHost(
                                 summaries = sharedStores.artifactSummaryStore,
                                 appHosts = sharedStores.clientConfigStore.appHosts,
-                                featureFlags = sharedStores.serverFeatureFlags,
                                 webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
                                 screenshots = sharedStores.artifactScreenshotStore,
                             ),

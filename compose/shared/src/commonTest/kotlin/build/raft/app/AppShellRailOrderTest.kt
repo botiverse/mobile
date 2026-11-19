@@ -21,25 +21,20 @@ class AppShellRailOrderTest {
 
     /** Review H1: the shell sorts the rail twice (phone-bar order, then the saved order); Artifacts survives both and a drag. */
     @Test fun artifactsFollowsTasksThroughBothSortsAndADragKeepsIt() {
-        fun drawn(order: List<String>, artifacts: Boolean) =
-            appShellRailTabs(selectedTab = "home", labelFor = { it }, artifacts = artifacts)
+        fun drawn(order: List<String>) =
+            appShellRailTabs(selectedTab = "home", labelFor = { it })
                 .orderedLikePhoneBar { it.key }
                 .orderedLikeRailTabOrder(order)
                 .map { it.key }
         val default = build.raft.app.data.normalizeRaftRailTabOrder(null)
-        assertEquals(listOf("home", "activity", "tasks", "artifacts", "members", "computers", "apps"), drawn(default, artifacts = true))
+        assertEquals(listOf("home", "activity", "tasks", "artifacts", "members", "computers", "apps"), drawn(default))
 
         // Artifacts dragged to the top: saved, and drawn there next time.
         val dragged = listOf("artifacts", "home", "activity", "tasks", "members", "computers", "apps")
         val saved = build.raft.app.data.raftRailTabOrderWithVisibleOrder(default, dragged.mapNotNull(::raftRailTabIdForKey))
         assertEquals(listOf("search", "artifacts", "chat", "activity", "tasks", "members", "computers", "apps", "assistant"), saved)
-        assertEquals(dragged, drawn(saved, artifacts = true))
+        assertEquals(dragged, drawn(saved))
 
-        // A server without Artifacts draws no tab; a drag there keeps the placement made elsewhere.
-        val withoutTab = listOf("activity", "home", "tasks", "members", "computers", "apps")
-        assertEquals(listOf("home", "activity", "tasks", "members", "computers", "apps"), drawn(saved, artifacts = false))
-        val resaved = build.raft.app.data.raftRailTabOrderWithVisibleOrder(saved, withoutTab.mapNotNull(::raftRailTabIdForKey))
-        assertEquals(1, resaved.indexOf("artifacts"))
     }
 
     /** web RAIL_TAB_IDS: the assistant is the last tab, drawn only where its entry shows. */
@@ -50,10 +45,10 @@ class AppShellRailOrderTest {
                 .orderedLikeRailTabOrder(order)
                 .map { it.key }
         val default = build.raft.app.data.normalizeRaftRailTabOrder(null)
-        assertEquals(listOf("home", "activity", "tasks", "members", "computers", "apps", "assistant"), drawn(default, assistant = true))
-        assertEquals(listOf("home", "activity", "tasks", "members", "computers", "apps"), drawn(default, assistant = false))
+        assertEquals(listOf("home", "activity", "tasks", "artifacts", "members", "computers", "apps", "assistant"), drawn(default, assistant = true))
+        assertEquals(listOf("home", "activity", "tasks", "artifacts", "members", "computers", "apps"), drawn(default, assistant = false))
         // Dragged to the top here, it keeps that place; a server without it draws the rest unchanged.
-        val dragged = listOf("assistant", "home", "activity", "tasks", "members", "computers", "apps")
+        val dragged = listOf("assistant", "home", "activity", "tasks", "artifacts", "members", "computers", "apps")
         val saved = build.raft.app.data.raftRailTabOrderWithVisibleOrder(default, dragged.mapNotNull(::raftRailTabIdForKey))
         assertEquals(dragged, drawn(saved, assistant = true))
         assertEquals(dragged - "assistant", drawn(saved, assistant = false))

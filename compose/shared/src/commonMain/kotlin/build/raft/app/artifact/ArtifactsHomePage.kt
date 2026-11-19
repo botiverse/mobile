@@ -38,19 +38,16 @@ import build.raft.app.data.ArtifactsHomeRow
 import build.raft.app.data.ArtifactsHomeSort
 import build.raft.app.data.ArtifactsHomeSource
 import build.raft.app.data.ArtifactsHomeState
-import build.raft.app.data.ArtifactsHomeStatus
 import build.raft.app.data.NetworkRaftArtifactsDashboardApi
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.SharedArtifactsHomeStore
-import build.raft.app.data.WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.asArtifactsHomeSource
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.ActivityChanged
-import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import kotlinx.coroutines.flow.StateFlow
 
@@ -63,16 +60,6 @@ internal class ComposeArtifactsHomePage : AuthenticatedProductPager(Authenticate
         super.willInit()
         setAuthenticatedContent { ArtifactsHomeRoute(raftPageVisibleResumeTick, raftPageVisible) }
     }
-}
-
-/**
- * web `useArtifactsRailShown`: whether the app's Artifacts entries show (the server panel's row, the
- * wide rail's tab): the current server's workspace_artifacts_v0, as already loaded, on; a flag not
- * yet known is hidden.
- */
-internal fun appShellArtifactsShown(flags: build.raft.app.data.SharedServerFeatureFlags, serverId: String?): Boolean {
-    val id = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
-    return !flags.isDecisionPending(ServerId(id), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY) && flags.isEnabled(ServerId(id), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY)
 }
 
 /** Identity only (the Route / PageData rule): the shell scope; the page reads its own list. */
@@ -102,7 +89,6 @@ private data class ArtifactsHomeSession(val serverId: String?, val serverName: S
 
 /**
  * Wires [ArtifactsHomeScreen]: the store (`dashboardAll` through the shell's network client), the
- * server's workspace_artifacts_v0 (live: off once resolved off is the off state, web parity), the
  * device prefs (view, sort), `activity:changed` while the page shows, and the in-app viewer: a row
  * opens the latest version (web `version: null`), and coming back from it reads the list again.
  */
@@ -140,15 +126,12 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
         events.collect { read() }
     }
     val serverId = session.serverId
-    // workspace_artifacts_v0, live (web `useServerFeatureFlag`): unknown while it loads.
-    val flags = sharedStores.serverFeatureFlags
-    val revision by flags.snapshotRevision.collectAsState()
-    val flagEnabled = remember(serverId, revision) { serverId != null && flags.isEnabled(ServerId(serverId), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY) }
-    val flagPending = remember(serverId, revision) { serverId == null || flags.isDecisionPending(ServerId(serverId), WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY) }
-    LaunchedEffect(serverId, flagEnabled) {
-        viewModel.store.dispatch(ArtifactsHomeIntent.Start(serverId?.takeIf { flagEnabled }))
+    // Artifacts are always on (workspace_artifacts_v0 is no longer read); a server that refuses
+    // with 403 ARTIFACTS_NOT_ENABLED gets the store's off state.
+    LaunchedEffect(serverId) {
+        viewModel.store.dispatch(ArtifactsHomeIntent.Start(serverId))
     }
-    ArtifactsHomeActivityEffect(storeScope, serverId?.takeIf { flagEnabled && pageVisible }) { viewModel.store.dispatch(it) }
+    ArtifactsHomeActivityEffect(storeScope, serverId?.takeIf { pageVisible }) { viewModel.store.dispatch(it) }
     // Back from the viewer: opening it read the current version, so what was new may be gone.
     LaunchedEffect(pageVisibleResumeTick) {
         if (pageVisibleResumeTick > 0 && viewModel.state.value.viewerOpen) viewModel.store.dispatch(ArtifactsHomeIntent.ViewerClosed)
@@ -171,11 +154,9 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
     val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
     val wide = LocalRaftSettingsWideDetail.current || windowWidth.value >= DualPaneMinimumWidthDp
     val screenshots = remember(sharedStores, serverId) { serverId?.let { sharedStores.artifactScreenshotStore.reader(it) } }
-    // A flag resolved off (or a 403) is the off state; nothing is read.
-    val shown = if (!flagPending && !flagEnabled) state.copy(status = ArtifactsHomeStatus.Off) else state
     CompositionLocalProvider(LocalArtifactScreenshotReader provides screenshots) {
         ArtifactsHomeScreen(
-            state = shown,
+            state = state,
             view = prefs.view,
             readerId = session.readerId,
             serverName = session.serverName,

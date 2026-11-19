@@ -26,21 +26,16 @@ import build.raft.app.data.ArtifactSummaryEntry
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftAppLinkPreviewApi
 import build.raft.app.data.RaftArtifactSummariesApi
-import build.raft.app.data.RaftFeatureFlagsApi
 import build.raft.app.data.SharedAppLinkPreviewStore
 import build.raft.app.data.SharedArtifactSummaryState
 import build.raft.app.data.SharedArtifactSummaryStore
-import build.raft.app.data.SharedServerFeatureFlags
-import build.raft.app.data.WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
 import build.raft.app.data.artifactSummaryKey
-import build.raft.app.model.ServerId
 import build.raft.designsystem.components.RaftPreviewCardButton
 import build.raft.designsystem.components.RaftPreviewCardButtonKind
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -97,14 +92,6 @@ private val visibleSummary =
     )
 
 private fun artifactFixtureHost(): ThreadAppLinkPreviewHost {
-    val flags =
-        SharedServerFeatureFlags(
-            object : RaftFeatureFlagsApi {
-                override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
-                    HomeNetworkResponse(200, """{"evaluations":[{"key":"$WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY","enabled":true}]}""")
-            },
-        )
-    runBlocking { flags.prefetch(ServerId(ArtifactServer)) }
     val far = Long.MAX_VALUE / 2
     val summaries =
         SharedArtifactSummaryStore(
@@ -132,7 +119,6 @@ private fun artifactFixtureHost(): ThreadAppLinkPreviewHost {
             ThreadArtifactLinkHost(
                 summaries = summaries,
                 appHosts = MutableStateFlow(listOf("app.raft.build")),
-                featureFlags = flags,
                 webBaseUrl = "https://app.raft.build",
             ),
     )
