@@ -502,12 +502,6 @@ internal data class RaftThreadComposerPayload(
     /** Whether this host surface owns the image policy checkbox. */
     val originalImageOptionEnabled: Boolean = true,
     /**
-     * Whether this host owns the tray's order (the chat composer's draft store does): its tiles
-     * then reorder by drag and Move left / Move right. A host that keeps its own attachment list
-     * (Hands feedback) leaves it off, so a drag can't show an order it never applies.
-     */
-    @kotlinx.serialization.Transient val attachmentReorderEnabled: Boolean = true,
-    /**
      * Session-only preference for image attachments.  The draft persistence slice deliberately
      * does not serialize this value; a new composer starts with compressed images by default.
      */
@@ -627,6 +621,12 @@ internal data class ThreadComposerUiState(
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
     val originalImageOptionEnabled: Boolean = true,
+    /**
+     * Whether this host owns the tray's order (the chat composer's draft store does): its tiles
+     * then reorder by drag and Move left / Move right. A host that keeps its own attachment list
+     * (Hands feedback, a task's composer) leaves it off, so a drag can't show an order it never
+     * applies. Not on [RaftThreadComposerPayload]: a payload host passes it to ThreadComposerContent.
+     */
     val attachmentReorderEnabled: Boolean = true,
     val originalImage: Boolean = false,
     val composerMode: String = "idle",
@@ -2122,7 +2122,6 @@ internal fun RaftThreadComposerPayload.toThreadComposerUiState(): ThreadComposer
         enabled = enabled,
         attachmentActionsEnabled = attachmentActionsEnabled,
         originalImageOptionEnabled = originalImageOptionEnabled,
-        attachmentReorderEnabled = attachmentReorderEnabled,
         originalImage = originalImage,
         composerMode = composerMode,
         statusLabel = statusLabel,
@@ -2267,6 +2266,8 @@ internal fun ThreadComposerContent(
     composerSendKeyEnabled: Boolean = false,
     dismissKeyboardOnBlur: Boolean = false,
     attachmentPreviewEnabled: Boolean,
+    /** See [ThreadComposerUiState.attachmentReorderEnabled]. */
+    attachmentReorderEnabled: Boolean = true,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
@@ -2286,7 +2287,7 @@ internal fun ThreadComposerContent(
             payload.toThreadComposerSurface(
                 channelId = payload.streamChannelId?.takeIf { it.isNotBlank() } ?: payload.instanceId
             ),
-        state = payload.toThreadComposerUiState(),
+        state = payload.toThreadComposerUiState().copy(attachmentReorderEnabled = attachmentReorderEnabled),
         onEvent = onEvent,
         onSendRequest = onSendRequest,
         onKeyboardHeightChange = onKeyboardHeightChange,

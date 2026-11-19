@@ -743,10 +743,10 @@ internal fun TaskPendingConversationPage(
                             enabled = !sending,
                             attachmentActionsEnabled = false,
                             originalImageOptionEnabled = false,
-                            attachmentReorderEnabled = false,
                             showAsTaskToggle = false,
                         ),
                     onEvent = { action, value, _, _ -> if (action == "change" && value != null) onDraftChange(value) },
+                    attachmentReorderEnabled = false,
                     onSendRequest = { request ->
                         val text = request.value.text
                         if (sending || text.isBlank()) {
