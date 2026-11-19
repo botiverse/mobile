@@ -243,6 +243,9 @@ internal interface SignedInDevicesDataSource {
     suspend fun revokeOthers(reason: SignedInDeviceRevokeReason): DataResult<SignedInDevicesRevokedOthers>
     suspend fun reauthenticateWithPassword(password: String): SignedInDevicesReauthResult
     suspend fun stepUp(answer: SecondFactorStepUpAnswer): SecondFactorStepUpResult
+    /** The step-up's passkey assertion options (SecondFactorPasskeyStepUpApi.kt). */
+    suspend fun passkeyAssertionOptions(rp: String?): SecondFactorPasskeyOptionsResult =
+        SecondFactorPasskeyOptionsResult.Refused(SecondFactorStepUpResult.Failed(serverCode = "second_factor_step_up_unavailable"))
     suspend fun requestPasswordEmail(email: String): SecondFactorRecoveryEmailResult
     suspend fun requestTwoStepReset(email: String): SecondFactorRecoveryEmailResult
 }
@@ -319,6 +322,9 @@ internal class NetworkSignedInDevicesDataSource(private val networkClient: RaftN
         }
 
     override suspend fun stepUp(answer: SecondFactorStepUpAnswer): SecondFactorStepUpResult = stepUpRepository.stepUp(answer)
+
+    override suspend fun passkeyAssertionOptions(rp: String?): SecondFactorPasskeyOptionsResult =
+        stepUpRepository.passkeyAssertionOptions(rp)
 
     override suspend fun requestPasswordEmail(email: String): SecondFactorRecoveryEmailResult = email(FORGOT_PASSWORD_PATH, email)
 

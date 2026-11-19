@@ -74,8 +74,9 @@ class SharedSettingsComputerStepUpTest {
         runCurrent()
 
         val dialog = assertNotNull(store.state.value.secondFactorStepUp, "Verify it's you opens on the refusal")
-        assertEquals(listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode), dialog.methods)
-        assertEquals(SecondFactorStepUpMethod.Totp, dialog.method)
+        // A passkey comes first where the platform can assert one (Android, iOS); the codes follow.
+        assertEquals(listOf(SecondFactorStepUpMethod.Totp, SecondFactorStepUpMethod.BackupCode), dialog.methods - SecondFactorStepUpMethod.Passkey)
+        assertEquals(dialog.methods.first(), dialog.method)
         val sheet = assertNotNull(store.state.value.addComputerDialog)
         assertTrue(sheet.registering, "the sheet keeps Setting up while the second step is asked")
         // Never the server's English sentence on the sheet.
@@ -83,6 +84,7 @@ class SharedSettingsComputerStepUpTest {
         assertNull(sheet.permissionBlocker)
         assertEquals(AddComputerStep.Type, sheet.step)
 
+        store.accept(SharedSettingsIntent.SecondFactorStepUp(SecondFactorStepUpIntent.SwitchMethod(SecondFactorStepUpMethod.Totp)))
         store.accept(SharedSettingsIntent.SecondFactorStepUp(SecondFactorStepUpIntent.InputChanged("123456")))
         store.accept(SharedSettingsIntent.SecondFactorStepUp(SecondFactorStepUpIntent.Submit))
         runCurrent()

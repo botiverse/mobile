@@ -312,6 +312,9 @@ class RealSettingsRepository(
     override suspend fun stepUpSecondFactor(answer: SecondFactorStepUpAnswer): SecondFactorStepUpResult =
         secondFactorStepUpRepository.stepUp(answer)
 
+    override suspend fun secondFactorPasskeyAssertionOptions(rp: String?): SecondFactorPasskeyOptionsResult =
+        secondFactorStepUpRepository.passkeyAssertionOptions(rp)
+
     override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> {
         val session = sessionStore.readSession() ?: return authRequired()
         val accountResult =

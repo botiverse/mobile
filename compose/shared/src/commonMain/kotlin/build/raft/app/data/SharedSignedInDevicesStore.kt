@@ -150,6 +150,7 @@ internal class SharedSignedInDevicesStore(
             onStateChange = { dialog -> update { it.copy(stepUp = dialog) } },
             requestPasswordEmail = { email -> dataSource.requestPasswordEmail(email) },
             requestTwoStepReset = { email -> dataSource.requestTwoStepReset(email) },
+            passkeyOptions = { rp -> dataSource.passkeyAssertionOptions(rp) },
         )
 
     private var refreshJob: Job? = null

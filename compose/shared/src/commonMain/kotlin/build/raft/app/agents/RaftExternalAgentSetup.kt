@@ -419,7 +419,9 @@ private fun ExternalSetupNewCredential(secret: String, name: String, method: Ext
 private fun rememberExternalAgentStepUp(agentsApiClient: RaftAgentsApiClient): SecondFactorStepUpCoordinator? {
     val coordinator =
         remember(agentsApiClient) {
-            agentsApiClient.secondFactorStepUpRepository()?.let { SecondFactorStepUpCoordinator(stepUp = it::stepUp) }
+            agentsApiClient.secondFactorStepUpRepository()?.let { repository ->
+                SecondFactorStepUpCoordinator(stepUp = repository::stepUp, passkeyOptions = repository::passkeyAssertionOptions)
+            }
         }
     if (coordinator != null) {
         val scope = rememberCoroutineScope()
