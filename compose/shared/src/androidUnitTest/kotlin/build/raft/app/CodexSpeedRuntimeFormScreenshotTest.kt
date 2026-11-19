@@ -16,11 +16,12 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
-import build.raft.app.data.runtimeform.v2.CODEX_V2_FALLBACK_SOURCE_JSON
 import build.raft.app.data.runtimeform.v2.CODEX_V3_FORM_JSON
+import build.raft.app.data.runtimeform.v2.CODEX_V3_MODEL_SOURCE_JSON
 import build.raft.app.data.runtimeform.v2.CODEX_V3_REASONING_EFFORT_SOURCE_JSON
 import build.raft.app.data.runtimeform.v2.CODEX_V3_SPEED_SOURCE_JSON
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loaded
+import build.raft.app.data.runtimeform.v2.RuntimeFormV2Values
 import build.raft.app.data.runtimeform.v2.applyRuntimeFormV2Change
 import build.raft.app.data.runtimeform.v2.initialRuntimeFormV2Values
 import build.raft.app.data.runtimeform.v2.parseRuntimeFormV2
@@ -29,6 +30,7 @@ import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -37,12 +39,14 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * `agent.create.runtime-form-v3.codex-fast-mode`: the create-agent runtime section as
- * SharedCreateAgentDialog draws it (runtime picker, then [RuntimeFormV2Fields]) on the Codex
- * protocol v3 create form (slock #15382 fixtures codex.form.v3 and codex.option-source.speed.v3),
- * with GPT-6.2 Astra picked and Fast mode on: the Speed picker is shown (rule SHOW while `fastMode`
- * is `const: true`) at the model's primary tier. The model list is the bundled fallback source (the
- * Codex model fixture that lists GPT-6.2 Astra), so its fallback status line is drawn too.
+ * Codex speed on the create-agent runtime section as SharedCreateAgentDialog draws it (runtime picker,
+ * then [RuntimeFormV2Fields]) on the Codex protocol v3 create form (slock #15565 fixtures codex.form.v3,
+ * codex.option-source.model.v3 and codex.option-source.speed.v3). Fast mode and Speed are mutually
+ * exclusive per model through `uiSchema.rules` on the model:
+ * - `codex-speed-single-tier`: GPT-6.2 Sol (one fast tier) shows only the Fast mode switch, here on.
+ * - `codex-speed-multi-tier`: GPT-6.2 Astra (Fast and Ultrafast) hides Fast mode and shows the Speed
+ *   menu at Standard, its default.
+ * - `codex-speed-no-acceleration`: GPT-5 Mini (no fast tier) shows neither.
  * Verify / record as [RaftRobolectricScreenshot]; reports land in `build/reports/home-screenshots/`.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -53,9 +57,17 @@ class CodexSpeedRuntimeFormScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun fastModeOnLight() =
+    fun singleTierShowsTheFastModeSwitchLight() = capture("agent.create.runtime-form-v3.codex-speed-single-tier", "gpt-6.2-sol", "fastMode" to JsonPrimitive(true))
+
+    @Test
+    fun multiTierShowsTheSpeedMenuLight() = capture("agent.create.runtime-form-v3.codex-speed-multi-tier", "gpt-6.2-astra")
+
+    @Test
+    fun noAccelerationShowsNeitherLight() = capture("agent.create.runtime-form-v3.codex-speed-no-acceleration", "gpt-5-mini")
+
+    private fun capture(name: String, model: String, vararg changes: Pair<String, JsonElement>) =
         RaftRobolectricScreenshot.capture(
-            "agent.create.runtime-form-v3.codex-fast-mode",
+            name,
             RaftAppAppearance.Light,
             reportDir = "build/reports/home-screenshots",
             activities = activities,
@@ -70,16 +82,16 @@ class CodexSpeedRuntimeFormScreenshotTest {
                         form = checkNotNull(parseRuntimeFormV2(CODEX_V3_FORM_JSON)),
                         sources =
                             mapOf(
-                                "model" to CODEX_V2_FALLBACK_SOURCE_JSON,
+                                "model" to CODEX_V3_MODEL_SOURCE_JSON,
                                 "reasoningEffort" to CODEX_V3_REASONING_EFFORT_SOURCE_JSON,
                                 "speed" to CODEX_V3_SPEED_SOURCE_JSON
                             ).mapValues { (_, json) -> checkNotNull(parseRuntimeFormV2Source(Json.parseToJsonElement(json))) }
                     )
                 }
-            var values by remember {
+            var values: RuntimeFormV2Values by remember {
                 val initial = initialRuntimeFormV2Values(loaded.form, loaded.sources)
-                val astra = applyRuntimeFormV2Change(loaded.form, loaded.sources, initial, "model", JsonPrimitive("gpt-6.2-astra"))
-                mutableStateOf(applyRuntimeFormV2Change(loaded.form, loaded.sources, astra, "fastMode", JsonPrimitive(true)))
+                val picked = applyRuntimeFormV2Change(loaded.form, loaded.sources, initial, "model", JsonPrimitive(model))
+                mutableStateOf(changes.fold(picked) { acc, (key, value) -> applyRuntimeFormV2Change(loaded.form, loaded.sources, acc, key, value) })
             }
             var advancedOpen by remember { mutableStateOf(false) }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {

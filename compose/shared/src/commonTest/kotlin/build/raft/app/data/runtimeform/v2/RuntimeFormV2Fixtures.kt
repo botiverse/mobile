@@ -4,7 +4,7 @@ package build.raft.app.data.runtimeform.v2
 // packages/runtime-form/fixtures/ (the server's exact v2 bodies). Do not edit;
 // re-run the script when slock regenerates its fixtures.
 
-/** fixtures/builtin.form.json, sha256 1c390e6da24bc49f16988ed1a7937645b16bbc12ff51b146865ad2b1f78ce3cc */
+/** fixtures/builtin.form.json, sha256 8023077b58b9c3ddcdb1d7ac870b2d6da021e22f0ed81898521ac5ca09813c90 */
 internal const val BUILTIN_V2_FORM_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "builtin",
@@ -136,7 +136,21 @@ internal const val BUILTIN_V2_FORM_JSON: String = """{
             "anthropic",
             "google",
             "xai",
-            "xiaomi"
+            "xiaomi",
+            "xiaomi-token-plan-cn",
+            "xiaomi-token-plan-sgp",
+            "xiaomi-token-plan-ams",
+            "ant-ling",
+            "baseten",
+            "cerebras",
+            "groq",
+            "meta",
+            "mistral",
+            "nvidia",
+            "qwen-token-plan-individual",
+            "qwen-token-plan-individual-cn",
+            "together",
+            "vercel-ai-gateway"
           ]
         }
       },
@@ -162,7 +176,21 @@ internal const val BUILTIN_V2_FORM_JSON: String = """{
             "anthropic",
             "google",
             "xai",
-            "xiaomi"
+            "xiaomi",
+            "xiaomi-token-plan-cn",
+            "xiaomi-token-plan-sgp",
+            "xiaomi-token-plan-ams",
+            "ant-ling",
+            "baseten",
+            "cerebras",
+            "groq",
+            "meta",
+            "mistral",
+            "nvidia",
+            "qwen-token-plan-individual",
+            "qwen-token-plan-individual-cn",
+            "together",
+            "vercel-ai-gateway"
           ]
         }
       }
@@ -251,7 +279,7 @@ internal const val BUILTIN_V2_FORM_JSON: String = """{
 }
 """
 
-/** fixtures/builtin.edit.json, sha256 44741d8f35c59f375a7e6bc4c0e2f6b85235a5eeef23117186b4b04a9e379dc4 */
+/** fixtures/builtin.edit.json, sha256 b817593f672a1ec7de4f1b8124259f4716c18c0336e9cd63f7ace2d183f24673 */
 internal const val BUILTIN_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "builtin",
@@ -383,7 +411,21 @@ internal const val BUILTIN_V2_EDIT_JSON: String = """{
             "anthropic",
             "google",
             "xai",
-            "xiaomi"
+            "xiaomi",
+            "xiaomi-token-plan-cn",
+            "xiaomi-token-plan-sgp",
+            "xiaomi-token-plan-ams",
+            "ant-ling",
+            "baseten",
+            "cerebras",
+            "groq",
+            "meta",
+            "mistral",
+            "nvidia",
+            "qwen-token-plan-individual",
+            "qwen-token-plan-individual-cn",
+            "together",
+            "vercel-ai-gateway"
           ]
         }
       },
@@ -409,7 +451,21 @@ internal const val BUILTIN_V2_EDIT_JSON: String = """{
             "anthropic",
             "google",
             "xai",
-            "xiaomi"
+            "xiaomi",
+            "xiaomi-token-plan-cn",
+            "xiaomi-token-plan-sgp",
+            "xiaomi-token-plan-ams",
+            "ant-ling",
+            "baseten",
+            "cerebras",
+            "groq",
+            "meta",
+            "mistral",
+            "nvidia",
+            "qwen-token-plan-individual",
+            "qwen-token-plan-individual-cn",
+            "together",
+            "vercel-ai-gateway"
           ]
         }
       }
@@ -1108,11 +1164,11 @@ internal const val GEMINI_V2_SOURCE_JSON: String = """{
 }
 """
 
-/** fixtures/antigravity.edit.json, sha256 8cd407b00c8b7c782342d8a235f3cc615fc121f91787bdf86ec863716130effb */
+/** fixtures/antigravity.edit.json, sha256 ef11d4b5c18d85a3dc96f3c49797a794ea276bdde801e2049027dd605346c8a5 */
 internal const val ANTIGRAVITY_V2_EDIT_JSON: String = """{
   "protocolVersion": 2,
   "runtimeId": "antigravity",
-  "schemaVersion": "antigravity.edit.v1",
+  "schemaVersion": "antigravity.create.v1",
   "requiredClientCapabilities": [
     "select.custom_value"
   ],
@@ -1219,7 +1275,7 @@ internal const val ANTIGRAVITY_V2_EDIT_JSON: String = """{
     "model": {
       "protocolVersion": 1,
       "runtimeId": "antigravity",
-      "schemaVersion": "antigravity.edit.v1",
+      "schemaVersion": "antigravity.create.v1",
       "sourceId": "model",
       "kind": "select",
       "pointer": "/model"

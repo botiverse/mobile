@@ -98,12 +98,12 @@ class RuntimeFormV3FixturesTest {
                 assertEquals("" to "Default", options.first().let { it.value to it.label }, "$name/$parent: the server-sent Default comes first")
             }
         }
-        // Codex speed's "" is its primary tier, labelled as Codex names it (slock contract.test.ts), not "Default".
+        // Codex speed's "" is Standard (default speed), labelled by the server (slock contract.test.ts), not "Default".
         val speed = assertNotNull(parseRuntimeFormV2Source(Json.parseToJsonElement(CODEX_V3_SPEED_SOURCE_JSON)))
         assertEquals(RuntimeFormV2SourceKind.DependentSelect, speed.kind)
         assertEquals("/model", speed.dependsOn)
         for ((parent, options) in speed.optionsByValue.orEmpty()) {
-            assertEquals("", options.first().value, "speed/$parent: the primary tier comes first as \"\"")
+            assertEquals("", options.first().value, "speed/$parent: Standard comes first as \"\"")
             assertTrue(options.size >= 2, "speed/$parent: a key only for two or more tiers")
         }
         val provider = assertNotNull(parseRuntimeFormV2Source(Json.parseToJsonElement(BUILTIN_V3_PROVIDER_SAVED_CONNECTIONS_SOURCE_JSON)))

@@ -94,8 +94,13 @@ FIXTURES_V3 = [
     ("CODEX_V3_FORM_JSON", "codex.form.v3.json"),
     ("CODEX_V3_EDIT_JSON", "codex.edit.v3.json"),
     ("CODEX_V3_REASONING_EFFORT_SOURCE_JSON", "codex.option-source.reasoning-effort.v3.json"),
-    # Codex speed (slock #15382): dependent_select on the model, shown while fastMode is const true.
+    # Codex speed (slock #15382, #15565): dependent_select on the model, shown for multi-tier models.
     ("CODEX_V3_SPEED_SOURCE_JSON", "codex.option-source.speed.v3.json"),
+    # Codex speed vs Fast mode by model tier (slock #15565): HIDE fastMode / SHOW speed on the model.
+    ("CODEX_V3_SPEED_CONFORMANCE_JSON", "codex.speed.conformance.v3.json"),
+    # Codex's v3 model source: a single-tier (gpt-6.2-sol), a multi-tier (gpt-6.2-astra) and a zero-tier
+    # model (gpt-5-mini), drawn by the Codex speed screenshots.
+    ("CODEX_V3_MODEL_SOURCE_JSON", "codex.option-source.model.v3.json"),
     ("GROK_V3_FORM_JSON", "grok.form.v3.json"),
     ("CLAUDE_V3_FORM_JSON", "claude.form.v3.json"),
     ("CLAUDE_V3_EDIT_JSON", "claude.edit.v3.json"),

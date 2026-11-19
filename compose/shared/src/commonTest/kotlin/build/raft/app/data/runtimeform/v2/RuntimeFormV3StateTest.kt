@@ -7,6 +7,9 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -141,12 +144,15 @@ class RuntimeFormV3StateTest {
         val body = JsonObject(emptyMap()).withRuntimeFormV2(RuntimeFormV2SubmitBody(codex.runtimeId, submitted, codex.protocolVersion))
         assertEquals(JsonPrimitive(3), body.getValue("formDefinitionRef").jsonObject["protocolVersion"])
 
+        // slock #15508: a chosen effort the new model still lists is kept; one it does not list takes its default.
         val preview = applyRuntimeFormV2Change(codex, codexSources, values, "model", JsonPrimitive("gpt-7-preview"))
-        assertEquals("high", preview.text("reasoningEffort"), "a new model resets the effort to its own default")
+        assertEquals("medium", preview.text("reasoningEffort"), "still offered by the new model: kept")
+        val ultra = applyRuntimeFormV2Change(codex, codexSources, values, "reasoningEffort", JsonPrimitive("ultra"))
+        assertEquals("high", applyRuntimeFormV2Change(codex, codexSources, ultra, "model", JsonPrimitive("gpt-7-preview")).text("reasoningEffort"), "not offered: the new model's default")
     }
 
     @Test
-    fun onEditAStoredNullOrAbsentEffortStaysDefaultCreateAndAModelChangeTakeTheModelsDefault() {
+    fun onEditAStoredNullOrAbsentEffortStaysDefaultAlsoAcrossAModelChangeCreateTakesTheModelsDefault() {
         // slock #14569 (c4172b9f) v3State.test.ts "v3 effort on edit…", on the Codex v3 form.
         val withDefault = listOf(RuntimeFormV2Choice("", "Default"), RuntimeFormV2Choice("low", "low"), RuntimeFormV2Choice("high", "high"))
         val src = codexSources + (
@@ -171,11 +177,17 @@ class RuntimeFormV3StateTest {
             assertEquals(emptyMap(), validateRuntimeFormV2(edit, src, values, editing = true), "$stored")
             assertEquals(JsonPrimitive(""), runtimeFormV2Submission(edit, values, src)["reasoningEffort"], "$stored: saved untouched, still Default")
             assertEquals(
-                "low",
+                "",
                 applyRuntimeFormV2Change(edit, src, values, "model", JsonPrimitive("gpt-7-preview")).text("reasoningEffort"),
-                "$stored: a model change takes the new model's default"
+                "$stored: a model change keeps Default (listed for the new model, slock #15508)"
             )
         }
+        val created = applyRuntimeFormV2Change(codex, src, create, "reasoningEffort", JsonPrimitive("high"))
+        assertEquals(
+            "high",
+            applyRuntimeFormV2Change(codex, src, created, "model", JsonPrimitive("gpt-7-preview")).text("reasoningEffort"),
+            "a chosen effort the new model lists is kept, not reset to its default (low)"
+        )
         val explicit = codex.copy(values = JsonObject(mapOf("model" to JsonPrimitive("gpt-5.6-sol"), "reasoningEffort" to JsonPrimitive("low"))))
         assertEquals("low", initialRuntimeFormV2Values(explicit, src).text("reasoningEffort"), "a stored effort is kept")
         // A branch the saved agent is not on (no stored model, e.g. Pi's "configured" model while it uses a
@@ -203,9 +215,11 @@ class RuntimeFormV3StateTest {
     }
 
     /**
-     * Codex speed (slock #15382, README "Codex speed"): a dependent_select on the model, SHOWN while
-     * fastMode is `const: true`. Only a model whose Computer names two or more fast tiers has a key; the
-     * model list is the bundled fallback, the one Codex source fixture that lists GPT-6.2 Astra.
+     * Codex speed (slock #15382, #15565, README "Codex speed"): Fast mode and the Speed menu are mutually
+     * exclusive per model through `uiSchema.rules` on the model. A model with two or more fast tiers
+     * (gpt-6.2-astra) HIDEs fastMode and SHOWs speed (Standard "" first, then each tier); a model with
+     * zero fast tiers (gpt-5-mini) hides both; any other model shows only fastMode. The model list is the
+     * bundled fallback, the one Codex source fixture that lists GPT-6.2 Astra.
      */
     private val codexSpeedSources: RuntimeFormV2Sources = codexSources + mapOf(
         "model" to source(CODEX_V2_FALLBACK_SOURCE_JSON),
@@ -213,47 +227,102 @@ class RuntimeFormV3StateTest {
     )
 
     @Test
-    fun codexSpeedShowsItsTiersOnlyWhileFastModeIsOnForAModelThatHasThem() {
+    fun codexFastModeAndSpeedAreMutuallyExclusivePerModel() {
         val speed = codex.field("speed")
+        val fastMode = codex.field("fastMode")
         assertEquals(RuntimeFormV2FieldKind.DependentSelect, speed.kind)
         assertEquals("model", speed.dependsOn)
         assertFalse(speed.required, "speed is optional")
         assertEquals(RuntimeFormV3Effect.Show, speed.rule?.effect)
-        assertEquals(RuntimeFormV3Scope("fastMode"), speed.rule?.condition?.scope)
+        assertEquals(RuntimeFormV3Scope("model"), speed.rule?.condition?.scope)
+        assertEquals(RuntimeFormV3Effect.Hide, fastMode.rule?.effect)
+        assertEquals(RuntimeFormV3Scope("model"), fastMode.rule?.condition?.scope)
 
         val initial = initialRuntimeFormV2Values(codex, codexSpeedSources)
         val astra = applyRuntimeFormV2Change(codex, codexSpeedSources, initial, "model", JsonPrimitive("gpt-6.2-astra"))
-        assertEquals("gpt-6.2-astra", astra.text("model"))
-        val unset = astra - "fastMode"
-        val off = applyRuntimeFormV2Change(codex, codexSpeedSources, astra, "fastMode", JsonPrimitive(false))
-        for ((name, values) in listOf("fastMode unset" to unset, "fastMode false" to off)) {
-            assertFalse(isRuntimeFormV2FieldVisible(speed, values, codexSpeedSources), "$name: speed hidden")
-            assertEquals(emptyMap(), validateRuntimeFormV2(codex, codexSpeedSources, values), name)
-            assertFalse("speed" in runtimeFormV2Submission(codex, values, codexSpeedSources), "$name: hidden speed is not submitted")
-        }
-
-        val on = applyRuntimeFormV2Change(codex, codexSpeedSources, astra, "fastMode", JsonPrimitive(true))
-        assertTrue(isRuntimeFormV2FieldVisible(speed, on, codexSpeedSources), "fastMode true: speed shown")
-        val tiers = runtimeFormV2Choices(speed, codexSpeedSources, on) as RuntimeFormV2Choices.Select
+        assertTrue(isRuntimeFormV2FieldVisible(speed, astra, codexSpeedSources), "multi-tier model: speed shown")
+        assertFalse(isRuntimeFormV2FieldVisible(fastMode, astra, codexSpeedSources), "multi-tier model: fastMode hidden")
+        val tiers = runtimeFormV2Choices(speed, codexSpeedSources, astra) as RuntimeFormV2Choices.Select
         assertEquals(
             listOf(
-                "" to "Fast · 2x speed, increased usage",
+                "" to "Standard · Default speed",
+                "priority" to "Fast · 2x speed, increased usage",
                 "ultrafast" to "Ultrafast · Up to 4.5x speed, uses more of your plan"
             ),
             tiers.options.map { it.value to it.label },
-            "the primary tier as \"\" first, then the others, labelled as Codex names them"
+            "Standard as \"\" first, then each fast tier, labelled as Codex names them"
         )
-        assertEquals("", on.text("speed"), "the model's default tier is the primary one")
-        assertEquals(emptyMap(), validateRuntimeFormV2(codex, codexSpeedSources, on))
-        assertEquals(JsonPrimitive(""), runtimeFormV2Submission(codex, on, codexSpeedSources)["speed"])
-        val ultra = applyRuntimeFormV2Change(codex, codexSpeedSources, on, "speed", JsonPrimitive("ultrafast"))
+        assertEquals("", astra.text("speed"), "Standard is the default")
+        assertEquals(emptyMap(), validateRuntimeFormV2(codex, codexSpeedSources, astra))
+        val submitted = runtimeFormV2Submission(codex, astra, codexSpeedSources)
+        assertEquals(JsonPrimitive(""), submitted["speed"])
+        assertFalse("fastMode" in submitted, "hidden fastMode is not submitted")
+        val ultra = applyRuntimeFormV2Change(codex, codexSpeedSources, astra, "speed", JsonPrimitive("ultrafast"))
         assertEquals(JsonPrimitive("ultrafast"), runtimeFormV2Submission(codex, ultra, codexSpeedSources)["speed"])
 
         for (model in listOf("gpt-6.2-sol", "gpt-5.6-sol", "my-org/typed-model")) {
-            val other = applyRuntimeFormV2Change(codex, codexSpeedSources, on, "model", JsonPrimitive(model))
-            assertEquals(JsonPrimitive(true), other["fastMode"], "$model: fast mode stays on")
-            assertFalse(isRuntimeFormV2FieldVisible(speed, other, codexSpeedSources), "$model has no speed key: hidden even with fast mode on")
+            val other = applyRuntimeFormV2Change(codex, codexSpeedSources, ultra, "model", JsonPrimitive(model))
+            assertTrue(isRuntimeFormV2FieldVisible(fastMode, other, codexSpeedSources), "$model: fastMode shown")
+            assertFalse(isRuntimeFormV2FieldVisible(speed, other, codexSpeedSources), "$model: speed hidden")
             assertEquals(emptyMap(), validateRuntimeFormV2(codex, codexSpeedSources, other), model)
+            assertFalse("speed" in runtimeFormV2Submission(codex, other, codexSpeedSources), "$model: hidden speed is not submitted")
+        }
+    }
+
+    /**
+     * slock `codex.speed.conformance.v3.json` (#15565), run as slock v3State.test.ts runs it: the model
+     * source lists a single-tier, a multi-tier and a zero-tier model; the effort source has no keys.
+     */
+    @Test
+    fun codexSpeedConformanceCases() {
+        val spec = Json.parseToJsonElement(CODEX_V3_SPEED_CONFORMANCE_JSON).jsonObject
+        assertEquals("codex.form.v3.json", spec.getValue("form").jsonPrimitive.content)
+        assertEquals("codex.option-source.speed.v3.json", spec.getValue("sources").jsonObject.getValue("speed").jsonPrimitive.content)
+        val src: RuntimeFormV2Sources = mapOf(
+            "model" to RuntimeFormV2Source(
+                sourceId = "model",
+                kind = RuntimeFormV2SourceKind.Select,
+                pointer = "/model",
+                status = "live",
+                customValueAllowed = true,
+                options = listOf(
+                    RuntimeFormV2Choice("gpt-6.2-sol", "GPT-6.2-Sol"),
+                    RuntimeFormV2Choice("gpt-6.2-astra", "GPT-6.2-Astra"),
+                    RuntimeFormV2Choice("gpt-5-mini", "GPT-5 Mini")
+                ),
+                defaultValue = "gpt-6.2-sol"
+            ),
+            "reasoningEffort" to RuntimeFormV2Source(
+                sourceId = "reasoningEffort",
+                kind = RuntimeFormV2SourceKind.DependentSelect,
+                pointer = "/reasoningEffort",
+                dependsOn = "/model",
+                status = "live",
+                optionsByValue = emptyMap()
+            ),
+            "speed" to source(CODEX_V3_SPEED_SOURCE_JSON)
+        )
+        val base = Json.parseToJsonElement(CODEX_V3_FORM_JSON).jsonObject
+        val cases = spec.getValue("cases").jsonArray.map { it.jsonObject }
+        assertEquals(7, cases.size)
+        for (case in cases) {
+            val name = case.getValue("name").jsonPrimitive.content
+            val editing = case.getValue("editing").jsonPrimitive.boolean
+            val body = if (editing) JsonObject(base + ("values" to case.getValue("storedValues"))) else base
+            val parsed = assertNotNull(parseRuntimeFormV2(body), name)
+            var values = initialRuntimeFormV2Values(parsed, src)
+            for (change in case.getValue("changes").jsonArray) {
+                val (key, next) = change.jsonArray
+                values = applyRuntimeFormV2Change(parsed, src, values, key.jsonPrimitive.content, next)
+            }
+            for (key in case.getValue("expectedVisible").jsonArray.map { it.jsonPrimitive.content }) {
+                assertTrue(isRuntimeFormV2FieldVisible(parsed.field(key), values, src), "$name: $key visible")
+            }
+            for (key in case.getValue("expectedHidden").jsonArray.map { it.jsonPrimitive.content }) {
+                assertFalse(isRuntimeFormV2FieldVisible(parsed.field(key), values, src), "$name: $key hidden")
+            }
+            assertEquals(emptyMap(), validateRuntimeFormV2(parsed, src, values, editing = editing), name)
+            assertEquals(case.getValue("expectedSubmission"), runtimeFormV2Submission(parsed, values, src), name)
         }
     }
 

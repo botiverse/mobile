@@ -328,7 +328,7 @@ class RuntimeFormV2Test {
     }
 
     @Test
-    fun editAStoredNullOrAbsentDerivedEffortStaysDefaultTheModelsDefaultAppliesOnCreateAndAfterAModelChange() {
+    fun editAStoredNullOrAbsentDerivedEffortStaysDefaultAlsoAcrossAModelChangeTheModelsDefaultAppliesOnCreate() {
         // slock #14569 (c4172b9f): editing an agent on Default reasoning must not start at, or save, the model's default.
         fun efforts(vararg values: String) = buildJsonArray { values.forEach { add(JsonPrimitive(it)) } }
         val effortSources: RuntimeFormV2Sources = mapOf(
@@ -351,15 +351,50 @@ class RuntimeFormV2Test {
             assertEquals(emptyMap(), validateRuntimeFormV2(edit, effortSources, values, editing = true), "$stored")
             assertEquals(JsonNull, runtimeFormV2Submission(edit, values, effortSources)["reasoningEffort"], "$stored: saved untouched, still Default")
             assertEquals(
-                "high",
+                "",
                 applyRuntimeFormV2Change(edit, effortSources, values, "model", JsonPrimitive("k3")).text("reasoningEffort"),
-                "$stored: a model change takes the new model's default"
+                "$stored: a model change keeps Default (slock #15508)"
             )
         }
         val explicit = kimi.copy(
             values = JsonObject(mapOf("model" to JsonPrimitive("k2"), "reasoningEffort" to JsonPrimitive("low"), "envVars" to JsonObject(emptyMap())))
         )
         assertEquals("low", initialRuntimeFormV2Values(explicit, effortSources).text("reasoningEffort"), "a stored effort is kept")
+    }
+
+    @Test
+    fun aModelChangeKeepsTheChosenDerivedEffortWhileTheNewModelListsItElseTakesItsDefault() {
+        // slock #15508 v2State.test.ts.
+        fun efforts(vararg values: String) = buildJsonArray { values.forEach { add(JsonPrimitive(it)) } }
+        val effortSources: RuntimeFormV2Sources = mapOf(
+            "model" to RuntimeFormV2Source(
+                sourceId = "model",
+                kind = RuntimeFormV2SourceKind.Select,
+                pointer = "/model",
+                options = listOf(
+                    choice("k2", "K2", "supportedReasoningEfforts" to efforts("low", "medium", "high"), "defaultReasoningEffort" to JsonPrimitive("low")),
+                    choice("k3", "K3", "supportedReasoningEfforts" to efforts("low", "high"), "defaultReasoningEffort" to JsonPrimitive("low")),
+                    choice("k4", "K4", "supportedReasoningEfforts" to efforts("medium"), "defaultReasoningEffort" to JsonPrimitive("medium"))
+                ),
+                defaultValue = "k2"
+            )
+        )
+        var values = initialRuntimeFormV2Values(kimi.copy(values = null), effortSources)
+        values = applyRuntimeFormV2Change(kimi, effortSources, values, "reasoningEffort", JsonPrimitive("high"))
+        values = applyRuntimeFormV2Change(kimi, effortSources, values, "model", JsonPrimitive("k3"))
+        assertEquals("high", values.text("reasoningEffort"), "still offered: kept, not reset to the new model's low")
+        values = applyRuntimeFormV2Change(kimi, effortSources, values, "model", JsonPrimitive("k4"))
+        assertEquals("medium", values.text("reasoningEffort"), "not offered: the new model's default")
+    }
+
+    @Test
+    fun aDefaultLeftOverFromAModelWithoutLevelsIsNotKept() {
+        var values = initialRuntimeFormV2Values(kimi.copy(values = null), kimiSources)
+        assertEquals("high", values.text("reasoningEffort"))
+        values = applyRuntimeFormV2Change(kimi, kimiSources, values, "model", JsonPrimitive("k1"))
+        assertEquals("", values.text("reasoningEffort"))
+        values = applyRuntimeFormV2Change(kimi, kimiSources, values, "model", JsonPrimitive("k2"))
+        assertEquals("high", values.text("reasoningEffort"), "back to K2's default, not the leftover Default")
     }
 
     @Test
