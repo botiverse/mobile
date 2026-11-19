@@ -12,10 +12,15 @@ on:
     branches:
       - main
       - "release-*"
+      # Stamp merge queue (2026-11-19): Stamp squashes each approved PR of a batch (up to 10)
+      # onto main's tip, pushes the result to stamp-mq/<batch>, and fast-forwards main to it
+      # once this run's CI gate is green. The batch is the pre-merge check: Linux gates,
+      # Android compile & tests and the iOS compile on Xcode 27.1 (planner: merge-queue-batch).
+      - "stamp-mq/**"
   workflow_dispatch:
     inputs:
       scope:
-        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile, no iOS, no device suite); ios = pre-merge iOS check (plan + 'iOS compile' only; no Android, no Xcode 27.1 lane, no device suite); premerge = Stamp's ready-to-merge check (diff vs merge-base with base_ref; 'iOS compile' only when the diff can affect iOS, no Android rerun; a release/* or release-* base_ref runs the full tier); full = release-candidate / deliberate full readback (all platforms + device suite + canonical-final; the Xcode 27.1 lane stays nightly/release-* only)."
+        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile, no iOS, no device suite); ios = deliberate one-off iOS check (plan + 'iOS compile' only; no Android, no Xcode 27.1 lane, no device suite); premerge = Stamp's ready-to-merge check (no iOS and no Android rerun into main: the merge queue batch on stamp-mq/* compiles iOS; a diff Stamp cannot read reruns Android; a release/* or release-* base_ref runs the full tier); full = release-candidate / deliberate full readback (all platforms + device suite + canonical-final; the Xcode 27.1 lane stays nightly/release-*/merge-queue only)."
         type: choice
         options:
           - pr
@@ -41,12 +46,12 @@ on:
         type: boolean
         default: false
       xcode_app_path:
-        description: "Opt-in Xcode for the default iOS compile lane only; requires a plan that runs iOS: scope=ios, scope=full, or a premerge whose diff selects iOS (the plan fails otherwise). Empty = /Applications/Xcode_27.0.app (iOS 27.0 SDK); symlinked bundles are resolved to their real path under /Applications. The extra 'iOS compile (Xcode 27.1)' lane (GitHub xcode-27, nightly and release-* pushes only, never on dispatch) always uses /Applications/Xcode_27.1.app, like ios-release.yml."
+        description: "Opt-in Xcode for the default iOS compile lane only; requires a plan that runs iOS: scope=ios, scope=full, or a premerge into a release base (the plan fails otherwise). Empty = /Applications/Xcode_27.0.app (iOS 27.0 SDK); symlinked bundles are resolved to their real path under /Applications. The 'iOS compile (Xcode 27.1)' lane (GitHub xcode-27: nightly, release-* pushes and the stamp-mq/* merge queue, never on dispatch) always uses /Applications/Xcode_27.1.app, like ios-release.yml."
         required: false
         type: string
         default: ""
       ios_runner:
-        description: "Runner for the default iOS compile lane (dispatch only). xcode-27 (default) = GitHub's standard Xcode 27 image, free on this public repo but limited to 5 concurrent macOS jobs org-wide. blacksmith-6vcpu-macos-latest = billed fallback when GitHub's macOS queue is backed up (Xcode 27.0 only). The Xcode 27.1 lane always runs on xcode-27."
+        description: "Runner for the default iOS compile lane (dispatch only). xcode-27 (default) = GitHub's standard Xcode 27 image, free on this public repo but limited to 5 concurrent macOS jobs org-wide. blacksmith-6vcpu-macos-latest = billed fallback when GitHub's macOS queue is backed up (Xcode 27.0 only). The Xcode 27.1 lane (nightly, release-*, merge queue) always runs on xcode-27: Blacksmith macos-27's Xcode_27.1.app/Contents/Developer is a symlink, which select_ios_xcode.sh refuses."
         required: false
         type: choice
         default: xcode-27
@@ -86,6 +91,7 @@ jobs:
     outputs:
       run_android: ${{ steps.plan.outputs.run_android }}
       run_ios: ${{ steps.plan.outputs.run_ios }}
+      run_ios_xcode270: ${{ steps.plan.outputs.run_ios_xcode270 }}
       run_ios_xcode271: ${{ steps.plan.outputs.run_ios_xcode271 }}
       ios_lanes: ${{ steps.plan.outputs.ios_lanes }}
       run_ios_tests: ${{ steps.plan.outputs.run_ios_tests }}
@@ -196,7 +202,20 @@ jobs:
               write_changed_paths "$BASE_SHA" "$HEAD_SHA" merge-base
               ;;
             push)
-              write_changed_paths "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" direct
+              case "$REF_NAME" in
+                stamp-mq/*)
+                  # A merge-queue batch branch is new on every push (before = 0000...), so
+                  # diff the batch against its merge-base with main instead: the batch's
+                  # squashed PRs. The planner runs every platform on a batch anyway; the
+                  # paths only decide whether the iOS tests run.
+                  write_changed_paths "$(git rev-parse --verify -q 'refs/remotes/origin/main^{commit}' || true)" "$PUSH_HEAD_SHA" merge-base
+                  echo "merge-queue batch changed paths ($(wc -l < "$changed")):"
+                  head -n 50 "$changed"
+                  ;;
+                *)
+                  write_changed_paths "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" direct
+                  ;;
+              esac
               ;;
             workflow_dispatch)
               if test "$DISPATCH_SCOPE" = premerge; then
@@ -1142,32 +1161,34 @@ jobs:
     # check (.github/rulesets/mobile-main-merge-queue.json), and it reads needs.ios.result,
     # which is success only when every planned lane succeeded.
     name: ${{ matrix.lane == 'github-xcode27.1' && 'iOS compile (Xcode 27.1)' || 'iOS compile' }}
-    # Path scoping downshifts the expensive (macOS) iOS compile on ordinary PR
-    # pushes: changes touching commonMain run Linux fast gates only; the full iOS
-    # host build runs when iOS-specific code is changed, on explicit full-ci PRs,
-    # or on nightly/release readbacks.
-    # Lanes come from the plan (`ios_lanes`):
-    # - github-xcode27.0, every iOS run: GitHub's standard `xcode-27` image (3-core M1, 7 GB,
+    # Pull requests never compile iOS (only the full-ci label does). Stamp merge queue
+    # (2026-11-19): the pre-merge iOS compile runs on the queue batch (push to stamp-mq/*),
+    # once per batch of up to 10 PRs, on the Xcode 27.1 lane; main pushes compile iOS when
+    # the push can affect iOS; nightly and release-* pushes run the full readback.
+    # Lanes come from the plan (`ios_lanes`, pinned by run_ios_xcode270 / run_ios_xcode271):
+    # - github-xcode27.0, every iOS run but the merge queue: GitHub's standard `xcode-27` image (3-core M1, 7 GB,
     #   free on this public repo; free runners first, 2026-11-18) with Xcode 27.0 (iOS 27 SDK).
     #   Was blacksmith-6vcpu-macos-latest, billed per minute. GitHub caps standard + larger
     #   macOS at 5 concurrent jobs per org (Free/Team), shared with ios-release.yml's
     #   xcode-27-xlarge IPA build, ios-simulator-app.yml and qa-acceptance-ios.yml. The lane
     #   averages about one Mac; if the queue backs up (or a release is waiting), dispatch with
     #   ios_runner=blacksmith-6vcpu-macos-latest (the old billed lane).
-    # - github-xcode27.1, only on the nightly schedule and release-* pushes: GitHub xcode-27 with
-    #   Xcode 27.1, so code using 27.1-only SDK APIs (iPhone Duo: UIViewReservedRegion, UIHinge)
-    #   compiles before release. It is ~48 min on a 3-core Mac, so full-ci PRs,
-    #   compose/iosApp changes, main pushes and every dispatch scope skip it (2026-11-05); 27.1
-    #   breakage still surfaces in the nightly within 24h and in ios-release.yml's 27.1 build.
+    # - github-xcode27.1: GitHub xcode-27 with Xcode 27.1 (the release SDK, a real directory on
+    #   that image), so code using 27.1-only SDK APIs (iPhone Duo: UIViewReservedRegion, UIHinge)
+    #   compiles before it lands. Beside the 27.0 lane on the nightly schedule and release-*
+    #   pushes; alone on the merge-queue batch (stamp-mq/*). Full-ci PRs, main pushes and every
+    #   dispatch scope skip it. Always xcode-27, never Blacksmith: on blacksmith-*-macos-27
+    #   Xcode_27.1.app/Contents/Developer resolves through a symlink and select_ios_xcode.sh
+    #   refuses it (run 44274101639), and blacksmith-*-macos-latest has no 27.1.
     # workflow_dispatch scope=ios runs plan + this job's Xcode 27.0 lane only (no Android jobs):
-    # the pre-merge iOS check. The CI gate expects android and the emulator jobs skipped.
-    # workflow_dispatch scope=premerge (Stamp's ready-to-merge check) runs this lane only when
-    # the PR diff can affect iOS; otherwise every job but plan and the CI gate is skipped.
+    # a deliberate one-off iOS check. The CI gate expects android and the emulator jobs skipped.
+    # workflow_dispatch scope=premerge (Stamp's ready-to-merge check) into main never runs this
+    # job (the merge queue does); into a release base it runs the full tier.
     # iOS tests (planner output `run_ios_tests`): the K/N commonTest compile
     # (compileTestKotlinIosSimulatorArm64), adaptive editor snapshots, the iosAppTests XCTest
     # bundle, the UI-test harness build and the shared iosTest simulator run happen only on the
     # full tier: nightly schedule, release-* pushes, scope=full, premerge into a release base and
-    # full-ci PRs. Premerge, scope=ios, main pushes and the merge queue compile the iOS targets,
+    # full-ci PRs. scope=ios, main pushes and the merge queue compile the iOS targets,
     # link the framework and build the host app only (mobile test prune step 1, 2026-11-13:
     # ~5 of ~13 min per job were tests); iOS-only behaviour regressions surface in the nightly.
     # The simulator steps pick an iPhone on the newest iOS runtime not newer than the SDK, skipping
@@ -1186,7 +1207,8 @@ jobs:
       IOS_LANE_XCODE_REQUEST: ${{ matrix.lane == 'github-xcode27.1' && '/Applications/Xcode_27.1.app' || '/Applications/Xcode_27.0.app' }}
     runs-on: ${{ matrix.lane == 'github-xcode27.1' && 'xcode-27' || (inputs.ios_runner || 'xcode-27') }}
     # The 3-core GitHub Mac is slower than the 6-vCPU Blacksmith one; the 27.1 lane already
-    # takes ~48 min there, so keep headroom.
+    # takes ~48 min there with the iOS tests, so keep headroom. ios_runner is a dispatch input:
+    # on push (main, release-*, stamp-mq/*) and schedule it is empty and the lane uses xcode-27.
     timeout-minutes: 90
     steps:
       # Blacksmith macOS starts its local Actions-results proxy with the job (see ios-release.yml).
@@ -1513,6 +1535,10 @@ jobs:
   # exactly the jobs selected by the checked-in plan passed. Emulator jobs are
   # intentionally absent from merge_group until their bounded infra-abort
   # retry contract has landed and has fresh flake evidence.
+  # Stamp merge queue (2026-11-19): this is the queue's single required check on
+  # the stamp-mq/* batch commit. It needs every job, iOS included, so a red or
+  # skipped-but-planned "iOS compile (Xcode 27.1)" or "Android compile & tests"
+  # turns it red and the batch does not land.
   ci-gate:
     name: CI gate
     if: ${{ always() }}

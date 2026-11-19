@@ -608,33 +608,45 @@ The canonical flow is (Stamp commands, run from a Stamp checkout):
    (`scripts/ci/plan_test_tier.sh`), and Stamp, like GitHub, counts a skipped
    check as satisfied unless a job in the same workflow run failed or was
    cancelled. In the PR and the task thread, name the checks that ran and the
-   ones that were skipped or not run (for example, iOS compile for ordinary
-   `commonMain` changes runs only in the nightly `Test` schedule).
+   ones that were skipped or not run (for example, iOS compile never runs on
+   the PR itself; it runs on the merge queue batch, see below).
 
-   iOS compile before merge (wg-cost, 2026-11-12): do not dispatch it by
-   hand for ordinary PRs. Stamp's ready-to-merge check dispatches
-   `scope=premerge` (with `-f base_ref=<PR base branch>`) on the PR head; it
-   diffs against the merge-base, never reruns Android, and compiles iOS only
-   when the diff touches iOS-specific source (`compose/iosApp/**`, `iosMain`,
-   `iosTest`, `nativeMain`, `nativeInterop`) or CI control, the same rule as
-   main pushes (`change_keeps_ios`). That premerge iOS compile (like
-   `scope=ios` and main pushes) compiles, links the shared framework and
-   builds the host app only; the iOS tests (`iosTest`, the `iosAppTests`
-   XCTests, adaptive editor snapshots, the UI-test harness build) run only on
-   the nightly schedule, `release-*` pushes, `scope=full`, premerge into a
-   release base, and PRs with the `full-ci` label (2026-11-13); a premerge or
-   main push whose diff touches iOS test sources (`*/iosTest/*`,
-   `iosAppTests`, `iosAppUITests`) runs them too. Ordinary `commonMain` changes rely on the
-   nightly iOS readback and the main merge hold (a red `Test` on main stops
-   merges until a `fix-red` PR lands). `scope=ios` is still there for a
-   deliberate one-off check, e.g. a risky expect/actual change; run it at most
-   once, on the head you are about to merge. `scope=full` is only for release
-   candidates or a deliberate full readback (it adds the Android
-   emulator/device suite and canonical-final). The `iOS compile (Xcode 27.1)`
-   lane runs only in the nightly schedule and on `release-*` pushes. With
-   `base_ref` `release/*`, premerge runs the `scope=full` tier. The plan's
-   `reason=workflow_dispatch-premerge:<ios|no-ios|release-full|...>` says
-   which. Details: skill `raft-ci-validation`.
+   iOS compile before merge (Stamp merge queue, 2026-11-19): do not dispatch
+   it by hand for ordinary PRs. Neither pull_request runs nor Stamp's
+   ready-to-merge `scope=premerge` dispatch (into `main`) compile iOS any more.
+   The pre-merge iOS compile runs in Stamp's merge queue: once a PR is approved
+   and its auto-merge registered, Stamp squashes it with up to 9 other ready
+   PRs onto main's tip, pushes the batch to `stamp-mq/<batch>`, and `Test`
+   runs there (plan `reason=merge-queue-batch`): the Linux gates, `Android
+   compile & tests` and `iOS compile (Xcode 27.1)` on GitHub's free `xcode-27`
+   runner, whatever the diff. `CI gate` aggregates all of them and is the
+   queue's single required check; main fast-forwards to the batch only when it
+   is green. A batch that fails is split and a PR that fails alone is sent back
+   (`hintKind failed_alone`): read `stamp pr checks <N>`, which lists the
+   batch's `merge queue runs:`, fix, and register auto-merge again. The batch
+   iOS compile (like `scope=ios` and main pushes) compiles, links the shared
+   framework and builds the host app only; the iOS tests (`iosTest`, the
+   `iosAppTests` XCTests, adaptive editor snapshots, the UI-test harness build)
+   run only on the nightly schedule, `release-*` pushes, `scope=full`, premerge
+   into a release base, and PRs with the `full-ci` label (2026-11-13); a batch
+   or main push whose diff touches iOS test sources (`*/iosTest/*`,
+   `iosAppTests`, `iosAppUITests`) runs them too. `scope=premerge` into `main`
+   now plans nothing but `plan` and `CI gate`
+   (`reason=workflow_dispatch-premerge:no-ios`; an unreadable diff reruns
+   Android). With `base_ref` `release/*` (not queued), premerge still runs the
+   `scope=full` tier. `scope=ios` is still there for a deliberate one-off
+   check; run it at most once, on the head you are about to merge. If GitHub's
+   macOS queue is backed up, add `-f ios_runner=blacksmith-6vcpu-macos-latest`
+   (billed, Xcode 27.0 only; the 27.1 lane cannot run on Blacksmith macOS 27,
+   whose `Xcode_27.1.app/Contents/Developer` is a symlink that
+   `select_ios_xcode.sh` refuses). `scope=full` is only for release candidates
+   or a deliberate full readback (it adds the Android emulator/device suite
+   and canonical-final). The nightly (Xcode 27.0 and 27.1 lanes) and
+   `release-*` pushes are unchanged. While the queue is not enabled on `main`
+   (`stamp queue status botiverse/mobile`), nothing compiles iOS before merge:
+   the main push readback (iOS-specific or CI paths) and the nightly catch it,
+   and the main merge hold stops merges until a `fix-red` PR lands. Details:
+   skill `raft-ci-validation`.
 
    A new push voids the approval and any auto-merge registration. The reviewer
    reviews and approves the new head, and the author registers auto-merge

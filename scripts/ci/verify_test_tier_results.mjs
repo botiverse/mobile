@@ -20,6 +20,7 @@ export function verifyTierResults(needs) {
   const outputs = needs.plan.outputs || {};
   const runAndroid = requireBoolean(outputs.run_android, "run_android");
   const runIos = requireBoolean(outputs.run_ios, "run_ios");
+  const runIosXcode270 = requireBoolean(outputs.run_ios_xcode270, "run_ios_xcode270");
   const runIosXcode271 = requireBoolean(outputs.run_ios_xcode271, "run_ios_xcode271");
   const runIosTests = requireBoolean(outputs.run_ios_tests, "run_ios_tests");
   const runDeviceSuite = requireBoolean(outputs.run_device_suite, "run_device_suite");
@@ -41,7 +42,11 @@ export function verifyTierResults(needs) {
   if (runDeviceSuite && !runAndroid) throw new Error("device suite requires Android");
   if (runCanonicalFinal && !runAndroid) throw new Error("canonical-final requires Android");
   if (runAttachment && !runAndroid) throw new Error("attachment legs require Android");
+  if (runIosXcode270 && !runIos) throw new Error("Xcode 27.0 iOS lane requires iOS");
   if (runIosXcode271 && !runIos) throw new Error("Xcode 27.1 iOS lane requires iOS");
+  // Every iOS run has at least one lane: 27.0 (default), 27.1 beside it (nightly, release-*),
+  // or 27.1 alone (Stamp merge queue batch).
+  if (runIos && !runIosXcode270 && !runIosXcode271) throw new Error("iOS run without an iOS lane");
   if (runIosTests && !runIos) throw new Error("iOS tests require iOS");
 
   // The `ios` job is a matrix over ios_lanes, and needs.ios.result is success only when every
@@ -53,7 +58,10 @@ export function verifyTierResults(needs) {
   } catch {
     throw new Error(`ios_lanes must be valid JSON, got ${outputs.ios_lanes}`);
   }
-  const expectedLanes = !runIos ? [] : runIosXcode271 ? [IOS_DEFAULT_LANE, IOS_XCODE271_LANE] : [IOS_DEFAULT_LANE];
+  const expectedLanes = [
+    ...(runIosXcode270 ? [IOS_DEFAULT_LANE] : []),
+    ...(runIosXcode271 ? [IOS_XCODE271_LANE] : []),
+  ];
   if (JSON.stringify(iosLanes) !== JSON.stringify(expectedLanes)) {
     throw new Error(`ios_lanes must be ${JSON.stringify(expectedLanes)}, got ${outputs.ios_lanes}`);
   }
@@ -76,6 +84,7 @@ export function verifyTierResults(needs) {
   return {
     run_android: runAndroid,
     run_ios: runIos,
+    run_ios_xcode270: runIosXcode270,
     run_ios_xcode271: runIosXcode271,
     ios_lanes: iosLanes,
     run_ios_tests: runIosTests,
@@ -86,15 +95,16 @@ export function verifyTierResults(needs) {
   };
 }
 
-function fixture({ android, ios, iosXcode271 = false, iosTests = false, deviceSuite, canonicalFinal, attachmentLevels }) {
+function fixture({ android, ios, iosXcode270 = ios, iosXcode271 = false, iosTests = false, deviceSuite, canonicalFinal, attachmentLevels }) {
   const levels = attachmentLevels ?? [];
-  const lanes = ios ? [IOS_DEFAULT_LANE, ...(iosXcode271 ? [IOS_XCODE271_LANE] : [])] : [];
+  const lanes = [...(iosXcode270 ? [IOS_DEFAULT_LANE] : []), ...(iosXcode271 ? [IOS_XCODE271_LANE] : [])];
   const needs = {
     plan: {
       result: "success",
       outputs: {
         run_android: String(android),
         run_ios: String(ios),
+        run_ios_xcode270: String(iosXcode270),
         run_ios_xcode271: String(iosXcode271),
         ios_lanes: JSON.stringify(lanes),
         run_ios_tests: String(iosTests),
@@ -130,11 +140,15 @@ function selfTest() {
   verifyTierResults(fixture({ ...none, android: true, ios: true }));
   // release-* push: both iOS lanes, no device suite
   verifyTierResults(fixture({ ...none, android: true, ios: true, iosXcode271: true, iosTests: true }));
-  // premerge / main push touching iOS test sources: iOS compile + tests
+  // Stamp merge queue batch: Android + the Xcode 27.1 lane alone, no device suite
+  verifyTierResults(fixture({ ...none, android: true, ios: true, iosXcode270: false, iosXcode271: true }));
+  // queue batch touching iOS test sources: + iOS tests
+  verifyTierResults(fixture({ ...none, android: true, ios: true, iosXcode270: false, iosXcode271: true, iosTests: true }));
+  // main push touching iOS test sources: iOS compile + tests
   verifyTierResults(fixture({ ...none, ios: true, iosTests: true }));
-  // full-ci PR: device suite + API31 only, no canonical-final, Blacksmith iOS lane only
+  // full-ci PR: device suite + API31 only, no canonical-final, Xcode 27.0 iOS lane only
   verifyTierResults(fixture({ android: true, ios: true, deviceSuite: true, canonicalFinal: false, attachmentLevels: [31], iosTests: true }));
-  // scope=full dispatch: full device suite + canonical-final + all attachment legs, Blacksmith iOS lane only
+  // scope=full dispatch: full device suite + canonical-final + all attachment legs, Xcode 27.0 iOS lane only
   verifyTierResults(fixture({ android: true, ios: true, iosTests: true, deviceSuite: true, canonicalFinal: true, attachmentLevels: [29, 31, 34] }));
   // nightly: full device suite + canonical-final + all attachment legs, both iOS lanes
   verifyTierResults(fixture({ android: true, ios: true, iosXcode271: true, iosTests: true, deviceSuite: true, canonicalFinal: true, attachmentLevels: [29, 31, 34] }));
@@ -195,6 +209,30 @@ function selfTest() {
   const missingXcode271Flag = fixture({ ...none, ios: true });
   delete missingXcode271Flag.plan.outputs.run_ios_xcode271;
   expectFailure(missingXcode271Flag, "missing run_ios_xcode271");
+
+  const queueLaneLiteral = fixture({ ...none, android: true, ios: true, iosXcode270: false, iosXcode271: true });
+  if (queueLaneLiteral.plan.outputs.ios_lanes !== '["github-xcode27.1"]') {
+    throw new Error("fixture drift: the merge-queue tier must plan the Xcode 27.1 lane alone");
+  }
+
+  const xcode270WithoutIos = fixture({ ...none, android: true });
+  xcode270WithoutIos.plan.outputs.run_ios_xcode270 = "true";
+  expectFailure(xcode270WithoutIos, "Xcode 27.0 lane without iOS");
+
+  const iosWithoutLane = fixture({ ...none, ios: true, iosXcode270: false });
+  expectFailure(iosWithoutLane, "iOS planned with no lane");
+
+  const queueWithDefaultLane = fixture({ ...none, android: true, ios: true, iosXcode270: false, iosXcode271: true });
+  queueWithDefaultLane.plan.outputs.ios_lanes = JSON.stringify([IOS_DEFAULT_LANE, IOS_XCODE271_LANE]);
+  expectFailure(queueWithDefaultLane, "unplanned Xcode 27.0 lane on the merge queue");
+
+  const queueDroppedLane = fixture({ ...none, android: true, ios: true, iosXcode270: false, iosXcode271: true });
+  queueDroppedLane.plan.outputs.ios_lanes = JSON.stringify([IOS_DEFAULT_LANE]);
+  expectFailure(queueDroppedLane, "merge-queue Xcode 27.1 lane swapped for 27.0");
+
+  const missingXcode270Flag = fixture({ ...none, ios: true });
+  delete missingXcode270Flag.plan.outputs.run_ios_xcode270;
+  expectFailure(missingXcode270Flag, "missing run_ios_xcode270");
 
   const iosTestsWithoutIos = fixture({ ...none, android: true });
   iosTestsWithoutIos.plan.outputs.run_ios_tests = "true";
