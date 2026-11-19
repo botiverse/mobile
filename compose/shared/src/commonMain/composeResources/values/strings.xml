@@ -447,6 +447,9 @@
     <string name="host_feedback_prompt_placeholder">Describe your feedback</string>
     <string name="host_feedback_sent_title">Feedback sent</string>
     <string name="host_feedback_copied_message">Feedback submitted.</string>
+    <string name="host_apk_install_permission_title">Allow Raft to install apps</string>
+    <string name="host_apk_install_permission_message">Android restarts Raft when you turn on “Install unknown apps”. After that, come back to Raft and tap Install again.</string>
+    <string name="host_apk_install_permission_open_settings">Open Settings</string>
     <string name="host_feedback_failed_message">Feedback failed: %1$s</string>
     <string name="host_feedback_error_unknown">Unknown error</string>
     <string name="settings_feedback_submission_failed_title">Feedback failed</string>

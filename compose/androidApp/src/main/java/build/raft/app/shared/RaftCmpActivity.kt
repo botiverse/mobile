@@ -8365,7 +8365,7 @@ internal class RaftBridgeModule(
                         },
                         packageInstallGate =
                                 if (isPackageArchive) {
-                                    AndroidPackageInstallPermission.gate(appContext, attachmentId.take(8))
+                                    AndroidPackageInstallPermission.gate(appContext, activity, attachmentId.take(8))
                                 } else {
                                     null
                                 }

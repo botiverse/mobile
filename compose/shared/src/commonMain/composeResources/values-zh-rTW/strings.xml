@@ -447,6 +447,9 @@
     <string name="host_feedback_prompt_placeholder">描述你的意見回饋</string>
     <string name="host_feedback_sent_title">意見回饋已送出</string>
     <string name="host_feedback_copied_message">已送出。</string>
+    <string name="host_apk_install_permission_title">允許 Raft 安裝應用程式</string>
+    <string name="host_apk_install_permission_message">開啟「安裝不明應用程式」後，Android 會重新啟動 Raft。之後請回到 Raft，再點一次「安裝」。</string>
+    <string name="host_apk_install_permission_open_settings">開啟設定</string>
     <string name="host_feedback_failed_message">意見回饋送出失敗：%1$s</string>
     <string name="host_feedback_error_unknown">未知錯誤</string>
     <string name="settings_feedback_submission_failed_title">意見回饋送出失敗</string>

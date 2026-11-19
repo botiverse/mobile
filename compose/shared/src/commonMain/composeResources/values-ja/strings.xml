@@ -447,6 +447,9 @@
     <string name="host_feedback_prompt_placeholder">フィードバックを入力</string>
     <string name="host_feedback_sent_title">フィードバックを送信しました</string>
     <string name="host_feedback_copied_message">送信しました。</string>
+    <string name="host_apk_install_permission_title">Raft にアプリのインストールを許可</string>
+    <string name="host_apk_install_permission_message">「不明なアプリのインストール」をオンにすると、Android が Raft を再起動します。その後 Raft に戻って、もう一度「インストール」をタップしてください。</string>
+    <string name="host_apk_install_permission_open_settings">設定を開く</string>
     <string name="host_feedback_failed_message">フィードバックの送信に失敗しました: %1$s</string>
     <string name="host_feedback_error_unknown">不明なエラー</string>
     <string name="settings_feedback_submission_failed_title">フィードバックの送信に失敗しました</string>

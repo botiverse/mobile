@@ -447,6 +447,9 @@
     <string name="host_feedback_prompt_placeholder">描述你的反馈</string>
     <string name="host_feedback_sent_title">反馈已发送</string>
     <string name="host_feedback_copied_message">提交成功</string>
+    <string name="host_apk_install_permission_title">允许 Raft 安装应用</string>
+    <string name="host_apk_install_permission_message">打开“安装未知应用”后，Android 会重启 Raft。之后请回到 Raft，再点一次“安装”。</string>
+    <string name="host_apk_install_permission_open_settings">打开设置</string>
     <string name="host_feedback_failed_message">反馈提交失败：%1$s</string>
     <string name="host_feedback_error_unknown">未知错误</string>
     <string name="settings_feedback_submission_failed_title">反馈发送失败</string>
