@@ -10,7 +10,7 @@
 //     history is empty, forked or broken.
 //   - report.reviews[].attempt_ids: the attempt ids a vote was bound to.
 //   - Attempt-bound votes go to POST /api/runs/:id/attempt-panel-review
-//     (botiverse/testbed#327 @ 1a2f11b2) with
+//     (botiverse/testbed#327 @ 4292b69b) with
 //     top-level expected_attempt_ids, in the report's order. Its receipt echoes
 //     the attempt_ids the vote was bound to. Legacy votes keep the old
 //     POST /api/runs/:id/panel-review URL and carry no attempt ids.
@@ -99,7 +99,7 @@ export function panelReviewPath(scope, runId) {
 }
 
 // The attempt ids a receipt says the vote was bound to. Testbed
-// botiverse/testbed#327 @ 1a2f11b2 (worker/src/panel-review.ts panelReview)
+// botiverse/testbed#327 @ 4292b69b (worker/src/panel-review.ts panelReview)
 // answers { ok, review_id, attempt_ids, duplicate, votes, finalized, ... } with
 // attempt_ids at the top level. Undefined when the receipt does not have one.
 export function receiptAttemptIds(receipt) {
