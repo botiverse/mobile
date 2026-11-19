@@ -1872,6 +1872,7 @@ internal class SharedThreadComposerDraftPersistSlice(
             is SharedThreadComposerDraftIntent.AddUploadedAttachments,
             is SharedThreadComposerDraftIntent.MarkAttachmentsFailed,
             is SharedThreadComposerDraftIntent.MarkOrphanedAttachmentsInterrupted,
+            is SharedThreadComposerDraftIntent.ReorderAttachments,
             is SharedThreadComposerDraftIntent.RemoveAttachment ->
                 next.draftKey?.let { key ->
                     cancelPendingWrite(key)
@@ -2616,6 +2617,7 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
         is SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress -> "UpdateAttachmentUploadProgress"
         is SharedThreadComposerDraftIntent.RemoveAttachment -> "RemoveAttachment"
         is SharedThreadComposerDraftIntent.RetryAttachment -> "RetryAttachment"
+        is SharedThreadComposerDraftIntent.ReorderAttachments -> "ReorderAttachments"
     }
 
 internal fun Set<SharedThreadComposerDraftRecord>.toThreadComposerDraftDiagnosticsSummary(): String =
@@ -2735,6 +2737,12 @@ internal sealed interface SharedThreadComposerDraftIntent {
     ) : SharedThreadComposerDraftIntent
     data class RemoveAttachment(val id: String) : SharedThreadComposerDraftIntent
     data class RetryAttachment(val id: String) : SharedThreadComposerDraftIntent
+    /**
+     * The tray's tiles dragged (or moved by a screen reader) into [orderedIds] (web MessageInput
+     * `handleAttachmentDragEnd`: `arrayMove` of `pendingFiles`, whose order is the send's
+     * `attachmentIds`). Uploading and failed tiles move too.
+     */
+    data class ReorderAttachments(val orderedIds: List<String>) : SharedThreadComposerDraftIntent
 }
 
 internal class SharedThreadComposerDraftStore(
@@ -3353,6 +3361,17 @@ internal class SharedThreadComposerDraftStore(
                             }
                     )
                 }
+            is SharedThreadComposerDraftIntent.ReorderAttachments -> {
+                val reordered = current.uploadedAttachments.reorderedThreadComposerAttachments(
+                    orderedIds = intent.orderedIds,
+                    removedAttachmentIds = current.removedAttachmentIds,
+                )
+                if (reordered == current.uploadedAttachments) {
+                    current
+                } else {
+                    current.copy(syncNonce = current.syncNonce + 1, uploadedAttachments = reordered)
+                }
+            }
             is SharedThreadComposerDraftIntent.RetryAttachment ->
                 current.copy(
                     syncNonce = current.syncNonce + 1,
@@ -3365,6 +3384,28 @@ internal class SharedThreadComposerDraftStore(
                         current.attachmentAdmissionsByLocalId - intent.id
                 )
         }
+}
+
+/**
+ * The rows in the order the tray asked for: the visible rows named in [orderedIds] take, in that
+ * order, the slots those rows hold now; every other row (removed, not named, unknown to the tray)
+ * keeps its slot. An id the list doesn't hold is ignored, so a tray a frame behind the store can
+ * neither drop nor duplicate a row.
+ */
+internal fun List<SharedThreadComposerAttachment>.reorderedThreadComposerAttachments(
+    orderedIds: List<String>,
+    removedAttachmentIds: Set<String>,
+): List<SharedThreadComposerAttachment> {
+    val movable = filter { it.id.isNotBlank() && it.id !in removedAttachmentIds }.associateBy { it.id }
+    val wanted = orderedIds.distinct().filter { it in movable }
+    if (wanted.size < 2) return this
+    val wantedSet = wanted.toSet()
+    val slots = indices.filter { index -> this[index].id in wantedSet }
+    // A duplicated id holds more than one slot: leave such a list as it is.
+    if (slots.size != wanted.size) return this
+    val next = toMutableList()
+    slots.forEachIndexed { k, slot -> next[slot] = movable.getValue(wanted[k]) }
+    return next
 }
 
 private fun SharedThreadComposerDraftState.withThreadComposerEditorCommand(

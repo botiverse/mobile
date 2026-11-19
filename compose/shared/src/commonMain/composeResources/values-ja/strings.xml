@@ -871,6 +871,8 @@
     <string name="thread_composer_attachment_checking">ファイルを確認中…</string>
     <string name="thread_composer_attachment_finishing">アップロードの完了処理中…</string>
     <string name="thread_composer_attachment_file">ファイル</string>
+    <string name="thread_composer_attachment_move_left">左へ移動</string>
+    <string name="thread_composer_attachment_move_right">右へ移動</string>
     <string name="thread_members_title">メンバー（%1$d）</string>
     <string name="thread_members_agents">エージェント</string>
     <string name="thread_members_humans">人間</string>

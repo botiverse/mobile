@@ -156,6 +156,15 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.LayoutDirection
+import build.raft.designsystem.components.raftReorderableActions
+import build.raft.designsystem.components.raftReorderableItem
+import build.raft.designsystem.components.raftReorderableViewport
+import build.raft.designsystem.components.rememberRaftReorderState
+import build.raft.designsystem.tokens.RaftRadius
 
 private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
 internal const val ThreadComposerAttachImageAction = "attachImage"
@@ -612,6 +621,13 @@ internal data class ThreadComposerUiState(
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
     val originalImageOptionEnabled: Boolean = true,
+    /**
+     * Whether this host owns the tray's order (the chat composer's draft store does): its tiles
+     * then reorder by drag and Move left / Move right. A host that keeps its own attachment list
+     * (Hands feedback, a task's composer) leaves it off, so a drag can't show an order it never
+     * applies. Not on [RaftThreadComposerPayload]: a payload host passes it to ThreadComposerContent.
+     */
+    val attachmentReorderEnabled: Boolean = true,
     val originalImage: Boolean = false,
     val composerMode: String = "idle",
     val statusLabel: String? = null,
@@ -2250,6 +2266,8 @@ internal fun ThreadComposerContent(
     composerSendKeyEnabled: Boolean = false,
     dismissKeyboardOnBlur: Boolean = false,
     attachmentPreviewEnabled: Boolean,
+    /** See [ThreadComposerUiState.attachmentReorderEnabled]. */
+    attachmentReorderEnabled: Boolean = true,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
@@ -2269,7 +2287,7 @@ internal fun ThreadComposerContent(
             payload.toThreadComposerSurface(
                 channelId = payload.streamChannelId?.takeIf { it.isNotBlank() } ?: payload.instanceId
             ),
-        state = payload.toThreadComposerUiState(),
+        state = payload.toThreadComposerUiState().copy(attachmentReorderEnabled = attachmentReorderEnabled),
         onEvent = onEvent,
         onSendRequest = onSendRequest,
         onKeyboardHeightChange = onKeyboardHeightChange,
@@ -3087,7 +3105,16 @@ internal fun ThreadComposerContentLeaf(
                     ComposerAttachmentTray(
                         attachments = state.pendingAttachments,
                         enabled = state.enabled,
-                        previewEnabled = state.enabled && attachmentPreviewEnabled
+                        previewEnabled = state.enabled && attachmentPreviewEnabled,
+                        reorderEnabled = state.attachmentReorderEnabled,
+                        onReorder = { order ->
+                            onEvent(
+                                ThreadComposerReorderAttachmentsAction,
+                                encodeThreadComposerAttachmentOrder(order),
+                                null,
+                                null
+                            )
+                        }
                     ) { action, attachmentId ->
                         onEvent(action, null, null, attachmentId)
                     }
@@ -5005,6 +5032,8 @@ internal fun ComposerAttachmentTray(
     attachments: List<RaftPendingAttachmentItem>,
     enabled: Boolean,
     previewEnabled: Boolean,
+    reorderEnabled: Boolean = false,
+    onReorder: (List<String>) -> Unit = {},
     onEvent: (action: String, attachmentId: String) -> Unit
 ) {
     // raft-ui `ComposerAttachments` (`gap-2 pt-1.5 pe-1.5`): the top and end room keeps each
@@ -5012,27 +5041,82 @@ internal fun ComposerAttachmentTray(
     // a phone a file tile fills a wrapped row, and a few of them pushed the text field off the
     // screen. The tile cut off at the edge shows there is more.
     RaftDesignSystemTheme {
+        // web MessageInput `SortableAttachment` (dnd-kit, horizontal): the tiles reorder by drag.
+        // On a touch screen a 500ms hold lifts a tile (raft-ui touch-drag), so a sideways swipe
+        // still scrolls the tray and a tap still previews; letting go commits the new order,
+        // which is the order the message sends its attachments in.
+        val scrollState = rememberScrollState()
+        val ids = attachments.map { it.id }
+        val reorderState =
+            rememberRaftReorderState(
+                order = ids,
+                gap = RaftComposerAttachmentGap,
+                clampToEnds = true,
+                orientation = Orientation.Horizontal,
+            )
+        val byId = attachments.associateBy { it.id }
+        val commit by rememberUpdatedState(onReorder)
+        val moveLeft = stringResource(Res.string.thread_composer_attachment_move_left)
+        val moveRight = stringResource(Res.string.thread_composer_attachment_move_right)
+        val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+        val canReorder = reorderEnabled && enabled && attachments.size > 1
+        // The drag's order; a tile the state hasn't synced yet (added this frame) shows at its end.
+        val shown = reorderState.order.filter { it in byId } + ids.filterNot { it in reorderState.order }
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
+                    .raftReorderableViewport(reorderState, scrollState)
+                    .horizontalScroll(scrollState)
                     .padding(top = RaftComposerAttachmentRemoveOverhang, end = RaftComposerAttachmentRemoveOverhang),
             horizontalArrangement = Arrangement.spacedBy(RaftComposerAttachmentGap)
         ) {
-            attachments.forEach { attachment ->
-                ComposerAttachmentPreviewChip(
-                    attachment = attachment,
-                    enabled = enabled,
-                    previewEnabled = previewEnabled,
-                    onPreview = { onEvent("previewAttachment", attachment.id) },
-                    onRemove = { onEvent("removeAttachment", attachment.id) },
-                    onRetry = { onEvent("retryAttachments", attachment.id) }
-                )
+            shown.forEach { id ->
+                val attachment = byId.getValue(id)
+                key(id) {
+                    ComposerAttachmentPreviewChip(
+                        attachment = attachment,
+                        enabled = enabled,
+                        previewEnabled = previewEnabled,
+                        modifier =
+                            Modifier
+                                .testTag(ComposerAttachmentTileTagPrefix + id)
+                                .raftReorderableItem(
+                                    state = reorderState,
+                                    key = id,
+                                    onOrderChange = { commit(it) },
+                                    enabled = canReorder,
+                                    liftedRadius = RaftRadius.Control,
+                                ),
+                        // A screen reader focuses the tile (the remove sticker is its own control):
+                        // Move left / Move right sit there. Toward the start / the end: left /
+                        // right unless right-to-left.
+                        tileModifier =
+                            if (canReorder) {
+                                Modifier
+                                    .semantics(mergeDescendants = true) {}
+                                    .raftReorderableActions(
+                                        state = reorderState,
+                                        key = id,
+                                        onOrderChange = { commit(it) },
+                                        moveUpLabel = if (rtl) moveRight else moveLeft,
+                                        moveDownLabel = if (rtl) moveLeft else moveRight,
+                                    )
+                            } else {
+                                Modifier
+                            },
+                        onPreview = { onEvent("previewAttachment", attachment.id) },
+                        onRemove = { onEvent("removeAttachment", attachment.id) },
+                        onRetry = { onEvent("retryAttachments", attachment.id) }
+                    )
+                }
             }
         }
     }
 }
+
+/** A tray tile's test tag: this prefix and the attachment's id. */
+internal const val ComposerAttachmentTileTagPrefix = "composer-attachment-"
 
 /**
  * One tile of the tray on raft-ui `ComposerAttachment` (web MessageInput `SortableAttachmentChip`):
@@ -5043,6 +5127,8 @@ private fun ComposerAttachmentPreviewChip(
     attachment: RaftPendingAttachmentItem,
     enabled: Boolean,
     previewEnabled: Boolean,
+    modifier: Modifier = Modifier,
+    tileModifier: Modifier = Modifier,
     onPreview: () -> Unit,
     onRemove: () -> Unit,
     onRetry: () -> Unit
@@ -5051,9 +5137,18 @@ private fun ComposerAttachmentPreviewChip(
     val onOpen = onPreview.takeIf { attachment.canOpenComposerAttachmentPreview(previewEnabled) }
     // The upload meter's chip state (phase, percent, words); a failed tile only while enabled.
     val upload = attachment.uploadDisplay?.takeIf { it.phase != RaftComposerUploadPhase.Failed || enabled }
-    RaftComposerAttachment {
+    RaftComposerAttachment(modifier) {
         if (attachment.isComposerImageAttachment()) {
-            RaftComposerAttachmentImage(onClick = onOpen) {
+            RaftComposerAttachmentImage(
+                // With no thumbnail (its picture names the file) the tile says which file it is.
+                modifier =
+                    if (imagePreviewUri == null) {
+                        tileModifier.semantics { contentDescription = attachment.fileName }
+                    } else {
+                        tileModifier
+                    },
+                onClick = onOpen
+            ) {
                 if (imagePreviewUri != null) {
                     RaftAspectFitImagePreviewSurface(
                         source = imagePreviewUri,
@@ -5075,6 +5170,7 @@ private fun ComposerAttachmentPreviewChip(
                         stringResource(Res.string.thread_composer_attachment_file),
                         attachment.displaySizeLabel(),
                     ).filter { it.isNotBlank() }.joinToString(" · "),
+                modifier = tileModifier,
                 onClick = onOpen
             ) {
                 RaftLucideIcon(RaftLucideIconName.FileText, modifier = Modifier.size(16.dp), color = raftArgbHex(RaftTheme.colors.foregroundMuted))

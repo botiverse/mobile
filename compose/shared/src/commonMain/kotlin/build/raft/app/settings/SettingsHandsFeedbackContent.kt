@@ -1528,6 +1528,7 @@ internal fun SettingsHandsFeedbackComposer(
                 // thread-composer image policy. Do not expose a checkbox whose event this
                 // surface cannot own or persist.
                 originalImageOptionEnabled = false,
+                attachmentReorderEnabled = false,
                 composerMode = if (submitting) "sending" else "idle",
                 // What went wrong is the form's banner over the composer, not a status line.
                 statusLabel = null,

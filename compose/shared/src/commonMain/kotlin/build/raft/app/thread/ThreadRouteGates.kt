@@ -272,6 +272,7 @@ internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
             "attachFile",
             ThreadComposerDropAttachmentsAction,
             "removeAttachment",
+            ThreadComposerReorderAttachmentsAction,
             "retryAttachments"
         )
 
