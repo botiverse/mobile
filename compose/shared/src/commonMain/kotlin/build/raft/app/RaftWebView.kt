@@ -154,6 +154,8 @@ internal fun RaftSandboxWebView(
     routesMainFrameNavigation: ((String) -> Boolean)? = null,
     /** [RaftWebViewConfig.diagnosticsSurface]. */
     diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT,
+    /** [RaftWebViewConfig.showsFormAccessoryBar]. */
+    showsFormAccessoryBar: Boolean = false,
 ) {
     val events = remember { RaftWebViewEvents() }
     events.routesMainFrameNavigation = routesMainFrameNavigation
@@ -189,7 +191,8 @@ internal fun RaftSandboxWebView(
             frameHosts,
             keepAliveKey,
             backgroundArgb,
-            diagnosticsSurface
+            diagnosticsSurface,
+            showsFormAccessoryBar
         ) {
             RaftWebViewConfig(
                 url = url,
@@ -207,7 +210,8 @@ internal fun RaftSandboxWebView(
                 frameHosts = frameHosts,
                 keepAliveKey = keepAliveKey,
                 backgroundArgb = backgroundArgb,
-                diagnosticsSurface = diagnosticsSurface
+                diagnosticsSurface = diagnosticsSurface,
+                showsFormAccessoryBar = showsFormAccessoryBar
             )
         }
     // Full-bleed: in a clipped pane of the wide row (the Artifact column) the page is cut hard at the pane's edge, never
@@ -282,6 +286,8 @@ internal fun RaftWebView(
     loadWatchdog: RaftWebViewLoadWatchdog? = null,
     /** [RaftWebViewConfig.diagnosticsSurface]. */
     diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT,
+    /** [RaftWebViewConfig.showsFormAccessoryBar]. */
+    showsFormAccessoryBar: Boolean = false,
 ) {
     RaftSandboxWebView(
         url = url,
@@ -303,7 +309,8 @@ internal fun RaftWebView(
         allowedNavigationSchemes = allowedNavigationSchemes,
         onNavigationStateChange = onNavigationStateChange,
         onHostMessage = onHostMessage,
-        diagnosticsSurface = diagnosticsSurface
+        diagnosticsSurface = diagnosticsSurface,
+        showsFormAccessoryBar = showsFormAccessoryBar
     )
 }
 

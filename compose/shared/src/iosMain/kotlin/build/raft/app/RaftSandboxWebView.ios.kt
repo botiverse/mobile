@@ -128,6 +128,8 @@ internal class RaftIosSandboxWebView(
     private var injectedJavaScript = ""
     private var allowedNavigationSchemes: Set<String> = emptySet()
     private var hostEventsEnabled = false
+    /** [RaftWebViewConfig.showsFormAccessoryBar], applied to every WKWebView this host shows ([RaftIosWebView]). */
+    private var showsFormAccessoryBar = false
     /** [RaftWebViewConfig.mainFrameOrigin]: every top-level document stays on it. */
     private var mainFrameOrigin: String? = null
     private var currentURL = ""
@@ -219,6 +221,8 @@ internal class RaftIosSandboxWebView(
         injectedJavaScript = config.injectedJavaScript
         hostEventsEnabled = config.hostEventsEnabled
         mainFrameOrigin = config.mainFrameOrigin?.let(::raftWebOriginOf)
+        showsFormAccessoryBar = config.showsFormAccessoryBar
+        (webView as? RaftIosWebView)?.showsFormAccessoryBar = showsFormAccessoryBar
         configured = true
         if (placeholderBackground != config.backgroundArgb) {
             placeholderBackground = config.backgroundArgb
@@ -313,8 +317,9 @@ internal class RaftIosSandboxWebView(
                 ?: run {
                     val configuration = raftIosWebViewConfiguration(ephemeral = ephemeral, allowScripts = allowScripts)
                     configuration.userContentController = userContentController
-                    WKWebView(frame = container.bounds, configuration = configuration)
+                    RaftIosWebView(frame = container.bounds, configuration = configuration)
                 }
+        next.showsFormAccessoryBar = showsFormAccessoryBar
         usingSpare = spare != null
         if (spare != null) {
             diagnosticsInfo(

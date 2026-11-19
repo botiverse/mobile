@@ -55,6 +55,14 @@ internal data class RaftWebViewConfig(
      * diagnostics only: renderer-death logs and tickets name it (Android `RaftWebViewRendererGone`).
      */
     val diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT,
+    /**
+     * iOS: whether WebKit's form accessory bar (the "↑ ↓ ✓" bar over the keyboard) shows while a
+     * field has focus. Off for the app's own pages: on iOS 26 the bar floats over the page without
+     * shrinking its visual viewport, so it covered the Artifact comment composer
+     * (#proj-mobile:#194). On for the in-app browser, which shows other sites' forms as Safari does.
+     * Android and desktop have no such bar.
+     */
+    val showsFormAccessoryBar: Boolean = false,
 )
 
 internal const val RAFT_WEBVIEW_SURFACE_DEFAULT = "web_view"
