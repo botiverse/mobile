@@ -1570,6 +1570,9 @@ internal open class RaftCmpActivity :
     private fun recordWindowFirstFrame() {
         if (hostFirstFrameDrawn) return
         hostFirstFrameDrawn = true
+        build.raft.app.core.data.diagnostics.RaftStartupPhaseMarker.reached(
+            build.raft.app.core.data.diagnostics.RaftStartupPhaseMarker.Phase.FirstFrame,
+        )
         whiteScreenHandler.removeCallbacks(whiteScreenWatch)
         RaftAndroidLocalDiagnostics.recordLog(
             "info",

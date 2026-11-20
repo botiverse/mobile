@@ -1,7 +1,9 @@
 package build.raft.app
 
+import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.os.Bundle
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
@@ -10,6 +12,7 @@ import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
 import build.raft.app.core.data.diagnostics.AndroidSystemKillReporter
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.core.data.diagnostics.RaftHandsLaunchUploads
+import build.raft.app.core.data.diagnostics.RaftStartupPhaseMarker
 import build.raft.app.core.data.diagnostics.RaftWebViewRendererGoneReporter
 import build.raft.app.data.raftClearLegacyFontPreference
 import build.hands.update.HandsCrash
@@ -39,6 +42,8 @@ class RaftApplication : Application() {
         // Before ContentProvider init and onCreate, so an ANR or system kill anywhere in startup
         // still records which build exited (RaftBuildStamp).
         RaftBuildStamp.stampProcess(base, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong())
+        // How far this process gets through startup, for the next launch's exit report (#250).
+        RaftStartupPhaseMarker.start(base.filesDir, Application.getProcessName().orEmpty())
     }
 
     override fun onCreate() {
@@ -194,6 +199,20 @@ class RaftApplication : Application() {
             appSlug = BuildConfig.HANDS_APP_SLUG,
             channel = BuildConfig.HANDS_CHANNEL,
             clientKey = BuildConfig.HANDS_CLIENT_KEY,
+        )
+        RaftStartupPhaseMarker.reached(RaftStartupPhaseMarker.Phase.ApplicationCreated)
+        registerActivityLifecycleCallbacks(
+            object : ActivityLifecycleCallbacks {
+                override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+                    RaftStartupPhaseMarker.reached(RaftStartupPhaseMarker.Phase.ActivityCreated)
+                }
+                override fun onActivityStarted(activity: Activity) = Unit
+                override fun onActivityResumed(activity: Activity) = Unit
+                override fun onActivityPaused(activity: Activity) = Unit
+                override fun onActivityStopped(activity: Activity) = Unit
+                override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+                override fun onActivityDestroyed(activity: Activity) = Unit
+            },
         )
     }
 }
