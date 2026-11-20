@@ -126,7 +126,15 @@ sealed interface AppLinkResult {
          * older than [APP_LINK_HANDLE_FRESH_MILLIS] (web `LINK_CARD_HANDLE_FRESH_MS`).
          */
         val readAtMillis: Long? = null,
+        /**
+         * The `business_revision` of the chip's card ([cardV2], a version 2 card or a version 3 `hover`
+         * one): what preparing one of its buttons claims. A block card's is [AppLinkBlockCard.businessRevision].
+         */
+        val businessRevision: String = "",
     ) : AppLinkResult {
+        /** The revision a `confirm: "prepare"` button of this card claims (web `card.businessRevision`): the block card's, else the chip card's. */
+        val claimedRevision: String get() = block?.businessRevision ?: businessRevision
+
         /** The words on the chip (web `appLinkChipTitle`): the inline title, else [title]. The card always shows [title]. */
         val chipTitle: String get() = inline?.title ?: title
 

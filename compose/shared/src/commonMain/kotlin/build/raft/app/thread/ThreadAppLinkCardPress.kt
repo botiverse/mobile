@@ -282,7 +282,7 @@ internal class ThreadAppLinkCardPress(
             running = id
             scope.launch {
                 try {
-                    when (val prepared = host.prepare(handle, card.block?.businessRevision.orEmpty())) {
+                    when (val prepared = host.prepare(handle, card.claimedRevision)) {
                         is AppLinkActionResult.Ok -> confirming = PendingConfirmation(id, handle, prepared.value, requestId, label, unreviewed)
                         is AppLinkActionResult.Failed -> failure(host, prepared)
                     }

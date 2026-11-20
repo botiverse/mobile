@@ -210,6 +210,19 @@ class AppLinkCardV3ParseTest {
     }
 
     @Test
+    fun theHandlesAndTheBusinessRevisionOfAHoverCardAreKept() {
+        // #proj-mobile:#218 (web `appLinkResultOfItem`): the chip card's buttons press with them.
+        val signed = """{"kind":"v3","url":"$url","app":$stamp,"ticket":"tk","actions":[{"action_id":"merge","handle":"h-1"}],
+          "preview":{"version":3,"items":[$inlineItem,${cardItem("hover")}]}}"""
+        val card = parseAppLinkCardReadAnswer("""{"items":[$signed]}""")!!.results[url] as AppLinkResult.Card
+        assertNotNull(card.cardV2)
+        assertNull(card.block)
+        assertEquals(mapOf("merge" to "h-1"), card.handles)
+        assertEquals("br-1", card.businessRevision)
+        assertEquals("br-1", card.claimedRevision)
+    }
+
+    @Test
     fun anItemOfVersion3NeedsTheSignedParts() {
         val without = """{"kind":"v3","url":"$url","app":$stamp,"preview":{"version":3,"items":[$inlineItem]}}"""
         assertTrue(parseAppLinkCardReadAnswer("""{"items":[$without]}""")!!.results.isEmpty())

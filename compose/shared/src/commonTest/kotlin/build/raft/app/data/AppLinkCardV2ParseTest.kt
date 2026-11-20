@@ -70,6 +70,20 @@ class AppLinkCardV2ParseTest {
     }
 
     @Test
+    fun v2CardItemKeepsItsHandlesAndBusinessRevision() {
+        // #proj-mobile:#218 (web `appLinkResultOfItem`): the chip card's buttons press with them.
+        val signed = v2Item(1).replace("\"actions\":[]", "\"actions\":[{\"action_id\":\"merge\",\"handle\":\"h-1\"}]")
+        val card = parseAppLinkCardReadAnswer(answer(signed))!!.results[urlOf(1)] as AppLinkResult.Card
+        assertEquals(mapOf("merge" to "h-1"), card.handles)
+        assertEquals("br-1", card.businessRevision)
+        assertEquals("br-1", card.claimedRevision)
+        // No handles signed: none kept, the revision still read.
+        val plain = parseAppLinkCardReadAnswer(answer(v2Item(1)))!!.results[urlOf(1)] as AppLinkResult.Card
+        assertTrue(plain.handles.isEmpty())
+        assertEquals("br-1", plain.businessRevision)
+    }
+
+    @Test
     fun v1ItemsAndTheGetStillRead() {
         val read = parseAppLinkCardReadAnswer(answer(v1Item))!!
         val card = read.results[urlOf(2)] as AppLinkResult.Card
