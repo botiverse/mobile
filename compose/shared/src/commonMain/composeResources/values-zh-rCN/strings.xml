@@ -217,6 +217,7 @@
     <string name="settings_step_up_web_waiting">正在等待你在浏览器中完成…</string>
     <string name="settings_step_up_web_cancelled">浏览器在确认前已关闭。请再试一次。</string>
     <string name="settings_step_up_web_expired">此请求已过期。请再试一次。</string>
+    <string name="settings_step_up_web_new_passkey_hint">想下次直接在 App 里验证？在网页版 Raft 新加一把通行密钥（账户 › 登录与安全 › 通行密钥）。</string>
     <string name="settings_step_up_passkey_button">使用通行密钥</string>
     <string name="settings_step_up_use_passkey">使用通行密钥</string>
     <string name="settings_step_up_passkey_cancelled">通行密钥窗口已关闭。可以再试一次，或换一种方式。</string>

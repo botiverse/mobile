@@ -217,6 +217,7 @@
     <string name="settings_step_up_web_waiting">Waiting for you to finish in the browser…</string>
     <string name="settings_step_up_web_cancelled">The browser was closed before you confirmed. Try again.</string>
     <string name="settings_step_up_web_expired">This request expired. Try again.</string>
+    <string name="settings_step_up_web_new_passkey_hint">To confirm right here next time, add a new passkey on Raft on the web (Account › Login &amp; security › Passkeys).</string>
     <string name="settings_step_up_passkey_button">Use Passkey</string>
     <string name="settings_step_up_use_passkey">Use a Passkey</string>
     <string name="settings_step_up_passkey_cancelled">The passkey prompt was closed. Try again, or use another way.</string>
