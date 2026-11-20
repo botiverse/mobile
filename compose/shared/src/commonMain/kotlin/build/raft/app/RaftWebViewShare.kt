@@ -54,7 +54,7 @@ internal fun raftWebViewShareShimScript(maxBytes: Long = RaftWebViewShareMaxByte
         "var fi=0,off=0,ci=0,size=393216;" +
         "function next(){if(pending[id]!==entry)return;if(fi>=files.length){post({k:'share-end'});return;}var f=files[fi];" +
         "if(off>=f.size){fi++;off=0;ci=0;next();return;}" +
-        "var fr=new FileReader();fr.onload=function(){if(pending[id]!==entry)return;var s=String(fr.result);var c=s.indexOf(',');" +
+        "var fr=new FileReader();fr.onload=function(){if(pending[id]!==entry)return;var s=String(fr.result);var c=s.lastIndexOf(',');" +
         "entry.next=function(){ci++;off+=size;next();};" +
         "post({k:'share-chunk',f:fi,i:ci,d:c>=0?s.substring(c+1):''});};" +
         "fr.onerror=function(){if(pending[id]!==entry)return;post({k:'share-error'});settle(id,'DataError');};" +
@@ -118,15 +118,15 @@ internal interface RaftWebViewShareSink {
     fun discard(id: String)
 }
 
-/** Whether a port message ([raftWebViewShareShimScript]) is part of a share rather than a download read. */
-internal fun raftWebViewIsShareMessage(raw: String): Boolean =
-    "share-" in raw && runCatching { JSONObject(raw).optString("k").startsWith("share-") }.getOrDefault(false)
-
 /**
- * A cheap first look (no parse; the message may be a 500 KB chunk on the UI thread): false means
- * [raw] is surely not a share message, true means [RaftWebViewShareReceiver.accept] decides.
+ * Whether a port message is part of a share rather than a download read. Exact and constant-time
+ * (the message may be a 500 KB chunk on the UI thread): the shim serialises every message with its
+ * kind `k` first (`{"k":"share-chunk",...}`), and a download read's messages never start so, whatever
+ * names or bytes they carry. [RaftWebViewShareReceiver.accept] still reads the parsed kind.
  */
-internal fun raftWebViewMayBeShareMessage(raw: String): Boolean = "\"share-" in raw
+internal fun raftWebViewIsShareMessage(raw: String): Boolean = raw.startsWith(RaftWebViewShareMessagePrefix)
+
+private const val RaftWebViewShareMessagePrefix = "{\"k\":\"share-"
 
 /** A share id as the shim makes it (`s3_1700000000000`): letters, digits and `_`, never empty. */
 internal fun raftWebViewShareIdIsValid(id: String): Boolean =

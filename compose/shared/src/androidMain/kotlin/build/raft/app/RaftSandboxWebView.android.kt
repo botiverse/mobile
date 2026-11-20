@@ -1120,23 +1120,31 @@ internal class RaftAndroidSandboxWebView(
      * sheet, the Promise settled) comes back here. Nothing thrown leaves this function.
      */
     private fun acceptShareMessage(session: RaftAndroidWebViewShareSession, raw: String) {
+        // A session whose port is gone takes nothing more: nothing would abort what it started.
+        if (destroyed || shareSession !== session) return
         scheduleShareExpiry(session)
-        runShareIo(session, notShare = { handleDownloadMessage(raw) }) { session.accept(raw) }
+        runShareIo(session) { session.accept(raw) }
     }
 
-    /** Runs [work] on the share thread and its signals back on the main thread. */
+    /**
+     * Runs [work] on the share thread and its signals back on the main thread. With [rearmExpiry],
+     * the expiry check is set again while the session still has a share being received.
+     */
     private fun runShareIo(
         session: RaftAndroidWebViewShareSession,
-        notShare: (() -> Unit)? = null,
+        rearmExpiry: Boolean = false,
         work: () -> List<RaftAndroidStagedShareSignal>?
     ) {
         runCatching {
             RaftWebViewShareIo.execute {
                 val signals = runCatching(work).getOrElse { runCatching { session.abortAll("internal") }.getOrDefault(emptyList()) }
-                if (signals == null) {
-                    if (notShare != null) shareMainHandler.post { if (!destroyed && shareSession === session) notShare() }
-                } else if (signals.isNotEmpty()) {
-                    shareMainHandler.post { deliverShareSignals(session, signals) }
+                if (!signals.isNullOrEmpty()) shareMainHandler.post { deliverShareSignals(session, signals) }
+                if (rearmExpiry && runCatching { session.hasPending() }.getOrDefault(false)) {
+                    shareMainHandler.post {
+                        if (!destroyed && shareSession === session && shareExpiryCheck == null) {
+                            scheduleShareExpiry(session, RaftWebViewShareExpiryRecheckMs)
+                        }
+                    }
                 }
             }
         }.onFailure { Log.w(LOG_TAG, "page_share io unavailable", it) }
@@ -1169,17 +1177,22 @@ internal class RaftAndroidSandboxWebView(
 
     /**
      * Gives up shares whose page has gone silent: every share message pushes this check
-     * [RaftWebViewShareIdleTimeoutMs] ahead, so when it runs none of them has had one for that long.
+     * [RaftWebViewShareIdleTimeoutMs] ahead. A share's silence is counted from when its last message
+     * was handled on the share thread, which may be later than when it was posted, so the check comes
+     * back every [RaftWebViewShareExpiryRecheckMs] until no share is left being received.
      */
-    private fun scheduleShareExpiry(session: RaftAndroidWebViewShareSession) {
+    private fun scheduleShareExpiry(
+        session: RaftAndroidWebViewShareSession,
+        delayMs: Long = RaftWebViewShareIdleTimeoutMs + 1_000L
+    ) {
         shareExpiryCheck?.let { shareMainHandler.removeCallbacks(it) }
         val check =
             Runnable {
                 shareExpiryCheck = null
-                if (!destroyed && shareSession === session) runShareIo(session) { session.expire() }
+                if (!destroyed && shareSession === session) runShareIo(session, rearmExpiry = true) { session.expire() }
             }
         shareExpiryCheck = check
-        shareMainHandler.postDelayed(check, RaftWebViewShareIdleTimeoutMs + 1_000L)
+        shareMainHandler.postDelayed(check, delayMs)
     }
 
     private fun discardShareFolder(folder: java.io.File?) {
@@ -1298,7 +1311,7 @@ internal class RaftAndroidSandboxWebView(
                         if (destroyed || !isMainFrame || sourceOrigin.toString() != originRule) return
                         val raw = message.data ?: return
                         // A share message goes to the share thread whole; this (UI) thread neither parses nor decodes it.
-                        if (raftWebViewMayBeShareMessage(raw)) {
+                        if (raftWebViewIsShareMessage(raw)) {
                             acceptShareMessage(session, raw)
                             return
                         }
@@ -1330,7 +1343,7 @@ internal class RaftAndroidSandboxWebView(
         shareExpiryCheck = null
         shareSession?.let { session ->
             shareSession = null
-            runShareIo(session) { session.abortAll("closed") }
+            runShareIo(session) { session.close() }
         }
     }
 
@@ -1549,6 +1562,8 @@ internal actual val raftWebViewDesktopModeViaViewportMeta: Boolean = true
  * One thread for every page share ([raftWebViewShareShimScript]): parsing, base64 decoding and file
  * writes stay off the UI thread and run in the order the messages were posted. It ends when idle.
  */
+private const val RaftWebViewShareExpiryRecheckMs: Long = 10_000L
+
 private val RaftWebViewShareIo: java.util.concurrent.Executor by lazy {
     java.util.concurrent.ThreadPoolExecutor(
         0,
@@ -1575,8 +1590,21 @@ private class RaftAndroidWebViewShareSession(private val shareRoot: java.io.File
     private val fileNames = HashMap<String, List<String>>()
     private val receiver = RaftWebViewShareReceiver(sink = this, nowMillis = { android.os.SystemClock.elapsedRealtime() })
 
+    private var closed = false
+
+    /** Nothing is taken once the session is closed: a message still on its way then starts no share. */
     @Synchronized
-    fun accept(raw: String): List<RaftAndroidStagedShareSignal>? = receiver.accept(raw)?.map(::staged)
+    fun accept(raw: String): List<RaftAndroidStagedShareSignal>? = if (closed) emptyList() else receiver.accept(raw)?.map(::staged)
+
+    @Synchronized
+    fun hasPending(): Boolean = receiver.pendingCount > 0
+
+    /** The page's port is gone: every share still being received is given up, and no more are taken. */
+    @Synchronized
+    fun close(): List<RaftAndroidStagedShareSignal> {
+        closed = true
+        return receiver.abortAll("closed").map(::staged)
+    }
 
     @Synchronized
     fun expire(): List<RaftAndroidStagedShareSignal> = receiver.expire().map(::staged)

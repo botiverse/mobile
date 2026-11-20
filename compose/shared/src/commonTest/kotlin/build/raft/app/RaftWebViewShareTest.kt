@@ -110,8 +110,6 @@ class RaftWebViewShareTest {
             emptyList(),
             receiver.accept(start("s1", Triple("周报.md", "text/markdown", a.size.toLong()), Triple("周报.md", "text/markdown", b.size.toLong()))),
         )
-        assertTrue(raftWebViewIsShareMessage(start("s1")))
-        assertTrue(raftWebViewMayBeShareMessage(start("s1")))
         assertEquals(listOf("周报.md", "周报 (2).md"), sink.files.getValue("s1").map { it.first })
         // Each chunk is written as it comes and acknowledged, so the page posts the next.
         assertEquals(listOf<RaftWebViewShareSignal>(RaftWebViewShareSignal.Ack("s1")), receiver.accept(chunk("s1", 0, 0, a.copyOfRange(0, 4))))
@@ -133,7 +131,23 @@ class RaftWebViewShareTest {
         val receiver = receiver()
         assertNull(receiver.accept(msg("t" to "d1", "k" to "chunk", "d" to "\"share-")))
         assertNull(receiver.accept("not json"))
-        assertFalse(raftWebViewMayBeShareMessage(msg("t" to "d1", "d" to "AAAA")))
+    }
+
+    @Test
+    fun aShareMessageIsToldByItsLeadingKindAlone() {
+        // As the shim serialises them: the kind first, the id last.
+        assertTrue(raftWebViewIsShareMessage("{\"k\":\"share-start\",\"title\":\"\",\"files\":[],\"s\":\"s1_9\"}"))
+        assertTrue(raftWebViewIsShareMessage("{\"k\":\"share-chunk\",\"f\":0,\"i\":0,\"d\":\"AAAA\",\"s\":\"s1_9\"}"))
+        val script = raftWebViewShareShimScript()
+        assertTrue("function post(o){o.s=id;" in script)
+        listOf("share-start", "share-chunk", "share-end", "share-error").forEach { assertTrue("post({k:'$it'" in script) }
+        // A download read is never one, whatever its file name or bytes hold.
+        assertFalse(raftWebViewIsShareMessage("{\"k\":\"start\",\"name\":\"share-notes.md\",\"t\":\"d1\"}"))
+        assertFalse(raftWebViewIsShareMessage("{\"name\":\"\\\"k\\\":\\\"share-x\",\"t\":\"d1\"}"))
+        assertFalse(raftWebViewIsShareMessage("{\"t\":\"d1\",\"k\":\"share-start\"}"))
+        assertFalse(raftWebViewIsShareMessage(""))
+        // The data URL is split at its last comma: a Blob type may hold one, base64 never does.
+        assertTrue("var c=s.lastIndexOf(',');" in script)
     }
 
     @Test
@@ -150,7 +164,7 @@ class RaftWebViewShareTest {
         val receiver = receiver(maxBytes = 10)
         assertEquals("too_large", receiver.accept(start("big", Triple("a.zip", "application/zip", 11L))).failure().reason)
         assertEquals(emptyList(), receiver.accept(start("s2", Triple("a.txt", "text/plain", 4L))))
-        assertNotNull(receiver.accept(chunk("s2", 0, 0, ByteArray(2))))
+        assertEquals(listOf<RaftWebViewShareSignal>(RaftWebViewShareSignal.Ack("s2")), receiver.accept(chunk("s2", 0, 0, ByteArray(2))))
         val failed = receiver.accept(end("s2")).failure()
         assertEquals(RaftWebViewShareSignal.Failed("s2", "DataError", "size_mismatch"), failed)
         assertEquals(listOf("s2"), sink.discarded.filter { it == "s2" })
@@ -193,7 +207,7 @@ class RaftWebViewShareTest {
         // A chunk index skipped, and one repeated.
         assertEquals("chunk_order", started("o1").accept(chunk("o1", 0, 1, ByteArray(2))).failure().reason)
         started("o2").let {
-            assertNotNull(it.accept(chunk("o2", 0, 0, ByteArray(2))))
+            assertEquals(listOf<RaftWebViewShareSignal>(RaftWebViewShareSignal.Ack("o2")), it.accept(chunk("o2", 0, 0, ByteArray(2))))
             assertEquals("chunk_order", it.accept(chunk("o2", 0, 0, ByteArray(2))).failure().reason)
             // The share is gone: what the page still posts for it is ignored.
             assertEquals(emptyList(), it.accept(chunk("o2", 0, 1, ByteArray(2))))
@@ -204,7 +218,7 @@ class RaftWebViewShareTest {
         assertEquals("chunk_order", started("o4").accept(chunk("o4", 3, 0, ByteArray(1))).failure().reason)
         assertEquals("chunk_order", started("o5").accept(chunk("o5", -1, 0, ByteArray(1))).failure().reason)
         started("o6").let {
-            assertNotNull(it.accept(chunk("o6", 0, 0, ByteArray(4))))
+            assertEquals(listOf<RaftWebViewShareSignal>(RaftWebViewShareSignal.Ack("o6")), it.accept(chunk("o6", 0, 0, ByteArray(4))))
             // The empty middle file sends nothing.
             assertEquals(listOf<RaftWebViewShareSignal>(RaftWebViewShareSignal.Ack("o6")), it.accept(chunk("o6", 2, 0, ByteArray(2))))
             assertEquals("chunk_order", it.accept(chunk("o6", 0, 1, ByteArray(1))).failure().reason)
