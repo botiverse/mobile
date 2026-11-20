@@ -178,7 +178,9 @@ internal fun SharedCreateChannelDialog(
             null
         }
     val canSubmit = trimmedName.isSubmittableChannelName() && !submitting
-    val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
+    // No Guest: a new channel is never its bound one (403 guest_other_channel; web isAddableToNewChannel, #15362).
+    val selectableMembers =
+        members.filter { (it.kind == MemberKind.Human || it.kind == MemberKind.Agent) && it.isAddableToNewChannel() }
     val onDetails = !twoStep || step == SharedCreateChannelStep.Details
     val externalBusy = externalState?.invite?.busy == true
     // The one commit: the footer's Create on a wide window, the phone sheet's head button.

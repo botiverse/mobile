@@ -441,9 +441,16 @@ private fun ThreadMembersPageScreen() {
                     .map { it.id }
             },
     )
-    val candidates = remember(serverMembersEntry.members, route.serverId, members) {
+    // A Guest is offered only in its own bound, non-joint channel (web isAddableToChannel, #15354).
+    val addChannelProjection = channelProjections[route.channelId.value]
+    val channelKind = addChannelProjection?.channelKind
+    val addChannelId = addChannelProjection?.canonicalChannelId ?: route.channelId.value
+    val candidates = remember(serverMembersEntry.members, route.serverId, addChannelId, channelKind, members) {
         threadAddMemberCandidatesExcludingJoined(
-            candidates = serverMembersEntry.members.map { it.toRaftThreadMemberItem(route.serverId) },
+            candidates =
+                serverMembersEntry.members
+                    .filter { it.isAddableToChannel(addChannelId, channelKind) }
+                    .map { it.toRaftThreadMemberItem(route.serverId) },
             members = members,
             localServerId = route.serverId.value
         )
