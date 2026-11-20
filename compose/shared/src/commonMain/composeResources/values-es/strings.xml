@@ -3243,6 +3243,7 @@
     <string name="settings_computers_upgrade_status_in_progress">Actualizando a la v%1$s. La computadora se desconectará brevemente.</string>
     <string name="settings_computers_upgrade_status_available">La v%1$s está disponible.</string>
     <string name="settings_computers_upgrade_status_manual">La v%1$s está disponible. Esta computadora no se puede actualizar desde la web; ejecuta esto directamente en ella:</string>
+    <string name="settings_computers_upgrade_status_system_service">La v%1$s está disponible. Esta computadora se ejecuta como servicio del sistema, así que actualizarla desde la web la detendría a mitad de la actualización. En esa computadora, detén su servicio de systemd, ejecuta el comando de instalación de abajo y vuelve a iniciar el servicio.</string>
     <string name="settings_computers_upgrade_status_manual_above">La v%1$s está disponible. Esta computadora no se puede actualizar desde la web; usa el comando que aparece al principio de esta página.</string>
     <string name="settings_computers_upgrade_status_run_commands">La v%1$s está disponible. Ejecuta estos dos comandos en esa computadora para actualizar:</string>
     <string name="settings_computers_upgrade_status_refused_not_allowed">Esta computadora no se puede actualizar desde la web en este momento.</string>

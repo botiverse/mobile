@@ -3243,6 +3243,7 @@
     <string name="settings_computers_upgrade_status_in_progress">v%1$s 버전으로 업그레이드하는 중이에요. 잠시 컴퓨터 연결이 끊겨요.</string>
     <string name="settings_computers_upgrade_status_available">v%1$s 버전을 사용할 수 있어요.</string>
     <string name="settings_computers_upgrade_status_manual">v%1$s 버전을 사용할 수 있어요. 이 컴퓨터는 웹에서 업그레이드할 수 없으니 해당 컴퓨터에서 다음 명령을 실행하세요:</string>
+    <string name="settings_computers_upgrade_status_system_service">v%1$s 버전을 사용할 수 있어요. 이 컴퓨터는 시스템 서비스로 실행되고 있어서 웹에서 업그레이드하면 업그레이드 도중에 멈춰요. 해당 컴퓨터에서 systemd 서비스를 중지하고 아래 설치 명령을 실행한 다음 서비스를 다시 시작하세요.</string>
     <string name="settings_computers_upgrade_status_manual_above">v%1$s 버전을 사용할 수 있어요. 이 컴퓨터는 웹에서 업그레이드할 수 없으니 이 페이지 상단의 명령을 사용하세요.</string>
     <string name="settings_computers_upgrade_status_run_commands">v%1$s 버전을 사용할 수 있어요. 해당 컴퓨터에서 다음 두 명령을 실행해 업그레이드하세요:</string>
     <string name="settings_computers_upgrade_status_refused_not_allowed">지금은 웹에서 이 컴퓨터를 업그레이드할 수 없어요.</string>

@@ -3415,6 +3415,7 @@
     <string name="settings_computers_upgrade_status_in_progress">v%1$s にアップグレード中です。コンピューターの接続が一時的に切れます。</string>
     <string name="settings_computers_upgrade_status_available">v%1$s が利用可能です。</string>
     <string name="settings_computers_upgrade_status_manual">v%1$s が利用可能です。このコンピューターはウェブからアップグレードできないため、コンピューター上で次のコマンドを実行してください：</string>
+    <string name="settings_computers_upgrade_status_system_service">v%1$s が利用可能です。このコンピューターはシステムサービスとして実行されているため、ウェブからアップグレードするとアップグレードの途中で停止してしまいます。そのコンピューターで systemd サービスを停止し、下のインストールコマンドを実行してから、サービスを再び起動してください。</string>
     <string name="settings_computers_upgrade_status_manual_above">v%1$s が利用可能です。このコンピューターはウェブからアップグレードできないため、このページ上部のコマンドを使用してください。</string>
     <string name="settings_computers_upgrade_status_run_commands">v%1$s が利用可能です。そのコンピューターで次の 2 つのコマンドを実行してアップグレードしてください：</string>
     <string name="settings_computers_upgrade_status_refused_not_allowed">現在、このコンピューターはウェブからアップグレードできません。</string>

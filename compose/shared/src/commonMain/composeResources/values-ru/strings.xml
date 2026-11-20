@@ -3243,6 +3243,7 @@
     <string name="settings_computers_upgrade_status_in_progress">Обновление до v%1$s. Компьютер ненадолго отключится.</string>
     <string name="settings_computers_upgrade_status_available">Доступна v%1$s.</string>
     <string name="settings_computers_upgrade_status_manual">Доступна v%1$s. Этот компьютер нельзя обновить из веб-интерфейса — выполните на нём эту команду:</string>
+    <string name="settings_computers_upgrade_status_system_service">Доступна v%1$s. Этот компьютер работает как системная служба, поэтому обновление из веб-интерфейса остановит его посреди обновления. На самом компьютере остановите его службу systemd, выполните команду установки ниже, затем снова запустите службу.</string>
     <string name="settings_computers_upgrade_status_manual_above">Доступна v%1$s. Этот компьютер нельзя обновить из веб-интерфейса — используйте команду в начале страницы.</string>
     <string name="settings_computers_upgrade_status_run_commands">Доступна v%1$s. Чтобы обновиться, выполните на самом компьютере две команды:</string>
     <string name="settings_computers_upgrade_status_refused_not_allowed">Сейчас этот компьютер нельзя обновить из веб-интерфейса.</string>

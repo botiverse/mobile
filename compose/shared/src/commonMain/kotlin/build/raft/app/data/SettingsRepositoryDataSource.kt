@@ -3032,6 +3032,7 @@ internal fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnaps
         osRelease = osRelease,
         hostProvider = hostProvider,
         installerRepairHint = installerRepairHint,
+        upgradeScopeRefused = upgradeScopeRefused,
         runtimeVersions = runtimeVersions,
         diskStatus = diskStatus?.let { SettingsComputerSizeStatusSnapshot(it.availableBytes, it.totalBytes) },
         memoryStatus = memoryStatus?.let { SettingsComputerSizeStatusSnapshot(it.availableBytes, it.totalBytes) },

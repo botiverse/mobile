@@ -677,7 +677,8 @@ internal sealed interface RaftComputerRackAction {
     data class Upgrade(val version: String, val hint: RaftComputerRackHint? = null) : RaftComputerRackAction
 
     /** Online, newer than this version but not upgradable from the app: the install command to run on it. */
-    data class ManualUpgrade(val version: String) : RaftComputerRackAction
+    /** [systemService]: web `systemService` (slock #15243), the sheet says to stop the systemd service around the install. */
+    data class ManualUpgrade(val version: String, val systemService: Boolean = false) : RaftComputerRackAction
 
     /** Raft Desktop's own Computer: "Raft Desktop keeps this Computer up to date." */
     data object ManagedByDesktop : RaftComputerRackAction
@@ -734,6 +735,7 @@ internal fun raftComputerRackAction(
             )
         is RaftComputerCardState.Upgrading -> RaftComputerRackAction.Upgrading(card.waitingAgents)
         is RaftComputerCardState.ManualUpgrade -> RaftComputerRackAction.ManualUpgrade(card.version)
+        is RaftComputerCardState.SystemService -> RaftComputerRackAction.ManualUpgrade(card.version, systemService = true)
         RaftComputerCardState.ManagedByDesktop -> RaftComputerRackAction.ManagedByDesktop
         else -> null
     }

@@ -1797,6 +1797,13 @@ data class SettingsComputerSnapshot(
      * needs a repair run on the machine; the install command is recommended beside Upgrade.
      */
     val installerRepairHint: String? = null,
+    /**
+     * Server `upgradeScope` is an explicit refusal (`ok: false`, botiverse/slock #15243): the
+     * Computer runs as a systemd system service whose manager refuses the scope a web upgrade's
+     * installer needs, so the web upgrade is refused (`scope_unavailable`) and no Upgrade is offered.
+     * False when allowed, unknown, or an older server.
+     */
+    val upgradeScopeRefused: Boolean = false,
     /** Server `runtimeVersions`: runtime id -> detected CLI version, for the usage sheet's "Version …" line. */
     val runtimeVersions: Map<String, String> = emptyMap(),
     /** Server `diskStatus`: free and total disk while online; null when offline or never reported. */

@@ -479,6 +479,10 @@ internal fun RaftComputerServiceCard(context: RaftComputerControlsContext) {
                 if (card is RaftComputerCardState.ManualUpgrade && upgrade.tier is RaftComputerVersionTier.None) {
                     RaftComputerManualInstall(context)
                 }
+                // A system service: the install command, run between stopping and starting it (web #15243).
+                if (card is RaftComputerCardState.SystemService) {
+                    RaftComputerManualInstall(context)
+                }
                 val fresh = context.commands
                 if (card is RaftComputerCardState.Commands && fresh != null) {
                     RaftComputerCommandLine(fresh.install, context.onCopy, label = stringResource(Res.string.settings_computers_upgrade_install_step))
@@ -525,6 +529,7 @@ private fun raftComputerCardSentence(card: RaftComputerCardState, tier: RaftComp
                 // With the version notice up, its copy of the command is the one to use.
                 stringResource(Res.string.settings_computers_upgrade_status_manual_above, card.version)
             }
+        is RaftComputerCardState.SystemService -> stringResource(Res.string.settings_computers_upgrade_status_system_service, card.version)
         RaftComputerCardState.ManagedByDesktop -> stringResource(Res.string.settings_computers_upgrade_status_managed_by_desktop)
         is RaftComputerCardState.Commands ->
             if (card.refusedNotAllowed) {

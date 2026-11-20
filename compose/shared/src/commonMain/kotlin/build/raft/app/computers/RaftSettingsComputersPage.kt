@@ -1468,7 +1468,7 @@ private fun RaftComputerRackActionRow(
                 // machine, so it carries the terminal mark (web).
                 RaftButton(
                     text = stringResource(Res.string.settings_computers_upgrade_to_version, action.version),
-                    onClick = { sheet = RaftComputerRackSheet.Manual(action.version) },
+                    onClick = { sheet = RaftComputerRackSheet.Manual(action.version, action.systemService) },
                     leadingIcon = { RaftComputersIcon(RaftLucideIconName.Terminal) },
                     modifier = Modifier.testTag(RaftComputersRackTags.ManualUpgrade),
                 )
@@ -1507,7 +1507,7 @@ private fun RaftComputerRackActionRow(
 
 /** What the card's sheet explains: the manual upgrade, or the hint beside Upgrade. */
 private sealed interface RaftComputerRackSheet {
-    data class Manual(val version: String) : RaftComputerRackSheet
+    data class Manual(val version: String, val systemService: Boolean = false) : RaftComputerRackSheet
 
     data class Hint(val hint: RaftComputerRackHint) : RaftComputerRackSheet
 }
@@ -1529,7 +1529,12 @@ private fun RaftComputerRackInstallSheet(
     when (sheet) {
         is RaftComputerRackSheet.Manual -> {
             title = stringResource(Res.string.settings_computers_upgrade_to_version, sheet.version)
-            sentence = stringResource(Res.string.settings_computers_upgrade_status_manual, sheet.version)
+            sentence =
+                stringResource(
+                    if (sheet.systemService) Res.string.settings_computers_upgrade_status_system_service
+                    else Res.string.settings_computers_upgrade_status_manual,
+                    sheet.version,
+                )
         }
         is RaftComputerRackSheet.Hint ->
             when (val hint = sheet.hint) {

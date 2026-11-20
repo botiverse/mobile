@@ -3416,6 +3416,7 @@
     <string name="settings_computers_upgrade_status_in_progress">Upgrading to v%1$s. The Computer will disconnect briefly.</string>
     <string name="settings_computers_upgrade_status_available">v%1$s is available.</string>
     <string name="settings_computers_upgrade_status_manual">v%1$s is available. This computer can't be upgraded from the web; run this on that machine instead:</string>
+    <string name="settings_computers_upgrade_status_system_service">v%1$s is available. This Computer runs as a system service, so upgrading from the web would stop it mid-upgrade. On that machine, stop its systemd service, run the install command below, then start the service again.</string>
     <string name="settings_computers_upgrade_status_manual_above">v%1$s is available. This computer can't be upgraded from the web; use the command at the top of this page.</string>
     <string name="settings_computers_upgrade_status_run_commands">v%1$s is available. Run these two commands on that machine to upgrade:</string>
     <string name="settings_computers_upgrade_status_refused_not_allowed">This Computer can't be upgraded from the web right now.</string>

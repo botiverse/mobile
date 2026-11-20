@@ -925,6 +925,8 @@ internal data class ComputerSummary(
     val hostProvider: String? = null,
     /** Server `installerRepairHint.reason` (a known one only); null when there is nothing to hint or an older server. */
     val installerRepairHint: String? = null,
+    /** Server `upgradeScope.ok == false`: the Computer refuses a web upgrade's scope (it runs as a system service). */
+    val upgradeScopeRefused: Boolean = false,
     /** Server `runtimeVersions`: runtime id -> the CLI version the Computer detected ("2.1.59 (Claude Code)"). */
     val runtimeVersions: Map<String, String> = emptyMap(),
     /** `machines.userId`: the user who registered the machine (server's "machine creator" authority). */
@@ -1171,6 +1173,10 @@ private data class ComputerDto(
     // (packages/shared/src/index.ts ComputerInstallerRepairHint, #proj-raft-computer task #34):
     // advisory, the installer state needs a repair run on the machine; null when nothing to hint.
     val installerRepairHint: ComputerInstallerRepairHintDto? = null,
+    // routes/servers.ts GET /:id/machines `upgradeScope: await readUpgradeScope(...)` (shared
+    // ComputerUpgradeScopeUnavailable `{ ok: false, reason }`, botiverse/slock #15243): the Computer's
+    // systemd manager refuses the scope a web upgrade's installer needs; null = allowed or unknown.
+    val upgradeScope: ComputerUpgradeScopeDto? = null,
     // services/machineReadModel.ts `runtimeVersions: Record<string, string>` (runtime id -> the version
     // string the Computer's `ready` reported, e.g. "2.1.59 (Claude Code)"); the usage sheet's version line.
     val runtimeVersions: Map<String, String> = emptyMap(),
@@ -1354,6 +1360,10 @@ internal val COMPUTER_INSTALLER_REPAIR_HINT_REASONS = setOf("unrecovered_operati
 @Serializable
 private data class ComputerInstallerRepairHintDto(val reason: String? = null)
 
+/** Shared `ComputerUpgradeScopeUnavailable`: only `ok: false` is a refusal (shared `parseComputerUpgradeScope`). */
+@Serializable
+private data class ComputerUpgradeScopeDto(val ok: Boolean? = null, val reason: String? = null)
+
 /** Shared `ComputerUpgradeFailureHint`: `reason` is `unsafe_kill_mode` or `installation_held`. */
 @Serializable
 private data class ComputerUpgradeFailureHintDto(
@@ -1470,6 +1480,7 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         osRelease = osRelease?.trim()?.takeIf { it.isNotBlank() },
         hostProvider = hostProvider?.trim()?.takeIf { it.isNotBlank() },
         installerRepairHint = installerRepairHint?.reason?.takeIf { it in COMPUTER_INSTALLER_REPAIR_HINT_REASONS },
+        upgradeScopeRefused = upgradeScope?.ok == false,
         runtimeVersions =
             runtimeVersions.mapNotNull { (runtime, version) ->
                 version.trim().takeIf { runtime.isNotBlank() && it.isNotEmpty() }?.let { runtime to it }

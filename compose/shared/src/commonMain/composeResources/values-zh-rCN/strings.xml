@@ -3415,6 +3415,7 @@
     <string name="settings_computers_upgrade_status_in_progress">正在升级到 v%1$s，期间计算机会短暂断开。</string>
     <string name="settings_computers_upgrade_status_available">可以升级到 v%1$s。</string>
     <string name="settings_computers_upgrade_status_manual">有新版本 v%1$s。这台计算机不能从网页升级，请在那台机器上运行：</string>
+    <string name="settings_computers_upgrade_status_system_service">有新版本 v%1$s。这台 Computer 作为系统服务运行，从网页升级会在升级途中把它停掉。请在那台机器上先停止它的 systemd 服务，运行下面的安装命令，再重新启动该服务。</string>
     <string name="settings_computers_upgrade_status_manual_above">有新版本 v%1$s。这台计算机不能从网页升级，请使用本页顶部的命令。</string>
     <string name="settings_computers_upgrade_status_run_commands">有新版本 v%1$s。在那台机器上运行下面两条命令升级：</string>
     <string name="settings_computers_upgrade_status_refused_not_allowed">现在不能从网页升级这台计算机。</string>

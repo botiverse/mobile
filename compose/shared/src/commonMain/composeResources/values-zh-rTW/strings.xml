@@ -3243,6 +3243,7 @@
     <string name="settings_computers_upgrade_status_in_progress">正在升級至 v%1$s，電腦會短暫中斷連線。</string>
     <string name="settings_computers_upgrade_status_available">可升級至 v%1$s。</string>
     <string name="settings_computers_upgrade_status_manual">有新版本 v%1$s。這台電腦無法從網頁升級，請改在那台電腦上執行：</string>
+    <string name="settings_computers_upgrade_status_system_service">有新版本 v%1$s。這台電腦以系統服務的方式執行，從網頁升級會在升級途中把它停掉。請在那台電腦上先停止它的 systemd 服務，執行下方的安裝指令，再重新啟動該服務。</string>
     <string name="settings_computers_upgrade_status_manual_above">有新版本 v%1$s。這台電腦無法從網頁升級，請使用本頁頂端的指令。</string>
     <string name="settings_computers_upgrade_status_run_commands">有新版本 v%1$s。請在那台電腦上執行以下兩個指令來升級：</string>
     <string name="settings_computers_upgrade_status_refused_not_allowed">目前無法從網頁升級這台電腦。</string>
