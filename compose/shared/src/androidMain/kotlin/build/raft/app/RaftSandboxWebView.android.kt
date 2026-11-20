@@ -158,8 +158,10 @@ internal class RaftAndroidSandboxWebView(
     private val pendingBlobDownloads = LinkedHashMap<String, RaftWebViewBlobDownloadAssembler>()
     private var downloadMessageListener: WebViewCompat.WebMessageListener? = null
     private var downloadNameScriptHandler: ScriptHandler? = null
-    /** The page's `navigator.share` calls in flight ([raftWebViewShareShimScript]). */
-    private val shareAssembler = RaftWebViewShareAssembler()
+    /** The page's `navigator.share` calls being received ([raftWebViewShareShimScript]); one per installed port. */
+    private var shareSession: RaftAndroidWebViewShareSession? = null
+    private val shareMainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var shareExpiryCheck: Runnable? = null
     private var documentStartScriptHandler: ScriptHandler? = null
     /** [raftWebViewFirstPaintThemeScript] at document start; separate from the auth/bridge script. */
     private var firstPaintScriptHandler: ScriptHandler? = null
@@ -1112,11 +1114,86 @@ internal class RaftAndroidSandboxWebView(
     }
 
     /**
-     * The page's `navigator.share` ([raftWebViewShareShimScript]): its files are written to the app's
-     * share folder (served by the app's FileProvider) and the system share sheet opens; the page's
-     * Promise resolves once it is shown, or is rejected when it cannot be.
+     * A message of the page's `navigator.share` ([raftWebViewShareShimScript]). The UI thread only
+     * hands it on: it is parsed, decoded and written to the share's staging folder on
+     * [RaftWebViewShareIo], in the order posted, and what follows (the next chunk asked for, the share
+     * sheet, the Promise settled) comes back here. Nothing thrown leaves this function.
      */
-    private fun presentShare(request: RaftWebViewShareRequest) {
+    private fun acceptShareMessage(session: RaftAndroidWebViewShareSession, raw: String) {
+        scheduleShareExpiry(session)
+        runShareIo(session, notShare = { handleDownloadMessage(raw) }) { session.accept(raw) }
+    }
+
+    /** Runs [work] on the share thread and its signals back on the main thread. */
+    private fun runShareIo(
+        session: RaftAndroidWebViewShareSession,
+        notShare: (() -> Unit)? = null,
+        work: () -> List<RaftAndroidStagedShareSignal>?
+    ) {
+        runCatching {
+            RaftWebViewShareIo.execute {
+                val signals = runCatching(work).getOrElse { runCatching { session.abortAll("internal") }.getOrDefault(emptyList()) }
+                if (signals == null) {
+                    if (notShare != null) shareMainHandler.post { if (!destroyed && shareSession === session) notShare() }
+                } else if (signals.isNotEmpty()) {
+                    shareMainHandler.post { deliverShareSignals(session, signals) }
+                }
+            }
+        }.onFailure { Log.w(LOG_TAG, "page_share io unavailable", it) }
+    }
+
+    private fun deliverShareSignals(session: RaftAndroidWebViewShareSession, signals: List<RaftAndroidStagedShareSignal>) {
+        val current = !destroyed && shareSession === session
+        signals.forEach { staged ->
+            runCatching {
+                when (val signal = staged.signal) {
+                    is RaftWebViewShareSignal.Ack ->
+                        if (current) webView.evaluateJavascript(raftWebViewShareAckScript(signal.id), null)
+                    is RaftWebViewShareSignal.Failed -> {
+                        diagnosticsWarn("page_share result=failed reason=${signal.reason}")
+                        settleShare(signal.id, signal.errorName)
+                    }
+                    is RaftWebViewShareSignal.Ready ->
+                        if (current) {
+                            presentShare(signal.request, staged.folder)
+                        } else {
+                            // The page went away while its last bytes were written.
+                            discardShareFolder(staged.folder)
+                            settleShare(signal.request.id, "AbortError")
+                        }
+                }
+                Unit
+            }.onFailure { Log.w(LOG_TAG, "page_share deliver failed", it) }
+        }
+    }
+
+    /**
+     * Gives up shares whose page has gone silent: every share message pushes this check
+     * [RaftWebViewShareIdleTimeoutMs] ahead, so when it runs none of them has had one for that long.
+     */
+    private fun scheduleShareExpiry(session: RaftAndroidWebViewShareSession) {
+        shareExpiryCheck?.let { shareMainHandler.removeCallbacks(it) }
+        val check =
+            Runnable {
+                shareExpiryCheck = null
+                if (!destroyed && shareSession === session) runShareIo(session) { session.expire() }
+            }
+        shareExpiryCheck = check
+        shareMainHandler.postDelayed(check, RaftWebViewShareIdleTimeoutMs + 1_000L)
+    }
+
+    private fun discardShareFolder(folder: java.io.File?) {
+        if (folder == null) return
+        runCatching { RaftWebViewShareIo.execute { runCatching { folder.deleteRecursively() } } }
+    }
+
+    /**
+     * Opens the system share sheet for a received share. Its files are already in [folder], the
+     * share's own `<uuid>` entry of the app's share staging folder (served by the app's
+     * FileProvider, swept by age like an attachment share's). The page's Promise resolves once the
+     * sheet is shown, or is rejected when it cannot be.
+     */
+    private fun presentShare(request: RaftWebViewShareRequest, folder: java.io.File?) {
         val context = webView.context
         val result =
             runCatching {
@@ -1128,22 +1205,24 @@ internal class RaftAndroidSandboxWebView(
                             if (request.title.isNotBlank()) putExtra(android.content.Intent.EXTRA_SUBJECT, request.title)
                         }
                     } else {
-                        val folder =
-                            java.io.File(context.cacheDir, "slock-share-files/web-share/" + request.id.filter { it.isLetterOrDigit() || it == '_' })
-                        folder.deleteRecursively()
-                        check(folder.mkdirs()) { "share folder" }
+                        checkNotNull(folder) { "share folder" }
                         val uris =
                             ArrayList(
                                 request.files.map { file ->
                                     val target = java.io.File(folder, file.name)
-                                    target.writeBytes(file.bytes)
+                                    check(target.isFile && target.parentFile == folder && target.length() == file.size) { "share file" }
                                     androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", target)
                                 }
                             )
+                        // Receivers match on a bare `type/subtype`: no parameters, a generic type read from the name.
                         val type =
-                            request.files.map { it.mimeType }.distinct().singleOrNull()
-                                ?: request.files.map { it.mimeType.substringBefore('/') }.distinct().singleOrNull()?.let { "$it/*" }
-                                ?: "*/*"
+                            raftWebViewShareIntentType(
+                                request.files.map { file ->
+                                    build.raft.app.downloads.RaftShareFileName.resolveMimeType(file.name, file.mimeType) { extension ->
+                                        android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+                                    }
+                                }
+                            )
                         (
                             if (uris.size == 1) {
                                 android.content.Intent(android.content.Intent.ACTION_SEND).putExtra(android.content.Intent.EXTRA_STREAM, uris[0])
@@ -1172,6 +1251,7 @@ internal class RaftAndroidSandboxWebView(
             settleShare(request.id, null)
         } else {
             diagnosticsWarn("page_share result=failed type=${result.exceptionOrNull()?.javaClass?.simpleName}")
+            discardShareFolder(folder)
             settleShare(request.id, "AbortError")
         }
     }
@@ -1179,6 +1259,20 @@ internal class RaftAndroidSandboxWebView(
     private fun settleShare(id: String, errorName: String?) {
         if (destroyed) return
         webView.evaluateJavascript(raftWebViewShareSettleScript(id, errorName), null)
+    }
+
+    /** A chunk of a `blob:` / `data:` save the page is reading back ([startPageDownload]). */
+    private fun handleDownloadMessage(raw: String) {
+        val token = runCatching { AndroidJSONObject(raw).optString("t") }.getOrNull() ?: return
+        val assembler = pendingBlobDownloads[token] ?: return
+        val result = assembler.accept(raw) ?: return
+        pendingBlobDownloads.remove(token)
+        when (result) {
+            is RaftWebViewDownload.Failed -> diagnosticsWarn("page_download result=failed reason=${result.reason}")
+            is RaftWebViewDownload.Bytes -> diagnosticsInfo("page_download result=read bytes=${result.bytes.size}")
+            is RaftWebViewDownload.Url -> Unit
+        }
+        events.onDownloadRequested?.invoke(result)
     }
 
     private fun installDownloadSupport(targetUrl: String) {
@@ -1191,6 +1285,7 @@ internal class RaftAndroidSandboxWebView(
         val originRule = raftDocumentStartScriptOriginRule(targetUrl) ?: return
         if (mainFrameOrigin != null && originRule != mainFrameOrigin) return
         runCatching {
+            val session = RaftAndroidWebViewShareSession(java.io.File(webView.context.cacheDir, RaftWebViewShareStagingDirName))
             val listener =
                 object : WebViewCompat.WebMessageListener {
                     override fun onPostMessage(
@@ -1202,31 +1297,17 @@ internal class RaftAndroidSandboxWebView(
                     ) {
                         if (destroyed || !isMainFrame || sourceOrigin.toString() != originRule) return
                         val raw = message.data ?: return
-                        if (raftWebViewIsShareMessage(raw)) {
-                            when (val share = shareAssembler.accept(raw)) {
-                                is RaftWebViewShareAssembly.Ready -> presentShare(share.request)
-                                is RaftWebViewShareAssembly.Failed -> {
-                                    diagnosticsWarn("page_share result=failed reason=${share.reason}")
-                                    settleShare(share.id, "DataError")
-                                }
-                                null -> Unit
-                            }
+                        // A share message goes to the share thread whole; this (UI) thread neither parses nor decodes it.
+                        if (raftWebViewMayBeShareMessage(raw)) {
+                            acceptShareMessage(session, raw)
                             return
                         }
-                        val token = runCatching { AndroidJSONObject(raw).optString("t") }.getOrNull() ?: return
-                        val assembler = pendingBlobDownloads[token] ?: return
-                        val result = assembler.accept(raw) ?: return
-                        pendingBlobDownloads.remove(token)
-                        when (result) {
-                            is RaftWebViewDownload.Failed -> diagnosticsWarn("page_download result=failed reason=${result.reason}")
-                            is RaftWebViewDownload.Bytes -> diagnosticsInfo("page_download result=read bytes=${result.bytes.size}")
-                            is RaftWebViewDownload.Url -> Unit
-                        }
-                        events.onDownloadRequested?.invoke(result)
+                        handleDownloadMessage(raw)
                     }
                 }
             WebViewCompat.addWebMessageListener(webView, RaftWebViewDownloadPortName, setOf(originRule), listener)
             downloadMessageListener = listener
+            shareSession = session
             downloadNameScriptHandler =
                 WebViewCompat.addDocumentStartJavaScript(
                     webView,
@@ -1244,6 +1325,13 @@ internal class RaftAndroidSandboxWebView(
         runCatching { downloadNameScriptHandler?.remove() }
         downloadNameScriptHandler = null
         pendingBlobDownloads.clear()
+        // Shares still being received end here: their partial files go, their Promises are rejected.
+        shareExpiryCheck?.let { shareMainHandler.removeCallbacks(it) }
+        shareExpiryCheck = null
+        shareSession?.let { session ->
+            shareSession = null
+            runShareIo(session) { session.abortAll("closed") }
+        }
     }
 
     private fun removeHostMessageListener() {
@@ -1456,3 +1544,85 @@ private fun String.raftSanitizedLogValue(limit: Int = 160): String =
 internal actual val raftWebViewNeedsHostBottomInsets: Boolean = true
 
 internal actual val raftWebViewDesktopModeViaViewportMeta: Boolean = true
+
+/**
+ * One thread for every page share ([raftWebViewShareShimScript]): parsing, base64 decoding and file
+ * writes stay off the UI thread and run in the order the messages were posted. It ends when idle.
+ */
+private val RaftWebViewShareIo: java.util.concurrent.Executor by lazy {
+    java.util.concurrent.ThreadPoolExecutor(
+        0,
+        1,
+        30L,
+        java.util.concurrent.TimeUnit.SECONDS,
+        java.util.concurrent.LinkedBlockingQueue<Runnable>()
+    )
+}
+
+/** A share signal with, for a share that is ready, the folder its files are in. */
+private class RaftAndroidStagedShareSignal(val signal: RaftWebViewShareSignal, val folder: java.io.File?)
+
+/**
+ * The shares one page is sending ([RaftWebViewShareReceiver]) and where their bytes go: each share
+ * in its own `<uuid>` entry right under the app's share staging folder (`cache/slock-share-files`,
+ * the attachment share's; see `AndroidAttachmentShareStaging`), each chunk appended to its file as
+ * it arrives. Entries follow that folder's rules (a day, the newest sixteen), applied here before a
+ * new one is made and by the attachment share's own sweep; a failed or abandoned share's entry is
+ * removed at once. Used from [RaftWebViewShareIo] only.
+ */
+private class RaftAndroidWebViewShareSession(private val shareRoot: java.io.File) : RaftWebViewShareSink {
+    private val folders = HashMap<String, java.io.File>()
+    private val fileNames = HashMap<String, List<String>>()
+    private val receiver = RaftWebViewShareReceiver(sink = this, nowMillis = { android.os.SystemClock.elapsedRealtime() })
+
+    @Synchronized
+    fun accept(raw: String): List<RaftAndroidStagedShareSignal>? = receiver.accept(raw)?.map(::staged)
+
+    @Synchronized
+    fun expire(): List<RaftAndroidStagedShareSignal> = receiver.expire().map(::staged)
+
+    @Synchronized
+    fun abortAll(reason: String): List<RaftAndroidStagedShareSignal> = receiver.abortAll(reason).map(::staged)
+
+    private fun staged(signal: RaftWebViewShareSignal): RaftAndroidStagedShareSignal {
+        val folder =
+            if (signal is RaftWebViewShareSignal.Ready) {
+                fileNames.remove(signal.request.id)
+                // The entry's age counts from when the share was complete.
+                folders.remove(signal.request.id)?.also { it.setLastModified(System.currentTimeMillis()) }
+            } else {
+                null
+            }
+        return RaftAndroidStagedShareSignal(signal, folder)
+    }
+
+    override fun open(id: String, fileNames: List<String>) {
+        discard(id)
+        sweep()
+        val folder = java.io.File(shareRoot, java.util.UUID.randomUUID().toString())
+        check(folder.mkdirs()) { "share folder" }
+        folders[id] = folder
+        this.fileNames[id] = fileNames
+        fileNames.forEach { name ->
+            val target = java.io.File(folder, name)
+            check(target.parentFile == folder && target.createNewFile()) { "share file" }
+        }
+    }
+
+    override fun append(id: String, fileIndex: Int, bytes: ByteArray) {
+        val folder = checkNotNull(folders[id]) { "share folder" }
+        val target = java.io.File(folder, checkNotNull(fileNames[id]) { "share files" }[fileIndex])
+        java.io.FileOutputStream(target, true).use { it.write(bytes) }
+    }
+
+    override fun discard(id: String) {
+        fileNames.remove(id)
+        folders.remove(id)?.deleteRecursively()
+    }
+
+    private fun sweep() {
+        val entries = shareRoot.listFiles()?.filter { it.isDirectory } ?: return
+        val stale = raftWebViewShareStaleStagingEntries(entries.map { it.name to it.lastModified() }, System.currentTimeMillis()).toSet()
+        entries.filter { it.name in stale }.forEach { runCatching { it.deleteRecursively() } }
+    }
+}

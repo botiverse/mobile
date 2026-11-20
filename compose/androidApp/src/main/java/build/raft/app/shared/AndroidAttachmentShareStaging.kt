@@ -54,6 +54,11 @@ internal fun sanitizeAndroidAttachmentShareFileName(displayName: String, mimeTyp
  * Removes share entries older than [maxAgeMs], foreign children, and all but the newest
  * [maxEntries] entries. A receiver may keep reading a granted URI after the chooser returns, so a
  * fresh entry is never removed just because a new share started.
+ *
+ * A web page's `navigator.share` (`RaftAndroidWebViewShareSession` in the shared module) stages its
+ * files in this same root, one `<uuid>` entry per share, so these rules cover them too; it applies
+ * the age and count rules itself (`raftWebViewShareStaleStagingEntries`) before each of its shares.
+ * Keep the entry name pattern and the limits of the two in step.
  */
 internal fun sweepAndroidAttachmentShareStaging(
     shareRoot: File,
