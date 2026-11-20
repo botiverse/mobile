@@ -46,6 +46,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -58,6 +59,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.utf16CodePoint
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -427,6 +430,8 @@ fun RaftDropdownMenu(
         }
         wasOpen = expanded
     }
+    // Read when the menu leaves the composition: still true there means its anchor went with it.
+    val stillExpanded by rememberUpdatedState(expanded)
     if (!expanded) return
     val density = LocalDensity.current
     val safe = WindowInsets.safeDrawing
@@ -461,6 +466,19 @@ fun RaftDropdownMenu(
     RaftAutofocusGuard.HoldOpenSurface()
     // A page pushed over this one closes the menu first: the covered page stops composing.
     RaftDismissOnPageCover { dismiss() }
+    // raft-ui 0.102.6 (`usePopupAnchorDismiss`, elevation.md): a menu whose trigger is scrolled
+    // out of its scrolling region, or unmounted, closes the way Back and Escape do, rather than
+    // float over unrelated content; one opened with its trigger already out of view closes at once.
+    var closedForAnchor by remember { mutableStateOf(false) }
+    Box(
+        Modifier.raftPopupAnchorClipped { clipped ->
+            if (clipped && !closedForAnchor) {
+                closedForAnchor = true
+                dismiss()
+            }
+        },
+    )
+    DisposableEffect(Unit) { onDispose { if (stillExpanded && !closedForAnchor) dismiss() } }
     // Android: unfocused until the window carries the host's bar icons (RaftPopupWindowPolicy).
     var focusable by remember { mutableStateOf(!RaftPopupDefersFocus) }
     Popup(popupPositionProvider = provider, onDismissRequest = { dismiss() }, properties = PopupProperties(focusable = focusable)) {
@@ -511,6 +529,33 @@ fun RaftDropdownMenu(
             }
         }
     }
+}
+
+/**
+ * raft-ui 0.102.6 `usePopupAnchorDismiss`: watches the anchor of a popup, the layout this
+ * zero-size node is placed in (as a Compose Popup is anchored to its parent), and calls
+ * [onChange] with whether it is clipped out of view: none of it left inside the bounds of the
+ * layouts round it (a scrolling region, the window). A point anchor (no size, a long press's
+ * spot) and a window with no size (a test without layout) never count as clipped.
+ */
+internal fun Modifier.raftPopupAnchorClipped(onChange: (Boolean) -> Unit): Modifier =
+    onGloballyPositioned { coordinates ->
+        val anchor = coordinates.parentLayoutCoordinates ?: return@onGloballyPositioned
+        onChange(raftAnchorClippedOut(anchor))
+    }
+
+internal fun raftAnchorClippedOut(anchor: LayoutCoordinates): Boolean {
+    if (!anchor.isAttached) return false
+    val root = anchor.findRootCoordinates()
+    val window = Rect(0f, 0f, root.size.width.toFloat(), root.size.height.toFloat())
+    // raft-ui 0.102.8: only where the window has a size (not a test without layout).
+    if (window.isEmpty) return false
+    if (anchor.size.width <= 0 || anchor.size.height <= 0) return false
+    // Laid out past the window's edge (a row wider than a test's window): not a scrolling
+    // region's doing, and the window itself does not scroll.
+    if (root.localBoundingBoxOf(anchor, clipBounds = false).intersect(window).isEmpty) return false
+    // Clipped to the bounds of every layout round the anchor, on the way up to the window.
+    return root.localBoundingBoxOf(anchor, clipBounds = true).isEmpty
 }
 
 /**
