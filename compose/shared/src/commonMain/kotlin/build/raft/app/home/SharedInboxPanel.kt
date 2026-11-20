@@ -2185,8 +2185,8 @@ internal fun SharedActivityList(
                         Modifier
                             .fillMaxSize()
                             .raftHoldsHorizontalDragsWhileScrolling(listScrolling)
-                            // web inbox scroller `py-1`; on a phone rows sit edge to edge, split by their own
-                            // hairline; on the wide layout (the list's own `py-1 gap-0.5`) 2dp apart, no line.
+                            // web inbox scroller `py-1` and the list's own `py-1 gap-0.5`: 8dp above the first
+                            // row, rows 2dp apart with no line between them, on a phone as on the wide layout.
                             .padding(top = rowLayout.listTop),
                     verticalArrangement = Arrangement.spacedBy(rowLayout.rowGap),
                 ) {

@@ -9,7 +9,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -323,7 +325,12 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance, groupedByDa
         )
     RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
         // Scrollable like the real LazyColumn: a row past the viewport keeps its own height.
-        Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).verticalScroll(rememberScrollState())) {
+        val layout = activityRowLayout
+        // As SharedActivityList lays them out: 8dp above the first row, rows 2dp apart.
+        Column(
+            Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).verticalScroll(rememberScrollState()).padding(top = layout.listTop),
+            verticalArrangement = Arrangement.spacedBy(layout.rowGap),
+        ) {
             val entries =
                 if (groupedByDay) {
                     activityConversationListEntries(shownRows, timeContext)
@@ -332,7 +339,7 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance, groupedByDa
                 }
             entries.forEach { entry ->
                 if (entry is ActivityConversationListEntry.DayHeading) {
-                    ActivityDayHeading(entry.label, first = entry.first, background = RaftTheme.colors.layerCanvas)
+                    ActivityDayHeading(entry.label, first = entry.first, background = RaftTheme.colors.layerCanvas, horizontalPadding = layout.contentEdge)
                     return@forEach
                 }
                 val item = (entry as ActivityConversationListEntry.Row).item
@@ -452,7 +459,12 @@ private fun ActivityRowsSwipeVisualContent(appearance: RaftAppAppearance, pose: 
         }
     RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
         // Scrollable like the real LazyColumn: a row past the viewport keeps its own height.
-        Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).verticalScroll(rememberScrollState())) {
+        val layout = activityRowLayout
+        // As SharedActivityList lays them out: 8dp above the first row, rows 2dp apart.
+        Column(
+            Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).verticalScroll(rememberScrollState()).padding(top = layout.listTop),
+            verticalArrangement = Arrangement.spacedBy(layout.rowGap),
+        ) {
             rows.forEachIndexed { index, (item, rowState) ->
                 val (open, slide) = rowState
                 ActivityConversationListRow(
@@ -521,7 +533,12 @@ private fun ActivityRowsHoverVisualContent(appearance: RaftAppAppearance) {
         )
     val context = ActivityConversationListContext(channelSymbolsByChannelId = mapOf("launch-week" to "#", "release" to "#"))
     RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
-        Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).verticalScroll(rememberScrollState())) {
+        val layout = activityRowLayout
+        // As SharedActivityList lays them out: 8dp above the first row, rows 2dp apart.
+        Column(
+            Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).verticalScroll(rememberScrollState()).padding(top = layout.listTop),
+            verticalArrangement = Arrangement.spacedBy(layout.rowGap),
+        ) {
             rows.forEachIndexed { index, (item, hovered) ->
                 ActivityConversationListRow(
                     item = item,

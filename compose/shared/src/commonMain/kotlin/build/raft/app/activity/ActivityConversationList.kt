@@ -859,12 +859,12 @@ private val ConversationDividerStart = 64.dp
 private val ConversationSenderAvatar = 19.dp
 
 /**
- * How an Activity row is laid out. A phone keeps its own row (artin #3653: two reserved excerpt lines,
- * hairlines between rows, full-bleed fills). The wide layout takes the web's row (ThreadsInbox
+ * How an Activity row is laid out: the web's row at every width (ThreadsInbox
  * `RaftInboxItem density="compact"`, a list cell; raft-design patterns/lists.md and
- * components/inbox-item.md): the title line and one excerpt line, the state drawn on one rounded
- * shape inset [shapeInset] from both sides of the column, the content [contentPadX] inside that
- * shape, [padY] above and below it, rows [rowGap] apart and no line between them.
+ * components/inbox-item.md): the state drawn on one rounded shape inset [shapeInset] from both sides
+ * of the column, the content [contentPadX] inside that shape, [padY] above and below it, rows
+ * [rowGap] apart and no line between them. A phone keeps its two reserved excerpt lines (artin
+ * #3653; artin 2026-11-20: the compact spacing, the two-line preview kept); the wide layout shows one.
  */
 @Immutable
 internal data class ActivityRowLayout(
@@ -878,7 +878,7 @@ internal data class ActivityRowLayout(
     val minHeight: Dp,
     /** The excerpt's lines, each reserved. */
     val previewLines: Int,
-    /** A hairline between two adjacent rows. */
+    /** A hairline between two adjacent rows (none in the web's list cells: lists.md "lists have no dividers"). */
     val dividers: Boolean,
     /** Between two rows (the list's `gap-0.5`). */
     val rowGap: Dp,
@@ -893,17 +893,23 @@ internal data class ActivityRowLayout(
         get() = if (shapeInset > 0.dp) RoundedCornerShape(RaftRadius.Control) else RectangleShape
 
     companion object {
-        /** The phone's row, unchanged: 16dp edges, 12dp above and below, two excerpt lines, hairlines. */
-        val Phone =
+        /**
+         * The phone's row: the web's compact list cell with two excerpt lines. The shape 8dp in, the
+         * content 12dp inside it (20dp from the screen's edge); by touch 8dp above and below and at
+         * least 56dp tall (`pointer-coarse:min-h-14 pointer-coarse:py-2`); under a mouse or trackpad in
+         * a narrow window 12dp above and below with no minimum (`py-3`, `md:pointer-fine` only from
+         * 768); rows 2dp apart with no line between them.
+         */
+        fun phone(pointerInput: RaftPointerInput): ActivityRowLayout =
             ActivityRowLayout(
-                shapeInset = 0.dp,
-                contentPadX = 16.dp,
-                padY = 12.dp,
-                minHeight = 0.dp,
+                shapeInset = 8.dp,
+                contentPadX = 12.dp,
+                padY = if (pointerInput == RaftPointerInput.Fine) 12.dp else 8.dp,
+                minHeight = if (pointerInput == RaftPointerInput.Fine) 0.dp else 56.dp,
                 previewLines = ActivityConversationPreviewMaxLines,
-                dividers = true,
-                rowGap = 0.dp,
-                listTop = 4.dp,
+                dividers = false,
+                rowGap = 2.dp,
+                listTop = 8.dp,
             )
 
         /**
@@ -924,7 +930,7 @@ internal data class ActivityRowLayout(
             )
 
         fun of(scale: RaftScale, pointerInput: RaftPointerInput): ActivityRowLayout =
-            if (scale == RaftScale.Wide) wide(pointerInput) else Phone
+            if (scale == RaftScale.Wide) wide(pointerInput) else phone(pointerInput)
     }
 }
 
@@ -1055,7 +1061,7 @@ internal fun ActivityConversationListRow(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    // The wide layout's list cell: its state shape sits in from both sides of the column.
+                    // The list cell: its state shape sits in from both sides of the column.
                     .padding(horizontal = layout.shapeInset)
                     .then(
                         when {
@@ -1079,7 +1085,7 @@ internal fun ActivityConversationListRow(
                             Modifier
                         }
                     )
-                    // The washes above run edge to edge; the row's content (and its actions)
+                    // The washes above span the shape; the row's content (and its actions)
                     // stays out of the horizontal safe area.
                     .raftSafeAreaHorizontalPadding(),
             contentAlignment = Alignment.CenterStart,
@@ -1230,7 +1236,7 @@ internal fun ActivityConversationListRow(
             }
             if (showHoverDone && onHoverDone != null) {
                 // web: an outline icon-md Button with Lucide Check, tooltip "Mark as Done", at the end of
-                // the trailing column (the content's 16dp end inset), centred on the compact row. Outside
+                // the trailing column (the content's end inset), centred on the compact row. Outside
                 // the row's gesture area, so a click marks the row done without opening it.
                 RaftIconButton(
                     onClick = onHoverDone,
