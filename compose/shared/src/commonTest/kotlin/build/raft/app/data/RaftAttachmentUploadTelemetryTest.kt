@@ -306,7 +306,8 @@ class RaftAttachmentUploadTelemetryTest {
             val attrs = raftAttachmentUploadFinishedAttrs(finished)
             val line = raftAttachmentUploadFinishedLogLine(attrs, "0af7651916cd43dd8448eb211c80319c")
             val everything = attrs.toString() + line
-            listOf("bucket", "Signature", "abc123", "IMG_0042", "holiday", "Kyoto", "private", "https").forEach { fragment ->
+            // ("bucket" alone is in the attribute names size_bucket / elapsed_bucket.)
+            listOf("bucket.r2", "r2.test", "Signature", "abc123", "IMG_0042", "holiday", "Kyoto", "private", "https").forEach { fragment ->
                 assertFalse(fragment in everything, "$fragment leaked: $everything")
             }
             assertTrue(attrs.text("error_code") in allowed, "error_code=${attrs.text("error_code")}")
