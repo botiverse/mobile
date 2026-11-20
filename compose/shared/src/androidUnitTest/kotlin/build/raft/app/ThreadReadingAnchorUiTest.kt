@@ -20,6 +20,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -58,6 +62,12 @@ class ThreadReadingAnchorUiTest {
         val lateCardDp: SnapshotStateMap<String, Int>,
         val followingLatest: MutableState<Boolean>,
     ) {
+        /** The thread's messages, oldest first; a new message is appended. */
+        val messages = mutableStateOf(List(12) { "m$it" })
+        /** The list's height; a smaller one is the keyboard opening. Null fills the window. */
+        val listHeightDp = mutableStateOf<Int?>(null)
+        /** An author popover, closed by the user's own scroll only ([ThreadUserScrollEffect]). */
+        val popoverOpen = mutableStateOf(false)
         lateinit var viewport: ThreadListViewport
         lateinit var owner: ThreadReadingAnchorOwner
         lateinit var scope: CoroutineScope
@@ -97,17 +107,23 @@ class ThreadReadingAnchorUiTest {
                         )
                     },
                     preferredMessageId = { null },
-                    messageIdAt = { index -> ids.getOrNull(index) },
+                    messageIdAt = { index -> harness.messages.value.getOrNull(index) },
                 )
             }
+            ThreadUserScrollEffect(raw) { harness.popoverOpen.value = false }
             val savedNow = harness.saved.value
             val reactionsNow = harness.reactions.value
+            val messagesNow = harness.messages.value
+            val listHeight = harness.listHeightDp.value
             LazyColumn(
                 state = raw,
                 reverseLayout = true,
-                modifier = Modifier.fillMaxSize().onGloballyPositioned { afterLayout() },
+                modifier =
+                    (if (listHeight == null) Modifier.fillMaxSize() else Modifier.fillMaxWidth().height(listHeight.dp))
+                        .testTag(ListTag)
+                        .onGloballyPositioned { afterLayout() },
             ) {
-                items(ids.asReversed(), key = { it }) { id ->
+                items(messagesNow.asReversed(), key = { it }) { id ->
                     Column(Modifier.fillMaxWidth().onGloballyPositioned { afterLayout() }) {
                         Box(Modifier.fillMaxWidth().height(140.dp))
                         if (savedNow[id] == true) Box(Modifier.fillMaxWidth().height(30.dp))
@@ -125,7 +141,8 @@ class ThreadReadingAnchorUiTest {
     /** Forward tops of the laid-out rows, by message id. */
     private fun ComposeUiTest.tops(harness: Harness): Map<String, Int> =
         runOnIdle {
-            harness.viewport.layoutInfo.visibleItemsInfo.associate { ids[it.index] to it.offset }
+            val messages = harness.messages.value
+            harness.viewport.layoutInfo.visibleItemsInfo.associate { messages[it.index] to it.offset }
         }
 
     /** Applies [change] and lets exactly one frame lay it out. */
@@ -242,4 +259,71 @@ class ThreadReadingAnchorUiTest {
             assertEquals(before.getValue(anchor) + 200, after[anchor])
             assertEquals(0, harness.owner.keeper.corrections)
         }
+
+    /**
+     * Locked out: a new message arriving below while the reader is in the history. The bottom
+     * row keeps its key and offset, the rows on screen do not move, and the keeper makes no
+     * correction.
+     */
+    @Test
+    fun aNewMessageWhileReadingHistoryIsLeftAlone() =
+        runRobolectricComposeUiTest {
+            val harness = mount()
+            val before = tops(harness)
+
+            oneFrame { harness.messages.value = harness.messages.value + "m12" }
+
+            assertEquals(before, tops(harness).filterKeys { it in before })
+            assertEquals(0, harness.owner.keeper.corrections)
+        }
+
+    /**
+     * Locked out: the keyboard opening while the reader is in the history. The viewport shrinks;
+     * the reversed list keeps its bottom row, as before, and the keeper does not count the resize
+     * as an in-place change (no correction).
+     */
+    @Test
+    fun theKeyboardOpeningWhileReadingHistoryIsLeftAlone() =
+        runRobolectricComposeUiTest {
+            val harness = mount()
+            fun viewportPx() = runOnIdle { harness.viewport.raw.layoutInfo.viewportSize.height }
+            val windowPx = viewportPx()
+            val windowDp = with(density) { windowPx.toDp().value.toInt() }
+            val before = tops(harness)
+            // The bottom row stays in view as the list shrinks from the bottom.
+            val bottomRow = before.maxBy { it.value }.key
+
+            oneFrame { harness.listHeightDp.value = windowDp - 300 }
+
+            val keyboardPx = windowPx - viewportPx()
+            assertTrue(keyboardPx > 0, "the list did not shrink")
+            assertEquals(before.getValue(bottomRow) - keyboardPx, tops(harness)[bottomRow])
+            assertEquals(0, harness.owner.keeper.corrections)
+        }
+
+    /**
+     * The keeper's correction is a programmatic scroll: an open author popover stays open through
+     * a Save on screen, and closes on the user's own drag.
+     */
+    @Test
+    fun aPopoverClosesOnTheUsersScrollOnly() =
+        runRobolectricComposeUiTest {
+            val harness = mount()
+            harness.popoverOpen.value = true
+            val changed = ids[ids.indexOf(tops(harness).readingAnchor()) + 2]
+
+            oneFrame { harness.saved.value = mapOf(changed to true) }
+
+            assertTrue(harness.owner.keeper.corrections >= 1, "no correction made")
+            assertEquals(true, harness.popoverOpen.value, "the correction closed the popover")
+
+            mainClock.autoAdvance = true
+            onNodeWithTag(ListTag).performTouchInput { swipeDown() }
+            waitForIdle()
+            assertEquals(false, harness.popoverOpen.value, "the user's drag left the popover open")
+        }
+
+    private companion object {
+        const val ListTag = "thread-reading-anchor-list"
+    }
 }
