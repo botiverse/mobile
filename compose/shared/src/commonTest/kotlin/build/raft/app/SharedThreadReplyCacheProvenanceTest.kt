@@ -48,7 +48,10 @@ import build.raft.app.model.ThreadId
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -59,6 +62,54 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedThreadReplyCacheProvenanceTest {
+    @Test
+    fun sharedThreadStoreRecordsOwnInitialProducerContextInlineAndStaysNullWhenStartSuspends() = runBlocking {
+        val authStore = InMemoryRaftAuthSessionStore(session("account-a"))
+        val dataSource = dataSource(authStore, SharedThreadMessageStore())
+
+        val warmScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val warmStore =
+                SharedThreadStore(
+                    dataSource = dataSource,
+                    scope = warmScope,
+                    initialPayload = channelPayload(),
+                )
+            assertNull(warmStore.currentInitialProducerContext())
+            warmStore.dispatch(SharedThreadIntent.Start(channelPayload()))
+            val initial = requireNotNull(warmStore.currentInitialProducerContext())
+            assertEquals("account-a", initial.session.user.id)
+            assertEquals("server", initial.session.currentServerSlug())
+            assertTrue(dataSource.isCurrentReplyCacheProvenance(initial.provenance))
+
+            warmStore.clear()
+            assertNull(warmStore.currentInitialProducerContext())
+        } finally {
+            warmScope.cancel()
+        }
+
+        // On a reused dataSource whose previous provenance is still published, a new store whose
+        // start() suspends before capturing must stay null (fail-closed) rather than inheriting
+        // the prior owner's producer context.
+        val gate = CompletableDeferred<Unit>()
+        dataSource.onReplyCacheIdentitySourceCapturedForTest = { gate.await() }
+        val suspendedScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val suspendedStore =
+                SharedThreadStore(
+                    dataSource = dataSource,
+                    scope = suspendedScope,
+                    initialPayload = channelPayload(),
+                )
+            suspendedStore.dispatch(SharedThreadIntent.Start(channelPayload()))
+            assertNull(suspendedStore.currentInitialProducerContext())
+        } finally {
+            dataSource.onReplyCacheIdentitySourceCapturedForTest = null
+            suspendedScope.cancel()
+            gate.complete(Unit)
+        }
+    }
+
     @Test
     fun staleVisibleParentFromAccountADoesNotSeedAccountBOnSameServer() = runBlocking {
         val authStore = InMemoryRaftAuthSessionStore(session("account-a"))

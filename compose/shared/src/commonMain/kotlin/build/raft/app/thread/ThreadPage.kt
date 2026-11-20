@@ -1437,6 +1437,70 @@ internal fun RaftThreadScreenPayload.accessLostChannelIdOrNull(): ChannelId? =
         }
         ?.let(::ChannelId)
 
+private data class ThreadProducerContextState(
+    val session: StoredAuthSession?,
+    val provenanceOwner: ReplyCacheProvenance?,
+    val serverSlug: String?,
+    val captured: Boolean,
+)
+
+@Composable
+private fun rememberThreadProducerContext(
+    threadViewModel: SharedThreadViewModel,
+    dataSource: SharedThreadDataSource,
+    threadInstanceKey: String,
+): ThreadProducerContextState {
+    // Since #5104, a cached conversation renders its full page on frame 1 (no LoadingShell wait).
+    // `threadViewModel.ensureStarted()` already captured this page's authority-verified producer
+    // context inline when serving that cached frame; seed from that capture (fenced against the
+    // live provenance) so session/provenance/slug are ready on frame 1 without risking a stale
+    // leftover from a previous page on a reused dataSource when start() suspended.
+    val initial =
+        remember(threadViewModel, dataSource, threadInstanceKey) {
+            threadViewModel.initialProducerContext?.takeIf { context ->
+                dataSource.isCurrentReplyCacheProvenance(context.provenance)
+            }
+        }
+    var currentSession by remember(threadViewModel, dataSource, threadInstanceKey) {
+        mutableStateOf(initial?.session)
+    }
+    var replyCacheProvenanceOwner by remember(threadViewModel, dataSource, threadInstanceKey) {
+        mutableStateOf(initial?.provenance)
+    }
+    var currentServerSlug by remember(threadViewModel, dataSource, threadInstanceKey) {
+        mutableStateOf(initial?.session?.currentServerSlug())
+    }
+    var captured by remember(threadViewModel, dataSource, threadInstanceKey) {
+        mutableStateOf(initial != null)
+    }
+    LaunchedEffect(threadViewModel, dataSource, threadInstanceKey) {
+        val producerContext = dataSource.captureReplyCacheProducerContext()
+        currentSession = producerContext?.session
+        replyCacheProvenanceOwner = producerContext?.provenance
+        currentServerSlug = producerContext?.session?.currentServerSlug()
+        captured = true
+        // task #1153: the captured session snapshot can precede server-roster
+        // population, leaving the slug permanently null and silently disabling
+        // quoted permalink cards for the whole thread session. Re-read the
+        // (freshly captured) session for a bounded window until it resolves.
+        if (currentServerSlug == null) {
+            currentServerSlug =
+                resolveThreadServerSlugWithRetry {
+                    dataSource
+                        .captureReplyCacheProducerContext()
+                        ?.session
+                        ?.currentServerSlug()
+                }
+        }
+    }
+    return ThreadProducerContextState(
+        session = currentSession,
+        provenanceOwner = replyCacheProvenanceOwner,
+        serverSlug = currentServerSlug,
+        captured = captured,
+    )
+}
+
 @Composable
 private fun SharedThreadRouteContentContent(
     data: SharedThreadRouteContentData,
@@ -1716,9 +1780,16 @@ private fun SharedThreadRouteContentContent(
         payloadRouteIdentity.timelineChannelId
             ?: initialRouteIdentity.timelineChannelId
     val resolvedAuxiliaryThreadId = payload.resolvedAuxiliaryThreadId()
-    var currentSession by remember(initialThreadInstanceKey) {
-        mutableStateOf<StoredAuthSession?>(null)
-    }
+    val producerContextState =
+        rememberThreadProducerContext(
+            threadViewModel = threadViewModel,
+            dataSource = dataSource,
+            threadInstanceKey = initialThreadInstanceKey,
+        )
+    val currentSession = producerContextState.session
+    val replyCacheProvenanceOwner = producerContextState.provenanceOwner
+    val currentServerSlug = producerContextState.serverSlug
+    val producerContextCaptured = producerContextState.captured
     val messageBodyOwnerKey =
         remember(currentSession?.user?.id, sharedStores.apiEnvironmentStore.current().apiBaseUrl) {
             threadMessageBodyOwnerKey(sharedStores.apiEnvironmentStore.current().apiBaseUrl, currentSession?.user?.id)
@@ -1731,15 +1802,9 @@ private fun SharedThreadRouteContentContent(
     }
     val selectedMessageBodyFontSize = messageBodyFontSizeState.selectedKey(messageBodyOwnerKey)
     val resolvedMessageBodyTextStyle = rememberRaftMessageBodyTextStyle(selectedMessageBodyFontSize)
-    var replyCacheProvenanceOwner by remember(initialThreadInstanceKey) {
-        mutableStateOf<ReplyCacheProvenance?>(null)
-    }
     val publishedReplyCacheProvenance by dataSource.replyCacheProvenanceState.collectAsState()
     val replyCacheProvenance =
         publishedReplyCacheProvenance.currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
-    var currentServerSlug by remember(initialThreadInstanceKey) {
-        mutableStateOf<String?>(null)
-    }
     var startedRouteIdentity by remember(initialThreadInstanceKey) {
         mutableStateOf<ThreadRouteIdentity?>(null)
     }
@@ -1747,25 +1812,6 @@ private fun SharedThreadRouteContentContent(
         mutableStateOf<TimeMark?>(null)
     }
     var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(dataSource, initialThreadInstanceKey) {
-        val producerContext = dataSource.captureReplyCacheProducerContext()
-        currentSession = producerContext?.session
-        replyCacheProvenanceOwner = producerContext?.provenance
-        currentServerSlug = producerContext?.session?.currentServerSlug()
-        // task #1153: the captured session snapshot can precede server-roster
-        // population, leaving the slug permanently null and silently disabling
-        // quoted permalink cards for the whole thread session. Re-read the
-        // (freshly captured) session for a bounded window until it resolves.
-        if (currentServerSlug == null) {
-            currentServerSlug =
-                resolveThreadServerSlugWithRetry {
-                    dataSource
-                        .captureReplyCacheProducerContext()
-                        ?.session
-                        ?.currentServerSlug()
-                }
-        }
-    }
     LaunchedEffect(initialPayload, initialThreadInstanceKey) {
         if (!initialRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
             return@LaunchedEffect
@@ -2640,14 +2686,10 @@ private fun SharedThreadRouteContentContent(
     val markdownTaskOpenRequestGate = remember(threadInstanceKey) {
         MarkdownTaskNumberOpenRequestGate()
     }
-    val createAgentComputerServerIdState = remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var createAgentComputerServerId by createAgentComputerServerIdState
-    val createAgentComputerServerResolvedState = remember(threadInstanceKey) { mutableStateOf(false) }
-    var createAgentComputerServerResolved by createAgentComputerServerResolvedState
-    LaunchedEffect(threadInstanceKey, currentSession?.currentServerId) {
-        createAgentComputerServerId = currentSession?.currentServerId?.takeIf { it.isNotBlank() }
-        createAgentComputerServerResolved = true
-    }
+    val createAgentComputerServerIdState =
+        rememberUpdatedState(currentSession?.currentServerId?.takeIf { it.isNotBlank() })
+    val createAgentComputerServerResolvedState =
+        rememberUpdatedState(producerContextCaptured || currentSession != null)
     var attachmentOpenStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
@@ -8505,6 +8547,8 @@ private fun SharedThreadRouteContentContent(
                     threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, nextSaved))
                     val savedOwnerSession = currentSession
                     coroutineScope.launch {
+                        val unsaveOwnerSession =
+                            if (!nextSaved) savedOwnerSession ?: dataSource.readSession() else null
                         val result =
                             if (nextSaved) {
                                 dataSource.saveMessage(itemId)
@@ -8517,13 +8561,16 @@ private fun SharedThreadRouteContentContent(
                                 sharedStores.homeSavedStateCache.recordSavedWrite()
                                 // A confirmed unsave leaves the Saved list's stored copy (a save shows up
                                 // with the list's next refresh: the row needs the server's saved entry).
-                                val savedServerId = savedOwnerSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
-                                if (!nextSaved && savedOwnerSession != null && savedServerId != null) {
-                                    sharedStores.homeSavedStateCache.recordMessageUnsaved(
-                                        serverId = savedServerId,
-                                        userId = savedOwnerSession.user.id,
-                                        messageId = MessageId(itemId),
-                                    )
+                                if (!nextSaved) {
+                                    val savedServerId =
+                                        unsaveOwnerSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+                                    if (unsaveOwnerSession != null && savedServerId != null) {
+                                        sharedStores.homeSavedStateCache.recordMessageUnsaved(
+                                            serverId = savedServerId,
+                                            userId = unsaveOwnerSession.user.id,
+                                            messageId = MessageId(itemId),
+                                        )
+                                    }
                                 }
                             }
                             is DataResult.Empty,

@@ -1494,6 +1494,9 @@ internal class RaftSharedStoreProvider private constructor(
                             successorWriteGeneration = context?.writeGeneration
                         )
                     }
+                    shellPeerReadReceiptStores.entries().forEach { (_, store) ->
+                        store.dispatch(PeerReadReceiptIntent.BindOwner(null))
+                    }
                 }
                 if (context != null) {
                     val selected =
@@ -1750,6 +1753,9 @@ internal class RaftSharedStoreProvider private constructor(
                     store.clearScopedReadCaches()
                 }
                 shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.clear() }
+                shellPeerReadReceiptStores.entries().forEach { (_, store) ->
+                    store.dispatch(PeerReadReceiptIntent.BindOwner(null))
+                }
                 clearActiveServerSelectionsIfUnchanged(selectionReceipts)
             }
         }
@@ -1813,6 +1819,11 @@ internal class RaftSharedStoreProvider private constructor(
                 allServerMembersStores().forEach { store -> store.dropServer(ServerId(grant.serverId)) }
                 // Step 4: the server's conversation identities (names, avatars, DM peers) in every shell.
                 shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.dropServer(grant.serverId) }
+                shellPeerReadReceiptStores.entries().forEach { (_, store) ->
+                    if (store.state.value.owner?.serverId == grant.serverId) {
+                        store.dispatch(PeerReadReceiptIntent.BindOwner(null))
+                    }
+                }
                 // Step 5: machines, joint connections and agent details of that server.
                 val lostAccountId = replyCacheAuthContext.value?.accountId
                 allComputersStores().forEach { store -> store.dropServer(grant.serverId) }
@@ -3235,6 +3246,7 @@ internal class RaftSharedStoreProvider private constructor(
             store.dispose()
         }
         shellRealtimeDomainEventOwners.remove(scope)
+        shellPeerReadReceiptStores.remove(scope)?.dispatch(PeerReadReceiptIntent.BindOwner(null))
         shellAgentTypingStores.remove(scope)?.close()
         shellAgentDetailStores.remove(scope)
         shellComputersStores.remove(scope)?.dispatch(SharedComputersIntent.Clear)
