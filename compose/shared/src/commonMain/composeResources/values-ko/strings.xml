@@ -217,6 +217,7 @@
     <string name="settings_step_up_web_waiting">브라우저에서 완료하기를 기다리는 중…</string>
     <string name="settings_step_up_web_cancelled">확인하기 전에 브라우저가 닫혔어요. 다시 시도해 주세요.</string>
     <string name="settings_step_up_web_expired">요청이 만료되었어요. 다시 시도해 주세요.</string>
+    <string name="settings_step_up_web_new_passkey_hint">다음부터 앱에서 바로 확인하려면 웹의 Raft에서 새 패스키를 추가하세요(계정 › 로그인 및 보안 › 패스키).</string>
     <string name="settings_step_up_passkey_button">패스키 사용</string>
     <string name="settings_step_up_use_passkey">패스키 사용</string>
     <string name="settings_step_up_passkey_cancelled">패스키 창이 닫혔어요. 다시 시도하거나 다른 방법을 사용하세요.</string>
