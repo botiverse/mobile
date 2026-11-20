@@ -359,7 +359,7 @@ class JointBillingNoticeTest {
         val payload =
             RaftThreadScreenPayload(
                 showSettingsAction = true,
-                settingsActions = listOf(RaftThreadSettingsAction("archive", "Archive")),
+                settingsActions = listOf(RaftThreadSettingsAction("archive", enabled = true)),
                 canAddMembers = true,
                 showReactionActions = true,
                 showTaskStatusActions = true,
