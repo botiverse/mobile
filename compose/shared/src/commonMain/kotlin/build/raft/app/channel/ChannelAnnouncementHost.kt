@@ -32,6 +32,7 @@ import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.SharedChannelAnnouncementStore
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedServerFeatureFlags
+import build.raft.app.data.answersFor
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.channelTypeSupportsAnnouncement
 import build.raft.app.data.rememberServerFeatureLatched
@@ -254,14 +255,14 @@ internal fun ChannelSettingsAnnouncementSection(
     }
     val initialSummaryAnswers = remember(summaryStore, key.serverId, artifactTargets) {
         if (summaryStore == null || artifactTargets.isEmpty()) {
-            emptyMap()
+            emptyMap<String, ArtifactSummaryAnswer>()
         } else {
             summaryStore.state.value.answersFor(key.serverId, artifactTargets)
         }
     }
     val summaryAnswers by remember(summaryStore, key.serverId, artifactTargets) {
         if (summaryStore == null || artifactTargets.isEmpty()) {
-            flowOf(emptyMap())
+            flowOf(emptyMap<String, ArtifactSummaryAnswer>())
         } else {
             summaryStore.answersFlow(key.serverId, artifactTargets)
         }
