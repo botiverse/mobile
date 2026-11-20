@@ -89,6 +89,14 @@ internal fun Pager.openAssistantPage(storeScope: RaftShellStoreScope, timeContex
 }
 
 /**
+ * Whether Home carries the Assistant row (web `mobileInline`): wherever the wide rail, which has
+ * its own Assistant tab, is not on screen. The rail follows the window's width as well as the
+ * "Desktop mode on large screens" setting, so the setting alone (on by default, on phones too)
+ * does not say a phone has one.
+ */
+internal fun appShellHomeCarriesAssistantRow(navRailActive: Boolean): Boolean = !navRailActive
+
+/**
  * The phone Home's Assistant row source (null in the wide layout, which has the rail instead): a
  * tap reports `nav_entry_selected` `assistant` / `mobile_home_shortcuts` (web
  * `trackNavEntrySelected("assistant", "mobile_home_shortcuts", false)`) and opens the page.
