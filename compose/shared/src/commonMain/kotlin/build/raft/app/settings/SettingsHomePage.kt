@@ -3776,7 +3776,7 @@ private fun RaftAppShellReadyContent(
                             }
                             // Web: the reset notice is read again whenever the window comes back.
                             if (latestReadySession != null) {
-                                secondFactorRecoveryStore.dispatch(build.raft.app.data.SharedSecondFactorRecoveryIntent.Refresh)
+                                secondFactorRecoveryStore.dispatch(build.raft.app.data.SharedSecondFactorRecoveryIntent.RefreshIfStale)
                             }
                         }
                         if (visibleLifecycleEvent && !latestPageVisible) {

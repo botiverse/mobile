@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlin.time.TimeSource
 
 private val secondFactorRecoveryJson = Json { ignoreUnknownKeys = true }
 
@@ -155,8 +156,15 @@ internal data class SharedSecondFactorRecoveryState(
 )
 
 internal sealed interface SharedSecondFactorRecoveryIntent {
-    /** Home shown, the app back in the foreground, the notification center opened. */
+    /** The notification center opened, or a pull to refresh: always reads. */
     data object Refresh : SharedSecondFactorRecoveryIntent
+
+    /**
+     * Home shown again, the app back in the foreground: reads only when the last read started at
+     * least [SECOND_FACTOR_RECOVERY_MIN_REREAD_MS] ago. Going Home ↔ Saved with Back read it on
+     * every return (1.27 Android logs: one GET every ~2 s while moving around).
+     */
+    data object RefreshIfStale : SharedSecondFactorRecoveryIntent
 
     /** Cancel Reset: DELETE /recovery, one step. */
     data object Cancel : SharedSecondFactorRecoveryIntent
@@ -170,19 +178,29 @@ internal sealed interface SharedSecondFactorRecoveryIntent {
  * single-flight; a failed read keeps what is shown. Cancel clears it on success and outdates a
  * read in flight; a read is not started while a cancel runs.
  */
+internal const val SECOND_FACTOR_RECOVERY_MIN_REREAD_MS: Long = 30_000L
+
+private val SecondFactorRecoveryClockOrigin = TimeSource.Monotonic.markNow()
+
 internal class SharedSecondFactorRecoveryStore(
     private val dataSource: SecondFactorRecoveryDataSource,
     private val scope: CoroutineScope,
+    private val nowMillis: () -> Long = { SecondFactorRecoveryClockOrigin.elapsedNow().inWholeMilliseconds },
 ) {
     private val mutableState = MutableStateFlow(SharedSecondFactorRecoveryState())
     val state: StateFlow<SharedSecondFactorRecoveryState> = mutableState.asStateFlow()
 
     private var generation = 0L
     private var refreshJob: Job? = null
+    private var lastReadStartedAtMillis: Long? = null
 
     fun dispatch(intent: SharedSecondFactorRecoveryIntent) {
         when (intent) {
             SharedSecondFactorRecoveryIntent.Refresh -> refresh()
+            SharedSecondFactorRecoveryIntent.RefreshIfStale -> {
+                val last = lastReadStartedAtMillis
+                if (last == null || nowMillis() - last >= SECOND_FACTOR_RECOVERY_MIN_REREAD_MS) refresh()
+            }
             SharedSecondFactorRecoveryIntent.Cancel -> cancel()
             SharedSecondFactorRecoveryIntent.ConsumeEffect ->
                 if (mutableState.value.effect != null) mutableState.value = mutableState.value.copy(effect = null)
@@ -192,6 +210,7 @@ internal class SharedSecondFactorRecoveryStore(
     private fun refresh() {
         if (refreshJob?.isActive == true || mutableState.value.cancelling) return
         val mine = ++generation
+        lastReadStartedAtMillis = nowMillis()
         refreshJob =
             scope.launch {
                 val result = dataSource.pendingRecovery()
