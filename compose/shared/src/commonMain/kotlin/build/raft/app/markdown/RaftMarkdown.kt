@@ -107,12 +107,15 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.dp
@@ -1546,10 +1549,14 @@ private object RaftMarkdownTextProvider : TextProvider {
         val styledText = remember(appLinkContent.text, resolvedStyle, permalinkThemeColors) {
             appLinkContent.text.withRaftMarkdownSpanFonts(resolvedStyle).withRaftMarkdownLinkUnderlines()
         }
+        val isRtl = resolvedStyle.textDirection == TextDirection.Rtl || LocalLayoutDirection.current == LayoutDirection.Rtl
         val resolvedText =
-            remember(styledText, bodyClick) {
+            remember(styledText, bodyClick, isRtl) {
+                // Isolate links/mentions/refs inside RTL paragraphs so `@alice` reads `@alice`
+                // (web `[&_a]:[unicode-bidi:plaintext]`, botiverse/slock #15039).
+                val bidiText = if (isRtl) styledText.withRaftRtlLinkBidiIsolation() else styledText
                 // A chip's painted padding taps as the chip, never as the body (task #wg-mobile:#9).
-                styledText.withRaftInlineChipGapLinks().withRaftMarkdownBodyClick(bodyClick)
+                bidiText.withRaftInlineChipGapLinks().withRaftMarkdownBodyClick(bodyClick)
             }
         // The CJK line box (RaftCjkLineHeight.kt) on the text as laid out, chip labels included:
         // RaftText's rule, here because markdown text never goes through RaftText. Only the layout

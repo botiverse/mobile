@@ -11,9 +11,11 @@ import androidx.compose.ui.platform.NativeClipboard
 /**
  * Rendered message text carries characters that exist only for layout: inline code's wrap marks
  * (a zero-width space where the web breaks, a word joiner where it does not,
- * `withRaftInlineCodeWebBreaks`), the word joiners that glue a chip to its padding, and the object
- * replacement character standing for each reserved padding gap or inline placeholder. None of them
- * is in the source, so none may leave the app: every copy of rendered text goes through this.
+ * `withRaftInlineCodeWebBreaks`), the word joiners that glue a chip to its padding, Unicode bidi
+ * isolate marks (`FSI`/`PDI`) that keep links/mentions readable inside RTL paragraphs, and the
+ * object replacement character standing for each reserved padding gap or inline placeholder. None
+ * of them is in the source, so none may leave the app: every copy of rendered text goes through
+ * this.
  *
  * Copies of the source (Copy Markdown, a code block's copy button, share / forward) never hold
  * rendered text and need no cleaning.
@@ -22,7 +24,7 @@ internal fun String.raftCopyText(): String =
     if (none(::isRaftLayoutOnlyChar)) this else filterNot(::isRaftLayoutOnlyChar)
 
 private fun isRaftLayoutOnlyChar(char: Char): Boolean =
-    char == '\u200B' || char == '\u2060' || char == '\uFFFC'
+    char == '\u200B' || char == '\u2060' || char == '\u2068' || char == '\u2069' || char == '\uFFFC'
 
 /** [entry] with its plain text passed through [raftCopyText]; the same entry when nothing changes. */
 internal expect fun raftCleanCopyClipEntry(entry: ClipEntry): ClipEntry
