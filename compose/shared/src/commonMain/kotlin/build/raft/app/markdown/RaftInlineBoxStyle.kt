@@ -388,7 +388,7 @@ internal fun AnnotatedString.raftTextWithoutInlineGaps(): String {
         .raftCopyText()
 }
 
-private const val RaftInlineContentAnnotationTag = "androidx.compose.foundation.text.inlineContent"
+internal const val RaftInlineContentAnnotationTag = "androidx.compose.foundation.text.inlineContent"
 
 /** Empty spacer content for every gap placeholder id in [ids]. */
 internal fun raftInlineGapInlineContent(ids: Collection<String>): Map<String, InlineTextContent> {
