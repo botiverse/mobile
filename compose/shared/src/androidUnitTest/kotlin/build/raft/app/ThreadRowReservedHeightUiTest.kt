@@ -89,6 +89,8 @@ class ThreadRowReservedHeightUiTest {
     @Test
     fun aPendingTranslationKeepsTheOriginalsHeightWithoutShowingIt() = runRobolectricComposeUiTest {
         var pending by mutableStateOf(true)
+        // The placeholder pulses forever: idle never comes with the clock running on its own.
+        mainClock.autoAdvance = false
         setContent {
             RaftDesignSystemTheme {
                 Column(Modifier.width(360.dp).testTag("row")) {
@@ -98,10 +100,12 @@ class ThreadRowReservedHeightUiTest {
                 }
             }
         }
+        mainClock.advanceTimeByFrame()
         waitForIdle()
         val whilePending = heightOf("row")
         assertEquals(0, onAllNodesWithText("Original words").fetchSemanticsNodes().size, "the untranslated text is not shown or read out")
         pending = false
+        mainClock.advanceTimeByFrame()
         waitForIdle()
         assertEquals(whilePending, heightOf("row"), "the row keeps the original body's height while translating")
         assertTrue(onAllNodesWithText("Original words").fetchSemanticsNodes().isNotEmpty())
