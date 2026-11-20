@@ -12,7 +12,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import build.raft.app.base.BridgeModule
+import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.data.ArtifactSummaryAnswer
 import build.raft.app.data.CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY
 import build.raft.app.data.ChannelAnnouncementIntent
 import build.raft.app.data.ChannelAnnouncementKey
@@ -236,6 +238,25 @@ internal fun ChannelSettingsAnnouncementSection(
     }
     val running = finished?.status == ChannelAnnouncementMutationStatus.Running
     val error = (finished?.status as? ChannelAnnouncementMutationStatus.Failed)?.error
+    // Web `useChannelAnnouncementKind`: resolve the Artifact kind from object summaries;
+    // falls back to Markdown (document icon) until the batched summary arrives.
+    val artifactId = slice.announcement?.artifactId
+    val summaryStore = remember(sharedStores) { sharedStores.artifactSummaryStore }
+    val artifactTargets = remember(artifactId) { artifactId?.let { listOf(ArtifactLinkTarget(it)) }.orEmpty() }
+    LaunchedEffect(summaryStore, key.serverId, artifactTargets) {
+        if (artifactTargets.isNotEmpty()) summaryStore.request(key.serverId, artifactTargets)
+    }
+    val summaryAnswers by remember(summaryStore, key.serverId, artifactTargets) {
+        if (artifactTargets.isEmpty()) {
+            kotlinx.coroutines.flow.flowOf(emptyMap())
+        } else {
+            summaryStore.answersFlow(key.serverId, artifactTargets)
+        }
+    }.collectAsState(emptyMap())
+    val artifactKind =
+        artifactTargets.firstOrNull()?.let { target ->
+            (summaryAnswers[target.key] as? ArtifactSummaryAnswer.Ok)?.summary?.kind
+        } ?: ArtifactKind.Markdown
 
     ChannelAnnouncementDetailsRow(
         slice = slice,
@@ -245,6 +266,7 @@ internal fun ChannelSettingsAnnouncementSection(
         onReplace = { step = ChannelAnnouncementStep.Pick(replacing = true) },
         onRemove = { step = ChannelAnnouncementStep.ConfirmRemove },
         modifier = modifier,
+        artifactKind = artifactKind,
     )
 
     when (val current = step) {
@@ -339,6 +361,7 @@ private fun ChannelAnnouncementPickerRoute(
                                 meta =
                                     stringResource(Res.string.artifacts_card_version, artifact.summary.latestVersion) +
                                         " · " + raftRelativeTimestampLabel(artifact.updatedAt),
+                                kind = artifact.summary.kind,
                             )
                         },
                     hasMore = state.nextCursor != null,

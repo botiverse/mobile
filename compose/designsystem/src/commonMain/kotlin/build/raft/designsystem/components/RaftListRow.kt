@@ -296,6 +296,11 @@ fun RaftListRow(
      * `ListRowDescription` children); wins over [description] and wraps like it under [wrapDescription].
      */
     richDescription: AnnotatedString? = null,
+    /**
+     * Custom subtitle slot (e.g. a single-line row where only one segment truncates while a
+     * trailing timestamp stays whole); wins over [subtitle].
+     */
+    subtitleContent: (@Composable () -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -396,7 +401,9 @@ fun RaftListRow(
                     }
                     if (meta != null) RaftListRowMeta(meta)
                 }
-                if (subtitle != null) {
+                if (subtitleContent != null) {
+                    subtitleContent()
+                } else if (subtitle != null) {
                     RaftText(
                         subtitle,
                         modifier = Modifier.raftCopyable(subtitleCopyText),
