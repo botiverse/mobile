@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import build.raft.app.data.APP_LINK_HANDLE_FRESH_MILLIS
 import build.raft.app.data.AppLinkActionResult
 import build.raft.app.data.AppLinkExecuted
 import build.raft.app.data.AppLinkOperationStatus
@@ -38,6 +39,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -58,6 +60,13 @@ internal class ThreadAppLinkCardActionHost(
     val status: (suspend (operationId: String) -> AppLinkOperationStatus)? = null,
     /** This server's `link_card.operation_changed` hints (RFC 076 §6.8); null: none followed. */
     val operationHints: Flow<RaftLinkCardOperationHint>? = null,
+    /**
+     * The card [url] as the store holds it now, read after [reread] for a fresh handle; null where
+     * it is not wired (a press then uses the handle it has, as before).
+     */
+    val held: ((url: String) -> AppLinkResult.Card?)? = null,
+    /** The clock a handle's age is measured with ([AppLinkResult.Card.readAtMillis]). */
+    val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 )
 
 @Composable
@@ -71,11 +80,12 @@ internal fun rememberThreadAppLinkCardPress(
     val failed = stringResource(Res.string.thread_link_preview_action_failed)
     val undo = stringResource(Res.string.common_undo)
     val refreshFailed = stringResource(Res.string.thread_link_preview_refresh_failed)
+    val changed = stringResource(Res.string.thread_link_preview_action_changed)
     val appSays = stringResource(Res.string.thread_link_preview_action_app_says)
     val appSaysUnnamed = stringResource(Res.string.thread_link_preview_action_app_says_unnamed)
     val press =
         remember(key, actions) {
-            ThreadAppLinkCardPress(card, actions, scope, failed, undo, refreshFailed) { app, text ->
+            ThreadAppLinkCardPress(card, actions, scope, failed, undo, refreshFailed, changed) { app, text ->
                 if (app.isBlank()) appSaysUnnamed.replace("%1\$s", text) else appSays.replace("%1\$s", app).replace("%2\$s", text)
             }
         }
@@ -110,6 +120,8 @@ internal class ThreadAppLinkCardPress(
     private val failedText: String,
     private val undoLabel: String,
     private val refreshFailedText: String,
+    /** The card changed since it was drawn (web `message.appLink.action.changed`): nothing was sent. */
+    private val changedText: String = refreshFailedText,
     /** "{App}: {text}" (web `message.appLink.action.appSays`): the App's own words, shown as the App's. */
     private val appSaysText: (app: String, text: String) -> String = { app, text -> if (app.isBlank()) text else "$app: $text" },
 ) {
@@ -225,10 +237,41 @@ internal class ThreadAppLinkCardPress(
         undoing = null
     }
 
-    @OptIn(ExperimentalUuidApi::class)
     private fun press(id: String, label: String, action: RaftLinkCardButtonAction.Execute, handle: String) {
         val host = actions ?: return
         if (running != null || undoing != null || confirming != null) return
+        val held = host.held
+        val readAt = card.readAtMillis
+        if (held == null || (readAt != null && host.nowMillis() - readAt <= APP_LINK_HANDLE_FRESH_MILLIS)) {
+            pressWith(host, id, label, action, handle)
+            return
+        }
+        // Web `pressExecute` (addendum 5 §3): a handle signed more than 9 minutes ago (it expires
+        // at 10; the app may have been in the background) is read again first, then used. Never a
+        // failed press and a toast for an expired handle the person couldn't know about.
+        running = id
+        scope.launch {
+            val read =
+                try {
+                    host.reread(card.url)
+                } finally {
+                    running = null
+                }
+            val fresh = if (read) held(card.url) else null
+            val freshHandle = fresh?.handles?.get(id)
+            when {
+                !read || fresh == null -> host.toast(refreshFailedText)
+                freshHandle == null -> host.toast(changedText)
+                else -> {
+                    card = fresh
+                    pressWith(host, id, label, action, freshHandle)
+                }
+            }
+        }
+    }
+
+    @OptIn(ExperimentalUuidApi::class)
+    private fun pressWith(host: ThreadAppLinkCardActionHost, id: String, label: String, action: RaftLinkCardButtonAction.Execute, handle: String) {
         val requestId = appLinkClientRequestId(Uuid.random().toString())
         val unreviewed = card.app.unreviewed
         if (action.confirm) {

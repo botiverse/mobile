@@ -85,6 +85,9 @@ data class AppLinkApp(val name: String, val icon: String?, val reviewed: Boolean
 /** An App the viewer hasn't answered yet on this Server. */
 data class AppLinkPromptApp(val id: String, val name: String, val icon: String?)
 
+/** Web `LINK_CARD_HANDLE_FRESH_MS`: a handle read longer ago than this is read again before a press. */
+internal const val APP_LINK_HANDLE_FRESH_MILLIS: Long = 9 * 60_000L
+
 /**
  * How one link of a message is shown (protocol v3.2.3 addendum 5 §2; web `AppLinkResult`). A
  * link without a result stays the author's link.
@@ -117,6 +120,12 @@ sealed interface AppLinkResult {
         val connectUrl: String? = null,
         /** The signed handle per `execute` action id Raft gave this card (version 3; see [AppLinkBlockCard]): what a pressed button sends. */
         val handles: Map<String, String> = emptyMap(),
+        /**
+         * When this viewer's read that gave [handles] answered (epoch ms); null when not stamped.
+         * Handles are signed for at most 10 minutes: a press reads the card again first when it is
+         * older than [APP_LINK_HANDLE_FRESH_MILLIS] (web `LINK_CARD_HANDLE_FRESH_MS`).
+         */
+        val readAtMillis: Long? = null,
     ) : AppLinkResult {
         /** The words on the chip (web `appLinkChipTitle`): the inline title, else [title]. The card always shows [title]. */
         val chipTitle: String get() = inline?.title ?: title

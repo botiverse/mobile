@@ -4797,6 +4797,7 @@
     <string name="thread_link_preview_connect_body">%1$s에서 계정을 연결하면 이 링크의 내용이 여기에 표시돼요.</string>
     <string name="thread_link_preview_action_failed">이 작업을 실행하지 못했어요. 다시 시도해 주세요.</string>
     <string name="thread_link_preview_refresh_failed">이 카드를 새로고침하지 못했어요. 다시 시도해 주세요.</string>
+    <string name="thread_link_preview_action_changed">카드 내용이 바뀌었어요. 확인한 후 다시 시도해 주세요.</string>
     <string name="thread_link_preview_unreviewed_run_title">‘%1$s’ 작업을 실행할까요?</string>
     <string name="thread_link_preview_unreviewed_run_by">%1$s에서 실행해요</string>
     <string name="thread_link_preview_unreviewed_note">%1$s은(는) 이 서버에서 만든 앱으로, Raft의 검토를 받지 않았어요. 실행하는 사람의 이름을 받고 자체 권한으로 실행해요.</string>

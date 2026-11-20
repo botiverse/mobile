@@ -4797,6 +4797,7 @@
     <string name="thread_link_preview_connect_body">Quando você conectar sua conta no %1$s, verá aqui do que se trata este link.</string>
     <string name="thread_link_preview_action_failed">Não foi possível executar esta ação. Tente novamente.</string>
     <string name="thread_link_preview_refresh_failed">Não foi possível atualizar este cartão. Tente novamente.</string>
+    <string name="thread_link_preview_action_changed">Este cartão mudou. Confira e tente novamente.</string>
     <string name="thread_link_preview_unreviewed_run_title">Executar “%1$s”?</string>
     <string name="thread_link_preview_unreviewed_run_by">Executado por %1$s</string>
     <string name="thread_link_preview_unreviewed_note">O app %1$s foi criado neste servidor e não foi revisado pelo Raft. Recebe seu nome e age com as próprias permissões.</string>

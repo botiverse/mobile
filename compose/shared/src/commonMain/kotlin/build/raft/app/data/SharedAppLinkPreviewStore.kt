@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.random.Random
+import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -203,6 +204,8 @@ class SharedAppLinkPreviewStore internal constructor(
     internal val artifactHosts: () -> Collection<String> = { emptyList() },
     /** Up to a second added at random to each rate-limited re-read's wait (tests: 0). */
     private val retryJitterMs: () -> Long = { Random.nextLong(APP_LINK_CARD_RETRY_JITTER_MS) },
+    /** Stamps each read's answer ([AppLinkResult.Card.readAtMillis], [RaftMessageCardLive.readAtMillis]). */
+    internal val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
     private val _state = raftStoreState(initialState, "SharedAppLinkPreviewStore")
     val state: StateFlow<SharedAppLinkPreviewState> = _state.asStateFlow()
@@ -389,7 +392,7 @@ class SharedAppLinkPreviewStore internal constructor(
             return AppLinkFetch.Failed
         }
         parsed.tickets.forEach { (url, ticket) -> if (ticket != null) view.tickets[url] = ticket else view.tickets.remove(url) }
-        return AppLinkFetch.Answer(parsed.results, parsed.limited)
+        return AppLinkFetch.Answer(parsed.results.stampedReadAt(nowMillis()), parsed.limited)
     }
 
     private suspend fun fetchWithGet(messageId: String, serverId: String): AppLinkFetch {
@@ -457,6 +460,14 @@ class SharedAppLinkPreviewStore internal constructor(
         return true
     }
 
+    /** The card [url] of this message's read in [batch]'s mode as held now (after [rereadLink]), or null. */
+    fun heldLinkCard(viewerKey: String, messageId: String, content: String, batch: AppLinkBatchRead, url: String): AppLinkResult.Card? =
+        _state.value.entries[appLinkReadScope(viewerKey, messageId, content, batch.mode)]?.results?.get(url) as? AppLinkResult.Card
+
+    /** The card message [messageId]'s acting read for this viewer as held now (after [readMessageCard]), or null. */
+    fun heldMessageCard(viewerKey: String, messageId: String): RaftMessageCardLive? =
+        _state.value.messageCards[appLinkMessageCardKey(viewerKey, messageId)]
+
     /**
      * Reads a card message's acting buttons for this viewer (RFC 086 §4.2): the batched read of
      * [view], declaring `card.execute.v1` with the link card capabilities, presenting the view's
@@ -505,13 +516,14 @@ class SharedAppLinkPreviewStore internal constructor(
             return false
         }
         live.handles.forEach { view.tickets[it.url] = it.ticket }
+        val stamped = live.copy(readAtMillis = nowMillis())
         _state.update { state ->
             if (state.generation != askedGeneration) return@update state
             val cards = LinkedHashMap(state.messageCards)
             cards.remove(key)
-            cards[key] = live
+            cards[key] = stamped
             while (cards.size > APP_LINK_RESULT_CACHE_MAX) cards.remove(cards.keys.first())
-            val signatures = state.messageCardSignatures.filterKeys { it in cards } + (key to state.messageCardSignature(viewerKey, live))
+            val signatures = state.messageCardSignatures.filterKeys { it in cards } + (key to state.messageCardSignature(viewerKey, stamped))
             state.copy(messageCards = cards, messageCardSignatures = signatures)
         }
         return true
@@ -579,6 +591,10 @@ class SharedAppLinkPreviewStore internal constructor(
 }
 
 /** What one read came to ([SharedAppLinkPreviewStore] `fetch`). */
+/** Each card answer of one read carries when it was read (its handles' age). */
+private fun Map<String, AppLinkResult>.stampedReadAt(atMillis: Long): Map<String, AppLinkResult> =
+    mapValues { (_, result) -> if (result is AppLinkResult.Card) result.copy(readAtMillis = atMillis) else result }
+
 private sealed interface AppLinkFetch {
     data class Answer(val results: Map<String, AppLinkResult>, val limited: Map<String, Int>) : AppLinkFetch
 
