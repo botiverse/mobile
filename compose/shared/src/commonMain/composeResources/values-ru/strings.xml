@@ -2890,6 +2890,7 @@
     <string name="settings_computers_error_code">Ошибка: %1$s</string>
     <string name="settings_computers_detail_subtitle">Сведения о компьютере</string>
     <string name="settings_computers_add_computer">Добавить компьютер</string>
+    <string name="settings_computers_access_notice">Агенты работают на этом компьютере: они могут читать и записывать файлы, запускать команды и локальные инструменты с теми же правами, что и ваша учётная запись.</string>
     <string name="settings_computers_dialog_title_connect">Подключить компьютер</string>
     <string name="settings_computers_dialog_title_connected">Компьютер подключён</string>
     <string name="settings_computers_error_add_permission">У вас нет прав на добавление компьютеров.</string>

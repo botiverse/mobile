@@ -2890,6 +2890,7 @@
     <string name="settings_computers_error_code">Erro: %1$s</string>
     <string name="settings_computers_detail_subtitle">Detalhes do computador</string>
     <string name="settings_computers_add_computer">Adicionar computador</string>
+    <string name="settings_computers_access_notice">Os agentes trabalham neste computador: podem ler e gravar arquivos e executar comandos e ferramentas locais, com o mesmo acesso da sua conta.</string>
     <string name="settings_computers_dialog_title_connect">Conectar computador</string>
     <string name="settings_computers_dialog_title_connected">Computador conectado</string>
     <string name="settings_computers_error_add_permission">Você não tem permissão para adicionar computadores.</string>

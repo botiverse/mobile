@@ -2893,6 +2893,7 @@
     <string name="settings_computers_error_code">错误：%1$s</string>
     <string name="settings_computers_detail_subtitle">计算机详情</string>
     <string name="settings_computers_add_computer">添加计算机</string>
+    <string name="settings_computers_access_notice">Agent 会在这台电脑上工作：可以读写文件、运行命令和本地工具，权限和你的账户一样。</string>
     <string name="settings_computers_dialog_title_connect">连接计算机</string>
     <string name="settings_computers_dialog_title_connected">计算机已连接</string>
     <string name="settings_computers_error_add_permission">你没有添加计算机的权限。</string>

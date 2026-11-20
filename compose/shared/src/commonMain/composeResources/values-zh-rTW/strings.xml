@@ -2890,6 +2890,7 @@
     <string name="settings_computers_error_code">錯誤：%1$s</string>
     <string name="settings_computers_detail_subtitle">電腦詳細資料</string>
     <string name="settings_computers_add_computer">新增電腦</string>
+    <string name="settings_computers_access_notice">Agent 會在這台電腦上工作：可以讀寫檔案、執行指令和本機工具，權限和你的帳號一樣。</string>
     <string name="settings_computers_dialog_title_connect">連接電腦</string>
     <string name="settings_computers_dialog_title_connected">電腦已連接</string>
     <string name="settings_computers_error_add_permission">你沒有新增電腦的權限。</string>

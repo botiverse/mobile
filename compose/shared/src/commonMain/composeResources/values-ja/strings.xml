@@ -2893,6 +2893,7 @@
     <string name="settings_computers_error_code">エラー: %1$s</string>
     <string name="settings_computers_detail_subtitle">コンピューターの詳細</string>
     <string name="settings_computers_add_computer">コンピューターを追加</string>
+    <string name="settings_computers_access_notice">エージェントはこのコンピューター上で作業します：あなたのアカウントと同じ権限で、ファイルの読み書き、コマンドやローカルツールの実行ができます。</string>
     <string name="settings_computers_dialog_title_connect">コンピューターを接続</string>
     <string name="settings_computers_dialog_title_connected">コンピューターが接続されました</string>
     <string name="settings_computers_error_add_permission">コンピューターを追加する権限がありません。</string>
