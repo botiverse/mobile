@@ -128,22 +128,7 @@ fun RaftProgressBar(
             }
         }
         if (fraction == null) {
-            val sweep =
-                if (animated) {
-                    val transition = rememberInfiniteTransition(label = "raft-progress")
-                    transition.animateFloat(
-                        initialValue = 0f,
-                        targetValue = 1f,
-                        animationSpec =
-                            infiniteRepeatable(
-                                animation = tween(RaftProgressBarIndeterminateMillis, easing = LinearEasing),
-                                repeatMode = RepeatMode.Restart,
-                            ),
-                        label = "raft-progress-sweep",
-                    ).value
-                } else {
-                    RaftProgressBarStillSweep
-                }
+            val sweep = raftProgressBarSweep(animated)
             Canvas(Modifier.fillMaxWidth().height(size.track)) {
                 drawTrack(track)
                 // The half-width fill enters from the start edge and leaves past the end.
@@ -164,6 +149,26 @@ fun RaftProgressBar(
 
 /** Sweep position of a frozen indeterminate bar: the fill centred on the track. */
 internal const val RaftProgressBarStillSweep = 0.5f
+
+/**
+ * The indeterminate sweep, 0..1 over [RaftProgressBarIndeterminateMillis], shared with
+ * [RaftPageLoadingBar]; [RaftProgressBarStillSweep] when not [animated].
+ */
+@Composable
+internal fun raftProgressBarSweep(animated: Boolean): Float {
+    if (!animated) return RaftProgressBarStillSweep
+    val transition = rememberInfiniteTransition(label = "raft-progress")
+    return transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(RaftProgressBarIndeterminateMillis, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+        label = "raft-progress-sweep",
+    ).value
+}
 
 private fun DrawScope.drawTrack(color: Color) {
     drawRoundRect(color = color, cornerRadius = CornerRadius(RaftRadius.Sticker.toPx()))
