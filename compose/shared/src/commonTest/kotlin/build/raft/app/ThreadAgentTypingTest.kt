@@ -36,6 +36,28 @@ class ThreadAgentTypingTest {
         )
     }
 
+    @Test fun theLineAndItsSlotAtTheListEndGoWithTheComposerOnly() {
+        val channel = RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, sourceThreadId = "ch-1")
+        val cases =
+            listOf(
+                channel to true,
+                // Previewed without joining: the join footer.
+                channel.copy(joined = false) to false,
+                // Archived: the archived banner.
+                channel.copy(channelArchived = true) to false,
+                channel.copy(showComposer = false) to false,
+                // A composer that cannot send yet is still a composer.
+                channel.copy(canSend = false) to true,
+            )
+        cases.forEach { (payload, expected) ->
+            assertEquals(expected, payload.agentTypingLineCanShow(), "$payload")
+            // The list's end follows the same answer: the slot is there exactly where the line can be.
+            assertEquals(expected, payload.toThreadTimelineSlice().agentTypingLineSlot, "$payload")
+        }
+        assertEquals(46f, threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = true).value)
+        assertEquals(16f, threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = false).value)
+    }
+
     @Test fun onlyAgentsAreNamedAndUnknownIdsUseTheFallback() {
         val serverMembers =
             listOf(
