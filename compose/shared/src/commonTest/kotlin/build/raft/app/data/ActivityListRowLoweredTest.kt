@@ -149,4 +149,42 @@ class ActivityListRowLoweredTest {
         filterKeys { it.startsWith("inbox.lowered.") }
             .map { (k, v) -> k.removePrefix("inbox.lowered.") to v.jsonPrimitive.content }
             .toMap()
+
+    // slock #15560 `inbox.lowered.class`: a merge lowering of an answer behind this client's read is
+    // expected; one with no such fact is the defect (`unexplained`).
+    @Test
+    fun aMergeLoweringBehindThisClientsReadIsExpectedElseUnexplained() {
+        val read = activityItem("a", unreadCount = 0)
+        val merge = listOf(ActivityListRowStep.Merge to listOf(read))
+        val behind = lowered(listOf(served("a")), merge, ActivityLedgerReadState(maxReadSeq = 100L, readStateVersion = 4L)).single()
+        assertEquals(ActivityListRowLoweredClass.Expected, behind.loweredClass)
+        val unexplained = lowered(listOf(served("a")), merge, null).single()
+        assertEquals(ActivityListRowLoweredClass.Unexplained, unexplained.loweredClass)
+        val attrs = unexplained.stateTransitionTraceAttrs()
+        assertEquals("unexplained", attrs["inbox.lowered.class"]!!.jsonPrimitive.content)
+        assertEquals("first", attrs["inbox.lowered.dedupe"]!!.jsonPrimitive.content)
+        assertEquals("0", attrs["inbox.lowered.suppressed"]!!.jsonPrimitive.content)
+        assertEquals("-", attrs["inbox.lowered.proj_coverage"]!!.jsonPrimitive.content)
+    }
+
+    // slock #15560 dedupe: once per 90 s window; the re-reads inside it are counted and carried
+    // to the next report after the window as `repeat`.
+    @Test
+    fun theSameLoweringIsReportedOncePerWindowThenAsARepeatWithWhatWasSuppressed() {
+        val read = activityItem("a", unreadCount = 0)
+        val row = lowered(listOf(served("a")), listOf(ActivityListRowStep.Merge to listOf(read)), null).single()
+        val dedupe = ActivityListRowLoweredDedupe()
+        assertEquals(false, dedupe.admit(row, 0L)!!.repeat)
+        assertEquals(null, dedupe.admit(row, 2_500L))
+        assertEquals(null, dedupe.admit(row, 5_000L))
+        val again = dedupe.admit(row, ActivityListRowLoweredReportWindowMillis + 1)!!
+        assertEquals(true, again.repeat)
+        assertEquals(2, again.suppressed)
+        // Another lowering of the row (a different `after`) is its own report.
+        assertEquals(false, dedupe.admit(row.copy(after = 1), 3_000L)!!.repeat)
+        // Nothing suppressed in a window: the next one after it is a plain first.
+        val quiet = ActivityListRowLoweredDedupe()
+        quiet.admit(row, 0L)
+        assertEquals(false, quiet.admit(row, ActivityListRowLoweredReportWindowMillis + 1)!!.repeat)
+    }
 }

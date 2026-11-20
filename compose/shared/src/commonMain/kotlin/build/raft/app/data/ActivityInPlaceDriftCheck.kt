@@ -74,6 +74,12 @@ data class ActivityInPlaceCheck(
     val fetchReason: String? = null,
     /** `inbox.inplace.resumed` (mobile, list checks): the judging read was the first after a return to the foreground. */
     val resumed: Boolean? = null,
+    /**
+     * `inbox.inplace.selected` (mobile): at check time the checked conversation is open on screen
+     * (a page reads it on sight: [ConversationReadOnSight]), so its live messages are read on
+     * arrival. Null: not known (no read-on-sight registry), not sent.
+     */
+    val selected: Boolean? = null,
 )
 
 /** Mobile: why the judging list read ran, and whether it was the first one after a return to the foreground. */
@@ -141,6 +147,7 @@ internal fun ActivityInPlaceCheck.stateTransitionTraceAttrs(): JsonObject =
         notJudgedCause?.let { put("inbox.inplace.not_judged_cause", it.wireValue) }
         fetchReason?.let { put("inbox.inplace.fetch_reason", it) }
         resumed?.let { put("inbox.inplace.resumed", if (it) "true" else "false") }
+        selected?.let { put("inbox.inplace.selected", if (it) "1" else "0") }
     }
 
 /**

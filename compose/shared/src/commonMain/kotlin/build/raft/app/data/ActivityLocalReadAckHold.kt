@@ -13,6 +13,12 @@ import kotlin.coroutines.EmptyCoroutineContext
 internal const val ActivityLocalReadAckWindowMillis = 5_000L
 
 /**
+ * Web `LOCAL_READ_RECENT_ACK_MS` (slock #15560): how long a read ack is kept for a hold registered
+ * after it (the ack-before-hold race), as long as a local read holds its row in later answers.
+ */
+internal const val ActivityLocalReadRecentAckMillis = 90_000L
+
+/**
  * `inbox_row_position_v1`, web `holdLocalRead` / `noteLocalReadAck` (slock #15197,
  * packages/web/src/store/inboxListRowLowered.ts): a `local_read` lowering is held per scope for
  * [windowMillis]. This client's read ack for the scope settles it ([noteAck]): corrected when the
@@ -33,6 +39,7 @@ internal class ActivityLocalReadAckHold(
     /** Where the window's timer runs (the store's scope by default); injectable for tests. */
     private val timerContext: CoroutineContext = EmptyCoroutineContext,
     private val windowMillis: Long = ActivityLocalReadAckWindowMillis,
+    private val recentAckMillis: Long = ActivityLocalReadRecentAckMillis,
     private val log: (String) -> Unit = {},
     private val sink: (serverId: String, lowered: ActivityListRowLowered) -> Unit,
 ) {
@@ -40,8 +47,12 @@ internal class ActivityLocalReadAckHold(
         var timer: Job? = null
     }
 
+    private class RecentAck(val readSeq: String, val atMillis: Long)
+
     private val lock = SynchronizedObject()
     private val held = mutableMapOf<String, MutableList<Held>>()
+    /** This client's latest read ack per scope (highest read seq, when it landed), kept [recentAckMillis]. */
+    private val recentAcks = mutableMapOf<String, RecentAck>()
 
     /** Rows held right now (all scopes). */
     internal val heldCount: Int get() = synchronized(lock) { held.values.sumOf { it.size } }
@@ -50,7 +61,30 @@ internal class ActivityLocalReadAckHold(
     fun hold(serverId: String, row: ActivityListRowLowered) {
         val scopeId = row.scopeId ?: return send(serverId, row)
         val entry = Held(serverId, row, nowMillis())
-        synchronized(lock) { held.getOrPut(scopeId) { mutableListOf() } += entry }
+        // The ack may have landed before this answer registered the hold (web #15560). Only one that
+        // covers the answer's latest activity settles it: an older read's ack leaves the hold for this
+        // read's own ack or the window.
+        val early =
+            synchronized(lock) {
+                val ack = recentAcks[scopeId]?.takeIf { entry.heldAtMillis - it.atMillis <= recentAckMillis }
+                if (ack != null && listRowSeqCovers(ack.readSeq, row.servedLatestActivitySeq)) {
+                    ack
+                } else {
+                    held.getOrPut(scopeId) { mutableListOf() } += entry
+                    null
+                }
+            }
+        if (early != null) {
+            send(
+                serverId,
+                row.copy(
+                    ackReadSeq = early.readSeq,
+                    ackDelayMs = early.atMillis - entry.heldAtMillis,
+                    heldEnd = ActivityListRowHeldEnd.AckBeforeHold,
+                ),
+            )
+            return
+        }
         entry.timer =
             scope.launch(timerContext) {
                 delay(windowMillis)
@@ -71,8 +105,15 @@ internal class ActivityLocalReadAckHold(
      */
     fun noteAck(scopeId: String, maxReadSeq: Long?) {
         val readSeq = parseListRowSeq(maxReadSeq) ?: return
-        val settled = synchronized(lock) { held.remove(scopeId) } ?: return
         val now = nowMillis()
+        val settled =
+            synchronized(lock) {
+                recentAcks.entries.removeAll { (_, ack) -> now - ack.atMillis > recentAckMillis }
+                val previous = recentAcks[scopeId]
+                val highest = if (previous != null && compareActivitySeq(previous.readSeq, readSeq) > 0) previous.readSeq else readSeq
+                recentAcks[scopeId] = RecentAck(highest, now)
+                held.remove(scopeId)
+            } ?: return
         for (entry in settled) {
             entry.timer?.cancel()
             send(
@@ -92,6 +133,8 @@ internal class ActivityLocalReadAckHold(
             synchronized(lock) {
                 val entries = held.values.flatten()
                 held.clear()
+                // Another server or no session: its acks no longer settle anything.
+                if (end != ActivityListRowHeldEnd.Background) recentAcks.clear()
                 entries
             }
         for (entry in all) {
