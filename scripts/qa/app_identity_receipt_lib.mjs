@@ -368,6 +368,16 @@ export function createIdentityReceiptRunner({ shell, shellPrivate = shell, pkg }
     return /^[0-9]+$/.test(pid) ? pid : null;
   };
   const startTicks = (pid) => (pid ? procStartTicks(shell(`cat /proc/${pid}/stat`).stdout) : null);
+  // Since Android 14 the shell user may not change a component's state in a package that is neither
+  // debuggable nor test-only ("Shell cannot change component state"), which every signed release
+  // is. Root still may, and the CI emulator image (google_apis) has `su`; a retail device has
+  // none, so there the provider stays off, as intended. Root is used only after that refusal.
+  const setComponentState = (verb) => {
+    const command = `pm ${verb} ${componentFor(pkg)}`;
+    const asShell = shell(command);
+    if (!SHELL_MAY_NOT_CHANGE_COMPONENT.test(out(asShell))) return asShell;
+    return shell(`su 0 ${command}`);
+  };
   return {
     state,
     /** Before any account is used. Throws UnsupportedBuildError when the build has no provider. */
@@ -386,7 +396,7 @@ export function createIdentityReceiptRunner({ shell, shellPrivate = shell, pkg }
       if (!state.probed) throw new Error("identity receipt: probe the build before enabling the provider");
       if (state.signInStarted) throw new Error("identity receipt: enable the provider before sign-in (enabling kills the signed-in app)");
       state.enableAttempted = true;
-      const result = shell(`pm enable ${componentFor(pkg)}`);
+      const result = setComponentState("enable");
       if (result.status !== 0 || !/new state: enabled/.test(out(result))) {
         const detail = out(result).trim().slice(0, 200);
         if (/does not exist|Unknown component/i.test(detail)) throw new UnsupportedBuildError(`${UNSUPPORTED_MESSAGE}: ${detail}`);
@@ -417,7 +427,7 @@ export function createIdentityReceiptRunner({ shell, shellPrivate = shell, pkg }
     /** Cleanup. Never throws; { ok:false } must be reported loudly by the caller. */
     disable() {
       if (!state.enableAttempted) return { ok: true, status: "not_enabled" };
-      const result = shell(`pm disable ${componentFor(pkg)}`);
+      const result = setComponentState("disable");
       const text = out(result).trim();
       if (result.status === 0 && /new state: disabled/.test(text)) {
         state.enabled = false;
@@ -428,6 +438,9 @@ export function createIdentityReceiptRunner({ shell, shellPrivate = shell, pkg }
     },
   };
 }
+
+/** The package manager refusing the shell user (uid 2000) a component state change. */
+const SHELL_MAY_NOT_CHANGE_COMPONENT = /Shell cannot change component state/;
 
 /** A GitHub Actions error annotation for a provider left enabled. */
 export function disableFailureAnnotation(pkg, detail) {

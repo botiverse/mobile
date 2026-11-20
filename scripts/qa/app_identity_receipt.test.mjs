@@ -214,6 +214,34 @@ test("order: probe, enable before sign-in, call after it, disable last", () => {
   assert.ok(device.commands.includes(`pm disable ${PKG}/${PROVIDER_CLASS}`));
 });
 
+test("a signed release refuses the shell user (Android 14+): enable and disable are retried once as root", () => {
+  const refusal = (verb) => ({
+    status: 255,
+    stdout: "",
+    stderr: `Exception occurred while executing '${verb}':\njava.lang.SecurityException: Shell cannot change component state for ComponentInfo{${componentFor(PKG)}}`,
+  });
+  const device = fakeDevice();
+  const plain = device.shell;
+  const shell = (command) => {
+    if (command.startsWith("pm enable ")) { device.commands.push(command); return refusal("enable"); }
+    if (command.startsWith("pm disable ")) { device.commands.push(command); return refusal("disable"); }
+    if (command.startsWith("su 0 pm ")) { device.commands.push(command); return plain(command.slice("su 0 ".length)); }
+    return plain(command);
+  };
+  const runner = createIdentityReceiptRunner({ pkg: PKG, shell, shellPrivate: shell });
+  runner.probe();
+  runner.enable();
+  assert.deepEqual(runner.disable(), { ok: true, status: "disabled" });
+  assert.ok(device.commands.includes(`su 0 pm enable ${componentFor(PKG)}`));
+  assert.ok(device.commands.includes(`su 0 pm disable ${componentFor(PKG)}`));
+  // Root is not tried unless the shell user was refused for that reason.
+  const other = fakeDevice({ enableOutput: { status: 255, stdout: "", stderr: "Error: something else" } });
+  const second = createIdentityReceiptRunner({ pkg: PKG, shell: other.shell, shellPrivate: other.shell });
+  second.probe();
+  assert.throws(() => second.enable(), /pm enable failed/);
+  assert.ok(!other.commands.some((c) => c.startsWith("su 0 ")));
+});
+
 test("enabling after sign-in started, or without the probe, is refused (it would kill the signed-in app)", () => {
   const late = createIdentityReceiptRunner({ shell: fakeDevice().shell, pkg: PKG });
   late.probe();
