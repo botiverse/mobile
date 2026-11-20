@@ -5871,6 +5871,7 @@ private fun SharedThreadRouteContentContent(
                         bridge.log(
                             "thread_composer_attachment_upload_start attachmentId=$localAttachmentId fileName=${file.fileName}"
                         )
+                        bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace owner_start id=$localAttachmentId owner=${draftUploads.accountId.take(8)}|${draftUploads.serverId.take(8)} store=${draftUploads.hashCode()} vm=${composerDraftViewModel.hashCode()} page=${threadInstanceKey.hashCode()} draftKey=$draftKey stateKey=${normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)}")
                         // The chip is already on screen; resolve upload limits in the background
                         // (cache hit, or one shared request) and fail open to multipart on error.
                         var taskCapabilities = directCapabilities
@@ -6088,6 +6089,8 @@ private fun SharedThreadRouteContentContent(
     val composerDraftUploadApplier =
         remember(composerDraftViewModel) { RaftComposerDraftUploadApplier(log = { message -> bridge.logWarn(message) }) }
     LaunchedEffect(composerDraftViewModel, attachmentUploads) {
+        bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace applier_start owner=${attachmentUploads.accountId.take(8)}|${attachmentUploads.serverId.take(8)} store=${attachmentUploads.hashCode()} vm=${composerDraftViewModel.hashCode()} page=${threadInstanceKey.hashCode()}")
+        try {
         combine(composerDraftViewModel.state, attachmentUploads.byDraft) { draftState, uploads ->
             val draftKey = normalizeThreadAttachmentUploadDraftKey(draftState.draftKey)
             val terminalElsewhere =
@@ -6097,7 +6100,12 @@ private fun SharedThreadRouteContentContent(
             if (terminalElsewhere > 0) {
                 bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace apply_other_keys stateKey=$draftKey uploadKeys=${uploads.keys} terminal=$terminalElsewhere")
             }
-            draftKey to draftKey?.let { key -> uploads[key] }.orEmpty()
+            val mine = draftKey?.let { key -> uploads[key] }.orEmpty()
+            val terminalHere = mine.values.count { it.outcome != RaftComposerDraftUploadOutcome.InFlight && !it.delivered }
+            if (terminalHere > 0) {
+                bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace applier_sees key=$draftKey terminal=$terminalHere store=${attachmentUploads.hashCode()}")
+            }
+            draftKey to mine
         }.collect { (draftKey, uploads) ->
             if (draftKey == null || uploads.isEmpty()) return@collect
             composerDraftUploadApplier.apply(
@@ -6122,6 +6130,12 @@ private fun SharedThreadRouteContentContent(
                     attachmentUploads.markDelivered(draftKey, upload.localAttachmentId, upload.attemptToken)
                 }
             )
+        }
+        } catch (error: Throwable) {
+            bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace applier_error error=${error::class.simpleName} message=${error.message?.take(160)}")
+            throw error
+        } finally {
+            bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace applier_stop store=${attachmentUploads.hashCode()} vm=${composerDraftViewModel.hashCode()}")
         }
     }
     // Image viewer > Edit (artin, task #32): the edited copy goes into this conversation's
