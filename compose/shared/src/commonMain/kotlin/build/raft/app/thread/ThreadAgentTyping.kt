@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -295,9 +294,6 @@ internal fun rememberThreadAgentTyping(
 /** web `h-6`: the line's row. */
 internal val ThreadAgentTypingLineHeight = 24.dp
 
-/** web `AgentTypingListEnd` `h-7.5`: the list's extra end while the line shows. */
-internal val ThreadAgentTypingListEndHeight = 30.dp
-
 private const val ThreadAgentTypingMaxFaces = 3
 
 @Composable
@@ -316,31 +312,41 @@ internal val ThreadMessageListEndFadeHeight = 24.dp
  * The list's bottom edge over the composer (raft-ui `MessageListEndFade`, raft-design
  * `spacing.md` "Timeline rhythm"): always on, the panel color at the bottom to transparent upward
  * over the section step, so a message scrolled under the edge softens instead of being cut, and at
- * the end of the list it lies over the empty end. While the typing line shows, the fade grows by
- * exactly the line's height: a solid strip of panel color under the line, the same fade above it.
- * The switch is instant, like the line itself. Under the typing line and the jump controls; takes
- * no pointer input and is hidden from accessibility.
+ * the end of the list it lies over the empty end. It is the same with and without the typing line,
+ * which is a row under the list ([ThreadAgentTypingLineRow]), not a part of it. Under the jump
+ * controls; takes no pointer input and is hidden from accessibility.
  */
 @Composable
-internal fun ThreadMessageListEndFade(typingLineShown: Boolean, modifier: Modifier = Modifier) {
+internal fun ThreadMessageListEndFade(modifier: Modifier = Modifier) {
     val panel = RaftColor.Canvas
-    Column(modifier = modifier.fillMaxWidth().clearAndSetSemantics {}) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(ThreadMessageListEndFadeHeight)
-                .background(Brush.verticalGradient(listOf(panel.copy(alpha = 0f), panel))),
-        )
-        if (typingLineShown) {
-            Box(Modifier.fillMaxWidth().height(ThreadAgentTypingLineHeight).background(panel))
-        }
-    }
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(ThreadMessageListEndFadeHeight)
+            .background(Brush.verticalGradient(listOf(panel.copy(alpha = 0f), panel)))
+            .clearAndSetSemantics {},
+    )
 }
 
 /**
- * The line itself, on the composer's 20dp edge. It has no fade of its own: it sits on the list's
- * end fade ([ThreadMessageListEndFade] with `typingLineShown`), whose solid strip under it keeps the
- * sentence readable over messages scrolled under it. The typing sentence is announced once,
+ * The line's place in the conversation: a row of its own between the message list and the composer,
+ * in the panel color, so the list's viewport ends where the line starts and nothing of the list is
+ * ever under it. The list knows nothing about the line: a bottom-up list keeps its bottom when the
+ * row comes or goes, like when the composer grows by a line.
+ *
+ * Nothing while nobody types or works here ([typing] null), and nothing while "Generate image"
+ * captures the list ([captureActive]): the export reads the window's pixels down to the footer, so
+ * that stretch has to be the list.
+ */
+@Composable
+internal fun ThreadAgentTypingLineRow(typing: ThreadAgentTypingUi?, captureActive: Boolean) {
+    if (typing == null || captureActive) return
+    ThreadAgentTypingLine(typing = typing, modifier = Modifier.background(RaftColor.Canvas))
+}
+
+/**
+ * The line itself, on the composer's 20dp edge. It has no fade of its own: the list above it ends
+ * in its end fade ([ThreadMessageListEndFade]). The typing sentence is announced once,
  * politely, when it changes (in a channel too: only typing is announced, as on the web).
  *
  * In a channel ([ThreadAgentTypingUi.workingNow]) the line says who is working here, typing
