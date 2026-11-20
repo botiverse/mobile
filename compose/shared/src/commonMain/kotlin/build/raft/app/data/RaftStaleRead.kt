@@ -214,7 +214,11 @@ object RaftStaleReadRecoverySignals {
 
     fun onProcessVisibility(foreground: Boolean) {
         val wasForeground = RaftProcessForegroundGate.update(foreground)
-        if (foreground && !wasForeground) nudgeEvents.tryEmit("foreground")
+        if (foreground && !wasForeground) {
+            nudgeEvents.tryEmit("foreground")
+            // #198: the one "re-check what you show" signal every store and page follows.
+            RaftFreshnessSignal.onForeground()
+        }
     }
 
     /** The socket (re)joined its rooms: realtime is back, so the read warehouse may be too. */

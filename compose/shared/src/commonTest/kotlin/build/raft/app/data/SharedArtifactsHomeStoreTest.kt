@@ -169,6 +169,26 @@ class SharedArtifactsHomeStoreTest {
     }
 
     @Test
+    fun catchUpReadsAgainSilentlyKeepingTheRows() = runTest {
+        // #198: the app came back / the socket reconnected; pushes sent meanwhile were missed.
+        val api = FakeDashboardApi()
+        api.answer = { _, _ -> ok(rows("a")) }
+        val store = store(api)
+        store.dispatch(ArtifactsHomeIntent.Start("s-1"))
+        advanceUntilIdle()
+
+        api.answer = { _, _ -> ok(rows("b", "a")) }
+        store.dispatch(ArtifactsHomeIntent.CatchUp("other-server"))
+        advanceUntilIdle()
+        assertEquals(1, api.calls.size, "another server's catch-up is left alone")
+
+        store.dispatch(ArtifactsHomeIntent.CatchUp("s-1"))
+        assertEquals(listOf("a"), store.state.value.rows?.map { it.summary.id }, "rows kept while it reads")
+        advanceUntilIdle()
+        assertEquals(listOf("b", "a"), store.state.value.rows?.map { it.summary.id })
+    }
+
+    @Test
     fun activityDuringARead_queuesOneMore() = runTest {
         val api = FakeDashboardApi()
         val store = started(api)

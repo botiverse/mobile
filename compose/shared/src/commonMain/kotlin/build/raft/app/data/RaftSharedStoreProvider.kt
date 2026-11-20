@@ -869,6 +869,9 @@ internal class RaftSharedStoreProvider private constructor(
             realtimeDomainEventOwner.noteTransportEpoch(grant, transportEpoch)
             // A new socket has no agent activity subscriptions: ask for the open screens' agents again.
             agentActivitySubscriptions.onConnected(grant.serverId)
+            // #198: the socket is back (servers without `rooms:joined` send nothing later); pages of
+            // this server re-check what they show. Its `rooms:joined` carries the same epoch: one catch-up.
+            RaftFreshnessSignal.onReconnected(grant.serverId, transportEpoch)
         }
         var rebaselineResult: ProcessPresenceTransportRebaselineResult? = null
         var rebaselineOwner: ProcessServerMembersOwner? = null
@@ -1848,6 +1851,8 @@ internal class RaftSharedStoreProvider private constructor(
                     )
                     // Task #164: realtime is back; a stale unread / Activity read tries again now.
                     RaftStaleReadRecoverySignals.onRealtimeRoomsJoined()
+                    // #198: pages and stores of this server re-check what they show.
+                    RaftFreshnessSignal.onReconnected(grant.serverId, transportEpoch)
                     // Missed `server:features-changed` notices are not replayed: refetch on every (re)connect.
                     serverFeatureFlagChangeRefresher.onReconnected(ServerId(grant.serverId))
                     // Nor are `appearance:updated` ones: a theme changed elsewhere while offline.
@@ -1889,6 +1894,8 @@ internal class RaftSharedStoreProvider private constructor(
             // Task #150: a new default network (e.g. a VPN switched on/off) may resolve the host
             // again; stop short-circuiting requests at once instead of waiting for the next probe.
             networkReachabilityGates.onNetworkAvailable()
+            // #198: reads that failed while offline may succeed now; pages re-check what they show.
+            RaftFreshnessSignal.onNetworkRestored()
             threadSendScope.launch {
                 avatarCacheRuntime.recoverCurrentOwnerAfterNetworkAvailable()
             }
