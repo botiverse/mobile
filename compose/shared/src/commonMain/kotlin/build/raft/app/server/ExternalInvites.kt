@@ -114,7 +114,22 @@ internal data class ExternalInviteFailure(
     /** `free_external_limit`: Upgrade opens the `external_channel_free_limit` gate. */
     val upgrade: Boolean = false,
     val traceId: String? = null,
+    /**
+     * The server's own sentence, shown instead of [error]'s when the refusal is a channel
+     * conversion's this flow has no sentence for ([channelConversionServerWords], slock #15771).
+     */
+    val serverMessage: String? = null,
 )
+
+/**
+ * slock #15771: a channel conversion's refusal (`channel_conversion_too_large` names how much the
+ * channel holds and what to do; `channel_conversion_in_progress` and the other
+ * `channel_conversion_*` codes) is worded by the server, which knows the numbers. Where a flow has
+ * no sentence of its own for it ([localFallback]: the flow fell back to its generic text), the
+ * server's `error` is shown as it is, not "Something went wrong". Null otherwise.
+ */
+internal fun channelConversionServerWords(code: String?, error: String?, localFallback: Boolean): String? =
+    error?.trim()?.takeIf { it.isNotEmpty() && localFallback && code?.startsWith("channel_conversion_") == true }
 
 /** Web `ERROR_MESSAGE_IDS` by the server's code, else by status. */
 internal fun externalInviteErrorFor(code: String?, status: Int): ExternalInviteError =
@@ -141,12 +156,15 @@ internal fun externalInviteErrorFor(code: String?, status: Int): ExternalInviteE
             }
     }
 
-internal fun ExternalInviteRefusal.toFailure(): ExternalInviteFailure =
-    ExternalInviteFailure(
-        error = externalInviteErrorFor(code, status),
+internal fun ExternalInviteRefusal.toFailure(): ExternalInviteFailure {
+    val mapped = externalInviteErrorFor(code, status)
+    return ExternalInviteFailure(
+        error = mapped,
         upgrade = code == "free_external_limit",
         traceId = traceId,
+        serverMessage = channelConversionServerWords(code, error, localFallback = mapped == ExternalInviteError.Generic),
     )
+}
 
 /** A failed [DataResult] (no answer, signed out): the generic text with whatever trace ID the error has. */
 private fun DataResult<*>.toFailure(): ExternalInviteFailure =
@@ -342,8 +360,11 @@ internal sealed interface ExternalInviteServerRefusal {
     /** Too many guests for the joint's party cap (`channel.edit.convertJointPartyLimit`). */
     data object PartyLimit : ExternalInviteServerRefusal
 
-    /** The connecting server's own refusal (web `inviteeErrorMessage(..., "connect", { id })`). */
-    data class Invitee(val message: InviteeMessage) : ExternalInviteServerRefusal
+    /**
+     * The connecting server's own refusal (web `inviteeErrorMessage(..., "connect", { id })`);
+     * [serverWords]: the server's sentence for a channel conversion refusal (slock #15771), shown instead.
+     */
+    data class Invitee(val message: InviteeMessage, val serverWords: String? = null) : ExternalInviteServerRefusal
 }
 
 /** Web `toastServerOutcomes`' reason for one refused server. */
@@ -355,10 +376,11 @@ internal fun externalInviteServerRefusal(outcome: ServerConnectOutcome.Refused):
     return when {
         hostLimit -> ExternalInviteServerRefusal.HostFreeLimit
         outcome.code == "joint_party_limit" -> ExternalInviteServerRefusal.PartyLimit
-        else ->
-            ExternalInviteServerRefusal.Invitee(
-                inviteeErrorMessage(outcome.asRefusal(), InviteeAction.Connect, target = null, targetId = outcome.serverId)
-            )
+        else -> {
+            val refusal = outcome.asRefusal()
+            val message = inviteeErrorMessage(refusal, InviteeAction.Connect, target = null, targetId = outcome.serverId)
+            ExternalInviteServerRefusal.Invitee(message, inviteeServerWords(refusal, message))
+        }
     }
 }
 

@@ -710,7 +710,20 @@ internal class JointChannelConnectionsStore(
                         memberConnectSheet =
                             open.copy(
                                 busy = false,
-                                lines = listOf(MemberConnectLine.Request(refusal.message)),
+                                lines =
+                                    listOf(
+                                        MemberConnectLine.Request(
+                                            refusal.message,
+                                            serverWords =
+                                                (answer as? MemberConnectResponse.Refused)?.let {
+                                                    channelConversionServerWords(
+                                                        it.code,
+                                                        it.error,
+                                                        localFallback = refusal.message == MemberConnectMessage.Generic,
+                                                    )
+                                                },
+                                        )
+                                    ),
                                 traceId = traceId,
                                 closed = open.closed || refusal.closed,
                             ),
@@ -748,7 +761,7 @@ internal class JointChannelConnectionsStore(
                         val lines =
                             buildList {
                                 if (went.isNotEmpty()) add(MemberConnectLine.Connected(went))
-                                refused.forEach { add(MemberConnectLine.Refused(it.serverId, memberConnectRefusalMessage(it))) }
+                                refused.forEach { add(memberConnectRefusedLine(it)) }
                             }
                         val rowStates =
                             open.rowStates +

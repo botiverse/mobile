@@ -108,6 +108,14 @@ internal fun externalInviteErrorDesc(error: ExternalInviteError, joint: Boolean 
 internal fun externalInviteErrorText(error: ExternalInviteError, joint: Boolean = false): String =
     externalInviteErrorDesc(error, joint).localized()
 
+/** A failure's text: the server's own words for a conversion refusal (slock #15771), else [externalInviteErrorDesc]. */
+internal fun externalInviteFailureDesc(failure: ExternalInviteFailure, joint: Boolean = false): StringDesc =
+    failure.serverMessage?.let { RawStringDesc(it) } ?: externalInviteErrorDesc(failure.error, joint)
+
+@Composable
+internal fun externalInviteFailureText(failure: ExternalInviteFailure, joint: Boolean = false): String =
+    externalInviteFailureDesc(failure, joint).localized()
+
 @Composable
 private fun externalInviteSlotsText(line: ExternalInviteSlotsLine, joint: Boolean): String =
     when (line) {
@@ -316,7 +324,7 @@ internal fun ExternalInviteWithdrawDialog(
                 failure?.let { error ->
                     {
                         RaftText(
-                            externalInviteErrorText(error.error, joint),
+                            externalInviteFailureText(error, joint),
                             style = RaftTheme.typography.callout,
                             color = RaftTheme.colors.dangerStrong,
                         )
@@ -504,7 +512,7 @@ internal fun ExternalInviteSheetBody(
 internal fun ExternalInviteFailureBanner(failure: ExternalInviteFailure, joint: Boolean = false, onUpgrade: () -> Unit) {
     Column(Modifier.fillMaxWidth().testTag(ExternalInviteErrorTag), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         RaftBanner(
-            description = externalInviteErrorText(failure.error, joint),
+            description = externalInviteFailureText(failure, joint),
             status = RaftBannerStatus.Warning,
             size = RaftBannerSize.Sm,
             modifier = Modifier.fillMaxWidth(),
@@ -639,7 +647,7 @@ internal fun externalInviteEffectDesc(effect: ExternalInvitesEffect, joint: Bool
             (if (effect.count == 1) Res.string.channel_external_invite_added_one else Res.string.channel_external_invite_added_other).format(effect.count)
         is ExternalInvitesEffect.Resent -> Res.string.channel_external_invite_resent.format(effect.email)
         is ExternalInvitesEffect.Withdrawn -> Res.string.channel_external_invite_withdrawn.format(effect.email)
-        is ExternalInvitesEffect.Failed -> externalInviteErrorDesc(effect.failure.error, joint)
+        is ExternalInvitesEffect.Failed -> externalInviteFailureDesc(effect.failure, joint)
         is ExternalInvitesEffect.ServersConnected ->
             (if (effect.count == 1) Res.string.channel_external_invite_servers_connected_one else Res.string.channel_external_invite_servers_connected_other)
                 .format(effect.count)
@@ -677,7 +685,9 @@ internal fun externalInviteServerRefusalDesc(reason: ExternalInviteServerRefusal
     when (reason) {
         ExternalInviteServerRefusal.HostFreeLimit -> Res.string.channel_external_invite_error_free_limit.desc()
         ExternalInviteServerRefusal.PartyLimit -> Res.string.channel_external_invite_server_refused_party_limit.format(channel, JOINT_CHANNEL_MAX_SERVERS)
-        is ExternalInviteServerRefusal.Invitee -> inviteeMessageDesc(reason.message, target = target, channel = channel, server = host, inviter = "")
+        is ExternalInviteServerRefusal.Invitee ->
+            reason.serverWords?.let { RawStringDesc(it) }
+                ?: inviteeMessageDesc(reason.message, target = target, channel = channel, server = host, inviter = "")
     }
 
 /**
