@@ -101,6 +101,17 @@ class ActivityListRowLoweredTest {
                 "ack_read_seq" to "-",
                 "ack_delay_ms" to "-",
                 "held_end" to "-",
+                // slock #15560: a correction is expected; the first report of it; no projection here.
+                "class" to "expected",
+                "dedupe" to "first",
+                "suppressed" to "0",
+                "proj_unread" to "-",
+                "proj_read_seq" to "-",
+                "proj_through_seq" to "-",
+                "proj_loaded_above_read" to "-",
+                "proj_loaded_count" to "-",
+                "proj_loaded_min_seq" to "-",
+                "proj_coverage" to "-",
             ),
             corrected.stateTransitionTraceAttrs().loweredAttrs()
         )

@@ -380,7 +380,10 @@ class SharedActivityStorePositionAuditTest {
                     """"inbox.lowered.row_latest_seq":"10","inbox.lowered.served_read_version":"-","inbox.lowered.served_read_seq":"-",""" +
                     """"inbox.lowered.served_latest_activity_seq":"10","inbox.lowered.ledger_read_version":"-",""" +
                     """"inbox.lowered.ledger_read_seq":"-","inbox.lowered.ack_read_seq":"-","inbox.lowered.ack_delay_ms":"-",""" +
-                    """"inbox.lowered.held_end":"window"}"""
+                    """"inbox.lowered.held_end":"window","inbox.lowered.class":"ack_pending","inbox.lowered.dedupe":"first",""" +
+                    """"inbox.lowered.suppressed":"0","inbox.lowered.proj_unread":"-","inbox.lowered.proj_read_seq":"-",""" +
+                    """"inbox.lowered.proj_through_seq":"-","inbox.lowered.proj_loaded_above_read":"-",""" +
+                    """"inbox.lowered.proj_loaded_count":"-","inbox.lowered.proj_loaded_min_seq":"-","inbox.lowered.proj_coverage":"-"}"""
             ),
             lowered.stateTransitionTraceAttrs()
         )
