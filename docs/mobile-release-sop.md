@@ -499,6 +499,11 @@ smoke.
 6. Keep grids separate per carrier/seat (Android cloud device, iOS Simulator,
    physical device); don't infer across them. Risky releases add a targeted
    regression and a fresh performance/visual artifact.
+7. **A virtual device is enough** (artin 2026-11-20): the release smoke,
+   including the iOS cold start before an external step, counts when it is run
+   on a virtual device (iOS Simulator, Android emulator or cloud phone) with a
+   build of the exact release source. A physical device is not required and its
+   absence does not block a release; record the device kind in the grid.
 
 Alpha (`Android Alpha Validation`, `build.raft.app.alpha`) and internal
 TestFlight builds from `main` are for pre-cut smoke and owner trials; they do
@@ -693,7 +698,8 @@ TestFlight" means exactly this. Report to the mobile DRI and **stop**.
 
 **External** (Insiders, Beta App Review, notification): only after a separate
 release go from the mobile DRI, given after that exact build was tested (smoke,
-§6.2) and the criteria in §Release decisions hold; an earlier publish
+§6.2; an iOS Simulator run is enough, item 7) and the criteria in §Release
+decisions hold; an earlier publish
 instruction never carries over. **Cadence** (artin, 2026-10-23): Android ships
 every release; iOS internal gets every release; iOS external is submitted only
 after the previous external submission was approved; releases in between stay
