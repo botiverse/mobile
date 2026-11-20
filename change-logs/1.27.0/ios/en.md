@@ -1,8 +1,4 @@
 ✨ **New**
-- **Personal assistant** (rolling out gradually):
-  - Home has an Assistant entry under Saved and Drafts: it opens your DM with your assistant, or a page where you can Create assistant. On wide screens it is on the rail too.
-  - Your assistant's profile can turn Show Ottie on every page on or off, show and disconnect WeChat, and delete the assistant. On wide screens you can Connect WeChat right in the app by scanning a QR code.
-  - Language & Region, Theme and Notifications list what your assistant changed under Changed by your assistant, and its profile has Recent changes.
 - **Settings** gains what the web already has:
   - Account › Signed-in devices lets you sign out one device or all others, and Apps you signed in to with Raft lets you revoke them.
   - Server › Archived channels and Archived agents open when tapped (channels read-only, agents with View workspace). Owners can delete a server from Server Profile.

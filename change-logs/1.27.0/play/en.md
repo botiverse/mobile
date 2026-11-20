@@ -1,5 +1,4 @@
 ✨ New
-- Personal assistant on Home (rolling out gradually)
 - Signed-in devices and archived channels in Settings
 - Verify it's you with a passkey in the app
 - Reorder attachments; agents show Recent activity
