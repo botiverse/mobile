@@ -1420,49 +1420,58 @@ private fun ThreadPageContentContent(
                 // event-driven when the parent directory row arrives.
                 // Task #339: an authoritative directory miss says the channel
                 // was deleted instead of implying permissions are resolving.
-                Column(
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .raftCardSurface()
-                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                ThreadFooterNoticeDock(
+                    bottomSafeArea = composerBottomSafeArea,
+                    horizontalPadding = 0.dp,
+                    topPadding = 0.dp,
+                    bottomPadding = 0.dp,
                 ) {
-                    Text(
-                        text =
-                            stringResource(
-                                when (replyParentAuthority) {
-                                    ReplyParentAuthorityStatus.ParentDeleted ->
-                                        Res.string.thread_parent_channel_deleted_composer
-                                    else -> Res.string.thread_parent_authority_resolving
-                                }
-                            ),
-                        style = RaftType.Body.copy(
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            color = RaftColor.TextBlack.copy(alpha = 0.7f)
+                    Column(
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .raftCardSurface()
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        Text(
+                            text =
+                                stringResource(
+                                    when (replyParentAuthority) {
+                                        ReplyParentAuthorityStatus.ParentDeleted ->
+                                            Res.string.thread_parent_channel_deleted_composer
+                                        else -> Res.string.thread_parent_authority_resolving
+                                    }
+                                ),
+                            style = RaftType.Body.copy(
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                color = RaftColor.TextBlack.copy(alpha = 0.7f)
+                            )
                         )
-                    )
+                    }
                 }
             } else if (agentLoungeFooterKind(conversationLounge, pageLounge) != null) {
                 // Agent Lounge v0: an archived Lounge says so (Unarchive only for a viewer whose server
                 // role may archive channels), and one you may only read has the read-only composer;
                 // never a Join.
-                AgentLoungeFooter(
-                    kind = agentLoungeFooterKind(conversationLounge, pageLounge),
-                    inputs = data.lounge,
-                    modifier = Modifier.padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
-                )
+                ThreadFooterNoticeDock(bottomSafeArea = composerBottomSafeArea) {
+                    AgentLoungeFooter(
+                        kind = agentLoungeFooterKind(conversationLounge, pageLounge),
+                        inputs = data.lounge,
+                    )
+                }
             } else if (pageLounge == null && threadFooterShowsArchived(payload)) {
                 // Web ChatPanel `isArchived`: the archived banner in place of the composer or the
                 // Join button, for members and non-members alike (the server refuses every write).
                 val archived = data.lounge?.archivedChannel
-                ThreadArchivedChannelNotice(
-                    canUnarchive = archived?.canUnarchive == true,
-                    unarchiving = archived?.unarchiving == true,
-                    onUnarchive = {
-                        archived?.onUnarchive?.invoke { onThreadEvent("retryThreadLoad", null, null, null) }
-                    },
-                    modifier = Modifier.padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
-                )
+                ThreadFooterNoticeDock(bottomSafeArea = composerBottomSafeArea) {
+                    ThreadArchivedChannelNotice(
+                        canUnarchive = archived?.canUnarchive == true,
+                        unarchiving = archived?.unarchiving == true,
+                        onUnarchive = {
+                            archived?.onUnarchive?.invoke { onThreadEvent("retryThreadLoad", null, null, null) }
+                        },
+                    )
+                }
             } else if (!writeActionsEnabled) {
                 Unit
             } else if (threadFooterShowsJoin(payload.joined, conversationLounge)) {
@@ -1470,6 +1479,7 @@ private fun ThreadPageContentContent(
                     label = localizedThreadJoinLabel(payload.joinLabel),
                     onJoin = { onThreadEvent("joinChannel", null, null, null) },
                     joining = ThreadChannelJoinsInFlight.isJoining(payload.joinChannelTargetId()),
+                    bottomSafeArea = composerBottomSafeArea,
                 )
             } else if (shareSelectionActive) {
                 // Preserve the footer's layout height while capture owns the

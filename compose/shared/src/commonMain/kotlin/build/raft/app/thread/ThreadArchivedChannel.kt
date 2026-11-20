@@ -1,9 +1,14 @@
 package build.raft.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
+import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -12,6 +17,8 @@ import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.components.raftToastAvoid
 
 internal object ThreadArchivedChannelTestTags {
     const val HeaderBadge = "thread-archived-badge"
@@ -95,4 +102,37 @@ internal fun ThreadArchivedChannelNotice(
                 null
             },
     )
+}
+
+/**
+ * Bottom dock for non-composer conversation footers (archived channel / Lounge banner, read-only
+ * Lounge composer, unresolved reply-parent notice): paints the page canvas behind the system
+ * navigation bar and keeps the footer clear of horizontal and bottom safe-area insets (Android
+ * 3-button nav, Android gesture nav, iOS home indicator).
+ */
+@Composable
+internal fun ThreadFooterNoticeDock(
+    modifier: Modifier = Modifier,
+    bottomSafeArea: Dp = raftBottomSafeAreaPadding(),
+    horizontalPadding: Dp = RaftAppSpacing.Sm,
+    topPadding: Dp = RaftAppSpacing.Sm,
+    bottomPadding: Dp = RaftAppSpacing.Sm,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(RaftColor.Canvas)
+                .raftSafeAreaHorizontalPadding()
+                .padding(
+                    start = horizontalPadding,
+                    top = topPadding,
+                    end = horizontalPadding,
+                    bottom = bottomPadding + bottomSafeArea,
+                )
+                .raftToastAvoid(enabled = LocalRaftPageActive.current)
+    ) {
+        content()
+    }
 }
