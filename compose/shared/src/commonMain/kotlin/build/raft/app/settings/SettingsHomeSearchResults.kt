@@ -169,6 +169,10 @@ internal fun SharedHomeSearchFilters(
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     showSenderFilter: Boolean = true,
     horizontalPadding: Dp = SearchControlsHorizontalPadding,
+    // web SearchFilterBar `scopeConversation`: a conversation's own search names its scope
+    // ("#general", a DM's name) in a soft information badge where the Channel chip sits. It is
+    // the page's scope, not a filter: nothing here clears it ("Search everywhere" is the way out).
+    scopeConversation: String? = null,
     // The popup a chip opens under itself (the sender and channel comboboxes), composed in the
     // chip's own box so it anchors to it; given the filter id.
     chipPopover: @Composable (String) -> Unit = {}
@@ -177,7 +181,7 @@ internal fun SharedHomeSearchFilters(
         state.selectedScopes.isNotEmpty() ||
             state.myMessagesOnly ||
             state.selectedSenderId != null ||
-            state.selectedChannelId != null ||
+            (state.selectedChannelId != null && scopeConversation == null) ||
             state.timeRange != SearchTimeRange.Any
     val selectedChannel = channelFilters.firstOrNull { it.id == state.selectedChannelId }
     val scopeActive = state.selectedScopes.isNotEmpty()
@@ -245,7 +249,14 @@ internal fun SharedHomeSearchFilters(
                                     }
                                 )
                             HomeSearchFilter.Channel ->
-                                Box(chipModifier.raftScrollIntoViewWhen(channelActive)) {
+                                if (scopeConversation != null) {
+                                    RaftBadge(
+                                        text = Res.string.search_scope_in_channel.format(listOf(scopeConversation)).localized(),
+                                        modifier = chipModifier.testTag("search-scope-chip"),
+                                        appearance = RaftBadgeAppearance.Soft,
+                                        variant = RaftBadgeVariant.Information,
+                                    )
+                                } else Box(chipModifier.raftScrollIntoViewWhen(channelActive)) {
                                     RaftAnchoredPickerTrigger(
                                         label = selectedChannel?.label ?: channelLabel,
                                         anchorIdentity = "search_filter:channel",
@@ -278,7 +289,12 @@ internal fun SharedHomeSearchFilters(
                 // web SearchFilterBar: Clear all is a `ghost` `md` Button, not a picker chip.
                 RaftButton(
                     text = stringResource(Res.string.search_filter_clear_all),
-                    onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) },
+                    onClick = {
+                        val scopeChannelId = state.selectedChannelId.takeIf { scopeConversation != null }
+                        onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters)
+                        // The scope is not a filter: Clear all keeps the conversation.
+                        scopeChannelId?.let { onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(it)) }
+                    },
                     variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Md
                 )

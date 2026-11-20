@@ -6,6 +6,11 @@ import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftSearchResultDescription
+import build.raft.designsystem.components.RaftSearchResultIcon
+import build.raft.designsystem.components.RaftSearchResultRow
+import build.raft.designsystem.components.RaftSearchResultTitle
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import androidx.compose.ui.input.key.key
@@ -444,10 +449,20 @@ internal fun SharedHomeSearchPanel(
             historyEditing -> historyEditing = false
         }
     }
+    // Nav spec §7.2 / web MessageSearchPage `scopeConversation`: a conversation's own search
+    // ("In #general" in the filter strip, "Search everywhere" atop the results).
+    val scopeConversation: String? =
+        if (onExpandToSearchTab != null) {
+            (channelFilters.firstOrNull { it.id == state.selectedChannelId }
+                ?: agentLoungeSearchScopeOrNull(state.selectedChannelId))?.searchScopeLabel()
+        } else {
+            null
+        }
     val searchFilters: @Composable () -> Unit = {
                 SharedHomeSearchFilters(
                     state = state,
                     channelFilters = channelFilters,
+                    scopeConversation = scopeConversation,
                     scopeAnchorChanged = { scopeAnchorResolver = it },
                     senderAnchorChanged = { senderAnchorResolver = it },
                     channelAnchorChanged = { channelAnchorResolver = it },
@@ -687,18 +702,6 @@ internal fun SharedHomeSearchPanel(
                 // The tab head draws its own 1dp seam.
                 if (!tabHead) SharedHomeSearchDivider()
                 RaftAppShellBodyTopBanner()
-                if (onExpandToSearchTab != null) {
-                    (channelFilters.firstOrNull { it.id == state.selectedChannelId }
-                        ?: agentLoungeSearchScopeOrNull(state.selectedChannelId))?.let { scope ->
-                        SharedHomeSearchScopeRow(
-                            scopeLabel = scope.searchScopeLabel(),
-                            onExpand = {
-                                searchInputFocus.release()
-                                onExpandToSearchTab(state.query)
-                            }
-                        )
-                    }
-                }
                 searchFilters()
                 SharedHomeSearchDivider()
                 LazyColumn(
@@ -706,6 +709,17 @@ internal fun SharedHomeSearchPanel(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
+                    if (scopeConversation != null && onExpandToSearchTab != null) {
+                        item(key = "search-everywhere") {
+                            SharedHomeSearchEverywhereRow(
+                                query = state.query,
+                                onClick = {
+                                    searchInputFocus.release()
+                                    onExpandToSearchTab(state.query)
+                                }
+                            )
+                        }
+                    }
                     item {
                         // One column: the history notice stacks above what the item shows.
                         Column(Modifier.fillMaxWidth()) {
@@ -1405,34 +1419,29 @@ private fun SearchChannelFilterItem.searchScopeLabel(): String =
     if (icon == RaftLucideIconName.Hash) "#$label" else label
 
 /**
- * Nav spec §7.2: a conversation search shows where it searches ("In #channel") and offers
- * "Search all", which moves the query to the Search tab (this page stays scoped).
+ * web SearchEverywhereRow (Nav spec §7.2): a conversation's own search leads its results with
+ * "Search everywhere" ("Search everywhere for “…”" once there are words), a raft-ui
+ * SearchEntityResult that moves the query to the Search tab; this page stays scoped.
  */
 @Composable
-private fun SharedHomeSearchScopeRow(scopeLabel: String, onExpand: () -> Unit) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftColor.SurfaceWhite)
-                .padding(start = SearchControlsHorizontalPadding, end = SearchControlsHorizontalPadding, top = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftText(
-            text = Res.string.search_scope_in_channel.format(listOf(scopeLabel)).localized(),
-            style = RaftTheme.typography.callout,
-            color = RaftColor.TextMuted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-        RaftButton(
-            text = stringResource(Res.string.search_scope_expand_all),
-            onClick = onExpand,
-            variant = RaftButtonVariant.Default,
-            size = RaftButtonSize.Md,
-        )
+private fun SharedHomeSearchEverywhereRow(query: String, onClick: () -> Unit) {
+    val trimmed = query.trim()
+    // web SearchResultsList `pt-2`.
+    Box(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        RaftSearchResultRow(
+            onClick = onClick,
+            modifier = Modifier.testTag("search-everywhere"),
+            leading = { RaftSearchResultIcon(RaftGlyph.Search) },
+            description = { RaftSearchResultDescription(stringResource(Res.string.search_scope_everywhere_hint)) },
+        ) {
+            RaftSearchResultTitle(
+                if (trimmed.isEmpty()) {
+                    stringResource(Res.string.search_scope_everywhere)
+                } else {
+                    Res.string.search_scope_everywhere_for.format(listOf(trimmed)).localized()
+                }
+            )
+        }
     }
 }
 

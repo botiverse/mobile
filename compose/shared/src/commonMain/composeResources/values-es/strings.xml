@@ -2692,7 +2692,9 @@
     <string name="search_action_load_more_results">Cargar más resultados</string>
     <string name="search_filter_scope">Alcance</string>
     <string name="search_scope_in_channel">En %1$s</string>
-    <string name="search_scope_expand_all">Buscar en todo</string>
+    <string name="search_scope_everywhere">Buscar en todo</string>
+    <string name="search_scope_everywhere_for">Buscar “%1$s” en todo</string>
+    <string name="search_scope_everywhere_hint">Abre la pestaña Buscar con las mismas palabras</string>
     <string name="search_filter_from">Origen</string>
     <string name="search_filter_from_value">De: %1$s</string>
     <string name="search_filter_search_senders">Buscar remitentes</string>

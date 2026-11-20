@@ -2692,7 +2692,9 @@
     <string name="search_action_load_more_results">Загрузить ещё результаты</string>
     <string name="search_filter_scope">Область</string>
     <string name="search_scope_in_channel">В чате: %1$s</string>
-    <string name="search_scope_expand_all">Искать везде</string>
+    <string name="search_scope_everywhere">Искать везде</string>
+    <string name="search_scope_everywhere_for">Искать «%1$s» везде</string>
+    <string name="search_scope_everywhere_hint">Откроет вкладку «Поиск» с тем же запросом</string>
     <string name="search_filter_from">Отправитель</string>
     <string name="search_filter_from_value">Отправитель: %1$s</string>
     <string name="search_filter_search_senders">Поиск отправителей</string>

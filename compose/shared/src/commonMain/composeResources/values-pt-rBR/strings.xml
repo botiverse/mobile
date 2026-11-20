@@ -2692,7 +2692,9 @@
     <string name="search_action_load_more_results">Carregar mais resultados</string>
     <string name="search_filter_scope">Escopo</string>
     <string name="search_scope_in_channel">Em %1$s</string>
-    <string name="search_scope_expand_all">Pesquisar em tudo</string>
+    <string name="search_scope_everywhere">Pesquisar em tudo</string>
+    <string name="search_scope_everywhere_for">Pesquisar “%1$s” em tudo</string>
+    <string name="search_scope_everywhere_hint">Abre a aba Pesquisar com as mesmas palavras</string>
     <string name="search_filter_from">Origem</string>
     <string name="search_filter_from_value">De: %1$s</string>
     <string name="search_filter_search_senders">Pesquisar remetentes</string>
