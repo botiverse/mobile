@@ -179,7 +179,7 @@ internal fun inviteeErrorMessage(
 }
 
 internal fun ServerConnectOutcome.Refused.asRefusal(): InviteeRefusal =
-    InviteeRefusal(status = status, code = code, limitSide = limitSide, limitServerId = limitServerId)
+    InviteeRefusal(status = status, code = code, limitSide = limitSide, limitServerId = limitServerId, error = error)
 
 /** A refusal banner: its text, the server it names ([target] when not one of the invite's), the trace ID. */
 internal data class InviteeError(
@@ -187,7 +187,13 @@ internal data class InviteeError(
     val serverId: String? = null,
     val target: String? = null,
     val traceId: String? = null,
+    /** The server's own sentence for a channel conversion refusal with no sentence here (slock #15771), shown instead. */
+    val serverWords: String? = null,
 )
+
+/** [channelConversionServerWords] for an invitee refusal that read as [message]. */
+internal fun inviteeServerWords(refusal: InviteeRefusal, message: InviteeMessage): String? =
+    channelConversionServerWords(refusal.code, refusal.error, localFallback = message == InviteeMessage.Generic)
 
 /** New server name / slug problems (web `NewServerFieldErrors`). */
 internal enum class NewServerFieldError { NameRequired, SlugRequired, SlugTooShort, SlugPattern, SlugTaken }
@@ -572,7 +578,7 @@ internal class ExternalInviteStore(
         }
         val state = mutableState.value
         val message = inviteeErrorMessage(refusal, action, state.myServer(serverId), serverId)
-        mutableState.update { it.copy(error = InviteeError(message, serverId, target, refusal.traceId)) }
+        mutableState.update { it.copy(error = InviteeError(message, serverId, target, refusal.traceId, inviteeServerWords(refusal, message))) }
     }
 
     @Suppress("UNUSED_PARAMETER")
@@ -714,12 +720,9 @@ internal class ExternalInviteStore(
                             it.copy(
                                 keptServer = InviteKeptServer(keptId, name),
                                 error =
-                                    InviteeError(
-                                        inviteeErrorMessage(refusal, InviteeAction.NewServer, InviteMyServer(keptId, name, slug, null), keptId),
-                                        keptId,
-                                        name,
-                                        refusal.traceId,
-                                    ),
+                                    inviteeErrorMessage(refusal, InviteeAction.NewServer, InviteMyServer(keptId, name, slug, null), keptId).let { message ->
+                                        InviteeError(message, keptId, name, refusal.traceId, inviteeServerWords(refusal, message))
+                                    },
                             )
                         }
                         return@run

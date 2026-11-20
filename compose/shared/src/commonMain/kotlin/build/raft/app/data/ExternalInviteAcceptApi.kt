@@ -166,6 +166,8 @@ data class InviteeRefusal(
     /** connect-new-server refused after creating the server: the server the caller keeps. */
     val serverId: String? = null,
     val traceId: String? = null,
+    /** The server's own sentence (`error`), shown for a channel conversion refusal (slock #15771). */
+    val error: String? = null,
 )
 
 sealed interface InviteeAnswer<out T> {
@@ -199,6 +201,7 @@ internal fun parseSharedInviteeRefusal(status: Int, bodyText: String?, traceId: 
         limitServerId = body?.limitServerId.clean(),
         serverId = body?.serverId.clean(),
         traceId = traceId,
+        error = body?.error.clean(),
     )
 }
 

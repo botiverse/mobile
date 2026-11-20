@@ -250,11 +250,24 @@ internal sealed interface MemberConnectLine {
     /** Web `channel.memberConnect.partial.connected`: these did go through. */
     data class Connected(val serverIds: List<String>) : MemberConnectLine
 
-    /** A chosen server's refusal; [serverId] is its {target}. */
-    data class Refused(val serverId: String, val message: MemberConnectMessage) : MemberConnectLine
+    /**
+     * A chosen server's refusal; [serverId] is its {target}. [serverWords]: the server's own sentence
+     * for a channel conversion refusal this flow has no sentence for (slock #15771), shown instead.
+     */
+    data class Refused(val serverId: String, val message: MemberConnectMessage, val serverWords: String? = null) : MemberConnectLine
 
-    /** The whole request refused. */
-    data class Request(val message: MemberConnectMessage) : MemberConnectLine
+    /** The whole request refused; [serverWords] as on [Refused]. */
+    data class Request(val message: MemberConnectMessage, val serverWords: String? = null) : MemberConnectLine
+}
+
+/** [MemberConnectLine.Refused] for one chosen server's refusal: [memberConnectRefusalMessage], or the server's words (slock #15771). */
+internal fun memberConnectRefusedLine(outcome: ServerConnectOutcome.Refused): MemberConnectLine.Refused {
+    val message = memberConnectRefusalMessage(outcome)
+    return MemberConnectLine.Refused(
+        serverId = outcome.serverId,
+        message = message,
+        serverWords = channelConversionServerWords(outcome.code, outcome.error, localFallback = message == MemberConnectMessage.Generic),
+    )
 }
 
 /** The open Connect your servers sheet (web ConnectYourServersDialog's state). */

@@ -208,8 +208,8 @@ internal fun JointMemberConnectSheet(
                                     }
                                 }
                                 is MemberConnectLine.Refused ->
-                                    jointMemberConnectMessage(line.message, nameOf[line.serverId].orEmpty(), channel, host)
-                                is MemberConnectLine.Request -> jointMemberConnectMessage(line.message, "", channel, host)
+                                    line.serverWords ?: jointMemberConnectMessage(line.message, nameOf[line.serverId].orEmpty(), channel, host)
+                                is MemberConnectLine.Request -> line.serverWords ?: jointMemberConnectMessage(line.message, "", channel, host)
                             }
                         }
                     Column(Modifier.fillMaxWidth().testTag(JointMemberConnectErrorTag), verticalArrangement = Arrangement.spacedBy(4.dp)) {

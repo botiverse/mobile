@@ -266,7 +266,7 @@ internal fun ExternalInviteContent(state: ExternalInviteState, email: String, on
                 val kept = state.keptServer?.takeIf { it.id == error.serverId }
                 RaftBanner(
                     description =
-                        inviteeMessageText(error.message, values, target) +
+                        (error.serverWords ?: inviteeMessageText(error.message, values, target)) +
                             (kept?.let { " " + stringResource(Res.string.external_invite_new_server_kept, state.serverName(it.id) ?: it.name) } ?: ""),
                     status = RaftBannerStatus.Warning,
                     size = RaftBannerSize.Sm,
@@ -806,11 +806,9 @@ private fun InviteProgressList(state: ExternalInviteState, values: InviteValues,
                     else ->
                         stringResource(Res.string.external_invite_progress_not_connected) to
                             row.refusal?.let {
-                                inviteeMessageText(
-                                    inviteeErrorMessage(it.asRefusal(), InviteeAction.Connect, state.myServer(row.serverId), row.serverId),
-                                    values,
-                                    row.name,
-                                )
+                                val refusal = it.asRefusal()
+                                val message = inviteeErrorMessage(refusal, InviteeAction.Connect, state.myServer(row.serverId), row.serverId)
+                                inviteeServerWords(refusal, message) ?: inviteeMessageText(message, values, row.name)
                             }
                 }
             RaftListRow(
