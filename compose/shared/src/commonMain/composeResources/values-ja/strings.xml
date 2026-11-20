@@ -4656,6 +4656,7 @@
     <string name="thread_link_preview_action_changed">このカードの内容が変更されました。内容を確認してから、もう一度お試しください。</string>
     <string name="thread_link_preview_unreviewed_run_title">「%1$s」を実行しますか？</string>
     <string name="thread_link_preview_unreviewed_run_by">%1$s が実行します</string>
+    <string name="thread_link_preview_action_confirm_from">%1$s から</string>
     <string name="thread_link_preview_unreviewed_note">%1$s はこのサーバーで作成されたアプリで、Raft の審査を受けていません。あなたの名前を受け取り、自身の権限で実行します。</string>
     <string name="thread_link_preview_connect_action">アカウントを接続</string>
     <string name="thread_action_card_scope_group_server">サーバー · 読み取り</string>

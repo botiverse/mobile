@@ -4827,6 +4827,7 @@
     <string name="thread_link_preview_action_changed">Este cartão mudou. Confira e tente novamente.</string>
     <string name="thread_link_preview_unreviewed_run_title">Executar “%1$s”?</string>
     <string name="thread_link_preview_unreviewed_run_by">Executado por %1$s</string>
+    <string name="thread_link_preview_action_confirm_from">De %1$s</string>
     <string name="thread_link_preview_unreviewed_note">O app %1$s foi criado neste servidor e não foi revisado pelo Raft. Recebe seu nome e age com as próprias permissões.</string>
     <string name="thread_link_preview_connect_action">Conectar conta</string>
     <string name="member_app_grant_source_person">Concedido por uma pessoa</string>

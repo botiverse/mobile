@@ -12,7 +12,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import org.jetbrains.compose.resources.StringResource
 import build.raft.app.data.APP_LINK_HANDLE_FRESH_MILLIS
 import build.raft.app.data.AppLinkActionResult
 import build.raft.app.data.AppLinkExecuted
@@ -373,21 +377,23 @@ internal class ThreadAppLinkCardPress(
     }
 
     /**
-     * Raft's confirmation: a prepared action shows the App's description in Raft's dialog; an
-     * unreviewed App (Kirby's v3 design) adds "Run by {App}" with its icon under the title and, last,
-     * that this Server made it and Raft has not reviewed it. Its undo-window button is asked about by
-     * its label (Run "label"?), confirmed with the button's own label, or Cancel (as the web).
+     * Raft's confirmation: a prepared action shows the App's icon and "From {App}" before the
+     * App's own description in Raft's dialog (slock #14724); an unreviewed App (Kirby's v3 design)
+     * shows "Run by {App}" with its icon under the title and, last, that this Server made it and
+     * Raft has not reviewed it. Its undo-window button is asked about by its label (Run "label"?),
+     * confirmed with the button's own label, or Cancel (as the web).
      */
     @Composable
     fun Confirmation() {
         val pending = confirming ?: return
         val description = pending.prepared?.description
         val app = card.app
+        val attribution = appLinkConfirmAttribution(unreviewed = pending.unreviewed, hasDescription = description != null)
         RaftDialog(
             onDismissRequest = ::dismissConfirmation,
             title = description?.title ?: stringResource(Res.string.thread_link_preview_unreviewed_run_title, pending.label),
-            // The unreviewed App's line goes right under the title, before the App's body.
-            description = description?.body?.takeUnless { pending.unreviewed },
+            // Who is speaking goes right under the title, before the App's own body (slock #14724).
+            description = description?.body?.takeUnless { attribution != null },
             footer = {
                 RaftButton(
                     text = description?.cancelLabel ?: stringResource(Res.string.common_cancel),
@@ -397,13 +403,20 @@ internal class ThreadAppLinkCardPress(
                 RaftButton(text = description?.confirmLabel ?: pending.label, onClick = ::confirm)
             },
             content = {
-                if (pending.unreviewed) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (attribution != null) {
+                    Row(
+                        modifier = Modifier.testTag(attribution.testTag),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         ThreadAppLinkCardHeaderIcon(app.icon)
                         RaftText(
-                            text = stringResource(Res.string.thread_link_preview_unreviewed_run_by, app.name),
-                            style = RaftTheme.typography.callout,
-                            color = RaftTheme.colors.foregroundMuted,
+                            text = stringResource(attribution.labelRes, app.name),
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                            color = RaftTheme.colors.foreground,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                     description?.body?.let {
@@ -439,6 +452,30 @@ internal class ThreadAppLinkCardPress(
         val RereadWaitsMs = listOf(2000L, 5000L, 15000L)
     }
 }
+
+/**
+ * The App attribution row shown before an App's own prepared-action copy in [ThreadAppLinkCardPress.Confirmation]
+ * (web `LinkCardActions.tsx`, slock #14724 / W3 of #13978):
+ * - unreviewed App -> "Run by {app}" (`data-link-card-confirm-run-by`)
+ * - reviewed App with prepared description -> "From {app}" (`data-link-card-confirm-from`)
+ */
+internal enum class AppLinkConfirmAttribution(
+    val labelRes: StringResource,
+    val testTag: String,
+) {
+    RunBy(Res.string.thread_link_preview_unreviewed_run_by, "link-card-confirm-run-by"),
+    From(Res.string.thread_link_preview_action_confirm_from, "link-card-confirm-from"),
+}
+
+internal fun appLinkConfirmAttribution(
+    unreviewed: Boolean,
+    hasDescription: Boolean,
+): AppLinkConfirmAttribution? =
+    when {
+        unreviewed -> AppLinkConfirmAttribution.RunBy
+        hasDescription -> AppLinkConfirmAttribution.From
+        else -> null
+    }
 
 /** The tone of Raft's hint for an operation state (`info`, `success`, `warning`) as the toast's intent. */
 internal fun appLinkToastIntent(tone: String?): RaftToastIntent? =
