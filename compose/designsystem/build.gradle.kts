@@ -114,3 +114,37 @@ tasks.named<Test>("desktopTest") {
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
+
+// vcase pilot (vcase repo, docs/pilot-raft-mobile.md; Raft #proj-mobile:#211). desktopTest also
+// compiles src/desktopVcase (the @VCase cases, RaftVCaseHost, DesignSystemVCases and the
+// LegacyGoldenParityTest migration gate) against build.raft.vcase from maven.artifacts.botiverse.dev.
+// Goldens live next to the Roborazzi ones, at screenshots/vcase/desktop-skiko/, with the manifest
+// at screenshots/vcase/vcase.manifest.json, so the record_screenshots dispatch collects them too.
+// - desktopTest / verifyRoborazziDesktop: verify, zero tolerance.
+// - recordRoborazziDesktop: record (vcase.mode=record) alongside Roborazzi.
+// - -Pvcase.mode=record|verify|scan and -Pvcase.filter=<id glob> override; -Pvcase.version picks
+//   another release (or 0.1.0-SNAPSHOT from mavenLocal).
+val vcaseVersion = providers.gradleProperty("vcase.version").getOrElse("0.1.0")
+val vcaseDir = screenshotGoldenDir.dir("vcase")
+val vcaseRecording = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "recordRoborazziDesktop" }
+kotlin {
+    sourceSets.named("desktopTest") {
+        kotlin.srcDir("src/desktopVcase/kotlin")
+        dependencies {
+            implementation("build.raft.vcase:vcase-compose-desktop:$vcaseVersion")
+        }
+    }
+}
+tasks.named<Test>("desktopTest") {
+    inputs.file(vcaseDir.file("vcase.manifest.json")).optional().withPropertyName("vcaseManifest")
+    val mode = providers.gradleProperty("vcase.mode").orNull ?: "record".takeIf { vcaseRecording }
+    if (mode != null) {
+        systemProperty("vcase.mode", mode)
+        outputs.upToDateWhen { false }
+    }
+    providers.gradleProperty("vcase.filter").orNull?.let { systemProperty("vcase.filter", it) }
+    systemProperty("vcase.goldens", vcaseDir.asFile.absolutePath)
+    systemProperty("vcase.manifest", vcaseDir.file("vcase.manifest.json").asFile.absolutePath)
+    systemProperty("vcase.out", screenshotReportDir.get().dir("vcase").asFile.absolutePath)
+    systemProperty("vcase.sourceRoot", "compose/designsystem/src/desktopVcase/kotlin")
+}
