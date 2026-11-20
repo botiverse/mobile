@@ -420,7 +420,7 @@ internal fun buildThreadPendingSendTimestampLabel(
     return raftEpochMillisUtcIso(epochMillis)
 }
 
-private data class ThreadMarkdownMentionOpenTarget(
+internal data class ThreadMarkdownMentionOpenTarget(
     val identity: MemberDetailIdentity
 )
 
