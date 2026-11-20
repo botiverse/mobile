@@ -244,6 +244,7 @@ fun TextStyle.merge(
         textDecoration = textDecoration ?: this.textDecoration,
         shadow = shadow,
         textAlign = textAlign ?: this.textAlign,
+        textDirection = this.textDirection,
         lineHeight = lineHeight ?: this.lineHeight,
 //        textIndent = textIndent,
 //        lineSpacing = lineSpacing,

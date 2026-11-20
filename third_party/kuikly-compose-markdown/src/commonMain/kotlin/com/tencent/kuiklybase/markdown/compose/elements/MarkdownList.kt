@@ -1,6 +1,8 @@
 package com.tencent.kuiklybase.markdown.compose.elements
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,11 +23,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
+import build.raft.app.markdown.raftMarkdownBlockDirection
+import build.raft.app.markdown.toComposeLayoutDirection
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownComponents
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownPadding
@@ -65,102 +70,106 @@ fun MarkdownListItems(
     val listItemBottom = LocalMarkdownPadding.current.listItemBottom
     val markdownComponents = LocalMarkdownComponents.current
     val markdownTypography = LocalMarkdownTypography.current
+    val listDirection = remember(content, node) { raftMarkdownBlockDirection(content, node) }
+    val resolvedLayoutDirection = listDirection.toComposeLayoutDirection(LocalLayoutDirection.current)
     // Nested lists live inside the parent item's weighted column. Applying
     // fillMaxWidth at every depth creates an unconstrained placement cycle in
     // Kuikly's wrapped+nested layout path (StackOverflowError during place).
     // Keep the root list full-width, but let nested lists resolve naturally in
     // the already-constrained parent column.
-    Column(
-        modifier = Modifier
-            .then(if (depth == 0) Modifier.fillMaxWidth() else Modifier)
-            .padding(
-                // Nested lists already sit inside the parent item's text column, so
-                // the indent is per level, not multiplied by depth (web: each `ul`
-                // adds the same padding-left).
-                start = indentListDp,
-                top = listDp,
-                bottom = listDp
-            )
-    ) {
-        var index = 0
-        node.children.forEach { child ->
-            when (child.type) {
-                MarkdownElementTypes.LIST_ITEM -> {
-                    // LIST_NUMBER/LIST_BULLET, CHECK_BOX, PARAGRAPH
-                    val checkboxNode = child.children.getOrNull(1)?.takeIf { it.type == CHECK_BOX }
-                    val listIndicator = when (node.type) {
-                        ORDERED_LIST -> child.findChildOfType(LIST_NUMBER)
-                        UNORDERED_LIST -> child.findChildOfType(LIST_BULLET)
-                        else -> null
-                    }
-
-                    Row(
-                        modifier =
-                            Modifier
-                                .then(if (depth == 0) Modifier.fillMaxWidth() else Modifier)
-                                .padding(bottom = listItemBottom)
-                    ) {
-                        Box(modifier = markerModifier()) {
-                            if (checkboxNode != null) {
-                                val model = MarkdownComponentModel(
-                                    content = content,
-                                    node = checkboxNode,
-                                    typography = markdownTypography,
-                                    extra = persistentMapOf(MARKDOWN_LIST_DEPTH_KEY to depth + 1)
-                                )
-                                markdownComponents.checkbox.invoke(model)
-                            } else {
-                                bullet(index, listIndicator)
-                            }
+    CompositionLocalProvider(LocalLayoutDirection provides resolvedLayoutDirection) {
+        Column(
+            modifier = Modifier
+                .then(if (depth == 0) Modifier.fillMaxWidth() else Modifier)
+                .padding(
+                    // Nested lists already sit inside the parent item's text column, so
+                    // the indent is per level, not multiplied by depth (web: each `ul`
+                    // adds the same padding-start).
+                    start = indentListDp,
+                    top = listDp,
+                    bottom = listDp
+                )
+        ) {
+            var index = 0
+            node.children.forEach { child ->
+                when (child.type) {
+                    MarkdownElementTypes.LIST_ITEM -> {
+                        // LIST_NUMBER/LIST_BULLET, CHECK_BOX, PARAGRAPH
+                        val checkboxNode = child.children.getOrNull(1)?.takeIf { it.type == CHECK_BOX }
+                        val listIndicator = when (node.type) {
+                            ORDERED_LIST -> child.findChildOfType(LIST_NUMBER)
+                            UNORDERED_LIST -> child.findChildOfType(LIST_BULLET)
+                            else -> null
                         }
-                        Column(modifier = listModifier()) {
-                            child.children.onEach { nestedChild ->
-                                when (nestedChild.type) {
-                                    ORDERED_LIST -> {
-                                        val model = MarkdownComponentModel(
-                                            content = content,
-                                            node = nestedChild,
-                                            typography = markdownTypography,
-                                            extra = persistentMapOf(MARKDOWN_LIST_DEPTH_KEY to depth + 1)
-                                        )
-                                        markdownComponents.orderedList.invoke(model)
-                                    }
 
-                                    UNORDERED_LIST -> {
-                                        val model = MarkdownComponentModel(
-                                            content = content,
-                                            node = nestedChild,
-                                            typography = markdownTypography,
-                                            extra = persistentMapOf(MARKDOWN_LIST_DEPTH_KEY to depth + 1)
-                                        )
-                                        markdownComponents.unorderedList.invoke(model)
-                                    }
+                        Row(
+                            modifier =
+                                Modifier
+                                    .then(if (depth == 0) Modifier.fillMaxWidth() else Modifier)
+                                    .padding(bottom = listItemBottom)
+                        ) {
+                            Box(modifier = markerModifier()) {
+                                if (checkboxNode != null) {
+                                    val model = MarkdownComponentModel(
+                                        content = content,
+                                        node = checkboxNode,
+                                        typography = markdownTypography,
+                                        extra = persistentMapOf(MARKDOWN_LIST_DEPTH_KEY to depth + 1)
+                                    )
+                                    markdownComponents.checkbox.invoke(model)
+                                } else {
+                                    bullet(index, listIndicator)
+                                }
+                            }
+                            Column(modifier = listModifier()) {
+                                child.children.onEach { nestedChild ->
+                                    when (nestedChild.type) {
+                                        ORDERED_LIST -> {
+                                            val model = MarkdownComponentModel(
+                                                content = content,
+                                                node = nestedChild,
+                                                typography = markdownTypography,
+                                                extra = persistentMapOf(MARKDOWN_LIST_DEPTH_KEY to depth + 1)
+                                            )
+                                            markdownComponents.orderedList.invoke(model)
+                                        }
 
-                                    PARAGRAPH -> {
-                                        // Slock (task #800): list rows keep the legacy
-                                        // fill regardless of the paragraph fill local.
-                                        MarkdownParagraph(
-                                            content = content,
-                                            node = nestedChild,
-                                            modifier = if (depth == 0) Modifier.fillMaxWidth() else Modifier,
-                                        )
-                                        LocalRaftMarkdownAfterListParagraph.current?.invoke(nestedChild)
-                                    }
+                                        UNORDERED_LIST -> {
+                                            val model = MarkdownComponentModel(
+                                                content = content,
+                                                node = nestedChild,
+                                                typography = markdownTypography,
+                                                extra = persistentMapOf(MARKDOWN_LIST_DEPTH_KEY to depth + 1)
+                                            )
+                                            markdownComponents.unorderedList.invoke(model)
+                                        }
 
-                                    else -> {
-                                        handleElement(
-                                            node = nestedChild,
-                                            components = markdownComponents,
-                                            content = content,
-                                            includeSpacer = false
-                                        )
+                                        PARAGRAPH -> {
+                                            // Slock (task #800): list rows keep the legacy
+                                            // fill regardless of the paragraph fill local.
+                                            MarkdownParagraph(
+                                                content = content,
+                                                node = nestedChild,
+                                                modifier = if (depth == 0) Modifier.fillMaxWidth() else Modifier,
+                                            )
+                                            LocalRaftMarkdownAfterListParagraph.current?.invoke(nestedChild)
+                                        }
+
+                                        else -> {
+                                            handleElement(
+                                                node = nestedChild,
+                                                components = markdownComponents,
+                                                content = content,
+                                                includeSpacer = false
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
 
-                    index++
+                        index++
+                    }
                 }
             }
         }

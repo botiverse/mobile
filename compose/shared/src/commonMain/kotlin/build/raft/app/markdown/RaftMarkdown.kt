@@ -107,12 +107,15 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.dp
@@ -1546,10 +1549,15 @@ private object RaftMarkdownTextProvider : TextProvider {
         val styledText = remember(appLinkContent.text, resolvedStyle, permalinkThemeColors) {
             appLinkContent.text.withRaftMarkdownSpanFonts(resolvedStyle).withRaftMarkdownLinkUnderlines()
         }
+        val isRtl = resolvedStyle.textDirection == TextDirection.Rtl || LocalLayoutDirection.current == LayoutDirection.Rtl
         val resolvedText =
-            remember(styledText, bodyClick) {
+            remember(styledText, bodyClick, isRtl) {
                 // A chip's painted padding taps as the chip, never as the body (task #wg-mobile:#9).
-                styledText.withRaftInlineChipGapLinks().withRaftMarkdownBodyClick(bodyClick)
+                // Add chip gap links before bidi isolation so each chip + its flanking gaps stay in
+                // a single FSI..PDI isolate when laid out inside an RTL paragraph (botiverse/slock #15039).
+                val chipGapText = styledText.withRaftInlineChipGapLinks()
+                val bidiText = if (isRtl) chipGapText.withRaftRtlLinkBidiIsolation() else chipGapText
+                bidiText.withRaftMarkdownBodyClick(bodyClick)
             }
         // The CJK line box (RaftCjkLineHeight.kt) on the text as laid out, chip labels included:
         // RaftText's rule, here because markdown text never goes through RaftText. Only the layout
@@ -3246,31 +3254,34 @@ private fun RaftMarkdownCodeBlockContent(
             copied = false
         }
     }
-    Box(modifier = Modifier.fillMaxWidth()) {
-        RaftMarkdownCodeSurface(code = code, language = language, style = style)
-        // raft-ui 0.20 CodeBlock: the copy action is a 28dp ghost button 6dp from the block's
-        // corner at radius-chip, in a column of its own (the code keeps its end padding), and
-        // presses with the medium tier. No tooltip: a long press belongs to the message row.
-        RaftIconButton(
-            onClick = {
-                bridge.copyToPasteboard(code)
-                copied = true
-            },
-            tooltip = null,
-            contentDescription = stringResource(if (copied) Res.string.common_copied else Res.string.common_copy),
-            modifier =
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = RaftMarkdownCodeSurfaceVerticalInset + RaftMarkdownCodeActionInset, end = RaftMarkdownCodeActionInset),
-            variant = RaftButtonVariant.Ghost,
-            size = RaftIconButtonSize.Sm,
-        ) {
-            RaftLucideIcon(
-                name = if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
-                // web CopyIconButton surface="code": follows the code palette.
-                color = raftArgbHex(RaftMarkdownCodeBlockForeground.copy(alpha = 0.7f)),
-                modifier = Modifier.size(14.dp)
-            )
+    // Code blocks stay left-to-right even inside RTL blockquotes or lists (botiverse/slock #15039).
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            RaftMarkdownCodeSurface(code = code, language = language, style = style.withRaftTextDirection(RaftTextDirection.Ltr))
+            // raft-ui 0.20 CodeBlock: the copy action is a 28dp ghost button 6dp from the block's
+            // corner at radius-chip, in a column of its own (the code keeps its end padding), and
+            // presses with the medium tier. No tooltip: a long press belongs to the message row.
+            RaftIconButton(
+                onClick = {
+                    bridge.copyToPasteboard(code)
+                    copied = true
+                },
+                tooltip = null,
+                contentDescription = stringResource(if (copied) Res.string.common_copied else Res.string.common_copy),
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = RaftMarkdownCodeSurfaceVerticalInset + RaftMarkdownCodeActionInset, end = RaftMarkdownCodeActionInset),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Sm,
+            ) {
+                RaftLucideIcon(
+                    name = if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
+                    // web CopyIconButton surface="code": follows the code palette.
+                    color = raftArgbHex(RaftMarkdownCodeBlockForeground.copy(alpha = 0.7f)),
+                    modifier = Modifier.size(14.dp)
+                )
+            }
         }
     }
 }

@@ -17,12 +17,14 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +36,9 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ThreadAttachmentCommentAnchor
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.markdown.raftTextDirection
+import build.raft.app.markdown.toComposeLayoutDirection
+import build.raft.app.markdown.toComposeTextDirection
 import build.raft.app.model.MemberKind
 import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.designsystem.components.RaftAvatarSize
@@ -436,33 +441,38 @@ private fun AttachmentCommentComposer(
                 ),
         verticalArrangement = Arrangement.spacedBy(CommentComposerGap)
     ) {
-        TextField(
-            value = state.draft,
-            placeholder = stringResource(Res.string.thread_comments_composer_placeholder, state.attachment.name),
-            autoFocus = false,
-            onValueChange = onDraftChange,
-            enabled = enabled,
-            // CSS wraps greedily (a break after `-` included); Compose's default paragraph
-            // strategy would re-balance the lines instead. Use the common `LineBreak.Simple`
-            // preset: the Strategy/Strictness/WordBreak constructor is Android-only and breaks
-            // the iOS (Kotlin/Native) compile of commonMain.
-            textStyle =
-                RaftType.Input.copy(
-                    color = if (enabled) colors.foreground else colors.foregroundDisabled,
-                    lineBreak = LineBreak.Simple
-                ),
-            placeholderColor = colors.foregroundHint,
-            cursorBrush = SolidColor(colors.foreground),
-            maxLines = 5,
-            systemNewlineAction = true,
-            imeActionRequested = false,
-            contentAlignment = Alignment.TopStart,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = CommentComposerInputInset)
-                    .heightIn(min = CommentComposerInputMinHeight, max = CommentComposerInputMaxHeight)
-        )
+        val commentDirection = remember(state.draft.text) { raftTextDirection(state.draft.text) }
+        val commentLayoutDirection = commentDirection.toComposeLayoutDirection(LocalLayoutDirection.current)
+        CompositionLocalProvider(LocalLayoutDirection provides commentLayoutDirection) {
+            TextField(
+                value = state.draft,
+                placeholder = stringResource(Res.string.thread_comments_composer_placeholder, state.attachment.name),
+                autoFocus = false,
+                onValueChange = onDraftChange,
+                enabled = enabled,
+                // CSS wraps greedily (a break after `-` included); Compose's default paragraph
+                // strategy would re-balance the lines instead. Use the common `LineBreak.Simple`
+                // preset: the Strategy/Strictness/WordBreak constructor is Android-only and breaks
+                // the iOS (Kotlin/Native) compile of commonMain.
+                textStyle =
+                    RaftType.Input.copy(
+                        color = if (enabled) colors.foreground else colors.foregroundDisabled,
+                        lineBreak = LineBreak.Simple,
+                        textDirection = commentDirection.toComposeTextDirection(),
+                    ),
+                placeholderColor = colors.foregroundHint,
+                cursorBrush = SolidColor(colors.foreground),
+                maxLines = 5,
+                systemNewlineAction = true,
+                imeActionRequested = false,
+                contentAlignment = Alignment.TopStart,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = CommentComposerInputInset)
+                        .heightIn(min = CommentComposerInputMinHeight, max = CommentComposerInputMaxHeight)
+            )
+        }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             val sendLabel = stringResource(Res.string.common_send)
             RaftIconButton(
