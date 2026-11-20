@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -44,14 +45,17 @@ class RaftPopupAnchorDismissTest {
             var dismissals = 0
             setContent(
                 themed {
-                    Column(Modifier.height(200.dp).verticalScroll(rememberScrollState())) {
+                    // The region sits inside the window, so the trigger scrolled out of it is still
+                    // over the window: clipped by the region, not laid out past the window.
+                    Column(Modifier.padding(top = 400.dp).height(200.dp).verticalScroll(rememberScrollState())) {
+                        Spacer(Modifier.height(100.dp))
                         Box {
                             RaftText("Trigger")
                             RaftDropdownMenu(expanded = open, onDismissRequest = { open = false; dismissals++ }) {
                                 RaftMenuItem("Rename", onClick = {})
                             }
                         }
-                        Spacer(Modifier.height(800.dp))
+                        Spacer(Modifier.height(400.dp))
                         RaftText("Bottom")
                     }
                 },
