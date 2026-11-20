@@ -2466,6 +2466,7 @@ class RealSettingsRepository(
         source: String? = null,
         warningLogger: (String) -> Unit = this.warningLogger,
         errorTextDecoder: (HomeNetworkResponse) -> String? = { null },
+        errorCodeDecoder: (HomeNetworkResponse) -> String? = { null },
         mapper: (String) -> T
     ): DataResult<T> =
         executeSettingsWithDiagnostics(
@@ -2475,6 +2476,7 @@ class RealSettingsRepository(
             source = source,
             warningLogger = warningLogger,
             errorTextDecoder = errorTextDecoder,
+            errorCodeDecoder = errorCodeDecoder,
             mapper = mapper
         )
 }
