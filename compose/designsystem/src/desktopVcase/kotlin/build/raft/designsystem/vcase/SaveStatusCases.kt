@@ -18,7 +18,6 @@ import dev.vcase.VCase
  * [build.raft.designsystem.components.RaftSaveStatus] (raft-ui 0.84.0 SaveStatus,
  * `save-status/compositions/preview` and `failed`): under a select in a field and under a
  * settings row's description, idle (no line, no room) and failed.
- * Replaces SaveStatusScreenshotTest (save_status_light/_dark).
  */
 @VCase("ds.save-status.gallery")
 @Composable
