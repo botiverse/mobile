@@ -93,6 +93,13 @@ private suspend fun RaftNetworkClient.updateChannelProfile(
 private suspend fun RaftNetworkClient.unarchiveChannel(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}/unarchive", method = "POST")
 
+private suspend fun RaftNetworkClient.setChannelVisitorVisible(
+    priority: DataRequestPriority,
+    channelId: ChannelId,
+    bodyText: String,
+): HomeNetworkResponse =
+    request(priority, "channels/${channelId.value}", method = "PATCH", bodyText = bodyText)
+
 private suspend fun RaftNetworkClient.openDirectMessage(priority: DataRequestPriority, bodyText: String): HomeNetworkResponse =
     request(priority, "channels/dm", method = "POST", bodyText = bodyText)
 
@@ -229,6 +236,31 @@ class RealChannelRepository(
                 parseSharedChannelRowResult(bodyText)
                     ?.takeIf { it.channelId == channelId }
                     ?: throw IllegalStateException("Unarchive channel response missing channel")
+            }
+        )
+    }
+
+    /** `PATCH channels/:id` with `{ visitorVisible }`; the server answers with the updated channel row. */
+    suspend fun setChannelVisitorVisible(
+        channelId: ChannelId,
+        visitorVisible: Boolean,
+    ): DataResult<HomeChannelRow> {
+        currentContext() ?: return authRequired()
+        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        return executeChannel(
+            emptyReason = EmptyReason.NoChannels,
+            block = {
+                networkClient.setChannelVisitorVisible(
+                    DataRequestPriority.Foreground,
+                    channelId,
+                    buildChannelVisitorVisibleBody(visitorVisible),
+                )
+            },
+            source = "channel_visitor_visible",
+            mapper = { bodyText ->
+                parseSharedChannelRowResult(bodyText)
+                    ?.takeIf { it.channelId == channelId }
+                    ?: throw IllegalStateException("Visitor visible update response missing channel")
             }
         )
     }
@@ -514,6 +546,9 @@ data class OpenUserDirectMessageRequestBody(val userId: String)
 private data class ChannelActivityMuteRequestBody(val activityMuted: Boolean)
 
 @Serializable
+private data class ChannelVisitorVisibleRequestBody(val visitorVisible: Boolean)
+
+@Serializable
 private data class ChannelActivityMuteSettingsResponse(
     val activityMuted: Boolean,
     val muteFromSeq: Long? = null,
@@ -541,6 +576,9 @@ private fun buildOpenUserDirectMessageBody(userId: MemberId): String =
 
 private fun buildChannelActivityMuteBody(muted: Boolean): String =
     channelRepositoryJson.encodeToString(ChannelActivityMuteRequestBody(muted))
+
+private fun buildChannelVisitorVisibleBody(visitorVisible: Boolean): String =
+    channelRepositoryJson.encodeToString(ChannelVisitorVisibleRequestBody(visitorVisible))
 
 @Serializable
 private data class ChannelErrorBody(

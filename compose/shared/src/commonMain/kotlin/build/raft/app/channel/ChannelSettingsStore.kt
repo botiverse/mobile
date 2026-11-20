@@ -94,6 +94,8 @@ internal enum class ChannelSettingsAction {
     Leave,
     /** `POST channels/:id/unarchive` (web EditChannelDialog `handleUnarchive`). */
     Unarchive,
+    /** `PATCH channels/:id { visitorVisible }` (web ChannelVisitorVisibleField, slock #13860). */
+    VisitorVisible,
 }
 
 internal sealed interface ChannelSettingsEffect {
@@ -294,6 +296,11 @@ internal data class ChannelSettingsState(
      */
     val pendingMuted: Boolean? = null,
     val pendingPinned: Boolean? = null,
+    val pendingVisitorVisible: Boolean? = null,
+    /** Refusal code from `PATCH channels/:id { visitorVisible }`, shown inline under the row's description. */
+    val visitorVisibleErrorCode: String? = null,
+    /** Server trace id of the refused `visitorVisible` request, shown under the row with a copy action. */
+    val visitorVisibleErrorTraceId: String? = null,
     val profileStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val profileErrorCode: String? = null,
     /** The server's reason for [profileErrorCode] where the form shows it (a failed Unarchive from the warning). */
@@ -326,6 +333,10 @@ internal data class ChannelSettingsState(
 
     /** The pin switch: the pending value of a tap in flight, else the sidebar order's. */
     fun displayPinned(channelId: String): Boolean = pendingPinned ?: isPinned(channelId)
+
+    /** The Visible to visitors switch: the pending value of a tap in flight, else the channel's. */
+    val displayVisitorVisible: Boolean
+        get() = pendingVisitorVisible ?: (channel?.guestVisible == true)
 }
 
 internal sealed interface ChannelSettingsIntent {
@@ -344,6 +355,7 @@ internal sealed interface ChannelSettingsIntent {
     ) : ChannelSettingsIntent
     data object MakePrivate : ChannelSettingsIntent
     data object MakePublic : ChannelSettingsIntent
+    data class SetVisitorVisible(val visible: Boolean) : ChannelSettingsIntent
     data object Leave : ChannelSettingsIntent
     data object Unarchive : ChannelSettingsIntent
     data object Archive : ChannelSettingsIntent
@@ -367,6 +379,7 @@ internal interface ChannelSettingsDataSource {
     suspend fun applySlackBridge(channel: HomeChannelRow, slackChannelId: String?): DataResult<ChannelSlackBridgeState?>
     suspend fun makePrivate(): DataResult<Unit>
     suspend fun makePublic(): DataResult<Unit>
+    suspend fun setVisitorVisible(visible: Boolean): DataResult<HomeChannelRow>
     suspend fun leave(): DataResult<Unit>
     suspend fun unarchive(): DataResult<HomeChannelRow>
     /** `POST channels/:id/unarchive` for the archived channel holding a refused name (not this one). */
@@ -482,6 +495,11 @@ internal class RealChannelSettingsDataSource(
             channelRepository(networkClient)
                 .updateChannel(route.channelId, ChannelVisibility.Public)
                 .map { Unit }
+        }
+
+    override suspend fun setVisitorVisible(visible: Boolean): DataResult<HomeChannelRow> =
+        runner.run { _, networkClient ->
+            channelRepository(networkClient).setChannelVisitorVisible(route.channelId, visible)
         }
 
     override suspend fun leave(): DataResult<Unit> =
@@ -641,6 +659,24 @@ internal class ChannelSettingsStore(
                 val channel = mutableState.value.channel ?: return
                 if (channelSettingsShowsVisibilityAction(channel, mutableState.value.permissions()) && channelSettingsCanMakePublic(channel)) {
                     launchAction(ChannelSettingsAction.Visibility, call = dataSource::makePublic)
+                }
+            }
+            is ChannelSettingsIntent.SetVisitorVisible -> {
+                if (!mutableState.value.writeActionsEnabled) return
+                val channel = mutableState.value.channel ?: return
+                if (channelSettingsShowsVisitorVisible(channel, mutableState.value.permissions())) {
+                    launchAction(
+                        ChannelSettingsAction.VisitorVisible,
+                        optimistic = {
+                            copy(
+                                pendingVisitorVisible = intent.visible,
+                                visitorVisibleErrorCode = null,
+                                visitorVisibleErrorTraceId = null,
+                            )
+                        },
+                    ) {
+                        dataSource.setVisitorVisible(intent.visible)
+                    }
                 }
             }
             ChannelSettingsIntent.Archive -> {
@@ -1027,6 +1063,7 @@ internal class ChannelSettingsStore(
                             action,
                             result.error.code,
                             result.error.serverMessage,
+                            traceId = result.error.traceId,
                             // Web EditChannelDialog: a rename onto an archived channel's name names it.
                             collision =
                                 result.error
@@ -1034,7 +1071,12 @@ internal class ChannelSettingsStore(
                                     ?.archivedNameCollisionOrNull(RENAME_CHANNEL_ARCHIVED_TYPES),
                         )
                     is DataResult.NoPermission ->
-                        applyMutationFailure(action, result.blocker.code, result.blocker.serverMessage)
+                        applyMutationFailure(
+                            action,
+                            result.blocker.code,
+                            result.blocker.serverMessage,
+                            traceId = result.blocker.traceId,
+                        )
                     is DataResult.Empty -> applyMutationFailure(action, result.reason.name)
                 }
             }
@@ -1088,6 +1130,18 @@ internal class ChannelSettingsStore(
                         actionInFlight = null,
                         effect = ChannelSettingsEffect.Updated(action),
                     )
+                ChannelSettingsAction.VisitorVisible -> {
+                    val updated = value as HomeChannelRow
+                    current.copy(
+                        // PATCH /channels/:id does not re-attach channelCapabilities; keep them and update the flag.
+                        channel = current.channel?.copy(guestVisible = updated.guestVisible),
+                        actionInFlight = null,
+                        pendingVisitorVisible = null,
+                        visitorVisibleErrorCode = null,
+                        visitorVisibleErrorTraceId = null,
+                        effect = ChannelSettingsEffect.Updated(action),
+                    )
+                }
                 ChannelSettingsAction.Delete,
                 ChannelSettingsAction.Disconnect,
                 ChannelSettingsAction.Leave ->
@@ -1157,6 +1211,7 @@ internal class ChannelSettingsStore(
         action: ChannelSettingsAction,
         code: String,
         serverMessage: String? = null,
+        traceId: String? = null,
         collision: ArchivedNameCollision? = null,
     ) {
         if (code == AUTHENTICATED_ROUTE_AUTHORITY_CHANGED) {
@@ -1177,6 +1232,11 @@ internal class ChannelSettingsStore(
                 // A failed toggle shows its old value again.
                 pendingMuted = null,
                 pendingPinned = null,
+                pendingVisitorVisible = null,
+                visitorVisibleErrorCode =
+                    if (action == ChannelSettingsAction.VisitorVisible) code else mutableState.value.visitorVisibleErrorCode,
+                visitorVisibleErrorTraceId =
+                    if (action == ChannelSettingsAction.VisitorVisible) traceId else mutableState.value.visitorVisibleErrorTraceId,
                 profileStatus =
                     if (action == ChannelSettingsAction.Profile) {
                         ChannelProfileUpdateStatus.Failed
@@ -1275,6 +1335,7 @@ private fun build.raft.app.model.ConversationSummary.withConfirmedSettings(
         ChannelSettingsAction.Mute -> copy(activityNotificationPreference = channel.activityNotificationPreference)
         ChannelSettingsAction.Profile -> copy(name = channel.name, subtitle = channel.subtitle)
         ChannelSettingsAction.Visibility -> copy(channelType = channel.channelType)
+        ChannelSettingsAction.VisitorVisible -> copy(guestVisible = channel.guestVisible)
         ChannelSettingsAction.Archive -> copy(archived = true)
         ChannelSettingsAction.Unarchive -> copy(archived = false)
         ChannelSettingsAction.Pin,

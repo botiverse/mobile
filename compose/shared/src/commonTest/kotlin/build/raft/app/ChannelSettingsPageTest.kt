@@ -11,6 +11,7 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -407,5 +408,77 @@ class ChannelSettingsPageTest {
         ChannelSettingsActionRow.entries
             .filterNot { it == ChannelSettingsActionRow.MakePrivate || it == ChannelSettingsActionRow.MakePublic }
             .forEach { assertFalse(channelSettingsIsVisibilityAction(it)) }
+    }
+
+    @Test
+    fun visitorVisibleRequiresExplicitManageVisitorAccessAndRespectsChannelGuards() {
+        val withCap = ChannelCapabilities(manageVisitorAccess = true)
+        val withoutCap = ChannelCapabilities(editChannelMetadata = true, changeChannelVisibility = true, manageVisitorAccess = false)
+
+        // Absent channelCapabilities never infers manageVisitorAccess from canManage.
+        assertFalse(channelSettingsPermissions(row(capabilities = null), canManage = true).manageVisitorAccess)
+        assertFalse(channelSettingsPermissions(row(capabilities = withoutCap), canManage = true).manageVisitorAccess)
+        val granted = channelSettingsPermissions(row(capabilities = withCap), canManage = false)
+        assertTrue(granted.manageVisitorAccess)
+        assertFalse(granted.canEditChannel)
+
+        val publicChannel = row(capabilities = withCap)
+        assertTrue(channelSettingsOffersVisitorVisible(publicChannel, granted, serverPublicPageLive = true))
+        // Unknown serverPublicPageLive leaves the row up so the server decides.
+        assertTrue(channelSettingsOffersVisitorVisible(publicChannel, granted, serverPublicPageLive = null))
+
+        // Off and cannot turn on: hidden; on: shown so it can be turned off.
+        val cannotTurnOn =
+            listOf(
+                row(type = "private", capabilities = withCap) to true,
+                row(name = "all", capabilities = withCap) to true,
+                row(capabilities = withCap) to false,
+                row(capabilities = withCap).copy(hasExternalRelation = true) to true,
+            )
+        cannotTurnOn.forEach { (offChannel, publicPageLive) ->
+            assertFalse(channelSettingsOffersVisitorVisible(offChannel, granted, publicPageLive))
+            assertTrue(channelSettingsOffersVisitorVisible(offChannel.copy(guestVisible = true), granted, publicPageLive))
+        }
+
+        // Joint and archived channels never show the row, even when on.
+        assertFalse(channelSettingsOffersVisitorVisible(row(type = "joint", capabilities = withCap).copy(guestVisible = true), granted, true))
+        assertFalse(channelSettingsOffersVisitorVisible(row(archived = true, capabilities = withCap).copy(guestVisible = true), granted, true))
+
+        // Channel settings section shows when Visible to visitors is the only row (e.g. #all while on).
+        val allOn = row(name = "all", capabilities = withCap).copy(guestVisible = true)
+        assertTrue(
+            channelDetailsHasChannelSettings(
+                ChannelSettingsUiModel(
+                    channel = allOn,
+                    memberSlice = SharedServerChannelMembersSlice(channelId = "c"),
+                    pinned = false,
+                    muted = false,
+                    permissions = granted,
+                    writeActionsEnabled = true,
+                    canStopAllAgents = false,
+                    serverPublicPageLive = true,
+                )
+            )
+        )
+    }
+
+    @Test
+    fun visitorVisibleRefusalCodesMapToDedicatedCopyAndFallback() {
+        assertEquals(Res.string.channel_settings_visitor_visible_forbidden, channelSettingsVisitorVisibleErrorRes("visitor_visibility_forbidden"))
+        assertEquals(
+            Res.string.channel_settings_visitor_visible_requires_public_server,
+            channelSettingsVisitorVisibleErrorRes("visitor_visibility_requires_public_server"),
+        )
+        assertEquals(
+            Res.string.channel_settings_visitor_visible_requires_public_channel,
+            channelSettingsVisitorVisibleErrorRes("visitor_visibility_requires_public_channel"),
+        )
+        assertEquals(
+            Res.string.channel_settings_visitor_visible_unsupported_channel,
+            channelSettingsVisitorVisibleErrorRes("visitor_visibility_unsupported_channel"),
+        )
+        assertEquals(Res.string.channel_settings_visitor_visible_save_failed, channelSettingsVisitorVisibleErrorRes("visitor_visible_invalid"))
+        assertEquals(Res.string.channel_settings_visitor_visible_save_failed, channelSettingsVisitorVisibleErrorRes("visitor_visible_conflict"))
+        assertEquals(Res.string.channel_settings_visitor_visible_save_failed, channelSettingsVisitorVisibleErrorRes("server_unavailable"))
     }
 }

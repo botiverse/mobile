@@ -709,6 +709,60 @@ class ChannelRepositoryDataSourceTest {
         assertEquals(listOf(false, true), withArchived.channels.map { it.archived })
     }
 
+    @Test
+    fun setChannelVisitorVisiblePatchesVisitorVisibleAndPreservesRefusalCodes() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseBody =
+                    """{"id":"channel-1","name":"lobby","type":"channel","visitorVisible":true,"guestVisible":true,"joined":true}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val updated =
+            assertIs<DataResult.Content<HomeChannelRow>>(
+                repository.setChannelVisitorVisible(ChannelId("channel-1"), visitorVisible = true)
+            ).data
+
+        assertTrue(updated.guestVisible)
+        assertEquals(
+            listOf(RecordedChannelRequest(DataRequestPriority.Foreground, "PATCH", "channels/channel-1")),
+            network.requests,
+        )
+        assertEquals("true", network.bodies.single().asJsonObject()["visitorVisible"]?.jsonPrimitive?.content)
+
+        val forbiddenRepo =
+            RealChannelRepository(
+                sampleStore(),
+                FakeChannelNetworkClient(
+                    responseCode = 403,
+                    responseBody = null,
+                    responseErrorBody = """{"code":"visitor_visibility_forbidden","error":"Forbidden"}""",
+                ),
+            )
+        assertEquals(
+            "visitor_visibility_forbidden",
+            assertIs<DataResult.NoPermission>(
+                forbiddenRepo.setChannelVisitorVisible(ChannelId("channel-1"), visitorVisible = true)
+            ).blocker.code,
+        )
+
+        val requiresPublicRepo =
+            RealChannelRepository(
+                sampleStore(),
+                FakeChannelNetworkClient(
+                    responseCode = 400,
+                    responseBody = null,
+                    responseErrorBody = """{"code":"visitor_visibility_requires_public_server","error":"Server is not public"}""",
+                ),
+            )
+        assertEquals(
+            "visitor_visibility_requires_public_server",
+            assertIs<DataResult.Error>(
+                requiresPublicRepo.setChannelVisitorVisible(ChannelId("channel-1"), visitorVisible = true)
+            ).error.code,
+        )
+    }
+
     private fun String.asJsonObject() =
         Json.parseToJsonElement(this).jsonObject
 

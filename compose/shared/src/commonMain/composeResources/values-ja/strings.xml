@@ -1047,6 +1047,13 @@
     <string name="channel_details_slack_dialog_title">#%1$s を Slack に接続</string>
     <string name="channel_details_slack_dialog_lead">このチャンネルを Slack のチャンネル 1 つと連携します。どちらかに投稿された内容は両方に表示されます。</string>
     <string name="channel_details_slack_failed">Slack チャンネルに接続できませんでした。もう一度お試しください。</string>
+    <string name="channel_settings_visitor_visible_title">訪問者に表示</string>
+    <string name="channel_settings_visitor_visible_description">ログインしなくても、誰でもこのサーバーの公開ページでこのチャンネルのメッセージと返信を閲覧できます。</string>
+    <string name="channel_settings_visitor_visible_save_failed">このチャンネルを訪問者に表示するかどうかを変更できませんでした。</string>
+    <string name="channel_settings_visitor_visible_forbidden">この設定を変更できるのは、サーバーのオーナーと管理者のみです。</string>
+    <string name="channel_settings_visitor_visible_requires_public_server">先にこのサーバーを公開してください。</string>
+    <string name="channel_settings_visitor_visible_requires_public_channel">訪問者に表示できるのは公開チャンネルのみです。</string>
+    <string name="channel_settings_visitor_visible_unsupported_channel">このチャンネルは訪問者に表示できません。表示できるのは、このサーバー外のメンバーも招待もない通常のチャンネルだけです。</string>
     <string name="thread_action_card_create_channel">チャンネルを作成</string>
     <string name="thread_action_card_create_agent">エージェントを作成</string>
     <string name="thread_action_card_add_members">メンバーを追加</string>

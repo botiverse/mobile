@@ -101,4 +101,23 @@ class PublicServerMarksWireTest {
         assertTrue(projection.guestVisible)
         assertFalse(projection.archived)
     }
+
+    @Test
+    fun channelPayloadsPreferVisitorVisibleAndDecodeManageVisitorAccess() {
+        val detail = assertNotNull(
+            parseRaftChannelDetail(
+                """{"id":"c-public","name":"announcements","type":"channel","visitorVisible":true,"guestVisible":false,"channelCapabilities":{"manageVisitorAccess":true},"archivedAt":null,"joined":true}"""
+            )
+        )
+        assertTrue(detail.guestVisible)
+        assertEquals(true, detail.channelCapabilities?.manageVisitorAccess)
+
+        val listRow = assertNotNull(
+            parseSharedChannelRowResult(
+                """{"id":"c-public","name":"announcements","type":"channel","visitorVisible":false,"guestVisible":true,"channelCapabilities":{"manageVisitorAccess":false},"joined":true}"""
+            )
+        )
+        assertFalse(listRow.guestVisible)
+        assertEquals(false, listRow.channelCapabilities?.manageVisitorAccess)
+    }
 }

@@ -1047,6 +1047,13 @@
     <string name="channel_details_slack_dialog_title">Conectar #%1$s con Slack</string>
     <string name="channel_details_slack_dialog_lead">Empareja este canal con un canal de Slack. Lo que se publique en uno aparece en los dos.</string>
     <string name="channel_details_slack_failed">No se conectó el canal de Slack. Inténtalo de nuevo.</string>
+    <string name="channel_settings_visitor_visible_title">Visible para visitantes</string>
+    <string name="channel_settings_visitor_visible_description">Cualquiera puede leer sus mensajes y respuestas en la página pública de este servidor, sin iniciar sesión.</string>
+    <string name="channel_settings_visitor_visible_save_failed">No se pudo cambiar si los visitantes pueden ver este canal.</string>
+    <string name="channel_settings_visitor_visible_forbidden">Solo los propietarios y administradores del servidor pueden cambiar esto.</string>
+    <string name="channel_settings_visitor_visible_requires_public_server">Primero haz público este servidor.</string>
+    <string name="channel_settings_visitor_visible_requires_public_channel">Solo un canal público puede ser visible para visitantes.</string>
+    <string name="channel_settings_visitor_visible_unsupported_channel">Este canal no puede ser visible para visitantes: solo puede serlo un canal normal sin personas ni invitaciones de fuera de este servidor.</string>
     <string name="thread_action_card_create_channel">Crear canal</string>
     <string name="thread_action_card_create_agent">Crear agente</string>
     <string name="thread_action_card_add_members">Agregar miembros</string>

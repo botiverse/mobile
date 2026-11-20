@@ -319,6 +319,11 @@ private class OfflineFakeChannelSettingsDataSource(
 
     override suspend fun makePublic(): DataResult<Unit> = DataResult.Content(Unit)
 
+    override suspend fun setVisitorVisible(visible: Boolean): DataResult<HomeChannelRow> =
+        DataResult.Content(
+            HomeChannelRow(threadId = ThreadId("channel-1"), channelId = ChannelId("channel-1"), name = "#x", guestVisible = visible)
+        )
+
     override suspend fun leave(): DataResult<Unit> = DataResult.Content(Unit)
 
     override suspend fun unarchive(): DataResult<HomeChannelRow> =

@@ -223,6 +223,8 @@ data class ChannelCapabilities(
     val deleteChannels: Boolean? = null,
     val changeChannelVisibility: Boolean? = null,
     val federateChannels: Boolean? = null,
+    /** Server owners and admins only (web `EditChannelDialog` `showVisitorVisible`, slock #13860). */
+    val manageVisitorAccess: Boolean? = null,
 )
 
 // Member Models
