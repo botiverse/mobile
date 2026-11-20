@@ -292,6 +292,8 @@ internal data class SystemKillExit(
      * external service provider": the process hosted another package's code.
      */
     val definingUid: Int? = null,
+    /** What [ApplicationExitInfo.getProcessStateSummary] held: [ExitSummaryState]; null when not read. */
+    val summaryState: ExitSummaryState? = null,
 ) {
     /**
      * Whether the defining uid is another package's ([definingUid] != [packageUid]); null when
@@ -315,6 +317,26 @@ internal data class SystemKillExit(
             traceAvailable = false,
             pid = pid,
         )
+}
+
+/**
+ * The exit record's process state summary: [Empty] (none, as some OEM ROMs return), [Unrecognised]
+ * (bytes that are not a [RaftBuildStamp]), or [Stamp] (this app's build stamp).
+ */
+internal enum class ExitSummaryState(val label: String) {
+    Empty("empty"),
+    Unrecognised("unrecognised"),
+    Stamp("stamp"),
+    ;
+
+    companion object {
+        fun of(summary: ByteArray?): ExitSummaryState =
+            when {
+                summary == null || summary.isEmpty() -> Empty
+                RaftBuildStamp.decodeStamp(summary) != null -> Stamp
+                else -> Unrecognised
+            }
+    }
 }
 
 internal enum class SystemKillAction(val label: String) {
@@ -1223,6 +1245,32 @@ internal fun installedBuildInferredForExit(exit: SystemKillExit, reporter: Syste
     return updated > 0L && exitAt > 0L && updated <= reporter.nowMillis && exitAt <= reporter.nowMillis && updated < exitAt
 }
 
+/**
+ * How far the exited process got through startup ([RaftStartupPhaseMarker]) and how long after the
+ * last package update it exited. `crash_startup_marker` is always set (matched / none);
+ * the rest only when known.
+ */
+internal fun startupPhaseExtras(
+    exit: SystemKillExit,
+    startup: StartupPhaseRecord?,
+    reporter: SystemKillReporterBuild?,
+): Map<String, Any?> =
+    buildMap {
+        val at = exit.timestampMillis
+        put("crash_startup_marker", if (startup == null) "none" else "matched")
+        if (startup != null) {
+            put("crash_startup_phase", startup.phase.label)
+            put("crash_ms_from_process_start", (at - startup.processStartMillis).coerceAtLeast(0L))
+            put("crash_startup_phase_age_ms", at - startup.phaseAtMillis)
+        }
+        val updated = reporter?.packageUpdatedMillis?.takeIf { it > 0L }
+        if (updated != null) {
+            put("crash_package_updated_at", updated)
+            // Negative when the update came after the exit (that exit predates this install).
+            put("crash_update_to_exit_ms", at - updated)
+        }
+    }
+
 /** Ticket metadata (merged into Hands `metadata_json`), in the `crash_*` vocabulary ANR tickets use. */
 internal fun systemKillExtras(
     exit: SystemKillExit,
@@ -1235,6 +1283,8 @@ internal fun systemKillExtras(
      * the last version source when the exit carries none of its own; none when null.
      */
     reporter: SystemKillReporterBuild? = null,
+    /** The exited process's startup progress ([RaftStartupPhaseMarker]); null when none was found. */
+    startup: StartupPhaseRecord? = null,
 ): Map<String, Any?> =
     buildMap {
         installId?.let { put("crash_exit_event_id", systemKillExitEventId(it, exit)) }
@@ -1295,6 +1345,8 @@ internal fun systemKillExtras(
             put("crash_exit_description", it.take(MaxExitDescriptionChars))
         }
         put("crash_memory_sample", if (telemetry == null) "none" else "matched")
+        exit.summaryState?.let { put("crash_exit_summary", it.label) }
+        putAll(startupPhaseExtras(exit, startup, reporter))
         // The app's recent foreground evidence (see classifySystemKill), next to the raw fields:
         // crash_exit_importance, crash_foreground (the exit importance) and crash_trim are never
         // replaced by an inference. Names proposed in botiverse/hands#955.
@@ -1340,13 +1392,22 @@ internal fun systemKillExtras(
  * minutes old (Hands 4a5504d3: "in foreground ... trim ui_hidden" from 600 s and 1241 s before an
  * exit at importance 300).
  */
-internal fun systemKillMessage(exit: SystemKillExit, telemetry: MemoryTelemetrySnapshot?): String =
+internal fun systemKillMessage(
+    exit: SystemKillExit,
+    telemetry: MemoryTelemetrySnapshot?,
+    startup: StartupPhaseRecord? = null,
+): String =
     buildString {
         val at = exit.timestampMillis
         append("System kill: ").append(historicalProcessExitReasonLabel(exit.reasonCode))
         append(" (reasonCode=").append(exit.reasonCode)
         append(" status=").append(exit.status)
         append(" importance=").append(exit.importance).append(')')
+        if (startup != null) {
+            append("\nstartup reached ").append(startup.phase.label)
+            append(" (").append(beforeExit(at, startup.phaseAtMillis)).append("), ")
+            append((at - startup.processStartMillis).coerceAtLeast(0L)).append(" ms after process start")
+        }
         if (telemetry == null) return@buildString
         val system =
             "system: " + (if (exitImportanceForeground(exit.importance)) "foreground" else "background") +
@@ -1445,6 +1506,8 @@ internal object AndroidSystemKillReporter {
         if (!started.compareAndSet(false, true)) return
         val appContext = context.applicationContext
         uploadScope.launch {
+            // Keep only the newest startup records; local only, nothing is sent here.
+            runCatching { RaftStartupPhaseMarker.prune(appContext.filesDir) }
             val privacyMode = RaftServicesPrivacyGate.awaitLaunchDecision()
             if (!RaftServicesPrivacyGate.allowsAutomatic(privacyMode)) {
                 RaftAndroidLocalDiagnostics.recordLog(
@@ -1494,6 +1557,8 @@ internal object AndroidSystemKillReporter {
             runCatching { context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime }.getOrNull()
         val reporter =
             SystemKillReporterBuild(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE.toLong(), packageUpdatedMillis, now)
+        // Startup progress of earlier processes (RaftStartupPhaseMarker), joined to exits by pid.
+        val startupRecords = runCatching { RaftStartupPhaseMarker.readAll(context.filesDir) }.getOrDefault(emptyList())
         // The SDK's own native-crash records still on disk (read-only; see HandsNativeExitCorrelation.kt).
         val nativeScan =
             runCatching { scanHandsNativePendingRecords(handsNativeCrashDir(context.filesDir)) }
@@ -1535,8 +1600,9 @@ internal object AndroidSystemKillReporter {
                 )
             },
             buildReport = { item ->
-                systemKillMessage(item.exit, item.telemetry) to
-                    systemKillExtras(item.exit, item.telemetry, installId = installId, reporter = reporter)
+                val startup = startupRecordForExit(startupRecords, item.exit.pid, item.exit.timestampMillis)
+                systemKillMessage(item.exit, item.telemetry, startup) to
+                    systemKillExtras(item.exit, item.telemetry, installId = installId, reporter = reporter, startup = startup)
             },
             newBatchId = { UUID.randomUUID().toString() },
             submit = submit,
@@ -1655,6 +1721,7 @@ internal object AndroidSystemKillReporter {
             pssKb = pss,
             rssKb = rss,
             build = RaftBuildStamp.decodeStamp(processStateSummary),
+            summaryState = ExitSummaryState.of(processStateSummary),
             processName = processName.orEmpty(),
             description = description,
             // realUid/packageUid/definingUid are API 30, like the reporter (start() returns below R).
