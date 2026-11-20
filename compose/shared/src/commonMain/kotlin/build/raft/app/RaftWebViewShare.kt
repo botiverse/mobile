@@ -69,7 +69,8 @@ internal sealed interface RaftWebViewShareAssembly {
 }
 
 /** Whether a port message ([raftWebViewShareShimScript]) is part of a share rather than a download read. */
-internal fun raftWebViewIsShareMessage(raw: String): Boolean = raw.contains("\"k\":\"share-")
+internal fun raftWebViewIsShareMessage(raw: String): Boolean =
+    "share-" in raw && runCatching { JSONObject(raw).optString("k").startsWith("share-") }.getOrDefault(false)
 
 /**
  * Puts the page's share messages back together, per share id: the files announced at `share-start`,
