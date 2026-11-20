@@ -1564,6 +1564,19 @@ private fun ThreadMessagesListContent(
             )
         }
     val currentMarkdownDocumentWarmContext by rememberUpdatedState(markdownDocumentWarmContext)
+    // A task hand-off card's reason draws refs, @mentions and links like a message body (web #15339).
+    val currentOnOpenMarkdownTag by rememberUpdatedState(onOpenMarkdownTag)
+    val currentOnOpenMarkdownUrl by rememberUpdatedState(onOpenMarkdownUrl)
+    val handoffReasonMarkdown =
+        remember(highlightedMentions, isMarkdownTagValid, resolveMarkdownTagLabel) {
+            ThreadTaskHandoffReasonMarkdown(
+                highlightedMentions = highlightedMentions,
+                isTagValid = isMarkdownTagValid,
+                resolveTagLabel = resolveMarkdownTagLabel,
+                onOpenTag = { tag, actionId -> currentOnOpenMarkdownTag(tag, actionId) },
+                onOpenUrl = { url -> currentOnOpenMarkdownUrl(url) },
+            )
+        }
     LaunchedEffect(
         threadInstanceKey,
         markdownTimelineSignature,
@@ -4221,6 +4234,7 @@ private fun ThreadMessagesListContent(
                                         serverSlug = currentServerSlug,
                                         onOpenUrl = onOpenMarkdownUrl,
                                         onExpand = { requestRowExpandReveal(message.id) },
+                                        handoffReasonMarkdown = handoffReasonMarkdown,
                                     )
                                 }
                             }
@@ -4232,6 +4246,7 @@ private fun ThreadMessagesListContent(
                                 serverSlug = currentServerSlug,
                                 onOpenUrl = onOpenMarkdownUrl,
                                 onExpand = { requestRowExpandReveal(message.id) },
+                                handoffReasonMarkdown = handoffReasonMarkdown,
                             )
                         } else {
                             val translationUi =

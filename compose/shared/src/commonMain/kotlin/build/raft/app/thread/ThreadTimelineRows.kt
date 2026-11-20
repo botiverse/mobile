@@ -72,11 +72,13 @@ internal fun ThreadSystemMessageRow(
     onOpenUrl: ((String) -> Unit)? = null,
     /** The user opened the line's details (the thread list's expand reveal, ThreadExpandReveal.kt). */
     onExpand: (() -> Unit)? = null,
+    /** A hand-off card's reason draws refs, @mentions and links with these; null keeps it plain text. */
+    handoffReasonMarkdown: ThreadTaskHandoffReasonMarkdown? = null,
 ) {
     // The assistant DM's delegated-send receipt and WeChat connected notice are cards (web MessageItem).
     if (onOpenUrl != null && ThreadAssistantDmCardRow(message, serverSlug, onOpenUrl)) return
     // A task handed to someone with a reason is a card, not the one-line notice (web MessageItem).
-    if (ThreadTaskHandoffRow(message, timeline)) return
+    if (ThreadTaskHandoffRow(message, timeline, handoffReasonMarkdown)) return
     var expanded by remember(message.id) { mutableStateOf(false) }
     val timestampLayout = remember { threadSystemMessageTimestampLayoutSpec() }
     // A channel announcement's set, replace or remove line, in the reader's language (its text is

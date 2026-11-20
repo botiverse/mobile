@@ -11,6 +11,12 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.TextLayoutResult
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -23,6 +29,7 @@ import build.raft.app.resources.StringDesc
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -57,14 +64,25 @@ class ThreadTaskHandoffCardUiTest {
         StringDesc.localeType = previousLocale
     }
 
-    private fun ComposeUiTest.timeline(vararg lines: RaftThreadMessageItem, show: List<RaftThreadMessageItem> = lines.toList()) {
+    private fun ComposeUiTest.timeline(
+        vararg lines: RaftThreadMessageItem,
+        show: List<RaftThreadMessageItem> = lines.toList(),
+        reasonMarkdown: ThreadTaskHandoffReasonMarkdown? = null,
+    ) {
         setContent {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                 RaftDesignSystemTheme {
                     ThreadTaskHandoffFixtures.WithTime {
                         Column(Modifier.fillMaxSize()) {
-                            show.forEach { ThreadSystemMessageRow(message = it, timestampValue = it.timestampLabel, timeline = lines.toList()) }
+                            show.forEach {
+                                ThreadSystemMessageRow(
+                                    message = it,
+                                    timestampValue = it.timestampLabel,
+                                    timeline = lines.toList(),
+                                    handoffReasonMarkdown = reasonMarkdown,
+                                )
+                            }
                         }
                     }
                 }
@@ -115,4 +133,59 @@ class ThreadTaskHandoffCardUiTest {
             val at = formatThreadTimeRevealLabel(f.tookBack.timestampLabel, f.timeContext)
             onNodeWithText("Otter took it back · $at").assertExists()
         }
+
+    // slock #15339: in the conversation list the reason draws its links (and refs, @mentions) like a
+    // message body, and a tap opens them; elsewhere (no handlers) it stays plain text.
+    private val linkedReason =
+        ThreadTaskHandoffFixtures.line(
+            "h2", "2026-11-10T08:00:00.000Z", ThreadTaskHandoffFixtures.otter, ThreadTaskHandoffFixtures.xx,
+            "Read [the brief]($LINK) before Friday",
+        )
+
+    private fun ComposeUiTest.reasonLayout(): TextLayoutResult {
+        val layouts = mutableListOf<TextLayoutResult>()
+        onNode(hasText("before Friday", substring = true), useUnmergedTree = true)
+            .fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+        return layouts.single()
+    }
+
+    @Test
+    fun inTheConversationListTheReasonsLinkOpensOnATap() =
+        runRobolectricComposeUiTest {
+            val opened = mutableListOf<String>()
+            build.raft.app.data.RaftAndroidSqlDatabaseContext.init(org.robolectric.RuntimeEnvironment.getApplication())
+            timeline(
+                linkedReason,
+                reasonMarkdown =
+                    ThreadTaskHandoffReasonMarkdown(
+                        highlightedMentions = emptySet(),
+                        isTagValid = { true },
+                        resolveTagLabel = null,
+                        onOpenTag = { _, _ -> },
+                        onOpenUrl = { opened += it },
+                    ),
+            )
+            val text = reasonLayout().layoutInput.text
+            assertEquals(
+                listOf(LINK),
+                text.getLinkAnnotations(0, text.length).mapNotNull { (it.item as? LinkAnnotation.Url)?.url },
+                "the reason's link is a link",
+            )
+            val at = reasonLayout().getBoundingBox(text.text.indexOf("the brief") + 1).center
+            onNode(hasText("before Friday", substring = true), useUnmergedTree = true).performTouchInput { click(at) }
+            waitForIdle()
+            assertEquals(listOf(LINK), opened)
+        }
+
+    @Test
+    fun withoutTheListsHandlersTheReasonStaysPlainText() =
+        runRobolectricComposeUiTest {
+            timeline(linkedReason)
+            onNodeWithTag(TaskHandoffCardReasonTag, useUnmergedTree = true)
+                .assertTextEquals("Read [the brief]($LINK) before Friday")
+        }
+
+    private companion object {
+        const val LINK = "https://example.com/brief"
+    }
 }
