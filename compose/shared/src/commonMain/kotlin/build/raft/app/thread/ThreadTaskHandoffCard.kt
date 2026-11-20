@@ -28,6 +28,8 @@ import build.raft.app.data.asTaskHandoff
 import build.raft.app.data.sameParty
 import build.raft.app.data.taskAssignmentNoticeOf
 import build.raft.app.data.taskHandoffReturns
+import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.model.MemberKind
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftAvatarSize
@@ -61,6 +63,19 @@ internal fun threadTaskHandoffReturns(messages: List<RaftThreadMessageItem>): Ma
     )
 
 /**
+ * How a hand-off's reason draws its refs, @mentions and links: the same handlers as a message body
+ * in the conversation list (web `TaskHandoffCard` `reasonMarkdown`, botiverse/slock #15339).
+ * Without it (a share image, a thread's origin) the reason stays plain text, as on the web.
+ */
+internal class ThreadTaskHandoffReasonMarkdown(
+    val highlightedMentions: Set<String>,
+    val isTagValid: (ThreadMarkdownTag) -> Boolean,
+    val resolveTagLabel: ((ThreadMarkdownTag) -> String)?,
+    val onOpenTag: (ThreadMarkdownTag, String) -> Unit,
+    val onOpenUrl: (String) -> Unit,
+)
+
+/**
  * A system line that is a hand-off with a reason, as its card in the timeline; null when [message]
  * is any other line (the caller draws the one-line notice). [timeline] is the conversation's
  * messages, oldest first, to see whether the task came back since.
@@ -69,6 +84,7 @@ internal fun threadTaskHandoffReturns(messages: List<RaftThreadMessageItem>): Ma
 internal fun ThreadTaskHandoffRow(
     message: RaftThreadMessageItem,
     timeline: List<RaftThreadMessageItem>,
+    reasonMarkdown: ThreadTaskHandoffReasonMarkdown? = null,
 ): Boolean {
     val notice = remember(message.metadata, message.messageType) { message.taskHandoffNotice() } ?: return false
     val returned = remember(timeline, message.id) { threadTaskHandoffReturns(timeline)[message.id] }
@@ -77,6 +93,8 @@ internal fun ThreadTaskHandoffRow(
         notice = notice,
         returned = returned,
         timestampValue = message.timestampLabel,
+        reasonMarkdown = reasonMarkdown,
+        inlineContentScope = "task-handoff-${message.id}",
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -108,6 +126,8 @@ internal fun ThreadTaskHandoffCard(
     returned: TaskHandoffReturn?,
     timestampValue: String,
     modifier: Modifier = Modifier,
+    reasonMarkdown: ThreadTaskHandoffReasonMarkdown? = null,
+    inlineContentScope: String? = null,
 ) {
     val assignee = notice.assignee ?: return
     val fromName = taskHandoffPartyName(notice.actor)
@@ -154,12 +174,28 @@ internal fun ThreadTaskHandoffCard(
             }
         },
     ) {
-        RaftText(
-            notice.reason.orEmpty(),
-            Modifier.testTag(TaskHandoffCardReasonTag),
-            style = typography.callout.copy(localeList = RaftUserContentLocaleList),
-            color = colors.foreground,
-        )
+        val reasonStyle = typography.callout.copy(localeList = RaftUserContentLocaleList, color = colors.foreground)
+        if (reasonMarkdown == null) {
+            RaftText(
+                notice.reason.orEmpty(),
+                Modifier.testTag(TaskHandoffCardReasonTag),
+                style = reasonStyle,
+                color = colors.foreground,
+            )
+        } else {
+            // Refs (#channel, task and thread refs), @mentions and links tap through like a message body's.
+            RaftMarkdownBody(
+                body = notice.reason.orEmpty(),
+                modifier = Modifier.fillMaxWidth().testTag(TaskHandoffCardReasonTag),
+                textStyle = reasonStyle,
+                highlightedMentions = reasonMarkdown.highlightedMentions,
+                isTagValid = reasonMarkdown.isTagValid,
+                resolveTagLabel = reasonMarkdown.resolveTagLabel,
+                onOpenTagAction = reasonMarkdown.onOpenTag,
+                onOpenUrl = reasonMarkdown.onOpenUrl,
+                inlineContentScope = inlineContentScope,
+            )
+        }
     }
 }
 
