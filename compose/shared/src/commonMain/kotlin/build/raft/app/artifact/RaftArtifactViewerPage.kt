@@ -543,8 +543,10 @@ private fun RaftArtifactViewerScreen() {
             host.bridge.log("artifact_viewer_unavailable action=replace_and_evict")
         }
         // The page went somewhere that is not this Artifact: the viewer closes (after the WebView
-        // left the screen, so the document, which no longer shows an Artifact, is not kept), and its
-        // original message opens natively, as a message link from outside the app does.
+        // left the screen, so the document, which no longer shows an Artifact, is not kept), and a
+        // Raft link opens natively, as a message link from outside the app does. Where the viewer is a
+        // page of its own, its original message never comes here: it opens over the viewer, which
+        // stays ([raftArtifactViewerOpensOverViewer]).
         (bodyState as? RaftArtifactViewerBodyState.ReloadingFresh)?.let { reloading ->
             // The WebView left the screen (and was parked): dropping it destroys it, so the next
             // body finds nothing kept and loads the Artifact's page in a new one.
@@ -863,6 +865,11 @@ private fun RaftArtifactViewerWebBody(
     var handledHostActionCleared by remember { mutableStateOf(true) }
     val currentFreshReloadAvailable by rememberUpdatedState(freshReloadAvailable)
     val attachedAt = remember { kotlin.time.TimeSource.Monotonic.markNow() }
+    val inColumn = LocalRaftArtifactViewerInColumn.current
+    // The last address the page showed this Artifact at (no `#host=<name>` request in it), and, while the page is
+    // being put back on it after a conversation it moved to opened over the viewer, that address.
+    var artifactAddress by remember { mutableStateOf<String?>(null) }
+    var returningTo by remember { mutableStateOf<String?>(null) }
     fun onAddress(url: String) {
         if (left) return
         address = url
@@ -913,12 +920,21 @@ private fun RaftArtifactViewerWebBody(
                     )
                 }
                 armed = true
+                if (hostAction == null) artifactAddress = url
+                returningTo = null
                 currentOnStay(navigation)
             }
             // Off the web origin never loads here: the origin lock blocks it (onNavigationBlocked).
             RaftArtifactViewerNavigation.Ignore, is RaftArtifactViewerNavigation.SystemBrowser -> Unit
             else ->
-                if (armed) {
+                // While the page is on its way back to the Artifact, its addresses are not a new move.
+                if (armed && returningTo == null && raftArtifactViewerOpensOverViewer(navigation, inColumn, artifactAddress)) {
+                    // Its original message (a DM's is named by the person): the conversation opens over the viewer,
+                    // which stays on this Artifact, so Back returns to it (the web: Back comes back to the page).
+                    returningTo = artifactAddress
+                    host.bridge.log("artifact_viewer_opened_over action=open_message to=${raftArtifactViewerLogDestination(url)}")
+                    RaftMessageLinkIngress.accept((navigation as RaftArtifactViewerNavigation.OpenMessage).url, "artifact_viewer", scope.webOrigin)
+                } else if (armed && returningTo == null) {
                     left = true
                     val to = raftArtifactViewerLogDestination(url)
                     val action =
@@ -942,6 +958,17 @@ private fun RaftArtifactViewerWebBody(
         }
     }
     LaunchedEffect(Unit) { kept?.currentUrl?.let(::onAddress) }
+    LaunchedEffect(returningTo) {
+        val back = returningTo ?: return@LaunchedEffect
+        // Cancelled once the page is on the Artifact again. One that cannot be put back (or is not seen to be) is
+        // dropped and the Artifact loads in a new WebView: the viewer stays under the conversation either way.
+        if (controller.evaluateJavaScript(raftArtifactViewerReturnScript(scope.webOrigin, back))) {
+            kotlinx.coroutines.delay(RAFT_ARTIFACT_VIEWER_RETURN_TIMEOUT_MS)
+        }
+        raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_return_failed action=reload_fresh")
+        left = true
+        currentOnReloadFresh("return_failed")
+    }
     val currentOnPageLoadStarted by rememberUpdatedState(onPageLoadStarted)
     LaunchedEffect(Unit) {
         RaftArtifactOpenTrace.mark("webview_attach", "kept=${kept != null} showsTarget=$showsTarget")

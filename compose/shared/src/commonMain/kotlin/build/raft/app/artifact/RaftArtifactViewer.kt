@@ -628,7 +628,8 @@ internal sealed interface RaftArtifactViewerNavigation {
 
     /**
      * A Raft link the app opens itself (the Artifact's original message; a conversation, join or invite
-     * link the page opened in place): close the viewer, open it natively.
+     * link the page opened in place): opened natively, over the viewer where it is a page of its own
+     * ([raftArtifactViewerOpensOverViewer]), else after the viewer closes.
      */
     data class OpenMessage(val url: String) : RaftArtifactViewerNavigation
 
@@ -871,6 +872,47 @@ internal fun raftArtifactViewerLeaveAction(
     } else {
         RaftArtifactViewerLeaveAction.Leave
     }
+
+/** How long the page has to come back to the Artifact after [raftArtifactViewerReturnScript] before it is loaded again in a new WebView. */
+internal const val RAFT_ARTIFACT_VIEWER_RETURN_TIMEOUT_MS = 4_000L
+
+/**
+ * Whether a Raft link the page moved to in place ([RaftArtifactViewerNavigation.OpenMessage]: its
+ * original message, named by the conversation, so a DM's by the person or agent; a "Linked from"
+ * discussion) opens over the viewer, which stays: Back from the conversation returns to the Artifact,
+ * as the web's own page does (the message is a new history entry; Back comes back to the Artifact).
+ * Only where the viewer is a page of its own (the phone layout; [inColumn]: the wide layout's
+ * Artifact column closes as before), and only with an address of this Artifact to put the page back
+ * on ([artifactAddress], [raftArtifactViewerReturnScript]). Anything else that leaves the Artifact
+ * closes the viewer as before.
+ */
+internal fun raftArtifactViewerOpensOverViewer(
+    navigation: RaftArtifactViewerNavigation,
+    inColumn: Boolean,
+    artifactAddress: String?,
+): Boolean = navigation is RaftArtifactViewerNavigation.OpenMessage && !inColumn && !artifactAddress.isNullOrBlank()
+
+/**
+ * Puts the viewer's page back on [artifactAddress] (the last address it showed this Artifact at: its
+ * version, file, open list and the embed contract are all in it) after it routed itself to a
+ * conversation the app opened natively: a new history entry and a `popstate`, which the web's router
+ * follows, as [raftArtifactViewerNavigateScript] moves a kept document.
+ */
+internal fun raftArtifactViewerReturnScript(webOrigin: String, artifactAddress: String): String {
+    val address = Json.encodeToString(String.serializer(), artifactAddress)
+    return raftArtifactViewerGuardedScript(
+        webOrigin,
+        """
+        var address = $address;
+        if (window.location.href !== address) {
+          var previous = window.history.state || {};
+          var index = typeof previous.idx === 'number' ? previous.idx + 1 : 0;
+          window.history.pushState({usr: null, key: Math.random().toString(36).slice(2, 10), idx: index}, '', address);
+          window.dispatchEvent(new PopStateEvent('popstate', {state: window.history.state}));
+        }
+        """.trimIndent(),
+    )
+}
 
 /**
  * Where an address goes, for the viewer's logs: its path only (no query, no fragment: nothing
