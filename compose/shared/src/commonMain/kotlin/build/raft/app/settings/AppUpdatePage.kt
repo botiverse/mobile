@@ -26,7 +26,6 @@ import build.raft.app.data.raftSharedPreferenceStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -190,7 +189,8 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
                 }
             }
         )
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        // One load line for the notes: it stays up while the cover gives way to the page.
+        RaftWebPageLoadLineHost(modifier = Modifier.weight(1f).fillMaxWidth()) {
             val versionCode = snapshot?.latestVersionCode?.takeIf { it > 0L }?.toString().orEmpty()
             if (versionCode.isNotBlank()) {
                 ReleaseNotesWebViewBody(versionCode)

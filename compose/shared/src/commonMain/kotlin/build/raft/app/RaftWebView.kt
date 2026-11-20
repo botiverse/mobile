@@ -15,7 +15,14 @@ internal data class RaftWebViewNavigationState(
     val canGoBack: Boolean = false,
     val canGoForward: Boolean = false,
     val isLoading: Boolean = false,
-    val progress: Int = 0
+    val progress: Int = 0,
+    /**
+     * Counts the main-frame loads this web view has started (Android `onPageStarted`, iOS
+     * `didStartProvisionalNavigation`, desktop the not-loading to loading edge). A change means a
+     * new load began, also when the last one never ended (a link or a redirect mid-load); the load
+     * line starts again on it ([raftWebPageLoadState]).
+     */
+    val loadGeneration: Int = 0,
 ) {
     companion object {
         fun decode(params: Any?): RaftWebViewNavigationState {
