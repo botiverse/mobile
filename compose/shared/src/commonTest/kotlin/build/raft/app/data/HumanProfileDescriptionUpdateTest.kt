@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -117,6 +118,7 @@ class HumanProfileDescriptionUpdateTest {
     fun serverMembersStoreUpdatesAndClearsHumanDescriptionAcrossServers() = runTest {
         val serverA = ServerId("server-a")
         val serverB = ServerId("server-b")
+        val channelA = ChannelId("channel-a")
         val selfA =
             MemberProfile(
                 id = MemberId("user-1"),
@@ -136,6 +138,8 @@ class HumanProfileDescriptionUpdateTest {
                 serverId = serverA
             )
         val selfB = selfA.copy(serverId = serverB)
+        var serverAFetches = 0
+        var serverADescription = "Old bio"
         val repo =
             object : MemberRepository by PresenceNoopMemberRepository {
                 override suspend fun getMembers(
@@ -143,25 +147,94 @@ class HumanProfileDescriptionUpdateTest {
                     serverId: ServerId
                 ): DataResult<MemberSnapshot> =
                     when (serverId) {
-                        serverA -> DataResult.Content(MemberSnapshot(ServerSummary(serverA, "Acme"), listOf(selfA, otherA)))
+                        serverA -> {
+                            serverAFetches += 1
+                            DataResult.Content(
+                                MemberSnapshot(
+                                    ServerSummary(serverA, "Acme"),
+                                    listOf(selfA.copy(description = serverADescription), otherA)
+                                )
+                            )
+                        }
                         serverB -> DataResult.Content(MemberSnapshot(ServerSummary(serverB, "Beta"), listOf(selfB)))
                         else -> DataResult.Empty(EmptyReason.NoMembers)
                     }
+
+                override suspend fun getChannelMembers(
+                    priority: DataRequestPriority,
+                    serverId: ServerId,
+                    channelId: ChannelId
+                ): DataResult<ChannelMemberSnapshot> =
+                    DataResult.Content(ChannelMemberSnapshot(channelId = channelId, members = listOf(selfA, otherA)))
             }
-        val store = SharedServerMembersStore(memberRepository = repo)
-        store.ensureLoaded(serverA)
-        store.ensureLoaded(serverB)
+        val rows = linkedMapOf<String, String>()
+        val storage =
+            object : RaftServerMembersDurableStorage {
+                override suspend fun read(id: String): String? = rows[id]
+                override suspend fun write(id: String, value: String) { rows[id] = value }
+                override suspend fun delete(id: String) { rows.remove(id) }
+                override suspend fun ids(): List<String> = rows.keys.toList()
+            }
+        val durable = RaftServerMembersDurableStore(storage = storage, scope = backgroundScope)
+        val ownerA = ProcessServerMembersOwner("https://api.example", "user-1", serverA.value)
+        val ownerB = ProcessServerMembersOwner("https://api.example", "user-1", serverB.value)
+        val processCore =
+            ProcessServerMembersCore(
+                fetchMembers = { priority, sid -> repo.getMembers(priority, sid) },
+                scope = backgroundScope
+            )
+        val store =
+            SharedServerMembersStore(
+                memberRepository = repo,
+                processCore = processCore,
+                processOwner = { sid -> if (sid == serverA) ownerA else if (sid == serverB) ownerB else null },
+                durableStore = durable
+            )
+        store.refreshMembers(serverA)
+        store.refreshMembers(serverB)
+        store.loadChannelMembers(serverA, channelA)
         store.seedProfiles(serverA, listOf(selfA))
+        assertEquals(1, serverAFetches)
 
         assertTrue(store.updateHumanDescription(MemberId("user-1"), "New bio"))
         assertEquals("New bio", store.memberProfile(serverA, "user-1")?.description)
         assertEquals("New bio", store.memberProfile(serverB, "user-1")?.description)
         assertEquals("Bob bio", store.memberProfile(serverA, "user-2")?.description)
+        assertEquals(
+            "New bio",
+            store.currentChannelMembers(serverA, channelA).members.first { it.id == MemberId("user-1") }.description
+        )
+        assertEquals(
+            "New bio",
+            store.state.value.memberSuggestionSlice(serverA).suggestions.first { it.memberId == "user-1" }.description
+        )
+        assertEquals(
+            "New bio",
+            durable.read(RaftServerMembersDurableKey("https://api.example", "user-1", serverA.value))
+                ?.members
+                ?.first { it.id == MemberId("user-1") }
+                ?.description
+        )
+
+        // processCore was invalidated, so a subsequent non-forced refresh fetches fresh data rather
+        // than serving the pre-edit cached snapshot.
+        serverADescription = "New bio"
+        store.refreshMembers(serverA)
+        assertEquals(2, serverAFetches)
+        assertEquals("New bio", store.memberProfile(serverA, "user-1")?.description)
 
         // Clearing to null must replace rather than keep the previous non-null description.
         assertTrue(store.updateHumanDescription(MemberId("user-1"), null))
         assertNull(store.memberProfile(serverA, "user-1")?.description)
         assertNull(store.memberProfile(serverB, "user-1")?.description)
+        assertNull(store.currentChannelMembers(serverA, channelA).members.first { it.id == MemberId("user-1") }.description)
+        assertNull(store.state.value.memberSuggestionSlice(serverA).suggestions.first { it.memberId == "user-1" }.description)
+        assertNull(
+            durable.read(RaftServerMembersDurableKey("https://api.example", "user-1", serverA.value))
+                ?.members
+                ?.first { it.id == MemberId("user-1") }
+                ?.description
+        )
         assertFalse(store.updateHumanDescription(MemberId("user-1"), null))
     }
 

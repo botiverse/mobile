@@ -256,12 +256,12 @@ internal fun membersHumanIsSelf(member: MemberProfile, currentUserId: String?): 
 
 /**
  * Web HumanDetailPanel (`isSelf && human.membershipStatus === "active"`): a signed-in person
- * can edit their own profile description while active (or when membershipStatus is omitted).
+ * can edit their own profile description only while their membership is active.
  */
 internal fun membersHumanCanEditDescription(member: MemberProfile, currentUserId: String?): Boolean {
     if (!membersHumanIsSelf(member, currentUserId)) return false
     val status = member.membershipStatus?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
-    return status == null || status == "active"
+    return status == "active"
 }
 
 /**

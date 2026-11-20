@@ -21,6 +21,7 @@ import build.raft.app.data.PROFILE_DESCRIPTION_INVALID_CODE
 import build.raft.app.data.PROFILE_DESCRIPTION_MAX_LENGTH
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsServerActionResult
+import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.profileDescriptionComparable
 import build.raft.app.data.profileDescriptionLength
 import build.raft.app.data.profileDescriptionTooLong
@@ -365,16 +366,26 @@ private fun MembersHumanDescriptionSection(
     val editDescriptionLabel = stringResource(Res.string.member_action_edit_description)
     val canEdit = onUpdateDescription != null && membersHumanCanEditDescription(member, currentUserId)
     val scope = rememberCoroutineScope()
-    val currentMemberId by rememberUpdatedState(member.id.value)
-    var displayedDescription by remember(member.id.value, member.description) {
+    val sessionToken = remember(member.id.value) { Any() }
+    val currentSessionToken by rememberUpdatedState(sessionToken)
+    val currentCanEdit by rememberUpdatedState(canEdit)
+    val currentOnApplyDescription by rememberUpdatedState(onApplyDescription)
+    var displayedDescription by remember(member.id.value) {
         mutableStateOf(member.description?.takeIf { it.isNotBlank() })
     }
     var editing by remember(member.id.value) { mutableStateOf(false) }
     var draft by remember(member.id.value) { mutableStateOf(member.description.orEmpty()) }
     var saving by remember(member.id.value) { mutableStateOf(false) }
+    var saveGeneration by remember(member.id.value) { mutableStateOf(0L) }
     var saveError by remember(member.id.value) { mutableStateOf<String?>(null) }
     var saveErrorTraceId by remember(member.id.value) { mutableStateOf<String?>(null) }
     var linkWarnings by remember(member.id.value) { mutableStateOf<List<DescriptionLinkWarning>>(emptyList()) }
+
+    LaunchedEffect(member.id.value, member.description) {
+        if (!saving) {
+            displayedDescription = member.description?.takeIf { it.isNotBlank() }
+        }
+    }
 
     val descriptionTooLong =
         remember(draft, displayedDescription) {
@@ -391,53 +402,63 @@ private fun MembersHumanDescriptionSection(
             saveErrorTraceId = null
             return
         }
-        val editMemberId = member.id.value
+        val editSessionToken = sessionToken
+        val requestGeneration = saveGeneration + 1L
+        saveGeneration = requestGeneration
         val nextDescription = profileDescriptionComparable(draft).takeIf { it.isNotEmpty() }
         saving = true
         saveError = null
         saveErrorTraceId = null
         scope.launch {
-            val result =
-                try {
-                    update(nextDescription)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    DataResult.Error(ScreenError("member_description_save_failed"))
+            try {
+                val result =
+                    try {
+                        update(nextDescription)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        DataResult.Error(ScreenError("member_description_save_failed"))
+                    }
+                if (currentSessionToken !== editSessionToken || saveGeneration != requestGeneration || !currentCanEdit) {
+                    return@launch
                 }
-            if (currentMemberId != editMemberId) return@launch
-            when (result) {
-                is DataResult.Content -> {
-                    val saved = result.data.description?.takeIf { it.isNotBlank() }
-                    displayedDescription = saved
-                    draft = saved.orEmpty()
-                    linkWarnings = result.data.warnings
-                    onApplyDescription?.invoke(saved)
-                    editing = false
+                when (result) {
+                    is DataResult.Content -> {
+                        val saved = result.data.description?.takeIf { it.isNotBlank() }
+                        displayedDescription = saved
+                        draft = saved.orEmpty()
+                        linkWarnings = result.data.warnings
+                        currentOnApplyDescription?.invoke(saved)
+                        editing = false
+                    }
+                    is DataResult.Empty -> {
+                        saveError = updateFailedFallback
+                    }
+                    is DataResult.NoPermission -> {
+                        saveError =
+                            membersFormattedPermissionError(
+                                permissionErrorTemplate,
+                                result.blocker,
+                                errorStrings
+                            )
+                        saveErrorTraceId = result.blocker.traceId
+                    }
+                    is DataResult.Error -> {
+                        saveError =
+                            when {
+                                result.error.serverCode == PROFILE_DESCRIPTION_INVALID_CODE -> descriptionTooLongMessage
+                                result.error.serverMessage.isEdgeBlockedMarker() -> errorStrings.value(ErrorPresentationKey.EdgeBlocked)
+                                !result.error.serverMessage.isNullOrBlank() -> result.error.serverMessage
+                                else -> updateFailedFallback
+                            }
+                        saveErrorTraceId = result.error.traceId
+                    }
                 }
-                is DataResult.Empty -> {
-                    saveError = updateFailedFallback
-                }
-                is DataResult.NoPermission -> {
-                    saveError =
-                        membersFormattedPermissionError(
-                            permissionErrorTemplate,
-                            result.blocker,
-                            errorStrings
-                        )
-                    saveErrorTraceId = result.blocker.traceId
-                }
-                is DataResult.Error -> {
-                    saveError =
-                        when {
-                            result.error.serverCode == PROFILE_DESCRIPTION_INVALID_CODE -> descriptionTooLongMessage
-                            !result.error.serverMessage.isNullOrBlank() -> result.error.serverMessage
-                            else -> updateFailedFallback
-                        }
-                    saveErrorTraceId = result.error.traceId
+            } finally {
+                if (currentSessionToken === editSessionToken && saveGeneration == requestGeneration) {
+                    saving = false
                 }
             }
-            saving = false
         }
     }
 
@@ -451,6 +472,7 @@ private fun MembersHumanDescriptionSection(
                 {
                     RaftIconButton(
                         onClick = {
+                            saveGeneration += 1L
                             draft = displayedDescription.orEmpty()
                             saveError = null
                             saveErrorTraceId = null
@@ -471,12 +493,14 @@ private fun MembersHumanDescriptionSection(
             val descriptionFocus = remember { FocusRequester() }
             LaunchedEffect(Unit) {
                 delay(100)
-                descriptionFocus.requestFocus()
+                runCatching { descriptionFocus.requestFocus() }
             }
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                // Intentionally uncapped while typing (matching MembersAgentProfile) so IME/paste
+                // with outer whitespace isn't truncated mid-edit; Save is gated on the 300-char rule.
                 RaftTextarea(
                     value = draft,
                     onValueChange = { next ->
@@ -489,8 +513,8 @@ private fun MembersHumanDescriptionSection(
                     placeholder = stringResource(Res.string.member_placeholder_human_description),
                     enabled = !saving,
                     invalid = shownError != null,
-                    modifier = Modifier.fillMaxWidth().testTag(MembersHumanDescriptionInputTag),
-                    inputModifier = Modifier.focusRequester(descriptionFocus)
+                    modifier = Modifier.fillMaxWidth(),
+                    inputModifier = Modifier.focusRequester(descriptionFocus).testTag(MembersHumanDescriptionInputTag)
                 )
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
@@ -507,6 +531,7 @@ private fun MembersHumanDescriptionSection(
                     RaftButton(
                         text = stringResource(Res.string.common_cancel),
                         onClick = {
+                            saveGeneration += 1L
                             draft = displayedDescription.orEmpty()
                             saveError = null
                             saveErrorTraceId = null

@@ -1871,6 +1871,16 @@ class SharedServerMembersStore internal constructor(
         val normalized = description?.takeIf { it.isNotBlank() }
         fun MemberProfile.isPerson(): Boolean = kind == MemberKind.Human && id.value.trim() == userKey
         fun MemberProfile.patched(): MemberProfile = copy(description = normalized)
+        val trackedServerKeys =
+            _state.value.entriesByServerId.keys +
+                _state.value.profileCacheByServerId.keys +
+                _state.value.channelMemberSlices.keys.map { it.serverId } +
+                _state.value.memberSuggestionSlices.keys.map { it.serverId }
+        trackedServerKeys.forEach { serverKey ->
+            processOwner(ServerId(serverKey))?.let { owner ->
+                processCore.invalidate(owner, reason = "human_description_updated")
+            }
+        }
         val durableEpoch = durableStore?.epoch
         var changed = false
         val persistedEntries = mutableListOf<Pair<SharedServerChannelMembersOwnerBinding, MemberSnapshot>>()
@@ -1908,9 +1918,27 @@ class SharedServerMembersStore internal constructor(
                         slice.copy(members = slice.members.map { member -> if (member.isPerson()) member.patched() else member })
                     }
                 }
+            val nextSuggestionSlices =
+                current.memberSuggestionSlices.mapValues { (_, slice) ->
+                    if (slice.suggestions.none { it.kind == MemberKind.Human && it.memberId?.trim() == userKey && it.description != normalized }) {
+                        slice
+                    } else {
+                        slice.copy(
+                            suggestions =
+                                slice.suggestions.map { suggestion ->
+                                    if (suggestion.kind == MemberKind.Human && suggestion.memberId?.trim() == userKey) {
+                                        suggestion.copy(description = normalized)
+                                    } else {
+                                        suggestion
+                                    }
+                                }
+                        )
+                    }
+                }
             if (nextEntries == current.entriesByServerId &&
                 nextCaches == current.profileCacheByServerId &&
-                nextSlices == current.channelMemberSlices
+                nextSlices == current.channelMemberSlices &&
+                nextSuggestionSlices == current.memberSuggestionSlices
             ) {
                 return@withLock
             }
@@ -1920,6 +1948,7 @@ class SharedServerMembersStore internal constructor(
                     entriesByServerId = nextEntries,
                     profileCacheByServerId = nextCaches,
                     channelMemberSlices = nextSlices,
+                    memberSuggestionSlices = nextSuggestionSlices,
                 )
         }
         if (durableEpoch != null) {
