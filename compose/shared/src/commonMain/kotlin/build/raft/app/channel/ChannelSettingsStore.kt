@@ -1125,7 +1125,17 @@ internal class ChannelSettingsStore(
                     current.copy(
                         channel =
                             current.channel?.let { channel ->
-                                channel.copy(channelType = if (channelSettingsIsPrivate(channel)) "channel" else "private")
+                                val nextType = if (channelSettingsIsPrivate(channel)) "channel" else "private"
+                                channel.copy(
+                                    channelType = nextType,
+                                    // Server clears guestVisible when a non-#all channel becomes private (slock channelService.ts).
+                                    guestVisible =
+                                        if (nextType == "private" && !channelSettingsIsAllChannel(channel)) {
+                                            false
+                                        } else {
+                                            channel.guestVisible
+                                        },
+                                )
                             },
                         actionInFlight = null,
                         effect = ChannelSettingsEffect.Updated(action),
@@ -1334,7 +1344,7 @@ private fun build.raft.app.model.ConversationSummary.withConfirmedSettings(
     when (action) {
         ChannelSettingsAction.Mute -> copy(activityNotificationPreference = channel.activityNotificationPreference)
         ChannelSettingsAction.Profile -> copy(name = channel.name, subtitle = channel.subtitle)
-        ChannelSettingsAction.Visibility -> copy(channelType = channel.channelType)
+        ChannelSettingsAction.Visibility -> copy(channelType = channel.channelType, guestVisible = channel.guestVisible)
         ChannelSettingsAction.VisitorVisible -> copy(guestVisible = channel.guestVisible)
         ChannelSettingsAction.Archive -> copy(archived = true)
         ChannelSettingsAction.Unarchive -> copy(archived = false)

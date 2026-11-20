@@ -1163,6 +1163,25 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
+    fun makePrivateClearsVisitorVisibleWhileSettingsStayOpen() = runTest {
+        val capabilities = ChannelCapabilities(changeChannelVisibility = true, manageVisitorAccess = true)
+        val initial = snapshot().let { base ->
+            base.copy(channel = base.channel.copy(channelType = "channel", guestVisible = true, channelCapabilities = capabilities))
+        }
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(initial))
+        val store = store(dataSource = dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.MakePrivate)
+        runCurrent()
+
+        assertEquals("private", store.state.value.channel?.channelType)
+        assertEquals(false, store.state.value.channel?.guestVisible)
+        assertEquals(false, store.state.value.displayVisitorVisible)
+    }
+
+    @Test
     fun setVisitorVisibleIgnoresDispatchesWithoutManageVisitorAccess() = runTest {
         val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
         val store = store(dataSource = dataSource)

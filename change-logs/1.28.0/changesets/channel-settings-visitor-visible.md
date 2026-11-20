@@ -1,8 +1,12 @@
 ---
-version: 1.28.0
+type: added
+area: channels
+platforms:
+  - android
+  - ios
+  - desktop
 pull_request: 5130
-kind: feature
-platforms: [android, ios]
+rollout: full
 ---
 
 ## zh-CN
