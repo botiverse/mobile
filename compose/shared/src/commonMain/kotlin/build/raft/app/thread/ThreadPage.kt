@@ -25,7 +25,6 @@ import build.raft.app.data.AdaptiveParentFocusOutcome
 import build.raft.app.data.AdaptiveParentFocusRequest
 import build.raft.app.data.parentFocusOutcomeAfterWait
 import build.raft.app.data.acceptsParentFocus
-import build.raft.app.data.sideThreadParentFocus
 import build.raft.app.data.toAdaptiveParentFocusRequestOrNull
 import build.raft.app.data.AdaptiveThreadOpenRoute
 import build.raft.app.data.routeThreadOpen
@@ -60,7 +59,6 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.DataResult
-import build.raft.app.data.EmptyReason
 import build.raft.app.data.map
 import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
@@ -85,7 +83,6 @@ import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.SecondFactorStepUpCoordinator
-import build.raft.app.data.SecondFactorStepUpOutcome
 import build.raft.app.data.SecondFactorStepUpRepository
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.RaftIntegrationsActionsPushNetworkApi
@@ -113,8 +110,6 @@ import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SharedServerMembersStore
-import build.raft.app.data.SharedReferenceFailure
-import build.raft.app.data.sharedReferenceFailure
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksEvent
@@ -126,15 +121,12 @@ import build.raft.app.data.TaskConversationHeaderEvent
 import build.raft.app.data.TaskConversationHeaderState
 import build.raft.app.data.TaskConversationHeaderViewModel
 import build.raft.app.data.TasksUiState
-import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedAdaptiveScrollAnchor
 import build.raft.app.data.defaultNowMillis
-import build.raft.app.data.isActionCardExpiredRefusal
-import build.raft.app.data.markedExpired
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
@@ -142,14 +134,9 @@ import build.raft.app.data.RealtimeCanonicalFinalSinkSurfaceKey
 import build.raft.app.data.RealtimeScopeAuthority
 import build.raft.app.data.RealtimeRoomLeaseOwner
 import build.raft.app.data.appLinkViewerKey
-import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.isAuthSessionErrorCode
 import build.raft.app.data.authLossTokenFingerprint
-import build.raft.app.data.convertMessageToCanonicalTask
-import build.raft.app.data.isSupportedCommitAction
-import build.raft.app.data.isFeedbackSubmitAction
-import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.threadMessageBodyOwnerKey
 import build.raft.app.model.ConversationKind
@@ -159,8 +146,6 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatusesPending
 import build.raft.app.markdown.LocalRaftMarkdownTaskRefStatuses
-import build.raft.app.markdown.parseRaftMarkdownTaskRefLabel
-import build.raft.app.markdown.parseRaftMarkdownMessageRefLabel
 import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
 import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
 import build.raft.app.markdown.LocalRaftMarkdownPlainCandidateSession
@@ -173,7 +158,6 @@ import build.raft.app.markdown.RaftMarkdownRenderConfig
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.model.ChannelId
-import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.RaftAgentControlsApi
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MessageId
@@ -181,7 +165,6 @@ import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.ThreadFollowersUpdated
-import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.network.RaftRequestTimeoutException
@@ -345,7 +328,7 @@ internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProduc
     }
 }
 
-private fun Pager.openThreadChannelSearch(payload: RaftThreadScreenPayload): Boolean {
+internal fun Pager.openThreadChannelSearch(payload: RaftThreadScreenPayload): Boolean {
     val pageData = payload.toThreadChannelSearchPageData() ?: return false
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(HOME_SEARCH_PAGE, pageData)
     return true
@@ -425,7 +408,7 @@ private fun buildThreadPendingSendMessage(
     )
 }
 
-private fun buildThreadPendingSendTimestampLabel(
+internal fun buildThreadPendingSendTimestampLabel(
     bridge: build.raft.app.base.BridgeModule,
     fallbackNowEpochMillis: Long?
 ): String {
@@ -437,7 +420,7 @@ private fun buildThreadPendingSendTimestampLabel(
     return raftEpochMillisUtcIso(epochMillis)
 }
 
-private data class ThreadMarkdownMentionOpenTarget(
+internal data class ThreadMarkdownMentionOpenTarget(
     val identity: MemberDetailIdentity
 )
 
@@ -465,7 +448,7 @@ private fun RaftThreadScreenPayload.findMarkdownMentionMember(tag: ThreadMarkdow
     return members.firstOrNull { member -> member.matchesThreadMentionLookupKey(key) }
 }
 
-private fun RaftThreadScreenPayload.resolveMarkdownMentionOpenTarget(
+internal fun RaftThreadScreenPayload.resolveMarkdownMentionOpenTarget(
     label: String,
     serverMembers: List<MemberProfile>
 ): ThreadMarkdownMentionOpenTarget? {
@@ -2871,22 +2854,24 @@ private fun SharedThreadRouteContentContent(
         }
         onDispose { foregroundBannerStore.clearVisibleRoute(foregroundBannerRouteOwnerId) }
     }
-    var pendingReactionKeys by remember(threadInstanceKey) {
+    val pendingReactionKeysState = remember(threadInstanceKey) {
         mutableStateOf<Set<ThreadReactionPendingKey>>(emptySet())
     }
-    var pendingReactionVisuals by remember(threadInstanceKey) {
+    val pendingReactionVisualsState = remember(threadInstanceKey) {
         mutableStateOf<Map<ThreadReactionPendingKey, ThreadReactionPendingVisual>>(emptyMap())
     }
+    val pendingReactionVisuals by pendingReactionVisualsState
     val pendingActionCardIdsState = remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
-    var pendingActionCardIds by pendingActionCardIdsState
-    var pendingTaskConvertMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    val pendingActionCardIds by pendingActionCardIdsState
+    val pendingTaskConvertMessageIdsState = remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    val pendingTaskConvertMessageIds by pendingTaskConvertMessageIdsState
     // Task v2: "Create Task from Message" (the message it is open for, its create in flight, its failure).
     val createTaskFromMessage = remember(threadInstanceKey) { TaskCreateFromMessageFlow() }
     // Task v2: a task opened without a page of its own (its empty conversation, or a legacy panel).
     val taskOpenSurfaceFlow = remember(threadInstanceKey) { TaskOpenSurfaceFlow(foregroundBannerStore.taskPendingDrafts) }
     TaskOpenSurfaceIncomingNavigationEffect(taskOpenSurfaceFlow, foregroundBannerStore.incomingNavigation)
     val taskOpenGate = remember(threadInstanceKey) { TaskOpenGate() }
-    var pendingThreadFollowMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
+    val pendingThreadFollowMessageIdsState = remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     // Reference-chip opens are single-flight in their store (ignored repeat taps). The busy chip is
     // the reference resolver's fetch phase: a local hit never shows it, a fetch shows it throughout.
     val markdownRefOpenStore =
@@ -2894,15 +2879,8 @@ private fun SharedThreadRouteContentContent(
             ThreadMarkdownRefOpenStore(coroutineScope, fetches = dataSource.referenceResolver.inFlight)
         }
     val markdownReferencePending by markdownRefOpenStore.state.collectAsState()
-    fun beginMarkdownReferencePending(actionId: String?): ThreadMarkdownReferencePendingToken? =
-        markdownRefOpenStore.begin(actionId)
-    fun finishMarkdownReferencePending(token: ThreadMarkdownReferencePendingToken?) {
-        markdownRefOpenStore.finish(token)
-    }
     val textSelectionMessageState = remember(threadInstanceKey) { mutableStateOf<RaftThreadMessageItem?>(null) }
-    var textSelectionMessage by textSelectionMessageState
     val createAgentDialogStateHolder = remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
-    var createAgentDialogState by createAgentDialogStateHolder
     val markdownTaskOpenRequestGate = remember(threadInstanceKey) {
         MarkdownTaskNumberOpenRequestGate()
     }
@@ -3038,11 +3016,7 @@ private fun SharedThreadRouteContentContent(
             KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
         }
     val labels = threadRouteLabels()
-    val actionCardSuccessLabels = labels.actionCardSuccessLabels
-    val actionCardFailureLabels = labels.actionCardFailureLabels
     val genericActionCardSuccessLabel = labels.genericActionCardSuccessLabel
-    val genericActionCardFailureLabel = labels.genericActionCardFailureLabel
-    val actionCardReconfirmFailedLabel = labels.actionCardReconfirmFailedLabel
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     // Effective "Collapse long messages": this conversation's device-local override ?: the global switch.
     val longMessageCollapseConversationSetting =
@@ -3078,60 +3052,19 @@ private fun SharedThreadRouteContentContent(
     val attachmentUploadFailedDetailTemplate = labels.attachmentUploadFailedDetailTemplate
     val attachmentLimitUnavailableLabel = labels.attachmentLimitUnavailableLabel
     val attachmentTooLargeTemplate = labels.attachmentTooLargeTemplate
-    val unableToOpenRepliesLabel = labels.unableToOpenRepliesLabel
-    val unableToOpenParentMessageLabel = labels.unableToOpenParentMessageLabel
     val unableToOpenTaskLabel = labels.unableToOpenTaskLabel
-    val unableToOpenTargetTemplate = labels.unableToOpenTargetTemplate
-    val unableToOpenTaskNumberTemplate = labels.unableToOpenTaskNumberTemplate
-    val referenceNotFoundTemplate = labels.referenceNotFoundTemplate
-    val referenceNoAccessTemplate = labels.referenceNoAccessTemplate
-    val referenceOtherServerTemplate = labels.referenceOtherServerTemplate
     val genericThreadErrorLabel = labels.genericThreadErrorLabel
     val pendingMentionActionBatchStrings = labels.pendingMentionActionBatchStrings
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val attachmentPickerUnavailableLabel = labels.attachmentPickerUnavailableLabel
-    val fileSourceUnavailableLabel = labels.fileSourceUnavailableLabel
     val copiedLabel = labels.copiedLabel
-    val failureDetailsCopiedLabel = labels.failureDetailsCopiedLabel
-    val linksCopiedLabel = labels.linksCopiedLabel
-    val forwardCompletedTemplate = labels.forwardCompletedTemplate
-    val forwardJoinFirstTemplate = labels.forwardJoinFirstTemplate
-    val unableToCopyLinkLabel = labels.unableToCopyLinkLabel
-    val noTextToSelectLabel = labels.noTextToSelectLabel
-    val followedThreadLabel = labels.followedThreadLabel
-    val unableToFollowThreadLabel = labels.unableToFollowThreadLabel
-    val unfollowedThreadLabel = labels.unfollowedThreadLabel
-    val unableToUnfollowThreadLabel = labels.unableToUnfollowThreadLabel
-    val searchUnavailableLabel = labels.searchUnavailableLabel
-    val actionUnavailableLabel = labels.actionUnavailableLabel
-    val unableToUpdateReactionLabel = labels.unableToUpdateReactionLabel
-    val commentSourceUnavailableLabel = labels.commentSourceUnavailableLabel
-    val memberNotFoundTemplate = labels.memberNotFoundTemplate
-    val memberAddedLabel = labels.memberAddedLabel
-    val unableToAddMemberLabel = labels.unableToAddMemberLabel
-    val memberRemovedLabel = labels.memberRemovedLabel
-    val unableToRemoveMemberLabel = labels.unableToRemoveMemberLabel
-    val channelArchivedLabel = labels.channelArchivedLabel
-    val unableToArchiveChannelLabel = labels.unableToArchiveChannelLabel
-    val channelDeletedLabel = labels.channelDeletedLabel
-    val unableToDeleteChannelLabel = labels.unableToDeleteChannelLabel
-    val unableToConvertMessageLabel = labels.unableToConvertMessageLabel
-    val taskCreatedLabel = labels.taskCreatedLabel
     val unableToCreateTaskLabel = labels.unableToCreateTaskLabel
     val unableToSendTaskMessageLabel = labels.unableToSendTaskMessageLabel
-    val unsupportedTaskStatusLabel = labels.unsupportedTaskStatusLabel
     val unableToUpdateTaskLabel = labels.unableToUpdateTaskLabel
     val unableToUpdateAssigneeLabel = labels.unableToUpdateAssigneeLabel
     val unableToJoinChannelLabel = labels.unableToJoinChannelLabel
     val joinedChannelLabel = labels.joinedChannelLabel
     val attachmentRetryUnavailableLabel = labels.attachmentRetryUnavailableLabel
-    val mergedForwardModeLabel = labels.mergedForwardModeLabel
-    val individualForwardModeLabel = labels.individualForwardModeLabel
-    val imageSavedLabel = labels.imageSavedLabel
-    val unableToExportImageLabel = labels.unableToExportImageLabel
-    val unableToForwardLabel = labels.unableToForwardLabel
-    val unableToSaveMessageLabel = labels.unableToSaveMessageLabel
-    val unableToRemoveSavedMessageLabel = labels.unableToRemoveSavedMessageLabel
     val attachmentSkippedOneLabel = labels.attachmentSkippedOneLabel
     val dropFoldersCantUploadLabel = labels.dropFoldersCantUploadLabel
     val dropFoldersSkippedLabel = labels.dropFoldersSkippedLabel
@@ -3142,34 +3075,6 @@ private fun SharedThreadRouteContentContent(
         attachmentTooLargeTemplate
             .replace(ThreadLocalizedFeedbackPlaceholder, RaftFormat.bytes(fileSize))
             .replace("__RAFT_ATTACHMENT_LIMIT__", RaftFormat.byteLimit(maxBytes))
-    val unableToOpenThreadRefLabel = labels.unableToOpenThreadRefLabel
-    fun localizedUnableToOpenTarget(target: String): String =
-        unableToOpenTargetTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
-    fun localizedUnableToOpenTaskNumber(taskNumber: Int): String =
-        unableToOpenTaskNumberTemplate.replace(ThreadLocalizedFeedbackPlaceholder, taskNumber.toString())
-    /** The toast of a reference that did not open, naming why ([fallback] when no reason applies). */
-    fun localizedReferenceFailure(failure: SharedReferenceFailure, target: String, fallback: String): String =
-        when (failure) {
-            SharedReferenceFailure.NotFound -> referenceNotFoundTemplate
-            SharedReferenceFailure.NoAccess -> referenceNoAccessTemplate
-            SharedReferenceFailure.OtherServer -> referenceOtherServerTemplate
-            SharedReferenceFailure.AuthRequired,
-            SharedReferenceFailure.Unavailable -> null
-        }?.replace(ThreadLocalizedFeedbackPlaceholder, target) ?: fallback
-    fun localizedForwardModeLabel(mode: String?): String =
-        if (mode?.trim()?.lowercase() == ThreadForwardSelectionMode.Individual.wireValue) {
-            individualForwardModeLabel
-        } else {
-            mergedForwardModeLabel
-        }
-    fun localizedForwardCompleted(mode: String, target: String): String =
-        forwardCompletedTemplate
-            .replace(ThreadLocalizedFeedbackPlaceholder, mode)
-            .replace("__RAFT_TARGET__", target)
-    fun localizedForwardJoinFirst(target: String): String =
-        forwardJoinFirstTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
-    fun localizedMemberNotFound(target: String): String =
-        memberNotFoundTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
     fun localizedAttachmentSkippedMany(count: Int): String =
         attachmentSkippedManyTemplate.replace(ThreadLocalizedFeedbackPlaceholder, count.toString())
     val attachmentCommentsDialogStateHolder = remember(threadInstanceKey) {
@@ -7313,6 +7218,89 @@ private fun SharedThreadRouteContentContent(
             actionCardSpecStore = actionCardSpecStore,
             createAgentFormStore = createAgentFormStore,
         )
+    // The route's thread events, read through one object for the same reason (and so the content
+    // lambda below captures it instead of the values it reads). Rebuilt every composition, by a
+    // local function: a method of its own, so this one only loads what it captures for the call
+    // (no remembered lambdas here). data and callbacks are immutable: data.bridge is `bridge`.
+    val settingsPageLinkKey = "thread-settings:$threadInstanceKey"
+    fun buildThreadRouteEventHandler(): ThreadRouteEventHandler =
+        ThreadRouteEventHandler(
+            bridge = data.bridge,
+            dataSource = data.dataSource,
+            tasksDataSource = data.tasksDataSource,
+            tasksDataStore = data.tasksDataStore,
+            serverMembersStore = data.serverMembersStore,
+            conversationIdentityProvider = data.conversationIdentityProvider,
+            storeScope = data.storeScope,
+            eventBus = data.eventBus,
+            adaptiveCloseRequest = data.adaptiveCloseRequest,
+            onBack = callbacks.onBack,
+            onOpenThreadPayload = callbacks.onOpenThreadPayload,
+            onOpenParentThread = callbacks.onOpenParentThread,
+            onOpenMemberProfile = callbacks.onOpenMemberProfile,
+            onOpenMembersPager = callbacks.onOpenMembersPager,
+            onOpenChannelSettings = callbacks.onOpenChannelSettings,
+            pager = pager,
+            sharedStores = sharedStores,
+            sharedHomeStore = sharedHomeStore,
+            realtimeEvents = realtimeEvents,
+            threadViewModel = threadViewModel,
+            renderSliceState = renderSliceState,
+            adaptiveFocusManager = adaptiveFocusManager,
+            adaptiveKeyboardController = adaptiveKeyboardController,
+            adaptiveFocusWorkspaceStore = adaptiveFocusWorkspaceStore,
+            payload = payload,
+            replyMetadataByParentId = replyMetadataByParentId,
+            currentSession = currentSession,
+            replyCacheProvenanceOwner = replyCacheProvenanceOwner,
+            currentServerSlug = currentServerSlug,
+            replyCacheProvenance = replyCacheProvenance,
+            realtimeRoomLeaseRegistry = realtimeRoomLeaseRegistry,
+            coroutineScope = coroutineScope,
+            pendingReactionKeysState = pendingReactionKeysState,
+            pendingReactionVisualsState = pendingReactionVisualsState,
+            pendingActionCardIdsState = pendingActionCardIdsState,
+            pendingTaskConvertMessageIdsState = pendingTaskConvertMessageIdsState,
+            createTaskFromMessage = createTaskFromMessage,
+            pendingThreadFollowMessageIdsState = pendingThreadFollowMessageIdsState,
+            markdownRefOpenStore = markdownRefOpenStore,
+            textSelectionMessageState = textSelectionMessageState,
+            createAgentDialogStateHolder = createAgentDialogStateHolder,
+            markdownTaskOpenRequestGate = markdownTaskOpenRequestGate,
+            labels = labels,
+            taskChannelId = taskChannelId,
+            tasksViewModel = tasksViewModel,
+            currentServerId = currentServerId,
+            markdownTaskContextChannelId = markdownTaskContextChannelId,
+            taskV2Enabled = taskV2Enabled,
+            threadMembersServerId = threadMembersServerId,
+            threadMembersChannelId = threadMembersChannelId,
+            linkedTasksProjection = linkedTasksProjection,
+            taskAssigneeOptions = taskAssigneeOptions,
+            renderedThread = renderedThread,
+            linkNavigator = linkNavigator,
+            renderedTimelineSlice = renderedTimelineSlice,
+            filesViewModel = filesViewModel,
+            routeAuthRequiredFn = { result -> routeAuthRequired(result) },
+            actionCardStepUp = actionCardStepUp,
+            installAppDialogStore = installAppDialogStore,
+            actionCardSpecHost = actionCardSpecHost,
+            openAttachmentCommentsFn = { attachmentId -> openAttachmentComments(attachmentId) },
+            openImagePreviewFn = { group -> openImagePreview(group) },
+            saveAttachmentExternallyFn = { attachment -> saveAttachmentExternally(attachment) },
+            openAttachmentNoPreviewFn = { attachment -> openAttachmentNoPreview(attachment) },
+            sendPendingLocalMessageFn = { localMessageId, context, startedFromComposer, authority ->
+                sendPendingLocalMessage(
+                    localMessageId = localMessageId,
+                    context = context,
+                    startedFromComposer = startedFromComposer,
+                    authority = authority
+                )
+            },
+            openCanonicalTask = openCanonicalTask,
+            settingsPageLinkKey = settingsPageLinkKey,
+        )
+    val threadRouteEventHandler = buildThreadRouteEventHandler()
     RaftForegroundBannerHost(
         banner =
             foregroundMessageBanner?.takeIf {
@@ -7827,7 +7815,6 @@ private fun SharedThreadRouteContentContent(
             )?.let { panel -> completeChannelSettingsPanel(panel, sharedHomeState.content, onLeave = onBack) }
         // A phone's settings page (ThreadSettingsPage.kt) reads this conversation through its link:
         // the same stores and callbacks as the drawer above, as live sources.
-        val settingsPageLinkKey = "thread-settings:$threadInstanceKey"
         val settingsPageLink = remember(settingsPageLinkKey) { ThreadSettingsPageLink() }
         DisposableEffect(settingsPageLinkKey, settingsPageLink) {
             ThreadSettingsPageLinks.register(settingsPageLinkKey, settingsPageLink)
@@ -8215,1497 +8202,7 @@ private fun SharedThreadRouteContentContent(
                     onOpenThreadPayload(bannerPayload)
                 }
             },
-            onThreadEvent = ThreadEventHandler(dispatch = ThreadPageContent@{ action, itemId, attachmentId, tab, markdownActionId, eventThreadChannelId ->
-                // An in-app open of a Raft web link target (a permalink, a spec card's channel).
-                fun openThreadWebLinkTargetInApp(target: RaftThreadWebLinkTarget) {
-                    val serverId = currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
-                    val directory =
-                        listOfNotNull(
-                            serverId?.let { conversationIdentityProvider?.resolveProjection(it, target.channelId) }
-                        ).toSharedConversationDirectoryState()
-                    val request =
-                        target.resolveMarkdownOpenRequest(
-                            serverId = serverId?.value.orEmpty(),
-                            conversationDirectory = directory
-                        )
-                    val loadingPayload = request?.let { openRequest ->
-                        buildAppShellThreadPayload(
-                            conversation = openRequest.conversationIdentity,
-                            timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
-                            alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
-                            compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
-                            anchorMessageId = openRequest.anchorMessageId,
-                            originFallback = openRequest.originFallback,
-                            onWarn = bridge::logWarn
-                        )
-                    }
-                    if (loadingPayload == null) {
-                        bridge.logWarn(
-                            "thread_markdown_open_rejected reason=identity_unresolved " +
-                                "channelId=${target.channelId} parentMessageId=${target.threadParentMessageId.orEmpty()}"
-                        )
-                        bridge.toast(localizedUnableToOpenTarget(target.channelId.take(32)))
-                        return
-                    }
-                    bridge.log(
-                        "thread_route_open action=markdown_url routeKind=${target.routeKind} " +
-                            "targetChannelId=${target.channelId} messageId=${target.messageId.orEmpty()} " +
-                            "threadParentMessageId=${target.threadParentMessageId.orEmpty()} " +
-                            "targetThreadId=${loadingPayload.sourceThreadId.orEmpty()} " +
-                            "parentMessageId=${loadingPayload.parentMessageId.orEmpty()} " +
-                            "focusedMessageId=${loadingPayload.focusedMessageId.orEmpty()} " +
-                            "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
-                    )
-                    onOpenThreadPayload(loadingPayload)
-                }
-                if (action == ThreadOpenPlanBillingEvent) {
-                    bridge.log("thread_history_paywall_open_billing offersUpgrade=${settingsBillingOffersUpgrade()}")
-                    // Upgrade to Pro: the upgrade dialog for the 30-day window (web HistoryPaywall
-                    // `history_30d`). iOS view-only Billing: "View your plan", the view-only page.
-                    if (settingsBillingOffersUpgrade()) {
-                        pager.openRaftUpgradeDialog(RaftUpgradeGate.History30d, storeScope)
-                    } else {
-                        pager.openSettingsBillingPage(storeScope)
-                    }
-                    return@ThreadPageContent
-                }
-                if (action == ThreadOpenUpgradeEvent) {
-                    // A banner's Upgrade (web ChannelLimitBanners): [itemId] is the gate's wire name.
-                    RaftUpgradeGate.entries.firstOrNull { it.wire == itemId }?.let { gate ->
-                        pager.openRaftUpgradeDialog(gate, storeScope)
-                    }
-                    return@ThreadPageContent
-                }
-                if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
-                    return@ThreadPageContent
-                }
-                if (!threadEventAllowed(renderSlice.writeActionsEnabled, action)) {
-                    bridge.log("thread_write_action_blocked action=$action reason=read_only_access_fallback")
-                    return@ThreadPageContent
-                }
-                when {
-                    action == "openAttachment" && !attachmentId.isNullOrBlank() -> {
-                        val imageGroup =
-                            renderedTimelineSlice.findThreadImageAttachmentGroup(attachmentId)
-                        if (imageGroup != null) {
-                            openImagePreview(imageGroup)
-                        } else {
-                            val attachment =
-                                renderedTimelineSlice.findThreadAttachment(attachmentId)
-                                    ?: RaftThreadAttachmentItem(id = attachmentId, name = "Attachment")
-                            openAttachmentNoPreview(attachment)
-                        }
-                    }
-                    action == "downloadAttachment" && !attachmentId.isNullOrBlank() -> {
-                        val attachment =
-                            renderedTimelineSlice.findThreadAttachment(attachmentId)
-                                ?: RaftThreadAttachmentItem(id = attachmentId, name = "Attachment")
-                        saveAttachmentExternally(attachment)
-                    }
-                    action == "openFileSource" && !itemId.isNullOrBlank() -> {
-                        val fileItem =
-                            filesViewModel?.state?.value?.payload?.items?.firstOrNull { it.attachmentId == itemId }
-                        val sourceMessageId = fileItem?.threadFileSourceFocusMessageId()
-                        if (sourceMessageId == null) {
-                            bridge.toast(fileSourceUnavailableLabel)
-                            return@ThreadPageContent
-                        }
-                        // "Jump to Original Message": the file's message is often outside the loaded
-                        // window; a jump loads around it first (the page shows the load) and focuses it.
-                        threadViewModel.dispatch(
-                            SharedThreadIntent.JumpToMessage(
-                                messageId = sourceMessageId,
-                                switchToTab = RaftThreadTab.Chat.wireValue,
-                                unreadThreadPill = false,
-                            )
-                        )
-                    }
-                    action == ThreadOpenUnreadThreadPastHistoryAction && !itemId.isNullOrBlank() &&
-                        !eventThreadChannelId.isNullOrBlank() -> {
-                        // Web #11494: the parent is past the plan's history window (the channel shows
-                        // the paywall there) but replies are inside it: open the thread, which reads it.
-                        // Its parent is not loaded, so nothing seeds the reply page; it loads canonically.
-                        bridge.log(
-                            "thread_unread_thread_jump_open_past_history parent=${itemId.take(8)} " +
-                                "thread=${eventThreadChannelId.take(8)}"
-                        )
-                        sharedHomeStore?.dispatch(SharedHomeIntent.MarkFollowedThreadRead(eventThreadChannelId))
-                        onOpenThreadPayload(
-                            renderedThread.replyThreadLoadingPayload(
-                                parentMessageId = itemId,
-                                parentChannelId = renderedThread.replyParentChannelIdForNestedOpen(),
-                                threadChannelId = eventThreadChannelId,
-                            )
-                        )
-                    }
-                    action == ThreadJumpToUnreadThreadPastHistoryAction && !itemId.isNullOrBlank() &&
-                        !eventThreadChannelId.isNullOrBlank() -> {
-                        // Web #11494: the parent and its replies are past the window; the jump lands on
-                        // the paywall, where the thread can't be opened, so read it now: the count drops
-                        // and the next tap moves on instead of staying on this thread.
-                        threadViewModel.dispatch(
-                            SharedThreadIntent.JumpToMessage(
-                                messageId = itemId,
-                                switchToTab = RaftThreadTab.Chat.wireValue,
-                            )
-                        )
-                        sharedHomeStore?.dispatch(SharedHomeIntent.MarkFollowedThreadRead(eventThreadChannelId))
-                    }
-                    action == ThreadJumpToUnreadThreadParentAction && !itemId.isNullOrBlank() -> {
-                        // The unread-thread pill: focus (scroll to and highlight) the parent
-                        // message through the route focus session, as a search hit does; a parent
-                        // that is not loaded is loaded around first (web jumpToMessage). The target
-                        // thread's replies are then prewarmed so opening it renders at once (artin).
-                        threadViewModel.dispatch(
-                            SharedThreadIntent.JumpToMessage(
-                                messageId = itemId,
-                                switchToTab = RaftThreadTab.Chat.wireValue,
-                                prewarmThreadChannelId = eventThreadChannelId,
-                            )
-                        )
-                    }
-                    (action == ThreadOutlineJumpAction || action == ThreadFindJumpAction) && !itemId.isNullOrBlank() -> {
-                        // The thread timeline (botiverse/slock #13534), and Search in this thread's
-                        // match the page hasn't loaded (web useThreadReplyContext): focus the message
-                        // as a search hit does, loading around it first when it isn't loaded; top-aligned.
-                        threadViewModel.dispatch(
-                            SharedThreadIntent.JumpToMessage(
-                                messageId = itemId,
-                                switchToTab = RaftThreadTab.Chat.wireValue,
-                                unreadThreadPill = false,
-                            )
-                        )
-                    }
-                    action == "openAttachmentComments" && !attachmentId.isNullOrBlank() -> {
-                        openAttachmentComments(attachmentId)
-                    }
-                    action == "copyMessage" && !itemId.isNullOrBlank() -> {
-                    val body = renderedTimelineSlice.threadMessageById(itemId)?.body.orEmpty()
-                    // Web MessageItem Copy Markdown: the menu closes, no toast (artin 2026-11-02).
-                    if (body.isNotBlank()) bridge.copyToPasteboard(body)
-                }
-                    action == "copyLocalSendFailureDetails" && !itemId.isNullOrBlank() -> {
-                        val failedMessage = renderedTimelineSlice.threadMessageById(itemId)
-                        val detail = failedMessage?.let {
-                            threadFailureDiagnosticDetail(it.pendingSendErrorCode, it.pendingSendErrorMessage)
-                        }
-                        if (!detail.isNullOrBlank()) {
-                            bridge.copyToPasteboard(detail)
-                            bridge.toast(failureDetailsCopiedLabel)
-                        }
-                    }
-                action == "copyShareSelectionMarkdown" && !itemId.isNullOrBlank() -> {
-                    bridge.copyToPasteboard(itemId)
-                    bridge.briefToast(copiedLabel)
-                }
-                action == "copyShareSelectionLinks" && !itemId.isNullOrBlank() -> {
-                    bridge.copyToPasteboard(itemId)
-                    bridge.toast(linksCopiedLabel)
-                }
-                action == "shareSelectionImageSaved" -> {
-                    bridge.toast(imageSavedLabel)
-                }
-                action == "shareSelectionExportFailed" -> {
-                    bridge.toast(unableToExportImageLabel)
-                }
-                action == "forwardMessagesSent" -> {
-                    val target = itemId?.takeIf { it.isNotBlank() }
-                    bridge.toast(
-                        if (target != null) {
-                            localizedForwardCompleted(localizedForwardModeLabel(tab), target)
-                        } else {
-                            Res.string.thread_forward_badge.desc().resolve()
-                        }
-                    )
-                }
-                action == "forwardMessagesFailed" -> {
-                    // The event carries a failure code; the toast says it in this locale and only
-                    // the log keeps the code itself.
-                    val failure = threadForwardFailure(itemId)
-                    if (failure == ThreadForwardFailure.Generic) {
-                        bridge.log("thread_forward_failed code=${itemId.orEmpty()}")
-                    }
-                    bridge.toast(failure.messageRes.desc().resolve())
-                }
-                action == "forwardJoinConfirmationRequired" -> {
-                    bridge.toast(
-                        itemId?.takeIf { it.isNotBlank() }?.let { localizedForwardJoinFirst(it) } ?: unableToForwardLabel
-                    )
-                }
-                action == "copyMessageLink" && !itemId.isNullOrBlank() -> {
-                    val message =
-                        renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
-                    val permalink =
-                        message?.let {
-                            renderedThread.threadMessagePermalink(
-                                message = it,
-                                serverSlug = currentServerSlug
-                            )
-                        }
-                    if (permalink != null) {
-                        // Web MessageItem Copy Link: no toast.
-                        bridge.copyToPasteboard(permalink)
-                    } else {
-                        bridge.toast(unableToCopyLinkLabel)
-                    }
-                }
-                action == "openSelectMessageText" && !itemId.isNullOrBlank() -> {
-                    val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
-                    if (message?.body.isNullOrBlank()) {
-                        bridge.toast(noTextToSelectLabel)
-                    } else {
-                        textSelectionMessage = message
-                    }
-                }
-                action == "openMessageThread" && !itemId.isNullOrBlank() -> {
-                    if (threadMessageOpenIgnoredForSurface(renderedThread.surfaceKind, renderedThread.channelKind)) {
-                        bridge.log(
-                            "thread_reply_open result=ignored_already_in_reply_thread " +
-                                "messageId=$itemId instance=${renderedThread.instanceId}"
-                        )
-                        return@ThreadPageContent
-                    }
-                    val parentMessage =
-                        renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
-                    if (parentMessage == null) {
-                        bridge.toast(unableToOpenRepliesLabel)
-                        return@ThreadPageContent
-                    }
-                    val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
-                    val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
-                    val provenance =
-                        dataSource.replyCacheProvenanceState.value
-                            .currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
-                    if (
-                        provenance == null ||
-                        !dataSource.rememberReplyParentCandidate(
-                            provenance = provenance,
-                            serverId = currentServerId,
-                            parentChannelId = parentChannelId,
-                            parentMessage = parentMessage,
-                            threadChannelId = parentReplyMetadata.threadChannelId,
-                            replyCount = parentReplyMetadata.replyCount
-                        )
-                    ) {
-                        bridge.logWarn("thread_reply_parent_seed_rejected reason=stale_provenance")
-                        bridge.toast(unableToOpenRepliesLabel)
-                        return@ThreadPageContent
-                    }
-                    val loadingPayload =
-                        renderedThread.replyThreadLoadingPayload(
-                            parentMessageId = parentMessage.id,
-                            parentChannelId = parentChannelId,
-                            threadChannelId = parentReplyMetadata.threadChannelId,
-                            focusedMessageId = parentReplyMetadata.firstUnreadReplyMessageId
-                        )
-                    threadViewModel.dispatch(
-                        SharedThreadIntent.ApplyReplyThreadRead(
-                            parentMessageId = parentMessage.id,
-                            threadChannelId = parentReplyMetadata.threadChannelId
-                        )
-                    )
-                    parentReplyMetadata.threadChannelId
-                        ?.takeIf { it.isNotBlank() }
-                        ?.let { threadChannelId ->
-                            coroutineScope.launch {
-                                // Opening the whole reply scope clears the whole inline unread projection.
-                                // The bounded preview cannot prove the authoritative latest seq (newer system
-                                // rows may be intentionally hidden), so dispatch the canonical read-all intent.
-                                val result = dataSource.markVisibleChannelRead(threadChannelId, latestSeq = null)
-                                bridge.log(
-                                    "thread_inline_reply_read_dispatch channelId=$threadChannelId " +
-                                        "target=all result=${result::class.simpleName.orEmpty()}"
-                                )
-                            }
-                        }
-                    bridge.log(
-                        "thread_reply_open action=message_chip parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
-                            "parentMessageId=${parentMessage.id} replyCount=${parentReplyMetadata.replyCount} " +
-                            "unreadReplyCount=${parentReplyMetadata.unreadReplyCount} " +
-                            "knownThreadChannelId=${parentReplyMetadata.threadChannelId.orEmpty()} " +
-                            "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
-                    )
-                    onOpenThreadPayload(loadingPayload)
-                }
-                action == "followMessageThread" && !itemId.isNullOrBlank() -> {
-                    if (itemId in pendingThreadFollowMessageIds) {
-                        return@ThreadPageContent
-                    }
-                    pendingThreadFollowMessageIds = pendingThreadFollowMessageIds + itemId
-                    coroutineScope.launch {
-                        try {
-                            when (val result = dataSource.followThread(MessageId(itemId))) {
-                                is DataResult.Content -> {
-                                    threadViewModel.dispatch(
-                                        SharedThreadIntent.ApplyReplyThreadRead(
-                                            parentMessageId = result.data.parentMessageId?.value ?: itemId,
-                                            threadChannelId = result.data.threadChannelId.value
-                                        )
-                                    )
-                                    threadViewModel.dispatch(
-                                        SharedThreadIntent.ApplyMessageThreadFollowed(
-                                            parentMessageId = result.data.parentMessageId?.value ?: itemId,
-                                            threadChannelId = result.data.threadChannelId.value,
-                                            followed = true,
-                                            replyCount = result.data.replyCount
-                                        )
-                                    )
-                                    bridge.toast(followedThreadLabel)
-                                }
-                                is DataResult.Empty,
-                                is DataResult.Error -> {
-                                    bridge.toast(unableToFollowThreadLabel)
-                                }
-                                is DataResult.NoPermission -> {
-                                    if (routeAuthRequired(result)) return@launch
-                                    bridge.toast(unableToFollowThreadLabel)
-                                }
-                            }
-                        } finally {
-                            pendingThreadFollowMessageIds = pendingThreadFollowMessageIds - itemId
-                        }
-                    }
-                }
-                action == "unfollowMessageThread" && !itemId.isNullOrBlank() && !attachmentId.isNullOrBlank() -> {
-                    val threadChannelId = attachmentId
-                    if (threadChannelId in pendingThreadFollowMessageIds) {
-                        return@ThreadPageContent
-                    }
-                    pendingThreadFollowMessageIds = pendingThreadFollowMessageIds + threadChannelId
-                    coroutineScope.launch {
-                        try {
-                            // Web #11687: the thread's unread leaves Home at once, back if this fails.
-                            val unfollowResult =
-                                unfollowThreadProjectingHome(
-                                    ChannelId(threadChannelId),
-                                    project = { intent -> sharedHomeStore?.dispatch(intent) },
-                                    unfollow = dataSource::unfollowThread,
-                                )
-                            when (val result = unfollowResult) {
-                                is DataResult.Content -> {
-                                    threadViewModel.dispatch(
-                                        SharedThreadIntent.ApplyMessageThreadFollowed(
-                                            parentMessageId = itemId,
-                                            threadChannelId = threadChannelId,
-                                            followed = false
-                                        )
-                                    )
-                                    bridge.toast(unfollowedThreadLabel)
-                                }
-                                is DataResult.Empty,
-                                is DataResult.Error -> {
-                                    bridge.toast(unableToUnfollowThreadLabel)
-                                }
-                                is DataResult.NoPermission -> {
-                                    if (routeAuthRequired(result)) return@launch
-                                    bridge.toast(unableToUnfollowThreadLabel)
-                                }
-                            }
-                        } finally {
-                            pendingThreadFollowMessageIds = pendingThreadFollowMessageIds - threadChannelId
-                        }
-                    }
-                }
-                action == MARK_THREAD_UNREAD_ACTION && !attachmentId.isNullOrBlank() -> {
-                    // botiverse/slock #11687: the reads of this page are held for it until it leaves
-                    // (#14222: a followed thread marked from a channel's list is written, not held).
-                    threadViewModel.dispatch(SharedThreadIntent.MarkThreadUnread(attachmentId))
-                }
-                action == MARK_CONVERSATION_UNREAD_ACTION -> {
-                    // botiverse/slock #14222: this page's channel or DM, held unread while it stays here.
-                    threadViewModel.dispatch(SharedThreadIntent.MarkConversationUnread)
-                }
-                action == "openParentMessage" -> {
-                    val sideParentFocus =
-                        adaptiveCloseRequest?.let { source ->
-                            adaptiveFocusWorkspaceStore.snapshot().sideThreadParentFocus(source)
-                        }
-                    if (sideParentFocus != null) {
-                        adaptiveFocusManager.clearFocus(force = true)
-                        adaptiveKeyboardController?.hide()
-                        // The original, its history start (behind the window), or nothing (deleted): ThreadHeaderOriginalTitle.kt.
-                        postSideThreadParentFocus(sideParentFocus, renderedThread, bridge, eventBus)
-                    } else if (!onOpenParentThread(renderedThread, currentSession?.currentServerId)) {
-                        bridge.logWarn(
-                            "thread_parent_navigation_rejected reason=parent_conversation_unresolved " +
-                                "threadId=${renderedThread.sourceThreadId.orEmpty()} " +
-                                "parentChannelId=${renderedThread.parentChannelId.orEmpty()}"
-                        )
-                        bridge.toast(unableToOpenParentMessageLabel)
-                    }
-                }
-                action == "openChannelSearch" -> {
-                    if (!pager.openThreadChannelSearch(renderedThread)) {
-                        bridge.toast(searchUnavailableLabel)
-                    }
-                }
-                action == "toggleMessageSaved" && !itemId.isNullOrBlank() -> {
-                    val previousSaved =
-                        renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)?.isSaved
-                            ?: false
-                    val nextSaved = !previousSaved
-                    threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, nextSaved))
-                    val savedOwnerSession = currentSession
-                    coroutineScope.launch {
-                        val unsaveOwnerSession =
-                            if (!nextSaved) savedOwnerSession ?: dataSource.readSession() else null
-                        val result =
-                            if (nextSaved) {
-                                dataSource.saveMessage(itemId)
-                            } else {
-                                dataSource.unsaveMessage(itemId)
-                            }
-                        when (result) {
-                            is DataResult.Content -> {
-                                // Activity's Saved filter reloads on an accepted save or unsave.
-                                sharedStores.homeSavedStateCache.recordSavedWrite()
-                                // A confirmed unsave leaves the Saved list's stored copy (a save shows up
-                                // with the list's next refresh: the row needs the server's saved entry).
-                                if (!nextSaved) {
-                                    val savedServerId =
-                                        unsaveOwnerSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
-                                    if (unsaveOwnerSession != null && savedServerId != null) {
-                                        sharedStores.homeSavedStateCache.recordMessageUnsaved(
-                                            serverId = savedServerId,
-                                            userId = unsaveOwnerSession.user.id,
-                                            messageId = MessageId(itemId),
-                                        )
-                                    }
-                                }
-                            }
-                            is DataResult.Empty,
-                            is DataResult.Error -> {
-                                threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, previousSaved))
-                                bridge.toast(if (nextSaved) unableToSaveMessageLabel else unableToRemoveSavedMessageLabel)
-                            }
-                            is DataResult.NoPermission -> {
-                                threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, previousSaved))
-                                if (routeAuthRequired(result)) return@launch
-                                bridge.toast(if (nextSaved) unableToSaveMessageLabel else unableToRemoveSavedMessageLabel)
-                            }
-                        }
-                    }
-                }
-                action == "commitActionCard" && !itemId.isNullOrBlank() -> {
-                    if (itemId in pendingActionCardIds) {
-                        return@ThreadPageContent
-                    }
-                    val actionCardMessage = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
-                    val actionCard = actionCardMessage?.threadActionCard()
-                    if (actionCard == null) {
-                        bridge.toast(actionUnavailableLabel)
-                        return@ThreadPageContent
-                    }
-                    // web ActionCard: a frozen card's button is disabled; nothing runs.
-                    if (actionCard.isFrozen) return@ThreadPageContent
-                    // Expired (by state, or past `expiresAt` on this clock) or withdrawn: no run, and no
-                    // create-agent / create-channel / add-members dialog (they create, then mark it executed).
-                    if (threadActionCardCommitBlockedByEnd(actionCard, defaultNowMillis())) return@ThreadPageContent
-                    // A reconfirm card's button reconfirms it (back to prepared), whatever its type.
-                    if (actionCard.needsReconfirmation) {
-                        pendingActionCardIds = pendingActionCardIds + itemId
-                        coroutineScope.launch {
-                            try {
-                                when (val result = dataSource.commitThreadActionCard(renderedThread, itemId, actionCard)) {
-                                    is DataResult.Content ->
-                                        threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, result.data))
-                                    is DataResult.Empty -> bridge.toast(actionCardReconfirmFailedLabel)
-                                    is DataResult.Error ->
-                                        if (result.error.isActionCardExpiredRefusal()) {
-                                            // The server refused it as expired (409): the card says so itself.
-                                            threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired()))
-                                        } else {
-                                            bridge.toast(actionCardReconfirmFailedLabel)
-                                        }
-                                    is DataResult.NoPermission -> {
-                                        if (routeAuthRequired(result)) return@launch
-                                        bridge.toast(actionCardReconfirmFailedLabel)
-                                    }
-                                }
-                            } finally {
-                                pendingActionCardIds = pendingActionCardIds - itemId
-                            }
-                        }
-                        return@ThreadPageContent
-                    }
-                    if (actionCard.isFeedbackSubmitAction()) {
-                        val feedbackCardEntry =
-                            raftFeedbackCardEntryOrNull(
-                                messageId = itemId,
-                                card = actionCard,
-                                viewingServerId = currentServerId,
-                            )
-                        if (feedbackCardEntry == null) {
-                            actionCardSpecHost.openUnsupportedInWeb(itemId, actionCard.type)
-                        } else {
-                            // The native form on the card's draft (the web page's card flow).
-                            bridge.log("thread_feedback_card_open messageId=$itemId")
-                            pager.openSettingsFeedbackCardPage(storeScope, feedbackCardEntry)
-                        }
-                        return@ThreadPageContent
-                    }
-                    if (actionCard.isInstallMarketplaceAppAction()) {
-                        installAppDialogStore.dispatch(ThreadInstallAppActionIntent.Open(itemId, actionCard))
-                        return@ThreadPageContent
-                    }
-                    if (!actionCard.isSupportedCommitAction()) {
-                        // Not runnable in the app: its message on the web, traced by type.
-                        actionCardSpecHost.openUnsupportedInWeb(itemId, actionCard.type)
-                        return@ThreadPageContent
-                    }
-                    if (actionCard.type.equals("agent:create", ignoreCase = true)) {
-                        val dialogState =
-                            ThreadCreateAgentActionDialogState(
-                                messageId = itemId,
-                                card = actionCard,
-                                submitting = false,
-                                errorCode = null
-                        )
-                        createAgentDialogState = dialogState
-                        return@ThreadPageContent
-                    }
-                    pendingActionCardIds = pendingActionCardIds + itemId
-                    coroutineScope.launch {
-                        try {
-                            var createdChannel: HomeChannelRow? = null
-                            val outcome =
-                                dataSource.commitThreadActionCard(renderedThread, itemId, actionCard, actionCardStepUp) { channel ->
-                                    createdChannel = channel
-                                    // As submitCreateChannel: Home lists it now, whatever marking the card answers.
-                                    sharedHomeStore?.dispatch(SharedHomeIntent.ChannelCreated(channel))
-                                    sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
-                                }
-                            // "Verify it's you" closed: the card stays as it was, nothing is shown.
-                            val result = (outcome as? SecondFactorStepUpOutcome.Completed)?.result ?: return@launch
-                            when (result) {
-                                is DataResult.Content -> {
-                                    threadViewModel.dispatch(
-                                        SharedThreadIntent.ApplyActionCard(itemId, result.data)
-                                    )
-                                    bridge.toast(actionCardSuccessLabels[actionCard.type] ?: genericActionCardSuccessLabel)
-                                }
-                                is DataResult.Empty -> {
-                                    bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
-                                }
-                                is DataResult.Error -> {
-                                    if (result.error.isActionCardExpiredRefusal()) {
-                                        // The server refused it as expired (409): the card says so itself.
-                                        threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired()))
-                                    } else {
-                                        bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
-                                    }
-                                }
-                                is DataResult.NoPermission -> {
-                                    if (routeAuthRequired(result)) return@launch
-                                    bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
-                                }
-                            }
-                            // Web CreateChannelDialog `finish`: the new channel opens; marking the card doesn't hold it.
-                            createdChannel?.let { channel ->
-                                val next =
-                                    buildAppShellThreadPayload(
-                                        conversation = channel.toThreadLaunchConversationIdentity(),
-                                        timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
-                                        alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
-                                        compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
-                                        onWarn = bridge::logWarn,
-                                    )
-                                if (next != null) {
-                                    onOpenThreadPayload(next)
-                                } else {
-                                    bridge.logWarn("action_card_created_channel_open_rejected reason=identity_unresolved")
-                                }
-                            }
-                        } finally {
-                            pendingActionCardIds = pendingActionCardIds - itemId
-                        }
-                    }
-                }
-                action == "toggleReaction" && !itemId.isNullOrBlank() && !tab.isNullOrBlank() -> {
-                    val reactionKey = threadReactionPendingKey(itemId, tab)
-                    if (reactionKey in pendingReactionKeys) {
-                        return@ThreadPageContent
-                    }
-                    val toggleTarget = renderedTimelineSlice.threadReactionToggleTarget(itemId, tab)
-                    if (toggleTarget == null) {
-                        return@ThreadPageContent
-                    }
-                    val nextSelected = toggleTarget.nextSelected
-                    val previousReactions = toggleTarget.message.reactions
-                    pendingReactionKeys = pendingReactionKeys + reactionKey
-                    pendingReactionVisuals =
-                        pendingReactionVisuals +
-                            (reactionKey to previousReactions.toPendingReactionVisual(tab, nextSelected))
-                    threadViewModel.dispatch(
-                        SharedThreadIntent.ApplyMessageReactionSelection(itemId, tab, selected = nextSelected)
-                    )
-                    bridge.log(
-                        "thread_reaction_toggle messageId=$itemId emoji=$tab selected=$nextSelected"
-                    )
-                    coroutineScope.launch {
-                        try {
-                            when (val result = dataSource.setMessageReaction(itemId, tab, selected = nextSelected)) {
-                                is DataResult.Content -> {
-                                    threadViewModel.dispatch(SharedThreadIntent.ApplyMessageMutation(result.data))
-                                }
-                                is DataResult.Empty,
-                                is DataResult.Error -> {
-                                    threadViewModel.dispatch(
-                                        SharedThreadIntent.ApplyMessageReactions(itemId, previousReactions)
-                                    )
-                                    bridge.toast(unableToUpdateReactionLabel)
-                                }
-                                is DataResult.NoPermission -> {
-                                    if (routeAuthRequired(result)) return@launch
-                                    threadViewModel.dispatch(
-                                        SharedThreadIntent.ApplyMessageReactions(itemId, previousReactions)
-                                    )
-                                    bridge.toast(unableToUpdateReactionLabel)
-                                }
-                            }
-                        } finally {
-                            pendingReactionKeys = pendingReactionKeys - reactionKey
-                            pendingReactionVisuals = pendingReactionVisuals - reactionKey
-                        }
-                    }
-                }
-                action == "openSourceTask" && !itemId.isNullOrBlank() -> {
-                    // Task v2: a row of the list under a message opens its task (web useOpenTask):
-                    // its own conversation, or a pre-v2 task's host thread.
-                    val task = linkedTasksProjection.sourceTaskById(itemId)
-                    if (task == null) {
-                        bridge.logWarn("thread_task_open_rejected reason=source_task_missing taskId=$itemId")
-                        bridge.toast(unableToOpenTaskLabel)
-                    } else {
-                        openCanonicalTask(task, "message_task_list")
-                    }
-                }
-                action == "openTask" && !itemId.isNullOrBlank() -> {
-                    val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
-                    if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
-                    try {
-                        markdownTaskOpenRequestGate.nextRequest()
-                        val canonicalTask = linkedTasksProjection.taskById(itemId)
-                        val parentMessage = renderedTimelineSlice.findTaskParentMessage(itemId, linkedTasksProjection)
-                        val parentReplyMetadata =
-                            parentMessage?.let { message ->
-                                replyMetadataByParentId.threadReplyMetadataFor(message)
-                            }
-                        val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
-                        val provenance =
-                            dataSource.replyCacheProvenanceState.value
-                                .currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
-                        val loadedParentProvenanceAccepted =
-                            parentMessage != null &&
-                                parentReplyMetadata != null &&
-                                provenance != null &&
-                                dataSource.rememberReplyParentCandidate(
-                                    provenance = provenance,
-                                    serverId = currentServerId,
-                                    parentChannelId = parentChannelId,
-                                    parentMessage = parentMessage,
-                                    threadChannelId = parentReplyMetadata.threadChannelId,
-                                    replyCount = parentReplyMetadata.replyCount
-                                )
-                        if (parentMessage != null && !loadedParentProvenanceAccepted) {
-                            bridge.logWarn("thread_task_parent_seed_rejected reason=stale_provenance")
-                        }
-                        var useLoadedParent = false
-                        arbitrateThreadTaskOpen(
-                            loadedParentAvailable = parentMessage != null,
-                            loadedParentProvenanceAccepted = loadedParentProvenanceAccepted,
-                            canonicalTask = canonicalTask
-                        ).dispatch(
-                            onUseLoadedParent = { useLoadedParent = true },
-                            onOpenCanonical = { task, reason ->
-                                bridge.log(
-                                    "thread_task_open result=fallback_to_canonical reason=${reason.diagnosticValue} " +
-                                        "taskId=$itemId"
-                                )
-                                openCanonicalTask(
-                                    task,
-                                    if (markdownActionId == null) "inline_task" else "markdown_task"
-                                )
-                            },
-                            onFailClosed = { reason ->
-                                bridge.logWarn(
-                                    "thread_task_open_rejected reason=${reason.diagnosticValue} taskId=$itemId"
-                                )
-                                bridge.toast(unableToOpenTaskLabel)
-                            }
-                        )
-                        if (!useLoadedParent) {
-                            return@ThreadPageContent
-                        }
-                        val loadedParentMessage = parentMessage ?: return@ThreadPageContent
-                        val loadedParentReplyMetadata = parentReplyMetadata ?: return@ThreadPageContent
-                        val loadingPayload =
-                            renderedThread.replyThreadLoadingPayload(
-                                parentMessageId = loadedParentMessage.id,
-                                parentChannelId = parentChannelId,
-                                threadChannelId = loadedParentReplyMetadata.threadChannelId,
-                                focusedMessageId = loadedParentReplyMetadata.firstUnreadReplyMessageId
-                            )
-                        threadViewModel.dispatch(
-                            SharedThreadIntent.ApplyReplyThreadRead(
-                                parentMessageId = loadedParentMessage.id,
-                                threadChannelId = loadedParentReplyMetadata.threadChannelId
-                            )
-                        )
-                        bridge.log(
-                            "thread_reply_open action=task parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
-                                "parentMessageId=${loadedParentMessage.id} taskId=$itemId replyCount=${loadedParentReplyMetadata.replyCount} " +
-                                "knownThreadChannelId=${loadedParentReplyMetadata.threadChannelId.orEmpty()} " +
-                                "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
-                        )
-                        onOpenThreadPayload(loadingPayload)
-                    } finally {
-                        finishMarkdownReferencePending(markdownPendingToken)
-                    }
-                }
-                action == "openMarkdownTaskNumber" && !itemId.isNullOrBlank() -> {
-                    val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
-                    if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
-                    // `#7`, or a conversation-qualified `#proj:#7` / `dm:@peer:#7` (Web task refs).
-                    val qualifiedTaskRef = parseRaftMarkdownTaskRefLabel(itemId)?.takeIf { it.qualified }
-                    val taskNumber = qualifiedTaskRef?.taskNumber ?: itemId.removePrefix("#").trim().toIntOrNull()
-                    if (taskNumber == null || currentServerId.isNullOrBlank()) {
-                        finishMarkdownReferencePending(markdownPendingToken)
-                        bridge.log("thread_markdown_task_resolve result=unresolvable label=${itemId.take(32)}")
-                        return@ThreadPageContent
-                    }
-                    val requestGeneration = markdownTaskOpenRequestGate.nextRequest()
-                    val resolveStartedAt = TimeSource.Monotonic.markNow()
-                    bridge.log(
-                        "thread_markdown_task_resolve result=start taskNumber=$taskNumber " +
-                            "generation=$requestGeneration"
-                    )
-                    coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                        try {
-                            val resolveChannelId =
-                                if (qualifiedTaskRef == null) {
-                                    markdownTaskContextChannelId
-                                } else {
-                                    dataSource.markdownTaskRefChannelId(
-                                        actionId = markdownActionId,
-                                        currentPayload = renderedThread,
-                                        conversationLabel =
-                                            qualifiedTaskRef.channelName ?: qualifiedTaskRef.directMessagePeerName.orEmpty(),
-                                        requiredKind =
-                                            if (qualifiedTaskRef.directMessagePeerName != null) {
-                                                ConversationKind.DirectMessage
-                                            } else {
-                                                null
-                                            }
-                                    )
-                                }
-                            val resolved =
-                                openMarkdownTaskNumberPayload(
-                                    serverId = ServerId(currentServerId),
-                                    taskNumber = taskNumber,
-                                    currentPayload = renderedThread,
-                                    currentTaskChannelId = resolveChannelId,
-                                    tasksDataSource = tasksDataSource,
-                                    tasksDataStore = tasksDataStore,
-                                    taskV2Enabled = taskV2Enabled,
-                                    conversationIdentityProvider = conversationIdentityProvider,
-                                    referenceResolver = dataSource.referenceResolver,
-                                    actionId = markdownActionId
-                                )
-                            val result = markdownTaskOpenRequestGate.accept(requestGeneration, resolved)
-                            if (result == null) {
-                                bridge.log(
-                                    "thread_markdown_task_resolve result=stale taskNumber=$taskNumber " +
-                                        "generation=$requestGeneration " +
-                                        "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
-                                )
-                                return@launch
-                            }
-                            when (result) {
-                                is MarkdownTaskNumberOpenResult.Found -> {
-                                    bridge.log(
-                                        "thread_markdown_task_open taskNumber=$taskNumber taskId=${result.task.id.value} " +
-                                            "source=${result.source.name} generation=$requestGeneration " +
-                                            "resolveDurationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds} " +
-                                            "parentChannelId=${result.payload.parentChannelId.orEmpty()} " +
-                                            "parentMessageId=${result.payload.parentMessageId.orEmpty()} " +
-                                            "threadId=${result.payload.streamChannelId.orEmpty()}"
-                                    )
-                                    onOpenThreadPayload(result.payload)
-                                }
-                                is MarkdownTaskNumberOpenResult.OpensInPlace -> {
-                                    openCanonicalTask(result.task, "markdown_task")
-                                }
-                                MarkdownTaskNumberOpenResult.NotFound -> {
-                                    // Web `openTaskByChannelNumber`: a ref that names no task of
-                                    // its conversation opens nothing and says nothing.
-                                    bridge.log(
-                                        "thread_markdown_task_resolve result=not_found taskNumber=$taskNumber " +
-                                            "generation=$requestGeneration " +
-                                            "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
-                                    )
-                                }
-                                MarkdownTaskNumberOpenResult.AuthRequired -> {
-                                    bridge.log(
-                                        "thread_markdown_task_resolve result=auth_required taskNumber=$taskNumber " +
-                                            "generation=$requestGeneration " +
-                                            "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
-                                    )
-                                    routeAuthRequired(
-                                        DataResult.NoPermission(PermissionBlocker(code = "tasks_401"))
-                                    )
-                                }
-                                MarkdownTaskNumberOpenResult.Failed -> {
-                                    bridge.log(
-                                        "thread_markdown_task_resolve result=failed taskNumber=$taskNumber " +
-                                            "generation=$requestGeneration " +
-                                            "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
-                                    )
-                                    bridge.errorToast(localizedUnableToOpenTaskNumber(taskNumber))
-                                }
-                            }
-                        } finally {
-                            finishMarkdownReferencePending(markdownPendingToken)
-                        }
-                    }
-                }
-                action == "openCommentHost" && !itemId.isNullOrBlank() -> {
-                    val commentRef =
-                        renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)?.commentRef
-                    val hostMessageId = commentRef?.hostMessageId?.takeIf { it.isNotBlank() }
-                    val loadingPayload = commentRef?.let { renderedThread.commentHostLoadingPayload(it) }
-                    if (hostMessageId == null || loadingPayload == null) {
-                        bridge.toast(commentSourceUnavailableLabel)
-                        return@ThreadPageContent
-                    }
-                    bridge.log(
-                        "thread_route_open action=comment_host hostMessageId=$hostMessageId " +
-                            "targetThreadId=${loadingPayload.sourceThreadId.orEmpty()} " +
-                            "parentChannelId=${loadingPayload.parentChannelId.orEmpty()} " +
-                            "parentMessageId=${loadingPayload.parentMessageId.orEmpty()} " +
-                            "focusedMessageId=${loadingPayload.focusedMessageId.orEmpty()} " +
-                            "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
-                    )
-                    onOpenThreadPayload(loadingPayload)
-                }
-                action == "openMarkdownUrl" && !itemId.isNullOrBlank() -> {
-                    val open = raftMarkdownUrlOpen(itemId, sharedStores.apiEnvironmentStore.current().webUrl)
-                    val serverId = currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
-                    if (open.target != null && open.opensOnThisPage { channelId -> serverId?.let { conversationIdentityProvider?.resolveProjection(it, channelId) } != null }) {
-                        openThreadWebLinkTargetInApp(open.target)
-                    } else {
-                        // Any other Raft link (a conversation the shell resolves, a page without a
-                        // route here) or an outside one: the link navigator's rule.
-                        linkNavigator.open(open.url)
-                    }
-                }
-                // A4: a spec card's navigate to a channel, as a channel link opens it.
-                action == "openActionCardChannel" && !itemId.isNullOrBlank() ->
-                    openThreadWebLinkTargetInApp(RaftThreadWebLinkTarget(channelId = itemId))
-                action == "openMarkdownTag" && !itemId.isNullOrBlank() -> {
-                    val localTarget = renderedThread.resolveMarkdownMentionOpenTarget(itemId, emptyList())
-                    if (localTarget != null) {
-                        onOpenMemberProfile(renderedThread, renderedTimelineSlice, localTarget.identity)
-                        return@ThreadPageContent
-                    }
-                    if (serverMembersStore == null || threadMembersServerId == null) {
-                        bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
-                        return@ThreadPageContent
-                    }
-                    coroutineScope.launch {
-                        val membersResult =
-                            serverMembersStore.refreshMembers(
-                                serverId = threadMembersServerId,
-                                priority = DataRequestPriority.Visible
-                            )
-                        if (membersResult is DataResult.NoPermission && routeAuthRequired(membersResult)) {
-                            return@launch
-                        }
-                        if (threadMembersChannelId != null) {
-                            val channelMembersResult =
-                                serverMembersStore.loadChannelMembers(
-                                    serverId = threadMembersServerId,
-                                    channelId = threadMembersChannelId,
-                                    priority = DataRequestPriority.Visible
-                                )
-                            if (channelMembersResult is DataResult.NoPermission && routeAuthRequired(channelMembersResult)) {
-                                return@launch
-                            }
-                        }
-                        val serverMembers =
-                            serverMembersStore.currentServerMembers(threadMembersServerId) +
-                                threadMembersChannelId
-                                    ?.let { channelId ->
-                                        serverMembersStore.currentChannelMembers(threadMembersServerId, channelId)
-                                    }
-                                    .orEmpty()
-                        val target =
-                            renderedThread.resolveMarkdownMentionOpenTarget(
-                                label = itemId,
-                                serverMembers = serverMembers
-                            )
-                        if (target == null) {
-                            bridge.toast(localizedMemberNotFound(itemId.take(32)))
-                        } else {
-                            onOpenMemberProfile(renderedThread, renderedTimelineSlice, target.identity)
-                        }
-                    }
-                }
-                (action == "openMarkdownChannel" || action == "openMarkdownDirectMessage") && !itemId.isNullOrBlank() -> {
-                    val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
-                    if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
-                    val openDirectMessage = action == "openMarkdownDirectMessage"
-                    coroutineScope.launch {
-                        try {
-                            val loadingPayload =
-                                dataSource.markdownChannelLaunchPayload(
-                                    currentPayload = renderedThread,
-                                    channelLabel = itemId,
-                                    requiredKind =
-                                        if (openDirectMessage) {
-                                            ConversationKind.DirectMessage
-                                        } else {
-                                            null
-                                        }
-                                )
-                            if (loadingPayload == null) {
-                                bridge.errorToast(
-                                    localizedUnableToOpenTarget(
-                                        if (openDirectMessage) {
-                                            "dm:@${itemId.take(28)}"
-                                        } else {
-                                            "#${itemId.removePrefix("#").take(31)}"
-                                        }
-                                    )
-                                )
-                            } else {
-                                val currentRouteIdentity = renderedThread.resolveThreadRouteIdentity()
-                                val targetRouteIdentity = loadingPayload.resolveThreadRouteIdentity()
-                                if (currentRouteIdentity.canRetainThreadPageFor(targetRouteIdentity)) {
-                                    val targetFocusedMessageId = loadingPayload.focusedMessageId
-                                    if (!targetFocusedMessageId.isNullOrBlank()) {
-                                        threadViewModel.dispatch(
-                                            SharedThreadIntent.FocusMessage(
-                                                messageId = targetFocusedMessageId,
-                                                switchToTab = loadingPayload.selectedTab
-                                            )
-                                        )
-                                    }
-                                } else {
-                                    onOpenThreadPayload(loadingPayload)
-                                }
-                            }
-                        } finally {
-                            finishMarkdownReferencePending(markdownPendingToken)
-                        }
-                    }
-                }
-                (action == "openMarkdownThreadRef" || action == "openMarkdownDirectMessageThreadRef" || action == "openMarkdownMessageRef") &&
-                    !itemId.isNullOrBlank() -> {
-                    val openMessageRef = action == "openMarkdownMessageRef"
-                    val unableToOpenRefLabel =
-                        if (openMessageRef) localizedUnableToOpenTarget(itemId.take(32)) else unableToOpenThreadRefLabel
-                    val refToastTarget =
-                        if (openMessageRef || tab.isNullOrBlank()) {
-                            itemId.take(32)
-                        } else {
-                            "#${itemId.removePrefix("#").take(31)}:${tab.take(12)}"
-                        }
-                    val markdownPendingToken = markdownActionId?.let(::beginMarkdownReferencePending)
-                    if (markdownActionId != null && markdownPendingToken == null) return@ThreadPageContent
-                    // How long the open waits for its target: a local hit opens with no spinner;
-                    // only a miss fetches messages/context, and the chip is busy for that fetch alone.
-                    val resolveStartedAt = TimeSource.Monotonic.markNow()
-                    var resolveOutcome = "cancelled"
-                    bridge.log("thread_markdown_ref_resolve result=start label=${itemId.take(32)}")
-                    coroutineScope.launch {
-                        try {
-                            val provenance =
-                                dataSource.replyCacheProvenanceState.value
-                                    .currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
-                            if (provenance == null) {
-                                resolveOutcome = "no_provenance"
-                                bridge.toast(unableToOpenRefLabel)
-                                return@launch
-                            }
-                            when (
-                                val result =
-                                    if (openMessageRef) {
-                                        parseRaftMarkdownMessageRefLabel(itemId)
-                                            ?.let { ref ->
-                                                dataSource.markdownMessageRefLaunchPayload(
-                                                    provenance = provenance,
-                                                    currentPayload = renderedThread,
-                                                    ref = ref,
-                                                    actionId = markdownActionId
-                                                )
-                                            }
-                                            ?: DataResult.Empty(EmptyReason.NoMessages)
-                                    } else {
-                                        dataSource.markdownThreadRefLaunchPayload(
-                                            provenance = provenance,
-                                            currentPayload = renderedThread,
-                                            channelLabel = itemId,
-                                            threadShortId = tab,
-                                            requiredParentKind =
-                                                if (action == "openMarkdownDirectMessageThreadRef") {
-                                                    ConversationKind.DirectMessage
-                                                } else {
-                                                    null
-                                                },
-                                            actionId = markdownActionId
-                                        )
-                                    }
-                            ) {
-                                is DataResult.Content -> {
-                                    resolveOutcome = "opened"
-                                    bridge.log(
-                                        "thread_markdown_ref_open label=${itemId.take(32)} " +
-                                            "parentChannelId=${result.data.parentChannelId.orEmpty()} " +
-                                            "parentMessageId=${result.data.parentMessageId.orEmpty()} " +
-                                            "threadId=${result.data.streamChannelId.orEmpty()} " +
-                                            "focusedMessageId=${result.data.focusedMessageId.orEmpty()}"
-                                    )
-                                    val currentRouteIdentity = renderedThread.resolveThreadRouteIdentity()
-                                    val targetRouteIdentity = result.data.resolveThreadRouteIdentity()
-                                    if (currentRouteIdentity.canRetainThreadPageFor(targetRouteIdentity)) {
-                                        val targetFocusedMessageId = result.data.focusedMessageId
-                                        if (!targetFocusedMessageId.isNullOrBlank()) {
-                                            threadViewModel.dispatch(
-                                                if (openMessageRef) {
-                                                    // The named message may be outside the loaded window.
-                                                    SharedThreadIntent.JumpToMessage(
-                                                        messageId = targetFocusedMessageId,
-                                                        switchToTab = result.data.selectedTab
-                                                    )
-                                                } else {
-                                                    SharedThreadIntent.FocusMessage(
-                                                        messageId = targetFocusedMessageId,
-                                                        switchToTab = result.data.selectedTab
-                                                    )
-                                                }
-                                            )
-                                        }
-                                    } else {
-                                        onOpenThreadPayload(result.data)
-                                    }
-                                }
-                                // A failure never navigates: the toast names why and the page stays.
-                                is DataResult.Empty -> {
-                                    val failure = result.sharedReferenceFailure()
-                                    resolveOutcome = if (failure == SharedReferenceFailure.OtherServer) "other_server" else "not_found"
-                                    bridge.errorToast(localizedReferenceFailure(failure, refToastTarget, unableToOpenRefLabel))
-                                }
-                                is DataResult.Error -> {
-                                    resolveOutcome = "error"
-                                    bridge.errorToast(unableToOpenRefLabel, result.error)
-                                }
-                                is DataResult.NoPermission -> {
-                                    resolveOutcome = "no_permission"
-                                    if (!routeAuthRequired(result)) {
-                                        bridge.errorToast(
-                                            localizedReferenceFailure(
-                                                result.sharedReferenceFailure(),
-                                                refToastTarget,
-                                                unableToOpenRefLabel
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-                        } finally {
-                            finishMarkdownReferencePending(markdownPendingToken)
-                            bridge.log(
-                                "thread_markdown_ref_resolve result=$resolveOutcome label=${itemId.take(32)} " +
-                                    "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
-                            )
-                        }
-                    }
-                }
-                action == "submitAddMember" && !itemId.isNullOrBlank() -> {
-                    val previousPayload = renderedThread
-                    threadViewModel.dispatch(
-                        SharedThreadIntent.SetAddMemberStatus(status = "adding", errorCode = null)
-                    )
-                    coroutineScope.launch {
-                        when (val result = dataSource.addChannelMember(previousPayload, itemId, tab)) {
-                            is DataResult.Content -> {
-                                threadViewModel.dispatch(
-                                    SharedThreadIntent.ApplyMembersPatch(
-                                        membersCount = result.data.membersCount,
-                                        members = result.data.members,
-                                        memberCandidates = result.data.memberCandidates,
-                                        canAddMembers = result.data.canAddMembers
-                                    )
-                                )
-                                bridge.toast(memberAddedLabel)
-                            }
-                            is DataResult.Empty,
-                            is DataResult.Error -> {
-                                val errorCode = result.threadActionErrorCode("member_add_failed")
-                                threadViewModel.dispatch(
-                                    SharedThreadIntent.SetAddMemberStatus(status = "failed", errorCode = errorCode)
-                                )
-                                bridge.toast(unableToAddMemberLabel)
-                            }
-                            is DataResult.NoPermission -> {
-                                if (routeAuthRequired(result)) return@launch
-                                val errorCode = result.threadActionErrorCode("member_add_failed")
-                                threadViewModel.dispatch(
-                                    SharedThreadIntent.SetAddMemberStatus(status = "failed", errorCode = errorCode)
-                                )
-                                bridge.toast(unableToAddMemberLabel)
-                            }
-                        }
-                    }
-                }
-                action == "removeMember" && !itemId.isNullOrBlank() -> {
-                    val previousPayload = renderedThread
-                    val member = previousPayload.members.firstOrNull { it.id == itemId }
-                    threadViewModel.dispatch(
-                        SharedThreadIntent.SetRemoveMemberStatus(
-                            status = "removing",
-                            removingMemberId = itemId,
-                            errorCode = null
-                        )
-                    )
-                    coroutineScope.launch {
-                        when (val result = dataSource.removeChannelMember(previousPayload, itemId, member?.kind)) {
-                            is DataResult.Content -> {
-                                threadViewModel.dispatch(
-                                    SharedThreadIntent.ApplyMembersPatch(
-                                        membersCount = result.data.membersCount,
-                                        members = result.data.members,
-                                        memberCandidates = result.data.memberCandidates,
-                                        canAddMembers = result.data.canAddMembers
-                                    )
-                                )
-                                bridge.toast(memberRemovedLabel)
-                            }
-                            is DataResult.Empty,
-                            is DataResult.Error -> {
-                                val errorCode = result.threadActionErrorCode("member_remove_failed")
-                                threadViewModel.dispatch(
-                                    SharedThreadIntent.SetRemoveMemberStatus(
-                                        status = "failed",
-                                        removingMemberId = itemId,
-                                        errorCode = errorCode
-                                    )
-                                )
-                                bridge.toast(unableToRemoveMemberLabel)
-                            }
-                            is DataResult.NoPermission -> {
-                                if (routeAuthRequired(result)) return@launch
-                                val errorCode = result.threadActionErrorCode("member_remove_failed")
-                                threadViewModel.dispatch(
-                                    SharedThreadIntent.SetRemoveMemberStatus(
-                                        status = "failed",
-                                        removingMemberId = itemId,
-                                        errorCode = errorCode
-                                    )
-                                )
-                                bridge.toast(unableToRemoveMemberLabel)
-                            }
-                        }
-                    }
-                }
-                action == "settingsAction" && itemId == "archive" -> {
-                    val previousPayload = renderedThread
-                    coroutineScope.launch {
-                        when (val result = dataSource.archiveChannel(previousPayload)) {
-                            is DataResult.Content -> {
-                                bridge.toast(channelArchivedLabel)
-                                onBack()
-                            }
-                            is DataResult.Empty,
-                            is DataResult.Error -> bridge.toast(unableToArchiveChannelLabel)
-                            is DataResult.NoPermission -> {
-                                if (routeAuthRequired(result)) return@launch
-                                bridge.toast(unableToArchiveChannelLabel)
-                            }
-                        }
-                    }
-                }
-                action == "settingsAction" && itemId == "delete" -> {
-                    val previousPayload = renderedThread
-                    coroutineScope.launch {
-                        when (val result = dataSource.deleteChannel(previousPayload)) {
-                            is DataResult.Content -> {
-                                bridge.toast(channelDeletedLabel)
-                                onBack()
-                            }
-                            is DataResult.Empty,
-                            is DataResult.Error -> bridge.toast(unableToDeleteChannelLabel)
-                            is DataResult.NoPermission -> {
-                                if (routeAuthRequired(result)) return@launch
-                                bridge.toast(unableToDeleteChannelLabel)
-                            }
-                        }
-                    }
-                }
-                action == "convertMessageToTask" && !itemId.isNullOrBlank() && taskV2Enabled -> {
-                    // Task v2 (web MessageItem `openCreateFromMessage`): tasks are created FROM the
-                    // message (several, under it), never converted from it.
-                    val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
-                    if (message == null || !renderedTimelineSlice.canConvertMessagesToTasks || !message.canCreateTaskFromMessage() || taskChannelId == null) {
-                        bridge.toast(unableToCreateTaskLabel)
-                        return@ThreadPageContent
-                    }
-                    createTaskFromMessage.open(
-                        TaskCreateSourceMessage(
-                            channelId = taskChannelId,
-                            messageId = MessageId(message.id),
-                            senderName = message.threadAvatarName().ifBlank { message.shownAuthorName() },
-                            text = message.body,
-                        )
-                    )
-                }
-                action == "convertMessageToTask" && !itemId.isNullOrBlank() -> {
-                    if (itemId in pendingTaskConvertMessageIds) {
-                        return@ThreadPageContent
-                    }
-                    val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
-                    if (message == null || !renderedTimelineSlice.canConvertMessagesToTasks || !message.canConvertToTask()) {
-                        bridge.toast(unableToConvertMessageLabel)
-                        return@ThreadPageContent
-                    }
-                    pendingTaskConvertMessageIds = pendingTaskConvertMessageIds + itemId
-                    coroutineScope.launch {
-                        try {
-                            when (
-                                val result =
-                                    convertMessageToCanonicalTask(
-                                        serverId = currentServerId?.let(::ServerId),
-                                        messageId = MessageId(itemId),
-                                        tasksDataSource = tasksDataSource,
-                                        tasksDataStore = tasksDataStore,
-                                        diagnosticsLogger = { bridge.log(it) }
-                                    )
-                            ) {
-                                is DataResult.Content -> {
-                                    bridge.toast(taskCreatedLabel)
-                                }
-                                is DataResult.Empty,
-                                is DataResult.Error -> {
-                                    bridge.toast(unableToConvertMessageLabel)
-                                }
-                                is DataResult.NoPermission -> {
-                                    if (routeAuthRequired(result)) return@launch
-                                    bridge.toast(unableToConvertMessageLabel)
-                                }
-                            }
-                        } finally {
-                            pendingTaskConvertMessageIds = pendingTaskConvertMessageIds - itemId
-                        }
-                    }
-                }
-                action == "setTaskStatus" && !itemId.isNullOrBlank() && !tab.isNullOrBlank() -> {
-                    val status = tab.toSharedThreadTaskStatus()
-                    if (status == null) {
-                        bridge.toast(unsupportedTaskStatusLabel)
-                        return@ThreadPageContent
-                    }
-                    val intent = linkedTasksProjection.statusUpdateIntent(itemId, status)
-                    if (tasksViewModel == null || intent == null) {
-                        bridge.toast(unableToUpdateTaskLabel)
-                        return@ThreadPageContent
-                    }
-                    tasksViewModel.dispatch(intent)
-                }
-                // A move into Backlog with the reason asked for it (web TaskBacklogReasonPopover);
-                // tab carries the reason, "" for none.
-                action == "moveTaskToBacklog" && !itemId.isNullOrBlank() -> {
-                    val intent = linkedTasksProjection.statusUpdateIntent(itemId, TaskStatus.Backlog, tab)
-                    if (tasksViewModel == null || intent == null) {
-                        bridge.toast(unableToUpdateTaskLabel)
-                        return@ThreadPageContent
-                    }
-                    tasksViewModel.dispatch(intent)
-                }
-                // Task #258: inline task detail panel assignee row. tab carries the
-                // assignee filter id ("unassigned" sentinel or member filter id);
-                // resolve against the same current-channel options rendered by the picker.
-                action == "setTaskAssignee" && !itemId.isNullOrBlank() && !tab.isNullOrBlank() -> {
-                    val assignee =
-                        if (tab == TasksUnassignedAssigneeFilterId) {
-                            null
-                        } else {
-                            resolveThreadTaskAssignee(tab, taskAssigneeOptions)
-                        }
-                    if (assignee == null && tab != TasksUnassignedAssigneeFilterId) {
-                        bridge.toast(unableToUpdateTaskLabel)
-                        return@ThreadPageContent
-                    }
-                    val intent = linkedTasksProjection.assignUpdateIntent(itemId, assignee)
-                    if (tasksViewModel == null || intent == null) {
-                        bridge.toast(unableToUpdateTaskLabel)
-                        return@ThreadPageContent
-                    }
-                    tasksViewModel.dispatch(intent)
-                }
-                action == "markTaskDone" && !itemId.isNullOrBlank() -> {
-                    val intent = linkedTasksProjection.statusUpdateIntent(itemId, TaskStatus.Done)
-                    if (tasksViewModel == null || intent == null) {
-                        bridge.toast(unableToUpdateTaskLabel)
-                        return@ThreadPageContent
-                    }
-                    tasksViewModel.dispatch(intent)
-                }
-                action == "reopenTask" && !itemId.isNullOrBlank() -> {
-                    val intent = linkedTasksProjection.statusUpdateIntent(itemId, TaskStatus.Todo)
-                    if (tasksViewModel == null || intent == null) {
-                        bridge.toast(unableToUpdateTaskLabel)
-                        return@ThreadPageContent
-                    }
-                    tasksViewModel.dispatch(intent)
-                }
-                action == "joinChannel" -> {
-                    // slock #12426: a join already in flight sends no second request.
-                    val joinKey = renderedThread.joinChannelTargetId()
-                    if (joinKey != null && !ThreadChannelJoinsInFlight.begin(joinKey)) return@ThreadPageContent
-                    coroutineScope.launch {
-                        try {
-                            // A task conversation's Join joins its task channel, not the conversation.
-                            when (
-                                val outcome =
-                                    renderedThread.joinThreadChannel(dataSource::loadTaskConversationRef, dataSource::joinChannel)
-                            ) {
-                                is ThreadJoinChannelOutcome.Joined -> {
-                                    val joinedId = outcome.channel.joinedChannelId
-                                    threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(outcome.channel.pageChannelId.value))
-                                    currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
-                                        // Now a member: closing this page must not leave the room (the
-                                        // conversation directory may still list the channel as not joined).
-                                        realtimeRoomLeaseRegistry.markJoinedByUser(serverId, joinedId.value)
-                                        sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, joinedId))
-                                        sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
-                                    }
-                                    realtimeEvents.joinChannel(joinedId.value, currentSession?.currentServerId)
-                                    bridge.toast(joinedChannelLabel)
-                                }
-                                ThreadJoinChannelOutcome.Unresolved -> bridge.toast(unableToJoinChannelLabel)
-                                is ThreadJoinChannelOutcome.Failed ->
-                                    when (val result = outcome.result) {
-                                        is DataResult.NoPermission ->
-                                            if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
-                                        is DataResult.Error -> bridge.errorToast(unableToJoinChannelLabel, result.error)
-                                        else -> bridge.toast(unableToJoinChannelLabel)
-                                    }
-                            }
-                        } finally {
-                            joinKey?.let(ThreadChannelJoinsInFlight::end)
-                        }
-                    }
-                }
-                action == "selectTab" && !tab.isNullOrBlank() -> {
-                    threadViewModel.dispatch(SharedThreadIntent.SelectTab(tab))
-                }
-                action == "openMembersPager" -> {
-                    val serverId = threadMembersServerId
-                    val channelId = threadMembersChannelId
-                    if (serverId == null || channelId == null) {
-                        bridge.logWarn(
-                            "thread_members_pager_open_skip reason=missing_scope " +
-                                "serverId=${currentSession?.currentServerId.orEmpty()} " +
-                                "channelId=${renderedThread.sourceThreadId.orEmpty()}"
-                        )
-                        return@ThreadPageContent
-                    }
-                    onOpenMembersPager(renderedThread, serverId, channelId, storeScope, itemId == "add")
-                }
-                action == "openChannelSettings" -> {
-                    val serverId = threadMembersServerId
-                    val channelId = threadMembersChannelId
-                    if (serverId == null || channelId == null) {
-                        bridge.logWarn(
-                            "channel_settings_open_skip reason=missing_scope " +
-                                "serverId=${currentSession?.currentServerId.orEmpty()} " +
-                                "channelId=${renderedThread.sourceThreadId.orEmpty()}"
-                        )
-                        return@ThreadPageContent
-                    }
-                    onOpenChannelSettings(serverId, channelId, storeScope, settingsPageLinkKey)
-                }
-                action == "loadMembers" -> {
-                    if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
-                        coroutineScope.launch {
-                            serverMembersStore.loadChannelMembers(
-                                serverId = threadMembersServerId,
-                                channelId = threadMembersChannelId,
-                                priority = DataRequestPriority.Visible,
-                                force = true
-                            )
-                        }
-                    } else {
-                        threadViewModel.dispatch(SharedThreadIntent.LoadMembers)
-                    }
-                }
-                action == "loadOlder" -> {
-                    threadViewModel.dispatch(SharedThreadIntent.LoadOlder)
-                }
-                action == "loadNewer" -> {
-                    threadViewModel.dispatch(SharedThreadIntent.LoadNewer)
-                }
-                action == "deleteLocalFailedSend" && !itemId.isNullOrBlank() -> {
-                    val message = renderedTimelineSlice.threadMessageById(itemId) ?: return@ThreadPageContent
-                    if (message.isFailedLocalSend()) {
-                        threadViewModel.dispatch(SharedThreadIntent.DismissLocalFailedSend(message.id))
-                    }
-                }
-                action == "cancelLocalSend" && !itemId.isNullOrBlank() -> {
-                    val message = renderedTimelineSlice.threadMessageById(itemId) ?: return@ThreadPageContent
-                    if (message.isSendingLocalSend()) {
-                        threadViewModel.dispatch(SharedThreadIntent.CancelLocalSend(message.id))
-                    }
-                }
-                action == "retryLocalSend" && !itemId.isNullOrBlank() -> {
-                    val message = renderedTimelineSlice.threadMessageById(itemId) ?: return@ThreadPageContent
-                    val pendingContext = message.pendingSendContext ?: return@ThreadPageContent
-                    if (!message.canRetryLocalSend()) {
-                        return@ThreadPageContent
-                    }
-                    val sendAuthority =
-                        dataSource.captureThreadLocalSendAuthority(
-                            state = threadViewModel.state.value,
-                            mountedOwnerProvenance = replyCacheProvenance
-                        )
-                            ?: run {
-                                bridge.logWarn("thread_local_send_retry_rejected reason=missing_owner_provenance")
-                                return@ThreadPageContent
-                            }
-                    val admitted =
-                        threadViewModel.admitLocalSend(
-                            message =
-                                message
-                                    .restampedForLocalSendRetry(
-                                        buildThreadPendingSendTimestampLabel(bridge, payload.nowEpochMillis)
-                                    )
-                                    .copy(
-                                        deliveryState = ThreadMessageDeliverySending,
-                                        pendingSendErrorCode = null,
-                                        pendingSendErrorMessage = null
-                                    ),
-                            expectedProvenance = sendAuthority.provenance,
-                            expectedRoute = sendAuthority.route
-                        )
-                    if (!admitted) {
-                        bridge.logWarn("thread_local_send_retry_rejected reason=owner_changed_before_admission")
-                        return@ThreadPageContent
-                    }
-                    sendPendingLocalMessage(
-                        localMessageId = message.id,
-                        context = pendingContext,
-                        startedFromComposer = false,
-                        authority = sendAuthority
-                    )
-                }
-                else -> {
-                    bridge.log(
-                        "thread_event_unsupported instanceId=${payload.instanceId} action=$action itemId=${itemId.orEmpty()} attachmentId=${attachmentId.orEmpty()} tab=${tab.orEmpty()}"
-                    )
-                }
-                }
-            }),
+            onThreadEvent = ThreadEventHandler(dispatch = threadRouteEventHandler::handle),
             onComposerSendRequest = sendRequest@ { request ->
                 if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled, "send")) {
                     bridge.log("thread_composer_action_blocked action=send reason=read_only_access_fallback")
