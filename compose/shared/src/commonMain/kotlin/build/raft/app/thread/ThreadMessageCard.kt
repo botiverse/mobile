@@ -1507,9 +1507,13 @@ private fun ThreadMessageCardContent(
                                 // Row child, so sending → sent removes only
                                 // left-side width and the End edge cannot move.
                                 val messageBodyContent: @Composable () -> Unit = {
-                                    if (translation?.pendingPlaceholder == true) {
-                                        ThreadMessageTranslationPendingPlaceholder()
-                                    } else {
+                                    // #proj-mobile:#201: while the translation is read, the original body
+                                    // keeps the row's height (measured, not drawn) and the placeholder sits on
+                                    // it, so the row doesn't collapse to one line and grow again.
+                                    ThreadMessageTranslationPendingFrame(
+                                        pending = translation?.pendingPlaceholder == true,
+                                        alignEnd = alignOwnMessageRight,
+                                    ) {
                                         RaftLongMessageCollapsibleBody(
                                             controller = longMessageCollapse,
                                             messageId = message.id,
@@ -1617,7 +1621,7 @@ private fun ThreadMessageCardContent(
                                                 }
                                             }
                                         }
-                                    }
+                                                                        }
                                 }
                                 // artin 10-26: a body cut from an Activity preview ends in a loading
                                 // indicator until the canonical load replaces the message, or says
