@@ -167,6 +167,54 @@ class RaftMessageLinkResolverTest {
     }
 
     @Test
+    fun shortMessageIdsAreOpenedWithTheFullIdsTheLookupAnswers() = runTest {
+        // slock #15521: a link may name its message or thread parent by its 8-hex short id.
+        val shortMid = mid.take(8)
+        val shortPid = pid.take(8)
+
+        // A reply link with both ids short opens the thread by the full ids.
+        val reply = FakeMessageLinkNetwork(context = HomeNetworkResponse(200, contextBody(mid, replyTarget())))
+        val replyOpen = assertIs<RaftMessageLinkResolution.Open>(
+            RaftMessageLinkResolver(reply).resolve(link(msg = shortMid, threadParent = shortPid), servers)
+        )
+        assertEquals("messages/context/$shortMid", reply.requests[1].path)
+        val replyRequest = openThroughCoordinator(replyOpen)
+        assertEquals(pid, replyRequest.conversationIdentity.threadParentMessageId())
+        assertEquals(mid, replyRequest.anchorMessageId)
+
+        // A thread-only link with a short parent.
+        val parentOnly = FakeMessageLinkNetwork(context = HomeNetworkResponse(200, contextBody(pid)))
+        val parentRequest =
+            openThroughCoordinator(
+                assertIs<RaftMessageLinkResolution.Open>(RaftMessageLinkResolver(parentOnly).resolve(link(threadParent = shortPid), servers))
+            )
+        assertEquals(pid, parentRequest.conversationIdentity.threadParentMessageId())
+
+        // A channel link with a short message id lands on the full id.
+        val channel = FakeMessageLinkNetwork(context = HomeNetworkResponse(200, contextBody(mid)))
+        val channelRequest =
+            openThroughCoordinator(assertIs<RaftMessageLinkResolution.Open>(RaftMessageLinkResolver(channel).resolve(link(msg = shortMid), servers)))
+        assertEquals(mid, channelRequest.anchorMessageId)
+
+        // A short parent that names another thread is still a mismatch.
+        val otherThread = FakeMessageLinkNetwork(context = HomeNetworkResponse(200, contextBody(mid, replyTarget())))
+        assertEquals(
+            RaftMessageLinkResolution.NotFound("thread_reply_mismatch"),
+            RaftMessageLinkResolver(otherThread).resolve(link(msg = shortMid, threadParent = "ffffffff"), servers)
+        )
+    }
+
+    @Test
+    fun aShortIdMatchesOnlyItsOwnFullId() {
+        assertTrue(raftMessageIdMatches(mid.take(8), mid))
+        assertTrue(raftMessageIdMatches(mid, mid))
+        assertTrue(raftMessageIdMatches(mid.take(8).uppercase(), mid))
+        assertTrue(!raftMessageIdMatches("ffffffff", mid))
+        assertTrue(!raftMessageIdMatches(mid.take(7), mid))
+        assertTrue(!raftMessageIdMatches(null, mid))
+    }
+
+    @Test
     fun replyOfAnotherThreadOrATopLevelMessageIsNotFoundForAThreadLink() = runTest {
         val otherThread =
             FakeMessageLinkNetwork(context = HomeNetworkResponse(200, contextBody(mid, replyTarget(parent = "ffffffff-0000-4000-8000-000000000000"))))
