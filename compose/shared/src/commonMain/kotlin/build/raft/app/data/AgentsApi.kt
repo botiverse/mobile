@@ -800,6 +800,18 @@ internal data class AgentSummary(
     val deletedAt: String?,
     /** A personal assistant's owner (`assistantOwnerUserId`); null for a shared agent. */
     val assistantOwnerUserId: String? = null,
+    /** App Bots only (`agents.managedByAppInstallId`); null for ordinary agents and guest projections. */
+    val managedByAppInstallId: String? = null,
+    /** App Bots only: owning App row id (`managedByApp.clientId` = `oauth_clients.id`, slock #14286). */
+    val managedByAppClientId: String? = null,
+    /** App Bots only: owning App display name (`managedByApp.name`). */
+    val managedByAppName: String? = null,
+    /** App Bots only: owning App logo URL (`managedByApp.logoUrl`). */
+    val managedByAppLogoUrl: String? = null,
+    /** App Bots only: app-published status line (`managedByApp.botStatusText`). */
+    val managedByAppBotStatusText: String? = null,
+    /** Bounded public profile projection marker (`"channel_summary"`, `routes/agents.ts`). */
+    val profileProjection: String? = null,
     /** Web parity: `agent.external === true || runtime === "external"`. */
     val isExternal: Boolean = false,
     /** External agents only: `lastSeenAt` from `GET /agents*` (`agent:seen` updates it in the store). */
@@ -867,6 +879,12 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         activityDetail = activityDetail,
         deletedAt = deletedAt,
         assistantOwnerUserId = assistantOwnerUserId,
+        managedByAppInstallId = managedByAppInstallId,
+        managedByAppClientId = managedByAppClientId,
+        managedByAppName = managedByAppName,
+        managedByAppLogoUrl = managedByAppLogoUrl,
+        managedByAppBotStatusText = managedByAppBotStatusText,
+        profileProjection = profileProjection,
         lastSeenAt = lastSeenAt,
         activityDetailKind = activityDetailKind,
         wakeCrashLoop = wakeCrashLoop,
@@ -1106,6 +1124,12 @@ private data class AgentWireDto(
     val deletedAt: String? = null,
     /** Personal assistant (botiverse/slock packages/shared agent `assistantOwnerUserId`): its owner, else null. */
     val assistantOwnerUserId: String? = null,
+    /** App Bots only (`routes/agents.ts` `managedByAppInstallId`). */
+    val managedByAppInstallId: String? = null,
+    /** App Bots only (`routes/agents.ts` `managedByApp`: `{ clientId, name, logoUrl, description, botStatusText }`). */
+    val managedByApp: AgentManagedByAppWireDto? = null,
+    /** Bounded public projection marker (`routes/agents.ts` `"channel_summary"`). */
+    val profileProjection: String? = null,
     /**
      * External agents only: ISO-8601 `lastSeenAt` from `GET /agents*` — last
      * credential use; presence derives from it (`agent:seen` supersedes).
@@ -1136,6 +1160,15 @@ private data class AgentWireDto(
      */
     val modelLimits: AgentModelLimitsWireDto? = null,
     val hostedRuntime: AgentHostedRuntimeWireDto? = null
+)
+
+@Serializable
+private data class AgentManagedByAppWireDto(
+    val clientId: String? = null,
+    val name: String? = null,
+    val logoUrl: String? = null,
+    val description: String? = null,
+    val botStatusText: String? = null,
 )
 
 @Serializable
@@ -1216,6 +1249,12 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         activityDetail = activityDetail,
         deletedAt = deletedAt,
         assistantOwnerUserId = assistantOwnerUserId?.takeIf { it.isNotBlank() },
+        managedByAppInstallId = managedByAppInstallId?.trim()?.takeIf { it.isNotBlank() },
+        managedByAppClientId = managedByApp?.clientId?.trim()?.takeIf { it.isNotBlank() },
+        managedByAppName = managedByApp?.name?.trim()?.takeIf { it.isNotBlank() },
+        managedByAppLogoUrl = managedByApp?.logoUrl?.trim()?.takeIf { it.isNotBlank() },
+        managedByAppBotStatusText = managedByApp?.botStatusText?.trim()?.takeIf { it.isNotBlank() },
+        profileProjection = profileProjection?.trim()?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
         activityDetailKind = activityDetailKind?.trim()?.takeIf { it.isNotEmpty() },
         wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(activityDetailKind),

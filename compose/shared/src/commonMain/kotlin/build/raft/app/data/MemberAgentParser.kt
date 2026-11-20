@@ -195,6 +195,8 @@ private data class WireAgent(
      * `computer_version_unsupported`; null otherwise. Additive: an unknown value is kept raw.
      */
     val blockedReason: String? = null,
+    /** Bounded public projection marker (`"channel_summary"`, `routes/agents.ts`). */
+    val profileProjection: String? = null,
 )
 
 /** slock `projectAssistantPause` `assistantPausedBy`: `{ id, name }`. */
@@ -210,6 +212,8 @@ private data class WireManagedByApp(
     val clientId: String? = null,
     val name: String? = null,
     val logoUrl: String? = null,
+    val description: String? = null,
+    val botStatusText: String? = null,
 )
 
 @Serializable
@@ -1034,7 +1038,11 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         assistantOwnerUserId = assistantOwnerUserId?.trim()?.takeIf { it.isNotEmpty() },
         managedByAppInstallId = managedByAppInstallId?.takeIf { it.isNotBlank() },
         agentCreatorUserId = creatorId?.trim()?.takeIf { it.isNotEmpty() && creatorType == "user" },
+        managedByAppClientId = managedByApp?.clientId?.trim()?.takeIf { it.isNotBlank() },
         managedByAppName = managedByApp?.name?.takeIf { it.isNotBlank() },
+        managedByAppLogoUrl = managedByApp?.logoUrl?.trim()?.takeIf { it.isNotBlank() },
+        managedByAppBotStatusText = managedByApp?.botStatusText?.trim()?.takeIf { it.isNotBlank() },
+        profileProjection = profileProjection?.trim()?.takeIf { it.isNotBlank() },
         inMemberLists = inMemberLists,
         model = firstNonBlank(model, runtimeProfile?.current?.model),
         permissionBadges = listOfNotNull(

@@ -411,6 +411,12 @@ internal fun AgentDetailSnapshot.toStaticMembersProfile(server: ServerSummary): 
         agentStatus = null,
         // Detail summaries carry the runtime sentinel only (no projected boolean).
         isExternal = isExternalAgentRuntime(summary?.runtime),
+        managedByAppInstallId = summary?.managedByAppInstallId?.takeIf { it.isNotBlank() },
+        managedByAppClientId = summary?.managedByAppClientId?.takeIf { it.isNotBlank() },
+        managedByAppName = summary?.managedByAppName?.takeIf { it.isNotBlank() },
+        managedByAppLogoUrl = summary?.managedByAppLogoUrl?.takeIf { it.isNotBlank() },
+        managedByAppBotStatusText = summary?.managedByAppBotStatusText?.takeIf { it.isNotBlank() },
+        profileProjection = summary?.profileProjection?.takeIf { it.isNotBlank() },
         permissionBadges = listOfNotNull(
             summary?.runtime?.takeIf { it.isNotBlank() },
             summary?.machineName?.takeIf { it.isNotBlank() }?.let { "computer:$it" },
@@ -430,7 +436,13 @@ internal fun AgentDetailSnapshot.withMemberProfileProjection(member: MemberProfi
             displayName = member.displayName.ifBlank { fallbackName },
             description = member.description?.takeIf { it.isNotBlank() },
             runtime = member.roleDescription ?: summary?.runtime,
-            avatarUrl = member.avatar?.wireValue ?: summary?.avatarUrl
+            avatarUrl = member.avatar?.wireValue ?: summary?.avatarUrl,
+            managedByAppInstallId = member.managedByAppInstallId ?: summary?.managedByAppInstallId,
+            managedByAppClientId = member.managedByAppClientId ?: summary?.managedByAppClientId,
+            managedByAppName = member.managedByAppName ?: summary?.managedByAppName,
+            managedByAppLogoUrl = member.managedByAppLogoUrl ?: summary?.managedByAppLogoUrl,
+            managedByAppBotStatusText = member.managedByAppBotStatusText ?: summary?.managedByAppBotStatusText,
+            profileProjection = member.profileProjection ?: summary?.profileProjection,
         )
     return copy(summary = nextSummary)
 }

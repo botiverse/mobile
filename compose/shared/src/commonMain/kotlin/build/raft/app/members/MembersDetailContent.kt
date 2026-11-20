@@ -267,6 +267,8 @@ internal class MembersDetailActions(
     /** A Message tap waits on the server: the button shows its loading state. */
     val directMessageOpening: Boolean = false,
     val onOpenComputer: (() -> Unit)? = null,
+    /** Opens an App bot's owning App installed detail (`?installed_app=`, slock #14286); null when unavailable. */
+    val onOpenManagedApp: (() -> Unit)? = null,
     val onCopyMemberId: () -> Unit,
     val onRemoveMember: (() -> Unit)? = null,
     /** Promote to server member, for a Guest an owner/admin may make a member (web HumanProfileActions). */
@@ -1257,6 +1259,7 @@ internal fun MembersDetailContent(
                                                 onCopyText = { text -> agentDetailActions?.copyDiagnostics(text) ?: Unit },
                                                 onReportIssue = { openReportIssue() },
                                                 onOpenComputer = onOpenComputer,
+                                                onOpenManagedApp = actions.onOpenManagedApp,
                                                 onStopTurn = profileStopTurn,
                                                 stopTurnInProgress = turnStopState.inFlightAgentId != null,
                                                 showActivityDetail = canViewPrivate,

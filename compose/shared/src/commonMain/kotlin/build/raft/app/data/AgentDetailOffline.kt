@@ -102,7 +102,13 @@ internal data class StoredAgentSummary(
     val createdAgents: List<StoredAgentCreated> = emptyList(),
     val deletedAt: String? = null,
     val lastSeenAt: String? = null,
-    val hostedRuntime: AgentHostedRuntimeSnapshot? = null
+    val hostedRuntime: AgentHostedRuntimeSnapshot? = null,
+    val managedByAppInstallId: String? = null,
+    val managedByAppClientId: String? = null,
+    val managedByAppName: String? = null,
+    val managedByAppLogoUrl: String? = null,
+    val managedByAppBotStatusText: String? = null,
+    val profileProjection: String? = null
 )
 
 @Serializable
@@ -292,6 +298,12 @@ private fun AgentDetailSummary.toStored(): StoredAgentSummary =
             createdAgents.map { StoredAgentCreated(it.id, it.name, it.displayName, it.avatarUrl, it.runtime, it.status, it.isExternal) },
         deletedAt = deletedAt,
         lastSeenAt = lastSeenAt,
+        managedByAppInstallId = managedByAppInstallId,
+        managedByAppClientId = managedByAppClientId,
+        managedByAppName = managedByAppName,
+        managedByAppLogoUrl = managedByAppLogoUrl,
+        managedByAppBotStatusText = managedByAppBotStatusText,
+        profileProjection = profileProjection,
     )
 
 /** The stored record as a cached detail (a read-only stand-in: the page grants no edits from the cache). */
@@ -334,6 +346,12 @@ internal fun StoredAgentDetail.toCachedAgentDetail(): RaftCachedAgentDetail {
                                 },
                             deletedAt = it.deletedAt,
                             lastSeenAt = it.lastSeenAt,
+                            managedByAppInstallId = it.managedByAppInstallId,
+                            managedByAppClientId = it.managedByAppClientId,
+                            managedByAppName = it.managedByAppName,
+                            managedByAppLogoUrl = it.managedByAppLogoUrl,
+                            managedByAppBotStatusText = it.managedByAppBotStatusText,
+                            profileProjection = it.profileProjection,
                         )
                     },
                 directMessages =
