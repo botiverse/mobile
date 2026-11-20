@@ -49,6 +49,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +65,7 @@ import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
@@ -632,11 +634,14 @@ internal fun TaskPendingConversationPage(
             serverId = serverId,
         )
     val keyboardUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val jointSurface =
+        parseConversationKindOrNull(task.channelType) == ConversationKind.Joint || LocalRaftJointActorSurface.current
     // Back puts the pulled-down head back up before it leaves the page.
     RaftBackHandler(enabled = headScrollState.floatOpen, label = "task_pending_head_float") { headScrollState.closeFloat() }
     // The conversation page's canvas, so its composer dock sits on the same ground as there.
     // A press anywhere on the page outside the pulled-down head puts it back up, the composer included.
-    Column(modifier.fillMaxSize().background(colors.layerCanvas).taskHeadFloatOutsidePress(headScrollState)) {
+    CompositionLocalProvider(LocalRaftJointActorSurface provides jointSurface) {
+        Column(modifier.fillMaxSize().background(colors.layerCanvas).taskHeadFloatOutsidePress(headScrollState)) {
         // The conversation page's top bar (ThreadPage's header for a task conversation).
         RaftTopPageHeader(
             title = task.taskRefTitle(),
@@ -756,6 +761,7 @@ internal fun TaskPendingConversationPage(
                     attachmentPreviewEnabled = false,
                 )
             }
+        }
         }
     }
 }

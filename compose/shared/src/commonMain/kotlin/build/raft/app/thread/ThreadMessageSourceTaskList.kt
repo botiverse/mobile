@@ -2,7 +2,9 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import build.raft.app.data.ResolvedActor
 import build.raft.app.model.MemberKind
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftAvatarSize
@@ -68,7 +70,27 @@ private fun ThreadMessageSourceTaskAssignee(
     memberAvatarResolver: RaftMemberAvatarResolver,
     agentStatusResolver: RaftAgentStatusResolver,
 ) {
-    val name = if (task.assigneeIsViewer) stringResource(Res.string.thread_author_you) else task.assigneeName.orEmpty()
+    // Web TaskAssignee.tsx (slock #14517): on a joint channel (by the task's own channelType or the
+    // channel surface), an assignee absent from this server's rosters falls back to actors/resolve.
+    val onJointChannel = task.isJointChannel || memberAvatarResolver.jointSurface || LocalRaftJointActorSurface.current
+    val assigneeResolver =
+        remember(memberAvatarResolver, onJointChannel) {
+            memberAvatarResolver.forJointSurface(onJointChannel)
+        }
+    val jointActor =
+        rememberRaftJointActor(
+            memberAvatarResolver = assigneeResolver,
+            kind = task.assigneeKind,
+            memberId = task.assigneeId,
+            enabled = onJointChannel && !task.assigneeIsViewer,
+        )
+    val name =
+        threadMessageSourceTaskAssigneeName(
+            assigneeIsViewer = task.assigneeIsViewer,
+            viewerLabel = stringResource(Res.string.thread_author_you),
+            assigneeName = task.assigneeName,
+            jointActor = jointActor,
+        )
     val agentStatus =
         if (task.assigneeKind == MemberKind.Agent) {
             rememberRaftAgentStatusIndicatorState(agentStatusResolver, task.assigneeId)
@@ -87,11 +109,29 @@ private fun ThreadMessageSourceTaskAssignee(
             ) {
                 RaftMemberAvatar(
                     identity = RaftMemberAvatarIdentity(task.assigneeKind, task.assigneeId, serverId = null),
-                    label = task.assigneeName.orEmpty(),
+                    label = name,
                     avatarSize = avatarSize,
-                    resolver = memberAvatarResolver,
+                    resolver = assigneeResolver,
                 )
             }
         },
     )
+}
+
+/**
+ * Web `TaskAssignee.tsx` (`slock #14517`): viewer reads "You"; in a joint channel an assignee
+ * absent from this server's rosters takes the display name `POST /api/actors/resolve` returned
+ * (falling back to handle, then the task's `claimedByName`).
+ */
+internal fun threadMessageSourceTaskAssigneeName(
+    assigneeIsViewer: Boolean,
+    viewerLabel: String,
+    assigneeName: String?,
+    jointActor: ResolvedActor?,
+): String {
+    if (assigneeIsViewer) return viewerLabel
+    val actorName =
+        jointActor?.displayName?.trim()?.takeIf { it.isNotEmpty() }
+            ?: jointActor?.name?.trim()?.takeIf { it.isNotEmpty() }
+    return actorName ?: assigneeName.orEmpty()
 }

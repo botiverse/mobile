@@ -5,6 +5,7 @@ import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.TasksUiState
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.TaskStatus
@@ -86,6 +87,8 @@ internal data class ThreadMessageSourceTaskItem(
     val assigneeName: String?,
     /** The reader is the assignee (shown as "You"). */
     val assigneeIsViewer: Boolean,
+    /** Task lives in a joint channel (`task.channelType == "joint"`): remote assignees fall back to actors/resolve. */
+    val isJointChannel: Boolean = false,
 )
 
 internal fun TaskSummary.toThreadMessageSourceTaskItem(viewerUserId: String?): ThreadMessageSourceTaskItem {
@@ -103,6 +106,7 @@ internal fun TaskSummary.toThreadMessageSourceTaskItem(viewerUserId: String?): T
             person?.let { threadLinkedTaskAssigneeDisplayName() ?: it.displayName.trim().removePrefix("@").ifBlank { null } },
         assigneeIsViewer =
             person?.kind == MemberKind.Human && assigneeId != null && assigneeId == viewerUserId?.trim(),
+        isJointChannel = parseConversationKindOrNull(channelType) == ConversationKind.Joint,
     )
 }
 

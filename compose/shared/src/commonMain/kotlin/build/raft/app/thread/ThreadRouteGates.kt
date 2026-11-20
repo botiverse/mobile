@@ -263,23 +263,27 @@ internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
 internal enum class JointBillingNotice { None, Grace, Locked }
 
 /**
- * The rendered surface is a joint channel, or a reply thread in one: the route's own kinds first,
- * then the conversation directory projection of the parent or any lookup id.
+ * The rendered surface is a joint channel, or a reply thread / task conversation in one: the
+ * route's own kinds and task channel type first, then the conversation directory projection of
+ * the parent or any lookup id.
  */
 internal fun threadMessageSurfaceIsJoint(
     payload: RaftThreadScreenPayload,
     lookupIds: List<String>,
-    projections: Map<String, SharedConversationDirectoryProjection>
+    projections: Map<String, SharedConversationDirectoryProjection>,
+    taskChannelType: String? = null,
+    taskParentChannelId: String? = null,
 ): Boolean {
     if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage) return false
     if (parseConversationKindOrNull(payload.channelKind) == ConversationKind.Joint) return true
+    if (parseConversationKindOrNull(taskChannelType) == ConversationKind.Joint) return true
     if (
         payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
         typedReplyParentConversationKindOrNull(payload.parentSurfaceKind, payload.parentChannelKind) == ConversationKind.Joint
     ) {
         return true
     }
-    return (listOfNotNull(payload.parentChannelId) + lookupIds).any { id ->
+    return (listOfNotNull(payload.parentChannelId, taskParentChannelId) + lookupIds).any { id ->
         projections[id]?.conversationKind == ConversationKind.Joint
     }
 }

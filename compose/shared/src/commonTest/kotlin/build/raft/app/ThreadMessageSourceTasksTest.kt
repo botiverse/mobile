@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.DataResult
+import build.raft.app.data.ResolvedActor
 import build.raft.app.data.SharedTaskFactFoldOutcome
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksScope
@@ -135,6 +136,75 @@ class ThreadMessageSourceTasksTest {
         )
     }
 
+    @Test
+    fun jointChannelTaskCarriesJointFlagAndPrefersResolvedActorDisplayName() {
+        val jointRow =
+            parsed(
+                taskJson(
+                    id = "t-joint",
+                    number = 15,
+                    source = "msg-a",
+                    channelType = "joint",
+                    claimedType = "agent",
+                    claimedId = "00000000-0000-4000-8000-0000000000a1",
+                    claimedName = "remote-agent",
+                )
+            ).toThreadMessageSourceTaskItem(viewerUserId = "user-1")
+        assertTrue(jointRow.isJointChannel)
+
+        val plainRow =
+            parsed(
+                taskJson(
+                    id = "t-plain",
+                    number = 16,
+                    source = "msg-a",
+                    channelType = "channel",
+                    claimedType = "agent",
+                    claimedId = "00000000-0000-4000-8000-0000000000a2",
+                    claimedName = "remote-agent",
+                )
+            ).toThreadMessageSourceTaskItem(viewerUserId = "user-1")
+        assertEquals(false, plainRow.isJointChannel)
+
+        val actor =
+            ResolvedActor(
+                kind = MemberKind.Agent,
+                id = "00000000-0000-4000-8000-0000000000a1",
+                homeServerId = "server-2",
+                name = "remote-agent",
+                displayName = "Remote Agent",
+                avatarUrl = "https://example.test/remote-agent.png",
+                gravatarHash = null,
+            )
+        assertEquals(
+            "Remote Agent",
+            threadMessageSourceTaskAssigneeName(
+                assigneeIsViewer = false,
+                viewerLabel = "You",
+                assigneeName = "remote-agent",
+                jointActor = actor,
+            ),
+        )
+        assertEquals(
+            "remote-agent",
+            threadMessageSourceTaskAssigneeName(
+                assigneeIsViewer = false,
+                viewerLabel = "You",
+                assigneeName = "remote-agent",
+                jointActor = null,
+            ),
+        )
+        assertEquals(
+            "You",
+            threadMessageSourceTaskAssigneeName(
+                assigneeIsViewer = true,
+                viewerLabel = "You",
+                assigneeName = "me",
+                jointActor = actor,
+            ),
+        )
+    }
+
     private fun parsed(json: String): TaskSummary =
         parseSharedServerTasksPayload("""{"tasks":[$json]}""")?.tasks?.single() ?: error("task dropped: $json")
 
@@ -153,11 +223,12 @@ class ThreadMessageSourceTasksTest {
         revision: Long = 3,
         legacy: Boolean = false,
         reportSource: Boolean = true,
+        channelType: String = "channel",
     ): String =
         """
         {"id":"$id","messageId":"${host ?: id}","hostMessageId":${host.json()},${if (reportSource) "\"sourceMessageId\":${source.json()}," else ""}
          "conversationReplyCount":$replies,"conversationChannelId":${conversation.json()},"conversationAnchored":$anchored,
-         "channelId":"channel-1","channelName":"general","channelType":"channel","taskNumber":$number,
+         "channelId":"channel-1","channelName":"general","channelType":"$channelType","taskNumber":$number,
          "title":"Task $number","description":null,"status":"$status",
          "createdByType":"user","createdById":"user-1","createdByName":"artin","createdByHandle":"artin",
          "createdByMembershipStatus":"active","claimedByType":${claimedType.json()},"claimedById":${claimedId.json()},
