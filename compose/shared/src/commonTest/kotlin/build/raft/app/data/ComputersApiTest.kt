@@ -290,7 +290,8 @@ class ComputersApiTest {
 
     @Test
     fun installerRepairAndUpgradeFailureHintsMapFromTheMachineList() = runPortableCoroutineTest {
-        // botiverse/slock routes/servers.ts GET /:id/machines `installerRepairHint` and
+        // botiverse/slock 11504c9eae82d84887b9bc49b1289e9f9317590f (#15061):
+        // routes/servers.ts GET /:id/machines `installerRepairHint` and
         // computerUpgradeRequestService.ts `failureHint` (packages/shared/src/index.ts
         // ComputerInstallerRepairHint / ComputerUpgradeFailureHint); unknown reasons are no hint.
         val body =
@@ -301,7 +302,10 @@ class ComputersApiTest {
                  "failureHint":{"reason":"unsafe_kill_mode","unit":"raft.service","killMode":"process","scope":"user"}}},
               {"id":"c-2","name":"b","status":"online","isComputer":true,"installerRepairHint":{"reason":"something_new"},
                "upgradeRequest":{"id":"u2","targetVersion":"1.0.53","requestedAt":"2026-11-10T00:00:00Z","state":"failed","failureHint":{"reason":"later"}}},
-              {"id":"c-3","name":"c","status":"online","isComputer":true,"installerRepairHint":null}
+              {"id":"c-3","name":"c","status":"online","isComputer":true,"installerRepairHint":null},
+              {"id":"c-4","name":"d","status":"online","isComputer":true,
+               "upgradeRequest":{"id":"u4","targetVersion":"1.25.4","requestedAt":"2026-11-15T12:00:00.000Z","state":"failed","observedVersion":"1.25.3",
+                 "failureHint":{"reason":"earlier_recovery_pending"}}}
             ]}
             """.trimIndent()
         val machines =
@@ -317,6 +321,10 @@ class ComputersApiTest {
         assertEquals(null, machines.getValue("c-2").installerRepairHint)
         assertEquals(null, machines.getValue("c-2").upgradeRequest?.failureHint)
         assertEquals(null, machines.getValue("c-3").installerRepairHint)
+        assertEquals(
+            SettingsComputerUpgradeFailureHintSnapshot(reason = "earlier_recovery_pending"),
+            machines.getValue("c-4").upgradeRequest?.failureHint,
+        )
     }
 
     @Test

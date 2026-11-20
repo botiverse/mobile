@@ -5,6 +5,7 @@ import build.raft.app.data.SettingsComputerBroadcastPolicySnapshot
 import build.raft.app.data.SettingsComputerControlState
 import build.raft.app.data.SettingsComputerReleaseNotesSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.data.SettingsComputerUpgradeFailureHintSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRefusal
 import build.raft.app.data.SettingsComputerUpgradeRequest
 import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
@@ -203,6 +204,50 @@ class RaftComputerUpgradeModelTest {
         assertEquals("- 中文", raftComputerReleaseNotesText(notes, "zh-Hans-CN"))
         assertEquals("- English", raftComputerReleaseNotesText(notes, "ja"))
         assertEquals("- 中文", raftComputerReleaseNotesText(notes.copy(en = null), "en-US"))
+    }
+
+    @Test
+    fun earlierRecoveryPendingRecommendsRepairNotSystemdStepsAndClearsWhenVersionMoves() {
+        // Port of slock #15061 packages/web/tests/computerUpgradeHints.test.ts.
+        val earlier = request(id = "req-1", state = "failed", target = "1.25.4").copy(
+            observedVersion = "1.25.3",
+            failureHint = SettingsComputerUpgradeFailureHintSnapshot(reason = "earlier_recovery_pending"),
+        )
+        val oneClick = computer(version = "1.25.3", latest = "1.25.4", policy = eligible("1.25.4"), upgradeAvailable = true, row = earlier)
+        val shown = model(oneClick)
+        assertTrue(shown.recommendRepair)
+        assertNull(shown.upgradeFailureHint)
+
+        // A systemd-unit failure keeps its steps; installerRepairHint is preserved beside it.
+        val unitHint = SettingsComputerUpgradeFailureHintSnapshot(reason = "installation_held", unit = "raft-computer.service", scope = "user")
+        val unitRow = earlier.copy(failureHint = unitHint)
+        val unitOnly = model(oneClick.copy(upgradeRequest = unitRow))
+        assertEquals(unitHint, unitOnly.upgradeFailureHint)
+        assertFalse(unitOnly.recommendRepair)
+        val unitAndRepair = model(oneClick.copy(upgradeRequest = unitRow, installerRepairHint = "unrecovered_operation"))
+        assertEquals(unitHint, unitAndRepair.upgradeFailureHint)
+        assertTrue(unitAndRepair.recommendRepair)
+
+        // Clears once the Computer moves to the target or another version, or a newer request replaces it.
+        assertFalse(model(oneClick.copy(computerVersion = "1.25.4")).recommendRepair)
+        assertFalse(model(oneClick.copy(computerVersion = "1.25.3-rc.2")).recommendRepair)
+        assertFalse(model(oneClick.copy(upgradeRequest = earlier.copy(id = "req-2", state = "pending"))).recommendRepair)
+        assertFalse(model(oneClick.copy(upgradeRequest = earlier.copy(id = "req-2", failureHint = null))).recommendRepair)
+        // Installer state's own hint still stands on its own.
+        assertTrue(
+            model(
+                oneClick.copy(
+                    upgradeRequest = earlier.copy(id = "req-2", failureHint = null),
+                    installerRepairHint = "unrecovered_operation",
+                )
+            ).recommendRepair
+        )
+
+        // Nothing is recommended where no one-click Upgrade is offered.
+        val manual = oneClick.copy(remoteUpgradeSupported = false, installerRepairHint = "unrecovered_operation")
+        val manualModel = model(manual)
+        assertFalse(manualModel.recommendRepair)
+        assertNull(manualModel.upgradeFailureHint)
     }
 
     private fun model(computer: SettingsComputerSnapshot, control: SettingsComputerControlState = SettingsComputerControlState()) =

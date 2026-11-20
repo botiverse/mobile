@@ -1885,8 +1885,9 @@ data class SettingsComputerBroadcastPolicySnapshot(
  */
 /**
  * Shared `ComputerUpgradeFailureHint`: a failed web upgrade only a run of the install command on
- * the machine gets past. [reason] `unsafe_kill_mode` or `installation_held`; [unit], [killMode]
- * and [scope] (`user` / `system`) only when the failure named them.
+ * the machine gets past. [reason] `unsafe_kill_mode`, `installation_held`, or
+ * `earlier_recovery_pending`; [unit], [killMode] and [scope] (`user` / `system`) only when a
+ * systemd-unit failure named them.
  */
 data class SettingsComputerUpgradeFailureHintSnapshot(
     val reason: String,

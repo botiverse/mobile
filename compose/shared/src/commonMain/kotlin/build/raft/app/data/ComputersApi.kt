@@ -1364,7 +1364,11 @@ private data class ComputerInstallerRepairHintDto(val reason: String? = null)
 @Serializable
 private data class ComputerUpgradeScopeDto(val ok: Boolean? = null, val reason: String? = null)
 
-/** Shared `ComputerUpgradeFailureHint`: `reason` is `unsafe_kill_mode` or `installation_held`. */
+/**
+ * Shared `ComputerUpgradeFailureHint` (slock #15061): `reason` is `unsafe_kill_mode`,
+ * `installation_held`, or `earlier_recovery_pending`. `unit`, `killMode`, and `scope` belong only
+ * to the systemd-unit variants.
+ */
 @Serializable
 private data class ComputerUpgradeFailureHintDto(
     val reason: String? = null,
@@ -1373,7 +1377,12 @@ private data class ComputerUpgradeFailureHintDto(
     val scope: String? = null
 ) {
     fun toSnapshot(): SettingsComputerUpgradeFailureHintSnapshot? {
-        val known = reason?.takeIf { it == "unsafe_kill_mode" || it == "installation_held" } ?: return null
+        val known = reason?.takeIf {
+            it == "unsafe_kill_mode" || it == "installation_held" || it == "earlier_recovery_pending"
+        } ?: return null
+        if (known == "earlier_recovery_pending") {
+            return SettingsComputerUpgradeFailureHintSnapshot(reason = known)
+        }
         return SettingsComputerUpgradeFailureHintSnapshot(
             reason = known,
             unit = unit?.trim()?.takeIf { it.isNotBlank() },
