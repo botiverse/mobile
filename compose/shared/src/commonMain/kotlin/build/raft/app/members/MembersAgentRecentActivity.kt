@@ -13,7 +13,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AgentActivityOverviewStatus
 import build.raft.app.data.AgentActivityTurn
@@ -166,57 +170,110 @@ internal fun MembersAgentRecentActivityCard(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     // Web `border-t border-line-hairline pt-3`.
                     RaftSeparator()
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        rows.forEach { turn -> MembersAgentRecentTurnRow(turn, timeContext) }
-                    }
+                    MembersAgentRecentTurnRows(rows, timeContext, Modifier.fillMaxWidth().padding(top = 6.dp))
                 }
             }
         }
     }
 }
 
+/** The rows' time labels and their texts, for tests. */
+internal const val MembersAgentRecentTurnTimeTag = "agent-now-row-time"
+internal const val MembersAgentRecentTurnTextTag = "agent-now-row"
+
 /**
- * Web AgentNowCard `RecentTurnRow`: its time, who woke it, what it did, and its compact badges.
- * artin 2026-11-18 (#wg-mobile-sync:c1493fb5): on a phone the row wraps instead of truncating, so
- * nothing is cut to "…"; the badges move to the next line whole, aligned with the text, not the
- * clock (web slock #15377 does the same).
+ * Web AgentNowCard `RecentTurnRow`, one per turn: its time, who woke it, what it did, and its
+ * compact badges. artin 2026-11-18 (#wg-mobile-sync:c1493fb5): on a phone the row wraps instead of
+ * truncating, so nothing is cut to "…"; the badges move to the next line whole, aligned with the
+ * text, not the clock (web slock #15377 does the same).
+ *
+ * The rows share one time column, as wide as the widest label measured here (its font, the font
+ * scale and the time format as they are), so every row's text starts at the same x when a turn of
+ * another day carries its date ("11-20 23:57" above "00:18"). The web's row sizes each label on
+ * its own (AgentNowCard.tsx `RecentTurnRow`, `shrink-0 whitespace-nowrap`); the labels stay left
+ * aligned as there.
  */
+@Composable
+internal fun MembersAgentRecentTurnRows(
+    rows: List<AgentActivityTurn>,
+    timeContext: RaftTimeContext,
+    modifier: Modifier = Modifier,
+) {
+    Layout(
+        // Two children a row, in this order: the time, then the text.
+        content = {
+            rows.forEach { turn ->
+                MembersAgentRecentTurnTime(turn, timeContext)
+                MembersAgentRecentTurnText(turn)
+            }
+        },
+        modifier = modifier,
+    ) { measurables, constraints ->
+        val gap = MembersAgentRecentTurnTimeGap.roundToPx()
+        val rowGap = MembersAgentRecentTurnRowGap.roundToPx()
+        val count = measurables.size / 2
+        // A label is one line at its own width; the column is the widest of them.
+        val times = List(count) { measurables[it * 2].measure(constraints.copy(minWidth = 0, minHeight = 0)) }
+        val timeColumn = times.maxOfOrNull { it.width } ?: 0
+        val textConstraints =
+            if (constraints.hasBoundedWidth) {
+                Constraints.fixedWidth((constraints.maxWidth - timeColumn - gap).coerceAtLeast(0))
+            } else {
+                Constraints()
+            }
+        val texts = List(count) { measurables[it * 2 + 1].measure(textConstraints) }
+        val heights = List(count) { maxOf(times[it].height, texts[it].height) }
+        val width =
+            if (constraints.hasBoundedWidth) constraints.maxWidth else timeColumn + gap + (texts.maxOfOrNull { it.width } ?: 0)
+        val height = heights.sum() + rowGap * (count - 1).coerceAtLeast(0)
+        layout(constraints.constrainWidth(width), constraints.constrainHeight(height)) {
+            var y = 0
+            repeat(count) { index ->
+                times[index].placeRelative(0, y)
+                texts[index].placeRelative(timeColumn + gap, y)
+                y += heights[index] + rowGap
+            }
+        }
+    }
+}
+
+/** Web `gap-2` between the time and the text, and `stack-y-1.5` between rows. */
+private val MembersAgentRecentTurnTimeGap = 8.dp
+private val MembersAgentRecentTurnRowGap = 6.dp
+
+@Composable
+private fun MembersAgentRecentTurnTime(turn: AgentActivityTurn, timeContext: RaftTimeContext) {
+    RaftText(
+        text = membersActivityOverviewClock(turn.startedAtEpochMillis, timeContext),
+        style = RaftTheme.typography.monoMeta,
+        color = RaftTheme.colors.foregroundHint,
+        maxLines = 1,
+        softWrap = false,
+        // The clock sits on the first line's text, wrapped lines start under the text (web #15377).
+        modifier = Modifier.padding(top = 2.dp).testTag(MembersAgentRecentTurnTimeTag),
+    )
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MembersAgentRecentTurnRow(turn: AgentActivityTurn, timeContext: RaftTimeContext) {
+private fun MembersAgentRecentTurnText(turn: AgentActivityTurn) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val trigger = membersActivityOverviewCompactTriggerText(turn.trigger)
-    Row(
-        modifier = Modifier.fillMaxWidth().testTag("agent-now-row"),
+    FlowRow(
+        modifier = Modifier.testTag(MembersAgentRecentTurnTextTag),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
     ) {
-        RaftText(
-            text = membersActivityOverviewClock(turn.startedAtEpochMillis, timeContext),
-            style = typography.monoMeta,
-            color = colors.foregroundHint,
-            maxLines = 1,
-            // The clock sits on the first line's text, wrapped lines start under the text (web #15377).
-            modifier = Modifier.padding(top = 2.dp),
-        )
-        FlowRow(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (trigger != null) {
-                RaftText(text = trigger, style = typography.callout, color = colors.foreground)
-            }
-            RaftText(
-                text = membersActivityOverviewActionsText(turn.actions, turn.messagesSent),
-                style = typography.callout,
-                color = colors.foregroundMuted,
-            )
-            MembersAgentActivityTurnBadges(turn, compact = true)
+        if (trigger != null) {
+            RaftText(text = trigger, style = typography.callout, color = colors.foreground)
         }
+        RaftText(
+            text = membersActivityOverviewActionsText(turn.actions, turn.messagesSent),
+            style = typography.callout,
+            color = colors.foregroundMuted,
+        )
+        MembersAgentActivityTurnBadges(turn, compact = true)
     }
 }
