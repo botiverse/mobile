@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
@@ -12,7 +11,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -28,11 +26,11 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Agent typing line (raft-design 0042), light and dark: the conversation's last messages with the
- * line in its own row under the list, just above where the composer starts; the list ends over it
- * in its end fade (raft-ui `MessageListEndFade`). One agent, and four (the first two named, the rest
- * counted, three faces). Then a long message scrolled under the list's edge: with the line (the
- * fade, then the line's row in the panel color) and without it (the fade alone). Reports land in
- * `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
+ * line floating over the list's end, just above where the composer starts, on the list's end fade
+ * (raft-ui `MessageListEndFade`). One agent, and four (the first two named, the rest counted, three
+ * faces). Then a long message scrolled under the edge: with the line (solid panel color under it,
+ * the fade above) and without it (the fade alone). Reports land in `build/reports/home-screenshots/`;
+ * verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -71,21 +69,23 @@ class ThreadAgentTypingScreenshotTest {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                 RaftDesignSystemTheme {
-                    // As ThreadMessagesListContent lays them out: the list (clipped, with its end
-                    // fade over it), then the line's row.
-                    Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-                        Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
-                            // Unbounded, so a long message runs on under the bottom edge, as in a scrolled list.
-                            Column(
-                                Modifier.fillMaxSize().wrapContentHeight(Alignment.Top, unbounded = true)
-                                    .padding(top = RaftAppSpacing.Sm),
-                            ) { Rows(longMessage) }
-                            ThreadMessageListEndFade(modifier = Modifier.align(Alignment.BottomCenter))
-                        }
-                        ThreadAgentTypingLineRow(
-                            typing = ThreadAgentTypingUi(serverId = "srv-1", agents = typing).takeIf { typing.isNotEmpty() },
-                            captureActive = false,
+                    Box(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+                        // Unbounded, so a long message runs on under the bottom edge, as in a scrolled list.
+                        Column(
+                            Modifier.fillMaxSize().wrapContentHeight(Alignment.Top, unbounded = true)
+                                .padding(top = RaftAppSpacing.Sm),
+                        ) { Rows(longMessage) }
+                        // As ThreadPage stacks them: the end fade, then the line on it.
+                        ThreadMessageListEndFade(
+                            typingLineShown = typing.isNotEmpty(),
+                            modifier = Modifier.align(Alignment.BottomCenter),
                         )
+                        if (typing.isNotEmpty()) {
+                            ThreadAgentTypingLine(
+                                typing = ThreadAgentTypingUi(serverId = "srv-1", agents = typing),
+                                modifier = Modifier.align(Alignment.BottomCenter),
+                            )
+                        }
                     }
                 }
             }

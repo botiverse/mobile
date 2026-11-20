@@ -7,6 +7,7 @@ import build.raft.designsystem.components.RaftMessageListJumpControls
 import build.raft.designsystem.components.RaftMessageListJumpPill
 import build.raft.designsystem.components.RaftMessageListJumpSide
 import androidx.compose.foundation.layout.BoxWithConstraintsScope
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.NonRestartableComposable
@@ -16,18 +17,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
-/** Over the messages, under the find bar (at the list's top) and the jump pills. */
+/** Over the messages, under the typing line, the find bar (at the list's top) and the jump pills. */
 private const val ThreadMessageListEndFadeZIndex = 1f
+/** Over the messages, under the jump pills and the inline search bar's popups. */
+private const val ThreadAgentTypingLineZIndex = 1.5f
 /** Above the list rows and the inline search bar's neighbours, as the old floating pills. */
 private const val ThreadJumpControlsZIndex = 5f
 
 /**
  * What `ThreadMessagesListContent` draws over its list, in this order: the end fade, the thread
- * timeline (outline), the bottom jump controls (select to here, back to bottom, next unread
- * thread) and the top one (earliest unread thread). The typing line is not one of them: it is a
- * row under the list ([ThreadAgentTypingLineRow]).
+ * timeline (outline), the typing line, the bottom jump controls (select to here, back to bottom,
+ * next unread thread) and the top one (earliest unread thread).
  *
  * Non-restartable: it runs whenever the list's content runs and is never skipped, so the outline's
  * remembered values, the time context's clock read and every state read here behave as when this
@@ -44,6 +47,8 @@ internal fun BoxWithConstraintsScope.ThreadMessagesListOverlays(
     duplicateMessageRandomIds: Set<String>,
     listState: ThreadListViewport,
     reverseLayout: Boolean,
+    agentTyping: ThreadAgentTypingUi?,
+    agentTypingLineShown: Boolean,
     outlineOriginJumpRequestState: MutableState<Int>,
     selectToHere: ThreadShareSelectToHere?,
     selectToHereOrderedIds: List<String>,
@@ -61,12 +66,14 @@ internal fun BoxWithConstraintsScope.ThreadMessagesListOverlays(
 ) {
     var outlineOriginJumpRequest by outlineOriginJumpRequestState
     val backToBottomLoading by backToBottomLoadingState
-    // The list's end fade (raft-ui MessageListEndFade), always on.
+    // The list's end fade (raft-ui MessageListEndFade), always on; while the typing line shows it
+    // grows by the line's height, solid under the line (web ChatPanel / ThreadPanel).
     // Except while "Generate image" captures the list: the export reads the window's pixels
     // slice by slice, so an overlay on the list would be baked into every slice that reaches
     // the list's end (artin: a washed-out band mid-image). Same rule as the jump pills above.
     if (!shareSelectionCaptureActive) {
         ThreadMessageListEndFade(
+            typingLineShown = agentTypingLineShown,
             modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadMessageListEndFadeZIndex),
         )
     }
@@ -121,11 +128,21 @@ internal fun BoxWithConstraintsScope.ThreadMessagesListOverlays(
             modifier = Modifier.zIndex(ThreadJumpControlsZIndex),
         )
     }
+    if (agentTyping != null && agentTypingLineShown) {
+        ThreadAgentTypingLine(
+            typing = agentTyping,
+            modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadAgentTypingLineZIndex),
+        )
+    }
     if (backToBottomMounted || nextUnreadThread != null || selectToHerePillDirection != null) {
         // Kuikly-era rule kept: the native dispatch capture sits on the pills' ancestor path so
         // a tap on a pill never also starts a gesture on the message row underneath.
         RaftMessageListJumpControls(
-            modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
+            // While the typing line shows, the pills sit above it, not over it (web
+            // `--message-list-bottom-inset`).
+            modifier = Modifier.align(Alignment.BottomCenter)
+                .padding(bottom = if (agentTypingLineShown) ThreadAgentTypingLineHeight else 0.dp)
+                .zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
         ) {
             // Web BottomJumpControls: first on the controls' line (nearest the edge when stacked).
             if (selectToHere != null && selectToHerePillDirection != null) {

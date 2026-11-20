@@ -11,7 +11,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.text.TextStyle
@@ -50,14 +49,16 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The line above the composer ("Niko is typing…", "1 agent working here") covered the last line of
- * the newest message (Android 1.27.0, #proj-mobile #227): it floated over the list's end, and the
- * list made room for it with a taller last row that the reading anchor then scrolled back.
+ * the newest message (Android 1.27.0, #proj-mobile #227). The line floats over the list's end; the
+ * list made room for it with a taller last row only while it showed, and the scroll owners parked
+ * the newest message for the short row.
  *
- * The line is a row of the conversation's layout now: the list's viewport ends where the line
- * starts. Composes the production [ThreadMessagesList] bottom-up, the way
- * [ThreadMessageMenuSurvivesPayloadUpdateUiTest] does, parked at the newest message both ways the
- * app parks there (opened on that message, as from Inbox or Activity: an anchored viewport; and
- * following the latest message), then shows and hides the line as the typing store would.
+ * The list's end always holds the line's slot now, and the scroll owners use the same height
+ * (`ThreadBottomSpacerAndAnchorTrailingHeight`). Composes the production [ThreadMessagesList]
+ * bottom-up, the way [ThreadMessageMenuSurvivesPayloadUpdateUiTest] does, parked at the newest
+ * message both ways the app parks there (opened on that message, as from Inbox or Activity: an
+ * anchored viewport; and following the latest message), and shows and hides the line as the typing
+ * store would: the newest message is clear of the line and does not move.
  */
 @OptIn(ExperimentalTestApi::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -157,11 +158,6 @@ class ThreadAgentTypingLineLayoutUiTest {
         waitForIdle()
     }
 
-    /** The list's viewport: the tallest scrollable on the page. */
-    private fun ComposeUiTest.listViewport(): Rect =
-        onAllNodes(hasScrollAction()).fetchSemanticsNodes().map { it.boundsInRoot }.maxByOrNull { it.height }
-            ?: error("no scrollable list on the page")
-
     /** The newest message's text on screen (its row's node where the row merges its text), or null. */
     private fun ComposeUiTest.newestMessage(): Rect? =
         onAllNodesWithText(NewestBody, substring = true).fetchSemanticsNodes().map { it.boundsInRoot }.maxByOrNull { it.bottom }
@@ -170,55 +166,83 @@ class ThreadAgentTypingLineLayoutUiTest {
     private fun ComposeUiTest.line(): Rect? =
         onAllNodes(hasContentDescription(TypingSentence)).fetchSemanticsNodes().map { it.boundsInRoot }.maxByOrNull { it.height }
 
-    private fun ComposeUiTest.assertTheLineNeverCoversTheNewestMessage(focusNewest: Boolean) {
+    private fun ComposeUiTest.state(harness: Harness): String =
+        "page=${onRoot().fetchSemanticsNode().boundsInRoot} line=${line()} newest=${newestMessage()} " +
+            "log=${harness.log.filter { "anchor" in it }.takeLast(8)}"
+
+    private fun Rect.sameAs(other: Rect): Boolean =
+        kotlin.math.abs(top - other.top) <= 0.5f && kotlin.math.abs(bottom - other.bottom) <= 0.5f
+
+    /**
+     * The newest message's row ends where the list's end starts, which is the list's own end
+     * (the end minus the line) above the line: its text ends at least that far above the line.
+     */
+    private fun ComposeUiTest.clearOfTheLine(newest: Rect, line: Rect): Boolean =
+        line.top - newest.bottom >= (ListEndDp - LineDp) * density.density - 0.5f
+
+    private fun ComposeUiTest.assertTheLineComingAndGoingLeavesTheNewestMessageAlone(focusNewest: Boolean) {
         val harness = Harness(threadPayload(focusedMessageId = NewestId.takeIf { focusNewest }))
         host(harness)
-        val page = onRoot().fetchSemanticsNode().boundsInRoot
-        val nearPx = NearTheListEndDp * density.density
-        fun state() =
-            "page=$page list=${listViewport()} line=${line()} newest=${newestMessage()} " +
-                "log=${harness.log.filter { "viewport" in it || "anchor" in it }.takeLast(8)}"
-
-        val opened = newestMessage()
-        assertTrue(opened != null && opened.bottom <= page.bottom + 0.5f, "the page did not open at the newest message: ${state()}")
-        assertTrue(line() == null, "the line shows before anybody types: ${state()}")
+        val opened = newestMessage() ?: error("the page did not open at the newest message: ${state(harness)}")
+        assertTrue(line() == null, "the line shows before anybody types: ${state(harness)}")
 
         // Somebody starts typing after the first layout, as the typing store reports it.
-        runOnIdle { harness.typing = ThreadAgentTypingUi(serverId = "srv-1", agents = listOf(ThreadTypingAgent("agent-niko", "Niko", null))) }
+        runOnIdle { harness.typing = nikoTyping() }
         settle()
 
-        val lineBox = line() ?: error("the line did not show: ${state()}")
-        val listBox = listViewport()
-        val newest = newestMessage() ?: error("the newest message left the screen when the line showed: ${state()}")
-        // The line is the page's last row, and the list ends where it starts: nothing of the list
-        // is under it.
-        assertTrue(kotlin.math.abs(lineBox.bottom - page.bottom) <= 0.5f, "the line is not at the page's bottom edge: ${state()}")
-        assertTrue(listBox.bottom <= lineBox.top + 0.5f, "the list runs on under the line: ${state()}")
+        val lineBox = line() ?: error("the line did not show: ${state(harness)}")
+        val withLine = newestMessage() ?: error("the newest message left the screen when the line showed: ${state(harness)}")
         // The report: the newest message's last line under the line.
-        assertTrue(newest.bottom <= lineBox.top + 0.5f, "the line covers the newest message: ${state()}")
-        // And it is still the list's end: the bottom-up list kept its bottom when it got shorter.
-        assertTrue(lineBox.top - newest.bottom <= nearPx, "the newest message is no longer at the list's end: ${state()}")
+        assertTrue(clearOfTheLine(withLine, lineBox), "the line covers the newest message: ${state(harness)}")
+        assertTrue(withLine.sameAs(opened), "the newest message moved when the line showed: was $opened ${state(harness)}")
 
-        // Nobody types any more: the list takes the line's place back, still at its end.
+        // Nobody types any more.
         runOnIdle { harness.typing = null }
         settle()
 
-        assertTrue(line() == null, "the line still shows after typing ended: ${state()}")
-        val listAfter = listViewport()
-        val newestAfter = newestMessage() ?: error("the newest message left the screen when the line hid: ${state()}")
-        assertTrue(kotlin.math.abs(listAfter.bottom - page.bottom) <= 0.5f, "the list did not take the line's place back: ${state()}")
-        assertTrue(page.bottom - newestAfter.bottom <= nearPx, "the newest message is no longer at the list's end: ${state()}")
+        assertTrue(line() == null, "the line still shows after typing ended: ${state(harness)}")
+        val withoutLine = newestMessage() ?: error("the newest message left the screen when the line hid: ${state(harness)}")
+        assertTrue(withoutLine.sameAs(opened), "the newest message moved when the line hid: was $opened ${state(harness)}")
     }
 
     /** Opened on the newest message (Inbox, Activity): the viewport is anchored on it. */
     @Test
-    fun anchoredOnTheNewestMessageTheLineSitsBelowIt() =
-        runRobolectricComposeUiTest { assertTheLineNeverCoversTheNewestMessage(focusNewest = true) }
+    fun anchoredOnTheNewestMessageTheLineNeitherCoversNorMovesIt() =
+        runRobolectricComposeUiTest { assertTheLineComingAndGoingLeavesTheNewestMessageAlone(focusNewest = true) }
 
     /** Opened at the bottom: the viewport follows the latest message. */
     @Test
-    fun followingTheLatestMessageTheLineSitsBelowIt() =
-        runRobolectricComposeUiTest { assertTheLineNeverCoversTheNewestMessage(focusNewest = false) }
+    fun followingTheLatestMessageTheLineNeitherCoversNorMovesIt() =
+        runRobolectricComposeUiTest { assertTheLineComingAndGoingLeavesTheNewestMessageAlone(focusNewest = false) }
+
+    /** Somebody is already typing when the conversation opens on its newest message. */
+    @Test
+    fun openedOnTheNewestMessageWithTheLineAlreadyShowingItIsClearOfTheLine() =
+        runRobolectricComposeUiTest {
+            val harness = Harness(threadPayload(focusedMessageId = NewestId)).apply { typing = nikoTyping() }
+            host(harness)
+            val lineBox = line() ?: error("the line did not show: ${state(harness)}")
+            val newest = newestMessage() ?: error("the page did not open at the newest message: ${state(harness)}")
+            assertTrue(clearOfTheLine(newest, lineBox), "the line covers the newest message: ${state(harness)}")
+        }
+
+    /**
+     * Somebody is already typing when the conversation opens at the bottom: the initial bottom
+     * anchor finds the newest message where its check expects it, on its first attempt (the list's
+     * end and the check's trailing padding are the same height), instead of retrying.
+     */
+    @Test
+    fun openedAtTheBottomWithTheLineAlreadyShowingTheInitialAnchorHoldsOnItsFirstAttempt() =
+        runRobolectricComposeUiTest {
+            val harness = Harness(threadPayload(focusedMessageId = null)).apply { typing = nikoTyping() }
+            host(harness)
+            val lineBox = line() ?: error("the line did not show: ${state(harness)}")
+            val newest = newestMessage() ?: error("the page did not open at the newest message: ${state(harness)}")
+            assertTrue(clearOfTheLine(newest, lineBox), "the line covers the newest message: ${state(harness)}")
+            val initialAnchor = harness.log.filter { it.startsWith("thread_initial_bottom_anchor ") }
+            assertTrue(initialAnchor.none { "result=retry" in it }, "the initial anchor retried: $initialAnchor")
+            assertTrue(initialAnchor.any { "result=anchored" in it }, "the initial anchor never reported anchored: $initialAnchor")
+        }
 
     private companion object {
         const val NewestId = "m40"
@@ -227,11 +251,11 @@ class ThreadAgentTypingLineLayoutUiTest {
         /** thread_agent_typing_one. */
         const val TypingSentence = "Niko is typing…"
 
-        /**
-         * How far above the list's end the newest message's text may end and still be the list's
-         * last row: the 16dp end padding plus the row's own bottom padding.
-         */
-        const val NearTheListEndDp = 64f
+        /** The list's end under the newest message, and the line floating over the bottom of it. */
+        const val ListEndDp = 46f
+        const val LineDp = 24f
+
+        fun nikoTyping() = ThreadAgentTypingUi(serverId = "srv-1", agents = listOf(ThreadTypingAgent("agent-niko", "Niko", null)))
 
         fun message(seq: Int, body: String) =
             RaftThreadMessageItem(

@@ -4448,6 +4448,9 @@ private fun ThreadMessagesListContent(
                         .fillMaxWidth()
                         .height(
                             ThreadBottomScrollPaddingHeight +
+                                // The line floats over the list's end: give the end its height, so at
+                                // the bottom it never covers the last message (web AgentTypingListEnd).
+                                (if (agentTyping != null) ThreadAgentTypingListEndHeight else 0.dp) +
                                 (if (shareSelectionCaptureTailPaddingActive) {
                                     ThreadShareCaptureBottomScrollPaddingHeight
                                 } else {
@@ -4676,6 +4679,8 @@ private fun ThreadMessagesListContent(
             )
         }
         val nextUnreadThread = unreadThreadJump?.takeIf { it.direction == ThreadUnreadThreadJumpDirection.Next }
+        // Also while Search in this thread is open: its bar sits at the list's top (web ThreadSearchBar).
+        val agentTypingLineShown = agentTyping != null && !shareSelectionCaptureActive
         // Select to here (ThreadSelectToHere.kt, web useSelectToHere): in select mode, while the
         // anchor is out of view. Only reads the viewport; a tap changes the selection, never the
         // scroll position, so no viewport intent is taken here.
@@ -4692,12 +4697,15 @@ private fun ThreadMessagesListContent(
                 }
             }
         val selectToHereVisibleRowMinPx = with(LocalDensity.current) { ThreadSelectToHereVisibleRowMin.roundToPx() }
+        // What covers the list's bottom: the typing line (web `--message-list-bottom-inset`).
+        val selectToHereBottomOcclusionPx =
+            with(LocalDensity.current) { if (agentTypingLineShown) ThreadAgentTypingLineHeight.roundToPx() else 0 }
         val selectToHereVisibleIds: () -> List<String> = {
             val info = listState.layoutInfo
             threadSelectToHereVisibleMessageIds(
                 rows = info.visibleItemsInfo.map { ThreadSelectToHereRow(it.key, it.offset, it.size) },
                 viewportStart = info.viewportStartOffset,
-                viewportEnd = info.viewportEndOffset,
+                viewportEnd = info.viewportEndOffset - selectToHereBottomOcclusionPx,
                 minVisiblePx = selectToHereVisibleRowMinPx,
                 keyToMessageId = selectToHereKeyToMessageId,
             )
@@ -4709,6 +4717,7 @@ private fun ThreadMessagesListContent(
             selectToHereOrderedIds,
             selectToHereKeyToMessageId,
             selectToHereVisibleRowMinPx,
+            selectToHereBottomOcclusionPx,
         ) {
             derivedStateOf {
                 selectToHereAnchorId?.let { anchor ->
@@ -4725,6 +4734,8 @@ private fun ThreadMessagesListContent(
             duplicateMessageRandomIds = duplicateMessageRandomIds,
             listState = listState,
             reverseLayout = reverseLayout,
+            agentTyping = agentTyping,
+            agentTypingLineShown = agentTypingLineShown,
             outlineOriginJumpRequestState = outlineOriginJumpRequestState,
             selectToHere = selectToHere,
             selectToHereOrderedIds = selectToHereOrderedIds,
@@ -5303,9 +5314,6 @@ private fun ThreadMessagesListContent(
             )
         }
     }
-        // The typing / working line: a row under the list, over the composer. The list above ends
-        // where it starts, so the list's own geometry (end padding, anchors, pills) knows nothing of it.
-        ThreadAgentTypingLineRow(typing = agentTyping, captureActive = shareSelectionCaptureActive)
     }
     }
 }
