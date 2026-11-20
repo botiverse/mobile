@@ -1344,24 +1344,67 @@ data class InboxSnapshot(
 )
 
 /**
+ * A conversation row currently hidden from Activity while its Undo toast waits out the 8 s window
+ * before [SharedActivityIntent.MarkDone] or [SharedActivityIntent.UnfollowThread] is sent.
+ * [removesCountRow]: true for Done (and Unfollow in filters that drop unfollowed threads); false
+ * for Unfollow in filters that keep unfollowed threads in totalCount while clearing unread.
+ */
+data class SharedActivityPendingDeferredHide(
+    val itemKey: String,
+    val removesCountRow: Boolean,
+)
+
+/**
+ * Count deductions `(countDelta, unreadDelta)` for [pendingDeferredHide] while its row is still in
+ * [items] (and neither an object row nor an already-suppressed internal joint row). Returns `0 to 0`
+ * once the row leaves [items] (e.g. MarkDone committed or remote Done arrived), preventing double
+ * subtraction.
+ */
+internal fun InboxSnapshot.activityPendingDeferredDeltas(
+    pendingDeferredHide: SharedActivityPendingDeferredHide?,
+): Pair<Int, Int> {
+    val hide = pendingDeferredHide ?: return 0 to 0
+    val row =
+        items.firstOrNull { item ->
+            item.key == hide.itemKey &&
+                item.kind != InboxItemKind.Object &&
+                !item.hasUnopenableInternalJointParentSource()
+        } ?: return 0 to 0
+    val countDelta = if (hide.removesCountRow) 1 else 0
+    val unreadDelta = row.unreadCount.coerceAtLeast(0)
+    return countDelta to unreadDelta
+}
+
+/**
  * The counts Activity shows and badges for the All filter: the conversation rows' ([totalCount],
  * [totalUnreadCount], which the server keeps free of object rows) plus the object rows' own
- * ([objectCounts]); an override replaces the conversation part only.
+ * ([objectCounts]); an override replaces the conversation part only. Any [pendingDeferredHide]
+ * still present in [items] is projected out until committed or undone.
  */
 internal fun InboxSnapshot.activityVisibleSummaryCounts(
     totalUnreadCountOverride: Int? = null,
-    totalCountOverride: Int? = null
+    totalCountOverride: Int? = null,
+    pendingDeferredHide: SharedActivityPendingDeferredHide? = null,
 ): Pair<Int, Int> {
     val conversations = items.filterNot { item -> item.kind == InboxItemKind.Object }
     val suppressed = conversations.filter { item -> item.hasUnopenableInternalJointParentSource() }
     val visibleItems = conversations.filterNot { item -> item.hasUnopenableInternalJointParentSource() }
+    val pendingRow = pendingDeferredHide?.let { hide -> visibleItems.firstOrNull { it.key == hide.itemKey } }
+    val pendingUnread = pendingRow?.unreadCount?.coerceAtLeast(0) ?: 0
+    val pendingCount = if (pendingRow != null && pendingDeferredHide.removesCountRow) 1 else 0
+    val shownUnreadFloor =
+        visibleItems.sumOf { item ->
+            if (pendingRow != null && item.key == pendingRow.key) 0 else item.unreadCount.coerceAtLeast(0)
+        }
+    val shownCountFloor = (visibleItems.size - pendingCount).coerceAtLeast(0)
     return maxOf(
-        visibleItems.sumOf(InboxItem::unreadCount),
-        (totalUnreadCountOverride ?: totalUnreadCount) - suppressed.sumOf(InboxItem::unreadCount)
-    ) + (objectCounts?.objectUnreadCount ?: 0) to maxOf(
-        visibleItems.size,
-        (totalCountOverride ?: totalCount) - suppressed.size
-    ) + (objectCounts?.objectCount ?: 0)
+        shownUnreadFloor,
+        (totalUnreadCountOverride ?: totalUnreadCount) - suppressed.sumOf(InboxItem::unreadCount) - pendingUnread,
+    ).coerceAtLeast(0) + (objectCounts?.objectUnreadCount ?: 0) to
+        maxOf(
+            shownCountFloor,
+            (totalCountOverride ?: totalCount) - suppressed.size - pendingCount,
+        ).coerceAtLeast(0) + (objectCounts?.objectCount ?: 0)
 }
 
 data class InboxDoneResult(

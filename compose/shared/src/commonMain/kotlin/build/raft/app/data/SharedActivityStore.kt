@@ -820,6 +820,7 @@ class SharedActivityStore internal constructor(
                 intent.item.threadChannelId?.value?.let { threadId ->
                     onThreadUnfollowProjection(SharedHomeIntent.ProjectThreadUnfollow(threadId, intent.phase))
                 }
+            is SharedActivityIntent.ProjectPendingDeferredHide -> projectPendingDeferredHide(intent)
             is SharedActivityIntent.ApplyReadReceiptPrediction -> applyReadReceiptPrediction(intent.prediction)
             is SharedActivityIntent.ApplyReadReceiptFailure -> handleReadReceiptFailure(intent.request)
             is SharedActivityIntent.ApplyReadReceiptResult ->
@@ -1501,7 +1502,8 @@ class SharedActivityStore internal constructor(
                         pullRefreshing = false,
                         loadingMore = false,
                         errorCode = null,
-                        loadMoreErrorCode = null
+                        loadMoreErrorCode = null,
+                        pendingDeferredHide = null
                     )
                 true
             }
@@ -4302,6 +4304,7 @@ class SharedActivityStore internal constructor(
                 !append &&
                     freshAnswer &&
                     current.selectedFilter == InboxFilter.All &&
+                    nextState.pendingDeferredHide == null &&
                     (result is DataResult.Content || result is DataResult.Empty),
             summaryFactCounts =
                 if (!append && freshAnswer && current.selectedFilter == InboxFilter.All) {
@@ -5348,6 +5351,14 @@ class SharedActivityStore internal constructor(
         }
     }
 
+    private fun projectPendingDeferredHide(intent: SharedActivityIntent.ProjectPendingDeferredHide) {
+        synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            if (current.pendingDeferredHide == intent.pending) return@synchronized
+            reduceState(intent, current.copy(pendingDeferredHide = intent.pending))
+        }
+    }
+
     private fun updateThreadFollowProjection(key: String, following: Boolean) {
         synchronized(realtimeOwnerLock) {
             val current = _state.value
@@ -5366,7 +5377,8 @@ class SharedActivityStore internal constructor(
                 },
                 current.copy(
                     snapshot = updatedSnapshot,
-                    errorCode = null
+                    errorCode = null,
+                    pendingDeferredHide = current.pendingDeferredHide?.takeUnless { it.itemKey == key }
                 )
             )
         }
@@ -5943,7 +5955,8 @@ class SharedActivityStore internal constructor(
                     ),
                 errorCode = null,
                 // Done leaves at once, retained or not.
-                retainedReadRowKeys = current.retainedReadRowKeys - item.key
+                retainedReadRowKeys = current.retainedReadRowKeys - item.key,
+                pendingDeferredHide = current.pendingDeferredHide?.takeUnless { it.itemKey == item.key }
             )
         )
     }
@@ -6027,11 +6040,13 @@ class SharedActivityStore internal constructor(
         val serverId = next.ownerServerId?.trim()?.takeIf { it.isNotBlank() } ?: return
         val accountId = next.ownerUserId?.trim()?.takeIf { it.isNotBlank() } ?: return
         val snapshot = next.snapshot ?: return
-        val previousVisibleCounts = previous.snapshot?.activityVisibleSummaryCounts()
+        val previousVisibleCounts =
+            previous.snapshot?.activityVisibleSummaryCounts(pendingDeferredHide = previous.pendingDeferredHide)
         val visibleCounts =
             snapshot.activityVisibleSummaryCounts(
                 totalUnreadCountOverride = countOverride?.first,
-                totalCountOverride = countOverride?.second
+                totalCountOverride = countOverride?.second,
+                pendingDeferredHide = next.pendingDeferredHide
             )
         val summaryChanged =
             previous.ownerServerId != next.ownerServerId ||
@@ -6440,7 +6455,13 @@ data class SharedActivityState(
      * self-hosted server without RisingWave). Waiting will not help, so the page says Activity is
      * temporarily unavailable (web `thread.unavailableNotice`) instead of "may be out of date".
      */
-    val unavailable: Boolean = false
+    val unavailable: Boolean = false,
+    /**
+     * A conversation row currently hidden behind Activity's 8 s Undo toast (Mark as Done or
+     * Unfollow) before the mutation is dispatched. Counts (header, filter bar, process unread
+     * summary) project it out at once and restore it if Undo cancels the action.
+     */
+    val pendingDeferredHide: SharedActivityPendingDeferredHide? = null
 ) {
     val items: List<InboxItem>
         get() = snapshot?.items.orEmpty()
@@ -6452,6 +6473,20 @@ data class SharedActivityState(
         get() = snapshot?.hasMore == true
     val nextOffset: Int?
         get() = snapshot?.nextOffset
+
+    /**
+     * Header and filter-bar counts `(totalCount, totalUnreadCount)` for [selectedFilter]:
+     * conversation totals with [pendingDeferredHide] projected out plus object rows for this filter.
+     */
+    fun activityHeaderCounts(): Pair<Int, Int> {
+        val current = snapshot
+        val (pendingCountDelta, pendingUnreadDelta) = current?.activityPendingDeferredDeltas(pendingDeferredHide) ?: (0 to 0)
+        val total = (totalCount - pendingCountDelta).coerceAtLeast(0) + (current?.objectCounts?.objectCount ?: 0)
+        val unread =
+            (totalUnreadCount - pendingUnreadDelta).coerceAtLeast(0) +
+                (current?.objectCounts?.unreadFor(selectedFilter) ?: 0)
+        return total to unread
+    }
 
     /**
      * The Activity header shows its top-right refresh indicator (ticket 67609860, artin 10-28):
@@ -6640,6 +6675,11 @@ sealed interface SharedActivityIntent {
      * ([HomeThreadUnfollowPhase.Restored]); Home's unread for the thread follows at once.
      */
     data class ProjectThreadUnfollow(val item: InboxItem, val phase: HomeThreadUnfollowPhase) : SharedActivityIntent
+    /**
+     * A row hidden in Activity behind the 8 s Undo toast before MarkDone / UnfollowThread commits
+     * (null once committed, undone, or cleared). Projects header & badge counts immediately.
+     */
+    data class ProjectPendingDeferredHide(val pending: SharedActivityPendingDeferredHide?) : SharedActivityIntent
     data class ApplyRealtimeEvent(
         val event: RealtimeEvent,
         val allowLocalPatch: Boolean = true,
@@ -6714,6 +6754,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.UndoObjectDone -> "undo_object_done"
         is SharedActivityIntent.UnfollowObject -> "unfollow_object"
         is SharedActivityIntent.ProjectThreadUnfollow -> "project_thread_unfollow"
+        is SharedActivityIntent.ProjectPendingDeferredHide -> "project_pending_deferred_hide"
         is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
         is SharedActivityIntent.ApplyRemoteDone -> "remote_done"
@@ -6746,6 +6787,7 @@ internal fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> true
         is SharedActivityIntent.UnfollowObject,
         is SharedActivityIntent.ProjectThreadUnfollow,
+        is SharedActivityIntent.ProjectPendingDeferredHide,
         is SharedActivityIntent.ServerSelected,
         SharedActivityIntent.LoadInitial,
         SharedActivityIntent.Refresh,
