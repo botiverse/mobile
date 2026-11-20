@@ -731,6 +731,8 @@ internal fun TaskPendingConversationPage(
                 label = stringResource(Res.string.task_conversation_join_to_reply),
                 onJoin = onJoin,
                 joining = ThreadChannelJoinsInFlight.isJoining(task.channelId),
+                // TaskPendingConversationWindow already applies WindowInsets.safeDrawing bottom padding.
+                bottomSafeArea = 0.dp,
             )
         } else {
             // The conversation page's own composer in its dock: multi-line, paste, its send button.

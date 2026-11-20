@@ -4,8 +4,11 @@ import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.app.resources.*
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButton
+import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.components.raftToastAvoid
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
 import build.raft.app.components.RaftAnchoredMetaChip
@@ -70,6 +73,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -966,14 +970,20 @@ private fun String.threadTaskAssigneeKey(): String =
         .ifBlank { "unknown" }
 
 @Composable
-internal fun ThreadJoinFooter(label: String, onJoin: () -> Unit, joining: Boolean = false) {
+internal fun ThreadJoinFooter(
+    label: String,
+    onJoin: () -> Unit,
+    joining: Boolean = false,
+    bottomSafeArea: Dp = raftBottomSafeAreaPadding(),
+) {
     // task #176: last element of the page, like the composer it replaces, so it
     // keeps clear of the system navigation bar.
-    val bottomSafeArea = raftBottomSafeAreaPadding()
     Column(
         modifier = Modifier.fillMaxWidth()
             .background(RaftColor.Canvas)
-            .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
+            .raftSafeAreaHorizontalPadding()
+            .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea)
+            .raftToastAvoid(enabled = LocalRaftPageActive.current),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // slock #12426: "Joining…" and disabled while the join is in flight.

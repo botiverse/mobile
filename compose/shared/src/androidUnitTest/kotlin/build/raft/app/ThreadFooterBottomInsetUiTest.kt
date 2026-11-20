@@ -1,0 +1,206 @@
+package build.raft.app
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.ComposeUiTest
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.PageData
+import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.AppLocale
+import build.raft.app.data.RaftAgentLounge
+import build.raft.app.data.stringDescLocaleType
+import build.raft.app.model.ChannelId
+import build.raft.app.resources.StringDesc
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertTrue
+import org.junit.Rule
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+/**
+ * Conversation non-composer footers ([ThreadArchivedChannelNotice], [AgentLoungeFooter],
+ * [ThreadJoinFooter]) sit at the bottom of an edge-to-edge thread page and must stay above the
+ * Android system navigation bar in both 3-button and gesture navigation (#proj-mobile:#232).
+ */
+@OptIn(ExperimentalTestApi::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34], qualifiers = "w390dp-h800dp-xxhdpi")
+class ThreadFooterBottomInsetUiTest {
+    @get:Rule
+    val activities = RobolectricComposeActivityRule()
+
+    private var previousLocale = StringDesc.localeType
+
+    @BeforeTest
+    fun english() {
+        previousLocale = StringDesc.localeType
+        StringDesc.localeType = AppLocale.English.stringDescLocaleType
+    }
+
+    @AfterTest
+    fun restore() {
+        StringDesc.localeType = previousLocale
+    }
+
+    @Test
+    fun archivedChannelNoticeClearsThreeButtonAndGestureNavigationBars() {
+        // xxhdpi = 3px/dp: 144px = 48dp (3-button nav), 72px = 24dp (gesture nav).
+        assertArchivedNoticeClearsNavBar(navBarPx = 144, minClearancePx = 144f)
+        assertArchivedNoticeClearsNavBar(navBarPx = 72, minClearancePx = 72f)
+    }
+
+    @Test
+    fun agentLoungeFootersClearThreeButtonNavigationBar() =
+        runRobolectricComposeUiTest {
+            val lounge =
+                RaftAgentLounge(
+                    channelId = ChannelId("lounge-1"),
+                    agentId = "agent-1",
+                    agentName = "Lagoon",
+                    channelName = "lagoon-lounge",
+                    archived = true,
+                )
+            val inputs =
+                ThreadPageLounge(
+                    lounge = lounge,
+                    agentAvatarWireValue = null,
+                    cacheServerId = "server-1",
+                    canUnarchive = true,
+                    unarchiving = false,
+                    onUnarchive = {},
+                    onOpenAgentProfile = null,
+                    onOpenDmAgentLounge = null,
+                    dmLoungeOpening = false,
+                )
+            showAtBottom(navBarPx = 144) {
+                ThreadFooterNoticeDock {
+                    AgentLoungeFooter(kind = AgentLoungeFooterKind.Archived, inputs = inputs)
+                }
+            }
+            val pageBottom = onNodeWithTag(PAGE_TAG).fetchSemanticsNode().boundsInRoot.bottom
+            val noticeBottom = onNodeWithTag(AgentLoungeTestTags.ArchivedNotice).fetchSemanticsNode().boundsInRoot.bottom
+            val unarchiveBottom = onNodeWithTag(AgentLoungeTestTags.UnarchiveAction).fetchSemanticsNode().boundsInRoot.bottom
+            assertTrue(
+                pageBottom - noticeBottom >= 144f,
+                "Expected archived Lounge notice to clear 48dp nav bar (pageBottom=$pageBottom, noticeBottom=$noticeBottom)",
+            )
+            assertTrue(
+                pageBottom - unarchiveBottom >= 144f,
+                "Expected archived Lounge Unarchive button to clear 48dp nav bar (pageBottom=$pageBottom, unarchiveBottom=$unarchiveBottom)",
+            )
+        }
+
+    @Test
+    fun joinFooterClearsThreeButtonAndGestureNavigationBars() {
+        assertJoinFooterClearsNavBar(navBarPx = 144, minClearancePx = 144f)
+        assertJoinFooterClearsNavBar(navBarPx = 72, minClearancePx = 72f)
+    }
+
+    @Test
+    fun archivedNoticeAddsNoExtraInsetWhenHostExcludesNavigationBar() =
+        runRobolectricComposeUiTest {
+            showAtBottom(navBarPx = 144, hostExcludesNavBar = true) {
+                ThreadFooterNoticeDock {
+                    ThreadArchivedChannelNotice(canUnarchive = true, unarchiving = false, onUnarchive = {})
+                }
+            }
+            val pageBottom = onNodeWithTag(PAGE_TAG).fetchSemanticsNode().boundsInRoot.bottom
+            val noticeBottom = onNodeWithTag(ThreadArchivedChannelTestTags.Notice).fetchSemanticsNode().boundsInRoot.bottom
+            // Only the standard Sm (8dp = 24px @ 3x) bottom margin remains.
+            val clearance = pageBottom - noticeBottom
+            assertTrue(
+                clearance in 20f..30f,
+                "Expected only standard Sm margin when host excludes nav bar (clearance=$clearance)",
+            )
+        }
+
+    private fun assertArchivedNoticeClearsNavBar(navBarPx: Int, minClearancePx: Float) =
+        runRobolectricComposeUiTest {
+            showAtBottom(navBarPx = navBarPx) {
+                ThreadFooterNoticeDock {
+                    ThreadArchivedChannelNotice(canUnarchive = true, unarchiving = false, onUnarchive = {})
+                }
+            }
+            val pageBottom = onNodeWithTag(PAGE_TAG).fetchSemanticsNode().boundsInRoot.bottom
+            val noticeBottom = onNodeWithTag(ThreadArchivedChannelTestTags.Notice).fetchSemanticsNode().boundsInRoot.bottom
+            val unarchiveBottom = onNodeWithTag(ThreadArchivedChannelTestTags.UnarchiveAction).fetchSemanticsNode().boundsInRoot.bottom
+            assertTrue(
+                pageBottom - noticeBottom >= minClearancePx,
+                "Expected archived notice to clear ${minClearancePx}px nav bar (pageBottom=$pageBottom, noticeBottom=$noticeBottom)",
+            )
+            assertTrue(
+                pageBottom - unarchiveBottom >= minClearancePx,
+                "Expected Unarchive button to clear ${minClearancePx}px nav bar (pageBottom=$pageBottom, unarchiveBottom=$unarchiveBottom)",
+            )
+        }
+
+    private fun assertJoinFooterClearsNavBar(navBarPx: Int, minClearancePx: Float) =
+        runRobolectricComposeUiTest {
+            showAtBottom(navBarPx = navBarPx) {
+                ThreadJoinFooter(label = "Join channel", onJoin = {})
+            }
+            val pageBottom = onNodeWithTag(PAGE_TAG).fetchSemanticsNode().boundsInRoot.bottom
+            val joinBottom = onNodeWithText("Join channel").fetchSemanticsNode().boundsInRoot.bottom
+            assertTrue(
+                pageBottom - joinBottom >= minClearancePx,
+                "Expected Join footer button to clear ${minClearancePx}px nav bar (pageBottom=$pageBottom, joinBottom=$joinBottom)",
+            )
+        }
+
+    private fun ComposeUiTest.showAtBottom(
+        navBarPx: Int,
+        hostExcludesNavBar: Boolean = false,
+        footer: @Composable () -> Unit,
+    ) {
+        val windowId = "thread-footer-inset-$navBarPx-$hostExcludesNavBar-${nextWindowId++}"
+        setContent {
+            val pager =
+                remember(windowId) {
+                    object : Pager() {}.apply {
+                        pageData =
+                            PageData(
+                                JSONObject().apply {
+                                    put("slockWindowId", windowId)
+                                    put("navigationBarHeight", navBarPx.toString())
+                                    put("safeAreaBottom", navBarPx.toString())
+                                    put("slockHostExcludesNavigationBar", hostExcludesNavBar)
+                                }
+                            )
+                    }
+                }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+                RaftDesignSystemTheme {
+                    Column(Modifier.fillMaxSize().testTag(PAGE_TAG)) {
+                        Spacer(Modifier.weight(1f).fillMaxWidth())
+                        Box(Modifier.fillMaxWidth()) { footer() }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+    }
+
+    private companion object {
+        const val PAGE_TAG = "thread-footer-inset-page"
+        var nextWindowId = 1
+    }
+}
