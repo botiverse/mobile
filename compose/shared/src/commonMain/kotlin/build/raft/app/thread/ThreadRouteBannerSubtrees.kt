@@ -57,7 +57,7 @@ internal fun ThreadRouteAssistantPanel(
         // once it is closing, the page shows it again.
         windowOverlay = {
             val handoff = bannerHandoff
-            handoff?.banner?.takeIf { otter.panelOpen }?.let { banner ->
+            handoff?.banner?.takeIf { otter.panelShown }?.let { banner ->
                 RaftForegroundMessageBannerView(
                     banner = banner,
                     topSafeArea = handoff.topSafeArea,

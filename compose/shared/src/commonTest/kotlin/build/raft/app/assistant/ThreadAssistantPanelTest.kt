@@ -36,6 +36,28 @@ class ThreadAssistantPanelTest {
     }
 
     @Test
+    fun aCoveredPanelStaysOpenAndShowsAgainWhenItsPageIsBack() {
+        val panel = ThreadAssistantPanelState()
+        // Nothing to hide while closed.
+        panel.onPageCovered()
+        panel.setOpen(true)
+        assertTrue(panel.shown)
+
+        // A page pushed over the conversation: hidden, still open; its window's close is ignored.
+        panel.onPageCovered()
+        panel.setOpen(false)
+        assertTrue(panel.open)
+        assertFalse(panel.shown)
+
+        // Back on the conversation: shown again; the person's close closes it.
+        panel.onPageActive()
+        assertTrue(panel.shown)
+        panel.setOpen(false)
+        assertFalse(panel.open)
+        assertFalse(panel.shown)
+    }
+
+    @Test
     fun aCardFromTheAssistantWaitsWhilePreparedOrToReconfirm() {
         assertTrue(hasWaitingAssistantActionCard(listOf(card("m1", AGENT, "prepared")), AGENT))
         assertTrue(hasWaitingAssistantActionCard(listOf(text("m0"), card("m1", AGENT, "reconfirm_required")), AGENT))

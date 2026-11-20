@@ -40,6 +40,7 @@ import build.raft.app.model.AgentStatus
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import build.raft.app.resolveOpenRequest
+import build.raft.designsystem.components.LocalRaftPageCoverSignal
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -75,6 +76,11 @@ internal class ThreadAssistantOtter(
     val readsDms: Boolean = false,
     val paused: Boolean = false,
     val panelOpen: Boolean = false,
+    /**
+     * Whether the panel's window is on screen: [panelOpen], except while a page pushed over this
+     * conversation covers it ([ThreadAssistantPanelState.covered]); it shows again on the way back.
+     */
+    val panelShown: Boolean = panelOpen,
     val onPanelOpenChange: (Boolean) -> Unit = {},
     val panelEmbed: ThreadAssistantPanelEmbed? = null,
     /** Where the otter rests on its composer: a wide window's panel opens above it. */
@@ -171,7 +177,8 @@ internal fun assistantOtterDmOpenRequest(
  *   takes the full-size otter; a reply thread keeps 80% (web ThreadPanel `scale={0.8}`), both
  *   over the send button's side.
  * - [pageActive]: false once another page covers this one (a page the panel's conversation
- *   opened): the panel closes, so it never sits over a page it was not opened on.
+ *   opened). The panel stays open but hidden while covered ([ThreadAssistantPanelState]), so it
+ *   never sits over a page it was not opened on, and shows again when this page is back on top.
  * - [threadParentMessageId] / [threadParentText]: in a reply thread, its parent message's id and
  *   text (while the page has it). Each open of the panel attaches this conversation (the thread,
  *   or [conversationChannelId]) to the DM's composer as a chip (ThreadAssistantContext.kt).
@@ -242,11 +249,9 @@ internal fun rememberThreadAssistantOtter(
         }
     val paused by pausedFlow.collectAsState(initialPaused)
     // The panel (web AssistantOtter `open`), and a card waiting in the DM it shows (`confirm`).
-    var panelOpen by remember(server, dmChannelId) { mutableStateOf(false) }
+    val panelState = rememberThreadAssistantPanelState(server, dmChannelId, pageActive)
+    val panelOpen = panelState.open
     var waitingActionCard by remember(server, dmChannelId) { mutableStateOf(false) }
-    LaunchedEffect(pageActive) {
-        if (!pageActive) panelOpen = false
-    }
     LaunchedEffect(panelOpen) {
         // The DM's messages go with the panel: no card is known to wait once it closes.
         if (!panelOpen) waitingActionCard = false
@@ -304,7 +309,8 @@ internal fun rememberThreadAssistantOtter(
             )
         }
     val rest = remember(server, dmChannelId) { ThreadAssistantOtterRest() }
-    return remember(hostId, store, mood, scale, endInset, server, dmChannelId, assistant, paused, panelOpen, panelEmbed, rest) {
+    val panelShown = panelState.shown
+    return remember(hostId, store, mood, scale, endInset, server, dmChannelId, assistant, paused, panelOpen, panelShown, panelEmbed, rest) {
         ThreadAssistantOtter(
             hostId = hostId,
             hosts = store.otterHosts,
@@ -314,7 +320,7 @@ internal fun rememberThreadAssistantOtter(
             // The panel mounts on each open (web), so each open attaches the conversation afresh.
             onOpen = {
                 contextAttachment.attach()
-                panelOpen = true
+                panelState.setOpen(true)
             },
             assistantName = assistant.name,
             agentId = agentId,
@@ -323,14 +329,77 @@ internal fun rememberThreadAssistantOtter(
             readsDms = assistant.readsDms == true,
             paused = paused,
             panelOpen = panelOpen,
+            panelShown = panelShown,
             onPanelOpenChange = { open ->
-                if (open && !panelOpen) contextAttachment.attach()
-                panelOpen = open
+                if (open && !panelState.open) contextAttachment.attach()
+                panelState.setOpen(open)
             },
             panelEmbed = panelEmbed,
             rest = rest,
         )
     }
+}
+
+/**
+ * Whether the assistant's panel is open on one conversation page (web AssistantOtter `open`). The
+ * conversation page owns it ([rememberThreadAssistantPanelState]), so it lives as long as the page
+ * does: a page pushed over the conversation (a task or thread opened from the panel's DM) only
+ * hides the panel ([covered]); Back to the conversation shows it again. Only the person closes it
+ * (collapse, the scrim, a drag down, Back while the panel is on top).
+ */
+@Stable
+internal class ThreadAssistantPanelState {
+    var open: Boolean by mutableStateOf(false)
+        private set
+
+    /** A page pushed over this one covers it: the panel's window is gone, the panel still open. */
+    var covered: Boolean by mutableStateOf(false)
+        private set
+
+    /** Whether the panel's window is on screen. */
+    val shown: Boolean get() = open && !covered
+
+    fun setOpen(value: Boolean) {
+        // The panel's window asks to close as its page is covered (RaftWindowDialog, the popover
+        // both close on the page cover signal): that only hides it.
+        if (!value && covered) return
+        if (value) covered = false
+        open = value
+    }
+
+    /** The page is about to be covered by a pushed page ([build.raft.designsystem.components.RaftPageCoverSignal]). */
+    fun onPageCovered() {
+        if (open) covered = true
+    }
+
+    /** The page is on top again. */
+    fun onPageActive() {
+        covered = false
+    }
+}
+
+/**
+ * The panel's [ThreadAssistantPanelState] for one conversation page, keyed by the assistant's DM
+ * ([serverId], [dmChannelId]). Listens to the page's cover signal from its first composition, so
+ * it hears a push before the panel's own window (registered only once the panel opens) asks to
+ * close; [pageActive] back to true shows a covered panel again.
+ */
+@Composable
+internal fun rememberThreadAssistantPanelState(
+    serverId: String?,
+    dmChannelId: String?,
+    pageActive: Boolean,
+): ThreadAssistantPanelState {
+    val state = remember(serverId, dmChannelId) { ThreadAssistantPanelState() }
+    val signal = LocalRaftPageCoverSignal.current
+    DisposableEffect(signal, state) {
+        val registration = signal?.register { state.onPageCovered() }
+        onDispose { registration?.unregister() }
+    }
+    LaunchedEffect(state, pageActive) {
+        if (pageActive) state.onPageActive()
+    }
+    return state
 }
 
 /**
