@@ -1047,6 +1047,13 @@
     <string name="channel_details_slack_dialog_title">將 #%1$s 連結到 Slack</string>
     <string name="channel_details_slack_dialog_lead">將這個頻道與一個 Slack 頻道配對，任一邊發的內容兩邊都會顯示。</string>
     <string name="channel_details_slack_failed">無法連結 Slack 頻道，請再試一次。</string>
+    <string name="channel_settings_visitor_visible_title">遊客可見</string>
+    <string name="channel_settings_visitor_visible_description">任何人無須登入，就能在此伺服器的公開頁面上閱讀這個頻道的訊息和回覆。</string>
+    <string name="channel_settings_visitor_visible_save_failed">無法變更這個頻道的遊客可見設定。</string>
+    <string name="channel_settings_visitor_visible_forbidden">只有伺服器擁有者和管理員可以變更此設定。</string>
+    <string name="channel_settings_visitor_visible_requires_public_server">請先將此伺服器設為公開。</string>
+    <string name="channel_settings_visitor_visible_requires_public_channel">只有公開頻道可以對遊客可見。</string>
+    <string name="channel_settings_visitor_visible_unsupported_channel">這個頻道無法對遊客可見：只有沒有外部成員和外部邀請的一般頻道才可以。</string>
     <string name="thread_action_card_create_channel">建立頻道</string>
     <string name="thread_action_card_create_agent">建立 Agent</string>
     <string name="thread_action_card_add_members">新增成員</string>

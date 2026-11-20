@@ -1047,6 +1047,13 @@
     <string name="channel_details_slack_dialog_title">#%1$s을(를) Slack에 연결</string>
     <string name="channel_details_slack_dialog_lead">이 채널을 Slack 채널 하나와 연결합니다. 어느 쪽에 올린 내용이든 양쪽에 표시됩니다.</string>
     <string name="channel_details_slack_failed">Slack 채널을 연결하지 못했습니다. 다시 시도해 주세요.</string>
+    <string name="channel_settings_visitor_visible_title">방문자에게 표시</string>
+    <string name="channel_settings_visitor_visible_description">로그인하지 않아도 누구나 이 서버의 공개 페이지에서 이 채널의 메시지와 답글을 읽을 수 있어요.</string>
+    <string name="channel_settings_visitor_visible_save_failed">이 채널을 방문자에게 표시할지 바꾸지 못했어요.</string>
+    <string name="channel_settings_visitor_visible_forbidden">서버 소유자와 관리자만 이 설정을 바꿀 수 있어요.</string>
+    <string name="channel_settings_visitor_visible_requires_public_server">먼저 이 서버를 공개로 설정해 주세요.</string>
+    <string name="channel_settings_visitor_visible_requires_public_channel">공개 채널만 방문자에게 표시할 수 있어요.</string>
+    <string name="channel_settings_visitor_visible_unsupported_channel">이 채널은 방문자에게 표시할 수 없어요. 이 서버 밖의 사람도, 초대도 없는 일반 채널만 표시할 수 있어요.</string>
     <string name="thread_action_card_create_channel">채널 만들기</string>
     <string name="thread_action_card_create_agent">에이전트 만들기</string>
     <string name="thread_action_card_add_members">멤버 추가</string>

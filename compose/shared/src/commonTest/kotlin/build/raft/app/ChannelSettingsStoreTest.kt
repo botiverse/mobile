@@ -28,6 +28,7 @@ import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.model.ChannelActivityNotificationPreference
+import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
@@ -1091,6 +1092,109 @@ class ChannelSettingsStoreTest {
                 ),
         )
 
+    @Test
+    fun setVisitorVisibleUpdatesOptimisticallyConfirmsAndPreservesCapabilities() = runTest {
+        val gate = CompletableDeferred<DataResult<HomeChannelRow>>()
+        val capabilities = ChannelCapabilities(editChannelMetadata = true, manageVisitorAccess = true)
+        val initial = snapshot().let { base ->
+            base.copy(channel = base.channel.copy(guestVisible = false, channelCapabilities = capabilities))
+        }
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(initial), visitorVisibleResult = gate)
+        val store = store(dataSource = dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.SetVisitorVisible(true))
+        assertEquals(ChannelSettingsAction.VisitorVisible, store.state.value.actionInFlight)
+        assertEquals(true, store.state.value.displayVisitorVisible)
+        assertEquals(false, store.state.value.channel?.guestVisible)
+
+        // PATCH /channels/:id does not re-attach channelCapabilities; the store keeps the existing ones.
+        gate.complete(
+            DataResult.Content(
+                HomeChannelRow(
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    name = "#canonical",
+                    guestVisible = true,
+                    channelCapabilities = null,
+                )
+            )
+        )
+        runCurrent()
+
+        assertEquals(listOf(true), dataSource.visitorVisibleRequests)
+        assertEquals(null, store.state.value.actionInFlight)
+        assertEquals(true, store.state.value.displayVisitorVisible)
+        assertEquals(true, store.state.value.channel?.guestVisible)
+        assertEquals(capabilities, store.state.value.channel?.channelCapabilities)
+        assertEquals(null, store.state.value.visitorVisibleErrorCode)
+        assertEquals(ChannelSettingsEffect.Updated(ChannelSettingsAction.VisitorVisible), store.state.value.effect)
+    }
+
+    @Test
+    fun setVisitorVisibleRefusalRollsBackSwitchAndRetainsCodeAndTraceId() = runTest {
+        val capabilities = ChannelCapabilities(manageVisitorAccess = true)
+        val initial = snapshot().let { base ->
+            base.copy(channel = base.channel.copy(guestVisible = false, channelCapabilities = capabilities))
+        }
+        val refusal =
+            CompletableDeferred<DataResult<HomeChannelRow>>(
+                DataResult.Error(
+                    ScreenError(
+                        code = "visitor_visibility_requires_public_server",
+                        retryable = false,
+                        traceId = "0123456789abcdef0123456789abcdef",
+                    )
+                )
+            )
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(initial), visitorVisibleResult = refusal)
+        val store = store(dataSource = dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.SetVisitorVisible(true))
+        runCurrent()
+
+        assertEquals(false, store.state.value.displayVisitorVisible)
+        assertEquals(false, store.state.value.channel?.guestVisible)
+        assertEquals("visitor_visibility_requires_public_server", store.state.value.visitorVisibleErrorCode)
+        assertEquals("0123456789abcdef0123456789abcdef", store.state.value.visitorVisibleErrorTraceId)
+    }
+
+    @Test
+    fun makePrivateClearsVisitorVisibleWhileSettingsStayOpen() = runTest {
+        val capabilities = ChannelCapabilities(changeChannelVisibility = true, manageVisitorAccess = true)
+        val initial = snapshot().let { base ->
+            base.copy(channel = base.channel.copy(channelType = "channel", guestVisible = true, channelCapabilities = capabilities))
+        }
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(initial))
+        val store = store(dataSource = dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.MakePrivate)
+        runCurrent()
+
+        assertEquals("private", store.state.value.channel?.channelType)
+        assertEquals(false, store.state.value.channel?.guestVisible)
+        assertEquals(false, store.state.value.displayVisitorVisible)
+    }
+
+    @Test
+    fun setVisitorVisibleIgnoresDispatchesWithoutManageVisitorAccess() = runTest {
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
+        val store = store(dataSource = dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.SetVisitorVisible(true))
+        runCurrent()
+
+        assertEquals(emptyList(), dataSource.visitorVisibleRequests)
+        assertEquals(false, store.state.value.displayVisitorVisible)
+    }
+
     private fun ownerMemberSlice(): SharedServerChannelMembersSlice =
         SharedServerChannelMembersSlice(
             environmentId = "https://api.raft.build/api",
@@ -1105,9 +1209,11 @@ private class FakeChannelSettingsDataSource(
     private val loadResult: DataResult<ChannelSettingsSnapshot>? = null,
     private val loadGate: CompletableDeferred<DataResult<ChannelSettingsSnapshot>>? = null,
     private val pinResult: CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>? = null,
+    private val visitorVisibleResult: CompletableDeferred<DataResult<HomeChannelRow>>? = null,
     private val disconnectResult: DataResult<Unit> = DataResult.Content(Unit),
 ) : ChannelSettingsDataSource {
     var makePublicCalls = 0
+    val visitorVisibleRequests = mutableListOf<Boolean>()
     val slackApplies = mutableListOf<String?>()
     var slackResult: DataResult<ChannelSlackBridgeState?> = DataResult.Content(null)
     var leaveCalls = 0
@@ -1176,6 +1282,19 @@ private class FakeChannelSettingsDataSource(
     override suspend fun makePublic(): DataResult<Unit> {
         makePublicCalls += 1
         return DataResult.Content(Unit)
+    }
+
+    override suspend fun setVisitorVisible(visible: Boolean): DataResult<HomeChannelRow> {
+        visitorVisibleRequests += visible
+        return visitorVisibleResult?.await()
+            ?: DataResult.Content(
+                HomeChannelRow(
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    name = "#canonical",
+                    guestVisible = visible,
+                )
+            )
     }
 
     override suspend fun leave(): DataResult<Unit> {

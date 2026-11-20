@@ -106,6 +106,7 @@ import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.LocalRaftListRowIconSize
 import build.raft.designsystem.components.RaftRiskTone
+import build.raft.designsystem.components.RaftSaveStatusState
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -113,7 +114,9 @@ import build.raft.designsystem.theme.RaftPointerInput
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import org.jetbrains.compose.resources.StringResource
 
 internal const val CHANNEL_SETTINGS_PAGE = "compose_channel_settings"
 
@@ -327,6 +330,7 @@ internal data class ChannelSettingsPermissions(
     val archive: Boolean = false,
     val delete: Boolean = false,
     val federate: Boolean = false,
+    val manageVisitorAccess: Boolean = false,
 ) {
     /** Web `canEditChannel`. */
     val canEditChannel: Boolean
@@ -340,6 +344,9 @@ internal fun channelSettingsPermissions(channel: HomeChannelRow, canManage: Bool
         archive = canManage,
         delete = canManage,
         federate = canManage,
+        // Web `showVisitorVisible` reads `channel.channelCapabilities.manageVisitorAccess === true` directly;
+        // never infer it from `canManage` when `channelCapabilities` is absent.
+        manageVisitorAccess = false,
     )
     return ChannelSettingsPermissions(
         editMetadata = capabilities.editChannelMetadata == true,
@@ -347,6 +354,7 @@ internal fun channelSettingsPermissions(channel: HomeChannelRow, canManage: Bool
         archive = capabilities.archiveChannels == true,
         delete = capabilities.deleteChannels == true,
         federate = capabilities.federateChannels == true,
+        manageVisitorAccess = capabilities.manageVisitorAccess == true,
     )
 }
 
@@ -389,6 +397,57 @@ internal fun channelSettingsSlackBridgeApplies(channel: HomeChannelRow, permissi
     val type = channel.channelType?.lowercase() ?: "channel"
     return type == "channel" || type == "private"
 }
+
+/**
+ * Web `showVisitorVisible` (`EditChannelDialog.tsx`, slock #13860): owners and admins only
+ * (`channelCapabilities.manageVisitorAccess === true`), never archived, only regular channels
+ * (`channel` or `private`).
+ */
+internal fun channelSettingsShowsVisitorVisible(
+    channel: HomeChannelRow,
+    permissions: ChannelSettingsPermissions,
+): Boolean {
+    if (!permissions.manageVisitorAccess || channel.archived || channelSettingsIsJoint(channel)) return false
+    val type = channel.channelType?.lowercase() ?: "channel"
+    return type == "channel" || type == "private"
+}
+
+/**
+ * Web `visitorVisibleCanTurnOn` (`EditChannelDialog.tsx`): offered while nothing the client knows
+ * would refuse turning it on — public regular channel, not `#all`, server's public page not known
+ * to be off (`serverPublicPageLive != false`), and no people or invites from outside.
+ */
+internal fun channelSettingsVisitorVisibleCanTurnOn(
+    channel: HomeChannelRow,
+    serverPublicPageLive: Boolean?,
+): Boolean =
+    !channelSettingsIsJoint(channel) &&
+        (channel.channelType?.lowercase() ?: "channel") == "channel" &&
+        !channelSettingsIsAllChannel(channel) &&
+        serverPublicPageLive != false &&
+        !channel.hasExternalRelation
+
+/**
+ * Whether the Visible to visitors row is offered now (web `ChannelVisitorVisibleField`:
+ * `offered = visitorVisible || canTurnOn`, gated by `showVisitorVisible`).
+ */
+internal fun channelSettingsOffersVisitorVisible(
+    channel: HomeChannelRow,
+    permissions: ChannelSettingsPermissions,
+    serverPublicPageLive: Boolean?,
+): Boolean =
+    channelSettingsShowsVisitorVisible(channel, permissions) &&
+        (channel.guestVisible || channelSettingsVisitorVisibleCanTurnOn(channel, serverPublicPageLive))
+
+/** Web `ChannelVisitorVisibleField` `REFUSAL_MESSAGE_IDS`: server refusal code to inline copy. */
+internal fun channelSettingsVisitorVisibleErrorRes(code: String): StringResource =
+    when (code) {
+        "visitor_visibility_forbidden" -> Res.string.channel_settings_visitor_visible_forbidden
+        "visitor_visibility_requires_public_server" -> Res.string.channel_settings_visitor_visible_requires_public_server
+        "visitor_visibility_requires_public_channel" -> Res.string.channel_settings_visitor_visible_requires_public_channel
+        "visitor_visibility_unsupported_channel" -> Res.string.channel_settings_visitor_visible_unsupported_channel
+        else -> Res.string.channel_settings_visitor_visible_save_failed
+    }
 
 /** Web `currentVisibility` for Slack channel privacy matching. */
 internal fun channelSettingsSlackVisibility(channel: HomeChannelRow): String =
@@ -518,6 +577,8 @@ private fun ChannelSettingsPageScreen() {
     var viewerServerRole by remember(route) { mutableStateOf<String?>(null) }
     // Web `currentServerName`: the "{server} disconnected from #{channel}" notice after Disconnect.
     var viewerServerName by remember(route) { mutableStateOf<String?>(null) }
+    var viewerServerPublicPageLive by remember(route) { mutableStateOf<Boolean?>(null) }
+    var viewerServerLoaded by remember(route) { mutableStateOf(false) }
     // Connect your servers on a private channel: the account's servers and its role on each.
     var memberConnectAccount by remember(route) { mutableStateOf<MemberConnectAccount?>(null) }
     LaunchedEffect(authStore, route) {
@@ -525,6 +586,8 @@ private fun ChannelSettingsPageScreen() {
         val server = session?.servers?.firstOrNull { it.id == route.serverId.value }
         viewerServerRole = server?.role
         viewerServerName = server?.name
+        viewerServerPublicPageLive = server?.publicPageLive
+        viewerServerLoaded = true
         memberConnectAccount = session?.memberConnectAccount(route.serverId.value)
     }
     // Web reads external_channels_v1 for the current server: the one whose copy is open.
@@ -591,7 +654,7 @@ private fun ChannelSettingsPageScreen() {
             }
             is ChannelSettingsEffect.Failure -> {
                 confirm = null
-                if (effect.action != ChannelSettingsAction.Profile) {
+                if (effect.action != ChannelSettingsAction.Profile && effect.action != ChannelSettingsAction.VisitorVisible) {
                     bridge.toast(
                         channelSettingsDisconnectGuestsPresentMessage(effect, settingsState.channel?.name)
                             ?: channelSettingsFailureMessage(effect, failureLabels, errorStrings)
@@ -649,7 +712,19 @@ private fun ChannelSettingsPageScreen() {
     Box(modifier = Modifier.fillMaxSize()) {
         ChannelSettingsScaffold(refreshing = settingsState.refreshing, onBack = router::closePage) {
             when {
-                channel != null ->
+                channel != null -> {
+                    val homeServer =
+                        (homeState?.content as? SharedHomeContentState.Content)
+                            ?.snapshot
+                            ?.server
+                            ?.takeIf { it.id == route.serverId }
+                    val serverPublicPageLive: Boolean? =
+                        when {
+                            homeServer != null -> homeServer.publicPageLive
+                            viewerServerLoaded -> viewerServerPublicPageLive
+                            // Avoid latching the row on before session metadata has been read for a cold open.
+                            else -> false
+                        }
                     ChannelSettingsContent(
                         model =
                             ChannelSettingsUiModel(
@@ -671,9 +746,11 @@ private fun ChannelSettingsPageScreen() {
                                 externalChannelsEnabled = externalChannels,
                                 privateMemberConnect =
                                     channelSettingsOffersPrivateMemberConnect(channel, externalChannels, memberConnectAccount),
-                                serverName =
-                                    viewerServerName
-                                        ?: (homeState?.content as? SharedHomeContentState.Content)?.snapshot?.server?.name,
+                                serverName = viewerServerName ?: homeServer?.name,
+                                serverPublicPageLive = serverPublicPageLive,
+                                visitorVisible = settingsState.displayVisitorVisible,
+                                visitorVisibleErrorCode = settingsState.visitorVisibleErrorCode,
+                                visitorVisibleErrorTraceId = settingsState.visitorVisibleErrorTraceId,
                             ),
                         longMessageCollapseSetting = longMessageCollapseSetting,
                         agentStatusResolver = agentStatusResolver,
@@ -725,6 +802,9 @@ private fun ChannelSettingsPageScreen() {
                                 },
                                 onToggleMute = { settingsStore.dispatch(ChannelSettingsIntent.ToggleMute) },
                                 onTogglePin = { settingsStore.dispatch(ChannelSettingsIntent.TogglePin) },
+                                onSetVisitorVisible = { visible ->
+                                    settingsStore.dispatch(ChannelSettingsIntent.SetVisitorVisible(visible))
+                                },
                                 onSaveProfile = { name, description, slackBridge ->
                                     settingsStore.dispatch(ChannelSettingsIntent.UpdateProfile(name, description, slackBridge))
                                 },
@@ -759,6 +839,7 @@ private fun ChannelSettingsPageScreen() {
                                 },
                             ),
                     )
+                }
                 settingsState.status == ChannelSettingsLoadStatus.Error ||
                     settingsState.status == ChannelSettingsLoadStatus.AuthorityRejected ->
                     ChannelSettingsMessage(
@@ -846,6 +927,14 @@ internal data class ChannelSettingsUiModel(
     val privateMemberConnect: Boolean = false,
     /** The server's name: who a public channel reaches, and who sees its name and description. */
     val serverName: String? = null,
+    /** Whether this server's public page is live (`publicPageLive`); null leaves the row up so the server decides. */
+    val serverPublicPageLive: Boolean? = null,
+    /** Display value for the Visible to visitors switch (pending tap in flight, else `channel.guestVisible`). */
+    val visitorVisible: Boolean = channel.guestVisible,
+    /** Refusal code from `PATCH channels/:id { visitorVisible }`, rendered inline under the row's description. */
+    val visitorVisibleErrorCode: String? = null,
+    /** Trace ID of the refused `visitorVisible` request, rendered under the row with a copy action. */
+    val visitorVisibleErrorTraceId: String? = null,
 )
 
 internal class ChannelSettingsCallbacks(
@@ -853,6 +942,7 @@ internal class ChannelSettingsCallbacks(
     val onAddMember: () -> Unit = {},
     val onToggleMute: () -> Unit = {},
     val onTogglePin: () -> Unit = {},
+    val onSetVisitorVisible: (Boolean) -> Unit = {},
     val onSaveProfile: (name: String, description: String, slackBridge: ChannelSlackBridgeSelection?) -> Unit = { _, _, _ -> },
     val onClearProfileStatus: () -> Unit = {},
     val onConfirm: (ChannelSettingsConfirm) -> Unit = {},
@@ -1010,6 +1100,13 @@ internal fun ChannelSettingsContent(
     val bottomSafeArea = raftBottomSafeAreaPadding()
     val inset = channelDetailsSurfaceInset()
     val channel = model.channel
+    val offersVisitorVisible = channelSettingsOffersVisitorVisible(channel, model.permissions, model.serverPublicPageLive)
+    var visitorVisibleLatched by remember(channel.channelId) { mutableStateOf(offersVisitorVisible) }
+    if (offersVisitorVisible && !visitorVisibleLatched) {
+        visitorVisibleLatched = true
+    }
+    val showVisitorVisibleRow =
+        channelSettingsShowsVisitorVisible(channel, model.permissions) && (offersVisitorVisible || visitorVisibleLatched)
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = inset, top = 16.dp, end = inset, bottom = 16.dp + bottomSafeArea),
@@ -1034,9 +1131,13 @@ internal fun ChannelSettingsContent(
         if (servers != null && (channelSettingsIsJoint(channel) || model.privateMemberConnect)) {
             item(key = "joint-connections") { servers() }
         }
-        if (channelDetailsHasChannelSettings(model)) {
+        if (channelDetailsHasChannelSettings(model, visitorVisibleShown = showVisitorVisibleRow)) {
             item(key = "channel-settings") {
-                ChannelDetailsChannelSettingsSection(model = model, callbacks = callbacks)
+                ChannelDetailsChannelSettingsSection(
+                    model = model,
+                    showVisitorVisible = showVisitorVisibleRow,
+                    callbacks = callbacks,
+                )
             }
         }
         item(key = "preferences") {
@@ -1116,9 +1217,14 @@ internal fun channelSettingsActionRows(model: ChannelSettingsUiModel): List<Chan
 internal fun channelSettingsIsVisibilityAction(row: ChannelSettingsActionRow): Boolean =
     row == ChannelSettingsActionRow.MakePrivate || row == ChannelSettingsActionRow.MakePublic
 
-/** Whether the Channel settings group has a row: the visibility row or Slack. */
-internal fun channelDetailsHasChannelSettings(model: ChannelSettingsUiModel): Boolean =
+/** Whether the Channel settings group has a row: visibility, Visible to visitors, or Slack. */
+internal fun channelDetailsHasChannelSettings(
+    model: ChannelSettingsUiModel,
+    visitorVisibleShown: Boolean =
+        channelSettingsOffersVisitorVisible(model.channel, model.permissions, model.serverPublicPageLive),
+): Boolean =
     channelSettingsActionRows(model).any(::channelSettingsIsVisibilityAction) ||
+        visitorVisibleShown ||
         (model.slackBridge != null && channelSettingsSlackBridgeApplies(model.channel, model.permissions))
 
 /**
@@ -1648,7 +1754,11 @@ private const val ChannelSettingsDescriptionLimit = 500
  * a dialog of its own. Its heading carries no hint: its name says whom it reaches.
  */
 @Composable
-private fun ChannelDetailsChannelSettingsSection(model: ChannelSettingsUiModel, callbacks: ChannelSettingsCallbacks) {
+private fun ChannelDetailsChannelSettingsSection(
+    model: ChannelSettingsUiModel,
+    showVisitorVisible: Boolean,
+    callbacks: ChannelSettingsCallbacks,
+) {
     val channel = model.channel
     val visibility = channelSettingsActionRows(model).firstOrNull(::channelSettingsIsVisibilityAction)
     val slack = model.slackBridge?.takeIf { channelSettingsSlackBridgeApplies(channel, model.permissions) }
@@ -1691,6 +1801,38 @@ private fun ChannelDetailsChannelSettingsSection(model: ChannelSettingsUiModel, 
                     )
                 },
             )
+            rowAfterFirst = true
+        }
+        if (showVisitorVisible) {
+            val title = stringResource(Res.string.channel_settings_visitor_visible_title)
+            val failureMessage = model.visitorVisibleErrorCode?.let { stringResource(channelSettingsVisitorVisibleErrorRes(it)) }
+            RaftListRow(
+                title = title,
+                modifier = Modifier.testTag("channel-settings-visitor-visible"),
+                variant = RaftListRowVariant.Plain,
+                divider = rowAfterFirst,
+                titleMaxLines = 2,
+                description = stringResource(Res.string.channel_settings_visitor_visible_description),
+                wrapDescription = true,
+                saveStatus =
+                    if (failureMessage != null) {
+                        RaftSaveStatusState.Failed(failureMessage)
+                    } else {
+                        RaftSaveStatusState.Idle
+                    },
+                trailing = {
+                    RaftSwitch(
+                        checked = model.visitorVisible,
+                        onCheckedChange = callbacks.onSetVisitorVisible,
+                        modifier = Modifier.testTag("channel-settings-visitor-visible-switch"),
+                        enabled = model.writeActionsEnabled && model.actionInFlight == null,
+                        label = title,
+                    )
+                },
+            )
+            if (failureMessage != null) {
+                RaftTraceIdNote(model.visitorVisibleErrorTraceId, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
+            }
             rowAfterFirst = true
         }
         if (slack != null) {
