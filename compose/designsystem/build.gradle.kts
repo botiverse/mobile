@@ -120,7 +120,7 @@ tasks.named<Test>("desktopTest") {
 // LegacyGoldenParityTest migration gate) against build.raft.vcase from maven.artifacts.botiverse.dev.
 // Goldens live next to the Roborazzi ones, at screenshots/vcase/desktop-skiko/, with the manifest
 // at screenshots/vcase/vcase.manifest.json, so the record_screenshots dispatch collects them too.
-// - desktopTest / verifyRoborazziDesktop: verify, zero tolerance.
+// - desktopTest / verifyRoborazziDesktop: verify, zero tolerance (inputs: screenshotGoldens covers screenshots/vcase).
 // - recordRoborazziDesktop: record (vcase.mode=record) alongside Roborazzi.
 // - -Pvcase.mode=record|verify|scan and -Pvcase.filter=<id glob> override; -Pvcase.version picks
 //   another release (or 0.1.0-SNAPSHOT from mavenLocal).
@@ -136,7 +136,6 @@ kotlin {
     }
 }
 tasks.named<Test>("desktopTest") {
-    inputs.file(vcaseDir.file("vcase.manifest.json")).optional().withPropertyName("vcaseManifest")
     val mode = providers.gradleProperty("vcase.mode").orNull ?: "record".takeIf { vcaseRecording }
     if (mode != null) {
         systemProperty("vcase.mode", mode)
