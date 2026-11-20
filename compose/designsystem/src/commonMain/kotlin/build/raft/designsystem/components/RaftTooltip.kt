@@ -267,12 +267,18 @@ fun RaftTooltip(
             if (state.isVisible) {
                 // A page pushed over this one takes the bubble down first.
                 RaftDismissOnPageCover { state.dismiss() }
-                Popup(
-                    popupPositionProvider = sideProvider ?: framed,
-                    onDismissRequest = { if (state.isVisible) scope.launch { state.dismiss() } },
-                    properties = PopupProperties(focusable = false, clippingEnabled = false),
-                ) {
-                    RaftTooltipBubble(transition, caret, content = label)
+                // raft-ui 0.102.6: the bubble hides while its anchor is scrolled out of its
+                // scrolling region, and comes back with it.
+                var anchorClipped by remember { mutableStateOf(false) }
+                Box(Modifier.raftPopupAnchorClipped { anchorClipped = it })
+                if (!anchorClipped) {
+                    Popup(
+                        popupPositionProvider = sideProvider ?: framed,
+                        onDismissRequest = { if (state.isVisible) scope.launch { state.dismiss() } },
+                        properties = PopupProperties(focusable = false, clippingEnabled = false),
+                    ) {
+                        RaftTooltipBubble(transition, caret, content = label)
+                    }
                 }
             }
             Box { content() }

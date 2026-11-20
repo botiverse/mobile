@@ -1,0 +1,116 @@
+package build.raft.designsystem
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftTheme
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+/**
+ * raft-ui 0.102.6 (`usePopupAnchorDismiss`): an open [RaftDropdownMenu] closes, as Back does, when
+ * its trigger is scrolled out of its scrolling region or leaves the composition, and stays open
+ * while the trigger shows (compose ui-test, desktop).
+ */
+@OptIn(ExperimentalTestApi::class)
+class RaftPopupAnchorDismissTest {
+    private fun themed(content: @Composable () -> Unit): @Composable () -> Unit = {
+        RaftTheme(appearance = RaftAppearance.Light, systemDark = false, content = content)
+    }
+
+    @Test
+    fun aMenuClosesOnceItsTriggerIsScrolledOutOfItsRegion() =
+        runComposeUiTest {
+            var open by mutableStateOf(true)
+            var dismissals = 0
+            setContent(
+                themed {
+                    Column(Modifier.height(200.dp).verticalScroll(rememberScrollState())) {
+                        Box {
+                            RaftText("Trigger")
+                            RaftDropdownMenu(expanded = open, onDismissRequest = { open = false; dismissals++ }) {
+                                RaftMenuItem("Rename", onClick = {})
+                            }
+                        }
+                        Spacer(Modifier.height(800.dp))
+                        RaftText("Bottom")
+                    }
+                },
+            )
+            waitForIdle()
+            assertTrue(open, "the trigger shows: the menu stays open")
+            onNodeWithText("Rename").assertExists()
+
+            onNodeWithText("Bottom").performScrollTo()
+            waitForIdle()
+            assertFalse(open, "the trigger is scrolled out: the menu closes")
+            assertEquals(1, dismissals)
+            onNodeWithText("Rename").assertDoesNotExist()
+        }
+
+    @Test
+    fun aMenuClosesWhenItsTriggerLeaves() =
+        runComposeUiTest {
+            var open by mutableStateOf(true)
+            var shown by mutableStateOf(true)
+            var dismissals = 0
+            setContent(
+                themed {
+                    if (shown) {
+                        Box {
+                            RaftText("Trigger")
+                            RaftDropdownMenu(expanded = open, onDismissRequest = { open = false; dismissals++ }) {
+                                RaftMenuItem("Rename", onClick = {})
+                            }
+                        }
+                    }
+                },
+            )
+            waitForIdle()
+            assertTrue(open)
+            shown = false
+            waitForIdle()
+            assertFalse(open, "its trigger left: the menu is closed, not left open to come back with it")
+            assertEquals(1, dismissals)
+        }
+
+    @Test
+    fun closingAMenuDoesNotDismissItAgain() =
+        runComposeUiTest {
+            var open by mutableStateOf(true)
+            var dismissals = 0
+            setContent(
+                themed {
+                    Box {
+                        RaftText("Trigger")
+                        RaftDropdownMenu(expanded = open, onDismissRequest = { open = false; dismissals++ }) {
+                            RaftMenuItem("Rename", onClick = {})
+                        }
+                    }
+                },
+            )
+            waitForIdle()
+            open = false
+            waitForIdle()
+            assertEquals(0, dismissals, "closed by its owner: no extra onDismissRequest")
+        }
+}
