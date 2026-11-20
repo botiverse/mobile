@@ -14,8 +14,7 @@ import androidx.compose.runtime.withFrameNanos
 import build.raft.app.base.Utils
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
-import build.raft.designsystem.components.RaftProgressBar
-import build.raft.designsystem.components.RaftProgressBarSize
+import build.raft.designsystem.components.RaftPageLoadingBar
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftStickerTile
 import build.raft.app.components.RaftSlotIcon
@@ -764,16 +763,15 @@ internal fun SettingsWebViewLoadingPlaceholder() {
 }
 
 /**
- * The thin progress bar on top of a loading in-app web page (raft-ui Progress, small): the
- * page's load progress, or the indeterminate sweep before the engine reports any. It stays short
- * of full so it never turns the "complete" colour; it goes away when the load ends.
+ * The load line on the top edge of a loading in-app web page ([RaftPageLoadingBar]: flat, square
+ * ends, edge to edge): the page's load progress, or the indeterminate sweep before the engine
+ * reports any. It stays short of full; it goes away when the load ends.
  */
 @Composable
 internal fun RaftWebPageLoadingBar(progress: Int, modifier: Modifier = Modifier) {
-    RaftProgressBar(
+    RaftPageLoadingBar(
         value = raftWebPageLoadingBarValue(progress),
-        modifier = modifier.fillMaxWidth().testTag(RAFT_WEB_PAGE_LOADING_BAR_TAG),
-        size = RaftProgressBarSize.Sm,
+        modifier = modifier.testTag(RAFT_WEB_PAGE_LOADING_BAR_TAG),
         contentDescription = stringResource(Res.string.common_loading),
     )
 }

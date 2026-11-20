@@ -132,6 +132,7 @@ import build.raft.designsystem.components.raftPressOverlayColor
 import build.raft.designsystem.components.RaftPressSurface
 import build.raft.designsystem.components.RaftMeter
 import build.raft.designsystem.components.RaftMeterSize
+import build.raft.designsystem.components.RaftPageLoadingBar
 import build.raft.designsystem.components.RaftProgressBar
 import build.raft.designsystem.components.RaftProgressBarSize
 import build.raft.designsystem.components.RaftProgressBarVariant
@@ -817,6 +818,27 @@ class DisplayComponentScreenshotTest {
                 )
                 RaftProgressBar(value = 1f, label = "Downloaded", valueText = "100%")
                 RaftProgressBar(value = null, label = "Waiting for the server", animated = false)
+            }
+        }
+
+    /**
+     * The page load line on the top edge of a page (canvas, then card): just started, part way,
+     * nearly done, and the frozen indeterminate segment. Square ends, no track, edge to edge.
+     */
+    @Test
+    fun pageLoadingBar() =
+        capture("page_loading_bar") {
+            val colors = RaftTheme.colors
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                listOf<Float?>(0.08f, 0.42f, 0.95f, null).forEach { value ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        listOf(colors.layerCanvas, colors.layerCard).forEach { surface ->
+                            Box(Modifier.size(width = 240.dp, height = 32.dp).background(surface)) {
+                                RaftPageLoadingBar(value = value, contentDescription = "Loading", animated = false)
+                            }
+                        }
+                    }
+                }
             }
         }
 
