@@ -22,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -177,6 +178,9 @@ private fun ColumnScope.AddComputerSheetBody(
     onIntent: (SharedSettingsIntent) -> Unit,
     runtimeCatalog: ServerRuntimeCatalog,
 ) {
+    // What agents can do on a connected computer is said once, before anything is connected: on the
+    // choice, or on the command when the sheet opens there (web AddMachineDialog `openedOnCommand`).
+    val openedOnCommand = remember { state.step == AddComputerStep.Waiting }
     Column(
         Modifier
             .fillMaxWidth()
@@ -188,7 +192,7 @@ private fun ColumnScope.AddComputerSheetBody(
     ) {
         when (state.step) {
             AddComputerStep.Type -> AddComputerTypeStep(state, onIntent)
-            AddComputerStep.Waiting -> AddComputerWaitingStep(state, onIntent)
+            AddComputerStep.Waiting -> AddComputerWaitingStep(state, onIntent, showAccessNotice = openedOnCommand)
             AddComputerStep.Connected -> AddComputerConnectedStep(state, onIntent, runtimeCatalog)
         }
     }
@@ -208,6 +212,7 @@ private fun AddComputerTypeStep(
             userFacingError?.takeIf { it.isNotBlank() }
         }
     if (warning != null) RaftBanner(description = warning, status = RaftBannerStatus.Warning)
+    if (!state.atLimit) ComputerAccessNotice()
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         AddComputerTypeCard(
             title = stringResource(Res.string.settings_computers_your_computer),
@@ -233,7 +238,8 @@ private fun AddComputerTypeStep(
 @Composable
 private fun AddComputerWaitingStep(
     state: AddComputerDialogState,
-    onIntent: (SharedSettingsIntent) -> Unit
+    onIntent: (SharedSettingsIntent) -> Unit,
+    showAccessNotice: Boolean = false,
 ) {
     val userFacingError = state.userFacingErrorMessage(localizedErrorPresentationStrings())
     LaunchedEffect(state.step, state.registeredMachineId) {
@@ -248,6 +254,7 @@ private fun AddComputerWaitingStep(
         kotlinx.coroutines.delay(AddComputerWaitingHintDelayMs)
         stalled = true
     }
+    if (showAccessNotice) ComputerAccessNotice()
     AddComputerCommandGuide(state, onCopy = { onIntent(SharedSettingsIntent.CopyComputerCommand(it)) })
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // Web: an info Banner whose spinner takes the icon's place while the computer connects.
@@ -266,6 +273,23 @@ private fun AddComputerWaitingStep(
     }
     userFacingError?.takeIf { it.isNotBlank() }?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning) }
 }
+
+/**
+ * What connecting a computer lets agents do there, said before a computer is connected (web
+ * `ComputerAccessNotice`, botiverse/slock #15277): the info Banner, part of the step rather than
+ * news, so not a live region.
+ */
+@Composable
+private fun ComputerAccessNotice() {
+    RaftBanner(
+        description = androidx.compose.ui.text.AnnotatedString(stringResource(Res.string.settings_computers_access_notice)),
+        status = RaftBannerStatus.Info,
+        live = false,
+        modifier = Modifier.testTag(ComputerAccessNoticeTag),
+    )
+}
+
+internal const val ComputerAccessNoticeTag = "computer-access-notice"
 
 /** Web `ComputerCommandGuide`: the connect command for macOS / Linux or Windows x64. */
 @Composable

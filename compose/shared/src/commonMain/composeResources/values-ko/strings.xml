@@ -2868,6 +2868,7 @@
     <string name="settings_computers_error_code">오류: %1$s</string>
     <string name="settings_computers_detail_subtitle">컴퓨터 상세 정보</string>
     <string name="settings_computers_add_computer">컴퓨터 추가</string>
+    <string name="settings_computers_access_notice">에이전트가 이 컴퓨터에서 작업해요: 내 계정과 같은 권한으로 파일을 읽고 쓰고, 명령어와 로컬 도구를 실행할 수 있어요.</string>
     <string name="settings_computers_dialog_title_connect">컴퓨터 연결</string>
     <string name="settings_computers_dialog_title_connected">컴퓨터 연결됨</string>
     <string name="settings_computers_error_add_permission">컴퓨터를 추가할 권한이 없어요.</string>
