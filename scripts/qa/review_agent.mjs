@@ -8,6 +8,7 @@
 
 import { resolvePiModel } from "./pi_model.mjs";
 import { selectReviewScreenshots } from "./review_evidence_selection.mjs";
+import { scopeReviewReport, submitPanelVote } from "./review_attempt_scope.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 
@@ -62,6 +63,39 @@ async function stamp(path, init = {}) {
   const text = await res.text();
   if (!res.ok) throw new Error(`Stamp ${res.status} ${path}: ${text.slice(0, 500)}`);
   return text ? JSON.parse(text) : {};
+}
+
+// Vote POST: returns the status instead of throwing so submitPanelVote can
+// tell a Worker without the attempt-bound route (404) from other failures.
+async function stampPost(path, body) {
+  const res = await fetch(`${stampUrl}${path}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${stampToken}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let parsed;
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    parsed = { raw: text.slice(0, 500) };
+  }
+  return { status: res.status, body: parsed };
+}
+
+// Records the POST outcome. An unconfirmed attempt-bound vote is not counted:
+// the record keeps stage "unconfirmed" and the process exits 2, so the panel
+// workflow (which requires stage submitted/already_submitted) fails.
+function finishSubmission(result) {
+  if (result.stage === "submitted") {
+    saveRecord({ stage: "submitted", post_path: result.path, post_receipt: result.receipt });
+    console.log(JSON.stringify(record, null, 2));
+    return;
+  }
+  saveRecord({ stage: "unconfirmed", post_path: result.path, post_status: result.status, post_receipt: result.receipt, unconfirmed_reason: result.reason });
+  console.log(JSON.stringify(record, null, 2));
+  console.error(`review_agent: vote unconfirmed: ${result.reason}`);
+  process.exitCode = 2;
 }
 
 async function evidenceBytes(ev) {
@@ -147,8 +181,16 @@ function scanLog(text) {
 
 async function main() {
   saveRecord();
-  const data = await stamp(`/api/runs/${runId}`);
-  if (!data.run) throw new Error("run not found");
+  const report = await stamp(`/api/runs/${runId}`);
+  if (!report.run) throw new Error("run not found");
+  // Review only the current attempt of each case; superseded retries, their
+  // evidence and votes on them stay out of the review input.
+  const scope = scopeReviewReport(report);
+  if (scope.notice) console.error(`review_agent: ${scope.notice}`);
+  else console.error(`review_agent: reviewing current attempts ${scope.attemptIds.join(", ")}` +
+    (scope.superseded.case_ids.length ? `; ignoring superseded attempts ${scope.superseded.case_ids.join(", ")}` : ""));
+  saveRecord({ attempt_scope: { mode: scope.mode, attempt_ids: scope.attemptIds, superseded: scope.superseded || null, notice: scope.notice || null } });
+  const data = { ...report, cases: scope.cases, evidence: scope.evidence, reviews: scope.reviews };
   const existingReview = (data.reviews || []).find((r) => r.role === "panel" && r.reviewer === reviewer);
   if (!["running", "judging", "in_review"].includes(data.run.status) && !existingReview) {
     throw new Error(`run is not reviewable: ${data.run.status}`);
@@ -285,9 +327,11 @@ async function main() {
     };
     validateVote(incompleteVote, cases);
     saveRecord({ stage: "evidence_incomplete", parsed_vote: incompleteVote, validation: { ok: true } });
-    const posted = await stamp(`/api/runs/${runId}/panel-review`, {
-      method: "POST",
-      body: JSON.stringify({
+    finishSubmission(await submitPanelVote({
+      scope,
+      runId,
+      post: stampPost,
+      vote: {
         reviewer,
         verdict: incompleteVote.verdict,
         reason: incompleteVote.reason,
@@ -306,10 +350,8 @@ async function main() {
           model: modelName,
           usage: null,
         },
-      }),
-    });
-    saveRecord({ stage: "submitted", post_receipt: posted });
-    console.log(JSON.stringify(record, null, 2));
+      },
+    }));
     return;
   }
 
@@ -421,17 +463,17 @@ async function main() {
     model: modelName,
     usage: response.usage || null,
   };
-  const posted = await stamp(`/api/runs/${runId}/panel-review`, {
-    method: "POST",
-    body: JSON.stringify({
+  finishSubmission(await submitPanelVote({
+    scope,
+    runId,
+    post: stampPost,
+    vote: {
       reviewer,
       verdict: vote.verdict,
       reason: String(vote.reason || "").slice(0, 1000),
       detail_json: detailJson,
-    }),
-  });
-  saveRecord({ stage: "submitted", post_receipt: posted });
-  console.log(JSON.stringify(record, null, 2));
+    },
+  }));
 }
 
 main().catch((error) => {
