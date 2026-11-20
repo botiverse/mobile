@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.DataResult
+import build.raft.app.data.SECOND_FACTOR_RECOVERY_MIN_REREAD_MS
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SecondFactorRecovery
 import build.raft.app.data.SecondFactorRecoveryDataSource
@@ -133,7 +134,7 @@ class HomeSecondFactorRecoveryTest {
 
     @Test
     fun noRequestShowsNothingAndAFailedReadKeepsWhatIsShown() = runTest {
-        val dataSource = FakeRecoveryDataSource(DataResult.Content(null))
+        val dataSource = FakeRecoveryDataSource(DataResult.Content<SecondFactorRecovery?>(null))
         val store = SharedSecondFactorRecoveryStore(dataSource, backgroundScope)
         store.dispatch(SharedSecondFactorRecoveryIntent.Refresh)
         runCurrent()
@@ -173,5 +174,38 @@ class HomeSecondFactorRecoveryTest {
 
         assertNull(store.state.value.recovery, "the read that started before Cancel must not bring the entry back")
         assertEquals(1, dataSource.cancels)
+    }
+    @Test
+    fun goingBackToHomeRereadsAtMostEvery30SecondsButTheCenterAlwaysReads() = runTest {
+        val dataSource = FakeRecoveryDataSource(DataResult.Content<SecondFactorRecovery?>(null))
+        var now = 1_000L
+        val store = SharedSecondFactorRecoveryStore(dataSource, backgroundScope, nowMillis = { now })
+
+        store.dispatch(SharedSecondFactorRecoveryIntent.RefreshIfStale)
+        runCurrent()
+        assertEquals(1, dataSource.reads, "the first time Home shows it reads")
+
+        // Home ↔ Saved with Back, every 2 s for 20 s: no new read.
+        repeat(10) {
+            now += 2_000L
+            store.dispatch(SharedSecondFactorRecoveryIntent.RefreshIfStale)
+            runCurrent()
+        }
+        assertEquals(1, dataSource.reads)
+
+        // Opening the notification center reads at once.
+        store.dispatch(SharedSecondFactorRecoveryIntent.Refresh)
+        runCurrent()
+        assertEquals(2, dataSource.reads)
+
+        now += SECOND_FACTOR_RECOVERY_MIN_REREAD_MS - 1
+        store.dispatch(SharedSecondFactorRecoveryIntent.RefreshIfStale)
+        runCurrent()
+        assertEquals(2, dataSource.reads, "29.999 s after the last read: still fresh")
+
+        now += 1
+        store.dispatch(SharedSecondFactorRecoveryIntent.RefreshIfStale)
+        runCurrent()
+        assertEquals(3, dataSource.reads, "30 s after the last read: read again")
     }
 }
