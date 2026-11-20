@@ -93,17 +93,39 @@ class RaftPageLoadingBarLineTest {
     }
 
     @Test
-    fun noProgressAfterProgressIsANewLoadFromTheBeginning() {
+    fun aNewLoadNamedByTheHostStartsFromTheBeginning() {
         val first = shown(0.6f)
-        val second = first.onState(loading(null))
-        assertEquals(0.08f, second.fraction)
-        assertEquals(first.load + 1, second.load)
-        assertFalse(second.reported)
-        // The line was already up: the new load does not hide it for another delay.
-        assertEquals(RaftPageLoadingBarPhase.Shown, second.phase)
-        // The same report again is the same load, and the new load moves forward only.
-        assertEquals(second, second.onState(loading(null)))
-        assertEquals(0.2f, second.onState(loading(0.2f)).onState(loading(0.1f)).fraction)
+        // Whatever the new load reports first: nothing yet, less than the last one, or more.
+        val cases = listOf<Pair<Float?, Float>>(null to 0.08f, 0.2f to 0.2f, 0.9f to 0.9f)
+        for ((progress, expected) in cases) {
+            val second = first.onState(RaftPageLoadState.Loading(progress, load = 1))
+            assertEquals(expected, second.fraction, "for $progress")
+            assertEquals(first.load + 1, second.load, "for $progress")
+            assertEquals(progress != null, second.reported, "for $progress")
+            // The line was already up: the new load does not hide it for another delay.
+            assertEquals(RaftPageLoadingBarPhase.Shown, second.phase, "for $progress")
+            // The same report again is the same load.
+            assertEquals(second, second.onState(RaftPageLoadState.Loading(progress, load = 1)), "for $progress")
+        }
+        // The new load moves forward only, too.
+        val second = first.onState(RaftPageLoadState.Loading(0.2f, load = 1))
+        assertEquals(0.2f, second.onState(RaftPageLoadState.Loading(0.1f, load = 1)).fraction)
+        // Inside the appear delay a new load restarts the wait (its count changes), still unseen.
+        val waiting = RaftPageLoadingBarLine().onState(loading(0.5f))
+        val restarted = waiting.onState(RaftPageLoadState.Loading(null, load = 1))
+        assertEquals(RaftPageLoadingBarPhase.Waiting, restarted.phase)
+        assertEquals(waiting.load + 1, restarted.load)
+        assertEquals(0.08f, restarted.fraction)
+    }
+
+    @Test
+    fun progressGoingAwayIsNotReadAsANewLoad() {
+        // Only the host's load name starts the line again; "no progress" in the same load holds it.
+        val line = shown(0.6f)
+        val held = line.onState(loading(null))
+        assertEquals(0.6f, held.fraction)
+        assertEquals(line.load, held.load)
+        assertTrue(held.reported)
     }
 
     @Test

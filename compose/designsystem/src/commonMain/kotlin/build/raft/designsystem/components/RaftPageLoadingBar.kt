@@ -37,9 +37,11 @@ sealed interface RaftPageLoadState {
 
     /**
      * A load is running. [progress] is the fraction the page reports (0..1), or null while it
-     * has reported none yet. Null again after a value means a new load began.
+     * has reported none yet. [load] names the load: the host changes it when the page starts
+     * another one (a link followed or a redirect while this one still runs), and the line
+     * then starts again from the beginning. The line never guesses that from [progress].
      */
-    data class Loading(val progress: Float? = null) : RaftPageLoadState
+    data class Loading(val progress: Float? = null, val load: Int = 0) : RaftPageLoadState
 
     /** The load ended well: the line runs to the end and fades out. */
     data object Finished : RaftPageLoadState
@@ -92,13 +94,16 @@ internal enum class RaftPageLoadingBarPhase {
  *
  * - [fraction] is the width the line is going to (0..1); it never gets smaller within a load.
  * - [reported] is whether this load has reported progress.
- * - [load] counts loads: a change means the line starts again from the beginning.
+ * - [loadId] is the [RaftPageLoadState.Loading.load] the line is showing.
+ * - [load] counts the loads this line has started: a change means the line starts again from
+ *   the beginning.
  */
 @Immutable
 internal data class RaftPageLoadingBarLine(
     val phase: RaftPageLoadingBarPhase = RaftPageLoadingBarPhase.Hidden,
     val fraction: Float = 0f,
     val reported: Boolean = false,
+    val loadId: Int = 0,
     val load: Int = 0,
 ) {
     /** Whether the line is drawn. */
@@ -135,10 +140,12 @@ internal data class RaftPageLoadingBarLine(
                             phase = if (appearDelay) RaftPageLoadingBarPhase.Waiting else RaftPageLoadingBarPhase.Shown,
                             fraction = target,
                             reported = progress != null,
+                            loadId = state.load,
                             load = load + 1,
                         )
-                    // "No progress yet" after progress: the page started another load.
-                    reported && progress == null -> copy(fraction = target, reported = false, load = load + 1)
+                    // The host named another load: from the beginning, whatever the last one reached.
+                    state.load != loadId ->
+                        copy(fraction = target, reported = progress != null, loadId = state.load, load = load + 1)
                     // The same load: forward only.
                     else -> copy(fraction = max(fraction, target), reported = reported || progress != null)
                 }
@@ -177,7 +184,8 @@ internal fun raftPageLoadingBarLoadingFraction(progress: Float?): Float =
  * - With no progress reported it rests, still, at [RaftPageLoadingBarRestFraction] of the width.
  * - With progress it follows the page, forward only, each change over
  *   [RaftPageLoadingBarProgressMillis] with `ease-out`, up to
- *   [RaftPageLoadingBarLoadingMaxFraction]. A new load starts again from the beginning.
+ *   [RaftPageLoadingBarLoadingMaxFraction]. A new load ([RaftPageLoadState.Loading.load]
+ *   changed) starts again from the beginning: a line already up stays up and jumps back.
  * - [RaftPageLoadState.Finished]: it runs to the end, then fades out over
  *   [RaftPageLoadingBarFadeOutMillis]. [RaftPageLoadState.Failed] and [RaftPageLoadState.Idle]:
  *   it goes at once.

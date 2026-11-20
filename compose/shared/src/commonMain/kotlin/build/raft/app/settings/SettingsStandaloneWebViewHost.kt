@@ -3,10 +3,15 @@ package build.raft.app
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -28,6 +33,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -369,7 +375,8 @@ internal fun SettingsWebViewPageScaffold(
                 onBack = if (settingsWebViewHandlesBack(wideDetail, navigationState.canGoBack)) ::goBackOrClose else null,
             )
         }
-        Box(
+        // One load line for the body: it stays composed while the placeholder gives way to the page.
+        RaftWebPageLoadLineHost(
             modifier =
                 Modifier
                     .weight(1f)
@@ -538,31 +545,34 @@ internal fun StandaloneSettingsWebViewContent(
     var documentReady by remember(webUrl, hostAuthBinding?.webViewGeneration) { mutableStateOf(false) }
 
     // The page's session goes in at document start (injectedJavaScript), so it cannot load before
-    // the session is known (it would open signed out). The load starts as soon as it is.
-    if (session == null) {
-        SettingsWebViewLoadingPlaceholder()
-        return
+    // the session is known (it would open signed out). The load starts as soon as it is. One load
+    // line for both (the page scaffold's, when there is one): it stays up across the swap.
+    RaftWebPageLoadLineHost(Modifier.fillMaxSize()) {
+        if (session == null) {
+            SettingsWebViewLoadingPlaceholder()
+        } else {
+            SettingsWebViewContent(
+                url = webUrl,
+                modifier = modifier,
+                diagnosticsName = "settings_${spec.surface.diagnosticsName}",
+                allowedNavigationSchemes = spec.allowedNavigationSchemes,
+                allowNavigation = spec.allowNavigation,
+                hostEventsEnabled = spec.hostEventsEnabled,
+                bottomContentPadding = spec.bottomContentPadding,
+                injectedJavaScript = injectedJavaScript,
+                controller = controller,
+                generationKey = hostAuthBinding?.webViewGeneration,
+                onLoadCommit = onLoadCommit,
+                onLoadSuccess = onLoadSuccess,
+                onUrlChange = onUrlChange,
+                onLoadFailure = onLoadFailure,
+                onNavigationStateChange = onNavigationStateChange,
+                onHostMessage = onHostMessage,
+                onDocumentReadyChange = { documentReady = it },
+            )
+        }
     }
-
-    SettingsWebViewContent(
-        url = webUrl,
-        modifier = modifier,
-        diagnosticsName = "settings_${spec.surface.diagnosticsName}",
-        allowedNavigationSchemes = spec.allowedNavigationSchemes,
-        allowNavigation = spec.allowNavigation,
-        hostEventsEnabled = spec.hostEventsEnabled,
-        bottomContentPadding = spec.bottomContentPadding,
-        injectedJavaScript = injectedJavaScript,
-        controller = controller,
-        generationKey = hostAuthBinding?.webViewGeneration,
-        onLoadCommit = onLoadCommit,
-        onLoadSuccess = onLoadSuccess,
-        onUrlChange = onUrlChange,
-        onLoadFailure = onLoadFailure,
-        onNavigationStateChange = onNavigationStateChange,
-        onHostMessage = onHostMessage,
-        onDocumentReadyChange = { documentReady = it },
-    )
+    if (session == null) return
 
     SettingsWebViewAccessTokenSyncEffect(
         snapshot = authSnapshot,
@@ -743,13 +753,14 @@ internal fun SettingsWebViewContent(
                 onAction = { reloadKey += 1 },
             )
         }
-        // Always composed, after the error state (over it in the Box): the line plays its own
-        // end when the load finishes, and goes at once when it fails.
-        RaftWebPageLoadingBar(
+        // Always composed: the line plays its own end when the load finishes, and goes at once
+        // when it fails. Drawn by the host around this page when there is one, else here.
+        RaftWebPageLoadLine(
             raftWebPageLoadState(
                 isLoading = presentation == SettingsWebViewPresentation.Loading,
                 progress = navigationState.progress,
                 failed = presentation == SettingsWebViewPresentation.Error,
+                loadGeneration = navigationState.loadGeneration,
             ),
         )
     }
@@ -762,14 +773,82 @@ internal fun SettingsWebViewLoadingCover() {
 }
 
 /**
- * A web page that cannot start its load yet (its session or URL is not known): canvas and the load
- * line, resting with no progress. It leaves the composition when the load can start, so its line
- * goes at once; the page's own line then starts its load from the beginning.
+ * A web page that cannot start its load yet (its session or URL is not known): canvas, and the load
+ * line resting with no progress. Inside a [RaftWebPageLoadLineHost] the line is the host's, so it
+ * stays up when the page takes this placeholder's place.
  */
 @Composable
 internal fun SettingsWebViewLoadingPlaceholder() {
     Box(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
-        RaftWebPageLoadingBar(RaftPageLoadState.Loading())
+        RaftWebPageLoadLine(RaftPageLoadState.Loading())
+    }
+}
+
+/**
+ * The one load line of a web page host: what the pieces under a [RaftWebPageLoadLineHost] report
+ * with [RaftWebPageLoadLine]. The piece that entered last speaks (a page that took its
+ * placeholder's place); with none, there is no load.
+ */
+@Stable
+internal class RaftWebPageLoadLineHostState {
+    private val reports = mutableStateListOf<RaftWebPageLoadLineReport>()
+
+    val state: RaftPageLoadState
+        get() = reports.lastOrNull()?.state ?: RaftPageLoadState.Idle
+
+    fun add(report: RaftWebPageLoadLineReport) {
+        if (report !in reports) reports += report
+    }
+
+    fun remove(report: RaftWebPageLoadLineReport) {
+        reports -= report
+    }
+}
+
+/** One piece's word on the load, under a [RaftWebPageLoadLineHost]. */
+@Stable
+internal class RaftWebPageLoadLineReport(state: RaftPageLoadState) {
+    var state: RaftPageLoadState by mutableStateOf(state)
+}
+
+internal val LocalRaftWebPageLoadLineHost = compositionLocalOf<RaftWebPageLoadLineHostState?> { null }
+
+/**
+ * The container in which a web page's placeholder gives way to the page: a Box with one load line
+ * over its [content], on its top edge. The line belongs to the container, not to the placeholder
+ * or the page, so it stays composed while one replaces the other and goes on from where it was.
+ * Inside another host this is a plain Box: the outer host keeps the line.
+ */
+@Composable
+internal fun RaftWebPageLoadLineHost(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    if (LocalRaftWebPageLoadLineHost.current != null) {
+        Box(modifier, content = content)
+        return
+    }
+    val host = remember { RaftWebPageLoadLineHostState() }
+    Box(modifier) {
+        CompositionLocalProvider(LocalRaftWebPageLoadLineHost provides host) { content() }
+        RaftWebPageLoadingBar(host.state)
+    }
+}
+
+/**
+ * Reports [state] as the load of the in-app web page this is part of. Under a
+ * [RaftWebPageLoadLineHost] the host draws the line (and this takes no room); with no host the
+ * line is drawn here, on the top edge of the parent.
+ */
+@Composable
+internal fun RaftWebPageLoadLine(state: RaftPageLoadState) {
+    val host = LocalRaftWebPageLoadLineHost.current
+    if (host == null) {
+        RaftWebPageLoadingBar(state)
+        return
+    }
+    val report = remember(host) { RaftWebPageLoadLineReport(state) }
+    SideEffect { if (report.state != state) report.state = state }
+    DisposableEffect(host, report) {
+        host.add(report)
+        onDispose { host.remove(report) }
     }
 }
 
@@ -777,7 +856,8 @@ internal fun SettingsWebViewLoadingPlaceholder() {
  * The load line on the top edge of an in-app web page ([RaftPageLoadingBar]: flat, square ends,
  * from the start edge). Keep it composed for as long as the page is and report the load with
  * [raftWebPageLoadState]: the line waits before it first shows, follows the page's progress, runs
- * to the end and fades out when the load finishes, and goes at once when it fails.
+ * to the end and fades out when the load finishes, and goes at once when it fails. A page whose
+ * placeholder and content swap uses [RaftWebPageLoadLineHost] and [RaftWebPageLoadLine] instead.
  */
 @Composable
 internal fun RaftWebPageLoadingBar(state: RaftPageLoadState, modifier: Modifier = Modifier) {
@@ -789,21 +869,34 @@ internal fun RaftWebPageLoadingBar(state: RaftPageLoadState, modifier: Modifier 
 }
 
 /**
- * What a web view's navigation state means for the load line. [progress] is the engine's 0..100.
+ * What a web view's navigation state means for the load line. [progress] is the engine's 0..100,
+ * [loadGeneration] the web view's count of main-frame loads started
+ * ([RaftWebViewNavigationState.loadGeneration]).
  *
  * - [failed] (the page shows its error state): [RaftPageLoadState.Failed].
- * - [isLoading]: [RaftPageLoadState.Loading] with the progress, none while the engine reports 0
- *   (every engine resets it to 0 when a main-frame load starts).
+ * - [isLoading]: [RaftPageLoadState.Loading] with the progress (none while the engine reports 0)
+ *   and [loadGeneration] as the load's name: when the web view starts another load, the line
+ *   starts again. That is the host's own signal, the same on every platform; nothing is read
+ *   into the progress going down.
  * - Not loading at 100: [RaftPageLoadState.Finished]. Android and iOS set 100 only when the
  *   load finished (`onPageFinished`, `didFinish`).
  * - Not loading short of 100: the load was stopped, or it failed and the failure callback has
  *   not arrived yet (the engines report "not loading" first). These cannot be told apart from
  *   the state, so the line goes at once ([RaftPageLoadState.Idle]) instead of running to the end.
  */
-internal fun raftWebPageLoadState(isLoading: Boolean, progress: Int, failed: Boolean): RaftPageLoadState =
+internal fun raftWebPageLoadState(
+    isLoading: Boolean,
+    progress: Int,
+    failed: Boolean,
+    loadGeneration: Int = 0,
+): RaftPageLoadState =
     when {
         failed -> RaftPageLoadState.Failed
-        isLoading -> RaftPageLoadState.Loading(progress.takeIf { it > 0 }?.let { it.coerceAtMost(100) / 100f })
+        isLoading ->
+            RaftPageLoadState.Loading(
+                progress = progress.takeIf { it > 0 }?.let { it.coerceAtMost(100) / 100f },
+                load = loadGeneration,
+            )
         progress >= 100 -> RaftPageLoadState.Finished
         else -> RaftPageLoadState.Idle
     }

@@ -151,6 +151,9 @@ internal class RaftAndroidSandboxWebView(
     private var currentTitle: String = ""
     private var currentProgress: Int = 0
     private var currentIsLoading: Boolean = false
+
+    /** Main-frame loads started ([RaftWebViewNavigationState.loadGeneration]); kept across a rebuilt WebView. */
+    private var loadGeneration: Int = 0
     private var lastNavigationStateKey: String = ""
     private var lastLoadFailureReason: String = ""
     private var hostMessageListener: WebViewCompat.WebMessageListener? = null
@@ -475,6 +478,7 @@ internal class RaftAndroidSandboxWebView(
                     currentTitle = ""
                     currentProgress = 0
                     currentIsLoading = true
+                    loadGeneration += 1
                     lastSuccessfulUrl = ""
                     lastLoadFailureReason = ""
                     notifyUrlChange(target)
@@ -990,7 +994,8 @@ internal class RaftAndroidSandboxWebView(
                 canGoBack = webView.canGoBack(),
                 canGoForward = webView.canGoForward(),
                 isLoading = currentIsLoading,
-                progress = currentProgress.coerceIn(0, 100)
+                progress = currentProgress.coerceIn(0, 100),
+                loadGeneration = loadGeneration,
             )
         val stateKey = state.toString()
         if (!force && stateKey == lastNavigationStateKey) return

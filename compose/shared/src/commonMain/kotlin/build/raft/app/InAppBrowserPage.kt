@@ -211,6 +211,7 @@ private fun RaftInAppBrowserScreen() {
                         isLoading = navigationState.isLoading,
                         progress = navigationState.progress,
                         failed = loadError != null,
+                        loadGeneration = navigationState.loadGeneration,
                     ),
                 )
             }
