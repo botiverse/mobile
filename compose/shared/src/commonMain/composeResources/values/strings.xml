@@ -5006,6 +5006,8 @@
     <string name="agent_status_retrying">Restarting…</string>
     <string name="agent_status_retry_failed">Failed to reset agent</string>
     <string name="agent_status_credential_sign_in">Sign-in needed for %1$s</string>
+    <string name="agent_status_runtime_sign_in_full">Sign-in needed for %1$s</string>
+    <string name="agent_status_runtime_sign_in_short">Sign-in needed</string>
     <string name="agent_status_credential_plan_model">Plan doesn't include %1$s</string>
     <string name="agent_status_credential_plan_default_model">Plan doesn't include this model</string>
     <string name="agent_status_credential_billing">Provider balance exhausted</string>

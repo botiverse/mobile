@@ -4829,6 +4829,8 @@
     <string name="agent_status_retrying">재시작 중…</string>
     <string name="agent_status_retry_failed">에이전트를 초기화하지 못했어요</string>
     <string name="agent_status_credential_sign_in">%1$s에 다시 로그인해야 해요</string>
+    <string name="agent_status_runtime_sign_in_full">%1$s에 로그인해야 해요</string>
+    <string name="agent_status_runtime_sign_in_short">로그인이 필요해요</string>
     <string name="agent_status_credential_plan_model">플랜에 %1$s이(가) 포함되어 있지 않아요</string>
     <string name="agent_status_credential_plan_default_model">플랜에 이 모델이 포함되어 있지 않아요</string>
     <string name="agent_status_credential_billing">제공업체 잔액이 소진됐어요</string>
