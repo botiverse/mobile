@@ -148,6 +148,9 @@ internal class RaftIosSandboxWebView(
     private var currentTitle = ""
     private var currentLoading = false
     private var currentProgress = 0
+
+    /** Main-frame loads started ([RaftWebViewNavigationState.loadGeneration]). */
+    private var loadGeneration = 0
     private var lastNavigationStateKey = ""
     private var lastSuccessfulURL = ""
     private var lastLoadFailureKey = ""
@@ -613,6 +616,8 @@ internal class RaftIosSandboxWebView(
         currentTitle = ""
         currentProgress = (source.estimatedProgress * 100.0 + 0.5).toInt().coerceIn(0, 100)
         currentLoading = true
+        // The new load's own signal: WebKit's progress need not pass through 0 between two loads.
+        loadGeneration += 1
         lastSuccessfulURL = ""
         lastLoadFailureKey = ""
         notifyNavigationState(force = false)
@@ -781,7 +786,8 @@ internal class RaftIosSandboxWebView(
                 canGoBack = view?.let(::canGoBack) ?: false,
                 canGoForward = view?.canGoForward ?: false,
                 isLoading = currentLoading,
-                progress = currentProgress.coerceIn(0, 100)
+                progress = currentProgress.coerceIn(0, 100),
+                loadGeneration = loadGeneration,
             )
         val stateKey = state.toString()
         if (!force && stateKey == lastNavigationStateKey) return

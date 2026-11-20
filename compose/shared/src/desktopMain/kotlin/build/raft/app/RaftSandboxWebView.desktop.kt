@@ -146,6 +146,9 @@ internal class RaftDesktopWryWebView(
     private var currentTitle = ""
     private var loading = false
     private var progress = 0
+
+    /** Main-frame loads started ([RaftWebViewNavigationState.loadGeneration]). */
+    private var loadGeneration = 0
     private var commitSent = false
     private var lastStateKey = ""
 
@@ -225,6 +228,7 @@ internal class RaftDesktopWryWebView(
         if (nowLoading && !loading) {
             loading = true
             progress = 10
+            loadGeneration += 1
             commitSent = false
         } else if (!nowLoading && loading) {
             loading = false
@@ -355,6 +359,7 @@ internal class RaftDesktopWryWebView(
                 canGoForward = panel.canGoForward(),
                 isLoading = loading,
                 progress = progress.coerceIn(0, 100),
+                loadGeneration = loadGeneration,
             )
         val key = state.toString()
         if (!force && key == lastStateKey) return

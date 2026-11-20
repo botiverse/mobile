@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.compat.json.JSONObject
+import build.raft.designsystem.components.RaftPageLoadState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -117,11 +118,46 @@ class SettingsStandaloneWebViewHostTest {
     }
 
     @Test
-    fun loadingBarIsIndeterminateUntilProgressAndNeverReachesComplete() {
-        assertEquals(null, raftWebPageLoadingBarValue(0))
-        assertEquals(0.4f, raftWebPageLoadingBarValue(40))
-        assertEquals(0.95f, raftWebPageLoadingBarValue(100))
-        assertEquals(0.95f, raftWebPageLoadingBarValue(140))
+    fun loadLineHostSpeaksForThePieceThatEnteredLast() {
+        val host = RaftWebPageLoadLineHostState()
+        assertEquals(RaftPageLoadState.Idle, host.state)
+        val placeholder = RaftWebPageLoadLineReport(RaftPageLoadState.Loading())
+        val page = RaftWebPageLoadLineReport(RaftPageLoadState.Loading(0.3f, load = 1))
+        host.add(placeholder)
+        assertEquals(RaftPageLoadState.Loading(), host.state)
+        // The swap, in either order of leaving and entering, ends on the page's word.
+        host.add(page)
+        host.remove(placeholder)
+        assertEquals(RaftPageLoadState.Loading(0.3f, load = 1), host.state)
+        page.state = RaftPageLoadState.Finished
+        assertEquals(RaftPageLoadState.Finished, host.state)
+        host.remove(page)
+        assertEquals(RaftPageLoadState.Idle, host.state)
+    }
+
+    @Test
+    fun loadLineStateFollowsTheNavigationState() {
+        // Loading: no progress until the engine reports some, then its fraction.
+        assertEquals(RaftPageLoadState.Loading(null), raftWebPageLoadState(isLoading = true, progress = 0, failed = false))
+        assertEquals(RaftPageLoadState.Loading(0.4f), raftWebPageLoadState(isLoading = true, progress = 40, failed = false))
+        assertEquals(RaftPageLoadState.Loading(1f), raftWebPageLoadState(isLoading = true, progress = 140, failed = false))
+        // The web view's load count names the load: another one starts the line again.
+        assertEquals(
+            RaftPageLoadState.Loading(0.1f, load = 3),
+            raftWebPageLoadState(isLoading = true, progress = 10, failed = false, loadGeneration = 3),
+        )
+        assertEquals(
+            RaftPageLoadState.Loading(null, load = 3),
+            raftWebPageLoadState(isLoading = true, progress = 0, failed = false, loadGeneration = 3),
+        )
+        // Ended at 100: finished, the line plays its end.
+        assertEquals(RaftPageLoadState.Finished, raftWebPageLoadState(isLoading = false, progress = 100, failed = false))
+        // Ended short of 100 (stopped, or failed before the failure callback): gone at once.
+        assertEquals(RaftPageLoadState.Idle, raftWebPageLoadState(isLoading = false, progress = 60, failed = false))
+        assertEquals(RaftPageLoadState.Idle, raftWebPageLoadState(isLoading = false, progress = 0, failed = false))
+        // A failure wins over whatever the engine still reports.
+        assertEquals(RaftPageLoadState.Failed, raftWebPageLoadState(isLoading = true, progress = 40, failed = true))
+        assertEquals(RaftPageLoadState.Failed, raftWebPageLoadState(isLoading = false, progress = 100, failed = true))
     }
 
     @Test
