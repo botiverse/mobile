@@ -441,6 +441,9 @@ fun settingsComputerUpgradeAvailabilityKey(computer: SettingsComputerSnapshot): 
 internal const val COMPUTER_INSTALL_DOCS_URL = "https://docs.raft.build/features/server/computers/#connecting-a-computer"
 
 internal const val COMPUTER_RESTART_TIMEOUT_MILLIS = 60_000L
+
+/** #198: a foreground / reconnect catch-up shows the header indicator only past this age (Activity's rule). */
+internal const val COMPUTERS_SHOWN_STALE_MILLIS: Long = ActivityHeaderRefreshStaleAfterMillis
 internal const val COMPUTER_RESTART_DONE_DISPLAY_MILLIS = 3_000L
 internal const val COMPUTER_RESTART_ERROR_DISPLAY_MILLIS = 4_000L
 internal const val COMPUTER_RESTART_TIMED_OUT = "restart_timed_out"
@@ -2219,8 +2222,7 @@ class SharedSettingsStore(
                 whileRefreshing(_state.value.route.destination) { loadCurrentRoute(forceComputers = true) }
             SharedSettingsIntent.RefreshComputers ->
                 whileRefreshing(SharedSettingsDestination.Computers) { refreshComputers() }
-            SharedSettingsIntent.CatchUpComputers ->
-                whileRefreshing(_state.value.route.destination) { loadCurrentRoute(forceComputers = true) }
+            SharedSettingsIntent.CatchUpComputers -> catchUpComputers()
             is SharedSettingsIntent.ScanComputerWorkspaces -> {
                 runAction(COMPUTER_ACTION_SCAN_WORKSPACES, intent.machineId) {
                     dataSource.scanComputerWorkspaces(intent.machineId)
@@ -2877,6 +2879,7 @@ class SharedSettingsStore(
                 cached?.applyToState(destination) { copy(computers = it) }
                 val fresh = dataSource.loadComputers(forceComputers = forceComputers || cached != null)
                 fresh.applyToState(destination) { copy(computers = it) }
+                if (fresh is DataResult.Content) computersValidatedAtMillis = nowMillis()
                 // Lost access (403 / 404) evicted the cached list: the stale rows must not stay.
                 if (cached != null && fresh !is DataResult.Content && dataSource.cachedComputers() == null) {
                     _state.value = _state.value.copy(computers = fresh.toScreenLoadState())
@@ -2892,6 +2895,7 @@ class SharedSettingsStore(
                     cached.applyToState(destination) { copy(computerDetail = it) }
                     val fresh = dataSource.loadComputerDetail(machineId, forceComputers = true)
                     fresh.applyToState(destination) { copy(computerDetail = it) }
+                    if (fresh is DataResult.Content) computersValidatedAtMillis = nowMillis()
                     // The machine was deleted or access was lost: its cached page was forgotten.
                     if (fresh !is DataResult.Content && dataSource.cachedComputerDetail(machineId) == null) {
                         _state.value = _state.value.copy(computerDetail = fresh.toScreenLoadState())
@@ -2958,7 +2962,29 @@ class SharedSettingsStore(
     private suspend fun refreshComputers() {
         dataSource.loadComputers(forceComputers = true)
             .applyToState(SharedSettingsDestination.Computers) { copy(computers = it) }
+        if (_state.value.computers is ScreenLoadState.Content) computersValidatedAtMillis = nowMillis()
     }
+
+    /**
+     * #198 (raft-design freshness rule 3): the app came back or the socket reconnected. The page
+     * re-reads silently; the header indicator shows only when what it shows is old
+     * ([COMPUTERS_SHOWN_STALE_MILLIS], Activity's rule) or was never confirmed by the server.
+     */
+    private suspend fun catchUpComputers() {
+        val destination = _state.value.route.destination
+        val validatedAt = computersValidatedAtMillis
+        val ageMillis = validatedAt?.let { nowMillis() - it }
+        if (ageMillis != null && ageMillis < COMPUTERS_SHOWN_STALE_MILLIS) {
+            diagnosticsLogger("settings_computers_catch_up mode=silent destination=${destination.name} ageMs=$ageMillis")
+            loadCurrentRoute(forceComputers = true)
+        } else {
+            diagnosticsLogger("settings_computers_catch_up mode=indicator destination=${destination.name} ageMs=${ageMillis ?: -1}")
+            whileRefreshing(destination) { loadCurrentRoute(forceComputers = true) }
+        }
+    }
+
+    /** When the computers the page shows were last confirmed by the server (a fresh, successful read). */
+    private var computersValidatedAtMillis: Long? = null
 
     private suspend fun loadComputerDetail(machineId: String, forceComputers: Boolean = false) {
         if (machineId.isBlank()) {
@@ -2969,9 +2995,9 @@ class SharedSettingsStore(
                 )
             return
         }
-        dataSource.loadComputerDetail(machineId, forceComputers = forceComputers).applyToState(SharedSettingsDestination.ComputerDetail) {
-            copy(computerDetail = it)
-        }
+        val result = dataSource.loadComputerDetail(machineId, forceComputers = forceComputers)
+        result.applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
+        if (result is DataResult.Content) computersValidatedAtMillis = nowMillis()
     }
 
     private suspend fun loadAboutWithUpdateStatus() {

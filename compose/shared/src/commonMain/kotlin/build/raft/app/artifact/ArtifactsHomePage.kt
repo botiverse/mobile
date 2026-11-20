@@ -149,6 +149,10 @@ internal fun ArtifactsHomeRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boo
         viewModel.store.dispatch(ArtifactsHomeIntent.Start(serverId?.takeIf { flagEnabled }))
     }
     ArtifactsHomeActivityEffect(storeScope, serverId?.takeIf { flagEnabled && pageVisible }) { viewModel.store.dispatch(it) }
+    // #198: pushes stop in the background and while the socket is down; catch up on return.
+    RaftLiveCatchUpEffect(serverId = serverId?.takeIf { flagEnabled }, visible = pageVisible) {
+        serverId?.takeIf { flagEnabled }?.let { viewModel.store.dispatch(ArtifactsHomeIntent.CatchUp(it)) }
+    }
     // Back from the viewer: opening it read the current version, so what was new may be gone.
     LaunchedEffect(pageVisibleResumeTick) {
         if (pageVisibleResumeTick > 0 && viewModel.state.value.viewerOpen) viewModel.store.dispatch(ArtifactsHomeIntent.ViewerClosed)

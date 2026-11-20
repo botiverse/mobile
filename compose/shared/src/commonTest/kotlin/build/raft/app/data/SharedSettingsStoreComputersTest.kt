@@ -157,6 +157,47 @@ class SharedSettingsStoreComputersTest {
     }
 
     @Test
+    fun catchUpIsSilentWhileTheShownComputersAreFreshAndShowsTheIndicatorOnceTheyAreOld() = runTest {
+        // #198 (raft-design freshness rule 3): a foreground / reconnect catch-up is the system's,
+        // not the person's: no header spinner unless what the page shows is old.
+        data class Case(val label: String, val destination: SharedSettingsDestination, val itemId: String?)
+        val cases =
+            listOf(
+                Case("list", SharedSettingsDestination.Computers, null),
+                Case("detail", SharedSettingsDestination.ComputerDetail, "m-1"),
+            )
+        cases.forEach { case ->
+            var now = 1_000_000L
+            val repository = detailRepository().apply { computersResult = DataResult.Content(computers(machine("m-1", "Studio"))) }
+            val store = store(repository, standalone = true, nowMillis = { now })
+            store.accept(SharedSettingsIntent.LoadPageContent(case.destination, case.itemId))
+            val ages = listOf(
+                "fresh" to (COMPUTERS_SHOWN_STALE_MILLIS - 1) to false,
+                "old" to (COMPUTERS_SHOWN_STALE_MILLIS + 1) to true,
+            )
+            ages.forEach { (labelAndAge, expectIndicator) ->
+                val (ageLabel, age) = labelAndAge
+                now += age
+                val block = BlockingCall()
+                repository.computersBlock = block
+                repository.computerDetailBlock = block
+                store.dispatch(SharedSettingsIntent.CatchUpComputers)
+                runCurrent()
+                assertEquals(
+                    expectIndicator,
+                    store.state.value.isRefreshing(case.destination),
+                    "${case.label} $ageLabel: indicator while the catch-up runs",
+                )
+                block.release()
+                runCurrent()
+                assertEquals(false, store.state.value.isRefreshing(case.destination), "${case.label} $ageLabel")
+                repository.computersBlock = null
+                repository.computerDetailBlock = null
+            }
+        }
+    }
+
+    @Test
     fun catchUpLeavesOtherSettingsPagesAlone() = runTest {
         val repository = FakeSettingsRepository(computersResult = DataResult.Content(computers(machine("m-1", "Studio"))))
         val store = store(repository, standalone = true)
@@ -377,6 +418,7 @@ class SharedSettingsStoreComputersTest {
         repository: FakeSettingsRepository,
         standalone: Boolean,
         role: String = "owner",
+        nowMillis: () -> Long = ::defaultNowMillis,
     ): SharedSettingsStore =
         SharedSettingsStore(
             dataSource =
@@ -385,6 +427,7 @@ class SharedSettingsStoreComputersTest {
                     settingsRepository = repository
                 ),
             scope = backgroundScope,
+            nowMillis = nowMillis,
             standaloneNavigation = standalone
         )
 

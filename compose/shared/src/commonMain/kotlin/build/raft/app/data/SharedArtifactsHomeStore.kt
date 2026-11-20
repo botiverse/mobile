@@ -89,6 +89,9 @@ internal class SharedArtifactsHomeStore(
             ArtifactsHomeIntent.Retry -> read(keepRows = mutableState.value.rows != null)
             ArtifactsHomeIntent.LoadMore -> loadMore()
             is ArtifactsHomeIntent.ActivityChanged -> onActivity(intent.serverId)
+            // #198: the app came back / the socket reconnected; `activity:changed` pushes sent
+            // meanwhile were missed. Same silent, single-flight, rows-kept read.
+            is ArtifactsHomeIntent.CatchUp -> onActivity(intent.serverId)
             ArtifactsHomeIntent.ViewerOpened -> mutableState.value = mutableState.value.copy(viewerOpen = true)
             ArtifactsHomeIntent.ViewerClosed -> {
                 mutableState.value = mutableState.value.copy(viewerOpen = false)
@@ -469,6 +472,9 @@ internal const val ARTIFACTS_HOME_AUTHORS_LIMIT: Int = 50
 internal sealed interface ArtifactsHomeIntent {
     /** The page's server with the flag on; null leaves the list unread. */
     data class Start(val serverId: String?) : ArtifactsHomeIntent
+
+    /** The one freshness signal (#198): re-read what the page shows, silently. */
+    data class CatchUp(val serverId: String) : ArtifactsHomeIntent
     data class Search(val text: String) : ArtifactsHomeIntent
     data class SetPlace(val place: ArtifactsHomePlace?) : ArtifactsHomeIntent
     data class SetAuthor(val author: ArtifactsHomeActor?) : ArtifactsHomeIntent
