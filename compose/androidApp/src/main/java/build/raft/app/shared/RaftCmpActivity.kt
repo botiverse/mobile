@@ -1,5 +1,6 @@
 package build.raft.app.shared
 
+import build.raft.app.network.raftDownloadFileName
 import build.raft.app.data.legacyOpenFields
 import android.Manifest
 import android.app.Activity
@@ -8077,16 +8078,25 @@ internal class RaftBridgeModule(
                 } else {
                     null
                 }
+        // fileNameFromResponse (an Artifact's file or zip): the name the server gives
+        // (Content-Disposition `filename*`, then `filename`, then the URL's last segment); the
+        // caller's name only when the response was not read (a copy already on the device).
+        val savedFileName =
+                if (request.optBoolean("fileNameFromResponse", false) && directCompletion != null) {
+                    raftDownloadFileName(directCompletion.contentDisposition, urlText, fallback = requestedFileName)
+                } else {
+                    requestedFileName
+                }
         val buildReady = {
             AttachmentPreparationResult.Ready(
                     downloadId = downloadId,
                     owner = owner,
                     attachmentId = attachmentId,
-                    requestedFileName = requestedFileName,
+                    requestedFileName = savedFileName,
                     targetFile = targetFile,
                     mimeType =
                             guessAttachmentMimeType(
-                                    requestedFileName,
+                                    savedFileName,
                                     requestedMimeType ?: directCompletion?.contentType
                             ),
                     wasCached = wasCached
@@ -8795,7 +8805,8 @@ internal class RaftBridgeModule(
             "complete" ->
                     DirectAttachmentDownloadCompletion(
                             contentType = result.contentType ?: requestedMimeType,
-                            ownerOperation = ownerOperation
+                            ownerOperation = ownerOperation,
+                            contentDisposition = result.contentDisposition
                     )
             "cancelled" -> {
                 ownerOperation.close()
@@ -9065,7 +9076,8 @@ internal fun attachmentDownloadFailurePayload(
 
 private data class DirectAttachmentDownloadCompletion(
         val contentType: String?,
-        val ownerOperation: AndroidAttachmentDirectDownloadOwnerOperation
+        val ownerOperation: AndroidAttachmentDirectDownloadOwnerOperation,
+        val contentDisposition: String? = null
 )
 
 private fun AttachmentDownloadProgress.toAndroidBridgePayload(): Map<String, Any> =

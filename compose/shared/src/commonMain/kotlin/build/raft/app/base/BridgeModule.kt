@@ -1,5 +1,7 @@
 package build.raft.app.base
 
+import build.raft.app.network.AttachmentDownloadLocalBytes
+import build.raft.app.network.AttachmentDownloadSessionHeaders
 import build.raft.app.transfer.RaftTransferPhase
 import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.AttachmentOwnerLease
@@ -671,6 +673,23 @@ internal class BridgeModule : Module() {
         mimeType: String? = null,
         downloadId: String? = null,
         retainAfterPageDestroyed: Boolean = false,
+        /**
+         * Name the saved file by the response's `Content-Disposition` ([build.raft.app.network.raftDownloadFileName]:
+         * `filename*`, then `filename`, then the URL's last segment); [fileName] is then only the
+         * fallback when the response is not read (a copy already on the device).
+         */
+        fileNameFromResponse: Boolean = false,
+        /**
+         * The app's session for a Raft API address that answers only signed in (an Artifact's file or
+         * zip). Kept in shared memory for this one transfer ([AttachmentDownloadSessionHeaders]),
+         * never sent over the native bridge.
+         */
+        sessionHeaders: Map<String, String> = emptyMap(),
+        /**
+         * The file's bytes, already in the app (a hosted page's `blob:` save): [url] is then a
+         * `raft-local:` address, served from these bytes, never fetched.
+         */
+        localBytes: AttachmentDownloadLocalBytes.Source? = null,
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? = saveAttachmentWithNativeMethod(
         methodName = SAVE_ATTACHMENT,
@@ -681,6 +700,9 @@ internal class BridgeModule : Module() {
         mimeType = mimeType,
         downloadId = downloadId,
         retainAfterPageDestroyed = retainAfterPageDestroyed,
+        fileNameFromResponse = fileNameFromResponse,
+        sessionHeaders = sessionHeaders,
+        localBytes = localBytes,
         onProgress = onProgress
     )
 
@@ -713,7 +735,10 @@ internal class BridgeModule : Module() {
         mimeType: String?,
         downloadId: String?,
         retainAfterPageDestroyed: Boolean,
-        onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)?
+        onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)?,
+        fileNameFromResponse: Boolean = false,
+        sessionHeaders: Map<String, String> = emptyMap(),
+        localBytes: AttachmentDownloadLocalBytes.Source? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
             val resolvedDownloadId = attachmentDownloadId(owner, downloadId, attachmentId, fileName)
@@ -726,7 +751,12 @@ internal class BridgeModule : Module() {
             methodArgs.put("trackProgress", onProgress != null)
             methodArgs.put("downloadId", resolvedDownloadId)
             methodArgs.put("operationId", exportOperationId)
+            if (fileNameFromResponse) methodArgs.put("fileNameFromResponse", true)
             methodArgs.putAttachmentOwner(owner)
+            if (sessionHeaders.isNotEmpty()) {
+                AttachmentDownloadSessionHeaders.register(resolvedDownloadId, url, sessionHeaders)
+            }
+            localBytes?.let { AttachmentDownloadLocalBytes.register(resolvedDownloadId, url, it) }
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
             var callbackRef: CallbackRef? = null
             var completed = false
@@ -754,6 +784,8 @@ internal class BridgeModule : Module() {
                 )
             callbackRef = result.callbackRef
             continuation.invokeOnCancellation {
+                AttachmentDownloadSessionHeaders.forget(resolvedDownloadId)
+                AttachmentDownloadLocalBytes.forget(resolvedDownloadId)
                 activeAttemptToken?.takeIf(String::isNotBlank)?.let { attemptToken ->
                     AttachmentDownloadCoordinator.controlExisting(
                         downloadId = resolvedDownloadId,

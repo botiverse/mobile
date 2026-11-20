@@ -149,7 +149,7 @@ internal fun RaftSandboxWebView(
     /** Guards this WebView's load ([RaftWebViewLoadWatchdog]): wired to its events, timer and probe run here. */
     loadWatchdog: RaftWebViewLoadWatchdog? = null,
     /** A file the page saves (see [RaftWebViewEvents.onDownloadRequested]); null: as a blocked navigation. */
-    onDownloadRequested: ((String) -> Unit)? = null,
+    onDownloadRequested: ((RaftWebViewDownload) -> Unit)? = null,
     /** A new top-level document routed as a link (see [RaftWebViewEvents.routesMainFrameNavigation]); null: loaded. */
     routesMainFrameNavigation: ((String) -> Boolean)? = null,
     /** [RaftWebViewConfig.diagnosticsSurface]. */

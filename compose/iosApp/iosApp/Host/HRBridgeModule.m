@@ -3523,6 +3523,8 @@ static NSDictionary *RaftFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(voi
 @property(nonatomic, copy, nullable) NSString *raft_attachmentExportOperationId;
 @property(nonatomic, strong, nullable) NSURL *raft_attachmentExportURL;
 @property(nonatomic, copy, nullable) NSString *raft_attachmentExportFileName;
+@property(nonatomic) BOOL raft_attachmentExportFileNameFromResponse;
+@property(nonatomic, copy, nullable) NSString *raft_attachmentExportSourceURLText;
 @property(nonatomic, strong, nullable) NSNumber *raft_attachmentExportSizeBytes;
 @property(nonatomic) BOOL raft_attachmentExportTrackProgress;
 @property(nonatomic, copy, nullable) NSString *raft_attachmentExportDestination;
@@ -5306,6 +5308,9 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     self.raft_attachmentExportDestination = destination;
     self.raft_attachmentExportMimeType = genericBinaryMime && !savesToPhotos ? @"" : mimeType;
     self.raft_attachmentExportFileName = fileName;
+    // An Artifact's file or zip: the saved file takes the name the server gives (Content-Disposition).
+    self.raft_attachmentExportFileNameFromResponse = RaftBridgeBool(params[@"fileNameFromResponse"]);
+    self.raft_attachmentExportSourceURLText = urlText;
     self.raft_attachmentExportTrackProgress = RaftBridgeBool(params[@"trackProgress"]);
 
     if (!savesToPhotos) {
@@ -5525,6 +5530,22 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
                 @"message" : @"Unable to prepare attachment for export"
             }];
             return;
+        }
+        if (strongSelf.raft_attachmentExportFileNameFromResponse) {
+            NSString *named = RaftAttachmentExportFileName([SharedRaftDownloadFileNames.shared
+                fileNameContentDisposition:result.contentDisposition
+                                       url:strongSelf.raft_attachmentExportSourceURLText ?: @""
+                                  fallback:targetURL.lastPathComponent ?: @"attachment"]);
+            if (named.length > 0 && ![named isEqualToString:targetURL.lastPathComponent]) {
+                NSURL *renamed = [[targetURL URLByDeletingLastPathComponent] URLByAppendingPathComponent:named
+                                                                                               isDirectory:NO];
+                NSError *moveError = nil;
+                if ([NSFileManager.defaultManager moveItemAtURL:targetURL toURL:renamed error:&moveError]) {
+                    targetURL = renamed;
+                    strongSelf.raft_attachmentExportURL = renamed;
+                    strongSelf.raft_attachmentExportFileName = named;
+                }
+            }
         }
         strongSelf.raft_attachmentExportSizeBytes = @(result.downloadedBytes);
         [strongSelf raft_presentAttachmentExportWithURL:targetURL sizeBytes:result.downloadedBytes];

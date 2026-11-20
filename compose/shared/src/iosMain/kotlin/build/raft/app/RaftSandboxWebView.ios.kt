@@ -6,6 +6,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ObjCSignatureOverride
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
+import platform.Foundation.NSData
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSTemporaryDirectory
+import platform.Foundation.NSURLResponse
+import platform.Foundation.NSUUID
+import platform.WebKit.WKDownload
+import platform.WebKit.WKDownloadDelegateProtocol
+import platform.posix.memcpy
 import kotlinx.cinterop.objcPtr
 import platform.CoreGraphics.CGColorGetAlpha
 import platform.CoreGraphics.CGRectMake
@@ -139,8 +150,10 @@ internal class RaftIosSandboxWebView(
     private var lastNavigationStateKey = ""
     private var lastSuccessfulURL = ""
     private var lastLoadFailureKey = ""
-    /** A download was cancelled by policy: its "Frame load interrupted" is no load failure. */
+    /** A navigation became a download: its "Frame load interrupted" is no load failure. */
     private var downloadCancelled = false
+    /** The page's downloads in flight (WKDownload holds its delegate weakly). */
+    private val activeDownloads = mutableSetOf<RaftIosWebViewDownloadDelegate>()
     private var stateTimer: NSTimer? = null
     private var disposed = false
     private var configured = false
@@ -518,31 +531,56 @@ internal class RaftIosSandboxWebView(
 
     // ---- delegate callbacks ----------------------------------------------------------------
 
-    internal fun decidePolicy(source: WKWebView, action: WKNavigationAction): Boolean {
-        // A download link (`<a download>`, e.g. a `blob:` save): WKWebView has no download here, so a
-        // host that asked takes it ([RaftWebViewEvents.onDownloadRequested]).
-        val download = events.onDownloadRequested
-        if (download != null && action.shouldPerformDownload && raftIsSameObjCObject(source, webView)) {
-            downloadCancelled = true
-            download(action.request.URL?.absoluteString ?: "")
-            return false
+    /**
+     * A download link (`<a download>`, a `blob:` save): a host that asked keeps it in the app
+     * ([RaftWebViewEvents.onDownloadRequested]) as a browser does, WKWebView downloading it
+     * (WKDownload, the page's own cookies; [didBecomeDownload]).
+     */
+    internal fun decidePolicy(source: WKWebView, action: WKNavigationAction): RaftIosNavigationDecision {
+        if (events.onDownloadRequested != null && action.shouldPerformDownload && raftIsSameObjCObject(source, webView)) {
+            return RaftIosNavigationDecision.Download
         }
-        return decideNavigationPolicy(source, action.request.URL, isMainFrame = action.targetFrame?.mainFrame ?: true)
+        return if (decideNavigationPolicy(source, action.request.URL, isMainFrame = action.targetFrame?.mainFrame ?: true)) {
+            RaftIosNavigationDecision.Allow
+        } else {
+            RaftIosNavigationDecision.Cancel
+        }
     }
 
     /**
      * A response WKWebView would not show (an attachment, a type it can't display): a host that
-     * asked takes it as a download; any other host loads as before.
+     * asked keeps it in the app as a download; any other host loads as before.
      */
-    internal fun decideResponsePolicy(source: WKWebView, response: WKNavigationResponse): Boolean {
-        val download = events.onDownloadRequested ?: return true
-        if (!raftIsSameObjCObject(source, webView)) return true
+    internal fun decideResponsePolicy(source: WKWebView, response: WKNavigationResponse): RaftIosNavigationDecision {
+        if (events.onDownloadRequested == null || !raftIsSameObjCObject(source, webView)) return RaftIosNavigationDecision.Allow
         val disposition = (response.response as? NSHTTPURLResponse)?.valueForHTTPHeaderField("Content-Disposition")
         val attachment = disposition?.trim()?.lowercase()?.startsWith("attachment") == true
-        if (!attachment && response.canShowMIMEType) return true
+        if (!attachment && response.canShowMIMEType) return RaftIosNavigationDecision.Allow
+        return RaftIosNavigationDecision.Download
+    }
+
+    /** WKWebView turned a navigation into [download]: its file lands in a private temporary folder, then the host takes it. */
+    internal fun didBecomeDownload(source: WKWebView, download: WKDownload) {
+        if (!raftIsSameObjCObject(source, webView) || events.onDownloadRequested == null) {
+            download.cancel(null)
+            return
+        }
         downloadCancelled = true
-        download(response.response.URL?.absoluteString ?: "")
-        return false
+        val delegate = RaftIosWebViewDownloadDelegate(this)
+        activeDownloads += delegate
+        download.delegate = delegate
+        diagnosticsInfo("page_download kind=wkdownload")
+    }
+
+    internal fun finishDownload(delegate: RaftIosWebViewDownloadDelegate, result: RaftWebViewDownload) {
+        activeDownloads -= delegate
+        if (disposed) return
+        when (result) {
+            is RaftWebViewDownload.Failed -> diagnosticsWarn("page_download result=failed reason=${result.reason}")
+            is RaftWebViewDownload.Bytes -> diagnosticsInfo("page_download result=read bytes=${result.bytes.size}")
+            is RaftWebViewDownload.Url -> Unit
+        }
+        events.onDownloadRequested?.invoke(result)
     }
 
     /**
@@ -847,10 +885,12 @@ private class RaftIosWebViewDelegate(
         decidePolicyForNavigationAction: WKNavigationAction,
         decisionHandler: (WKNavigationActionPolicy) -> Unit
     ) {
-        val allow = owner.decidePolicy(webView, decidePolicyForNavigationAction)
         decisionHandler(
-            if (allow) WKNavigationActionPolicy.WKNavigationActionPolicyAllow
-            else WKNavigationActionPolicy.WKNavigationActionPolicyCancel
+            when (owner.decidePolicy(webView, decidePolicyForNavigationAction)) {
+                RaftIosNavigationDecision.Allow -> WKNavigationActionPolicy.WKNavigationActionPolicyAllow
+                RaftIosNavigationDecision.Cancel -> WKNavigationActionPolicy.WKNavigationActionPolicyCancel
+                RaftIosNavigationDecision.Download -> WKNavigationActionPolicy.WKNavigationActionPolicyDownload
+            }
         )
     }
 
@@ -859,11 +899,21 @@ private class RaftIosWebViewDelegate(
         decidePolicyForNavigationResponse: WKNavigationResponse,
         decisionHandler: (WKNavigationResponsePolicy) -> Unit
     ) {
-        val allow = owner.decideResponsePolicy(webView, decidePolicyForNavigationResponse)
         decisionHandler(
-            if (allow) WKNavigationResponsePolicy.WKNavigationResponsePolicyAllow
-            else WKNavigationResponsePolicy.WKNavigationResponsePolicyCancel
+            when (owner.decideResponsePolicy(webView, decidePolicyForNavigationResponse)) {
+                RaftIosNavigationDecision.Allow -> WKNavigationResponsePolicy.WKNavigationResponsePolicyAllow
+                RaftIosNavigationDecision.Cancel -> WKNavigationResponsePolicy.WKNavigationResponsePolicyCancel
+                RaftIosNavigationDecision.Download -> WKNavigationResponsePolicy.WKNavigationResponsePolicyDownload
+            }
         )
+    }
+
+    override fun webView(webView: WKWebView, navigationAction: WKNavigationAction, didBecomeDownload: WKDownload) {
+        owner.didBecomeDownload(webView, didBecomeDownload)
+    }
+
+    override fun webView(webView: WKWebView, navigationResponse: WKNavigationResponse, didBecomeDownload: WKDownload) {
+        owner.didBecomeDownload(webView, didBecomeDownload)
     }
 
     @ObjCSignatureOverride
@@ -904,6 +954,87 @@ private class RaftIosWebViewDelegate(
         owner.createWindowBlocked(webView, forNavigationAction)
         return null
     }
+}
+
+internal enum class RaftIosNavigationDecision { Allow, Cancel, Download }
+
+/**
+ * One page download (WKDownload): its file goes to a fresh private temporary folder under the name
+ * WebKit suggests (the page's `download` name, else the response's Content-Disposition, else the
+ * address), then its bytes go to the host ([RaftWebViewDownload.Bytes]) and the folder is removed.
+ */
+internal class RaftIosWebViewDownloadDelegate(
+    private val owner: RaftIosSandboxWebView,
+) : NSObject(), WKDownloadDelegateProtocol {
+    private var destination: NSURL? = null
+    private var fileName: String = "download"
+    private var mimeType: String? = null
+    private var finished = false
+
+    override fun download(
+        download: WKDownload,
+        decideDestinationUsingResponse: NSURLResponse,
+        suggestedFilename: String,
+        completionHandler: (NSURL?) -> Unit
+    ) {
+        val expected = decideDestinationUsingResponse.expectedContentLength
+        if (expected > RaftWebViewDownloadMaxBytes) {
+            completionHandler(null)
+            finish(RaftWebViewDownload.Failed("too_large"))
+            return
+        }
+        mimeType = decideDestinationUsingResponse.MIMEType
+        val disposition = (decideDestinationUsingResponse as? NSHTTPURLResponse)?.valueForHTTPHeaderField("Content-Disposition")
+        fileName =
+            raftWebViewDownloadFileName(
+                pageFileName = suggestedFilename,
+                contentDisposition = disposition,
+                url = decideDestinationUsingResponse.URL?.absoluteString ?: "",
+                mimeType = mimeType,
+            )
+        val folder =
+            NSURL.fileURLWithPath(NSTemporaryDirectory())
+                .URLByAppendingPathComponent("raft-web-downloads", isDirectory = true)
+                ?.URLByAppendingPathComponent(NSUUID().UUIDString, isDirectory = true)
+        if (folder == null || !NSFileManager.defaultManager.createDirectoryAtURL(folder, true, null, null)) {
+            completionHandler(null)
+            finish(RaftWebViewDownload.Failed("storage_prepare"))
+            return
+        }
+        val target = folder.URLByAppendingPathComponent(fileName, isDirectory = false)
+        destination = target
+        completionHandler(target)
+    }
+
+    override fun downloadDidFinish(download: WKDownload) {
+        val target = destination
+        val data = target?.let { NSData.dataWithContentsOfURL(it) }
+        target?.URLByDeletingLastPathComponent?.let { NSFileManager.defaultManager.removeItemAtURL(it, null) }
+        finish(
+            if (data == null) RaftWebViewDownload.Failed("read_failed")
+            else RaftWebViewDownload.Bytes(data.toRaftDownloadByteArray(), fileName, mimeType)
+        )
+    }
+
+    override fun download(download: WKDownload, didFailWithError: NSError, resumeData: NSData?) {
+        destination?.URLByDeletingLastPathComponent?.let { NSFileManager.defaultManager.removeItemAtURL(it, null) }
+        finish(RaftWebViewDownload.Failed("download_failed code=${didFailWithError.code}"))
+    }
+
+    private fun finish(result: RaftWebViewDownload) {
+        if (finished) return
+        finished = true
+        owner.finishDownload(this, result)
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun NSData.toRaftDownloadByteArray(): ByteArray {
+    val size = length.toInt()
+    if (size == 0) return ByteArray(0)
+    val out = ByteArray(size)
+    out.usePinned { pinned -> memcpy(pinned.addressOf(0), bytes, length) }
+    return out
 }
 
 private class RaftIosWebViewScriptMessageHandler(
