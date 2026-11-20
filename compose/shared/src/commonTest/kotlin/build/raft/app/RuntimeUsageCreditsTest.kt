@@ -68,6 +68,7 @@ class RuntimeUsageCreditsTest {
             val tokens = raw?.split(",")?.map { it.trim() }.orEmpty()
             assertTrue("runtime-usage-credits@1" in tokens, "$call: $raw")
             assertTrue("runtime-usage-window-scope@2" in tokens, "$call keeps the window scope: $raw")
+            assertTrue("runtime-usage-account-folders@1" in tokens, "$call reads agents' account folders: $raw")
         }
         // A request that is not a usage read does not declare it.
         api.runtimeModels(server, "m1", "codex")

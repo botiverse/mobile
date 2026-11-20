@@ -229,7 +229,37 @@ internal data class RuntimeAccountUsageAccount(
      * runtime did not say); the windows may then still read full, as before.
      */
     val credits: RuntimeAccountUsageCredits? = null,
+    /**
+     * The agents whose own account folder (CODEX_HOME / CLAUDE_CONFIG_DIR) this account was read
+     * from (slock #15348); null: the Computer's default account. Sent only to a client declaring
+     * [RUNTIME_USAGE_ACCOUNT_FOLDERS_CLIENT_CAPABILITY].
+     */
+    val agentIds: List<String>? = null,
 )
+
+/** The Computer's own account, not an agent's own folder's (slock `agentIds === undefined`). */
+internal val RuntimeAccountUsageAccount.isDefaultAccount: Boolean get() = agentIds == null
+
+/**
+ * slock `defaultRuntimeUsageAccount`: the Computer's default account in [snapshot] (the first
+ * without `agentIds`), else the first account. What every Computer-level single-account reading
+ * uses (plan line, limit resets, the 5-hour limit).
+ */
+internal fun defaultRuntimeUsageAccount(snapshot: RuntimeAccountUsageSnapshot?): RuntimeAccountUsageAccount? =
+    snapshot?.let { s -> s.accounts.firstOrNull { it.isDefaultAccount } ?: s.accounts.firstOrNull() }
+
+/**
+ * slock `runtimeUsageAccountsForAgent`: the accounts [agentId]'s usage reads from its Computer's
+ * [snapshot]: its own folder's account when it has one, else the default accounts. A snapshot
+ * where no account lists agents (an older Computer) reads as before: every account.
+ */
+internal fun runtimeUsageAccountsForAgent(snapshot: RuntimeAccountUsageSnapshot?, agentId: String?): List<RuntimeAccountUsageAccount> {
+    snapshot ?: return emptyList()
+    if (snapshot.accounts.all { it.isDefaultAccount }) return snapshot.accounts
+    val own = agentId?.let { id -> snapshot.accounts.firstOrNull { it.agentIds?.contains(id) == true } }
+    if (own != null) return listOf(own)
+    return snapshot.accounts.filter { it.isDefaultAccount }
+}
 
 /**
  * slock `runtimeAccountUsageCreditsSchema` (#15374). [balance] is the runtime's own number string
@@ -443,6 +473,11 @@ private fun JsonObject.toRuntimeAccountUsageAccount(): RuntimeAccountUsageAccoun
         windows = windows,
         limitResetsAvailable = limitResetsAvailableOrNull(),
         credits = (this["credits"] as? JsonObject)?.toRuntimeAccountUsageCredits(),
+        // Present (even if no id is readable): an agent's folder, never the default account.
+        agentIds =
+            (this["agentIds"] as? JsonArray)?.mapNotNull { element ->
+                (element as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+            },
     )
 }
 

@@ -105,14 +105,15 @@ internal fun runtimeQuotaPercentUsed(usedRatio: Double): Int = floor(usedRatio.c
 /**
  * The compact line's facts for one runtime's usage [read], or null when there is nothing
  * trustworthy to say (no read, no snapshot yet, no account, no usable window).
- * Like the web's bulk dialog it reads the first account.
+ * Like the web's bulk dialog it reads the Computer's default account.
  */
 internal fun summarizeRuntimeQuota(
     provider: RuntimeAccountUsageProvider,
     read: RuntimeAccountUsageRead?
 ): RuntimeQuotaSummary? {
     val available = read as? RuntimeAccountUsageRead.Available ?: return null
-    val account = available.snapshot.accounts.firstOrNull() ?: return null
+    // The Computer's default account, never an agent's own folder's (slock #15348).
+    val account = defaultRuntimeUsageAccount(available.snapshot) ?: return null
     val plan = account.planLabel?.trim()?.takeIf { it.isNotEmpty() }
     val usable =
         account.windows.filter { window ->

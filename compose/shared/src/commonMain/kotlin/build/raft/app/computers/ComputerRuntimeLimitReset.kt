@@ -12,6 +12,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import build.raft.app.data.isDefaultAccount
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageHealth
 import build.raft.app.data.RuntimeAccountUsageLoad
@@ -51,7 +52,8 @@ internal data class ComputerRuntimeLimitResetOffer(
 /** The account whose reset the button spends (web `resetAccount`: the first holding one; Codex reports one account). */
 internal fun RuntimeAccountUsageLoad?.limitResetAccount(): RuntimeAccountUsageAccount? {
     val read = (this as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available ?: return null
-    return read.snapshot.accounts.firstOrNull { (it.limitResetsAvailable ?: 0) > 0 }
+    // The Computer's default account, never an agent's own folder's (slock #15348).
+    return read.snapshot.accounts.firstOrNull { it.isDefaultAccount && (it.limitResetsAvailable ?: 0) > 0 }
 }
 
 /**

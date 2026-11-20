@@ -183,12 +183,13 @@ internal enum class ClaudeFiveHourLimit { AtLimit, NotAtLimit, Unknown }
 internal const val CLAUDE_FIVE_HOUR_WINDOW_LABEL: String = "Current session"
 
 /**
- * slock `claudeFiveHourLimitOf`: only one account with measured windows (health `ok` or
+ * slock `claudeFiveHourLimitOf`: only one default account (no `agentIds`) with measured windows (health `ok` or
  * `rate_limited`) and one readable "Current session" window is an answer; anything else unknown.
  */
 internal fun claudeFiveHourLimitOf(snapshot: RuntimeAccountUsageSnapshot?): ClaudeFiveHourLimit {
-    if (snapshot?.provider != "claude" || snapshot.accounts.size != 1) return ClaudeFiveHourLimit.Unknown
-    val account = snapshot.accounts.single()
+    if (snapshot?.provider != "claude") return ClaudeFiveHourLimit.Unknown
+    // Limit resets act on the default account only: agents' own folders (`agentIds`) are not it.
+    val account = snapshot.accounts.filter { it.isDefaultAccount }.singleOrNull() ?: return ClaudeFiveHourLimit.Unknown
     if (account.health != RuntimeAccountUsageHealth.Ok && account.health != RuntimeAccountUsageHealth.RateLimited) return ClaudeFiveHourLimit.Unknown
     val window = account.windows.filter { it.label == CLAUDE_FIVE_HOUR_WINDOW_LABEL }.singleOrNull() ?: return ClaudeFiveHourLimit.Unknown
     return when {

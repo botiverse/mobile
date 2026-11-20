@@ -1694,10 +1694,16 @@ internal const val RUNTIME_FORM_V2_MARKER_HEADER = "X-Raft-Runtime-Form-V2"
 internal const val RAFT_CLIENT_CAPABILITIES_HEADER = "X-Raft-Client-Capabilities"
 internal const val RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY = "runtime-usage-window-scope@2"
 internal const val RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY = "runtime-usage-credits@1"
+/** slock `RUNTIME_USAGE_ACCOUNT_FOLDERS_CLIENT_CAPABILITY` (#15348): this build reads an account's `agentIds`. */
+internal const val RUNTIME_USAGE_ACCOUNT_FOLDERS_CLIENT_CAPABILITY = "runtime-usage-account-folders@1"
 internal val RUNTIME_USAGE_CLIENT_CAPABILITY_HEADERS: Map<String, String> =
     mapOf(
         RAFT_CLIENT_CAPABILITIES_HEADER to
-            listOf(RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY, RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY).joinToString(", ")
+            listOf(
+                RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY,
+                RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY,
+                RUNTIME_USAGE_ACCOUNT_FOLDERS_CLIENT_CAPABILITY,
+            ).joinToString(", ")
     )
 
 private fun ComputerRuntimeSelectionCatalogDto.toDomain(
