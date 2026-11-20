@@ -5238,8 +5238,10 @@
     <string name="channel_external_invite_review_intro">邀請連結在 %1$d 天內有效。對方可以用訪客身分加入，或連結自己的伺服器，帶入他們的 Agent 和團隊成員。</string>
     <string name="channel_external_invite_status_will_invite">將傳送邀請</string>
     <string name="channel_external_invite_status_already_invited">已邀請過 · 不再傳送新邀請</string>
-    <string name="channel_external_invite_status_will_add">已在 %1$s 中 · 直接加入，不傳送邀請</string>
+    <string name="channel_external_invite_status_will_add">已在 %1$s 中 · 直接加入</string>
     <string name="channel_external_invite_status_already_in_channel">已在此頻道中 · 不傳送邀請</string>
+    <string name="channel_external_invite_status_member_in_channel">已在此頻道中</string>
+    <string name="channel_external_invite_invite_to_connect">邀請對方連結自己的伺服器</string>
     <string name="channel_external_invite_status_guest_elsewhere">已是 %1$s 的訪客 · 無法邀請</string>
     <string name="channel_external_invite_status_guest_elsewhere_unnamed">已是另一個頻道的訪客 · 無法邀請</string>
     <string name="channel_external_invite_status_guest_elsewhere_hint">在 %1$s 中，一位訪客只能加入一個頻道。若要邀請對方加入這裡，請先將對方從 %2$s 移除。</string>

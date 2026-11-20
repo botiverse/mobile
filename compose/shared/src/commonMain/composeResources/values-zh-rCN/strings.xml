@@ -5414,8 +5414,10 @@
     <string name="channel_external_invite_review_intro">邀请链接 %1$d 天内有效。对方可以作为访客加入，或连接自己的服务器，带上他们的 Agent 和队友。</string>
     <string name="channel_external_invite_status_will_invite">将发送邀请</string>
     <string name="channel_external_invite_status_already_invited">已邀请过 · 不再发送新邀请</string>
-    <string name="channel_external_invite_status_will_add">已在 %1$s 中 · 直接加入，无需邀请</string>
+    <string name="channel_external_invite_status_will_add">已在 %1$s 中 · 直接加入</string>
     <string name="channel_external_invite_status_already_in_channel">已在此频道中 · 不发送邀请</string>
+    <string name="channel_external_invite_status_member_in_channel">已在此频道中</string>
+    <string name="channel_external_invite_invite_to_connect">邀请对方连接自己的服务器</string>
     <string name="channel_external_invite_status_guest_elsewhere">已是 %1$s 的访客 · 无法邀请</string>
     <string name="channel_external_invite_status_guest_elsewhere_unnamed">已是另一个频道的访客 · 无法邀请</string>
     <string name="channel_external_invite_status_guest_elsewhere_hint">在 %1$s 里，一位访客只能加入一个频道。要邀请对方加入这里，请先把对方从 %2$s 移除。</string>

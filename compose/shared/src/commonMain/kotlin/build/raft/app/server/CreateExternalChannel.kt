@@ -90,7 +90,11 @@ internal interface CreateExternalChannelDataSource {
 
     suspend fun create(request: CreateChannelRequest): DataResult<CreateChannelResult>
 
-    suspend fun send(channelId: ChannelId, emails: List<String>): DataResult<ExternalInviteAnswer<SendExternalInvitesResult>>
+    suspend fun send(
+        channelId: ChannelId,
+        emails: List<String>,
+        connectMemberEmails: List<String>,
+    ): DataResult<ExternalInviteAnswer<SendExternalInvitesResult>>
 
     suspend fun connect(channelId: ChannelId, serverIds: List<String>): DataResult<ExternalInviteAnswer<List<ServerConnectOutcome>>>
 }
@@ -113,7 +117,8 @@ internal class RealCreateExternalChannelDataSource(
     override suspend fun create(request: CreateChannelRequest) = channelRepository.createChannel(request)
 
     // A new channel is created private: the send names no makePrivate (web `commitExternal`).
-    override suspend fun send(channelId: ChannelId, emails: List<String>) = api.send(channelId, emails, makePrivate = false)
+    override suspend fun send(channelId: ChannelId, emails: List<String>, connectMemberEmails: List<String>) =
+        api.send(channelId, emails, makePrivate = false, connectInviteMemberEmails = connectMemberEmails)
 
     override suspend fun connect(channelId: ChannelId, serverIds: List<String>) = api.connectOwnServers(channelId, serverIds, makePrivate = false)
 }
@@ -128,6 +133,9 @@ internal sealed interface CreateExternalChannelIntent {
     data class SetText(val text: String) : CreateExternalChannelIntent
 
     data class SetServers(val serverIds: Set<String>) : CreateExternalChannelIntent
+
+    /** A member's "Invite to connect their server" box on the review. */
+    data class SetConnectInvite(val email: String, val checked: Boolean) : CreateExternalChannelIntent
 
     /** Step 2's Create and Invite: the review, nothing created. */
     data object Review : CreateExternalChannelIntent
@@ -159,6 +167,7 @@ internal class CreateExternalChannelStore(
             CreateExternalChannelIntent.LoadServers -> loadServers()
             is CreateExternalChannelIntent.SetText -> updateInvite { it.copy(text = intent.text, failure = null) }
             is CreateExternalChannelIntent.SetServers -> updateInvite { if (it.busy) it else it.copy(serverIds = intent.serverIds) }
+            is CreateExternalChannelIntent.SetConnectInvite -> updateInvite { it.withConnectInvite(intent.email, intent.checked) }
             CreateExternalChannelIntent.Review -> review()
             CreateExternalChannelIntent.BackToPeople ->
                 mutableState.update {
@@ -217,7 +226,7 @@ internal class CreateExternalChannelStore(
             val answer = (result as? DataResult.Content)?.data
             updateInvite { current ->
                 when (answer) {
-                    is ExternalInviteAnswer.Ok -> current.copy(busy = false, preview = answer.value)
+                    is ExternalInviteAnswer.Ok -> current.copy(busy = false, preview = answer.value, noConnectInvite = emptySet())
                     is ExternalInviteAnswer.Refused -> current.copy(busy = false, failure = answer.refusal.toFailure())
                     null -> current.copy(busy = false, failure = result.externalInviteFailureOf())
                 }
@@ -230,7 +239,8 @@ internal class CreateExternalChannelStore(
         val invite = state.invite
         val preview = invite.preview ?: return
         if (!invite.canSend) return
-        val addresses = preview.valid + preview.alreadyMembers
+        val addresses = invite.sendAddresses
+        val connectMemberEmails = invite.connectMemberEmails
         val chosen = invite.chosenServers
         updateInvite { it.copy(busy = true, failure = null) }
         scope.launch {
@@ -260,7 +270,7 @@ internal class CreateExternalChannelStore(
             var sent = 0
             var added = 0
             if (addresses.isNotEmpty()) {
-                val result = dataSource.send(channelId, addresses)
+                val result = dataSource.send(channelId, addresses, connectMemberEmails)
                 when (val answer = (result as? DataResult.Content)?.data) {
                     is ExternalInviteAnswer.Ok -> {
                         sent = answer.value.sent.size

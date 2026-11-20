@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.AnnotatedString
 import build.raft.app.data.InviteConnectableServer
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
+import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftMultiChoiceList
 import androidx.compose.ui.Alignment
@@ -70,6 +71,7 @@ internal const val ExternalInviteErrorTag = "external-invite-error"
 internal const val ExternalInviteUpgradeTag = "external-invite-upgrade"
 internal const val ExternalInvitePrivateWarningTag = "external-invite-private-warning"
 internal const val ExternalInviteReviewRowTag = "external-invite-review-row"
+internal const val ExternalInviteConnectMemberTag = "external-invite-connect-member"
 internal const val ExternalInviteNothingToSendTag = "external-invite-nothing-to-send"
 internal const val ExternalInviteSlotsTag = "external-invite-slots"
 internal const val ExternalInviteRowTag = "external-invite-row"
@@ -347,6 +349,7 @@ internal fun ExternalInviteSheet(
     onDismiss: () -> Unit,
     onTextChange: (String) -> Unit,
     onServersChange: (Set<String>) -> Unit = {},
+    onConnectInviteChange: (email: String, checked: Boolean) -> Unit = { _, _ -> },
     onNext: () -> Unit,
     onBack: () -> Unit,
     onSend: () -> Unit,
@@ -384,6 +387,7 @@ internal fun ExternalInviteSheet(
                 onUpgrade,
                 serversHistoryHint = serversHistoryHint,
                 onServersChange = onServersChange,
+                onConnectInviteChange = onConnectInviteChange,
             )
         }
     }
@@ -401,6 +405,7 @@ internal fun ExternalInviteSheetBody(
     onUpgrade: () -> Unit,
     serversHistoryHint: Boolean = false,
     onServersChange: (Set<String>) -> Unit = {},
+    onConnectInviteChange: (email: String, checked: Boolean) -> Unit = { _, _ -> },
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -454,6 +459,18 @@ internal fun ExternalInviteSheetBody(
                             description = externalInviteReviewStatusText(row, serverName),
                             wrapDescription = true,
                         )
+                        if (row.connectInvite) {
+                            // Web `ConnectInviteCheckbox` (slock #15279): checked by default; the
+                            // member is added (or stays) either way, checked they are also invited
+                            // to connect a server of theirs.
+                            RaftCheckboxRow(
+                                label = stringResource(Res.string.channel_external_invite_invite_to_connect),
+                                checked = row.email !in dialog.noConnectInvite,
+                                onCheckedChange = { checked -> onConnectInviteChange(row.email, checked) },
+                                enabled = !dialog.busy,
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp).testTag(ExternalInviteConnectMemberTag),
+                            )
+                        }
                     }
                 }
             }
@@ -621,6 +638,7 @@ private fun externalInviteReviewStatusText(row: ExternalInviteReviewRow, serverN
         ExternalInviteReviewStatus.Duplicate -> stringResource(Res.string.channel_external_invite_status_duplicate)
         ExternalInviteReviewStatus.AlreadyInvited -> stringResource(Res.string.channel_external_invite_status_already_invited)
         ExternalInviteReviewStatus.AlreadyInChannel -> stringResource(Res.string.channel_external_invite_status_already_in_channel)
+        ExternalInviteReviewStatus.MemberInChannel -> stringResource(Res.string.channel_external_invite_status_member_in_channel)
         ExternalInviteReviewStatus.GuestElsewhere ->
             stringResource(Res.string.channel_external_invite_status_guest_elsewhere, row.channel.orEmpty()) + "\n" +
                 stringResource(Res.string.channel_external_invite_status_guest_elsewhere_hint, serverName, row.channel.orEmpty())

@@ -223,6 +223,9 @@ internal fun SharedCreateChannelDialog(
         SharedCreateExternalChannelReview(
             state = externalState,
             serverName = serverName,
+            onConnectInviteChange = { email, checked ->
+                externalStore.dispatch(CreateExternalChannelIntent.SetConnectInvite(email, checked))
+            },
             onCommit = {
                 val chosen = selectedMembers()
                 onExternalCommitStart()

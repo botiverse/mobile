@@ -1,6 +1,12 @@
 package build.raft.app
 
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.Json
 import build.raft.app.data.ChannelExternalInvite
+import build.raft.app.data.buildSharedExternalInviteEmailsBody
 import build.raft.app.data.ChannelExternalInviteList
 import build.raft.app.data.DataResult
 import build.raft.app.data.ExternalInviteAnswer
@@ -48,7 +54,13 @@ internal class FakeExternalInvitesDataSource : ExternalInvitesDataSource {
 
     override suspend fun preview(emails: List<String>) = previewAnswer.also { previewCalls += emails }
 
-    override suspend fun send(emails: List<String>, makePrivate: Boolean) = sendAnswer.also { sendCalls += emails to makePrivate }
+    val connectMemberCalls = mutableListOf<List<String>>()
+
+    override suspend fun send(emails: List<String>, makePrivate: Boolean, connectMemberEmails: List<String>) =
+        sendAnswer.also {
+            sendCalls += emails to makePrivate
+            connectMemberCalls += connectMemberEmails
+        }
 
     override suspend fun resend(inviteId: String) = resendAnswer.also { resendCalls += inviteId }
 
@@ -182,6 +194,60 @@ class ExternalInvitesStoreTest {
     }
 
     @Test
+    fun membersGetInviteToConnectBoxesAndUncheckedOnesAreOnlyAdded() = runTest {
+        val preview =
+            ExternalInvitePreview(
+                valid = listOf("new@example.com"),
+                alreadyMembers = listOf("m@example.com", "n@example.com"),
+                alreadyInChannel = listOf("here@example.com", "guest@example.com"),
+                alreadyInChannelMembers = listOf("here@example.com"),
+                slotsLeft = 28,
+            )
+        val rows = externalInviteReviewRows(preview)
+        assertEquals(
+            listOf("m@example.com", "n@example.com", "here@example.com"),
+            rows.filter { it.connectInvite }.map { it.email },
+        )
+        assertEquals(ExternalInviteReviewStatus.MemberInChannel, rows.first { it.email == "here@example.com" }.status)
+        assertEquals(ExternalInviteReviewStatus.AlreadyInChannel, rows.first { it.email == "guest@example.com" }.status)
+
+        val source = FakeExternalInvitesDataSource()
+        source.previewAnswer = DataResult.Content(ExternalInviteAnswer.Ok(preview))
+        val store = ExternalInvitesStore(this, source)
+        store.dispatch(ExternalInvitesIntent.OpenDialog())
+        store.dispatch(ExternalInvitesIntent.SetText("new@example.com m@example.com n@example.com here@example.com guest@example.com"))
+        store.dispatch(ExternalInvitesIntent.Next)
+        runCurrent()
+        // The invite, two members added, and the member here invited to connect.
+        assertEquals(4, assertNotNull(store.state.value.dialog).actionCount)
+        store.dispatch(ExternalInvitesIntent.SetConnectInvite("n@example.com", checked = false))
+        store.dispatch(ExternalInvitesIntent.SetConnectInvite("here@example.com", checked = false))
+        // Unchecked: n is still added; the member here has nothing left to send.
+        assertEquals(3, assertNotNull(store.state.value.dialog).actionCount)
+        store.dispatch(ExternalInvitesIntent.SetConnectInvite("here@example.com", checked = true))
+
+        store.dispatch(ExternalInvitesIntent.Send(makePrivate = false))
+        runCurrent()
+        assertEquals(
+            listOf(listOf("new@example.com", "m@example.com", "n@example.com", "here@example.com") to false),
+            source.sendCalls,
+        )
+        assertEquals(listOf(listOf("m@example.com", "here@example.com")), source.connectMemberCalls)
+    }
+
+    @Test
+    fun theSendBodyCarriesConnectInviteMemberEmailsOnlyWhenThereAreAny() {
+        val plain = Json.parseToJsonElement(buildSharedExternalInviteEmailsBody(listOf("a@x.co"))).jsonObject
+        assertEquals(setOf("emails"), plain.keys)
+        val withMembers =
+            Json.parseToJsonElement(
+                buildSharedExternalInviteEmailsBody(listOf("a@x.co", "m@x.co"), makePrivate = true, connectInviteMemberEmails = listOf("m@x.co"))
+            ).jsonObject
+        assertEquals(listOf("m@x.co"), withMembers.getValue("connectInviteMemberEmails").jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(true, withMembers.getValue("makePrivate").jsonPrimitive.boolean)
+    }
+
+    @Test
     fun slotsAreSaidOnlyWhenTheSendCouldReachThem() {
         assertNull(externalInviteSlotsLine(slotsLeft = null, taking = 3))
         assertEquals(ExternalInviteSlotsLine.Full, externalInviteSlotsLine(slotsLeft = 0, taking = 1))
@@ -219,6 +285,8 @@ class ExternalInvitesStoreTest {
         store.dispatch(ExternalInvitesIntent.Send(makePrivate = true))
         runCurrent()
         assertEquals(listOf(listOf("new@example.com", "m@example.com") to true), source.sendCalls)
+        // A member added directly is invited to connect by default (slock #15279).
+        assertEquals(listOf(listOf("m@example.com")), source.connectMemberCalls)
         assertNull(store.state.value.dialog)
         assertEquals(listOf(ExternalInvitesEffect.Sent(1), ExternalInvitesEffect.Added(1)), store.state.value.effects)
         // The list is read again after a send.

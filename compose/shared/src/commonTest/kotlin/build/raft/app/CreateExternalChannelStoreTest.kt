@@ -56,7 +56,11 @@ private class FakeCreateExternalChannelDataSource : CreateExternalChannelDataSou
 
     override suspend fun create(request: CreateChannelRequest) = createAnswer.also { createCalls += request }
 
-    override suspend fun send(channelId: ChannelId, emails: List<String>): DataResult<ExternalInviteAnswer<SendExternalInvitesResult>> {
+    override suspend fun send(
+        channelId: ChannelId,
+        emails: List<String>,
+        connectMemberEmails: List<String>,
+    ): DataResult<ExternalInviteAnswer<SendExternalInvitesResult>> {
         sendCalls += channelId to emails
         sendGate?.await()
         return sendAnswers.removeFirstOrNull()

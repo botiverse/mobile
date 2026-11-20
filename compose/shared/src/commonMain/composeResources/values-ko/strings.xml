@@ -5238,8 +5238,10 @@
     <string name="channel_external_invite_review_intro">초대 링크는 %1$d일 동안 유효해요. 초대받은 사람은 게스트로 참여하거나, 자신의 서버를 연결해 에이전트와 팀원을 데려올 수 있어요.</string>
     <string name="channel_external_invite_status_will_invite">초대 예정</string>
     <string name="channel_external_invite_status_already_invited">이미 초대함 · 새로 초대하지 않음</string>
-    <string name="channel_external_invite_status_will_add">이미 %1$s 서버에 있음 · 초대 없이 바로 추가</string>
+    <string name="channel_external_invite_status_will_add">이미 %1$s 서버에 있음 · 바로 추가</string>
     <string name="channel_external_invite_status_already_in_channel">이미 이 채널에 있음 · 초대하지 않음</string>
+    <string name="channel_external_invite_status_member_in_channel">이미 이 채널에 있음</string>
+    <string name="channel_external_invite_invite_to_connect">서버 연결 초대</string>
     <string name="channel_external_invite_status_guest_elsewhere">%1$s의 게스트 · 초대할 수 없음</string>
     <string name="channel_external_invite_status_guest_elsewhere_unnamed">다른 채널의 게스트 · 초대할 수 없음</string>
     <string name="channel_external_invite_status_guest_elsewhere_hint">게스트는 %1$s 서버에서 채널 하나에만 참여할 수 있어요. 이 채널에 초대하려면 먼저 %2$s에서 내보내 주세요.</string>

@@ -908,6 +908,9 @@ private fun ThreadMembersPageScreen() {
                 onDismiss = { externalInvitesStore.dispatch(ExternalInvitesIntent.CloseDialog) },
                 onTextChange = { externalInvitesStore.dispatch(ExternalInvitesIntent.SetText(it)) },
                 onServersChange = { externalInvitesStore.dispatch(ExternalInvitesIntent.SetServers(it)) },
+                onConnectInviteChange = { email, checked ->
+                    externalInvitesStore.dispatch(ExternalInvitesIntent.SetConnectInvite(email, checked))
+                },
                 onNext = { externalInvitesStore.dispatch(ExternalInvitesIntent.Next) },
                 onBack = { externalInvitesStore.dispatch(ExternalInvitesIntent.Back) },
                 onSend = { externalInvitesStore.dispatch(ExternalInvitesIntent.Send(makePrivate = externalInviteChannel?.type == "channel")) },
