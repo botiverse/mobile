@@ -5874,8 +5874,11 @@ private fun SharedThreadRouteContentContent(
                         // The chip is already on screen; resolve upload limits in the background
                         // (cache hit, or one shared request) and fail open to multipart on error.
                         var taskCapabilities = directCapabilities
+                        bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace caps_begin id=$localAttachmentId cached=${taskCapabilities != null} op=${directUploadOperation != null}")
                         if (taskCapabilities == null && directUploadOperation != null) {
-                            when (val fetched = dataSource.attachmentUploadCapabilities(directUploadOperation)) {
+                            val fetchedCaps = dataSource.attachmentUploadCapabilities(directUploadOperation)
+                            bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace caps_end id=$localAttachmentId result=${fetchedCaps::class.simpleName}")
+                            when (val fetched = fetchedCaps) {
                                 is DataResult.Content -> taskCapabilities = fetched.data
                                 is DataResult.NoPermission -> routeAuthRequired(fetched)
                                 is DataResult.Error,
@@ -5884,7 +5887,9 @@ private fun SharedThreadRouteContentContent(
                         }
                         val uploadResult =
                             withContext(Dispatchers.Default) {
+                                bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace permit_wait id=$localAttachmentId available=${attachmentUploadSemaphore.availablePermits}")
                                 attachmentUploadSemaphore.withPermit {
+                                    bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace permit_got id=$localAttachmentId")
                                     val resolvedUpload =
                                         when (
                                             val resolved =
@@ -5922,6 +5927,7 @@ private fun SharedThreadRouteContentContent(
                                         }
                                     val uploadFile = resolvedUpload.file
                                     val decision = resolvedUpload.decision
+                                    bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace resolved id=$localAttachmentId decision=$decision bytes=${uploadFile.sizeBytes}")
                                     // This attempt's upload meter. The engine reports the bytes it wrote; the percent stays
                                     // at 99 until the server confirmed the upload (the ready attachment is the 100%). Until the
                                     // first publish the chip says "Checking file…" (size, limits, upload session).
@@ -5932,6 +5938,7 @@ private fun SharedThreadRouteContentContent(
                                         draftUploads.progress(draftKey, localAttachmentId, uploadAttemptToken, transfer)
                                     }
                                     fun publishPhaseProgress(phase: ThreadComposerDirectUploadPhase) {
+                                        bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace phase id=$localAttachmentId phase=$phase")
                                         when (phase) {
                                             // Still checking: the upload session is being created.
                                             ThreadComposerDirectUploadPhase.Creating -> Unit
@@ -5986,12 +5993,14 @@ private fun SharedThreadRouteContentContent(
                                     }
                                 }
                             }
+                        bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace result id=$localAttachmentId result=${uploadResult::class.simpleName} error=${(uploadResult as? DataResult.Error)?.error?.code}")
                         val published =
                             draftUploads.orchestrator.publishIfAccepted(
                                 localAttachmentId,
                                 draftKey,
                                 uploadAttemptToken
                             ) {
+                                bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace publish_accepted id=$localAttachmentId")
                                 when (uploadResult) {
                                     is DataResult.Content -> {
                                         val previewUri = file.composerLocalPreviewUri()
