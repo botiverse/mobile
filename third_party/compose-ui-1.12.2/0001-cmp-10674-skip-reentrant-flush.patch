@@ -1,0 +1,112 @@
+diff --git a/compose/ui/ui/src/skikoMain/kotlin/androidx/compose/ui/platform/FlushCoroutineDispatcher.skiko.kt b/compose/ui/ui/src/skikoMain/kotlin/androidx/compose/ui/platform/FlushCoroutineDispatcher.skiko.kt
+index 199b3498c3e12..433c68515c153 100644
+--- a/compose/ui/ui/src/skikoMain/kotlin/androidx/compose/ui/platform/FlushCoroutineDispatcher.skiko.kt
++++ b/compose/ui/ui/src/skikoMain/kotlin/androidx/compose/ui/platform/FlushCoroutineDispatcher.skiko.kt
+@@ -46,8 +46,9 @@ internal class FlushCoroutineDispatcher(
+     private val immediateTasksLock = makeSynchronizedObject()
+     private val delayedTasksLock = makeSynchronizedObject()
+     private var immediateTasksSwap = ArrayDeque<Runnable>()
++    /** Nesting depth of [performRun]; mutated only under [runLock]. */
+     @Volatile
+-    private var isPerformingRun = false
++    private var performRunDepth = 0
+     private val runLock = makeSynchronizedObject()
+ 
+     override fun isDispatchNeeded(context: CoroutineContext): Boolean {
+@@ -74,7 +75,7 @@ internal class FlushCoroutineDispatcher(
+     /**
+      * Whether the dispatcher has immediate tasks pending.
+      */
+-    fun hasImmediateTasks() = isPerformingRun ||
++    fun hasImmediateTasks() = performRunDepth > 0 ||
+         synchronized(immediateTasksLock) { immediateTasks.isNotEmpty() }
+ 
+     /**
+@@ -85,8 +86,14 @@ internal class FlushCoroutineDispatcher(
+     /**
+      * Perform all scheduled tasks and wait for the tasks which are already
+      * performing in the [scope].
++     *
++     * A nested call from a running task is a no-op, so tasks never run inside another task.
++     * Pending tasks are run by the outer [flush].
+      */
+     fun flush() = performRun {
++        // Called from a task that is already running: skip, the outer run executes pending tasks
++        if (performRunDepth > 1) return@performRun
++
+         // Run tasks until they're empty in order to executed even ones that are added by the tasks
+         // pending at the start
+         while (true) {
+@@ -106,11 +113,11 @@ internal class FlushCoroutineDispatcher(
+ 
+     // the lock is needed to be certain that all tasks will be completed after `flush` method
+     private fun performRun(body: () -> Unit) = synchronized(runLock) {
++        performRunDepth++
+         try {
+-            isPerformingRun = true
+             body()
+         } finally {
+-            isPerformingRun = false
++            performRunDepth--
+         }
+     }
+ 
+diff --git a/compose/ui/ui/src/skikoTest/kotlin/androidx/compose/ui/platform/FlushCoroutineDispatcherTest.kt b/compose/ui/ui/src/skikoTest/kotlin/androidx/compose/ui/platform/FlushCoroutineDispatcherTest.kt
+index d456262902ac2..a671f8c5389eb 100644
+--- a/compose/ui/ui/src/skikoTest/kotlin/androidx/compose/ui/platform/FlushCoroutineDispatcherTest.kt
++++ b/compose/ui/ui/src/skikoTest/kotlin/androidx/compose/ui/platform/FlushCoroutineDispatcherTest.kt
+@@ -222,4 +222,54 @@ class FlushCoroutineDispatcherTest {
+         channel.trySend(Unit)
+         assertTrue(dispatcher.hasImmediateTasks())
+     }
++
++    @Test
++    fun reentrant_flush_does_not_run_tasks_twice() = runTest {
++        val dispatcher = FlushCoroutineDispatcher(CoroutineScope(IgnoringCoroutineDispatcher()))
++
++        val executed = mutableListOf<String>()
++        var reentered = false
++        // Models the iOS text-input path: a task synchronously dispatches new work and re-enters
++        // flush() (updateView -> performFrame -> performTrampolineDispatch -> flush).
++        dispatcher.dispatch(EmptyCoroutineContext, Runnable {
++            executed.add("a")
++            if (!reentered) {
++                reentered = true
++                dispatcher.dispatch(EmptyCoroutineContext, Runnable { executed.add("c") })
++                dispatcher.flush()
++            }
++        })
++        dispatcher.dispatch(EmptyCoroutineContext, Runnable { executed.add("b") })
++
++        dispatcher.flush()
++
++        assertEquals(listOf("a", "b", "c"), executed)
++    }
++
++    @Test
++    fun reentrant_flush_does_not_run_tasks_inside_running_task() = runTest {
++        val dispatcher = FlushCoroutineDispatcher(CoroutineScope(IgnoringCoroutineDispatcher()))
++
++        val executed = mutableListOf<String>()
++        dispatcher.dispatch(EmptyCoroutineContext, Runnable {
++            executed.add("a:start")
++            dispatcher.dispatch(EmptyCoroutineContext, Runnable { executed.add("b") })
++            dispatcher.flush()
++            assertTrue(dispatcher.hasImmediateTasks())
++            executed.add("a:end")
++        })
++
++        dispatcher.flush()
++
++        assertEquals(listOf("a:start", "a:end", "b"), executed)
++        assertFalse(dispatcher.hasImmediateTasks())
++    }
++
++    /**
++     * Never runs the dispatched blocks, so [FlushCoroutineDispatcher] tasks run only via
++     * [FlushCoroutineDispatcher.flush].
++     */
++    private class IgnoringCoroutineDispatcher : CoroutineDispatcher() {
++        override fun dispatch(context: CoroutineContext, block: Runnable) = Unit
++    }
+ }
