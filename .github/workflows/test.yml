@@ -615,7 +615,7 @@ jobs:
             :ui-cmp:compileAndroidHostTest
             :designsystem:compileTestKotlinDesktop
             # App identity receipt: the store variants' merged manifests declare
-            # AppIdentityReceiptProvider disabled + DUMP-protected (manifest merge only, no R8).
+            # AppIdentityReceiptProvider enabled + DUMP-protected (manifest merge only, no R8).
             :androidApp:verifyReleaseIdentityReceiptProvider
             :androidApp:verifyPlayIdentityReceiptProvider
           )

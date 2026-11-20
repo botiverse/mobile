@@ -1,19 +1,26 @@
 // Runner side of the Android app identity receipt (`raft-app-identity-receipt/v1`,
-// AppIdentityReceiptProvider). The provider ships DISABLED in every build; the runner:
+// AppIdentityReceiptProvider). New packages ship the provider ENABLED (Android 14+ shell cannot
+// change a component's state in a signed release: "Shell cannot change component state"); 1.27.0
+// and earlier ship it DISABLED and are debuggable/alpha packages the shell can enable. The runner:
 //
 //   1. probes the installed package for the provider BEFORE any account is used. A build without
 //      it (every 1.26.x) cannot give a receipt: the run fails with "this build does not support the
-//      identity receipt", no fallback;
-//   2. `pm enable`s it BEFORE sign-in (changing a component's state kills the app process, so it
-//      must not happen after the app is signed in and on screen);
+//      identity receipt", no fallback. The probe also learns the provider's start state
+//      (PROVIDER_START_STATES) by asking it a method it refuses (`content call --method probe`:
+//      no nonce, no receipt, not counted against the answer limit). `dumpsys package` cannot tell:
+//      it lists a provider whatever its manifest says and shows only `pm enable/disable` overrides;
+//   2. only when the package ships it disabled: `pm enable`s it BEFORE sign-in (changing a
+//      component's state kills the app process, so it must not happen after the app is signed in
+//      and on screen). A package that ships it enabled gets no `pm enable` and no `pm disable`;
 //   3. after the normal sign-in, asks it once with `content call` (Testbed's attempt id + nonce and
 //      a fresh request id) and cross-checks what the app says against what the OS says:
 //      package + versionCode + debuggable from `dumpsys package`, the signer from the installed APK
 //      (`pm path` + AppIdentityApkSigner.java on apksig 36.0.0: the certificate a released
 //      platform of the device's SDK uses, from the structured v3/v3.1 result), the pid before and
 //      after; the complete receipt + OS facts go privately to Testbed, which decides;
-//   4. `pm disable`s it again in cleanup. A disable that fails or cannot be confirmed is reported
-//      loudly (::error:: + non-zero exit), never ignored.
+//   4. in cleanup `pm disable`s it again, only if this run enabled it. A disable that fails or
+//      cannot be confirmed is reported loudly (::error:: + non-zero exit), never ignored. The
+//      cleanup status is one of PROVIDER_CLEANUP_STATUSES.
 //
 // user_ref / server_ref are verification digests salted with the attempt nonce (same vector as
 // Testbed): they confirm the expected account and server without the receipt carrying either.
@@ -90,6 +97,59 @@ export function contentCallCommand(pkg, request) {
 export function providerDeclared(dumpsysPackage, pkg) {
   const text = String(dumpsysPackage ?? "");
   return text.includes(`[${authorityFor(pkg)}]`) || text.includes(PROVIDER_CLASS) || text.includes(`${pkg}/.core.data.auth.AppIdentityReceiptProvider`);
+}
+
+/**
+ * How the installed package had the provider when the run started:
+ *   enabled_by_package – it answers and no `pm enable` override exists: the package ships it enabled.
+ *                        The run changes nothing (no `pm enable`, no `pm disable`).
+ *   disabled           – it cannot be acquired ("Could not find provider"), or it answers only
+ *                        because of a left-over `pm enable` override (dumpsys `enabledComponents:`):
+ *                        the package ships it disabled (1.27.0 and earlier). `pm enable` / `pm disable`.
+ *   unknown            – the probe gave neither answer. `pm enable` is still tried (so an older
+ *                        package keeps working); if that fails the run stops and changes nothing.
+ */
+export const PROVIDER_START_STATES = ["enabled_by_package", "disabled", "unknown"];
+
+/**
+ * The `identity_receipt_provider` cleanup status (summary.json `cleanup`), every value:
+ *   disabled           – older package: this run enabled the provider and disabled it again.   PASSES
+ *   enabled_by_package – new package: enabled from the start, not changed by this run.         PASSES
+ *   unknown            – the start state could not be read and nothing was confirmed changed.  does not pass
+ *   failed             – this run enabled it with `pm enable` and could not disable it.        does not pass
+ *   not_enabled        – the run stopped before the provider was probed or enabled (nothing
+ *                        changed; such a run has already failed).
+ */
+export const PROVIDER_CLEANUP_STATUSES = ["disabled", "enabled_by_package", "unknown", "failed", "not_enabled"];
+
+export const PROBE_METHOD = "probe";
+/** A request the provider refuses with `unknown_method`: carries nothing, changes nothing. */
+export const probeCallCommand = (pkg) => `content call --uri content://${authorityFor(pkg)} --method ${PROBE_METHOD}`;
+
+/**
+ * A `pm enable` / `pm disable` override of the provider in `dumpsys package` (the per-user
+ * `enabledComponents:` / `disabledComponents:` lists): "enabled", "disabled" or null (none; the
+ * manifest decides, and dumpsys does not print what the manifest says).
+ */
+export function providerOverride(dumpsysPackage) {
+  let list = null;
+  for (const line of String(dumpsysPackage ?? "").split("\n")) {
+    const header = /^\s*(enabled|disabled)Components:\s*$/.exec(line);
+    if (header) { list = header[1]; continue; }
+    if (!list) continue;
+    const entry = /^\s+([\w.$]+)\s*$/.exec(line)?.[1];
+    if (!entry) { list = null; continue; }
+    if (entry === PROVIDER_CLASS) return list;
+  }
+  return null;
+}
+
+/** The start state from the probe call's output and the package dump. */
+export function providerStartState(probeOutput, dumpsysPackage) {
+  const text = String(probeOutput ?? "");
+  if (/Result: Bundle\[\{error=[a-z_]+\}\]/.test(text)) return providerOverride(dumpsysPackage) === "enabled" ? "disabled" : "enabled_by_package";
+  if (/Could not find provider/i.test(text)) return "disabled";
+  return "unknown";
 }
 
 /** `content call` prints `Result: Bundle[{receipt=<json>}]` or `Result: Bundle[{error=<code>}]`. */
@@ -357,11 +417,12 @@ export function procStartTicks(stat) {
 
 /**
  * Drives the provider over `shell(command) -> { status, stdout, stderr }` (adb shell). Enforces the
- * order: probe -> enable -> (sign-in) -> call -> disable.
+ * order: probe -> enable (a no-op for a package that ships it enabled) -> (sign-in) -> call ->
+ * disable (only what this run enabled).
  */
 export function createIdentityReceiptRunner({ shell, shellPrivate = shell, pkg }) {
   requirePackage(pkg);
-  const state = { probed: false, enableAttempted: false, enabled: false, signInStarted: false, disabled: false };
+  const state = { probed: false, startState: null, enableAttempted: false, enabled: false, signInStarted: false, disabled: false };
   const out = (result) => `${result?.stdout ?? ""}${result?.stderr ?? ""}`;
   const pidOf = () => {
     const pid = String(shell(`pidof ${pkg}`).stdout ?? "").trim();
@@ -370,7 +431,10 @@ export function createIdentityReceiptRunner({ shell, shellPrivate = shell, pkg }
   const startTicks = (pid) => (pid ? procStartTicks(shell(`cat /proc/${pid}/stat`).stdout) : null);
   return {
     state,
-    /** Before any account is used. Throws UnsupportedBuildError when the build has no provider. */
+    /**
+     * Before any account is used. Throws UnsupportedBuildError when the build has no provider.
+     * Sets `state.startState`; a package that ships the provider enabled is ready to call.
+     */
     probe() {
       const dump = shell(`dumpsys package ${pkg}`);
       const text = out(dump);
@@ -379,18 +443,25 @@ export function createIdentityReceiptRunner({ shell, shellPrivate = shell, pkg }
         const versionCode = /versionCode=(\d+)/.exec(text)?.[1] ?? "?";
         throw new UnsupportedBuildError(`${UNSUPPORTED_MESSAGE}: ${pkg} versionCode=${versionCode} has no AppIdentityReceiptProvider`);
       }
+      state.startState = providerStartState(out(shell(probeCallCommand(pkg))), text);
+      if (state.startState === "enabled_by_package") state.enabled = true;
       state.probed = true;
     },
-    /** Must run before sign-in: enabling a component kills the app process. */
+    /**
+     * Makes the provider callable. A package that ships it enabled: nothing to do, at any time.
+     * Otherwise `pm enable`, which must run before sign-in: changing a component's state kills
+     * the app process.
+     */
     enable() {
       if (!state.probed) throw new Error("identity receipt: probe the build before enabling the provider");
+      if (state.startState === "enabled_by_package") return;
       if (state.signInStarted) throw new Error("identity receipt: enable the provider before sign-in (enabling kills the signed-in app)");
       state.enableAttempted = true;
       const result = shell(`pm enable ${componentFor(pkg)}`);
       if (result.status !== 0 || !/new state: enabled/.test(out(result))) {
         const detail = out(result).trim().slice(0, 200);
         if (/does not exist|Unknown component/i.test(detail)) throw new UnsupportedBuildError(`${UNSUPPORTED_MESSAGE}: ${detail}`);
-        throw new Error(`identity receipt: pm enable failed: ${detail}`);
+        throw new Error(`identity receipt: pm enable failed${state.startState === "unknown" ? " (the provider did not answer the probe either)" : ""}: ${detail}`);
       }
       state.enabled = true;
     },
@@ -414,8 +485,17 @@ export function createIdentityReceiptRunner({ shell, shellPrivate = shell, pkg }
       }
       return { receipt: parseReceipt(answer.receipt, { paired: Boolean(request.pairingSalt) }), os };
     },
-    /** Cleanup. Never throws; { ok:false } must be reported loudly by the caller. */
+    /**
+     * Cleanup. Never throws. `status` is one of PROVIDER_CLEANUP_STATUSES. `ok: false` only for
+     * "failed" (a provider this run enabled is still enabled): the caller must report it loudly.
+     * "unknown" is `ok: true` (nothing to annotate: this run left nothing enabled that it knows
+     * of) but is not a passing status.
+     */
     disable() {
+      // Enabled by the package: this run made no change, so there is nothing to undo.
+      if (state.startState === "enabled_by_package") return { ok: true, status: "enabled_by_package" };
+      // Start state unread and `pm enable` not confirmed: no `pm disable` on a state we do not know.
+      if (state.startState === "unknown" && !state.enabled) return { ok: true, status: "unknown" };
       if (!state.enableAttempted) return { ok: true, status: "not_enabled" };
       const result = shell(`pm disable ${componentFor(pkg)}`);
       const text = out(result).trim();
@@ -429,7 +509,7 @@ export function createIdentityReceiptRunner({ shell, shellPrivate = shell, pkg }
   };
 }
 
-/** A GitHub Actions error annotation for a provider left enabled. */
+/** A GitHub Actions error annotation for a provider this run enabled and could not disable. */
 export function disableFailureAnnotation(pkg, detail) {
   return `::error title=identity receipt provider left enabled::pm disable ${componentFor(pkg)} failed (${String(detail ?? "").replace(/[\r\n]+/g, " ")}); disable it by hand before reusing this device`;
 }
@@ -476,8 +556,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? String(r.error ?? "") };
   };
   try {
-    createIdentityReceiptRunner({ shell, pkg }).probe();
-    console.log(`identity receipt: ${pkg} has the provider`);
+    const runner = createIdentityReceiptRunner({ shell, pkg });
+    runner.probe();
+    console.log(`identity receipt: ${pkg} has the provider (start state: ${runner.state.startState})`);
   } catch (error) {
     console.error(`::error title=identity receipt unsupported::${error.message}`);
     process.exit(error instanceof UnsupportedBuildError ? 3 : 1);

@@ -3,11 +3,13 @@ package build.raft.app.core.data.auth
 import android.app.Application
 import android.content.pm.ProviderInfo
 import android.os.Bundle
+import android.os.Process
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -37,18 +39,32 @@ class AppIdentityReceiptProviderCallTest {
     }
 
     @Test
-    fun anotherAppsUidGetsOnlyARefusalCode() {
-        for (uid in listOf(1000, 10_123)) {
+    fun anyUidButShellOrRootGetsOnlyARefusalCode() {
+        // The provider ships enabled, so this is the gate: the app's own uid, system, other system
+        // uids, ordinary apps (10xxx), an isolated process, a secondary user's app, an invalid uid.
+        val uids = listOf(Process.myUid(), 1000, 1001, 1002, 1999, 2001, 9999, 10_000, 10_123, 19_999, 99_000, 1_010_123, -1)
+        for (uid in uids) {
             ShadowBinder.setCallingUid(uid)
             // Even a request claiming to come from the shell is refused: arguments never authorize.
             val extras = validExtras().apply { putString("caller", "shell") }
             for (request in listOf(validExtras(), extras)) {
                 val result = provider.call("receipt_v1", null, request)
-                assertEquals(setOf(AppIdentityReceiptProvider.RESULT_ERROR), result.keySet())
-                assertEquals("caller_not_allowed", result.getString(AppIdentityReceiptProvider.RESULT_ERROR))
-                assertNull(result.getString(AppIdentityReceiptProvider.RESULT_RECEIPT))
+                assertEquals("uid $uid", setOf(AppIdentityReceiptProvider.RESULT_ERROR), result.keySet())
+                assertEquals("uid $uid", "caller_not_allowed", result.getString(AppIdentityReceiptProvider.RESULT_ERROR))
+                assertNull("uid $uid", result.getString(AppIdentityReceiptProvider.RESULT_RECEIPT))
             }
         }
+        // Refusals did not use up any answer: the shell is still answered past the uid gate.
+        ShadowBinder.setCallingUid(AppIdentityReceiptResponder.SHELL_UID)
+        assertNotEquals("caller_not_allowed", provider.call("receipt_v1", null, validExtras()).getString(AppIdentityReceiptProvider.RESULT_ERROR))
+    }
+
+    @Test
+    fun creatingTheProviderAtProcessStartDoesNoWork() {
+        // Enabled providers are created before Application.onCreate: no context, nothing initialized.
+        val bare = AppIdentityReceiptProvider()
+        assertTrue(bare.onCreate())
+        assertNull("onCreate must not need a context", bare.context)
     }
 
     @Test

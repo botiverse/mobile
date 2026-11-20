@@ -210,7 +210,7 @@ class AppIdentityReceiptVectorTest {
 
     @Test
     fun nonShellOrRootCallerIsRefusedWithoutReadingAnything() {
-        for (uid in listOf(1000, 1001, 2001, 10_000, 10_123, 99_999, -1)) {
+        for (uid in listOf(1, 1000, 1001, 1999, 2001, 9999, 10_000, 10_123, 19_999, 99_000, 99_999, 1_010_123, -1)) {
             val responder = AppIdentityReceiptResponder()
             var reads = 0
             val result = responder.respond(uid, "receipt_v1", null, validExtras()) { reads++; facts.copy(session = InMemoryAuthSessionSnapshot(session())) }

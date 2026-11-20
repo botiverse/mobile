@@ -9,8 +9,9 @@ import org.junit.Test
 import org.w3c.dom.Element
 
 /**
- * The provider ships in every build (main manifest) but disabled, DUMP-protected and without an
- * intent filter, and no build type turns it on or changes it. The QA session bootstrap entry
+ * The provider ships in every build (main manifest) enabled (Android 14+ shell cannot enable a
+ * component of a signed release), DUMP-protected and without an intent filter, and no build type
+ * or flavor changes it. The QA session bootstrap entry
  * points stay off outside alpha/connectedTest. The merged release/play manifests are checked by
  * `verify{Release,Play}IdentityReceiptProvider` in PR CI.
  */
@@ -18,11 +19,11 @@ class AppIdentityReceiptProviderManifestTest {
     private val src = locateRepoFile("compose/androidApp/src/main/AndroidManifest.xml").parentFile.parentFile
 
     @Test
-    fun mainManifestDeclaresTheProviderDisabledAndDumpProtected() {
+    fun mainManifestDeclaresTheProviderEnabledAndDumpProtected() {
         val provider =
             elements(parse(File(src, "main/AndroidManifest.xml")), "provider")
                 .single { it.getAttribute("android:name") == ".core.data.auth.AppIdentityReceiptProvider" }
-        assertEquals("false", provider.getAttribute("android:enabled"))
+        assertEquals("true", provider.getAttribute("android:enabled"))
         assertEquals("true", provider.getAttribute("android:exported"))
         assertEquals("android.permission.DUMP", provider.getAttribute("android:permission"))
         assertEquals("false", provider.getAttribute("android:multiprocess"))

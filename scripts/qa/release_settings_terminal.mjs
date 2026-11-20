@@ -7,7 +7,8 @@
 //                to its end, this run's recording is complete (started, joined, every segment
 //                collected: recording.json), and every required local/web cleanup
 //                succeeded (capture file, browser role, capture browser, the QA web session, the
-//                receipt provider disabled). The case's own verdict (agent-rc.txt) stands.
+//                receipt provider as the package ships it: see REQUIRED_CLEANUP). The case's own
+//                verdict (agent-rc.txt) stands.
 //   otherwise  = the run's login record is invalidated (markUnknown): both exits withhold every
 //                frame and file, verdict.json becomes "unknown" and agent-rc.txt 2 (not completed).
 //
@@ -61,7 +62,14 @@ export const REQUIRED_CLEANUP = {
   browser: ["restored", "not_changed"],
   capture_browser: ["uninstalled", "not_installed_by_run"],
   web_session: ["signed_out"],
-  identity_receipt_provider: ["disabled"],
+  // The receipt provider is as the package ships it (app_identity_receipt_lib.mjs
+  // PROVIDER_CLEANUP_STATUSES):
+  //   disabled           – older package (ships it disabled): this run enabled it and disabled it again;
+  //   enabled_by_package – new package (ships it enabled): enabled from the start, not changed by this run.
+  // Not accepted, each reported under its own name in the public projection: "unknown" (the start
+  // state could not be read), "failed" (this run enabled it and could not disable it),
+  // "not_enabled" (the run stopped before the provider), "missing".
+  identity_receipt_provider: ["disabled", "enabled_by_package"],
 };
 
 export function terminalDecision({ summary, rc, recording = "complete" }) {

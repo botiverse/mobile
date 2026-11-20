@@ -38,12 +38,14 @@
 //     QA_PAIRING_SALT_FILE (never argv/env value), and QA_IDENTITY_PRIVATE_OUT (a fresh 0600 file
 //     outside --out that alone receives the complete receipt and OS facts): before any account is
 //     used, check the build has the app identity receipt provider (fail "this build does not
-//     support the identity receipt" otherwise) and `pm enable` it; until Testbed answers "matched"
+//     support the identity receipt" otherwise) and, only if the package ships it disabled (1.27.0
+//     and earlier), `pm enable` it; until Testbed answers "matched"
 //     nothing is captured, the UI tree is read only transiently and failures quote no screen text;
 //     after sign-in ask the provider once, cross-check it with dumpsys and the installed APK
 //     (AppIdentityApkSigner.java), and publish only check statuses + Testbed's state in
-//     summary.json `identity_receipt`; `pm disable` it in cleanup (a failed disable is an
-//     ::error:: and a non-zero exit). scripts/qa/app_identity_receipt_lib.mjs.
+//     summary.json `identity_receipt`; in cleanup `pm disable` it if this run enabled it (a failed
+//     disable is an ::error:: and a non-zero exit); a provider the package ships enabled is never
+//     changed (cleanup status enabled_by_package). scripts/qa/app_identity_receipt_lib.mjs.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -869,7 +871,8 @@ async function main() {
       const dump = shell(`dumpsys package ${PKG}`, { allowFailure: true });
       if (!dump.includes("versionCode=")) stop(`${PKG} is not installed`);
       if (identity) {
-        // Before any account is used, and before the app first starts: enabling kills the process.
+        // Before any account is used. A package that ships the provider enabled needs no change;
+        // otherwise `pm enable`, before the app first starts: enabling kills the process.
         try {
           identity.probe();
           identity.enable();
@@ -1069,7 +1072,7 @@ async function main() {
     }
     await revokeAppSession(callbackSent);
     await cleanupDevice();
-    // Last: disabling the provider kills the app process.
+    // Last: disabling the provider kills the app process (only a provider this run enabled).
     if (identity) {
       await cleanupStep("identity_receipt_provider", async () => {
         const disabled = identity.disable();

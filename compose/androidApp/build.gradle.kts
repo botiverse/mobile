@@ -408,9 +408,10 @@ data class OssLicenseEntry(
 
 /**
  * App identity receipt (AppIdentityReceiptProvider): a store variant's MERGED manifest must declare
- * the provider disabled, exported only for `adb shell content call`, DUMP-protected, with the
- * expected authority and no intent filter; and the QA session bootstrap entry points must stay
- * behind `@bool/qa_session_bootstrap_enabled` (false outside alpha/connectedTest).
+ * the provider enabled (Android 14+ shell cannot enable a component of a signed release), exported
+ * only for `adb shell content call`, DUMP-protected, single-process, with the expected authority
+ * and no intent filter; and the QA session bootstrap entry points must stay behind
+ * `@bool/qa_session_bootstrap_enabled` (false outside alpha/connectedTest).
  */
 abstract class VerifyIdentityReceiptProviderTask : DefaultTask() {
     @get:InputFile
@@ -433,7 +434,7 @@ abstract class VerifyIdentityReceiptProviderTask : DefaultTask() {
                 ?: throw GradleException("${file.path}: AppIdentityReceiptProvider is not declared exactly once")
         val expected =
             mapOf(
-                "android:enabled" to "false",
+                "android:enabled" to "true",
                 "android:exported" to "true",
                 "android:permission" to "android.permission.DUMP",
                 "android:multiprocess" to "false",
@@ -452,7 +453,7 @@ abstract class VerifyIdentityReceiptProviderTask : DefaultTask() {
                 if (actual != qaGate && actual != "false") throw GradleException("${file.path}: $name $attribute=\"$actual\" must stay $qaGate or false")
             }
         }
-        report.get().asFile.writeText("${file.name}: AppIdentityReceiptProvider disabled, DUMP, ${expectedAuthority.get()}; QA bootstrap gated\n")
+        report.get().asFile.writeText("${file.name}: AppIdentityReceiptProvider enabled, exported, DUMP, ${expectedAuthority.get()}; QA bootstrap gated\n")
     }
 }
 
@@ -805,7 +806,7 @@ androidComponents {
             layout.buildDirectory.dir("generated/assets/ossLicenses/main").get().asFile.absolutePath
         )
     }
-    // Store variants: the identity receipt provider ships disabled + DUMP-protected (merged manifest).
+    // Store variants: the identity receipt provider ships enabled + DUMP-protected (merged manifest).
     onVariants(selector().withBuildType("release")) { variant -> registerIdentityReceiptProviderCheck(variant) }
     onVariants(selector().withBuildType("play")) { variant -> registerIdentityReceiptProviderCheck(variant) }
 }
@@ -814,7 +815,7 @@ fun registerIdentityReceiptProviderCheck(variant: com.android.build.api.variant.
     val suffix = variant.name.replaceFirstChar { it.uppercase() }
     tasks.register("verify${suffix}IdentityReceiptProvider", VerifyIdentityReceiptProviderTask::class.java) {
         group = "verification"
-        description = "Checks the ${variant.name} merged manifest declares AppIdentityReceiptProvider disabled and DUMP-protected."
+        description = "Checks the ${variant.name} merged manifest declares AppIdentityReceiptProvider enabled and DUMP-protected."
         mergedManifest.set(variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.MERGED_MANIFEST))
         expectedAuthority.set(variant.applicationId.map { "$it.identity-receipt" })
         report.set(layout.buildDirectory.file("reports/identityReceiptProvider/${variant.name}.txt"))

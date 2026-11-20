@@ -12,6 +12,10 @@ import {
   componentFor,
   contentCallCommand,
   createIdentityReceiptRunner,
+  probeCallCommand,
+  providerOverride,
+  providerStartState,
+  PROVIDER_CLEANUP_STATUSES,
   crossCheckReceipt,
   disableFailureAnnotation,
   newReceiptRequest,
@@ -175,21 +179,37 @@ test("content call output: receipt, refusal code, or no answer", () => {
   assert.equal(procStartTicks("4242 (build.raft) app) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 987654 20 21"), "987654");
 });
 
-// A fake `adb shell`: records every command, answers from a table.
-function fakeDevice({ hasProvider = true, enableOutput, disableOutput, disableStatus = 0 } = {}) {
+// A fake `adb shell`: records every command, answers from a table. `shipsEnabled`: a new package
+// (manifest enabled="true", signed: the shell may not change component state). Otherwise an older
+// package (manifest enabled="false"), with `override` = a left-over `pm enable` / `pm disable`.
+const SHELL_DENIED = `Exception occurred while executing 'enable':\njava.lang.SecurityException: Shell cannot change component state for ComponentInfo{${PKG}/${PROVIDER_CLASS}}`;
+function fakeDevice({ hasProvider = true, shipsEnabled = false, override = null, probeOutput, enableOutput, disableOutput, disableStatus = 0 } = {}) {
   const commands = [];
   const providerDump = hasProvider
     ? `  ContentProvider Authorities:\n    [build.raft.app.identity-receipt]:\n      Provider{1 ${PKG}/.core.data.auth.AppIdentityReceiptProvider}\n`
     : "";
+  const userState = `    User 0: ceDataInode=1 installed=true hidden=false suspended=false stopped=false enabled=0 instant=false\n      runtime permissions:\n${override ? `      ${override}Components:\n        ${PROVIDER_CLASS}\n` : ""}`;
+  let enabled = hasProvider && (shipsEnabled || override === "enabled");
   const shell = (command) => {
     commands.push(command);
-    if (command === `dumpsys package ${PKG}`) return { status: 0, stdout: `Packages:\n  Package [${PKG}]\n    versionCode=12600002 minSdk=29\n${providerDump}`, stderr: "" };
-    if (command.startsWith("pm enable ")) {
-      return enableOutput ?? (hasProvider
-        ? { status: 0, stdout: `Component {${componentFor(PKG)}} new state: enabled\n`, stderr: "" }
-        : { status: 255, stdout: "", stderr: `Error: java.lang.IllegalArgumentException: Component class ${PROVIDER_CLASS} does not exist in ${PKG}` });
+    if (command === `dumpsys package ${PKG}`) return { status: 0, stdout: `${providerDump}Packages:\n  Package [${PKG}]\n    versionCode=12600002 minSdk=29\n${userState}`, stderr: "" };
+    if (command === probeCallCommand(PKG)) {
+      if (probeOutput !== undefined) return { status: 0, stdout: probeOutput, stderr: "" };
+      return enabled
+        ? { status: 0, stdout: "Result: Bundle[{error=unknown_method}]\n", stderr: "" }
+        : { status: 0, stdout: "", stderr: `Error while accessing provider:${PKG}.identity-receipt\njava.lang.IllegalStateException: Could not find provider: ${PKG}.identity-receipt\n` };
     }
-    if (command.startsWith("pm disable ")) return { status: disableStatus, stdout: disableOutput ?? `Component {${componentFor(PKG)}} new state: disabled\n`, stderr: "" };
+    if (command.startsWith("pm enable ")) {
+      if (enableOutput) return enableOutput;
+      if (!hasProvider) return { status: 255, stdout: "", stderr: `Error: java.lang.IllegalArgumentException: Component class ${PROVIDER_CLASS} does not exist in ${PKG}` };
+      if (shipsEnabled) return { status: 255, stdout: "", stderr: SHELL_DENIED };
+      enabled = true;
+      return { status: 0, stdout: `Component {${componentFor(PKG)}} new state: enabled\n`, stderr: "" };
+    }
+    if (command.startsWith("pm disable ")) {
+      if (shipsEnabled) return { status: 255, stdout: "", stderr: SHELL_DENIED };
+      return { status: disableStatus, stdout: disableOutput ?? `Component {${componentFor(PKG)}} new state: disabled\n`, stderr: "" };
+    }
     if (command === `pidof ${PKG}`) return { status: 0, stdout: "4242\n", stderr: "" };
     if (command === "cat /proc/4242/stat") return { status: 0, stdout: "4242 (build.raft.app) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 987654 20\n", stderr: "" };
     if (command.startsWith("content call ")) return { status: 0, stdout: `Result: Bundle[{receipt=${sampleJson}}]\n`, stderr: "" };
@@ -197,19 +217,97 @@ function fakeDevice({ hasProvider = true, enableOutput, disableOutput, disableSt
   };
   return { shell, commands };
 }
+const kindsOf = (commands) => commands.map((c) => c.split(" ").slice(0, 2).join(" "));
 
-test("order: probe, enable before sign-in, call after it, disable last", () => {
+test("a package that ships the provider enabled: no pm enable, no pm disable, cleanup enabled_by_package", () => {
+  const device = fakeDevice({ shipsEnabled: true });
+  const runner = createIdentityReceiptRunner({ shell: device.shell, pkg: PKG });
+  runner.probe();
+  assert.equal(runner.state.startState, "enabled_by_package");
+  runner.enable();
+  runner.markSignInStarted();
+  // No state change is made, so the "before sign-in" order does not apply.
+  runner.enable();
+  assert.deepEqual(runner.call(request).receipt, sample);
+  assert.deepEqual(runner.disable(), { ok: true, status: "enabled_by_package" });
+  assert.deepEqual(kindsOf(device.commands), ["dumpsys package", "content call", "pidof build.raft.app", "cat /proc/4242/stat", "content call", "pidof build.raft.app", "cat /proc/4242/stat"]);
+  assert.ok(!device.commands.some((c) => /^pm (enable|disable)\b/.test(c)), "no component state change");
+  // The probe carries nothing of the attempt and is not the receipt method.
+  assert.equal(device.commands[1], `content call --uri content://${PKG}.identity-receipt --method probe`);
+  // Cleanup without a call (the run failed in between) is the same: nothing to undo, nothing annotated.
+  const early = createIdentityReceiptRunner({ shell: fakeDevice({ shipsEnabled: true }).shell, pkg: PKG });
+  early.probe();
+  assert.deepEqual(early.disable(), { ok: true, status: "enabled_by_package" });
+});
+
+test("start state: the probe call decides, dumpsys only tells a left-over pm override apart", () => {
+  const dump = (override) => `    User 0: installed=true enabled=0\n      disabledComponents:\n        build.raft.app.Other\n${override ? `      ${override}Components:\n        build.raft.app.Another\n        ${PROVIDER_CLASS}\n` : ""}      lastDisabledCaller: shell\n        ${PROVIDER_CLASS}\n`;
+  assert.equal(providerOverride(dump(null)), null);
+  assert.equal(providerOverride(dump("enabled")), "enabled");
+  assert.equal(providerOverride(dump("disabled")), "disabled");
+  assert.equal(providerOverride(""), null);
+  const refused = "Result: Bundle[{error=unknown_method}]\n";
+  const notFound = `Error while accessing provider:${PKG}.identity-receipt\njava.lang.IllegalStateException: Could not find provider: ${PKG}.identity-receipt`;
+  assert.equal(providerStartState(refused, dump(null)), "enabled_by_package");
+  // Answers only because an earlier run left `pm enable` behind: the package ships it disabled.
+  assert.equal(providerStartState(refused, dump("enabled")), "disabled");
+  assert.equal(providerStartState(notFound, dump(null)), "disabled");
+  assert.equal(providerStartState(notFound, dump("disabled")), "disabled");
+  for (const other of ["", "Result: null", "error: closed", "java.lang.SecurityException: Permission Denial"]) assert.equal(providerStartState(other, dump(null)), "unknown", other);
+  assert.deepEqual(PROVIDER_CLEANUP_STATUSES, ["disabled", "enabled_by_package", "unknown", "failed", "not_enabled"]);
+
+  // A left-over override on an older package takes the pm path and ends disabled.
+  const leftOver = fakeDevice({ override: "enabled" });
+  const runner = createIdentityReceiptRunner({ shell: leftOver.shell, pkg: PKG });
+  runner.probe();
+  assert.equal(runner.state.startState, "disabled");
+  runner.enable();
+  assert.deepEqual(runner.disable(), { ok: true, status: "disabled" });
+});
+
+test("start state unknown: pm enable is still tried; if it fails nothing is changed and cleanup says unknown, not failed", () => {
+  // An older package whose probe output is not recognized keeps working through pm enable.
+  const older = fakeDevice({ probeOutput: "" });
+  const works = createIdentityReceiptRunner({ shell: older.shell, pkg: PKG });
+  works.probe();
+  assert.equal(works.state.startState, "unknown");
+  works.enable();
+  assert.deepEqual(works.call(request).receipt, sample);
+  assert.deepEqual(works.disable(), { ok: true, status: "disabled" });
+  // A signed package the probe could not read: pm enable is refused, no pm disable is sent.
+  const signed = fakeDevice({ shipsEnabled: true, probeOutput: "error: closed" });
+  const runner = createIdentityReceiptRunner({ shell: signed.shell, pkg: PKG });
+  runner.probe();
+  assert.throws(() => runner.enable(), /pm enable failed \(the provider did not answer the probe either\): .*Shell cannot change component state/s);
+  assert.throws(() => runner.call(request), /not enabled/);
+  assert.deepEqual(runner.disable(), { ok: true, status: "unknown" });
+  assert.ok(!signed.commands.some((c) => c.startsWith("pm disable")), "no pm disable on an unread state");
+  // Unknown before enable was ever tried is unknown too.
+  const untouched = createIdentityReceiptRunner({ shell: fakeDevice({ probeOutput: "" }).shell, pkg: PKG });
+  untouched.probe();
+  assert.deepEqual(untouched.disable(), { ok: true, status: "unknown" });
+  // Neither passes: not the run's exit code, not the release lane's terminal decision.
+  const clean = { capture_file: "deleted", browser: "restored", capture_browser: "uninstalled", web_session: "signed_out", app_session: "app_reported_server_logout_2xx" };
+  for (const strict of [true, false]) {
+    const outcome = runOutcome({ signedIn: true, cleanup: { ...clean, identity_receipt_provider: "unknown" }, strict });
+    assert.deepEqual([outcome.result, outcome.exitCode], ["cleanup_failed", 1]);
+    assert.deepEqual(outcome.cleanupFailures, [{ step: "identity_receipt_provider", status: "unknown" }]);
+  }
+});
+
+test("older package (ships the provider disabled): probe, enable before sign-in, call after it, disable last", () => {
   const device = fakeDevice();
   const runner = createIdentityReceiptRunner({ shell: device.shell, pkg: PKG });
   runner.probe();
+  assert.equal(runner.state.startState, "disabled");
   runner.enable();
   runner.markSignInStarted();
   const answer = runner.call(request);
   assert.deepEqual(answer.receipt, sample);
   assert.deepEqual(answer.os, { pidBefore: "4242", pidAfter: "4242", startTicksBefore: "987654", startTicksAfter: "987654" });
   assert.deepEqual(runner.disable(), { ok: true, status: "disabled" });
-  const kinds = device.commands.map((c) => c.split(" ").slice(0, 2).join(" "));
-  assert.deepEqual(kinds, ["dumpsys package", "pm enable", "pidof build.raft.app", "cat /proc/4242/stat", "content call", "pidof build.raft.app", "cat /proc/4242/stat", "pm disable"]);
+  const kinds = kindsOf(device.commands);
+  assert.deepEqual(kinds, ["dumpsys package", "content call", "pm enable", "pidof build.raft.app", "cat /proc/4242/stat", "content call", "pidof build.raft.app", "cat /proc/4242/stat", "pm disable"]);
   assert.ok(device.commands.includes(`pm enable ${PKG}/${PROVIDER_CLASS}`));
   assert.ok(device.commands.includes(`pm disable ${PKG}/${PROVIDER_CLASS}`));
 });
@@ -264,6 +362,7 @@ test("a failed or unconfirmed disable is loud: ::error:: annotation and a non-ze
     assert.ok(outcome.cleanupFailures.some((f) => f.step === "identity_receipt_provider"));
   }
   assert.equal(runOutcome({ signedIn: true, cleanup: { ...clean, identity_receipt_provider: "disabled" }, strict: true }).exitCode, 0);
+  assert.equal(runOutcome({ signedIn: true, cleanup: { ...clean, identity_receipt_provider: "enabled_by_package" }, strict: true }).exitCode, 0);
   assert.equal(runOutcome({ signedIn: true, cleanup: { ...clean, identity_receipt_provider: "not_enabled" }, strict: true }).exitCode, 0);
   // Runs without --identity-receipt have no such step and are unaffected.
   assert.equal(runOutcome({ signedIn: true, cleanup: clean, strict: true }).exitCode, 0);
