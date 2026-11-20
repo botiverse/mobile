@@ -428,7 +428,9 @@ jobs:
         working-directory: compose
         shell: bash
         run: |
-          ./gradlew :shared:syncFramework \
+          # :verifyComposeUiPatch: the CMP-10674 patched Compose UI klibs, byte for byte
+          # (compose/build.gradle.kts); a release must not fall back to the official ones.
+          ./gradlew :verifyComposeUiPatch :shared:syncFramework \
             -Pkotlin.native.cocoapods.platform=iphoneos \
             -Pkotlin.native.cocoapods.archs=arm64 \
             -Pkotlin.native.cocoapods.configuration=Release \

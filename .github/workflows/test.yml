@@ -1364,6 +1364,8 @@ jobs:
         run: |
           set -euo pipefail
           tasks=(
+            # CMP-10674: fails unless the iOS klibs are the patched Compose UI (compose/build.gradle.kts).
+            :verifyComposeUiPatch
             :shared:compileKotlinIosSimulatorArm64
             :designsystem:compileKotlinIosSimulatorArm64
             :ui-cmp:compileKotlinIosSimulatorArm64
