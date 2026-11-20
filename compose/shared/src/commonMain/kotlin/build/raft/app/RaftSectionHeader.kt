@@ -321,7 +321,7 @@ internal fun RaftTopPageHeader(
                 }
             }
             if (refreshing) {
-                RaftHeaderRefreshIndicator()
+                RaftHeaderRefreshSlot()
             }
             if (trailingContent != null) {
                 Box(content = trailingContent)
@@ -437,7 +437,7 @@ internal fun RaftPanelBackHeader(
                     }
                 }
                 if (refreshing) {
-                    RaftHeaderRefreshIndicator()
+                    RaftHeaderRefreshSlot()
                 }
                 if (trailingContent != null) {
                     Row(verticalAlignment = Alignment.CenterVertically, content = trailingContent)
@@ -548,6 +548,19 @@ internal fun RaftMainTabPageHeader(
         leadingContent = leadingContent,
         nativeOnTitleClick = nativeOnTitleClick,
     )
+}
+
+/**
+ * The refresh spinner in a page head: it takes a header action's slot (the 44dp icon-button box,
+ * spinner centred), so it lines up with the head's action glyphs and keeps their distance from
+ * the edge instead of sitting on the head's padding line (artin 11-19, 11-20: "the loading in the
+ * top right lacks right padding", on Saved, channel details and more).
+ */
+@Composable
+internal fun RaftHeaderRefreshSlot(modifier: Modifier = Modifier) {
+    Box(modifier = modifier.size(RaftAppSize.IconButton), contentAlignment = Alignment.Center) {
+        RaftHeaderRefreshIndicator()
+    }
 }
 
 /** A page header's top-right refresh spinner; screen readers hear "Refreshing". */
