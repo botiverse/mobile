@@ -1457,7 +1457,7 @@ jobs:
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
             OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
             RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
-            test > "$log" 2>&1 || { tail -200 "$log"; exit 1; }
+            test > "$log" 2>&1 || { python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/print_xctest_failures.py" "$log"; tail -200 "$log"; exit 1; }
           tail -60 "$log"
           python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" "$log" RaftAdaptiveEditorSnapshotTests
 
@@ -1479,7 +1479,7 @@ jobs:
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
             OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
             RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
-            test > "$log" 2>&1 || { tail -200 "$log"; exit 1; }
+            test > "$log" 2>&1 || { python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/print_xctest_failures.py" "$log"; tail -200 "$log"; exit 1; }
           tail -60 "$log"
           # Every class in the bundle must have run at least one case; xcodebuild itself
           # reports success when a selector matches nothing.
