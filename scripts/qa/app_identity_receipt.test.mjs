@@ -253,7 +253,26 @@ test("start state: the probe call decides, dumpsys only tells a left-over pm ove
   assert.equal(providerStartState(refused, dump("enabled")), "disabled");
   assert.equal(providerStartState(notFound, dump(null)), "disabled");
   assert.equal(providerStartState(notFound, dump("disabled")), "disabled");
-  for (const other of ["", "Result: null", "error: closed", "java.lang.SecurityException: Permission Denial"]) assert.equal(providerStartState(other, dump(null)), "unknown", other);
+  // Only the agreed refusal, as the whole reply, proves the provider answered. Another code, a
+  // receipt or a malformed reply is unknown, with or without an override.
+  const notTheAgreedReply = [
+    "", "Result: null", "error: closed", "java.lang.SecurityException: Permission Denial",
+    "Result: Bundle[{error=unavailable}]", "Result: Bundle[{error=caller_not_allowed}]", "Result: Bundle[{error=rate_limited}]",
+    "Result: Bundle[{error=bad_request}]", `Result: Bundle[{receipt=${sampleJson}}]`,
+    "Result: Bundle[{error=unknown_method", "Result: Bundle[{error=unknown_method, receipt={}}]", "Result: Bundle[{error=unknown_methods}]",
+    "Result: Bundle[{error=UNKNOWN_METHOD}]", "error=unknown_method", "warning: something\nResult: Bundle[{error=unknown_method}]",
+    "Result: Bundle[{error=unknown_method}]\nResult: Bundle[{error=unavailable}]",
+  ];
+  for (const other of notTheAgreedReply) {
+    for (const override of [null, "enabled"]) assert.equal(providerStartState(other, dump(override)), "unknown", other);
+  }
+  assert.equal(providerStartState("  Result: Bundle[{error=unknown_method}]\r\n", dump(null)), "enabled_by_package", "surrounding whitespace only");
+  for (const reply of ["Result: Bundle[{error=unavailable}]\n", "Result: Bundle[{error=caller_not_allowed}]\n", "Result: Bundle[{error=rate_limited}]\n", "Result: Bundle[{error=unknown_method\n"]) {
+    const runner = createIdentityReceiptRunner({ shell: fakeDevice({ shipsEnabled: true, probeOutput: reply }).shell, pkg: PKG });
+    runner.probe();
+    assert.equal(runner.state.startState, "unknown", reply);
+    assert.equal(runner.disable().status, "unknown", reply);
+  }
   assert.deepEqual(PROVIDER_CLEANUP_STATUSES, ["disabled", "enabled_by_package", "unknown", "failed", "not_enabled"]);
 
   // A left-over override on an older package takes the pm path and ends disabled.
@@ -265,16 +284,39 @@ test("start state: the probe call decides, dumpsys only tells a left-over pm ove
   assert.deepEqual(runner.disable(), { ok: true, status: "disabled" });
 });
 
-test("start state unknown: pm enable is still tried; if it fails nothing is changed and cleanup says unknown, not failed", () => {
-  // An older package whose probe output is not recognized keeps working through pm enable.
+test("start state unknown is final: enable + disable succeeding never makes it disabled; a failed disable is failed; a failed enable sends no pm disable", () => {
+  const clean = { capture_file: "deleted", browser: "restored", capture_browser: "uninstalled", web_session: "signed_out", app_session: "app_reported_server_logout_2xx" };
+  const exits = (status) => [true, false].map((strict) => {
+    const outcome = runOutcome({ signedIn: true, cleanup: { ...clean, identity_receipt_provider: status }, strict });
+    assert.deepEqual(outcome.cleanupFailures, [{ step: "identity_receipt_provider", status }]);
+    return [outcome.result, outcome.exitCode];
+  });
+
+  // unknown -> pm enable ok -> pm disable ok: restored, but the terminal value stays unknown, exit 1.
   const older = fakeDevice({ probeOutput: "" });
-  const works = createIdentityReceiptRunner({ shell: older.shell, pkg: PKG });
-  works.probe();
-  assert.equal(works.state.startState, "unknown");
-  works.enable();
-  assert.deepEqual(works.call(request).receipt, sample);
-  assert.deepEqual(works.disable(), { ok: true, status: "disabled" });
-  // A signed package the probe could not read: pm enable is refused, no pm disable is sent.
+  const restored = createIdentityReceiptRunner({ shell: older.shell, pkg: PKG });
+  restored.probe();
+  assert.equal(restored.state.startState, "unknown");
+  restored.enable();
+  restored.markSignInStarted();
+  assert.deepEqual(restored.call(request).receipt, sample);
+  assert.deepEqual(restored.disable(), { ok: true, status: "unknown" });
+  assert.deepEqual(older.commands.filter((c) => c.startsWith("pm ")), [`pm enable ${PKG}/${PROVIDER_CLASS}`, `pm disable ${PKG}/${PROVIDER_CLASS}`], "what the run enabled is disabled again");
+  assert.equal(restored.state.disabled, true);
+  assert.deepEqual(exits("unknown"), [["cleanup_failed", 1], ["cleanup_failed", 1]]);
+
+  // unknown -> pm enable ok -> pm disable fails: failed (wins over unknown), with the loud annotation.
+  for (const options of [{ disableStatus: 255, disableOutput: "Error: could not disable" }, { disableOutput: "" }]) {
+    const runner = createIdentityReceiptRunner({ shell: fakeDevice({ probeOutput: "", ...options }).shell, pkg: PKG });
+    runner.probe();
+    runner.enable();
+    const result = runner.disable();
+    assert.deepEqual([result.ok, result.status], [false, "failed"]);
+    assert.match(disableFailureAnnotation(PKG, result.detail), /^::error title=identity receipt provider left enabled::/);
+  }
+  assert.deepEqual(exits("failed"), [["cleanup_failed", 1], ["cleanup_failed", 1]]);
+
+  // unknown -> pm enable fails (a signed package the probe could not read): unknown, no pm disable.
   const signed = fakeDevice({ shipsEnabled: true, probeOutput: "error: closed" });
   const runner = createIdentityReceiptRunner({ shell: signed.shell, pkg: PKG });
   runner.probe();
@@ -282,17 +324,13 @@ test("start state unknown: pm enable is still tried; if it fails nothing is chan
   assert.throws(() => runner.call(request), /not enabled/);
   assert.deepEqual(runner.disable(), { ok: true, status: "unknown" });
   assert.ok(!signed.commands.some((c) => c.startsWith("pm disable")), "no pm disable on an unread state");
-  // Unknown before enable was ever tried is unknown too.
-  const untouched = createIdentityReceiptRunner({ shell: fakeDevice({ probeOutput: "" }).shell, pkg: PKG });
+
+  // Unknown before enable was ever tried is unknown too, and sends nothing.
+  const untouchedDevice = fakeDevice({ probeOutput: "" });
+  const untouched = createIdentityReceiptRunner({ shell: untouchedDevice.shell, pkg: PKG });
   untouched.probe();
   assert.deepEqual(untouched.disable(), { ok: true, status: "unknown" });
-  // Neither passes: not the run's exit code, not the release lane's terminal decision.
-  const clean = { capture_file: "deleted", browser: "restored", capture_browser: "uninstalled", web_session: "signed_out", app_session: "app_reported_server_logout_2xx" };
-  for (const strict of [true, false]) {
-    const outcome = runOutcome({ signedIn: true, cleanup: { ...clean, identity_receipt_provider: "unknown" }, strict });
-    assert.deepEqual([outcome.result, outcome.exitCode], ["cleanup_failed", 1]);
-    assert.deepEqual(outcome.cleanupFailures, [{ step: "identity_receipt_provider", status: "unknown" }]);
-  }
+  assert.ok(!untouchedDevice.commands.some((c) => c.startsWith("pm ")));
 });
 
 test("older package (ships the provider disabled): probe, enable before sign-in, call after it, disable last", () => {

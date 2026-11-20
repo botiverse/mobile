@@ -35,14 +35,16 @@ if (cmd === "pm clear " + pkg) out("Success\\n");
 if (cmd === "dumpsys package " + pkg) out("Packages:\\n  Package [" + pkg + "]\\n    versionCode=12700001 minSdk=29\\n" + (process.env.FAKE_NO_PKGFLAGS ? "" : "    pkgFlags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ]\\n") + "  ContentProvider Authorities:\\n    [" + pkg + ".identity-receipt]:\\n");
 // FAKE_PROVIDER=enabled: a new signed package (ships the provider enabled; the shell may not change
 // component state). FAKE_PROVIDER=unread: the same package, but the probe gets no answer.
-// Default: an older package that ships it disabled.
+// FAKE_PROVIDER=unread_older: an older package (pm enable / pm disable work) whose probe gets no
+// answer; with FAKE_DISABLE_FAILS its pm disable fails. Default: an older package that ships it disabled.
 const provider = process.env.FAKE_PROVIDER || "disabled";
 if (cmd === "content call --uri content://" + pkg + ".identity-receipt --method probe") {
   if (provider === "enabled") out("Result: Bundle[{error=unknown_method}]\\n");
-  if (provider === "unread") out("");
+  if (provider === "unread" || provider === "unread_older") out("");
   out("Error while accessing provider:" + pkg + ".identity-receipt\\njava.lang.IllegalStateException: Could not find provider: " + pkg + ".identity-receipt\\n");
 }
-if (provider !== "disabled" && /^pm (enable|disable) /.test(cmd)) { process.stderr.write("java.lang.SecurityException: Shell cannot change component state for ComponentInfo{" + args[1].split(" ")[2] + "}\\n"); process.exit(255); }
+if (process.env.FAKE_DISABLE_FAILS && cmd.startsWith("pm disable " + pkg + "/")) { process.stderr.write("Error: could not disable\\n"); process.exit(255); }
+if ((provider === "enabled" || provider === "unread") && /^pm (enable|disable) /.test(cmd)) { process.stderr.write("java.lang.SecurityException: Shell cannot change component state for ComponentInfo{" + args[1].split(" ")[2] + "}\\n"); process.exit(255); }
 if (cmd.startsWith("pm enable " + pkg + "/")) out("Component {" + args[1].split(" ")[2] + "} new state: enabled\\n");
 if (cmd.startsWith("pm disable " + pkg + "/")) out("Component {" + args[1].split(" ")[2] + "} new state: disabled\\n");
 if (cmd === "getprop ro.build.version.sdk") out("35\\n");
@@ -133,6 +135,22 @@ test("a provider whose start state cannot be read stops the run before any accou
   assert.equal(run.summary.cleanup.identity_receipt_provider, "unknown");
   assert.ok(!run.result.stderr.includes("identity receipt provider left enabled"), "no left-enabled annotation");
   assert.equal(run.summary.steps.some((s) => s.name === "open-sign-in-page"), false, "stopped before sign-in");
+});
+
+test("unknown start state on an older package: the run restores what it enabled, and the outcome is still unknown (failed when the restore fails)", () => {
+  const pmCommands = (run) => run.adbCalls.filter((c) => c.args[0] === "shell").map((c) => c.args.slice(1).join(" ")).filter((c) => /^pm (enable|disable) build\.raft\.app\//.test(c)).map((c) => c.split(" ").slice(0, 2).join(" "));
+  const restored = runStandalone({ env: { FAKE_PROVIDER: "unread_older" } });
+  assert.equal(restored.result.status, 1);
+  assert.deepEqual(pmCommands(restored), ["pm enable", "pm disable"]);
+  assert.equal(restored.summary.cleanup.identity_receipt_provider, "unknown");
+  assert.equal(restored.summary.cleanup_ok, false, JSON.stringify(restored.summary.cleanup));
+  assert.ok(!restored.result.stderr.includes("identity receipt provider left enabled"));
+
+  const left = runStandalone({ env: { FAKE_PROVIDER: "unread_older", FAKE_DISABLE_FAILS: "1" } });
+  assert.equal(left.result.status, 1);
+  assert.deepEqual(pmCommands(left), ["pm enable", "pm disable"]);
+  assert.equal(left.summary.cleanup.identity_receipt_provider, "failed");
+  assert.match(left.result.stderr, /::error title=identity receipt provider left enabled::/);
 });
 
 test("an unreadable pkgFlags is reported as unknown in the preparation summary, never as not debuggable", () => {

@@ -110,8 +110,9 @@ export const CLEANUP_OK = {
 
 // app_identity_receipt_lib.mjs PROVIDER_CLEANUP_STATUSES: "disabled" (older package, enabled by the
 // run and disabled again), "enabled_by_package" (new package, enabled from the start, untouched),
-// "not_enabled" (the run stopped before the provider). Not ok: "unknown" (start state unread),
-// "failed" (enabled by the run and not disabled again).
+// "not_enabled" (the run stopped before the provider). Not ok: "unknown" (start state unread; it
+// stays unknown even when the run's own pm enable + pm disable both succeeded), "failed" (enabled
+// by the run and not disabled again; wins over unknown).
 export const IDENTITY_PROVIDER_CLEANUP_OK = ["disabled", "enabled_by_package", "not_enabled"];
 
 /** Which cleanup steps failed, and whether the run may still exit 0. */

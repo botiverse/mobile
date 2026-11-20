@@ -8,7 +8,9 @@
 //      identity receipt", no fallback. The probe also learns the provider's start state
 //      (PROVIDER_START_STATES) by asking it a method it refuses (`content call --method probe`:
 //      no nonce, no receipt, not counted against the answer limit). `dumpsys package` cannot tell:
-//      it lists a provider whatever its manifest says and shows only `pm enable/disable` overrides;
+//      it lists a provider whatever its manifest says and shows only `pm enable/disable` overrides.
+//      A start state the probe could not read is "unknown" and stays the run's outcome: the run
+//      cannot pass, whatever happens afterwards;
 //   2. only when the package ships it disabled: `pm enable`s it BEFORE sign-in (changing a
 //      component's state kills the app process, so it must not happen after the app is signed in
 //      and on screen). A package that ships it enabled gets no `pm enable` and no `pm disable`;
@@ -101,22 +103,30 @@ export function providerDeclared(dumpsysPackage, pkg) {
 
 /**
  * How the installed package had the provider when the run started:
- *   enabled_by_package – it answers and no `pm enable` override exists: the package ships it enabled.
+ *   enabled_by_package – it answers the probe with exactly `unknown_method` and no `pm enable` override exists: the package ships it enabled.
  *                        The run changes nothing (no `pm enable`, no `pm disable`).
  *   disabled           – it cannot be acquired ("Could not find provider"), or it answers only
  *                        because of a left-over `pm enable` override (dumpsys `enabledComponents:`):
  *                        the package ships it disabled (1.27.0 and earlier). `pm enable` / `pm disable`.
- *   unknown            – the probe gave neither answer. `pm enable` is still tried (so an older
- *                        package keeps working); if that fails the run stops and changes nothing.
+ *   unknown            – the probe gave neither answer (any other reply, e.g. another refusal code). The run cannot pass any more: its cleanup
+ *                        status is "unknown" (or "failed"), never "disabled". `pm enable` is still
+ *                        tried, so the receipt and Testbed's decision are still produced for
+ *                        diagnosis, and whatever the run enabled is disabled again; if `pm enable`
+ *                        fails the run stops before any account and sends no `pm disable`.
  */
 export const PROVIDER_START_STATES = ["enabled_by_package", "disabled", "unknown"];
 
 /**
  * The `identity_receipt_provider` cleanup status (summary.json `cleanup`), every value:
- *   disabled           – older package: this run enabled the provider and disabled it again.   PASSES
+ *   disabled           – older package (start state read as disabled): this run enabled the
+ *                        provider and disabled it again.                                       PASSES
  *   enabled_by_package – new package: enabled from the start, not changed by this run.         PASSES
- *   unknown            – the start state could not be read and nothing was confirmed changed.  does not pass
- *   failed             – this run enabled it with `pm enable` and could not disable it.        does not pass
+ *   unknown            – the start state could not be read. Final whatever followed: a
+ *                        `pm enable` + `pm disable` that both succeeded do NOT make it
+ *                        "disabled" (the run cannot say it left the device as it found it).   does not pass
+ *   failed             – this run enabled it with `pm enable` and could not disable it. Wins
+ *                        over "unknown": a provider left enabled by the run is the more
+ *                        serious condition.                                                    does not pass
  *   not_enabled        – the run stopped before the provider was probed or enabled (nothing
  *                        changed; such a run has already failed).
  */
@@ -144,10 +154,14 @@ export function providerOverride(dumpsysPackage) {
   return null;
 }
 
-/** The start state from the probe call's output and the package dump. */
+/**
+ * The start state from the probe call's output and the package dump. Only the agreed reply, the
+ * refusal `unknown_method` as the whole output, proves the provider answered; any other reply
+ * (another refusal code, a receipt, anything malformed) is "unknown".
+ */
 export function providerStartState(probeOutput, dumpsysPackage) {
   const text = String(probeOutput ?? "");
-  if (/Result: Bundle\[\{error=[a-z_]+\}\]/.test(text)) return providerOverride(dumpsysPackage) === "enabled" ? "disabled" : "enabled_by_package";
+  if (/^Result: Bundle\[\{error=unknown_method\}\]$/.test(text.trim())) return providerOverride(dumpsysPackage) === "enabled" ? "disabled" : "enabled_by_package";
   if (/Could not find provider/i.test(text)) return "disabled";
   return "unknown";
 }
@@ -489,7 +503,9 @@ export function createIdentityReceiptRunner({ shell, shellPrivate = shell, pkg }
      * Cleanup. Never throws. `status` is one of PROVIDER_CLEANUP_STATUSES. `ok: false` only for
      * "failed" (a provider this run enabled is still enabled): the caller must report it loudly.
      * "unknown" is `ok: true` (nothing to annotate: this run left nothing enabled that it knows
-     * of) but is not a passing status.
+     * of) but is not a passing status. An unknown start state never becomes "disabled": what the
+     * run enabled is still disabled again, and the status stays "unknown" ("failed" if that
+     * `pm disable` fails).
      */
     disable() {
       // Enabled by the package: this run made no change, so there is nothing to undo.
@@ -502,7 +518,8 @@ export function createIdentityReceiptRunner({ shell, shellPrivate = shell, pkg }
       if (result.status === 0 && /new state: disabled/.test(text)) {
         state.enabled = false;
         state.disabled = true;
-        return { ok: true, status: "disabled" };
+        // Restored, but only a start state read as "disabled" may report "disabled".
+        return { ok: true, status: state.startState === "unknown" ? "unknown" : "disabled" };
       }
       return { ok: false, status: "failed", detail: text.slice(0, 200) || `exit ${result.status}` };
     },
