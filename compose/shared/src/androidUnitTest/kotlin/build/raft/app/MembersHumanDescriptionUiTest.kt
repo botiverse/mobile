@@ -192,12 +192,13 @@ class MembersHumanDescriptionUiTest {
 
     @Test
     fun serverInvalidCodeShowsLengthErrorAndTraceIdAndEdgeBlockedIsLocalized() = runRobolectricComposeUiTest {
+        val validTraceId = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
         var nextError =
             ScreenError(
                 code = "settings_http_400",
                 serverCode = PROFILE_DESCRIPTION_INVALID_CODE,
                 serverMessage = "raw server text",
-                traceId = "trace-desc-1"
+                traceId = validTraceId
             )
         setContent {
             RaftTheme(appearance = RaftAppearance.Light) {
@@ -218,7 +219,8 @@ class MembersHumanDescriptionUiTest {
         onNodeWithTag(MembersHumanDescriptionSaveButtonTag).performClick()
         waitForIdle()
         onNodeWithText("Description must be 300 characters or fewer.").assertIsDisplayed()
-        onNodeWithText("Trace ID: trace-desc-1").assertIsDisplayed()
+        onNodeWithTag(RaftTraceIdNoteTestTag).assertIsDisplayed()
+        onNodeWithText("a1b2c3d4…").assertIsDisplayed()
 
         // Raw "edge_blocked" marker must never be surfaced verbatim.
         nextError = ScreenError(code = "settings_http_503", serverMessage = "edge_blocked")

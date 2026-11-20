@@ -182,16 +182,25 @@ class HumanProfileDescriptionUpdateTest {
                 fetchMembers = { priority, sid -> repo.getMembers(priority, sid) },
                 scope = backgroundScope
             )
+        val ownerResolver: (ServerId) -> ProcessServerMembersOwner? = { sid ->
+            when (sid) {
+                serverA -> ownerA
+                serverB -> ownerB
+                else -> null
+            }
+        }
         val store =
             SharedServerMembersStore(
                 memberRepository = repo,
                 processCore = processCore,
-                processOwner = { sid -> if (sid == serverA) ownerA else if (sid == serverB) ownerB else null },
+                processOwner = ownerResolver,
+                presenceOwner = ownerResolver,
                 durableStore = durable
             )
         store.refreshMembers(serverA)
         store.refreshMembers(serverB)
         store.loadChannelMembers(serverA, channelA)
+        store.ensureMemberSuggestionsForServer(serverA)
         store.seedProfiles(serverA, listOf(selfA))
         assertEquals(1, serverAFetches)
 
