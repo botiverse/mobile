@@ -116,8 +116,8 @@ tasks.named<Test>("desktopTest") {
 }
 
 // vcase pilot (vcase repo, docs/pilot-raft-mobile.md; Raft #proj-mobile:#211). desktopTest also
-// compiles src/desktopVcase (the @VCase cases, RaftVCaseHost, DesignSystemVCases and the
-// LegacyGoldenParityTest migration gate) against build.raft.vcase from maven.artifacts.botiverse.dev.
+// compiles src/desktopVcase (the @VCase cases, RaftVCaseHost and DesignSystemVCases; a temporary
+// LegacyGoldenParityTest joins them while a batch migrates) against build.raft.vcase.
 // Goldens live next to the Roborazzi ones, at screenshots/vcase/desktop-skiko/, with the manifest
 // at screenshots/vcase/vcase.manifest.json, so the record_screenshots dispatch collects them too.
 // - desktopTest / verifyRoborazziDesktop: verify, zero tolerance (inputs: screenshotGoldens covers screenshots/vcase).
